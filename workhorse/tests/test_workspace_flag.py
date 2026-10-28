@@ -1,9 +1,8 @@
-"""`run --workspace NAME`: the env var, the param and the artifacts repo it initialises."""
+"""`run --workspace NAME`: the param and the artifacts repo it initialises."""
 from __future__ import annotations
 
 import importlib
 import json
-import os
 import subprocess
 from pathlib import Path
 
@@ -30,8 +29,6 @@ def home(tmp_path, monkeypatch):
     config.write_text(f'[workspaces]\nacme = ["{tmp_path}/api-service", "{tmp_path}/web-app"]\n')
     monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
     monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(tmp_path / "artifacts"))
-    monkeypatch.setenv(core_config.WORKSPACE_ENV, "")
-    monkeypatch.delenv(core_config.WORKSPACE_ENV)
     launch = tmp_path / "repo"
     launch.mkdir()
     monkeypatch.chdir(launch)
@@ -42,7 +39,7 @@ def _launch(argv: list[str], monkeypatch) -> tuple[list, str | int | None]:
     seen: list = []
 
     def fake_run_pyflow(invocation):
-        seen.append((invocation, os.environ.get(core_config.WORKSPACE_ENV, "")))
+        seen.append(invocation)
         return 0
 
     monkeypatch.setattr(run_cmd, "run_pyflow", fake_run_pyflow)
@@ -52,14 +49,13 @@ def _launch(argv: list[str], monkeypatch) -> tuple[list, str | int | None]:
     return seen, excinfo.value.code
 
 
-def test_a_dry_run_in_a_workspace_exports_it_and_initialises_the_artifacts_repo(home, monkeypatch):
+def test_a_dry_run_in_a_workspace_passes_it_and_initialises_the_artifacts_repo(home, monkeypatch):
     seen, code = _launch(["run", "--dry-run", "--workspace", "acme"], monkeypatch)
 
     assert code == 0
-    invocation, env_value = seen[0]
+    invocation = seen[0]
     assert invocation.dry_run is True
     assert invocation.params["workspace"] == "acme"
-    assert env_value == "acme"
     artifacts = home / "artifacts"
     assert (artifacts / ".git").exists()
     assert (artifacts / ".gitignore").read_text().splitlines() == list(core_config.ARTIFACTS_IGNORED)
@@ -87,14 +83,11 @@ def test_a_resume_restores_the_workspace_the_run_recorded(home, monkeypatch):
     seen, code = _launch(["run", "--resume-run", "default"], monkeypatch)
 
     assert code == 0
-    assert seen[0][1] == "acme"
     assert (home / "artifacts" / ".git").exists()
 
 
-def test_a_run_without_the_flag_leaves_the_environment_alone(home, monkeypatch):
+def test_a_run_without_the_flag_passes_no_workspace(home, monkeypatch):
     seen, _ = _launch(["run"], monkeypatch)
 
-    invocation, env_value = seen[0]
-    assert "workspace" not in invocation.params
-    assert env_value == ""
+    assert "workspace" not in seen[0].params
     assert not (home / "artifacts").exists()

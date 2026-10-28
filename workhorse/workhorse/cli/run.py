@@ -11,7 +11,6 @@ from typing import Any
 from workhorse import otel
 from workhorse._vendor.stablemate_core.config import (
     CONFIG_PATH_ENV,
-    WORKSPACE_ENV,
     ensure_artifacts_repo,
     get_config_value,
     load_config,
@@ -117,9 +116,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--workspace",
         default=None,
         metavar="NAME",
-        help="Run across the named [workspaces] entry of the home config. Sets "
-        "$STABLEMATE_WORKSPACE for every agent turn and for ostler, passes the "
-        "name to the workflow as its `workspace` param, and initialises the "
+        help="Run across the named [workspaces] entry of the home config. Passes "
+        "the name to the workflow as its `workspace` param, and initialises the "
         "artifacts repo where the run's epics and stories live. A resume without "
         "this flag restores the workspace the run recorded.",
     )
@@ -248,13 +246,12 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
 
 
 def _enter_workspace(name: str) -> None:
-    """Validate ``name``, export it for the turns and ostler, and make sure the artifacts repo exists."""
+    """Validate ``name`` and make sure the artifacts repo exists."""
     try:
         resolve_workspace(name)
     except ValueError as exc:
         print(f"error: --workspace {name}: {exc}", file=sys.stderr)
         sys.exit(1)
-    os.environ[WORKSPACE_ENV] = name
     ensure_artifacts_repo()
 
 

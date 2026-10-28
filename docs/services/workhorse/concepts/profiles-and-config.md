@@ -35,5 +35,5 @@ resumed run comes back on the profile it switched to. The agent CLIs themselves 
 - code: `workhorse/workhorse/profile.py::record_switch` @ff29018aab02
 - code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_profile` @0f757c16382b
 - code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::resolve_default_cli` @0f757c16382b
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @7a84c0cc67a5
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::check_config_version` @7a84c0cc67a5
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @ff8a02ce3c68
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::check_config_version` @ff8a02ce3c68

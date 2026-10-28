@@ -43,7 +43,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - `--cli NAME` picks the agent CLI backend for the whole run. It overrides `AGENT_CLI`, which overrides the config's `default_cli`. The default is claude.
   - `--profile NAME` resolves models from `[profiles.NAME]` in the config, and the profile names its own CLI. A profile whose key matches its own `cli` is auto-selected on a fresh run — whether or not `--cli` names that same CLI — when neither `--profile` nor a resumed run's recorded profile already picked one.
   - `--config PATH` reads this config file and nothing else. It overrides `$STABLEMATE_CONFIG`, which overrides `$WORKHORSE_CONFIG`.
-  - `--workspace NAME` runs across the named `[workspaces]` entry of the home config: it sets `$STABLEMATE_WORKSPACE` for every agent turn and for ostler, initialises the artifacts repo, and adds `workspace` to the params the workflow receives. A bad name refuses before the run opens its run directory. A resume with no `--workspace` restores the workspace the run recorded.
+  - `--workspace NAME` runs across the named `[workspaces]` entry of the home config: it initialises the artifacts repo and adds `workspace` to the params the workflow receives. A bad name refuses before the run opens its run directory. A resume with no `--workspace` restores the workspace the run recorded.
   - `--params JSON` is an inline JSON object of workflow params. It wins over `--params-file` on a shared key.
   - `--params-file PATH` reads the same JSON object from a file.
   - `--context-file PATH` names the farrier context manifest. The default is `$AGENT_REPO_DIR/.agents/agents-context.<cli>.json`, then `agents-context.json`, and a run with neither renders without one.
@@ -62,11 +62,11 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - exits: 0 when a dry run finds nothing wrong.
 - run: invoke(argv=["run", "--dry-run", "--no-cache", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: exit_status(code=0)
-- code: `workhorse/workhorse/cli/run.py::add_arguments` @6bb7cf530876
-- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
-- code: `workhorse/workhorse/cli/run.py::invocation` @6bb7cf530876
-- code: `workhorse/workhorse/cli/run.py::apply_config_path` @6bb7cf530876
-- code: `workhorse/workhorse/cli/run.py::library_dirs` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::add_arguments` @ccb42ff9f0d8
+- code: `workhorse/workhorse/cli/run.py::run` @ccb42ff9f0d8
+- code: `workhorse/workhorse/cli/run.py::invocation` @ccb42ff9f0d8
+- code: `workhorse/workhorse/cli/run.py::apply_config_path` @ccb42ff9f0d8
+- code: `workhorse/workhorse/cli/run.py::library_dirs` @ccb42ff9f0d8
 - code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
 - code: `workhorse/workhorse/manifest.py::load_context_manifest` @e896594bc36c
 - detail: [run launch](concepts/run-launch.md)
@@ -229,7 +229,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - status: 2 on `--cli` with `--profile`.
 - run: invoke(argv=["run", "--cli", "claude", "--profile", "cheap"])
 - verify: exit_status(code=2)
-- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::run` @ccb42ff9f0d8
 
 ### refuse-missing-config
 
@@ -242,7 +242,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - status: 1 on a refused config, profile, params file or context manifest.
 - run: invoke(argv=["run", "--config", "nowhere.toml"])
 - verify: exit_status(code=1)
-- code: `workhorse/workhorse/cli/run.py::apply_config_path` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::apply_config_path` @ccb42ff9f0d8
 
 ### refuse-unknown-resume-run
 
@@ -272,7 +272,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - The argument parser refuses the second flag and names the first one it clashes with.
 - run: invoke(argv=["run", "--resume-latest", "--resume-run", "nope"])
 - verify: stderr(text="error: argument --resume-run: not allowed with argument --resume-latest")
-- code: `workhorse/workhorse/cli/run.py::add_arguments` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::add_arguments` @ccb42ff9f0d8
 
 ### refuse-unknown-profile
 
@@ -282,10 +282,10 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the launch and lists the known profiles in sorted order.
 - run: invoke(argv=["run", "--profile", "ghost", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: unknown profile 'ghost' in /tmp/workhorse-book/seeded/config.toml (known: bare, cheap, odd)")
-- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::run` @ccb42ff9f0d8
 - code: `workhorse/workhorse/profile.py::select_backend` @ff29018aab02
 - code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_profile` @0f757c16382b
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @7a84c0cc67a5
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @ff8a02ce3c68
 - code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir` @42eebfdfea77
 - code: `workhorse/workhorse/packaged.py::PackagedWorkflowError` @7eeb988b4091
 - code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @04abd4b8f62b
@@ -309,7 +309,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the launch and says every profile must declare its CLI.
 - run: invoke(argv=["run", "--profile", "bare", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: [profiles.bare] has no cli field — every profile must declare the CLI it runs under.")
-- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::run` @ccb42ff9f0d8
 
 ### refuse-undrivable-profile
 
@@ -319,7 +319,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Refuses the launch and lists the CLIs the run can drive.
 - run: invoke(argv=["run", "--profile", "odd", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: profile 'odd' declares cli = 'nope' (in /tmp/workhorse-book/seeded/config.toml), and this run can drive only claude, cline, codex, copilot, opencode")
-- code: `workhorse/workhorse/cli/run.py::run` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::run` @ccb42ff9f0d8
 
 ### refuse-unreadable-params-file
 

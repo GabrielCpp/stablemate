@@ -27,9 +27,8 @@ recorded. The params always carry `repo_dir` and `library_dirs`. `repo_dir` defa
 `$FARRIER_LIBRARY_DIR` or the config's `library_dir`, then the base library, keeping only those
 that exist.
 
-`--workspace NAME` runs across the named `[workspaces]` entry of the home config: it exports
-`$STABLEMATE_WORKSPACE` for every agent turn and for ostler, initialises the artifacts repo where
-the run's epics and stories live, and adds `workspace` to the params the workflow receives. A
+`--workspace NAME` runs across the named `[workspaces]` entry of the home config: it
+initialises the artifacts repo where the run's epics and stories live, and adds `workspace` to the params the workflow receives. A
 resume with no `--workspace` restores the workspace the run started with, read back off its
 checkpoint, rather than leaving the run with none.
 
@@ -50,7 +49,7 @@ worktree and its branch, so a resume or an operator can pick it up where the run
 [run control](run-control.md) for how `status --params` and a reload or rewind see a run's
 worktree while it is still going.
 
-- code: `workhorse/workhorse/cli/run.py::backend_for_profile` @6bb7cf530876
+- code: `workhorse/workhorse/cli/run.py::backend_for_profile` @ccb42ff9f0d8
 - code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @c14993f8e31a
 - code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @c14993f8e31a
