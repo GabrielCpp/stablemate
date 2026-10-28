@@ -107,8 +107,8 @@ field's value is the one thing on that page you leave unread.
 
 ## Run a command with secrets: `exec`
 
-`exec` asks the daemon for the values, puts them in the environment and then becomes
-the command. The command reads the values itself.
+`exec` asks the daemon for the values and puts them in the command's environment. The
+command reads the values itself.
 
 ```bash
 saddlebag exec --tag environment=local -- docker compose up -d
@@ -121,11 +121,13 @@ saddlebag exec --tag environment=local --env OTP=admin_login.totp -- ./scripts/e
   error.
 - `--env VAR=NAME[.field]` binds one variable explicitly. The field is `password`
   (the default), `username` or `totp`.
-- The command runs with your privileges and prints what it prints. Pick a command that
-  consumes the variable: a test runner, a migration, `docker compose`. A command whose
-  job is to show its environment (`env`, `printenv`, `echo $VAR`, `set -x` tracing)
-  would put the value in your transcript, so the secret stays wrapped inside a command
-  that uses it.
+- The command runs with your privileges. In your tool call its output reaches you with
+  each secret value replaced by `[REDACTED]`, as written and as compose, a URL or JSON
+  escapes it. A value under 8 characters is not masked, and `exec` warns with its
+  variable name. Pick a command that consumes the variable: a test runner, a
+  migration, `docker compose`. The mask catches a mistake, not every path out: a
+  command that encodes the value or writes it to a file still leaks it, so a command
+  whose job is to show its environment stays out of `exec`.
 
 ## An ostler stack
 
