@@ -54,7 +54,7 @@ def validate_authored_epic(
     else:
         epic_dir = paths.epic_dir(root, found.name)
         epic_path = (
-            found.epic_md.relative_to(root).as_posix()
+            paths._rel(root, found.epic_md)
             if found.epic_md is not None
             else f"{epic_dir}/epic.md"
         )

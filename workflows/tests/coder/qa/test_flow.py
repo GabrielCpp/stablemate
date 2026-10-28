@@ -39,6 +39,7 @@ from workhorse_workflows.coder.shared import okf as okf_nodes
 from workhorse_workflows.coder.shared import qa_support
 from workhorse_workflows.kit.qa import evidence as qa_evidence_mod
 from workhorse_workflows.kit.qa import runner as qa_runner_mod
+from _epics import epics_root
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
@@ -48,7 +49,7 @@ def spec_dir() -> Path:
     """The story's spec folder under this test's artifacts dir."""
     return core_config.resolve_artifacts_dir() / "specs" / STORY
 
-STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
+STORY_REL = f"{EPIC}/stories/{STORY}"
 CONTEXT_REL = f"{STORY_REL}/context.md"
 
 ESCALATION_NOTE = (
@@ -175,8 +176,8 @@ def docs(
     write_json: Callable[[Path, Any], Path],
 ) -> Path:
     """The docs repo: one epic, one built story, and the plan the dev phase left behind."""
-    write(repo / "docs" / "epics" / EPIC / "epic.md", EPIC_MD)
-    write(repo / STORY_REL / "story.md", STORY_MD)
+    write(epics_root() / EPIC / "epic.md", EPIC_MD)
+    write(epics_root() / STORY_REL / "story.md", STORY_MD)
     write(repo / RUNBOOK_REL, RUNBOOK_MD)
     write(repo / SERVER_REL, SERVER_MD)
     write_json(
@@ -565,14 +566,14 @@ class _Agent:
 
     def _answer(self) -> None:
         """Write the answer where `read_operator_context` reads it back out of."""
-        (self.docs / CONTEXT_REL).write_text(
+        (epics_root() / CONTEXT_REL).write_text(
             f"STATUS: ANSWERED\nSCOPE: {self.scope}\n\nUse the staging bucket.\n",
             encoding="utf-8",
         )
 
     def _escalate(self) -> None:
         """An escalating resolver writes its note into the same file, it does not write nothing."""
-        (self.docs / CONTEXT_REL).write_text(ESCALATION_NOTE, encoding="utf-8")
+        (epics_root() / CONTEXT_REL).write_text(ESCALATION_NOTE, encoding="utf-8")
 
 
 PRODUCT_FINDING: dict[str, str] = {
@@ -1136,8 +1137,11 @@ def _per_run_stack(docs: Path, write: Callable[[Path, str], Path]) -> None:
 
 def _cite(docs: Path, write: Callable[[Path, str], Path], *pages: str) -> None:
     """The story, citing each of *pages* under `docs/services`."""
-    links = "".join(f"- [{page}](../../../../services/{page})\n" for page in pages)
-    write(docs / STORY_REL / "story.md", STORY_MD.replace("Users need a thing.\n", f"Users need a thing.\n\n{links}"))
+    story = epics_root() / STORY_REL / "story.md"
+    links = "".join(
+        f"- [{page}]({os.path.relpath(docs / 'docs' / 'services' / page, story.parent)})\n" for page in pages
+    )
+    write(story, STORY_MD.replace("Users need a thing.\n", f"Users need a thing.\n\n{links}"))
 
 
 def test_a_run_names_its_copy_with_what_a_container_name_takes() -> None:

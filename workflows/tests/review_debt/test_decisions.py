@@ -19,6 +19,7 @@ from workhorse_workflows.review_debt.workflow import ReviewDebt
 
 IDS = ["api-cart", "api-auth", "api-old", "web-cart", "web-nav"]
 DRAFT = {
+    "slug": "guard-cart-total",
     "title": "Guard every cart total",
     "context": "Three records share one unguarded total.",
     "decision": "Guard the total in one module.",
@@ -41,8 +42,8 @@ def two_clusters() -> dict[str, Any]:
     return report(["api-cart", "api-auth", "web-cart"], ["api-old", "web-nav"])
 
 
-def decisions(artifacts: Path) -> list[Path]:
-    return sorted((artifacts / "adr").glob("*.md")) if (artifacts / "adr").is_dir() else []
+def decisions(repo: Path) -> list[Path]:
+    return sorted(repo.glob("docs/adrs/*/adr.md"))
 
 
 def bound(repo: Path) -> dict[str, str]:
@@ -60,7 +61,7 @@ def test_a_cluster_of_three_is_drafted_and_a_cluster_of_two_is_left(
 
     result = drive_flow(ReviewDebt(), env(), agent)
 
-    files = decisions(artifacts)
+    files = decisions(repo)
     assert len(files) == 1, files
     decision = adr.Decision.read(files[0])
     assert result.decisions == [decision.id], result
@@ -73,7 +74,9 @@ def test_a_cluster_of_three_is_drafted_and_a_cluster_of_two_is_left(
         "api-old": "", "web-nav": "",
     }
     assert agent.turns == 2
-    assert git_out(artifacts, "log", "-1", "--format=%s").strip() == f"chore: propose {decision.id} from 3 records"
+    assert files[0] == repo / "docs" / "adrs" / DRAFT["slug"] / "adr.md"
+    assert decision.id == DRAFT["slug"]
+    assert git_out(artifacts, "log", "-1", "--format=%s").strip() == "init"
 
 
 def test_the_draft_turn_is_given_the_cluster_and_the_shelf(
@@ -88,7 +91,7 @@ def test_the_draft_turn_is_given_the_cluster_and_the_shelf(
 
     turn = agent.args[1]
     assert turn["name"] == "cause 1" and turn["cause"] == "the same flaw 1", turn
-    assert turn["shelf"] == str(artifacts / "backlog"), turn
+    assert turn["shelf"] == str(artifacts / "backlogs"), turn
     assert all(i in turn["listing"] for i in ("api-cart", "api-auth", "web-cart")), turn
     assert "api-old" not in turn["listing"], turn
 
@@ -109,14 +112,14 @@ def test_a_second_run_over_the_same_register_and_report_proposes_nothing(
 
     assert agent.turns == 1
     assert result.decisions == [], result
-    assert len(decisions(artifacts)) == 1
+    assert len(decisions(repo)) == 1
     assert bound(repo) == before
     assert git_out(artifacts, "rev-list", "--count", "HEAD") == commits
 
 
 def test_bound_records_drop_out_of_a_larger_cluster(
     shelf: list[str],
-    artifacts: Path,
+    repo: Path,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
@@ -127,7 +130,7 @@ def test_bound_records_drop_out_of_a_larger_cluster(
 
     assert agent.turns == 1
     assert result.decisions == []
-    assert len(decisions(artifacts)) == 1
+    assert len(decisions(repo)) == 1
 
 
 def test_a_lower_threshold_drafts_the_smaller_cluster_too(
@@ -137,11 +140,11 @@ def test_a_lower_threshold_drafts_the_smaller_cluster_too(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = ScriptedReports(two_clusters(), DRAFT, {**DRAFT, "title": "Second"})
+    agent = ScriptedReports(two_clusters(), DRAFT, {**DRAFT, "slug": "second-cause", "title": "Second"})
 
     result = drive_flow(ReviewDebt(decision_threshold=2), env(), agent)
 
-    assert len(decisions(artifacts)) == 2
+    assert len(decisions(repo)) == 2
     assert len(result.decisions) == 2
     assert all(bound(repo).values())
 

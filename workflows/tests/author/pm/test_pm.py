@@ -29,16 +29,17 @@ from workhorse_workflows.author.pm.receipt import (
 )
 from workhorse_workflows.author.pm.schemas import Answer, GapAnswered, PMResult, Verdict
 from workhorse_workflows.author.workflow import workflow
+from _epics import epics_root
 
 PM = Path(author.__file__).parent
 
 
 def _story(repo: Path) -> str:
     write_milestone(repo)
-    path = repo / "docs/epics/0001-accounts/stories/01-sign-in/story.md"
+    path = epics_root() / "0001-accounts/stories/01-sign-in/story.md"
     path.parent.mkdir(parents=True)
     path.write_text("# Story: Sign in\n", encoding="utf-8")
-    return "docs/epics/0001-accounts/stories/01-sign-in/story.md"
+    return str(path)
 
 
 class _Agent:

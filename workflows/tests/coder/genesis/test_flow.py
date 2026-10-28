@@ -18,6 +18,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows.coder.genesis.flow import Genesis
 from workhorse_workflows.coder.genesis import nodes as genesis_nodes
 from workhorse_workflows.coder.shared.schemas.genesis import GenesisReport
+from _epics import epics_root
 
 class _Params(TypedDict):
     """The shape of `PARAMS`, spelled out so `Genesis(**PARAMS)` is checked key by key."""
@@ -68,7 +69,7 @@ class _Farrier:
             seeded.mkdir(parents=True, exist_ok=True)
             (seeded / ".gitignore").write_text("/tmp\n")
             if scaffold_id == "shared-docs" and self.seed_docs:
-                (target / "docs" / "epics").mkdir(parents=True, exist_ok=True)
+                (epics_root()).mkdir(parents=True, exist_ok=True)
         return subprocess.CompletedProcess(args, 0, "", "")
 
 
@@ -139,7 +140,7 @@ def test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept(
 
     assert (target / ".git").is_dir()
     assert (target / "api" / "go.mod").read_text() == "module example.com/api\n"
-    assert (target / "docs" / "epics").is_dir()
+    assert (epics_root()).is_dir()
     assert json.loads((target / ".agents" / "agents-context.json").read_text())["instructions"]
 
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=target, capture_output=True,

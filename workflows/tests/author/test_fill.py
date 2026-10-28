@@ -17,6 +17,7 @@ from workhorse_workflows.author.pm.receipt import (
     story_split_digest,
     write_pm_receipt,
 )
+from _epics import epics_root
 
 MILESTONE = "docs/milestones/account-access/milestone.md"
 
@@ -74,11 +75,11 @@ def install(
 ) -> Any:
     def _install(milestone_epics: list[str], epics: list[Epic]) -> _Ostler:
         for epic in epics:
-            epic_dir = tmp_path / "docs/epics" / epic.name
+            epic_dir = epics_root() / epic.name
             epic_dir.mkdir(parents=True, exist_ok=True)
             epic.epic_md = epic_dir / "epic.md"
             for story in epic.stories:
-                path = tmp_path / "docs/epics" / epic.name / "stories" / story.slug / "story.md"
+                path = epics_root() / epic.name / "stories" / story.slug / "story.md"
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(f"# {story.title}\n", encoding="utf-8")
                 story.story_md = path

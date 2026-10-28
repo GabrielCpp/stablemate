@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from _epics import epics_root
+
 import logging
 from pathlib import Path
 
@@ -31,7 +33,7 @@ def _epic(repo: Path) -> str:
 
 
 def _list_services(repo: Path, slug: str, services: list[str]) -> Path:
-    story_md = next(repo.glob(f"docs/epics/*/stories/{slug}/story.md"))
+    story_md = next(epics_root().glob(f"*/stories/{slug}/story.md"))
     raw = story_md.read_text(encoding="utf-8")
     story_md.write_text(
         raw.replace("---\n", f"---\nservices: [{', '.join(services)}]\n", 1), encoding="utf-8"
@@ -81,7 +83,7 @@ def test_deriving_twice_leaves_the_story_files_alone(
 ) -> None:
     epic = _epic(repo)
     derive_story_services(logger, epic, repo_dir=str(repo))
-    story_md = next(repo.glob("docs/epics/*/stories/01-both/story.md"))
+    story_md = next(epics_root().glob("*/stories/01-both/story.md"))
     before = story_md.read_bytes()
 
     derive_story_services(logger, epic, repo_dir=str(repo))
@@ -95,7 +97,7 @@ def test_the_coverage_lint_fails_a_story_with_no_services(
     epic = _epic(repo)
     derive_story_services(logger, epic, repo_dir=str(repo))
 
-    report = validate_coverage(logger, f"docs/epics/{epic}", require_authored=False)
+    report = validate_coverage(logger, str(epics_root() / epic), require_authored=False)
 
     assert not report.ok
     assert "`02-bare` lists no `services:`" in report.errors
@@ -111,7 +113,7 @@ def test_the_coverage_lint_fails_a_story_naming_an_unknown_book(
     ).ok
     derive_story_services(logger, epic, repo_dir=str(repo))
 
-    report = validate_coverage(logger, f"docs/epics/{epic}", require_authored=False)
+    report = validate_coverage(logger, str(epics_root() / epic), require_authored=False)
 
     assert not report.ok
     assert "ghost-service" in report.errors

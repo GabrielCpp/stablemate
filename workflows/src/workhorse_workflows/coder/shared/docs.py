@@ -26,7 +26,7 @@ CONTEXT_FILE = "qa-okf-context.json"
 
 CONFIG_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
 
-MANAGED_KINDS = ("epics", "services")
+MANAGED_KINDS = ("services",)
 
 DIRECT_KINDS = {"changed-code", "file-owner", "surface-owner"}
 

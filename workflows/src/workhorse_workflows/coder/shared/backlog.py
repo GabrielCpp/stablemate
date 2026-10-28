@@ -14,9 +14,9 @@ from ostler import Ostler, ids, markdown
 from ostler.register import Record
 from ostler.path import book_prefix_in
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.kit import commit_paths, find_docs_root
+from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.workspace import resolve_workspace
-from workhorse_workflows.coder.shared import causes, commits, paths
+from workhorse_workflows.coder.shared import causes, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 from workhorse_workflows.coder.shared.judge import Judge
@@ -128,7 +128,7 @@ def file_backlog_items(
     workspace: str = "",
     drop: list[str] | None = None,
 ) -> BacklogDrain:
-    """File this story's leftover items as `qa` records on the register, less the ones in `drop`, de-duplicated, in one artifacts commit, then clear them."""
+    """File this story's leftover items as `qa` records on the register, less the ones in `drop`, de-duplicated,, then clear them."""
     root = find_docs_root(repo_dir)
     items_path = _items_file(root, spec_dir)
     if items_path is None:
@@ -144,7 +144,6 @@ def file_backlog_items(
     repos = resolve_workspace(workspace, repo_dir)
     story = _story_of(root, spec_dir)
     held: dict[str, set[str]] = {}
-    filed_repos: list[str] = []
     new_paths: list[Path] = []
     dropped = set(drop or [])
     skipped = 0
@@ -186,17 +185,9 @@ def file_backlog_items(
             skipped += 1
             continue
         held[repo].add(key)
-        filed_repos.append(repo)
         new_paths.append(filing.path)
 
     appended = len(new_paths)
-    if appended:
-        artifacts = okf.register_root().parent
-        scope = commits.scope(filed_repos[0]) if len(set(filed_repos)) == 1 else ""
-        message = commits.message(
-            "chore", scope, f"file the qa leftovers of {story}" if story else "file the qa leftovers"
-        )
-        commit_paths(artifacts, message, *(str(p.relative_to(artifacts)) for p in new_paths), verify=False)
 
     try:
         items_path.unlink()
@@ -242,11 +233,10 @@ def file_follow_up_backlog(
     repo_dir: str = "",
     workspace: str = "",
 ) -> BacklogDrain:
-    """File a dev turn's follow-ups as records on the debt register, and commit them in the artifacts repo."""
+    """File a dev turn's follow-ups as records on the debt register."""
     okf = Ostler(find_docs_root(repo_dir))
     repos = resolve_workspace(workspace, repo_dir)
     open_by_repo: dict[str, list[BacklogBullet]] = {}
-    filed_repos: list[str] = []
     new_paths: list[Path] = []
     skipped = 0
     for entry in follow_ups or []:
@@ -286,16 +276,10 @@ def file_follow_up_backlog(
             skipped += 1
             continue
         open_by_repo[repo].append(BacklogBullet(0, filing.record.id, filing.record.summary))
-        filed_repos.append(repo)
         new_paths.append(filing.path)
     appended = len(new_paths)
     note = f"filed {appended} follow-up(s) of {parent} to the register, skipped {skipped}"
     logger.info(note)
-    if appended:
-        artifacts = okf.register_root().parent
-        scope = commits.scope(filed_repos[0]) if len(set(filed_repos)) == 1 else ""
-        message = commits.message("chore", scope, f"file the deferred follow-ups of {parent}")
-        commit_paths(artifacts, message, *(str(p.relative_to(artifacts)) for p in new_paths), verify=False)
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 
@@ -363,7 +347,7 @@ def _story_id(context: object) -> str:
 def file_deferred_obligations(
     logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace: str = ""
 ) -> BacklogDrain:
-    """File each book page that owes QA a check it could not run as a record on the register, and commit it in the artifacts repo."""
+    """File each book page that owes QA a check it could not run as a record on the register."""
     root = find_docs_root(repo_dir)
     spec = spec_dir.strip()
     context_path = root / spec / CONTEXT_FILE
@@ -380,7 +364,6 @@ def file_deferred_obligations(
     okf = Ostler(root)
     repos = resolve_workspace(workspace, repo_dir)
     open_by_repo: dict[str, list[Any]] = {}
-    filed_repos: list[str] = []
     new_paths: list[Path] = []
     skipped = 0
     for page, obligations in pages.items():
@@ -409,16 +392,10 @@ def file_deferred_obligations(
             skipped += 1
             continue
         open_by_repo[repo].append(filing.record)
-        filed_repos.append(repo)
         new_paths.append(filing.path)
     appended = len(new_paths)
     note = f"filed {appended} book page(s) with deferred checks to the register, skipped {skipped}"
     logger.info(note)
-    if appended:
-        artifacts = okf.register_root().parent
-        scope = commits.scope(filed_repos[0]) if len(set(filed_repos)) == 1 else ""
-        message = commits.message("chore", scope, "file the book checks qa could not run")
-        commit_paths(artifacts, message, *(str(p.relative_to(artifacts)) for p in new_paths), verify=False)
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
 

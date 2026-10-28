@@ -95,7 +95,7 @@ def _run_description(root: Path, branch: str, epic: str, story_path: str, story_
         name = registry.epic_slug(epic) or epic
         try:
             epic_md = okf_path.epic_dir_in(root, epic) / "epic.md"
-            return commits.story_description(root, str(epic_md.relative_to(root)), name)
+            return commits.story_description(root, okf_path.display_path(root, epic_md), name)
         except (OSError, ValueError, RuntimeError):
             return commits.describe(name)
     return commits.describe(epic_of_branch(branch))

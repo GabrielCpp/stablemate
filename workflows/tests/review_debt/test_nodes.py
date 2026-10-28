@@ -24,7 +24,7 @@ def test_the_read_holds_every_status_in_every_repository(
     assert read.ids == ["a-open", "b-done", "c-dropped"], read
     assert len(read.listing) == 3
     assert read.listing[1].startswith("b-done\tweb-app\tcart\tdone\t"), read.listing
-    assert read.shelf.endswith("backlog"), read.shelf
+    assert read.shelf.endswith("backlogs"), read.shelf
     assert read.unreadable == []
 
 
@@ -68,7 +68,7 @@ def test_a_dry_run_read_is_empty() -> None:
     assert stub(logging.getLogger("x")).ids == []
 
 
-def test_writing_the_same_report_twice_commits_once(
+def test_writing_the_same_report_twice_changes_once(
     repo: Path, artifacts: Path, logger: logging.Logger, file_record: Callable[..., str]
 ) -> None:
     file_record("one")
@@ -82,8 +82,8 @@ def test_writing_the_same_report_twice_commits_once(
     first = write_trends(logger, read, report, repo_dir=str(repo))
     second = write_trends(logger, read, report, repo_dir=str(repo))
 
-    assert (first.committed, second.committed) == (True, False)
-    assert int(git_out(artifacts, "rev-list", "--count", "HEAD")) == before + 1
+    assert (first.changed, second.changed) == (True, False)
+    assert int(git_out(artifacts, "rev-list", "--count", "HEAD")) == before
 
 
 def test_the_rendered_file_is_the_same_text_for_the_same_report(
@@ -97,6 +97,6 @@ def test_the_rendered_file_is_the_same_text_for_the_same_report(
     )
 
     write_trends(logger, read, report, repo_dir=str(repo))
-    text = (artifacts / "backlog" / "trends.md").read_text(encoding="utf-8")
+    text = (artifacts / "backlogs" / "trends.md").read_text(encoding="utf-8")
 
     assert text.index("- one ") < text.index("- two "), text

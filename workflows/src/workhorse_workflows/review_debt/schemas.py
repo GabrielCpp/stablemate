@@ -49,10 +49,10 @@ class Accounting(BaseModel):
 
 
 class TrendsWritten(BaseModel):
-    """Where `trends.md` landed and whether this write committed anything."""
+    """Where `trends.md` landed and whether this write changed its text."""
 
     path: str
-    committed: bool
+    changed: bool
 
 
 class Candidate(BaseModel):
@@ -73,6 +73,7 @@ class Candidates(BaseModel):
 class DecisionDraft(BaseModel):
     """The prose of one proposed decision."""
 
+    slug: str
     title: str
     context: str
     decision: str

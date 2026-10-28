@@ -35,6 +35,9 @@ def verify_reconcile(
     epics_rel = paths.epics_dir(root)
     epics_path = root / epics_rel
 
+    if not epics_path.resolve().is_relative_to(root.resolve()):
+        logger.info("epics at %s are outside the repository and untracked — reconciliation gate skipped", epics_path)
+        return VerifyReport(skipped=True, report=f"epics at {epics_path} are untracked — reconciliation gate skipped")
     if show_file(root, ref, epics_rel) is None and not (root / ".git").exists():
         logger.info("not a git repo at %s — reconciliation gate skipped", root)
         return VerifyReport(skipped=True, report="not a git repo — reconciliation gate skipped")

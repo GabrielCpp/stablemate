@@ -24,6 +24,7 @@ from workhorse.records import parse_checkpoint
 from workhorse_workflows import author
 from workhorse_workflows.author.parity_surveyor.flow import ParitySurveyor
 from workhorse_workflows.author.shared.schemas import EmitResult
+from _epics import epics_root
 
 BASELINE = "docs/legacy/inventory.json"
 SURVEY_DIR = "docs/survey/legacy-vs-new"
@@ -53,7 +54,7 @@ def surveyed(repo: Path, write_json: Callable[[Path, Any], Path]) -> Path:
         },
     )
     (repo / "docs/services").mkdir(parents=True, exist_ok=True)
-    (repo / "docs/epics").mkdir(parents=True, exist_ok=True)
+    (epics_root()).mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
     subprocess.run(
         ["git", "commit", "-qm", "seed"], cwd=repo, check=True, stdout=subprocess.DEVNULL
@@ -184,7 +185,7 @@ def test_the_assessor_is_handed_the_unit_and_both_sides_of_the_compare(
     assert first["record_path"] == f"{FINDINGS}/legacy-billing-invoices.md", first
     assert first["baseline_inventory"] == BASELINE, first
     assert first["target_services"] == "docs/services", first
-    assert first["epics_dir"] == "docs/epics", first
+    assert first["epics_dir"] == str(epics_root()), first
 
 
 def test_the_assessor_reads_the_open_register_of_the_surveyed_repository(

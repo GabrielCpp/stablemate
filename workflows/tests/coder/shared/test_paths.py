@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from workhorse_workflows.coder.shared import paths
+from _epics import epics_root
 
 
 def test_a_gate_with_no_epic_folder_writes_under_the_operator_dir(tmp_path: Path) -> None:
@@ -16,7 +17,7 @@ def test_a_gate_with_no_epic_folder_writes_under_the_operator_dir(tmp_path: Path
 
 def test_an_epic_that_has_a_folder_still_gets_its_questions_next_to_it(tmp_path: Path) -> None:
     """Rung 1 is unchanged: the operator is already reading the epic, so the file goes there rather than into a directory nothing points at."""
-    epic = tmp_path / "docs" / "epics" / "0001-checkout"
+    epic = epics_root() / "0001-checkout"
     epic.mkdir(parents=True)
     (epic / "epic.md").write_text("# checkout\n", encoding="utf-8")
     assert paths.operator_context_path(tmp_path, "ci-operator", "checkout") == (

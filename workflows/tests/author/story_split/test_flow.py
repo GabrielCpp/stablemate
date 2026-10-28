@@ -12,6 +12,7 @@ from workhorse.config_run import RunConfig
 from workhorse.pyflow import Registry
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
+from _epics import epics_root
 from workhorse_workflows import author
 from workhorse_workflows.author.pm.nodes import blueprint as pm_blueprint
 from workhorse_workflows.author.shared.nodes import blueprint
@@ -21,7 +22,6 @@ from workhorse_workflows.author.story_split.nodes import blueprint as story_spli
 from workhorse_workflows.author.story_split.schemas import StoryServices
 
 EPIC = "accounts"
-EPIC_DIR = "docs/epics/accounts"
 
 
 class _Agent:
@@ -103,7 +103,7 @@ def test_accepts_one_epic_graph_without_selecting_authoring_or_git(
     assert isinstance(result, StorySplitDone)
     assert result.status == "accepted"
     assert result.epic == EPIC
-    assert result.epic_dir == EPIC_DIR
+    assert result.epic_dir == str(epics_root() / EPIC)
     assert agent.calls == ["split-stories", "review-inline"]
     assert agent.args["split-stories"][0]["epic"] == EPIC
     assert _git(repo, "branch", "--show-current") == branch_before

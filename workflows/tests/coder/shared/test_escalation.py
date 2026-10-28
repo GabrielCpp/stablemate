@@ -12,6 +12,7 @@ from workhorse_workflows.coder.shared.escalation import (
 )
 from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
+from _epics import epics_root
 
 LOG = logging.getLogger("test")
 
@@ -23,7 +24,7 @@ NOTE = (
 
 def _story(tmp_path: Path) -> str:
     """A story file with a folder beside it, which is where `context.md` lives."""
-    folder = tmp_path / "docs" / "epics" / "EPIC-1" / "stories" / "STORY-1"
+    folder = epics_root() / "EPIC-1" / "stories" / "STORY-1"
     folder.mkdir(parents=True)
     story = folder / "story.md"
     story.write_text("# Story One\n", encoding="utf-8")

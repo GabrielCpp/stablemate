@@ -46,7 +46,7 @@ def test_the_agent_files_are_rendered_before_the_story_commit_so_their_drift_is_
 
 EPIC = "EPIC-1"
 SLUG = "STORY-1"
-STORY_FOLDER = "docs/epics/EPIC-1/stories/STORY-1"
+STORY_FOLDER = "stories/EPIC-1/STORY-1"
 SPEC = "specs/STORY-1"
 
 SERVER_PAGE = """---

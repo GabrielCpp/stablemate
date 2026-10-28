@@ -28,7 +28,7 @@ def shelf(file_record: Callable[..., str]) -> list[str]:
 
 
 def _trends(artifacts: Path) -> Path:
-    return artifacts / "backlog" / "trends.md"
+    return artifacts / "backlogs" / "trends.md"
 
 
 def _commits(artifacts: Path) -> int:
@@ -51,9 +51,7 @@ def test_a_complete_report_writes_trends_naming_every_id(
     assert "5 records reviewed" in text, text
     assert "- api-old (api-service/cart, dropped): summary of api-old" in text, text
     assert agent.turns == 1
-    assert _commits(artifacts) == before + 1
-    assert git_out(artifacts, "show", "--name-only", "--format=", "HEAD").split() == ["backlog/trends.md"]
-    assert git_out(artifacts, "log", "-1", "--format=%s").strip() == "chore: review the debt register"
+    assert _commits(artifacts) == before
 
 
 def test_the_first_turn_is_given_the_listing_and_no_feedback(
@@ -68,7 +66,7 @@ def test_the_first_turn_is_given_the_listing_and_no_feedback(
 
     first = agent.args[0]
     assert first["feedback"] == "", first
-    assert first["shelf"] == str(artifacts / "backlog"), first
+    assert first["shelf"] == str(artifacts / "backlogs"), first
     assert all(i in first["listing"] for i in shelf), first
 
 

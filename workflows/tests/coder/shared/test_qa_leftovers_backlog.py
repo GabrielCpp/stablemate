@@ -104,7 +104,7 @@ def test_each_item_becomes_a_qa_record_in_one_artifacts_commit(
     empty = by_summary["The empty cart renders a blank page."]
     assert (empty.area, empty.pattern) == ("cart-ui", "untriaged")
     assert empty.body == "The empty cart renders a blank page.\nIt should say the cart is empty."
-    assert _subjects(artifacts) == ["chore(acme): file the qa leftovers of ACME-1", "init"]
+    assert _subjects(artifacts) == ["init"]
     assert git(repo, "rev-parse", "HEAD").stdout == head
     assert git(repo, "status", "--porcelain").stdout == ""
     assert not (tmp_path / "specs" / "ACME-1" / ITEMS).exists()
@@ -182,7 +182,7 @@ def test_a_two_repo_workspace_places_each_item_by_its_repo(
         ("api-service", "The api drops a header."),
         ("web-app", "The web app drops a click."),
     }
-    assert _subjects(artifacts) == ["chore: file the qa leftovers of ACME-1", "init"]
+    assert _subjects(artifacts) == ["init"]
 
 
 def test_an_item_no_repository_of_the_workspace_owns_is_refused_and_logged(

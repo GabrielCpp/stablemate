@@ -23,7 +23,7 @@ def _planning_input(repo: Path) -> None:
     milestone = write_milestone(repo)
     assert Ostler(repo).create_epic("sign-in", "Sign in").ok
     git = Repo(repo)
-    git.index.add([milestone, "docs/epics", ".agents/ids.json"])
+    git.index.add([milestone, ".agents/ids.json"])
     git.index.commit("planning input")
 
 

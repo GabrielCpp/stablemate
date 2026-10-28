@@ -113,7 +113,7 @@ def test_each_page_with_deferred_checks_becomes_one_record_in_one_artifacts_comm
     assert "the page itself, `#empty-alert`, `#export`" in record.body, record.body
     assert record.body.count("A section sits under a heading") == 1, record.body
     assert "home.md" not in record.body
-    assert _subjects(artifacts) == ["chore(acme): file the book checks qa could not run", "init"]
+    assert _subjects(artifacts) == ["init"]
     assert git(repo, "rev-parse", "HEAD").stdout == head
     assert git(repo, "status", "--porcelain").stdout == ""
 
@@ -132,7 +132,7 @@ def test_the_same_page_twice_files_once(
     assert (first.appended, first.skipped) == (1, 0), first
     assert (again.appended, again.skipped) == (0, 1), again
     assert len(_records(repo)) == 1
-    assert len(_subjects(artifacts)) == 2
+    assert len(_subjects(artifacts)) == 1
 
 
 def test_a_story_less_context_files_an_empty_source_story(
@@ -162,7 +162,7 @@ def test_a_two_repo_workspace_places_the_page_by_its_book_prefix(
     assert drained.appended == 1, drained
     [record] = _records(repo)
     assert (record.repo, record.symbols) == ("web-app", ["gui/screens/reports.md"])
-    assert _subjects(artifacts)[0] == "chore(web-app): file the book checks qa could not run"
+    assert _subjects(artifacts) == ["init"]
     assert all(not any(p.iterdir()) for p in two_repos.values())
 
 

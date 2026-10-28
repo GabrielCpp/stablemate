@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from _epics import epics_root
 from ostler import Ostler
 
 from workhorse_workflows.author.shared.nodes.stories import validate_story
@@ -16,7 +17,7 @@ def _authored_story(
     okf = Ostler(repo)
     okf.create_epic("parser", "Parser", prefix="acme")
     assert okf.create_story("parser", "safe-ast", "Safe AST").ok
-    story_dir = "docs/epics/0001-parser/stories/safe-ast"
+    story_dir = str(epics_root() / "0001-parser/stories/safe-ast")
     path = repo / story_dir / "story.md"
     text = path.read_text(encoding="utf-8")
     if services:

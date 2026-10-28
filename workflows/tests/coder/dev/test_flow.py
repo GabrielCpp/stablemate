@@ -33,6 +33,7 @@ from workhorse_workflows.kit.qa import runner as qa_runner
 from workhorse_workflows.kit.qa.runner import copy_lease
 from workhorse_workflows.kit.qa.schemas import QaPlanRun
 from workhorse_workflows.kit.git import commit_all
+from _epics import epics_root
 
 EPIC = "EPIC-1"
 STORY = "STORY-1"
@@ -122,14 +123,14 @@ def docs(
 ) -> Path:
     """The docs repo, carrying one epic with one story, committed so the tree starts clean."""
     write(
-        repo / "docs" / "epics" / EPIC / "epic.md",
+        epics_root() / EPIC / "epic.md",
         f"---\ntitle: Epic One\nstatus: active\n---\n\n# Epic One\n\n## Stories\n\n"
         f"### {STORY}\n\n- title: Story {STORY}\n",
     )
-    write(repo / "docs" / "epics" / EPIC / "stories" / STORY / "story.md", STORY_MD)
-    write(repo / "docs" / "epics" / "index.md", INDEX)
+    write(epics_root() / EPIC / "stories" / STORY / "story.md", STORY_MD)
+    write(epics_root() / "index.md", INDEX)
     git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "Queue one epic")
+    git(repo, "commit", "-qm", "Queue one epic", "--allow-empty")
     return repo
 
 
@@ -438,7 +439,7 @@ def test_the_clone_check_is_not_consulted_when_the_story_status_check_fails(
     copies: Any,
 ) -> None:
     """A story stamped finished is the first failure, so the clone check has not run in that lap."""
-    story = docs / "docs" / "epics" / EPIC / "stories" / STORY / "story.md"
+    story = epics_root() / EPIC / "stories" / STORY / "story.md"
 
     class Stamping(_Agent):
         def _dev_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -761,13 +762,13 @@ def _commit_count(root: Path) -> int:
     return int(done.stdout) if done.returncode == 0 else 0
 
 
-def test_two_follow_ups_of_a_workspace_run_land_as_records_in_one_artifacts_commit(
+def test_two_follow_ups_of_a_workspace_run_land_as_records_on_the_untracked_shelf(
     docs: Path,
     two_repo_workspace: dict[str, Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The register keys each follow-up by repository and area, commits once, and files a repeated title never again."""
+    """The register keys each follow-up by repository and area, commits nothing, and files a repeated title never again."""
     artifacts = core_config.ensure_artifacts_repo()
     subprocess.run(["git", "-C", str(artifacts), "commit", "-q", "--allow-empty", "-m", "init"], check=True)
     followed = (
@@ -778,12 +779,9 @@ def test_two_follow_ups_of_a_workspace_run_land_as_records_in_one_artifacts_comm
 
     drive_flow(_dev(docs), env(), _Agent(two_repo_workspace, follow_ups=followed, repo="api-service"))
 
-    folders = sorted(p.parent.relative_to(artifacts / "backlog").parts[:2] for p in (artifacts / "backlog").glob("*/*/*/record.md"))
+    folders = sorted(p.parent.relative_to(artifacts / "backlogs").parts[:2] for p in (artifacts / "backlogs").glob("*/*/*/record.md"))
     assert folders == [("api-service", "audit"), ("api-service", "pricing")]
-    assert _commit_count(artifacts) == 2
-    assert subprocess.run(
-        ["git", "-C", str(artifacts), "log", "-1", "--format=%s"], capture_output=True, text=True, check=True
-    ).stdout.strip() == f"chore(api-service): file the deferred follow-ups of {STORY}"
+    assert _commit_count(artifacts) == 1
     lines = _register(docs)
     assert len(lines) == 2
     assert all("api-service" in line for line in lines)
@@ -796,8 +794,8 @@ def test_two_follow_ups_of_a_workspace_run_land_as_records_in_one_artifacts_comm
     drive_flow(_dev(docs), env(name="coder-again"), _Agent(two_repo_workspace, follow_ups=followed, repo="api-service"))
 
     assert _register(docs) == lines
-    assert len(list((artifacts / "backlog").glob("*/*/*/record.md"))) == 2
-    assert _commit_count(artifacts) == 2
+    assert len(list((artifacts / "backlogs").glob("*/*/*/record.md"))) == 2
+    assert _commit_count(artifacts) == 1
 
 
 def test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer(
@@ -898,10 +896,10 @@ THREE_CRITERIA = STORY_MD.replace(
 
 
 def _three_criteria(docs: Path, git: Callable[..., subprocess.CompletedProcess]) -> None:
-    story = docs / "docs" / "epics" / EPIC / "stories" / STORY / "story.md"
+    story = epics_root() / EPIC / "stories" / STORY / "story.md"
     story.write_text(THREE_CRITERIA, encoding="utf-8")
     git(docs, "add", "-A")
-    git(docs, "commit", "-qm", "Three criteria")
+    git(docs, "commit", "-q", "--allow-empty", "-m", "Three criteria")
 
 
 def test_a_plan_that_skips_a_criterion_goes_back_naming_it(

@@ -21,6 +21,7 @@ from workhorse_workflows.author.shared.schemas import Defects, Feedback, MockupG
 from workhorse_workflows.author.story_author import StoryAuthor
 from workhorse_workflows.author.story_author.nodes import blueprint, prepare_story
 from workhorse_workflows.author.story_author.schemas import StoryAuthorDone, StoryTarget
+from _epics import epics_root
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -84,9 +85,9 @@ def _drive_story(
         epic="accounts",
         story="sign-in",
         story_id="ACME-01TEST",
-        epic_dir="docs/epics/0001-accounts",
-        story_dir="docs/epics/0001-accounts/stories/sign-in",
-        story_path="docs/epics/0001-accounts/stories/sign-in/story.md",
+        epic_dir=str(epics_root() / "0001-accounts"),
+        story_dir=str(epics_root() / "0001-accounts/stories/sign-in"),
+        story_path=str(epics_root() / "0001-accounts/stories/sign-in/story.md"),
         scaffolded=True,
     )
     story_file = repo / target.story_path
@@ -236,7 +237,7 @@ def test_prepare_story_scaffolds_the_named_story_through_ostler(
                 {
                     "slug": "sign-in",
                     "id": "ACME-01TEST",
-                    "path": "docs/epics/0001-accounts/stories/sign-in/story.md",
+                    "path": str(epics_root() / "0001-accounts/stories/sign-in/story.md"),
                 }
             ]
 
@@ -246,7 +247,7 @@ def test_prepare_story_scaffolds_the_named_story_through_ostler(
 
         def epic_dir(self, epic: str) -> Path:
             calls.append(f"epic-dir:{epic}")
-            return self.root / "docs/epics/0001-accounts"
+            return epics_root() / "0001-accounts"
 
     from workhorse_workflows.author.story_author.nodes import story as story_nodes
 
@@ -257,4 +258,4 @@ def test_prepare_story_scaffolds_the_named_story_through_ostler(
     assert calls == ["list:accounts", "scaffold:ACME-01TEST", "epic-dir:accounts"]
     assert target.scaffolded is True
     assert target.story_id == "ACME-01TEST"
-    assert target.story_path == "docs/epics/0001-accounts/stories/sign-in/story.md"
+    assert target.story_path == str(epics_root() / "0001-accounts/stories/sign-in/story.md")

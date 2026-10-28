@@ -21,6 +21,7 @@ from workhorse_workflows.author.epic_split.flow import EpicSplit
 from workhorse_workflows.author.epic_split.nodes import prepare_epic_split, validate_epic_split
 from workhorse_workflows.author.epic_split.schemas import EpicSplitDone
 from workhorse_workflows.author.workflow import workflow
+from _epics import epics_root
 
 MILESTONE = "docs/milestones/account-access/milestone.md"
 
@@ -200,7 +201,7 @@ def test_validation_rejects_seed_and_prose_authored_during_split(repo: Path) -> 
     okf = Ostler(repo)
     assert okf.create_epic("sign-in", "Sign in").ok
     _set_epics(repo, ["sign-in"])
-    epic_path = next((repo / "docs/epics").glob("*/epic.md"))
+    epic_path = next((epics_root()).glob("*/epic.md"))
     epic_path.write_text(
         epic_path.read_text(encoding="utf-8").replace(
             "## Seeds", "## User Outcome\n\nPeople sign in.\n\n## Seeds"

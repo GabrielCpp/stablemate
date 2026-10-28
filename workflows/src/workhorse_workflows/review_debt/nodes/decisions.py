@@ -43,7 +43,7 @@ def file_decision(
 ) -> Filed:
     """Propose one decision from *candidate* and bind its records; a refusal is returned, not raised."""
     result = Ostler(find_docs_root(repo_dir)).propose_decision(
-        title=draft.title, context=draft.context, decision=draft.decision,
+        slug=draft.slug, title=draft.title, context=draft.context, decision=draft.decision,
         consequences=draft.consequences, evidence=candidate.ids,
     )
     logger.info("%s", result.message)

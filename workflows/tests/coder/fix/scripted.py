@@ -18,7 +18,7 @@ from workhorse_workflows.kit.git import commit_paths
 RECORD = "widget-pagination"
 TEXT = "the widget list does not paginate"
 SLUG = "the-widget-list-does-not-paginate"
-STORY_REL = f"docs/epics/0001-fixes/stories/{SLUG}"
+STORY_REL = f"0001-fixes/stories/{SLUG}"
 
 RED_MAKEFILE = "lint:\n\t@echo 'pagination.go:1: undefined: pageSize'; exit 1\n"
 
@@ -103,8 +103,7 @@ class ScriptedAgent:
     def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         if nth <= self.docs_blocks:
             return {"status": "blocked", "notes": "this change cannot be described as built"}
-        story_path = Path(str(data["story_path"]))
-        docs_dir = next(parent for parent in story_path.parents if parent.name == "docs")
+        docs_dir = Path.cwd() / "docs"
         feature = docs_dir / "services/api/concepts/widget.md"
         feature.parent.mkdir(parents=True, exist_ok=True)
         feature.write_text(

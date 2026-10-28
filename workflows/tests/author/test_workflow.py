@@ -12,6 +12,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from _epics import epics_root
 from _fakes import StubRunner
 from _milestones import write_milestone
 from _pm import amendment, answer, verdict
@@ -41,14 +42,13 @@ from workhorse_workflows.author.story_edit.nodes import resolve_story_intent
 from workhorse_workflows.author.workflow import Author, workflow
 
 MILESTONE = "docs/milestones/account-access/milestone.md"
-EPICS = "docs/epics"
 EPIC = "accounts"
 SECOND_EPIC = "profiles"
 EPIC_NAME = f"0001-{EPIC}"
 SECOND_EPIC_NAME = f"0002-{SECOND_EPIC}"
-EPIC_DIR = f"{EPICS}/{EPIC_NAME}"
-SECOND_EPIC_DIR = f"{EPICS}/{SECOND_EPIC_NAME}"
-CONTEXT = f"{EPICS}/_author-context.md"
+EPIC_DIR = EPIC_NAME
+SECOND_EPIC_DIR = SECOND_EPIC_NAME
+CONTEXT = "_author-context.md"
 
 SEEDS = {
     "b1": "Users can sign in with an email and a password",
@@ -129,7 +129,7 @@ def with_records(with_epic: Path, artifacts: Path) -> Path:
 def _commit(repo: Path, message: str) -> None:
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
     subprocess.run(
-        ["git", "commit", "-qm", message], cwd=repo, check=True, stdout=subprocess.DEVNULL
+        ["git", "commit", "-q", "--allow-empty", "-m", message], cwd=repo, check=True, stdout=subprocess.DEVNULL
     )
 
 
@@ -157,7 +157,7 @@ def _commit_count(repo: Path) -> int:
 
 def _filed(artifacts: Path, token: str) -> Record:
     """The record the register holds for *token*, as it stands on the shelf."""
-    folder = next((artifacts / "backlog").glob(f"*/*/{token}"))
+    folder = next((artifacts / "backlogs").glob(f"*/*/{token}"))
     return Record.read(folder / RECORD_FILE)
 
 
@@ -361,11 +361,11 @@ class _Agent:
     def _split_epics(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """Create only the epic skeletons and attach them to the existing milestone."""
         okf = Ostler(self.repo)
-        if not (self.repo / EPIC_DIR / "epic.md").is_file():
+        if not (epics_root() / EPIC_DIR / "epic.md").is_file():
             okf.create_epic(EPIC, "Account holder accesses their account")
         epics = [EPIC]
         if self.two_epics:
-            if not (self.repo / SECOND_EPIC_DIR / "epic.md").is_file():
+            if not (epics_root() / SECOND_EPIC_DIR / "epic.md").is_file():
                 okf.create_epic(SECOND_EPIC, "Account holder updates their profile")
             epics.append(SECOND_EPIC)
         _milestone(self.repo, *epics)
@@ -677,9 +677,9 @@ def test_epic_mode_authors_the_approved_milestone_and_commits_it(
     assert split_review < agent.calls.index("write-story")
     artifacts = backlogged / "docs/milestones/account-access/artifacts"
     assert (artifacts / "pm-receipt.json").is_file()
-    assert (backlogged / EPIC_DIR / "pm-receipt.json").is_file()
+    assert (epics_root() / EPIC_DIR / "pm-receipt.json").is_file()
     for slug in SLUGS:
-        assert (backlogged / EPIC_DIR / "stories" / slug / "pm-receipt.json").is_file()
+        assert (epics_root() / EPIC_DIR / "stories" / slug / "pm-receipt.json").is_file()
 
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
     assert not [
@@ -750,7 +750,7 @@ def test_author_nodes_use_milestones_when_todo_is_absent(backlogged: Path) -> No
     okf.create_story(EPIC, "01-sign-in", "Sign in", covers=["b1"])
 
     logger = logging.getLogger("test")
-    story = backlogged / EPIC_DIR / "stories/01-sign-in/story.md"
+    story = epics_root() / EPIC_DIR / "stories/01-sign-in/story.md"
     _write_story_doc(story, "Sign in")
     report = validate_artifacts(logger, repo_dir=str(backlogged))
 
@@ -765,12 +765,12 @@ def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
     _drive(_env(tmp_path), agent)
 
     for args in agent.args_for("split-epics"):
-        assert args["epics_dir"] == EPICS, args
+        assert args["epics_dir"] == str(epics_root()), args
         assert args["milestone"] == MILESTONE, args
         assert "roadmap" not in args, args
     for args in agent.args_for("write-epic"):
         assert args["milestone"] == MILESTONE, args
-        assert args["epic_dir"] == EPIC_DIR, args
+        assert args["epic_dir"] == str(epics_root() / EPIC_DIR), args
 
 
 def test_epic_docs_are_all_written_before_story_splitting(backlogged: Path, tmp_path: Path) -> None:
@@ -883,7 +883,7 @@ def test_a_story_that_is_not_a_contract_is_reworked_against_the_gate(
 
     assert agent.counts()["write-story"] == 2, agent.counts()
     assert agent.counts()["rework-story"] == 1, agent.counts()
-    ledger = backlogged / EPIC_DIR / "stories/01-sign-in/attempts.md"
+    ledger = epics_root() / EPIC_DIR / "stories/01-sign-in/attempts.md"
     assert "## Attempt 0" in ledger.read_text()
     assert agent.args_for("rework-story")[0]["validation_errors"], agent.args_for("rework-story")[0]
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
@@ -896,7 +896,7 @@ def test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on(
     seen: list[str] = []
 
     def answered(path: Path, **kwargs: Any) -> None:
-        if path != backlogged / CONTEXT:
+        if path != epics_root() / CONTEXT:
             return
         seen.append(path.read_text())
         agent.fail_audit.clear()
@@ -1134,7 +1134,7 @@ def test_a_question_only_the_operator_can_settle_waits_on_the_run_gate(
     agent = _Agent(backlogged, block={"write-story"}, escalate=True)
     _drive(_env(tmp_path), agent, wait_for_answer=answered)
 
-    assert seen == [backlogged / CONTEXT], seen
+    assert seen == [epics_root() / CONTEXT], seen
     assert agent.counts()["answer"] == 1, agent.counts()
     retry = [a for a in agent.args_for("write-story") if a["note"]]
     assert retry and "Sign in comes first." in retry[0]["note"], retry
@@ -1167,13 +1167,13 @@ def test_story_mode_promotes_an_open_record_and_does_not_commit_the_code_repo(
     seed = next(row for row in Ostler(with_records).list("seed", epic=EPIC) if row["id"] == "b1")
     assert seed["sourceRecord"] == "b1"
     assert seed["summary"] == SEEDS["b1"]
-    assert f"{SEEDS['b1']}\n\n{B1_BODY}" in (with_records / EPIC_DIR / "epic.md").read_text(encoding="utf-8")
+    assert f"{SEEDS['b1']}\n\n{B1_BODY}" in (epics_root() / EPIC_DIR / "epic.md").read_text(encoding="utf-8")
     closed = _filed(artifacts, "b1")
     assert closed.status == "promoted"
     assert closed.reason == f"promoted to story {B1_SLUG} in epic {EPIC}"
     assert _filed(artifacts, "b2").status == "open"
     assert result.record_id == "b1", result
-    assert _artifact_subjects(artifacts) == ["chore(acme): close b1 as promoted", *filed_subjects]
+    assert _artifact_subjects(artifacts) == filed_subjects
     assert _commit_count(with_records) == before, "story mode must not commit"
 
 
@@ -1333,7 +1333,7 @@ def test_the_epic_edit_planner_is_told_when_the_register_is_empty(
         EPIC, "interactive-editor", "Interactive editor", covers=["interactive"]
     ).ok
     _write_story_doc(
-        with_epic / EPIC_DIR / "stories/interactive-editor/story.md", "Interactive editor"
+        epics_root() / EPIC_DIR / "stories/interactive-editor/story.md", "Interactive editor"
     )
     _commit(with_epic, "interactive editor")
     plan = {
@@ -1369,7 +1369,7 @@ def test_story_edit_remove_deletes_an_unstarted_story_and_commits(
 
     assert result.changed is True
     assert "01-extra" not in {s["slug"] for s in Ostler(with_epic).list("story")}
-    assert not (with_epic / EPIC_DIR).exists(), "the last story leaves an empty epic to delete"
+    assert not (epics_root() / EPIC_DIR).exists(), "the last story leaves an empty epic to delete"
     assert "accounts" in _subject(with_epic)
 
 
@@ -1401,10 +1401,10 @@ def test_story_edit_remove_reconciles_remaining_epic_scope_and_journey(
     assert okf.create_story(EPIC, "keep-story", "Keep", covers=["keep"]).ok
     assert okf.create_story(EPIC, "remove-story", "Remove", covers=["remove"]).ok
     _write_story_doc(
-        with_epic / EPIC_DIR / "stories/keep-story/story.md", "Keep", services=("api-service",)
+        epics_root() / EPIC_DIR / "stories/keep-story/story.md", "Keep", services=("api-service",)
     )
-    _write_story_doc(with_epic / EPIC_DIR / "stories/remove-story/story.md", "Remove")
-    kept_before = (with_epic / EPIC_DIR / "stories/keep-story/story.md").read_bytes()
+    _write_story_doc(epics_root() / EPIC_DIR / "stories/remove-story/story.md", "Remove")
+    kept_before = (epics_root() / EPIC_DIR / "stories/keep-story/story.md").read_bytes()
     _commit(with_epic, "authored stories")
 
     _drive_story_edit(
@@ -1418,8 +1418,8 @@ def test_story_edit_remove_reconciles_remaining_epic_scope_and_journey(
     graph = Ostler(with_epic)
     assert {row["slug"] for row in graph.list("story", epic=EPIC)} == {"keep-story"}
     assert {row["id"] for row in graph.list("seed", epic=EPIC)} == {"keep"}
-    assert "## User Journeys" in (with_epic / EPIC_DIR / "epic.md").read_text(encoding="utf-8")
-    assert (with_epic / EPIC_DIR / "stories/keep-story/story.md").read_bytes() == kept_before
+    assert "## User Journeys" in (epics_root() / EPIC_DIR / "epic.md").read_text(encoding="utf-8")
+    assert (epics_root() / EPIC_DIR / "stories/keep-story/story.md").read_bytes() == kept_before
 
 
 def test_epic_edit_static_findings_drive_a_replacement_plan(
@@ -1434,7 +1434,7 @@ def test_epic_edit_static_findings_drive_a_replacement_plan(
         EPIC, "interactive-editor", "Interactive editor", covers=["interactive"]
     ).ok
     _write_story_doc(
-        with_epic / EPIC_DIR / "stories/interactive-editor/story.md", "Interactive editor"
+        epics_root() / EPIC_DIR / "stories/interactive-editor/story.md", "Interactive editor"
     )
     _commit(with_epic, "interactive editor")
     raw_change = {
@@ -1487,7 +1487,7 @@ def test_epic_edit_semantic_review_reworks_are_bounded(
     okf = Ostler(with_epic)
     assert okf.add_seed(EPIC, "remove", status="researched", summary="Remove").ok
     assert okf.create_story(EPIC, "remove-story", "Remove", covers=["remove"]).ok
-    _write_story_doc(with_epic / EPIC_DIR / "stories/remove-story/story.md", "Remove")
+    _write_story_doc(epics_root() / EPIC_DIR / "stories/remove-story/story.md", "Remove")
     _commit(with_epic, "story to remove")
     seen: list[str] = []
     agent = _Agent(with_epic, edit_reviews=["needs_rework"] * 4)
@@ -1507,7 +1507,7 @@ def test_epic_edit_semantic_review_reworks_are_bounded(
 
     assert agent.counts()["refine-epic-edit-plan"] == 3, agent.counts()
     assert len(seen) == 1 and "journey drift" in seen[0], seen
-    assert not (with_epic / EPIC_DIR).exists()
+    assert not (epics_root() / EPIC_DIR).exists()
 
 
 def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(

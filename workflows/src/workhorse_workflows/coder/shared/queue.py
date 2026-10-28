@@ -184,9 +184,11 @@ def prune_epic(
 def _committed(
     logger: logging.Logger, root: Path, epic: str, queue: str, pruned: bool
 ) -> EpicPruned:
-    """Commit the pruned queue file, so the next run does not take the epic up again."""
+    """Commit the pruned queue file when it sits in the repository, so the next run does not take the epic up again; the epics shelf is untracked and outside it."""
     if not pruned:
         return EpicPruned()
+    if not Path(queue).resolve().is_relative_to(root.resolve()):
+        return EpicPruned(pruned=True)
     message = commits.message(
         "chore", commits.scope(root.name), "prune completed epic from queue", epic=epic
     )

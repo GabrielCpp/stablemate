@@ -50,8 +50,8 @@ def _subjects(root: Path) -> list[str]:
 
 def _folders(artifacts: Path) -> list[str]:
     return sorted(
-        p.parent.relative_to(artifacts / "backlog").as_posix()
-        for p in (artifacts / "backlog").glob("*/*/*/record.md")
+        p.parent.relative_to(artifacts / "backlogs").as_posix()
+        for p in (artifacts / "backlogs").glob("*/*/*/record.md")
     )
 
 
@@ -85,7 +85,7 @@ def test_the_filed_follow_ups_are_committed_to_the_artifacts_repo_and_leave_the_
     assert drained.appended == 2, drained
     folders = _folders(artifacts)
     assert [f.rsplit("/", 1)[0] for f in folders] == ["acme/billing", "acme/reports"], folders
-    assert _subjects(artifacts)[:2] == ["chore(acme): file the deferred follow-ups of acme-story", "init"]
+    assert _subjects(artifacts) == ["init"]
     assert git(repo, "rev-parse", "HEAD").stdout == head
     assert git(repo, "status", "--porcelain").stdout == ""
     assert not (repo / "docs").exists()
@@ -113,7 +113,7 @@ def test_a_record_carries_what_the_proposal_said_and_an_id_ostler_minted(
     assert record.body == "it goes stale"
     assert record.symbols == ["cache.py", "Session.close"]
     assert record.id.startswith("ACME-") and len(record.id) > len("acme-story-12345678")
-    assert (artifacts / "backlog/acme/billing" / record.id / "record.md").is_file()
+    assert (artifacts / "backlogs/acme/billing" / record.id / "record.md").is_file()
 
 
 def test_nothing_filed_commits_nothing(
@@ -225,7 +225,7 @@ def test_a_follow_up_filed_earlier_under_another_reason_is_not_filed_again(
     assert first.appended == 1, first
     assert again.appended == 0, again
     assert len(_folders(artifacts)) == 1
-    assert _subjects(artifacts) == ["chore(acme): file the deferred follow-ups of acme-story", "init"]
+    assert _subjects(artifacts) == ["init"]
 
 
 def test_a_batch_files_a_repeated_follow_up_once_and_a_distinct_one_still(
@@ -247,7 +247,7 @@ def test_a_batch_files_a_repeated_follow_up_once_and_a_distinct_one_still(
     assert drained.appended == 2, drained
     summaries = sorted(r.summary for r in Ostler(repo).records().records)
     assert summaries == ["Clear the export cache on sign-in", "Paginate the report list"]
-    assert len(_subjects(artifacts)) == 2
+    assert len(_subjects(artifacts)) == 1
 
 
 def test_a_closed_record_does_not_hold_back_the_same_title(
@@ -289,10 +289,7 @@ def test_a_bookkeeping_commit_is_not_refused_by_the_repository_hooks(
 
     assert drained.appended == 1, drained
     assert closed.closed is True, closed
-    assert _subjects(artifacts)[:2] == [
-        "chore(acme): close acme-cache as done",
-        "chore(acme): file the deferred follow-ups of acme-story",
-    ]
+    assert _subjects(artifacts) == ["init"]
     assert git(repo, "log", "-1", "--format=%s").stdout.strip() == "ignore the agents dir"
     assert check_repos_clean(logger, story_slug="acme-story", repo_dir=str(repo)).clean is True
 
@@ -326,7 +323,7 @@ def test_a_follow_up_is_shelved_under_the_repository_it_names(
 
     assert drained.appended == 2, drained
     assert [f.split("/")[0] for f in _folders(artifacts)] == ["api-service", "web-app"]
-    assert len(_subjects(artifacts)) == 2
+    assert len(_subjects(artifacts)) == 1
     assert all(not any(p.iterdir()) for p in two_repos.values())
 
 

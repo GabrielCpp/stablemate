@@ -36,6 +36,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
 )
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
 from workhorse_workflows.coder.main import Coder
+from _epics import epics_root
 
 EPIC = "EPIC-1"
 INDEX = f"""# Epics
@@ -117,17 +118,17 @@ def epic(
         slugs = [f"STORY-{n}" for n in range(1, count + 1)]
         stories = "\n".join(f"### {slug}\n\n- title: Story {slug}\n" for slug in slugs)
         write(
-            repo / "docs" / "epics" / EPIC / "epic.md",
+            epics_root() / EPIC / "epic.md",
             f"---\ntitle: Epic One\nstatus: active\n---\n\n# Epic One\n\n## Stories\n\n{stories}",
         )
         for slug in slugs:
             write(
-                repo / "docs" / "epics" / EPIC / "stories" / slug / "story.md",
+                epics_root() / EPIC / "stories" / slug / "story.md",
                 STORY_MD.format(slug=slug, title=f"Story {slug}", status=status),
             )
-        write(repo / "docs" / "epics" / "index.md", INDEX)
+        write(epics_root() / "index.md", INDEX)
         git(repo, "add", "-A")
-        git(repo, "commit", "-qm", "Queue one epic")
+        git(repo, "commit", "-qm", "Queue one epic", "--allow-empty")
         return repo
 
     return _epic
@@ -377,7 +378,7 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
     assert (repo / "src" / "STORY-1.py").is_file()
-    assert EPIC not in (repo / "docs" / "epics" / "index.md").read_text(encoding="utf-8")
+    assert EPIC not in (epics_root() / "index.md").read_text(encoding="utf-8")
     assert _output(run_env, resolve_launch)["mode"] == "epic"
 
 
@@ -416,7 +417,7 @@ def test_a_qa_mutation_requires_final_documentation_before_commit(
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
-def test_the_story_and_its_status_stamp_commit_as_conventional_commits(
+def test_the_story_commits_as_a_conventional_commit_and_its_status_stamp_does_not(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
@@ -430,9 +431,8 @@ def test_the_story_and_its_status_stamp_commit_as_conventional_commits(
 
     subjects = _subjects(repo)
     story = next(s for s in subjects if s.startswith("feat("))
-    stamp = next(s for s in subjects if "QA passed" in s)
     assert story == "feat(acme): story STORY-1", story
-    assert stamp.startswith("docs(acme): "), stamp
+    assert not any("QA passed" in s for s in subjects), subjects
     bodies = subprocess.run(
         ["git", "log", "--format=%b"], cwd=repo, check=True, capture_output=True, text=True
     ).stdout
@@ -479,7 +479,7 @@ def test_the_story_is_stamped_and_the_next_selection_reads_it_as_done(
 
     drive_flow(Coder(), env(), _Agent())
 
-    story = (repo / "docs" / "epics" / EPIC / "stories" / "STORY-1" / "story.md").read_text(
+    story = (epics_root() / EPIC / "stories" / "STORY-1" / "story.md").read_text(
         encoding="utf-8"
     )
     assert "status: QA passed" in story, story
@@ -559,7 +559,7 @@ def test_a_commit_run_stays_on_the_current_branch_and_names_each_story(
 
 
 @pytest.mark.parametrize("delivery", ["pr", "commit"])
-def test_a_finished_epic_is_pruned_from_the_queue_in_its_own_commit(
+def test_a_finished_epic_is_pruned_from_the_queue_without_a_commit(
     delivery: Literal["pr", "commit"],
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
@@ -572,8 +572,8 @@ def test_a_finished_epic_is_pruned_from_the_queue_in_its_own_commit(
 
     drive_flow(Coder(epic=EPIC, delivery=delivery), env(), _Agent())
 
-    assert EPIC not in (repo / "docs" / "epics" / "index.md").read_text(encoding="utf-8")
-    assert "chore(acme): prune completed epic from queue" in _subjects(repo), _subjects(repo)
+    assert EPIC not in (epics_root() / "index.md").read_text(encoding="utf-8")
+    assert "chore(acme): prune completed epic from queue" not in _subjects(repo), _subjects(repo)
     assert _dirty(repo) == "", _dirty(repo)
 
 
@@ -665,19 +665,19 @@ def test_re_verifying_given_up_stories_moves_each_status_to_passed(
     assert result.status == "skipped", result
     assert sub.calls.count("Dev") == 4, sub.calls
     for n in range(1, 5):
-        story = repo / "docs" / "epics" / EPIC / "stories" / f"STORY-{n}" / "story.md"
+        story = epics_root() / EPIC / "stories" / f"STORY-{n}" / "story.md"
         assert "QA passed" in story.read_text(encoding="utf-8"), story
 
 
-def test_the_storys_operator_context_lands_in_its_status_stamp(
+def test_the_storys_operator_context_stays_out_of_the_repository(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A gate file left untracked would read as pre-existing dirt to the next story's snapshot."""
+    """A gate file in the epics root stays out of the repository, so it never reads as dirt to the next story's snapshot."""
     repo = epic(count=2)
-    context = "docs/epics/" + EPIC + "/stories/{story}/context.md"
+    context = str(epics_root() / EPIC / "stories/{story}/context.md")
     sub = _Sub(repo, leftover=context).install(monkeypatch)
 
     result = drive_flow(Coder(), env(), _Agent())
@@ -685,11 +685,7 @@ def test_the_storys_operator_context_lands_in_its_status_stamp(
     assert result.status == "skipped", result
     assert len(sub.calls_to("Qa")) == 2, sub.calls
     assert _dirty(repo) == "", _dirty(repo)
-    stamped = subprocess.run(
-        ["git", "log", "--format=", "--name-only", "--grep=QA passed"],
-        cwd=repo, check=True, capture_output=True, text=True,
-    ).stdout.split()
-    assert context.format(story="STORY-1") in stamped, stamped
+    assert Path(context.format(story="STORY-1")).is_file()
 
 
 def test_an_uncited_leftover_reruns_the_whole_plan_without_another_dev_turn(
@@ -723,7 +719,7 @@ def test_a_leftover_that_is_only_the_storys_markdown_commits_without_a_rerun(
 ) -> None:
     """Story metadata proves nothing new: no second QA, no second dev turn."""
     repo = epic()
-    notes = "docs/epics/" + EPIC + "/stories/{story}/notes.md"
+    notes = str(epics_root() / EPIC / "stories/{story}/notes.md")
     sub = _Sub(repo, leftover=notes).install(monkeypatch)
     run_env = env()
 

@@ -21,7 +21,7 @@ workhorse-review-debt run --dry-run   # ends at "register is empty", no agent CL
 4. `draft` takes one candidate at a time. `narrow_candidate` re-reads the shelf and drops
    records a decision has bound since the plan. A candidate still at the threshold gets one
    `draft-decision.md` turn, and `file_decision` calls ostler's `propose_decision` with the
-   draft. The run ends as `Done` with a `Proposed` that names every decision id it filed.
+   draft, whose `slug` names the ADR folder. The run ends as `Done` with a `Proposed` that names every decision id it filed.
 
 ## Inputs
 

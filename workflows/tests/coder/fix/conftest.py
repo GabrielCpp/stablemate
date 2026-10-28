@@ -27,6 +27,7 @@ def docs(repo: Path, artifacts: Path) -> Path:
         repo="api", area="widget", pattern="paginate", summary=TEXT, filed_by="qa", record_id=RECORD
     )
     assert filing.record is not None, filing.message
+    (repo / "docs" / "services").mkdir(parents=True, exist_ok=True)
     return repo
 
 

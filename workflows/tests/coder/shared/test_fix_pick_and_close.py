@@ -142,7 +142,7 @@ def test_closing_marks_the_record_done_with_each_repos_commit_in_the_reason(
     subjects = subprocess.run(
         ["git", "-C", str(artifacts), "log", "--format=%s"], capture_output=True, text=True, check=True
     ).stdout.splitlines()
-    assert subjects[0] == f"chore(acme): close {OLD} as done"
+    assert subjects == ["init"]
 
 
 def test_closing_twice_is_a_no_op_that_succeeds(repo: Path, artifacts: Path, logger: logging.Logger) -> None:

@@ -5,6 +5,7 @@ import hashlib
 import itertools
 import json
 import logging
+import shutil
 import subprocess
 from collections import Counter
 from collections.abc import Callable
@@ -36,6 +37,7 @@ from workhorse_workflows.coder.shared.owner import MAX_BLOCKS, MAX_LAPS
 from workhorse_workflows.coder.shared.schemas.docs import DocumentationGate
 from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
+from _epics import epics_root
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
@@ -45,7 +47,7 @@ def spec_dir() -> Path:
     """The story's spec folder under this test's artifacts dir."""
     return core_config.resolve_artifacts_dir() / "specs" / STORY
 
-STORY_REL = f"docs/epics/{EPIC}/stories/{STORY}"
+STORY_REL = f"{EPIC}/stories/{STORY}"
 BLOCK_NOTE = "the slug contract is ambiguous"
 OPERATOR_ANSWER = "One slug per locale."
 
@@ -115,9 +117,10 @@ def _plan_context(repo_name: str) -> dict[str, Any]:
 @pytest.fixture
 def docs(repo: Path, write: Callable[[Path, str], Path]) -> Path:
     """A docs repo ostler can load: one epic, one authored story, one spec dir."""
-    write(repo / "docs" / "epics" / EPIC / "epic.md", EPIC_MD)
-    write(repo / STORY_REL / "story.md", STORY_MD)
+    write(epics_root() / EPIC / "epic.md", EPIC_MD)
+    write(epics_root() / STORY_REL / "story.md", STORY_MD)
     write(repo / spec_dir() / "plan-context.json", json.dumps(_plan_context("api"), indent=2))
+    (repo / "docs" / "services").mkdir(parents=True)
     return repo
 
 
@@ -156,6 +159,7 @@ def alongside(
         json.dumps(_plan_context("acme"), indent=2), encoding="utf-8"
     )
     name_workspace({"acme": docs})
+    shutil.copytree(epics_root(), docs / "epics")
     monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(docs))
     git(docs, "commit", "-q", "--allow-empty", "-m", f"feat: seed\n\nStory: {STORY}")
     return docs
@@ -338,7 +342,7 @@ def test_sources_outside_the_docs_worktree_take_the_semantic_route(
     assert not (run_env.writer.run_dir / build_okf_context.__name__).exists()
     assert agent.counts() == {"document-story": 1}
     first = agent.author_args()[0]
-    assert first["epic_path"] == "docs/epics/EPIC-1/epic.md", first
+    assert first["epic_path"] == str(epics_root() / EPIC / "epic.md"), first
     assert first["context_mode"] == "semantic", first
     assert first["report"] == "", first
     assert first["operator_context"] == "", first
@@ -353,7 +357,7 @@ def test_minted_story_maps_an_external_repository_from_its_story_commit(
     write: Callable[[Path, str], Path],
 ) -> None:
     story_id = "x-01ABCDEF"
-    story = docs / STORY_REL / "story.md"
+    story = epics_root() / STORY_REL / "story.md"
     story.write_text(
         story.read_text(encoding="utf-8").replace(
             "type: story", f"id: {story_id}\ntype: story"
@@ -1017,7 +1021,7 @@ def test_operator_mode_human_waits_for_a_person(
 
     assert result.status == "passed", result
     assert agent.counts() == {"document-story": 2}, agent.counts()
-    assert paths == [docs / STORY_REL / "context.md"], paths
+    assert paths == [epics_root() / STORY_REL / "context.md"], paths
 
 
 def test_a_run_killed_mid_repair_resumes_knowing_what_was_outstanding(

@@ -9,12 +9,10 @@ from pathlib import Path
 
 from ostler import Ostler
 from ostler.register import FiledBy
-from workhorse_workflows.kit import commit_paths
 from workhorse_workflows.kit.workspace import resolve_workspace
 
 PATTERN = "untriaged"
 _SEGMENT = re.compile(r"[^a-z0-9]+")
-_SCOPE = re.compile(r"[^a-z0-9._-]+")
 
 
 @dataclass(frozen=True)
@@ -55,7 +53,7 @@ def file_proposals(
     filed_by: FiledBy,
     proposals: Sequence[Proposal],
 ) -> Filed:
-    """File each proposal that no open record of this filer already states, in one artifacts commit."""
+    """File each proposal that no open record of this filer already states."""
     repo = surveyed_repo(repo_dir)
     okf = Ostler(root)
     held = {r.summary: r.id for r in okf.open_records(repo) if r.filed_by == filed_by}
@@ -79,11 +77,4 @@ def file_proposals(
         held[proposal.summary] = filing.record.id
         ids[proposal.key] = filing.record.id
         new_paths.append(filing.path)
-    if new_paths:
-        artifacts = okf.register_root().parent
-        scope = _SCOPE.sub("-", repo.lower()).strip("-.")
-        subject = f"chore({scope}): file {len(new_paths)} {filed_by} records" if scope else (
-            f"chore: file {len(new_paths)} {filed_by} records"
-        )
-        commit_paths(artifacts, subject, *(str(p.relative_to(artifacts)) for p in new_paths), verify=False)
     return Filed(ids, len(new_paths), errors)

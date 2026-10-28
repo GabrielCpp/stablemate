@@ -18,6 +18,7 @@ from workhorse_workflows.author.parity_surveyor.nodes.parity import (
     load_parity_config,
     parity_slug,
 )
+from _epics import epics_root
 
 
 def _entry(area: str = "billing", slug: str = "invoices", **over: Any) -> dict[str, Any]:
@@ -48,7 +49,7 @@ def test_config_derives_every_path_under_the_survey_dir(
     assert cfg.inventory == "docs/survey/legacy-vs-new/inventory.json"
     assert cfg.findings_dir == "docs/survey/legacy-vs-new/findings"
     assert cfg.unit_manifest == "docs/survey/legacy-vs-new/unit-manifest.json"
-    assert cfg.epics_dir == "docs/epics"
+    assert cfg.epics_dir == str(epics_root())
 
 
 def test_config_honours_an_overridden_survey_dir(
@@ -63,7 +64,7 @@ def test_config_honours_an_overridden_survey_dir(
         survey_dir="docs/parity",
     )
 
-    assert (cfg.target_services, cfg.epics_dir) == ("docs/services", "docs/epics")
+    assert (cfg.target_services, cfg.epics_dir) == ("docs/services", str(epics_root()))
     assert cfg.inventory == "docs/parity/inventory.json"
     assert cfg.findings_dir == "docs/parity/findings"
 
@@ -375,7 +376,7 @@ def test_emit_commits_every_record_of_one_emit_in_one_artifacts_commit(
 
     _emit(repo, logger)
 
-    assert _subjects(artifacts)[:2] == ["chore(acme): file 2 parity records", "init"]
+    assert _subjects(artifacts) == ["init"]
 
 
 def test_emit_suppresses_a_surface_a_new_feature_already_owns(
@@ -574,7 +575,7 @@ def test_a_rerun_files_only_the_surface_that_is_new(
         "legacy/billing/invoices": first.id,
         "legacy/billing/refunds": filed["no refund flow"],
     }
-    assert _subjects(artifacts)[:3] == ["chore(acme): file 1 parity records"] * 2 + ["init"]
+    assert _subjects(artifacts) == ["init"]
 
 
 def test_a_survey_record_with_the_same_summary_does_not_hold_back_a_parity_record(

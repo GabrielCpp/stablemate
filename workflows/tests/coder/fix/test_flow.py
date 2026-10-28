@@ -33,6 +33,7 @@ from coder.fix.scripted import (
 )
 from workhorse_workflows.coder.fix.flow import Fix
 from workhorse_workflows.coder.shared.backlog import close_fix_item
+from _epics import epics_root
 
 
 def test_one_item_is_seeded_fixed_checked_committed_and_closed(
@@ -55,7 +56,7 @@ def test_one_item_is_seeded_fixed_checked_committed_and_closed(
         "document-story": 1,
     }, agent.counts()
 
-    story = (docs / STORY_REL / "story.md").read_text(encoding="utf-8")
+    story = (epics_root() / STORY_REL / "story.md").read_text(encoding="utf-8")
     assert f"- {TEXT}" in story, story
     assert RECORD in story, story
     assert f"debt record `{RECORD}` in `api/widget` of the artifacts register" in story, story

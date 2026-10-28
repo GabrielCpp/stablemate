@@ -338,7 +338,7 @@ def test_every_record_of_one_emit_lands_in_one_artifacts_commit(
 
     emit_artifacts(logger)
 
-    assert _subjects(artifacts)[:2] == ["chore(acme): file 2 survey records", "init"]
+    assert _subjects(artifacts) == ["init"]
     assert _status(artifacts) == ""
 
 
@@ -398,7 +398,7 @@ def test_a_rerun_files_only_the_cluster_that_is_new(
     filed = _filed(repo)
     assert sorted(r.summary for r in filed) == ["Remediate first-fix", "Remediate second-fix"]
     assert first.id in {r.id for r in filed}
-    assert _subjects(artifacts)[:3] == ["chore(acme): file 1 survey records"] * 2 + ["init"]
+    assert _subjects(artifacts) == ["init"]
 
 
 def test_a_rerun_leaves_alone_a_record_another_filer_holds(

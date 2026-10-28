@@ -4,13 +4,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import Ostler, register
-from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.review_debt.nodes._blueprint import blueprint
 from workhorse_workflows.review_debt.schemas import CompleteRead, TrendReport, TrendsWritten
 
 TRENDS_FILE = "trends.md"
-COMMIT_MESSAGE = "chore: review the debt register"
 
 
 def _line(entries: dict[str, list[str]], record_id: str, text: str) -> str:
@@ -48,10 +45,10 @@ def render(read: CompleteRead, report: TrendReport) -> str:
 def write_trends(
     logger: logging.Logger, read: CompleteRead, report: TrendReport, repo_dir: str = ""
 ) -> TrendsWritten:
-    """Write `trends.md` beside the shelf and commit that one file in the artifacts repo; a rewrite of the same text commits nothing."""
-    okf = Ostler(find_docs_root(repo_dir))
+    """Write `trends.md` beside the shelf; the shelf is untracked, so nothing is committed."""
     target = Path(read.shelf) / TRENDS_FILE
-    target.write_text(render(read, report), encoding="utf-8")
-    committed = register.commit(okf.graph, [target], COMMIT_MESSAGE)
-    logger.info("trends.md %s", "committed" if committed else "unchanged")
-    return TrendsWritten(path=str(target), committed=committed)
+    text = render(read, report)
+    changed = not target.is_file() or target.read_text(encoding="utf-8") != text
+    target.write_text(text, encoding="utf-8")
+    logger.info("trends.md %s", "written" if changed else "unchanged")
+    return TrendsWritten(path=str(target), changed=changed)
