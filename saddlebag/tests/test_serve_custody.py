@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from saddlebag import cli, custody, daemon
+from saddlebag import custody, daemon
 from saddlebag.custody import REFUSED, TOKEN_ACCOUNT, TOKEN_SERVICE
 from conftest import FakeBackend
 
@@ -35,8 +35,8 @@ def seen(backend: FakeBackend, daemon_path: Path, monkeypatch: pytest.MonkeyPatc
         record.update(source=token_source)
 
     monkeypatch.delenv("VAULT_TOKEN", raising=False)
-    monkeypatch.setattr(cli, "open_door", lambda: backend)
-    monkeypatch.setattr(cli, "VaultStore", connect)
+    monkeypatch.setattr("saddlebag.keyring_store.open_door", lambda: backend)
+    monkeypatch.setattr("saddlebag.vault.VaultStore", connect)
     monkeypatch.setattr(daemon, "serve", serve)
     monkeypatch.setattr(custody, "filed_path", lambda: daemon_path.parent / "absent-token")
     return record

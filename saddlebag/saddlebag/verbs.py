@@ -9,7 +9,7 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any
 
-from saddlebag import browser, totp
+from saddlebag import browser, redact, shapes, totp
 from saddlebag.models import VALUE_FIELDS, Secret, Tag, matches, parse_tag, validate_field, validate_name, validate_var
 from saddlebag.protocol import Reply, Request
 from saddlebag.store import SecretStore, StoreUnavailable
@@ -212,6 +212,35 @@ class Verbs:
             field = _checked(validate_field, _text(binding, "field", required=False) or "password")
             values[var] = self._value(secret, field)
         return {"values": values}
+
+    def verb_classify(self, args: dict[str, Any]) -> dict[str, Any]:
+        entries = args.get("entries")
+        if not isinstance(entries, list):
+            raise RequestError("argument 'entries' must be a list")
+        pairs: list[tuple[str, str]] = []
+        for entry in entries:
+            if not isinstance(entry, dict):
+                raise RequestError("each entry must be an object")
+            pairs.append((_required(entry, "key"), _text(entry, "value", required=False) or ""))
+        secrets = self._matching(frozenset())
+        held: set[str] = set()
+        for secret in secrets:
+            for field in VALUE_FIELDS:
+                stored = self.store.value(secret.name, field)
+                if stored:
+                    held |= redact.forms(stored)
+        registered = {secret.var for secret in secrets if secret.var}
+        verdicts: list[dict[str, Any]] = []
+        for key, value in pairs:
+            rule: str | None = None
+            if value and value in held:
+                rule = "held-value"
+            elif key in registered:
+                rule = "registered-var"
+            else:
+                rule = next((name for name, check in shapes.RULES if check(key, value)), None)
+            verdicts.append({"key": key, "secret": rule is not None, "rule": rule})
+        return {"verdicts": verdicts}
 
     def verb_doctor(self, args: dict[str, Any]) -> dict[str, Any]:
         health = self.store.health()

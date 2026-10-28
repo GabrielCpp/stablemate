@@ -2,26 +2,17 @@
 
 from __future__ import annotations
 
-import argparse
 import json
-import logging
 import os
-import signal
 import sys
-import threading
-from importlib.metadata import version as _pkg_version
-from pathlib import Path
 
-from saddlebag import browser, custody, daemon, preference, protocol, redact, route
-from saddlebag.custody import CustodyError
-from saddlebag.keyring_store import open_door
-from saddlebag.models import FIELDS, VALUE_FIELDS, parse_tag
-from saddlebag.protocol import DaemonNotRunning, Reply, Request
-from saddlebag.route import RouteError
-from saddlebag.store import StoreUnavailable
-from saddlebag.vault import VaultError, VaultStore
+TYPE_CHECKING = False
+if TYPE_CHECKING:
+    import argparse
+    from pathlib import Path
 
-logger = logging.getLogger(__name__)
+    from saddlebag import dotenv
+    from saddlebag.protocol import Reply
 
 
 def _emit(data: object) -> None:
@@ -35,6 +26,10 @@ def _error(message: str, code: int) -> int:
 
 
 def _ask(verb: str, args: dict[str, object] | None = None) -> Reply | int:
+    from saddlebag import protocol, route
+    from saddlebag.protocol import DaemonNotRunning, Request
+    from saddlebag.store import RouteError, StoreUnavailable
+
     try:
         reply = route.choose().ask(Request(verb, args or {}))
     except (DaemonNotRunning, StoreUnavailable, RouteError) as exc:
@@ -51,6 +46,8 @@ class UsageError(Exception):
 
 
 def _check_tags(tags: list[str]) -> list[str]:
+    from saddlebag.models import parse_tag
+
     for tag in tags:
         try:
             parse_tag(tag)
@@ -70,6 +67,15 @@ def _pairs(raw: list[list[str]]) -> str:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
+    import signal
+    import threading
+
+    from saddlebag import custody, daemon, protocol
+    from saddlebag.custody import CustodyError
+    from saddlebag.keyring_store import open_door
+    from saddlebag.store import StoreUnavailable
+    from saddlebag.vault import VaultError, VaultStore
+
     try:
         custody.refuse_environment()
         if args.keep_token:
@@ -201,6 +207,8 @@ def _binding(text: str) -> dict[str, object]:
 
 
 def cmd_exec(args: argparse.Namespace) -> int:
+    from saddlebag import redact
+
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         return _error("exec needs a command after --", 2)
@@ -238,7 +246,72 @@ def _on_terminal() -> bool:
     return sys.stdout.isatty() and sys.stderr.isatty()
 
 
+def _read_dotenv(path: Path) -> list[dotenv.Line] | int:
+    from saddlebag import dotenv
+
+    try:
+        return dotenv.parse(path.read_text())
+    except OSError as exc:
+        return _error(f"cannot read {path}: {exc.strerror or exc}", 1)
+
+
+def _classified(path: Path) -> tuple[list[dotenv.Line], list[dict[str, object]]] | int:
+    lines = _read_dotenv(path)
+    if isinstance(lines, int):
+        return lines
+    entries = [{"key": line.key, "value": line.value or ""} for line in lines if line.key is not None]
+    reply = _ask("classify", {"entries": entries})
+    if isinstance(reply, int):
+        return reply
+    return lines, reply.result["verdicts"]
+
+
+def cmd_env(args: argparse.Namespace) -> int:
+    from saddlebag import dotenv
+
+    found = _classified(args.file)
+    if isinstance(found, int):
+        return found
+    lines, verdicts = found
+    keyed = iter(verdicts)
+    if args.env_command == "show":
+        masked = 0
+        for line in lines:
+            if line.key is not None and next(keyed)["secret"]:
+                masked += 1
+                print(dotenv.mask(line))
+            else:
+                print(line.raw)
+        print(f"masked {masked} of {sum(1 for line in lines if line.key is not None)} values")
+    elif args.env_command == "keys":
+        for verdict in verdicts:
+            print(f"{verdict['key']}  (secret: {verdict['rule']})" if verdict["secret"] else verdict["key"])
+    elif args.json:
+        _emit({"file": str(args.file), "verdicts": verdicts})
+    else:
+        for verdict in verdicts:
+            print(f"{verdict['key']}\tsecret:{verdict['rule']}" if verdict["secret"] else f"{verdict['key']}\tliteral")
+    return 0
+
+
+def cmd_guard(args: argparse.Namespace) -> int:
+    from saddlebag import guard
+
+    if args.hook:
+        return guard.hook()
+    if args.guard_command != "install":
+        return _error("guard needs --hook or the install subcommand", 2)
+    try:
+        path = guard.install("user" if args.user else "project")
+    except (OSError, ValueError) as exc:
+        return _error(f"cannot install the guard: {exc}", 1)
+    print(f"installed PreToolUse guard in {path}")
+    return 0
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
+    from saddlebag import preference
+
     reply = _ask("doctor")
     if isinstance(reply, int):
         return reply
@@ -282,6 +355,13 @@ def _tag_option(parser: argparse.ArgumentParser) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    import argparse
+    from importlib.metadata import version as _pkg_version
+    from pathlib import Path
+
+    from saddlebag import browser
+    from saddlebag.models import FIELDS, VALUE_FIELDS
+
     p = argparse.ArgumentParser(prog="saddlebag", description="Fill secrets into browsers and commands without printing them.")
     p.add_argument("--version", action="version", version=f"saddlebag {_pkg_version('stablemate-saddlebag')}")
     p.add_argument("-v", "--verbose", action="store_true", help="debug logging on stderr")
@@ -350,6 +430,24 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("command", nargs=argparse.REMAINDER, metavar="-- CMD")
     e.set_defaults(func=cmd_exec)
 
+    ev = sub.add_parser("env", help="show a dotenv with its secret lines masked")
+    esub = ev.add_subparsers(dest="env_command", required=True)
+    for verb, text in (("show", "print FILE with secret values masked"), ("keys", "list FILE's keys, marking secret ones"), ("classify", "say which of FILE's keys are secret")):
+        ep = esub.add_parser(verb, help=text)
+        ep.add_argument("file", type=Path, metavar="FILE")
+        if verb == "classify":
+            ep.add_argument("--json", action="store_true")
+        ep.set_defaults(func=cmd_env, json=False)
+
+    g = sub.add_parser("guard", help="refuse agent actions that would print a secret")
+    g.add_argument("--hook", action="store_true", help="act as a Claude Code PreToolUse hook: payload on stdin")
+    gsub = g.add_subparsers(dest="guard_command")
+    gi = gsub.add_parser("install", help="register the guard in Claude Code's settings")
+    scope = gi.add_mutually_exclusive_group(required=True)
+    scope.add_argument("--user", action="store_true", help="edit ~/.claude/settings.json")
+    scope.add_argument("--project", action="store_true", help="edit ./.claude/settings.json")
+    g.set_defaults(func=cmd_guard)
+
     d = sub.add_parser("doctor", help="check the daemon, Vault and the stored values")
     d.add_argument("--json", action="store_true")
     d.set_defaults(func=cmd_doctor)
@@ -357,6 +455,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    if (sys.argv[1:] if argv is None else argv)[:2] == ["guard", "--hook"]:
+        from saddlebag import guard
+
+        raise SystemExit(guard.hook())
+    import logging
+
     args = build_parser().parse_args(argv)
     logging.basicConfig(
         stream=sys.stderr,

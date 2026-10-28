@@ -248,7 +248,7 @@ def test_serve_hands_the_stdin_token_to_vault(run: Run, monkeypatch: pytest.Monk
     def serve(store: object, *, socket_path: Path, browser_endpoint: str, stop: object, token_source: str | None = None) -> None:
         seen.update(path=socket_path, cdp=browser_endpoint)
 
-    monkeypatch.setattr(cli, "VaultStore", connect)
+    monkeypatch.setattr("saddlebag.vault.VaultStore", connect)
     monkeypatch.setattr(daemon, "serve", serve)
     assert run("serve", "--vault-addr", "http://vault.example.com:8200", "--cdp", "http://127.0.0.1:9333", stdin="  s.token  \n") == 0
     assert seen == {"addr": "http://vault.example.com:8200", "token": "s.token", "path": daemon_path, "cdp": "http://127.0.0.1:9333"}
