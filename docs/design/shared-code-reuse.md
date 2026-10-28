@@ -389,6 +389,11 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
     of a sibling file, shifted the old 46-line and 85-line pairs. jscpd marked the shifted
     pairs new, and the one changed line overlapped them, so the commit that removed a copy
     was refused.
+16. Section 5, coincidence claim in the lap and base ref: the finding's category reaches
+    the settle step from the flow, and the story base has a rule for a story run on trunk.
+    Finding while planning slice 2: the answer ledger carries the disposition and the reason
+    but not the category. The worklist item that filed the finding carries it. A story run
+    on trunk has no merge base that separates its commits from trunk's.
 
 ### Parts
 
@@ -423,7 +428,10 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
 - Change span: **New**. Commit mode reads `git diff -U0 HEAD -- <staged files>`. Range mode
   reads `git diff -U0 <story base>`. Both parse the `@@` hunk headers into added line
   ranges. Both read the working tree, which is what the detector scans (A12).
-- Base ref: **New**, a plain argument. HEAD in commit mode, the story's base in range mode.
+- Base ref: **New**, a plain argument (revised, log 16). HEAD in commit mode, the story's base in
+  range mode. On a branch the story base is the merge base with trunk. On trunk it is the
+  parent of the story's earliest commit, or HEAD before the story's first commit
+  (`coder/shared/okf.py`, `story_base`).
 - Detector: **New**, inside the script. A table maps each of jscpd 5.4.1's eight platform
   packages to its registry tarball and its sha512 integrity. On first use the script
   downloads the package for this platform, verifies it, and unpacks the binary to
@@ -502,8 +510,10 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
   whether or not a pair uses it (invariant 4). The entry is tracked, so a reviewer sees each
   claim.
 - Coincidence claim in the lap: **Reshape** `decline_gap`. A decline of a finding whose category is
-  `Reuse` must open with "coincidence:" and name two reasons. The answer carries the
-  category (`coder/shared/work.py:230`). Open lookup 2 resolved.
+  `Reuse` must open with "coincidence:" and name two reasons (revised, log 16). The worklist
+  item that filed the finding carries the category (`coder/shared/work.py:230`). The flow
+  passes the open Reuse ids to the settle step, which picks the check per id. Open lookup 2
+  resolved.
 - The reviewer's Reuse lens (`dev-reviewer.md:24`): **Reshape**. It searches the tree for
   the helper the diff repeats. It still reports only lines the diff touched
   (`dev-reviewer.md:15`).
