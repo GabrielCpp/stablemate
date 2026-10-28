@@ -93,8 +93,8 @@ def caught(run) -> Score:
 - The config override deep-merges over `home-config.toml`, and task values win. The run
   hands the merged file to commands through `--config` and `STABLEMATE_CONFIG`. A relative
   `artifacts_dir`, and a relative path in a `[workspaces]` entry, name a folder inside the
-  stage. The run drops `STABLEMATE_WORKSPACE` and `STABLEMATE_ARTIFACTS_DIR` from what it
-  inherits.
+  stage. The run drops `STABLEMATE_ARTIFACTS_DIR` from what it inherits, and the trial reads
+  its workspaces from its own config.
 - The score is read-only. paddock stat-manifests the stage before and after it, and a
   mutation fails the run.
 

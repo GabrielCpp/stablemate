@@ -21,7 +21,7 @@ from typing import Any
 from paddock import homeconfig, manifest, names, paths, project as project_mod, reap
 from paddock.loader import Benchmark
 from paddock.names import RunName
-from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV, WORKSPACE_ENV
+from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV
 from paddock.registry import Input, Score, Step, Task
 
 logger = logging.getLogger(__name__)
@@ -281,8 +281,8 @@ def _check_data(benchmark: Benchmark) -> None:
 
 @contextmanager
 def _without_operator_env() -> Iterator[None]:
-    """Drop the operator's workspace and artifacts dir from the environment for the run, then restore them."""
-    saved = {name: os.environ.pop(name) for name in (WORKSPACE_ENV, ARTIFACTS_DIR_ENV) if name in os.environ}
+    """Drop the operator's artifacts dir from the environment for the run, then restore them."""
+    saved = {name: os.environ.pop(name) for name in (ARTIFACTS_DIR_ENV,) if name in os.environ}
     try:
         yield
     finally:

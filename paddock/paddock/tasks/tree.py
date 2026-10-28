@@ -136,11 +136,11 @@ def witness_docs(run: Run, root: Path) -> Path:
 
 
 @contextmanager
-def _workspace_env(home: Path, workspace: str) -> Iterator[None]:
-    keys = (core_config.ARTIFACTS_DIR_ENV, core_config.WORKSPACE_ENV)
+def _workspace_env(home: Path, config: Path) -> Iterator[None]:
+    keys = (core_config.ARTIFACTS_DIR_ENV, core_config.CONFIG_PATH_ENV)
     previous = {key: os.environ.get(key) for key in keys}
     os.environ[core_config.ARTIFACTS_DIR_ENV] = str(home)
-    os.environ[core_config.WORKSPACE_ENV] = workspace
+    os.environ[core_config.CONFIG_PATH_ENV] = str(config)
     try:
         yield
     finally:
@@ -158,7 +158,7 @@ def spec_dir(run: Run, root: Path, story: str) -> Path:
     from ostler.api import Ostler  # noqa: PLC0415 - a heavy import only a trial needs
 
     home = docs_home(run, root)
-    with _workspace_env(home, staged_workspace(run)):
+    with _workspace_env(home, trial_config(run, root)):
         return Path(Ostler(home).spec_path(story))
 
 
@@ -183,9 +183,10 @@ def launch(run: Run, root: Path) -> Launch:
     if not stage_members(run):
         return Launch(sm.effective(run), "", root, sm.trial_env(root))
     home = docs_home(run, root)
+    config = trial_config(run, root)
     return Launch(
-        trial_config(run, root),
+        config,
         staged_workspace(run),
         home,
-        {**os.environ, core_config.ARTIFACTS_DIR_ENV: str(home)},
+        {**os.environ, core_config.ARTIFACTS_DIR_ENV: str(home), core_config.CONFIG_PATH_ENV: str(config)},
     )

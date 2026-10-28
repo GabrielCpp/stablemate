@@ -537,22 +537,20 @@ def test_a_step_reads_the_tasks_inputs_and_the_benchmark(
     assert run(make_benchmark, root, repo, body).ok
 
 
-def test_the_operators_workspace_and_artifacts_dir_stay_out_of_a_run(
+def test_the_operators_artifacts_dir_stays_out_of_a_run(
     make_benchmark: MakeBenchmark, root: Path, repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("STABLEMATE_WORKSPACE", "/operator/workspace")
     monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", "/operator/artifacts")
     body = SMOKE_TASKS.replace(
         '    run.cli("/bin/sh", "-c", "echo hello", check=True)\n',
         '    import os\n'
-        '    seen = [os.environ.get(name, "absent") for name in ("STABLEMATE_WORKSPACE", "STABLEMATE_ARTIFACTS_DIR")]\n'
+        '    seen = [os.environ.get(name, "absent") for name in ("STABLEMATE_ARTIFACTS_DIR",)]\n'
         '    (run.repo / "in-process.txt").write_text(" ".join(seen), encoding="utf-8")\n'
-        '    run.cli("/bin/sh", "-c", "echo ${STABLEMATE_WORKSPACE-absent} ${STABLEMATE_ARTIFACTS_DIR-absent} > child.txt", check=True)\n',
+        '    run.cli("/bin/sh", "-c", "echo ${STABLEMATE_ARTIFACTS_DIR-absent} > child.txt", check=True)\n',
     )
     result = run(make_benchmark, root, repo, body)
-    assert (result.stage / "in-process.txt").read_text(encoding="utf-8") == "absent absent"
-    assert (result.stage / "child.txt").read_text(encoding="utf-8").strip() == "absent absent"
-    assert os.environ["STABLEMATE_WORKSPACE"] == "/operator/workspace"
+    assert (result.stage / "in-process.txt").read_text(encoding="utf-8") == "absent"
+    assert (result.stage / "child.txt").read_text(encoding="utf-8").strip() == "absent"
     assert os.environ["STABLEMATE_ARTIFACTS_DIR"] == "/operator/artifacts"
 
 
