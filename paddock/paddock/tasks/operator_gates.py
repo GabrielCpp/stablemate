@@ -44,7 +44,7 @@ def record_hand_answer(run: Run, gate: str, note: str, commit: str = "") -> None
     record_gate(run, entry)
 
 
-GATE_GLOBS = ("*context*.md", "docs/**/*context*.md")
+GATE_GLOBS = ("*context*.md", "docs/**/*context*.md", "epics/**/*context*.md")
 
 
 def parked_gates(repo: Path) -> list[Path]:

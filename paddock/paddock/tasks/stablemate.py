@@ -175,7 +175,7 @@ def upgrade_spec_layout(repo: Path) -> None:
     if not specs.is_dir():
         return
     ids: dict[str, str] = {}
-    for story_md in sorted(repo.glob("docs/epics/*/stories/*/story.md")):
+    for story_md in sorted([*repo.glob("docs/epics/*/stories/*/story.md"), *repo.glob("epics/*/stories/*/story.md")]):
         story_id = _front_matter(story_md).get("id")
         if isinstance(story_id, str) and story_id:
             ids[story_md.parent.name] = story_id

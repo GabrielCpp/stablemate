@@ -100,8 +100,8 @@ def folder_run(tmp_path: Path) -> Run:
     init_repo(
         data / DOCS,
         {
-            "docs/epics/e1/epic.md": EPIC_MD,
-            f"docs/epics/e1/stories/{STORY}/story.md": STORY_MD,
+            "epics/e1/epic.md": EPIC_MD,
+            f"epics/e1/stories/{STORY}/story.md": STORY_MD,
             "docs/services/book.md": "# book\n",
             f"specs/{STORY}/qa-plan.yml": "stale\n",
         },

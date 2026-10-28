@@ -155,8 +155,9 @@ def rewind(repo: Path, fixture: Fixture, pin: Pin, flow: str, *, run: Run | None
         for member, ref in refs.items():
             rewind_tree(repo / member, ref)
         home = tree.docs_home(run, repo) if run is not None and member_names else repo
-        story_md = home / "docs" / "epics"
-        if not any(story_md.glob(f"*/stories/{pin.story}/story.md")):
+        if not any(
+            any(root.glob(f"*/stories/{pin.story}/story.md")) for root in (home / "docs" / "epics", home / "epics")
+        ):
             shown = ", ".join(refs.values()) if not member_names else ", ".join(
                 f"{member} at {ref}" for member, ref in refs.items()
             )
@@ -184,7 +185,7 @@ def restore_harness(repo: Path, fixture: Fixture) -> None:
 
 def backfill_story_sections(repo: Path) -> None:
     """Give every story.md the `## Dependencies` section the schema now requires."""
-    for story_md in sorted(repo.glob("docs/epics/*/stories/*/story.md")):
+    for story_md in sorted([*repo.glob("docs/epics/*/stories/*/story.md"), *repo.glob("epics/*/stories/*/story.md")]):
         text = story_md.read_text(encoding="utf-8")
         if "\n## Dependencies" in f"\n{text}":
             continue

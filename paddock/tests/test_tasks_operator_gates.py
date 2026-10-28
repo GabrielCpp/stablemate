@@ -39,10 +39,10 @@ def test_a_gate_in_any_repo_of_a_folder_is_keyed_from_the_stage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run = folder_run(tmp_path)
-    park(run.stage / DOCS / "docs" / "epics" / "e1" / "context.md")
+    park(run.stage / DOCS / "epics" / "e1" / "context.md")
     park(run.stage / "web-app" / "context.md")
     gates = watch_once(run, monkeypatch)
     assert sorted(g["gate"] for g in gates) == [
-        f"{DOCS}/docs/epics/e1/context.md",
+        f"{DOCS}/epics/e1/context.md",
         "web-app/context.md",
     ]

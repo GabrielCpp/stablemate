@@ -473,7 +473,7 @@ def milestone_epics(path: Path) -> list[str]:
 
 
 def find_epics(repo: Path) -> list[Path]:
-    return sorted(repo.glob("docs/epics/*/epic.md"))
+    return sorted([*repo.glob("docs/epics/*/epic.md"), *repo.glob("epics/*/epic.md")])
 
 
 def frontmatter(md: Path) -> dict[str, str]:
