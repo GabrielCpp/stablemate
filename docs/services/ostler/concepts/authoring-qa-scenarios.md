@@ -121,9 +121,9 @@ harness as book content.
 - code: ostler/ostler/qa/harness/ostler_qa_files.py::verify_unchanged@1c99efa3cc05
 - code: ostler/ostler/qa/harness/ostler_qa_files.py::verify_created@1c99efa3cc05
 - code: ostler/ostler/qa/harness/ostler_qa_paths.py::resolve_path@092f327030cd
-- code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_attribute@4618eb430b45
-- code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_value@4618eb430b45
-- code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_focused@4618eb430b45
+- code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_attribute@0596499cd4fb
+- code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_value@0596499cd4fb
+- code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_focused@0596499cd4fb
 - code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_visible@75e92895f837
 - code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_actionable@75e92895f837
 - code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_focusable@75e92895f837

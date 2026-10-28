@@ -90,6 +90,7 @@ class ValueReading:
 
     values: tuple[str | None, ...]
     present: bool = True
+    asserted: bool = False
 
 
 def _field_value(element: object) -> str | None:
@@ -101,6 +102,9 @@ def _field_value(element: object) -> str | None:
 
 
 def read_value(observed: object, args: Args) -> ValueReading:
+    if isinstance(observed, bool):
+        return ValueReading(values=(), present=observed, asserted=True)
+
     def read(matched: list[object]) -> tuple[str | None, ...]:
         return tuple(_field_value(element) for element in matched)
 
@@ -110,6 +114,8 @@ def read_value(observed: object, args: Args) -> ValueReading:
 
 def verify_value(reading: ValueReading, args: Args) -> Verdict:
     expected = {"equals": args["equals"]} if "equals" in args else {"matches": args["matches"]}
+    if reading.asserted:
+        return verdict(reading.present, {"value": "asserted on device" if reading.present else "differs on device"}, {"value": expected})
     if not reading.present:
         return verdict(False, _ABSENT, {"value": expected})
     actual = reading.values[0] if len(reading.values) == 1 else list(reading.values)

@@ -76,7 +76,8 @@ MaestroLocator = tuple[str, str]
 
 _ELEMENTS = load_harness_module("ostler_qa_elements")
 _HOLE = re.compile(r"\$?\{[^{}]*\}")
-_VARIABLE = re.compile(r"\$\{OKF_REF_(\d+)\}")
+_VARIABLE = re.compile(r"\bOKF_REF_(\d+)\b")
+_SUBSTITUTION = re.compile(r"\$\{[^{}]*\bOKF_REF_\d+\b[^{}]*\}")
 _QUOTED = re.compile(r"\\Q.*?\\E", re.DOTALL)
 
 
@@ -88,9 +89,13 @@ class _Refs:
 
     def bind(self, expression: str) -> str:
         """The variable that stands for *expression* in a flow's text."""
+        return "${%s}" % self.name(expression)
+
+    def name(self, expression: str) -> str:
+        """The bare identifier that stands for *expression*, for a flow's JavaScript."""
         if expression not in self._expressions:
             self._expressions.append(expression)
-        return "${OKF_REF_%d}" % len(self._expressions)
+        return "OKF_REF_%d" % len(self._expressions)
 
     def numbered(self, text: str) -> tuple[str, list[tuple[str, str]]]:
         """*text* with its variables numbered from 1 in order of appearance, and the `(name, expression)` of each."""
@@ -99,7 +104,7 @@ class _Refs:
             if found.group(1) not in order:
                 order.append(found.group(1))
         names = {each: f"OKF_REF_{at}" for at, each in enumerate(order, start=1)}
-        renamed = _VARIABLE.sub(lambda found: "${" + names[found.group(1)] + "}", text)
+        renamed = _VARIABLE.sub(lambda found: names[found.group(1)], text)
         return renamed, [(names[each], self._expressions[int(each) - 1]) for each in order]
 
 
@@ -143,7 +148,7 @@ def _unquoted(flow: str) -> Iterator[str]:
         elif isinstance(node, list):
             pending.extend(node)
         elif isinstance(node, str):
-            yield _QUOTED.sub("", _VARIABLE.sub("", node))
+            yield _QUOTED.sub("", _SUBSTITUTION.sub("", node))
 
 
 _PRESS_KEYS: frozenset[str] = frozenset({
@@ -448,6 +453,37 @@ class _FlowChecks:
             self.documents.append(check.document)
 
 
+def _compiled_value(
+    row: CallRow, obligation: Obligation, result_name: str, gaps: list[Gap], refs: _Refs,
+) -> _CompiledCheck | None:
+    """Compile `value` on a phone: copy what the field shows, then compare it in the flow's own JavaScript."""
+    oid = obligation.id
+    if row.args.get("equals") == "":
+        gaps.append(Gap(oid, "uncompilable-claim",
+                        "`value(equals=\"\")` asserts an empty field, and a phone shows an empty "
+                        "field as its label, so emptiness cannot be told from the label: no check "
+                        "is compiled for the row"))
+        return None
+    locator = _check_locator(row, obligation, gaps)
+    if locator is None:
+        return None
+    operator = "equals" if "equals" in row.args else "matches"
+    held = row.args.get(operator)
+    expected = refs.name(typed_literal(held) if isinstance(held, str) else python_literal(held))
+    test = (f"maestro.copiedText === {expected}" if operator == "equals"
+            else f"new RegExp({expected}).test(maestro.copiedText)")
+    commands = [
+        *_into_view(locator, None, refs), "- copyTextFrom:", *_selector(locator, None, refs, "    "),
+        f"- assertTrue: ${{{test}}}",
+    ]
+    return _CompiledCheck(
+        commands,
+        f"    qa.verify({python_literal(row.name)}, {result_name}"
+        f"{call_kwargs(row.args)}, covers=[{python_literal(oid)}])",
+        check_document(row, obligation) or None,
+    )
+
+
 def _compiled_check(
     row: CallRow, obligation: Obligation, result_name: str, gaps: list[Gap], refs: _Refs,
 ) -> _CompiledCheck | None:
@@ -461,6 +497,8 @@ def _compiled_check(
             return None
         return _CompiledCheck([], f"    qa.verify({python_literal(row.name)}, {operand}"
                                   f"{call_kwargs(row.args)}, covers=[{python_literal(oid)}])", None)
+    if row.name == "value":
+        return _compiled_value(row, obligation, result_name, gaps, refs)
     if channel != "page":
         gaps.append(unobservable_gap(oid, row.name, MAESTRO))
         return None

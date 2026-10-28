@@ -92,3 +92,11 @@ def test_an_element_that_is_not_a_field_holds_no_value(page: Any) -> None:
     reading = _value(page, "#open", equals="Open")
     assert not reading.passed
     assert reading.actual == {"value": None}
+
+
+@pytest.mark.parametrize(("exit_ok", "passed"), [(True, True), (False, False)])
+def test_a_device_value_check_passes_or_fails_with_the_flow_that_asserted_it(exit_ok: bool, passed: bool) -> None:
+    args = {"equals": "fr-CA"}
+    reading = dom.read_value(exit_ok, args)
+    assert reading.asserted
+    assert dom.verify_value(reading, args).passed is passed

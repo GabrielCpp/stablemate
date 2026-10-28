@@ -7387,3 +7387,60 @@ def test_a_phone_journey_step_whose_trigger_says_nothing_to_type_is_an_uncompila
     result = _compile_plan_gaps(context, story="demo-story")
     assert isinstance(result, Refusal)
     assert "uncompilable-claim" in _gap_kinds(result.gaps, oid)
+
+
+def _value_check(**args: object) -> dict:
+    return {"call": "it", "name": "value", "args": {"locator": "irrelevant", **args}}
+
+
+def test_a_phone_field_value_is_copied_from_the_field_and_compared_to_a_variable() -> None:
+    context, oid = _maestro_value_probe({"name": ["Language"]}, [_value_check(equals="fr-CA")])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    copy_at = next(i for i, c in enumerate(commands) if isinstance(c, dict) and "copyTextFrom" in c)
+    assert "Language" in commands[copy_at]["copyTextFrom"]["text"]
+    assert "scrollUntilVisible" in commands[copy_at - 1]
+    assert commands[copy_at + 1] == {"assertTrue": "${maestro.copiedText === OKF_REF_1}"}
+    assert 'env={"OKF_REF_1": \'fr-CA\'}' in result.source or 'env={"OKF_REF_1": "fr-CA"}' in result.source
+    assert 'qa.verify("value"' in result.source or "qa.verify('value'" in result.source
+
+
+def test_a_phone_field_value_that_matches_a_pattern_is_tested_with_a_regular_expression() -> None:
+    context, oid = _maestro_value_probe({"name": ["Language"]}, [_value_check(matches="^fr-")])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    assert {"assertTrue": "${new RegExp(OKF_REF_1).test(maestro.copiedText)}"} in commands
+
+
+def test_a_phone_field_value_holding_a_reference_reaches_the_flow_as_a_variable() -> None:
+    value = "@seeded-ledger.stamp"
+    context, oid = _maestro_value_probe({"name": ["Language"]}, [_value_check(equals=value)])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    assert "@seeded-ledger" not in flow_text
+    assert f'env={{"OKF_REF_1": qa.resolve({json.dumps(value)})}}' in result.source
+
+
+def test_an_empty_phone_field_cannot_be_told_from_its_label_so_the_claim_is_refused() -> None:
+    context, oid = _maestro_value_probe({"name": ["Language"]}, [_value_check(equals="")])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+
+
+def test_refs_rename_a_bare_variable_with_its_braced_twin() -> None:
+    from ostler.qa.compile_maestro import _Refs
+
+    refs = _Refs()
+    refs.bind("'first'")
+    refs.bind("'second'")
+    text, variables = refs.numbered("a: ${OKF_REF_2}\nb: ${x === OKF_REF_2}\n")
+    assert text == "a: ${OKF_REF_1}\nb: ${x === OKF_REF_1}\n"
+    assert variables == [("OKF_REF_1", "'second'")]
