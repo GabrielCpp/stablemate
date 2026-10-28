@@ -10,26 +10,27 @@ The coder files the work it leaves undone onto the
 filers write records. QA's leftovers become `qa` records, the book pages QA could not check become
 `qa-deferred` records, and a dev turn's follow-ups become `coder` records. Each filer places a
 record under the workspace repository it names, skips a record the register already holds, and
-commits what it filed as one artifacts commit with hooks off. No filer writes to a code repository.
+makes no commit, because the shelf is untracked (see [the artifacts layout](../../ostler/concepts/artifacts-layout.md)). No filer writes to a code repository.
 
 The fix drain reads only the open `qa` records of the run's workspace repositories. It draws the
 oldest one, seeds it as a one-criterion story in the `fixes` epic, and closes the record as `done`
 once a commit of the fix lands. `coder` and `qa-deferred` records stay on the shelf for a person or
 the review-debt workflow: no coder lane drains them.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::filed_backlog` @a57d509225b0
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::unfiled` @a57d509225b0
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @a57d509225b0
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @a57d509225b0
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_deferred_obligations` @a57d509225b0
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @a57d509225b0
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @a57d509225b0
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::close_fix_item` @a57d509225b0
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::filed_backlog` @811daf336e15
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::unfiled` @811daf336e15
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @811daf336e15
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @811daf336e15
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_deferred_obligations` @811daf336e15
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @811daf336e15
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @811daf336e15
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::close_fix_item` @811daf336e15
 - rule: a dev turn's follow-up `area` is checked against the register's one-kebab-segment rule when the turn returns its result, so a file path costs the agent one correction prompt and never a dropped record
 - tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_each_item_becomes_a_qa_record_in_one_artifacts_commit`
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_filed_follow_ups_are_committed_to_the_artifacts_repo_and_leave_the_code_repo_clean`
 - tests: `workflows/tests/coder/shared/test_deferred_obligations_backlog.py::test_each_page_with_deferred_checks_becomes_one_record_in_one_artifacts_commit`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_committed_and_closed`
+- detail: [The artifacts layout](../../ostler/concepts/artifacts-layout.md)
 - detail: [The debt register](../../ostler/concepts/the-debt-register.md)
 - detail: [Coder standalone fix flow](../flows/coder-fix.md)
 
@@ -41,8 +42,7 @@ In a workspace of two or more, a filing that names none is skipped, and the log 
 repository names the workspace knows. A filing the register refuses, such as one with an invalid
 summary, is logged with ostler's reason and counted as skipped.
 
-The artifacts commit takes the repository as its scope when every filed record belongs to one
-repository, and no scope otherwise. A batch that filed nothing commits nothing.
+No filer commits: a filed record is a file on the untracked `backlogs/` shelf.
 
 ## Methods
 
@@ -53,7 +53,7 @@ repository, and no scope otherwise. A batch that filed nothing commits nothing.
 - verify: count(subject="open qa records listed for judging", equals=1)
 - does: returns the items QA left in `<spec_dir>/backlog-items.json` as `items`, each kebab id mapped to its one-line description, less the items with no id or no description
 - verify: count(subject="pending qa items listed for judging", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::filed_backlog` @a57d509225b0
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::filed_backlog` @811daf336e15
 - tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_filed_lists_the_open_qa_records_of_the_workspace_repos_and_the_pending_items`
 
 ### unfiled
@@ -63,7 +63,7 @@ repository, and no scope otherwise. A batch that filed nothing commits nothing.
 - verify: count(subject="pending items matched to an open record", equals=1)
 - returns: the ids of the items that restate no open record
 - verify: count(subject="pending items left to file", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::unfiled` @a57d509225b0
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::unfiled` @811daf336e15
 
 ### file_backlog_items
 
@@ -76,13 +76,11 @@ repository, and no scope otherwise. A batch that filed nothing commits nothing.
 - verify: count(subject="qa records naming their story", equals=1)
 - does: skips an item with no id or no description, an item whose id is in `drop`, and an item whose normalized description matches an open `qa` record of the same repository
 - verify: count(subject="skipped qa leftovers", equals=1)
-- does: commits the filed records as `chore(<repo>): file the qa leftovers of <story>`
-- verify: count(subject="qa leftover commits", equals=1)
 - does: removes the items file afterwards, whether or not anything was filed
 - verify: removed(subject="backlog-items.json")
 - returns: `BacklogDrain` with the filed and skipped counts and a note `filed N to the register, skipped K (duplicate/invalid)`, followed by whether the items file was removed
 - verify: json_path(path="$.notes", matches="^filed [0-9]+ to the register, skipped [0-9]+ \\(duplicate/invalid\\); (removed backlog-items\\.json|backlog-items\\.json left in place)$")
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @a57d509225b0
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_backlog_items` @811daf336e15
 - tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_a_dropped_item_is_not_filed`
 - tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_an_item_that_restates_an_open_qa_record_is_skipped`
 - tests: `workflows/tests/coder/shared/test_qa_leftovers_backlog.py::test_a_two_repo_workspace_places_each_item_by_its_repo`
@@ -105,11 +103,9 @@ repository, and no scope otherwise. A batch that filed nothing commits nothing.
 - verify: count(subject="follow-ups already on the register", equals=1)
 - does: counts a record filed earlier in the same batch as open, so a repeated follow-up is filed once
 - verify: count(subject="repeated follow-ups in one batch", equals=1)
-- does: commits the filed records as `chore(<repo>): file the deferred follow-ups of <parent>`
-- verify: count(subject="follow-up commits", equals=1)
 - returns: `BacklogDrain` with the filed and skipped counts
 - verify: json_path(path="$.appended", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @a57d509225b0
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_follow_up_backlog` @811daf336e15
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_record_carries_what_the_proposal_said_and_an_id_ostler_minted`
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_follow_up_without_an_area_or_a_pattern_is_refused_with_a_reason`
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_a_follow_up_that_cites_an_open_record_is_not_filed_again`
@@ -133,11 +129,9 @@ repository, and no scope otherwise. A batch that filed nothing commits nothing.
 - verify: count(subject="deferred book checks placed by book prefix", equals=1)
 - does: skips a page that already has an open `qa-deferred` record citing the same path
 - verify: count(subject="book pages already on the register", equals=1)
-- does: commits the filed records as `chore(<repo>): file the book checks qa could not run`
-- verify: count(subject="deferred book check commits", equals=1)
 - returns: `BacklogDrain` with the filed and skipped counts, or a note that there was no QA context to read
 - verify: json_path(path="$.appended", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_deferred_obligations` @a57d509225b0
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::file_deferred_obligations` @811daf336e15
 - tests: `workflows/tests/coder/shared/test_deferred_obligations_backlog.py::test_the_same_page_twice_files_once`
 - tests: `workflows/tests/coder/shared/test_deferred_obligations_backlog.py::test_a_two_repo_workspace_places_the_page_by_its_book_prefix`
 - tests: `workflows/tests/coder/shared/test_deferred_obligations_backlog.py::test_the_fix_lane_leaves_book_checks_for_the_book`
@@ -151,7 +145,7 @@ repository, and no scope otherwise. A batch that filed nothing commits nothing.
 - verify: count(subject="qa records drawn oldest first", equals=1)
 - returns: `FixPick` with `has_fix` true and the record's id, repo, area, summary and body, or `has_fix` false with the reason `no open qa record in <repos> — nothing to drain`
 - verify: count(subject="fix draws", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @a57d509225b0
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::select_fix_item` @811daf336e15
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_drain_keeps_going_until_no_open_qa_record_is_left`
 
 ### seed_fix_story
@@ -171,7 +165,7 @@ repository, and no scope otherwise. A batch that filed nothing commits nothing.
 - verify: count(subject="refused fix story seeds", equals=1)
 - returns: a `FixStorySeed` carrying `story_id`: the reused story's own id, or `create_story`'s `entity_id` for a newly created one
 - verify: json_path(path="$.story_id", equals="S-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @a57d509225b0
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::seed_fix_story` @811daf336e15
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_story_of_a_record_covers_the_record_id`
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_fixes_bucket_the_coder_creates_needs_no_milestone`
 - tests: `workflows/tests/coder/shared/test_follow_up_backlog.py::test_the_fix_story_seed_names_the_record_it_came_from`
@@ -185,5 +179,5 @@ repository, and no scope otherwise. A batch that filed nothing commits nothing.
 - verify: unchanged(subject="the drawn record")
 - returns: `FixClosed` with `closed` true on success, or false with ostler's reason
 - verify: count(subject="fix close results", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::close_fix_item` @a57d509225b0
+- code: `workflows/src/workhorse_workflows/coder/shared/backlog.py::close_fix_item` @811daf336e15
 - tests: `workflows/tests/coder/fix/test_flow.py::test_one_item_is_seeded_fixed_checked_committed_and_closed`

@@ -62,12 +62,12 @@ Every node module under `review_debt/nodes/` registers against the one `blueprin
 ### write_trends
 
 - sig: `write_trends(logger, read: CompleteRead, report: TrendReport, repo_dir: str = "") -> TrendsWritten`
-- does: writes the rendered report to `trends.md` at the register root and commits that file in the artifacts repository as `chore: review the debt register`
+- does: writes the rendered report to `trends.md` at the register root and makes no commit, because the shelf is untracked
 - verify: contents(subject="trends.md", matches="(?m)^# Debt register trends$")
-- returns: the written path and whether the write made a commit, which is false when the text did not change
-- verify: json_path(path="$.committed", equals=false)
-- code: `workflows/src/workhorse_workflows/review_debt/nodes/trends.py::write_trends` @82e8ad7ad1cc
-- tests: `workflows/tests/review_debt/test_nodes.py::test_writing_the_same_report_twice_commits_once`
+- returns: the written path and whether the write changed the file, which is false when the text did not change
+- verify: json_path(path="$.changed", equals=false)
+- code: `workflows/src/workhorse_workflows/review_debt/nodes/trends.py::write_trends` @ac34e86db8ae
+- tests: `workflows/tests/review_debt/test_nodes.py::test_writing_the_same_report_twice_changes_once`
 
 ### select_candidates
 
@@ -76,7 +76,7 @@ Every node module under `review_debt/nodes/` registers against the one `blueprin
 - verify: count(subject="bound records left out of a candidate", equals=0)
 - returns: the narrowed clusters that hold at least `threshold` records
 - verify: count(subject="$.clusters", equals=1)
-- code: `workflows/src/workhorse_workflows/review_debt/nodes/decisions.py::select_candidates` @bf8c2226857e
+- code: `workflows/src/workhorse_workflows/review_debt/nodes/decisions.py::select_candidates` @4344d0f28836
 - tests: `workflows/tests/review_debt/test_decisions.py::test_select_candidates_keeps_only_unbound_ids_at_the_threshold`
 - tests: `workflows/tests/review_debt/test_decisions.py::test_a_lower_threshold_drafts_the_smaller_cluster_too`
 
@@ -85,7 +85,7 @@ Every node module under `review_debt/nodes/` registers against the one `blueprin
 - sig: `narrow_candidate(logger, candidate: Candidate, repo_dir: str = "") -> Candidate`
 - does: re-reads the register and drops the candidate's records that a decision has bound since it was selected, logging how many it dropped
 - verify: count(subject="records bound since the plan", equals=0)
-- code: `workflows/src/workhorse_workflows/review_debt/nodes/decisions.py::narrow_candidate` @bf8c2226857e
+- code: `workflows/src/workhorse_workflows/review_debt/nodes/decisions.py::narrow_candidate` @4344d0f28836
 - tests: `workflows/tests/review_debt/test_decisions.py::test_bound_records_drop_out_of_a_larger_cluster`
 
 ### file_decision
@@ -97,7 +97,7 @@ Every node module under `review_debt/nodes/` registers against the one `blueprin
 - verify: count(subject="candidate ids bound to the decision", equals=3)
 - returns: the new decision id, or `ok` false with ostler's refusal message
 - verify: json_path(path="$.message", matches="already bound to decision")
-- code: `workflows/src/workhorse_workflows/review_debt/nodes/decisions.py::file_decision` @bf8c2226857e
+- code: `workflows/src/workhorse_workflows/review_debt/nodes/decisions.py::file_decision` @4344d0f28836
 - tests: `workflows/tests/review_debt/test_decisions.py::test_the_draft_turn_is_given_the_cluster_and_the_shelf`
 - tests: `workflows/tests/review_debt/test_decisions.py::test_a_refusal_from_propose_ends_the_run_naming_it`
 

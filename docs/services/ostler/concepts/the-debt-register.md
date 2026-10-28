@@ -6,38 +6,37 @@ title: The debt register
 # The debt register
 
 The debt register is the one place a workspace keeps the improvements nobody has done yet. Each
-item is a record: one `record.md` file in the artifacts repo, never in a code repo. A record is
+item is a record: one `record.md` file in the artifacts repo, never in a code repo, on the untracked `backlogs/` shelf described in [the artifacts layout](artifacts-layout.md). A record is
 filed by the agent or person who found the work, and it stays on the shelf after it ends, with the
 status it ended at and the reason. Ostler owns the shelf: it files, lists, closes and imports
 records, and `ostler doctor` names a record that does not parse. The review-debt workflow reads
 the whole shelf and groups it into trends. A cluster of records can become a
 [decision record](decision-records.md) that names them as its evidence.
 
-- code: ostler/ostler/register.py::Record@e9e56b8ac9a0
-- code: ostler/ostler/register.py::records@e9e56b8ac9a0
-- code: ostler/ostler/register.py::write@e9e56b8ac9a0
-- code: ostler/ostler/register.py::close@e9e56b8ac9a0
-- code: ostler/ostler/register.py::close_and_commit@e9e56b8ac9a0
-- code: ostler/ostler/register.py::commit@e9e56b8ac9a0
-- code: ostler/ostler/register.py::file_person@e9e56b8ac9a0
-- code: ostler/ostler/register_import.py::import_list@9a46ac7a7aac
-- code: ostler/ostler/path.py::register_root@4524aa5cb018
+- code: ostler/ostler/register.py::Record@c830fda449ae
+- code: ostler/ostler/register.py::records@c830fda449ae
+- code: ostler/ostler/register.py::write@c830fda449ae
+- code: ostler/ostler/register.py::close@c830fda449ae
+- code: ostler/ostler/register.py::file_person@c830fda449ae
+- code: ostler/ostler/register_import.py::import_list@307db9c8d802
+- code: ostler/ostler/path.py::register_root@6a1acd1702fd
 - tests: ostler/tests/test_register.py::test_write_lays_the_record_under_repo_area_id_in_the_artifacts_dir
 - tests: ostler/tests/test_register.py::test_the_listing_has_one_line_per_record_closed_ones_included
 - tests: ostler/tests/test_register_close.py::test_close_marks_a_record_done_and_keeps_every_other_field_and_the_body
 - tests: ostler/tests/test_register_import.py::test_a_hand_written_list_becomes_one_record_per_bullet
+- detail: [The artifacts layout](artifacts-layout.md)
 - detail: [Decision records](decision-records.md)
 - detail: [Planning identities](planning-identities.md)
 
 ## The shelf
 
-The shelf is `backlog/` in the artifacts dir: `$STABLEMATE_ARTIFACTS_DIR`, else the home config's
+The shelf is `backlogs/` in the artifacts dir: `$STABLEMATE_ARTIFACTS_DIR`, else the home config's
 `artifacts_dir`, else an `artifacts` folder under the platform data directory. A record lives at
-`backlog/<repo>/<area>/<id>/record.md`. Ostler reads every file that matches that three-level
+`backlogs/<repo>/<area>/<id>/record.md`. Ostler reads every file that matches that three-level
 pattern and nothing else. The listing sorts the records by repo, then area, then id. A file that
 does not parse stays out of the listing, and `ostler doctor` reports it as
-`register-record-unreadable`, an error. The first write creates the artifacts dir as a git
-repository with no remote when it is not one yet.
+`register-record-unreadable`, an error. The shelf is untracked: the artifacts repo ignores `backlogs/`, and the first write creates the
+artifacts dir as a git repository with no remote when it is not one yet.
 
 ## Fields
 
@@ -111,17 +110,14 @@ repository with no remote when it is not one yet.
 Closing rewrites only `status` and `reason` and leaves every other field and the body as they
 were. The target status is `done`, `dropped` or `promoted`. A close to `open` is refused. Closing a
 record at the status it already has writes nothing and succeeds. Closing a closed record at
-another status is refused with `record '<id>' is already <status>, not <target>`. A close is
-committed in the artifacts repo as `chore(<repo>): close <id> as <status>`, and a close whose
-commit fails restores the record's old text. `ostler backlog prune` adds one guard: `dropped` and
+another status is refused with `record '<id>' is already <status>, not <target>`. A close makes
+no commit. `ostler backlog prune` adds one guard: `dropped` and
 `promoted` need a `--reason`.
 
-## Committing in the artifacts repo
+## No commits
 
-Every ostler write to the shelf commits exactly the files it wrote, with hooks off. A person's
-filing commits `chore(<repo>): file <id>`, and a filing whose commit fails takes the record off the
-shelf again. An artifacts dir with no `.git`, or a write that changed nothing, commits nothing and
-still succeeds. The code repo is never touched.
+The shelf is untracked, so no write to it commits anything. Filing, closing and importing change
+files and nothing else, and the code repo is never touched.
 
 ## Importing an old list
 
@@ -146,8 +142,7 @@ then deletes the list.
 - the import is all or none. It refuses a missing file, a file with no bullets, an id used twice
   in the list, a kept id the workspace already holds, and a bullet that makes an invalid record.
   A refusal writes nothing and keeps the file.
-- the records are one artifacts commit, `chore(<repo>): import the backlog list`. A failed commit
-  takes every record off the shelf again and keeps the file.
+- the import makes no commit.
 
 ## Contract
 

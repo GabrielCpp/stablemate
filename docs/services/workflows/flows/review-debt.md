@@ -9,7 +9,7 @@ title: Review the debt register
   [debt register](../../ostler/concepts/the-debt-register.md) share a cause. The `ReviewDebt`
   machine reads every record, has one agent turn group them, and refuses a report that leaves a
   record out, names one twice or names one the register does not hold. A report that passes is
-  written to `<artifacts>/backlog/trends.md`. Each cluster with at least `decision_threshold`
+  written to `<artifacts>/backlogs/trends.md`. Each cluster with at least `decision_threshold`
   records not yet bound to a decision gets one proposed
   [decision record](../../ostler/concepts/decision-records.md).
 - Implementation lives at `workflows/src/workhorse_workflows/review_debt/flow.py::ReviewDebt`.
@@ -76,10 +76,9 @@ reason lists the wrong ids by kind, and the run writes no file.
 - kind: run
 - detail: [debt register trends file](../formats/debt-trends-file.md)
 
-`write_trends` renders the passing report over the read into `trends.md` at the register's root
-and commits that one file in the artifacts repository as `chore: review the debt register`. The
-rendering depends only on the report and the read, so a resumed run that renders the same text
-commits nothing.
+`write_trends` renders the passing report over the read into `trends.md` at the register's root.
+The shelf is untracked, so the node commits nothing. The rendering depends only on the report and
+the read, so a resumed run writes the same text and reports it unchanged.
 
 ### plan-decisions
 
@@ -96,9 +95,10 @@ records with no `decision`, and keeps the clusters whose narrowed records reach
 `draft` takes the candidates one at a time. `narrow_candidate` re-reads the register first and
 drops the records a decision has bound since the plan. A candidate still at the threshold gets one
 `draft-decision.md` turn, which receives the cluster name, its cause, its listing lines and the
-register path, and returns a `DecisionDraft`. `file_decision` passes the draft and the cluster's
-ids to ostler's decision proposal. Ostler writes one decision at `status: proposed`, binds each
-evidence record to it, and leaves each record open, all in one artifacts commit. A candidate that
+register path, and returns a `DecisionDraft`, which carries the slug the agent chose for the decision. `file_decision` passes the draft and the cluster's
+ids to ostler's decision proposal. Ostler writes one decision at `status: proposed` as `docs/adrs/<slug>/adr.md`, binds each
+evidence record to it, and leaves each record open. It commits the decision file alone, and only
+when the docs home is the artifacts repo. A candidate that
 fell below the threshold is skipped without a turn. A refusal raises `WorkflowFailed` naming
 ostler's message. A rerun over the same register and report proposes nothing, because its
 clusters' records are bound already.

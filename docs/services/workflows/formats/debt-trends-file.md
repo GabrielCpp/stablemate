@@ -5,8 +5,8 @@ title: Debt register trends file
 ---
 # Debt register trends file
 
-- file: `<artifacts>/backlog/trends.md`
-- code: `workflows/src/workhorse_workflows/review_debt/nodes/trends.py::render` @82e8ad7ad1cc
+- file: `<artifacts>/backlogs/trends.md`
+- code: `workflows/src/workhorse_workflows/review_debt/nodes/trends.py::render` @ac34e86db8ae
 - detail: [review-debt flow](../flows/review-debt.md)
 - detail: [debt register](../../ostler/concepts/the-debt-register.md)
 
@@ -14,7 +14,8 @@ The [review-debt flow](../flows/review-debt.md) writes this file at the root of 
 beside its repository folders. The register reads records only at `<repo>/<area>/<id>/record.md`,
 so it does not read this file back as a record. The flow renders the file from a
 [trend report](trend-report.md) that passed accounting and from the read it covers. The same
-report over the same read renders the same text.
+report over the same read renders the same text. The file sits on the untracked shelf, so the
+flow never commits it.
 
 ## Layout
 
@@ -31,7 +32,6 @@ appears on exactly one bullet. The renderer joins the report's names, causes and
 line each, so no text from the turn can start a line of its own.
 
 - verify: contents(subject="trends.md", matches="(?m)^# Debt register trends$")
-- code: `workflows/src/workhorse_workflows/review_debt/nodes/trends.py::render` @82e8ad7ad1cc
+- code: `workflows/src/workhorse_workflows/review_debt/nodes/trends.py::render` @ac34e86db8ae
 - tests: `workflows/tests/review_debt/test_nodes.py::test_the_rendered_file_is_the_same_text_for_the_same_report`
-- tests: `workflows/tests/review_debt/test_nodes.py::test_writing_the_same_report_twice_commits_once`
 - tests: `workflows/tests/review_debt/test_nodes.py::test_a_file_at_the_shelf_root_is_never_read_as_a_record`

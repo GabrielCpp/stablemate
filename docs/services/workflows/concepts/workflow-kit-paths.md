@@ -13,6 +13,7 @@ by callers. The documentation root is the exception: it defers to the docs home 
 the artifacts dir when that repository is a member of any workspace in the home config.
 
 - code: `workflows/src/workhorse_workflows/kit/paths.py` @34f070621a86
+- rule: epics, backlogs and specs live at the top level of the artifacts dir, so the documentation root holds `docs/` and never an `epics/` folder
 - detail: [Artifacts layout and the docs home](../../ostler/concepts/artifacts-layout.md)
 
 ## Methods

@@ -10,7 +10,7 @@ they find without changing a file. Every claim here runs against a small repo se
 checkout, with `-C book-scratch`, so the real books never decide the outcome.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@6f9e6ca5fc20
+- code: ostler/ostler/cli.py::main@f9cefee57bce
 - detail: [The book's markdown model](concepts/the-books-markdown-model.md)
 
 ## Commands
@@ -28,7 +28,8 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
   and `path:` is a `route-missing` error, and each `endpoint` page whose method and path the
   contract lacks is a `route-phantom` error. The method compares upper-cased, a `{...}` variable
   matches any other whatever its name, and a custom-verb suffix such as `:read` is part of the
-  path
+  path. A service whose pages' `code:` bullets cite files of two repositories is a
+  `service-spans-repositories` error that names both repositories.
 - flags:
   - --json (print `{org, profile, epics, errors, warnings, findings}` as one indented JSON object), --path (check only the book at this path), --census (print the census of the book's nodes instead of the findings)
 - exits: 0 — a book whose findings are all warnings, or none, is sound
@@ -38,7 +39,8 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="findings[0].severity", equals="warn")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a sound `demo` book whose
   citations carry no digest stamp, so it reports warnings and no error
-- code: ostler/ostler/doctor.py::run@a658bbb79294
+- code: ostler/ostler/doctor.py::run@b6bae9bf1b96
+- code: ostler/ostler/doctor.py::_check_service_repository@b6bae9bf1b96
 - code: ostler/ostler/book_reach.py::dead_pages@76220c84992e
 - code: ostler/ostler/checks.py::bind@1cac57931716
 - code: ostler/ostler/acts.py::bind@c6e469b316ce
@@ -53,7 +55,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/links.py::is_doc_link@471fa7366668
 - code: ostler/ostler/locators.py::collisions@4e770b42dfdc
 - code: ostler/ostler/markdown.py::all_code_spans@115245786c4b
-- code: ostler/ostler/model.py::anchor_of@b0f81cc8ce8a
+- code: ostler/ostler/model.py::anchor_of@d2115e76a76a
 - code: ostler/ostler/outcome_rules.py::check_outcomes@408c771787b5
 - code: ostler/ostler/page_size.py::check_page_size@380a05d10fdd
 - code: ostler/ostler/pages.py::files_in_book@e9f96e7b3156
@@ -79,7 +81,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@9f63d115538b
 - code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
-- code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@ff8a02ce3c68
+- code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@f30a7f155019
 - detail: [Book health: coverage, reach and census](concepts/book-health-coverage-reach-and-census.md)
 
 ### ostler-doctor-dangling-link
@@ -93,10 +95,10 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="findings[0].path", equals="docs/services/demo/entries.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds `book-scratch-broken/`, whose
   entries page links to a page that does not exist
-- code: ostler/ostler/doctor.py::run@a658bbb79294
+- code: ostler/ostler/doctor.py::run@b6bae9bf1b96
 - code: ostler/ostler/finding.py::Finding@9ff7be48f3bd
 - code: ostler/ostler/markdown.py::comment_blocks@115245786c4b
-- code: ostler/ostler/model.py::doc_roots@b0f81cc8ce8a
+- code: ostler/ostler/model.py::doc_roots@d2115e76a76a
 - code: ostler/ostler/refs.py::bullet_ref@5de8b2ec8022
 
 ### ostler-checks
@@ -234,7 +236,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: exit_status(code=0)
 - verify: json_path(path="files", matches="^[1-9][0-9]*$")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a flow titled "Say hello"
-- code: ostler/ostler/textindex.py::TextIndex.refresh@9e0954edd179
+- code: ostler/ostler/textindex.py::TextIndex.refresh@6e7935aa7652
 - detail: [The text index](concepts/the-text-index.md)
 
 ### ostler-list
