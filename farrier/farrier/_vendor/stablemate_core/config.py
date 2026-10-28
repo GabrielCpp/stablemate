@@ -573,18 +573,29 @@ def _normal_url(url: str) -> str:
     return text.removesuffix(".git").rstrip("/")
 
 
-def is_workspace_member(identity: RepositoryIdentity) -> bool:
-    """Whether ``identity`` matches any member of any workspace by folder, main worktree folder or origin URL."""
+def _matching_member(identity: RepositoryIdentity) -> WorkspaceMember | None:
     folders = {identity.folder, identity.main_folder}
     origin = _normal_url(identity.origin_url)
     members = _all_members()
     _bind(members)
     for member in members:
         if member.path.resolve() in folders:
-            return True
+            return member
         if origin and member.url and _normal_url(member.url) == origin:
-            return True
-    return False
+            return member
+    return None
+
+
+def is_workspace_member(identity: RepositoryIdentity) -> bool:
+    """Whether ``identity`` matches any member of any workspace by folder, main worktree folder or origin URL."""
+    return _matching_member(identity) is not None
+
+
+def repository_name(start: Path) -> str:
+    """The workspace member name of the repository holding ``start``; a repository in no workspace gets its main folder's normalised basename."""
+    identity = repository_identity(start)
+    member = _matching_member(identity)
+    return member.name if member is not None else member_name(identity.main_folder)
 
 
 def docs_home(start: Path) -> Path | None:
