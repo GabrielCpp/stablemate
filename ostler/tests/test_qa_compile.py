@@ -7242,7 +7242,7 @@ def test_a_plain_name_with_a_regex_metacharacter_is_quoted() -> None:
     (flow_text,) = result.files.values()
     _header, commands = _strict_flow(flow_text)
     (check,) = [c["assertVisible"] for c in commands if "assertVisible" in c]
-    assert check == {"text": "(?sU)(?i:\\W*\\QOpen\\E\\s+\\Qtickets\\E\\s+\\Q(3)\\E\\W*)"}
+    assert check == {"text": "(?sU)(?i:\\W*\\QOpen\\E\\s+\\Qtickets\\E\\s+\\Q(3)\\E\\W*(?:(?:\\n|,\\s).*)?)"}
 
 
 def test_a_name_that_describes_a_name_is_not_addressable_on_a_phone() -> None:

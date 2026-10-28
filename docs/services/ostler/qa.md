@@ -220,7 +220,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/attribution.py::signatures@9cd259bdbe3c
 - code: ostler/ostler/qa/book_fixtures.py::resolved@360f74516536
 - code: ostler/ostler/qa/context.py::book_files@1722899c30ab
-- code: ostler/ostler/qa/drivers.py::create_driver@e13a72b3bd16
+- code: ostler/ostler/qa/drivers.py::create_driver@378b768cf1f8
 - code: ostler/ostler/qa/evidence_map.py::build_evidence_map@b2b27057b604
 - code: ostler/ostler/qa/fixtures.py::declared@a4b91574f193
 - code: ostler/ostler/qa/harness/ostler_qa.py::Qa@3d971d498ead
@@ -228,7 +228,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/harness/ostler_qa_checkout.py::copy_checkout@d2d64738e2dc
 - code: ostler/ostler/qa/harness/ostler_qa_documents.py::DocumentReading@c7b9f1b585d5
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::AttributeReading@4618eb430b45
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::template_pattern@208d06012507
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::template_pattern@75e92895f837
 - code: ostler/ostler/qa/harness/ostler_qa_files.py::Tree@1c99efa3cc05
 - code: ostler/ostler/qa/harness/ostler_qa_lap.py::LapRecord@908f9ce8d348
 - code: ostler/ostler/qa/harness/ostler_qa_paths.py::Wild@092f327030cd
@@ -285,8 +285,8 @@ are written, because each later command reads what an earlier one wrote.
   source file and a plan under spec s1
 - fixture: [qa maestro scratch plan](fixtures/qa-maestro-scratch-plan.md)
 - code: ostler/ostler/qa/harness/ostler_qa.py::settle@3d971d498ead
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@d0b9b031ae14
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@d0b9b031ae14
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@eda1b6dcc202
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@eda1b6dcc202
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-run-grpc-target
@@ -314,7 +314,7 @@ are written, because each later command reads what an earlier one wrote.
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - fixture: [qa timeout scratch plan](fixtures/qa-timeout-scratch-plan.md)
-- code: ostler/ostler/qa/drivers.py::LocalLauncher.execute@e13a72b3bd16
+- code: ostler/ostler/qa/drivers.py::LocalLauncher.execute@378b768cf1f8
 - code: ostler/ostler/qa/maestro_sessions.py::retire_dead_sessions@7f45b672bb4e
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 

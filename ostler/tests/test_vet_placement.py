@@ -380,3 +380,23 @@ def test_a_book_that_names_no_name_has_nothing_to_disagree_with() -> None:
     assert screen_components(
         _graph_with_component({"selector": "`#save`", "name": "`Save policy`"})
     )["s.md"][0].name == "Save policy"
+
+
+def _tab_check(name: str, *, device: bool) -> list[str]:
+    verdicts = check(
+        [VettedComponent(node_id="screens/home.md#tab", selector='[role="tab"]', name="Devices")],
+        [_named("navigation", ['[role="tab"]'], (0, 100, 200, 40), ["tab"], [name])],
+        VIEWPORT,
+        device=device,
+    )
+    return [v.status for v in verdicts]
+
+
+def test_a_device_region_named_by_its_leading_part_agrees_with_the_book() -> None:
+    assert _tab_check("Devices\nTab 4 of 5", device=True) == ["matched"]
+    assert _tab_check("Devices, Tab 4 of 5", device=True) == ["matched"]
+    assert _tab_check("Tab 4 of 5\nDevices", device=True) == ["misnamed"]
+
+
+def test_a_browser_region_must_carry_the_documented_name_whole() -> None:
+    assert _tab_check("Devices\nTab 4 of 5", device=False) == ["misnamed"]

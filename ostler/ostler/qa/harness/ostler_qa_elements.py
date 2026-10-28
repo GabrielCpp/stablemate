@@ -12,6 +12,7 @@ from ostler_qa_verdicts import Args, Verdict, str_arg, verdict
 
 
 _TEMPLATE_HOLE = re.compile(r"\$?\{[^{}]*\}")
+_DEVICE_TAIL = r"(?:(?:\n|,\s).*)?"
 
 
 def _escape(text: str) -> str:
@@ -30,13 +31,19 @@ def name_pattern(name: str) -> re.Pattern[str]:
     return re.compile(r"^\W*" + r"\s+".join(_escape(word) for word in name.split()) + r"\W*$", re.IGNORECASE)
 
 
+def device_name_pattern(name: str) -> re.Pattern[str]:
+    """The readings a device gives an element the book calls *name*: those words as the leading part, optionally followed by a line break or a comma and a space and more parts, such as a merged card's other lines, a tab's position or a field's error."""
+    words = r"\s+".join(_escape(word) for word in name.split())
+    return re.compile(r"^\W*" + words + r"\W*" + _DEVICE_TAIL + "$", re.IGNORECASE | re.DOTALL)
+
+
 def java_quote(text: str) -> str:
     """*text* as a literal inside a Java regex."""
     return r"\Q" + text.replace(r"\E", r"\E\\E\Q") + r"\E"
 
 
 def _located_by(name: str) -> str:
-    """The Java regex for the names an element the book calls *name* can carry, whole-string."""
+    """The Java regex for the readings a device gives an element the book calls *name*, whole-string: the name leading, more parts optionally after it."""
     if _TEMPLATE_HOLE.search(name):
         pieces: list[str] = []
         for at, part in enumerate(_TEMPLATE_HOLE.split(name)):
@@ -44,12 +51,12 @@ def _located_by(name: str) -> str:
                 pieces.append(".*?")
             if part:
                 pieces.append(java_quote(part))
-        return "(?-i:" + "".join(pieces) + ")"
-    return r"(?i:\W*" + r"\s+".join(java_quote(word) for word in name.split()) + r"\W*)"
+        return "(?-i:" + "".join(pieces) + _DEVICE_TAIL + ")"
+    return r"(?i:\W*" + r"\s+".join(java_quote(word) for word in name.split()) + r"\W*" + _DEVICE_TAIL + ")"
 
 
 def maestro_pattern(name: str = "", *, text: str | None = None) -> str:
-    """The Maestro `text:` regex for an element the book calls *name*, holding *text* when given: the same names `name_pattern`/`template_pattern` accept and the same case-sensitive substring `verify_visible` reads."""
+    """The Maestro `text:` regex for an element the book calls *name*, holding *text* when given: the same readings `device_name_pattern` accepts, a template's holes as `template_pattern` reads them, and the same case-sensitive substring `verify_visible` reads."""
     located = _located_by(name) if name.strip() else None
     held = None if text is None else "(?-i:.*" + java_quote(text) + ".*)"
     if located is not None and held is not None:

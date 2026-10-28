@@ -302,6 +302,20 @@ def test_a_field_is_found_by_its_hint() -> None:
     assert _csv_shown(role="textbox", name="Your email")
 
 
+def test_a_merged_card_is_found_by_the_name_leading_its_lines() -> None:
+    raw = _hierarchy(_drawn(**{"class": "android.view.View", "content-desc": "Pixel 9\nPH-3001 \u00b7 phone"}))
+
+    assert _shown(raw, role="heading", name="Pixel 9")
+    assert not _shown(raw, role="heading", name="PH-3001")
+
+
+def test_a_field_is_found_while_its_hint_carries_an_error() -> None:
+    raw = _hierarchy(_drawn(**{"class": "android.widget.EditText", "text": "Title, Enter a title"}))
+
+    assert _shown(raw, role="textbox", name="Title")
+    assert not _shown(raw, role="textbox", name="Enter a title")
+
+
 def test_a_button_missing_its_enabled_key_is_disabled() -> None:
     assert _csv_shown(role="button", name="Save", disabled=True)
     assert not _csv_shown(role="textbox", name="Your email", disabled=True)

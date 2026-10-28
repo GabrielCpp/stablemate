@@ -74,3 +74,31 @@ def test_the_phone_pattern_and_the_browser_agree_on_every_label(
 
 def test_java_quote_closes_and_reopens_around_an_embedded_end_marker() -> None:
     assert elements.java_quote(r"a\Eb") == r"\Qa\E\\E\Qb\E"
+
+
+DEVICE_CASES: list[tuple[str, str, str, bool]] = [
+    ("card heading", "ThinkBook 14", "ThinkBook 14\nLT-1002 \u00b7 laptop", True),
+    ("tab position", "Devices", "Devices\nTab 4 of 5", True),
+    ("field error", "Description", "Description, Describe the problem", True),
+    ("name alone", "Description", "Description", True),
+    ("required mark", "Description", "Description *", True),
+    ("longer last word", "ThinkBook 14", "ThinkBook 14 Pro", False),
+    ("longer word", "Description", "Descriptions", False),
+    ("the error alone", "Description", "Describe the problem", False),
+    ("name in a later part", "Devices", "Tab 4 of 5\nDevices", False),
+    ("comma without space", "Description", "Description,Describe", False),
+    ("template with a tail", "Title{draft.title_error}", "Title, Enter a title", True),
+]
+
+
+@pytest.mark.parametrize(("case", "name", "label", "expected"), DEVICE_CASES, ids=[c[0] for c in DEVICE_CASES])
+def test_the_phone_selector_takes_the_name_as_the_leading_part_of_a_reading(
+    case: str, name: str, label: str, expected: bool,
+) -> None:
+    assert phone_verdict(name, None, label) is expected
+    if "{" not in name:
+        assert (elements.device_name_pattern(name).match(label) is not None) is expected
+
+
+def test_the_browser_name_stays_the_whole_accessible_name() -> None:
+    assert elements.name_pattern("Description").match("Description, Describe the problem") is None

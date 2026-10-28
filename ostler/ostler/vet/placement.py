@@ -171,8 +171,16 @@ def _flat(text: str) -> str:
     return " ".join(text.split())
 
 
-def _names_agree(documented: str, actual: str) -> bool:
-    """Whether *actual* is the name *documented* gives, with each `{hole}` of a template standing for any text."""
+_PART_BREAK = re.compile(r"\n|,\s")
+
+
+def _names_agree(documented: str, actual: str, *, device: bool = False) -> bool:
+    """Whether *actual* is the name *documented* gives, with each `{hole}` of a template standing for any text. A device reads a control as its name followed by more parts after a line break or a comma, so on a device the name may be the reading's leading part."""
+    if device:
+        leads = [actual[: found.start()] for found in _PART_BREAK.finditer(actual)]
+        if any(_names_agree(documented, _flat(lead)) for lead in leads):
+            return True
+    actual = _flat(actual)
     template = compile_template(documented, ())
     if template is None or template.malformed:
         return actual.casefold() == documented.casefold()
@@ -180,7 +188,7 @@ def _names_agree(documented: str, actual: str) -> bool:
 
 
 def _name_disagreement(
-    documented: str, region: RegionBox, index: int
+    documented: str, region: RegionBox, index: int, *, device: bool = False
 ) -> list[str]:
     """Why the element the book named is not reachable by the name the book gave it."""
     if not documented:
@@ -189,7 +197,7 @@ def _name_disagreement(
     if observed is None:
         return []
     own_role, actual = observed
-    if _names_agree(_flat(documented), _flat(actual)):
+    if _names_agree(_flat(documented), actual, device=device):
         return []
     where = f"the `{own_role}` there" if own_role else "the element there"
     has = f"is named {_flat(actual)!r}" if _flat(actual) else "has no accessible name"
@@ -197,9 +205,10 @@ def _name_disagreement(
 
 
 def check(
-    components: list[VettedComponent], regions: list[RegionBox], viewport: Viewport
+    components: list[VettedComponent], regions: list[RegionBox], viewport: Viewport,
+    *, device: bool = False,
 ) -> list[ComponentVerdict]:
-    """Register a screenshot's regions against what the book says that screen contains."""
+    """Register a screenshot's regions against what the book says that screen contains. *device* says the regions were read from a phone."""
     verdicts: list[ComponentVerdict] = []
     for component in components:
         expected = component.placement.text() if component.placement else "rendered on this screen"
@@ -217,7 +226,7 @@ def check(
             if component.placement
             else []
         )
-        named = _name_disagreement(component.name, region, index)
+        named = _name_disagreement(component.name, region, index, device=device)
         status = "misnamed" if named else "misplaced" if said else "matched"
         verdicts.append(ComponentVerdict(
             node_id=component.node_id,

@@ -99,7 +99,7 @@ its first hop.
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@373cfbcaf3e9
 - code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@32347236b218
 - code: ostler/ostler/qa/compile_maestro.py::maestro_walk@32347236b218
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@208d06012507
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@75e92895f837
 - code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@3d971d498ead
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_moves.py::state_walks@357b72ed93c7
@@ -171,6 +171,10 @@ its first hop.
   device driver sees only the drawn viewport and the viewport may sit anywhere in the content.
   The downward search is optional, so a control above the viewport falls through to the upward
   search instead of failing the flow.
+- rule: a phone flow and the device vet find a control by its name as the first part of what the
+  phone reads for it, because the phone reads a control as its name followed by more parts, such as
+  a merged card's other lines or a tab's position after a line break, and a field's hint or error
+  after a comma. The browser driver keeps matching the accessible name alone.
 - generated names are unique: every `*_function_name` helper in `plan_source.py` is given the
   full set of already-emitted names (`EmittedScenarios`) and never returns one already used in
   the same plan.

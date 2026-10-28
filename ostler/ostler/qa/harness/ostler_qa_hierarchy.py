@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any
 
-from ostler_qa_elements import name_pattern
+from ostler_qa_elements import device_name_pattern
 from ostler_qa_settle import ANNOUNCED_ROLES, Reading
 
 BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
@@ -473,10 +473,10 @@ def parse_device_nodes(raw: str) -> list[DeviceNode]:
 
 
 def _named(node: DeviceNode, role: str, name: str) -> bool:
-    """Whether the node answers to the book's *name*: announced roles by the text they contain, the rest by the words whole."""
+    """Whether the node answers to the book's *name*: announced roles by the text they contain, the rest by the words leading what the device reads."""
     if role in ANNOUNCED_ROLES:
         return any(name.casefold() in found.casefold() for found in node.names)
-    pattern = name_pattern(name)
+    pattern = device_name_pattern(name)
     return any(pattern.match(found) for found in node.names)
 
 

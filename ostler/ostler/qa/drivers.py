@@ -819,10 +819,12 @@ class PythonDriver(QaDriver):
                 return [], [
                     f"scenario '{scenario_id}' vetted '{screen}' with undocumented component(s): {missing}"
                 ]
-        frame = json.loads(layout_path.read_text(encoding="utf-8"))["viewport"]
+        layout = json.loads(layout_path.read_text(encoding="utf-8"))
+        frame = layout["viewport"]
         viewport = placement.Viewport(width=frame["width"], height=frame["height"])
         regions = RegionList.validate_json(regions_path.read_bytes())
-        verdicts = placement.check(components, regions, viewport)
+        verdicts = placement.check(
+            components, regions, viewport, device=layout.get("schema") == "device-layout/1")
 
         report = {
             "schema": "vet-placement/1",
