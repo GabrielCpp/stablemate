@@ -11,5 +11,5 @@ title: Relink a moved page
 - end: the caller reads the diff of the story and finds the new path in it
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^applied: 1 file\\(s\\) changed, 0 move\\(s\\)$")
-- verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sx/story.md", matches="services/area/record\\.md")
+- verify: contents(subject="edit-scratch/art/epics/0001-first/stories/sx/story.md", matches="services/area/record\\.md")
 - fixture: [edit scratch repo](../fixtures/edit-scratch-repo.md) with an edit scratch repo whose book and story have not been edited yet

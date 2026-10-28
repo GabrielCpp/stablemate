@@ -24,7 +24,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   - --json (print `{ok, id, name, message}`)
 - args: name: the bare slug, which the command prefixes with the next four-digit number
 - exits: 0 when the epic is created and its directory name is printed
-- run: invoke(argv=["-C", "plan-scratch", "create", "epic", "fourth", "--title", "Fourth epic", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "create", "epic", "fourth", "--title", "Fourth epic", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="name", matches="-fourth$")
@@ -46,7 +46,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   story to an epic and writes its story page
 - args: epic, slug: the epic's directory name and the new story's slug
 - exits: 0 when the epic exists and the story is created
-- run: invoke(argv=["-C", "plan-scratch", "create", "story", "0002-second", "newbie", "--title", "Newbie", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "create", "story", "0002-second", "newbie", "--title", "Newbie", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="message", matches="in epic '0002-second'$")
@@ -65,7 +65,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - usage: ostler create feature SLUG --title TITLE [--json]: writes a feature page with an allocated
   id
 - exits: 0 when the feature is created
-- run: invoke(argv=["-C", "plan-scratch", "create", "feature", "gamma", "--title", "Gamma", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "create", "feature", "gamma", "--title", "Gamma", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="message", matches="^created feature 'gamma'")
@@ -84,7 +84,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - usage: ostler create milestone NAME --title TITLE [--json]: writes a milestone folder holding a `milestone.md`
   stub with an allocated id
 - exits: 0 when the milestone is created
-- run: invoke(argv=["-C", "plan-scratch", "create", "milestone", "m2", "--title", "M two", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "create", "milestone", "m2", "--title", "M two", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="name", equals="m2")
@@ -102,7 +102,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-next-epic
 - usage: ostler next-epic [--json]: names the first epic in the queue that still has unfinished work
 - exits: 0 when an epic has unfinished work
-- run: invoke(argv=["-C", "plan-scratch", "next-epic", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "next-epic", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="name", equals="0001-first")
 - verify: json_path(path="stories", equals=9)
@@ -123,7 +123,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   give-up stamp holds back
 - args: epic: the epic's directory name
 - exits: 0 when the epic has a runnable story
-- run: invoke(argv=["-C", "plan-scratch", "next-story", "0001-first", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "next-story", "0001-first", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="slug", equals="alpha")
 - verify: json_path(path="status", equals="Not started")
@@ -144,7 +144,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   Implementation Status section
 - args: story, status: the story's id and the new status text
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "set-status", "TST-01M585P8MYP5WJAMJ89Z981GEG", "in-progress"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "set-status", "TST-01M585P8MYP5WJAMJ89Z981GEG", "in-progress"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^status of 'TST-01M585P8MYP5WJAMJ89Z981GEG' → in-progress$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story whose status is Not
@@ -162,7 +162,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-conflict
 - usage: ostler conflict STORY TEXT: records a conflict note on a story that a human must settle
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "conflict", "TST-01M585PCD35RNCP4A5GFKC2B4C", "the criteria disagree"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "conflict", "TST-01M585PCD35RNCP4A5GFKC2B4C", "the criteria disagree"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^conflict recorded on 'TST-01M585PCD35RNCP4A5GFKC2B4C'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story with no conflict
@@ -181,7 +181,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - flags:
   - --clear (remove the note instead of recording one)
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "conflict", "TST-01M585P9FE369J59J2MCASSD5G", "--clear"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "conflict", "TST-01M585P9FE369J59J2MCASSD5G", "--clear"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^conflict cleared off 'TST-01M585P9FE369J59J2MCASSD5G'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story that carries a conflict
@@ -199,7 +199,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - usage: ostler unblock [--story STORY | --epic EPIC] [--json]: clears the give-up stamp off a
   blocked story and returns it to Not started
 - exits: 0 whether or not the story was blocked
-- run: invoke(argv=["-C", "plan-scratch", "unblock", "TST-01M585PA7RWXZ1A524BJB1HPFQ", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "unblock", "TST-01M585PA7RWXZ1A524BJB1HPFQ", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="message", matches="^unblocked 1")
@@ -223,7 +223,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   - --by (who approves the story)
   - --note (a free-text note kept with the record)
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "freeze", "TST-01M585PD385GTJPSFXM5M5WV5N", "--by", "me", "--note", "ok"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "freeze", "TST-01M585PD385GTJPSFXM5M5WV5N", "--by", "me", "--note", "ok"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="freeze story 'TST-01M585PD385GTJPSFXM5M5WV5N'")
 - verify: stdout(matches="recorded in .*ids\\.json")
@@ -241,7 +241,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-unfreeze
 - usage: ostler unfreeze STORY: removes the story's frozen record from `.agents/ids.json`
 - exits: 0 when the story is frozen
-- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "unfreeze", "TST-01M585PAZRC83P9AZVSSQB33SZ"])
+- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "unfreeze", "TST-01M585PAZRC83P9AZVSSQB33SZ"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^unfreeze 'TST-01M585PAZRC83P9AZVSSQB33SZ'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story that is frozen
@@ -256,11 +256,11 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@9f40990df510
 
 ### ostler-path-epic
-- usage: ostler path epic EPIC: prints the epic directory, relative to the repo root
+- usage: ostler path epic EPIC: prints the epic directory, an absolute path under the artifacts dir's `epics/` shelf
 - exits: 0 when the epic exists
-- run: invoke(argv=["-C", "plan-scratch", "path", "epic", "0001-first"])
+- run: invoke(argv=["-C", "plan-scratch", "path", "epic", "0001-first"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="^docs/epics/0001-first$")
+- verify: stdout(matches="^.*/plan-scratch/art/epics/0001-first$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic named 0001-first
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@b2fcdfeb41a0
@@ -274,9 +274,9 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-path-story
 - usage: ostler path story STORY: prints the path of a story's page, STORY being the story id
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "path", "story", "TST-01M585P7WKBH9YJ8E6NA73W4S9"])
+- run: invoke(argv=["-C", "plan-scratch", "path", "story", "TST-01M585P7WKBH9YJ8E6NA73W4S9"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
-- verify: stdout(matches="^docs/epics/0001-first/stories/alpha/story\\.md$")
+- verify: stdout(matches="^.*/plan-scratch/art/epics/0001-first/stories/alpha/story\\.md$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story named alpha
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@b2fcdfeb41a0
@@ -290,7 +290,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-path-branch
 - usage: ostler path branch STORY: prints the git branch name a story's work goes on
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "path", "branch", "TST-01M585P7WKBH9YJ8E6NA73W4S9"])
+- run: invoke(argv=["-C", "plan-scratch", "path", "branch", "TST-01M585P7WKBH9YJ8E6NA73W4S9"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^alpha$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story named alpha
@@ -304,9 +304,9 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@9f40990df510
 
 ### ostler-todo-add
-- usage: ostler todo add EPIC: appends an epic to the ordered work queue in `docs/epics/index.md`
+- usage: ostler todo add EPIC: appends an epic to the ordered work queue in `index.md` at the top of the artifacts dir's `epics/` shelf
 - exits: 0 when the epic exists and is not queued yet
-- run: invoke(argv=["-C", "plan-scratch", "todo", "add", "0003-third"])
+- run: invoke(argv=["-C", "plan-scratch", "todo", "add", "0003-third"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^queued epic '0003-third'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a queue that holds two epics
@@ -323,7 +323,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-todo-list
 - usage: ostler todo list: prints the queued epics, one per line, in order
 - exits: 0 always
-- run: invoke(argv=["-C", "plan-scratch", "todo", "list"])
+- run: invoke(argv=["-C", "plan-scratch", "todo", "list"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^0001-first$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a queue that holds two epics
@@ -340,7 +340,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-todo-prune
 - usage: ostler todo prune EPIC: removes an epic from the work queue without deleting it
 - exits: 0 when the epic is queued
-- run: invoke(argv=["-C", "plan-scratch", "todo", "prune", "0002-second"])
+- run: invoke(argv=["-C", "plan-scratch", "todo", "prune", "0002-second"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^pruned epic '0002-second' from the queue$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a queue that holds two epics
@@ -357,7 +357,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-todo-reorder
 - usage: ostler todo reorder EPIC [EPIC ...]: rewrites the queue in the order given
 - exits: 0 when every named epic is queued
-- run: invoke(argv=["-C", "plan-scratch", "todo", "reorder", "0001-first"])
+- run: invoke(argv=["-C", "plan-scratch", "todo", "reorder", "0001-first"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^reordered epics queue$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a queue that holds 0001-first
@@ -372,7 +372,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/todo.py::list_epics@eb0ea0bc4039
 
 ### ostler-backlog-add
-- usage: ostler backlog add SUMMARY --repo REPO --area AREA [--pattern PATTERN] [--symbol SYMBOL ...] [--id ID] [--body TEXT] [--prefix PREFIX] [--json]: files a record a person wrote on the [debt register](concepts/the-debt-register.md) and commits it in the artifacts repo as `chore(REPO): file ID`; `ostler create backlog-item` is the same command under another name
+- usage: ostler backlog add SUMMARY --repo REPO --area AREA [--pattern PATTERN] [--symbol SYMBOL ...] [--id ID] [--body TEXT] [--prefix PREFIX] [--json]: files a record a person wrote on the [debt register](concepts/the-debt-register.md) under the artifacts dir's `backlogs/` shelf, which no git repository tracks; `ostler create backlog-item` is the same command under another name
 - flags:
   - --repo (the workspace repository the record is about, one lowercase kebab segment)
   - --area (the area folder the record is shelved under, one lowercase kebab segment)
@@ -383,7 +383,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   - --prefix (the id prefix to pin when the repo has none yet)
   - --json (print `{ok, id, name, message}` instead of the message line)
 - args: summary (the record's one-line listing text)
-- exits: 0 when the record is filed; 1 with the reason when it is refused (an id the workspace already holds, a repo or area that is not one lowercase kebab segment, an empty or multi-line summary, or a failed artifacts commit)
+- exits: 0 when the record is filed; 1 with the reason when it is refused (an id the workspace already holds, a repo or area that is not one lowercase kebab segment, or an empty or multi-line summary)
 - run: invoke(argv=["-C", "plan-scratch", "backlog", "add", "third item", "--repo", "api-service", "--area", "billing", "--id", "X-3"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^filed record 'X-3'$")
@@ -418,13 +418,13 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@9f40990df510
 
 ### ostler-backlog-adopt
-- usage: ostler backlog adopt --repo REPO FILE [--prefix PREFIX] [--json]: turns every top-level bullet of an old backlog list into a record of REPO by the import rules of [the debt register](concepts/the-debt-register.md#importing-an-old-list), commits them together in the artifacts repo as `chore(REPO): import the backlog list`, then deletes FILE; it prints one listing line per record, then `imported N records, kept K ids`
+- usage: ostler backlog adopt --repo REPO FILE [--prefix PREFIX] [--json]: turns every top-level bullet of an old backlog list into a record of REPO by the import rules of [the debt register](concepts/the-debt-register.md#importing-an-old-list), then deletes FILE; it prints one listing line per record, then `imported N records, kept K ids`
 - flags:
   - --repo (the workspace repository every imported record belongs to; required)
   - --prefix (the id prefix to pin when the repo has none yet)
   - --json (print the imported records as one indented JSON array of their full fields instead of the listing)
 - args: file (the markdown list to import)
-- exits: 0 when the list is imported; 1 with the reason, leaving FILE and the shelf as they were, when FILE is missing, holds no bullets, uses one id twice, keeps an id the workspace already holds, or holds a bullet that makes an invalid record, or when the artifacts commit fails
+- exits: 0 when the list is imported; 1 with the reason, leaving FILE and the shelf as they were, when FILE is missing, holds no bullets, uses one id twice, keeps an id the workspace already holds, or holds a bullet that makes an invalid record
 - run: invoke(argv=["-C", "plan-scratch", "backlog", "adopt", "--repo", "api-service", "plan-scratch/old-list.md", "--prefix", "BL"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^imported 2 records, kept 0 ids$")
@@ -440,7 +440,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@9f40990df510
 
 ### ostler-backlog-prune
-- usage: ostler backlog prune ID [--as done|dropped|promoted] [--reason TEXT] [--json]: closes a record on the [debt register](concepts/the-debt-register.md#closing-a-record) and commits the close in the artifacts repo as `chore(REPO): close ID as STATUS`
+- usage: ostler backlog prune ID [--as done|dropped|promoted] [--reason TEXT] [--json]: closes a record on the [debt register](concepts/the-debt-register.md#closing-a-record) on the `backlogs/` shelf of the artifacts dir, which no git repository tracks
 - flags:
   - --as (the status the record ends at: `done` by default, or `dropped` or `promoted`)
   - --reason (why the record ended, written to its `reason`; required with `dropped` and `promoted`)
@@ -486,7 +486,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   - --layer (repeatable; one of frontend, backend, infra)
   - --service (repeatable; the service the seed lands in)
 - exits: 0 when the epic exists and the seed id is new
-- run: invoke(argv=["-C", "plan-scratch", "seed", "add", "0002-second", "SD-9", "--summary", "nine", "--status", "backlog", "--layer", "backend"])
+- run: invoke(argv=["-C", "plan-scratch", "seed", "add", "0002-second", "SD-9", "--summary", "nine", "--status", "backlog", "--layer", "backend"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^added seed 'SD-9' in epic '0002-second'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic with no seed
@@ -503,7 +503,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-seed-remove
 - usage: ostler seed remove EPIC ID: removes a seed section from an epic page
 - exits: 0 when the seed exists
-- run: invoke(argv=["-C", "plan-scratch", "seed", "remove", "0001-first", "SD-2"])
+- run: invoke(argv=["-C", "plan-scratch", "seed", "remove", "0001-first", "SD-2"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^removed seed 'SD-2' from epic '0001-first'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic that holds seed SD-2
@@ -524,7 +524,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   - --covers (the seed ids the story covers, or `(none)`)
   - --depends (the complete blocker list, or `(none)` to clear it)
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "update", "story", "TST-01M585PDS2NEB3RYTGWV8G3TWQ", "--title", "Story india b", "--covers", "(none)", "--depends", "(none)"])
+- run: invoke(argv=["-C", "plan-scratch", "update", "story", "TST-01M585PDS2NEB3RYTGWV8G3TWQ", "--title", "Story india b", "--covers", "(none)", "--depends", "(none)"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^updated story 'india' in epic '0001-first'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story named india
@@ -541,7 +541,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-delete-epic
 - usage: ostler delete epic EPIC: removes an epic directory and its entry in the epics index
 - exits: 0 when the epic exists
-- run: invoke(argv=["-C", "plan-scratch", "delete", "epic", "0004-junk"])
+- run: invoke(argv=["-C", "plan-scratch", "delete", "epic", "0004-junk"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^deleted epic '0004-junk'")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic named 0004-junk with no
@@ -560,7 +560,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-delete-story
 - usage: ostler delete story STORY: removes a story from its epic, STORY being the story id
 - exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "delete", "story", "TST-01M585PFWZZXH4Y6KNMH1VK58H"])
+- run: invoke(argv=["-C", "plan-scratch", "delete", "story", "TST-01M585PFWZZXH4Y6KNMH1VK58H"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^deleted story 'sx' from epic '0002-second'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic holding one story
@@ -577,7 +577,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-delete-feature
 - usage: ostler delete feature SLUG: removes a feature page
 - exits: 0 when the feature exists
-- run: invoke(argv=["-C", "plan-scratch", "delete", "feature", "beta"])
+- run: invoke(argv=["-C", "plan-scratch", "delete", "feature", "beta"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^deleted feature 'beta'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with two features
@@ -595,7 +595,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - usage: ostler template new NAME [KIND ...]: declares a template in `.agents/templates.yml`, with a
   stub for each kind named
 - exits: 0 when the template name is free
-- run: invoke(argv=["-C", "plan-scratch", "template", "new", "tpl3", "widget"])
+- run: invoke(argv=["-C", "plan-scratch", "template", "new", "tpl3", "widget"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^created template 'tpl3' \\(1 kind\\(s\\)\\)$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with two declared templates
@@ -614,7 +614,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - flags:
   - --set (repeatable; a dotted kind.field path and its new value)
 - exits: 0 when the template and the field exist
-- run: invoke(argv=["-C", "plan-scratch", "template", "edit", "tpl2", "--set", "memo.doc_root=docs/memos"])
+- run: invoke(argv=["-C", "plan-scratch", "template", "edit", "tpl2", "--set", "memo.doc_root=docs/memos"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^updated template 'tpl2'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a template tpl2 with a memo kind
@@ -631,7 +631,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-template-find
 - usage: ostler template find [--json]: lists the declared templates and how many kinds each holds
 - exits: 0 always
-- run: invoke(argv=["-C", "plan-scratch", "template", "find", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "template", "find", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="[0].name", equals="tpl")
 - verify: json_path(path="[0].kinds", equals=1)
@@ -649,7 +649,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-template-find-one
 - usage: ostler template find NAME [--json]: prints one template with each of its kinds in full
 - exits: 0 when the template exists
-- run: invoke(argv=["-C", "plan-scratch", "template", "find", "tpl", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "template", "find", "tpl", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="[0].name", equals="tpl")
 - verify: json_path(path="[0].kinds[0].name", equals="note")
@@ -668,7 +668,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-template-delete
 - usage: ostler template delete NAME: removes a template from `.agents/templates.yml`
 - exits: 0 when the template exists
-- run: invoke(argv=["-C", "plan-scratch", "template", "delete", "tpl2"])
+- run: invoke(argv=["-C", "plan-scratch", "template", "delete", "tpl2"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^deleted template 'tpl2'$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a template tpl2
@@ -686,7 +686,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - usage: ostler template apply NAME: creates each kind's document folder and adds the guidance to
   `CLAUDE.md`
 - exits: 0 when the template exists
-- run: invoke(argv=["-C", "plan-scratch", "template", "apply", "tpl"])
+- run: invoke(argv=["-C", "plan-scratch", "template", "apply", "tpl"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="^applied template 'tpl' \\(1 dir\\(s\\) scaffolded\\)$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a template tpl whose note folder
@@ -705,7 +705,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - usage: ostler new KIND NAME [KEY=VALUE ...] [--json]: creates a document of a template-declared
   kind
 - exits: 0 when the kind is declared and the name is free
-- run: invoke(argv=["-C", "plan-scratch", "new", "note", "n1", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "new", "note", "n1", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="message", equals="created note 'n1'")
@@ -724,7 +724,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-find-instances
 - usage: ostler find KIND [NAME] [--json]: lists the documents of a template-declared kind
 - exits: 0 when the kind is declared
-- run: invoke(argv=["-C", "plan-scratch", "find", "note", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "find", "note", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="[0].type", equals="note")
 - verify: json_path(path="[0].path", matches="^docs/note/n[0-9]/note\\.md$")
@@ -744,7 +744,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - usage: ostler set KIND NAME KEY=VALUE [KEY=VALUE ...] [--json]: edits front-matter fields of a
   document of a template-declared kind
 - exits: 0 when the document exists
-- run: invoke(argv=["-C", "plan-scratch", "set", "note", "n2", "title=Hello", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "set", "note", "n2", "title=Hello", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="message", equals="updated note 'n2'")
@@ -763,7 +763,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 ### ostler-remove-instance
 - usage: ostler remove KIND NAME [--json]: deletes a document of a template-declared kind
 - exits: 0 when the document exists
-- run: invoke(argv=["-C", "plan-scratch", "remove", "note", "n3", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "remove", "note", "n3", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)
 - verify: json_path(path="message", equals="deleted note 'n3'")
@@ -786,7 +786,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   - --max-age-days (the age, in days, past which an entry goes; default 14)
   - --json (print `{dir, removed}`)
 - exits: 0 always
-- run: invoke(argv=["-C", "plan-scratch", "cache", "clean", "--max-age-days", "36500", "--json"])
+- run: invoke(argv=["-C", "plan-scratch", "cache", "clean", "--max-age-days", "36500", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="removed", equals=0)
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with no state of its own, since the

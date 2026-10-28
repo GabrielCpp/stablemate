@@ -119,7 +119,7 @@ last.
 - run: invoke(argv=["-C", "edit-scratch", "edit", "relink", "../../../../services/area/rec.md", "../../../../services/area/record.md", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^applied: 1 file\\(s\\) changed, 0 move\\(s\\)$")
-- verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sx/story.md", matches="services/area/record\\.md")
+- verify: contents(subject="edit-scratch/art/epics/0001-first/stories/sx/story.md", matches="services/area/record\\.md")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
 - code: ostler/ostler/edit.py::relink@63e4a8c64c39
@@ -151,7 +151,7 @@ last.
 - run: invoke(argv=["-C", "edit-scratch", "edit", "settle-review", "TST-01M585PFWZZXH4Y6KNMH1VK58H", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^applied: 2 file\\(s\\) changed, 0 move\\(s\\)$")
-- verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sx/story.md", matches="Review fixes applied")
+- verify: contents(subject="edit-scratch/art/epics/0001-first/stories/sx/story.md", matches="Review fixes applied")
 - verify: contents(subject="edit-scratch/art/specs/TST-01M585PFWZZXH4Y6KNMH1VK58H/review-settlement.json", matches="\"all_settled\": true")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
@@ -202,8 +202,8 @@ last.
 - run: invoke(argv=["-C", "edit-scratch", "edit", "rename", "sx", "sy", "--write"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^applied: 2 file\\(s\\) changed, 1 move\\(s\\)$")
-- verify: absent(subject="edit-scratch/docs/epics/0001-first/stories/sx")
-- verify: contents(subject="edit-scratch/docs/epics/0001-first/stories/sy/story.md", matches="slug: sy")
+- verify: absent(subject="edit-scratch/art/epics/0001-first/stories/sx")
+- verify: contents(subject="edit-scratch/art/epics/0001-first/stories/sy/story.md", matches="slug: sy")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
 - code: ostler/ostler/edit.py::rename@63e4a8c64c39

@@ -16,7 +16,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
 
 
 ### ostler-create-backlog-item
-- usage: ostler create backlog-item SUMMARY --repo REPO --area AREA [--pattern PATTERN] [--symbol SYMBOL ...] [--id ID] [--body TEXT] [--prefix PREFIX] [--json] — files a record a person wrote on the debt register in the artifacts repo and commits it there; with no `--id` it allocates a fresh full id, so two calls with the same summary each get their own record
+- usage: ostler create backlog-item SUMMARY --repo REPO --area AREA [--pattern PATTERN] [--symbol SYMBOL ...] [--id ID] [--body TEXT] [--prefix PREFIX] [--json] — files a record a person wrote on the debt register, on the `backlogs/` shelf of the artifacts dir, which no git repository tracks; with no `--id` it allocates a fresh full id, so two calls with the same summary each get their own record
 - flags:
   - --repo and --area (the workspace repository and the area folder the record is shelved under, each one lowercase kebab segment), --pattern (the fix the record calls for, `untriaged` when omitted), --symbol (a code symbol the record names, repeatable), --id (file under this id instead of an allocated one), --body (the record's text below the summary), --prefix (override the derived id prefix), --json (print `{ok, id, name, message}` instead of a line of text)
 - args: summary — the record's one-line listing text

@@ -130,7 +130,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: exit_status(code=1)
 - verify: json_path(path="errors", equals=4)
 - verify: json_path(path="findings[0].code", equals="register-record-unreadable")
-- verify: json_path(path="findings[0].path", matches="^.*/backlog/api-service/billing/X-2/record\\.md$")
+- verify: json_path(path="findings[0].path", matches="^.*/backlogs/api-service/billing/X-2/record\\.md$")
 - verify: json_path(path="findings[1].code", equals="decision-back-link-missing")
 - verify: json_path(path="findings[1].message", equals="decision 'D-1' lists record 'X-1', whose `decision` is 'D-9'")
 - verify: json_path(path="findings[2].code", equals="decision-evidence-unresolved")

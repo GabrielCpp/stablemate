@@ -15,7 +15,7 @@ fixed|declined`), so it never becomes an answer at all. `F3` is left unanswered.
 ### write-answer-story
 
 - kind: seed
-- run: mkdir -p answer-scratch/docs/epics/0001-first/stories/sx && printf -- '---\ntype: epic\nid: TST-01M585PEGMRE3FWETV74QRSSY3\ntitle: First epic\nstatus: planned\n---\n# Epic: First epic\n\n## Seeds\n\n## Stories\n\n### sx\n- title: Story sx\n- id: TST-01M585PFWZZXH4Y6KNMH1VK58H\n- covers: (none)\n' > answer-scratch/docs/epics/0001-first/epic.md && printf -- '---\ntype: story\nid: TST-01M585PFWZZXH4Y6KNMH1VK58H\nslug: sx\nstatus: Not started\n---\n# Story: Story sx\n\n## Dependencies\n\n(none)\n\n## Fixtures\n\n(none)\n\n## Context\n\n(none)\n\n## Acceptance Criteria\n\n## Non-Functional Acceptance Criteria\n\n## Technical Notes\n\n## Implementation Status\n\n- **Status**: Not started\n' > answer-scratch/docs/epics/0001-first/stories/sx/story.md
+- run: mkdir -p answer-scratch/art/epics/0001-first/stories/sx && printf -- '---\ntype: epic\nid: TST-01M585PEGMRE3FWETV74QRSSY3\ntitle: First epic\nstatus: planned\n---\n# Epic: First epic\n\n## Seeds\n\n## Stories\n\n### sx\n- title: Story sx\n- id: TST-01M585PFWZZXH4Y6KNMH1VK58H\n- covers: (none)\n' > answer-scratch/art/epics/0001-first/epic.md && printf -- '---\ntype: story\nid: TST-01M585PFWZZXH4Y6KNMH1VK58H\nslug: sx\nstatus: Not started\n---\n# Story: Story sx\n\n## Dependencies\n\n(none)\n\n## Fixtures\n\n(none)\n\n## Context\n\n(none)\n\n## Acceptance Criteria\n\n## Non-Functional Acceptance Criteria\n\n## Technical Notes\n\n## Implementation Status\n\n- **Status**: Not started\n' > answer-scratch/art/epics/0001-first/stories/sx/story.md
 
 ### write-review-answers
 
