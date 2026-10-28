@@ -13,6 +13,7 @@ from ostler_qa_verdicts import Args, Verdict, str_arg, verdict
 
 _TEMPLATE_HOLE = re.compile(r"\$?\{[^{}]*\}")
 _DEVICE_TAIL = r"(?:(?:\n|,\s).*)?"
+_DEVICE_HEAD = r"(?:.*\n)?"
 
 
 def _escape(text: str) -> str:
@@ -32,9 +33,9 @@ def name_pattern(name: str) -> re.Pattern[str]:
 
 
 def device_name_pattern(name: str) -> re.Pattern[str]:
-    """The readings a device gives an element the book calls *name*: those words as the leading part, optionally followed by a line break or a comma and a space and more parts, such as a merged card's other lines, a tab's position or a field's error."""
+    """The readings a device gives an element the book calls *name*: those words as any line of the reading, such as one line of a merged row or a tab's name before its position, or as a field's name before the hint or error that follows a comma and a space."""
     words = r"\s+".join(_escape(word) for word in name.split())
-    return re.compile(r"^\W*" + words + r"\W*" + _DEVICE_TAIL + "$", re.IGNORECASE | re.DOTALL)
+    return re.compile("^" + _DEVICE_HEAD + r"\W*" + words + r"\W*" + _DEVICE_TAIL + "$", re.IGNORECASE | re.DOTALL)
 
 
 def java_quote(text: str) -> str:
@@ -43,7 +44,7 @@ def java_quote(text: str) -> str:
 
 
 def _located_by(name: str) -> str:
-    """The Java regex for the readings a device gives an element the book calls *name*, whole-string: the name leading, more parts optionally after it."""
+    """The Java regex for the readings a device gives an element the book calls *name*, whole-string: the name as any line of the reading, or as a field's name before the hint or error that follows a comma and a space."""
     if _TEMPLATE_HOLE.search(name):
         pieces: list[str] = []
         for at, part in enumerate(_TEMPLATE_HOLE.split(name)):
@@ -51,8 +52,8 @@ def _located_by(name: str) -> str:
                 pieces.append(".*?")
             if part:
                 pieces.append(java_quote(part))
-        return "(?-i:" + "".join(pieces) + _DEVICE_TAIL + ")"
-    return r"(?i:\W*" + r"\s+".join(java_quote(word) for word in name.split()) + r"\W*" + _DEVICE_TAIL + ")"
+        return "(?-i:" + _DEVICE_HEAD + "".join(pieces) + _DEVICE_TAIL + ")"
+    return r"(?i:" + _DEVICE_HEAD + r"\W*" + r"\s+".join(java_quote(word) for word in name.split()) + r"\W*" + _DEVICE_TAIL + ")"
 
 
 def maestro_pattern(name: str = "", *, text: str | None = None) -> str:

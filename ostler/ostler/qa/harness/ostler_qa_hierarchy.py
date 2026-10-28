@@ -473,7 +473,7 @@ def parse_device_nodes(raw: str) -> list[DeviceNode]:
 
 
 def _named(node: DeviceNode, role: str, name: str) -> bool:
-    """Whether the node answers to the book's *name*: announced roles by the text they contain, the rest by the words leading what the device reads."""
+    """Whether the node answers to the book's *name*: announced roles by the text they contain, the rest by the words of one line of what the device reads."""
     if role in ANNOUNCED_ROLES:
         return any(name.casefold() in found.casefold() for found in node.names)
     pattern = device_name_pattern(name)

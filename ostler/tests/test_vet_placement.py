@@ -392,10 +392,24 @@ def _tab_check(name: str, *, device: bool) -> list[str]:
     return [v.status for v in verdicts]
 
 
-def test_a_device_region_named_by_its_leading_part_agrees_with_the_book() -> None:
+def test_a_device_region_named_by_a_part_of_its_reading_agrees_with_the_book() -> None:
     assert _tab_check("Devices\nTab 4 of 5", device=True) == ["matched"]
     assert _tab_check("Devices, Tab 4 of 5", device=True) == ["matched"]
-    assert _tab_check("Tab 4 of 5\nDevices", device=True) == ["misnamed"]
+    assert _tab_check("Tab 4 of 5\nDevices", device=True) == ["matched"]
+
+
+def test_a_device_region_names_the_book_by_any_part_of_its_reading() -> None:
+    def check_named(name: str) -> list[str]:
+        verdicts = check(
+            [VettedComponent(node_id="screens/home.md#cat", selector="#cat", name="Software")],
+            [_named("status", ["#cat"], (0, 100, 200, 40), ["text"], [name])],
+            VIEWPORT,
+            device=True,
+        )
+        return [v.status for v in verdicts]
+
+    assert check_named("Received\nSoftware\nTD-17") == ["matched"]
+    assert check_named("Software update") == ["misnamed"]
 
 
 def test_a_browser_region_must_carry_the_documented_name_whole() -> None:

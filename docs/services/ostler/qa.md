@@ -228,7 +228,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/qa/harness/ostler_qa_checkout.py::copy_checkout@d2d64738e2dc
 - code: ostler/ostler/qa/harness/ostler_qa_documents.py::DocumentReading@c7b9f1b585d5
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::AttributeReading@0596499cd4fb
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::template_pattern@75e92895f837
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::template_pattern@ce61d0ffcd61
 - code: ostler/ostler/qa/harness/ostler_qa_files.py::Tree@1c99efa3cc05
 - code: ostler/ostler/qa/harness/ostler_qa_lap.py::LapRecord@908f9ce8d348
 - code: ostler/ostler/qa/harness/ostler_qa_paths.py::Wild@092f327030cd
@@ -285,8 +285,8 @@ are written, because each later command reads what an earlier one wrote.
   source file and a plan under spec s1
 - fixture: [qa maestro scratch plan](fixtures/qa-maestro-scratch-plan.md)
 - code: ostler/ostler/qa/harness/ostler_qa.py::settle@3d971d498ead
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@eda1b6dcc202
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@eda1b6dcc202
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@21931566bfbc
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@21931566bfbc
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-run-grpc-target

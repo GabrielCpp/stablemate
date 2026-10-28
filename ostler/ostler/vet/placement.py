@@ -175,10 +175,17 @@ _PART_BREAK = re.compile(r"\n|,\s")
 
 
 def _names_agree(documented: str, actual: str, *, device: bool = False) -> bool:
-    """Whether *actual* is the name *documented* gives, with each `{hole}` of a template standing for any text. A device reads a control as its name followed by more parts after a line break or a comma, so on a device the name may be the reading's leading part."""
+    """Whether *actual* is the name *documented* gives, with each `{hole}` of a template standing for any text. A device merges text into one reading of parts set apart by a line break or a comma and a space, so on a device the name may be any run of lines, or a field's name before the hint or error that follows a comma and a space."""
     if device:
-        leads = [actual[: found.start()] for found in _PART_BREAK.finditer(actual)]
-        if any(_names_agree(documented, _flat(lead)) for lead in leads):
+        breaks = list(_PART_BREAK.finditer(actual))
+        starts = [0] + [found.end() for found in breaks if found.group() == "\n"]
+        ends = [found.start() for found in breaks] + [len(actual)]
+        if any(
+            _names_agree(documented, _flat(actual[start:end]))
+            for start in starts
+            for end in ends
+            if start < end
+        ):
             return True
     actual = _flat(actual)
     template = compile_template(documented, ())

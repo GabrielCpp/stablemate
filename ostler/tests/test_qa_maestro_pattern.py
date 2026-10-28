@@ -85,14 +85,18 @@ DEVICE_CASES: list[tuple[str, str, str, bool]] = [
     ("longer last word", "ThinkBook 14", "ThinkBook 14 Pro", False),
     ("longer word", "Description", "Descriptions", False),
     ("the error alone", "Description", "Describe the problem", False),
-    ("name in a later part", "Devices", "Tab 4 of 5\nDevices", False),
+    ("name in a later part", "Devices", "Tab 4 of 5\nDevices", True),
+    ("middle line of a merged row", "Software", "Received\nSoftware\nTD-17", True),
+    ("name after a comma is a hint, not a name", "Software", "Received, Software", False),
+    ("name inside a longer part", "Software", "Received\nSoftware update\nTD-17", False),
+    ("name glued to a word", "Software", "MySoftware", False),
     ("comma without space", "Description", "Description,Describe", False),
     ("template with a tail", "Title{draft.title_error}", "Title, Enter a title", True),
 ]
 
 
 @pytest.mark.parametrize(("case", "name", "label", "expected"), DEVICE_CASES, ids=[c[0] for c in DEVICE_CASES])
-def test_the_phone_selector_takes_the_name_as_the_leading_part_of_a_reading(
+def test_the_phone_selector_takes_the_name_as_one_part_of_a_reading(
     case: str, name: str, label: str, expected: bool,
 ) -> None:
     assert phone_verdict(name, None, label) is expected
