@@ -394,6 +394,10 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
     Finding while planning slice 2: the answer ledger carries the disposition and the reason
     but not the category. The worklist item that filed the finding carries it. A story run
     on trunk has no merge base that separates its commits from trunk's.
+17. Section 5, clone report, and assumption 4: lockfiles join the always-ignored paths.
+    Finding while verifying slice 2: range mode on a reference commit that added a web
+    service reported 9 pairs, all between two `package-lock.json` files. A lockfile
+    carries no generated-file marker, and a repo that overrides `ignore` must not lose it.
 
 ### Parts
 
@@ -446,7 +450,8 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
 - Clone report: **New** (revised, log 7). One adapter function runs
   `jscpd . --baseline-from-ref <base> -r json -o <tmp> --min-tokens --min-lines --ignore`
   from the repository root, so file names are repo-relative. It always adds
-  `.git/**,.agents/**,.claude/**,.github/**` and `**/*.md` to the ignore list. It reads
+  `.git/**,.agents/**,.claude/**,.github/**`, `**/*.md` and the package managers' lockfiles
+  to the ignore list (revised, log 17). It reads
   `duplicates[]`: `firstFile` and `secondFile` with `name` and `start`, plus `lines`,
   `isNew` and `format`. Both sides span `start` to `start + lines - 1`, never
   `secondFile.end`. It drops a pair whose side lies in a file carrying a generated-file
@@ -648,6 +653,7 @@ at review, Finding what exists in the plan, Sharing in scope.
      They account for all 128 generated pairs in the reference repo.
    - If wrong: a generated pair refuses a commit until the repo adds its path to
      `ignore`. Clone threshold.
+   - Revised (log 17): lockfiles carry no marker, so the adapter ignores them by path.
 5. **Every cross-service import names a path form or a manifest package name.**
    - Decided: Unit identity has those forms only.
    - Basis: the reference repo's cross-service import is a Go module path. TypeScript
