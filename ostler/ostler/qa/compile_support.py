@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 from typing import get_args
 
 from ostler import accessible_names
+from ostler.checks import Call
 from ostler.checks import CheckValue
 from ostler.checks import parse_call
 from ostler.markdown import extract_refs
@@ -23,6 +24,7 @@ from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Gap
+from ostler.qa.plan_source import ScenarioRefusal
 from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import python_literal
@@ -120,6 +122,54 @@ def trigger_name(raw: str) -> str:
     value = bullet_value(raw) or ""
     parsed = parse_call(value)
     return (parsed.name if parsed is not None else value).lower()
+
+
+TRIGGER_ACTS: dict[str, tuple[str, ...]] = {
+    "fill": ("value",), "press": ("key",), "paste": ("text", "html"), "drop": ("file",),
+    "upload": ("file",),
+}
+
+_TRIGGER_EXAMPLES = {"press": "Escape", "drop": "fixtures/sample.docx", "upload": "fixtures/sample.xml"}
+
+
+def _trigger_arguments(raw: str, params: tuple[str, ...]) -> dict[str, str]:
+    """The non-empty string arguments *raw* passes by *params*, a lone positional one standing for the first."""
+    parsed = parse_call(bullet_value(raw) or "")
+    if not isinstance(parsed, Call) or not set(parsed.keywords) <= set(params):
+        return {}
+    if len(parsed.positional) == 1 and not parsed.keywords:
+        given: dict[str, object] = {params[0]: parsed.positional[0]}
+    elif parsed.positional:
+        return {}
+    else:
+        given = dict(parsed.keywords)
+    if not all(isinstance(value, str) and value for value in given.values()):
+        return {}
+    return {key: str(value) for key, value in given.items()}
+
+
+@dataclass(frozen=True)
+class TriggerAct:
+    """The act a `trigger:` names and the arguments it passes."""
+    name: str
+    arguments: dict[str, str]
+
+
+def trigger_act(raw: str) -> TriggerAct | ScenarioRefusal:
+    """The act *raw* names with its arguments, or why a `fill`, `press`, `paste`, `drop` or `upload` trigger says nothing to perform."""
+    name = trigger_name(raw)
+    params = TRIGGER_ACTS.get(name)
+    if params is None:
+        return TriggerAct(name, {})
+    arguments = _trigger_arguments(raw, params)
+    if not arguments:
+        spelled = " or ".join(f'`trigger: {name}({param}="{_TRIGGER_EXAMPLES.get(name, "…")}")`'
+                              for param in params)
+        return ScenarioRefusal("uncompilable-claim",
+                               f"trigger {raw!r} does not say what to {name}: write {spelled}, "
+                               f"the {' or '.join(params)} the user hands the `on:` control, which "
+                               "is the control it acts on")
+    return TriggerAct(name, arguments)
 
 
 def trailing_comment(text: str) -> str:

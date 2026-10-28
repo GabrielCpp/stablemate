@@ -7,6 +7,7 @@ import json
 import re
 from collections.abc import Iterator
 from collections.abc import Mapping
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import yaml
@@ -22,7 +23,9 @@ from ostler.qa.compile_stops import ScreenStop
 from ostler.qa.compile_stops import expand_steps
 from ostler.qa.compile_stops import resolve_state
 from ostler.qa.compile_stops import resolve_stop
+from ostler.qa.compile_stops import step_acts
 from ostler.qa.compile_support import MAESTRO
+from ostler.qa.compile_support import TRIGGER_ACTS
 from ostler.qa.compile_support import name_refusal
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import check_document
@@ -30,6 +33,7 @@ from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import shown_on
 from ostler.qa.compile_support import trailing_comment
+from ostler.qa.compile_support import trigger_act
 from ostler.qa.compile_support import unarranged_scenario_gap
 from ostler.qa.compile_support import unarranged_state_gap
 from ostler.qa.compile_support import unarranged_state_walk_gap
@@ -327,49 +331,83 @@ def _reach_commands(
     return hop_commands
 
 
-def _act_command_lines(obligation: Obligation, gaps: list[Gap], refs: _Refs) -> list[str] | None:
-    """The Maestro commands that perform *obligation*'s declared acts, or `None` after a gap."""
+def _spelled_act(
+    act_name: str, locator: MaestroLocator, args: Mapping[str, CheckValue], ids: list[str],
+    gaps: list[Gap], refs: _Refs,
+) -> list[str] | None:
+    """The Maestro commands that perform act *act_name* on *locator*, or `None` after a gap on every id."""
+    if act_name == "fill":
+        typed = str(args.get("value", ""))
+        if _HOLE.search(typed) or "${" in typed:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"`fill` types {typed!r}, which holds a template hole or a "
+                            "`${`, so there is no one text the mobile driver can type for it")
+                        for oid in ids)
+            return None
+    if act_name == "press":
+        book_key = str(args.get("key", ""))
+        canonical_key = maestro_press_key(book_key)
+        if canonical_key is None:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"`press` names key {book_key!r}, which is not one of "
+                            "Maestro's `pressKey` keys")
+                        for oid in ids)
+            return None
+        args = {**args, "key": canonical_key}
+    return _act_commands(act_name, locator, args, refs)
+
+
+def _act_command_lines(rows: Sequence[CallRow], ids: list[str], gaps: list[Gap], refs: _Refs) -> list[str] | None:
+    """The Maestro commands that perform the acts *rows* declare, in order, or `None` after a gap on every id."""
     commands: list[str] = []
-    for row in obligation.acts:
+    for row in rows:
         spec = acts_mod.ACT_BY_NAME.get(row.name)
         if spec is None or acts_mod.MOBILE not in spec.drivers:
-            gaps.append(Gap(obligation.id, "uncompilable-claim",
-                             f"`{row.name}` arranges this obligation's interaction "
-                             "and the mobile driver cannot perform it"))
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"`{row.name}` arranges this obligation's interaction "
+                            "and the mobile driver cannot perform it")
+                        for oid in ids)
             return None
         locator = _act_locator(row)
         if locator is None:
             located = row.locates.get("locator")
-            gaps.append(Gap(obligation.id, "uncompilable-claim",
-                             f"`{row.name}` points at a subject with no `testID=` "
-                             "selector and no `name:` for the mobile driver to address"
-                             f"{name_refusal(located.locators if located else NO_LOCATORS)}"))
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"`{row.name}` points at a subject with no `testID=` "
+                            "selector and no `name:` for the mobile driver to address"
+                            f"{name_refusal(located.locators if located else NO_LOCATORS)}")
+                        for oid in ids)
             return None
-        if spec.name == "fill":
-            typed = str(row.args.get("value", ""))
-            if _HOLE.search(typed) or "${" in typed:
-                gaps.append(Gap(obligation.id, "uncompilable-claim",
-                                 f"`fill` types {typed!r}, which holds a template hole or a "
-                                 "`${`, so there is no one text the mobile driver can type for it"))
-                return None
-        act_args: Mapping[str, CheckValue] = row.args
-        if spec.name == "press":
-            book_key = row.text_arg("key")
-            canonical_key = maestro_press_key(book_key)
-            if canonical_key is None:
-                gaps.append(Gap(obligation.id, "uncompilable-claim",
-                                 f"`press` names key {book_key!r}, which is not one of "
-                                 "Maestro's `pressKey` keys"))
-                return None
-            act_args = {**row.args, "key": canonical_key}
-        commands.extend(_act_commands(spec.name, locator, act_args, refs))
+        spelled = _spelled_act(spec.name, locator, row.args, ids, gaps, refs)
+        if spelled is None:
+            return None
+        commands.extend(spelled)
     return commands
 
 
-def _trigger_tap_commands(
+def _trigger_commands(
+    locator: MaestroLocator, trigger_raw: str, ids: list[str], gaps: list[Gap], refs: _Refs,
+) -> list[str] | None:
+    """The commands that perform the trigger *trigger_raw* on the control at *locator*, or `None` after a gap on every id."""
+    parsed = trigger_act(trigger_raw)
+    if isinstance(parsed, ScenarioRefusal):
+        gaps.extend(Gap(oid, parsed.kind, parsed.detail) for oid in ids)
+        return None
+    if parsed.name in TRIGGER_ACTS:
+        spec = acts_mod.ACT_BY_NAME.get(parsed.name)
+        if spec is None or acts_mod.MOBILE not in spec.drivers:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"trigger {trigger_raw!r} is a `{parsed.name}`, which the mobile "
+                            "driver cannot perform")
+                        for oid in ids)
+            return None
+        return _spelled_act(parsed.name, locator, parsed.arguments, ids, gaps, refs)
+    return _act_commands("click", locator, {}, refs)
+
+
+def _scenario_trigger_commands(
     obligation: Obligation, locators_by_node: dict[str, Locators], gaps: list[Gap], refs: _Refs,
 ) -> list[str] | None:
-    """The tap on *obligation*'s `on:` control, when it names one, or `None` after a gap."""
+    """The trigger on *obligation*'s `on:` control, when it names one, or `None` after a gap."""
     on_value = next(iter(obligation.locators.on), None)
     if on_value is None:
         return []
@@ -380,7 +418,8 @@ def _trigger_tap_commands(
                          "selector and no `name:` for the mobile driver to address"
                          f"{name_refusal(locators_by_node.get(on_node(obligation.source, on_value), NO_LOCATORS))}"))
         return None
-    return _act_commands("click", on_locator, {}, refs)
+    trigger_raw = next(iter(obligation.locators.trigger), "")
+    return _trigger_commands(on_locator, trigger_raw, [obligation.id], gaps, refs)
 
 
 @dataclass(frozen=True)
@@ -474,10 +513,13 @@ def _scenario_body(
         lines.append(f"    # {requirement}")
         index += 1
         name = f"observed_{index}"
-        acted = (_act_command_lines(obligation, sinks.gaps, refs) if obligation.acts
-                 else _trigger_tap_commands(obligation, book.locators_by_node, sinks.gaps, refs))
-        if acted is None:
+        arranged = _act_command_lines(obligation.acts, [oid], sinks.gaps, refs)
+        if arranged is None:
             continue
+        triggered = _scenario_trigger_commands(obligation, book.locators_by_node, sinks.gaps, refs)
+        if triggered is None:
+            continue
+        acted = [*arranged, *triggered]
         compiled = _flow_checks(obligation, name, sinks.gaps, refs)
         if compiled is None:
             continue
@@ -578,7 +620,20 @@ def _journey_taps(walk: JourneyWalk, gaps: list[Gap], refs: _Refs) -> _JourneyTa
                             f"{refusal}")
                         for oid in ids)
             return None
-        taps.segments[-1].extend(_act_commands("click", locator, {}, refs))
+        arranged = _act_command_lines(step_acts(step, walk), ids, gaps, refs)
+        if arranged is None:
+            return None
+        if step.ref in walk.book.acts_refused:
+            gaps.extend(Gap(oid, "uncompilable-claim",
+                            f"step {index} declares an arrangement this journey cannot make; every "
+                            "step after it would run in a world this journey never reached")
+                        for oid in ids)
+            return None
+        trigger_raw = next(iter(locators_by_node.get(step.ref, NO_LOCATORS).trigger), "")
+        triggered = _trigger_commands(locator, trigger_raw, ids, gaps, refs)
+        if triggered is None:
+            return None
+        taps.segments[-1].extend([*arranged, *triggered])
     return taps
 
 

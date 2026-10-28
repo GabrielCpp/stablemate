@@ -14,12 +14,15 @@ from ostler.qa.compile_support import TEMPLATE_HOLE
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import name_refusal
 from ostler.qa.compile_support import on_node
+from ostler.qa.compile_support import shown_on
 from ostler.qa.book_index import BookIndex
+from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import NO_LOCATORS
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import arrangement_of
+from ostler.routes import route_pattern
 
 _STATE_MODIFIERS = frozenset({"absent", "disabled", "checked", "expanded", "selected"})
 
@@ -205,3 +208,20 @@ def resolve_state(
         return None
     title = next(state.requirement for state in siblings if state.node == ref).partition(": ")[0]
     return ScreenStop(ref, (*sent, *(requests if keep_own else ())), busy, states, fragment, covers, title)
+
+
+def step_acts(step: FlowStep, walk: JourneyWalk) -> list[CallRow]:
+    """The acts a journey replays for *step*: all of them, unless the step's claims were written for a fixture the journey does not arrange, whose visits and clicks elsewhere than the step's own screen reach the step as another user would."""
+    acts = walk.book.acts_by_node.get(step.ref, [])
+    claims = [*walk.book.claims_by_node.get(step.ref, []), *walk.book.setups_by_node.get(step.ref, [])]
+    declared = {row.name for claim in claims for row in claim.fixtures}
+    arranged = {row.name for row in arrangement_of(walk.obligations).rows}
+    if not declared or declared & arranged:
+        return acts
+    page = step.ref.split("#")[0]
+    own_route = route_pattern(walk.book.screen_routes.get(
+        shown_on(page, walk.nav.routes, walk.book.fragment_hosts), ""))
+    return [act for act in acts
+            if (act.name != "visit" or (own_route is not None and own_route.fullmatch(
+                act.text_arg("path").split("?")[0]) is not None))
+            and all(target.node.split("#")[0] in ("", page) for target in act.locates.values())]

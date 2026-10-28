@@ -7249,3 +7249,125 @@ def test_a_value_with_a_quote_or_a_backslash_leaves_the_flow_valid_yaml() -> Non
     (flow_text,) = result.files.values()
     _header, commands = _strict_flow(flow_text)
     assert {"inputText": 'say "hi" \\ now'} in commands
+
+
+def _maestro_trigger_probe(trigger: str, acts: list[dict] | None = None) -> tuple[dict, str]:
+    context, oid = _maestro_value_probe(
+        {"selector": ["testID=probe-widget"], "on": ["[probe-link](#probe-link)"], "trigger": [trigger]}, [_visible("table:Things on file")], acts=acts)
+    context["obligations"].append(
+        _page_obligation(f"{_SCREEN}#probe-link:carrier", f"{_SCREEN}#probe-link",
+                         locators={"selector": ["testID=probe-link"]}, checks=[]) | {"required": False})
+    return context, oid
+
+
+def _probe_field_fill(value: str) -> dict:
+    return _act("fill", f"{_SCREEN}#probe-field", {"selector": ["testID=probe-field"]},
+                locator="#probe-field", value=value)
+
+
+def _taps_and_typing(commands: list) -> list:
+    return [c for c in commands
+            if isinstance(c, dict) and (("tapOn" in c and "id" in c["tapOn"]) or "inputText" in c)]
+
+
+def test_a_phone_scenario_taps_its_control_after_performing_its_arranged_acts() -> None:
+    context, oid = _maestro_trigger_probe("click", acts=[_probe_field_fill("Widget A")])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    assert _taps_and_typing(commands) == [
+        {"tapOn": {"id": "probe-field"}}, {"inputText": "Widget A"}, {"tapOn": {"id": "probe-link"}}]
+
+
+def test_a_phone_scenario_with_a_fill_trigger_types_the_value_into_its_control() -> None:
+    context, oid = _maestro_trigger_probe('fill(value="Still jams")')
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    assert _taps_and_typing(commands) == [{"tapOn": {"id": "probe-link"}}, {"inputText": "Still jams"}]
+
+
+def test_a_phone_scenario_with_a_press_trigger_presses_the_key() -> None:
+    context, oid = _maestro_trigger_probe('press(key="Enter")')
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    (flow_text,) = result.files.values()
+    assert '- pressKey: "enter"' in flow_text
+
+
+def test_a_phone_scenario_whose_fill_trigger_says_nothing_to_type_is_an_uncompilable_claim() -> None:
+    context, oid = _maestro_trigger_probe("fill()")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert "does not say what to fill" in gap.detail
+
+
+def test_a_phone_scenario_whose_trigger_the_phone_cannot_perform_is_an_uncompilable_claim() -> None:
+    context, oid = _maestro_trigger_probe('drop(file="fixtures/sample.docx")')
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert _gap_kinds(result.gaps, oid) == ["uncompilable-claim"]
+    (gap,) = [g for g in result.gaps if g.obligation_id == oid]
+    assert "mobile driver cannot perform" in gap.detail
+
+
+def _phone_journey_context(trigger: str, acts: list[dict] | None = None) -> tuple[dict, str]:
+    oid = f"okf:{_FLOW}:end-state"
+    save_thing = f"{_SCREEN}#save-thing"
+    navigation = _arrival_navigation()
+    navigation["policy"]["driver"] = "mobile"
+    navigation["policy"]["bundleId"] = "com.example.mobile-app"
+    navigation["policy"]["launchScreen"] = _SCREEN
+    context = _navigation_context(
+        _flow_obligation(
+            oid, source=_FLOW, surface="policy",
+            steps=[_step(save_thing, "interaction", "policy")],
+            checks=[_located_visible(f"{_SCREEN}#things-table", {"selector": ["testID=things-table"]})],
+        ),
+        _page_obligation(f"{save_thing}:carrier", save_thing,
+                         locators={"on": ["[save-button](#save-button)"], "trigger": [trigger]},
+                         checks=[], acts=acts) | {"required": False},
+        _page_obligation(f"{_SCREEN}#save-button:carrier", f"{_SCREEN}#save-button",
+                         locators={"selector": ["testID=save-button"]}, checks=[]) | {"required": False},
+        _page_obligation(f"{_SCREEN}#name-field:carrier", f"{_SCREEN}#name-field",
+                         locators={"selector": ["testID=name-field"]}, checks=[]) | {"required": False},
+        navigation=navigation,
+        screen_routes={_SCREEN: "Things"},
+    )
+    return context, oid
+
+
+def test_a_phone_journey_step_performs_its_arranged_acts_before_it_taps() -> None:
+    fill = _act("fill", f"{_SCREEN}#name-field", {"selector": ["testID=name-field"]},
+                locator="#name-field", value="Widget A")
+    context, oid = _phone_journey_context("click", acts=[fill])
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    assert _taps_and_typing(commands) == [
+        {"tapOn": {"id": "name-field"}}, {"inputText": "Widget A"}, {"tapOn": {"id": "save-button"}}]
+
+
+def test_a_phone_journey_step_with_a_fill_trigger_types_the_value() -> None:
+    context, oid = _phone_journey_context('fill(value="Still jams")')
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    assert _gap_kinds(result.gaps, oid) == []
+    (flow_text,) = result.files.values()
+    _header, commands = _strict_flow(flow_text)
+    assert _taps_and_typing(commands) == [{"tapOn": {"id": "save-button"}}, {"inputText": "Still jams"}]
+
+
+def test_a_phone_journey_step_whose_trigger_says_nothing_to_type_is_an_uncompilable_claim() -> None:
+    context, oid = _phone_journey_context("fill()")
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Refusal)
+    assert "uncompilable-claim" in _gap_kinds(result.gaps, oid)

@@ -54,7 +54,7 @@ the "where did this step end up" question every backend asks before it emits a s
 assertion for that step. `compile_support.py` decides what a check can observe at all:
 `unobservable_gap` reports a check whose chosen driver cannot see the thing it claims,
 `vettable`/`vet_calls` decide whether a screen's rendering can be checked with `ostler vet`, and
-`check_document`/`trigger_name`/`on_href` render one check call's book-declared arguments into
+`check_document`/`trigger_name`/`trigger_act`/`on_href` render one check call's book-declared arguments into
 the literal values a scenario body embeds. `plan_source.py` is the lowest-level codegen layer:
 `Gap` and `ScenarioRefusal` are the two shapes a compile step uses to report it produced no
 scenario, `python_literal`/`call_kwargs` render a Python value as source text, `Arrangement`/
@@ -92,34 +92,34 @@ its first hop.
 - code: ostler/ostler/qa/compile_cli.py::cli_journey@003bdbe757de
 - code: ostler/ostler/qa/compile_cli.py::_run_arguments@003bdbe757de
 - code: ostler/ostler/qa/compile_cli.py::invoke_env_names@003bdbe757de
-- code: ostler/ostler/qa/compile_page.py::page_scenarios@86e11d4ad1cb
-- code: ostler/ostler/qa/compile_page.py::web_state_walks@86e11d4ad1cb
-- code: ostler/ostler/qa/compile_playwright.py::perform_acts@23cf5e92ef9e
-- code: ostler/ostler/qa/compile_playwright.py::page_observations@23cf5e92ef9e
-- code: ostler/ostler/qa/compile_playwright.py::web_walk@23cf5e92ef9e
-- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@61c12bc546a0
-- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@61c12bc546a0
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@6dcb4afc8e13
-- code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@9c2c885402aa
+- code: ostler/ostler/qa/compile_page.py::page_scenarios@606b70054ffc
+- code: ostler/ostler/qa/compile_page.py::web_state_walks@606b70054ffc
+- code: ostler/ostler/qa/compile_playwright.py::perform_acts@373cfbcaf3e9
+- code: ostler/ostler/qa/compile_playwright.py::page_observations@373cfbcaf3e9
+- code: ostler/ostler/qa/compile_playwright.py::web_walk@373cfbcaf3e9
+- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@b0e272ce8fa7
+- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@b0e272ce8fa7
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@208d06012507
+- code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@3d971d498ead
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_moves.py::state_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_journey.py::journey_target@421ed1147b57
 - code: ostler/ostler/qa/compile_journey.py::api_target@421ed1147b57
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
 - code: ostler/ostler/qa/compile_journey.py::journey_scenario@421ed1147b57
-- code: ostler/ostler/qa/compile_stops.py::resolve_stop@4daf7645d9c5
-- code: ostler/ostler/qa/compile_stops.py::resolve_state@4daf7645d9c5
-- code: ostler/ostler/qa/compile_stops.py::ScreenStop@4daf7645d9c5
-- code: ostler/ostler/qa/compile_support.py::unobservable_gap@d73966f66e36
-- code: ostler/ostler/qa/compile_support.py::vettable@d73966f66e36
-- code: ostler/ostler/qa/compile_support.py::check_document@d73966f66e36
+- code: ostler/ostler/qa/compile_stops.py::resolve_stop@e2a0b2312b45
+- code: ostler/ostler/qa/compile_stops.py::resolve_state@e2a0b2312b45
+- code: ostler/ostler/qa/compile_stops.py::ScreenStop@e2a0b2312b45
+- code: ostler/ostler/qa/compile_support.py::unobservable_gap@c662613eb534
+- code: ostler/ostler/qa/compile_support.py::vettable@c662613eb534
+- code: ostler/ostler/qa/compile_support.py::check_document@c662613eb534
 - code: ostler/ostler/qa/plan_source.py::Gap@08fddc26f73f
 - code: ostler/ostler/qa/plan_source.py::ScenarioRefusal@08fddc26f73f
 - code: ostler/ostler/qa/plan_source.py::python_literal@08fddc26f73f
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@08fddc26f73f
-- code: ostler/ostler/qa/obligation.py::Obligation@9b860bcfb9bb
-- code: ostler/ostler/qa/obligation.py::obligation_of@9b860bcfb9bb
-- code: ostler/ostler/qa/obligation.py::obligations_of@9b860bcfb9bb
+- code: ostler/ostler/qa/obligation.py::Obligation@fb72070e8dcf
+- code: ostler/ostler/qa/obligation.py::obligation_of@fb72070e8dcf
+- code: ostler/ostler/qa/obligation.py::obligations_of@fb72070e8dcf
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@59e7ee8278ae
 - code: ostler/ostler/qa/obligation_frame.py::obligation_frame@59e7ee8278ae
 - code: ostler/ostler/qa/obligation_frame.py::BookNode@59e7ee8278ae
@@ -156,6 +156,12 @@ its first hop.
   rendered value to `qa.maestro.run(..., env=...)`. A flow that still holds an unrendered hole or
   reference is a compiler defect, and the compile raises. A claim Maestro cannot observe, such as
   `visible(count=)` or a `fill` value with a hole in it, is a gap.
+- rule: an interaction is performed the same way on every driver: its `arrange:` acts in order, then
+  its trigger as the act it names, so a `fill(value=...)` trigger types the value and a
+  `press(key=...)` trigger presses the key. The book fixes what an interaction does, through
+  `step_acts` and `trigger_act`; a driver only spells each act, and one that cannot spell an act
+  files `uncompilable-claim` and compiles nothing for that interaction. A phone scenario and a
+  phone journey step therefore fill a form before they tap its submit control.
 - an absence on the phone means "below the fold" only once the screen has drawn: Maestro's
   `launchApp` returns before the app's first frame, so the first look of a launching flow waits
   up to 15 seconds for its control with an optional `extendedWaitUntil`, and only then scrolls

@@ -16,8 +16,8 @@ from ostler.qa.compile_playwright import needs_window
 from ostler.qa.compile_playwright import page_locator_expr
 from ostler.qa.compile_playwright import page_observations
 from ostler.qa.compile_support import ARRIVAL_TRIGGERS
+from ostler.qa.compile_support import TRIGGER_ACTS
 from ostler.qa.compile_playwright import PAGE_TRIGGERS
-from ostler.qa.compile_playwright import TRIGGER_ACTS
 from ostler.qa.compile_playwright import perform_acts
 from ostler.qa.compile_playwright import settle_lines
 from ostler.qa.compile_support import trigger_name

@@ -7,10 +7,8 @@ from dataclasses import dataclass
 
 from ostler import accessible_names
 from ostler import acts as acts_mod
-from ostler.checks import Call
 from ostler.checks import REQUEST_EVENT
 from ostler.passages import Passage
-from ostler.checks import parse_call
 from ostler.qa.book_index import BookIndex
 from ostler.qa.compile_http import condition_lines
 from ostler.qa.compile_journey import JourneyWalk
@@ -21,6 +19,7 @@ from ostler.qa.compile_stops import ScreenStop
 from ostler.qa.compile_stops import stop_state_ids
 from ostler.qa.compile_stops import expand_steps
 from ostler.qa.compile_stops import resolve_stop
+from ostler.qa.compile_stops import step_acts
 from ostler.qa.compile_support import MATCHABLE_ROLES as _MATCHABLE_ROLES
 from ostler.qa.compile_support import TEMPLATE_HOLE as _TEMPLATE_HOLE
 from ostler.qa.compile_support import ARRIVAL_TRIGGERS
@@ -31,6 +30,8 @@ from ostler.qa.compile_support import on_node
 from ostler.qa.compile_support import on_label
 from ostler.qa.compile_support import shown_on
 from ostler.qa.compile_support import trailing_comment
+from ostler.qa.compile_support import TRIGGER_ACTS
+from ostler.qa.compile_support import trigger_act
 from ostler.qa.compile_support import trigger_name
 from ostler.qa.compile_support import unobservable_gap
 from ostler.qa.compile_support import vet_calls
@@ -44,7 +45,6 @@ from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import PlanSinks
 from ostler.qa.plan_source import ScenarioRefusal
-from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import call_kwargs
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
@@ -52,7 +52,6 @@ from ostler.qa.plan_source import file_refusal
 from ostler.qa.plan_source import out_of_band
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import typed_literal
-from ostler.routes import route_pattern
 from ostler import selector_forms
 
 
@@ -137,44 +136,16 @@ def perform_acts(
     return PerformedActs(lines)
 
 
-TRIGGER_ACTS: dict[str, tuple[str, ...]] = {
-    "fill": ("value",), "press": ("key",), "paste": ("text", "html"), "drop": ("file",),
-    "upload": ("file",),
-}
-
-_TRIGGER_EXAMPLES = {"press": "Escape", "drop": "fixtures/sample.docx", "upload": "fixtures/sample.xml"}
-
 PAGE_TRIGGERS = {"back": "qa.back()", "print": "qa.print_page()"}
-
-
-def _trigger_arguments(raw: str, params: tuple[str, ...]) -> dict[str, str]:
-    """The non-empty string arguments *raw* passes by *params*, a lone positional one standing for the first."""
-    parsed = parse_call(bullet_value(raw) or "")
-    if not isinstance(parsed, Call) or not set(parsed.keywords) <= set(params):
-        return {}
-    if len(parsed.positional) == 1 and not parsed.keywords:
-        given: dict[str, object] = {params[0]: parsed.positional[0]}
-    elif parsed.positional:
-        return {}
-    else:
-        given = dict(parsed.keywords)
-    if not all(isinstance(value, str) and value for value in given.values()):
-        return {}
-    return {key: str(value) for key, value in given.items()}
 
 
 def trigger_performance(raw: str, on_expr: str) -> str | ScenarioRefusal:
     """The line that performs a `fill`, `press`, `paste`, `drop` or `upload` trigger on *on_expr*, or why the book's spelling of it cannot be performed."""
-    name = trigger_name(raw)
+    parsed = trigger_act(raw)
+    if isinstance(parsed, ScenarioRefusal):
+        return parsed
+    name, arguments = parsed.name, parsed.arguments
     params = TRIGGER_ACTS[name]
-    arguments = _trigger_arguments(raw, params)
-    if not arguments:
-        spelled = " or ".join(f'`trigger: {name}({param}="{_TRIGGER_EXAMPLES.get(name, "…")}")`'
-                              for param in params)
-        return ScenarioRefusal("uncompilable-claim",
-                               f"trigger {raw!r} does not say what to {name}: write {spelled}, "
-                               f"the {' or '.join(params)} the user hands the `on:` control, which "
-                               "is the control it acts on")
     comment = f"  # trigger: {trailing_comment(raw)}"
     if name in ("paste", "drop", "upload"):
         keywords = "".join(f", {key}={typed_literal(value)}" for key, value in arguments.items())
@@ -434,23 +405,6 @@ def _web_start(walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
             *walk_hops(hops, first_source, walk.book, gaps, walk.ids)]
 
 
-def _step_acts(step: FlowStep, walk: JourneyWalk) -> list[CallRow]:
-    """The acts a journey replays for *step*: all of them, unless the step's claims were written for a fixture the journey does not arrange, whose visits and clicks elsewhere than the step's own screen reach the step as another user would."""
-    acts = walk.book.acts_by_node.get(step.ref, [])
-    claims = [*walk.book.claims_by_node.get(step.ref, []), *walk.book.setups_by_node.get(step.ref, [])]
-    declared = {row.name for claim in claims for row in claim.fixtures}
-    arranged = {row.name for row in arrangement_of(walk.obligations).rows}
-    if not declared or declared & arranged:
-        return acts
-    page = step.ref.split("#")[0]
-    own_route = route_pattern(walk.book.screen_routes.get(
-        shown_on(page, walk.nav.routes, walk.book.fragment_hosts), ""))
-    return [act for act in acts
-            if (act.name != "visit" or (own_route is not None and own_route.fullmatch(
-                act.text_arg("path").split("?")[0]) is not None))
-            and all(target.node.split("#")[0] in ("", page) for target in act.locates.values())]
-
-
 MARK_LINE = "    mark = qa.mark()"
 
 def settle_lines(stop: ScreenStop, comment: str, origins: Sequence[str] = ()) -> list[str]:
@@ -522,7 +476,7 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
                         f"run in a world this journey never reached{name_refusal(on_locators)}")
                     for oid in ids)
         return None
-    performed = perform_acts(_step_acts(step, walk), acts_mod.WEB, gaps, ids)
+    performed = perform_acts(step_acts(step, walk), acts_mod.WEB, gaps, ids)
     if performed.lines is None or ref in book.acts_refused:
         if not performed.gap_filed:
             gaps.extend(Gap(oid, "uncompilable-claim",
@@ -544,7 +498,7 @@ def _web_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) ->
 def _page_step(index: int, step: FlowStep, walk: JourneyWalk, gaps: list[Gap]) -> list[str] | None:
     """Perform a step the user takes on the browser rather than on a control of the page: its acts, then going back or printing."""
     trigger_value = next(iter(walk.book.locators_by_node.get(step.ref, NO_LOCATORS).trigger), "")
-    performed = perform_acts(_step_acts(step, walk), acts_mod.WEB, gaps, walk.ids)
+    performed = perform_acts(step_acts(step, walk), acts_mod.WEB, gaps, walk.ids)
     if performed.lines is None or step.ref in walk.book.acts_refused:
         if not performed.gap_filed:
             gaps.extend(Gap(oid, "uncompilable-claim",
