@@ -607,7 +607,7 @@ def docs_home(start: Path) -> Path | None:
     return None
 
 
-ARTIFACTS_IGNORED = ("specs/", "scratch/", "researches/")
+ARTIFACTS_IGNORED = ("backlogs/", "epics/", "specs/", "researches/", "benchmarks/", "scratch/")
 
 
 def ensure_artifacts_repo() -> Path:

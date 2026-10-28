@@ -166,7 +166,9 @@ def test_ensure_artifacts_repo_inits_ignores_session_folders_and_adds_no_remote(
 
     assert root == target.resolve()
     assert (root / ".git").exists()
-    assert (root / ".gitignore").read_text().splitlines() == ["specs/", "scratch/", "researches/"]
+    assert (root / ".gitignore").read_text().splitlines() == [
+        "backlogs/", "epics/", "specs/", "researches/", "benchmarks/", "scratch/",
+    ]
     remotes = subprocess.run(
         ["git", "-C", str(root), "remote"], capture_output=True, text=True, check=True
     )
@@ -176,11 +178,11 @@ def test_ensure_artifacts_repo_inits_ignores_session_folders_and_adds_no_remote(
 def test_ensure_artifacts_repo_appends_missing_ignores_and_keeps_custom_lines(tmp_path, monkeypatch):
     monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(tmp_path / "artifacts"))
     root = cfgmod.ensure_artifacts_repo()
-    (root / ".gitignore").write_text("mine\nspecs/\n")
+    (root / ".gitignore").write_text("mine\nspecs/\nbenchmarks/\n")
 
     assert cfgmod.ensure_artifacts_repo() == root
     assert (root / ".gitignore").read_text().splitlines() == [
-        "mine", "specs/", "scratch/", "researches/",
+        "mine", "specs/", "benchmarks/", "backlogs/", "epics/", "researches/", "scratch/",
     ]
     before = (root / ".gitignore").read_text()
     cfgmod.ensure_artifacts_repo()
