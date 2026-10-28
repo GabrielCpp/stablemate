@@ -7,8 +7,8 @@ title: The book's markdown model
 
 Every `ostler` command that reads or edits a book first loads it into one `Graph`: the in-memory
 model `model.py` builds by walking the fixed doc roots and parsing every markdown page underneath. `load`
-finds the repository root (`find_root`), resolves where each declared kind of document lives
-(`doc_roots`: each kind at its built-in path under `docs/`, specs in the artifacts dir, and any `dynamic_registry.TemplateKind` at its default path), and returns
+finds the repository root (`find_root`), refuses to go on while the artifacts dir or the repository still holds the old shelf layout, resolves where each declared kind of document lives
+(`doc_roots`: services, milestones, decisions and ADRs at their built-in paths under `docs/`, epics, specs and the register at the top level of the artifacts dir, and any `dynamic_registry.TemplateKind` at its default path), and returns
 a `Graph` holding every `UINode` (a typed node of the OKF UI profile), `Story`, `Epic`,
 `Milestone`, `FeatureRecord` and `SeedItem` the walk found. `_Cached` and `_DocProducts` hold one
 path's parsed products for the life of the process, so a second read of the same file in the same
@@ -95,24 +95,24 @@ group (and most of the scaffolding and editing group) returns. `keys.py`'s `pres
 parse a `press:` bullet's key name against the small grammar of pressable key names a book can
 declare. `__init__.py` is empty.
 
-- code: ostler/ostler/model.py::Graph@b0f81cc8ce8a
-- code: ostler/ostler/model.py::UINode@b0f81cc8ce8a
-- code: ostler/ostler/model.py::Story@b0f81cc8ce8a
-- code: ostler/ostler/model.py::Epic@b0f81cc8ce8a
-- code: ostler/ostler/model.py::Milestone@b0f81cc8ce8a
-- code: ostler/ostler/model.py::FeatureRecord@b0f81cc8ce8a
-- code: ostler/ostler/model.py::SeedItem@b0f81cc8ce8a
-- code: ostler/ostler/model.py::Entry@b0f81cc8ce8a
-- code: ostler/ostler/model.py::load@b0f81cc8ce8a
-- code: ostler/ostler/model.py::find_root@b0f81cc8ce8a
-- code: ostler/ostler/model.py::doc_roots@b0f81cc8ce8a
-- code: ostler/ostler/model.py::read_doc@b0f81cc8ce8a
-- code: ostler/ostler/model.py::read_links@b0f81cc8ce8a
-- code: ostler/ostler/model.py::required_section_problems@b0f81cc8ce8a
-- code: ostler/ostler/model.py::section_order_problems@b0f81cc8ce8a
-- code: ostler/ostler/model.py::story_status@b0f81cc8ce8a
-- code: ostler/ostler/model.py::story_dependencies@b0f81cc8ce8a
-- code: ostler/ostler/model.py::story_fixtures@b0f81cc8ce8a
+- code: ostler/ostler/model.py::Graph@d2115e76a76a
+- code: ostler/ostler/model.py::UINode@d2115e76a76a
+- code: ostler/ostler/model.py::Story@d2115e76a76a
+- code: ostler/ostler/model.py::Epic@d2115e76a76a
+- code: ostler/ostler/model.py::Milestone@d2115e76a76a
+- code: ostler/ostler/model.py::FeatureRecord@d2115e76a76a
+- code: ostler/ostler/model.py::SeedItem@d2115e76a76a
+- code: ostler/ostler/model.py::Entry@d2115e76a76a
+- code: ostler/ostler/model.py::load@d2115e76a76a
+- code: ostler/ostler/model.py::find_root@d2115e76a76a
+- code: ostler/ostler/model.py::doc_roots@d2115e76a76a
+- code: ostler/ostler/model.py::read_doc@d2115e76a76a
+- code: ostler/ostler/model.py::read_links@d2115e76a76a
+- code: ostler/ostler/model.py::required_section_problems@d2115e76a76a
+- code: ostler/ostler/model.py::section_order_problems@d2115e76a76a
+- code: ostler/ostler/model.py::story_status@d2115e76a76a
+- code: ostler/ostler/model.py::story_dependencies@d2115e76a76a
+- code: ostler/ostler/model.py::story_fixtures@d2115e76a76a
 - code: ostler/ostler/markdown.py::MarkdownDoc@115245786c4b
 - code: ostler/ostler/markdown.py::Section@115245786c4b
 - code: ostler/ostler/markdown.py::Bullet@115245786c4b

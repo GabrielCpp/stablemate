@@ -11,7 +11,7 @@ initializer; the individual modules below own the behavior and models they provi
 
 - code: `workflows/src/workhorse_workflows/coder/shared/__init__.py::__all__` @e517b81d10c2
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @b083ae1394dd
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @570307d71312
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @67580925bd96
 - code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @7b0c7e9434b5
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @df9c5dcbeacb
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @df9c5dcbeacb
@@ -146,7 +146,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - does: when `run_dir` is supplied, removes the prior run's `worklist.json` worklist and `answers.md` answer log
 - returns: the names of removed files, or an empty list when no run directory or stale files exist
 - verify: absent(subject="stale per-run files after a fresh run begins")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::begin_run` @570307d71312
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::begin_run` @67580925bd96
 - tests: `workflows/tests/coder/test_workflow.py::test_a_fresh_run_drops_the_worklist_and_answers_a_previous_run_left_in_the_run_dir`
 
 ### legacy_queue
@@ -155,7 +155,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - does: returns the path to the legacy JSON queue sidecar for backward compatibility with repos and sandboxes that have no doc graph
 - returns: the `epics-todo.json` file path beside the ostler-managed `index.md` in the documentation root
 - verify: json_path(path="$.path", matches=".*epics-todo\\.json")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::legacy_queue` @570307d71312
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::legacy_queue` @67580925bd96
 
 The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when Ostler is unavailable or cannot return an epic list from the documentation graph. It is not read or maintained by the workflow when Ostler is working — Ostler's queue is authoritative when present.
 
@@ -208,7 +208,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - does: treats a missing epic name, missing queue, absent epic, malformed sidecar, or write failure as a non-fatal no-op
 - returns: whether an epic entry was removed
 - verify: absent(subject="the merged epic in the queue after pruning")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::prune_epic` @570307d71312
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::prune_epic` @67580925bd96
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 
 ### resolve_launch
@@ -227,7 +227,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - raises: `WorkflowFailed` when the epics queue cannot be read
 - returns: the launch mode and every story the run works, in the order it works them
 - verify: json_path(path="$.entries[0].slug", equals="login-form")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::resolve_launch` @570307d71312
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::resolve_launch` @67580925bd96
 
 ### check_repos_clean
 

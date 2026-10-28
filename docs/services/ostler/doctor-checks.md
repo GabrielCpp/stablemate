@@ -10,7 +10,7 @@ defect. Every claim runs in a repository of its own under the checkout, so no sc
 defects in the book of the checkout. A caller reads the finding code, the page and the exit status.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@6f9e6ca5fc20
+- code: ostler/ostler/cli.py::main@f9cefee57bce
 
 ## Commands
 
@@ -138,9 +138,9 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: json_path(path="findings[3].code", equals="decision-back-link-missing")
 - verify: json_path(path="findings[3].message", equals="record 'X-1' names decision 'D-9', and no decision file has that id")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a broken register beside an empty book
-- code: ostler/ostler/doctor.py::_check_register_records@a658bbb79294
-- code: ostler/ostler/doctor.py::_check_decisions@a658bbb79294
-- code: ostler/ostler/adr.py::decisions@0616ec2d019d
+- code: ostler/ostler/doctor.py::_check_register_records@b6bae9bf1b96
+- code: ostler/ostler/doctor.py::_check_decisions@b6bae9bf1b96
+- code: ostler/ostler/adr.py::decisions@f14c55fafbc7
 - detail: [The debt register](concepts/the-debt-register.md)
 
 ### ostler-doctor-milestone-layout

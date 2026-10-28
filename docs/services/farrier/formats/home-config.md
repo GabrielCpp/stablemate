@@ -20,7 +20,7 @@ shape; the file on disk is lifted to the current version only when a write touch
   `~/.config/stablemate/config.toml` on Linux, `~/Library/Application Support/stablemate/config.toml`
   on macOS, `%APPDATA%\stablemate\config.toml` on Windows. `$STABLEMATE_CONFIG` (or the
   pre-unification `$WORKHORSE_CONFIG`) overrides the path outright.
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::load_config` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::load_config` @f30a7f155019
 - detail: [configuration version guard](../concepts/config-version-guard.md)
 - detail: [power mapping](../concepts/power-mapping.md)
 - detail: [profile selection](../concepts/profile-selection.md)
@@ -53,15 +53,15 @@ overlay-only setup working.
 
 ### stablemate_dir
 - type: `string` — required: no — default: unset
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_stablemate_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_stablemate_dir` @f30a7f155019
 
 ### worktree_dir
 - type: `string` — required: no — default: unset
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_worktree_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_worktree_dir` @f30a7f155019
 
 ### artifacts_dir
 - type: `string` — required: no — default: unset
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_artifacts_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_artifacts_dir` @f30a7f155019
 
 Where per-user story artifacts live, outside git. `$STABLEMATE_ARTIFACTS_DIR` wins over this key, and
 an unset key falls back to an `artifacts` folder under the platform data directory for
@@ -69,7 +69,7 @@ an unset key falls back to an `artifacts` folder under the platform data directo
 
 ### paddock_dir
 - type: `string` — required: no — default: unset
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_paddock_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_paddock_dir` @f30a7f155019
 
 The benchmark root paddock reads and writes: `gold/`, `workspace/` and `results/` live under it.
 An unset key falls back to a `paddock` folder under the platform data directory for `stablemate`.
@@ -108,7 +108,7 @@ schemas.
   `config set-base` turned `[power.*]` into a Python-repr string and every node silently fell back
   to the default model with no error anywhere.
 
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_config_key` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_config_key` @f30a7f155019
 - detail: [config write documentation contexts](../concepts/config-write-context.md)
 
 ## Methods
@@ -118,21 +118,21 @@ schemas.
 - does: returns the legacy workhorse and farrier config paths in migration order
 - returns: one path for each legacy application config location
 - verify: count(subject="legacy config paths", equals=2)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::legacy_config_paths` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::legacy_config_paths` @f30a7f155019
 
 ### config_path
 - sig: `config_path() -> Path`
 - does: uses `$STABLEMATE_CONFIG`, then `$WORKHORSE_CONFIG`, then the platform shared config path
 - returns: the expanded path selected for reads and writes
 - verify: json_path(path="$.config_path", matches="config\\.toml$")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::config_path` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::config_path` @f30a7f155019
 
 ### config_version_of
 - sig: `config_version_of(cfg: dict[str, Any]) -> int`
 - does: treats an absent, boolean, non-integer, or below-one version as schema version 1
 - returns: the integer schema version declared by the mapping
 - verify: json_path(path="$.config_version", equals=1)
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::config_version_of` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::config_version_of` @f30a7f155019
 
 ### check_config_version
 - sig: `check_config_version(cfg: dict[str, Any] | None = None) -> int`
@@ -140,7 +140,7 @@ schemas.
 - raises: `ConfigVersionError` when the config declares a newer schema
 - returns: the supported schema version when the config is acceptable
 - verify: json_path(path="$.exception.type", equals="ConfigVersionError")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::check_config_version` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::check_config_version` @f30a7f155019
 
 ### profile_names
 - sig: `profile_names(cfg: dict[str, Any] | None = None) -> list[str]`
@@ -218,14 +218,14 @@ schemas.
 - does: walks a dotted key path through the selected config mapping
 - returns: the value at the path, or `None` when a segment is absent or not a mapping
 - verify: json_path(path="$.value", equals="configured")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::get_config_value` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::get_config_value` @f30a7f155019
 
 ### write_library_dir
 - sig: `write_library_dir(path: Path) -> None`
 - does: persists the overlay library path under `library_dir`
 - returns: `None`
 - verify: persists(subject="library_dir")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_library_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_library_dir` @f30a7f155019
 - detail: [config write documentation contexts](../concepts/config-write-context.md)
 
 ### write_stablemate_dir
@@ -233,49 +233,49 @@ schemas.
 - does: persists the stablemate checkout path under `stablemate_dir`
 - returns: `None`
 - verify: persists(subject="stablemate_dir")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_stablemate_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_stablemate_dir` @f30a7f155019
 
 ### write_base_dir
 - sig: `write_base_dir(path: Path) -> None`
 - does: persists the base library path under `base_dir`
 - returns: `None`
 - verify: persists(subject="base_dir")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_base_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_base_dir` @f30a7f155019
 
 ### write_worktree_dir
 - sig: `write_worktree_dir(path: Path) -> None`
 - does: persists the parent directory for new worktrees without requiring it to exist
 - returns: `None`
 - verify: persists(subject="worktree_dir")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_worktree_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_worktree_dir` @f30a7f155019
 
 ### resolve_stablemate_dir
 - sig: `resolve_stablemate_dir() -> Path | None`
 - does: reads the configured `stablemate_dir` value
 - returns: its expanded absolute path, or `None` when unset or not a non-empty string
 - verify: json_path(path="$.stablemate_dir", equals="/checkout")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_stablemate_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_stablemate_dir` @f30a7f155019
 
 ### resolve_worktree_dir
 - sig: `resolve_worktree_dir() -> Path | None`
 - does: reads the configured `worktree_dir` value without requiring the directory to exist
 - returns: its expanded absolute path, or `None` when unset or not a non-empty string
 - verify: json_path(path="$.worktree_dir", equals="/worktrees")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_worktree_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_worktree_dir` @f30a7f155019
 
 ### write_artifacts_dir
 - sig: `write_artifacts_dir(path: Path) -> None`
 - does: persists the per-user artifacts folder under `artifacts_dir`
 - returns: `None`
 - verify: persists(subject="artifacts_dir")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_artifacts_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_artifacts_dir` @f30a7f155019
 
 ### resolve_artifacts_dir
 - sig: `resolve_artifacts_dir() -> Path`
 - does: uses `$STABLEMATE_ARTIFACTS_DIR`, then the configured `artifacts_dir`, then an `artifacts` folder under the platform data directory
 - returns: the expanded absolute path of the artifacts folder
 - verify: json_path(path="$.artifacts_dir", equals="/artifacts")
-- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_artifacts_dir` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::resolve_artifacts_dir` @f30a7f155019
 
 ### resolve_delegates
 - sig: `resolve_delegates(backend: str, cfg: dict[str, Any] | None = None) -> dict[str, PowerMapping]`

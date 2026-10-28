@@ -64,7 +64,7 @@ blocks no repair that did not need one.
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/source_view.py::build_source_view` @303f3884bd67
 - code: `workflows/src/workhorse_workflows/okf_book/shared/confine.py::changed_since` @a6b5e7558709
 - code: `workflows/src/workhorse_workflows/okf_book/shared/confine.py::restore` @a6b5e7558709
-- code: `workflows/src/workhorse_workflows/okf_book/shared/source_repo.py::repository_root` @8f4e2afc037e
+- code: `workflows/src/workhorse_workflows/okf_book/shared/source_repo.py::repository_root` @6e5aa862cb6d
 - code: `workflows/src/workhorse_workflows/okf_book/shared/metrics.py::turn_metric` @141af4ec2fee
 
 ### stamp

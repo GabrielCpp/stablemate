@@ -285,7 +285,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - code: `workhorse/workhorse/cli/run.py::run` @ccb42ff9f0d8
 - code: `workhorse/workhorse/profile.py::select_backend` @ff29018aab02
 - code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_profile` @0f757c16382b
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @ff8a02ce3c68
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @f30a7f155019
 - code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir` @42eebfdfea77
 - code: `workhorse/workhorse/packaged.py::PackagedWorkflowError` @7eeb988b4091
 - code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @04abd4b8f62b

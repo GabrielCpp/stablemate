@@ -13,7 +13,7 @@ GitHub origin or credential: the run ends locally and leaves the branch for a ma
 
 Its result contract is the [run pull requests result](../formats/run-prs.md).
 
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py` @7a3e95147211
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py` @4f5e7daf9603
 
 ## Methods
 
@@ -32,6 +32,6 @@ Its result contract is the [run pull requests result](../formats/run-prs.md).
 - verify: absent(subject="PR merge operation by the run")
 - returns: `opened` with every PR URL when at least one PR exists, otherwise `skipped`
 - verify: json_path(path="$.status", equals="opened")
-- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::open_run_prs` @7a3e95147211
+- code: `workflows/src/workhorse_workflows/coder/main/nodes/pr.py::open_run_prs` @4f5e7daf9603
 - tests: `workflows/tests/coder/test_workflow.py::test_a_pr_run_lands_every_item_on_one_branch_and_opens_no_pr_offline`
 - tests: `workflows/tests/coder/test_workflow.py::test_an_opened_pr_goes_to_the_ship_lane_for_ci_and_stays_open`

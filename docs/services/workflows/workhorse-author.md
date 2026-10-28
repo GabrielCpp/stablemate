@@ -71,8 +71,8 @@ The [workhorse-author driver runbook](ops/workhorse-author.md) exercises this CL
 - verify: exit_status(code=0)
 - verify: stdout(matches="dry-run ok")
 - code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @0a6247ab8773
-- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::contract_digest` @5cf6a3092dcf
-- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::check_completion` @5cf6a3092dcf
+- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::contract_digest` @becb105386f9
+- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::check_completion` @becb105386f9
 - code: `workflows/src/workhorse_workflows/author/shared/digests.py::milestone_body_digest` @24786c0f94cd
 - detail: [artifact-derived author stage selection](concepts/artifact-derived-author-stage-selection.md)
 - tests: `workflows/tests/author/test_fill.py::test_stories_follow_dag_order_inside_milestone_epic_order`

@@ -25,7 +25,7 @@ settings remain global to that CLI across profiles.
 - code: `farrier/farrier/_vendor/stablemate_core/__init__.py` @3b3d6fe59b0c
 - code: `farrier/farrier/_vendor/stablemate_core/base_cache.py` @79e1cc13c672
 - code: `farrier/farrier/_vendor/stablemate_core/clock.py` @99322cfda640
-- code: `farrier/farrier/_vendor/stablemate_core/config.py` @7a84c0cc67a5
+- code: `farrier/farrier/_vendor/stablemate_core/config.py` @f30a7f155019
 - code: `farrier/farrier/_vendor/stablemate_core/discovery.py` @42eebfdfea77
 - code: `farrier/farrier/_vendor/stablemate_core/layout.py` @d69e52175abc
 - detail: [library directory](library-directory.md)

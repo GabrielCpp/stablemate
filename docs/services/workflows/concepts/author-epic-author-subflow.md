@@ -130,7 +130,7 @@ completion gate.
 - returns: returns the normalized explicit epic identity and its canonical paths
 - verify: json_path(path="$.epic", matches=".+")
 - emits: [epic-target](../formats/epic-target.md)
-- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::prepare_epic_target` @4cff2229e3b9
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::prepare_epic_target` @8bc59410e2e4
 
 ### method: validate_authored_epic
 - sig: `validate_authored_epic(logger: logging.Logger, epic: str, repo_dir: str = "") -> EpicEvidence`
@@ -147,4 +147,4 @@ completion gate.
 - returns: returns the epic identity, canonical document path, seed count, and newline-separated validation errors
 - verify: json_path(path="$.seed_count", matches="^[0-9]+$")
 - emits: [epic-evidence](../formats/epic-evidence.md)
-- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::validate_authored_epic` @4cff2229e3b9
+- code: `workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py::validate_authored_epic` @8bc59410e2e4
