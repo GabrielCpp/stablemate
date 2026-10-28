@@ -173,10 +173,21 @@ not a silent skip.
 **What each verb guarantees.** `fill` reports a character count, a selector and a URL.
 The value is typed through `Input.insertText` and never interpolated into an evaluated
 expression. A TOTP seed leaves the store only as a computed six-digit code, and only
-by being typed. `exec` is as private as the command it runs: a command that prints its
-own environment prints the secret. What `exec` guarantees is that the value is never
-in the agent's transcript by default and never on disk. The agent's permission layer
-decides which commands it may run under `exec`.
+by being typed. `exec` masks what the command prints when its output goes to a pipe,
+which is how an agent's tool call runs it. Saddlebag stays as the command's parent and
+copies its stdout and stderr through, with each secret value replaced by `[REDACTED]`.
+It masks the value as written and in the forms tools escape it into: compose's `$$`,
+URL encoding and JSON string escaping. It looks for no other encoding, such as base64.
+A value shorter than 8 characters is not masked, and `exec` names its variable in a
+warning on stderr. A username bound with `--env` is metadata and is not masked. When
+stdout and stderr are both a terminal, `exec` becomes the command and masks nothing,
+so colors, `-it` and progress bars keep working for a person at the keyboard.
+
+Masking catches the leak an agent makes by mistake, such as running
+`docker compose config` under `exec`. It does not stop a command written to leak, and
+it does not reach what the command writes to a file. Saddlebag itself never writes a
+value to disk. The agent's permission layer decides which commands it may run under
+`exec`.
 
 ---
 
@@ -253,6 +264,7 @@ saddlebag/
 ├── keyring_store.py  # the OS keyring door and the shelf: values in the keyring, records in the catalogue
 ├── catalogue.py  # the keyring shelf's records, in one owner-only JSON file
 ├── models.py     # Secret and tag parsing; no field of it carries a value
+├── redact.py     # `exec` off a terminal: the child's output relayed with every secret form masked
 ├── browser.py    # CDP target discovery and Input.insertText; only a length comes back
 └── totp.py       # RFC 6238, computed in-process so the seed never leaves
 ```

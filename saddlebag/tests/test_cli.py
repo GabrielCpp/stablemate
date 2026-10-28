@@ -119,6 +119,7 @@ class ExecCapture:
 def execvpe(monkeypatch: pytest.MonkeyPatch) -> ExecCapture:
     capture = ExecCapture()
     monkeypatch.setattr(os, "execvpe", capture)
+    monkeypatch.setattr(cli, "_on_terminal", lambda: True)
     return capture
 
 
@@ -163,8 +164,48 @@ def test_exec_reports_a_command_that_cannot_start(running: Running, run: Run, mo
         raise FileNotFoundError(2, "No such file or directory")
 
     monkeypatch.setattr(os, "execvpe", missing)
+    monkeypatch.setattr(cli, "_on_terminal", lambda: True)
     assert run("exec", "--tag", "environment=local", "--", "nope") == 127
     assert "cannot run nope" in capsys.readouterr().err
+
+
+def test_exec_off_a_terminal_masks_the_secret_in_both_streams(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    script = 'printf "out %s\\n" "$LOGIN_PASSWORD"; printf "err %s\\n" "$LOGIN_PASSWORD" >&2'
+    assert run("exec", "--tag", "environment=local", "--", "sh", "-c", script) == 0
+    captured = capsys.readouterr()
+    assert captured.out == "out [REDACTED]\n"
+    assert captured.err == "err [REDACTED]\n"
+
+
+def test_exec_off_a_terminal_returns_the_commands_exit_code(running: Running, run: Run) -> None:
+    seed(running)
+    assert run("exec", "--tag", "environment=local", "--", "sh", "-c", "exit 3") == 3
+
+
+def test_exec_off_a_terminal_leaves_a_bound_username_readable(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    script = 'printf "%s %s\\n" "$WHO" "$PW"'
+    assert run("exec", "--env", "WHO=login.username", "--env", "PW=login", "--", "sh", "-c", script) == 0
+    captured = capsys.readouterr()
+    assert captured.out == "gab [REDACTED]\n"
+    assert "WHO" not in captured.err
+
+
+def test_exec_off_a_terminal_warns_about_a_secret_too_short_to_mask(running: Running, run: Run, execvpe: ExecCapture, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(cli, "_on_terminal", lambda: False)
+    running.vault.create(Secret("pin", var="PIN", tags=frozenset({("environment", "local")})))
+    running.vault.set_value("pin", "password", "1234")
+    assert run("exec", "--tag", "environment=local", "--", "true") == 0
+    assert "warning: PIN is shorter than 8 characters" in capsys.readouterr().err
+    [(_, _, env)] = execvpe.calls
+    assert env["PIN"] == "1234"
+
+
+def test_exec_off_a_terminal_reports_a_command_that_cannot_start(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    assert run("exec", "--tag", "environment=local", "--", "saddlebag-no-such-command") == 127
+    assert "cannot run saddlebag-no-such-command" in capsys.readouterr().err
 
 
 def test_serve_refuses_when_vault_token_is_in_the_environment(run: Run, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

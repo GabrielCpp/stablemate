@@ -102,11 +102,17 @@ everything a same-user process can read without a debugger.
   bound into a command's environment. The seed itself is never filled anywhere.
 - **`exec` is the one path that carries values out, and it carries them to a child
   process.** The client asks the daemon for the bound values, places them in the
-  environment of the command it then becomes, and never prints them. A command that
-  prints its own environment prints the secret. What `exec` guarantees is that the
-  value is not in the transcript unless the command puts it there, and is never on
-  disk. Which commands an agent may run under `exec` is the permission layer's
-  decision, and the command line is visible to it in full.
+  child's environment, and never prints them. When its output is a pipe, as in an
+  agent's tool call, the client stays as the child's parent and relays its stdout and
+  stderr with every secret value masked: as written, `$`-doubled the way compose
+  escapes it, URL-encoded, and JSON-escaped. A value under 8 characters is left
+  unmasked with a warning that names its variable, because a short string matches
+  ordinary output. When stdout and stderr are both a terminal, the client becomes the
+  child and masks nothing. Masking is a guard against a mistake, such as
+  `docker compose config`, not against a command built to leak: any other encoding,
+  a value split by the command itself, or a value written to a file goes through.
+  Which commands an agent may run under `exec` is the permission layer's decision,
+  and the command line is visible to it in full.
 - **The daemon logs no value.** Its log carries verbs, names, selectors and counts.
 - **There is no plaintext path.** If Vault is unreachable or the token is not
   authenticated, the daemon does not start. A locked or absent keyring stops the

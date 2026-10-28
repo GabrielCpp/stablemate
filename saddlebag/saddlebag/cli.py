@@ -12,7 +12,7 @@ import threading
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
-from saddlebag import browser, custody, daemon, preference, protocol, route
+from saddlebag import browser, custody, daemon, preference, protocol, redact, route
 from saddlebag.custody import CustodyError
 from saddlebag.keyring_store import open_door
 from saddlebag.models import FIELDS, VALUE_FIELDS, parse_tag
@@ -217,11 +217,25 @@ def cmd_exec(args: argparse.Namespace) -> int:
     values = reply.result.get("values")
     if not isinstance(values, dict):
         return _error("the reply carried no environment", 1)
+    env = {**os.environ, **values}
+    plain = {binding["var"] for binding in bindings if binding["field"] == "username"}
+    hidden = {str(var): str(value) for var, value in values.items() if var not in plain and value}
+    masked = [value for value in hidden.values() if len(value) >= redact.MIN_LENGTH]
+    terminal = _on_terminal()
+    if not terminal:
+        for var in sorted(var for var, value in hidden.items() if len(value) < redact.MIN_LENGTH):
+            print(f"warning: {var} is shorter than {redact.MIN_LENGTH} characters; exec does not mask it in the output", file=sys.stderr)
     try:
-        os.execvpe(command[0], command, {**os.environ, **values})
+        if terminal or not masked:
+            os.execvpe(command[0], command, env)
+            return 0
+        return redact.relay(command, env, masked)
     except OSError as exc:
         return _error(f"cannot run {command[0]}: {exc.strerror or exc}", 127)
-    return 0
+
+
+def _on_terminal() -> bool:
+    return sys.stdout.isatty() and sys.stderr.isatty()
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
