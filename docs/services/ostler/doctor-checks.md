@@ -51,8 +51,9 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 
 ### ostler-doctor-ui-defects
 - usage: ostler doctor --path PATH --json: refuses a component whose name describes the label, a
-  check that presses a key no browser can press, and a dialog answer that is neither accept nor
-  dismiss
+  check that presses a key no browser can press, a dialog answer that is neither accept nor
+  dismiss, and a `visible(text=)` check on a text field, which shows its content as a value and
+  never as text (`text-of-a-field`)
 - exits: 1 when the book holds an error finding
 - run: invoke(argv=["-C", "doctor-scratch", "doctor", "--path", "docs/services/ui", "--json"])
 - verify: exit_status(code=1)
@@ -137,8 +138,8 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: json_path(path="findings[3].code", equals="decision-back-link-missing")
 - verify: json_path(path="findings[3].message", equals="record 'X-1' names decision 'D-9', and no decision file has that id")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a broken register beside an empty book
-- code: ostler/ostler/doctor.py::_check_register_records@52668a3449b3
-- code: ostler/ostler/doctor.py::_check_decisions@52668a3449b3
+- code: ostler/ostler/doctor.py::_check_register_records@a658bbb79294
+- code: ostler/ostler/doctor.py::_check_decisions@a658bbb79294
 - code: ostler/ostler/adr.py::decisions@0616ec2d019d
 - detail: [The debt register](concepts/the-debt-register.md)
 

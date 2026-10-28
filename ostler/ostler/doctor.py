@@ -2932,9 +2932,22 @@ def _check_ui(graph: Graph, f: list[Finding],
                         continue
                     named = str(parsed.args[param.name])
                     target = loc_mod.locator_target(graph, named, node.path)
-                    if loc_mod.located_node(graph, named, node.path) is not None:
+                    located = loc_mod.located_node(graph, named, node.path)
+                    if located is not None:
+                        role = str(located.meta.get("role", "")).strip().strip("`").strip().lower()
+                        if (parsed.name == "visible" and "text" in parsed.args
+                                and role in ("textbox", "searchbox")):
+                            f.append(Finding(
+                                "error", "text-of-a-field",
+                                f"{node.id}: `{key}:{index}` reads the shown text of "
+                                f"`{named}`, a {role}, and a field shows what it holds as "
+                                f"its value, not as text, so the check cannot pass — "
+                                f"check it with `value(locator=\"{named}\", equals=...)`",
+                                path=rel, line=node.line,
+                                ref=refs_mod.bullet_ref(node.id, key, index),
+                                suggestion=f'- {key}: value(locator="{named}", equals="<what the field holds>")'))
                         continue
-                    why = ("names no component this book declares" if target
+                    why =("names no component this book declares" if target
                            else "is a raw selector, not a reference into the book")
                     f.append(Finding(
                         "error", "undeclared-check-locator",

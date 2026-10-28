@@ -640,6 +640,48 @@ def test_a_locator_may_name_a_component_in_another_document(repo: Path):
     assert "undeclared-check-locator" not in all_codes(_run(repo))
 
 
+def _screen_with_field_check(role: str, check: str) -> str:
+    return ("---\ntype: screen\nslug: s\ntitle: S\n---\n# S\n\n"
+            f"## Components\n\n### x\n- selector: input[name=\"x\"]\n- role: {role}\n"
+            "- name: X\n\n### y\n- selector: button.y\n- role: button\n- name: Y\n\n"
+            "## Interactions\n\n### click\n- on: [S](#s)\n- trigger: click\n"
+            "- does: the field is read\n"
+            f"- verify: {check}\n")
+
+
+def test_a_text_check_on_a_field_is_refused(repo: Path):
+    write(repo / "docs/services/groom/gui/screens/s.md",
+          _screen_with_field_check("textbox", 'visible(locator="#x", text="a")'))
+    finding = next(f for f in _run(repo).findings if f.code == "text-of-a-field")
+    assert finding.severity == "error"
+    assert "#x" in finding.message
+    assert "value(locator=" in finding.message
+
+
+def test_a_text_check_on_a_search_field_is_refused(repo: Path):
+    write(repo / "docs/services/groom/gui/screens/s.md",
+          _screen_with_field_check("searchbox", 'visible(locator="#x", text="a")'))
+    assert "text-of-a-field" in all_codes(_run(repo))
+
+
+def test_a_value_check_on_a_field_is_accepted(repo: Path):
+    write(repo / "docs/services/groom/gui/screens/s.md",
+          _screen_with_field_check("textbox", 'value(locator="#x", equals="a")'))
+    assert "text-of-a-field" not in all_codes(_run(repo))
+
+
+def test_a_visible_check_without_text_on_a_field_is_accepted(repo: Path):
+    write(repo / "docs/services/groom/gui/screens/s.md",
+          _screen_with_field_check("textbox", 'visible(locator="#x")'))
+    assert "text-of-a-field" not in all_codes(_run(repo))
+
+
+def test_a_text_check_on_a_button_is_accepted(repo: Path):
+    write(repo / "docs/services/groom/gui/screens/s.md",
+          _screen_with_field_check("textbox", 'visible(locator="#y", text="a")'))
+    assert "text-of-a-field" not in all_codes(_run(repo))
+
+
 def _screen_with_arrangement(act: str, *, declare_field: bool = True) -> str:
     """An interaction whose `when:` is arranged by an act performed on this screen's own form."""
     field = ('### name-field\n- selector: input[name="name"]\n- role: textbox\n'

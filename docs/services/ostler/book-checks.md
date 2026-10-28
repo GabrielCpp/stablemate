@@ -38,10 +38,10 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="findings[0].severity", equals="warn")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a sound `demo` book whose
   citations carry no digest stamp, so it reports warnings and no error
-- code: ostler/ostler/doctor.py::run@52668a3449b3
+- code: ostler/ostler/doctor.py::run@a658bbb79294
 - code: ostler/ostler/book_reach.py::dead_pages@76220c84992e
-- code: ostler/ostler/checks.py::bind@ee2bf66bf573
-- code: ostler/ostler/acts.py::bind@e5348dac9f61
+- code: ostler/ostler/checks.py::bind@1cac57931716
+- code: ostler/ostler/acts.py::bind@c6e469b316ce
 - code: ostler/ostler/data_state_ledger.py::check_conditions@932372d84505
 - code: ostler/ostler/data_states.py::check_data_states@b9b073c7be77
 - code: ostler/ostler/dynamic_registry.py::as_entity_types@09b3f9268893
@@ -62,7 +62,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/refs.py::bare_targets@5de8b2ec8022
 - code: ostler/ostler/route_coverage.py::check_route_coverage@e2e853338324
 - code: ostler/ostler/rpc_coverage.py::check_rpc_coverage@83faed400135
-- code: ostler/ostler/registry.py::address_keys@5da47ef8ddca
+- code: ostler/ostler/registry.py::address_keys@9f40990df510
 - code: ostler/ostler/section_hosts.py::check_section_hosts@f8458f69db47
 - code: ostler/ostler/server_membership.py::check_server_membership@692e1d58d870
 - code: ostler/ostler/shared_checks.py::check_shared_checks@c96e41ffd13b
@@ -75,8 +75,8 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@59e7ee8278ae
 - code: ostler/ostler/qa/references.py::find_references@087a925ce811
 - code: ostler/ostler/qa/runbook.py::has_served_surface@66911fe4abd5
-- code: ostler/ostler/qa/sensitivity.py::report@907c3811d416
-- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@4acf23106ae0
+- code: ostler/ostler/qa/sensitivity.py::report@3625df8ad673
+- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@9f63d115538b
 - code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@7a84c0cc67a5
@@ -93,7 +93,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="findings[0].path", equals="docs/services/demo/entries.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds `book-scratch-broken/`, whose
   entries page links to a page that does not exist
-- code: ostler/ostler/doctor.py::run@52668a3449b3
+- code: ostler/ostler/doctor.py::run@a658bbb79294
 - code: ostler/ostler/finding.py::Finding@9ff7be48f3bd
 - code: ostler/ostler/markdown.py::comment_blocks@115245786c4b
 - code: ostler/ostler/model.py::doc_roots@b0f81cc8ce8a
@@ -111,7 +111,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="[0].name", matches="^[a-z_]+$")
 - verify: json_path(path="[0].params[0].name", matches="^[a-z_]+$")
 - fixture: none, because the vocabulary is fixed in code and reads no book
-- code: ostler/ostler/checks.py::CheckSpec@ee2bf66bf573
+- code: ostler/ostler/checks.py::CheckSpec@1cac57931716
 
 ### ostler-checks-one
 - usage: ostler checks NAME — prints one check's signature and what it excludes, one line each
@@ -121,7 +121,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: exit_status(code=0)
 - verify: stdout(matches="exit_status\\(code\\*=<int>\\)")
 - fixture: none, because the vocabulary is fixed in code and reads no book
-- code: ostler/ostler/checks.py::describe@ee2bf66bf573
+- code: ostler/ostler/checks.py::describe@1cac57931716
 
 ### ostler-audit
 - usage: ostler audit PATH... [--max-items N] [--max-chars N] [--tier 1|all] [--json] — extracts
@@ -144,7 +144,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/behavior_python.py::PythonEvidence@56f54c99d10e
 - code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
 - code: ostler/ostler/markdown.py::leading_code_spans@115245786c4b
-- code: ostler/ostler/registry.py::normative_keys@5da47ef8ddca
+- code: ostler/ostler/registry.py::normative_keys@9f40990df510
 - code: ostler/ostler/syntax.py::language_for@0850b2c61451
 - detail: [Auditing a book's claims against source](concepts/auditing-a-books-claims-against-source.md)
 
@@ -191,7 +191,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
   cli page and the flow
 - code: ostler/ostler/trace.py::run@627ab268dee3
 - code: ostler/ostler/markdown.py::MarkdownDoc@115245786c4b
-- code: ostler/ostler/registry.py::type_of@5da47ef8ddca
+- code: ostler/ostler/registry.py::type_of@9f40990df510
 
 ### ostler-trace-unknown
 - usage: ostler trace TOKEN — a token that names no node prints `no node found for '<token>'` and
@@ -298,7 +298,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/reach.py::literal_entries@a7af9ddc3e32
 - code: ostler/ostler/routes.py::entry_address@eb9c6cc89302
 - code: ostler/ostler/qa/runbook.py::bullet_text@66911fe4abd5
-- code: ostler/ostler/registry.py::base_type@5da47ef8ddca
+- code: ostler/ostler/registry.py::base_type@9f40990df510
 
 ### ostler-locators
 - usage: ostler locators [--surface S] [--json] — builds the Playwright locator of every documented
@@ -345,7 +345,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds an inventory of two functions,
   of which the book cites one
 - code: ostler/ostler/backfill.py::plan@e3c3cac49def
-- code: ostler/ostler/checks.py::literal@ee2bf66bf573
+- code: ostler/ostler/checks.py::literal@1cac57931716
 
 ### ostler-gc
 - usage: ostler gc [--write] — lists the book pages no link path from their service's entries page
@@ -358,4 +358,4 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: stdout(matches="^every page is reachable$")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a book whose entries page
   links every other page
-- code: ostler/ostler/registry.py::fixture_keys@5da47ef8ddca
+- code: ostler/ostler/registry.py::fixture_keys@9f40990df510

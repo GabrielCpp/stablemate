@@ -180,6 +180,9 @@ its first hop.
   as a regular-expression search. A phone field keeps its name and its value in separate
   attributes, so no text selector reads both, and `value(equals="")` is refused there because an
   empty field reads as its label.
+- rule: a text field is never checked with `visible(text=)`. A field shows its content as a value and
+  never as text, so doctor refuses that check on a `textbox` or `searchbox` component with
+  `text-of-a-field`, and the check is `value(locator=..., equals=...)` instead.
 - generated names are unique: every `*_function_name` helper in `plan_source.py` is given the
   full set of already-emitted names (`EmittedScenarios`) and never returns one already used in
   the same plan.
