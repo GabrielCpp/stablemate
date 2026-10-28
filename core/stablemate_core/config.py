@@ -24,8 +24,6 @@ LEGACY_CONFIG_PATH_ENV = "WORKHORSE_CONFIG"
 
 ARTIFACTS_DIR_ENV = "STABLEMATE_ARTIFACTS_DIR"
 
-WORKSPACE_ENV = "STABLEMATE_WORKSPACE"
-
 WORKSPACES_KEY = "workspaces"
 
 _LEGACY_APPS = ("workhorse", "farrier")
@@ -512,14 +510,88 @@ def resolve_workspace(name: str) -> list[WorkspaceMember]:
     return members
 
 
-def active_workspace() -> str:
-    """The workspace this process runs under, or an empty string."""
-    return os.environ.get(WORKSPACE_ENV, "").strip()
+def _all_members() -> list[WorkspaceMember]:
+    table = load_config().get(WORKSPACES_KEY)
+    workspaces = table if isinstance(table, dict) else {}
+    return [member for name in workspaces for member in resolve_workspace(name)]
+
+
+def _bind(members: list[WorkspaceMember]) -> dict[str, Path]:
+    merged: dict[str, Path] = {}
+    for member in members:
+        folder = member.path.resolve()
+        known = merged.setdefault(member.name, folder)
+        if known != folder:
+            raise ConfigError(
+                f"member {member.name!r} is bound to two folders in [{WORKSPACES_KEY}]: "
+                f"{known} and {folder}"
+            )
+    return merged
+
+
+def workspace_members() -> dict[str, Path]:
+    """Every workspace's members as ``{name: folder}``; one name bound to two folders raises :class:`ConfigError`."""
+    return _bind(_all_members())
+
+
+@dataclass(frozen=True)
+class RepositoryIdentity:
+    """The facts that make a checkout one repository: its folder, its worktree's main folder and its origin URL."""
+
+    folder: Path
+    main_folder: Path
+    origin_url: str = ""
+
+
+def _git(folder: Path, *args: str) -> str | None:
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(folder), *args],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def repository_identity(start: Path) -> RepositoryIdentity:
+    """The identity of the repository holding ``start``; a folder outside any repository is its own."""
+    folder = start.resolve()
+    probe = _git(folder, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir")
+    lines = probe.splitlines() if probe else []
+    if len(lines) != 2:
+        return RepositoryIdentity(folder, folder)
+    toplevel, common = Path(lines[0]).resolve(), Path(lines[1]).resolve()
+    return RepositoryIdentity(toplevel, common.parent, _git(toplevel, "remote", "get-url", "origin") or "")
+
+
+def _normal_url(url: str) -> str:
+    text = url.strip().rstrip("/")
+    return text.removesuffix(".git").rstrip("/")
+
+
+def is_workspace_member(identity: RepositoryIdentity) -> bool:
+    """Whether ``identity`` matches any member of any workspace by folder, main worktree folder or origin URL."""
+    folders = {identity.folder, identity.main_folder}
+    origin = _normal_url(identity.origin_url)
+    members = _all_members()
+    _bind(members)
+    for member in members:
+        if member.path.resolve() in folders:
+            return True
+        if origin and member.url and _normal_url(member.url) == origin:
+            return True
+    return False
 
 
 def docs_home(start: Path) -> Path | None:
-    """The artifacts repo while a workspace is active, else None so the caller walks up from ``start``."""
-    if active_workspace():
+    """The artifacts dir when the repository holding ``start`` is in any workspace, else None so the caller walks up from ``start``."""
+    if not _all_members():
+        return None
+    if is_workspace_member(repository_identity(start)):
         return resolve_artifacts_dir()
     return None
 
