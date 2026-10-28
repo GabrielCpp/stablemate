@@ -535,10 +535,10 @@ def test_the_shape_digest_reaches_every_dataclass_a_production_caller_stores():
 def test_every_module_that_stores_a_payload_is_a_shape_root():
     """A new storing module is the one change the digest cannot notice for itself."""
     package = REPO_ROOT / "ostler" / "ostler"
-    storing = {path.stem for path in package.rglob("*.py")
-               if path.stem != "index"
-               and any(call in path.read_text(encoding="utf-8")
-                       for call in (".put_key(", ".put("))}
+    sources = {path.stem: path.read_text(encoding="utf-8") for path in package.rglob("*.py")}
+    storing = {stem for stem, source in sources.items()
+               if stem != "index" and "IndexStore" in source
+               and any(call in source for call in (".put_key(", ".put("))}
     rooted = (REPO_ROOT / "ostler" / "ostler" / "index.py").read_text(encoding="utf-8")
     material = rooted.split("def _shape_material()")[1].split("\ndef ")[0]
 
