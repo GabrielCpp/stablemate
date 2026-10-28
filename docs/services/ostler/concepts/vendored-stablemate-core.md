@@ -23,9 +23,9 @@ Ostler's `index`, `model`, `qa/stack`, `qa/tools` and `qa/addresses` modules imp
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cached_commit@79e1cc13c672
 - code: ostler/ostler/_vendor/stablemate_core/discovery.py::base_library_dir@42eebfdfea77
 - code: ostler/ostler/_vendor/stablemate_core/discovery.py::ensure_base_library_dir@42eebfdfea77
-- code: ostler/ostler/_vendor/stablemate_core/config.py::load_config@7a84c0cc67a5
-- code: ostler/ostler/_vendor/stablemate_core/config.py::write_config_key@7a84c0cc67a5
-- code: ostler/ostler/_vendor/stablemate_core/config.py::write_config_section@7a84c0cc67a5
+- code: ostler/ostler/_vendor/stablemate_core/config.py::load_config@ff8a02ce3c68
+- code: ostler/ostler/_vendor/stablemate_core/config.py::write_config_key@ff8a02ce3c68
+- code: ostler/ostler/_vendor/stablemate_core/config.py::write_config_section@ff8a02ce3c68
 - code: ostler/ostler/_vendor/stablemate_core/profiles.py::select_profile@0f757c16382b
 - code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_power@0f757c16382b
 - code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_backend_default@0f757c16382b

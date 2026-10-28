@@ -330,15 +330,8 @@ def node_provenance(
 
 
 def effective_checkouts(explicit: dict[str, Path] | None) -> dict[str, Path]:
-    """The checkout map a run resolves repository-qualified refs against: the active workspace's members, overridden by any explicit ``--checkout``."""
-    merged: dict[str, Path] = {}
-    workspace = core_config.active_workspace()
-    if workspace:
-        try:
-            members = core_config.resolve_workspace(workspace)
-        except ValueError:
-            members = []
-        merged.update({member.name: member.path.resolve() for member in members})
+    """The checkout map a run resolves repository-qualified refs against: every workspace's members, overridden by any explicit ``--checkout``."""
+    merged = core_config.workspace_members()
     merged.update(explicit or {})
     return merged
 

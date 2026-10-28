@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -117,7 +118,6 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path
     config = tmp_path / "home.toml"
     config.write_text(f'[workspaces]\nacme = ["{api}", "{web}"]\n')
     monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
-    monkeypatch.setenv(core_config.WORKSPACE_ENV, "acme")
     return {"docs_home": docs_home, "api": api, "web": web}
 
 
@@ -137,5 +137,6 @@ def test_without_a_workspace_a_sibling_repo_opt_in_stays_invisible(
     workspace: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_agents_yml(workspace["api"], ["grpcurl"])
-    monkeypatch.delenv(core_config.WORKSPACE_ENV)
+    config = Path(os.environ[core_config.CONFIG_PATH_ENV])
+    config.write_text(f'[workspaces]\nacme = ["{workspace["web"]}"]\n')
     assert tools.opted_in_tools(workspace["docs_home"]) == set()

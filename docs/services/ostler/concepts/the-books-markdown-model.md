@@ -161,11 +161,11 @@ declare. `__init__.py` is empty.
 - code: ostler/ostler/query.py::search@96bd7ea5ee8a
 - code: ostler/ostler/query.py::query@96bd7ea5ee8a
 - code: ostler/ostler/query.py::list_entities@96bd7ea5ee8a
-- code: ostler/ostler/provenance.py::story_commits@61d8f7f21af4
-- code: ostler/ostler/provenance.py::source_freshness@61d8f7f21af4
-- code: ostler/ostler/provenance.py::story_provenance@61d8f7f21af4
-- code: ostler/ostler/provenance.py::node_provenance@61d8f7f21af4
-- code: ostler/ostler/provenance.py::checkout_for@61d8f7f21af4
+- code: ostler/ostler/provenance.py::story_commits@731cc1e22714
+- code: ostler/ostler/provenance.py::source_freshness@731cc1e22714
+- code: ostler/ostler/provenance.py::story_provenance@731cc1e22714
+- code: ostler/ostler/provenance.py::node_provenance@731cc1e22714
+- code: ostler/ostler/provenance.py::checkout_for@731cc1e22714
 - code: ostler/ostler/result.py::Result@f4149eb63e51
 - code: ostler/ostler/keys.py::pressable@a22c2b93f53b
 - code: ostler/ostler/__init__.py@994811fd4652

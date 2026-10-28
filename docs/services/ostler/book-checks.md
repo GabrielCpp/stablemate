@@ -79,7 +79,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@9f63d115538b
 - code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@79e1cc13c672
-- code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@7a84c0cc67a5
+- code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@ff8a02ce3c68
 - detail: [Book health: coverage, reach and census](concepts/book-health-coverage-reach-and-census.md)
 
 ### ostler-doctor-dangling-link
@@ -266,7 +266,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a cli page that cites
   `src/demo.py::greet`
 - code: ostler/ostler/query.py::query@96bd7ea5ee8a
-- code: ostler/ostler/provenance.py::checkout_for@61d8f7f21af4
+- code: ostler/ostler/provenance.py::checkout_for@731cc1e22714
 
 ### ostler-graph
 - usage: ostler graph [--surface S] [--type T] [--title T] [--path P] [--under ID] [--depth N]

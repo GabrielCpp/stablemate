@@ -104,7 +104,6 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path
     config.write_text(f'[workspaces]\nacme = ["{api}", "{web}"]\n')
     monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
     artifacts = Path(os.environ[core_config.ARTIFACTS_DIR_ENV]).resolve()
-    monkeypatch.setenv(core_config.WORKSPACE_ENV, "acme")
     return {"api": api.resolve(), "web": web.resolve(), "artifacts": artifacts}
 
 
