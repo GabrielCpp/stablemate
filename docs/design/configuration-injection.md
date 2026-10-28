@@ -138,7 +138,7 @@ fit it. No part is named after an existing module.
 | Concept | Owns | Never knows |
 |---|---|---|
 | Record | the two-sided shape: a public side that always prints and a hidden side that only delivers | its consumers |
-| Metadata slot | general printable attributes on the public side | the hidden side |
+| Metadata slot | general printable attributes on the public side, a string map set at creation and edited afterwards by key | the hidden side |
 | Delivery | placing a hidden value into a child's environment or a browser field | the command's purpose |
 | Possession check | answering whether a text carries any held value, in any spelling the mask knows, without returning it | the caller |
 | Output mask | masking held values in a child's piped output (exists) | the command |
@@ -297,8 +297,11 @@ updated with the key.
 
 - Record exists: [models.py:54](saddlebag/saddlebag/models.py:54) has `name`, `username`,
   `description`, `var`, `tags`, `fields`, and `to_dict` says it never carries a value.
-  Metadata slot is new: `metadata: Mapping[str, str]`, set by `--meta k=v`, printed by
-  `list`, bound by `exec --env VAR=name.meta.k`. Catalogue and Vault serialisation carry it.
+  Metadata slot is new: `metadata: Mapping[str, str]`, set by `--meta k=v`, edited by
+  `secret meta NAME k=v` and `secret unmeta NAME k` (the same pair tags have in `tag` and
+  `untag`), printed by `list`, bound by `exec --env VAR=name.meta.k` and `fill --field
+  meta.k` as the username is: plain, never masked. Catalogue and Vault serialisation carry
+  it; a catalogue written before the slot loads with an empty map.
 - Delivery exists: `fill` in `browser.py`, `exec` at [cli.py:203](saddlebag/saddlebag/cli.py:203).
 - Output mask exists: `redact.py`. Possession check is new and reuses its derived forms
   through the daemon protocol and the keyring path alike.
@@ -358,7 +361,8 @@ are new and the code follows none of them yet.
    -hex 24 | saddlebag secret set x` is allowed, every redirect's command passes the guard
    (I4), the guard's verdict time is measured and under 50 ms, and both suites hold.
 2. **Identities whole.** Custody (Metadata slot, Possession check), Refusal (Pasted value).
-   Done when: `secret create --meta phone=…` round-trips through keyring and daemon, `list`
+   Done when: `secret create --meta phone=…` round-trips through keyring and daemon, `secret
+   meta` overwrites a key and `secret unmeta` drops one and names a key it cannot find, `list`
    prints it, `exec --env QA_PHONE=qa_admin.meta.phone` injects it, a Bash command whose
    text contains a stored value is denied, and with the daemon stopped the same command is
    allowed with a stderr note (I7). Suites hold.
