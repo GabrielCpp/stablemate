@@ -280,8 +280,10 @@ settings already register two PreToolUse hooks on `Bash` and `Write|Edit|MultiEd
 the entry shape is known. Mismatch: `check_no_shell.py` lives under `scripts/` and ships to
 nobody, where this guard must reach every repo the operator works in. The design is right:
 the guard is a saddlebag verb. Protected path and Revealing command are tables in
-`guard.py`. Pasted value calls Custody's possession check over the existing route
-(`route.py`).
+`guard.py`. Pasted value asks Custody's possession check (`holds`) over the daemon socket
+only, found through `sockets.py`, which the protocol module shares; the keyring route is
+never asked from the hook (A5). Heredoc bodies and single-quoted backticks are data to
+Revealing command, not stages.
 
 **Description.** Reshape. The environment node's keys are declared at
 [registry.py:618](ostler/ostler/registry.py:618): `selector`, `services`, `backing`,
@@ -393,9 +395,13 @@ are new and the code follows none of them yet.
    one hook shape, one install command. Basis: the operator's settings register PreToolUse
    hooks for it alone. If wrong: Refusal's install concept gains a variant per CLI.
 3. **A5. Custody's possession check answers in milliseconds over the daemon and may block
-   on the keyring route.** Decided: I7, and the 50 ms budget on path and command verdicts
-   alone. Basis: none; measured in slice 1 and 2. If wrong: Pasted value may need a cache,
-   or the keyring route is excluded from it.
+   on the keyring route.** Decided: I7, the 50 ms budget on path and command verdicts
+   alone, and the keyring route is excluded from the check: the hook asks the daemon
+   socket only, so a machine with no daemon gets the I7 note on every command with a
+   candidate token and no possession check. Basis: slice 2 measured the hook at about 27
+   ms over the interpreter floor with a candidate token and no daemon, and importing the
+   daemon protocol alone costs 25 ms, which is why the socket path lives apart from it. If
+   wrong: Pasted value gains a cached held-forms file the keyring route refreshes.
 4. **A4. Path shapes and command shapes catch the common mistake, and the holes are
    accepted.** Decided: a table, not a parser. Basis: the operator's own words in the
    conversation. If wrong: Refusal gains a concept per hole, or the problem moves to the
