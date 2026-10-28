@@ -398,6 +398,15 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
     Finding while verifying slice 2: range mode on a reference commit that added a web
     service reported 9 pairs, all between two `package-lock.json` files. A lockfile
     carries no generated-file marker, and a repo that overrides `ignore` must not lose it.
+18. Section 5, Unit identity and Dependent: a relative import is matched by resolving it,
+    not by a substring of the repo path. Finding while planning slice 3: a relative import
+    climbs only to the common ancestor, so `../shared/auth` never holds the unit's full
+    repo path. The substring `/api/handlers` also matches a frontend's URL
+    `"/api/handlers"`, which would gate the frontend on every private backend edit.
+19. Section 5, Unit identity: a quoted repo path or `package.json` name counts only after
+    an import keyword. Finding while verifying slice 3: on the reference stories, the
+    infrastructure service held the web package's name as a cloud account id. It was
+    gated on 11 of 17 stories, and none of them touched its code.
 
 ### Parts
 
@@ -483,9 +492,12 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
 **Reach**
 
 - Edited unit: **New**. The directories of files changed between the story base and HEAD.
-- Unit identity: **New**. The repo-relative path in slash and dot form, plus the package
-  name from the nearest manifest: `go.mod` module, `package.json` name, `pubspec.yaml`
-  name, `pyproject.toml` project name.
+- Unit identity: **New**. The repo-relative path as a quoted string after `from`, `import`,
+  `require(` or `import(`, and in Python dot form, plus the package name from the nearest
+  manifest: `go.mod` module quoted, `package.json` name after the same keywords,
+  `pubspec.yaml` name, `pyproject.toml` project name (revised, logs 18 and 19).
+- Relative import: **New**, a second way to find a Dependent. A quoted `./` or `../` path
+  in a service's source, resolved against its file, that lands inside the unit (log 18).
 - Dependent: **New**. `git grep -l -F` each identity across the declared services'
   sources, mapped back to the service that owns each hit.
 - Check set: **Reshape** of `resolve_impl_context` (`coder/shared/plan.py:284`). The
@@ -659,6 +671,11 @@ at review, Finding what exists in the plan, Sharing in scope.
    - Basis: the reference repo's cross-service import is a Go module path. TypeScript
      relative imports across service roots are unverified.
    - If wrong: Unit identity, Dependent, slice 3.
+   - Revised (log 18): a relative import counts when it resolves into the unit. A path
+     alias such as a `tsconfig` `paths` entry is still unseen.
+   - Revised (log 19): a quoted name counts only after an import keyword. A Go import
+     carries no keyword, so a `go.mod` module still matches bare. A module path without a
+     domain, such as `module api`, would match any `"api"` string.
 6. **Shared code lives in the same repository as its callers.** A copy between two
    repositories of one workspace is not the problem the operator described.
    - Decided: the comparison scans one repository. The lap runs it once per repository.
@@ -722,5 +739,8 @@ at review, Finding what exists in the plan, Sharing in scope.
 17. **Most stories touch one service.** A story that edits no shared unit gates the same
     services after slice 3 as before.
     - Decided: slice 3's done-when compares the count per story, not a fixed number.
-    - Basis: none. Per-lap service counts were not measured.
+    - Basis: measured after log 19 on the 17 reference stories with commits. 11 gate
+      exactly the plan. 2 add a service through a relative test-data path into another
+      service. 4 add services whose own files the story changed. Resolving the set takes
+      a median 1.3 s and at most 16 s.
     - If wrong: the 5b lap row, slice 3.
