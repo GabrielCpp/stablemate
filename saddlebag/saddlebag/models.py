@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 FIELDS = ("username", "password", "totp")
@@ -13,6 +13,8 @@ Tag = tuple[str, str]
 
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _VAR = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_META_KEY = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+META_PREFIX = "meta."
 
 
 def validate_name(name: str) -> str:
@@ -29,11 +31,22 @@ def validate_var(var: str) -> str:
     return var
 
 
+def validate_meta_key(key: str) -> str:
+    """The metadata key, or a ValueError saying what a key may contain."""
+    if not _META_KEY.fullmatch(key):
+        raise ValueError(f"invalid metadata key {key!r}: use letters, digits, '_' and '-', with no '.' or '='")
+    return key
+
+
 def validate_field(name: str, allowed: tuple[str, ...] = FIELDS) -> str:
-    """The field name, or a ValueError listing the allowed ones."""
-    if name not in allowed:
-        raise ValueError(f"unknown field {name!r}: expected one of {', '.join(allowed)}")
-    return name
+    """The field name, or a ValueError listing the allowed ones. ``meta.<key>`` is allowed with the full FIELDS."""
+    if name in allowed:
+        return name
+    if allowed == FIELDS and name.startswith(META_PREFIX):
+        validate_meta_key(name[len(META_PREFIX) :])
+        return name
+    expected = ", ".join(allowed) + (f" or {META_PREFIX}<key>" if allowed == FIELDS else "")
+    raise ValueError(f"unknown field {name!r}: expected one of {expected}")
 
 
 def parse_tag(text: str) -> Tag:
@@ -43,6 +56,15 @@ def parse_tag(text: str) -> Tag:
     if not sep or not key or not value:
         raise ValueError(f"invalid tag {text!r}: expected key=value")
     return key, value
+
+
+def parse_meta(text: str) -> tuple[str, str]:
+    """Split ``key=value`` into a pair."""
+    key, sep, value = text.partition("=")
+    key, value = key.strip(), value.strip()
+    if not sep or not key or not value:
+        raise ValueError(f"invalid metadata {text!r}: expected key=value")
+    return validate_meta_key(key), value
 
 
 def matches(tags: Iterable[Tag], wanted: Iterable[Tag]) -> bool:
@@ -60,6 +82,7 @@ class Secret:
     var: str | None = None
     tags: frozenset[Tag] = field(default_factory=frozenset)
     fields: frozenset[str] = field(default_factory=frozenset)
+    metadata: Mapping[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, object]:
         """The JSON form. It names which values exist and never carries one."""
@@ -70,4 +93,5 @@ class Secret:
             "var": self.var,
             "tags": [list(pair) for pair in sorted(self.tags)],
             "fields": sorted(self.fields),
+            "metadata": dict(sorted(self.metadata.items())),
         }

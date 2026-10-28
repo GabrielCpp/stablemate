@@ -64,3 +64,28 @@ def test_another_version_is_refused(tmp_path: Path) -> None:
     path.write_text(json.dumps({"version": 2, "secrets": []}))
     with pytest.raises(StoreUnavailable, match=str(path)):
         Catalogue(path).names()
+
+
+def test_a_record_round_trips_with_metadata(catalogue: Catalogue) -> None:
+    secret = Secret("login", metadata={"phone": "+15555550100", "role": "admin"})
+    catalogue.put(secret)
+    assert catalogue.get("login") == secret
+    assert json.loads(catalogue.path.read_text())["secrets"][0]["metadata"] == {"phone": "+15555550100", "role": "admin"}
+
+
+def test_a_record_written_before_metadata_loads_empty(catalogue: Catalogue) -> None:
+    catalogue.put(Secret("login", "gab"))
+    payload = json.loads(catalogue.path.read_text())
+    del payload["secrets"][0]["metadata"]
+    catalogue.path.write_text(json.dumps(payload))
+    assert catalogue.get("login") == Secret("login", "gab")
+
+
+@pytest.mark.parametrize("metadata", [["a"], {"a": 1}, "x"])
+def test_metadata_that_is_not_a_string_map_is_rejected(catalogue: Catalogue, metadata: object) -> None:
+    catalogue.put(Secret("login"))
+    payload = json.loads(catalogue.path.read_text())
+    payload["secrets"][0]["metadata"] = metadata
+    catalogue.path.write_text(json.dumps(payload))
+    with pytest.raises(StoreUnavailable, match=str(catalogue.path)):
+        catalogue.names()

@@ -56,6 +56,17 @@ def _check_tags(tags: list[str]) -> list[str]:
     return tags
 
 
+def _check_meta(items: list[str]) -> list[str]:
+    from saddlebag.models import parse_meta
+
+    for item in items:
+        try:
+            parse_meta(item)
+        except ValueError as exc:
+            raise UsageError(str(exc)) from exc
+    return items
+
+
 def _table(rows: list[list[str]], header: list[str]) -> None:
     widths = [max(len(row[i]) for row in [header, *rows]) for i in range(len(header))]
     for row in [header, *rows]:
@@ -111,10 +122,10 @@ def cmd_list(args: argparse.Namespace) -> int:
         _emit(reply.result)
         return 0
     rows = [
-        [s["name"], s["username"] or "", s["var"] or "", ",".join(s["fields"]), _pairs(s["tags"]), s["description"] or ""]
+        [s["name"], s["username"] or "", s["var"] or "", ",".join(s["fields"]), _pairs(s["tags"]), _pairs(sorted(s["metadata"].items())), s["description"] or ""]
         for s in reply.result["secrets"]
     ]
-    _table(rows, ["NAME", "USERNAME", "VAR", "VALUES", "TAGS", "DESCRIPTION"])
+    _table(rows, ["NAME", "USERNAME", "VAR", "VALUES", "TAGS", "METADATA", "DESCRIPTION"])
     return 0
 
 
@@ -130,7 +141,7 @@ def cmd_tags(args: argparse.Namespace) -> int:
 def cmd_create(args: argparse.Namespace) -> int:
     reply = _ask(
         "create",
-        {"name": args.name, "username": args.username, "description": args.description, "var": args.var, "tags": _check_tags(args.tag)},
+        {"name": args.name, "username": args.username, "description": args.description, "var": args.var, "tags": _check_tags(args.tag), "metadata": _check_meta(args.meta)},
     )
     if isinstance(reply, int):
         return reply
@@ -176,6 +187,22 @@ def cmd_tag(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_meta(args: argparse.Namespace) -> int:
+    reply = _ask("meta", {"name": args.name, "metadata": _check_meta(args.items)})
+    if isinstance(reply, int):
+        return reply
+    print(f"updated metadata of {args.name}")
+    return 0
+
+
+def cmd_unmeta(args: argparse.Namespace) -> int:
+    reply = _ask("unmeta", {"name": args.name, "keys": args.keys})
+    if isinstance(reply, int):
+        return reply
+    print(f"dropped metadata of {args.name}")
+    return 0
+
+
 def cmd_fill(args: argparse.Namespace) -> int:
     reply = _ask(
         "fill",
@@ -202,7 +229,7 @@ def _binding(text: str) -> dict[str, object]:
     var, sep, source = text.partition("=")
     name, _, field = source.partition(".")
     if not sep or not var or not name:
-        raise ValueError(f"invalid --env {text!r}: expected VAR=NAME or VAR=NAME.field")
+        raise ValueError(f"invalid --env {text!r}: expected VAR=NAME or VAR=NAME[.field|.meta.key]")
     return {"var": var, "name": name, "field": field or "password"}
 
 
@@ -226,7 +253,7 @@ def cmd_exec(args: argparse.Namespace) -> int:
     if not isinstance(values, dict):
         return _error("the reply carried no environment", 1)
     env = {**os.environ, **values}
-    plain = {binding["var"] for binding in bindings if binding["field"] == "username"}
+    plain = {binding["var"] for binding in bindings if binding["field"] == "username" or str(binding["field"]).startswith("meta.")}
     hidden = {str(var): str(value) for var, value in values.items() if var not in plain and value}
     masked = [value for value in hidden.values() if len(value) >= redact.MIN_LENGTH]
     terminal = _on_terminal()
@@ -395,6 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--description")
     c.add_argument("--var", help="environment variable `exec` fills with the password")
     c.add_argument("--tag", action="append", default=[], metavar="K=V")
+    c.add_argument("--meta", action="append", default=[], metavar="K=V", help="printable metadata; repeatable")
     c.add_argument("--json", action="store_true")
     c.set_defaults(func=cmd_create)
     st = ssub.add_parser("set", help="store a value read from stdin")
@@ -414,9 +442,18 @@ def build_parser() -> argparse.ArgumentParser:
         t.add_argument("tags", nargs="+", metavar="K=V")
         t.set_defaults(func=cmd_tag, command_name=verb)
 
+    me = ssub.add_parser("meta", help="add or overwrite metadata")
+    me.add_argument("name")
+    me.add_argument("items", nargs="+", metavar="K=V")
+    me.set_defaults(func=cmd_meta)
+    um = ssub.add_parser("unmeta", help="drop metadata keys")
+    um.add_argument("name")
+    um.add_argument("keys", nargs="+", metavar="KEY")
+    um.set_defaults(func=cmd_unmeta)
+
     f = sub.add_parser("fill", help="type a value into a browser field over CDP")
     f.add_argument("name")
-    f.add_argument("--field", choices=FIELDS, default="password")
+    f.add_argument("--field", default="password", metavar="FIELD", help=f"{', '.join(FIELDS)} or meta.KEY")
     f.add_argument("--selector", required=True, metavar="CSS")
     f.add_argument("--url-contains", metavar="TEXT")
     f.add_argument("--cdp", metavar="URL", help="DevTools endpoint, loopback only (default: the daemon's)")
@@ -426,7 +463,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     e = sub.add_parser("exec", help="run a command with secrets in its environment")
     _tag_option(e)
-    e.add_argument("--env", action="append", default=[], metavar="VAR=NAME[.field]")
+    e.add_argument("--env", action="append", default=[], metavar="VAR=NAME[.field|.meta.KEY]")
     e.add_argument("command", nargs=argparse.REMAINDER, metavar="-- CMD")
     e.set_defaults(func=cmd_exec)
 

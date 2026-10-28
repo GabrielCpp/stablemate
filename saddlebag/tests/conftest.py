@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import io
 import threading
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -59,10 +59,15 @@ class FakeVault:
     def value(self, name: str, field: str) -> str | None:
         if field == "username":
             return self.metadata[name].username
+        if field.startswith("meta."):
+            return self.metadata[name].metadata.get(field[len("meta.") :])
         return self.data[name].get(field)
 
     def retag(self, name: str, tags: frozenset[Tag]) -> None:
         self.metadata[name] = replace(self.metadata[name], tags=tags)
+
+    def set_metadata(self, name: str, metadata: Mapping[str, str]) -> None:
+        self.metadata[name] = replace(self.metadata[name], metadata=dict(metadata))
 
 
 class FakeBackend(KeyringBackend):

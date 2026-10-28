@@ -10,7 +10,19 @@ from pathlib import Path
 from typing import Any
 
 from saddlebag import browser, redact, shapes, totp
-from saddlebag.models import VALUE_FIELDS, Secret, Tag, matches, parse_tag, validate_field, validate_name, validate_var
+from saddlebag.models import (
+    META_PREFIX,
+    VALUE_FIELDS,
+    Secret,
+    Tag,
+    matches,
+    parse_meta,
+    parse_tag,
+    validate_field,
+    validate_meta_key,
+    validate_name,
+    validate_var,
+)
 from saddlebag.protocol import Reply, Request
 from saddlebag.store import SecretStore, StoreUnavailable
 
@@ -48,6 +60,22 @@ def _tags(args: dict[str, Any], key: str = "tags") -> frozenset[Tag]:
         return frozenset(parse_tag(item) for item in raw)
     except ValueError as exc:
         raise RequestError(str(exc)) from exc
+
+
+def _metadata(args: dict[str, Any], key: str = "metadata") -> dict[str, str]:
+    raw = args.get(key) or []
+    if not isinstance(raw, list) or not all(isinstance(item, str) for item in raw):
+        raise RequestError(f"argument {key!r} must be a list of key=value strings")
+    pairs: dict[str, str] = {}
+    for item in raw:
+        try:
+            name, value = parse_meta(item)
+        except ValueError as exc:
+            raise RequestError(str(exc)) from exc
+        if name in pairs:
+            raise RequestError(f"metadata {name} is given twice")
+        pairs[name] = value
+    return pairs
 
 
 def _checked[T](check: Callable[[str], T], value: str) -> T:
@@ -112,6 +140,7 @@ class Verbs:
             description=_text(args, "description", required=False),
             var=_checked(validate_var, var) if var is not None else None,
             tags=_tags(args),
+            metadata=_metadata(args),
         )
         self.store.create(secret)
         return {"secret": secret.to_dict()}
@@ -151,10 +180,34 @@ class Verbs:
         self.store.retag(secret.name, secret.tags - _tags(args))
         return {"name": secret.name}
 
+    def verb_meta(self, args: dict[str, Any]) -> dict[str, Any]:
+        secret = self._existing(args)
+        merged = {**secret.metadata, **_metadata(args)}
+        self.store.set_metadata(secret.name, merged)
+        return {"name": secret.name, "metadata": dict(sorted(merged.items()))}
+
+    def verb_unmeta(self, args: dict[str, Any]) -> dict[str, Any]:
+        secret = self._existing(args)
+        keys = args.get("keys") or []
+        if not isinstance(keys, list) or not all(isinstance(item, str) for item in keys):
+            raise RequestError("argument 'keys' must be a list of strings")
+        remaining = dict(secret.metadata)
+        for key in keys:
+            _checked(validate_meta_key, key)
+            if key not in remaining:
+                raise RequestError(f"{secret.name} has no metadata {key}")
+            del remaining[key]
+        self.store.set_metadata(secret.name, remaining)
+        return {"name": secret.name, "metadata": dict(sorted(remaining.items()))}
+
     def _value(self, secret: Secret, field: str) -> str:
         value = self.store.value(secret.name, field)
         if value is None:
-            hint = f" Store one with: saddlebag secret set {secret.name} --field {field}" if field in VALUE_FIELDS else ""
+            hint = ""
+            if field in VALUE_FIELDS:
+                hint = f" Store one with: saddlebag secret set {secret.name} --field {field}"
+            elif field.startswith(META_PREFIX):
+                hint = f" Set one with: saddlebag secret meta {secret.name} {field[len(META_PREFIX) :]}=..."
             raise RequestError(f"{secret.name} has no {field}.{hint}")
         return value
 

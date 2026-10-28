@@ -186,3 +186,26 @@ def test_health_names_no_interpreter_off_macos(store: KeyringStore) -> None:
 def test_health_names_the_interpreter_on_macos(catalogue: Catalogue) -> None:
     mac = type("Keyring", (FakeBackend,), {"__module__": "keyring.backends.macOS"})()
     assert KeyringStore(catalogue, mac).health().interpreter == sys.executable
+
+
+def test_set_metadata_replaces_the_map_and_keeps_the_rest(store: KeyringStore, backend: FakeBackend) -> None:
+    store.set_metadata("login", {"phone": "+1", "role": "admin"})
+    store.set_metadata("login", {"phone": "+2"})
+    secret = store.get("login")
+    assert secret is not None
+    assert secret.metadata == {"phone": "+2"}
+    assert secret.username == "gab" and secret.tags == {("environment", "local")}
+    assert backend.items == {}
+
+
+def test_a_meta_field_reads_from_the_record(store: KeyringStore, backend: FakeBackend) -> None:
+    store.set_metadata("login", {"phone": "+1"})
+    assert store.value("login", "meta.phone") == "+1"
+    assert store.value("login", "meta.absent") is None
+    assert store.value("ghost", "meta.phone") is None
+    assert backend.items == {}
+
+
+def test_set_metadata_on_a_missing_record_is_refused(store: KeyringStore) -> None:
+    with pytest.raises(StoreUnavailable, match="no such secret"):
+        store.set_metadata("ghost", {"k": "v"})

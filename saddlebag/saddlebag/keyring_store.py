@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 
 import keyring
@@ -13,7 +13,7 @@ import keyring.errors
 from keyring.backend import KeyringBackend
 
 from saddlebag.catalogue import Catalogue
-from saddlebag.models import VALUE_FIELDS, Secret, Tag
+from saddlebag.models import META_PREFIX, VALUE_FIELDS, Secret, Tag
 from saddlebag.store import StoreHealth, StoreUnavailable
 
 SERVICE = "stablemate-saddlebag"
@@ -160,8 +160,14 @@ class KeyringStore:
         if field == "username":
             secret = self._catalogue.get(name)
             return secret.username if secret else None
+        if field.startswith(META_PREFIX):
+            secret = self._catalogue.get(name)
+            return secret.metadata.get(field[len(META_PREFIX) :]) if secret else None
         account = _account(name, field)
         return _guarded(lambda: self._backend.get_password(SERVICE, account), account)
 
     def retag(self, name: str, tags: frozenset[Tag]) -> None:
         self._catalogue.put(replace(self._record(name), tags=tags))
+
+    def set_metadata(self, name: str, metadata: Mapping[str, str]) -> None:
+        self._catalogue.put(replace(self._record(name), metadata=dict(metadata)))

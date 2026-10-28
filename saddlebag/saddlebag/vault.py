@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
-from saddlebag.models import VALUE_FIELDS, Secret, Tag
+from saddlebag.models import META_PREFIX, VALUE_FIELDS, Secret, Tag
 from saddlebag.store import StoreHealth
 
 
@@ -55,6 +57,7 @@ class VaultStore:
             if value is not None
         }
         custom["tags"] = json.dumps(sorted(secret.tags))
+        custom["metadata"] = json.dumps(dict(sorted(secret.metadata.items())))
         self._kv().update_metadata(path=self._path(secret.name), mount_point=self.mount, custom_metadata=custom)
 
     def is_authenticated(self) -> bool:
@@ -84,6 +87,7 @@ class VaultStore:
             var=custom.get("var"),
             tags=frozenset((k, v) for k, v in json.loads(custom.get("tags", "[]"))),
             fields=frozenset(key for key in VALUE_FIELDS if data.get(key)),
+            metadata=json.loads(custom.get("metadata", "{}")),
         )
 
     def create(self, secret: Secret) -> None:
@@ -108,10 +112,19 @@ class VaultStore:
         if field == "username":
             secret = self.get(name)
             return secret.username if secret else None
+        if field.startswith(META_PREFIX):
+            secret = self.get(name)
+            return secret.metadata.get(field[len(META_PREFIX) :]) if secret else None
         return self._data(name).get(field) or None
 
     def retag(self, name: str, tags: frozenset[Tag]) -> None:
         secret = self.get(name)
         if secret is None:
             raise VaultError(f"no such secret: {name}")
-        self._write_metadata(Secret(name, secret.username, secret.description, secret.var, tags))
+        self._write_metadata(replace(secret, tags=tags))
+
+    def set_metadata(self, name: str, metadata: Mapping[str, str]) -> None:
+        secret = self.get(name)
+        if secret is None:
+            raise VaultError(f"no such secret: {name}")
+        self._write_metadata(replace(secret, metadata=dict(metadata)))

@@ -128,8 +128,10 @@ docker run \
 
 A **secret** has a name, an optional username, a description an agent reads to choose
 between candidates, an optional `var` naming the environment variable `exec` fills it
-into, and a set of `key=value` tags. It holds up to two values: a `password` and a
-`totp` enrolment seed. The username is metadata and may print. The two values never do.
+into, a set of `key=value` tags, and a map of printable metadata such as a phone number
+or a role, given with `--meta key=value` and changed later with `secret meta` and `secret
+unmeta`. It holds up to two values: a `password` and a `totp` enrolment seed. The
+username and the metadata may print. The two values never do.
 
 ```jsonc
 {
@@ -138,6 +140,7 @@ into, and a set of `key=value` tags. It holds up to two values: a `password` and
   "description": "Log in as a normal user",
   "var":         "LOGIN_PASSWORD",
   "tags":        [["environment", "local"], ["role", "user"]],
+  "metadata":    {"phone": "+15555550100"},
   "fields":      ["password"]
 }
 ```
@@ -155,19 +158,19 @@ carries `environment=<ostler environment node id>`.
 |---|---|
 | `serve` | run the daemon; token from stdin, the OS keyring or a 0600 file; `--keep-token` stores one |
 | `list` `tags` | query by tag; neither can emit a value |
-| `secret create` `set` `unset` `remove` `tag` `untag` | manage a secret; `set` reads its value from stdin |
+| `secret create` `set` `unset` `remove` `tag` `untag` `meta` `unmeta` | manage a secret; `set` reads its value from stdin; `meta K=V` adds or overwrites printable metadata, `unmeta KEY` drops it |
 | `fill` | type a secret's username, password or current TOTP code into a browser field |
 | `exec` | run a command with matching secrets in its environment |
 | `doctor` | backend and route in use, store reachable, secrets with no value, orphan keyring items, stray token file, and on the daemon route where its token came from |
 
 ```bash
 saddlebag fill NAME --field username|password|totp --selector S [--url-contains X]
-saddlebag exec [--tag k=v]... [--env VAR=NAME[.field]]... -- cmd args...
+saddlebag exec [--tag k=v]... [--env VAR=NAME[.field|.meta.KEY]]... -- cmd args...
 ```
 
 `exec` fills each tag-matched secret's `var` with its password. An explicit
-`--env VAR=NAME.field` binding may name any field, including the username and the
-current TOTP code. A secret matched by tag that has no `var` is an error naming it,
+`--env VAR=NAME.field` binding may name any field, including the username, the
+current TOTP code and a metadata key as `NAME.meta.KEY`. A secret matched by tag that has no `var` is an error naming it,
 not a silent skip.
 
 **What each verb guarantees.** `fill` reports a character count, a selector and a URL.

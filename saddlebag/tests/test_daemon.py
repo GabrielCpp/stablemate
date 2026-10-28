@@ -51,6 +51,7 @@ def test_list_returns_the_matching_secrets_without_values(running: Running) -> N
                 "var": "LOGIN_PASSWORD",
                 "tags": [["environment", "local"]],
                 "fields": ["password", "totp"],
+                "metadata": {},
             }
         ]
     }
@@ -84,6 +85,29 @@ def test_create_rejects_bad_input(running: Running, args: dict[str, object], mes
     reply = running.ask("create", **args)
     assert not reply.ok and message in str(reply.error)
     assert running.vault.names() == []
+
+
+def test_create_stores_metadata_and_rejects_a_repeated_key(running: Running) -> None:
+    ok(running.ask("create", name="a", metadata=["phone=1", "role=admin"]))
+    assert running.vault.metadata["a"].metadata == {"phone": "1", "role": "admin"}
+    again = running.ask("create", name="b", metadata=["phone=1", "phone=2"])
+    assert not again.ok and "phone" in str(again.error)
+
+
+def test_meta_merges_and_unmeta_drops(running: Running) -> None:
+    seed(running)
+    assert ok(running.ask("meta", name="login", metadata=["a=1", "b=2"]))["metadata"] == {"a": "1", "b": "2"}
+    assert ok(running.ask("meta", name="login", metadata=["a=3"]))["metadata"] == {"a": "3", "b": "2"}
+    assert ok(running.ask("unmeta", name="login", keys=["a"]))["metadata"] == {"b": "2"}
+    missing = running.ask("unmeta", name="login", keys=["a"])
+    assert not missing.ok and "login has no metadata a" in str(missing.error)
+    assert running.vault.metadata["login"].metadata == {"b": "2"}
+
+
+def test_env_binds_a_metadata_field(running: Running) -> None:
+    seed(running)
+    ok(running.ask("meta", name="login", metadata=["phone=+1"]))
+    assert ok(running.ask("env", bindings=[{"var": "P", "name": "login", "field": "meta.phone"}])) == {"values": {"P": "+1"}}
 
 
 def test_set_stores_the_value_and_reports_its_length_only(running: Running) -> None:

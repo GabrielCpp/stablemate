@@ -435,3 +435,89 @@ def test_doctor_over_the_daemon_keeps_the_legacy_key(running: Running, run: Run,
     out = capsys.readouterr().out
     assert "route: socket " in out and "(daemon " in out
     assert "orphan keyring items" not in out
+
+
+def test_metadata_is_created_edited_dropped_and_listed(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    assert run("secret", "create", "qa_admin", "--username", "qa@example.com", "--meta", "phone=+15555550100", "--meta", "role=admin") == 0
+    assert running.vault.metadata["qa_admin"].metadata == {"phone": "+15555550100", "role": "admin"}
+    assert run("secret", "meta", "qa_admin", "phone=+15555550199", "team=blue") == 0
+    assert "updated metadata of qa_admin" in capsys.readouterr().out
+    assert run("secret", "unmeta", "qa_admin", "team") == 0
+    assert "dropped metadata of qa_admin" in capsys.readouterr().out
+    assert run("list") == 0
+    table = capsys.readouterr().out
+    assert "METADATA" in table and "phone=+15555550199,role=admin" in table
+    assert run("list", "--json") == 0
+    [entry] = json.loads(capsys.readouterr().out)["secrets"]
+    assert entry["metadata"] == {"phone": "+15555550199", "role": "admin"}
+
+
+def test_unmeta_of_an_unknown_key_is_an_error(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    assert run("secret", "unmeta", "login", "nope") == 1
+    assert "login has no metadata nope" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ("secret", "create", "x", "--meta", "a.b=1"),
+        ("secret", "create", "x", "--meta", "nonsense"),
+        ("secret", "meta", "login", "a.b=1"),
+    ],
+)
+def test_a_bad_metadata_item_is_a_usage_error(running: Running, run: Run, argv: tuple[str, ...]) -> None:
+    seed(running)
+    assert run(*argv) == 2
+
+
+def test_a_dotted_key_is_refused_by_unmeta(running: Running, run: Run) -> None:
+    seed(running)
+    assert run("secret", "unmeta", "login", "a.b") == 1
+
+
+def test_a_value_cannot_be_stored_in_a_meta_field(running: Running, run: Run) -> None:
+    seed(running)
+    assert run("secret", "set", "login", "--field", "meta.k", stdin="v\n") == 2
+
+
+def test_exec_binds_metadata_unmasked(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    ok = run("secret", "meta", "login", "phone=+15555550199")
+    assert ok == 0
+    script = 'printf "%s %s\\n" "$QA_PHONE" "$PW"'
+    assert run("exec", "--env", "QA_PHONE=login.meta.phone", "--env", "PW=login", "--", "sh", "-c", script) == 0
+    captured = capsys.readouterr()
+    assert captured.out == "+15555550199 [REDACTED]\n"
+    assert "QA_PHONE" not in captured.err
+
+
+def test_exec_sets_a_metadata_variable_without_a_short_value_warning(running: Running, run: Run, execvpe: ExecCapture, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "_on_terminal", lambda: False)
+    running.vault.create(Secret("qa_admin", metadata={"role": "a"}))
+    assert run("exec", "--env", "ROLE=qa_admin.meta.role", "--", "true") == 0
+    [(_, _, env)] = execvpe.calls
+    assert env["ROLE"] == "a"
+    assert "warning" not in capsys.readouterr().err
+
+
+def test_exec_names_the_missing_metadata_key(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    assert run("exec", "--env", "X=login.meta.phone", "--", "true") == 1
+    assert "saddlebag secret meta login phone=..." in capsys.readouterr().err
+
+
+def test_fill_types_a_metadata_value(running: Running, run: Run, fake_browser: tuple[browser.Target, ...]) -> None:
+    running.vault.create(Secret("qa_admin", metadata={"phone": "+15555550199"}))
+    assert run("fill", "qa_admin", "--field", "meta.phone", "--selector", "#phone") == 0
+    assert RecordingSession.last is not None and RecordingSession.last.typed == "+15555550199"
+
+
+def test_the_keyring_route_carries_metadata(keyring_route: FakeBackend, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    assert run("secret", "create", "qa_admin", "--meta", "phone=+1") == 0
+    assert run("secret", "meta", "qa_admin", "role=admin") == 0
+    capsys.readouterr()
+    assert run("list", "--json") == 0
+    [entry] = json.loads(capsys.readouterr().out)["secrets"]
+    assert entry["metadata"] == {"phone": "+1", "role": "admin"}
+    assert keyring_route.items == {}

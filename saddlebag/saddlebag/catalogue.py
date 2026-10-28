@@ -83,7 +83,10 @@ _KEYS = frozenset({"name", "username", "description", "var", "tags", "fields"})
 
 
 def _secret(entry: Any) -> Secret:
-    if not isinstance(entry, dict) or set(entry) != _KEYS:
+    if not isinstance(entry, dict) or set(entry) not in (_KEYS, _KEYS | {"metadata"}):
+        raise ValueError("unexpected record keys")
+    metadata = entry.get("metadata", {})
+    if not isinstance(metadata, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in metadata.items()):
         raise ValueError("unexpected record keys")
     return Secret(
         name=entry["name"],
@@ -92,4 +95,5 @@ def _secret(entry: Any) -> Secret:
         var=entry["var"],
         tags=frozenset((key, value) for key, value in entry["tags"]),
         fields=frozenset(entry["fields"]),
+        metadata=metadata,
     )
