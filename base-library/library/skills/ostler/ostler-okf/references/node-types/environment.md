@@ -18,6 +18,7 @@ File type under `docs/services/<service>/ops/`, `type: environment` in frontmatt
 | `local-only` | no | `true` — tooling must refuse to target it without an override |
 | `sharing` | no | `shared` (the default) or `per-run`: whether every run uses one stack or brings up its own copy |
 | `addresses` | no | nested; one child per address a runbook reads as `{name}`: its URL when shared, what it serves when per-run |
+| `variables` | no | nested; one child per variable. `NAME: value` is a literal the agent may read. `NAME: secret` is a value saddlebag holds, registered with `--tag environment=<slug> --var NAME`. Write no real value here: `ostler env exec <slug> -- CMD` supplies the held ones at run time. |
 | `code` | no | link, **owns** its file — the stack files it materializes |
 | `config` | no | **owns** the path — the configuration files the stack reads |
 | `verify` | no | a check |

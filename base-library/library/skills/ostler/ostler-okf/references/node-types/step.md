@@ -16,6 +16,7 @@ Section type. A `### <id>` under the runbook's `## Steps` heading. Its id is `pa
 | `kind` | **yes** | `prepare` \| `service` \| `seed` \| `run` \| `health` \| `verify` \| `probe` \| `serve` \| `drive` \| `teardown`. A `probe` belongs on a fixture step, where it asks whether the stack has a capability. A `serve` belongs on a scenario fixture step, where it starts a process the scenario talks to and the harness stops it when the scenario ends. |
 | `code` | no | link, **owns** its file — the implementation this step exercises |
 | `run` | no | the exact bounded command |
+| `sign-in-as` | no | the saddlebag role this step signs in as; the secret carries the tag `role=<value>` |
 | `working-directory` | no | cwd, when not the repo root — or `scenario:`, on a **fixture** step only, for that scenario's own directory |
 | `timeout` | no | seconds; this step's own ceiling |
 | `env` | no | nested; the env-var wiring this step needs |
