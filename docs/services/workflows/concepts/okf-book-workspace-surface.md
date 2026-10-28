@@ -9,14 +9,14 @@ Under a workspace, a `surfaces` entry of `workhorse-okf-book` names the member t
 
 A surface of kind `grpc` also names a `contract`, the folder of its repository that holds the service's `.proto` files, relative to the repository root (the member when `repo` is set). The writer reads that folder in place as a second added directory beside the entry folder, and its prompt cites the folder in a `contract:` bullet. The prompt for a `grpc` surface asks for one `rpc` page per rpc the contract declares and a `runbook` with `driver: grpc`, and it leaves out the screen and journey guidance. A surface whose contract names no folder of its repository is a blocker, the same as an entry that names none.
 
-- code: `workflows/src/workhorse_workflows/okf_book/shared/source_repo.py::source_repo` @8f4e2afc037e
-- code: `workflows/src/workhorse_workflows/okf_book/shared/source_repo.py::SourceRepo` @8f4e2afc037e
+- code: `workflows/src/workhorse_workflows/okf_book/shared/source_repo.py::source_repo` @6e5aa862cb6d
+- code: `workflows/src/workhorse_workflows/okf_book/shared/source_repo.py::SourceRepo` @6e5aa862cb6d
 - code: `workflows/src/workhorse_workflows/okf_book/shared/book_compilation.py::compile_services` @c55b3025b98a
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/surface.py::Surface` @082af3baf3dd
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_request.py::writer_request` @fe46090a0ed8
-- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook.check_source` @cfc3b77ff93e
+- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook.check_source` @e451bf02692b
 - code: `workflows/src/workhorse_workflows/okf_book/main/reground_book_flow.py::RegroundBook` @b82da8d89134
-- rule: `repo` is required when a workspace is active and refused when none is, and it must name a member of that workspace
+- rule: `repo` is required when the run's repository is a member of a workspace and refused when it is not, and it must name a member of the home config's workspace table
 - rule: the reground turn reads a member's file in the member checkout, given as an added directory, and builds no source view
 - rule: the writer reads the surface's source folder in place, given as an added directory, and the run copies no source
 - rule: `contract` is required for a `grpc` surface, refused for a `cli`, `web` or `mobile` one, and allowed for an `http` one

@@ -149,12 +149,14 @@ def alongside(
     git: Callable[..., subprocess.CompletedProcess],
     write: Callable[[Path, str], Path],
     name_workspace: Callable[[dict[str, Path]], None],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> Path:
     """The docs repo *is* the code repo — the single-worktree shape, i.e."""
     (docs / spec_dir() / "plan-context.json").write_text(
         json.dumps(_plan_context("acme"), indent=2), encoding="utf-8"
     )
     name_workspace({"acme": docs})
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(docs))
     git(docs, "commit", "-q", "--allow-empty", "-m", f"feat: seed\n\nStory: {STORY}")
     return docs
 

@@ -118,7 +118,7 @@ class OkfBook(BookFlow):
     @cached_property
     def sources(self) -> tuple[SourceRepo, ...]:
         """The repository each surface reads its source from, resolved once, in the order of `surfaces`."""
-        return tuple(source_repo(self.root, surface.service, surface.repo) for surface in self.surfaces)
+        return tuple(source_repo(Path(self.repo_dir).resolve(), self.root, surface.service, surface.repo) for surface in self.surfaces)
 
     def _sources_by_service(self) -> dict[str, SourceRepo]:
         return {surface.service: source for surface, source in zip(self.surfaces, self.sources, strict=True)}

@@ -31,7 +31,7 @@ It ends in one of these ways: every surface's book checks clean and passes its r
 
 The implementation is `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook`.
 
-- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook` @61693ab3d9c8
+- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook` @e451bf02692b
 
 ## Steps
 
@@ -66,7 +66,7 @@ against a stale reading of it.
 surface instead of starting a turn when the entry names no folder of the repository.
 
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/source_view.py::build_source_view` @303f3884bd67
-- code: `workflows/src/workhorse_workflows/okf_book/shared/source_repo.py::source_repo` @8f4e2afc037e
+- code: `workflows/src/workhorse_workflows/okf_book/shared/source_repo.py::source_repo` @6e5aa862cb6d
 
 ### write
 

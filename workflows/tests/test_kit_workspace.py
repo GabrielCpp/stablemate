@@ -95,10 +95,12 @@ def test_the_docs_root_is_the_artifacts_dir_while_a_workspace_is_active(
     repo.mkdir()
     artifacts = tmp_path / "artifacts"
     monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(artifacts))
-    monkeypatch.delenv("STABLEMATE_WORKSPACE", raising=False)
+    config = tmp_path / "home.toml"
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    config.write_text("")
     assert Path(find_docs_root(str(repo))) == repo.resolve()
 
-    monkeypatch.setenv("STABLEMATE_WORKSPACE", "acme")
+    config.write_text(f'[workspaces]\nacme = ["{repo}"]\n')
 
     assert Path(find_docs_root(str(repo))).resolve() == artifacts.resolve()
 

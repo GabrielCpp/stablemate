@@ -26,9 +26,9 @@ class SourceRepo(BaseModel):
         return f"repo://{self.name}/{repo_path}" if self.name else repo_path
 
 
-def source_repo(root: Path, service: str, repo: str) -> SourceRepo:
-    """The repository the surface of `service` reads its source from, or a refusal naming what the surface got wrong."""
-    if core_config.docs_home(root) is None:
+def source_repo(repo_dir: Path, root: Path, service: str, repo: str) -> SourceRepo:
+    """The repository the surface of `service` reads its source from, or a refusal naming what the surface got wrong; `repo_dir` is the run's own repository and `root` its docs home."""
+    if core_config.docs_home(repo_dir) is None:
         if repo:
             raise WorkflowFailed(f"the surface `{service}` names the repo `{repo}`, and the run is in no workspace: drop `repo`")
         return SourceRepo(path=root)

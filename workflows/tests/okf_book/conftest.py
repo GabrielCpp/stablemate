@@ -57,5 +57,4 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Workspace:
     _ = config.write_text(f'[workspaces]\nacme = ["{member}"]\n\n[qa_tools.curl]\ncommand = "curl"\n', encoding="utf-8")
     monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
     monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(docs))
-    monkeypatch.setenv("STABLEMATE_WORKSPACE", "acme")
     return Workspace(docs=docs.resolve(), member=member.resolve())

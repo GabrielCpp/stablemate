@@ -42,7 +42,6 @@ def workspace(
     artifacts = _init(git, tmp_path / "artifacts")
     name_workspace({"api-service": api})
     monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(artifacts))
-    monkeypatch.setenv("STABLEMATE_WORKSPACE", "acme")
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
     return {"api": api, "artifacts": artifacts}
 
