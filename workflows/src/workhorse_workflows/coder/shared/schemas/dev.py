@@ -252,6 +252,13 @@ class DispatchEntry(CoderResult):
     label: str = ""
 
 
+class CopyCheck(CoderResult):
+    """What the clone check found in the first repository that has anything to fix."""
+
+    findings: list[Finding] = []
+    cwd: str = ""
+
+
 class StorySource(CoderResult):
     """One story-scoped source root with its repository provenance."""
 
@@ -352,6 +359,7 @@ class ChangedFiles(CoderResult):
 __all__ = [
     "BranchOutcome",
     "ChangedFiles",
+    "CopyCheck",
     "DispatchEntry",
     "FailureReport",
     "ImplContext",

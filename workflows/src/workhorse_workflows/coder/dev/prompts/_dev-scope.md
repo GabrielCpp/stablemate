@@ -8,8 +8,15 @@ The story ships a slice of a working app, and it starts from a working main. So 
 failure you meet is this story's to fix: a gate, a test, the build, the
 stack's bring-up or its setup code, wherever that code sits. A failure is never a follow-up.
 
+A copy this story adds of code the tree already has is in scope too. The lap's clone check
+reports it as a failure, and the fix extracts the repeated code to one owner both callers
+use, in this story. When the two copies change for different reasons, a
+`[[check-clones.coincidence]]` entry in `.agent-checks.toml` names both files and one reason
+per file instead.
+
 A follow-up is undone product work on this story's feature that the working slice does not
-need: a refactor, a wider surface, a polish the criteria do not ask for.{% if not follow_up_title %}
+need: a refactor, a wider surface, a polish the criteria do not ask for. A copy that predates
+this story is one, with the pattern `extract-module`.{% if not follow_up_title %}
 The build and review phases file it in their result with a title a person can act on, and the
 reason the slice works without it. Name the `repo` of the workspace it sits in, the `area` as
 one lowercase kebab word for the module or service it belongs to, the `pattern` as a short kebab

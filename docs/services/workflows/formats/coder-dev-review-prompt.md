@@ -6,7 +6,7 @@ title: Coder dev-review prompt
 # Coder dev-review prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-review.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.review` @fe195e40d574
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.review` @80dd00949225
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev phase turns](../concepts/coder-dev-phase-turns.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_clean_pass_settles_the_fix_and_records_the_decline`
@@ -45,6 +45,12 @@ fix for several findings is answered under each of their ids.
 
 A "not a defect" decline opens its reason with those words and names, as a `- test:` bullet, the
 test that drives the finding's own case. The settlement rejects one that names no such test.
+
+The reviewer's Reuse lens searches the whole tree, not only the diff, for code the diff repeats:
+by name, by behaviour and by signature. Its finding targets the added lines and names the code
+they repeat. A Reuse finding is declined only as a coincidence. The reason opens with
+`coincidence:` and gives two different reasons the copies change, separated by `;`. The
+settlement rejects any other Reuse decline, an improvement the slice does not need included.
 
 ## Fields
 

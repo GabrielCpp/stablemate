@@ -7,7 +7,7 @@ title: Coder development flow
 
 - The `Dev` machine builds one story in three owner turns on one conversation: a plan turn, a
   build turn and a review turn. The flow then checks the review turn with the plan record, the
-  service gates, the answer file and a clean-tree test, and sends each failure back to the review
+  clone check, the service gates, the answer file and a clean-tree test, and sends each failure back to the review
   phase. It is entered by the Coder main flow or directly with `workhorse-coder run dev`.
   Implementation lives at `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev`.
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
@@ -37,6 +37,8 @@ title: Coder development flow
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_decline_with_a_consult_on_file_stays_declined`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_up_note`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_again`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_a_copy_the_story_added_comes_back_as_a_copies_failure_before_any_service_gate`
+- detail: [coder lap clone check](../concepts/coder-lap-clone-check.md)
 
 The `docs` and `workspace` test fixtures stand up the inputs every dev-flow scenario runs
 against. `docs` builds a docs repo carrying one epic and one authored story. `workspace` builds
@@ -113,10 +115,14 @@ the review prefix, and records the consults. A result of `blocked` goes to the o
 The flow records the plan structure from the turn's reply and commits the plan record. An invalid
 plan record is the first failure. Otherwise the checks gather every failure of the turn. They
 resolve the implementation context, move the code repositories to the run branch when one was
-supplied, check the story status, and run each service's gates in `GATE_ORDER`, stopping at the
-first dirty one. A status that already reads as finished is a failure. They then settle the open
+supplied, and check the story status. A status that already reads as finished is a failure.
+They then run the [lap clone check](../concepts/coder-lap-clone-check.md) on the code
+repositories the plan dispatches into, so a copy the story added of existing code fails the lap
+before any gate runs. They last run each service's gates in `GATE_ORDER`, stopping at the first
+dirty one. They then settle the open
 findings against the answers file, and name any finding still open with the reason its answer was
-rejected. They last list the paths the story changed and did not commit, minus the paths that were
+rejected. A declined finding of the `Reuse` category holds only as a coincidence that names two
+different reasons the copies change. They last list the paths the story changed and did not commit, minus the paths that were
 dirty before the story began. With no failure the flow finishes. Otherwise the joined report goes
 back to the review phase as another repair lap. When an advisor is offered, the settlement also
 reopens each declined finding with no consult on file, and the report names it. After `MAX_LAPS`

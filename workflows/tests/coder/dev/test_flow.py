@@ -300,7 +300,7 @@ class _Agent:
                 f"- path: {self.repo}/links.go\n"
                 f"- test: {TEST_NAME}\n\n"
                 f"## {self.prefix}2: declined\n"
-                "Reason: the story's technical notes keep the validator free of new imports.\n"
+                "Reason: coincidence: the story's technical notes keep the validator free of new imports; the url package parses another grammar.\n"
                 + "".join(
                     f"\n## {item}: fixed\n- commit: {sha}\n- path: {self.repo}/links.go\n- test: {TEST_NAME}\n"
                     for item in self.also_fixed
@@ -405,6 +405,73 @@ def test_a_red_gate_sends_its_output_back_and_a_green_turn_finishes(
     assert report.startswith("Gate: "), report
     assert "lint" in report, report
     assert "undefined: allowList" in report, report
+
+
+def test_a_copy_the_story_added_comes_back_as_a_copies_failure_before_any_service_gate(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    copies: Any,
+) -> None:
+    """The lap names the copy to the review turn, and the service gates wait for the lap that has none."""
+    agent = _Agent(workspace, red=2)
+    copies.finds("api/links.go:1-9", str(workspace["api"]))
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    two = agent.args_for("dev-review")[1]
+    report = str(two["report"])
+    assert "copies" in report, report
+    assert "api/links.go:1-9" in report, report
+    assert "undefined: allowList" not in report, report
+    assert "undefined: allowList" in str(agent.args_for("dev-review")[2]["report"])
+
+
+def test_the_clone_check_is_not_consulted_when_the_story_status_check_fails(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    copies: Any,
+) -> None:
+    """A story stamped finished is the first failure, so the clone check has not run in that lap."""
+    story = docs / "docs" / "epics" / EPIC / "stories" / STORY / "story.md"
+
+    class Stamping(_Agent):
+        def _dev_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+            story.write_text(
+                STORY_MD.replace("Not started", "Done") if nth == 1 else STORY_MD,
+                encoding="utf-8",
+            )
+            return super()._dev_review(data, nth)
+
+    agent = Stamping(workspace)
+
+    drive_flow(_dev(docs), env(), agent)
+
+    first_report = str(agent.args_for("dev-review")[1]["report"])
+    assert "Status" in first_report, first_report
+    assert len(copies.calls) == len(agent.args_for("dev-review")) - 1, copies.calls
+
+
+def test_the_clone_check_receives_the_dispatch_repos_and_the_story_identity(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    copies: Any,
+) -> None:
+    """The docs entry never reaches the check, and the story's id and slug do."""
+    agent = _Agent(workspace)
+
+    drive_flow(_dev(docs), env(), agent)
+
+    (call,) = copies.calls
+    assert call["roots"] == [str(workspace["api"])], call
+    assert call["story_id"] == STORY, call
+    assert call["story_slug"], call
 
 
 def test_an_unanswered_finding_comes_back_named_in_the_report(

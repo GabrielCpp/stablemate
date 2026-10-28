@@ -132,7 +132,7 @@ def _story_paths(root: Path, base: str, refs: tuple[str, ...]) -> set[str] | Non
     return paths
 
 
-def _trunk_story_base(root: Path, base: str, refs: tuple[str, ...]) -> str:
+def trunk_story_base(root: Path, base: str, refs: tuple[str, ...]) -> str:
     """On trunk itself, the parent of this story's earliest commit; elsewhere ``base`` unchanged."""
     repo = open_repo(root)
     if repo.git.rev_parse(base) != repo.git.rev_parse("HEAD"):
@@ -147,10 +147,15 @@ def _trunk_story_base(root: Path, base: str, refs: tuple[str, ...]) -> str:
     return base
 
 
+def story_base(root: Path, refs: tuple[str, ...]) -> str:
+    """The commit a story's own work is measured from in `root`."""
+    return trunk_story_base(root, trunk_base(root), refs)
+
+
 def _story_scope(root: Path, base: str, refs: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
     """The base a story's packet diffs from, and the paths changed since it that other stories own."""
     try:
-        base = _trunk_story_base(root, base, refs)
+        base = trunk_story_base(root, base, refs)
         own = _story_paths(root, base, refs)
         if own is None:
             return "HEAD", ()
@@ -333,4 +338,4 @@ def validate_okf_context(
     return OkfContextResult(status=status, notes=notes, ostler=outcome.data)
 
 
-__all__ = ["TRUNK", "build_okf_context", "validate_okf_context"]
+__all__ = ["TRUNK", "build_okf_context", "story_base", "trunk_story_base", "validate_okf_context"]

@@ -41,15 +41,29 @@ the finding's own case and passes, above the reason:
 Reason: not a defect. The redirect keeps the trailing slash, and the test drives the reported URL.
 ```
 
+## A declined Reuse finding
+
+A Reuse finding says the change repeats code the tree already has. Its fix extracts the
+repeated code to one owner that both callers use, in this change. Only a coincidence declines
+it: two copies that look alike and change for different reasons. The reason opens with
+`coincidence:` and gives one reason per copy, separated by `;`:
+
+```markdown
+## acme-story/review-1.5: declined
+Reason: coincidence: the API's error codes follow its published contract; the report's codes follow the export format.
+```
+
 ## What the workflow checks
 
 The workflow checks every fixed answer: the commit exists in one of the story's repos, the
 path is among the files the story changed, and the test name appears in a file the story
 changed. It checks every "not a defect" decline too: it names a test, and the test name
-appears in a tracked file of the story's code repos. A finding with no section, or an answer
-that fails a check, comes back to the review phase in the next turn.
+appears in a tracked file of the story's code repos. It checks every Reuse decline: the reason
+opens with `coincidence:` and gives two different reasons. A finding with no section, or an
+answer that fails a check, comes back to the review phase in the next turn.
 
 A decline that passes is final, so its reason must hold for a reviewer. Three reasons hold:
 the issue is not a defect, the story asks for the behaviour, or the change is an improvement
-the working slice does not need. A failure is never declined. "Too much work" is not a
-reason.
+the working slice does not need. The third never declines a Reuse finding, because a copy
+left in place drifts from the code it repeats. A failure is never declined. "Too much work"
+is not a reason.

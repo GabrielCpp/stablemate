@@ -18,6 +18,7 @@ from workhorse_workflows.kit import commit_paths, find_docs_root, poll_run_inbox
 
 ANSWERS_FILE = "review-answers.md"
 NOT_A_DEFECT = "not a defect"
+COINCIDENCE = "coincidence:"
 
 
 @blueprint.node
@@ -112,6 +113,20 @@ def decline_gap(answer: dict, repos: list[str]) -> str:
     return ""
 
 
+def coincidence_gap(answer: dict) -> str:
+    """Why a Reuse decline does not hold up, or `""` when it names two different reasons the copies change."""
+    reason = answer.get("reason", "").lstrip(" *_`\"'")
+    if reason.lower().startswith(COINCIDENCE):
+        parts = [part.strip().lower() for part in reason[len(COINCIDENCE):].split(";")]
+        if len({part for part in parts if part}) >= 2:
+            return ""
+    return (
+        'a Reuse finding is declined only as a coincidence: open the reason with "coincidence:" '
+        'and give two different reasons the copies change, separated by ";", one per copy. '
+        "Otherwise extract the repeated code to one owner (code-structure rule 2.12)"
+    )
+
+
 @blueprint.node
 def settle_findings(
     logger: logging.Logger,
@@ -120,6 +135,7 @@ def settle_findings(
     filed: list[str] | None = None,
     repos: list[str] | None = None,
     repo_dir: str = "",
+    reuse: list[str] | None = None,
 ) -> Settlement:
     """Settle the filed finding ids against the dev owner's answer list, checking each fix's evidence and each "not a defect" decline's test, and commit the ledger."""
     if not story_id:
@@ -145,7 +161,8 @@ def settle_findings(
     declined: list[str] = []
     for entry in ledger.get("declined", []):
         fid = str(entry["id"])
-        gap = decline_gap(ledger["answers"][fid], code)
+        answer = ledger["answers"][fid]
+        gap = coincidence_gap(answer) if fid in (reuse or []) else decline_gap(answer, code)
         if gap:
             rejected[fid] = gap
         else:
@@ -179,6 +196,7 @@ def check_feedback(logger: logging.Logger, run_dir: str = "") -> Feedback:
 __all__ = [
     "ANSWERS_FILE",
     "check_feedback",
+    "coincidence_gap",
     "decline_gap",
     "evidence_gap",
     "resolve_review_context",

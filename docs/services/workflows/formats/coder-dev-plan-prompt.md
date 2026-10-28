@@ -6,7 +6,7 @@ title: Coder dev-plan prompt
 # Coder dev-plan prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-plan.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.plan` @fe195e40d574
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.plan` @80dd00949225
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev phase turns](../concepts/coder-dev-phase-turns.md)
 - detail: [coder development plan result](dev-plan-result.md)
@@ -30,6 +30,12 @@ story's footers, writes no product code, and ends with a `PlanResult`.
 - Test Scenarios a parser reads,
 - an empty Acceptance Walk heading the build fills,
 - the Verification Commands copied from each layer's instruction files.
+
+Before the plan adds a function, type or constant, the envelope tells the agent to search the
+whole tree for one that does the job: by the name and its synonyms, by the behaviour and by the
+signature's shape. A Changes line that adds a name says `reuse`, `extend` or `new`, and the search
+that decided it. Code the story would repeat from elsewhere in the tree is a Changes line that
+extracts it to one owner both callers use.
 
 A multi-service story adds one plan file per service, named in that service's `plan_file`. The
 envelope lists the services each repo declares. When no repo declares any, it tells the agent to

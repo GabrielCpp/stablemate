@@ -29,8 +29,11 @@ plan.
    criterion the plan lacks, amend the plan for that delta only. Code the story already
    committed was built against that plan, so a rewrite throws that work away.
 3. **Read the code the plan builds on.** Find the callers, the seams and the tests of each
-   unit the story changes. Send narrow lookups to the cheapest seat your harness offers,
-   such as an agent named `lookup`. Read the code yourself where a design call rests on it.
+   unit the story changes. Before the plan adds a function, type or constant, search the
+   whole tree for one that does the job: by the name and its synonyms, by the behaviour in
+   the domain's words, and by the signature's shape. Send narrow lookups to the cheapest
+   seat your harness offers, such as an agent named `lookup`. Read the code yourself where
+   a design call rests on it.
 4. **Plan.** Write the plan files described under "The plan files" below. Write each line so
    the build can act on it without a design call of its own.
 5. **Commit.** Commit the plan files, and return the result.
@@ -75,6 +78,9 @@ The docs-only service is the root the repo's book is written under, with `type: 
 - **Changes.** One line per unit to build, in build order, each with its behaviour and the
   standard it follows. Name the smallest directory when the file is not knowable yet.
   Generated files and migrations get their own lines, each with its command and input.
+  A line that adds a function, type or constant says `reuse`, `extend` or `new`, and the
+  search that decided it. Code the story would repeat from elsewhere in the tree is a line
+  that extracts it to one owner both callers use.
 - **Stages.** Only for a story too big for one sitting. One `**Stage N: <name>**` line per
   phase, with the units it covers and the check that proves it before the next stage.
 - **Testability.** The seam each unit is tested through, and what must exist before that

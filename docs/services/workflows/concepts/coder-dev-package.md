@@ -23,11 +23,13 @@ and QA reads its obligations from that merge. The story's opening brief says so,
 instruction that the book changes with the code does not send the plan, build and review turns
 into the same merge the docs phase then does again.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @fe195e40d574
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @fe195e40d574
-- code: `workflows/src/workhorse_workflows/coder/dev/prompts/_dev-scope.md` @add4b38130d2
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @80dd00949225
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @80dd00949225
+- code: `workflows/src/workhorse_workflows/coder/dev/prompts/_dev-scope.md` @a68729cb3e82
 - rule: the plan, build and review turns write, stamp and doctor nothing under the book's services root, because the docs phase owns the story's book merge
 - prefers: one book merge per story, in the docs phase, over a merge in the build that the docs phase repeats, because the duplicate cost a quarter to a third of each build turn
+- rule: a copy the story adds of code the tree already has is the story's to extract to one owner, and a copy that predates the story is an `extract-module` follow-up
+- rule: a Reuse finding is declined only as a coincidence, with one reason per copy, because a copy left in place to save the slice work drifts from the code it repeats
 - tests: `workflows/tests/coder/dev/test_flow.py`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_opening_brief_leaves_the_book_merge_to_the_docs_phase`
 - detail: [coder dev flow](../flows/coder-dev.md)

@@ -31,6 +31,7 @@ from workhorse_workflows.coder.shared.conversation import (
     reset_briefs,
     story_chain,
 )
+from workhorse_workflows.coder.shared.clones import check_copies
 from workhorse_workflows.coder.shared.counsel import consulted, record_consults
 from workhorse_workflows.coder.shared.dev import check_story_status, read_operator_context
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
@@ -463,6 +464,14 @@ class Dev(Workflow):
                 self.ctx.story_path,
                 lap,
             )
+        copies = self.call(
+            check_copies,
+            [entry.cwd for entry in impl.dispatch_list if entry.type != "docs"],
+            story_slug=self.ctx.story_slug,
+            story_id=self.ctx.story_id,
+        )
+        if copies.findings:
+            return from_findings("copies", copies.findings, copies.cwd, lap)
         for entry in impl.dispatch_list:
             outcome = GateOutcome()
             for gate in GATE_ORDER:
@@ -475,7 +484,8 @@ class Dev(Workflow):
 
     def _settle(self) -> list[str]:
         w = self._worklist
-        ids = [it.id for it in work.open_findings(w, self._work_id)]
+        items = work.open_findings(w, self._work_id)
+        ids = [it.id for it in items]
         if not ids:
             return []
         context = self.call(
@@ -489,6 +499,7 @@ class Dev(Workflow):
             self.ctx.story_id,
             filed=ids,
             repos=context.affected_repo_paths,
+            reuse=[it.id for it in items if it.payload.get("category") == "Reuse"],
         )
         work.move(w, verdict.settled, work.SETTLED, kind=work.FINDING, by="settlement")
         work.move(w, verdict.declined, work.DECLINED, kind=work.FINDING, by="settlement")

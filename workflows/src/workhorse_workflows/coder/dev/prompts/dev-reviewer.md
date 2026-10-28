@@ -21,7 +21,10 @@ scope.
   changed lines.
 - **The standard.** A rule an installed coding standard states, quoted.
 - **Local guidance.** A comment in a changed file whose rule the change now breaks.
-- **Reuse.** Logic the diff repeats, or re-adds where a shared helper already does it.
+- **Reuse.** Code the diff adds that repeats code the tree already has, or a name the diff
+  adds where an existing one does the job. Search the whole tree for it, not only the diff:
+  by the name and its synonyms, by the behaviour in the domain's words, and by the
+  signature's shape. The finding targets the added lines and names the code they repeat.
 - **The spec.** An Acceptance Criterion the code does not meet, or behaviour the plan
   promises and the code does not deliver. A walk entry under `## Acceptance Walk` whose
   Observed line the code or its tests do not bear out.
