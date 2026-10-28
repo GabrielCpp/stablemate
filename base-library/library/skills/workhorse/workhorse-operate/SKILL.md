@@ -29,9 +29,11 @@ groom feed --run <run_id>                        # from a shell: follows the run
   because the resumed process probes again.
 - **From a Claude Code session, the monitor is the harness Monitor tool.** Arm it on
   `ws://127.0.0.1:8787/feed?run=<run_id>&every=1800`. Each frame is a wake. A `digest`
-  frame with `quiet: true` needs no action, and its `summary` line says where the run
-  is. A `digest` frame that is not quiet lists what the window held: nodes, turns, cost,
-  laps, gates and warnings. An `event` frame of kind `blocked` is a gate: read, fix,
+  frame with `quiet: true` asks for no act on the run, and its `summary` line says where
+  the run is. A `digest` frame that is not quiet lists what the window held: nodes, turns,
+  cost, laps, gates and warnings. Every frame, quiet or not, gets the reading line from
+  [[examine-process]]: the stage's elapsed time and spend against what a person would need,
+  written to the run's `EXAMINED.md`. An `event` frame of kind `blocked` is a gate: read, fix,
   answer. Monitor expires after 30 minutes. Re-arm it with `since=<ts of the last frame>`
   so the gap replays.
 - **From a shell, use the two clients of the same feed.** `groom wait --run <run_id>`

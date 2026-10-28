@@ -12,6 +12,10 @@ It fires on a count, not a topic. Three attempts of the same kind on the same go
 whatever the attempts were. It fires also on a size: a sub-task that has taken more time than
 the task it serves was expected to take.
 
+This skill needs a stream of attempts to judge. A run that is tended with no stuck attempt
+and no question is examined with [[examine-process]], which holds the run's spend against what
+a person would need and hands this skill the streams that moved nothing.
+
 Each attempt is reasoned from the case in front of it: this failure, this edit, this retry. That
 is the inside view, and every step of it checks out. It cannot see that the last five attempts
 looked exactly like this one and moved nothing. The outside view treats your own attempts as a
