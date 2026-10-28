@@ -151,6 +151,8 @@ agent commits and when the coder finishes a lap.
 |---|---|---|
 | Owner | the one place the shared logic lives, chosen by the placement rules | which callers found it |
 | Extraction | the move that puts one copy in the owner and points both callers at it | how the copy was spotted |
+| Library | the owner of copies in two separately built services: its own manifest, listed in the workspace, declared by each build | which copies it replaced |
+| Home decision | the recorded convention for where a library lives, read before extracting and written after the operator answers | the copy that raised it |
 
 **Reach**
 
@@ -407,6 +409,14 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
     an import keyword. Finding while verifying slice 3: on the reference stories, the
     infrastructure service held the web package's name as a cloud account id. It was
     gated on 11 of 17 stories, and none of them touched its code.
+20. Section 2 and section 5, Sharing: Library and Home decision join Owner and Extraction.
+    Finding after slice 3: rules 2.5 to 2.9 pick an owner inside one build. Two copies in
+    separately built services have no owner either build can import until a library with
+    its own manifest exists, and nothing said where that library goes. The operator ruled
+    that an extraction inside an existing workspace that leaves every build and deploy as
+    it was needs no approval (A18). Any other extraction is proposed first. The coder
+    blocks with one concrete library, a session asks in chat, and the answer is recorded
+    as a home decision the next extraction reads.
 
 ### Parts
 
@@ -488,6 +498,16 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
 - In the coder: **Reshape** `_dev-scope.md`. Extracting a copy this change introduced is
   in scope. A follow-up with `extract-module` stays for copies the search found that
   predate the change.
+- Library: **New** as rule 2.13 "Code two builds share is a library the workspace lists"
+  (log 20). Trigger: the clone check reports a pair under two nearest build manifests,
+  and both refusals name the two builds. Fix: a library with its own manifest, listed in
+  the existing workspace, declared by each build. Counter-case: two languages share a
+  contract, not a library, and two repositories keep their copies.
+- Home decision: **Exists** as the `docs/decisions/` records the operator resolver reads
+  first (log 20). **Reshape** the dev scope prompt: it receives the run's decisions
+  folder, blocks with a proposal when the extraction changes how the code ships, and
+  writes the operator's answer as a record before building. The resolver needs no change,
+  because the escalation already carries the producer's notes to the operator verbatim.
 
 **Reach**
 
@@ -744,3 +764,12 @@ at review, Finding what exists in the plan, Sharing in scope.
       service. 4 add services whose own files the story changed. Resolving the set takes
       a median 1.3 s and at most 16 s.
     - If wrong: the 5b lap row, slice 3.
+18. **An extraction that leaves every build and deploy as it was is safe to make without
+    asking.** A library added to an existing workspace changes no image, CI filter or
+    deploy, so the operator learns nothing new from approving it.
+    - Decided: the agent asks first only when the repository has no workspace, or when a
+      build context, CI path filter, deploy or published package has to change, and no
+      home decision covers it.
+    - Basis: the operator's ruling in this design's conversation (log 20).
+    - If wrong: Library and Home decision in section 5, rule 2.13's approval paragraph,
+      and the dev scope prompt.
