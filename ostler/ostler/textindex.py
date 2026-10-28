@@ -108,11 +108,16 @@ def rows_for(root_key: str, path: Path, graph: Graph) -> list[Row]:
     fm = doc.frontmatter or {}
     node, rel = _locate(graph, path)
     h1 = _H1_RE.search(doc.body)
-    title = str(fm.get("title") or (h1.group(1) if h1 else ""))
-    slug = str(fm.get("slug") or fm.get("id") or path.stem)
-    etype = str(fm.get("type") or "")
+    decided = root_key == "decisions"
+    summary = str(fm.get("summary") or "") if decided else ""
+    title = str(fm.get("title") or (h1.group(1) if h1 else "") or summary)
+    folder = path.parent.name if decided else path.stem
+    slug = str(fm.get("slug") or fm.get("id") or folder)
+    etype = str(fm.get("type") or ("decision" if decided else ""))
     anchors = model.document_anchors(doc)
     rows: list[Row] = []
+    if summary:
+        rows.append(Row(root_key, etype, node, rel, "", "", title, slug, summary))
     for section, trail in _walk(doc.sections, ()):
         body = _text(section)
         if not body:

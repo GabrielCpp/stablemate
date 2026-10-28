@@ -221,7 +221,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="[0].type", equals="flow")
 - verify: json_path(path="[0].path", equals="docs/services/demo/flows/say-hello.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a flow titled "Say hello"
-- code: ostler/ostler/textindex.py::TextIndex.search@9e0954edd179
+- code: ostler/ostler/textindex.py::TextIndex.search@6e7935aa7652
 - detail: [The text index](concepts/the-text-index.md)
 
 ### ostler-index-build

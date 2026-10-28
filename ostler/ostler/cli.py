@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import autofix as autofix_mod, backfill as backfill_mod, coverage, crud, crud_generic, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import autofix as autofix_mod, backfill as backfill_mod, coverage, crud, crud_generic, decisions as decisions_mod, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import checks as checks_mod
 from ostler import carve as carve_mod
 from ostler import fragment_carve
@@ -497,6 +497,14 @@ def _build_parser() -> argparse.ArgumentParser:
     bll.add_argument("--repo", default="")
     bll.add_argument("--status", default="")
     bll.add_argument("--json", action="store_true")
+
+    dc = sub.add_parser("decisions", help="the operator's standing decisions")
+    dcs = dc.add_subparsers(dest="op", required=True)
+    dca = dcs.add_parser("add", help="file an empty decision at docs/decisions/<slug>/decision.md")
+    dca.add_argument("slug", help="short kebab-case name of the decision")
+    dca.add_argument("--repo", default="",
+                     help="the repository the decision is about (default: the one holding the cwd)")
+    dca.add_argument("--summary", required=True, help="the decision in one line")
 
     ml = sub.add_parser("milestone", help="manage milestone backlog ownership")
     mls = ml.add_subparsers(dest="op", required=True)
@@ -2223,6 +2231,12 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         if args.json:
             return _emit([r.model_dump() for r in shown], True)
         return _emit(register_mod.listing(shown), False)
+    if c == "decisions":
+        start = Path(args.chdir) if args.chdir else Path.cwd()
+        return _result(decisions_mod.add(
+            graph, args.slug, repo=args.repo or decisions_mod.default_repo(start),
+            summary=args.summary,
+        ))
     if c == "milestone":
         return _result(crud.set_milestone_source_items(
             graph,

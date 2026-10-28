@@ -12,6 +12,7 @@ from ostler import adr as adr_mod
 from ostler import book_reach
 from ostler import coverage as coverage_mod
 from ostler import crud, doctor
+from ostler import decisions as decisions_mod
 from ostler import milestones as milestones_mod
 from ostler import fmt as fmt_mod
 from ostler import ids as ids_mod
@@ -605,6 +606,13 @@ class Ostler:
             symbols=symbols, body=body, record_id=record_id, prefix=prefix,
         )
         return self._apply(register_mod.filing_result(filing))
+
+    def decision_add(self, slug: str, *, summary: str, repo: str = "") -> Result:
+        """File an empty decision under ``docs/decisions/<slug>/`` of the docs home (``ostler decisions add``); *repo* defaults to the repository holding this instance's root."""
+        start = self._root if self._root is not None else Path.cwd()
+        return decisions_mod.add(
+            self._fresh(), slug, repo=repo or decisions_mod.default_repo(start), summary=summary,
+        )
 
     def backlog_import(
         self, source: str | Path, *, repo: str, prefix: str | None = None
