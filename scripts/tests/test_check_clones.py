@@ -231,7 +231,7 @@ def test_a_coincidence_with_one_reason_fails_even_when_no_pair_uses_it(repo: Pat
     )
     _stage_copy(repo)
 
-    problems, pairs = gate.check_clones(repo, lambda root, limits: {"duplicates": []})
+    problems, pairs = gate.check_clones(repo, lambda root, limits, base: {"duplicates": []})
 
     assert pairs == []
     assert len(problems) == 1 and "a.go" in problems[0] and "two reasons" in problems[0]
@@ -384,7 +384,7 @@ def test_an_unsupported_platform_is_a_missing_detector(tmp_path: Path):
 def test_main_fails_naming_both_locations_when_the_commit_adds_a_copy(repo: Path, capsys):
     _stage_copy(repo)
 
-    code = gate.main(["--root", str(repo)], lambda root, limits: _report())
+    code = gate.main(["--root", str(repo)], lambda root, limits, base: _report())
 
     err = capsys.readouterr().err
     assert code == 1
@@ -396,14 +396,14 @@ def test_main_fails_naming_both_locations_when_the_commit_adds_a_copy(repo: Path
 def test_main_passes_when_the_report_has_no_new_pair(repo: Path, capsys):
     _stage_copy(repo)
 
-    code = gate.main(["--root", str(repo)], lambda root, limits: {"duplicates": []})
+    code = gate.main(["--root", str(repo)], lambda root, limits, base: {"duplicates": []})
 
     assert code == 0
     assert capsys.readouterr().err == ""
 
 
 def test_main_passes_without_staged_paths_and_never_runs_the_detector(repo: Path):
-    def refuse(root: Path, limits):
+    def refuse(root: Path, limits, base):
         raise AssertionError("the detector ran")
 
     assert gate.main(["--root", str(repo)], refuse) == 0
@@ -414,7 +414,7 @@ def test_main_passes_on_an_initial_commit(tmp_path: Path):
     (tmp_path / "a.go").write_text(GO_BODY, encoding="utf-8")
     _git(tmp_path, "add", "a.go")
 
-    def refuse(root: Path, limits):
+    def refuse(root: Path, limits, base):
         raise AssertionError("the detector ran")
 
     assert gate.main(["--root", str(tmp_path)], refuse) == 0
@@ -423,8 +423,89 @@ def test_main_passes_on_an_initial_commit(tmp_path: Path):
 def test_main_reports_a_missing_detector_as_a_failure(repo: Path, capsys):
     _stage_copy(repo)
 
-    def missing(root: Path, limits):
+    def missing(root: Path, limits, base):
         raise gate.DetectorMissing("no detector here")
 
-    assert gate.main(["--root", str(repo)], missing) == 1
+    assert gate.main(["--root", str(repo)], missing) == 2
     assert "FAIL check_clones: no detector here" in capsys.readouterr().err
+
+
+def _range_repo(repo: Path) -> str:
+    base = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    _stage_copy(repo)
+    _git(repo, "commit", "-qm", "copy")
+    with (repo / "reporting-service/xlsx/sheet.go").open("a", encoding="utf-8") as handle:
+        handle.write("// uncommitted\n")
+    return base
+
+
+def test_range_mode_reads_the_span_since_the_base_and_hands_the_base_to_the_runner(repo: Path):
+    base = _range_repo(repo)
+    seen = []
+
+    def runner(root: Path, limits, ref: str):
+        seen.append(ref)
+        return _report()
+
+    problems, pairs = gate.check_clones(repo, runner, base)
+
+    assert seen == [base]
+    assert problems == []
+    assert [(p.first.path, p.second.path) for p in pairs] == [
+        ("api-service/xlsx/extra.go", "api-service/xlsx/sheet.go")
+    ]
+    assert gate.range_span(repo, base) == {
+        "api-service/xlsx/extra.go": [(1, 14)],
+        "reporting-service/xlsx/sheet.go": [(15, 15)],
+    }
+
+
+def test_range_mode_with_an_empty_span_never_runs_the_detector(repo: Path):
+    def refuse(root: Path, limits, base):
+        raise AssertionError("the detector ran")
+
+    assert gate.check_clones(repo, refuse, "HEAD") == ([], [])
+
+
+def test_json_prints_the_pair_with_both_sides_units_and_lines(repo: Path, capsys):
+    _stage_copy(repo)
+
+    code = gate.main(["--root", str(repo), "--json"], lambda root, limits, base: _report())
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.err == ""
+    assert json.loads(captured.out) == {
+        "pairs": [
+            {
+                "added": {"path": "api-service/xlsx/extra.go", "start": 5, "end": 17, "unit": "WriteExtra"},
+                "existing": {"path": "api-service/xlsx/sheet.go", "start": 5, "end": 17, "unit": "WriteSheet"},
+                "lines": 13,
+            }
+        ],
+        "problems": [],
+    }
+
+
+def test_json_with_no_pair_prints_empty_lists_and_exits_zero(repo: Path, capsys):
+    _stage_copy(repo)
+
+    code = gate.main(
+        ["--root", str(repo), "--json"], lambda root, limits, base: {"duplicates": []}
+    )
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert json.loads(captured.out) == {"pairs": [], "problems": []}
+
+
+def test_range_mode_reports_a_missing_detector_as_exit_two(repo: Path, capsys):
+    base = _range_repo(repo)
+
+    def missing(root: Path, limits, ref: str):
+        raise gate.DetectorMissing("no detector here")
+
+    assert gate.main(["--root", str(repo), "--base", base, "--json"], missing) == 2
+    assert "no detector here" in capsys.readouterr().err

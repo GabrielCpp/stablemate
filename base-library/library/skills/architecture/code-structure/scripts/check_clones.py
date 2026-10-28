@@ -142,7 +142,7 @@ class Threshold:
 
 
 Span = dict[str, list[tuple[int, int]]]
-Runner = Callable[[Path, Threshold], Mapping]
+Runner = Callable[[Path, Threshold, str], Mapping]
 
 
 def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -375,21 +375,27 @@ def enclosing_unit(path: Path, line: int) -> str | None:
     return None
 
 
-def label(root: Path, side: Side) -> str:
-    where = f"{side.path}:{side.start}-{side.end}"
+def unit_text(root: Path, side: Side) -> str | None:
+    """The unit a side sits in, or "first .. last" when it straddles two."""
     first = enclosing_unit(root / side.path, side.start)
     last = enclosing_unit(root / side.path, side.end)
     if first is None and last is None:
-        return where
+        return None
     if first == last or last is None:
-        return f"{where} ({first})"
+        return first
     if first is None:
-        return f"{where} ({last})"
-    return f"{where} ({first} .. {last})"
+        return last
+    return f"{first} .. {last}"
 
 
-def run_detector(root: Path, limits: Threshold) -> Mapping:
-    """jscpd's JSON report of clones new against HEAD."""
+def label(root: Path, side: Side) -> str:
+    where = f"{side.path}:{side.start}-{side.end}"
+    unit = unit_text(root, side)
+    return where if unit is None else f"{where} ({unit})"
+
+
+def run_detector(root: Path, limits: Threshold, base: str = "HEAD") -> Mapping:
+    """jscpd's JSON report of clones new against `base`."""
     binary = ensure_detector()
     with tempfile.TemporaryDirectory() as out_dir:
         result = subprocess.run(
@@ -397,7 +403,7 @@ def run_detector(root: Path, limits: Threshold) -> Mapping:
                 str(binary),
                 ".",
                 "--baseline-from-ref",
-                "HEAD",
+                base,
                 "-r",
                 "json",
                 "-o",
@@ -425,15 +431,27 @@ def run_detector(root: Path, limits: Threshold) -> Mapping:
         return json.loads(report.read_text(encoding="utf-8"))
 
 
-def check_clones(root: Path, runner: Runner = run_detector) -> tuple[list[str], list[CopyPair]]:
-    """Config problems and the copy pairs this commit adds."""
+def range_span(root: Path, base: str) -> Span:
+    return parse_span(_git(root, "diff", "-U0", base).stdout)
+
+
+def check_clones(
+    root: Path, runner: Runner = run_detector, base: str | None = None
+) -> tuple[list[str], list[CopyPair]]:
+    """Config problems and the copy pairs this commit, or the range since `base`, adds."""
     limits = threshold(root)
     problems = coincidence_problems(limits)
-    paths = staged_paths(root)
-    if not paths or not has_head(root):
-        return problems, []
-    span = change_span(root, paths)
-    report = runner(root, limits)
+    if base is None:
+        paths = staged_paths(root)
+        if not paths or not has_head(root):
+            return problems, []
+        span = change_span(root, paths)
+        base = "HEAD"
+    else:
+        span = range_span(root, base)
+        if not any(span.values()):
+            return problems, []
+    report = runner(root, limits, base)
     pairs = pairs_from_report(report, root, limits)
     return problems, copy_pairs(pairs, span, limits.coincidences, limits.min_lines)
 
@@ -446,9 +464,31 @@ def _renders(root: Path, pairs: Sequence[CopyPair]) -> list[str]:
     return lines
 
 
+def _side_json(root: Path, side: Side) -> dict:
+    return {"path": side.path, "start": side.start, "end": side.end, "unit": unit_text(root, side)}
+
+
+def _json_report(root: Path, problems: Sequence[str], pairs: Sequence[CopyPair]) -> str:
+    return json.dumps(
+        {
+            "pairs": [
+                {
+                    "added": _side_json(root, pair.first),
+                    "existing": _side_json(root, pair.second),
+                    "lines": pair.lines,
+                }
+                for pair in pairs
+            ],
+            "problems": list(problems),
+        }
+    )
+
+
 def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="repo to check (default: cwd)")
+    parser.add_argument("--base", help="check every line changed since this ref instead of the staged paths")
+    parser.add_argument("--json", action="store_true", help="print the pairs and problems as one JSON object")
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
@@ -456,10 +496,13 @@ def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> in
     if top.returncode == 0 and top.stdout.strip():
         root = Path(top.stdout.strip())
     try:
-        problems, pairs = check_clones(root, runner)
+        problems, pairs = check_clones(root, runner, args.base)
     except DetectorMissing as error:
         print(f"\nFAIL check_clones: {error}", file=sys.stderr)
-        return 1
+        return 2
+    if args.json:
+        print(_json_report(root, problems, pairs))
+        return 1 if problems or pairs else 0
     if not problems and not pairs:
         return 0
 
