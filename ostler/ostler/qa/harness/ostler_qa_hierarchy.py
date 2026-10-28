@@ -176,6 +176,7 @@ def maestro_elements(*, udid: str = "", timeout: float = 120.0) -> list[dict[str
     """The screen's elements from `maestro hierarchy` — the default source, both platforms."""
     if shutil.which("maestro") is None:
         raise RuntimeError("the maestro CLI is not installed on this machine")
+    release_device()
     command = ["maestro"] + (["--device", udid] if udid else []) + ["hierarchy"]
     return parse_maestro(_run(command, timeout=timeout))
 
@@ -400,6 +401,11 @@ atexit.register(RESIDENT.shutdown)
 def resident_reader(timeout: float) -> str:
     """The device hierarchy as `maestro hierarchy` JSON, read through the run's one resident maestro."""
     return csv_to_hierarchy(RESIDENT(timeout))
+
+
+def release_device() -> None:
+    """Stop the resident maestro, so a flow that runs next owns the device alone."""
+    RESIDENT.shutdown()
 
 
 def adb_swipe(x: int, y0: int, y1: int) -> None:

@@ -2125,6 +2125,7 @@ class Maestro:
             "--test-output-dir", str(test_output),
             str(path),
         ]
+        _harness_module("ostler_qa_hierarchy").release_device()
         try:
             done = subprocess.run(  # noqa: S603 - fixed argv, flow path built above
                 command, cwd=qa.root, capture_output=True, text=True, timeout=timeout, check=False

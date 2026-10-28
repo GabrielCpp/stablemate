@@ -387,6 +387,40 @@ def test_a_session_that_closes_twice_raises_naming_what_happened() -> None:
         reader(5)
 
 
+def test_a_released_reader_stops_its_process_and_the_next_read_starts_a_fresh_one() -> None:
+    first, second = _Process(_answers("one")), _Process(_answers("two"))
+    processes = [first, second]
+    reader = hierarchy.ResidentReader(lambda: processes.pop(0), lambda timeout: "serial")
+
+    assert reader(5) == "one"
+    reader.shutdown()
+
+    assert first.killed
+    assert not second.killed
+    assert reader(5) == "two"
+    assert processes == []
+
+
+def test_releasing_the_device_shuts_the_run_resident_reader_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    stopped: list[str] = []
+    monkeypatch.setattr(hierarchy.RESIDENT, "shutdown", lambda: stopped.append("shutdown"))
+
+    hierarchy.release_device()
+
+    assert stopped == ["shutdown"]
+
+
+def test_a_maestro_hierarchy_scan_releases_the_device_first(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+    monkeypatch.setattr(hierarchy.shutil, "which", lambda name: "/usr/bin/maestro")
+    monkeypatch.setattr(hierarchy, "release_device", lambda: events.append("release"))
+    monkeypatch.setattr(hierarchy, "_run", lambda command, *, timeout: events.append("hierarchy") or MAESTRO)
+
+    hierarchy.maestro_elements()
+
+    assert events == ["release", "hierarchy"]
+
+
 def test_a_missing_maestro_raises_the_install_message(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(hierarchy.shutil, "which", lambda name: None)
 

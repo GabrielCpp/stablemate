@@ -233,7 +233,7 @@ class _Look:
 
 def _stub_maestro(monkeypatch: pytest.MonkeyPatch, look: _Look, code: int, junit: str = "") -> None:
     monkeypatch.setattr(harness.shutil, "which", lambda name: f"/usr/bin/{name}")
-    monkeypatch.setattr(harness, "_harness_module", lambda name: SimpleNamespace(DeviceScreen=lambda: look))
+    monkeypatch.setattr(harness, "_harness_module", lambda name: SimpleNamespace(DeviceScreen=lambda: look, release_device=lambda: None))
 
     def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         if junit:
