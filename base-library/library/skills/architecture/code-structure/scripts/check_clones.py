@@ -39,7 +39,10 @@ DEFAULT_IGNORE = (
     "**/*_test.py", "**/*.test.ts", "**/*.spec.ts", "**/*.test.tsx", "**/*.spec.tsx",
     "**/*_test.dart",
 )
-ALWAYS_IGNORE = (".git/**", ".agents/**", ".claude/**", ".github/**", "**/*.md")
+ALWAYS_IGNORE = (
+    ".git/**", ".agents/**", ".claude/**", ".github/**", "**/*.md",
+    "**/package-lock.json", "**/npm-shrinkwrap.json", "**/pnpm-lock.yaml", "**/*.lock", "**/go.sum",
+)
 
 GENERATED_MARKERS = ("Code generated", "DO NOT EDIT", "DO NOT MODIFY", "@generated")
 MARKER_LINES = 10

@@ -258,6 +258,15 @@ def test_an_ignore_override_replaces_the_defaults_but_keeps_the_always_ignored(t
     assert "**/tests/**" not in limits.ignore_globs
 
 
+def test_lockfiles_stay_ignored_when_a_repo_overrides_the_ignore_list(tmp_path: Path):
+    (tmp_path / gate.CONFIG).write_text('[check-clones]\nignore = ["**/gen/**"]\n', encoding="utf-8")
+
+    globs = gate.threshold(tmp_path).ignore_globs
+
+    for lockfile in ("**/package-lock.json", "**/pnpm-lock.yaml", "**/*.lock", "**/go.sum"):
+        assert lockfile in globs
+
+
 def _unit(tmp_path: Path, name: str, text: str, line: int):
     path = tmp_path / name
     path.write_text(text, encoding="utf-8")
