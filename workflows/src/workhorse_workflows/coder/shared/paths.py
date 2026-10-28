@@ -40,7 +40,7 @@ def launch_repo_root(repo_dir: str | Path = "") -> Path:
     if repo_dir:
         return docs_home_or(Path(repo_dir).resolve())
     cwd = Path.cwd()
-    if (cwd / "docs" / "epics").is_dir() or (cwd / "agents.yml").exists() or (cwd / ".git").exists():
+    if (cwd / "agents.yml").exists() or (cwd / ".git").exists():
         return docs_home_or(cwd)
     for candidate in cwd.parents:
         if (candidate / "agents.yml").exists() or (candidate / ".git").exists():
