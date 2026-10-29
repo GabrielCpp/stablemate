@@ -233,17 +233,20 @@ def test_an_invalid_repo_fails_the_run_with_no_repair_turn(
     assert "epics" in str(exc.value), exc.value
 
 
-def test_a_failed_farrier_install_still_fails_at_verify(
+def test_a_failed_farrier_install_fails_the_run_with_farriers_words(
     env: Callable[..., RunEnv], drive_flow: Callable[..., Any], target: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A failed install leaves no skills and no docs tree — the flow routes straight to the validator, which reports the missing context file as an error."""
-    monkeypatch.setattr(genesis_nodes, "run_tool", _Farrier(install_ok=False))
+    """A failed install stops the run at the farrier state and carries farrier's own error, not the validator's report of the context file the install never wrote."""
+    farrier = _Farrier(install_ok=False)
+    monkeypatch.setattr(genesis_nodes, "run_tool", farrier)
 
     with pytest.raises(WorkflowFailed) as exc:
         _run(drive_flow, env(), target)
 
-    assert "agents-context.json" in str(exc.value), exc.value
+    assert "no packs resolved" in str(exc.value), exc.value
+    assert "agents-context.json" not in str(exc.value), exc.value
+    assert not any(call[1] == "scaffold" for call in farrier.calls), farrier.calls
 
 
 

@@ -78,13 +78,15 @@ class Genesis(Workflow):
         return Continue(result, self.farrier)
 
     def farrier(self) -> Continue:
-        """Install the packs and render the scaffolds, then move on to validation."""
+        """Install the packs and render the scaffolds, and fail the run with farrier's own words when it cannot."""
         result = self.call(
             install_farrier,
             self._target().target_dir,
             self._split(self.scaffolds),
             not self._split(self.packs),
         )
+        if not result.ok:
+            raise WorkflowFailed(f"genesis could not install the agent layer: {result.note}")
         return Continue(result, self.verify)
 
     def verify(self) -> Done:

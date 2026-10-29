@@ -165,6 +165,7 @@ are input values.
 - sig: `Genesis.farrier() -> Continue`
 - does: installs declared farrier packs unless the pack list is empty
 - does: renders each declared scaffold in input order
+- does: fails the run with farrier's own error when the install or a scaffold fails, before validation runs
 - returns: the installation result and the verification state
 - verify: persists(subject="the farrier agent context")
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.farrier` @e6bab3ecda6b
@@ -255,7 +256,7 @@ are input values.
 - verify: persists(subject="the farrier agent context")
 - code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::install_farrier` @e7c46453633a
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_agents_yml_carries_the_services_block_the_planner_reads`
-- tests: `workflows/tests/coder/genesis/test_flow.py::test_a_failed_farrier_install_still_fails_at_verify`
+- tests: `workflows/tests/coder/genesis/test_flow.py::test_a_failed_farrier_install_fails_the_run_with_farriers_words`
 
 ### validate_genesis
 

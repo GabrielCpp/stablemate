@@ -80,8 +80,9 @@ is skipped so a re-run cannot clobber a live service.
 
 `install_farrier` runs Farrier install unless no packs were requested, then renders each supplied
 `<scaffold-id>[:<directory>]` in order. Install produces the agent context and each scaffold seeds
-its requested directory. A failed install or scaffold is recorded and later validation reports the
-missing precondition; the flow does not call an agent to repair deterministic tooling failures.
+its requested directory. A failed install or scaffold fails the run with Farrier's own error, such as
+an unknown pack, before validation runs. The flow does not call an agent to repair deterministic
+tooling failures.
 
 ### verify
 
