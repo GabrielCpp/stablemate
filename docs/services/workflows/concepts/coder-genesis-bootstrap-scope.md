@@ -16,7 +16,7 @@ its states, and the conditions that skip repository or service initialization. U
 choosing values for those fields. Repository state and service state remain independent so an
 existing repository can still gain a new service.
 
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @e3612bb0e317
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
 - rule: use the bootstrap concept for the deterministic lifecycle and the input-selection concept for cumulative field values; neither is an alternative implementation
 - detail: [coder genesis bootstrap concept selection](coder-genesis-bootstrap-concept-selection.md)
 - detail: [coder genesis bootstrap guide](coder-genesis-bootstrap-guide.md)

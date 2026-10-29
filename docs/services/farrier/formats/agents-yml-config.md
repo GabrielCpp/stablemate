@@ -9,12 +9,18 @@ The YAML mapping [`install`](../farrier-commands-install.md#install) reads to de
 from the resolved [library directory](../concepts/library-directory.md) get rendered
 into a target repo's Codex/Claude/Copilot adapters, and which scaffold ids
 [`farrier scaffold`](../farrier-commands-init.md#scaffold) may apply. Every top-level key is
-optional except `agents:`. `read_yaml` checks the path exists first (`SystemExit("Missing config:
-<path>")` if not), parses it with `yaml.safe_load` (an empty file yields `{}` rather than `None`,
-so an empty `agents.yml` fails the required-`agents:` check below rather than crashing on a `None`
-lookup), then raises `SystemExit("Config must be a YAML mapping: <path>")` if the parsed value
-isn't a `dict` (e.g. a bare YAML list or scalar); `render_expected` then walks every key below to
-compute the `{output path: content}` map `install`/`install --check` act on. Repository installs
+optional except `agents:`. The file is the typed [manifest](../concepts/config-schema.md) that
+`stablemate_core` declares once. `install` checks the path exists first (`SystemExit("Missing config:
+<path>")` if not), then loads it through the manifest loader. The loader finds `agents.yml` first
+and the older names `ostler.yml`, `ostler.yaml` and `.agents.yml` after it, with a warning that
+names the rename. An empty file is an empty manifest, so it fails the required-`agents:` check
+below. A file that is not a YAML mapping, or does not parse, stops with an error that names the
+file. A value of the wrong type stops with an error that names its key path, such as
+`localInstructions.0.paths`. A key no tool declares loads anyway and logs one warning naming it
+and the closest declared key. `render_expected` then walks every key below to compute the
+`{output path: content}` map `install`/`install --check` act on. Every key, its type, default,
+meaning, example and older names print from the same model with
+`farrier config reference --file manifest`; this page explains how each key behaves. Repository installs
 also emit the [generated agent launcher](../concepts/generated-agent-launcher.md), whose workflow
 run targets are resolved from installed workflow distributions when make parses the generated
 file; `agents.yml` itself does not list those workflows.
@@ -25,8 +31,8 @@ included packs. A missing pack, a non-mapping file, or an inclusion cycle stops 
 rendering; otherwise every pack contribution is unioned with this configuration's direct selections.
 
 - file: `agents.yml` at the repo root (or `--config PATH`)
-- code: `farrier/farrier/outputs.py::render_expected` @a2464a92144d
-- code: `farrier/farrier/sources.py::selected_sources` @3121386a99df
+- code: `farrier/farrier/outputs.py::render_expected` @d1e2cc4a14dd
+- code: `farrier/farrier/sources.py::selected_sources` @ccf632cd6a8d
 - detail: [library source record](../concepts/source-record.md)
 - detail: [layered source resolution](../concepts/layered-source-resolution.md)
 - detail: [source naming and selection](../concepts/source-naming-selection.md)
@@ -93,14 +99,14 @@ agents:
 
 - semantics: a `{skills_from: <harness>}` mapping becomes a link only when the named harness exists, is enabled, does not name itself, and does not itself link
 - verify: exit_status(code=1)
-- code: `farrier/farrier/agents.py::parse_agents` @8ab37499be42
+- code: `farrier/farrier/agents.py::parse_agents` @c4251aae74fb
 
 [`localInstructions`](#localinstructions) writes `AGENTS.md` for any enabled adapter, plus a
 `CLAUDE.md` pointer for an entry that sets `claudeMd: true`.
 
 ### packs
 - type: `list` of `string` (pack ids, `.yml` omitted) — required: no — default: `[]`
-- code: `farrier/farrier/sources.py::collect_selection` @3121386a99df
+- code: `farrier/farrier/sources.py::collect_selection` @318ff5c6d190
 - detail: [selection aggregation](../concepts/selection-aggregation.md)
 
 ### skills / prompts / roots
@@ -126,7 +132,7 @@ patterns also receive dot/underscore-to-dash normalization without changing glob
 result is sorted by source id before rendering, so selection order is deterministic and exclusion
 always wins over inclusion.
 
-- code: `farrier/farrier/sources.py::selected_sources` @3121386a99df
+- code: `farrier/farrier/sources.py::selected_sources` @ccf632cd6a8d
 - tests: `farrier/tests/test_selection_misses.py::test_valid_selection_still_installs`
 - tests: `farrier/tests/test_selection_misses.py::test_glob_selecting_nothing_warns_but_proceeds`
 
@@ -144,8 +150,9 @@ every selected pack's own `scaffolds:` list. Ids name definitions in the library
 `scaffolds/*.yml` files (parameterized file trees; see the command doc for the definition
 format). **`install` renders no scaffold files** — this key only gates which ids `scaffold`
 accepts. Each entry must be a plain string; the legacy `{source-prefix: dest-dir}` mapping form
-from the retired install-time file-tree scaffolds raises a `SystemExit` with a migration hint
-(`parse_scaffold_ids`) — placement folders are now `--param` values at invocation time.
+from the retired install-time file-tree scaffolds stops the load with a migration hint — placement
+folders are now `--param` values at invocation time. A pack's own `scaffolds:` list is checked the
+same way (`parse_scaffold_ids`).
 
 ### exclude
 - type: `mapping` with optional `skills`/`prompts` keys, each a `list` of `string` glob —
@@ -161,9 +168,10 @@ unwanted scaffold id is simply never invoked.
 
 Jinja2 values available to every rendered skill/prompt as `{{ template.<key> }}` / `{{ vars.<key> }}`
 (both names resolve to the same merged mapping — `vars:` is the legacy spelling).
-`collect_template_values` reads `vars` first, then `template`, updating the same dict in that
-order — so when both tables set the same key, **`template`'s value wins**. Either table must be a
-YAML mapping when present, or `render_expected` raises `SystemExit("<key> must be a YAML mapping when present")`.
+The loader folds `vars` into `template` when it reads the file, so when both tables set the same
+key, **`template`'s value wins**. Either table must be a YAML mapping when present, or the load
+stops with an error naming the key. The keys of `template` are the library's own, so the
+loader never reports one as a stray key.
 Rendering uses Jinja2's `StrictUndefined`, so a library template referencing a `template.*`/`vars.*`
 key that resolves to neither table raises at render time unless the library source guards it with
 a Jinja `| default(...)` filter.
@@ -254,20 +262,18 @@ not resolve, where the render raises before the hook it would have installed exi
 ### workflow
 - type: `mapping` — required: no — default: `{}`
 
-An opaque pass-through block. **Farrier reads nothing in it.** It survives in `agents.yml` because
-the *workflow packages* you run read their own keys out of it — so what belongs here is whatever
-the workflow you installed documents. Sub-keys are conventionally accepted in either camelCase or
-snake_case spelling by the workflows that read them.
+A block for the installed workflows. **Farrier reads nothing in it.** The manifest declares the
+keys the shipped workflows read, so they load without a stray-key warning, and the workflows read
+them through the same loader. `farrier config reference --file manifest` lists every key with its
+meaning and an example. `github_token_env` loads as `githubTokenEnv`, and `workflow.services` and
+`workflow.lint` load as the top-level `services` and `lint`, which win when both are set.
 
 - `githubTokenEnv` — type: `string` — required: no — default: none. Names the env var holding a
-  GitHub token; read by the workflow kit's `resolve_github_token`, not by farrier.
-- `storyCoder` — type: `mapping` (opaque) — required: no — default: none. A workflow-specific
-  subtree; farrier does not read or validate its contents.
-
-`repoUrl`, `branch`, `agentsDir` and `envPassthrough` used to live here to parameterize a generated
-Docker launcher. That launcher is gone — `workhorse-<name> run` takes its arguments on the command
-line —
-and those keys are now ignored by everything.
+  GitHub token; read by the workflow kit, not by farrier.
+- `prompts` — type: `mapping` of role to file path — required: no — default: `{}`. Per-role prompt
+  bodies for the coder workflow, each path relative to the repo root. A top-level `prompts`
+  mapping is the legacy spelling: the loader folds it into this table with a warning, and it wins
+  when both are set. The top-level `prompts` key is the farrier selection list only.
 
 ## A load-valid sample
 

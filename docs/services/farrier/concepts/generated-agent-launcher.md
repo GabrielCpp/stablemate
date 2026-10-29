@@ -51,13 +51,13 @@ convention-owned cleanup target solely so an older install's per-workflow Compos
 removed; current expected-output and extra-file scans do not inspect it. This is the compatibility
 boundary between the retired YAML-era launcher and the current installed-workflow launcher.
 
-- code: `farrier/farrier/launcher.py::render_agents_mk` @f719f4c89bcb
+- code: `farrier/farrier/launcher.py::render_agents_mk` @59c5b947b17f
 - code: `farrier/farrier/launcher.py::LAUNCHER_AGENTS_MK` @f719f4c89bcb
 - code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST` @f719f4c89bcb
 - code: `farrier/farrier/launcher.py::LAUNCHER_CONTEXT_MANIFEST_FMT` @f719f4c89bcb
 - code: `farrier/farrier/launcher.py::LAUNCHER_ROOT_MAKEFILE` @f719f4c89bcb
 - code: `farrier/farrier/launcher.py::LAUNCHER_COMPOSE` @f719f4c89bcb
-- code: `farrier/farrier/outputs.py::remove_targets` @a2464a92144d
+- code: `farrier/farrier/outputs.py::remove_targets` @9e69569a35ff
 - tests: `farrier/tests/test_launcher_make.py::test_a_discovered_workflow_becomes_a_real_target`
 - tests: `farrier/tests/test_launcher_make.py::test_a_workflow_nobody_installed_fails_instead_of_launching_nothing`
 - tests: `farrier/tests/test_launcher_make.py::test_an_unrelated_target_never_pays_for_discovery`
@@ -80,6 +80,6 @@ boundary between the retired YAML-era launcher and the current installed-workflo
 - does: leave non-file matches for assumed-owned patterns unchanged
 - verify: removed(subject="assumed-owned output")
 - returns: `None` after the configured cleanup passes complete
-- code: `farrier/farrier/outputs.py::remove_targets` @a2464a92144d
+- code: `farrier/farrier/outputs.py::remove_targets` @9e69569a35ff
 - detail: [output cleanup selection](output-cleanup-selection.md)
 - detail: [output cleanup documentation](output-cleanup-documentation.md)

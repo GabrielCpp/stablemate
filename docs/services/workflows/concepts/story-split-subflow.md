@@ -25,7 +25,7 @@ needs that no seed lists is a defect of the seed, so the derivation never widens
 The [author workflow composition root](author-workflow-composition-root.md) registers this flow
 alongside the other author stages.
 
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9f180bda92e0
 - code: `workflows/src/workhorse_workflows/author/story_split/nodes/_blueprint.py::blueprint` @c780d75bd248
 - rule: a story's `services:` stays a subset of its covered seeds' union; a narrower non-empty list is kept, anything else becomes the union
 - tests: `workflows/tests/author/story_split/test_flow.py::test_accepts_one_epic_graph_without_selecting_authoring_or_git`
@@ -49,7 +49,7 @@ alongside the other author stages.
 - required: true
 - semantics: identifies the single epic whose story graph is split and reviewed
 - verify: count(subject="story-split runs with one selected epic", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9f180bda92e0
 - detail: [story-split input fields](../concepts/story-split-input-fields.md)
 
 ### note
@@ -59,7 +59,7 @@ alongside the other author stages.
 - required: false
 - semantics: context from a previous attempt, such as the operator's answer, that the splitter reads first
 - verify: count(subject="story-split planning turns that receive the note", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9f180bda92e0
 - detail: [story-split input fields](../concepts/story-split-input-fields.md)
 
 ## Methods
@@ -76,7 +76,7 @@ alongside the other author stages.
 - does: loads author configuration in `story-split` mode
 - returns: returns the configured repository, epic, document-root, and feature paths
 - verify: count(subject="prepared story-split configurations", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.setup` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.setup` @0d6f58298c86
 
 ### labels
 - sig: `labels() -> dict[str, str]`
@@ -84,14 +84,14 @@ alongside the other author stages.
 - does: labels progress as `splitting stories`
 - returns: returns labels identifying the one selected epic
 - verify: json_path(path="$.epic", equals="acme-epic")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.labels` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.labels` @a13eac081e81
 
 ### state_labels
 - sig: `state_labels(params: dict[str, Any]) -> dict[str, str]`
 - does: adds the `story_split.reworks` and `story_split.answers` counters to the base run labels
 - returns: returns labels containing both story-split budget counters
 - verify: json_path(path="$.story_split.reworks", equals="example reworks")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.state_labels` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.state_labels` @bc17fbcb9e4b
 
 ### start
 - sig: `start() -> Continue`
@@ -100,7 +100,7 @@ alongside the other author stages.
 - verify: count(subject="empty story-split epic failures", equals=1)
 - returns: returns a continuation targeting `split_stories` for a valid run
 - verify: count(subject="story-split starts", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.start` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.start` @76fed65dd2e2
 
 ### split_stories
 - sig: `split_stories(reworks: int = 0, answers: int = 0, rework_notes: str = "", note: str = "", prior: str = "") -> Continue | Done`
@@ -112,7 +112,7 @@ alongside the other author stages.
 - verify: count(subject="story-split PM questions", equals=1)
 - does: returns a blocked result once the answer budget is spent
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @1b1d7dff108e
 
 ### check_coverage
 - sig: `check_coverage(reworks: int = 0, answers: int = 0, prior: str = "") -> Continue | Done`
@@ -124,8 +124,8 @@ alongside the other author stages.
 - verify: count(subject="story-split mechanical reworks", equals=1)
 - does: sends a clean lint to `review`
 - verify: count(subject="story-split PM reviews", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @9e26ab4671cb
-- code: `workflows/src/workhorse_workflows/author/story_split/nodes/services.py::derive_story_services` @bfeae9e6d0dc
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @74ccda420e6f
+- code: `workflows/src/workhorse_workflows/author/story_split/nodes/services.py::derive_story_services` @ba7afd50afa5
 - tests: `workflows/tests/author/story_split/test_services.py::test_a_story_keeps_a_narrower_list_inside_its_seeds_union`
 - tests: `workflows/tests/author/story_split/test_services.py::test_a_story_naming_a_book_outside_its_seeds_takes_the_union`
 
@@ -137,7 +137,7 @@ alongside the other author stages.
 - verify: json_path(path="$.status", equals="accepted")
 - does: sends findings back to the splitter as rework notes otherwise
 - verify: count(subject="story-split PM reworks", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.review` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.review` @d88abd2924a0
 
 ### ask_pm
 - sig: `ask_pm(question: str, reworks: int = 0, answers: int = 0, rework_notes: str = "", prior: str = "") -> Continue`
@@ -145,7 +145,7 @@ alongside the other author stages.
 - verify: count(subject="story-split PM answers", equals=1)
 - does: resumes `split_stories` with the answer as the note and the answer counter incremented
 - verify: json_path(path="$.answers", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.ask_pm` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.ask_pm` @6704ab43b6ec
 
 ### _rework
 - sig: `_rework(result: object, notes: str, reworks: int, answers: int, prior: str) -> Continue | Done`
@@ -153,20 +153,20 @@ alongside the other author stages.
 - verify: count(subject="bounded story-split rework continuations", equals=1)
 - does: returns a blocked result when the rework budget is spent
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._rework` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._rework` @9202642d907d
 
 ### _blocked
 - sig: `_blocked(notes: str, reworks: int, answers: int) -> Done`
 - does: returns a blocked `StorySplitDone` that carries the notes and both counters
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._blocked` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._blocked` @bcb97d49397e
 
 ### _epic_dir
 - sig: `_epic_dir() -> str`
 - does: resolves the selected epic directory from the workflow repository root and epic name
 - verify: json_path(path="$.epic_dir", equals="docs/stories/acme-story")
 - returns: returns the repository-relative epic directory used by the split and review stages
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._epic_dir` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow._epic_dir` @e77cea6f7a8c
 
 ## Downstream Boundaries
 
@@ -174,7 +174,7 @@ The flow delegates configuration loading and epic-scoped coverage validation to 
 nodes, and the review and the answer to the PM package. Those modules are separate source-layer
 contracts and are documented independently.
 
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @1e565a154642
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/coverage.py::validate_coverage` @2c46e3beb9ac
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @0bd5cf4f2836
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/coverage.py::validate_coverage` @b0906d0f4ee2
 - detail: [author coverage validator](coverage-validator.md)
 - detail: [author load_config documentation roles](author-load-config-documentation-roles.md)

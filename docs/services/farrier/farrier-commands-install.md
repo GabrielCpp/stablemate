@@ -245,9 +245,9 @@ title: 'farrier — render the agent prompt library into a repository: install'
     - run: invoke(argv=["install", "--check", "--repo", "c124", "--library", "c124/lib"], env={"HOME": "c124/home", "STABLEMATE_CONFIG": "c124/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c124/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=0)
     - fixture: current-install-repo dir=c124
-- code: `farrier/farrier/outputs.py::install_outputs` @a2464a92144d
-- code: `farrier/farrier/cli.py::_run_install` @2eeeeaa1740e
-- code: `farrier/farrier/launcher.py::render_agents_mk` @f719f4c89bcb
+- code: `farrier/farrier/outputs.py::install_outputs` @11a0e69e06be
+- code: `farrier/farrier/cli.py::_run_install` @0c4f9d1cbabf
+- code: `farrier/farrier/launcher.py::render_agents_mk` @59c5b947b17f
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - tests: `farrier/tests/test_tagged_deletion.py::test_an_untagged_file_at_an_output_path_aborts_the_whole_install`
 - tests: `farrier/tests/test_tagged_deletion.py::test_a_deselected_skill_is_still_removed`
@@ -421,8 +421,8 @@ it — are the operator's to choose, not farrier's.
     - run: invoke(argv=["install", "--user", "--home", "c150/home", "--library", "c150/lib"], env={"HOME": "c150/home", "STABLEMATE_CONFIG": "c150/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c150/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: empty-repo-with-library dir=c150
-- code: `farrier/farrier/cli.py::_run_user_install` @2eeeeaa1740e
-- code: `farrier/farrier/outputs.py::render_user_expected` @a2464a92144d
+- code: `farrier/farrier/cli.py::_run_user_install` @d70b7dfd31a8
+- code: `farrier/farrier/outputs.py::render_user_expected` @7ce4f5144d6f
 - tests: `farrier/tests/test_user_install.py::test_skills_and_prompts_land_in_the_harness_home`
 - tests: `farrier/tests/test_user_install.py::test_the_repo_scaffolding_stays_out_of_the_home`
 - tests: `farrier/tests/test_user_install.py::test_a_deselected_skill_is_swept_and_a_hand_written_one_is_not`

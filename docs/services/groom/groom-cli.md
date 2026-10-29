@@ -6,7 +6,7 @@ title: groom
 # groom
 
 - binary: groom
-- code: groom/groom/cli.py::main
+- code: groom/groom/cli.py::main@022563bc2c47
 - detail: [groom package initializer](concepts/groom-package-initializer.md)
 
 The `groom` CLI is the manually launched host-side surface for the
@@ -105,7 +105,7 @@ standard usage/error path.
 - exits: Uncaught server startup/runtime exceptions leave the process through
   Python's normal unhandled-exception path.
 - verify: exit_status(code=1)
-- code: groom/groom/cli.py::serve
+- code: groom/groom/cli.py::serve@5a0f50482098
 - detail: [groom server](http/groom.md)
 
 ### tui
@@ -164,7 +164,7 @@ The client removes terminal control characters and escape sequences from every s
     - verify: stderr(matches="'ftp://127\\.0\\.0\\.1:1' must be an http:// or https:// URL")
     - verify: exit_status(code=2)
     - fixture: none, because the rejected command line stops before the client starts
-- code: groom/groom/cli.py::main@873d680b416f
+- code: groom/groom/cli.py::main@022563bc2c47
 - detail: [groom server](http/groom.md)
 
 ### status
@@ -202,7 +202,7 @@ The client removes terminal control characters and escape sequences from every s
 - verify: exit_status(code=1)
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
-- code: groom/groom/cli.py::status
+- code: groom/groom/cli.py::status@e187629582d3
 - detail: [run telemetry](concepts/run-telemetry.md)
 
 ### logs
@@ -263,7 +263,7 @@ The client removes terminal control characters and escape sequences from every s
 - verify: exit_status(code=0)
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
-- code: groom/groom/cli.py::logs
+- code: groom/groom/cli.py::logs@96ebca228b79
 - detail: [groom store](concepts/groom-store.md)
 
 ### cost
@@ -310,7 +310,7 @@ The client removes terminal control characters and escape sequences from every s
 - verify: exit_status(code=0)
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
-- code: groom/groom/cli.py::cost
+- code: groom/groom/cli.py::cost@c963f292d46f
 - detail: [groom store](concepts/groom-store.md)
 - detail: [groom archive module](concepts/groom-archive-module.md)
 
@@ -374,7 +374,7 @@ The client removes terminal control characters and escape sequences from every s
 - verify: exit_status(code=0)
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
-- code: groom/groom/cli.py::prices_cmd
+- code: groom/groom/cli.py::prices_cmd@e9b25631f6ec
 - detail: [groom pricing module](concepts/groom-prices-module.md)
 - detail: [prices override entry fields](concepts/prices-override-entry-fields.md)
 - detail: [groom store](concepts/groom-store.md)
@@ -428,7 +428,7 @@ The client removes terminal control characters and escape sequences from every s
 - verify: exit_status(code=0)
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
-- code: groom/groom/cli.py::loops
+- code: groom/groom/cli.py::loops@93880bc73bf9
 - detail: [loop analysis lap](concepts/loop-analysis-lap.md)
 - detail: [groom store](concepts/groom-store.md)
 - detail: [groom archive module](concepts/groom-archive-module.md)
@@ -478,7 +478,7 @@ The client removes terminal control characters and escape sequences from every s
   - none specific: a store with nothing to purge exits without raising, and a
     second pass over an already-purged store exits without raising.
 - verify: exit_status(code=0)
-- code: groom/groom/cli.py::purge_tests
+- code: groom/groom/cli.py::purge_tests@58d309b539ad
 
 ### profile
 - usage: `groom profile --run RUN [--json]`
@@ -592,7 +592,7 @@ The client removes terminal control characters and escape sequences from every s
 - verify: exit_status(code=0)
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
-- code: groom/groom/cli.py::profile
+- code: groom/groom/cli.py::profile@de78500a3b3f
 - detail: [groom store](concepts/groom-store.md)
 
 ### transcript
@@ -676,7 +676,7 @@ The client removes terminal control characters and escape sequences from every s
 - verify: exit_status(code=2)
 - exits: `show` without `--session` exits with status 2.
 - verify: exit_status(code=2)
-- code: groom/groom/cli.py::transcript_ls
+- code: groom/groom/cli.py::transcript_ls@485190b13fa4
 - detail: [groom turns module](concepts/groom-turns-module.md)
 - detail: [groom export module](concepts/groom-export-module.md)
 
@@ -743,7 +743,7 @@ The client removes terminal control characters and escape sequences from every s
 - verify: exit_status(code=2)
 - exits: Successful commands exit with status 0.
 - verify: exit_status(code=0)
-- code: groom/groom/cli.py::archive_ls
+- code: groom/groom/cli.py::archive_ls@508cbae914ba
 - detail: [groom archive module](concepts/groom-archive-module.md)
 
 ## Invocations
@@ -867,5 +867,5 @@ The client removes terminal control characters and escape sequences from every s
 - verify: exit_status(code=1)
 - verify: exit_status(code=1)
 - verify: exit_status(code=1)
-- code: groom/groom/cli.py::serve
+- code: groom/groom/cli.py::serve@5a0f50482098
 - refs: [loopback host classifier](concepts/loopback-host-classifier.md)

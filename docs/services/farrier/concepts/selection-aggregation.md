@@ -15,18 +15,18 @@ matching, rendering, and availability rules.
 `farrier.sources.collect_selection`; `farrier.install.collect_selection` remains a public
 compatibility import.
 
-- code: `farrier/farrier/sources.py::collect_selection` @3121386a99df
+- code: `farrier/farrier/sources.py::collect_selection` @318ff5c6d190
 - tests: `farrier/tests/test_scaffold_command.py::test_pack_scaffolds_contribute_available_ids`
 
 ## Methods
 
 ### method: collect_selection
-- sig: `collect_selection(config: dict[str, Any]) -> tuple[set[str], set[str], set[str], set[str]]`
+- sig: `collect_selection(config: ConfigLike) -> tuple[set[str], set[str], set[str], set[str]]`
 - does: expand every id in `config.packs`, treating an omitted or empty list as no pack selections
 - verify: count(subject="configured packs expanded", equals=1)
 - does: union each expanded pack's skills, prompts, roots, and scaffold ids into its matching selection set
 - verify: count(subject="selection sets after one pack expansion", equals=4)
-- does: add `agents.yml` scaffolds after validating that every local entry is a plain string id
+- does: add the manifest's scaffold ids, already checked by the manifest model
 - verify: count(subject="available scaffold ids from a pack and agents.yml", equals=2)
 - does: add local skills, prompts, and roots to their matching selection sets
 - verify: count(subject="locally selected source categories", equals=3)
@@ -44,5 +44,5 @@ compatibility import.
 - verify: count(subject="returned root instruction names", equals=1)
 - returns: the unioned scaffold definition ids
 - verify: count(subject="returned scaffold definition ids", equals=1)
-- code: `farrier/farrier/sources.py::collect_selection` @3121386a99df
+- code: `farrier/farrier/sources.py::collect_selection` @318ff5c6d190
 - tests: `farrier/tests/test_scaffold_command.py::test_pack_scaffolds_contribute_available_ids`

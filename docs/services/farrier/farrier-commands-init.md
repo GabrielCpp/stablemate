@@ -80,8 +80,8 @@ title: 'farrier — render the agent prompt library into a repository: Commands'
     - run: invoke(argv=["init", "--repo", "c014"], env={"HOME": "c014/home", "STABLEMATE_CONFIG": "c014/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c014/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: configured-repo dir=c014
-- code: `farrier/farrier/cli.py::_run_init` @2eeeeaa1740e
-- code: `farrier/farrier/init.py::default_config` @989c722f5be4
+- code: `farrier/farrier/cli.py::_run_init` @41c4bce02b6e
+- code: `farrier/farrier/init.py::default_config` @7e20441c8c3c
 - tests: `farrier/tests/test_init_command.py::test_init_writes_a_config_the_installer_can_read`
 - tests: `farrier/tests/test_init_command.py::test_init_refuses_to_overwrite_an_existing_config`
 - tests: `farrier/tests/test_init_command.py::test_init_proposes_a_user_library_when_none_is_configured`
@@ -109,12 +109,12 @@ is not on disk beside an installed farrier. `agents.example.yml` stays the full 
 the pruned starting point, and the two are kept consistent by hand.
 
 ### config
-- usage: `farrier config [--config PATH] <set-library|set-stablemate|set-base|set-worktree|show> [args]`
+- usage: `farrier config [--config PATH] <set-library|set-stablemate|set-base|set-worktree|show|reference> [args]`
 - flags:
   - `--config <path>` — goes **before** the action (`farrier config --config ./c.toml show`):
     the [shared config file](../workhorse/concepts/profiles-and-config.md)
     every config verb reads and writes, instead of the discovered one. It is written back to
-    `$STABLEMATE_CONFIG` rather than threaded, because `read_config` and every writer resolve
+    `$STABLEMATE_CONFIG` rather than threaded, because `load_home_config` and every writer resolve
     the path themselves — one assignment moves them together. It lets the question be asked of a
     config that is not this machine's home one (a CI file, the copy a container was launched with).
   - `show --profile <name>` — print one [`[profiles.<name>]`](../workhorse/concepts/profiles-and-config.md#profiles-and-config)
@@ -174,7 +174,7 @@ the pruned starting point, and the two are kept consistent by hand.
     - run: invoke(argv=["config", "--config", "c020/c.toml", "set-worktree", "c020/x"], env={"HOME": "c020/home", "STABLEMATE_CONFIG": "c020/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c020/pipx-stub-bin:$PATH"})
     - verify: created(subject="c020/c.toml")
     - fixture: empty-dir dir=c020
-  - `show` reads the [home config file](formats/home-config.md) via `read_config`
+  - `show` reads the [home config file](formats/home-config.md) via `load_home_config`
     - run: invoke(argv=["config", "--config", "c021/c.toml", "show"], env={"HOME": "c021/home", "STABLEMATE_CONFIG": "c021/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c021/pipx-stub-bin:$PATH"})
     - verify: stdout(text="library_dir=")
     - fixture: library-config dir=c021
@@ -199,22 +199,33 @@ the pruned starting point, and the two are kept consistent by hand.
     - run: invoke(argv=["config", "--config", "c026/c.toml", "show"], env={"HOME": "c026/home", "STABLEMATE_CONFIG": "c026/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c026/pipx-stub-bin:$PATH"})
     - verify: stdout(text="=")
     - fixture: profiles-config dir=c026
+  - `reference` prints a heading for each key the [machine config schema](concepts/config-schema.md) declares for the [home config file](formats/home-config.md), without needing a config file to exist
+    - run: invoke(argv=["config", "reference"], env={"HOME": "c028/home", "STABLEMATE_CONFIG": "c028/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c028/pipx-stub-bin:$PATH"})
+    - verify: stdout(text="### `default_cli`")
+    - fixture: empty-dir dir=c028
+  - `reference --file manifest` prints a heading for each key the [config schema](concepts/config-schema.md) declares for the repository's [`agents.yml`](formats/agents-yml-config.md)
+    - run: invoke(argv=["config", "reference", "--file", "manifest"], env={"HOME": "c905/home", "STABLEMATE_CONFIG": "c905/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c905/pipx-stub-bin:$PATH"})
+    - verify: stdout(text="### `localInstructions`")
+    - fixture: empty-dir dir=c905
   - an undefined profile name exits with `UnknownProfileError`, which lists the ones the file
     does define
     - run: invoke(argv=["config", "--config", "c027/c.toml", "show", "--profile", "nonesuch"], env={"HOME": "c027/home", "STABLEMATE_CONFIG": "c027/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c027/pipx-stub-bin:$PATH"})
     - verify: stderr(text="cheap")
     - fixture: profiles-config dir=c027
-- code: `farrier/farrier/cli.py::_run_config` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_config` @8311e6a4efa8
 - tests: `farrier/tests/test_config_profiles_cli.py::test_the_config_flag_reads_the_file_it_names`,
    `farrier/tests/test_config_profiles_cli.py::test_a_profile_is_shown_flattened_to_dotted_keys`,
    `farrier/tests/test_config_profiles_cli.py::test_the_profile_replaces_the_top_level_rather_than_layering_over_it`,
    `farrier/tests/test_config_profiles_cli.py::test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are`,
-   `farrier/tests/test_config_profiles_cli.py::test_set_worktree_records_a_directory_that_does_not_exist_yet`
+   `farrier/tests/test_config_profiles_cli.py::test_set_worktree_records_a_directory_that_does_not_exist_yet`,
+   `farrier/tests/test_config_reference.py::test_the_default_prints_every_declared_key`,
+   `farrier/tests/test_config_reference.py::test_file_manifest_prints_every_key_with_its_default_and_example`,
+   `farrier/tests/test_config_reference.py::test_an_unknown_file_is_rejected`
 
 The one command that reads and writes the [shared config file](../workhorse/concepts/profiles-and-config.md):
 workhorse is a library and ships no `config` of its own, so `agents.mk` and other scripts go
-through farrier for every shared setting. The nested `[power.<tier>.<backend>]` and
-[`[profiles.<name>]`](../workhorse/concepts/profiles-and-config.md#profiles-and-config) tables have no writer subcommand
+through farrier for every shared setting. The
+[`[profiles.<name>]`](../workhorse/concepts/profiles-and-config.md#profiles-and-config) tables, with their nested `powers`, have no writer subcommand
 — they are edited by hand, and read back with `show --profile`.
 
 ### library
@@ -305,10 +316,10 @@ through farrier for every shared setting. The nested `[power.<tier>.<backend>]` 
     - run: invoke(argv=["library", "list"], env={"HOME": "c044/home", "STABLEMATE_CONFIG": "c044/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c044/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=0)
     - fixture: overlay-over-base dir=c044
-- code: `farrier/farrier/cli.py::_run_library` @2eeeeaa1740e
-- code: `farrier/farrier/library_view.py::format_list` @8ec27bce6b5d
-- code: `farrier/farrier/library_view.py::find` @8ec27bce6b5d
-- code: `farrier/farrier/library_view.py::stack` @8ec27bce6b5d
+- code: `farrier/farrier/cli.py::_run_library` @f46fc2e3e246
+- code: `farrier/farrier/library_view.py::format_list` @b550b3cddefe
+- code: `farrier/farrier/library_view.py::find` @84649679f0e1
+- code: `farrier/farrier/library_view.py::stack` @b74ef8a945da
 - tests: `farrier/tests/test_library_browse.py::test_a_shadowed_item_is_reported_as_shadowed`
 
 Ownership of a name belongs to whichever layer wins it, and nothing in a rendered repo says
@@ -379,10 +390,10 @@ from a generated file back to the library.
     - run: invoke(argv=["source", "c055/.claude/skills/acme-demo/SKILL.md", "--library", "c055/library-dir"], env={"HOME": "c055/home", "STABLEMATE_CONFIG": "c055/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c055/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=0)
     - fixture: generated-demo-skill dir=c055
-- code: `farrier/farrier/cli.py::_run_source` @2eeeeaa1740e
-- code: `farrier/farrier/cli.py::mapped_instruction_sources` @2eeeeaa1740e
-- code: `farrier/farrier/frontmatter.py::frontmatter_metadata` @9cdb7d1662b8
-- code: `farrier/farrier/frontmatter.py::banner_sources` @9cdb7d1662b8
+- code: `farrier/farrier/cli.py::_run_source` @f43838341186
+- code: `farrier/farrier/cli.py::mapped_instruction_sources` @d63ba6dc4121
+- code: `farrier/farrier/frontmatter.py::frontmatter_metadata` @40495fa36321
+- code: `farrier/farrier/frontmatter.py::banner_sources` @277ae49ff457
 - tests: `farrier/tests/test_source_command.py::test_source_resolves_to_library_file`
 - tests: `farrier/tests/test_source_command.py::test_frontmatter_metadata_reads_nested_block`
 - tests: `farrier/tests/test_source_command.py::test_frontmatter_metadata_empty_without_block`
@@ -429,9 +440,9 @@ aggregation mapping or its banner. `frontmatter_metadata` is declared in the fro
     - run: invoke(argv=["install", "--check", "--repo", "c904", "--library", "c904/lib"], env={"HOME": "c904/home", "STABLEMATE_CONFIG": "c904/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c904/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=0)
     - fixture: ejected-skill-repo dir=c904
-- code: `farrier/farrier/cli.py::_run_eject` @2eeeeaa1740e
-- code: `farrier/farrier/eject.py::run_eject` @c1eefba58cc3
-- code: `farrier/farrier/yaml_edit.py::rewrite_skills_list` @7281ef763407
+- code: `farrier/farrier/cli.py::_run_eject` @02ec7dd13477
+- code: `farrier/farrier/eject.py::run_eject` @cbe8c79e75dc
+- code: `farrier/farrier/yaml_edit.py::rewrite_skills_list` @7f795f4b27b2
 - tests: `farrier/tests/test_eject.py`
 
 Hands a generated thing over to the repo. A `localInstructions` `skill:` name with no selected
@@ -547,7 +558,7 @@ embedded in `AGENTS.md`.
     - run: invoke(argv=["scaffold", "nonesuch", "--library", "c078/scaffold-library", "--repo", "c078"], env={"HOME": "c078/home", "STABLEMATE_CONFIG": "c078/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c078/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: scaffold-library dir=c078
-- code: `farrier/farrier/cli.py::_run_scaffold` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_scaffold` @3c86f94ba489
 - tests: `farrier/tests/test_scaffold_command.py::test_scaffold_writes_tree_with_defaults`
 
 Lets an agent stand up a new repo or service folder from the library's parameterized scaffold
@@ -563,4 +574,4 @@ A `{url: ...}` scaffold file value is downloaded at write time with a 30-second 
 - run: invoke(argv=["version"])
 - verify: stdout(matches="^[0-9]+\\.[0-9]+\\.[0-9]+")
 - fixture: none, because the version comes from the installed package metadata
-- code: `farrier/farrier/cli.py::main` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::main` @44ae916cc5f6

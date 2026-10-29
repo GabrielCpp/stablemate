@@ -12,8 +12,8 @@ the approved milestone in epic mode. It reads no backlog file, because the work 
 [debt register](../../ostler/concepts/the-debt-register.md). The feature book is read-only grounding; configuration
 loading does not create a surface inventory.
 
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @1e565a154642
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @b91d7be769de
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @0bd5cf4f2836
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @f8a63d1b82a7
 - detail: [author shared paths](../concepts/author-shared-paths.md)
 - detail: [author story-split subflow](../concepts/story-split-subflow.md)
 - detail: [author load_config documentation roles](../concepts/author-load-config-documentation-roles.md)
@@ -26,7 +26,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: absolute repository root selected from the explicit input or repository markers and used for graph and artifact operations
 - verify: json_path(path="$.repo_root", equals="docs/stories")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @b91d7be769de
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @f8a63d1b82a7
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### milestone_path
@@ -35,7 +35,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: the docs-root-relative path of the approved milestone's `milestone.md` in epic mode, or an empty path in other modes
 - verify: json_path(path="$.milestone_path", equals="docs/milestones/acme-launch/milestone.md")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @b91d7be769de
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @f8a63d1b82a7
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### epics_dir
@@ -44,7 +44,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: configured epic directory used to resolve the selected epic
 - verify: json_path(path="$.epics_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @b91d7be769de
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @f8a63d1b82a7
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### services_dir
@@ -53,7 +53,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: configured feature-book directory exposed as read-only grounding to author prompts
 - verify: json_path(path="$.services_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @b91d7be769de
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @f8a63d1b82a7
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### milestone_mockups_dir
@@ -62,7 +62,7 @@ loading does not create a surface inventory.
 - required: false
 - semantics: absolute `mockups/` folder of the approved milestone, empty when no milestone is approved
 - verify: json_path(path="$.milestone_mockups_dir", matches="^$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @b91d7be769de
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @f8a63d1b82a7
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ### layers
@@ -71,20 +71,20 @@ loading does not create a surface inventory.
 - required: false
 - semantics: best-effort local-instruction skill paths used as prompt layer hints
 - verify: json_path(path="$.layers", matches="^\\[\\]$")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @b91d7be769de
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/main.py::Config` @f8a63d1b82a7
 - detail: [author configuration field origin](../concepts/author-config-field-origin.md)
 
 ## Methods
 
 ### load_config
 - sig: `load_config(logger: logging.Logger, repo_dir: str = "", mode: str = "epic") -> Config`
-- does: resolves the consuming repository from `repo_dir`, or from the first ancestor containing `agents.yml` when the input is empty
+- does: resolves the consuming repository from `repo_dir`, or from the first ancestor containing the manifest when the input is empty
 - verify: count(subject="author configuration repository roots", equals=1)
 - does: resolves the epics and feature-book paths through the configured document roots
 - verify: count(subject="author configuration document roots", equals=1)
 - does: selects the one approved milestone and requires its readiness check to report no error only when `mode` is `epic`
 - verify: count(subject="author configuration milestone selections", equals=1)
-- does: returns local-instruction skill paths from `agents.yml` as prompt hints when each entry has a `skill` value
+- does: returns local-instruction skill paths from the manifest's `localInstructions` as prompt hints when each entry has a `skill` value
 - verify: count(subject="author configuration layer hints", equals=1)
 - does: leaves the feature book as read-only grounding and does not create a surface inventory
 - verify: absent(subject="configuration-created feature inventory")
@@ -92,7 +92,7 @@ loading does not create a surface inventory.
 - verify: count(subject="invalid approved milestone configuration failures", equals=1)
 - returns: a `Config` containing the absolute repository root and repository-relative configured paths
 - verify: json_path(path="$.repo_root", equals="docs/stories")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @1e565a154642
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @0bd5cf4f2836
 - tests: `workflows/tests/author/test_config.py::test_author_config_never_invents_a_surface_inventory`
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_selects_the_approved_milestone_folder`
 - tests: `workflows/tests/author/test_config.py::test_epic_authoring_fails_when_no_milestone_is_approved`
@@ -110,15 +110,15 @@ loading does not create a surface inventory.
 - verify: count(subject="milestone readiness failures", equals=1)
 - returns: the docs-root-relative path of the milestone's `milestone.md`
 - verify: json_path(path="$", equals="docs/milestones/acme-launch/milestone.md")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::approved_milestone_path` @1e565a154642
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::approved_milestone_path` @2616168bc690
 - tests: `workflows/tests/author/test_config.py::test_a_flat_milestone_file_is_not_an_approved_milestone`
 
-### _template
-- sig: `_template(root: Path) -> dict`
-- does: reads `agents.yml` from the resolved repository when it is a regular file
+### layers
+- sig: `layers(root: Path) -> list[str]`
+- does: loads the manifest below `root` through the shared loader and lists the `skill` of each `localInstructions` entry that has one, in order
 - verify: count(subject="author template reads", equals=1)
-- does: returns an empty mapping when the file is missing, unreadable, invalid YAML, or contains a non-mapping value
-- verify: json_path(path="$.template", matches="^\\{\\}$")
-- returns: the parsed YAML mapping or an empty mapping
-- verify: json_path(path="$.template", equals="example template")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::_template` @1e565a154642
+- does: returns an empty list when there is no manifest or it does not load
+- verify: json_path(path="$.layers", equals="[]")
+- returns: the skill names used as prompt hints
+- verify: json_path(path="$.layers", equals="example layers")
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::layers` @9d5ccedac882

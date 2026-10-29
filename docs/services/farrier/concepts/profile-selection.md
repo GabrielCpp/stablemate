@@ -9,7 +9,7 @@ Selecting a named profile replaces the top-level model tables with that profile.
 unspecified tiers from the top level, while harness environment settings remain resolved from the
 unselected config.
 
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::select_profile` @0f757c16382b
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::select_profile` @4dbfd0a9d396
 - detail: [home config](../formats/home-config.md)
 
 ## Methods
@@ -18,4 +18,4 @@ unselected config.
 This exception represents a request for a profile absent from the config.
 
 - sig: `UnknownProfileError(message: str)`
-- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::UnknownProfileError` @0f757c16382b
+- code: `farrier/farrier/_vendor/stablemate_core/profiles.py::UnknownProfileError` @54c787e2c7b5

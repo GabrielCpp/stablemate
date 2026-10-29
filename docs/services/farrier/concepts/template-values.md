@@ -5,11 +5,11 @@ title: Template values
 ---
 # Template values
 
-Template values are the renderer context collected from the two accepted configuration spellings.
+Template values are the renderer context collected from the manifest's `template:` table. The loader folds the older `vars:` spelling into it.
 
 ### method: collect_template_values
-- sig: `collect_template_values(config: dict[str, Any]) -> dict[str, Any]`
-- does: merge `vars` first and legacy `template` second, with later keys winning
-- raises: `SystemExit` when either configured value is not a mapping
-- code: `farrier/farrier/template_values.py::collect_template_values` @1b4174e55ebe
+- sig: `collect_template_values(config: ConfigLike) -> dict[str, Any]`
+- does: return the manifest's `template` values, with the keys of a legacy `vars` table merged underneath and `template` winning a clash
+- raises: `SystemExit` naming the key path when either configured value is not a mapping
+- code: `farrier/farrier/template_values.py::collect_template_values` @ed69e298525a
 - verify: count(subject="merged renderer template values", equals=1)

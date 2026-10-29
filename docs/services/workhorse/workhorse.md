@@ -31,7 +31,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 [seeded runs](fixtures/seeded-runs.md) and [inbox run](fixtures/inbox-run.md).
 
 - binary: workhorse-loop-runner
-- code: `workhorse/workhorse/cli/__init__.py::main` @433998fdbc03
+- code: `workhorse/workhorse/cli/__init__.py::main` @b10d6b4a1c54
 - detail: [CLI dispatch](concepts/cli-dispatch.md)
 
 ## Commands
@@ -64,9 +64,9 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - verify: exit_status(code=0)
 - code: `workhorse/workhorse/cli/run.py::add_arguments` @a07c73905748
 - code: `workhorse/workhorse/cli/run.py::run` @0c5d4cc9ba6f
-- code: `workhorse/workhorse/cli/run.py::invocation` @d4edb02a5483
+- code: `workhorse/workhorse/cli/run.py::invocation` @30a15d7fe739
 - code: `workhorse/workhorse/cli/run.py::apply_config_path` @b3a5e8f90bc8
-- code: `workhorse/workhorse/cli/run.py::library_dirs` @11f6ab8973fa
+- code: `workhorse/workhorse/cli/run.py::library_dirs` @86d5faf25b0c
 - code: `workhorse/workhorse/cli/params.py::load_params` @7d465d71bf99
 - code: `workhorse/workhorse/manifest.py::load_context_manifest` @46f9529e2243
 - detail: [run launch](concepts/run-launch.md)
@@ -200,7 +200,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Prints the top-level help, which lists every command.
 - run: invoke(argv=["--help"])
 - verify: stdout(text="{run,dot,control,inbox,replay,version}")
-- code: `workhorse/workhorse/cli/__init__.py::main` @433998fdbc03
+- code: `workhorse/workhorse/cli/__init__.py::main` @b10d6b4a1c54
 - code: `workhorse/workhorse/cli/parser.py::build_parser` @e74ae81a725b
 - code: `workhorse/workhorse/__init__.py::__all__` @331cdb028c18
 
@@ -216,7 +216,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - The CLI name is lower-cased before it is looked up, and the refusal lists every backend.
 - run: invoke(argv=["--cli", "BoGuS", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: unknown CLI backend 'bogus' (set AGENT_CLI, --cli or the config's default_cli to one of: claude, cline, codex, copilot, opencode)")
-- code: `workhorse/workhorse/cli/__init__.py::main` @433998fdbc03
+- code: `workhorse/workhorse/cli/__init__.py::main` @b10d6b4a1c54
 
 ### refuse-cli-with-profile
 
@@ -283,12 +283,12 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
 - run: invoke(argv=["run", "--profile", "ghost", "--config", "/tmp/workhorse-book/seeded/config.toml"])
 - verify: stderr(text="error: unknown profile 'ghost' in /tmp/workhorse-book/seeded/config.toml (known: bare, cheap, odd)")
 - code: `workhorse/workhorse/cli/run.py::run` @0c5d4cc9ba6f
-- code: `workhorse/workhorse/profile.py::select_backend` @ec98391fc4ca
-- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_profile` @9852a73097b9
-- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_config` @d0ff862932b8
+- code: `workhorse/workhorse/profile.py::select_backend` @e476586e5a7f
+- code: `workhorse/workhorse/_vendor/stablemate_core/profiles.py::select_profile` @4dbfd0a9d396
+- code: `workhorse/workhorse/_vendor/stablemate_core/config.py::load_home_config` @635fe33c5b9e
 - code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir` @004b46181627
 - code: `workhorse/workhorse/packaged.py::PackagedWorkflowError` @1e6b03ad1f32
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @a7fd563f47f8
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @da7112f9cd3b
 - code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @97728ec5a6f0
 - code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend` @c74af8345ba8
 - code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend` @8c2758a2cf46
@@ -403,7 +403,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Stubs every node and names the run directory it wrote.
 - run: invoke(argv=["run", "--dry-run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--run-id", "walk"])
 - verify: stdout(matches="artifacts in /.*/[.]agents/runs/")
-- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @c392763d851e
+- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @6dfe1a1c5ba6
 - code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @a21146f24b40
 - code: `workhorse/workhorse/logsetup.py::setup` @b4b552e503f9
 - code: `workhorse/workhorse/otel.py::install` @0cfd934d680b

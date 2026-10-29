@@ -15,6 +15,6 @@ is not in the library tree, so provenance lookups (`library_source_path`) use `r
 instead of anchoring it at a `library/` segment. The source declaration does not rank these
 fields: callers choose the field that matches the operation they are performing.
 
-- code: `farrier/farrier/sources.py::Source` @3121386a99df
+- code: `farrier/farrier/sources.py::Source` @6f296b411904
 - rule: choose the field by its role: category for `kind`, local I/O for `path`, root-relative provenance for `rel`, stable matching and lookup for `id`, supplying-layer provenance for `layer`, and hand-written-vs-library provenance for `local`
 - detail: [source record documentation roles](source-record-documentation-roles.md)

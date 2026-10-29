@@ -10,22 +10,15 @@ the shared stablemate configuration.
 
 ## Methods
 
-### method: _table
-- sig: `_table(value: Any, name: str) -> dict[str, Any]`
-- does: validate that a configuration value is a TOML table
-- raises: `SystemExit` naming the invalid table
-- verify: count(subject="validated user-library tables", equals=1)
-- code: `farrier/farrier/user_library.py::_table` @957e574360f9
-
 ### method: user_library_tables
-- sig: `user_library_tables(config: dict[str, Any]) -> dict[str, dict[str, Any]]`
+- sig: `user_library_tables(home: HomeConfig) -> dict[str, Selection]`
 - does: return non-empty Claude, Codex, and Copilot tables in fixed harness order
-- raises: `SystemExit` for unknown harness tables or malformed values
+- raises: `SystemExit` for unknown harness tables
 - verify: count(subject="configured user-library harness tables", equals=1)
-- code: `farrier/farrier/user_library.py::user_library_tables` @957e574360f9
+- code: `farrier/farrier/user_library.py::user_library_tables` @c71b69ee84ae
 
 ### method: user_template_values
-- sig: `user_template_values(config: dict[str, Any]) -> dict[str, Any]`
-- does: return one validated template mapping shared by every configured harness
+- sig: `user_template_values(home: HomeConfig) -> dict[str, Any]`
+- does: return the template mapping of the loaded home config shared by every configured harness
 - verify: count(subject="shared user-library template values", equals=1)
-- code: `farrier/farrier/user_library.py::user_template_values` @957e574360f9
+- code: `farrier/farrier/user_library.py::user_template_values` @ec4996d8b8ce

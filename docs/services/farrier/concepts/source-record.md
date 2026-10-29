@@ -12,7 +12,7 @@ filesystem path used to read content. A record may carry the layer that supplied
 resolution can explain shadowing and provenance. The compatibility facade continues to expose this
 same record as `farrier.install.Source`; its declaration remains in `sources.py`.
 
-- code: `farrier/farrier/sources.py::Source` @3121386a99df
+- code: `farrier/farrier/sources.py::Source` @6f296b411904
 - detail: [library layer](library-layer.md)
 - detail: [source record documentation roles](source-record-documentation-roles.md)
 
@@ -23,7 +23,7 @@ same record as `farrier.install.Source`; its declaration remains in `sources.py`
 - required: true
 - verify: json_path(path="$.kind", matches="^(skill|prompt|policy)$")
 - semantics: identifies the source category being loaded, such as `skill`, `prompt`, or `policy`
-- code: `farrier/farrier/sources.py::Source` @3121386a99df
+- code: `farrier/farrier/sources.py::Source` @6f296b411904
 - detail: [source record field roles](source-record-field-roles.md)
 
 ### field: path
@@ -31,7 +31,7 @@ same record as `farrier.install.Source`; its declaration remains in `sources.py`
 - required: true
 - verify: json_path(path="$.path", matches="^/.+")
 - semantics: filesystem path of the source document
-- code: `farrier/farrier/sources.py::Source` @3121386a99df
+- code: `farrier/farrier/sources.py::Source` @6f296b411904
 - detail: [source record field roles](source-record-field-roles.md)
 
 ### field: rel
@@ -39,7 +39,7 @@ same record as `farrier.install.Source`; its declaration remains in `sources.py`
 - required: true
 - verify: json_path(path="$.rel", matches="^[^/\\\\]+(?:/[^/\\\\]+)*\\.md$")
 - semantics: POSIX path relative to the content root
-- code: `farrier/farrier/sources.py::Source` @3121386a99df
+- code: `farrier/farrier/sources.py::Source` @6f296b411904
 - detail: [source record field roles](source-record-field-roles.md)
 
 ### field: id
@@ -47,7 +47,7 @@ same record as `farrier.install.Source`; its declaration remains in `sources.py`
 - required: true
 - semantics: normalized source identifier derived from the root-relative path
 - verify: json_path(path="$.id", matches="^[a-z0-9][a-z0-9-]*(/[a-z0-9][a-z0-9-]*)*$")
-- code: `farrier/farrier/sources.py::Source` @3121386a99df
+- code: `farrier/farrier/sources.py::Source` @6f296b411904
 - detail: [source record field roles](source-record-field-roles.md)
 
 ### field: layer
@@ -58,7 +58,7 @@ same record as `farrier.install.Source`; its declaration remains in `sources.py`
 - semantics: identifies the library layer that supplied the record
 - verify: json_path(path="$.layer.name", equals="base-library (base)")
 - semantics: direct test-created records may omit the layer
-- code: `farrier/farrier/sources.py::Source` @3121386a99df
+- code: `farrier/farrier/sources.py::Source` @6f296b411904
 - detail: [source record field roles](source-record-field-roles.md)
 
 ### field: local
@@ -67,5 +67,5 @@ same record as `farrier.install.Source`; its declaration remains in `sources.py`
 - required: false
 - verify: json_path(path="$.local", equals=false)
 - semantics: marks a hand-written source outside the library tree, so `library_source_path` returns `rel` directly instead of anchoring it at a `library/` segment
-- code: `farrier/farrier/sources.py::Source` @3121386a99df
+- code: `farrier/farrier/sources.py::Source` @6f296b411904
 - detail: [source record field roles](source-record-field-roles.md)

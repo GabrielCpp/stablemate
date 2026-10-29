@@ -88,7 +88,7 @@ title: 'farrier — render the agent prompt library into a repository: Commands'
     - run: invoke(argv=["workflows"], env={"HOME": "c167/home", "STABLEMATE_CONFIG": "c167/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c167/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: pipx-missing-source dir=c167
-- code: `farrier/farrier/cli.py::_run_workflows` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_workflows` @f22b710f5e8a
 - detail: [generated agent launcher](concepts/generated-agent-launcher.md)
 - detail: [installed workflow discovery](concepts/installed-workflow-discovery.md)
 - tests: `farrier/tests/test_pipx.py::test_discover_reads_the_json_pipx_actually_emits`
@@ -152,7 +152,7 @@ title: 'farrier — render the agent prompt library into a repository: Commands'
     - run: invoke(argv=["doctor", "--repo", "c180"], env={"HOME": "c180/home", "STABLEMATE_CONFIG": "c180/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c180/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: empty-dir dir=c180
-- code: `farrier/farrier/doctor.py::report` @db3ffdebab2b
+- code: `farrier/farrier/doctor.py::report` @e4d3ddd295b3
 - detail: [repository diagnosis](concepts/doctor-diagnosis.md)
 - tests: `farrier/tests/test_doctor_command.py::test_a_repo_with_no_services_block_is_warned_that_nothing_is_gated`
 - tests: `farrier/tests/test_doctor_command.py::test_a_missing_agents_yml_is_the_one_error`
@@ -257,8 +257,8 @@ actions of the `hooks` command group.
     - run: invoke(argv=["hooks", "install", "--repo", "c198"], env={"HOME": "c198/home", "STABLEMATE_CONFIG": "c198/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c198/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: bad-manager-repo dir=c198
-- code: `farrier/farrier/cli.py::_run_hooks_install` @2eeeeaa1740e
-- code: `farrier/farrier/cli.py::_run_hooks_list` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_hooks_install` @4a070cb3a89d
+- code: `farrier/farrier/cli.py::_run_hooks_list` @8f8e0c831a96
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve`
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_falls_back_to_detection_with_no_agents_yml`

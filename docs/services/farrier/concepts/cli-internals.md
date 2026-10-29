@@ -15,26 +15,26 @@ These helpers form the command parser and dispatch seams behind the public `farr
 - does: describe `--home` as the directory the user library installs into, and `--user` as installing the harness home from the `[user_library.<harness>]` tables; combined with `--repo` it installs the repo first, then refreshes the home afterward
 - does: describe `--repo` as the repository root to install into, resolved to cwd when omitted, that writes only under that root unless `--user` is also given
 - verify: count(subject="install parser options", equals=1)
-- code: `farrier/farrier/cli.py::_add_install_args` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_add_install_args` @9f6e6a5a274f
 
 ### method: _flatten
 - sig: `_flatten(table: dict[str, Any], prefix: str = '') -> list[tuple[str, Any]]`
 - does: flatten nested configuration mappings into dotted leaf paths in source order
 - verify: count(subject="flattened configuration leaves", equals=1)
-- code: `farrier/farrier/cli.py::_flatten` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_flatten` @ef2a24951e9b
 
 ### method: _dispatch_config
 - sig: `_dispatch_config(args: argparse.Namespace) -> int`
 - does: execute config setters or show top-level/profile values and print their result
 - raises: `SystemExit` when a requested value is unset or a setter path is invalid
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_dispatch_config` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_dispatch_config` @8aefb60a8d7f
 
 ### method: find_agents_config
 - sig: `find_agents_config(start: Path) -> Path | None`
 - does: locate the nearest `agents.yml` at or above a generated file's directory
 - verify: count(subject="nearest agents.yml lookup", equals=1)
-- code: `farrier/farrier/cli.py::find_agents_config` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::find_agents_config` @bd548c505fcc
 
 ### method: mapped_instruction_sources
 - sig: `mapped_instruction_sources(generated: Path) -> list[str] | None`
@@ -43,19 +43,19 @@ These helpers form the command parser and dispatch seams behind the public `farr
 - does: list `agents.yml` as the source of an entry whose content is its own `text`
 - raises: `SystemExit` when an existing agents.yml no longer maps the generated file
 - verify: count(subject="live localInstructions source mappings", equals=1)
-- code: `farrier/farrier/cli.py::mapped_instruction_sources` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::mapped_instruction_sources` @d63ba6dc4121
 
 ### method: _list_scaffolds
 - sig: `_list_scaffolds(defs: dict[str, dict[str, Any]], available: set[str], repo: Path) -> int`
 - does: print available scaffold ids, descriptions, and parameter defaults or required markers
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_list_scaffolds` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_list_scaffolds` @d0fe0a2ea0bc
 
 ### method: _build_parser
 - sig: `_build_parser() -> argparse.ArgumentParser`
 - does: construct the complete farrier command and subcommand parser
 - verify: count(subject="registered farrier subcommands", equals=11)
-- code: `farrier/farrier/cli.py::_build_parser` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_build_parser` @70b4b13de746
 
 ### method: _run_hooks_install
 - sig: `_run_hooks_install(args: argparse.Namespace) -> int`
@@ -65,7 +65,7 @@ These helpers form the command parser and dispatch seams behind the public `farr
 - does: leave outputs other than the hook manager and its runner unchanged while wiring repository hooks
 - verify: unchanged(subject="repository outputs other than the hook manager and runner")
 - does: print every action prefixed with `[dry-run] ` and write nothing when `--dry-run` is set
-- code: `farrier/farrier/cli.py::_run_hooks_install` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_hooks_install` @4a070cb3a89d
 
 ### method: _run_hooks_list
 - sig: `_run_hooks_list(args: argparse.Namespace) -> int`
@@ -74,14 +74,14 @@ These helpers form the command parser and dispatch seams behind the public `farr
 - does: warn that declared hooks are not wired when the configured manager is `none`
 - raises: exits 1 with an error on stderr when `agents.yml` is missing, unreadable or not a mapping
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_run_hooks_list` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_hooks_list` @8f8e0c831a96
 
 ### method: _load_library
 - sig: `_load_library(library: Path | None, check: bool) -> None`
 - does: fetch or refresh the base library at the release that published this farrier, then layer the overlay over it
 - does: print one info line for each skill or prompt a higher layer overrides by name, unless `check` is set
 - verify: count(subject="library override notices printed", equals=1)
-- code: `farrier/farrier/cli.py::_load_library` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_load_library` @47f100e8a182
 
 ### method: _base_library_ref
 - sig: `_base_library_ref() -> str`
@@ -89,43 +89,43 @@ These helpers form the command parser and dispatch seams behind the public `farr
 - does: return the release tag `farrier-v<version>` for a farrier installed from a published release
 - returns: the git ref the base library is fetched at
 - verify: count(subject="base library ref", equals=1)
-- code: `farrier/farrier/cli.py::_base_library_ref` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_base_library_ref` @c5b6b3fa2dd3
 
 ### method: _confirm
 - sig: `_confirm(question: str) -> bool`
 - does: ask the question on the terminal and accept `y` or `yes` in any case
 - returns: `false` for any other answer and when input ends
 - verify: count(subject="terminal confirmation answers", equals=1)
-- code: `farrier/farrier/cli.py::_confirm` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_confirm` @81bdad94453a
 
 ### method: _run_user_install
 - sig: `_run_user_install(home: Path | None, check: bool) -> int`
 - does: render the `[user_library.<harness>]` tables into the harness home folders under `home`, or the real home when it is `None`
 - does: compare instead of writing when `check` is set
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_run_user_install` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_user_install` @d70b7dfd31a8
 
 ### method: _selected_layer
 - sig: `_selected_layer(args: argparse.Namespace) -> str | None`
 - does: convert an optional base/overlay CLI choice to the active layer label
 - verify: count(subject="selected library layer labels", equals=1)
-- code: `farrier/farrier/cli.py::_selected_layer` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_selected_layer` @04d62b776a91
 
 ### method: _run_library_list
 - sig: `_run_library_list(args: argparse.Namespace) -> int`
 - does: print layer headers and the selected library catalog kinds
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_run_library_list` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_library_list` @e0e6326644a5
 
 ### method: _run_library_show
 - sig: `_run_library_show(args: argparse.Namespace) -> int`
 - does: print exactly one resolved library source, optionally from a selected layer
 - raises: `SystemExit` unless exactly one item kind is requested or the item is unavailable
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_run_library_show` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_library_show` @c8d9aa8f189a
 
 ### method: _run_library_check
 - sig: `_run_library_check(args: argparse.Namespace) -> int`
 - does: check each distinct active library layer and return nonzero for errors or strict warnings
 - verify: exit_status(code=0)
-- code: `farrier/farrier/cli.py::_run_library_check` @2eeeeaa1740e
+- code: `farrier/farrier/cli.py::_run_library_check` @9aa03a162513

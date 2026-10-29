@@ -99,10 +99,16 @@ them agree; the guard has to live on the file:
   back a schema it cannot represent and dropping the keys it does not know;
 - a newer tool **migrates** an older config forward on its first write (keeping a
   `config.toml.v<n>.bak`), which closes the door behind it;
-- **reads never fail** on a newer config — they warn. `resolve_power` re-reads per node,
-  and a week-long unattended run must not die because another tool was upgraded.
+- **reads never fail** on a newer config — they warn. The config is re-read per node,
+  and a week-long unattended run must not die because another tool was upgraded. A value
+  of the wrong type fails the first load with its key path, and a later re-read that fails
+  keeps the last good config.
 
 If a tool refuses, upgrade it — that is the mechanism working, not a bug.
+
+`farrier config reference` prints every key of this file and of a repository's `agents.yml`,
+with type, default, meaning and example. `--file home` or `--file manifest` prints one of the
+two. [The configuration guide](guide/configuration.md) explains the output.
 
 An overlay library shadows the base name-for-name via `farrier config set-library`, or
 `$FARRIER_LIBRARY_DIR` for a one-off.

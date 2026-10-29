@@ -10,7 +10,7 @@ optional replacement-body arguments, and the Pydantic reply model that the calle
 to the agent. A role is the envelope stem, so the same role may have one envelope in each flow
 while one repo or library replacement applies to every copy.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::ROLES` @8adc968beaf6
+- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::ROLES` @35e557f08462
 - tests: `workflows/tests/coder/shared/test_roles.py`
 
 The registry is one side of a bidirectional coverage check on every flow's `prompts/` directory:
@@ -24,10 +24,10 @@ a literal `self.agent(turn.prompt, …)` is invisible to that scan, so an orphan
 missing envelope would now surface as a render error mid-run rather than before the first node.
 
 The resolver checks overrides in this order: a valid repo-relative or absolute file named by the
-repo's `agents.yml` `prompts:` mapping, the first matching `library/prompts/coder/<role>.md` in
+repo manifest's `workflow.prompts` mapping, the first matching `library/prompts/coder/<role>.md` in
 the ordered library directories, and finally no body override so the workflow envelope renders
 its bundled default. Missing, malformed, or nonexistent overrides are treated as no override.
-The repo may put `prompts:` at the top level or under `workflow:`.
+A legacy top-level `prompts:` mapping is folded into `workflow.prompts` by the loader with a warning, key by key: a role set in both takes the top-level value and a role only in `workflow.prompts` is kept. `farrier config reference --file manifest` lists the key.
 
 ## Fields
 
@@ -38,7 +38,7 @@ The repo may put `prompts:` at the top level or under `workflow:`.
 - verify: json_path(path="$.prompt", matches="^[^/]+/prompts/[^/]+\\.md$")
 - semantics: `<flow>/prompts/<role>.md` selected from the flow class's defining module
 - verify: json_path(path="$.prompt", equals="dev/prompts/dev-review.md")
-- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::Turn` @8adc968beaf6
+- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::Turn` @d1b5ba73e770
 - detail: [Coder Turn Record](turn-record.md)
 
 ### args
@@ -51,7 +51,7 @@ The repo may put `prompts:` at the top level or under `workflow:`.
 - verify: json_path(path="$._body_dir", matches=".+/.+")
 - semantics: when a body override is found, contains its namespaced template as `body_template`
 - verify: json_path(path="$.body_template", matches="^body/[^/]+\\.md$")
-- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::Turn` @8adc968beaf6
+- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::Turn` @d1b5ba73e770
 - detail: [Coder Turn Record](turn-record.md)
 
 ### returns
@@ -59,7 +59,7 @@ The repo may put `prompts:` at the top level or under `workflow:`.
 - type: `type[T]`, where `T` is a Pydantic `BaseModel`
 - required: true
 - semantics: the same reply model used to render `result_schema` and parse the agent response
-- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::Turn` @8adc968beaf6
+- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::Turn` @d1b5ba73e770
 - detail: [Coder Turn Record](turn-record.md)
 
 ## Methods
@@ -79,7 +79,7 @@ The repo may put `prompts:` at the top level or under `workflow:`.
 - verify: json_path(path="$.exception.type", equals="WorkflowFailed")
 - returns: a `Turn` containing the envelope path, render arguments, and supplied reply model
 - verify: json_path(path="$.returns", equals="FixResult")
-- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::turn` @8adc968beaf6
+- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::turn` @f4ef0bec643c
 - tests: `workflows/tests/coder/shared/test_roles.py::test_an_unregistered_role_is_caught_on_the_transition`
 - tests: `workflows/tests/coder/shared/test_roles.py::test_the_envelope_is_the_calling_flows_own_copy`
 
@@ -91,9 +91,8 @@ The repo may put `prompts:` at the top level or under `workflow:`.
 - raises: `WorkflowFailed` when the flow is defined outside the coder package
 - verify: json_path(path="$.exception.type", equals="WorkflowFailed")
 - returns: the flow package name used to prefix its prompt envelope path
-- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::flow_dir` @8adc968beaf6
+- code: `workflows/src/workhorse_workflows/coder/shared/roles.py::flow_dir` @e32c5d4eb206
 - tests: `workflows/tests/coder/shared/test_roles.py::test_a_flow_defined_outside_the_package_is_caught_rather_than_mispathed`
 
 The private body helpers are part of `turn`'s contract: `_body` applies repo, overlay, and base
-precedence; `_repo_prompts` reads only string-valued mappings and tolerates absent, malformed,
-or non-mapping configuration. No external service or persistence is involved.
+precedence; `_repo_prompts` reads only string-valued mappings and tolerates an absent or unloadable manifest. No external service or persistence is involved.

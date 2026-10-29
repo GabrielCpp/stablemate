@@ -7,7 +7,7 @@ title: Attendant dispatch
 
 When a run announces it is blocked on a gate or has died without reaching its own end, groom dispatches an attendant — an outside actor that can investigate, make a decision, and carry the run forward. The attendant contract is channel-agnostic: the same job can be claimed by an interactive session from a fleet-wide queue, or spawned as a headless Claude agent in the run's workspace.
 
-- code: `groom/groom/attend.py`
+- code: `groom/groom/attend.py` @39ef0dee7f5f
 - tests: `groom/tests/test_attend.py`
 
 The module is called from `groom.app._poll_gate_soon` and the exit-alert pathway. Nothing here reaches upward to groom's own state — every dispatch is a fire-and-forget notification that drives a row in the `attend` table or publishes a job to the session queue.
@@ -20,7 +20,7 @@ Three dispatch modes are configured in `[groom.attend]` of the home config, off 
 - **`session`** — publish jobs to a fleet-wide queue at `GET /api/attend/queue`, for an interactive session to claim. No process is spawned and no row is written; what the attendant did is in the operator's terminal.
 - **`headless`** — spawn a `claude -p` agent directly in the run's workspace. The job is passed on stdin and the attendant owns its own lifecycle: the row is written before the first byte of output (so a groom restart still knows what it spawned), and exit status is recorded in a daemon thread.
 
-Settings are resolved from config first, then environment (`GROOM_ATTEND*` vars), then a documented default. The cache is invalidated by file mtime, so a dashboard toggle reloads the setting on the next announcement with no restart.
+Settings are resolved from config first, then environment (`GROOM_ATTEND*` vars), then a documented default. The home config loader holds the document and re-reads it when the file's modification time or size changes, so a dashboard toggle reloads the setting on the next announcement with no restart. A config that no longer loads leaves the last good settings in force, and one that never loaded turns the attendant off.
 
 ## Deny patterns and gatekeeping
 
@@ -51,7 +51,7 @@ A second dispatch for the same run is rejected — the blocked check calls `_blo
 - does: reject if an attendant is already on this run
 - does: dispatch an `AttendJob` with `kind = "gate"` and return it when no rejection fires
 - returns: the job if dispatched, `None` if any reject clause fired
-- code: `groom/groom/attend.py::attend_gate`
+- code: `groom/groom/attend.py::attend_gate` @6903a24eb428
 - detail: [attend job](../formats/attend-job.md)
 - verify: emitted(event="AttendJob", count=1)
 
@@ -62,7 +62,7 @@ A second dispatch for the same run is rejected — the blocked check calls `_blo
 - does: create an `AttendJob` with `kind = "death"` and the captured failure metadata
 - does: dispatch the job and return it
 - returns: the job if dispatched, `None` if rejected
-- code: `groom/groom/attend.py::attend_death`
+- code: `groom/groom/attend.py::attend_death` @015830b1790d
 - detail: [attend job](../formats/attend-job.md)
 - verify: emitted(event="AttendJob", count=1)
 
@@ -70,7 +70,7 @@ A second dispatch for the same run is rejected — the blocked check calls `_blo
 - sig: `(run_dir: str) -> tuple[str, str, str]`
 - does: read `inbox.jsonl`, find the last message with `kind = "failure"`, parse its body for `failure_class:` and `node:` fields
 - returns: `(failure_class, node, body)` or `("", "", "")` if no failure message exists
-- code: `groom/groom/attend.py::read_failure`
+- code: `groom/groom/attend.py::read_failure` @34e26b923708
 
 ## Headless spawning
 
@@ -83,7 +83,7 @@ The headless dispatch spawns a Claude agent in the run's workspace and owns its 
   - call `_launch(job, session_id)` to spawn `claude -p` through `ProcessSupervisor`
   - write a row to the `attend` table with `status = running` before the process runs
   - start a daemon thread that waits on the process, fetches its transcript if it ran, and finishes the row
-- code: `groom/groom/attend.py::spawn_headless`
+- code: `groom/groom/attend.py::spawn_headless` @7a7369b325b8
 - detail: [reason method](../formats/attend-job.md#reason)
 - verify: persists(subject="attend table row", field="status", value="running")
 
@@ -94,7 +94,7 @@ The spawned prompt is the attendant doctrine (shipped in `groom/groom/prompts/at
 - does: if the row shows `status = running`, send `SIGTERM` then `SIGKILL` to the process group; fetch and store its transcript; mark the row `status = stopped`
 - returns: `True` if a process was killed, `False` if the row doesn't exist or is not running
 - errors: if `pid` is stale (process already dead), the second signal may fail — caught and logged, not raised
-- code: `groom/groom/attend.py::stop`
+- code: `groom/groom/attend.py::stop` @032d86a8ec03
 - verify: persists(subject="attend table row", field="status", value="stopped")
 
 ### recover_orphans
@@ -105,7 +105,7 @@ The spawned prompt is the attendant doctrine (shipped in `groom/groom/prompts/at
   - if the mode is `headless` and the pid is dead: mint a new session id, respawn the agent, append it to the session id list in the row, start a new ownership thread
   - if the mode is not `headless`: mark the row `status = lost`
 - returns: count of attendants restarted
-- code: `groom/groom/attend.py::recover_orphans`
+- code: `groom/groom/attend.py::recover_orphans` @c8c70622805a
 - verify: persists(subject="attend table row", field="session_ids", value="appended")
 
 Boot recovery is called from `groom.main` as groom starts up, one time. A row that survived a restart represents a run that was still held by an attendant when groom died, and the respawn continues the repair on the old code — the code the run is actually executing. Restarting without respawning would abandon the run with its checkpoint frozen.
@@ -117,21 +117,21 @@ Boot recovery is called from `groom.main` as groom starts up, one time. A row th
 ### queue
 - sig: `() -> list[dict]`
 - returns: ordered list of jobs
-- code: `groom/groom/attend.py::queue`
+- code: `groom/groom/attend.py::queue` @daf85c5ba301
 
 This endpoint is polled by `GET /api/attend/queue` and rendered in the session pane of the dashboard. A session claims a job by calling the control CLI with the job's `run_id`.
 
 ### release
 - sig: `(run_id: str) -> None`
 - does: drop this run's job from the ledger (remove from `by_run` and `jobs`)
-- code: `groom/groom/attend.py::release`
+- code: `groom/groom/attend.py::release` @ca6dc0dc2de5
 
 Called when a run is resumed, a gate is cleared, or an attendant is stopped.
 
 ### reset
 - sig: `() -> None`
 - does: clear both dicts in the ledger
-- code: `groom/groom/attend.py::reset`
+- code: `groom/groom/attend.py::reset` @a25785c1595b
 
 Used only in tests to isolate state between test cases.
 

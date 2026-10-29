@@ -51,8 +51,8 @@ worktree while it is still going.
 
 - code: `workhorse/workhorse/cli/run.py::backend_for_profile` @ccb42ff9f0d8
 - code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
-- code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @c14993f8e31a
-- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @c14993f8e31a
+- code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @a94ca2f0b4b6
+- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @6dfe1a1c5ba6
 - code: `workhorse/workhorse/pyflow/worktree.py::Worktree` @2da3d23c967a
 - code: `workhorse/workhorse/pyflow/replies.py::dry_run` @0ccecab8791a
 - code: `workhorse/workhorse/manifest.py::ContextManifest` @e896594bc36c

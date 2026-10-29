@@ -10,7 +10,7 @@ tree and `name` is the human-readable provenance label used in diagnostics; the 
 resolved path as its name and the base uses `base-library (base)`. The stack is ordered from
 highest to lowest precedence, so the first matching layer wins.
 
-- code: `farrier/farrier/layers.py::Layer` @72bbcb1655ea
+- code: `farrier/farrier/layers.py::Layer` @40000637dad7
 - tests: `farrier/tests/test_config_resolution.py::test_overlay_shadows_base`
 - detail: [library layer attribute selection](library-layer-attribute-selection.md)
 - detail: [library layer usage rule](library-layer-usage-rule.md)
@@ -24,7 +24,7 @@ highest to lowest precedence, so the first matching layer wins.
 - required: true
 - verify: json_path(path="$.root", matches="^/.+")
 - semantics: filesystem root of this library layer
-- code: `farrier/farrier/layers.py::Layer` @72bbcb1655ea
+- code: `farrier/farrier/layers.py::Layer` @40000637dad7
 - detail: [library layer field selection](library-layer-field-selection.md)
 
 ### field: name
@@ -32,5 +32,5 @@ highest to lowest precedence, so the first matching layer wins.
 - required: true
 - verify: json_path(path="$.name", equals="base-library (base)")
 - semantics: provenance label shown when a source is selected or an error lists searched layers
-- code: `farrier/farrier/layers.py::Layer` @72bbcb1655ea
+- code: `farrier/farrier/layers.py::Layer` @40000637dad7
 - detail: [library layer field selection](library-layer-field-selection.md)

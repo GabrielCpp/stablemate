@@ -15,7 +15,7 @@ install time — see the [`scaffold` command](../farrier-commands-init.md#scaffo
 come from the [source loader](source-loader.md), which excludes a skill's bundled asset Markdown
 from the top-level source set.
 
-- code: `farrier/farrier/renderer.py::Renderer` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer` @d3a48cfb8aab
 - detail: [renderer naming and relative output paths](naming.md)
 - detail: [generated context manifest](../formats/generated-context-manifest.md)
 
@@ -56,57 +56,57 @@ ownership, or source-part metadata.
 ### method: Rendered
 - sig: `Rendered(text: str, executable: bool = False, verbatim: bool = False, assumed: bool = False, sources: tuple[str, ...] = (), parts: tuple[tuple[str, str], ...] = ())`
 - does: retain output text while carrying write-mode and provenance metadata
-- code: `farrier/farrier/renderer.py::Rendered` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Rendered` @18827845c582
 - verify: count(subject="rendered output metadata records", equals=1)
 
 ### method: __new__
 - sig: `Rendered.__new__(cls, text: str, *, executable: bool = False, verbatim: bool = False, assumed: bool = False, sources: tuple[str, ...] = (), parts: tuple[tuple[str, str], ...] = ())`
 - does: construct a string-compatible rendered record with the supplied metadata
-- code: `farrier/farrier/renderer.py::Rendered.__new__` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Rendered.__new__` @a717b4d73b2c
 - verify: count(subject="string-compatible rendered records", equals=1)
 
 ### method: local_instruction_banner
 - sig: `local_instruction_banner(sources: list[Source], dest_rel: str) -> str`
 - does: create a portable generated-file warning naming all aggregated library sources
-- code: `farrier/farrier/renderer.py::local_instruction_banner` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::local_instruction_banner` @77b7dc3aede5
 - verify: json_path(path="return value", matches="DO NOT EDIT")
 
 ### method: asset_banner
 - sig: `asset_banner(asset: Asset, dest_rel: str, overwritten_by: str = ...) -> str`
 - does: create a generated-file warning for one bundled Markdown asset
-- code: `farrier/farrier/renderer.py::asset_banner` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::asset_banner` @7e53eacb6896
 - verify: json_path(path="return value", matches="DO NOT EDIT")
 
 ### method: root_banner
 - sig: `root_banner(source_rel: str, dest_rel: str) -> str`
 - does: create a generated-file warning for a Copilot root instruction file
-- code: `farrier/farrier/renderer.py::root_banner` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::root_banner` @efb3a33cbc98
 - verify: json_path(path="return value", matches="DO NOT EDIT")
 
 ### method: with_banner
 - sig: `with_banner(text: str, banner: str) -> str`
 - does: insert a banner after front matter or at the beginning of plain text
-- code: `farrier/farrier/renderer.py::with_banner` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::with_banner` @ea951c39f2cc
 - verify: count(subject="generated texts with provenance banners", equals=1)
 
 ### method: read_asset_text
 - sig: `read_asset_text(asset: Asset) -> str`
 - does: read a bundled asset as UTF-8 text
 - raises: `SystemExit` naming the asset when it is not UTF-8 text
-- code: `farrier/farrier/renderer.py::read_asset_text` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::read_asset_text` @af2d3637e92c
 - verify: count(subject="UTF-8 bundled asset reads", equals=1)
 
 ### method: strip_arguments_placeholder
 - sig: `strip_arguments_placeholder(body: str) -> str`
 - does: remove standalone `$ARGUMENTS` lines while preserving inline occurrences
-- code: `farrier/farrier/renderer.py::strip_arguments_placeholder` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::strip_arguments_placeholder` @7447d1ede934
 - verify: omits(subject="aggregated prompt body", text="$ARGUMENTS")
 
 ### method: user_harness_dir
 - sig: `user_harness_dir(target: str) -> str`
 - does: map a supported user-scope harness to its home-relative directory, with codex and copilot sharing `.agents`
 - raises: `SystemExit` for an unknown harness
-- code: `farrier/farrier/renderer.py::user_harness_dir` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::user_harness_dir` @f78c558635e9
 - verify: count(subject="user harness directory mappings", equals=3)
 
 ## `render_templates` — the Jinja helper surface
@@ -149,7 +149,7 @@ replacement.
   same merged mapping under two names).
 - `target` — the render target string (`"claude"` / `"codex"` / `"copilot"`).
 
-- code: `farrier/farrier/renderer.py::Renderer.render_templates` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.render_templates` @bf02410e8356
 
 ## Skill and prompt output paths
 
@@ -167,7 +167,7 @@ map it to its per-target generated path:
 deprefixed public id. An unrecognized `target` string is a `SystemExit` (defensive; every call site
 passes a literal from the fixed target set above).
 
-- code: `farrier/farrier/renderer.py::Renderer.skill_output_path` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.skill_output_path` @6dce89aa3636
 
 ## `render` — the per-agent output set
 
@@ -203,7 +203,7 @@ enabled assistant (`"claude"` if none is enabled). When the repository has no ro
 set additionally contains a thin one (`-include .agents/agents.mk`); an existing root `Makefile` is
 left intact and `ensure_makefile_include` wires it at install time instead.
 
-- code: `farrier/farrier/renderer.py::Renderer.render` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.render` @dc1791ac8135
 
 ### `context_manifest` — the per-repo run-time manifest
 
@@ -218,7 +218,7 @@ keys → each skill's declared `tags:`, omitting the skills that declare none �
 `find_by_tags` queries), `used_skills` (sorted lookup keys), and `skill_dir` (this `target`'s skill
 directory, repo-root-relative).
 
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @a487949b81ec
 
 ### `generated_skill` / `generated_command` — front matter + provenance
 
@@ -239,8 +239,8 @@ and the body through `render_templates`, then re-emit front matter carrying the
   filename. For the `copilot` target the front matter is instead the prompt's own rendered front
   matter without its `metadata`, with `description` set as above, followed by the metadata block.
 
-- code: `farrier/farrier/renderer.py::Renderer.generated_skill` @3c56f2f75d1f
-- code: `farrier/farrier/renderer.py::Renderer.generated_command` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.generated_skill` @03f3d50e4a52
+- code: `farrier/farrier/renderer.py::Renderer.generated_command` @b2a13e5f8a42
 
 ## `render_local_instruction`
 
@@ -252,7 +252,7 @@ and the body through `render_templates`, then re-emit front matter carrying the
   heading. The separate `render_claude_pointer` method controls whether Claude imports the sibling
   README by `@README.md` instead of receiving it through `AGENTS.md`.
 
-- code: `farrier/farrier/renderer.py::Renderer.render_local_instruction` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.render_local_instruction` @4b1c94b805bd
 
 ## Methods
 
@@ -268,20 +268,20 @@ template values, policies, and repo/user scope.
 - verify: count(subject="user-scope destination paths prefixed with ~/", equals=1)
 - raises: `ValueError` when `output_path` is outside the renderer repository
 - verify: count(subject="ValueError results for output paths outside the renderer repository", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.dest_rel` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.dest_rel` @7ab7a89ef421
 
 ### method: skill_tags
 - sig: `skill_tags(source: Source) -> list[str]`
 - does: read the source front matter's normalized tags
 - does: cache normalized tags by source path so repeated lookups read the source file once
 - verify: count(subject="front matter reads for repeated tag lookups of the same skill source", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.skill_tags` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.skill_tags` @bb9f8bbf77c0
 
 ### method: catalog
 - sig: `catalog(target: str) -> SkillCatalog`
 - does: list the selected skills, the prompts `target` loads, and at repo scope the home skills, most local first
 - verify: count(subject="skill catalog entries for a render target", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.catalog` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.catalog` @2f2c0d1194c9
 - tests: `farrier/tests/test_skill_tags.py::test_a_tag_query_is_an_and`
 
 ### method: skill_refs
@@ -290,8 +290,8 @@ template values, policies, and repo/user scope.
 - verify: count(subject="skill reference helper sets for a rendered file", equals=1)
 - does: record each reference that misses the catalog and render the soft placeholder text
 - verify: count(subject="unresolved skill references recorded", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.skill_refs` @3c56f2f75d1f
-- code: `farrier/farrier/_vendor/stablemate_core/skill_refs.py::SkillRefs` @ebf1b69c7565
+- code: `farrier/farrier/renderer.py::Renderer.skill_refs` @3dbaa495b1da
+- code: `farrier/farrier/_vendor/stablemate_core/skill_refs.py::SkillRefs` @0da19e1c7333
 
 ### method: instruction_part
 - sig: `instruction_part(source: Source, target: str, output_path: Path) -> str`
@@ -299,8 +299,8 @@ template values, policies, and repo/user scope.
 - verify: omits(subject="aggregated prompt body", text="$ARGUMENTS")
 - does: rewrite a hand-written local source's relative links from beside the source to beside the output file
 - verify: count(subject="rebased relative links in an aggregated hand-written source", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.instruction_part` @3c56f2f75d1f
-- code: `farrier/farrier/link_rebase.py::rebase_links` @64a032c83549
+- code: `farrier/farrier/renderer.py::Renderer.instruction_part` @98578112cb38
+- code: `farrier/farrier/link_rebase.py::rebase_links` @93c5b6dd4c88
 
 ### method: check_resolved
 - sig: `check_resolved() -> None`
@@ -308,7 +308,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="unresolved skill references after a clean render", equals=0)
 - raises: `SystemExit` naming every unresolved reference once
 - verify: count(subject="unresolved skill reference lines in the refusal", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.check_resolved` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.check_resolved` @4452351e51ff
 
 ### method: skill_source
 - sig: `skill_source(name: str) -> Source`
@@ -316,7 +316,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="selected skill sources resolved by library name", equals=1)
 - raises: `SystemExit` naming the unknown selected skill when no source matches
 - verify: count(subject="SystemExit results for unknown selected skill names", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.skill_source` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.skill_source` @8a237265a5a1
 - tests: `farrier/tests/test_skill_lookup_by_name.py::test_any_other_key_misses`
 
 ### method: policy_source
@@ -327,7 +327,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="available policy catalog in unknown-policy refusal", equals=1)
 - raises: `SystemExit` for an unknown policy name
 - verify: count(subject="SystemExit results for unknown policy names", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.policy_source` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.policy_source` @99629c8860fd
 - tests: `farrier/tests/test_policies.py::test_unknown_policy_names_the_ones_that_exist`
 
 ### method: prompt_source
@@ -336,7 +336,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="selected prompt sources resolved by normalized lookup name", equals=1)
 - raises: `SystemExit` naming the unknown selected prompt when no source matches
 - verify: count(subject="unknown selected prompt references rejected with a named SystemExit", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.prompt_source` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.prompt_source` @51a54640f3ff
 
 ### method: skill_output_path
 - sig: `skill_output_path(name: str, target: str) -> Path`
@@ -348,7 +348,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="user-scope skill output paths using the corresponding harness directory", equals=1)
 - raises: `SystemExit` for an unknown skill reference or render target
 - verify: count(subject="SystemExit results for unknown skill references or render targets", equals=2)
-- code: `farrier/farrier/renderer.py::Renderer.skill_output_path` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.skill_output_path` @6dce89aa3636
 - tests: `farrier/tests/test_copilot_open_skills.py::test_skill_output_path_copilot_uses_open_skills_format`
 
 ### method: prompt_output_path
@@ -359,7 +359,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="user-scope prompt output paths for non-Claude targets", equals=0)
 - raises: `SystemExit` for an unknown prompt, unsupported user-scope target, or unknown target
 - verify: count(subject="SystemExit results for invalid prompt output path selections", equals=3)
-- code: `farrier/farrier/renderer.py::Renderer.prompt_output_path` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.prompt_output_path` @9755f6fafa45
 - tests: `farrier/tests/test_user_install.py::test_prompts_under_a_non_claude_harness_are_an_error`
 
 ### method: skill_dir_path
@@ -368,7 +368,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="generated skill directory paths resolved for repository and user scopes", equals=1)
 - raises: `SystemExit` for an unknown target
 - verify: count(subject="unknown skill directory targets rejected with SystemExit", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.skill_dir_path` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.skill_dir_path` @f1058c6017a7
 
 ### method: render_templates
 - sig: `render_templates(content: str, target: str, from_file: Path) -> str`
@@ -384,7 +384,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="workhorse runtime variables emitted as literal Jinja placeholders", equals=1)
 - raises: `SystemExit` naming the missing template value when strict rendering finds an undefined value
 - verify: count(subject="undefined template value errors naming the missing value", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.render_templates` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.render_templates` @bf02410e8356
 - tests: `farrier/tests/test_skill_tags.py::test_find_by_tags_renders_the_matches_as_a_link_list`
 
 ### method: context_manifest
@@ -393,7 +393,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="runtime manifest top-level fields", equals=8)
 - does: pin `repo.root` to `.` so the committed manifest is independent of the install machine
 - verify: json_path(path="$.repo.root", equals=".")
-- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.context_manifest` @a487949b81ec
 - tests: `farrier/tests/test_skill_tags.py::test_context_manifest_publishes_tags_for_every_alias`
 
 ### method: skill_description
@@ -402,7 +402,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="generated skill descriptions using explicit source descriptions", equals=1)
 - does: otherwise derive a description from the rendered body heading and optional `applyTo` value
 - verify: count(subject="generated skill descriptions derived from headings and applyTo values", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.skill_description` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.skill_description` @7cd1b5ec554a
 
 ### method: generated_skill
 - sig: `generated_skill(source: Source, target: str, output_path: Path) -> str`
@@ -416,7 +416,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="skill tags in generated front matter", equals=1)
 - does: emit provenance metadata for the skill
 - verify: count(subject="skill provenance metadata in generated front matter", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.generated_skill` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.generated_skill` @03f3d50e4a52
 - tests: `farrier/tests/test_provenance_banner.py::test_generated_skill_carries_metadata_in_front_matter`
 
 ### method: generated_assets
@@ -427,14 +427,14 @@ template values, policies, and repo/user scope.
 - does: mark copied scripts executable
 - does: mark Markdown assets with source provenance
 - raises: `SystemExit` when a skill asset is requested for a flat target path or is not UTF-8 text
-- code: `farrier/farrier/renderer.py::Renderer.generated_assets` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.generated_assets` @9e1276304afe
 - tests: `farrier/tests/test_skill_assets.py::test_reference_installs_next_to_the_skill_under_every_adapter`
 
 ### method: command_description
 - sig: `command_description(source: Source, header: dict[str, str], body: str) -> str`
 - does: use an explicit prompt description or the first rendered body heading
 - verify: count(subject="selected prompt description in the method result", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.command_description` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.command_description` @6723ead757b2
 
 ### method: generated_command
 - sig: `generated_command(source: Source, target: str, output_path: Path) -> str`
@@ -448,7 +448,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="source provenance in generated Claude front matter", equals=1)
 - does: omit Farrier-internal `agent` and `name` headers
 - verify: omits(subject="generated Claude front matter", matches="^(agent|name):")
-- code: `farrier/farrier/renderer.py::Renderer.generated_command` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.generated_command` @b2a13e5f8a42
 
 ### method: render
 - sig: `render(agents: dict[str, bool], roots: set[str]) -> dict[Path, str]`
@@ -466,7 +466,7 @@ template values, policies, and repo/user scope.
 - verify: absent(subject="user-scope launcher and context manifest outputs")
 - raises: `SystemExit` listing unknown roots and searched layers
 - verify: count(subject="unknown-root SystemExit messages listing roots and searched layers", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.render` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.render` @dc1791ac8135
 - tests: `farrier/tests/test_selection_misses.py::test_unknown_root_fails_even_with_copilot_disabled`
 
 ### method: instruction_sources
@@ -475,7 +475,7 @@ template values, policies, and repo/user scope.
 - verify: json_path(path="$[0].kind", equals="policy")
 - raises: `SystemExit` when a named policy, skill, or prompt cannot be resolved
 - verify: count(subject="SystemExit exceptions from unresolved policy, skill, and prompt source lookups", equals=3)
-- code: `farrier/farrier/renderer.py::Renderer.instruction_sources` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.instruction_sources` @110630d002c9
 - tests: `farrier/tests/test_policies.py::test_policy_body_is_aggregated_before_skills_and_prompts`
 
 ### method: render_local_instruction
@@ -490,7 +490,7 @@ template values, policies, and repo/user scope.
 - verify: count(subject="rendered sibling README under the Local README heading", equals=1)
 - does: return rendered text carrying source and per-part provenance without an in-file banner
 - verify: count(subject="source and per-part provenance records in returned rendered text", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.render_local_instruction` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.render_local_instruction` @4b1c94b805bd
 - tests: `farrier/tests/test_provenance_banner.py::test_aggregated_agents_file_carries_no_banner_at_all`
 
 ### method: render_claude_pointer
@@ -499,5 +499,5 @@ template values, policies, and repo/user scope.
 - verify: count(subject="Claude provenance banners followed by an AGENTS.md pointer", equals=1)
 - does: add `@README.md` only when the caller requests README import
 - verify: count(subject="requested README imports in Claude pointers", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.render_claude_pointer` @3c56f2f75d1f
+- code: `farrier/farrier/renderer.py::Renderer.render_claude_pointer` @e8e5cb876352
 - tests: `farrier/tests/test_provenance_banner.py::test_claude_pointer_gets_the_html_comment_banner`

@@ -290,7 +290,10 @@ venv is not enough; it has to be importable *there*.
 **Every tool reads one config file**, `~/.config/stablemate/config.toml` (override with
 `$STABLEMATE_CONFIG`), carrying a `config_version` that keeps independently-versioned tools
 honest with each other: a tool refuses to write a config newer than it understands, migrates
-an older one forward on first write, and never *fails* a read.
+an older one forward on first write, and never fails to read a file because it is newer.
+To see which options the machine config and a repository's `agents.yml` accept, run
+`farrier config reference`. [docs/guide/configuration.md](docs/guide/configuration.md) says
+where each file lives and how to read the output.
 
 The four routes in full, the fetch and failure behaviour, and the config-version rules are
 in [docs/INSTALL.md](docs/INSTALL.md).

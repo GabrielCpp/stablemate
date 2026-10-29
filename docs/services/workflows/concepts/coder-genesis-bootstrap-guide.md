@@ -17,6 +17,6 @@ bootstrap scope](coder-genesis-bootstrap-scope.md) to understand why repository 
 state are independent. These are complementary views of the same `Genesis` implementation, not
 alternatives and therefore have no preferred or deprecated implementation.
 
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @e3612bb0e317
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
 - rule: use the lifecycle concept for workflow behavior, input selection for parameter values, and scope for independent repository and service decisions; none replaces another
 - detail: [coder genesis bootstrap concept selection](coder-genesis-bootstrap-concept-selection.md)

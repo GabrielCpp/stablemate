@@ -9,7 +9,7 @@ Ostler is the planning CLI: one `ostler` binary dispatching to subcommands that 
 managed markdown tree (backlog, milestones, epics, features) under a repo root.
 
 - binary: ostler
-- code: ostler/ostler/cli.py::main@24476a003d97
+- code: ostler/ostler/cli.py::main@e56ee756ce4b
 - detail: [Planning identities](concepts/planning-identities.md)
 
 ## Commands

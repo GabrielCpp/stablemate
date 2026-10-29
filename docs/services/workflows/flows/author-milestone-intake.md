@@ -33,13 +33,13 @@ The machine itself is implemented by `Author`. Configuration, work-list filling,
 gate, and milestone validation are implemented by `load_config`, `fill_work`, `check_completion`,
 `validate_milestone_epics`, and `mark_milestone_authored`.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author` @41e4cc0d4cfc
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @1e565a154642
-- code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @0a6247ab8773
-- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::snapshot_epics` @becb105386f9 @0
-- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::check_completion` @becb105386f9
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::validate_milestone_epics` @cbdf7f3f88f8
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored` @cbdf7f3f88f8
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author` @b6413606f9a4
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @0bd5cf4f2836
+- code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @2eafd3fcc066
+- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::snapshot_epics` @36d177a51ab9 @0
+- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::check_completion` @19558795e9e6
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::validate_milestone_epics` @d08556edc8b3
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored` @80dc0611e6d5
 
 The stages, in order: [setup](#setup), [fill and drain](#fill-and-drain), [completion gate](#completion-gate), [finalize](#finalize).
 
@@ -57,8 +57,8 @@ feature inventory.
 
 Setup is implemented by `Author.setup` and `load_config`.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup` @41e4cc0d4cfc
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @1e565a154642
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.setup` @8b181298f778
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/config.py::load_config` @0bd5cf4f2836
 
 ### Fill and drain
 In epic mode the machine records a digest of the milestone body, then runs the stages as drains
@@ -76,12 +76,12 @@ operator's note when the item was requeued. Each authoring prompt shows that not
 Filling and draining are implemented by `Author.start`, `Author.epics`, `Author.story_splits`,
 `Author.stories`, `fill_work`, and `StorySplitFlow`.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start` @41e4cc0d4cfc
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.epics` @41e4cc0d4cfc
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.story_splits` @41e4cc0d4cfc
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.stories` @41e4cc0d4cfc
-- code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @0a6247ab8773
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start` @8b35674f0c7e
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.epics` @d04009d0a378
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.story_splits` @f17d504340d7
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.stories` @fa1ddcbaf91c
+- code: `workflows/src/workhorse_workflows/author/main/nodes/fill.py::fill_work` @2eafd3fcc066
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9f180bda92e0
 
 A blocked `StoryAuthor` result is not terminal for the drain. `Author.author_story` logs it and
 marks the story's item `blocked`, so the other stories continue. The blocked item stays on the
@@ -89,7 +89,7 @@ work list for the completion gate.
 
 This drain behavior is implemented by `Author.author_story`.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.author_story` @41e4cc0d4cfc
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.author_story` @d69b0e7a22ae
 - tests: `workflows/tests/author/test_workflow.py::test_a_story_nobody_can_fix_is_parked_and_the_epic_carries_on`
 - tests: `workflows/tests/author/test_workflow.py::test_a_fresh_run_goes_split_epics_stories_then_finalizes`
 - tests: `workflows/tests/author/test_workflow.py::test_a_run_stopped_at_a_later_epic_story_resumes_without_redoing_settled_rows`
@@ -109,11 +109,11 @@ At its start the run also records the [epic baseline](../concepts/author-epic-ba
 The gate is implemented by `Author.complete`, `Author.requeue`, `contract_digest`,
 `snapshot_epics`, `check_completion`, and `answer_below`.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.complete` @41e4cc0d4cfc
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.requeue` @41e4cc0d4cfc
-- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::contract_digest` @becb105386f9
-- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::check_completion` @becb105386f9
-- code: `workflows/src/workhorse_workflows/author/shared/answer.py::answer_below` @719b34f0b1b0
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.complete` @bbf34f6184e4
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.requeue` @cc67ea2fa824
+- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::contract_digest` @6d042788690c
+- code: `workflows/src/workhorse_workflows/author/main/nodes/completion.py::check_completion` @19558795e9e6
+- code: `workflows/src/workhorse_workflows/author/shared/answer.py::answer_below` @3402203e62ec
 - tests: `workflows/tests/author/test_workflow.py::test_an_audit_blocked_story_stops_at_the_completion_gate_and_nothing_finalizes`
 - tests: `workflows/tests/author/test_workflow.py::test_an_edit_to_the_milestone_body_ends_at_the_contract_gate`
 - tests: `workflows/tests/author/test_workflow.py::test_accepting_a_changed_contract_finishes_the_run`
@@ -130,9 +130,9 @@ A token that names no record, and a record that is not open, fail the run before
 
 These non-epic branches are implemented by `Author.start`, `seed_story`, and `promote_record`.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start` @41e4cc0d4cfc
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @ec2020d13cf3
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::promote_record` @ec2020d13cf3
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start` @8b35674f0c7e
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::seed_story` @5c601e3f4e1b
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/story_mode.py::promote_record` @e18f77f43d19
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/blueprint.py::blueprint` @f15f0a0f0ca5
 - tests: workflows/tests/author/test_workflow.py::test_story_mode_promotes_an_open_record_and_does_not_commit_the_code_repo
 - tests: workflows/tests/author/test_workflow.py::test_survey_mode_runs_the_surveyor_and_stops_at_discovery
@@ -144,7 +144,7 @@ their handoff, while epic mode returns `Continue` into `split_epics`.
 
 The story branch is implemented by `Author.start`.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start` @41e4cc0d4cfc
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.start` @8b35674f0c7e
 
 ### Finalize
 Finalization verifies reconciliation against the epic baseline taken at run start, whole-graph integrity, and that the milestone lists at least
@@ -161,18 +161,18 @@ Finalization is implemented by `Finalize.close`, `validate_milestone_epics`,
 `mark_milestone_authored`, `validate_artifacts`, `verify_integrity`, `verify_reconcile`, and
 `commit_author`.
 
-- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close` @00fdb936a6a1
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::validate_milestone_epics` @cbdf7f3f88f8
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored` @cbdf7f3f88f8
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @2caa87fcc660
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/integrity.py::verify_integrity` @ca330f6a9a15
-- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @2caa87fcc660
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @d5269aa9b09f
+- code: `workflows/src/workhorse_workflows/author/finalize/flow.py::Finalize.close` @20ad9c548cd8
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::validate_milestone_epics` @d08556edc8b3
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored` @80dc0611e6d5
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @419e36ea677e
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/integrity.py::verify_integrity` @44b9278b362a
+- code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @e86481111697
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @e936b2106147
 
 When the completion gate finds a contract that held and no unfinished item, the dispatcher hands off
 to `Finalize` and ends after its result.
 
 This final dispatch behavior is implemented by `Author.complete`.
 
-- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.complete` @41e4cc0d4cfc
+- code: `workflows/src/workhorse_workflows/author/main/flow.py::Author.complete` @bbf34f6184e4
 - tests: `workflows/tests/author/test_workflow.py::test_epic_mode_authors_the_approved_milestone_and_commits_it`

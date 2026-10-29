@@ -31,13 +31,13 @@ Prompts name skills through helpers that resolve against what the harness instal
 answers fails with `no installed skill or prompt is named '<name>'`. Code that waits takes a
 clock as a dependency, and the system clock is the only one that sleeps for real.
 
-- code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir` @42eebfdfea77
-- code: `workhorse/workhorse/_vendor/stablemate_core/base_cache.py::ensure_cached_base` @79e1cc13c672
-- code: `workhorse/workhorse/_vendor/stablemate_core/base_cache.py::refresh_cached_base` @79e1cc13c672
-- code: `workhorse/workhorse/_vendor/stablemate_core/layout.py::is_library_dir` @d69e52175abc
-- code: `workhorse/workhorse/_vendor/stablemate_core/skill_refs.py::SkillRefs` @ebf1b69c7565
-- code: `workhorse/workhorse/_vendor/stablemate_core/skill_refs.py::MissingSkill` @ebf1b69c7565
-- code: `workhorse/workhorse/_vendor/stablemate_core/clock.py::Clock` @99322cfda640
+- code: `workhorse/workhorse/_vendor/stablemate_core/discovery.py::base_library_dir` @004b46181627
+- code: `workhorse/workhorse/_vendor/stablemate_core/base_cache.py::ensure_cached_base` @bdbe0fae9566
+- code: `workhorse/workhorse/_vendor/stablemate_core/base_cache.py::refresh_cached_base` @e7ac6de61462
+- code: `workhorse/workhorse/_vendor/stablemate_core/layout.py::is_library_dir` @be10d5c83213
+- code: `workhorse/workhorse/_vendor/stablemate_core/skill_refs.py::SkillRefs` @0da19e1c7333
+- code: `workhorse/workhorse/_vendor/stablemate_core/skill_refs.py::MissingSkill` @0db28ee1bfdf
+- code: `workhorse/workhorse/_vendor/stablemate_core/clock.py::Clock` @1fcd1289ac40
 - code: `workhorse/workhorse/_vendor/stablemate_core/__init__.py` @3b3d6fe59b0c
-- code: `workhorse/workhorse/_vendor/stablemate_core/README.md` @3e20339d4474
+- code: `workhorse/workhorse/_vendor/stablemate_core/README.md` @5b6917a9704e
 - code: `workhorse/workhorse/_vendor/__init__.py` @d63f5d827a00

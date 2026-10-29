@@ -35,11 +35,11 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - fixture: [legacy book layout](fixtures/legacy-book-layout.md) — seeds the pre-OKF epic, its
   `seed.json`/`dependencies.json` siblings, the `epics-todo.json` queue naming it, and a
   frontmatter-less `docs/features/` page, all under `okf-migrate-fixture/`
-- code: ostler/ostler/scripts/okf_migrate.py::migrate@55fab781de8c
-- code: ostler/ostler/scripts/okf_migrate.py::main@55fab781de8c
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_epic@55fab781de8c
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_todo@55fab781de8c
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_features@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::migrate@155688b324a7
+- code: ostler/ostler/scripts/okf_migrate.py::main@a43b07b14201
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_epic@d99e44a6df8c
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_todo@41174a0963a1
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_features@83803886ba7e
 - detail: [Migrating the legacy book layout](concepts/migrating-the-legacy-book-layout.md)
 
 ### sandbox-forwarder
@@ -58,7 +58,7 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - verify: absent(subject="forwarder-ready.txt")
 - fixture: none, because the rejected mapping is passed as an environment variable, not read from
   a file
-- code: ostler/docker/sandbox/forwarder.py::main@1a617ef8e11b
+- code: ostler/docker/sandbox/forwarder.py::main@baf423bd355a
 - detail: [Sandbox port forwarding](concepts/sandbox-port-forwarding.md)
 
 ### settle-review-answers
@@ -80,9 +80,9 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - fixture: [answer settlement scratch repo](fixtures/answer-settlement-scratch-repo.md) — seeds a
   story `sx` and its `review-answers.md`, naming one fixed finding with evidence, one declined
   finding with a reason, and one malformed heading
-- code: ostler/ostler/answers.py::parse_answers@6c168f1fb49d
-- code: ostler/ostler/api.py::Ostler.settle_answers@defd95727723
-- code: ostler/ostler/edit.py::settle_answers@63e4a8c64c39
+- code: ostler/ostler/answers.py::parse_answers@6314b8f07db4
+- code: ostler/ostler/api.py::Ostler.settle_answers@63b654097955
+- code: ostler/ostler/edit.py::settle_answers@112369669e6b
 - detail: [The Ostler facade and book utilities](concepts/the-ostler-facade-and-book-utilities.md)
 
 ### verdict-memo-recall
@@ -97,9 +97,9 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - verify: json_path(path="written", equals=1)
 - verify: json_path(path="after", equals="supported")
 - fixture: [memo scratch dir](fixtures/memo-scratch-dir.md)
-- code: ostler/ostler/behavior_memo.py::VerdictMemo@e8aa0356d04e
-- code: ostler/ostler/behavior_memo.py::claim_digest@e8aa0356d04e
-- code: ostler/ostler/behavior_memo.py::claim_context_digest@e8aa0356d04e
+- code: ostler/ostler/behavior_memo.py::VerdictMemo@2359af711972
+- code: ostler/ostler/behavior_memo.py::claim_digest@1f0eb1878fb7
+- code: ostler/ostler/behavior_memo.py::claim_context_digest@509a26bfd688
 - detail: [Auditing a book's claims against source](concepts/auditing-a-books-claims-against-source.md)
 
 ### vendor-base-library-and-skill-lookup
@@ -120,13 +120,13 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - verify: json_path(path="skill_link", matches="skills/demo-skill/SKILL\\.md\\)$")
 - verify: json_path(path="skill_command", equals="/demo-skill")
 - fixture: [vendor scratch base and skills](fixtures/vendor-scratch-base-and-skills.md)
-- code: ostler/ostler/_vendor/stablemate_core/discovery.py::base_library_dir@42eebfdfea77
-- code: ostler/ostler/_vendor/stablemate_core/layout.py::is_library_dir@d69e52175abc
-- code: ostler/ostler/_vendor/stablemate_core/profiles.py::select_profile@0f757c16382b
-- code: ostler/ostler/_vendor/stablemate_core/profiles.py::profile_names@0f757c16382b
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::scan_catalog@ab9560efa3d8
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_link@ab9560efa3d8
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_command@ab9560efa3d8
+- code: ostler/ostler/_vendor/stablemate_core/discovery.py::base_library_dir@004b46181627
+- code: ostler/ostler/_vendor/stablemate_core/layout.py::is_library_dir@be10d5c83213
+- code: ostler/ostler/_vendor/stablemate_core/profiles.py::select_profile@4dbfd0a9d396
+- code: ostler/ostler/_vendor/stablemate_core/profiles.py::profile_names@fbc58c5e2cc2
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::scan_catalog@f9e699ffdf3e
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_link@6e8f96f7b188
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_command@e0e28919e1eb
 - detail: [Vendored stablemate-core](concepts/vendored-stablemate-core.md)
 
 ### qa-context-source-repository
@@ -146,9 +146,9 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - verify: json_path(path="repositories[0].scopes[0].surface", equals="demo")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/source_context.py::SourceRepository@c8ac0146f0b0
-- code: ostler/ostler/qa/source_context.py::SourceScope@c8ac0146f0b0
-- code: ostler/ostler/qa/context.py::_repository_changes@9e054ade9186
-- code: ostler/ostler/qa/context.py::_repository_row@9e054ade9186
-- code: ostler/ostler/api.py::Ostler.qa_context@defd95727723
+- code: ostler/ostler/qa/source_context.py::SourceRepository@55c2653a0496
+- code: ostler/ostler/qa/source_context.py::SourceScope@720d45013fe0
+- code: ostler/ostler/qa/context.py::_repository_changes@d09b85253c0a
+- code: ostler/ostler/qa/context.py::_repository_row@d9e5a1c4b230
+- code: ostler/ostler/api.py::Ostler.qa_context@9c483f690da3
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)

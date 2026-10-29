@@ -15,25 +15,25 @@ Ostler's `index`, `model`, `qa/stack`, `qa/tools` and `qa/addresses` modules imp
 
 - code: ostler/ostler/_vendor/__init__.py@d63f5d827a00
 - code: ostler/ostler/_vendor/stablemate_core/__init__.py@3b3d6fe59b0c
-- code: ostler/ostler/_vendor/stablemate_core/clock.py::Clock@99322cfda640
+- code: ostler/ostler/_vendor/stablemate_core/clock.py::Clock@1fcd1289ac40
 - code: ostler/ostler/_vendor/stablemate_core/clock.py::SYSTEM_CLOCK@99322cfda640
-- code: ostler/ostler/_vendor/stablemate_core/layout.py::is_library_dir@d69e52175abc
-- code: ostler/ostler/_vendor/stablemate_core/base_cache.py::ensure_cached_base@79e1cc13c672
-- code: ostler/ostler/_vendor/stablemate_core/base_cache.py::refresh_cached_base@79e1cc13c672
-- code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cached_commit@79e1cc13c672
-- code: ostler/ostler/_vendor/stablemate_core/discovery.py::base_library_dir@42eebfdfea77
-- code: ostler/ostler/_vendor/stablemate_core/discovery.py::ensure_base_library_dir@42eebfdfea77
-- code: ostler/ostler/_vendor/stablemate_core/config.py::load_config@f30a7f155019
-- code: ostler/ostler/_vendor/stablemate_core/config.py::write_config_key@f30a7f155019
-- code: ostler/ostler/_vendor/stablemate_core/config.py::write_config_section@f30a7f155019
-- code: ostler/ostler/_vendor/stablemate_core/profiles.py::select_profile@0f757c16382b
-- code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_power@0f757c16382b
-- code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_backend_default@0f757c16382b
-- code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_delegates@0f757c16382b
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::scan_catalog@ab9560efa3d8
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_link@ab9560efa3d8
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_path@ab9560efa3d8
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_command@ab9560efa3d8
+- code: ostler/ostler/_vendor/stablemate_core/layout.py::is_library_dir@be10d5c83213
+- code: ostler/ostler/_vendor/stablemate_core/base_cache.py::ensure_cached_base@bdbe0fae9566
+- code: ostler/ostler/_vendor/stablemate_core/base_cache.py::refresh_cached_base@e7ac6de61462
+- code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cached_commit@43e548dfd1b0
+- code: ostler/ostler/_vendor/stablemate_core/discovery.py::base_library_dir@004b46181627
+- code: ostler/ostler/_vendor/stablemate_core/discovery.py::ensure_base_library_dir@512681dc012e
+- code: ostler/ostler/_vendor/stablemate_core/config.py::load_home_config@635fe33c5b9e
+- code: ostler/ostler/_vendor/stablemate_core/config.py::write_config_key@d88fea8c531e
+- code: ostler/ostler/_vendor/stablemate_core/config.py::write_config_section@4c0ec403c877
+- code: ostler/ostler/_vendor/stablemate_core/profiles.py::select_profile@4dbfd0a9d396
+- code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_power@654eae2c4d72
+- code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_backend_default@25cec29f5a29
+- code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_delegates@723e18203ef7
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::scan_catalog@f9e699ffdf3e
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_link@6e8f96f7b188
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_path@58a730192199
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_command@e0e28919e1eb
 
 ## Contract
 
@@ -53,8 +53,10 @@ Ostler's `index`, `model`, `qa/stack`, `qa/tools` and `qa/addresses` modules imp
   the library to use in order — an explicit `$STABLEMATE_BASE_DIR`, a configured `base_dir`, a
   configured `stablemate_dir`'s `base-library/` subpath, then the shared cache — and only the
   `ensure_` form is allowed to populate the cache.
-- config persistence (`config.py`): `load_config` and `write_config_key`/`write_config_section`
-  read and write one TOML file (`$STABLEMATE_CONFIG`, else the platform user-config dir); a config
+- config persistence (`config.py`): `load_home_config` reads one TOML file (`$STABLEMATE_CONFIG`,
+  else the platform user-config dir) as a validated document and keeps the last good one when a
+  later read fails; `write_config_key`/`write_config_section` edit it in place, keeping comments
+  and keys no tool declares; a config
   written by a newer stablemate-core than the one running raises `ConfigVersionError` rather than
   being silently rewritten and losing keys this build does not understand, and a config older than
   the running build is migrated forward one registered step at a time, with the pre-migration file

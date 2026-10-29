@@ -17,7 +17,7 @@ contract, including ownership boundaries that apply to every installed output. U
 [generated agent launcher](generated-agent-launcher.md#remove_targets) only when the question is
 how that same cleanup operation disposes of launcher artifacts. Neither view is deprecated.
 
-- code: `farrier/farrier/outputs.py::remove_targets` @a2464a92144d
+- code: `farrier/farrier/outputs.py::remove_targets` @9e69569a35ff
 - rule: use output installation for the complete cleanup contract; use the generated-agent launcher only for its launcher-artifact context
 - prefers: [output installation cleanup](output-installation.md#method-remove_targets)
 - detail: [output cleanup documentation](output-cleanup-documentation.md)

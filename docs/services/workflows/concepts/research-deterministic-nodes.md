@@ -32,7 +32,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: flat program manifest keys required before a research program can run
 - verify: json_path(path="$.REQUIRED", equals="code_root")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::REQUIRED` @5780d5d30b40
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::REQUIRED` @a36c74092108
 
 ### ENVELOPE_DEFAULTS
 - type: `dict[str, str | int]`
@@ -42,7 +42,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.ENVELOPE_DEFAULTS.envelope_gpu", equals="none")
 - semantics: zero numeric envelope limits are unbounded
 - verify: json_path(path="$.ENVELOPE_DEFAULTS.envelope_ram_gb", equals=0)
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::ENVELOPE_DEFAULTS` @5780d5d30b40
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::ENVELOPE_DEFAULTS` @a36c74092108
 
 ### LEDGER_NAME
 - type: `str`
@@ -50,7 +50,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: program-relative filename holding cumulative extension and lead-review spend
 - verify: json_path(path="$.LEDGER_NAME", equals="ledger.yml")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_NAME` @5780d5d30b40
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_NAME` @a36c74092108
 
 ### CONCLUDED
 - type: `tuple[str, ...]`
@@ -58,7 +58,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: ledger statuses that require explicit reauthorization before another run
 - verify: count(subject="concluded research ledger statuses", equals=3)
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::CONCLUDED` @5780d5d30b40
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::CONCLUDED` @a36c74092108
 
 ### LEDGER_HEADER
 - type: `str`
@@ -66,7 +66,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: explanatory prefix written before every program ledger update
 - verify: json_path(path="$.LEDGER_HEADER", matches=".*research loop.*")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_HEADER` @5780d5d30b40
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::LEDGER_HEADER` @a36c74092108
 
 ### JOBS_DIR
 - type: `str`
@@ -138,7 +138,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: count(subject="research clone dependency synchronization attempts", equals=1)
 - returns: a `RepoSetup` containing the adopted or cloned repository directory
 - verify: json_path(path="$.repo_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/research/nodes/setup.py::clone_repo` @b8729a710f75
+- code: `workflows/src/workhorse_workflows/research/nodes/setup.py::clone_repo` @2476a6774fa4
 - tests: `workflows/tests/research/test_workflow.py::test_a_gate_designed_built_measured_and_approved_drives_the_program_to_its_goal`
 
 ### load_program
@@ -147,7 +147,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: count(subject="explicit research program selections", equals=1)
 - does: otherwise selects the nearest launch-directory manifest
 - verify: count(subject="launch-directory research program selections", equals=1)
-- does: otherwise selects the repository `agents.yml` program
+- does: otherwise selects the repository manifest's `program`
 - verify: count(subject="agents.yml research program selections", equals=1)
 - does: otherwise selects the legacy `.agents/program` pointer
 - verify: count(subject="legacy research program selections", equals=1)
@@ -168,7 +168,7 @@ in [research workflow schemas](research-schemas.md).
 - does: rejects a concluded program unless `reauthorize` is true
 - verify: count(subject="research concluded-program authorization failures", equals=1)
 - returns: a `Program` containing resolved paths, manifest settings, ledger spend, and active run status
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::load_program` @5780d5d30b40
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::load_program` @1364bcccfef8
 - detail: [research program load authority](research-program-load-authority.md)
 - tests: `workflows/tests/research/test_workflow.py::test_a_concluded_program_needs_a_human_before_it_runs_again`
 
@@ -178,7 +178,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: persists(subject="research program spend ledger")
 - does: returns the path and the four counters just written
 - verify: json_path(path="$.path", matches="ledger\\.yml$")
-- code: `workflows/src/workhorse_workflows/research/nodes/program.py::record_spend` @5780d5d30b40
+- code: `workflows/src/workhorse_workflows/research/nodes/program.py::record_spend` @c368fd5419ae
 - detail: [research record spend authority](research-record-spend-authority.md)
 
 ### check_envelope
@@ -191,7 +191,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.fits", equals=true)
 - returns: an `EnvelopeCheck` with all detected resource mismatches joined into one reason
 - verify: json_path(path="$.reason", equals="The slice works without it.")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::check_envelope` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::check_envelope` @f45d14cfc6d9
 - tests: `workflows/tests/research/test_measure.py::test_a_protocol_over_the_declared_machine_does_not_fit`
 
 ### classify_fault
@@ -202,14 +202,14 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.fault_locus", equals="tooling")
 - does: returns `unknown` when no traceback frame establishes either locus
 - verify: json_path(path="$.fault_locus", equals="unknown")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::classify_fault` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::classify_fault` @f5978c1d6ac7
 - tests: `workflows/tests/research/test_measure.py::test_the_deepest_frame_decides_the_locus`
 
 ### job_dir_for
 - sig: `job_dir_for(repo_dir: str, program_dir: str, gate_id: str, suffix: str = "") -> str`
 - does: places each gate job under `<repo>/<program>/jobs/<gate-id>` and appends an optional suffix
 - verify: json_path(path="$.job_dir", matches="/jobs/gate")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::job_dir_for` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::job_dir_for` @32e097728d2b
 - tests: `workflows/tests/research/test_measure.py::test_the_job_dir_is_one_directory_per_gate_inside_the_program`
 
 ### submit_job
@@ -230,7 +230,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.fault_locus", matches="repo|tooling")
 - returns: a `Job` carrying submission, process, wake-file, containment-tier, and estimate metadata
 - verify: json_path(path="$.job_dir", equals="docs/stories/acme-story")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::submit_job` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::submit_job` @fecb6af0345b
 - tests: `workflows/tests/research/test_measure.py::test_an_estimate_with_no_probe_behind_it_is_refused_before_the_cpu_is_spent`
 
 ### dry_run
@@ -247,7 +247,7 @@ in [research workflow schemas](research-schemas.md).
 - does: reports containment and runner submission failures as a failed rehearsal with their owning locus
 - verify: json_path(path="$.reason", equals="The slice works without it.")
 - returns: a `DryRun` reporting success, exit code, fault locus, stderr tail, and failure reason
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::dry_run` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::dry_run` @2a78d3883024
 - tests: `workflows/tests/research/test_workflow.py::test_a_rehearsal_that_dies_under_the_runner_never_reaches_submission`
 
 ### watch_job
@@ -262,7 +262,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.action", equals="wait")
 - does: carries the highest previously reported overrun multiple into a wait result
 - verify: json_path(path="$.overrun_multiple", equals=10.0)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::watch_job` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::watch_job` @dcdd7a646957
 - tests: `workflows/tests/research/test_measure.py::test_watching_arms_the_wake_file_before_it_reads_the_state`
 
 ### result_path
@@ -272,7 +272,7 @@ in [research workflow schemas](research-schemas.md).
 - does: otherwise chooses an existing result with the requested name in the experiment working directory
 - verify: count(subject="research working-directory result fallbacks", equals=1)
 - does: falls back to the job-directory path when neither location currently contains the result
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::result_path` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::result_path` @bcaccad4954c
 - tests: `workflows/tests/research/test_measure.py::test_a_result_written_in_the_experiment_s_cwd_is_still_the_measurement`
 
 ### collect_job
@@ -304,7 +304,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.n_planned", equals=10)
 - returns: a `Collected` carrying outcome, fault locus, runner cost, result path and parsed measurement data
 - verify: json_path(path="$.result_path", equals="docs/stories/acme-story/story.md")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::collect_job` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::collect_job` @5753a1bd3f93
 - tests: `workflows/tests/research/test_measure.py::test_a_clean_exit_with_a_well_formed_result_is_ok`
 
 ### kill_job
@@ -315,7 +315,7 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.stderr_tail", equals="example stderr tail")
 - returns: a `Collected` with outcome `killed`, kill reason, exit code, resource use, elapsed time, tier, and stderr tail
 - verify: json_path(path="$.outcome", equals="killed")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::kill_job` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::kill_job` @f58a9c5d249b
 
 ### publish_results
 - sig: `publish_results(logger: logging.Logger, repo_dir: str, result_branch: str = "research/auto", program_dir: str = "", summary: str = "record research results") -> PublishResult`
@@ -329,5 +329,5 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.status", equals="push_failed")
 - returns: a `PublishResult` containing publication status, branch, and optional push-failure status
 - verify: json_path(path="$.result_branch", equals="story/acme-story")
-- code: `workflows/src/workhorse_workflows/research/nodes/publish.py::publish_results` @211acfa7c350
+- code: `workflows/src/workhorse_workflows/research/nodes/publish.py::publish_results` @09c543912af9
 - tests: `workflows/tests/research/test_workflow.py::test_publishing_commits_the_gate_onto_the_result_branch`

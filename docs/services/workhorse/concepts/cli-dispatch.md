@@ -20,9 +20,9 @@ Each command owns its own arguments and its own handler. The [`run`](../workhors
 command is described under [run launch](run-launch.md), and the operator commands under
 [run control](run-control.md) and [operator inbox](operator-inbox.md).
 
-- code: `workhorse/workhorse/cli/__init__.py::main` @408aa8a4f987
-- code: `workhorse/workhorse/cli/__init__.py::console_script` @408aa8a4f987
-- code: `workhorse/workhorse/cli/__init__.py::ConsoleEntry` @408aa8a4f987
+- code: `workhorse/workhorse/cli/__init__.py::main` @b10d6b4a1c54
+- code: `workhorse/workhorse/cli/__init__.py::console_script` @d9dff3f7019f
+- code: `workhorse/workhorse/cli/__init__.py::ConsoleEntry` @ba8b20f5740e
 - code: `workhorse/workhorse/cli/parser.py::build_parser` @6b7ae77922ce
 - code: `workhorse/workhorse/cli/parser.py::Command` @6b7ae77922ce
 - code: `workhorse/workhorse/cli/README.md` @f36f361b7649

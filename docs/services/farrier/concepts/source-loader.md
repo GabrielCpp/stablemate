@@ -11,7 +11,7 @@ reference and script assets attached to their owning skill. Its result is consum
 loader before selection and rendering; the returned records are described by the
 [library source record](source-record.md).
 
-- code: `farrier/farrier/sources.py::load_sources` @3121386a99df
+- code: `farrier/farrier/sources.py::load_sources` @d46edd9f2c55
 - detail: [skill bundled assets](skill-assets.md)
 
 ## Methods

@@ -63,21 +63,21 @@ A run that resolves `repo://<member>/<path>` citations reads the union of every 
 members as `{name: folder}`, overridden by any explicit `--checkout`. That union is unambiguous
 because the home config refuses a member name bound to two folders.
 
-- code: `core/stablemate_core/config.py::docs_home` @f30a7f155019
-- code: `core/stablemate_core/config.py::repository_identity` @f30a7f155019
-- code: `core/stablemate_core/config.py::RepositoryIdentity` @f30a7f155019
-- code: `core/stablemate_core/config.py::is_workspace_member` @f30a7f155019
-- code: `core/stablemate_core/config.py::repository_name` @f30a7f155019
-- code: `core/stablemate_core/config.py::workspace_members` @f30a7f155019
-- code: `ostler/ostler/decisions.py::add` @864787f26c7d
-- code: `ostler/ostler/provenance.py::effective_checkouts` @731cc1e22714
-- code: `core/stablemate_core/config.py::ARTIFACTS_IGNORED` @f30a7f155019
-- code: `core/stablemate_core/config.py::ensure_artifacts_repo` @f30a7f155019
-- code: `ostler/ostler/layout.py::check` @ebe9727b7af7
-- code: `ostler/ostler/layout.py::moves` @ebe9727b7af7
-- code: `ostler/ostler/adr.py::propose` @f14c55fafbc7
-- code: `ostler/ostler/model.py::doc_roots` @e431117524b6
-- code: `ostler/ostler/doctor.py::_check_service_repository` @ab71df4a76ca
+- code: `core/stablemate_core/config.py::docs_home` @86d04c446332
+- code: `core/stablemate_core/config.py::repository_identity` @e3a7f4e12a31
+- code: `core/stablemate_core/config.py::RepositoryIdentity` @fcc49e923e4c
+- code: `core/stablemate_core/config.py::is_workspace_member` @ed73e26539cb
+- code: `core/stablemate_core/config.py::repository_name` @d7f513916bdb
+- code: `core/stablemate_core/config.py::workspace_members` @af98c532ae9e
+- code: `ostler/ostler/decisions.py::add` @50e809488130
+- code: `ostler/ostler/provenance.py::effective_checkouts` @9790251997db
+- code: `core/stablemate_core/config.py::ARTIFACTS_IGNORED` @7b44497bf311
+- code: `core/stablemate_core/config.py::ensure_artifacts_repo` @2f6c99c78264
+- code: `ostler/ostler/layout.py::check` @35618cc53689
+- code: `ostler/ostler/layout.py::moves` @996f24fd7d70
+- code: `ostler/ostler/adr.py::propose` @61fef669e739
+- code: `ostler/ostler/model.py::doc_roots` @cc98ffe30811
+- code: `ostler/ostler/doctor.py::_check_service_repository` @2122aafa61b2
 - rule: a repository listed in any workspace uses the artifacts dir as its docs home, and any other repository uses itself
 - rule: all workspaces share one artifacts dir, and workspaces may overlap, because any match makes a repository a member and the docs home is the same either way
 - rule: one member name maps to one folder across every workspace, and a home config that binds a name to two folders is refused with an error naming both folders
