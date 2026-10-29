@@ -339,6 +339,44 @@ def test_resume_relaunches_detached_and_returns_once_the_run_serves(capsys) -> N
             child.wait()
 
 
+@pytest.mark.parametrize("available", [True, False])
+def test_resume_launches_inside_its_own_user_scope_only_when_systemd_run_exists(
+    available: bool,
+) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        runs = Path(tmp) / "runs"
+        run_dir = _run_dir(runs)
+        _launch(run_dir, ["workhorse-demo", "run", "--auto"])
+        launched: list[list[str]] = []
+
+        class Child:
+            pid = 1
+            returncode = 0
+
+            def poll(self) -> None:
+                return None
+
+        def popen(argv: list[str], **_kwargs: object) -> Child:
+            launched.append(argv)
+            return Child()
+
+        with (
+            patch("workhorse.job.shutil.which", return_value="/usr/bin/systemd-run" if available else None),
+            patch("workhorse.job._user_manager_up", return_value=True),
+            patch.object(offline.subprocess, "Popen", popen),
+            patch.object(offline.control, "listening", side_effect=[False, True]),
+        ):
+            offline.run_resume(run_dir, "", timeout=1)
+
+        argv = launched[0]
+        if available:
+            assert argv[:5] == ["systemd-run", "--user", "--scope", "--quiet", "--collect"]
+            assert argv[5].startswith(f"--unit=workhorse-{run_dir.name}-")
+            assert argv[6:] == ["--", "workhorse-demo", "run", "--auto"]
+        else:
+            assert argv == ["workhorse-demo", "run", "--auto"]
+
+
 def test_a_resume_that_dies_before_serving_is_an_error_with_its_log(capsys) -> None:
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp) / "runs"

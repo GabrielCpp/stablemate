@@ -24,8 +24,9 @@ The verbs split by whether the run must be live:
   too. `switch-cli` is a reload onto another agent CLI. `switch-profile` changes the models the
   next turn resolves, as in [profiles and config](profiles-and-config.md).
 - **Offline verbs** read the run directory. `rewind` moves a stopped run's checkpoint to the state
-  `--to` names. `resume` relaunches a stopped run detached from its recorded command line and
-  waits until it serves. `status --params` prints the checkpoint from disk, so it answers for a
+  `--to` names. `resume` relaunches a stopped run detached from its recorded command line, in its own
+  systemd user scope where one is available so it survives the caller exiting, and waits until it
+  serves. `status --params` prints the checkpoint from disk, so it answers for a
   live run and a stopped one alike. A run [dispatched into a worktree](run-launch.md) also gets a
   `worktree` block: its `path`, `branch` and `base`, and the `outcome` its ending recorded, `null`
   while the run has not ended. A reload or a rewind on such a run does not end it, so the run stays
@@ -42,14 +43,14 @@ checkpoint to `checkpoint.rewound-<UTC stamp>.json`, clears the gate the run wai
 each sub-flow the rewound visit left unfinished, and logs a `rewind` event. The
 [inspect a stopped run](../flows/inspect-stopped-run.md) journey reads a run's checkpoint.
 
-- code: `workhorse/workhorse/control.py::SocketChannel` @52683677757e
-- code: `workhorse/workhorse/control.py::listening` @52683677757e
-- code: `workhorse/workhorse/control.py::send` @52683677757e
-- code: `workhorse/workhorse/cli/target.py::groom_live_run` @8b8132797882
-- code: `workhorse/workhorse/cli/offline.py::refuse_if_running` @cd7d6c6c8f77
-- code: `workhorse/workhorse/cli/offline.py::wait_gone` @cd7d6c6c8f77
-- code: `workhorse/workhorse/rewind.py::rewind` @1ed4d1905220
-- code: `workhorse/workhorse/rewind.py::RewindError` @1ed4d1905220
-- code: `workhorse/workhorse/reload.py::ReloadRequested` @c7be7ac9ef2a
-- code: `workhorse/workhorse/reload.py::cut_requested` @c7be7ac9ef2a
+- code: `workhorse/workhorse/control.py::SocketChannel` @074fb59a453c
+- code: `workhorse/workhorse/control.py::listening` @ef74d8823ed3
+- code: `workhorse/workhorse/control.py::send` @74b8703a44d6
+- code: `workhorse/workhorse/cli/target.py::groom_live_run` @9eedeca9ae29
+- code: `workhorse/workhorse/cli/offline.py::refuse_if_running` @e01fed3a3bf7
+- code: `workhorse/workhorse/cli/offline.py::wait_gone` @a2c3f6470927
+- code: `workhorse/workhorse/rewind.py::rewind` @71550797f2a2
+- code: `workhorse/workhorse/rewind.py::RewindError` @3c82ae1b32fe
+- code: `workhorse/workhorse/reload.py::ReloadRequested` @efeb2f44f6b2
+- code: `workhorse/workhorse/reload.py::cut_requested` @21ec9269d306
 - code: `workhorse/docs/RELOAD.md` @3204f97e0a12

@@ -124,6 +124,19 @@ def containment_tier() -> str:
     return "best_effort"
 
 
+def _user_manager_up() -> bool:
+    """True when this user's systemd manager has a bus socket to talk to."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR")
+    return bool(runtime) and Path(runtime, "bus").exists()
+
+
+def user_scope_prefix(unit: str) -> list[str]:
+    """The argv prefix that runs a command in its own transient user scope, or [] when this machine has no systemd user manager."""
+    if sys.platform != "linux" or not shutil.which("systemd-run") or not _user_manager_up():
+        return []
+    return ["systemd-run", "--user", "--scope", "--quiet", "--collect", f"--unit={unit}", "--"]
+
+
 def meets(tier: str, floor: str) -> bool:
     """True when `tier` is at least as strong as `floor`."""
     try:

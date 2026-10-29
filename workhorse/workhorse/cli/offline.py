@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -13,6 +14,7 @@ from pydantic import ValidationError
 
 from workhorse import control
 from workhorse.artifacts import ArtifactWriter
+from workhorse.job import user_scope_prefix
 from workhorse.profile import flag_value, with_backend_flags
 from workhorse.pyflow.registry import Registry
 from workhorse.records import (
@@ -161,13 +163,14 @@ def run_resume(run_dir: Path, cli: str, timeout: float) -> subprocess.Popen[byte
         fail(f"resume: launch.json in {run_dir} records no resume line")
     argv = resume_line(record, cli)
     cwd = record.cwd or str(Path.cwd())
+    launch = [*user_scope_prefix(f"workhorse-{run_dir.name}-{uuid.uuid4().hex[:8]}"), *argv]
     log_path = run_dir / RESUME_LOG
     with log_path.open("ab") as log:
-        log.write(f"\n--- control resume: {' '.join(argv)} (cwd {cwd})\n".encode())
+        log.write(f"\n--- control resume: {' '.join(launch)} (cwd {cwd})\n".encode())
         log.flush()
         try:
             child = subprocess.Popen(
-                argv,
+                launch,
                 cwd=cwd,
                 stdin=subprocess.DEVNULL,
                 stdout=log,

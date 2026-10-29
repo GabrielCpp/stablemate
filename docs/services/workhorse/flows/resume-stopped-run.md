@@ -6,7 +6,7 @@ title: Resume a stopped run
 
 An operator restarts a stopped run from its checkpoint. The resume replays the command line the
 run recorded in its launch.json, so a finished run, a run with no record, a contained run and a
-launch.json with no resume line are all refused. Resuming is described under
+launch.json with no resume line are all refused. A resume that is accepted runs in its own systemd user scope where one is available, so it survives the caller exiting. Resuming is described under
 [run control](../concepts/run-control.md).
 
 - steps:
