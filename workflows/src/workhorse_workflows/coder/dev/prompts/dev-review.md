@@ -140,8 +140,9 @@ answer file. Run those gates yourself before you claim `ready`, and leave them g
 On a story turn, the workflow also reads the plan's `## Acceptance Walk`. A criterion with
 no entry comes back to you as the next turn, naming the criterion. When QA failed scenarios
 on an earlier pass, the workflow reruns exactly those scenarios against your code before the
-story leaves dev. Any that still fail come back to you the same way, so rerun them yourself
-first.
+story leaves dev. Any that still fail come back to you once, the same way. Reproduce each
+defect with a test in the service instead of rerunning the scenario: do not raise a QA stack or
+run the QA plan yourself, because a hand run writes over QA's scored evidence.
 
 {% include "dev/prompts/_dev-rules.md" %}
 

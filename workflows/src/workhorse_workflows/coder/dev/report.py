@@ -81,7 +81,9 @@ def self_check_text(failed: Sequence[dict[str, Any]]) -> str:
     """The scenarios QA failed last pass that still fail on the dev owner's code."""
     lines = [
         "Self-check: these are the scenarios QA failed on its last pass, and they still fail "
-        "on your code. Fix the product, then rerun them before you hand off.",
+        "on your code. Fix the product and cover the case with a test in the service. The "
+        "workflow reruns these scenarios against your code when you hand off. Do not raise a "
+        "QA stack or run the QA plan yourself: a hand run writes over QA's scored evidence.",
         "",
     ]
     for entry in failed:
