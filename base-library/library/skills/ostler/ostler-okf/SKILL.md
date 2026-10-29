@@ -224,7 +224,11 @@ A case that applies only in one situation links it from `when:`, and so does a s
 shows only then. An interaction names the route it calls with `sends:`. A walk then reads the
 record back after each move, and doctor refuses a step whose situation the walk does not hold.
 Each outcome checks more than its status code, and a flow step is its link alone: the result
-it expects belongs on the node it links.
+it expects belongs on the node it links. A story that arrives with a `behaviour-model` maps
+onto this without translation: each of its records' states is a `data-state`, each transition
+in its matrix is a `moves:` on the route that owns the action, each cell's effects are the
+`verify:` bullets of that route's outcome, and each `refuse` cell is an outcome whose `when:`
+links the data state it refuses from. A matrix cell with no node that verifies it is a doc gap.
 
 **Every structural component says where it sits** — a `placement:` bullet of viewport bands, and
 it is the only bullet that can tell a correct page from one crushed into a narrow column, since

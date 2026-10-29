@@ -88,7 +88,9 @@ A repo with no docs root yet keeps all three in the summary, and the first story
 creates the docs root files them.
 
 Start implementing only after I confirm we have reached shared understanding. When I ask
-you to start early, name the branches still unvisited first, then do as I asked.
+you to start early, name the branches still unvisited first, then do as I asked. When the
+work changes what a record does under an action, the step after shared understanding is the
+[[behaviour-model]], and the plan comes from it.
 
 ---
 

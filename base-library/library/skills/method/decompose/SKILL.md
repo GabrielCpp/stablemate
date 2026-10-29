@@ -113,7 +113,8 @@ Rules that stay true whatever the implementation. Each names the **one** concept
 it: the one that detects a breach and fails. Other concepts may uphold it during
 construction, and the invariant lists them. An invariant with two owners will drift between
 them. An invariant with no owner is a wish. An invariant about the finished whole
-belongs to the part that can see the finished whole.
+belongs to the part that can see the finished whole. An invariant about what a record does
+when acted on belongs in the `behaviour-model`, whose matrix names the rows that exercise it.
 
 ### 4. Forces and patterns
 
@@ -219,7 +220,8 @@ is a change to its own section, logged at the top of section 5.
 ### 6. Slices
 
 Order the work as vertical slices, following `vertical-slicing`. The first slice is the
-thinnest path that makes the section 1 outcome observable. Each slice names the parts and
+thinnest path that makes the section 1 outcome observable. Where a `behaviour-model` exists,
+the slices come from its matrix, and a slice whose cells are all open waits. Each slice names the parts and
 concepts it touches and its done-when.
 
 Every done-when re-measures each row of section 5b on the same inputs and states its before
