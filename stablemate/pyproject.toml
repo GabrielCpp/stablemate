@@ -19,9 +19,9 @@ classifiers = [
 ]
 dependencies = [
   "workhorse-workflows>=4,<5",
-  "farrier>=4,<5",
+  "farrier>=5,<6",
   "stablemate-groom>=2,<3",
-  "ostler>=4,<5",
+  "ostler>=5,<6",
   "stablemate-saddlebag>=2,<3",
 ]
 
