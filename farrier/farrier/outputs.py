@@ -6,7 +6,6 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from fnmatch import fnmatch
 from pathlib import Path
-from typing import Any
 
 from farrier.agents import Agents, parse_agents
 from farrier.drift import Drifted, report
@@ -32,8 +31,10 @@ from farrier.managed_blocks import (
     ensure_makefile_include,
     ensure_qa_gitignore,
 )
-from farrier._vendor.stablemate_core.config import config_path, read_config
+from farrier._vendor.stablemate_core.config import config_path, load_home_config
+from farrier._vendor.stablemate_core.schema import HomeConfig
 from farrier.layers import available_names
+from farrier.manifest import ConfigLike, as_manifest, excluded
 from farrier.naming import repo_prefix
 from farrier.ownership import (
     is_owned,
@@ -167,7 +168,7 @@ def write_output(path: Path, content: Output) -> None:
         write_text(path, content)
 
 
-def normalize_agents(config: dict[str, Any]) -> Agents:
+def normalize_agents(config: ConfigLike) -> Agents:
     return parse_agents(config)
 
 
@@ -315,13 +316,13 @@ def home_duplicate_notices(
 
 
 def build_renderer(
-    config: dict[str, Any],
+    config: ConfigLike,
     repo: Path,
     agents: Agents,
     notices: list[str] | None = None,
 ) -> tuple[Renderer, set[str], list[Source]]:
     """The renderer for *config*'s selection, the roots it names and the skills it selects."""
-    repo_config = config.get("repo") or {}
+    repo_config = as_manifest(config).repo.mapping()
     prefix = repo_prefix(repo, repo_config)
 
     (
@@ -330,16 +331,15 @@ def build_renderer(
         roots,
         _scaffold_ids,
     ) = collect_selection(config)
-    exclude = config.get("exclude") or {}
 
     all_skills = load_layered_sources("skill", "library", "skills")
     all_prompts = load_layered_sources("prompt", "library", "prompts")
     all_policies = load_layered_sources("policy", "library", "policies")
     skills = selected_sources(
-        all_skills, include_skills, set(exclude.get("skills", []) or [])
+        all_skills, include_skills, excluded(config, "skills")
     )
     prompts = selected_sources(
-        all_prompts, include_prompts, set(exclude.get("prompts", []) or [])
+        all_prompts, include_prompts, excluded(config, "prompts")
     )
     check_selection(
         [("skills", all_skills, include_skills), ("prompts", all_prompts, include_prompts)]
@@ -356,7 +356,7 @@ def build_renderer(
     home_skills = {
         harness: selected
         for harness, (selected, _prompts) in user_selections(
-            read_config(), all_skills, all_prompts
+            load_home_config(), all_skills, all_prompts
         ).items()
     }
     if notices is not None:
@@ -384,7 +384,7 @@ def local_instruction_target(agents: Agents) -> str:
 
 
 def render_expected(
-    config: dict[str, Any],
+    config: ConfigLike,
     repo: Path,
     instructions: Sequence[LocalInstruction],
     notices: list[str] | None = None,
@@ -447,12 +447,14 @@ def render_expected(
 
 
 def user_selections(
-    config: dict[str, Any], all_skills: list[Source], all_prompts: list[Source]
+    home: HomeConfig, all_skills: list[Source], all_prompts: list[Source]
 ) -> dict[str, tuple[list[Source], list[Source]]]:
     """Each harness's user-library skills and prompts, from the stablemate config."""
     selections: dict[str, tuple[list[Source], list[Source]]] = {}
-    for harness, table in user_library_tables(config).items():
-        include_skills, include_prompts, roots, _scaffolds = collect_selection(table)
+    for harness, table in user_library_tables(home).items():
+        include_skills, include_prompts, roots, _scaffolds = collect_selection(
+            table.model_dump(exclude_unset=True)
+        )
         if roots:
             raise SystemExit(
                 f"error: [user_library.{harness}] names roots. A root renders into a "
@@ -460,19 +462,19 @@ def user_selections(
                 "home directory."
             )
         if harness != "claude":
-            if table.get("prompts"):
+            if table.prompts:
                 raise SystemExit(
                     f"error: [user_library.{harness}] names prompts. Claude is the only "
                     "harness with a personal command directory (~/.claude/commands), so "
                     "prompts are Claude-only at user scope."
                 )
             include_prompts = set()
-        exclude = table.get("exclude") or {}
+        exclude = table.exclude
         skills = selected_sources(
-            all_skills, include_skills, set(exclude.get("skills", []) or [])
+            all_skills, include_skills, set(exclude.skills if exclude else [])
         )
         prompts = selected_sources(
-            all_prompts, include_prompts, set(exclude.get("prompts", []) or [])
+            all_prompts, include_prompts, set(exclude.prompts if exclude else [])
         )
         check_selection(
             [
@@ -504,7 +506,7 @@ def share_home_folders(
     return shared
 
 
-def render_user_expected(config: dict[str, Any], home: Path) -> dict[Path, str]:
+def render_user_expected(config: HomeConfig, home: Path) -> dict[Path, str]:
     """The complete user-scope output set, from the stablemate config's user_library."""
     if not user_library_tables(config):
         raise SystemExit(

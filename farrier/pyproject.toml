@@ -20,11 +20,12 @@ classifiers = [
 dependencies = [
   "jinja2>=3.1",
   "pyyaml>=6.0",
-  # platformdirs and tomli-w are farrier._vendor.stablemate_core's, not farrier's own:
+  # platformdirs, tomlkit and pydantic are farrier._vendor.stablemate_core's, not farrier's own:
   # the shared config file, base-library discovery and the cache are vendored in rather
   # than depended on (see core/README.md), so their requirements land here.
   "platformdirs>=4",
-  "tomli-w>=1.0",
+  "tomlkit>=0.13",
+  "pydantic>=2.0",
   # Front matter and headings are located by the parser, never by a regex over raw text
   # (see farrier/frontmatter.py). Same parser ostler uses, without the dependency edge.
   "markdown-it-py>=3.0",

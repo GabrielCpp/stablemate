@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-import yaml
+from farrier._vendor.stablemate_core.config import ConfigError
+from farrier._vendor.stablemate_core.manifest import load_manifest, locate_manifest
 
 GATES = ("lint", "test")
 
@@ -18,16 +18,10 @@ class Finding:
     message: str
 
 
-def _services_block(config: dict[str, Any]) -> dict[str, Any]:
-    """The `services:` mapping, top-level or nested under `workflow:`."""
-    block = config.get("services") or (config.get("workflow") or {}).get("services") or {}
-    return block if isinstance(block, dict) else {}
-
-
 def diagnose(repo: Path) -> list[Finding]:
     """Everything `agents.yml` in *repo* leaves the coder workflow unable to do."""
-    path = repo / "agents.yml"
-    if not path.is_file():
+    path = locate_manifest(repo)
+    if path is None:
         return [
             Finding(
                 "error",
@@ -35,14 +29,12 @@ def diagnose(repo: Path) -> list[Finding]:
             )
         ]
     try:
-        config = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError) as exc:
-        return [Finding("error", f"agents.yml could not be read: {exc}")]
-    if not isinstance(config, dict):
-        return [Finding("error", "agents.yml is not a YAML mapping.")]
+        config = load_manifest(path)
+    except ConfigError as exc:
+        return [Finding("error", f"{path.name} could not be read: {exc}")]
 
     findings: list[Finding] = []
-    if "workspace" in config:
+    if "workspace" in (config.model_extra or {}):
         findings.append(
             Finding(
                 "error",
@@ -52,8 +44,8 @@ def diagnose(repo: Path) -> list[Finding]:
             )
         )
 
-    services = _services_block(config)
-    legacy_lint = config.get("lint") or (config.get("workflow") or {}).get("lint") or {}
+    services = config.services
+    legacy_lint = config.lint
     if not services:
         findings.append(
             Finding(
@@ -67,12 +59,7 @@ def diagnose(repo: Path) -> list[Finding]:
         )
     else:
         for name, entry in services.items():
-            if not isinstance(entry, dict):
-                findings.append(
-                    Finding("warning", f"services.{name} is not a mapping — it is ignored.")
-                )
-                continue
-            declared_path = entry.get("path")
+            declared_path = entry.path
             if declared_path is not None and not (repo / str(declared_path)).exists():
                 findings.append(
                     Finding(
@@ -83,8 +70,8 @@ def diagnose(repo: Path) -> list[Finding]:
             missing = [
                 gate
                 for gate in GATES
-                if not str(entry.get(gate) or "").strip()
-                and not (gate == "lint" and isinstance(legacy_lint, dict) and legacy_lint.get(name))
+                if not str(getattr(entry, gate) or "").strip()
+                and not (gate == "lint" and legacy_lint.get(name))
             ]
             if missing:
                 findings.append(

@@ -10,7 +10,7 @@ from farrier.cli import (
 )
 from farrier._vendor.stablemate_core.config import (
     config_path,
-    read_config,
+    load_home_config,
     resolve_stablemate_dir,
     resolve_worktree_dir,
     write_base_dir,
@@ -26,7 +26,6 @@ from farrier.frontmatter import (
     split_front_matter,
 )
 from farrier.local_instructions import (
-    mapping_include_readme,
     mapping_policy_names,
     mapping_prompt_names,
     mapping_skill_names,
@@ -171,7 +170,6 @@ __all__ = [
     "local_instruction_banner",
     "main",
     "mapped_instruction_sources",
-    "mapping_include_readme",
     "mapping_policy_names",
     "mapping_prompt_names",
     "mapping_skill_names",
@@ -183,7 +181,7 @@ __all__ = [
     "library_name",
     "public_name",
     "read_asset_text",
-    "read_config",
+    "load_home_config",
     "read_yaml",
     "relative_reference",
     "refuse_conflicts",

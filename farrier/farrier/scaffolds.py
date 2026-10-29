@@ -4,7 +4,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from farrier._vendor.stablemate_core.schema import Manifest
 from farrier.frontmatter import read_yaml
+from farrier.manifest import read_manifest
 from farrier.layers import layer_dirs
 from farrier.naming import repo_prefix
 from farrier.sources import collect_selection
@@ -76,8 +78,8 @@ def resolve_scaffold_params(
         )
 
     config_path = repo / "agents.yml"
-    config = read_yaml(config_path) if config_path.is_file() else {}
-    repo_name = repo_prefix(repo, config.get("repo"))
+    config = read_manifest(config_path) if config_path.is_file() else Manifest()
+    repo_name = repo_prefix(repo, config.repo)
     params.setdefault("repo_name", repo_name)
     params.setdefault("repo_title", repo_name.replace("-", " ").title())
     return params
@@ -160,7 +162,7 @@ def available_scaffold_ids(repo: Path, defs: dict[str, dict[str, Any]]) -> set[s
     config_path = repo / "agents.yml"
     if not config_path.is_file():
         return set(defs)
-    config = read_yaml(config_path)
+    config = read_manifest(config_path)
     _, _, _, scaffold_ids = collect_selection(config)
     return scaffold_ids
 

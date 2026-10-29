@@ -65,7 +65,7 @@ def test_write_then_read_config():
         lib = make_library(tmp / "agents")
         install.write_library_dir(lib)
         assert config.config_path().exists()
-        assert install.read_config()["library_dir"] == str(lib)
+        assert install.load_home_config().library_dir == str(lib)
 
     with_temp_config(body)
     print("ok: write_then_read_config")

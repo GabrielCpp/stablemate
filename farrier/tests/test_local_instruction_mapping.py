@@ -245,13 +245,13 @@ def test_source_resolves_either_generated_file_to_skill_and_prompt(
 def test_a_string_paths_is_rejected_rather_than_read_one_character_at_a_time(tmp_path):
     with pytest.raises(SystemExit) as exc:
         _render(tmp_path, "  - skill: ostler\n    paths: docs\n")
-    assert "localInstructions.paths" in str(exc.value)
+    assert "localInstructions.0.paths" in str(exc.value)
 
 
 def test_an_entry_that_is_no_mapping_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as exc:
         _render(tmp_path, "  - ostler\n")
-    assert "must be a mapping" in str(exc.value)
+    assert "localInstructions.0" in str(exc.value)
 
 
 def test_text_is_written_after_the_library_sources_and_before_the_readme(tmp_path):
@@ -286,7 +286,7 @@ def test_text_only_mapping_needs_no_library_source(tmp_path):
 def test_non_string_text_is_rejected(tmp_path):
     with pytest.raises(SystemExit) as exc:
         _render(tmp_path, '  - skill: ostler\n    paths: ["."]\n    text: [a]\n')
-    assert "localInstructions.text" in str(exc.value)
+    assert "localInstructions.0.text" in str(exc.value)
 
 
 def test_drift_in_the_text_is_attributed_to_agents_yml(tmp_path):

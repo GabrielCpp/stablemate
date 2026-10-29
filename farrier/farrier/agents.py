@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
-HARNESSES = ("codex", "claude", "copilot")
+from farrier._vendor.stablemate_core.schema import HARNESSES, LINK_KEY
+
+from farrier.manifest import ConfigLike, as_manifest
+
+__all__ = ["HARNESSES", "LINK_KEY", "Agents", "parse_agents"]
 
 REPO_SKILL_DIRS = {
     "copilot": ".github/skills",
@@ -14,8 +17,6 @@ REPO_SKILL_DIRS = {
 }
 
 HAND_WRITTEN_ORDER = ("claude", "codex", "copilot")
-
-LINK_KEY = "skills_from"
 
 
 @dataclass(frozen=True)
@@ -52,56 +53,7 @@ class Agents:
         )
 
 
-def _link_source(harness: str, value: dict[Any, Any]) -> str:
-    """The harness named by a ``{skills_from: ...}`` mapping, or exit."""
-    extra = sorted(str(key) for key in value if key != LINK_KEY)
-    if extra or LINK_KEY not in value:
-        raise SystemExit(
-            f"agents.{harness} must be true, false or a mapping "
-            f"{{{LINK_KEY}: <harness>}} (got {value!r})"
-        )
-    source = value[LINK_KEY]
-    if not isinstance(source, str):
-        raise SystemExit(
-            f"agents.{harness}.{LINK_KEY} must name a harness, one of "
-            f"{', '.join(HARNESSES)} (got {source!r})"
-        )
-    return source
-
-
-def parse_agents(config: dict[str, Any]) -> Agents:
+def parse_agents(config: ConfigLike) -> Agents:
     """The `agents:` table of *config*, checked once."""
-    raw = config.get("agents") or {}
-    if isinstance(raw, list):
-        return Agents({name: name in raw for name in HARNESSES})
-    enabled: dict[str, bool] = {}
-    links: dict[str, str] = {}
-    for name in HARNESSES:
-        value = raw.get(name, False)
-        if isinstance(value, dict):
-            links[name] = _link_source(name, value)
-            enabled[name] = True
-        else:
-            enabled[name] = bool(value)
-    for harness, source in links.items():
-        where = f"agents.{harness}.{LINK_KEY}"
-        if source not in HARNESSES:
-            raise SystemExit(
-                f"{where} names {source!r}, which is not a harness "
-                f"(one of {', '.join(HARNESSES)})"
-            )
-        if source == harness:
-            raise SystemExit(
-                f"{where} names {harness!r} itself; a harness cannot link its own skills"
-            )
-        if not enabled[source]:
-            raise SystemExit(
-                f"{where} names {source!r}, which is not enabled; "
-                f"set agents.{source} to true or link from an enabled harness"
-            )
-        if source in links:
-            raise SystemExit(
-                f"{where} names {source!r}, which itself links its skills from "
-                f"{links[source]!r}; link from the harness that holds the real folders"
-            )
-    return Agents(enabled, links)
+    table = as_manifest(config).agents
+    return Agents(table.enabled(), table.links())

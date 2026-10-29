@@ -1,15 +1,12 @@
-"""The `vars:` / `template:` mapping from `agents.yml`."""
+"""The `template:` table of `agents.yml`, with the older `vars:` merged in."""
 from __future__ import annotations
 
 from typing import Any
 
 
-def collect_template_values(config: dict[str, Any]) -> dict[str, Any]:
-    """Merge `vars:` then `template:` into one mapping, later keys winning."""
-    values: dict[str, Any] = {}
-    for key in ["vars", "template"]:
-        configured = config.get(key) or {}
-        if not isinstance(configured, dict):
-            raise SystemExit(f"{key} must be a YAML mapping when present")
-        values.update(configured)
-    return values
+from farrier.manifest import ConfigLike, as_manifest
+
+
+def collect_template_values(config: ConfigLike) -> dict[str, Any]:
+    """The values library templates render with."""
+    return as_manifest(config).template.mapping()

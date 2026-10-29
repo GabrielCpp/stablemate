@@ -11,6 +11,7 @@ import yaml
 
 from farrier.agents import REPO_SKILL_DIRS, Agents
 from farrier.frontmatter import frontmatter_mapping, frontmatter_metadata
+from farrier.manifest import excluded
 from farrier.local_instructions import (
     local_instructions,
     mapping_policy_names,
@@ -178,7 +179,7 @@ def run_eject(repo: Path, name: str) -> int:
 
 def _selected_ids(config: dict[str, Any], all_skills: list[Source]) -> set[str]:
     include, _prompts, _roots, _scaffolds = collect_selection(config)
-    exclude = set((config.get("exclude") or {}).get("skills", []) or [])
+    exclude = excluded(config, "skills")
     return {source.id for source in selected_sources(all_skills, include, exclude)}
 
 
@@ -189,7 +190,7 @@ def eject_selection(
     old = _selected_ids(config, all_skills)
     if source.id not in old:
         return text
-    exclude = set((config.get("exclude") or {}).get("skills", []) or [])
+    exclude = excluded(config, "skills")
     rewrites: dict[str, list[str]] = {}
     for entry in config.get("skills") or []:
         if not isinstance(entry, str) or not matches(source, {entry}):

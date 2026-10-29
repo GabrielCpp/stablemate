@@ -7,6 +7,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from farrier._vendor.stablemate_core.schema import RepoTable
+
 
 def kebab(value: str) -> str:
     value = value.removesuffix(".prompt").removesuffix(".instructions")
@@ -23,8 +25,10 @@ def compose_name(prefix: str, base: str) -> str:
     return f"{prefix}-{base}"
 
 
-def repo_prefix(repo: Path, repo_config: Mapping[str, Any] | None = None) -> str:
+def repo_prefix(repo: Path, repo_config: Mapping[str, Any] | RepoTable | None = None) -> str:
     """The install prefix for a repository: agents.yml's `repo.name` when set, else its directory name, kebab-cased."""
+    if isinstance(repo_config, RepoTable):
+        repo_config = repo_config.mapping()
     name = (repo_config or {}).get("name")
     return kebab(str(name) if name else repo.name)
 

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from . import base_cache
-from .config import get_config_value
+from .config import load_home_config
 from .layout import is_library_dir
 
 __all__ = [
@@ -43,15 +43,14 @@ def _explicit_base() -> Path | None:
         if is_library_dir(candidate):
             return candidate.resolve()
 
-    configured = get_config_value("base_dir")
-    if isinstance(configured, str) and configured:
-        candidate = Path(configured).expanduser()
+    home = load_home_config()
+    if home.base_dir:
+        candidate = Path(home.base_dir).expanduser()
         if is_library_dir(candidate):
             return candidate.resolve()
 
-    checkout = get_config_value("stablemate_dir")
-    if isinstance(checkout, str) and checkout:
-        candidate = Path(checkout).expanduser() / CHECKOUT_SUBPATH
+    if home.stablemate_dir:
+        candidate = Path(home.stablemate_dir).expanduser() / CHECKOUT_SUBPATH
         if is_library_dir(candidate):
             return candidate.resolve()
 

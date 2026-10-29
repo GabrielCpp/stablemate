@@ -6,30 +6,31 @@ import importlib.metadata
 import os
 import sys
 
-import yaml
 from pathlib import Path
 from typing import Any
 
 from farrier import doctor
+from farrier.config_reference import REFERENCES, reference_text
 from farrier import layers as _layers
 from farrier import pipx
 from farrier._vendor.stablemate_core.config import (
     CONFIG_PATH_ENV,
+    ConfigError,
     ConfigVersionError,
     config_path,
-    read_config,
+    load_home_config,
     write_base_dir,
     write_config_section,
     write_library_dir,
     write_stablemate_dir,
     write_worktree_dir,
 )
+from farrier._vendor.stablemate_core.schema import Manifest
 from farrier._vendor.stablemate_core.profiles import UnknownProfileError, select_profile
 from farrier.eject import run_eject
 from farrier.frontmatter import (
     banner_sources,
     frontmatter_metadata,
-    read_yaml,
 )
 from farrier.local_instructions import LOCAL_INSTRUCTION_FILES, local_instructions
 from farrier.hook_managers import (
@@ -55,6 +56,7 @@ from farrier.layers import (
 )
 from farrier.library_check import check_library, format_findings
 from farrier.library_view import KINDS, find, format_list, layer_label, stack
+from farrier.manifest import excluded, find_manifest, locate_manifest, read_manifest
 from farrier.naming import repo_prefix
 from farrier.outputs import (
     USER_MANAGED,
@@ -147,7 +149,7 @@ def _run_init(args: argparse.Namespace) -> int:
     write_text(target, default_config(repo))
     print(f"Wrote {target}")
     print("Next: list this repo's own packs under `packs:`, then `farrier install`.")
-    if user_library_tables(read_config()):
+    if user_library_tables(load_home_config()):
         return 0
     if sys.stdin.isatty() and _confirm(
         "\nYour home has no user library. Install the general and stablemate packs "
@@ -179,7 +181,7 @@ def _confirm(question: str) -> bool:
 def _run_user_install(home: Path | None, check: bool) -> int:
     """`farrier install --user` — render the user_library tables into the harness homes."""
     home = (home or Path.home()).expanduser().resolve()
-    outputs = render_user_expected(read_config(), home)
+    outputs = render_user_expected(load_home_config(), home)
     if check:
         return check_outputs(home, outputs, None, USER_MANAGED)
     install_outputs(home, outputs, None, USER_MANAGED)
@@ -212,14 +214,18 @@ def _run_install(args: argparse.Namespace) -> int:
     if user and args.repo is None:
         return _run_user_install(args.home, args.check)
     repo = (args.repo or Path.cwd()).resolve()
-    config_path = args.config.resolve() if args.config else repo / "agents.yml"
+    config_path = (
+        args.config.resolve()
+        if args.config
+        else (locate_manifest(repo) or repo / "agents.yml")
+    )
     if not args.config and not config_path.exists():
         raise SystemExit(
             f"Missing config: {config_path}\n"
             "Run `farrier init` to write a starter agents.yml, then list the "
             "packs to install under `packs:`."
         )
-    config = read_yaml(config_path)
+    config = read_manifest(config_path)
     manager = configured_manager(config, repo)
     notices: list[str] = []
     try:
@@ -251,7 +257,7 @@ def _run_config(args: argparse.Namespace) -> int:
         os.environ[CONFIG_PATH_ENV] = str(args.config_file.expanduser())
     try:
         return _dispatch_config(args)
-    except ConfigVersionError as exc:
+    except ConfigError as exc:
         raise SystemExit(f"error: {exc}") from exc
     except UnknownProfileError as exc:
         raise SystemExit(f"error: {exc}") from exc
@@ -302,11 +308,16 @@ def _dispatch_config(args: argparse.Namespace) -> int:
         print(f"worktree_dir={root}")
         return 0
 
-    cfg = read_config()
+    if args.config_action == "reference":
+        print(reference_text(args.file), end="")
+        return 0
+
+    home = load_home_config()
     if args.profile:
-        entries = dict(_flatten(select_profile(cfg, args.profile)))
+        selected = select_profile(home, args.profile)
+        entries = dict(_flatten(selected.model_dump(exclude_unset=True) if selected else {}))
     else:
-        entries = dict(cfg)
+        entries = home.model_dump(exclude_unset=True)
     if args.key:
         value = entries.get(args.key)
         if value is None:
@@ -321,11 +332,7 @@ def _dispatch_config(args: argparse.Namespace) -> int:
 
 def find_agents_config(start: Path) -> Path | None:
     """The nearest agents.yml at or above *start* (the repo config), or None."""
-    for directory in [start, *start.parents]:
-        candidate = directory / "agents.yml"
-        if candidate.is_file():
-            return candidate
-    return None
+    return find_manifest(start)
 
 
 def mapped_instruction_sources(generated: Path) -> list[str] | None:
@@ -336,7 +343,7 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
     if config_path is None:
         return None
     repo = config_path.parent
-    config = read_yaml(config_path)
+    config = read_manifest(config_path)
     directory = generated.parent
     skill_names: list[str] = []
     prompt_names: list[str] = []
@@ -356,19 +363,18 @@ def mapped_instruction_sources(generated: Path) -> list[str] | None:
             "is stale. Re-run `farrier --repo .` (or `make agent-install`) to "
             "regenerate or remove it."
         )
-    repo_config = config.get("repo") or {}
+    repo_config = config.repo.mapping()
     prefix = repo_prefix(repo, repo_config)
     include_skills, include_prompts, _, _ = collect_selection(config)
-    exclude = config.get("exclude") or {}
     skills = selected_sources(
         load_layered_sources("skill", "library", "skills"),
         include_skills,
-        set(exclude.get("skills", []) or []),
+        excluded(config, "skills"),
     )
     prompts = selected_sources(
         load_layered_sources("prompt", "library", "prompts"),
         include_prompts,
-        set(exclude.get("prompts", []) or []),
+        excluded(config, "prompts"),
     )
     policies = load_layered_sources("policy", "library", "policies")
     renderer = Renderer(
@@ -619,9 +625,20 @@ def _build_parser() -> argparse.ArgumentParser:
         default="",
         metavar="NAME",
         help="Show the named [profiles.NAME] table instead of the top level, flattened "
-        "to dotted keys (power.high.claude.model=opus). A profile replaces the top "
-        "level rather than layering over it, so this is the whole config a run on "
-        "--profile NAME resolves from",
+        "to dotted keys (powers.high.model=opus). This is the whole table a run on "
+        "--profile NAME resolves its CLI, models and delegates from",
+    )
+
+    reference_p = config_sub.add_parser(
+        "reference",
+        help="Print every key of the shared config files with its type, default, "
+        "meaning, example and environment variable",
+    )
+    reference_p.add_argument(
+        "--file",
+        choices=["all", *REFERENCES],
+        default="all",
+        help="Which file to describe: home is the machine config.toml, manifest is the repository's agents.yml (default: all)",
     )
 
     source_p = sub.add_parser(
@@ -802,7 +819,7 @@ def _run_hooks_install(args: argparse.Namespace) -> int:
     """`farrier hooks install` — wire this repo's git hooks and (when a library resolves) regenerate the per-repo runner, with no other outputs touched."""
     repo = args.repo.resolve()
     config_path = repo / "agents.yml"
-    config = read_yaml(config_path) if config_path.is_file() else {}
+    config = read_manifest(config_path) if config_path.is_file() else Manifest()
     manager = configured_manager(config, repo)
     dry_run = bool(getattr(args, "dry_run", False))
 
@@ -813,12 +830,11 @@ def _run_hooks_install(args: argparse.Namespace) -> int:
         set_layers(None)
     if LAYERS:
         try:
-            prefix = repo_prefix(repo, config.get("repo"))
+            prefix = repo_prefix(repo, config.repo)
             include_skills, _, _, _ = collect_selection(config)
-            exclude = config.get("exclude") or {}
             all_skills = load_layered_sources("skill", "library", "skills")
             skills = selected_sources(
-                all_skills, include_skills, set(exclude.get("skills", []) or [])
+                all_skills, include_skills, excluded(config, "skills")
             )
             runner_hooks = selected_hooks(prefix, skills)
         except SystemExit:
@@ -846,12 +862,9 @@ def _run_hooks_list(args: argparse.Namespace) -> int:
         )
         return 1
     try:
-        config = read_yaml(config_path)
-    except (OSError, yaml.YAMLError) as exc:
-        print(f"error: agents.yml could not be read: {exc}", file=sys.stderr)
-        return 1
-    if not isinstance(config, dict):
-        print("error: agents.yml is not a YAML mapping.", file=sys.stderr)
+        config = read_manifest(config_path)
+    except SystemExit as exc:
+        print(f"error: {exc}", file=sys.stderr)
         return 1
 
     manager = configured_manager(config, repo)
@@ -866,13 +879,12 @@ def _run_hooks_list(args: argparse.Namespace) -> int:
         )
         return 0
 
-    prefix = repo_prefix(repo, config.get("repo"))
+    prefix = repo_prefix(repo, config.repo)
     include_skills, _, _, _ = collect_selection(config)
-    exclude = config.get("exclude") or {}
     all_skills = load_layered_sources("skill", "library", "skills")
     check_selection([("skills", all_skills, include_skills)])
     skills = selected_sources(
-        all_skills, include_skills, set(exclude.get("skills", []) or [])
+        all_skills, include_skills, excluded(config, "skills")
     )
     hooks = selected_hooks(prefix, skills)
 
@@ -999,6 +1011,13 @@ def _run_workflows(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except ConfigError as exc:
+        raise SystemExit(f"error: {exc}") from exc
+
+
+def _main(argv: list[str] | None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
 
     parser = _build_parser()

@@ -5,7 +5,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from farrier._vendor.stablemate_core.config import config_path, read_config
+from farrier._vendor.stablemate_core.config import config_path, load_home_config
 from farrier._vendor.stablemate_core.discovery import (
     BASE_DIR_ENV,
     base_library_dir,
@@ -104,7 +104,7 @@ def resolve_library_dir(cli_library: Path | None) -> Path | None:
             "$FARRIER_LIBRARY_DIR",
         )
     else:
-        configured = read_config().get("library_dir")
+        configured = load_home_config().library_dir
         if configured:
             candidate, source = Path(configured), f"{config_path()}"
 

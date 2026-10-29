@@ -5,9 +5,10 @@ from __future__ import annotations
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from farrier._vendor.stablemate_core.base_cache import cache_root
+from farrier._vendor.stablemate_core.schema import HOOK_MANAGERS
+from farrier.manifest import ConfigLike, as_manifest
 from farrier.skill_hooks import SkillHook
 
 HOOK_COMMAND = "make farrier-run-hook"
@@ -19,7 +20,7 @@ HOOK_RUNNER = ".agents/hooks/pre-commit"
 
 LEFTHOOK_INCLUDE = ".agents/lefthook.farrier.yml"
 
-MANAGERS = ("pre-commit", "lefthook", "husky", "githooks", "none")
+MANAGERS = HOOK_MANAGERS
 
 _FENCE_FILES = {
     "pre-commit": ".pre-commit-config.yaml",
@@ -31,18 +32,10 @@ _FENCE_FILES = {
 LEGACY_HOOK_MARKER = "# >>> farrier: staged-files gate (generated) >>>"
 
 
-def configured_manager(config: dict[str, Any], repo: Path) -> str:
+def configured_manager(config: ConfigLike, repo: Path) -> str:
     """The manager named in `agents.yml`, or the one this repo looks like."""
-    declared = str(((config.get("hooks") or {}) if isinstance(config.get("hooks"), dict)
-                    else {}).get("manager") or "").strip()
-    if not declared:
-        return detect_manager(repo)
-    if declared not in MANAGERS:
-        raise SystemExit(
-            f"agents.yml: hooks.manager: {declared!r} is not one of "
-            f"{', '.join(MANAGERS)}"
-        )
-    return declared
+    declared = as_manifest(config).hooks.manager
+    return declared if declared else detect_manager(repo)
 
 
 def detect_manager(repo: Path) -> str:

@@ -5,6 +5,9 @@ from dataclasses import dataclass
 from typing import Any
 
 
+from farrier.manifest import ConfigLike, as_manifest
+
+
 LOCAL_INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md")
 
 
@@ -35,42 +38,9 @@ def mapping_prompt_names(mapping: dict[str, Any]) -> list[str]:
     return []
 
 
-_README_ALIASES = {"inline": True, "import": True, "none": False}
-
-
-def mapping_include_readme(mapping: dict[str, Any]) -> bool:
-    """Whether a localInstructions mapping folds in the sibling README.md."""
-    value = mapping.get("includeReadme", True)
-    if isinstance(value, bool):
-        return value
-    key = str(value)
-    if key not in _README_ALIASES:
-        raise SystemExit(
-            f"localInstructions.includeReadme must be true or false "
-            f"(got {value!r}; the {'/'.join(_README_ALIASES)} spellings are the "
-            "old mechanism-picking form and still work)"
-        )
-    return _README_ALIASES[key]
-
-
-def mapping_writes_claude_md(mapping: dict[str, Any]) -> bool:
-    """Whether a localInstructions mapping also writes the `@AGENTS.md` CLAUDE.md."""
-    value = mapping.get("claudeMd", False)
-    if not isinstance(value, bool):
-        raise SystemExit(
-            f"localInstructions.claudeMd must be true or false (got {value!r})"
-        )
-    return value
-
-
 def mapping_text(mapping: dict[str, Any]) -> str:
     """The repo-specific text a localInstructions mapping writes after its library sources."""
-    value = mapping.get("text", "")
-    if value is None:
-        return ""
-    if not isinstance(value, str):
-        raise SystemExit(f"localInstructions.text must be a string (got {value!r})")
-    return value
+    return str(mapping.get("text") or "")
 
 
 @dataclass(frozen=True)
@@ -86,44 +56,19 @@ class LocalInstruction:
     text: str = ""
 
 
-def _instruction_paths(mapping: dict[str, Any]) -> tuple[str, ...]:
-    """The directories one localInstructions entry writes into."""
-    paths = mapping.get("paths", []) or []
-    if not isinstance(paths, list) or not all(isinstance(rel, str) for rel in paths):
-        raise SystemExit(
-            f"localInstructions.paths must be a list of directories (got {paths!r})"
-        )
-    return tuple(paths)
-
-
-def local_instructions(config: dict[str, Any]) -> tuple[LocalInstruction, ...]:
+def local_instructions(
+    config: ConfigLike,
+) -> tuple[LocalInstruction, ...]:
     """The localInstructions entries of *config*, each checked once."""
-    entries = config.get("localInstructions", []) or []
-    if not isinstance(entries, list):
-        raise SystemExit(f"localInstructions must be a list of entries (got {entries!r})")
-    parsed: list[LocalInstruction] = []
-    for mapping in entries:
-        if not isinstance(mapping, dict):
-            raise SystemExit(f"A localInstructions entry must be a mapping (got {mapping!r})")
-        instruction = LocalInstruction(
-            paths=_instruction_paths(mapping),
-            skills=mapping_skill_names(mapping),
-            prompts=mapping_prompt_names(mapping),
-            policies=mapping_policy_names(mapping),
-            include_readme=mapping_include_readme(mapping),
-            writes_claude_md=mapping_writes_claude_md(mapping),
-            text=mapping_text(mapping),
+    return tuple(
+        LocalInstruction(
+            paths=tuple(entry.paths),
+            skills=entry.skill_names(),
+            prompts=entry.prompt_names(),
+            policies=entry.policy_names(),
+            include_readme=entry.includeReadme,
+            writes_claude_md=entry.claudeMd,
+            text=entry.text,
         )
-        if not (
-            instruction.skills
-            or instruction.prompts
-            or instruction.policies
-            or instruction.text.strip()
-        ):
-            raise SystemExit(
-                "A localInstructions entry must select at least one source "
-                "(`policy`/`policies`, `skill`/`skills` and/or `prompt`/`prompts`) "
-                "or carry `text`"
-            )
-        parsed.append(instruction)
-    return tuple(parsed)
+        for entry in as_manifest(config).localInstructions
+    )

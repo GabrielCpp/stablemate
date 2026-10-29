@@ -13,6 +13,7 @@ from farrier.layers import (
     find_in_layers,
     layer_dirs,
 )
+from farrier.manifest import ConfigLike, as_manifest
 from farrier.naming import compose_name, kebab, normalize_pattern, source_id
 from farrier.selection_errors import unknown_selection_error
 
@@ -209,7 +210,7 @@ def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
 
 
 def collect_selection(
-    config: dict[str, Any],
+    config: ConfigLike,
 ) -> tuple[set[str], set[str], set[str], set[str]]:
     selection: dict[str, Any] = {
         "skills": set(),
@@ -217,16 +218,16 @@ def collect_selection(
         "roots": set(),
         "scaffolds": set(),
     }
-    for pack in config.get("packs", []) or []:
+    manifest = as_manifest(config)
+    for pack in manifest.packs:
         loaded = load_pack(str(pack))
         for key, values in loaded.items():
             selection[key].update(values)
 
-    selection["scaffolds"].update(
-        parse_scaffold_ids(config.get("scaffolds"), "agents.yml")
-    )
-    for key in ["skills", "prompts", "roots"]:
-        selection[key].update(config.get(key, []) or [])
+    selection["scaffolds"].update(manifest.scaffolds)
+    selection["skills"].update(manifest.skills)
+    selection["prompts"].update(manifest.prompts)
+    selection["roots"].update(manifest.roots)
 
     return (
         selection["skills"],

@@ -33,7 +33,8 @@ farrier config show
 Windows; `$STABLEMATE_CONFIG` overrides it). Every stablemate tool reads and writes that
 same file, so `library_dir` and `base_dir` mean one thing across all of them — a
 pre-existing `~/.config/farrier/config.toml` is still read, and folded in on the first
-write.
+write. `farrier config reference --file home` prints every key of that file with its type,
+default, meaning and example.
 
 **Finding the base library.** farrier discovers the base via, in order,
 `$STABLEMATE_BASE_DIR` → the `base_dir` config key (`farrier config set-base <path>`) →
@@ -138,11 +139,12 @@ express one — edit the file.
 ## Configuring `agents.yml`
 
 `agents.yml` (at your repo root) selects what farrier renders. `farrier init` writes a
-starter one with the common keys as commented examples. Every option —
-`repo`, `agents`, `packs`, `skills`/`prompts`/`roots`, `scaffolds`, `exclude`,
-`localInstructions`, `template`/`vars`, and `workflow` — is documented with
-inline comments in **[`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml)**. Copy it to
-your repo as `agents.yml` and prune to taste.
+starter one with the common keys as commented examples. `farrier config reference --file
+manifest` prints every key of the file with its type, default, meaning and example, including
+the keys the installed workflows and ostler read. A key the manifest does not declare loads
+and logs a warning that names the closest declared key.
+**[`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml)**
+is a worked sample you can copy to your repo as `agents.yml` and prune to taste.
 
 Each `agents.<harness>` is `true`, `false` or `{skills_from: <other harness>}`. The
 mapping enables the harness and renders no skill folders for it. Instead farrier

@@ -1,5 +1,5 @@
 # ============================================================================
-# agents.yml — complete reference for the `farrier` installer
+# agents.yml — worked sample for the `farrier` installer
 # ============================================================================
 #
 # Copy this file to your repository root as `agents.yml`, then prune it to the
@@ -9,29 +9,28 @@
 #
 # It does NOT install workflows. A workflow is an installed Python distribution
 # that brings its own command — you `pip install` it and run
-# `workhorse-<name> run`. The one key here a workflow reads for itself is
-# `workflow:` at the bottom.
+# `workhorse-<name> run`. The keys here a workflow reads for itself are `repo:`,
+# `lint:`, `services:` and `workflow:`.
 #
 # Run it (after `pipx install farrier` and pointing farrier at the library):
 #   farrier config set-library /path/to/the/library     # one-time
 #   farrier --repo .            # render/install
 #   farrier --repo . --check    # verify generated files are current (no writes)
 #
-# Every key below is OPTIONAL unless marked REQUIRED. Where two spellings are
-# shown (camelCase / snake_case), either is accepted.
+# Every key below is OPTIONAL unless marked REQUIRED. `farrier config reference
+# --file manifest` prints every key with its type, default, meaning and example.
 # ============================================================================
 
 
 # ---------------------------------------------------------------------------
 # repo — repository identity. The name is the repo DIRECTORY's name, kebab-cased,
-# and is prepended to every installed skill and prompt (skill `db.md` →
-# `<name>-db`). It is derived, not configurable: the workflow tooling reads the
-# same name off the checkout, so a config that could disagree with the directory
-# would rename half the toolchain's view of the repo and not the other half.
+# unless `repo.name` sets another, and is prepended to every installed skill and
+# prompt (skill `db.md` → `<name>-db`). The workflow tooling reads the same name
+# off the checkout.
 #
 # Any OTHER key here is passed through to Jinja as `repo.<key>` for library
-# templates; `name` and `prefix` are reserved and ignored. The workflows also
-# read one key from here: `base_branch`, the branch a story merges into.
+# templates; `prefix` is derived and ignored. The workflows also read one key
+# from here: `base_branch`, the branch a story merges into.
 # ---------------------------------------------------------------------------
 # repo:
 #   support_email: team@example.com
@@ -117,8 +116,6 @@ exclude:
     - go/experimental-*
   prompts:
     - planning/spike-*
-  scaffolds:
-    - shared-docs/CONTRIBUTING.md
 
 
 # ---------------------------------------------------------------------------
@@ -183,30 +180,18 @@ template:
 
 
 # ---------------------------------------------------------------------------
-# workflow — an opaque block farrier passes through untouched. The installer
-# reads nothing in it; the WORKFLOW packages you run read their own keys out of
-# it, so what belongs here is whatever the workflow you installed documents.
-# camelCase or snake_case accepted.
-#
-# (`repoUrl`, `branch`, `agentsDir` and `envPassthrough` used to live here to
-# configure a generated Docker launcher. That launcher is gone — a workflow's own
-# command takes its arguments on the command line — and those keys are now ignored.)
+# workflow — the keys the installed workflows read. The installer reads nothing
+# in it. `farrier config reference --file manifest` lists every key.
 # ---------------------------------------------------------------------------
 workflow:
   # Name of the env var carrying the GitHub token for the coder workflow's PR
   # and CI steps (falls back to GH_TOKEN then GITHUB_TOKEN).
   githubTokenEnv: GH_TOKEN
 
-  # storyCoder (and similar) — an opaque, workflow-specific subtree passed
-  # through to the workflow's prompts/templates. farrier does not interpret its
-  # internals; shape it to whatever the installed workflow documents.
-  # storyCoder:
-  #   prompts:
-  #     plan: myrepo-plan-story
-  #     implement: myrepo-implement-plan
-  #   successGate:
-  #     apiPath: api
-  #     apiCommand: make test
+  # Per-role prompt bodies that replace the library's, keyed by role. Each value
+  # is a file path relative to the repo root.
+  # prompts:
+  #   dev-plan: .agents/prompts/plan.md
 
 
 # ---------------------------------------------------------------------------
