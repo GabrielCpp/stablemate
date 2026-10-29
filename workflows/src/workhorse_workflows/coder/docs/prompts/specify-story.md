@@ -45,7 +45,13 @@ assumption in the story, the model or the book. Do not raise the same block agai
 
 ## 1. The behaviour model
 
+{% if has_skill("behaviour-model") %}
 Load the skill and follow it: {{ skill_command("behaviour-model") }}
+{% else %}
+The model names every record the story touches with its states, every action that reaches a
+record with its inputs, a state × action matrix per record, and the invariants that hold in
+every state.
+{% endif %}
 
 Write the model to `{{ workhorse_var('spec_dir') }}/model.md`, creating the folder when it is
 missing. Its sources are the story's acceptance criteria, the epic's `## User Journeys`, and the
