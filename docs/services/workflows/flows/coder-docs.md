@@ -61,8 +61,8 @@ conversation describing an older book. Every terminal return resets it too.
 
 - kind: prepare
 
-The flow first detects the OKF book. No configured OKF graph is a successful `not_applicable`
-result and spends no agent turn; an unusable graph is a workflow failure. It then classifies the
+The flow first ensures the OKF book. A repository with no configured OKF graph and no services
+tree gets its book root created; an unusable graph is a workflow failure. It then classifies the
 documentation context. A readable local source root uses the local route, where an OKF context
 packet maps changed production units to graph references and is validated before the gate.
 Sources outside the documentation worktree use the semantic route, where no diff packet is built.

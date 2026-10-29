@@ -240,7 +240,7 @@ def detect_okf_docs(
     services_subdir: str = "",
     repo_dir: str = "",
 ) -> OkfDetection:
-    """Are this run's docs managed by an OKF graph, so documenting the story means anything?"""
+    """Ensure this run's OKF book root exists, creating it when the repo has none, and that its graph loads."""
     base = Path(find_docs_root(repo_dir))
     sub = Path(services_subdir) if services_subdir else None
     if sub is None:
@@ -260,8 +260,8 @@ def detect_okf_docs(
         for path in (requested, *(okf_path.doc_root_in(base, kind) for kind in MANAGED_KINDS))
     ) or (base / ".agents/templates.yml").is_file()
     if not configured and not managed_tree:
-        logger.info("no OKF configuration or services at %s", base)
-        return OkfDetection(has_okf="no", reason="no OKF configuration or services tree")
+        requested.mkdir(parents=True, exist_ok=True)
+        logger.info("no OKF configuration or services at %s, created the book root %s", base, requested)
 
     okf = Ostler(base)
     try:

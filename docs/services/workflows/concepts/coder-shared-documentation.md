@@ -106,8 +106,8 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - verify: count(subject="resolved OKF services roots", equals=1)
 - does: recognizes OKF management from a legacy `ostler.*` manifest name, an `organization` table in the manifest, managed trees, or agent templates
 - verify: count(subject="OKF management detections", equals=1)
-- does: returns `no` without loading a graph when no configuration or managed tree exists
-- verify: json_path(path="$.has_okf", equals="no")
+- does: creates the book root when no configuration or managed tree exists, then loads the graph as for a managed tree
+- verify: created(subject="OKF book root")
 - does: returns `invalid` when configuration exists but the graph cannot load
 - verify: json_path(path="$.has_okf", equals="invalid")
 - returns: `yes` with the graph's effective services root when the graph loads

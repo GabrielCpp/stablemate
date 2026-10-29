@@ -12,13 +12,13 @@ review and repair the graph, and gates the result against direct grounding. It i
 entered by the Coder main flow after implementation is complete, and can also be run directly with
 `workhorse-coder run docs`.
 
-The machine returns not-applicable without an agent turn and without resolving the story when the
-repository has no OKF book, and fails before documentation when the book is unusable. For a usable
+The machine creates the OKF book root when the repository has none, and fails before documentation
+when the book is unusable. For a usable
 book, a failed grounding gate goes back to the owner as a report for another repair lap, and a
 spent lap budget escalates to the resolver and then to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @e596e919bdee
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @e596e919bdee
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @8cb66dc081c9
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @b746c3d5c0fa
 - tests: `workflows/tests/coder/docs/test_flow.py`
 - detail: [coder docs subflow](coder-docs-subflow.md)
 
@@ -40,6 +40,6 @@ shapes `Docs` is asked to handle in production.
 - verify: count(subject="docs counter labels", equals=1)
 - returns: returns labels used for state telemetry
 - verify: count(subject="docs state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.state_labels` @e596e919bdee
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.state_labels` @f1e323205eb6
 - tests: `workflows/tests/coder/test_telemetry.py::test_docs_reports_its_repair_laps_and_its_blocks`
 

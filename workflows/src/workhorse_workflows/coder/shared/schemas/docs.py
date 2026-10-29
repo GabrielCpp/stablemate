@@ -10,9 +10,9 @@ from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
 class OkfDetection(CoderResult):
-    """`detect-okf-docs.py` — are this repo's docs managed by an OKF graph at all?"""
+    """`detect-okf-docs.py` — does this repo have an OKF book root that loads?"""
 
-    has_okf: Literal["yes", "no", "invalid"] = "no"
+    has_okf: Literal["yes", "invalid"] = "invalid"
     services_root: str = ""
     reason: str = ""
 

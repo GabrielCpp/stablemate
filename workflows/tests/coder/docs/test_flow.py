@@ -30,6 +30,7 @@ from workhorse_workflows.coder.shared.docs import (
     DOCTOR_ERRORS_FILE,
     _doctor_errors_note,
     classify_documentation_context,
+    detect_okf_docs,
     verify_story_documentation,
 )
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -294,19 +295,15 @@ class _Grounding(_Agent):
 
 
 
-def test_a_repo_with_no_okf_book_ends_successfully_without_an_agent_turn(
-    repo: Path,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """`not_applicable` is a success, and the cheap detector is what makes it cheap."""
-    agent = _Agent()
+def test_a_repo_with_no_okf_book_gets_its_book_root_created(repo: Path) -> None:
+    """A repo without `docs/services` is given the book root rather than skipped."""
+    assert not (repo / "docs" / "services").exists()
 
-    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+    detection = detect_okf_docs(logging.getLogger("test"), repo_dir=str(repo))
 
-    assert result.status == "not_applicable", result
-    assert result.notes == "no OKF configuration or services tree", result
-    assert agent.calls == [], agent.calls
+    assert (repo / "docs" / "services").is_dir()
+    assert detection.has_okf == "yes", detection
+    assert detection.services_root == str(repo / "docs" / "services"), detection
 
 
 def test_an_unresolvable_story_fails_before_anything_else(

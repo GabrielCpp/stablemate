@@ -75,10 +75,9 @@ class Docs(Workflow):
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("laps", "blocks", "number")
 
     def setup(self) -> StoryPaths:
-        """Resolve the workspace to directories and, when there is a book, the story to its id and paths."""
+        """Resolve the workspace to directories and the story to its id and paths."""
         self.call(resolve_workspace_dirs)
-        if self.call(detect_okf_docs).has_okf == "no":
-            return StoryPaths()
+        self.call(detect_okf_docs)
         return self.call(prepare_story, self.story, self.epic)
 
     def labels(self) -> dict[str, str]:
@@ -103,9 +102,6 @@ class Docs(Workflow):
         """Decide whether there is a book to document into, and how the diff can be read."""
         self.reset_session(self._chain)
         okf = self.output(detect_okf_docs)
-        if okf.has_okf == "no":
-            self.logger.info("no OKF docs here, so there is nothing to document")
-            return self._ends(DocsResult(status="not_applicable", notes=okf.reason))
         if okf.has_okf != "yes":
             raise WorkflowFailed(f"OKF documentation is unusable here: {okf.reason}")
         if not self.ctx.story_path:
