@@ -43,6 +43,7 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocsResult,
     DocumentationObligations,
     DocumentationResult,
+    SpecResult,
 )
 from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
@@ -69,6 +70,8 @@ class Docs(Workflow):
     target_env: str = "local"
     preexisting: tuple[str, ...] = ()
     operator_mode: str = "auto"
+    phase: Literal["spec", "build"] = "build"
+    spec_nodes: tuple[str, ...] = ()
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
@@ -91,7 +94,8 @@ class Docs(Workflow):
     @property
     def _chain(self) -> str:
         """The docs owner's own session, keyed per story."""
-        return f"docs:{self.ctx.story_slug}"
+        prefix = "docs-spec" if self.phase == "spec" else "docs"
+        return f"{prefix}:{self.ctx.story_slug}"
 
     def _ends(self, result: DocsResult) -> Done:
         """End the flow, and the story's docs session with it."""
@@ -109,6 +113,8 @@ class Docs(Workflow):
                 f"no story path for {self.story!r}. The story could not be resolved, so "
                 "there is nothing to document."
             )
+        if self.phase == "spec":
+            return Continue(okf, self.work)
         impl = self.call(resolve_impl_context, self.ctx.spec_dir)
         classification = self.call(
             classify_documentation_context, tuple(impl.qa_source_roots)
@@ -142,9 +148,18 @@ class Docs(Workflow):
         blocks: int = 0,
     ) -> Continue | Await:
         """Run the owner turn: its subagents write the story into the book, review it and fix it."""
-        self.logger.info("documenting %s", self.ctx.story_slug, extra={"activity": True})
-        turn = roles.turn(self, "document-story", returns=DocumentationResult)
-        result: DocumentationResult = self.agent(
+        spec = self.phase == "spec"
+        self.logger.info(
+            "specifying %s" if spec else "documenting %s",
+            self.ctx.story_slug,
+            extra={"activity": True},
+        )
+        turn = (
+            roles.turn(self, "specify-story", returns=SpecResult)
+            if spec
+            else roles.turn(self, "document-story", returns=DocumentationResult)
+        )
+        result: DocumentationResult | SpecResult = self.agent(
             turn.prompt,
             returns=turn.returns,
             power="high",
@@ -154,12 +169,16 @@ class Docs(Workflow):
             session=self._chain,
             add_dirs=workspace_dirs(self),
             args=turn.args
-            | self._brief()
+            | (
+                self._spec_brief()
+                if spec
+                else self._brief() | {"spec_nodes": list(self.spec_nodes)}
+            )
             | {
                 "report": _prompt_note(report),
                 "operator_context": operator_context,
-                "obligations": list(obligations),
-            },
+            }
+            | ({} if spec else {"obligations": list(obligations)}),
         )
         carried = {"obligations": obligations, "authored_nodes": authored_nodes}
         if result.blocked:
@@ -173,6 +192,19 @@ class Docs(Workflow):
             laps=laps,
             blocks=blocks,
         )
+
+    def _spec_brief(self) -> dict[str, object]:
+        """What the spec pass reads before it writes a word: the story and the book, with no diff yet."""
+        return {
+            "story_path": self.ctx.story_path,
+            "spec_dir": self.ctx.spec_dir,
+            "story_slug": self.ctx.story_slug,
+            "story_id": self.ctx.story_id,
+            "epic": self.epic,
+            "docs_root": str(find_docs_root(self.repo_dir)),
+            "services_root": services_root(self),
+            "epic_path": self._epic_path,
+        }
 
     def _brief(self) -> dict[str, object]:
         """What the owner reads before it writes a word: the story, the book and the diff's shape."""
@@ -193,27 +225,29 @@ class Docs(Workflow):
 
     def check(
         self,
-        author: DocumentationResult,
+        author: DocumentationResult | SpecResult,
         obligations: tuple[str, ...] = (),
         authored_nodes: tuple[str, ...] = (),
         laps: int = 0,
         blocks: int = 0,
     ) -> Continue | Await | Done:
         """Check the book against the diff, and send what failed back to the owner."""
-        classification = self.output(classify_documentation_context)
-        mode = self._context_mode(classification)
-        if mode == "error":
-            raise WorkflowFailed(
-                f"the documentation context could not be read: {classification.notes}"
-            )
+        mode: Literal["local", "semantic", "error"] = "semantic"
         build_status: Literal["", "passed", "invalid"] = ""
         validate_status: Literal["", "passed", "invalid"] = ""
-        if mode == "local":
-            build = self._okf_packet(classification)
-            build_status = build.status
-            validate_status = self.call(
-                validate_okf_context, self.ctx.spec_dir, build.status
-            ).status
+        if self.phase != "spec":
+            classification = self.output(classify_documentation_context)
+            mode = self._context_mode(classification)
+            if mode == "error":
+                raise WorkflowFailed(
+                    f"the documentation context could not be read: {classification.notes}"
+                )
+            if mode == "local":
+                build = self._okf_packet(classification)
+                build_status = build.status
+                validate_status = self.call(
+                    validate_okf_context, self.ctx.spec_dir, build.status
+                ).status
         gate = self.call(
             verify_story_documentation,
             self.ctx.spec_dir,

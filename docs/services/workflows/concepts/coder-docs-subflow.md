@@ -9,12 +9,14 @@ The `coder.docs` package is the documentation subflow boundary. It exports only 
 is the workflow machine that folds one completed story into the as-built OKF book. The complete
 state and result contract is documented in the [Coder documentation flow](../flows/coder-docs.md).
 
-The package owns the flow implementation and its three prompt templates. It does not duplicate
+The package owns the flow implementation and its two prompt templates, `specify-story` for the
+spec phase and `document-story` for the build phase. It does not duplicate
 the documentation detector, OKF packet builder, schema models, or operator-resolution helpers:
 those are shared contracts used by other Coder lanes and are reached through
 `workhorse_workflows.coder.shared`.
 
-`Docs` may be entered by the Coder main graph or directly as `workhorse-coder run docs`. A handoff
+`Docs` may be entered by the Coder main graph, in its spec phase before dev and its build phase
+after it, or directly as `workhorse-coder run docs`. A handoff
 returns the subflow's `Done` value to the caller; prompt paths remain rooted at the `coder`
 package, while this package contributes the `docs/prompts/` segment.
 

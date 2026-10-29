@@ -16,8 +16,8 @@ in the brief that opened it. A later phase on the same conversation names that b
 instead of repeating them. The review's own procedures, the reviewer's brief and the answer
 file's format, sit in files beside the review brief, and the brief names their paths.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._turn` @fe195e40d574
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._power` @fe195e40d574
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._turn` @cc98a367fdb8
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._power` @da67771077ca
 - code: `workflows/src/workhorse_workflows/coder/shared/counsel.py::__all__` @b3beecb6b7d6
 - rule: the plan, build and review phases run in that order, each as its own turn, on the story's one conversation
 - rule: the plan turn runs on the `max` power tier, because every design call the story needs is made there
@@ -65,7 +65,7 @@ file's format, sit in files beside the review brief, and the brief names their p
 - verify: json_path(path="$.path", matches=".+/counsel/[^/]+\\.json$")
 - returns: `<state_dir>/counsel/<work_id>.json`, with each `/` in the id written as `__`
 - verify: json_path(path="$.path", matches="__")
-- code: `workflows/src/workhorse_workflows/coder/shared/counsel.py::counsel_path` @b3beecb6b7d6
+- code: `workflows/src/workhorse_workflows/coder/shared/counsel.py::counsel_path` @bc5a1438f75c
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_decline_with_no_consult_is_reopened_and_named_when_an_advisor_is_offered`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_decline_with_a_consult_on_file_stays_declined`
 
@@ -75,7 +75,7 @@ file's format, sit in files beside the review brief, and the brief names their p
 - verify: json_path(path="$.consults.review-1\\.1.question", equals="example question")
 - does: writes nothing when the review reported no consult
 - verify: count(subject="counsel files written for an empty list", equals=0)
-- code: `workflows/src/workhorse_workflows/coder/shared/counsel.py::record_consults` @b3beecb6b7d6
+- code: `workflows/src/workhorse_workflows/coder/shared/counsel.py::record_consults` @36860325fdf4
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_decline_with_no_consult_is_reopened_and_named_when_an_advisor_is_offered`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_decline_with_a_consult_on_file_stays_declined`
 
@@ -85,6 +85,6 @@ file's format, sit in files beside the review brief, and the brief names their p
 - verify: count(subject="consulted finding ids", equals=1)
 - returns: the set of finding ids, empty when the file is missing or unreadable
 - verify: json_path(path="$.consulted", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/counsel.py::consulted` @b3beecb6b7d6
+- code: `workflows/src/workhorse_workflows/coder/shared/counsel.py::consulted` @083f43d21c45
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_decline_with_no_consult_is_reopened_and_named_when_an_advisor_is_offered`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_decline_with_a_consult_on_file_stays_declined`

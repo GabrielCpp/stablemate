@@ -14,6 +14,30 @@ below.
 
 Your session is resumable. A later turn on this story continues this conversation with the
 workflow's report or an operator's answer.
+{% if spec_nodes %}
+
+## The book already specifies this story
+
+Before dev started, the spec pass wrote the story's behaviour model to
+`{{ workhorse_var('spec_dir') }}/model.md` and folded it into these nodes:
+
+{% for node in workhorse_var('spec_nodes') %}
+- `{{ node }}`
+{% endfor %}
+
+Dev built to them. The prose, the bullets and the `verify:` checks are already there, so this
+turn grounds them and reconciles them with the build. It does not author them again:
+
+- Add the `code:` and `tests:` bullets the grounding worklist owes, and stamp every node whose
+  cited file changed.
+- Correct a name the build chose differently, such as a locator, a field or a path, when the
+  behaviour is the same.
+- A behaviour the build adds that no node describes gets its node and its checks, as for any
+  story.
+- A `does:`, `raises:` or `states:` bullet the build contradicts is a defect in the build, not
+  in the book. Leave the bullet and its check as they are, and name it in `notes`. QA's scored
+  run sends it back to dev.
+{% endif %}
 
 Load the skill and follow it: {{ skill_command("ostler-okf") }}
 It carries the full loop (scaffold, author, fmt, doctor) and links the written model. That model

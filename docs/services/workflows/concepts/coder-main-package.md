@@ -6,7 +6,7 @@ title: Coder main package
 # Coder main package
 
 The `main` package is the entry-point flow's composition boundary. It sequences five specialist
-sub-flows (dev, docs, qa, fix and fix-ci) and retains the queue and transition
+sub-flows (dev, docs, qa, fix and fix-ci), entering docs both before dev and after it, and retains the queue and transition
 decisions here. It is the default flow entered by a bare `workhorse-coder run`, and works the
 launch's worklist item by item in either delivery mode, `pr` or `commit`.
 
@@ -28,7 +28,7 @@ sits at `coder/main/`, housing the machine (`flow.py`) and the nodes only this g
 every flow's prompt paths and `.agents/flavors/coder/` resolve correctly.
 
 - code: `workflows/src/workhorse_workflows/coder/main/__init__.py` @7ace1e5304ae
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder` @b2f1b57d20a5
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder` @a73e14cb41a8
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 - detail: [coder workflow composition root](coder-workflow-composition-root.md)
 

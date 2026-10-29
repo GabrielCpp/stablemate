@@ -130,6 +130,7 @@ class Dev(Workflow):
     note: str = ""
     preexisting: tuple[str, ...] = ()
     worklist_dir: str = ""
+    spec_nodes: tuple[str, ...] = ()
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
@@ -182,6 +183,7 @@ class Dev(Workflow):
             "story_services": self.ctx.story_services,
             "spec_dir": self.ctx.spec_dir,
             "branch": self.branch,
+            "spec_nodes": list(self.spec_nodes),
             "decisions_dir": str(decisions_dir(self.repo_dir)),
         }
 

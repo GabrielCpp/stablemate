@@ -5,12 +5,14 @@ title: Coder documentation flow
 ---
 # Coder documentation flow
 
-The `Docs` machine folds one completed story into the current OKF book. It resolves the story
-and documentation context, distinguishes an unmanaged book from an unusable one, and builds the
-grounding worklist from the code diff. One owner turn then writes the book, has its subagents
-review it and fixes what they find. The flow gates the result against direct grounding and sends
-a failed gate back to the owner as a report. It is entered by the Coder main flow or directly
-with `workhorse-coder run docs`.
+The `Docs` machine writes one story into the current OKF book, in one of two phases. The `spec`
+phase runs before dev: it writes the story's behaviour model and the book delta it implies, with
+no code to read. The `build` phase, the default, runs after dev: it folds the finished story into
+the book. The `build` phase resolves the story and documentation context, distinguishes an
+unmanaged book from an unusable one, and builds the grounding worklist from the code diff. In
+either phase one owner turn writes the book, has its subagents review it and fixes what they
+find. The flow gates the result and sends a failed gate back to the owner as a report. It is
+entered by the Coder main flow or directly with `workhorse-coder run docs`.
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-coder.dot")
@@ -23,6 +25,7 @@ with `workhorse-coder run docs`.
 - detail: [coder main flow](coder-main.md)
 - detail: [coder docs subflow package](../concepts/coder-docs-subflow.md)
 - detail: [coder shared documentation helpers](../concepts/coder-shared-documentation.md)
+- detail: [coder lane order](../concepts/coder-lane-order.md)
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_inside_the_docs_worktree_take_the_local_route`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_outside_the_docs_worktree_take_the_semantic_route`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_failed_check_goes_back_to_the_owner_as_one_report`
@@ -30,13 +33,15 @@ with `workhorse-coder run docs`.
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_block_is_put_to_the_author_before_anyone_is_asked`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_an_epic_scoped_answer_blocks_the_story_with_the_answer_as_the_finding`
+- tests: `workflows/tests/coder/docs/test_flow.py::test_the_spec_pass_writes_the_book_before_any_diff_exists`
+- tests: `workflows/tests/coder/test_session_chains.py::test_the_spec_pass_has_its_own_owner_conversation`
 
 The Python entry is `Docs` in `workflows/src/workhorse_workflows/coder/docs/flow.py`. The class
 declares the labelled checkpoints and the owner, check, resolve and read-operator turns the flow
 orchestrates.
 
-`story`, `epic`, `target_env`, `preexisting`, and `operator_mode`
-are checkpointed inputs. The `workspace` name is ambient and follows the run; `target_env` defaults to `local`, and `operator_mode` defaults to `auto`.
+`story`, `epic`, `target_env`, `preexisting`, `operator_mode`, `phase` and `spec_nodes`
+are checkpointed inputs. The `workspace` name is ambient and follows the run; `target_env` defaults to `local`, `operator_mode` defaults to `auto`, and `phase` defaults to `build`. `spec_nodes` carries the nodes the spec pass wrote, and is empty when it wrote none.
 
 The stages, in order: [setup](#setup), [context-classification](#context-classification), [own-the-book](#own-the-book), [grounding-gate](#grounding-gate), [operator-block](#operator-block).
 
@@ -52,7 +57,8 @@ It ends in one of these ways: a passing grounding gate returns a passed result c
 The flow resolves workspace directories and prepares the requested story. An empty or
 unresolvable story path raises a workflow failure before OKF detection or an agent turn. Every
 entry resets the story's documentation conversation so a resume or post-fix pass cannot reuse a
-conversation describing an older book. Every terminal return resets it too.
+conversation describing an older book. Every terminal return resets it too. The spec phase keeps
+its own conversation, apart from the build phase's, because the two passes see different books.
 
 `Docs.labels` exposes the resolved story slug as the `work_id` activity label when one exists.
 `Docs.state_labels` adds the lap, block and number counters carried in the state.
@@ -61,7 +67,11 @@ conversation describing an older book. Every terminal return resets it too.
 
 - kind: prepare
 
-The flow first ensures the OKF book. A repository with no configured OKF graph and no services
+In the spec phase the flow ensures the OKF book and goes straight to the owner turn. There is no
+diff yet, so it classifies no context, resolves no story sources and builds no grounding
+worklist.
+
+In the build phase the flow first ensures the OKF book. A repository with no configured OKF graph and no services
 tree gets its book root created; an unusable graph is a workflow failure. It then classifies the
 documentation context. A readable local source root uses the local route, where an OKF context
 packet maps changed production units to graph references and is validated before the gate.
@@ -79,10 +89,13 @@ available.
 - kind: drive
 - detail: [coder document-story prompt](../formats/coder-document-story-prompt.md)
 
-One high-power `document-story` turn runs in the story's documentation conversation with no
-timeout. It receives the story, epic, services root, implementation plan summary, context mode,
-the grounding worklist, the last gate report and the last operator answer. The turn writes the
-book and has its subagents review and repair it. It returns `documented`, `not_required`, or a
+One high-power owner turn runs in the story's documentation conversation with no timeout. The
+build phase runs `document-story`. It receives the story, epic, services root, implementation
+plan summary, context mode, the grounding worklist, the nodes the spec pass wrote, the last gate
+report and the last operator answer. The spec phase runs `specify-story`. It receives the story,
+the epic, the docs and services roots, the last gate report and the last operator answer, and
+replies with a `SpecResult`. In both phases the turn writes the book and has its subagents review
+and repair it. It returns `documented`, `not_required`, or a
 blocked result. `not_required` still proceeds to the grounding gate. It means the story changes
 nothing represented by the book, not that the gate is skipped. A blocked result goes to the
 operator-block step.
@@ -93,6 +106,10 @@ A repair lap can therefore return an empty node list without discarding nodes au
 ### grounding-gate
 
 - kind: verify
+
+In the spec phase the gate is the semantic route with no packet: `verify_story_documentation`
+checks the author's status and that `doctor` reports no error on the nodes the owner wrote, and
+nothing is grounded against code.
 
 For local context the flow rebuilds the OKF packet against the post-author worktree, validates
 the packet, and asks `verify_story_documentation` to check every changed production unit directly
@@ -116,7 +133,8 @@ story. It ends the flow with a blocked result carrying the answer as its notes.
 
 The module's private helpers keep state transitions deterministic without becoming workflow
 states. `_brief` renders the story, epic, context, services root and plan summary shared by every
-owner turn. `_context_mode` treats a manifest-resolved external source repository as locally
+build-phase owner turn. `_spec_brief` renders the story, epic and book roots for the spec phase,
+which has no plan summary or classified context to read. `_context_mode` treats a manifest-resolved external source repository as locally
 verifiable when the resolved story sources are present, and otherwise preserves the classifier's
 local or semantic mode. `_epic_path` derives the parent epic path through configured docs-root
 resolution. The module exports only `Docs`.

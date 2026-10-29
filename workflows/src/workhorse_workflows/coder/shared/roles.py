@@ -28,6 +28,7 @@ ROLES: dict[str, str] = {
     "dev-review": "review one story, triage and fix its findings, and repair failed checks, through subagents",
     "qa-story": "own the story's QA: plan, run, audit and repair it, through subagents",
     "fix-item": "own one drained backlog item: fix it and QA it, through subagents",
+    "specify-story": "write the story's behaviour model and the book delta it implies, before any code",
     "document-story": "fold the story into the as-built book: write, review and fix it, through subagents",
     "fix-ci": "repair a red CI run",
     "replan-epic": "replan an epic whose stories no longer fit",

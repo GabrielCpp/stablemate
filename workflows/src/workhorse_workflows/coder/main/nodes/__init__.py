@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from workhorse_workflows.coder.main.nodes.pr import open_run_prs
+from workhorse_workflows.coder.main.nodes.spec import record_spec_nodes
 
 __all__ = [
     "open_run_prs",
+    "record_spec_nodes",
 ]

@@ -93,6 +93,7 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
     monkeypatch.setattr(Qa, "_dirs", lambda _: [])
     monkeypatch.setattr(docs_flow, "workspace_dirs", lambda _: [])
     monkeypatch.setattr(Docs, "_brief", lambda *a, **k: {})
+    monkeypatch.setattr(Docs, "_spec_brief", lambda *a, **k: {})
     monkeypatch.setattr(Qa, "_owner_args", lambda *a, **k: {})
     monkeypatch.setattr(
         qa_flow, "code_changed", lambda _log, **_k: SimpleNamespace(changed=False)
@@ -125,6 +126,16 @@ def test_every_docs_turn_continues_the_story_s_own_owner_conversation(spy: _Spy)
     assert turn["power"] == "high"
     assert turn["profile"] == owner_profile("docs")
     assert spy.resets == []
+
+
+def test_the_spec_pass_has_its_own_owner_conversation(spy: _Spy) -> None:
+    """The spec pass and the build pass see different books, so they never share a conversation."""
+    flow = Docs(story=STORY, phase="spec")
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="")
+    with pytest.raises(_Reached):
+        flow.work()
+
+    assert spy.turns[0]["session"] == f"docs-spec:{STORY}"
 
 
 def test_entering_the_docs_flow_starts_a_fresh_owner_conversation(spy: _Spy) -> None:

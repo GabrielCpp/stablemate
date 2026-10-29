@@ -49,6 +49,35 @@ class DocumentationResult(CoderResult):
     )
 
 
+@dry_run(status="documented")
+class SpecResult(CoderResult):
+    """`docs/prompts/specify-story.md` — the story's behaviour model and the book delta it implies, before any code."""
+
+    status: Literal["documented", "not_required", "blocked"] = Field(
+        description="`documented` when model.md is written, every decided cell is a bullet "
+        "with a `verify:` in the book, and `doctor` reports no error on the touched nodes. "
+        "`not_required` when the story changes no observable behaviour, with the reason in "
+        "`notes`. `blocked` when a cell needs a product decision that is not yours, named in "
+        "`notes`.",
+    )
+    nodes: list[str] = Field(
+        default=[],
+        description="Every OKF node you edited, by exact graph identity with its section "
+        "anchor preserved.",
+    )
+    notes: str = Field(
+        default="",
+        description="What you decided and why, in one or two sentences, or the reason the "
+        "story needs no book change, or the decision that blocks you.",
+    )
+
+
+class SpecNodes(CoderResult):
+    """`record_spec_nodes` — the nodes the spec pass wrote, kept for the lanes after it."""
+
+    nodes: list[str] = []
+
+
 class DocumentationGate(CoderResult):
     """`verify-story-documentation.py` — the fail-closed conformance and grounding gate."""
 
@@ -84,4 +113,6 @@ __all__ = [
     "DocumentationGate",
     "DocumentationResult",
     "OkfDetection",
+    "SpecNodes",
+    "SpecResult",
 ]

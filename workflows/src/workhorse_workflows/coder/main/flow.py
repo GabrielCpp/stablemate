@@ -32,6 +32,7 @@ from workhorse_workflows.coder.shared.judge import (
 from workhorse_workflows.coder.shared.schemas.judge import Ruling
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from workhorse_workflows.coder.main.nodes.pr import open_run_prs
+from workhorse_workflows.coder.main.nodes.spec import record_spec_nodes
 from workhorse_workflows.coder.shared.queue import (
     ALL_EPICS,
     begin_run,
@@ -121,7 +122,15 @@ class Coder(Workflow):
         self.call(snapshot_worktree_state)
         story = self.call(prepare_story, work.story_of(item), self._epic)
         self.logger.info("preparing %s%s", item.id, self._progress(), extra={"activity": True})
-        return Continue(story, self.dev)
+        return Continue(story, self.specify)
+
+    def specify(self) -> Continue:
+        """Write the story's behaviour model and book delta before any code, or replan when the operator scoped its block to the epic."""
+        result = self._document(phase="spec")
+        if not _documented(result):
+            return Continue(result, self.replan, notes=result.notes)
+        self.call(record_spec_nodes, list(result.authored_nodes))
+        return Continue(result, self.dev)
 
     def dev(self, note: str = "") -> Continue:
         """Hand the item to its dev owner, which builds, reviews and fixes it, and answers every finding."""
@@ -140,6 +149,7 @@ class Coder(Workflow):
             note=note,
             preexisting=self._preexisting(),
             worklist_dir=str(self.run_dir),
+            spec_nodes=self._spec_nodes(),
         )
         if result.status == "replan":
             return Continue(result, self.replan, notes=result.operator_notes)
@@ -343,8 +353,8 @@ class Coder(Workflow):
         self.call(teardown_stack)
         return Done(shipped)
 
-    def _document(self) -> DocsResult:
-        """The `Docs` handoff, identical at all three points the story reaches it."""
+    def _document(self, phase: Literal["spec", "build"] = "build") -> DocsResult:
+        """The `Docs` handoff: the spec pass before dev, the build pass at the two points after it."""
         return self.handoff(
             Docs,
             story=self._story.story_id,
@@ -352,7 +362,16 @@ class Coder(Workflow):
             target_env=self.target_env,
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
+            phase=phase,
+            spec_nodes=self._spec_nodes() if phase == "build" else (),
         )
+
+    def _spec_nodes(self) -> tuple[str, ...]:
+        """The nodes the spec pass wrote for this story, or nothing when it never ran."""
+        try:
+            return tuple(self.output(record_spec_nodes).nodes)
+        except NodeNotRunError:
+            return ()
 
     def _judge(self) -> Judge:
         """The one judge this flow asks: the word rule first, then one reading of what it left."""

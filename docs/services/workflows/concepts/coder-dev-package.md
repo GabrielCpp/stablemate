@@ -23,9 +23,9 @@ and QA reads its obligations from that merge. The story's opening brief says so,
 instruction that the book changes with the code does not send the plan, build and review turns
 into the same merge the docs phase then does again.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @57566dc621c3
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @57566dc621c3
-- code: `workflows/src/workhorse_workflows/coder/dev/prompts/_dev-scope.md` @1fae54c932b0
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @761bf4ca906d
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @6ba2fa759f9d
+- code: `workflows/src/workhorse_workflows/coder/dev/prompts/_dev-scope.md` @a8a851e0a839
 - rule: the plan, build and review turns write, stamp and doctor nothing under the book's services root, because the docs phase owns the story's book merge
 - rule: a copy the story adds of code the tree already has is the story's to extract to one owner, and a copy that predates the story is an `extract-module` follow-up
 - rule: a copy across two builds is extracted to a library the workspace lists without asking when a standing decision covers it, or when the workspace exists and every build and deploy stays as it was, because nothing about how the code ships changes
@@ -52,7 +52,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="plan structure fields", equals=5)
 - returns: the services, implementation order, shared packages, verification setup and fixtures
 - verify: json_path(path="$.services", equals="example services")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::plan_arg` @e53511844b8a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::plan_arg` @62dc632678be
 
 ### report_text
 - sig: `report_text(report: FailureReport) -> str`
@@ -64,7 +64,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="fenced report outputs", equals=1)
 - returns: a markdown string starting with `Gate: <source>`
 - verify: json_path(path="$.report", matches="^Gate: ")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::report_text` @e53511844b8a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::report_text` @1c940c41037f
 
 ### findings_text
 - sig: `findings_text(items: Sequence[wl.WorkItem]) -> str`
@@ -74,7 +74,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="targetless finding sections", equals=1)
 - returns: the sections joined by blank lines
 - verify: json_path(path="$.findings", equals="example findings")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::findings_text` @e53511844b8a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::findings_text` @e1f226e6a6ad
 
 ### rejected_text
 - sig: `rejected_text(rejected: dict[str, str], errors: Sequence[str]) -> str`
@@ -84,7 +84,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: count(subject="settlement error lines", equals=1)
 - returns: one bullet per line
 - verify: json_path(path="$.rejected", equals="example rejected")
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::rejected_text` @e53511844b8a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::rejected_text` @90de46c8339c
 
 ### unadvised_text
 - sig: `unadvised_text(departures: Sequence[Departure]) -> str`
@@ -92,7 +92,7 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: json_path(path="$.report", matches="^Departures: ")
 - returns: a `Departures:` line asking for the advisor's answer, then one bullet per departure's change
 - verify: count(subject="unadvised departure lines", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::unadvised_text` @e53511844b8a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::unadvised_text` @c44bcae8c049
 
 ### unconsulted_text
 - sig: `unconsulted_text(ids: Sequence[str]) -> str`
@@ -100,4 +100,4 @@ flow runs therefore see the same artifacts the production flow does.
 - verify: json_path(path="$.report", matches="^Consults: ")
 - returns: a `Consults:` sentence naming each finding id and asking for the advisor's answer before the decline stands
 - verify: count(subject="unconsulted decline reports", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/dev/report.py::unconsulted_text` @e53511844b8a
+- code: `workflows/src/workhorse_workflows/coder/dev/report.py::unconsulted_text` @573c1b8fe356

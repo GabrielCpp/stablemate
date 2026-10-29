@@ -31,6 +31,7 @@ from workhorse_workflows.coder.shared.docs import (
     _doctor_errors_note,
     classify_documentation_context,
     detect_okf_docs,
+    documentation_obligations,
     verify_story_documentation,
 )
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -231,6 +232,13 @@ class _Agent:
             "status": self.author_status,
             "nodes": list(self.author_nodes) if named else [],
             "notes": f"documented on pass {nth}",
+        }
+
+    def _specify_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        return {
+            "status": "documented",
+            "nodes": list(self.author_nodes),
+            "notes": f"specified on pass {nth}",
         }
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
@@ -989,6 +997,34 @@ def test_work_already_dirty_when_the_story_started_is_not_this_story_s_to_ground
 
     (docs / orphan).write_text("package api\n\nfunc Orphan() { println(1) }\n", encoding="utf-8")
     assert f"{orphan}::Orphan" in _gate((stale,)).notes
+
+
+def test_the_spec_pass_writes_the_book_before_any_diff_exists(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Phase `spec` takes the semantic route: no diff is classified, no obligations are built, doctor decides."""
+    agent = _Agent()
+    run_env = env()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC, phase="spec"), run_env, agent)
+
+    assert result.status == "passed", result
+    assert result.authored_nodes == ["docs/services/widget.md"], result
+    assert agent.counts() == {"specify-story": 1}
+    for node in (
+        classify_documentation_context,
+        documentation_obligations,
+        build_okf_context,
+        validate_okf_context,
+    ):
+        assert not (run_env.writer.run_dir / node.__name__).exists(), node.__name__
+    assert _output(run_env, verify_story_documentation)["status"] == "passed"
+    brief = agent.args_for("specify-story")[0]
+    assert brief["epic_path"].endswith(f"{EPIC}/epic.md"), brief
+    assert "plan_services" not in brief and "context_mode" not in brief, brief
 
 
 def test_not_required_is_a_real_answer_and_still_goes_through_the_gate(

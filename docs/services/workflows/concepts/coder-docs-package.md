@@ -5,11 +5,14 @@ title: Coder docs package
 ---
 # Coder docs package
 
-The `docs` machine folds one completed story into the current OKF book. It first distinguishes an
+The `docs` machine writes one story into the current OKF book, either before dev (the `spec`
+phase, from the story's behaviour model, with no diff to read) or after it (the `build` phase).
+In the build phase it first distinguishes an
 unmanaged book from an unusable one, then, only for a usable book, resolves the story and
 documentation context, optionally grounds the code diff locally, asks one owner turn to write,
 review and repair the graph, and gates the result against direct grounding. It is a sub-flow
-entered by the Coder main flow after implementation is complete, and can also be run directly with
+entered by the Coder main flow twice per story: first in the spec phase before dev, then in the
+build phase after implementation is complete. It can also be run directly with
 `workhorse-coder run docs`.
 
 The machine creates the OKF book root when the repository has none, and fails before documentation
@@ -17,8 +20,8 @@ when the book is unusable. For a usable
 book, a failed grounding gate goes back to the owner as a report for another repair lap, and a
 spent lap budget escalates to the resolver and then to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @8cb66dc081c9
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @b746c3d5c0fa
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @09559fc3bd97
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @ea9cbe7a4c39
 - tests: `workflows/tests/coder/docs/test_flow.py`
 - detail: [coder docs subflow](coder-docs-subflow.md)
 

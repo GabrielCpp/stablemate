@@ -37,6 +37,8 @@ from workhorse_workflows.coder.shared.schemas.docs import (
     DocumentationGate,
     DocumentationResult,
     OkfDetection,
+    SpecNodes,
+    SpecResult,
 )
 from workhorse_workflows.coder.shared.schemas.genesis import (
     AgentsYml,
@@ -99,6 +101,8 @@ __all__ = [
     "DocsResult",
     "DocumentationGate",
     "DocumentationResult",
+    "SpecNodes",
+    "SpecResult",
     "EpicPruned",
     "LaunchEntry",
     "LaunchSet",

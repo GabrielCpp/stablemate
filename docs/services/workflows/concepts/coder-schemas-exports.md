@@ -12,7 +12,7 @@ documentation, pull request operations, QA planning and execution, code review, 
 tracking. The initializer imports from each subject module and does not add another registration
 target; the model implementations remain documented at their declaring modules.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/__init__.py::__all__` @305c9454f569
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/__init__.py::__all__` @3714c9e7f25e
 - detail: [Coder workflow package initializer](coder-workflow-package-initializer.md)
 
 ## Fields

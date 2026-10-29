@@ -8,11 +8,12 @@ title: Coder documentation schemas
 - The documentation lane's typed values cross deterministic nodes, agent turns, and checkpointed
   state. Agent replies use closed status vocabularies where an omitted decision must be invalid;
   Python-produced results use pessimistic defaults so an absent result cannot imply success.
-- One owner turn replies with a `DocumentationResult`. The deterministic gate answers with a
+- One owner turn replies with a `DocumentationResult`, or with a `SpecResult` in the spec phase.
+  `SpecNodes` records the nodes a spec pass wrote for the lanes after it. The deterministic gate answers with a
   `DocumentationGate`, and the flow ends with a `DocsResult`.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @3fdb3168c75e
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @3fdb3168c75e
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @e0cd3e23e768
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @e0cd3e23e768
 - detail: [Coder story pipeline](story-pipeline.md)
 - detail: [Coder documentation flow](../flows/coder-docs.md)
 
@@ -52,6 +53,24 @@ title: Coder documentation schemas
 - returns: status is required and has no default
 - verify: json_path(path="exception.type", equals="ValidationError")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationResult` @e238e9aee6d7
+
+### method: SpecResult
+- sig: `SpecResult(status: Literal["documented", "not_required", "blocked"], nodes: list[str] = [], notes: str = "") -> SpecResult`
+- does: carries the spec pass's decision, the nodes it edited, and its explanation
+- does: reserves `documented` for a pass that wrote the behaviour model, turned every decided cell into a bullet with a `verify:`, and left `doctor` clean on the touched nodes
+- verify: json_path(path="$.status", matches="^(documented|not_required|blocked)$")
+- does: reserves `not_required` for a story that changes no observable behaviour, with the reason in the notes
+- does: reserves `blocked` for a cell that needs a product decision the pass cannot make, named in the notes
+- returns: status is required and has no default
+- verify: json_path(path="exception.type", equals="ValidationError")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::SpecResult` @8ddbbee5688b
+
+### method: SpecNodes
+- sig: `SpecNodes(nodes: list[str] = []) -> SpecNodes`
+- does: carries the node identities the spec pass wrote, so dev and the build pass can read them back
+- returns: an empty list by default
+- verify: json_path(path="$.nodes", equals="[]")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::SpecNodes` @12cd672d8497
 
 ### method: DocumentationGate
 - sig: `DocumentationGate(status: Literal["passed", "invalid"] = "invalid", notes: str = "", changed_code_count: int = 0, doctor_error_count: int = 0, failures: list[str] = []) -> DocumentationGate`

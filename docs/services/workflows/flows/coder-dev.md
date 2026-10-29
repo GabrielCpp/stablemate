@@ -73,7 +73,9 @@ The flow forgets which conversation each phase was briefed on, so each phase ope
 brief. A story QA has sent back skips this step and the build, and starts at the review. One
 `max`-power plan turn runs in the story's conversation with no timeout. It receives the story
 identity, the spec directory, the worklist path, the path its brief is kept at, a resume note read
-from disk, the declared services, and the last operator answer. It writes and commits the plan
+from disk, the declared services, the book nodes the spec pass wrote before dev, and the last operator
+answer. The spec nodes are the story's spec: dev builds to their `verify:` checks and does not edit
+them. It writes and commits the plan
 files and no product code. The flow writes the rendered brief to disk before the turn, and records
 the conversation id the turn ran on. A result of `blocked` goes to the operator-block step.
 Otherwise the build step runs.
@@ -138,7 +140,7 @@ Before the checks run again on a later lap, a self-check reruns the scenarios th
 run did not pass against a leased stack copy, so a regression the owner turn introduced surfaces
 before QA spends a turn on it.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/failed.py::last_failed_scenarios` @0c28ea7dc660
+- code: `workflows/src/workhorse_workflows/coder/shared/failed.py::last_failed_scenarios` @775b9d95ab1f
 
 The checks also walk the story's acceptance criteria against the plan's own `## Acceptance Walk`
 section, naming any criterion the plan's walk does not cover; a follow-up, which carries no
@@ -146,9 +148,9 @@ acceptance criteria of its own, skips this check. When the plan holds more than 
 that title, the walk reads the shallowest one, so a follow-up section's own walk never stands in
 for the plan's.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::acceptance_walk` @c36ec782d6b4
-- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::criteria_count` @c36ec782d6b4
-- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::walked` @c36ec782d6b4
+- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::acceptance_walk` @d064aba21ca2
+- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::criteria_count` @986ef8cf0a20
+- code: `workflows/src/workhorse_workflows/coder/shared/walk.py::walked` @09af853a51d6
 
 ### operator-block
 

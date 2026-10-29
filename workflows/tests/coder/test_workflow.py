@@ -180,6 +180,8 @@ class _StubFlow(Workflow):
     follow_up_reason: str = ""
     note: str = ""
     worklist_dir: str = ""
+    phase: str = ""
+    spec_nodes: tuple[str, ...] = ()
     rerun: bool = False
     scope: tuple[str, ...] = ()
 
@@ -373,7 +375,7 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     result = drive_flow(Coder(), run_env, _Agent())
 
     assert result.status == "skipped", result
-    assert sub.calls == ["Dev", "Docs", "Qa", "Fix"], sub.calls
+    assert sub.calls == ["Docs", "Dev", "Docs", "Qa", "Fix"], sub.calls
     assert _output(run_env, check_repos_clean)["clean"] is True
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
@@ -413,7 +415,7 @@ def test_a_qa_mutation_requires_final_documentation_before_commit(
 
     drive_flow(Coder(), env(), _Agent())
 
-    assert sub.calls == ["Dev", "Docs", "Qa", "Fix", "Docs"], sub.calls
+    assert sub.calls == ["Docs", "Dev", "Docs", "Qa", "Fix", "Docs"], sub.calls
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
 
@@ -530,7 +532,7 @@ def test_the_run_branch_is_named_for_what_the_run_was_launched_on(
     assert subprocess.run(
         ["git", "branch", "--list", branch], cwd=repo, check=True, capture_output=True, text=True
     ).stdout.strip()
-    assert sub.calls == ["Dev", "Docs", "Qa", "Fix"], sub.calls
+    assert sub.calls == ["Docs", "Dev", "Docs", "Qa", "Fix"], sub.calls
 
 
 def test_a_commit_run_stays_on_the_current_branch_and_names_each_story(
@@ -893,6 +895,41 @@ def test_a_finding_still_open_at_commit_is_owned_by_a_follow_up_filed_for_its_ca
     assert work.open_findings(held, "STORY-1") == []
 
 
+def test_the_story_is_specified_before_dev_and_a_refix_does_not_specify_again(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The spec pass runs once, before the first dev turn, and hands its nodes to dev and the build pass."""
+    repo = epic()
+
+    class _Refixing(_Sub):
+        def _docs(self, child: _StubFlow) -> DocsResult:
+            nodes = ["services/app/server.md#contract"] if child.phase == "spec" else []
+            return DocsResult(status="passed", authored_nodes=nodes)
+
+        def _qa(self, child: _StubFlow) -> QaFlowResult:
+            nth = self.calls.count("Qa")
+            finding = QaFinding(id="qa-1", target="acme/src/links.py:12", issue="bad url")
+            return QaFlowResult(
+                status="refix" if nth == 1 else "passed",
+                qa=QaResult(status="failed" if nth == 1 else "passed"),
+                findings=[finding] if nth == 1 else [],
+                docs_recheck_required=False,
+            )
+
+    sub = _Refixing(repo).install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    assert sub.calls[:5] == ["Docs", "Dev", "Docs", "Qa", "Dev"], sub.calls
+    assert [c.phase for c in sub.calls_to("Docs")] == ["spec", "build", "build"]
+    nodes = ("services/app/server.md#contract",)
+    assert [c.spec_nodes for c in sub.calls_to("Dev")] == [nodes, nodes]
+    assert [c.spec_nodes for c in sub.calls_to("Docs")] == [(), nodes, nodes]
+
+
 def test_an_item_with_no_open_finding_commits_without_a_second_dev_turn(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
@@ -933,7 +970,7 @@ def test_a_docs_lane_that_does_not_document_the_story_replans_its_epic(
     assert agent.calls == ["replan-epic"], agent.calls
     assert agent.replans == [BLOCK_REASON], agent.replans
     documented = [c.story for c in sub.calls_to("Docs")]
-    assert documented.count("STORY-1") == 2, documented
+    assert documented.count("STORY-1") == 3, documented
     assert sub.calls.count("Qa") == 2, sub.calls
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 
@@ -951,7 +988,7 @@ def test_a_required_final_docs_block_replans_in_either_mode(
 
     class _BlockingFinal(_Sub):
         def _docs(self, child: _StubFlow) -> DocsResult:
-            if self.calls.count("Docs") == 2:
+            if self.calls.count("Docs") == 3:
                 return DocsResult(status="blocked", notes=BLOCK_REASON)
             return DocsResult(status="passed", notes="")
 
@@ -962,7 +999,7 @@ def test_a_required_final_docs_block_replans_in_either_mode(
     drive_flow(flow, env(), agent)
 
     assert agent.replans == [BLOCK_REASON], agent.replans
-    assert sub.calls.count("Docs") == 4, sub.calls
+    assert sub.calls.count("Docs") == 6, sub.calls
     assert sub.calls.count("Qa") == 2, sub.calls
     assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
 

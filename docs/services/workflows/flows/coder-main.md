@@ -7,7 +7,7 @@ title: Coder main flow
 
 - The default [Coder composition root](../concepts/coder-workflow-composition-root.md) runs this
   machine when no specialist flow is selected. It hands implementation, documentation, QA,
-  backlog fixing and CI repair to the specialist flows while retaining the worklist and
+  backlog fixing and CI repair to the specialist flows, writing the book before dev builds, while retaining the worklist and
   transition decisions here. Its agent turns use the [coder conversation lifecycle](../concepts/coder-conversation.md),
   [prompt role resolution](../concepts/coder-prompt-role-resolution.md), and [rendered schema contracts](../concepts/coder-render-schema-contracts.md).
 
@@ -33,6 +33,8 @@ register against the one blueprint every Coder flow shares.
 - tests: `workflows/tests/coder/test_workflow.py::test_a_finished_epic_is_pruned_from_the_queue_in_its_own_commit`
 - tests: `workflows/tests/coder/test_workflow.py::test_an_opened_pr_goes_to_the_ship_lane_for_ci_and_stays_open`
 - tests: `workflows/tests/coder/test_workflow.py::test_a_required_final_docs_block_replans_in_either_mode`
+- tests: `workflows/tests/coder/test_workflow.py::test_the_story_is_specified_before_dev_and_a_refix_does_not_specify_again`
+- detail: [coder lane order](../concepts/coder-lane-order.md)
 
 The stages, in order: [initialize](#initialize), [route](#route), [story-pipeline](#story-pipeline), [agent-turn-contract](#agent-turn-contract), [backlog-drain](#backlog-drain), [story-commit](#story-commit), [delivery](#delivery).
 
@@ -61,31 +63,37 @@ follow-up off the worklist. The worklist decides how many items the run works be
 run is not one story, and not one pull request per story. An empty worklist ends a commit run
 after tearing down the QA stack, and sends a pr run to delivery.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/causes.py::consolidate` @93617ea77353
-- code: `workflows/src/workhorse_workflows/coder/shared/causes.py::own` @93617ea77353
-- code: `workflows/src/workhorse_workflows/coder/shared/judge.py::Judge` @eb6949952f8c
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/judge.py::Ruling` @6d06f2f4b655
+- code: `workflows/src/workhorse_workflows/coder/shared/causes.py::consolidate` @b8ce4e5f651c
+- code: `workflows/src/workhorse_workflows/coder/shared/causes.py::own` @8da5253b50ef
+- code: `workflows/src/workhorse_workflows/coder/shared/judge.py::Judge` @7e898574632e
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/judge.py::Ruling` @2ccb7e056266
 
 `consolidate` and `own` read and rewrite the worklist's follow-up and finding items through the
 shared `work` module: the kinds, statuses and payload fields a follow-up or finding carries, and
 the helpers that file, find, replace and merge them.
 
 - code: `workflows/src/workhorse_workflows/coder/shared/work.py::FOLLOW_UP` @d1b341a8165d
-- code: `workflows/src/workhorse_workflows/coder/shared/work.py::open_findings` @d1b341a8165d
-- code: `workflows/src/workhorse_workflows/coder/shared/work.py::follow_up_items` @d1b341a8165d
-- code: `workflows/src/workhorse_workflows/coder/shared/work.py::findings_of` @d1b341a8165d
-- code: `workflows/src/workhorse_workflows/coder/shared/work.py::find` @d1b341a8165d
-- code: `workflows/src/workhorse_workflows/coder/shared/work.py::file` @d1b341a8165d
-- code: `workflows/src/workhorse_workflows/coder/shared/work.py::replace` @d1b341a8165d
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::open_findings` @c866b3507f1e
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::follow_up_items` @c35c8795b0e2
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::findings_of` @82792132a303
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::find` @b8177db7f37b
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::file` @0a916570c17c
+- code: `workflows/src/workhorse_workflows/coder/shared/work.py::replace` @8159de383cd7
 
 ### story-pipeline
 
 - kind: run
 
 Each claimed item is snapshotted against pre-existing work, resolved to its story's paths, and
-sent through `dev`, `document` and `qa`. A pr run hands `dev` the run branch to land on. A commit
-run hands it none. QA findings are filed against the item and return to its dev owner. A replan
-from the dev owner, QA or documentation rewrites the epic and re-files its open stories.
+sent through `specify`, `dev`, `document` and `qa`. `specify` runs the `Docs` flow in its spec
+phase: it writes the story's behaviour model and the book delta before any code, and records the
+nodes it wrote on the run. `dev` and the later `document` pass receive those nodes. `document`
+runs the same flow in its build phase, which grounds the book in the code and reconciles it with
+the build. A pr run hands `dev` the run branch to land on. A commit run hands it none. QA findings
+are filed against the item and return to its dev owner, who then goes through `document` and `qa`
+again without a second `specify`. A replan from the spec pass, the dev owner, QA or documentation
+rewrites the epic and re-files its open stories. The lane order is the
+[coder lane order](../concepts/coder-lane-order.md) concept.
 
 ### agent-turn-contract
 

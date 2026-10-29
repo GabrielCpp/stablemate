@@ -35,6 +35,24 @@ phase opens with its own brief. A later turn of the same phase sends only what c
 points back at the brief's path above. When you no longer hold this brief, read it again
 from that path before you act.
 {% endif %}
+{% if spec_nodes and not opening_brief and not follow_up_title %}
+
+## The book is this story's spec
+
+Before you started, the spec pass wrote the story's behaviour model to
+`{{ workhorse_var('spec_dir') }}/model.md` and folded it into these book nodes:
+
+{% for node in workhorse_var('spec_nodes') %}
+- `{{ node }}`
+{% endfor %}
+
+Build to them. Each `does:`, `raises:` and `states:` bullet is behaviour the story owes, and
+the `verify:` under it is the check QA's scored run makes. Plan from the model's cells, use
+the names the nodes give each element, endpoint and field, and make every check pass before
+you hand off. A cell you find wrong or impossible to build is a block that names the cell, not
+a change you make silently. You do not edit these nodes. The docs pass after you grounds them
+in your code.
+{% endif %}
 {% if follow_up_title and not opening_brief %}
 
 ## This turn works a follow-up

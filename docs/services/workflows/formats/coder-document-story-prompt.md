@@ -6,7 +6,7 @@ title: Coder document-story prompt
 # Coder document-story prompt
 
 - file: `workflows/src/workhorse_workflows/coder/docs/prompts/document-story.md`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.work` @e596e919bdee
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.work` @949e33da23fc
 - detail: [coder documentation flow](../flows/coder-docs.md)
 - detail: [coder documentation schemas](../concepts/coder-docs-schemas.md)
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_outside_the_docs_worktree_take_the_semantic_route`
@@ -14,7 +14,9 @@ title: Coder document-story prompt
 This prompt makes the agent the owner of one story's documentation. The agent merges the
 completed story into the current as-built OKF graph through its own subagents, reviews the result
 and repairs it. The prompt supplies the story and epic context, the classified documentation
-context, the changed-reference grounding worklist, and the last gate report and operator answer.
+context, the changed-reference grounding worklist, the nodes the spec pass wrote before dev, and
+the last gate report and operator answer. It is the build pass of the docs lane. The spec pass
+runs a separate prompt before dev.
 The turn must return a `DocumentationResult`; the flow uses its status and authored node ids
 before running the grounding gate.
 
@@ -108,6 +110,13 @@ before running the grounding gate.
 - required: false
 - semantics: changed production references not yet owned by an OKF code bullet
 - verify: json_path(path="$.obligations", matches="^\[.*\]$")
+
+### spec_nodes
+- type: list[string]
+- default: empty list
+- required: false
+- semantics: the book nodes the spec pass wrote before dev, which this turn grounds and reconciles with the build instead of authoring again
+- verify: json_path(path="$.spec_nodes", matches="^\[.*\]$")
 
 ### result_schema
 - type: string JSON schema
