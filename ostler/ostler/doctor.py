@@ -1717,11 +1717,13 @@ def _check_code_grounding(graph: Graph, f: list[Finding],
                 except OSError:
                     pass
                 else:
-                    if stamp_mod.digest_file(source_bytes) != parsed.digest:
+                    if not stamp_mod.citation_is_fresh(
+                            target_path, source_bytes, symbol or "", parsed.digest):
                         f.append(Finding(
                             "error", "stale-citation",
-                            f"{node.id}: `code:` target '{ref}' — '{target_path}' has changed "
-                            f"since this citation was stamped",
+                            f"{node.id}: `code:` target '{ref}' — "
+                            f"{'the cited declaration in' if symbol else 'the cited file'} "
+                            f"'{target_path}' has changed since this citation was stamped",
                             path=rel, line=node.line, ref=ref, node=node.id,
                             suggestion=f"re-read '{target_path}' and correct this node's claims "
                                        "if they no longer hold; the citation is restamped when "

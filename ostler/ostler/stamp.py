@@ -29,6 +29,31 @@ def digest_file(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()[:DIGEST_LENGTH]
 
 
+def digest_citation(path: str | Path, data: bytes, symbol: str = "") -> str:
+    """The stamp for a citation: the cited declarations' text when *symbol* grounds in the file, else the whole file's."""
+    if symbol:
+        from ostler import inventory
+
+        try:
+            text = data.decode("utf-8")
+        except UnicodeDecodeError:
+            return digest_file(data)
+        lines = text.split("\n")
+        picked = [
+            "\n".join(lines[first - 1:last])
+            for first, last, name in inventory.extents(path, text)
+            if inventory._grounds(frozenset(inventory.symbol_parts(name)), symbol)
+        ]
+        if picked:
+            return digest_file("\n".join(picked).encode("utf-8"))
+    return digest_file(data)
+
+
+def citation_is_fresh(path: str | Path, data: bytes, symbol: str, digest: str) -> bool:
+    """Whether *digest* is the citation's current stamp or the whole-file stamp older books carry."""
+    return digest in (digest_citation(path, data, symbol), digest_file(data))
+
+
 def restamp_leading_code_spans(value: str, digest_for: Callable[[str], str | None]) -> str:
     """Rewrite a ``code:`` bullet's leading run of targets with fresh digests."""
     stripped = value.strip()
@@ -135,7 +160,7 @@ def stamp_page(root: Path, services_root: Path, page: str, *,
                 unresolved.append(raw_target)
                 return None
             stamped += 1
-            return digest_file(source_bytes)
+            return digest_citation(ref.path, source_bytes, ref.symbol or "")
         return digest_for
 
     body_lines = doc.body.split("\n")

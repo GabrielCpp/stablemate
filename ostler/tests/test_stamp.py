@@ -125,9 +125,9 @@ def _service(root: Path, text: str = SERVICE) -> Path:
 
 def test_stamp_page_writes_a_digest_onto_the_cited_file(tmp_path: Path):
     feature = _book(tmp_path, "`src/service.py::charge`")
-    _service(tmp_path)
+    target = _service(tmp_path)
     result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
-    expected = stamp.digest_file(SERVICE.encode())
+    expected = stamp.digest_citation(target, SERVICE.encode(), "charge")
     assert result.stamped == 1
     assert result.unresolved == []
     assert result.changed is True
@@ -165,8 +165,8 @@ def test_stamp_page_stamps_both_a_backticked_and_a_bare_code_bullet(tmp_path: Pa
 
     result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
 
-    expected = stamp.digest_file(SERVICE.encode())
-    other_digest = stamp.digest_file(b"def other():\n    pass\n")
+    expected = stamp.digest_citation("src/service.py", SERVICE.encode(), "charge")
+    other_digest = stamp.digest_citation("src/other.py", b"def other():\n    pass\n", "other")
     assert result.stamped == 2
     assert result.unresolved == []
     text = feature.read_text(encoding="utf-8")
@@ -215,7 +215,7 @@ def test_stamp_page_resolves_a_foreign_repository_ref_through_a_supplied_checkou
         tmp_path, tmp_path, "docs/services/billing/charge.md",
         checkouts={"globex": checkout},
     )
-    expected = stamp.digest_file(SERVICE.encode())
+    expected = stamp.digest_citation("src/service.py", SERVICE.encode(), "charge")
     assert result.stamped == 1
     assert result.unresolved == []
     assert f"`repo://globex/src/service.py::charge` @{expected}" in feature.read_text(
@@ -242,7 +242,7 @@ def test_stamp_page_resolves_a_ref_qualified_with_the_books_own_repository(tmp_p
     feature = _book(tmp_path, "`repo://acme/src/service.py::charge`")
     _service(tmp_path)
     result = stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
-    expected = stamp.digest_file(SERVICE.encode())
+    expected = stamp.digest_citation("src/service.py", SERVICE.encode(), "charge")
     assert result.stamped == 1
     assert f"@{expected}" in feature.read_text(encoding="utf-8")
 
@@ -284,7 +284,7 @@ def test_stamp_page_scoped_to_a_line_range_leaves_the_other_nodes_bullet_stale(t
         line_ranges=[(alpha_line, beta_line)],
     )
 
-    expected = stamp.digest_file(SERVICE.encode())
+    expected = stamp.digest_citation("src/service.py", SERVICE.encode(), "charge")
     assert result.stamped == 1
     assert result.changed is True
     after = feature.read_text(encoding="utf-8").splitlines()
@@ -310,7 +310,7 @@ def test_stamp_page_only_targets_leaves_a_sibling_citation_on_the_same_node_unto
         only_targets={node_range: frozenset({"src/service.py"})},
     )
 
-    expected = stamp.digest_file(SERVICE.encode())
+    expected = stamp.digest_citation("src/service.py", SERVICE.encode(), "charge")
     assert result.stamped == 1
     text = feature.read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{expected}" in text
@@ -337,7 +337,7 @@ def test_stamp_page_only_targets_leaves_an_already_stamped_sibling_digest_standi
         only_targets={node_range: frozenset({"src/service.py"})},
     )
 
-    expected = stamp.digest_file(SERVICE.encode())
+    expected = stamp.digest_citation("src/service.py", SERVICE.encode(), "charge")
     assert result.stamped == 1
     text = feature.read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{expected}" in text
@@ -384,7 +384,7 @@ def test_cli_stamp_checkout_flag_resolves_a_foreign_repository_ref(tmp_path: Pat
         "--checkout", f"globex={checkout}",
     ])
     assert rc == 0
-    expected = stamp.digest_file(SERVICE.encode())
+    expected = stamp.digest_citation("src/service.py", SERVICE.encode(), "charge")
     assert f"@{expected}" in feature.read_text(encoding="utf-8")
 
 
@@ -452,7 +452,7 @@ def test_stamp_targets_leaves_a_nodes_other_stamped_citations_standing(tmp_path:
 
     assert len(results) == 1
     assert results[0].stamped == 1
-    expected = stamp.digest_file(SERVICE.encode())
+    expected = stamp.digest_citation("src/service.py", SERVICE.encode(), "charge")
     text = (tmp_path / "docs/services/billing/charge.md").read_text(encoding="utf-8")
     assert f"`src/service.py::charge` @{expected}" in text
     assert "`src/other.py::other` @111111111111" in text
@@ -860,3 +860,45 @@ def test_directory_code_target_is_its_own_doctor_finding(tmp_path: Path):
     assert "directory-code-ref" in codes
     assert "dangling-code-ref" not in codes
 
+
+
+TWO = "def a():\n    return 1\n\n\ndef b():\n    return 2\n"
+
+
+def _stale_refs(root: Path) -> set[str]:
+    from ostler import doctor
+
+    return {f.ref for f in doctor.run(load(root)).findings if f.code == "stale-citation"}
+
+
+def test_a_symbol_citation_stays_fresh_when_only_another_declaration_changes(tmp_path: Path):
+    _book(tmp_path, "`src/service.py::a`")
+    target = _service(tmp_path, TWO)
+    stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
+    assert _stale_refs(tmp_path) == set()
+
+    target.write_text(TWO.replace("return 2", "return 3"), encoding="utf-8")
+    assert _stale_refs(tmp_path) == set()
+
+    target.write_text(TWO.replace("return 1", "return 9"), encoding="utf-8")
+    assert len(_stale_refs(tmp_path)) == 1
+
+
+def test_a_whole_file_stamp_on_a_symbol_citation_stays_fresh_until_the_file_changes(tmp_path: Path):
+    feature = _book(tmp_path, f"`src/service.py::a` @{stamp.digest_file(TWO.encode())}")
+    target = _service(tmp_path, TWO)
+    assert _stale_refs(tmp_path) == set()
+
+    target.write_text(TWO.replace("return 2", "return 3"), encoding="utf-8")
+    assert len(_stale_refs(tmp_path)) == 1
+    assert feature.exists()
+
+
+def test_a_citation_without_a_symbol_is_stamped_with_the_file_digest(tmp_path: Path):
+    _book(tmp_path, "`src/service.py`")
+    target = _service(tmp_path, TWO)
+    stamp.stamp_page(tmp_path, tmp_path, "docs/services/billing/charge.md")
+    assert stamp.digest_citation(target, TWO.encode()) == stamp.digest_file(TWO.encode())
+
+    target.write_text(TWO.replace("return 2", "return 3"), encoding="utf-8")
+    assert len(_stale_refs(tmp_path)) == 1

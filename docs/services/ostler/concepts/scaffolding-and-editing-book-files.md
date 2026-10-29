@@ -30,7 +30,9 @@ list names (`_bullet_stubs`), and either writes a new file or resolves into an e
 cases where a new kind nests under an existing page rather than getting its own file, and
 `_list_under` lists what already exists under a parent for a `new`/`find` prompt. `stamp.py`
 keeps a scaffolded page's leading `code:`/`tests:` bullets in sync with the file they cite:
-`digest_file` hashes a source file's content, `stamp_page`/`stamp_page_from_catalog` rewrite a
+`digest_file` hashes a source file's content, `digest_citation` hashes only the declarations a
+symbol citation names (the whole file for a citation with no symbol), `citation_is_fresh` accepts
+either that digest or the whole-file digest older pages carry, `stamp_page`/`stamp_page_from_catalog` rewrite a
 bullet's `@hash` suffix to match, `restamp_leading_code_spans`/`_restamp_bare` do the same for a
 bare citation with no symbol, `unstamp_text` strips every digest back out for a diff-friendly
 view, and `node_line_range`/`stamp_targets` find which lines of a page a given node's bullets
@@ -68,53 +70,55 @@ order (`_canonical_frontmatter`), bullet key order (`_bullet_key`, `_bullet_run`
 `_apply_edits`, `_emit_bullet`), and wikilink style (`_rewrite_wikilinks`) — over whichever files
 `_target_files` selects. `AutofixResult` and `FmtResult` report what each pass changed.
 
-- code: ostler/ostler/crud_generic.py::create_instance@0c22ea0d56ea
-- code: ostler/ostler/crud_generic.py::find_instance@0c22ea0d56ea
-- code: ostler/ostler/crud_generic.py::edit_instance@0c22ea0d56ea
-- code: ostler/ostler/crud_generic.py::delete_instance@0c22ea0d56ea
-- code: ostler/ostler/dynamic_registry.py::TemplateKind@09b3f9268893
-- code: ostler/ostler/dynamic_registry.py::load_raw@09b3f9268893
-- code: ostler/ostler/dynamic_registry.py::save_raw@09b3f9268893
-- code: ostler/ostler/dynamic_registry.py::parse_kind@09b3f9268893
-- code: ostler/ostler/dynamic_registry.py::load_kinds@09b3f9268893
-- code: ostler/ostler/dynamic_registry.py::as_entity_types@09b3f9268893
-- code: ostler/ostler/dynamic_registry.py::validate_kinds@09b3f9268893
-- code: ostler/ostler/templates.py::new@401b5b3edc08
-- code: ostler/ostler/templates.py::find@401b5b3edc08
-- code: ostler/ostler/templates.py::edit@401b5b3edc08
-- code: ostler/ostler/templates.py::delete@401b5b3edc08
-- code: ostler/ostler/templates.py::apply@401b5b3edc08
-- code: ostler/ostler/scaffold.py::scaffold@ecfd6a2ea722
-- code: ostler/ostler/scaffold.py::_scaffold_hosted_page@ecfd6a2ea722
-- code: ostler/ostler/scaffold.py::_scaffold_section@ecfd6a2ea722
-- code: ostler/ostler/stamp.py::digest_file@b578fea528ce
-- code: ostler/ostler/stamp.py::stamp_page@b578fea528ce
-- code: ostler/ostler/stamp.py::stamp_page_from_catalog@b578fea528ce
-- code: ostler/ostler/stamp.py::restamp_leading_code_spans@b578fea528ce
-- code: ostler/ostler/stamp.py::unstamp_text@b578fea528ce
-- code: ostler/ostler/stamp.py::node_line_range@b578fea528ce
-- code: ostler/ostler/stamp.py::StampResult@b578fea528ce
-- code: ostler/ostler/edit.py::relink@63e4a8c64c39
-- code: ostler/ostler/edit.py::rename@63e4a8c64c39
-- code: ostler/ostler/edit.py::migrate_context@63e4a8c64c39
-- code: ostler/ostler/edit.py::settle_review@63e4a8c64c39
-- code: ostler/ostler/edit.py::settle_answers@63e4a8c64c39
-- code: ostler/ostler/edit.py::FileChange@63e4a8c64c39
-- code: ostler/ostler/edit.py::EditPlan@63e4a8c64c39
-- code: ostler/ostler/carve.py::carve_endpoints@16296e22e532
-- code: ostler/ostler/carve.py::references@16296e22e532
-- code: ostler/ostler/carve.py::CarvePlan@16296e22e532
-- code: ostler/ostler/fragment_carve.py::carve_fragments@7d965ac3d2df
-- code: ostler/ostler/freeze.py::freeze@51fa1e77420e
-- code: ostler/ostler/freeze.py::unfreeze@51fa1e77420e
-- code: ostler/ostler/freeze.py::fingerprint@51fa1e77420e
-- code: ostler/ostler/freeze.py::FreezePlan@51fa1e77420e
-- code: ostler/ostler/autofix.py::run_autofix@821c6bbcfd2c
-- code: ostler/ostler/autofix.py::fix_text@821c6bbcfd2c
-- code: ostler/ostler/autofix.py::AutofixResult@821c6bbcfd2c
-- code: ostler/ostler/fmt.py::run_fmt@aa3a632453a3
-- code: ostler/ostler/fmt.py::format_text@aa3a632453a3
-- code: ostler/ostler/fmt.py::FmtResult@aa3a632453a3
+- code: ostler/ostler/crud_generic.py::create_instance@2d516d90a9aa
+- code: ostler/ostler/crud_generic.py::find_instance@cc9b09d4ada0
+- code: ostler/ostler/crud_generic.py::edit_instance@fe2f9c78130f
+- code: ostler/ostler/crud_generic.py::delete_instance@6e9445d72aa6
+- code: ostler/ostler/dynamic_registry.py::TemplateKind@281308a1d7ab
+- code: ostler/ostler/dynamic_registry.py::load_raw@5e91e288f526
+- code: ostler/ostler/dynamic_registry.py::save_raw@fcfdf2bb268a
+- code: ostler/ostler/dynamic_registry.py::parse_kind@eb8cb51a0dd4
+- code: ostler/ostler/dynamic_registry.py::load_kinds@ca1b93afa65c
+- code: ostler/ostler/dynamic_registry.py::as_entity_types@50d7ebcbe638
+- code: ostler/ostler/dynamic_registry.py::validate_kinds@e250bf878f69
+- code: ostler/ostler/templates.py::new@8f2b104898f6
+- code: ostler/ostler/templates.py::find@3762ec681771
+- code: ostler/ostler/templates.py::edit@f2174965bdfa
+- code: ostler/ostler/templates.py::delete@8e819efb6258
+- code: ostler/ostler/templates.py::apply@443ce594ae1d
+- code: ostler/ostler/scaffold.py::scaffold@39706cfe7d01
+- code: ostler/ostler/scaffold.py::_scaffold_hosted_page@c0dc91c5f8ae
+- code: ostler/ostler/scaffold.py::_scaffold_section@ad26a161a34c
+- code: ostler/ostler/stamp.py::digest_file@dc3807532e47
+- code: ostler/ostler/stamp.py::digest_citation@dbcdb8522dc9
+- code: ostler/ostler/stamp.py::citation_is_fresh@9e99ef458898
+- code: ostler/ostler/stamp.py::stamp_page@8420b2b4484f
+- code: ostler/ostler/stamp.py::stamp_page_from_catalog@c1399661dae6
+- code: ostler/ostler/stamp.py::restamp_leading_code_spans@3a41b1e9be27
+- code: ostler/ostler/stamp.py::unstamp_text@48d86562ace0
+- code: ostler/ostler/stamp.py::node_line_range@b6cbb222cd95
+- code: ostler/ostler/stamp.py::StampResult@e347524a8c26
+- code: ostler/ostler/edit.py::relink@a715cceddf7a
+- code: ostler/ostler/edit.py::rename@53ea9523590a
+- code: ostler/ostler/edit.py::migrate_context@fc6c3d9315e1
+- code: ostler/ostler/edit.py::settle_review@ac44167228b0
+- code: ostler/ostler/edit.py::settle_answers@112369669e6b
+- code: ostler/ostler/edit.py::FileChange@cfc47dc3aec9
+- code: ostler/ostler/edit.py::EditPlan@0102ac442561
+- code: ostler/ostler/carve.py::carve_endpoints@8f34975f765d
+- code: ostler/ostler/carve.py::references@7c397615aad5
+- code: ostler/ostler/carve.py::CarvePlan@eeb1c1b27b2c
+- code: ostler/ostler/fragment_carve.py::carve_fragments@9b1e415c5333
+- code: ostler/ostler/freeze.py::freeze@cce15a1cc8f8
+- code: ostler/ostler/freeze.py::unfreeze@c8162e6a2793
+- code: ostler/ostler/freeze.py::fingerprint@ff9181d26dbf
+- code: ostler/ostler/freeze.py::FreezePlan@46ff024d4d77
+- code: ostler/ostler/autofix.py::run_autofix@e65fcc1b1bb7
+- code: ostler/ostler/autofix.py::fix_text@19668ae09cdf
+- code: ostler/ostler/autofix.py::AutofixResult@012563083f99
+- code: ostler/ostler/fmt.py::run_fmt@cce8547cf398
+- code: ostler/ostler/fmt.py::format_text@c30e6bc6c425
+- code: ostler/ostler/fmt.py::FmtResult@6fa0ab31b1c7
 - detail: [The book's markdown model](the-books-markdown-model.md)
 - detail: [ostler](../cli.md)
 
@@ -132,3 +136,9 @@ order (`_canonical_frontmatter`), bullet key order (`_bullet_key`, `_bullet_run`
 - a stamped digest covers one citation, not the file: `stamp_page` rewrites the `@hash` suffix on
   the bullet that cites a file, never the cited file itself, so stamping a book page never
   touches product source.
+- rule: a symbol citation's stamp covers the cited declaration, not the whole file. An edit
+  elsewhere in the file leaves the citation fresh, so a code change after a story documented a
+  file restamps nothing it did not touch. The tradeoff: a change outside the declaration that
+  alters what it means, such as a constant it reads, no longer flags the citation. A citation
+  with no symbol keeps the whole-file digest, and a page stamped before this rule stays fresh
+  until its file changes.
