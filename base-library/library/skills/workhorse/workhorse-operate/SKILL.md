@@ -32,7 +32,7 @@ groom feed --run <run_id>                        # from a shell: follows the run
   frame with `quiet: true` asks for no act on the run, and its `summary` line says where
   the run is. A `digest` frame that is not quiet lists what the window held: nodes, turns,
   cost, laps, gates and warnings. Every frame, quiet or not, gets the reading line from
-  [[examine-process]]: the stage, its lap count against the stage's median, what the
+  [[self-improve]]: the stage, its lap count against the stage's median, what the
   current turn is doing and which earlier lap did the same, written to the run's
   `EXAMINED.md`. An `event` frame of kind `blocked` is a gate: read, fix,
   answer. Monitor expires after 30 minutes. Re-arm it with `since=<ts of the last frame>`

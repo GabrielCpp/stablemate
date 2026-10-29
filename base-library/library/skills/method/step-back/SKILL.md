@@ -13,7 +13,7 @@ whatever the attempts were. It fires also on a size: a sub-task that has taken m
 the task it serves was expected to take.
 
 This skill needs a stream of attempts to judge. A run that is tended with no stuck attempt
-and no question is examined with [[examine-process]], which holds each unit against its own
+and no question is examined with [[self-improve]], which holds each unit against its own
 ideal path, removes the waste that recurs, and hands this skill the changes that moved nothing.
 
 Each attempt is reasoned from the case in front of it: this failure, this edit, this retry. That
