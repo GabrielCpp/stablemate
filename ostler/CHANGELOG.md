@@ -1,5 +1,59 @@
 # Changelog
 
+## [5.0.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v4.0.0...ostler-v5.0.0) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ostler:** an artifacts dir holding backlog/ or adr/, or a docs home holding docs/epics/, is refused until it is moved. For an artifacts dir holding backlog/ only, ostler prints:   git -C <artifacts> mv backlog backlogs   git -C <artifacts> rm -r --cached backlogs Epics print mkdir -p <artifacts>/epics then a move of each docs/epics/<name> to <artifacts>/epics/<name>, and each adr/<file> prints a move to <docs home>/docs/adrs/<slug>/adr.md. ostler register close, import and file no longer commit, and Ostler.propose_decision takes a slug.
+
+### Features
+
+* **core:** ignore the untracked artifacts shelves by name ([969c315](https://github.com/GabrielCpp/stablemate/commit/969c31556490dd78f770ab44b676765a76ec328c))
+* **core:** name the member of the repository holding a folder ([d7042f8](https://github.com/GabrielCpp/stablemate/commit/d7042f81453365a270d5bcd99ff667d12fa73258))
+* **ostler:** describe outside systems as resources a scenario borrows ([812158a](https://github.com/GabrielCpp/stablemate/commit/812158a6ed8f17266d6aa7d3a5e946979b50c88f))
+* **ostler:** file decisions by name with decisions add ([c229e90](https://github.com/GabrielCpp/stablemate/commit/c229e904d91a3e968ba282cbd9f5f7d786a89581))
+* **ostler:** hold back scenarios whose fixture keeps failing to build ([66734c7](https://github.com/GabrielCpp/stablemate/commit/66734c7f75c1c0c2a1890b7f23b9b8b33208a163))
+* **ostler:** move a dotenv onto its environment page ([98c2a02](https://github.com/GabrielCpp/stablemate/commit/98c2a02e48cd3d40811dd34f52bc4e741eb92084))
+* **ostler:** move the register, ADRs and epics out of tracked paths ([6d6a2b7](https://github.com/GabrielCpp/stablemate/commit/6d6a2b7f756efb3645253b2651c6bec98b4072e8))
+* **ostler:** rank search hits with a full-text index over every root ([a112c6d](https://github.com/GabrielCpp/stablemate/commit/a112c6df331211159e840a01fa2710c93d2f5b67))
+* **ostler:** read provenance checkouts from every workspace ([3fd81e9](https://github.com/GabrielCpp/stablemate/commit/3fd81e937493a410add9efc6ee22d0c27c60ab39))
+* **ostler:** rebuild a qa packet from the inputs it recorded ([35174d9](https://github.com/GabrielCpp/stablemate/commit/35174d9364255ffc063d21b2ba251f1878e56bec))
+* **ostler:** refuse a text check on a field in doctor ([40710f2](https://github.com/GabrielCpp/stablemate/commit/40710f2e852ccb3724846a1c2e30ea6ce0a99d0d))
+* **ostler:** run a command under an environment page's variables ([7bcaa6f](https://github.com/GabrielCpp/stablemate/commit/7bcaa6f128f5fff173387e0588a5fcdebec76a81))
+* **ostler:** show what the phone drew when a check fails ([7df71f5](https://github.com/GabrielCpp/stablemate/commit/7df71f5eef5aaa98a2ea201d3f989547cbf6da81))
+* **ostler:** stamp a symbol citation on its declaration, not its file ([320980e](https://github.com/GabrielCpp/stablemate/commit/320980e2ef7f7697bbc826bd1c93fbaf006e1cac))
+* **ostler:** state a story's fixtures from its qa plan ([b914f4a](https://github.com/GabrielCpp/stablemate/commit/b914f4a63dd8d76faf8ff4091ed04b36acaa4236))
+
+
+### Bug Fixes
+
+* **ostler:** check what a phone field holds ([e1803aa](https://github.com/GabrielCpp/stablemate/commit/e1803aa30e4fe016dc898fb6b880c2e7c8fd7bfd))
+* **ostler:** find a phone control by the first part of its reading ([6b78982](https://github.com/GabrielCpp/stablemate/commit/6b78982c203ed7d8758ad5beb5b571cdb0c48685))
+* **ostler:** find a phone element in any part of a merged reading ([1c1b0cc](https://github.com/GabrielCpp/stablemate/commit/1c1b0cc5931ca5ba1efd57587f0edcf972d0c3b0))
+* **ostler:** judge a phone state over the whole scrollable screen ([76ba09e](https://github.com/GabrielCpp/stablemate/commit/76ba09e7d701615497f218ea7bd3c24e61d13bce))
+* **ostler:** keep a phone drag exact where a row is unique ([5f1b118](https://github.com/GabrielCpp/stablemate/commit/5f1b118bbb864e956447b3fa6cd0308bb6c76b10))
+* **ostler:** kill a scenario whole when it passes the memory cap ([2588a2a](https://github.com/GabrielCpp/stablemate/commit/2588a2aba00dc93b4763e67c5d690697f19e588e))
+* **ostler:** let a name template hole match empty text ([ae121ee](https://github.com/GabrielCpp/stablemate/commit/ae121ee22b94ac58fcf36bd923a0521c7d928378))
+* **ostler:** let the phone finish a recording before pulling it ([e22eb94](https://github.com/GabrielCpp/stablemate/commit/e22eb94d0450338d3769742f60a58a620929a5a1))
+* **ostler:** measure a phone drag from rows that share a name ([7072a45](https://github.com/GabrielCpp/stablemate/commit/7072a45ec5162bf48f712006a32b906165b05a24))
+* **ostler:** name the plan as the repair for a stale-plan finding ([05a9d8e](https://github.com/GabrielCpp/stablemate/commit/05a9d8e18c39b1a89f6de7705d9e005181f90b2f))
+* **ostler:** perform a phone interaction's acts and then its trigger ([13ab7da](https://github.com/GabrielCpp/stablemate/commit/13ab7dafee51bb79fc89db182d7e923854a82052))
+* **ostler:** read book values on the phone the way the browser does ([faa1958](https://github.com/GabrielCpp/stablemate/commit/faa195894cac29151cffd8810d6d4185347bfaab))
+* **ostler:** record a crashed scenario's stop line, not its stack ([d11b267](https://github.com/GabrielCpp/stablemate/commit/d11b267f73c652bb09b04e8f7d9c323a995ea962))
+* **ostler:** release the device before a maestro flow runs ([bebcd51](https://github.com/GabrielCpp/stablemate/commit/bebcd5130e0fcfee2e2997fef4816d1ad83094e9))
+* **ostler:** search a phone control above the viewport too ([8124539](https://github.com/GabrielCpp/stablemate/commit/812453940ad45676d60efe8761fee0dc6b2af906))
+* **ostler:** stamp the lease holder only on the copy the lease names ([48b98a0](https://github.com/GabrielCpp/stablemate/commit/48b98a0697b2032cb286036e1dd06b7747df0ece))
+* **ostler:** stop stale-context findings from ordering a hand rebuild ([c5591ff](https://github.com/GabrielCpp/stablemate/commit/c5591ff75c1af1ad3d8f23a729fb141831483121))
+* **ostler:** treat repo-root dotfiles as tooling in qa context ([de805c3](https://github.com/GabrielCpp/stablemate/commit/de805c3f6c3e93061ce986cc63d3dc5bb6e8255a))
+* **ostler:** wait for the app to draw before the first phone scroll ([e779212](https://github.com/GabrielCpp/stablemate/commit/e7792123dae2c96c143ff30017070c7e18fb23f6))
+
+
+### Performance Improvements
+
+* **ostler:** read a scanned phone screen through the resident maestro ([8a09eef](https://github.com/GabrielCpp/stablemate/commit/8a09eef66e138937698cc1d08cb5e40c9b7aa976))
+* **ostler:** read the phone screen through one resident maestro ([3674f22](https://github.com/GabrielCpp/stablemate/commit/3674f221ddac2144736e74a6e1381f7aececae3d))
+
 ## [4.0.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v3.0.0...ostler-v4.0.0) (2026-10-26)
 
 

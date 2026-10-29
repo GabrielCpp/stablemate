@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/GabrielCpp/stablemate/compare/stablemate-v0.2.1...stablemate-v0.2.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **stablemate:** allow farrier 5.x, ostler 5.x ([56e4899](https://github.com/GabrielCpp/stablemate/commit/56e4899abfd5d89d862e1a8c98322ba18e65a9c8))
+
 ## [0.2.1](https://github.com/GabrielCpp/stablemate/compare/stablemate-v0.2.0...stablemate-v0.2.1) (2026-10-26)
 
 

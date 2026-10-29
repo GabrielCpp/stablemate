@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v4.0.0...farrier-v5.0.0) (2026-10-29)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** exporting STABLEMATE_WORKSPACE no longer selects the artifacts dir as the docs home. List the repository in a [workspaces] entry of the home config instead.
+
+### Features
+
+* **core:** ignore the untracked artifacts shelves by name ([969c315](https://github.com/GabrielCpp/stablemate/commit/969c31556490dd78f770ab44b676765a76ec328c))
+* **core:** name the member of the repository holding a folder ([d7042f8](https://github.com/GabrielCpp/stablemate/commit/d7042f81453365a270d5bcd99ff667d12fa73258))
+* **core:** resolve the docs home from repository membership ([de05367](https://github.com/GabrielCpp/stablemate/commit/de053673063ba3ce1d1d7d4ce14daf8d92f69483))
+* **farrier:** export the shared cache dir to skill hooks ([b53f4ba](https://github.com/GabrielCpp/stablemate/commit/b53f4ba45f629d603b570e9360c9d16c1b7d6583))
+
 ## [4.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v3.1.0...farrier-v4.0.0) (2026-10-26)
 
 
