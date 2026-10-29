@@ -282,6 +282,23 @@ Revision log:
   `ostler env exec` asked for the page.
 - Section 5, Injection: `SaddlebagSource.names()` stays on `saddlebag list`. Finding: a
   stack.yml carries no link to one environment page, so there is no page to read first.
+- Section 2, Migration: Registration names each record `<slug>-<key>` in kebab case.
+  Finding: two environments that move the same key would otherwise collide on one record
+  name, and I3 then fails every page that names it.
+- Section 2, Migration: Page diff reads the file's literal values itself and takes only the
+  line order and the verdicts from Custody. Finding: `env classify --json` carries no values
+  by design, and a re-serialised file would lose the quoting the operator wrote.
+- Section 2, Migration: Registration skips a secret key whose `var` already has a record
+  under the environment tag, and the Report counts it as already held. Finding: a second run
+  of the same import would otherwise fail on the existing record after the page was written,
+  so the command had to be idempotent to be safe to retry.
+- Section 3, I3: Page diff is written before Registration runs, and a failed registration
+  says so and names the create command. Finding: the page naming a key as held with no
+  record fails loudly by name on the next `env exec`, which is the invariant doing its job,
+  while a record with no page entry would be silent.
+- Section 2, Migration: Page diff refuses a key the page cannot name and a literal whose
+  value is the held mark itself (A3), before any write. Finding: the page reader strips
+  backticks, so no spelling of the word on the page survives as a literal.
 
 **Refusal.** New. `saddlebag/saddlebag/guard.py`, exposed as `saddlebag guard --hook` and
 `saddlebag guard install --user|--project`. The decision shape exists in
@@ -346,9 +363,22 @@ file is `ostler env dotenv <environment> [--to PATH]` (revised, log above): a he
 naming the page, the literals and blank held lines in page order, and the path added to the
 repo's `.gitignore` when it is inside the repo.
 
-**Migration.** New. `ostler env import-dotenv FILE --environment <id>` in
-`environments/`: asks `saddlebag env classify`, writes the page diff, calls `saddlebag env
-import` for the held keys, prints the Report.
+**Migration.** New, revised (log above). `ostler env import-dotenv FILE --environment
+<slug>` in `environments/migrate.py`. Line sort asks `saddlebag env classify FILE --json`
+through the environment runner and keeps the verdicts' order. Page diff parses the file's
+literal values with a reader matching saddlebag's (`export`, quotes, a trailing comment),
+refuses a key the page cannot name or a literal equal to the held mark, replaces the page's
+same-name entries and appends the rest in file order, prints the `FileChange` diff and
+writes the page without a prompt (A9). Registration lists the records already tagged
+`environment=<slug>`, skips a key whose `var` is held, and runs `saddlebag env import FILE
+--keys K,K --tag environment=<slug> --prefix <slug>-` for the rest, so the values pass from
+the file to saddlebag's process only. Report prints `<n> lines: <h> held, <l> literal`, an
+`already held` count, saddlebag's `stored K as NAME` lines, and the next line naming the
+page to commit and `ostler env dotenv <slug>`. Intake from file is `cmd_env_import` in
+saddlebag's `cli.py`: it checks every key is present and non-empty before any write, derives
+each name as prefix plus the key lowercased with `_` as `-`, creates the record with `var`
+and the tags, sets its password, and stops at the first failure with the earlier keys
+stored.
 
 What the existing system has that the design lacks:
 
@@ -401,7 +431,9 @@ are new and the code follows none of them yet.
    eight lines, three of them secret by different rules, becomes a page diff with five
    literals and three marks, three records with `var` and the environment tag, a report of
    8, 3, 5, and `ostler env dotenv` reproduces the file with the three lines blank. The
-   values appear in no ostler process output. Suites hold.
+   values appear in no ostler process output. Suites hold. Built
+   2026-10-28: the fixture and a fake saddlebag reproduce each measure, a second run
+   reports the three keys as already held, and doctor raises no finding on the page.
 5. **Say so.** The saddlebag skill, README and `docs/SECURITY.md`; the ostler skill's stack
    and environment references; the ostler book pages the change touched, restamped. Done
    when `make lint` passes and `ostler doctor` raises no new finding on a touched page.
@@ -444,8 +476,9 @@ are new and the code follows none of them yet.
    injector.** Decided: out of scope. Basis: `from_env` reads the process environment, which
    Composition sets. If wrong: slice 3 adds a QA run case.
 9. **A3. No real configuration value is the literal word `secret`.** Decided: the held mark
-   is that word alone. Basis: none. If wrong: Held mark becomes `saddlebag:` and the
-   reference updates.
+   is that word alone, and Migration refuses a dotenv line whose literal value is that
+   word rather than writing it. Basis: none. If wrong: Held mark becomes `saddlebag:` and
+   the reference updates.
 10. **A6. The hook payload names a Read's path in `tool_input.file_path` and a Bash
    command in `tool_input.command`.** Decided: Verdict reads those two. Basis: the no-shell
    guard's `hook_decision` reads the same payload. If wrong: Verdict's reader only.
