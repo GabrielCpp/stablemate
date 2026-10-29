@@ -18,11 +18,11 @@ classifiers = [
   "Topic :: Utilities",
 ]
 dependencies = [
-  # platformdirs and tomli-w are workhorse._vendor.stablemate_core's, not workhorse's
+  # platformdirs and tomlkit are workhorse._vendor.stablemate_core's, not workhorse's
   # own: the shared config file, base-library discovery and the cache are vendored in
   # rather than depended on (see core/README.md), so their requirements land here.
   "platformdirs>=4.0",
-  "tomli-w>=1.0",
+  "tomlkit>=0.13",
   # Prompt rendering (templates.py) and the static reference scan (references.py).
   "jinja2>=3.1",
   # Every value crossing a boundary — an agent's JSON reply, a node's return, the
@@ -43,10 +43,12 @@ dependencies = [
   # pure-python wheels are a cheap price for "installed implies observable".
   "opentelemetry-sdk>=1.25",
   "opentelemetry-exporter-otlp-proto-http>=1.25",
+  # stablemate-core reads the repository manifest (agents.yml) and is vendored here.
+  "pyyaml>=6.0",
 ]
 # Deliberately short. The engine is workflow-agnostic, so anything a *workflow* reads
-# belongs on `workhorse-workflows`, not here: YAML (pyyaml/ruamel.yaml) left with the
-# retired YAML front-end and is declared by the workflows that parse it. `platformdirs`
+# belongs on `workhorse-workflows`, not here: the engine's own YAML need is only the
+# manifest that stablemate-core parses. `platformdirs`
 # is stablemate-core's business — the config/cache paths are the whole reason that
 # package exists — and nothing under `workhorse/` imports it directly.
 

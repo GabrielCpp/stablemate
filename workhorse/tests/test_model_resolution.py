@@ -4,8 +4,14 @@ from __future__ import annotations
 import io
 import os
 from contextlib import contextmanager, redirect_stdout
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+from pydantic import ValidationError
+
+from workhorse._vendor.stablemate_core.config import ConfigError, parse_home_config
+from workhorse._vendor.stablemate_core.schema import Profile
 from workhorse._vendor.stablemate_core.profiles import resolve_backend_default, resolve_power
 from workhorse import otel, profile
 from workhorse.runner import ladder
@@ -27,7 +33,8 @@ CONFIG = {
 
 @contextmanager
 def _config(cfg):
-    """Route both config lookups in the profile module at ``cfg`` (never the real file)."""
+    """Route both config lookups in the profile module at the profile ``cfg`` holds (never the real file)."""
+    cfg = Profile.model_validate(cfg) if cfg else None
     with (
         patch("workhorse.profile.resolve_power") as power,
         patch("workhorse.profile.resolve_backend_default") as default,
@@ -90,17 +97,19 @@ def test_default_table_fills_fields_power_left_unset():
 
 
 def test_resolve_backend_default_ignores_malformed_tables():
-    """Defensive: malformed `default` shapes degrade to empty, never raise."""
-    assert resolve_backend_default("claude", {}) == resolve_backend_default(
-        "claude", {}
-    )
-    assert resolve_backend_default("claude", {"default": "nope"}).model is None
-    assert resolve_backend_default("claude", {"default": {"model": ""}}).model is None
-    assert resolve_backend_default("opencode", {"cli": "claude", "default": {"model": "x"}}).model is None
+    """A malformed `default` shape is refused at load; an empty model reads as unset."""
+    with pytest.raises(ValidationError, match="default"):
+        Profile.model_validate({"cli": "claude", "default": "nope"})
+    assert resolve_backend_default("claude", Profile(cli="claude")).model is None
+    empty = Profile.model_validate({"cli": "claude", "default": {"model": ""}})
+    assert resolve_backend_default("claude", empty).model is None
+    other = Profile.model_validate({"cli": "claude", "default": {"model": "x"}})
+    assert resolve_backend_default("opencode", other).model is None
 
 
 
 _NARROWABLE = {
+    "config_version": 2,
     "profiles": {
         "local": {
             "cli": "opencode",
@@ -118,7 +127,8 @@ _NARROWABLE = {
 @contextmanager
 def _file(cfg):
     """Stand in for the config on disk, which the profile module re-reads every turn."""
-    with patch("workhorse.profile.load_config", lambda: cfg):
+    home = parse_home_config(cfg, Path("config.toml"))
+    with patch("workhorse.profile.load_home_config", lambda: home):
         yield
 
 
@@ -132,9 +142,29 @@ def test_a_profile_replaces_the_top_level_tables():
 
 def test_without_a_profile_nothing_is_narrowed():
     """No profile hands the resolvers None, i.e."""
-    with patch("workhorse.profile.load_config") as load:
-        assert profile._profile_config("") is None
+    with patch("workhorse.profile.load_home_config") as load:
+        assert profile._profile("") is None
         assert not load.called
+
+
+def test_a_profile_less_run_ignores_a_stray_top_level_powers_table():
+    """A run that names no profile used to resolve from the whole file, so a `powers` table left at the top level of a v2 config billed the run on models nobody chose."""
+    stray = {
+        "config_version": 2,
+        "powers": {"high": {"model": "stray", "effort": "high"}},
+        "default": {"model": "stray"},
+    }
+    with _file(stray):
+        assert _model_effort("high", "claude", None) == (None, None)
+        assert _model_effort(None, "claude", None) == (None, None)
+        assert _model_effort("high", "claude", "fallback") == ("fallback", None)
+
+
+def test_a_profile_less_run_resolves_from_the_profile_named_for_its_cli():
+    """With no profile named, the profile whose key is the run's CLI is the implied one."""
+    with _file(_NARROWABLE):
+        assert _model_effort("high", "opencode", None) == ("opencode-default", None)
+        assert _model_effort("high", "claude", None) == (None, None)
 
 
 def test_a_profile_deleted_mid_run_resolves_empty_rather_than_raising():
@@ -149,11 +179,11 @@ def test_a_profile_deleted_mid_run_resolves_empty_rather_than_raising():
 
 
 _SWITCHABLE = {
+    "config_version": 2,
     "profiles": {
         "cheap": {"cli": "fake", "powers": {"high": {"model": "haiku"}}},
         "elsewhere": {"cli": "claude", "powers": {"high": {"model": "opus"}}},
         "bare": {"cli": "fake"},
-        "nocli": {"powers": {"high": {"model": "haiku"}}},
         "typo": {"cli": "claudee"},
     }
 }
@@ -225,19 +255,19 @@ def test_a_profile_carrying_no_models_at_all_is_allowed_through():
         assert profile.switch_profile(runner, "bare")["ok"] is True
 
 
-def test_a_profile_with_no_cli_is_refused_rather_than_crashing_the_switch():
-    runner = _runner()
-    with _file(_SWITCHABLE):
-        reply = profile.switch_profile(runner, "nocli")
-    assert reply["ok"] is False and "no cli field" in str(reply["error"])
-    assert runner.profile.name == ""
+def test_a_profile_with_no_cli_is_refused_when_the_config_loads():
+    with pytest.raises(ConfigError, match=r"profiles\.nocli\.cli"):
+        parse_home_config(
+            {"config_version": 2, "profiles": {"nocli": {"powers": {"high": {"model": "haiku"}}}}},
+            Path("config.toml"),
+        )
 
 
 def test_start_and_switch_refuse_a_profile_for_a_cli_nobody_drives():
     with _file(_SWITCHABLE):
         reply = profile.switch_profile(_runner(), "typo")
         try:
-            profile.select_backend(_SWITCHABLE, "typo", None)
+            profile.select_backend(parse_home_config(_SWITCHABLE, Path("config.toml")), "typo", None)
             raise AssertionError("expected ProfileError for a misspelled cli")
         except profile.ProfileError as exc:
             started = str(exc)
@@ -247,7 +277,7 @@ def test_start_and_switch_refuse_a_profile_for_a_cli_nobody_drives():
 
 def test_the_cli_a_run_starts_on_is_the_one_its_flag_names():
     with patch.dict("os.environ", {"AGENT_CLI": "opencode"}):
-        backend = profile.select_backend({}, "", "codex")
+        backend = profile.select_backend(parse_home_config({"config_version": 2}, Path("config.toml")), "", "codex")
         assert backend.name == "codex"
         assert os.environ["AGENT_CLI"] == "codex"
 
@@ -262,3 +292,14 @@ if __name__ == "__main__":
             fn()
             print(f"  ✓ {name}")
     print("all model-resolution tests passed")
+
+def test_a_profile_less_run_records_the_profile_its_backend_implies():
+    home = parse_home_config({"config_version": 2, "profiles": {"claude": {"cli": "claude", "default": {"model": "sonnet"}}}}, Path("config.toml"))
+    with patch("workhorse.profile.load_home_config", lambda: home):
+        name = profile.effective_profile("", "claude")
+        recorded = profile.resolved_profile(name)
+        direct = profile.resolved_profile("", "claude")
+
+    assert name == "claude"
+    assert recorded == direct != {}
+    assert recorded["default"]["model"] == "sonnet"

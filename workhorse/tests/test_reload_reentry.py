@@ -32,6 +32,12 @@ from workhorse.pyflow.transitions import Done, Transition  # noqa: E402
 from workhorse.pyflow.workflow import Workflow  # noqa: E402
 from workhorse.rundir import resume_argv  # noqa: E402
 from workhorse.runner import ladder  # noqa: E402
+from workhorse._vendor.stablemate_core.config import parse_home_config
+
+
+def _home(tree):
+    return parse_home_config({"config_version": 2, **tree}, Path("config.toml"))
+
 
 
 
@@ -165,7 +171,7 @@ def test_a_profile_switch_is_applied_in_place_and_the_run_carries_on():
         request = control.Request(action=reload.SWITCH_PROFILE, profile="cheap")
         with (
             _Armed(request) as channel,
-            patch("workhorse.profile.load_config", lambda: cfg),
+            patch("workhorse.profile.load_home_config", lambda: _home(cfg)),
         ):
             assert drive(Quiet(), env) == "finished"
 
@@ -187,7 +193,7 @@ def test_a_profile_switch_the_run_refuses_is_reported_as_a_refusal():
         request = control.Request(action=reload.SWITCH_PROFILE, profile="gone")
         with (
             _Armed(request) as channel,
-            patch("workhorse.profile.load_config", lambda: {}),
+            patch("workhorse.profile.load_home_config", lambda: _home({})),
         ):
             assert drive(Quiet(), env) == "finished"
 
@@ -204,7 +210,7 @@ def test_a_run_switched_onto_a_profile_resumes_on_it():
             return Done("finished")
 
     cfg = {"profiles": {"base": {"cli": "fake"}, "cheap": {"cli": "fake"}}}
-    with tempfile.TemporaryDirectory() as tmp, patch("workhorse.profile.load_config", lambda: cfg):
+    with tempfile.TemporaryDirectory() as tmp, patch("workhorse.profile.load_home_config", lambda: _home(cfg)):
         env = dataclasses.replace(
             _env(tmp), agent_runner=ladder.AgentRunner(backend=FakeBackend(None))
         )
@@ -427,7 +433,7 @@ def test_a_cli_switch_keeps_the_live_profile_only_when_it_names_that_cli(capsys)
     with (
         patch.object(run_mod.os, "execv", fake_execv),
         patch.object(run_mod.sys, "argv", [script, "run"]),
-        patch("workhorse.profile.load_config", lambda: cfg),
+        patch("workhorse.profile.load_home_config", lambda: _home(cfg)),
         _no_config_env(),
     ):
         run_mod._exec_reload("stub", Path("/runs/stub-t"), cli="opencode", profile="cheap")

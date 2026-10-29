@@ -57,8 +57,8 @@ touch `default_cli`.
 The backend default model is overridable per run with the `AGENT_MODEL` env var.
 Workflows can request an abstract `power` tier per agent turn; your user-wide config
 maps that tier to concrete backend model/effort settings. Turns with no `power=` (and
-tiers with no mapping) fall through to `AGENT_MODEL`, then to a per-backend
-`[default.<backend>]` config table (see [Node power selection](#node-power-selection)).
+tiers with no mapping) fall through to `AGENT_MODEL`, then to the profile's
+`default` table (see [Node power selection](#node-power-selection)).
 If nothing supplies a value, Workhorse leaves model/effort unset and the selected
 harness uses its own defaults. The resilience/timeout knobs are env vars too — see
 [docs/GUARDRAILS.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/GUARDRAILS.md).
@@ -80,18 +80,20 @@ For running OpenRouter models (e.g. MiMo) on `cline` / `opencode`, see
 ### Node power selection
 
 An agent turn's optional `power=` argument is not a model name — it is an abstract tier
-resolved through the shared config file for the active backend (see [Config file
-location](#config-file-location) below):
+resolved through a profile of the shared config file (see [Config file
+location](#config-file-location) below). A profile names the CLI it runs under. A run
+with no `--profile` uses the profile named after its CLI. Every key of the file, with its
+meaning and an example, prints with `farrier config reference --file home`.
 
 ```python
 verdict = self.agent("prompts/lead-review.md", returns=Verdict, power="high")
 ```
 
 **The tier name is an opaque string.** Workhorse validates nothing about it: the tiers
-that exist are whatever `[power.<tier>.<backend>]` tables the operator's config declares,
-so a workflow with a rung of its own — `verdict`, `cheap-bulk`, whatever fits its shape —
+that exist are whatever `[profiles.<name>.powers.<tier>]` tables the operator's config
+declares, so a workflow with a rung of its own — `verdict`, `cheap-bulk`, whatever fits its shape —
 just names it and has the operator map it. A tier no table matches falls through to
-`[default.<backend>]`, so an unmapped or misspelled tier quietly runs at the backend
+`[profiles.<name>.default]`, so an unmapped or misspelled tier quietly runs at the backend
 default rather than failing the run. That is the trade for the openness, and it is worth
 knowing when a workflow seems to be ignoring its tiering.
 
@@ -108,40 +110,49 @@ no longer a top tier.
 Example config:
 
 ```toml
-[power.low.claude]
+[profiles.claude]
+cli = "claude"
+
+[profiles.claude.powers.low]
 model = "haiku"
 effort = "low"
 
-[power.medium.claude]
+[profiles.claude.powers.medium]
 model = "sonnet"
 effort = "medium"
 
-[power.high.claude]
+[profiles.claude.powers.high]
 model = "sonnet"
 effort = "high"
 
-[power.max.claude]
+[profiles.claude.powers.max]
 model = "opus"
 effort = "high"
 
-[power.ultra.claude]
+[profiles.claude.powers.ultra]
 model = "fable"
 effort = "medium"
 
-[power.high.codex]
+[profiles.codex]
+cli = "codex"
+
+[profiles.codex.powers.high]
 model = "@gpt-5.5"
 effort = "high"
 
-[power.high.opencode]
+[profiles.opencode]
+cli = "opencode"
+
+[profiles.opencode.powers.high]
 model = "openai/gpt-5.5"
 effort = "high"
 ```
 
-A tier you leave unmapped for a backend falls through to `[default.<backend>]`, so a
-workflow may name `ultra` on a backend where you have not defined it without
-failing the run — it simply runs at that backend's default.
+A tier you leave unmapped in a profile falls through to that profile's `default` table, so a
+workflow may name `ultra` where you have not defined it without failing the run. It
+simply runs at the profile's default.
 
-#### Per-backend default model (`[default.<backend>]`)
+#### Per-profile default model (`[profiles.<name>.default]`)
 
 Nodes without a `power:` tier (and tiers you left unmapped) would otherwise run on
 whatever the harness itself defaults to — for `opencode`/`codex`/`copilot` that is
@@ -149,27 +160,27 @@ the CLI's own auto-picked model, which may not be what you want. Pin a per-backe
 fallback in the same config file:
 
 ```toml
-[default.opencode]
+[profiles.opencode.default]
 model = "openai/gpt-5.5"
 effort = "high"
 ```
 
-Model resolution order per turn: `power.<tier>.<backend>` mapping → `AGENT_MODEL` /
-`AGENT_CLAUDE_MODEL` env vars → `[default.<backend>]` → the backend's built-in
+Model resolution order per turn: the profile's `powers.<tier>` mapping → `AGENT_MODEL` /
+`AGENT_CLAUDE_MODEL` env vars → the profile's `default` → the backend's built-in
 default (`sonnet` for claude; unset for the others, meaning the harness decides).
-Effort resolves as: power mapping → `[default.<backend>]` (no env override exists).
+Effort resolves as: power mapping → the profile's `default` (no env override exists).
 
-#### Per-harness environment (`[harness.<backend>].env`)
+#### Per-harness environment (`[cli.<backend>].env`)
 
 Some harness knobs exist only as **environment variables** — no CLI flag, no
 setting workhorse could pass through. Name them per backend and workhorse exports
 them into that CLI's subprocess (and nothing else's):
 
 ```toml
-[harness.opencode]
+[cli.opencode]
 env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }
 
-[harness.claude]
+[cli.claude]
 env = { MAX_THINKING_TOKENS = "31999" }
 ```
 
@@ -189,7 +200,7 @@ pin it rides whatever provider the machine's `opencode.jsonc` names, and a helpe
 routed to a provider the run doesn't otherwise use fails on that provider's own
 wall (an OpenRouter credit exhaustion on the title call was classified as a cap on
 the node and slept a run for six days while its coding models were fine). Setting
-`OPENCODE_CONFIG_CONTENT` in `[harness.opencode].env` does not turn the adapter
+`OPENCODE_CONFIG_CONTENT` in `[cli.opencode].env` does not turn the adapter
 off: your keys are the base and the adapter merges its own over them, key by key
 and into nested tables. A `small_model` you set yourself stands, because the pin
 only fills a key that is absent. Before this merge the adapter skipped itself
@@ -203,7 +214,7 @@ regardless of the model's own limit, and this variable is the only override
 TUI-sized budget: a reasoning model handed a 34k-token review packet spends all of
 it thinking, the completion ends with `reason: length` and no text, and a retry
 re-rolls the same dice. The per-node `timeout` stays the wall-clock bound. Name the
-variable in `[harness.opencode].env` and your value wins.
+variable in `[cli.opencode].env` and your value wins.
 
 The worked example is the one above. `opencode` auto-summarizes a long session, and
 each summary rewrites the conversation prefix — so the next turn bills a full-price
@@ -223,13 +234,12 @@ Inspect or set config with **farrier**, which owns the shared config file — wo
 is a library and ships no command of its own:
 
 ```bash
+farrier config reference --file home      # every key, with type, default, meaning and example
 farrier config show                        # print all config keys
-farrier config show power.high.claude      # print one value
+farrier config show default_cli            # print one value
 farrier config set-library ~/path/to/lib   # set the overlay library path
 farrier config set-stablemate ~/path/to/sm # set the stablemate checkout path
 farrier config set-base ~/path/to/base     # set the base library content path
-farrier config list                        # list all config keys (power table friendly)
-farrier config get power.high.claude       # get one key
 ```
 
 #### Config file location
@@ -264,10 +274,12 @@ versioned independently, so the file — not the code — is where they are kept
 | Config is older than this build | Migrated forward on the next write; the old file is kept as `config.toml.v<n>.bak`. |
 | Reading a newer config | Succeeds, logs a warning. |
 
-Reads deliberately never raise: `power` is re-read per node, so a hard failure would kill
-an unattended run mid-flight because some other tool was upgraded. Writes are the guard,
-because a writer that does not understand a key drops it — which is exactly the bug that
-made this one file in the first place.
+A newer file never fails a read. The config is re-read per node, so a hard failure would
+kill an unattended run mid-flight because some other tool was upgraded. A value of the wrong
+type fails the first load with the key path. A re-read that fails later keeps the last good
+config and logs the key path. A key this build does not know is kept and reported once as a
+stray key. Writes are the guard, because a writer that does not understand a key drops it,
+which is exactly the bug that made this one file in the first place.
 
 #### Initial setup
 
@@ -291,15 +303,16 @@ farrier config show
 
 ### Naming a set of models (profiles)
 
-Editing the `power` and `[default.<backend>]` tables above moves **every** run on the
-machine, including the six-day one already going, and leaves no record of what a finished run actually bought. A `[profiles.<name>]`
-table holds its own `power`, `default` and `default_cli` under one name, picked per run:
+Editing the profile a run uses moves **every** run on the machine, including the six-day one already going, and leaves no record of what a finished run actually bought. A second `[profiles.<name>]` table holds its own `cli`, `powers`, `default` and `delegates` under one name, picked per run:
 
 ```toml
-[profiles.cheap.power.high.claude]
+[profiles.cheap]
+cli = "claude"
+
+[profiles.cheap.powers.high]
 model = "sonnet"
 
-[profiles.cheap.default.claude]
+[profiles.cheap.default]
 model = "haiku"
 ```
 
@@ -309,17 +322,16 @@ workhorse-<name> run --config ./experiment.toml   # a different config file enti
 farrier config show --profile cheap               # read one back, one dotted line per leaf
 ```
 
-A profile **replaces** the top-level `power` / `default` tables rather than layering over
-them — nothing outside it is inherited. Power tiers are opaque strings, so "the profile did
-not mention `max`, so it means the machine's `max`" is a guess the config cannot state.
-What is not a model set stays outside a profile and still applies: `[harness.<backend>].env`,
-`library_dir`, `base_dir`, `stablemate_dir`.
+A profile is the only place a model mapping lives, so nothing outside it is inherited.
+Power tiers are opaque strings, so "the profile did not mention `max`, so it means another
+profile's `max`" is a guess the config cannot state. What is not a model set stays outside
+a profile and still applies: `[cli.<backend>].env`, `library_dir`, `base_dir`,
+`stablemate_dir`.
 
-`--profile` and `--cli` are independent axes. A profile may carry its own `default_cli`, so
-the profile is selected first and the ladder is `--cli` > `AGENT_CLI` > the profile's
-`default_cli` > the top level's > `claude`. A profile that maps no model at all for the
-chosen backend is refused at startup — including under `--dry-run`, that being the point —
-as are an unknown profile name and a `--config` path that is not a file.
+`--profile` and `--cli` are independent axes. The profile's `cli` names its CLI, so a
+profile selects the CLI. Without a profile, the ladder is `--cli` > `AGENT_CLI` >
+`default_cli` > `claude`. An unknown profile name is refused at startup, including under
+`--dry-run`.
 
 `--config <path>` swaps the whole file rather than one table: the resolved path is written
 into `$STABLEMATE_CONFIG`, so every later reader and every subprocess resolves the same one.
@@ -372,7 +384,7 @@ Point the power tier at the model in your config, so the same workflow still run
 natively under `--cli claude`:
 
 ```toml
-[power.high.opencode]
+[profiles.opencode.powers.high]
 model = "openrouter/xiaomi/mimo-v2.5"
 ```
 
@@ -429,7 +441,7 @@ never exceeds ~200k, that summary buys nothing and costs a cold prompt:
 
 ```toml
 # ~/.config/stablemate/config.toml
-[harness.opencode]
+[cli.opencode]
 env = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }
 ```
 
@@ -438,7 +450,7 @@ opencode`. Either way it is scoped to the harness, which is the point: do **not*
 `"compaction": {"auto": false}` in `opencode.jsonc`, because that key is global with
 no per-provider scope and would also disable compaction for models that run close to
 their ceiling and rely on it. See
-[Per-harness environment](#per-harness-environment-harnessbackendenv). Note the ladder still covers a
+[Per-harness environment](#per-harness-environment-clibackendenv). Note the ladder still covers a
 genuine overflow either way — opencode exposes no in-place `/compact`
 (`supports_compaction = False`), so workhorse reframes the node in a fresh session
 rather than compacting.

@@ -210,16 +210,21 @@ opaque internal retry loop.
 
 A workflow does not name a model. An agent turn asks for an abstract `power` tier
 (`high` / `medium` / `low`) and your user-wide config — one file shared with `farrier`,
-at `~/.config/stablemate/config.toml` — maps that tier to a concrete model and effort for
-the active backend. Turns with no `power=`, and tiers with no mapping, fall through to
-`AGENT_MODEL`, then to a per-backend `[default.<backend>]` table, then to the harness's
+at `~/.config/stablemate/config.toml` — maps that tier, through a profile, to a concrete
+model and effort for the active backend. Turns with no `power=`, and tiers with no mapping,
+fall through to `AGENT_MODEL`, then to the profile's `default` table, then to the harness's
 own default:
 
 ```toml
-[power.high.claude]
+[profiles.claude]
+cli = "claude"
+
+[profiles.claude.powers.high]
 model = "opus"
 effort = "high"
 ```
+
+`farrier config reference --file home` prints every key of that file.
 
 ### Naming a set of models (profiles)
 
@@ -231,7 +236,7 @@ layering over them, and the one a run chose is recorded in its `run.json` and st
 root span as `workhorse.profile` — so a flagless `--resume-run` re-applies the same set, and
 a finished run can still say which models it bought.
 
-The full reference — the `power` and `[default.<backend>]` tables, per-harness
+The full reference — the profile `powers` and `default` tables, per-harness
 environment variables, where the config file lives and how its schema version keeps
 workhorse and farrier in step, initial setup, codex config profiles, and running
 OpenRouter models on `cline`/`opencode` (where pinning the upstream endpoint is the

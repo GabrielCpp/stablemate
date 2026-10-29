@@ -133,7 +133,7 @@ class AgentBackend(ABC):
     supports_subagents: bool = False
 
     def harness_env(self) -> dict[str, str]:
-        """Operator-configured extra environment for this CLI (``[harness.<name>].env``)."""
+        """Operator-configured extra environment for this CLI (``[cli.<name>].env``)."""
         return resolve_harness_env(self.name)
 
     def transcript_mapper(self) -> TranscriptMapper:

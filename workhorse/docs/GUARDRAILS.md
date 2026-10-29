@@ -152,7 +152,7 @@ The main controller:
 
 The following environment variables control the guardrail behavior. They are read by
 **workhorse itself**; to set variables read by the *agent CLI* — knobs that exist only
-as environment and have no flag — use `[harness.<backend>].env` in the shared config
+as environment and have no flag — use `[cli.<backend>].env` in the shared config
 (see the README's "Per-harness environment"). Those are exported into that harness's
 subprocess only, including the `/compact` turn in layer 2, so compaction runs under the
 same CLI configuration as the conversation it is compacting.
@@ -190,13 +190,13 @@ executes a unit of that work, and that is a property of the model, not of the no
 it rides the power table rather than the node or the environment:
 
 ```toml
-[power.high.opencode]
+[profiles.opencode.powers.high]
 model = "some/slower-model"
 effort = "high"
 timeout_scale = 2.5      # every budget resolved at this tier, times 2.5
 ```
 
-It is per-tier, per-backend and per-profile, falls through to `[default.<backend>]` the
+It is per-tier and per-profile, falls through to the profile's `default` the
 same way `model` and `effort` do, and is hot-reloadable — so pinning a slow model pins
 its clock with it, and a `--config` pin carries the pairing into a benchmark unchanged.
 Only a strictly positive, finite number is honoured; anything else (a string, `true`,

@@ -20,6 +20,12 @@ from workhorse.cli import main as cli_main  # noqa: E402
 from workhorse.cli import offline  # noqa: E402
 from workhorse.pyflow import Continue, Done, Registry, Workflow  # noqa: E402
 from workhorse.records import LaunchRecord, PyflowCheckpoint, RunRecord  # noqa: E402
+from workhorse._vendor.stablemate_core.config import parse_home_config
+
+
+def _home(tree):
+    return parse_home_config({"config_version": 2, **tree}, Path("config.toml"))
+
 
 
 class Demo(Workflow):
@@ -292,7 +298,7 @@ def test_resume_line_swaps_a_profile_for_another_cli_and_says_so(capsys) -> None
     )
     cfg = {"profiles": {"cheap": {"cli": "claude"}}}
 
-    with patch("workhorse.profile.load_config", lambda: cfg):
+    with patch("workhorse.profile.load_home_config", lambda: _home(cfg)):
         assert offline.resume_line(record, "opencode") == [
             "workhorse-demo", "run", "--auto", "--cli", "opencode",
         ]
@@ -304,7 +310,7 @@ def test_resume_line_keeps_a_profile_that_names_the_cli() -> None:
     record = LaunchRecord(resume_argv=["workhorse-demo", "run", "--profile=cheap", "--auto"])
     cfg = {"profiles": {"cheap": {"cli": "opencode"}}}
 
-    with patch("workhorse.profile.load_config", lambda: cfg):
+    with patch("workhorse.profile.load_home_config", lambda: _home(cfg)):
         assert offline.resume_line(record, "opencode") == [
             "workhorse-demo", "run", "--auto", "--profile", "cheap",
         ]

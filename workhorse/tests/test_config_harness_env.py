@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+from workhorse._vendor.stablemate_core.config import ConfigError, parse_home_config
 from workhorse._vendor.stablemate_core.profiles import resolve_harness_env
 from workhorse.config_run import AgentResilience
 from workhorse.runner import backends, failure, process
@@ -15,7 +19,11 @@ from workhorse.runner.backends.copilot import CopilotBackend
 from workhorse.runner.backends.opencode import OpenCodeBackend
 
 
-CONFIG = {
+def _home(tree):
+    return parse_home_config(tree, Path("config.toml"))
+
+
+CONFIG = _home({
     "cli": {
         "opencode": {"env": {"OPENCODE_DISABLE_AUTOCOMPACT": "1"}},
         "claude": {"env": {"MAX_THINKING_TOKENS": "31999"}},
@@ -26,7 +34,7 @@ CONFIG = {
             "powers": {"high": {"model": "openai/gpt-5.5"}},
         },
     },
-}
+})
 
 
 
@@ -42,37 +50,47 @@ def test_unconfigured_backend_is_empty():
 
 
 def test_missing_sections_never_raise():
-    """Every shape a hand-edited config can take degrades to {}, not an exception."""
-    for cfg in (
+    """Every absent shape a hand-edited config can take degrades to {}, not an exception."""
+    for tree in (
         {},
         {"cli": {}},
         {"cli": {"opencode": {}}},
         {"cli": {"opencode": {"env": {}}}},
+    ):
+        assert resolve_harness_env("opencode", _home(tree)) == {}, tree
+
+
+def test_malformed_sections_are_refused_when_the_config_loads():
+    """A wrong shape never reaches the resolver: the load names the key path, and a re-read keeps the last good document."""
+    for tree in (
         {"cli": "opencode"},
         {"cli": {"opencode": "env"}},
         {"cli": {"opencode": {"env": "FOO=1"}}},
         {"cli": {"opencode": {"env": ["FOO"]}}},
     ):
-        assert resolve_harness_env("opencode", cfg) == {}, cfg
+        with pytest.raises(ConfigError, match="cli"):
+            _home(tree)
 
 
-def test_non_string_values_are_dropped():
-    """``FOO = 1`` is a TOML integer."""
-    cfg = {
+@pytest.mark.parametrize("value", [1, True, 1.5, ["1"], {"a": "b"}])
+def test_non_string_values_are_refused_when_the_config_loads(value):
+    """``FOO = 1`` is a TOML integer, and the load names the key."""
+    with pytest.raises(ConfigError, match=r"cli\.opencode\.env\.AN_INT"):
+        _home({"cli": {"opencode": {"env": {"AN_INT": value}}}})
+
+
+def test_empty_names_are_dropped():
+    """An empty variable name cannot be exported."""
+    cfg = _home({
         "cli": {
             "opencode": {
                 "env": {
                     "GOOD": "1",
-                    "AN_INT": 1,
-                    "A_BOOL": True,
-                    "A_FLOAT": 1.5,
-                    "A_LIST": ["1"],
-                    "NESTED": {"a": "b"},
                     "": "empty-key",
                 }
             }
         }
-    }
+    })
     assert resolve_harness_env("opencode", cfg) == {"GOOD": "1"}
 
 
@@ -137,7 +155,7 @@ def test_every_backend_forwards_its_own_table():
         ClineBackend(),
     ):
         marker = {f"{backend.name.upper()}_MARKER": "yes"}
-        cfg = {"cli": {backend.name: {"env": marker}}}
+        cfg = _home({"cli": {backend.name: {"env": marker}}})
         own = {"opencode": OPENCODE_OWN, "claude": CLAUDE_OWN}.get(backend.name, {})
         with _with_config(cfg):
             assert _spawn_env(backend) == {**marker, **own}, backend.name
@@ -145,7 +163,7 @@ def test_every_backend_forwards_its_own_table():
 
 def test_unconfigured_backend_spawns_with_no_extra_env():
     """No config must mean no change to the inherited environment — an empty dict is what ``stream_subprocess`` already treats as a no-op."""
-    with _with_config({}):
+    with _with_config(_home({})):
         assert _spawn_env(ClaudeBackend()) == CLAUDE_OWN
         assert _spawn_env(OpenCodeBackend()) == OPENCODE_OWN
 

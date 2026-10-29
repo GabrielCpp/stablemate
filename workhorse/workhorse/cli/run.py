@@ -6,17 +6,17 @@ import os
 import sys
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
 
 from workhorse import otel
 from workhorse._vendor.stablemate_core.config import (
     CONFIG_PATH_ENV,
     ensure_artifacts_repo,
-    get_config_value,
-    load_config,
+    ConfigError,
+    load_home_config,
     resolve_workspace,
 )
 from workhorse._vendor.stablemate_core.discovery import base_library_dir
+from workhorse._vendor.stablemate_core.schema import HomeConfig
 from workhorse.cli.params import load_params
 from workhorse.config_run import RunConfig
 from workhorse.manifest import load_context_manifest as _load_context_manifest
@@ -208,10 +208,10 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
     profile_name = (getattr(args, "profile", None) or "").strip()
     if not profile_name and not args.cli and resume_run_dir is not None:
         profile_name = recorded_profile(resume_run_dir)
-    cfg = load_config()
+    home = _load_home()
     if not profile_name and (args.cli or resume_run_dir is None):
-        profile_name = implied_profile(cfg, active_cli(args.cli, cfg))
-    backend = _select_backend(cfg, profile_name, args.cli)
+        profile_name = implied_profile(home, active_cli(args.cli, home))
+    backend = _select_backend(home, profile_name, args.cli)
 
     params = load_params(args.params, args.params_file)
     workspace_name = (getattr(args, "workspace", None) or "").strip()
@@ -223,7 +223,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         if recorded:
             _enter_workspace(recorded)
     params.setdefault("repo_dir", os.environ.get("AGENT_REPO_DIR") or str(Path.cwd().resolve()))
-    params.setdefault("library_dirs", library_dirs(cfg))
+    params.setdefault("library_dirs", library_dirs(home))
 
     return RunInvocation(
         registry=registry,
@@ -243,6 +243,15 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         ),
         telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
+
+
+def _load_home() -> HomeConfig:
+    """The machine config, or an exit naming the key that is wrong."""
+    try:
+        return load_home_config()
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
 def _enter_workspace(name: str) -> None:
@@ -266,10 +275,10 @@ def _recorded_workspace(run_dir: Path) -> str:
     return str(checkpoint.inputs.get("workspace") or "")
 
 
-def library_dirs(cfg: dict[str, Any]) -> list[str]:
+def library_dirs(home: HomeConfig) -> list[str]:
     """The library roots this run resolves content against, highest precedence first."""
     roots: list[str] = []
-    overlay = os.environ.get("FARRIER_LIBRARY_DIR") or get_config_value("library_dir", cfg)
+    overlay = os.environ.get("FARRIER_LIBRARY_DIR") or home.library_dir
     for candidate in (overlay, base_library_dir()):
         if not candidate:
             continue
@@ -282,13 +291,13 @@ def library_dirs(cfg: dict[str, Any]) -> list[str]:
 def backend_for_profile(config_path: str | None, profile_name: str, cli: str | None) -> AgentBackend:
     """The backend ``profile_name`` selects in the config at ``config_path``, read here and nowhere else."""
     apply_config_path(config_path)
-    return _select_backend(load_config(), profile_name, cli)
+    return _select_backend(_load_home(), profile_name, cli)
 
 
-def _select_backend(cfg: dict[str, Any], profile_name: str, cli: str | None) -> AgentBackend:
+def _select_backend(home: HomeConfig, profile_name: str, cli: str | None) -> AgentBackend:
     """The backend a named profile, or else a bare CLI, selects; a bad pick exits with its fix."""
     try:
-        return select_backend(cfg, profile_name, cli)
+        return select_backend(home, profile_name, cli)
     except ProfileError as exc:
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(1)

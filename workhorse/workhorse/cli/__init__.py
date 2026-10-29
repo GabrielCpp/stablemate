@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 from typing import Protocol
 
+from workhorse._vendor.stablemate_core.config import ConfigError
 from workhorse.cli.parser import COMMANDS_BY_NAME, build_parser
 from workhorse.pyflow.registry import Registry
 
@@ -38,7 +39,11 @@ def main(
     args.registry = registry
     args.workflow = workflow
 
-    COMMANDS_BY_NAME[args.command or _DEFAULT_COMMAND].run(args)
+    try:
+        COMMANDS_BY_NAME[args.command or _DEFAULT_COMMAND].run(args)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
 
 
 def console_script(workflow: Registry) -> ConsoleEntry:

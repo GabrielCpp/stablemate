@@ -153,7 +153,7 @@ needs no agent CLI at all — see the [README](../README.md#quick-start).
 | `AGENT_RUNS_DIR` | `/runs` | Where to write run artifacts (set to the persistent `runs` volume by `compose.yaml`) |
 | `AGENT_CLI` | `claude` | Which agent CLI drives the run: `claude`, `codex`, `copilot`, `cline`, or `opencode` |
 | `AGENT_MODEL` | _(unset)_ | Fallback model override when the node's `power` mapping does not provide one |
-| `STABLEMATE_CONFIG` | `~/.config/stablemate/config.toml` | Unified user-wide config mapping `power` tiers to backend model/effort settings |
+| `STABLEMATE_CONFIG` | `~/.config/stablemate/config.toml` | Unified user-wide config mapping power tiers to model and effort settings through profiles |
 | `OPENROUTER_API_KEY` | _(unset)_ | Upstream key for OpenRouter models on the `cline` / `opencode` backends (no proxy). Pass it into the container |
 | `CODEX_PROFILE` | _(unset)_ | Run-level default codex config profile (e.g. `openrouter`, `local`). Codex only |
 | `AWS_PROFILE` | `default` | AWS profile — only when using the Bedrock alternative |

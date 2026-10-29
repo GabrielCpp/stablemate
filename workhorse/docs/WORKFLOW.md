@@ -33,7 +33,7 @@ attention during a migration:
   Python objects into the render context instead — a template that worked around the
   stringification (`{{ count | int }}`) no longer needs to.
 - **Power tiers.** `power: high` was and is an abstract tier resolved through
-  `~/.config/stablemate/config.toml` at `power.<tier>.<backend>` into a concrete
+  `~/.config/stablemate/config.toml` at `profiles.<name>.powers.<tier>` into a concrete
   model/effort. See [BACKENDS.md](BACKENDS.md).
 - **The resilience ladder and its knobs.** Transient retries, cap waits, compact-and-
   continue, reframing, and defaulting a turn's outputs all sit *under* the agent turn,

@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-from typing import Any
 
 from workhorse._vendor.stablemate_core.profiles import resolve_default_cli
+from workhorse._vendor.stablemate_core.schema import HomeConfig
 from workhorse.runner.backends import AgentBackend
 from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
@@ -29,9 +29,9 @@ def backend_names() -> list[str]:
     return sorted(_REGISTRY)
 
 
-def active_cli(name: str | None = None, cfg: dict[str, Any] | None = None) -> str:
+def active_cli(name: str | None = None, home: HomeConfig | None = None) -> str:
     """The CLI a run drives: explicit ``name`` → ``AGENT_CLI`` → config → built-in."""
-    return (name or os.environ.get("AGENT_CLI") or resolve_default_cli(cfg)).strip().lower()
+    return (name or os.environ.get("AGENT_CLI") or resolve_default_cli(home)).strip().lower()
 
 
 def get_backend(name: str | None = None) -> AgentBackend:

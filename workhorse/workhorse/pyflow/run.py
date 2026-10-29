@@ -46,7 +46,7 @@ from workhorse.rundir import (
 from workhorse.runner import process as agent_process
 from workhorse.runner import transcript
 from workhorse.runner.failure import BackendInvocationError
-from workhorse.profile import resolved_profile
+from workhorse.profile import effective_profile, resolved_profile
 from workhorse.templates import turn_catalog
 
 
@@ -234,8 +234,9 @@ def run_pyflow(invocation: RunInvocation) -> int:
     else:
         _resume_worktree(invocation, writer, params)
 
-    if config.profile:
-        writer.record_profile(config.profile, resolved_profile(config.profile))
+    recorded = effective_profile(config.profile, config.backend.name)
+    if recorded:
+        writer.record_profile(recorded, resolved_profile(recorded))
 
     transcript.bind(
         writer.run_dir,

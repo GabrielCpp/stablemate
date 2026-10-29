@@ -7,15 +7,21 @@ import os
 import re
 import shutil
 import subprocess
+import time
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from importlib import metadata
 from pathlib import Path
 from typing import Any
 
-import tomli_w
+import tomlkit
 from platformdirs import user_config_dir, user_data_dir
+from pydantic import ValidationError
+from tomlkit import TOMLDocument
+from tomlkit.exceptions import TOMLKitError
+
+from .schema import HomeConfig, Section, StrayKey, WorkspaceEntry, stray_keys
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +53,12 @@ BACKEND_FALLBACK_KEY = "default"
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {}
 
 
-class ConfigVersionError(RuntimeError):
-    """A config this build must not touch — it was written by a newer stablemate-core."""
-
-
 class ConfigError(ValueError):
     """The config is shaped wrong for the schema it declares."""
+
+
+class ConfigVersionError(ConfigError):
+    """A config this build must not touch — it was written by a newer stablemate-core."""
 
 
 def _core_version() -> str:
@@ -79,12 +85,18 @@ def config_path() -> Path:
     return _default_config_path()
 
 
-def _read(path: Path) -> dict[str, Any]:
+class _Unreadable(Exception):
+    """A config file that exists but cannot be read as TOML."""
+
+
+def _read(path: Path, *, strict: bool = False) -> dict[str, Any]:
     if not path.is_file():
         return {}
     try:
         return tomllib.loads(path.read_text(encoding="utf-8"))
-    except (OSError, tomllib.TOMLDecodeError):
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        if strict:
+            raise _Unreadable(f"{path}: {exc}") from exc
         return {}
 
 
@@ -115,7 +127,7 @@ def _too_new_message(found: int) -> str:
 _warned_too_new: set[int] = set()
 
 
-def _warn_if_too_new(cfg: dict[str, Any]) -> None:
+def _warn_if_too_new(cfg: dict[str, Any], path: Path) -> None:
     found = config_version_of(cfg)
     if found <= CONFIG_VERSION or found in _warned_too_new:
         return
@@ -123,118 +135,244 @@ def _warn_if_too_new(cfg: dict[str, Any]) -> None:
     logger.warning(
         "%s uses config schema v%d; this build understands v%d. Reading it anyway, but "
         "keys it does not share may be missing or misread — upgrade this tool.",
-        config_path(),
+        path,
         found,
         CONFIG_VERSION,
     )
 
 
-def check_config_version(cfg: dict[str, Any] | None = None) -> int:
+def check_config_version() -> int:
     """Raise :class:`ConfigVersionError` if the config is newer than this build."""
-    data = cfg if cfg is not None else load_config()
-    found = config_version_of(data)
+    path = config_path()
+    found = config_version_of(_effective_tree(path, _path_is_explicit(), strict=False))
     if found > CONFIG_VERSION:
         raise ConfigVersionError(_too_new_message(found))
     return found
 
 
-def load_config() -> dict[str, Any]:
-    """The effective config: the unified file, else the merged legacy per-tool files."""
-    path = config_path()
-    if path.is_file():
-        data = _read(path)
-        found = config_version_of(data)
-        if found < CONFIG_VERSION:
-            try:
-                data = _walk_migrations(data, found)
-            except ConfigVersionError:
-                pass
-        _warn_if_too_new(data)
-        return data
-    if _path_is_explicit():
-        return {}
-
-    merged: dict[str, Any] = {}
-    for legacy in legacy_config_paths():
-        merged.update(_read(legacy))
-    found = config_version_of(merged)
+def _lifted(data: dict[str, Any], path: Path) -> dict[str, Any]:
+    found = config_version_of(data)
     if found < CONFIG_VERSION:
+        data = _walk_migrations(data, found)
+    _warn_if_too_new(data, path)
+    return data
+
+
+def _effective_tree(path: Path, explicit: bool, *, strict: bool) -> dict[str, Any]:
+    if path.is_file():
+        tree = _read(path, strict=strict)
+    elif explicit:
+        return {}
+    else:
+        tree = {}
+        for legacy in legacy_config_paths():
+            tree.update(_read(legacy, strict=strict))
+    return _lifted(tree, path)
+
+
+def _key_path(location: tuple[int | str, ...]) -> str:
+    return ".".join(str(part) for part in location)
+
+
+def validation_message(exc: ValidationError) -> str:
+    """One line per invalid key, each naming its key path."""
+    return "\n".join(
+        f"  {_key_path(error['loc'])}: {error['msg']}" for error in exc.errors()
+    )
+
+
+_warned_strays: set[tuple[str, str]] = set()
+
+
+def warn_strays(document: Section, path: Path) -> list[StrayKey]:
+    strays = stray_keys(document)
+    for stray in strays:
+        marker = (str(path), stray.path)
+        if marker in _warned_strays:
+            continue
+        _warned_strays.add(marker)
+        hint = f"; did you mean {stray.closest!r}?" if stray.closest else ""
+        logger.warning(
+            "%s has a key no stablemate tool declares: %s%s. It is kept, and read by nothing.",
+            path,
+            stray.path,
+            hint,
+        )
+    return strays
+
+
+_Stamp = tuple[tuple[str, int, int], ...]
+
+
+@dataclass
+class _Held:
+    stamp: _Stamp
+    document: HomeConfig
+    read_ns: int
+    failed: _Stamp | None = None
+    failed_read_ns: int = 0
+
+
+_held: dict[Path, _Held] = {}
+
+_RACY_NS = 2_000_000_000
+
+
+def _stamp(path: Path, explicit: bool) -> _Stamp:
+    sources = [path] if path.is_file() or explicit else [path, *legacy_config_paths()]
+    stamp: list[tuple[str, int, int]] = []
+    for source in sources:
         try:
-            merged = _walk_migrations(merged, found)
-        except ConfigVersionError:
-            pass
-    _warn_if_too_new(merged)
-    return merged
+            info = source.stat()
+        except OSError:
+            continue
+        stamp.append((str(source), info.st_mtime_ns, info.st_size))
+    return tuple(stamp)
+
+
+def _settled(stamp: _Stamp, read_ns: int) -> bool:
+    return all(read_ns - mtime > _RACY_NS for _, mtime, _ in stamp)
+
+
+def _validated(tree: dict[str, Any], source: Path) -> HomeConfig:
+    try:
+        return HomeConfig.model_validate(tree)
+    except ValidationError as exc:
+        raise ConfigError(
+            f"{source} is not a valid stablemate config:\n{validation_message(exc)}"
+        ) from exc
+
+
+def parse_home_config(tree: Mapping[str, Any], source: Path) -> HomeConfig:
+    """``tree``, a config read from somewhere other than the effective file, lifted and validated; ``source`` names it in the error."""
+    return _validated(_lifted(dict(tree), source), source)
+
+
+def _keep_last_good(
+    held: _Held, stamp: _Stamp, read_ns: int, path: Path, reason: object
+) -> HomeConfig:
+    held.failed = stamp
+    held.failed_read_ns = read_ns
+    logger.warning(
+        "%s no longer loads; keeping the last good config. %s",
+        path,
+        str(reason).replace("\n", " "),
+    )
+    return held.document
+
+
+def load_home_config(path: Path | None = None) -> HomeConfig:
+    """The effective config as a validated :class:`HomeConfig`, shared and read-only.
+
+    ``path`` names one file to read alone; without it the effective file is found as usual.
+    The first load of a path that fails validation raises :class:`ConfigError` naming the key
+    path. A re-read of a path that loaded before and now fails keeps the last good document
+    and logs the key path. A file unchanged since the last load is not read again.
+    """
+    explicit = path is not None or _path_is_explicit()
+    path = path if path is not None else config_path()
+    stamp = _stamp(path, explicit)
+    held = _held.get(path)
+    if held is not None and held.stamp == stamp and _settled(stamp, held.read_ns):
+        return held.document
+    if held is not None and held.failed == stamp and _settled(stamp, held.failed_read_ns):
+        return held.document
+    read_ns = time.time_ns()
+    try:
+        document = _validated(_effective_tree(path, explicit, strict=True), path)
+    except (ConfigError, _Unreadable) as exc:
+        if held is not None:
+            return _keep_last_good(held, stamp, read_ns, path, exc)
+        if isinstance(exc, _Unreadable):
+            raise ConfigError(f"{exc}") from exc
+        raise
+    warn_strays(document, path)
+    _held[path] = _Held(stamp, document, read_ns)
+    return document
+
+
+def _forget(path: Path) -> None:
+    _held.pop(path, None)
+
+
+def _backup_before_migrating(path: Path, from_version: int) -> None:
+    backup = path.with_name(f"{path.name}.v{from_version}.bak")
+    try:
+        shutil.copy2(path, backup)
+    except OSError as exc:
+        raise ConfigVersionError(
+            f"cannot back up {path} to {backup} before migrating it to schema "
+            f"v{CONFIG_VERSION}: {exc}"
+        ) from exc
+    logger.warning(
+        "migrating %s from config schema v%d to v%d; the previous file is saved at "
+        "%s. Tools still on an older stablemate-core will refuse to write it.",
+        path,
+        from_version,
+        CONFIG_VERSION,
+        backup,
+    )
+
+
+def _fold(document: TOMLDocument, tree: dict[str, Any]) -> None:
+    """Make ``document`` hold ``tree``, touching only the top-level keys whose value differs."""
+    current = document.unwrap()
+    for key in [key for key in current if key not in tree]:
+        del document[key]
+    for key, value in tree.items():
+        if key not in current or current[key] != value:
+            document[key] = value
+
+
+def _editable(path: Path) -> TOMLDocument:
+    """The file as a comment-preserving document, lifted to :data:`CONFIG_VERSION`, or refused when newer."""
+    if not path.is_file():
+        document = tomlkit.document()
+        _fold(document, _effective_tree(path, _path_is_explicit(), strict=False))
+        return document
+    try:
+        document = tomlkit.parse(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, TOMLKitError) as exc:
+        raise ConfigError(f"{path} cannot be edited, it is not valid TOML: {exc}") from exc
+    tree = document.unwrap()
+    found = config_version_of(tree)
+    if found > CONFIG_VERSION:
+        raise ConfigVersionError(_too_new_message(found))
+    if found < CONFIG_VERSION:
+        lifted = _walk_migrations(tree, found)
+        _backup_before_migrating(path, found)
+        _fold(document, lifted)
+    return document
+
+
+def _save(path: Path, document: TOMLDocument) -> None:
+    document[CONFIG_VERSION_KEY] = CONFIG_VERSION
+    path.write_text(tomlkit.dumps(document), encoding="utf-8")
+    _forget(path)
 
 
 def write_config_key(key: str, value: str) -> None:
-    """Persist a single top-level string key, preserving every other key."""
+    """Persist a single top-level string key, preserving every other key and comment."""
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    raw = _read(path)
-    cfg = load_config()
-
-    found = config_version_of(raw)
-    if found > CONFIG_VERSION:
-        raise ConfigVersionError(_too_new_message(found))
-    if found < CONFIG_VERSION:
-        cfg = _migrate_forward(cfg, found, path)
-
-    cfg[key] = value
-    cfg[CONFIG_VERSION_KEY] = CONFIG_VERSION
-    with path.open("wb") as handle:
-        tomli_w.dump(cfg, handle)
+    document = _editable(path)
+    document[key] = value
+    _save(path, document)
 
 
 def write_config_section(name: str, values: dict[str, Any]) -> None:
-    """Persist one dotted table, preserving every other key."""
+    """Persist one dotted table, preserving every other key and comment."""
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    raw = _read(path)
-    cfg = load_config()
-
-    found = config_version_of(raw)
-    if found > CONFIG_VERSION:
-        raise ConfigVersionError(_too_new_message(found))
-    if found < CONFIG_VERSION:
-        cfg = _migrate_forward(cfg, found, path)
-
+    document = _editable(path)
     parts = name.split(".")
-    table = cfg
+    table: Any = document
     for part in parts[:-1]:
-        nested = table.get(part)
-        if not isinstance(nested, dict):
-            nested = {}
-            table[part] = nested
-        table = nested
+        if not isinstance(table.get(part), dict):
+            table[part] = tomlkit.table(is_super_table=True)
+        table = table[part]
     table[parts[-1]] = dict(values)
-
-    cfg[CONFIG_VERSION_KEY] = CONFIG_VERSION
-    with path.open("wb") as handle:
-        tomli_w.dump(cfg, handle)
-
-
-def _migrate_forward(cfg: dict[str, Any], from_version: int, path: Path) -> dict[str, Any]:
-    """Carry a config from ``from_version`` up to :data:`CONFIG_VERSION`, one step at a time."""
-    if path.is_file():
-        backup = path.with_name(f"{path.name}.v{from_version}.bak")
-        try:
-            shutil.copy2(path, backup)
-        except OSError as exc:
-            raise ConfigVersionError(
-                f"cannot back up {path} to {backup} before migrating it to schema "
-                f"v{CONFIG_VERSION}: {exc}"
-            ) from exc
-        logger.warning(
-            "migrating %s from config schema v%d to v%d; the previous file is saved at "
-            "%s. Tools still on an older stablemate-core will refuse to write it.",
-            path,
-            from_version,
-            CONFIG_VERSION,
-            backup,
-        )
-
-    return _walk_migrations(cfg, from_version)
+    _save(path, document)
 
 
 def _walk_migrations(cfg: dict[str, Any], from_version: int) -> dict[str, Any]:
@@ -322,7 +460,7 @@ def _migrate_v1_to_v2(cfg: dict[str, Any]) -> dict[str, Any]:
 
         nested_default = profile.pop("default", None)
         if isinstance(nested_default, dict):
-            cli = profile_cli(profile)
+            cli = _profile_cli(profile)
             if cli and any(
                 key not in {"model", "effort", "timeout_scale"} for key in nested_default
             ):
@@ -371,25 +509,12 @@ def _reject_duplicate_cli(profiles: dict[str, Any]) -> None:
 _MIGRATIONS[1] = _migrate_v1_to_v2
 
 
-def profile_cli(profile: dict[str, Any]) -> str | None:
+def _profile_cli(profile: dict[str, Any]) -> str | None:
     """The ``cli`` field a profile declares, lowercased and stripped."""
     raw = profile.get(PROFILE_CLI_KEY)
     if not isinstance(raw, str) or not raw.strip():
         return None
     return raw.strip().lower()
-
-
-def get_config_value(name: str, cfg: dict[str, Any] | None = None) -> Any:
-    data = cfg if cfg is not None else load_config()
-    value: Any = data
-    for part in name.split("."):
-        if not isinstance(value, dict) or part not in value:
-            return None
-        value = value[part]
-    return value
-
-
-read_config = load_config
 
 
 def write_library_dir(path: Path) -> None:
@@ -412,28 +537,18 @@ def write_worktree_dir(path: Path) -> None:
     write_config_key("worktree_dir", str(path))
 
 
-def write_artifacts_dir(path: Path) -> None:
-    """Persist ``artifacts_dir`` (where per-user story artifacts live, outside git)."""
-    write_config_key("artifacts_dir", str(path))
-
-
-def write_paddock_dir(path: Path) -> None:
-    """Persist ``paddock_dir`` (the benchmark root: gold, workspace and results)."""
-    write_config_key("paddock_dir", str(path))
-
-
 def resolve_stablemate_dir() -> Path | None:
     """The configured stablemate checkout path, or None if unset."""
-    configured = get_config_value("stablemate_dir")
-    if isinstance(configured, str) and configured:
+    configured = load_home_config().stablemate_dir
+    if configured:
         return Path(configured).expanduser().resolve()
     return None
 
 
 def resolve_worktree_dir() -> Path | None:
     """The directory new git worktrees are cut into, or None if unset."""
-    configured = get_config_value("worktree_dir")
-    if isinstance(configured, str) and configured:
+    configured = load_home_config().worktree_dir
+    if configured:
         return Path(configured).expanduser().resolve()
     return None
 
@@ -443,16 +558,16 @@ def resolve_artifacts_dir() -> Path:
     env = os.environ.get(ARTIFACTS_DIR_ENV)
     if env:
         return Path(env).expanduser().resolve()
-    configured = get_config_value("artifacts_dir")
-    if isinstance(configured, str) and configured:
+    configured = load_home_config().artifacts_dir
+    if configured:
         return Path(configured).expanduser().resolve()
     return (Path(user_data_dir("stablemate")) / "artifacts").expanduser().resolve()
 
 
 def resolve_paddock_dir() -> Path:
     """The benchmark root: ``paddock_dir``, then the data dir."""
-    configured = get_config_value("paddock_dir")
-    if isinstance(configured, str) and configured:
+    configured = load_home_config().paddock_dir
+    if configured:
         return Path(configured).expanduser().resolve()
     return (Path(user_data_dir("stablemate")) / "paddock").expanduser().resolve()
 
@@ -474,34 +589,21 @@ def member_name(path: Path) -> str:
     return re.sub(r"-+", "-", name).strip("-").lower()
 
 
-def _member_of(workspace: str, entry: Any) -> WorkspaceMember:
-    if isinstance(entry, str):
-        entry = {"path": entry}
-    if not isinstance(entry, dict) or not isinstance(entry.get("path"), str) or not entry["path"]:
-        raise ConfigError(
-            f"workspace {workspace!r}: every entry is a path string or a table with a `path`"
-        )
-    path = Path(entry["path"]).expanduser()
-    name = entry.get("name")
+def _member_of(entry: WorkspaceEntry) -> WorkspaceMember:
+    path = Path(entry.path).expanduser()
     return WorkspaceMember(
-        name=str(name) if name else member_name(path),
+        name=entry.name or member_name(path),
         path=path,
-        url=str(entry.get("url") or ""),
-        branch=str(entry.get("branch") or ""),
+        url=entry.url or "",
+        branch=entry.branch or "",
     )
 
 
-def resolve_workspace(name: str) -> list[WorkspaceMember]:
-    """The members of the workspace ``name`` in the home config; an unknown name lists the known ones."""
-    table = load_config().get(WORKSPACES_KEY)
-    workspaces = table if isinstance(table, dict) else {}
-    if name not in workspaces:
-        known = ", ".join(sorted(workspaces)) or "(none)"
+def _members_in(home: HomeConfig, name: str) -> list[WorkspaceMember]:
+    if name not in home.workspaces:
+        known = ", ".join(sorted(home.workspaces)) or "(none)"
         raise ValueError(f"unknown workspace {name!r}; known workspaces: {known}")
-    entries = workspaces[name]
-    if not isinstance(entries, list):
-        raise ConfigError(f"workspace {name!r} must be a list of entries")
-    members = [_member_of(name, entry) for entry in entries]
+    members = [_member_of(entry) for entry in home.workspaces[name]]
     seen: set[str] = set()
     for member in members:
         if member.name in seen:
@@ -510,10 +612,14 @@ def resolve_workspace(name: str) -> list[WorkspaceMember]:
     return members
 
 
+def resolve_workspace(name: str) -> list[WorkspaceMember]:
+    """The members of the workspace ``name`` in the home config; an unknown name lists the known ones."""
+    return _members_in(load_home_config(), name)
+
+
 def _all_members() -> list[WorkspaceMember]:
-    table = load_config().get(WORKSPACES_KEY)
-    workspaces = table if isinstance(table, dict) else {}
-    return [member for name in workspaces for member in resolve_workspace(name)]
+    home = load_home_config()
+    return [member for name in home.workspaces for member in _members_in(home, name)]
 
 
 def _bind(members: list[WorkspaceMember]) -> dict[str, Path]:
