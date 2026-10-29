@@ -128,7 +128,9 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
    - **regression**: an existing spec this story's change broke, or a stale spec.
 9. **Repair.** Hand each non-product defect to the seat that owns it, then run again from
    the step it touched. Stop when the scored run passes and the audit stands, or when every
-   failure left is a product finding.
+   failure left is a product finding. One open audit runs per visit. After a repair, the
+   next auditor re-audits: it gets the earlier refutations with the brief, and checks only
+   that each one is resolved and that the repair broke nothing the map computes.
 10. **Return.** `passed` when the scored run passed and the audit stands. `findings` when
     the scored run fails on product defects, one finding per defect. `blocked` only as
     described below.

@@ -84,6 +84,14 @@ scenario with no screenshot is a plan defect.
 - Evidence written to a scratch directory instead of the scored ledger.
 - Steps that self-heal or fall back, so the final assertion cannot say which path produced it.
 
+### A re-audit
+
+When the brief carries earlier refutations, this is a re-audit of a repaired run. Check each
+earlier refutation against the new evidence, and read the map and the diagnostics again.
+Refute only on an earlier refutation still standing, a `contradicted` row, a `pageErrors`
+entry, a 5xx, or a row the repair moved out of `covered`. Do not sample for new plan
+defects. The open audit already had that pass, and a fresh sample finds a new nit each round.
+
 ### The verdict
 
 It returns `stands` only when no concrete refutation survives. Each refutation is one of:
