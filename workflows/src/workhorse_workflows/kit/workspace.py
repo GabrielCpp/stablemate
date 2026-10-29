@@ -8,22 +8,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-import yaml
 from workhorse._vendor.stablemate_core import config as core_config
 
 from workhorse_workflows.kit import credentials
 from workhorse_workflows.kit import paths as paths_kit
+from workhorse_workflows.kit.manifest import read_manifest
 
 
 def _repo_name(path: Path) -> str:
     """A repo's name: its agents.yml `repo.name` when set, else its directory name, normalized the same way farrier's repo_prefix() derives the install prefix, so the key here and the prefix on that repo's installed skills are the same string by construction."""
-    try:
-        meta = yaml.safe_load((path / "agents.yml").read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError):
-        meta = None
-    repo = meta.get("repo") if isinstance(meta, dict) else None
-    named = repo.get("name") if isinstance(repo, dict) else None
-    raw = str(named) if named else path.name
+    manifest = read_manifest(path)
+    named = manifest.repo.name if manifest is not None else None
+    raw = named if named else path.name
     name = re.sub(r"[^a-zA-Z0-9/-]+", "-", raw.replace(".", "-").replace("_", "-"))
     return re.sub(r"-+", "-", name).strip("-").lower()
 
@@ -43,25 +39,20 @@ def resolve_workspace(
 
     repos: dict[str, dict] = {}
     for name, abs_path in folders:
-        agents_yml = abs_path / "agents.yml"
-        if agents_yml.exists():
-            try:
-                meta = yaml.safe_load(agents_yml.read_text(encoding="utf-8"))
-            except (yaml.YAMLError, OSError):
-                repos[name] = {"path": str(abs_path)}
-                continue
-            template = meta.get("template") or {}
-            services = meta.get("services") or {}
-            repo_section = meta.get("repo")
-            base_branch = repo_section.get("base_branch") if isinstance(repo_section, dict) else None
-            repos[name] = {
-                **({"base_branch": base_branch} if base_branch else {}),
-                "path": str(abs_path),
-                "template": template,
-                "services": services if isinstance(services, dict) else {},
-            }
-        else:
+        manifest = read_manifest(abs_path)
+        if manifest is None:
             repos[name] = {"path": str(abs_path)}
+            continue
+        base_branch = manifest.repo.base_branch
+        repos[name] = {
+            **({"base_branch": base_branch} if base_branch else {}),
+            "path": str(abs_path),
+            "template": manifest.template.mapping(),
+            "services": {
+                key: entry.model_dump(exclude_unset=True)
+                for key, entry in manifest.services.items()
+            },
+        }
     return repos
 
 

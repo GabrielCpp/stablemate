@@ -9,7 +9,6 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
-import yaml
 from git import Repo
 from git.exc import GitError
 from ostler import path as okf_path
@@ -18,6 +17,7 @@ from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.scalarstring import ScalarString
 from workhorse_workflows.kit import commit_all, head_sha, load_json, run_tool
+from workhorse_workflows.kit.manifest import read_manifest
 from workhorse_workflows.coder.shared.contract import declared_service_paths, service_problems
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -147,7 +147,6 @@ def write_agents_yml(
     service: str = "",
     packs: Sequence[str] = (),
     service_root: str = "",
-    workflows: Sequence[str] = ("coder",),
     scaffolds: Sequence[str] = (),
     assistants: Sequence[str] = ("claude",),
     gates: Sequence[str] = (),
@@ -211,8 +210,7 @@ def write_agents_yml(
 
     data.setdefault("agents", {name: name in assistants for name in ASSISTANTS})
 
-    for key, values in (("packs", list(packs)), ("workflows", list(workflows)),
-                        ("scaffolds", scaffold_ids)):
+    for key, values in (("packs", list(packs)), ("scaffolds", scaffold_ids)):
         if values:
             _assign_seq(data, key, list(dict.fromkeys([*(data.get(key) or []), *values])))
 
@@ -468,11 +466,12 @@ def validate_genesis(
 
 def _declared_paths(target: Path) -> list[str]:
     """The service paths `target`'s agents.yml declares, or `[]` when it declares none."""
-    try:
-        data = yaml.safe_load((target / "agents.yml").read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError):
+    manifest = read_manifest(target)
+    if manifest is None:
         return []
-    return declared_service_paths(data.get("services") if isinstance(data, dict) else None)
+    return declared_service_paths(
+        {key: entry.model_dump(exclude_unset=True) for key, entry in manifest.services.items()}
+    )
 
 
 def _ostler_root(target: Path) -> Path | None:

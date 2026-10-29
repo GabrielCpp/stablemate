@@ -28,7 +28,6 @@ class Genesis(Workflow):
     scaffolds: str = ""
     init_cmd: str = ""
     marker: str = ""
-    workflows: str = "coder"
     assistants: str = "claude"
     gates: str = ""
 
@@ -63,7 +62,6 @@ class Genesis(Workflow):
             found.service,
             self._split(self.packs),
             self.service_root,
-            self._split(self.workflows),
             self._split(self.scaffolds),
             self._split(self.assistants),
             self._split(self.gates),

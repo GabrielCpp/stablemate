@@ -49,7 +49,7 @@ README's Frozen target table must say so (add a `Baseline` row with `<count>/<n>
    question sharp and falsifiable, and front-load the cheapest experiment that
    could kill it.
 3. Record it **in this same program folder** (`{{ program_dir }}`), reusing the
-   existing scaffolding — do NOT create a new folder, or `load_config` will not find
+   existing scaffolding — do NOT create a new folder, or the workflow will not find
    the next run's manifest:
    - Keep `{{ program_dir }}/program.yml` valid and current: if the new direction
      moves where experiment code lives, update its `code_root`; otherwise leave it.

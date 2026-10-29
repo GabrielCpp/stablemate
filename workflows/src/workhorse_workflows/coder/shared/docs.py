@@ -5,13 +5,14 @@ import logging
 from pathlib import Path
 from typing import Any, Literal
 
-import yaml
 from git.exc import GitError, InvalidGitRepositoryError, NoSuchPathError
 from ostler import Ostler, path as okf_path
 from ostler.model import Graph
 from ostler import refs as refs_mod
+from workhorse._vendor.stablemate_core.manifest import locate_manifest
 from workhorse.pyflow import Workflow
 from workhorse_workflows.kit import find_docs_root, load_json
+from workhorse_workflows.kit.manifest import read_manifest
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.docs import (
     ContextClassification,
@@ -23,8 +24,6 @@ from workhorse_workflows.coder.shared.worktree import untouched_since
 from workhorse_workflows.kit import open_repo, trunk_base
 
 CONTEXT_FILE = "qa-okf-context.json"
-
-CONFIG_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
 
 MANAGED_KINDS = ("services",)
 
@@ -249,21 +248,12 @@ def detect_okf_docs(
     else:
         requested = sub if sub.is_absolute() else base / sub
 
-    configured = False
-    for name in CONFIG_FILES:
-        path = base / name
-        if not path.is_file():
-            continue
-        if name.startswith("ostler"):
-            configured = True
-            break
-        try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except (OSError, yaml.YAMLError):
-            continue
-        if isinstance(data, dict) and isinstance(data.get("organization"), dict):
-            configured = True
-            break
+    manifest_file = locate_manifest(base)
+    manifest = read_manifest(base)
+    configured = manifest_file is not None and (
+        manifest_file.name.startswith("ostler")
+        or (manifest is not None and manifest.organization is not None)
+    )
 
     managed_tree = any(
         path.is_dir()

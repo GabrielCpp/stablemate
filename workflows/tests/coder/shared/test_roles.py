@@ -239,3 +239,22 @@ def test_no_library_anywhere_is_not_an_error(tmp_path):
 
     assert turn.prompt == "dev/prompts/dev-review.md"
     assert "body_template" not in turn.args
+
+
+def test_a_top_level_role_map_beats_the_nested_one_when_both_are_set(tmp_path):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "top.md").write_text("top")
+    (repo / "nested.md").write_text("nested")
+    (repo / "agents.yml").write_text(
+        yaml.safe_dump(
+            {
+                "prompts": {"dev-review": "top.md"},
+                "workflow": {"prompts": {"dev-review": "nested.md"}},
+            }
+        )
+    )
+
+    turn = roles.turn(_flow("dev", repo), "dev-review", returns=DevResult)
+
+    assert (Path(turn.args["_body_dir"]) / "top.md").read_text() == "top"

@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from workhorse.pyflow import WorkflowFailed
+from workhorse_workflows.kit.manifest import read_manifest
 from workhorse_workflows.research.nodes._blueprint import blueprint
 from workhorse_workflows.research.schemas import Ledger, Program
 
@@ -109,18 +110,10 @@ def detect_program_from_launch(repo_root: Path, launch: str = "") -> str:
 
 def read_agents_yaml_program(repo_root: Path) -> str:
     """Top-level `program:` value from the repo's `agents.yml` (the committed default)."""
-    cfg = repo_root / "agents.yml"
-    if not cfg.is_file():
-        cfg = repo_root / ".agents.yml"
-    if not cfg.is_file():
+    manifest = read_manifest(repo_root)
+    if manifest is None or not manifest.program:
         return ""
-    for raw in cfg.read_text().splitlines():
-        if raw[:1] in (" ", "\t", "#", ""):
-            continue
-        line = raw.split("#", 1)[0].rstrip()
-        if line.startswith("program:"):
-            return line.split(":", 1)[1].strip().strip('"').strip("'").strip("/")
-    return ""
+    return manifest.program.strip().strip("/")
 
 
 def read_pointer(repo_root: Path) -> str:

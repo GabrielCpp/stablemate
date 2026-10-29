@@ -6,7 +6,7 @@ import os
 from collections.abc import Iterator, Mapping
 from pathlib import Path
 
-import yaml
+from workhorse_workflows.kit.manifest import read_manifest
 
 GITHUB_FALLBACKS = ("GH_TOKEN", "GITHUB_TOKEN")
 
@@ -15,19 +15,11 @@ GIT_CREDENTIAL_ENV = "WORKHORSE_GIT_TOKEN"
 
 def _configured_token_env(root: Path) -> str | None:
     """The env-var name configured in agents.yml ``workflow.githubTokenEnv`` (or None)."""
-    cfg = root / "agents.yml"
-    if not cfg.is_file():
+    manifest = read_manifest(root)
+    if manifest is None:
         return None
-    try:
-        data = yaml.safe_load(cfg.read_text(encoding="utf-8")) or {}
-    except (yaml.YAMLError, OSError):
-        return None
-    workflow = data.get("workflow") or {}
-    if isinstance(workflow, dict):
-        name = workflow.get("githubTokenEnv") or workflow.get("github_token_env")
-        if name:
-            return str(name).strip()
-    return None
+    name = manifest.workflow.githubTokenEnv
+    return name.strip() if name else None
 
 
 def github_token(root: str | Path) -> str:

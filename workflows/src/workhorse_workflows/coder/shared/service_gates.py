@@ -5,11 +5,11 @@ import logging
 import subprocess
 from pathlib import Path
 
-import yaml
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.contract import normalize_service_path
 from workhorse_workflows.coder.shared.schemas.dev import GateList, GateOutcome
 from workhorse_workflows.kit import find_repo_root, resolve_workspace
+from workhorse_workflows.kit.manifest import read_manifest
 
 MAX_GATE_OUTPUT = 4000
 
@@ -20,17 +20,12 @@ GATE_ORDER = ("lint", "test")
 
 def _services_config(repo_dir: str = "") -> dict[str, dict]:
     """The orchestrating repo's `services:` block — what each service type declares."""
-    cfg_path = find_repo_root(repo_dir) / "agents.yml"
-    if not cfg_path.exists():
+    manifest = read_manifest(find_repo_root(repo_dir))
+    if manifest is None:
         return {}
-    try:
-        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError:
-        return {}
-    block = cfg.get("services") or (cfg.get("workflow") or {}).get("services") or {}
-    if not isinstance(block, dict):
-        return {}
-    return {str(k): v for k, v in block.items() if isinstance(v, dict)}
+    return {
+        key: entry.model_dump(exclude_unset=True) for key, entry in manifest.services.items()
+    }
 
 
 def service_keys(service: str = "", service_type: str = "") -> list[str]:
@@ -76,17 +71,10 @@ def _lint_override(service: str, cwd: Path, repo_dir: str = "") -> str:
     """The legacy `lint:` map — an explicit lint command keyed by service or directory."""
     if not service:
         return ""
-    cfg_path = find_repo_root(repo_dir) / "agents.yml"
-    if not cfg_path.exists():
+    manifest = read_manifest(find_repo_root(repo_dir))
+    if manifest is None:
         return ""
-    try:
-        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError:
-        return ""
-    lint_map = cfg.get("lint") or (cfg.get("workflow") or {}).get("lint") or {}
-    if not isinstance(lint_map, dict):
-        return ""
-    return str(lint_map.get(service) or lint_map.get(cwd.name) or "").strip()
+    return (manifest.lint.get(service) or manifest.lint.get(cwd.name) or "").strip()
 
 
 def _has_make_target(cwd: Path, target: str) -> bool:

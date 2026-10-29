@@ -4,8 +4,9 @@ from __future__ import annotations
 import os
 
 import pytest
+from workhorse._vendor.stablemate_core.config import ConfigError
 
-from workhorse_workflows.kit.credentials import scoped_env
+from workhorse_workflows.kit.credentials import github_token, scoped_env
 
 _NAME = "STABLEMATE_TEST_SCOPED_ENV_VAR"
 
@@ -45,3 +46,11 @@ def test_scoped_env_restores_even_when_the_block_raises():
             raise RuntimeError("callee blew up")
 
     assert _NAME not in os.environ
+
+
+def test_a_manifest_that_fails_validation_stops_the_token_lookup_instead_of_using_a_fallback(tmp_path):
+    """A broken manifest once read as absent, so a repo's own token env was dropped for GITHUB_TOKEN."""
+    (tmp_path / "agents.yml").write_text("workflow:\n  githubTokenEnv: [not, a, name]\n")
+
+    with pytest.raises(ConfigError, match="workflow.githubTokenEnv"):
+        github_token(tmp_path)

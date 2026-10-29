@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import yaml
 from ostler import Ostler
 from ostler.milestones import MOCKUPS_DIR, MilestoneSelectionError
 from workhorse.pyflow import WorkflowFailed
@@ -12,21 +11,18 @@ from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import survey_repo_root
 from workhorse_workflows.author.shared.schemas.main import Config
+from workhorse_workflows.kit.manifest import read_manifest
 
 GRILLS_DIR = "grills"
 PM_LEDGER_FILE = "pm.md"
 
 
-def _template(root: Path) -> dict:
-    """`agents.yml` as a dict, or an empty one — an unreadable config is not a failure."""
-    cfg_path = root / "agents.yml"
-    if not cfg_path.is_file():
-        return {}
-    try:
-        data = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
-        return {}
-    return data if isinstance(data, dict) else {}
+def layers(root: Path) -> list[str]:
+    """The skill each `localInstructions` entry names, in order; none when the manifest is unreadable."""
+    manifest = read_manifest(root)
+    if manifest is None:
+        return []
+    return [entry.skill for entry in manifest.localInstructions if entry.skill]
 
 
 def approved_milestone_path(root: Path) -> str:
@@ -71,17 +67,11 @@ def load_config(
     milestone = approved_milestone_path(root) if mode == "epic" else ""
 
     folder = approved_milestone_folder(root)
-    data = _template(root)
     services_dir = paths.services_dir(root)
-
-    layers = [
-        str(li["skill"])
-        for li in (data.get("localInstructions") or [])
-        if isinstance(li, dict) and li.get("skill")
-    ]
+    layer_skills = layers(root)
 
     logger.info(
-        "loaded config for %s (services_dir=%s, %d layer(s))", root, services_dir, len(layers)
+        "loaded config for %s (services_dir=%s, %d layer(s))", root, services_dir, len(layer_skills)
     )
     return Config(
         repo_root=str(root),
@@ -91,7 +81,7 @@ def load_config(
         pm_ledger=pm_ledger_path(folder) if folder is not None else "",
         epics_dir=epics_dir,
         services_dir=str(services_dir),
-        layers=layers,
+        layers=layer_skills,
     )
 
 

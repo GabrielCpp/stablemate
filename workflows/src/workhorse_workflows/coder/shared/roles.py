@@ -1,18 +1,22 @@
 """Which prompt body a turn renders, and who owns it."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generic, TypeVar
 
-import yaml
 from pydantic import BaseModel
+from workhorse._vendor.stablemate_core.config import ConfigError
 from workhorse.pyflow import WorkflowFailed, resolves_prompt
 from workhorse.templates import BODY_PREFIX
 from workhorse_workflows.coder.shared.schemas.render import schema_block
 from workhorse_workflows.kit import find_repo_root
+from workhorse_workflows.kit.manifest import read_manifest
 
 T = TypeVar("T", bound=BaseModel)
+
+logger = logging.getLogger(__name__)
 
 PACKAGE = "workhorse_workflows.coder"
 
@@ -93,23 +97,17 @@ def _body(role: str, repo_dir: str | Path, library_dirs: tuple[str, ...]) -> Pat
 
 
 def _repo_prompts(repo_dir: str | Path) -> dict[str, str]:
-    """The repo's `prompts:` block, read the way `dev._services_config` reads `services:`."""
-    config = find_repo_root(repo_dir) / "agents.yml"
-    if not config.is_file():
-        return {}
+    """The repo's `workflow.prompts` role map, or none when the manifest does not load.
+
+    A role override only replaces a prompt the library already ships, so a broken manifest costs
+    the override and never the run.
+    """
     try:
-        loaded = yaml.safe_load(config.read_text()) or {}
-    except yaml.YAMLError:
+        manifest = read_manifest(find_repo_root(repo_dir))
+    except ConfigError as exc:
+        logger.warning("%s", str(exc).replace("\n", " "))
         return {}
-    if not isinstance(loaded, dict):
-        return {}
-    block = loaded.get("prompts")
-    if not isinstance(block, dict):
-        workflow = loaded.get("workflow")
-        block = workflow.get("prompts") if isinstance(workflow, dict) else None
-    if not isinstance(block, dict):
-        return {}
-    return {str(k): str(v) for k, v in block.items() if isinstance(v, str)}
+    return dict(manifest.workflow.prompts) if manifest is not None else {}
 
 
 __all__ = ["LIBRARY_SUBDIR", "PACKAGE", "ROLES", "Turn", "flow_dir", "turn"]
