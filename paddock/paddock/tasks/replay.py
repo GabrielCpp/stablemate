@@ -18,7 +18,7 @@ from paddock.runner import CommandResult, Run
 from paddock.registry import Score
 from paddock.tasks import inputs
 
-KNOWN_FLOWS = ("qa", "docs", "dev")
+KNOWN_FLOWS = ("qa", "docs", "dev", "story")
 
 BUDGET_S = 2400.0
 
@@ -149,7 +149,7 @@ def rewind(repo: Path, fixture: Fixture, pin: Pin, flow: str, *, run: Run | None
                 f"{pin.story!r} still right?"
             )
         clear_qa_outputs(spec)
-    elif flow == "dev":
+    elif flow in ("dev", "story"):
         pinned = pin.commits_of(flow, member_names)
         refs = {member: pin.entry_ref(flow, member) for member in pinned}
         for member, ref in refs.items():
@@ -255,14 +255,17 @@ def checkout(
 def launch_flow(
     run: Run, repo: Path, flow: str, *, run_id: str, story: str, budget: float, runs_dir: Path
 ) -> CommandResult:
-    """Drive `workhorse-coder run <flow>` over the trial tree at *repo*, under the workspace a folder of repos carries."""
+    """Drive `workhorse-coder run <flow>`, or the whole story with commit delivery, over the trial tree at *repo*, under the workspace a folder of repos carries."""
     launch = tree.launch(run, repo)
+    params: dict[str, str] = {"story": story, "repo_dir": str(launch.repo_dir)}
+    if flow == "story":
+        params["delivery"] = "commit"
     return run.cli(
         *sm.uv_run(sm.stablemate_checkout(run), "workhorse-workflows"),
-        "workhorse-coder", "run", flow,
+        "workhorse-coder", "run", *(() if flow == "story" else (flow,)),
         "--runs-dir", str(runs_dir), "--run-id", run_id,
         *launch.flags(),
-        "--params", json.dumps({"story": story, "repo_dir": str(launch.repo_dir)}),
+        "--params", json.dumps(params),
         cwd=launch.repo_dir,
         env={
             **launch.env,
