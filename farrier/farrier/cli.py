@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from farrier import doctor
-from farrier.config_reference import REFERENCES, reference_text
+from farrier.config_reference import REFERENCES, UnknownKeyError, reference_text
 from farrier import layers as _layers
 from farrier import pipx
 from farrier._vendor.stablemate_core.config import (
@@ -309,7 +309,10 @@ def _dispatch_config(args: argparse.Namespace) -> int:
         return 0
 
     if args.config_action == "reference":
-        print(reference_text(args.file), end="")
+        try:
+            print(reference_text(args.file, args.key, full=args.full), end="")
+        except UnknownKeyError as exc:
+            raise SystemExit(f"error: {exc}") from exc
         return 0
 
     home = load_home_config()
@@ -631,8 +634,20 @@ def _build_parser() -> argparse.ArgumentParser:
 
     reference_p = config_sub.add_parser(
         "reference",
-        help="Print every key of the shared config files with its type, default, "
-        "meaning, example and environment variable",
+        help="List every key of the shared config files, one line each; name a key "
+        "for its full entry: type, default, meaning, example and environment variable",
+    )
+    reference_p.add_argument(
+        "key",
+        nargs="?",
+        default="",
+        help="Print the full entry of this key and of every key under it, e.g. "
+        "workflow or profiles.claude.powers (a name you picked matches its <name> placeholder)",
+    )
+    reference_p.add_argument(
+        "--full",
+        action="store_true",
+        help="Print the full entry of every key instead of the one-line index",
     )
     reference_p.add_argument(
         "--file",
