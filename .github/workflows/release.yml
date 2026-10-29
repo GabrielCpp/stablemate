@@ -60,11 +60,13 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
-      # release-please's bump stales two things: a pin on a sibling whose new major falls
-      # outside it, and uv.lock. Each moved pin lands on main as a `fix` under its holder's
-      # scope and release-please runs again, so the holder ships in this release too; a patch
-      # bump never leaves a major range, so one more pass settles. uv.lock is then refreshed
-      # on the release branch, so the PR a human reviews is a tree `uv sync --locked` accepts.
+      # release-please's bump stales three things: a pin on a sibling whose new major falls
+      # outside it, the umbrella's floor on every tool that releases, and uv.lock. Each moved
+      # pin lands on main as a `fix` under its holder's scope and release-please runs again,
+      # so the holder ships in this release too. That second pass can patch a sibling that
+      # was not releasing, which raises the umbrella's floor once more, so a third pass
+      # settles it; nothing pins the umbrella. uv.lock is then refreshed on the release
+      # branch, so the PR a human reviews is a tree `uv sync --locked` accepts.
       - uses: actions/checkout@v4
         if: steps.rp.outputs.pr
         with:
@@ -92,6 +94,27 @@ jobs:
           fi
       - uses: googleapis/release-please-action@v4
         if: steps.pins.outputs.moved
+        with:
+          target-branch: main
+          config-file: .release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Raise the umbrella's floors to the versions the second pass released
+        id: floors
+        if: steps.pins.outputs.moved
+        env:
+          BRANCH: ${{ fromJSON(steps.rp.outputs.pr || '{}').headBranchName }}
+        run: |
+          git fetch --depth 1 origin "$BRANCH"
+          git worktree add --detach "$RUNNER_TEMP/release-second" FETCH_HEAD
+          before=$(git rev-parse HEAD)
+          uv run --no-project --with packaging python scripts/sync_pins.py \
+            --versions-from "$RUNNER_TEMP/release-second" --commit
+          if [ "$(git rev-parse HEAD)" != "$before" ]; then
+            git push origin HEAD:main
+            echo "moved=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: googleapis/release-please-action@v4
+        if: steps.floors.outputs.moved
         with:
           target-branch: main
           config-file: .release-please-config.json

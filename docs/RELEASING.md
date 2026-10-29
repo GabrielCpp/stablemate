@@ -44,9 +44,10 @@ The first upload of a new distribution needs a pending trusted publisher registe
 for it. Use owner GabrielCpp, repository stablemate, workflow `release.yml` and environment
 `pypi`. `stablemate-saddlebag` needs one before its first release.
 
-`stablemate` is the umbrella. It has no code and allows one major version each of
-`workhorse-workflows`, `farrier`, `stablemate-groom`, `ostler` and `stablemate-saddlebag`,
-so one `uv tool install` brings all five. It uploads last, because the versions it allows must already be on the index.
+`stablemate` is the umbrella. It has no code and pins `workhorse-workflows`, `farrier`,
+`stablemate-groom`, `ostler` and `stablemate-saddlebag`, so one `uv tool install` brings
+all five. Each pin's floor is that tool's newest release and its cap is the next major
+(`>=5.1.0,<6`). It uploads last, because the versions it allows must already be on the index.
 
 A release PR bumps each member's own version, but never the pins other members hold on
 it. The release job closes that gap right after release-please writes the PR.
@@ -55,16 +56,24 @@ a new major left behind to that major (`>=4,<5`). Each package whose pin moved g
 own commit on main, `fix(<package>): allow <sibling> 4.x`. release-please then runs a
 second time and sees that commit, so the package that holds the pin ships in the same
 release with a patch bump and a changelog line. A patch bump never leaves a major range,
-so the second pass moves no further pin.
+so the second pass moves no sibling pin.
+
+The umbrella's pins follow a stricter rule. Every tool that releases raises its floor in
+the umbrella to the exact new version, `fix(stablemate): require farrier 5.1.0`. So a minor
+or patch release of any tool also ships a new `stablemate`, and `uv tool upgrade
+stablemate` reaches it. The second pass can patch a sibling that had no release of its own,
+so the job runs the rewrite a third time to raise the umbrella's floor on it. Nothing pins
+the umbrella, so that pass settles.
 
 The job pushes those commits to main itself. Pull main after `make release` before you
-commit on top of it. Until the PR merges, main holds a pin one major ahead of its sibling.
-`uv lock` and the pin tests accept that, because a pin may run ahead of its member but
-never behind it. The job then refreshes `uv.lock` on the release branch as a `chore:`
+commit on top of it. Until the PR merges, main holds pins ahead of their siblings: a sibling's range one major
+ahead, the umbrella's floor at the version the PR releases. `uv lock` and the pin tests
+accept that, because a pin may run ahead of its member but never behind it. The job then refreshes `uv.lock` on the release branch as a `chore:`
 commit, so the tree you merge passes `uv sync --locked`.
 
-A minor or patch release moves no pin, because the new version is still inside the
-range. `make sync-pins` runs the same rewrite locally, against the versions in your tree.
+A minor or patch release moves no sibling pin, because the new version is still inside
+the range. It moves only the umbrella's floor. `make sync-pins` runs the same rewrite
+locally, against the versions in your tree.
 
 | Commit since last tag | Bump |
 | --- | --- |

@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Widen every pin on a workspace member that its member's version has moved past."""
+"""Move every pin on a workspace member that its member's version has moved past.
+
+A sibling's pin is widened to the member's major range. The umbrella's pin is raised to
+the member's exact version, so every release of a tool releases the umbrella too.
+"""
 
 from __future__ import annotations
 
@@ -19,6 +23,7 @@ from packaging.version import Version
 REPO = Path(__file__).resolve().parent.parent
 SUBJECT_LIMIT = 72
 EXTRA_PIN_HOLDERS = (Path("workflows/src/workhorse_workflows/new/template/pyproject.toml.tmpl"),)
+FLOOR_HOLDERS = (Path("stablemate/pyproject.toml"),)
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,7 @@ class StalePin:
     version: Version
     written: str
     wanted: str
+    floor: bool = False
 
 
 def _load(path: Path) -> dict:
@@ -53,10 +59,20 @@ def _requirements(project: dict) -> list[str]:
     return [*project.get("dependencies", []), *(r for group in extras for r in group)]
 
 
+def _cap(version: Version) -> str:
+    if version.major == 0:
+        return f"0.{version.minor + 1}"
+    return f"{version.major + 1}"
+
+
 def compatible_range(version: Version) -> str:
     if version.major == 0:
-        return f">=0.{version.minor},<0.{version.minor + 1}"
-    return f">={version.major},<{version.major + 1}"
+        return f">=0.{version.minor},<{_cap(version)}"
+    return f">={version.major},<{_cap(version)}"
+
+
+def floor_range(version: Version) -> str:
+    return f">={version},<{_cap(version)}"
 
 
 def series(version: Version) -> str:
@@ -77,10 +93,22 @@ def _behind(specifier: SpecifierSet, version: Version) -> bool:
     )
 
 
-def _widened(requirement: Requirement, version: Version) -> str:
+def _floor(specifier: SpecifierSet) -> Version | None:
+    floors = [Version(spec.version) for spec in specifier if spec.operator in (">=", "==")]
+    return max(floors, default=None)
+
+
+def _below_floor(specifier: SpecifierSet, version: Version) -> bool:
+    floor = _floor(specifier)
+    if floor is None or floor < version or not specifier.contains(floor, prereleases=True):
+        return True
+    return floor >= _next_series(_next_series(version))
+
+
+def _rewritten(requirement: Requirement, version_range: str) -> str:
     extras = f"[{','.join(sorted(requirement.extras))}]" if requirement.extras else ""
     marker = f"; {requirement.marker}".replace('"', "'") if requirement.marker else ""
-    return f"{requirement.name}{extras}{compatible_range(version)}{marker}"
+    return f"{requirement.name}{extras}{version_range}{marker}"
 
 
 def stale_pins(root: Path, versions: dict[str, Version] | None = None) -> list[StalePin]:
@@ -89,13 +117,21 @@ def stale_pins(root: Path, versions: dict[str, Version] | None = None) -> list[S
     stale: list[StalePin] = []
     holders = [pyproject for pyproject, _ in members.values()]
     holders += [root / extra for extra in EXTRA_PIN_HOLDERS if (root / extra).is_file()]
+    floors = {root / holder for holder in FLOOR_HOLDERS}
     for pyproject in holders:
+        floor = pyproject in floors
         for written in _requirements(_load(pyproject)["project"]):
             requirement = Requirement(written)
             version = versions.get(canonicalize_name(requirement.name))
-            if version is not None and _behind(requirement.specifier, version):
-                wanted = _widened(requirement, version)
-                stale.append(StalePin(pyproject, requirement.name, version, written, wanted))
+            if version is None:
+                continue
+            if floor and _below_floor(requirement.specifier, version):
+                wanted = _rewritten(requirement, floor_range(version))
+            elif not floor and _behind(requirement.specifier, version):
+                wanted = _rewritten(requirement, compatible_range(version))
+            else:
+                continue
+            stale.append(StalePin(pyproject, requirement.name, version, written, wanted, floor))
     return stale
 
 
@@ -111,10 +147,16 @@ def sync(root: Path, versions: dict[str, Version] | None = None) -> list[StalePi
 
 def commit_message(root: Path, pins: list[StalePin]) -> tuple[str, str]:
     scope = pins[0].pyproject.relative_to(root).parts[0]
-    allowed = ", ".join(f"{pin.name} {series(pin.version)}" for pin in pins)
-    subject = f"fix({scope}): allow {allowed}"
+    if all(pin.floor for pin in pins):
+        required = ", ".join(f"{pin.name} {pin.version}" for pin in pins)
+        subject = f"fix({scope}): require {required}"
+        fallback = f"fix({scope}): require the newest release of each tool"
+    else:
+        allowed = ", ".join(f"{pin.name} {series(pin.version)}" for pin in pins)
+        subject = f"fix({scope}): allow {allowed}"
+        fallback = f"fix({scope}): allow the new majors of its siblings"
     if len(subject) > SUBJECT_LIMIT:
-        subject = f"fix({scope}): allow the new majors of its siblings"
+        subject = fallback
     body = "\n".join(f"{pin.written} -> {pin.wanted}" for pin in pins)
     return subject, body
 

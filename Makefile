@@ -240,7 +240,7 @@ vendor: ## Copy core/stablemate_core into workhorse, farrier, ostler and paddock
 	uv run python scripts/vendor_core.py
 
 .PHONY: sync-pins
-sync-pins: ## Widen each pin a sibling's new major left behind (the release job commits these)
+sync-pins: ## Widen each pin a sibling's new major left behind and raise the umbrella's floors (the release job commits these)
 	uv run python scripts/sync_pins.py
 
 .PHONY: check-vendor

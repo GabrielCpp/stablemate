@@ -12,9 +12,9 @@
 #                                       into browsers and commands; the import
 #                                       package and the command stay `saddlebag`)
 #   - paddock/    -> paddock          (the benchmark harness: benchmarks, tasks, results)
-#   - stablemate/ -> stablemate       (the umbrella: no code, major ranges on
-#                                       every published tool, so one
-#                                       `uv tool install` brings them all)
+#   - stablemate/ -> stablemate       (the umbrella: no code, a floor at the
+#                                       newest release of every published tool,
+#                                       so one `uv tool install` brings them all)
 #   - core/       -> (no distribution)  (shared plumbing: the home config, base-library
 #                                       discovery, the base-library cache. A member so it
 #                                       can be tested and imported in a checkout, but it

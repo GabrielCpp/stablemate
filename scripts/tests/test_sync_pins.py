@@ -161,3 +161,39 @@ def test_a_stale_pin_in_a_template_holder_is_reported_and_rewritten(
 
     assert (root / template).read_text(encoding="utf-8") == _flows("engine>=4,<5")
     assert stale_pins(root) == []
+
+
+def _umbrella(requirement: str) -> str:
+    return f'[project]\nname = "stablemate"\nversion = "1.0.0"\ndependencies = ["{requirement}"]\n'
+
+
+def test_the_umbrella_requires_the_exact_minor_release(tmp_path: Path) -> None:
+    root = _workspace(
+        tmp_path, {"engine": _engine("3.4.1"), "stablemate": _umbrella("engine>=3,<4")}
+    )
+
+    sync(root)
+
+    assert (root / "stablemate" / "pyproject.toml").read_text(encoding="utf-8") == _umbrella(
+        "engine>=3.4.1,<4"
+    )
+    assert stale_pins(root) == []
+
+
+def test_the_umbrella_floor_waits_for_the_release_it_names(tmp_path: Path) -> None:
+    root = _workspace(
+        tmp_path, {"engine": _engine("3.4.1"), "stablemate": _umbrella("engine>=3.5.0,<4")}
+    )
+
+    assert stale_pins(root) == []
+
+
+def test_a_raised_umbrella_floor_is_a_fix_that_names_each_version(tmp_path: Path) -> None:
+    root = _workspace(
+        tmp_path, {"engine": _engine("3.4.1"), "stablemate": _umbrella("engine>=3,<4")}
+    )
+
+    subject, body = sync_pins.commit_message(root, sync(root, {"engine": Version("3.5.0")}))
+
+    assert subject == "fix(stablemate): require engine 3.5.0"
+    assert body == "engine>=3,<4 -> engine>=3.5.0,<4"
