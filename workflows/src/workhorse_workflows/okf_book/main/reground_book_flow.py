@@ -67,7 +67,7 @@ class RegroundBook(BookFlow):
             return Continue(stale.path, self.read_change, files=files, position=position + 1, failures=kept, spared=spared).because(
                 "the cited file is gone, which the page check reports"
             )
-        old = stamped_text(tree, stale.path, stale.digest)
+        old = stamped_text(tree, stale.path, stale.digest, stale.nodes[0].symbol if stale.nodes else "")
         if old is None:
             kept = with_problems(kept, unread_problems(stale))
             return Continue(stale.path, self.read_change, files=files, position=position + 1, failures=kept, spared=spared).because(

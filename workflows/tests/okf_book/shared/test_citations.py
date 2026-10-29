@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from okf_book.support import MEMBER, MEMBER_FILE, MEMBER_SOURCE, Workspace
-from ostler.stamp import digest_file
+from ostler.stamp import digest_citation, digest_file
 
 from workhorse_workflows.okf_book.shared.citations import Citation, citations_in, cites_changed_file
 
@@ -40,3 +40,15 @@ def test_a_citation_of_a_repository_the_workspace_lacks_is_not_stale(workspace: 
     _page(workspace.docs, f"repo://globex/{MEMBER_FILE}::list_entries@0123456789ab")
 
     assert not cites_changed_file(workspace.docs, "ledger")
+
+
+def test_a_symbol_citation_is_stale_only_when_its_declaration_changes(workspace: Workspace) -> None:
+    source = (workspace.member / MEMBER_FILE).read_text(encoding="utf-8")
+    stamped = digest_citation(MEMBER_FILE, source.encode(), "list_entries")
+    _page(workspace.docs, f"repo://{MEMBER}/{MEMBER_FILE}::list_entries@{stamped}")
+
+    _ = (workspace.member / MEMBER_FILE).write_text(source + "\n\ndef added() -> None:\n    pass\n", encoding="utf-8")
+    assert not cites_changed_file(workspace.docs, "ledger")
+
+    _ = (workspace.member / MEMBER_FILE).write_text(source.replace("return []", "return [1]"), encoding="utf-8")
+    assert cites_changed_file(workspace.docs, "ledger")

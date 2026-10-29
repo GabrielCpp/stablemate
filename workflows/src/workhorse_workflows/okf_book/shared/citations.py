@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ostler.pages import files_in_book
 from ostler.refs import code_refs, parse_code_ref
-from ostler.stamp import digest_file
+from ostler.stamp import citation_is_fresh
 from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.source_repo import repository_root
 
@@ -64,17 +64,17 @@ def book_pages(root: Path, service: str) -> tuple[Path, ...]:
 
 def cites_changed_file(root: Path, service: str) -> bool:
     """Whether any page of the service's book cites a file that no longer has the digest stamped beside it."""
-    digests: dict[tuple[str, str], str | None] = {}
+    sources: dict[tuple[str, str], bytes | None] = {}
     for page in book_pages(root, service):
         for citation in page_citations(page):
             if citation.digest is None:
                 continue
             key = (citation.repository, citation.path)
-            if key not in digests:
+            if key not in sources:
                 tree = repository_root(root, citation.repository)
                 cited = tree / citation.path if tree else None
-                digests[key] = digest_file(cited.read_bytes()) if cited and cited.is_file() else None
-            current = digests[key]
-            if current is not None and current != citation.digest:
+                sources[key] = cited.read_bytes() if cited and cited.is_file() else None
+            data = sources[key]
+            if data is not None and not citation_is_fresh(citation.path, data, citation.symbol, citation.digest):
                 return True
     return False

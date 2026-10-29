@@ -1,7 +1,7 @@
 """The citations of a book whose cited file changed since its stamp, grouped by the file and the version each was stamped on, and what one reading of the change settles for them.
 
-A stamp is the digest of the whole cited file, because a change anywhere in a file can change
-what a cited symbol means. So a changed file is read once, as the diff from the version the
+A stamp is the digest of the cited symbol's declaration, or of the whole file for a citation
+that names no symbol. So a changed file is read once, as the diff from the version the
 citations were stamped on, and the reading names the nodes whose claims the change bears on.
 Those go to a page repair with what it said. The rest still hold, and are stamped on the file
 as it is now.
@@ -17,7 +17,7 @@ from pathlib import Path
 from ostler import doctor, index
 from ostler.model import load
 from ostler.refs import parse_code_ref
-from ostler.stamp import digest_file, stamp_targets
+from ostler.stamp import citation_is_fresh, stamp_targets
 from pydantic import BaseModel, ConfigDict
 from workhorse.pyflow import dry_run
 
@@ -116,12 +116,12 @@ def _git_bytes(root: Path, *args: str) -> bytes | None:
     return done.stdout if done.returncode == 0 else None
 
 
-def stamped_text(root: Path, path: str, digest: str) -> str | None:
+def stamped_text(root: Path, path: str, digest: str, symbol: str = "") -> str | None:
     """The text of *path* as its history last held it on *digest*, or nothing when no commit of the last ones holds that version."""
     log = _git_bytes(root, "log", f"--max-count={HISTORY_DEPTH}", "--format=%H", "--", path)
     for commit in (log or b"").decode().split():
         blob = _git_bytes(root, "show", f"{commit}:{path}")
-        if blob is not None and digest_file(blob) == digest:
+        if blob is not None and citation_is_fresh(path, blob, symbol, digest):
             return blob.decode("utf-8", errors="replace")
     return None
 
