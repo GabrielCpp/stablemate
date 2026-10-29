@@ -380,12 +380,19 @@ class Dev(Workflow):
         self.call(file_follow_up_backlog, parent=self._work_id, follow_ups=entries)
 
     def _product_work(self, entries: list[FollowUp]) -> list[FollowUp]:
-        """The entries the judge reads as product work; each other one is logged for the operator with what it is instead."""
+        """The entries the judge reads as product work or as a pre-existing defect, the latter filed with that pattern; each other one is logged for the operator with what it is instead."""
         reports = _reports(entries)
         outside = causes.not_product(self._judge("low"), reports)
-        for rid, kind in outside.items():
-            self.logger.info("[%s] %r is no product work, so it is not filed", kind, reports[rid])
-        return [entry for i, entry in enumerate(entries) if str(i) not in outside]
+        kept: list[FollowUp] = []
+        for i, entry in enumerate(entries):
+            kind = outside.get(str(i))
+            if kind is None:
+                kept.append(entry)
+            elif kind == causes.PRE_EXISTING:
+                kept.append(entry.model_copy(update={"pattern": causes.PRE_EXISTING}))
+            else:
+                self.logger.info("[%s] %r is no product work, so it is not filed", kind, reports[str(i)])
+        return kept
 
     def _judge(self, power: str = "medium") -> Judge:
         """The one judge this flow asks: the word rule first, then one reading of what it left."""

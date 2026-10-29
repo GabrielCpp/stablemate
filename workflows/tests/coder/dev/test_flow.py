@@ -644,13 +644,6 @@ def test_a_story_turn_s_follow_up_goes_to_the_register_not_the_worklist(
     ("entry", "kind"),
     [
         (
-            _follow_up(
-                "Declare verify: checks for #loaded and #banks-open states",
-                "the book warnings on this page are pre-existing and unrelated to this change",
-            ),
-            "pre-existing",
-        ),
-        (
             _follow_up("Reconcile story.md Implementation Status", "the status table lags"),
             "bookkeeping",
         ),
@@ -683,6 +676,27 @@ def test_a_follow_up_that_is_no_product_work_is_not_filed(
         r.getMessage().startswith(f"[{kind}] ") and entry["title"] in r.getMessage()
         for r in caplog.records
     ), [r.getMessage() for r in caplog.records]
+
+
+def test_a_follow_up_the_judge_reads_as_pre_existing_is_filed_with_that_pattern(
+    tmp_path: Path,
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A defect the story did not cause still reaches the register, marked as pre-existing."""
+    run = _run_with_story(tmp_path)
+    entry = _follow_up(
+        "Fix the MySQL error on the audit query",
+        "the review hit it and it predates this story",
+    )
+    agent = _Agent(workspace, follow_ups=(entry,), outside={entry["title"]: "pre-existing"})
+
+    drive_flow(Dev(story=STORY, epic=EPIC, worklist_dir=str(run)), env(), agent)
+
+    (record,) = Ostler(docs).records().records
+    assert (record.summary, record.pattern) == (entry["title"], "pre-existing")
 
 
 def _file_open(docs: Path, summary: str, record_id: str, filed_by: Literal["coder", "qa"] = "coder") -> None:

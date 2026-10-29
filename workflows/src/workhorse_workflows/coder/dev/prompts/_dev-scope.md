@@ -44,8 +44,10 @@ a later epic takes it up. A follow-up with no area or no pattern is refused. Thi
 work it.{% endif %} A product call the story leaves open is neither. It is a block, under
 Blocked.
 
-Some things read like follow-ups and are not. A defect or warning that predates this story
-and that its change did not cause is not one. A remark about docs, or about the status of
+A defect or warning that predates this story and that its change did not cause is a
+follow-up too. The run files it as a pre-existing defect.
+
+Some things read like follow-ups and are not. A remark about docs, or about the status of
 `story.md` or a plan file, is not one. A note about the toolchain is not one. Each is a run
 finding for the operator, and it goes in `notes`.
 

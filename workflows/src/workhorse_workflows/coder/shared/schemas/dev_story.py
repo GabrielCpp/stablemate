@@ -98,9 +98,10 @@ class BuildResult(CoderResult):
     follow_ups: list[FollowUp] = Field(
         default=[],
         description="Product work on this story's feature that the working slice does not "
-        "need and nobody has done yet, one entry each. A failure is never one: fix it on the "
+        "need and nobody has done yet, one entry each. A defect or warning that predates this "
+        "story and that its change did not cause is one too: the run files it as a "
+        "pre-existing defect. A failure is never one: fix it on the "
         "story branch. These are never one either: a finding resolved during this run, a "
-        "defect or warning that predates this story and that its change did not cause, a "
         "remark about docs or a story or plan file's status, and a remark about the toolchain "
         "such as commit trailers, ostler or packet attribution. Each is a run finding for "
         "the operator, so put it in `notes`. The run files each entry as a record on the debt "
@@ -133,9 +134,10 @@ class DevResult(PlanFields):
     follow_ups: list[FollowUp] = Field(
         default=[],
         description="Product work on this story's feature that the working slice does not "
-        "need and nobody has done yet, one entry each. A failure is never one: fix it on the "
+        "need and nobody has done yet, one entry each. A defect or warning that predates this "
+        "story and that its change did not cause is one too: the run files it as a "
+        "pre-existing defect. A failure is never one: fix it on the "
         "story branch. These are never one either: a finding resolved during this run, a "
-        "defect or warning that predates this story and that its change did not cause, a "
         "remark about docs or a story or plan file's status, and a remark about the toolchain "
         "such as commit trailers, ostler or packet attribution. Each is a run finding for "
         "the operator, so put it in `notes`. The run files each entry as a record on the debt "
