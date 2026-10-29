@@ -13,6 +13,7 @@ from workhorse_workflows.kit.agent_files import render_agent_files_returning_fai
 
 COMMIT_GATE = "commit-refused.md"
 RENDER_GATE = "agent-files-unrendered.md"
+PREFLIGHT_GATE = "preflight-gate.md"
 FIX_COMMIT_TIMEOUT = 1800.0
 
 

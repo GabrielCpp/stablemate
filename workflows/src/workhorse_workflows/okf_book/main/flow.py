@@ -7,7 +7,7 @@ from pathlib import Path
 from ostler.qa.attribution import Cause, Signature
 from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import last_commit_subject, last_commit_trailer
-from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook
+from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook, bring_book_stack_up
 from workhorse_workflows.okf_book.main.nodes import gate
 from workhorse_workflows.okf_book.main.nodes.book_problems import book_problems, unopted_tools
 from workhorse_workflows.okf_book.main.nodes.check_lead import latest_check_findings, record_check, unheld
@@ -23,6 +23,7 @@ from workhorse_workflows.okf_book.main.nodes.lead_findings import (
     with_instructions,
 )
 from workhorse_workflows.okf_book.main.nodes.operator_answer import answer_below, write_answer
+from workhorse_workflows.okf_book.main.nodes.preflight import down_stack
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import LapCounts, lap_counts, read_laps, record_lap, service_laps, stalled, trend
 from workhorse_workflows.okf_book.main.nodes.report import build_report, write_report
 from workhorse_workflows.okf_book.main.nodes.stale_citations import Regrounded
@@ -37,7 +38,7 @@ from workhorse_workflows.okf_book.shared.book_commits import (
     book_commit_subject,
     repaired_book_commit_subject,
 )
-from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.shared.book_flow import PREFLIGHT_GATE, BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_failures, unstarted_failures
 from workhorse_workflows.okf_book.shared.citations import cites_changed_file
 from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
@@ -123,13 +124,22 @@ class OkfBook(BookFlow):
     def _sources_by_service(self) -> dict[str, SourceRepo]:
         return {surface.service: source for surface, source in zip(self.surfaces, self.sources, strict=True)}
 
-    def start(self) -> Continue[...]:
-        """A run with no surface has no book to write, and a surface that names the wrong repository for the run's workspace stops it before any turn."""
+    def start(self) -> Continue[...] | Await[...]:
+        """A run with no surface has no book to write, and a surface naming the wrong repository for the run's workspace stops it before any turn. Before the first turn the repo's agent files render and each declared stack comes up once and is released, so a setup failure waits for the operator now and not hours into the run."""
         if not self.surfaces:
             raise WorkflowFailed("the run names no surface: pass each one under `surfaces`")
         _ = self.sources
         write_pass(self.records_dir, self.services)
-        return Continue(None, self.route_book, index=0).because("route the first surface's book")
+        waiting = self._render_agent_files_or_await(self.start) or self._preflight_stacks()
+        return waiting if waiting is not None else Continue(None, self.route_book, index=0).because("route the first surface's book")
+
+    def _preflight_stacks(self) -> Await[...] | None:
+        """Bring each existing book's declared stack up and release it at once. A stack that does not come up waits for the operator, whose answer checks again."""
+        down = down_stack(self.root, self.services, lambda root, service: self.call(bring_book_stack_up, root, service))
+        if down is None:
+            return None
+        question = f"The stack of `{down[0]}` does not come up:\n\n{down[1]}\n\nFix it, then answer here to check again."
+        return Await(self.run_dir / PREFLIGHT_GATE, question, self.start).because("a declared stack does not come up")
 
     def _routed_after(self, index: int) -> int | None:
         routed = read_pass(self.records_dir, self.services)
