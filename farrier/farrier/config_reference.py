@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import difflib
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -99,3 +100,40 @@ def reference_text(file: str = "all", key: str = "", *, full: bool = False) -> s
         hint = f" Closest: {', '.join(f'`{path}`' for path in near)}." if near else ""
         raise UnknownKeyError(f"no config key matches `{key}`.{hint} `farrier config reference` lists every key.")
     return "\n".join(parts)
+
+
+def _string_typed(type_: str) -> bool:
+    return type_ == "string" or type_.startswith('"')
+
+
+def home_key_type(key: str) -> str:
+    """The declared type of the machine-config ``key``, one key a user can get or set on its own."""
+    rows = REFERENCES["home"].rows()
+    depth = len(key.split("."))
+    for row in select_rows(rows, key):
+        if "[]" not in row.path and len(row.path.split(".")) == depth:
+            return row.type
+    parent, _, _ = key.rpartition(".")
+    if parent:
+        for row in select_rows(rows, parent):
+            if len(row.path.split(".")) == depth - 1 and row.type.startswith("table of "):
+                return row.type.removeprefix("table of ").removesuffix("s")
+    near = _closest(key, [REFERENCES["home"]])
+    hint = f" Closest: {', '.join(f'`{path}`' for path in near)}." if near else ""
+    raise UnknownKeyError(
+        f"`{key}` is not a machine-config key.{hint} `farrier config reference --file home` lists every key."
+    )
+
+
+def parse_home_value(key: str, raw: str) -> Any:
+    """``raw`` read as the value of ``key``: verbatim for a string key, a TOML literal for any other."""
+    type_ = home_key_type(key)
+    if _string_typed(type_):
+        return raw
+    try:
+        return tomllib.loads(f"value = {raw}")["value"]
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError(
+            f"`{key}` is a {type_}, and `{raw}` is not a TOML value: write it as in the file, "
+            'e.g. true, 1.5, ["a", "b"] or { model = "opus" }.'
+        ) from exc

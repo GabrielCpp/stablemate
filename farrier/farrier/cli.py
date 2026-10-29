@@ -9,8 +9,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import tomlkit
+
 from farrier import doctor
-from farrier.config_reference import REFERENCES, UnknownKeyError, reference_text
+from farrier.config_reference import (
+    REFERENCES,
+    UnknownKeyError,
+    home_key_type,
+    parse_home_value,
+    reference_text,
+)
 from farrier import layers as _layers
 from farrier import pipx
 from farrier._vendor.stablemate_core.config import (
@@ -21,11 +29,12 @@ from farrier._vendor.stablemate_core.config import (
     load_home_config,
     write_base_dir,
     write_config_section,
+    write_config_value,
     write_library_dir,
     write_stablemate_dir,
     write_worktree_dir,
 )
-from farrier._vendor.stablemate_core.schema import Manifest
+from farrier._vendor.stablemate_core.schema import Manifest, toml_value
 from farrier._vendor.stablemate_core.profiles import UnknownProfileError, select_profile
 from farrier.eject import run_eject
 from farrier.frontmatter import (
@@ -275,7 +284,45 @@ def _flatten(table: dict[str, Any], prefix: str = "") -> list[tuple[str, Any]]:
     return lines
 
 
+def _config_value_text(key: str, value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, dict) or not value:
+        return toml_value(value)
+    for part in reversed(key.split(".")):
+        value = {part: value}
+    return tomlkit.dumps(value).rstrip("\n")
+
+
 def _dispatch_config(args: argparse.Namespace) -> int:
+    if args.config_action is None:
+        print(args.config_help(), end="")
+        return 0
+
+    if args.config_action == "get":
+        try:
+            home_key_type(args.key)
+        except UnknownKeyError as exc:
+            raise SystemExit(f"error: {exc}") from exc
+        value: Any = load_home_config().model_dump(exclude_none=True)
+        for part in args.key.split("."):
+            if not isinstance(value, dict) or part not in value:
+                raise SystemExit(f"error: `{args.key}` is not set in {config_path()} and has no default")
+            value = value[part]
+        print(_config_value_text(args.key, value))
+        return 0
+
+    if args.config_action == "set":
+        key, sep, raw = args.assignment.partition("=")
+        if not sep or not key:
+            raise SystemExit(f"error: expected KEY=VALUE, got `{args.assignment}`")
+        try:
+            write_config_value(key, parse_home_value(key, raw))
+        except (UnknownKeyError, ValueError) as exc:
+            raise SystemExit(f"error: {exc}") from exc
+        print(f"{key}={raw}")
+        return 0
+
     if args.config_action == "set-library":
         root = args.path.expanduser().resolve()
         if not is_library_dir(root):
@@ -589,7 +636,28 @@ def _build_parser() -> argparse.ArgumentParser:
         + CONFIG_PATH_ENV
         + "). Goes before the action: `farrier config --config ./c.toml show`",
     )
-    config_sub = config_p.add_subparsers(dest="config_action", required=True)
+    config_p.set_defaults(config_help=config_p.format_help)
+    config_sub = config_p.add_subparsers(dest="config_action")
+    get_p = config_sub.add_parser(
+        "get",
+        help="Print the value one key takes on this machine, its default when the file does not set it",
+    )
+    get_p.add_argument(
+        "key",
+        help="Dotted key path, e.g. default_cli or profiles.claude.powers.high.model "
+        "(`farrier config reference --file home` lists every key)",
+    )
+    set_p = config_sub.add_parser(
+        "set",
+        help="Write one key; the file is checked against the schema first and left "
+        "unchanged when the value does not fit, comments kept",
+    )
+    set_p.add_argument(
+        "assignment",
+        metavar="KEY=VALUE",
+        help="A string key takes VALUE verbatim (default_cli=codex); any other key "
+        "takes a TOML value (profiles.claude.powers.high.timeout_scale=1.5)",
+    )
     set_lib = config_sub.add_parser(
         "set-library", help="Record the library directory in the home config"
     )
