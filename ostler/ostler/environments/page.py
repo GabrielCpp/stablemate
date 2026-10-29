@@ -61,6 +61,11 @@ def read_variables(node: UINode) -> Variables:
     return Variables(tuple(entries))
 
 
+def is_variable_name(name: str) -> bool:
+    """Whether *name* may name a variable on the page."""
+    return _NAME.fullmatch(name) is not None
+
+
 def find_environment(graph: Graph, token: str) -> UINode:
     """The `environment` page *token* names by id, handle or slug."""
     node = graph.find_ui_node(resolve(graph, token))

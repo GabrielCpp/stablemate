@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ostler.environments import commands, spec
+from ostler.environments import commands, migrate, spec
 from ostler.environments.render import SHARED
 from ostler.qa import addresses
 
@@ -68,6 +68,13 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     dotenv.add_argument("--to", default=".env", metavar="PATH",
                         help="where to write it (default: .env at the repo root)")
 
+    importer = ops.add_parser(
+        "import-dotenv",
+        help="move a dotenv onto an environment page: literals onto it, secrets into saddlebag")
+    importer.add_argument("file", metavar="FILE", help="the dotenv file to move")
+    importer.add_argument("--environment", required=True, metavar="ENVIRONMENT",
+                          help="the environment page the file belongs to, by slug or id")
+
     ops.add_parser("schema", help="print the JSON Schema of a stack.yml")
 
     check = ops.add_parser("check", help="check that every book's ops/stack.yml fits together")
@@ -100,6 +107,10 @@ def run(args: argparse.Namespace, root: Path) -> int:
         return 1
     if op == "dotenv":
         outcome = commands.cmd_dotenv(root, args.environment, args.to)
+        print(outcome.message, file=sys.stdout if outcome.ok else sys.stderr)
+        return 0 if outcome.ok else 1
+    if op == "import-dotenv":
+        outcome = migrate.cmd_import_dotenv(root, Path(args.file), args.environment)
         print(outcome.message, file=sys.stdout if outcome.ok else sys.stderr)
         return 0 if outcome.ok else 1
     if op == "schema":

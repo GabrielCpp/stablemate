@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -30,7 +31,7 @@ class Resolved:
     bindings: Mapping[str, str]
 
 
-def _records(slug: str, runner: Runner) -> list[tuple[str, str]]:
+def records(slug: str, runner: Runner) -> list[tuple[str, str]]:
     outcome = runner(["saddlebag", "list", "--tag", f"environment={slug}", "--json"], capture=True)
     if outcome.returncode != 0:
         tail = "\n".join((outcome.stderr or "").strip().splitlines()[-5:])
@@ -50,7 +51,7 @@ def resolve(node: UINode, runner: Runner) -> Resolved:
     bindings: dict[str, str] = {}
     if variables.held:
         by_var: dict[str, list[str]] = {}
-        for name, var in _records(slug, runner):
+        for name, var in records(slug, runner):
             by_var.setdefault(var, []).append(name)
         for name in sorted(variables.held):
             names = by_var.get(name, [])
@@ -67,6 +68,18 @@ def resolve(node: UINode, runner: Runner) -> Resolved:
     return Resolved(variables.literals, bindings)
 
 
+def _verdicts(outcome: subprocess.CompletedProcess[str]) -> list[tuple[str, str | None]]:
+    if outcome.returncode != 0:
+        tail = "\n".join((outcome.stderr or "").strip().splitlines()[-5:])
+        raise ClassifyError(
+            f"saddlebag env classify exited {outcome.returncode}" + (f": {tail}" if tail else ""))
+    try:
+        verdicts = json.loads(outcome.stdout)["verdicts"]
+        return [(str(v["key"]), str(v["rule"]) if v["secret"] else None) for v in verdicts]
+    except (ValueError, KeyError, TypeError) as exc:
+        raise ClassifyError(f"saddlebag env classify printed an unreadable answer: {exc}") from exc
+
+
 def classify_literals(
     entries: list[tuple[str, str]], runner: Runner = run_command,
 ) -> dict[str, str | None]:
@@ -76,15 +89,16 @@ def classify_literals(
         outcome = runner(["saddlebag", "env", "classify", "-", "--json"], capture=True, stdin=stdin)
     except OSError as exc:
         raise ClassifyError(f"saddlebag could not run: {exc.strerror or exc}") from exc
-    if outcome.returncode != 0:
-        tail = "\n".join((outcome.stderr or "").strip().splitlines()[-5:])
-        raise ClassifyError(
-            f"saddlebag env classify exited {outcome.returncode}" + (f": {tail}" if tail else ""))
+    return dict(_verdicts(outcome))
+
+
+def classify_file(path: Path, runner: Runner = run_command) -> list[tuple[str, str | None]]:
+    """Each assignment of the dotenv *path* in file order, with its secret rule or `None`."""
     try:
-        verdicts = json.loads(outcome.stdout)["verdicts"]
-        return {str(v["key"]): (str(v["rule"]) if v["secret"] else None) for v in verdicts}
-    except (ValueError, KeyError, TypeError) as exc:
-        raise ClassifyError(f"saddlebag env classify printed an unreadable answer: {exc}") from exc
+        outcome = runner(["saddlebag", "env", "classify", str(path), "--json"], capture=True)
+    except OSError as exc:
+        raise ClassifyError(f"saddlebag could not run: {exc.strerror or exc}") from exc
+    return _verdicts(outcome)
 
 
 def exec_argv(resolved: Resolved, command: list[str]) -> list[str]:
