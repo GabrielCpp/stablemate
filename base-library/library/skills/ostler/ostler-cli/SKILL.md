@@ -93,8 +93,10 @@ Both faces drive the same functional core, and neither is a wrapper over the oth
   browser-diagnostics manifest, and `artifact`. Read it when you are writing a shell step,
   a gate, or a prompt that runs ostler from a terminal.
 - **[references/stack.md](references/stack.md)** — the book's `stack.yml`: every key, the
-  template values, the copies and the `ostler env` commands that run them. Read it when you
-  are writing or repairing a stack file.
+  template values, the copies and the `ostler env` commands that run them, plus the
+  `environment` page's `variables:` and the `ostler env exec`, `dotenv` and `import-dotenv`
+  verbs that read it. Read it when you are writing or repairing a stack file, or when a
+  command needs the environment's variables.
 - **[references/python-api.md](references/python-api.md)** — `from ostler import Ostler`,
   the CLI-to-method table, `ostler.path` for deriving a doc path without loading a graph,
   and the snapshot/caching semantics. Read it when you are writing a `workhorse` node,

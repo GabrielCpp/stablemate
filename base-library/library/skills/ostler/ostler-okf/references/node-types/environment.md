@@ -98,7 +98,8 @@ type: environment
 
 ## Doctor codes it can trip
 
-`runbook-local-only` and `runbook-unknown-address` (raised on the runbook that boots it), `environment-address-name`, `environment-address-value`, `dangling-code-ref`,
+`runbook-local-only` and `runbook-unknown-address` (raised on the runbook that boots it), `environment-address-name`, `environment-address-value`, `environment-variable-name`,
+`environment-variable-secret`, `environment-variables-unchecked`, `dangling-code-ref`,
 `missing-code-symbol`, `undeclared-obligation`, `weak-check`. See
 [../doctor-codes.md](../doctor-codes.md).
 

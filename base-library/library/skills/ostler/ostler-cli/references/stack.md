@@ -162,6 +162,49 @@ secrets:
 The copy's manifest records the env files and the `saddlebag exec` prefix `up` used, so
 `ostler env compose` runs the same way.
 
+## Environment pages and `ostler env exec`
+
+The stack's secret source feeds compose. The variables a command outside compose needs,
+such as a test runner or a migration, live on the `environment` page under `variables:`:
+
+```markdown
+- variables:
+  - LOG_LEVEL: info
+  - APP_PORT: 8080
+  - DATABASE_URL: secret
+```
+
+`NAME: value` is a literal the page states and any reader may see. `NAME: secret` is a
+value saddlebag holds, in a record created with `--var NAME --tag environment=<slug>`,
+where `<slug>` is the page's `slug:`. No real secret value is ever written on the page:
+`ostler doctor` raises `environment-variable-secret` on a literal that reads as one, and
+`environment-variable-name` on a name that is not a variable name.
+
+```bash
+ostler env exec <slug> -- CMD [ARGS...]              # run CMD with the page's variables
+ostler env dotenv <slug> [--to PATH]                 # render the page as a dotenv, held names blank
+ostler env import-dotenv FILE --environment <slug>   # move a dotenv onto the page
+```
+
+- `exec` lays the literals over the process environment, then wraps the command in
+  `saddlebag exec --env NAME=<record>` for each held name and replaces itself with it. It
+  fails before running anything when a held name has no record tagged for the page or has
+  two, and the message carries the `saddlebag secret create` line that fixes it.
+- `dotenv` writes `# rendered by ostler env dotenv from <id>; edit the page, not this file`
+  then one `NAME=value` per entry in page order, `NAME=` for a held one. The default path is
+  `.env` at the repo root. A path inside the repo is added to `.gitignore` unless a line
+  already names it. It prints `wrote <path> (<n> variables, <h> held)`.
+- `import-dotenv` reads an existing dotenv, asks `saddlebag env classify` which lines are
+  secret, prints the diff it will make to the page and writes it: each file key replaces the
+  entry of the same name or is appended in file order, a secret key as `NAME: secret`. Then it
+  runs `saddlebag env import FILE --keys ... --tag environment=<slug> --prefix <slug>-` for
+  the secret keys no record with that `var` and tag holds yet, and prints
+  `<n> lines: <h> held, <l> literal`, `<k> already held` when any were, and a `next:` line
+  naming the page to commit. It refuses before any write a key the page cannot name and a
+  literal whose value is the word `secret`. A saddlebag failure after the page was written is
+  reported as such: the page already names the keys as held, and the `secret create` line
+  finishes the job.
+
 Every `$NAME`, `${NAME}` and `${NAME:?msg}` a rendered template uses must be a name the source defines, or a job it needs writes.
 `$NAME` without braces is checked too. `${NAME:-default}` has a default and is not checked, nor
 are the other default and alternative forms, `${NAME-x}`, `${NAME:+x}` and `${NAME+x}`. `$$` is
