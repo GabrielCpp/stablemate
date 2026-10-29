@@ -41,7 +41,8 @@ farrier config show
 The config lives at the platform config dir: `~/.config/stablemate/config.toml`
 (Linux), `~/Library/Application Support/stablemate/config.toml` (macOS).
 `$STABLEMATE_CONFIG` points the tools at another file.
-`farrier config reference --file home` prints every key the file accepts.
+`farrier config reference --file home` lists every key the file accepts, one line each.
+Name a key or a table, as in `farrier config reference groom`, for its full entry.
 
 ## Repository Setup
 
@@ -79,7 +80,8 @@ workflow tooling reads off the checkout, so the two agree by construction. Set
 Packs are for bundles reused by ≥2 repos; a repo's own overlays and one-off
 selections go directly under top-level `skills:` / `prompts:`
 keys (see `agents/packs/CLAUDE.md`). Run `farrier config reference --file manifest` for
-every key `agents.yml` accepts, with its type, default, meaning and example. Do not copy a
+every key `agents.yml` accepts, one line each. Run `farrier config reference <key>` for a key's
+full entry, with its type, default, meaning and example. Do not copy a
 key list from another repo's `agents.yml`. The command is the source.
 
 ## Scaffolding a New Service or Repo

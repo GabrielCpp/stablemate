@@ -10,7 +10,9 @@ One typed model, `HomeConfig` in `stablemate_core`, declares every key of the [h
 The repository's [`agents.yml`](../formats/agents-yml-config.md) is the second document. `Manifest` declares every key farrier reads, and the keys the workflows and ostler read, so none of those raises a stray-key warning. [`farrier config reference --file manifest`](../farrier-commands-init.md#config) renders it. The manifest has no schema version.
 
 - code: `farrier/farrier/_vendor/stablemate_core/schema/home.py::HomeConfig` @074a3b29bddd
-- code: `farrier/farrier/_vendor/stablemate_core/schema/reference.py::render_reference` @3f6018910555
+- code: `farrier/farrier/_vendor/stablemate_core/schema/reference.py::render_reference` @f6b3e5af64f0
+- code: `farrier/farrier/_vendor/stablemate_core/schema/reference.py::select_rows` @96cb06857a53
+- code: `farrier/farrier/config_reference.py::reference_text` @145be29b7ae0
 - code: `farrier/farrier/_vendor/stablemate_core/schema/manifest.py::Manifest` @29d985903bcc
 - code: `farrier/farrier/_vendor/stablemate_core/manifest.py::load_manifest` @bdf1b65128c6
 - rule: the typed schema in `stablemate_core` is the only reader of the machine config; a tool that needs a key reads it from the loaded `HomeConfig` and never parses the TOML itself
@@ -33,6 +35,7 @@ The repository's [`agents.yml`](../formats/agents-yml-config.md) is the second d
 - rule: the coder's per-role prompt bodies live at `workflow.prompts`; a top-level `prompts` mapping is the legacy spelling, which the loader folds into `workflow.prompts` key by key with a warning, so a key only in `workflow.prompts` is kept and a key in both takes the top-level value, so the top-level `prompts` key is the farrier selection list only
 - rule: `ostler.yml`, `ostler.yaml` and `.agents.yml` are legacy names of the whole manifest, not of a separate ostler file; `agents.yml` wins when both exist, and ostler reads `organization` and `qa` from whichever file the locator returns
 - rule: a workflow or ostler reader stops on a manifest that fails validation with a `ConfigError` naming the key paths, because reading it as absent silently drops settings such as the GitHub token env; a coder turn's role lookup is the exception and falls back to the library prompt with a warning, because a role override only replaces a prompt the library already ships
+- rule: `farrier config reference` prints a one-line index of every key by default and the full entries only for a named key and the keys under it, because the full reference of both files runs past a thousand lines and an agent looking up one key should not read every entry; `--full` keeps the whole reference for a reader who wants it
 - rule: a `ConfigError` from a bad machine config or manifest reaching the top of the ostler, groom, paddock or workhorse command prints its message to stderr and exits 2 instead of a traceback; farrier prints it as `error: <message>` through its own handler
 - rule: the `groom.attend` settings `mode` and `last_mode` are read in any case and lowercased, and `deny` entries are read as text
 - rule: the genesis workflow writes no `workflows` key, because no tool reads it

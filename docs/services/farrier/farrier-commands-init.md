@@ -126,7 +126,17 @@ the pruned starting point, and the two are kept consistent by hand.
     (`show powers.high.model --profile cheap`). An undefined name exits with
     `UnknownProfileError`, which lists the ones the file does define. There is **no setter**: a
     profile is a nested table and `set-library`-style flat assignment cannot express one.
+  - `reference --full` — print the full entry of every key instead of the one-line index:
+    type, default, meaning, example, environment variable, precedence and legacy spelling.
+  - `reference --file home|manifest` — describe only the home config file or only `agents.yml`.
 - args:
+  - `reference [key]` — with no key, print an index of both shared config files: one line per key
+    with its path, type, default and the first sentence of its meaning, then a line naming the
+    two ways to read further. The index is about half the size of `--full`, so an agent can scan
+    every option at once. With a key, print the full entry of that key and of every key under it,
+    matched by whole dotted segments. A name the user picked matches its `<name>` placeholder, so
+    `profiles.claude.powers` prints the `profiles.<name>.powers` entries. A key that matches
+    nothing exits with an error naming up to three closest keys.
   - `set-library <path>` — record `path` as `library_dir` in the home config file; errors unless
     `path` contains both a `library/` and a `packs/` directory.
   - `set-stablemate <path>` — record `path` as `stablemate_dir` in the home config file (the local
@@ -199,14 +209,22 @@ the pruned starting point, and the two are kept consistent by hand.
     - run: invoke(argv=["config", "--config", "c026/c.toml", "show"], env={"HOME": "c026/home", "STABLEMATE_CONFIG": "c026/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c026/pipx-stub-bin:$PATH"})
     - verify: stdout(text="=")
     - fixture: profiles-config dir=c026
-  - `reference` prints a heading for each key the [machine config schema](concepts/config-schema.md) declares for the [home config file](formats/home-config.md), without needing a config file to exist
+  - `reference` lists each key the [machine config schema](concepts/config-schema.md) declares for the [home config file](formats/home-config.md) on one line, without needing a config file to exist
     - run: invoke(argv=["config", "reference"], env={"HOME": "c028/home", "STABLEMATE_CONFIG": "c028/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c028/pipx-stub-bin:$PATH"})
-    - verify: stdout(text="### `default_cli`")
+    - verify: stdout(text="- `default_cli` (")
     - fixture: empty-dir dir=c028
-  - `reference --file manifest` prints a heading for each key the [config schema](concepts/config-schema.md) declares for the repository's [`agents.yml`](formats/agents-yml-config.md)
-    - run: invoke(argv=["config", "reference", "--file", "manifest"], env={"HOME": "c905/home", "STABLEMATE_CONFIG": "c905/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c905/pipx-stub-bin:$PATH"})
+  - `reference --file manifest --full` prints a heading for each key the [config schema](concepts/config-schema.md) declares for the repository's [`agents.yml`](formats/agents-yml-config.md)
+    - run: invoke(argv=["config", "reference", "--file", "manifest", "--full"], env={"HOME": "c905/home", "STABLEMATE_CONFIG": "c905/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c905/pipx-stub-bin:$PATH"})
     - verify: stdout(text="### `localInstructions`")
     - fixture: empty-dir dir=c905
+  - `reference profiles.claude.powers` prints the full entries under the `profiles.<name>.powers` placeholder
+    - run: invoke(argv=["config", "reference", "profiles.claude.powers"], env={"HOME": "c906/home", "STABLEMATE_CONFIG": "c906/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c906/pipx-stub-bin:$PATH"})
+    - verify: stdout(text="### `profiles.<name>.powers`")
+    - fixture: empty-dir dir=c906
+  - `reference` with a key that matches nothing names the closest key
+    - run: invoke(argv=["config", "reference", "workflow.githubToken"], env={"HOME": "c907/home", "STABLEMATE_CONFIG": "c907/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c907/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="workflow.githubTokenEnv")
+    - fixture: empty-dir dir=c907
   - an undefined profile name exits with `UnknownProfileError`, which lists the ones the file
     does define
     - run: invoke(argv=["config", "--config", "c027/c.toml", "show", "--profile", "nonesuch"], env={"HOME": "c027/home", "STABLEMATE_CONFIG": "c027/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c027/pipx-stub-bin:$PATH"})
@@ -218,7 +236,9 @@ the pruned starting point, and the two are kept consistent by hand.
    `farrier/tests/test_config_profiles_cli.py::test_the_profile_replaces_the_top_level_rather_than_layering_over_it`,
    `farrier/tests/test_config_profiles_cli.py::test_an_unknown_profile_exits_cleanly_and_lists_the_ones_there_are`,
    `farrier/tests/test_config_profiles_cli.py::test_set_worktree_records_a_directory_that_does_not_exist_yet`,
-   `farrier/tests/test_config_reference.py::test_the_default_prints_every_declared_key`,
+   `farrier/tests/test_config_reference.py::test_the_default_lists_every_key_of_both_files_on_one_line_each`,
+   `farrier/tests/test_config_reference.py::test_a_key_matches_a_name_the_user_picked_against_its_placeholder`,
+   `farrier/tests/test_config_reference.py::test_a_key_matches_whole_segments_only`,
    `farrier/tests/test_config_reference.py::test_file_manifest_prints_every_key_with_its_default_and_example`,
    `farrier/tests/test_config_reference.py::test_an_unknown_file_is_rejected`
 

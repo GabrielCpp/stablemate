@@ -20,12 +20,13 @@ Run `farrier config set-library <path>` to write the first `library_dir` into `c
 ## Find every option
 
 ```bash
-farrier config reference              # both files
-farrier config reference --file home  # config.toml
-farrier config reference --file manifest  # agents.yml
+farrier config reference                         # one line per key, both files
+farrier config reference workflow                # full entries for workflow and its keys
+farrier config reference profiles.claude.powers  # a name you picked matches <name>
+farrier config reference --full                  # every full entry
 ```
 
-Each key shows its type, default, meaning, example, the environment variable that stands in for it, and the older names it still accepts. The output comes from the same model the tools load the files with, so it lists exactly what they read.
+Start with the index. It lists every key of `config.toml` and `agents.yml` on one line, with its type, default and the first sentence of its meaning. Then name a key, or a table such as `groom` or `workflow`, to read the full entries under it. A full entry shows the key's type, default, meaning, example, the environment variable that stands in for it, and the older names it still accepts. `--file home` or `--file manifest` keeps the output to one file. The output comes from the same model the tools load the files with, so it lists exactly what they read.
 
 ## When a file is wrong
 

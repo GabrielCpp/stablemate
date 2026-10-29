@@ -234,7 +234,8 @@ Inspect or set config with **farrier**, which owns the shared config file — wo
 is a library and ships no command of its own:
 
 ```bash
-farrier config reference --file home      # every key, with type, default, meaning and example
+farrier config reference --file home      # every key, one line each
+farrier config reference profiles         # full entries for the profile keys
 farrier config show                        # print all config keys
 farrier config show default_cli            # print one value
 farrier config set-library ~/path/to/lib   # set the overlay library path

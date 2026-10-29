@@ -106,9 +106,10 @@ them agree; the guard has to live on the file:
 
 If a tool refuses, upgrade it — that is the mechanism working, not a bug.
 
-`farrier config reference` prints every key of this file and of a repository's `agents.yml`,
-with type, default, meaning and example. `--file home` or `--file manifest` prints one of the
-two. [The configuration guide](guide/configuration.md) explains the output.
+`farrier config reference` lists every key of this file and of a repository's `agents.yml`,
+one line each. `farrier config reference <key>` prints the full entry of a key and the keys
+under it, with type, default, meaning and example. `--file home` or `--file manifest` keeps
+to one of the two. [The configuration guide](guide/configuration.md) explains the output.
 
 An overlay library shadows the base name-for-name via `farrier config set-library`, or
 `$FARRIER_LIBRARY_DIR` for a one-off.
