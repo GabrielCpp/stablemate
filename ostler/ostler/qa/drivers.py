@@ -6,10 +6,12 @@ import json
 import os
 import shutil
 import signal
+import string
 import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -234,6 +236,7 @@ class PythonDriver(QaDriver):
         self._routes: dict[str, str] = {}
         self._book_problem: str | None = None
         self._book_fixtures_cache: dict[str, dict[str, Any]] | None = None
+        self._resources_cache: dict[str, dict[str, Any]] = {}
 
     def start(self) -> None:
         self.launcher.preflight(self)
@@ -333,10 +336,14 @@ class PythonDriver(QaDriver):
             services_root, problem = self._packet_services_root()
             if problem is not None:
                 raise DriverBlocked(problem)
-            self._book_fixtures_cache = qa_book_fixtures.resolved(
-                load_graph(self.root, root_overrides={"services": services_root})
-            )
+            graph = load_graph(self.root, root_overrides={"services": services_root})
+            self._book_fixtures_cache = qa_book_fixtures.resolved(graph)
+            self._resources_cache = qa_book_fixtures.resolved_resources(graph)
         return self._book_fixtures_cache
+
+    def _resolved_resources(self) -> dict[str, dict[str, Any]]:
+        self._resolved_book_fixtures()
+        return self._resources_cache
 
     def interpreter(self) -> Path:
         declared = self.target.get("interpreter")
@@ -372,6 +379,7 @@ class PythonDriver(QaDriver):
             "tools": qa_tools.resolved_commands(self.root),
             "fixtures": qa_fixtures.resolved(self.root),
             "book_fixtures": self._resolved_book_fixtures(),
+            "resources": self._resolved_resources(),
         }
         return self.launcher.execute(self, scenario_id, timeout, context)
 
@@ -952,6 +960,7 @@ class LocalLauncher(Launcher):
         reader.join(timeout=5)
         if timed_out or not any(record.get("type") == "scenario" for record in records):
             stop_servers(records)
+            run_pending_releases(records, context.get("resources", {}), env)
         safe = _redact_bytes(output_raw or b"", driver.session.secret_values.values())
         return records, safe.decode("utf-8", errors="replace"), process.returncode, timed_out
 
@@ -1001,6 +1010,32 @@ def stop_servers(records: list[dict[str, Any]]) -> None:
         try:
             os.killpg(int(record["pgid"]), signal.SIGKILL)
         except (ProcessLookupError, PermissionError):
+            continue
+
+
+def run_pending_releases(
+    records: list[dict[str, Any]], resources: Mapping[str, Mapping[str, Any]], environ: Mapping[str, str],
+) -> None:
+    """Send each release a scenario announced and never reported, so a run that died holding a borrowed resource still gives it back."""
+    reported = {(record.get("fixture"), record.get("step")) for record in records if record.get("type") == "release"}
+    for record in reversed(records):
+        if record.get("type") != "release-pending" or (record.get("fixture"), record.get("step")) in reported:
+            continue
+        spec = resources.get(str(record.get("resource")), {})
+        if spec.get("reach") != "http":
+            continue
+        base = string.Template(str(spec.get("base", ""))).safe_substitute(environ).rstrip("/")
+        headers: dict[str, str] = {}
+        credential = spec.get("credential")
+        if credential and credential.get("secret") in environ:
+            headers[credential["header"]] = f"{credential.get('scheme', '')} {environ[credential['secret']]}".strip()
+        if not base or "$" in base or "$" in str(record.get("path", "")):
+            continue
+        request = urllib.request.Request(  # noqa: S310
+            base + str(record["path"]), method=str(record["method"]), headers=headers)
+        try:
+            urllib.request.urlopen(request, timeout=30).close()  # noqa: S310
+        except (OSError, ValueError):
             continue
 
 

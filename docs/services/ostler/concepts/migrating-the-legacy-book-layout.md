@@ -29,13 +29,13 @@ markdown file the tree already has (skipping `index.md` and `log.md`); `migrate`
 filename, skipping any file `registry.RESERVED_FILES` already accounts for.
 
 - code: ostler/ostler/scripts/__init__.py@e3b0c44298fc
-- code: ostler/ostler/scripts/okf_migrate.py::migrate@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::main@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_epic@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::_stamp_stories@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_todo@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_features@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_specs@06a9c9dae6dd
+- code: ostler/ostler/scripts/okf_migrate.py::migrate@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::main@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_epic@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::_stamp_stories@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_todo@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_features@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_specs@55fab781de8c
 
 ## Contract
 

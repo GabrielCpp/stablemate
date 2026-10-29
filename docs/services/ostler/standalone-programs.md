@@ -35,11 +35,11 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - fixture: [legacy book layout](fixtures/legacy-book-layout.md) — seeds the pre-OKF epic, its
   `seed.json`/`dependencies.json` siblings, the `epics-todo.json` queue naming it, and a
   frontmatter-less `docs/features/` page, all under `okf-migrate-fixture/`
-- code: ostler/ostler/scripts/okf_migrate.py::migrate@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::main@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_epic@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_todo@06a9c9dae6dd
-- code: ostler/ostler/scripts/okf_migrate.py::_migrate_features@06a9c9dae6dd
+- code: ostler/ostler/scripts/okf_migrate.py::migrate@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::main@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_epic@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_todo@55fab781de8c
+- code: ostler/ostler/scripts/okf_migrate.py::_migrate_features@55fab781de8c
 - detail: [Migrating the legacy book layout](concepts/migrating-the-legacy-book-layout.md)
 
 ### sandbox-forwarder
@@ -81,8 +81,8 @@ starts as a background process. Both run through `python3`, not through `ostler`
   story `sx` and its `review-answers.md`, naming one fixed finding with evidence, one declined
   finding with a reason, and one malformed heading
 - code: ostler/ostler/answers.py::parse_answers@6c168f1fb49d
-- code: ostler/ostler/api.py::Ostler.settle_answers@89569a465feb
-- code: ostler/ostler/edit.py::settle_answers@08519cdd058d
+- code: ostler/ostler/api.py::Ostler.settle_answers@defd95727723
+- code: ostler/ostler/edit.py::settle_answers@63e4a8c64c39
 - detail: [The Ostler facade and book utilities](concepts/the-ostler-facade-and-book-utilities.md)
 
 ### verdict-memo-recall
@@ -124,9 +124,9 @@ starts as a background process. Both run through `python3`, not through `ostler`
 - code: ostler/ostler/_vendor/stablemate_core/layout.py::is_library_dir@d69e52175abc
 - code: ostler/ostler/_vendor/stablemate_core/profiles.py::select_profile@0f757c16382b
 - code: ostler/ostler/_vendor/stablemate_core/profiles.py::profile_names@0f757c16382b
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::scan_catalog@ebf1b69c7565
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_link@ebf1b69c7565
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_command@ebf1b69c7565
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::scan_catalog@ab9560efa3d8
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_link@ab9560efa3d8
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::SkillRefs.skill_command@ab9560efa3d8
 - detail: [Vendored stablemate-core](concepts/vendored-stablemate-core.md)
 
 ### qa-context-source-repository
@@ -148,7 +148,7 @@ starts as a background process. Both run through `python3`, not through `ostler`
   source file and a plan under spec s1
 - code: ostler/ostler/qa/source_context.py::SourceRepository@c8ac0146f0b0
 - code: ostler/ostler/qa/source_context.py::SourceScope@c8ac0146f0b0
-- code: ostler/ostler/qa/context.py::_repository_changes@1722899c30ab
-- code: ostler/ostler/qa/context.py::_repository_row@1722899c30ab
-- code: ostler/ostler/api.py::Ostler.qa_context@89569a465feb
+- code: ostler/ostler/qa/context.py::_repository_changes@9e054ade9186
+- code: ostler/ostler/qa/context.py::_repository_row@9e054ade9186
+- code: ostler/ostler/api.py::Ostler.qa_context@defd95727723
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)

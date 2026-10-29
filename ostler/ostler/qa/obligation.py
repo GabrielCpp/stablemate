@@ -75,6 +75,14 @@ class CallRow:
 
 
 @dataclass(frozen=True)
+class ObservationRow:
+    """One side observation a claim holds `verify:` rows on: the resource's observation and the checks that read its document."""
+    resource: str
+    observation: str
+    checks: tuple[CallRow, ...]
+
+
+@dataclass(frozen=True)
 class CaptureRow:
     """One `capture: <name> from <source>` declaration."""
     name: str
@@ -148,6 +156,8 @@ class Obligation:
     captures_unparsed: tuple[UnparsedRow, ...]
     conditions: tuple[str, ...] = ()
     intercepts: tuple[InterceptRow, ...] = ()
+    observations: tuple[ObservationRow, ...] = ()
+    observations_unparsed: tuple[UnparsedRow, ...] = ()
 
 
 def _mapping(value: object, what: str) -> Mapping[str, object]:
@@ -263,6 +273,13 @@ def _intercept_row(row: Mapping[str, object]) -> InterceptRow:
     )
 
 
+def _observation_row(row: Mapping[str, object]) -> ObservationRow:
+    """One `observationsDeclared` entry."""
+    return ObservationRow(
+        resource=_text(row, "resource"), observation=_text(row, "observation"),
+        checks=tuple(_call_row(item) for item in _rows(row.get("checks"), "observation `checks`")))
+
+
 def _unparsed(value: object, what: str) -> tuple[UnparsedRow, ...]:
     """A packet list of refused bullets."""
     return tuple(UnparsedRow(value=_text(row, "value"), problem=_text(row, "problem"))
@@ -315,6 +332,9 @@ def obligation_of(raw: Mapping[str, Any]) -> Obligation:
         captures_unparsed=_unparsed(row.get("capturesUnparsed"), "`capturesUnparsed`"),
         conditions=_texts(row.get("conditionsDeclared"), "`conditionsDeclared`"),
         intercepts=tuple(_intercept_row(item) for item in _rows(row.get("intercepts"), "`intercepts`")),
+        observations=tuple(
+            _observation_row(item) for item in _rows(row.get("observationsDeclared"), "`observationsDeclared`")),
+        observations_unparsed=_unparsed(row.get("observationsUnparsed"), "`observationsUnparsed`"),
     )
 
 

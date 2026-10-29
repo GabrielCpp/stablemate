@@ -89,34 +89,89 @@ def _needs_of(graph: Graph, node: UINode, by_name: dict[str, UINode]) -> list[di
     return bindings
 
 
+def on_stem(value: str) -> str:
+    """The resource a step's `on:` names: the stem of its link, or the bare stem it is written as."""
+    links = extract_refs(value).links
+    target = links[0][1].partition("#")[0] if links else value.strip().strip("`")
+    return Path(target).stem
+
+
+def _request_of(text: str) -> dict[str, str]:
+    """A step's `request:` as its method and path."""
+    method, _, path = text.strip().partition(" ")
+    return {"method": method.upper(), "path": path.strip()}
+
+
+def step_entry(graph: Graph, step: UINode) -> dict[str, Any]:
+    """One step as the harness runs it: a browser step's actions, a request on a resource, or a command."""
+    kind = runbook_mod.bullet_value(step.meta, "kind")
+    step_id = step.id.rpartition("#")[2]
+    if fixture_browser.is_browser_step(step):
+        performed = fixture_browser.browser_step(graph, step)
+        if performed.problems:
+            return {"kind": kind, "id": step_id, "unperformable": "; ".join(performed.problems)}
+        return {"kind": kind, "id": step_id, "browser": performed.actions}
+    on = runbook_mod.bullet_value(step.meta, "on")
+    request = runbook_mod.bullet_value(step.meta, "request")
+    timeout = boot_timeout(runbook_mod.bullet_value(step.meta, "timeout"), default=STEP_TIMEOUT_S)
+    if request:
+        body = runbook_mod.bullet_value(step.meta, "body")
+        return {"kind": kind, "id": step_id, "on": on_stem(on), "request": _request_of(request),
+                "body": body or None, "timeout": timeout}
+    command = runbook_mod.step_command(step, runbook_mod.system_root(graph), ".")
+    if command is None:
+        return {"kind": kind, "id": step_id, "missing_run": True}
+    entry: dict[str, Any] = {
+        "kind": kind,
+        "id": step_id,
+        "command": command["run"],
+        "timeout": boot_timeout(str(command.get("timeout", "")), default=STEP_TIMEOUT_S),
+    }
+    if on:
+        entry["on"] = on_stem(on)
+    if "cwd-frame" in command:
+        entry["cwd-frame"] = command["cwd-frame"]
+    else:
+        entry["cwd"] = command["working-directory"]
+    return entry
+
+
 def _steps_of(graph: Graph, node: UINode) -> list[dict[str, Any]]:
-    steps: list[dict[str, Any]] = []
-    for step in runbook_mod.steps_of(graph, node):
-        kind = runbook_mod.bullet_value(step.meta, "kind")
-        step_id = step.id.rpartition("#")[2]
-        if fixture_browser.is_browser_step(step):
-            performed = fixture_browser.browser_step(graph, step)
-            if performed.problems:
-                steps.append({"kind": kind, "id": step_id, "unperformable": "; ".join(performed.problems)})
-            else:
-                steps.append({"kind": kind, "id": step_id, "browser": performed.actions})
-            continue
-        command = runbook_mod.step_command(step, runbook_mod.system_root(graph), ".")
-        if command is None:
-            steps.append({"kind": kind, "id": step_id, "missing_run": True})
-            continue
-        entry: dict[str, Any] = {
-            "kind": kind,
-            "id": step_id,
-            "command": command["run"],
-            "timeout": boot_timeout(str(command.get("timeout", "")), default=STEP_TIMEOUT_S),
+    return [step_entry(graph, step) for step in runbook_mod.steps_of(graph, node)]
+
+
+def _properties(node: UINode, key: str) -> dict[str, str]:
+    """A nested bullet's `name: value` children."""
+    found: dict[str, str] = {}
+    for item in _bullet_values(node.meta.get(key)):
+        name, sep, value = item.partition(":")
+        if sep and name.strip():
+            found[name.strip()] = value.strip().strip("`")
+    return found
+
+
+def resolved_resources(graph: Graph) -> dict[str, dict[str, Any]]:
+    """Every `resource` node in the book, as the harness's `context["resources"]`: the reach, the secret names it needs (never their values), its probe and its observations."""
+    out: dict[str, dict[str, Any]] = {}
+    for node in graph.ui_nodes_of_type("resource"):
+        steps = runbook_mod.steps_of(graph, node)
+        probes = [step for step in steps if step.data.get("container") == "Probe"]
+        credential = _properties(node, "credential")
+        out[Path(node.id).stem] = {
+            "page": node.id,
+            "reach": runbook_mod.bullet_value(node.meta, "reach"),
+            "base": runbook_mod.bullet_value(node.meta, "base"),
+            "credential": {"header": credential.get("header", ""), "scheme": credential.get("scheme", ""),
+                           "secret": credential.get("secret", "")} if credential else None,
+            "binary": runbook_mod.bullet_value(node.meta, "binary"),
+            "secrets": _declared_secrets(node),
+            "install": runbook_mod.bullet_value(node.meta, "install"),
+            "probe": step_entry(graph, probes[0]) if probes else None,
+            "observations": {
+                step.id.rpartition("#")[2]: step_entry(graph, step)
+                for step in steps if step.data.get("container") == "Observations"},
         }
-        if "cwd-frame" in command:
-            entry["cwd-frame"] = command["cwd-frame"]
-        else:
-            entry["cwd"] = command["working-directory"]
-        steps.append(entry)
-    return steps
+    return out
 
 
 def resolved(graph: Graph) -> dict[str, dict[str, Any]]:

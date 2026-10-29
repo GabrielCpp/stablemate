@@ -76,8 +76,8 @@ because the home config refuses a member name bound to two folders.
 - code: `ostler/ostler/layout.py::check` @ebe9727b7af7
 - code: `ostler/ostler/layout.py::moves` @ebe9727b7af7
 - code: `ostler/ostler/adr.py::propose` @f14c55fafbc7
-- code: `ostler/ostler/model.py::doc_roots` @d2115e76a76a
-- code: `ostler/ostler/doctor.py::_check_service_repository` @b6bae9bf1b96
+- code: `ostler/ostler/model.py::doc_roots` @e431117524b6
+- code: `ostler/ostler/doctor.py::_check_service_repository` @ab71df4a76ca
 - rule: a repository listed in any workspace uses the artifacts dir as its docs home, and any other repository uses itself
 - rule: all workspaces share one artifacts dir, and workspaces may overlap, because any match makes a repository a member and the docs home is the same either way
 - rule: one member name maps to one folder across every workspace, and a home config that binds a name to two folders is refused with an error naming both folders

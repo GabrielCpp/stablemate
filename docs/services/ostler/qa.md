@@ -11,8 +11,29 @@ in a scratch repository whose spec directories and tool table sit under the chec
 writes to the artifacts directory of the person who runs the book. The claims run in the order they
 are written, because each later command reads what an earlier one wrote.
 
+A run can depend on an outside system the book does not start, which a `resource` page describes.
+A fixture step with `on:` acts on that resource. A step with `request:` sends one HTTP request to
+the resource's `base:`, and a step with `run:` runs a command whose binary and secrets the harness
+checks first. The first step or observation on a resource runs its probe, once per harness process.
+A resource that does not answer gaps every claim that needs it as `gapped: <resource name> absent`.
+
+A `kind: borrow` step takes something from the resource in order, like any other step. When it
+succeeds, the harness registers the `kind: release` steps that follow it and records a
+`release-pending` event for each. The harness sends the releases when the scenario ends, last
+borrowed first, whether the scenario passed, failed or errored, and records a `release` event for
+each with its `ok` and `detail`. A release that fails never stops the others and fails a scenario
+that had passed. When a scenario times out, the parent runner sends each release that has a
+`release-pending` event and no `release` event, after it stops the scenario's servers.
+
+A claim that carries `observe: @<resource>.<observation>` has the harness read that observation.
+The plan compiles it to `qa.observe(resource, observation, within=N, until=[...])`, and each
+`verify:` row held on it to a `qa.verify` on the document the read returned. The harness records an
+`observe` event for each read with the polls it took. A secret's value stays in the harness's own
+environment, and no plan, transcript or event carries it. See
+[describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md).
+
 - binary: ostler
-- code: ostler/ostler/cli.py::main@f9cefee57bce
+- code: ostler/ostler/cli.py::main@24476a003d97
 
 ## Commands
 
@@ -55,28 +76,28 @@ are written, because each later command reads what an earlier one wrote.
 - verify: contents(subject="qa-scratch/art/specs/s1/qa-okf-context.json", matches="names no source")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/book_index.py::captures_by_node@6b7b3c34f0cf
+- code: ostler/ostler/qa/book_index.py::captures_by_node@dd91e95d2722
 - code: ostler/ostler/qa/captures.py::CaptureDecl/parse_bullet@248120ebb77f
-- code: ostler/ostler/qa/compile.py::annotate_deferred_obligations@d1944cb46aa9
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@003bdbe757de
-- code: ostler/ostler/qa/compile_http.py::api_scenarios@f77bef4e51e6
+- code: ostler/ostler/qa/compile.py::annotate_deferred_obligations@f211b537faac
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@479bda09f64c
+- code: ostler/ostler/qa/compile_http.py::api_scenarios@e17faa3b5f39
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
 - code: ostler/ostler/qa/compile_maestro.py::device_state_walks@da217d55c8c0
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@606b70054ffc
-- code: ostler/ostler/qa/compile_support.py::on_href@c662613eb534
-- code: ostler/ostler/qa/context.py::book_files@1722899c30ab
+- code: ostler/ostler/qa/compile_support.py::on_href@771f910c9275
+- code: ostler/ostler/qa/context.py::book_files@9e054ade9186
 - code: ostler/ostler/qa/dispatch.py::claim_driver@d42406bead4b
 - code: ostler/ostler/qa/fixture_provides.py::closure@9053b42918c0
 - code: ostler/ostler/qa/fixtures.py::parse_bullet@a4b91574f193
 - code: ostler/ostler/qa/grounding_health.py::resolve_groundings@da8a0b8f6c0f
 - code: ostler/ostler/qa/journey_steps.py::journey_steps@0794ea6c9659
 - code: ostler/ostler/qa/navigation.py::navigation_rows@e5be923f66b9
-- code: ostler/ostler/qa/obligation.py::obligation_of@fb72070e8dcf
+- code: ostler/ostler/qa/obligation.py::obligation_of@4bdc7a410ade
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@59e7ee8278ae
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
 - code: ostler/ostler/qa/owners.py::book_relative@de26fdbd12b7
-- code: ostler/ostler/qa/packet.py::packet_of@44c9a86552b7
+- code: ostler/ostler/qa/packet.py::packet_of@6b7020cfc619
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@08fddc26f73f
 - code: ostler/ostler/qa/runbook.py::bullet_text@66911fe4abd5
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
@@ -90,7 +111,7 @@ are written, because each later command reads what an earlier one wrote.
 - verify: stdout(matches="^Context is valid\\.$")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/context.py::cmd_context_validate@1722899c30ab
+- code: ostler/ostler/qa/context.py::cmd_context_validate@9e054ade9186
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
 
 ### ostler-qa-context-show
@@ -103,7 +124,7 @@ are written, because each later command reads what an earlier one wrote.
 - verify: stdout(matches="demo-greet:exits:1")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/context.py::select_obligations@1722899c30ab
+- code: ostler/ostler/qa/context.py::select_obligations@9e054ade9186
 
 ### ostler-qa-compile-plan
 - usage: ostler qa compile-plan --spec SPEC [--out PATH] [--story STORY] [--run-id ID] [--base-url
@@ -123,21 +144,21 @@ are written, because each later command reads what an earlier one wrote.
 - verify: json_path(path="status", equals="passed")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/book_index.py::captures_by_node@6b7b3c34f0cf
-- code: ostler/ostler/qa/compile.py::cmd_compile_plan@d1944cb46aa9
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@003bdbe757de
+- code: ostler/ostler/qa/book_index.py::captures_by_node@dd91e95d2722
+- code: ostler/ostler/qa/compile.py::cmd_compile_plan@f211b537faac
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@479bda09f64c
 - code: ostler/ostler/qa/compile_grpc.py::grpc_scenarios@07a9248e9e25
-- code: ostler/ostler/qa/compile_http.py::api_scenarios@f77bef4e51e6
+- code: ostler/ostler/qa/compile_http.py::api_scenarios@e17faa3b5f39
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
 - code: ostler/ostler/qa/compile_maestro.py::device_state_walks@da217d55c8c0
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@606b70054ffc
-- code: ostler/ostler/qa/compile_support.py::on_href@c662613eb534
+- code: ostler/ostler/qa/compile_support.py::on_href@771f910c9275
 - code: ostler/ostler/qa/dispatch.py::claim_driver@d42406bead4b
 - code: ostler/ostler/qa/navigation.py::navigation_rows@e5be923f66b9
-- code: ostler/ostler/qa/obligation.py::obligation_of@fb72070e8dcf
+- code: ostler/ostler/qa/obligation.py::obligation_of@4bdc7a410ade
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/packet.py::packet_of@44c9a86552b7
+- code: ostler/ostler/qa/packet.py::packet_of@6b7020cfc619
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@08fddc26f73f
 
 ### ostler-qa-context-web-journey
@@ -150,7 +171,7 @@ are written, because each later command reads what an earlier one wrote.
 - verify: json_path(path="status", equals="passed")
 - verify: json_path(path="changedCode[0].path", equals="src/frontend.py")
 - fixture: [qa web journey repo](fixtures/qa-web-journey-repo.md)
-- code: ostler/ostler/qa/context.py::book_files@1722899c30ab
+- code: ostler/ostler/qa/context.py::book_files@9e054ade9186
 - code: ostler/ostler/qa/dispatch.py::claim_driver@d42406bead4b
 
 ### ostler-qa-compile-plan-web-journey
@@ -189,7 +210,7 @@ are written, because each later command reads what an earlier one wrote.
 - verify: json_path(path="status", equals="passed")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/context.py::book_files@1722899c30ab
+- code: ostler/ostler/qa/context.py::book_files@9e054ade9186
 - code: ostler/ostler/qa/harness_host.py::default_interpreter@be0a59e0887d
 - code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
 - code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
@@ -218,13 +239,17 @@ are written, because each later command reads what an earlier one wrote.
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - code: ostler/ostler/qa/attribution.py::signatures@9cd259bdbe3c
-- code: ostler/ostler/qa/book_fixtures.py::resolved@360f74516536
-- code: ostler/ostler/qa/context.py::book_files@1722899c30ab
-- code: ostler/ostler/qa/drivers.py::create_driver@378b768cf1f8
+- code: ostler/ostler/qa/book_fixtures.py::resolved@26e58a44f4ed
+- code: ostler/ostler/qa/context.py::book_files@9e054ade9186
+- code: ostler/ostler/qa/drivers.py::create_driver@ea4f7c0dd596
 - code: ostler/ostler/qa/evidence_map.py::build_evidence_map@b2b27057b604
 - code: ostler/ostler/qa/fixtures.py::declared@a4b91574f193
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@3d971d498ead
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@80d0580df929
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::UrlReading@753b30ac1b84
+- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk@6b2c8a83c7cd
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa._owe_releases@80d0580df929
+- code: ostler/ostler/qa/drivers.py::run_pending_releases@ea4f7c0dd596
+- code: ostler/ostler/qa/compile_observe.py::observation_lines@53b6536bb58c
 - code: ostler/ostler/qa/harness/ostler_qa_checkout.py::copy_checkout@d2d64738e2dc
 - code: ostler/ostler/qa/harness/ostler_qa_documents.py::DocumentReading@c7b9f1b585d5
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::AttributeReading@0596499cd4fb
@@ -254,6 +279,7 @@ are written, because each later command reads what an earlier one wrote.
 - code: ostler/ostler/untyped.py::is_mapping@c964a61d4a94
 - code: ostler/ostler/util.py::is_mapping@6c753ed2df8c
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
+- detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-qa-run-playwright-target
 - usage: ostler qa run PLAN --json, PLAN naming a target whose driver is `playwright` — a run
@@ -267,7 +293,7 @@ are written, because each later command reads what an earlier one wrote.
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - fixture: [qa browser scratch plan](fixtures/qa-browser-scratch-plan.md)
-- code: ostler/ostler/qa/harness/ostler_qa.py::_open_browser@3d971d498ead
+- code: ostler/ostler/qa/harness/ostler_qa.py::_open_browser@80d0580df929
 - code: ostler/ostler/qa/harness/ostler_qa_browser.py::Browser@7a9c15e1ccae
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
@@ -284,7 +310,7 @@ are written, because each later command reads what an earlier one wrote.
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - fixture: [qa maestro scratch plan](fixtures/qa-maestro-scratch-plan.md)
-- code: ostler/ostler/qa/harness/ostler_qa.py::settle@3d971d498ead
+- code: ostler/ostler/qa/harness/ostler_qa.py::settle@80d0580df929
 - code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@21931566bfbc
 - code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@21931566bfbc
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
@@ -314,7 +340,7 @@ are written, because each later command reads what an earlier one wrote.
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - fixture: [qa timeout scratch plan](fixtures/qa-timeout-scratch-plan.md)
-- code: ostler/ostler/qa/drivers.py::LocalLauncher.execute@378b768cf1f8
+- code: ostler/ostler/qa/drivers.py::LocalLauncher.execute@ea4f7c0dd596
 - code: ostler/ostler/qa/maestro_sessions.py::retire_dead_sessions@7f45b672bb4e
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 

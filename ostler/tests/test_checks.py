@@ -268,7 +268,7 @@ def test_a_signature_is_an_example_before_it_is_a_type() -> None:
     for spec in checks.CHECKS:
         rendered = spec.signature().split(" — ")[0]
         assert ": " not in rendered, rendered
-        for param in spec.params:
+        for param in (p for p in spec.params if not p.hidden):
             star = "*" if param.required else ""
             assert f"{param.name}{star}=<{param.type}>" in rendered
 

@@ -36,6 +36,7 @@ from ostler_qa_elements import maestro_pattern, name_pattern, template_pattern
 from ostler_qa_grpc import Caller, Grpc, GrpcError, GrpcurlCaller
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
+from ostler_qa_resources import Observed, PendingRelease, ResourceDesk
 from ostler_qa_responses import reply_excerpt
 from ostler_qa_settle import ANNOUNCED_ROLES, PageScreen, Screen, announced, settle_screen
 from ostler_qa_verifiers import (
@@ -71,6 +72,10 @@ _SHELL = shutil.which("bash") or "/bin/sh"
 PROBE_STEP = "probe"
 
 SERVE_STEP = "serve"
+
+BORROW_STEP = "borrow"
+
+RELEASE_STEP = "release"
 
 WRITING_STEPS = frozenset({"run", "seed"})
 
@@ -844,6 +849,7 @@ class Qa:
         tools: Mapping[str, str] | None = None,
         fixtures: Mapping[str, Mapping[str, Any]] | None = None,
         book_fixtures: Mapping[str, Mapping[str, Any]] | None = None,
+        resources: Mapping[str, Mapping[str, Any]] | None = None,
         tool_env: Sequence[str] = (),
         lap_dir: Path | None = None,
         ceiling_s: float = CEILING_S,
@@ -860,6 +866,8 @@ class Qa:
         self._fixtures = {name: dict(spec) for name, spec in (fixtures or {}).items()}
         self._book_fixtures = {name: dict(spec) for name, spec in (book_fixtures or {}).items()}
         self._fixture_pages = {name: _fixture_page(name, spec) for name, spec in self._book_fixtures.items()}
+        self._resources = ResourceDesk(dict(resources or {}), self._fault, recorder.emit, scenario_id)
+        self._fixture_pages.update({stem: str(spec.get("page", "")) for stem, spec in self._resources.resources.items()})
         self._book_fixture_memo: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
         self._node_facts: dict[str, dict[str, str]] = {}
         self._node_structures: dict[str, dict[str, Any]] = {}
@@ -1136,6 +1144,75 @@ class Qa:
             raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})")
         return result
 
+    def _with_resource(self, step: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, str]:
+        """*env* with the secrets of the resource a `run:` step is `on:`, after the resource has answered its probe."""
+        stem = str(step["on"])
+        self._resources.ensure_reachable(stem)
+        return {**env, **self._resources.secrets_of(stem)}
+
+    def _bound_request_text(self, fixture: str, index: int, kind: str, text: str, env: Mapping[str, str]) -> str:
+        """A request's path or body with `$NAME` bound from the fixture's facts and `@fixture.key` from the ones it needs."""
+        try:
+            bound = string.Template(text).substitute(env)
+        except (KeyError, ValueError) as exc:
+            named = f"${exc.args[0]}" if isinstance(exc, KeyError) else "a `$` that names nothing"
+            detail = f"names {named}, which no arg, secret, need or provided fact binds"
+            self._fault(fixture, index, kind, "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) {detail}") from exc
+        return self._resolve_ref(fixture, bound) if _NODE_REF.search(bound) else bound
+
+    def _request_book_step(
+        self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
+    ) -> "ToolResult":
+        """Send a `request:` step to the resource it is `on:`. Only the method and URL are logged."""
+        kind, stem = str(step.get("kind", "")), str(step["on"])
+        self._resources.ensure_reachable(stem)
+        method = step["request"]["method"]
+        path = self._bound_request_text(fixture, index, kind, step["request"]["path"], env)
+        body = self._bound_request_text(fixture, index, kind, step["body"], env) if step.get("body") else None
+        url = self._resources.base_of(stem) + path
+        try:
+            reply = self._resources.send(stem, method, path, body, float(step["timeout"]))
+        except OSError as exc:
+            self._fault(fixture, index, kind, "defect", f"{method} {url} could not connect: {exc}")
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) could not reach {url}: {exc}") from exc
+        if not reply.ok:
+            detail = f"{method} {url} answered {reply.status}: {reply.body.strip()[:300]}"
+            self._fault(fixture, index, kind, "defect", detail)
+            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})")
+        return ToolResult(command=[method, url], stdout=reply.body, stderr="", exit_code=0)
+
+    def _owe_releases(self, fixture: str, steps: Sequence[Mapping[str, Any]], borrowed: int, env: dict[str, str]) -> None:
+        """After a borrow succeeds, owe every `release` step that follows it, to be sent however the scenario ends."""
+        secrets = [*self._book_fixtures[fixture].get("secrets", [])]
+        for index in range(borrowed + 1, len(steps)):
+            step = steps[index]
+            if step.get("kind") != RELEASE_STEP or "request" not in step:
+                continue
+            self._resources.register_release(
+                PendingRelease(fixture, index, str(step["on"]), step["request"]["method"], step["request"]["path"],
+                               step.get("body"), env, float(step["timeout"])),
+                secrets)
+
+    def release_all(self) -> list[str]:
+        """Give back everything the scenario borrowed. Never raises: the problems come back for the verdict."""
+        return self._resources.release_all()
+
+    def observe(
+        self, resource: str, observation: str, *, within: float = 0, until: Sequence[tuple[str, Mapping[str, Any]]] = (),
+    ) -> Observed:
+        """Read a resource's observation, re-reading for up to *within* seconds until every check in *until* holds, and return the last read."""
+        spec = self._resources.known(resource)
+        step = (spec.get("observations") or {}).get(observation) or {}
+        path = self.resolve(str((step.get("request") or {}).get("path", "")))
+        waiting = [(VERIFIERS[name], args) for name, args in until]
+
+        def holds(observed: Observed) -> bool:
+            document = observed.json()
+            return all(verifier(document, args).passed for verifier, args in waiting)
+
+        return self._resources.observe(resource, observation, path, within=float(within), holds=holds)
+
     def _step_cwd(self, fixture: str, index: int, step: Mapping[str, Any]) -> str:
         kind = str(step.get("kind", ""))
         cwd = str(self.scenario_checkout_copy()) if step.get("cwd-frame") == "scenario" else str(step.get("cwd") or self.root)
@@ -1411,9 +1488,16 @@ class Qa:
                 detail = f"a browser cannot perform this step: {step['unperformable']}"
                 self._fault(name, index, str(step.get("kind", "")), "defect", detail)
                 raise RuntimeError(f"qa fixture {name!r} step {index}: {detail}")
+            if step.get("kind") == RELEASE_STEP and "request" in step:
+                continue
             if "browser" in step:
                 result = self._run_browser_step(name, index, step, env)
                 signed_in = True
+            elif "request" in step:
+                result = self._request_book_step(name, index, step, env)
+            elif step.get("on") and step.get("kind") != SERVE_STEP:
+                result = self._run_book_step(name, index, step, self._with_resource(step, env))
+                wrote = wrote or step.get("kind") in WRITING_STEPS
             elif step.get("kind") == SERVE_STEP:
                 result = self._serve_book_step(name, index, step, env)
             else:
@@ -1424,6 +1508,8 @@ class Qa:
                 step_results[step_id] = result
                 for key, value in _facts_of_step(provides, step_id, result.stdout).items():
                     env.setdefault(key, value)
+            if step.get("kind") == BORROW_STEP:
+                self._owe_releases(name, steps, index, env)
         if signed_in:
             self._node_sessions[name] = self._settled_session(name, len(steps) - 1)
         if wrote and self.diagnostics is not None:
@@ -2760,6 +2846,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         tools=context.get("tools", {}),
         fixtures=context.get("fixtures", {}),
         book_fixtures=context.get("book_fixtures", {}),
+        resources=context.get("resources", {}),
         tool_env=REGISTRY.tool_env,
         lap_dir=Path(context["lap_dir"]) if context.get("lap_dir") else None,
     )
@@ -2780,13 +2867,20 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         status, error = "errored", stop_reason(exc, getattr(getattr(declared.func, "__code__", None), "co_filename", ""))
         stop = qa.stop_evidence(exc)
         print(traceback.format_exc(), file=sys.stdout)
-    if browser is not None:
-        unclean = _bind_browser_unclean(qa, browser.unclean())
-        problems = [*unclean, *browser.close(failed=status != "passed" or bool(unclean))]
-        if problems:
-            status = "failed" if status == "passed" else status
-            error = "; ".join([part for part in [error, *problems] if part])
-    qa.stop_servers()
+    released: list[str] = []
+    try:
+        if browser is not None:
+            unclean = _bind_browser_unclean(qa, browser.unclean())
+            problems = [*unclean, *browser.close(failed=status != "passed" or bool(unclean))]
+            if problems:
+                status = "failed" if status == "passed" else status
+                error = "; ".join([part for part in [error, *problems] if part])
+    finally:
+        released = qa.release_all()
+        qa.stop_servers()
+    if released:
+        status = "failed" if status == "passed" else status
+        error = "; ".join([part for part in [error, *released] if part])
     if qa.failures:
         status = "failed" if status == "passed" else status
     if status == "passed" and target_decl.driver in UI_DRIVER_NAMES and qa.vets == 0:

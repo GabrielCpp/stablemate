@@ -96,7 +96,7 @@ def test_ui_types_registered():
         "entries", "screen", "component", "interaction", "cli", "command", "server", "endpoint", "grpc-server", "rpc",
         "invocation", "flow", "concept", "format",
         "method", "field",
-        "runbook", "environment", "step",
+        "runbook", "environment", "resource", "step",
         "fixture",
         "fragment", "state", "data-state", "passage",
         "untyped",

@@ -985,15 +985,21 @@ def _inline_type(title: str) -> tuple[str | None, str]:
 
 def _promote_section(section: markdown.Section, rel: str, path: Path, offset: int,
                      parent_id: str, container_type: str | None, nodes: list[UINode],
-                     anchors: dict[int, str]) -> None:
+                     anchors: dict[int, str], extra_containers: Mapping[str, str] | None = None,
+                     container: str = "") -> None:
     """Promote **every** heading to a section node so its links are captured and it nests."""
     title = section.title.strip()
     if not title:
         return
     child_container = registry.UI_HEADING_TO_TYPE.get(title)
+    named = ""
+    if child_container is None and extra_containers:
+        child_container = extra_containers.get(title)
+        named = title
     if child_container is not None:
         for sub in section.children:
-            _promote_section(sub, rel, path, offset, parent_id, child_container, nodes, anchors)
+            _promote_section(sub, rel, path, offset, parent_id, child_container, nodes, anchors,
+                             extra_containers, named)
         return
     ntype, ntitle = _inline_type(title)
     ntype = ntype or container_type or "untyped"
@@ -1012,9 +1018,10 @@ def _promote_section(section: markdown.Section, rel: str, path: Path, offset: in
         bullet_lines={i: offset + bullet.line_start + 1 for i, bullet in enumerate(section.bullets)},
         links=[(text, href, offset + section.line_start + link_line)
                for text, href, link_line in markdown.iter_links(own_text)],
+        data={"container": container} if container else {},
     ))
     for sub in section.children:
-        _promote_section(sub, rel, path, offset, node_id, None, nodes, anchors)
+        _promote_section(sub, rel, path, offset, node_id, None, nodes, anchors, extra_containers)
 
 
 def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[UINode]:
@@ -1053,8 +1060,9 @@ def _parse_ui_nodes(doc: markdown.MarkdownDoc, path: Path, root: Path) -> list[U
 
     top = main.children if (main is not None and main.level == 1) else doc.sections
     host = fragment_host(nodes[0], root) if file_id and nodes[0].type == "fragment" else ""
+    extra = registry.RESOURCE_CONTAINERS if ftype is not None and ftype.name == "resource" else None
     for sec in top:
-        _promote_section(sec, rel, path, offset, host or file_id, None, nodes, anchors)
+        _promote_section(sec, rel, path, offset, host or file_id, None, nodes, anchors, extra)
     return nodes
 
 

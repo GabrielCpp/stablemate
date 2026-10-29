@@ -7,7 +7,7 @@ import json
 import re
 import subprocess
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,7 @@ from ostler.pages import files_in_book
 from ostler import reach
 from ostler import routes as routes_mod
 from ostler.qa import captures as captures_mod
+from ostler.qa.book_fixtures import resolved_resources
 from ostler.qa.dispatch import owes_live_evidence
 from ostler.qa.fixture_browser import BROWSER_KEYS
 from ostler.qa import fixture_provides as provides_mod
@@ -412,6 +413,7 @@ def build_context(
         "browserFixtures": _browser_fixtures(snapshot.book),
         "fixtureScreens": _fixture_screens(snapshot.head_graph, snapshot.book),
         "fixtureLaunchScreens": _fixture_launch_screens(snapshot.head_dump),
+        "resourceObservations": {stem: sorted(row["observations"]) for stem, row in resolved_resources(snapshot.head_graph).items()},
         "fixtureNeeds": {stem: sorted(needs) for stem, needs in _fixture_needs_index(snapshot.book).items() if needs},
         "fragmentHosts": _fragment_hosts(snapshot.book),
         "passages": _passages(snapshot.book, selection.contracts | selection.journeys),
@@ -1064,9 +1066,9 @@ def validate_context(packet: Any) -> list[str]:
         problems.append("context.version must be 1 or 2")
     if not isinstance(packet.get("available"), bool):
         problems.append("context.available must be boolean")
-    for field in ("changedCode", "directNodes", "contracts", "journeys", "journeyNodes", "verificationRefs", "healthFindings", "obligations"):
-        if not isinstance(packet.get(field), list):
-            problems.append(f"context.{field} must be a list")
+    for key in ("changedCode", "directNodes", "contracts", "journeys", "journeyNodes", "verificationRefs", "healthFindings", "obligations"):
+        if not isinstance(packet.get(key), list):
+            problems.append(f"context.{key} must be a list")
     if version == 2:
         for field in ("changedUnits", "repositories"):
             if not isinstance(packet.get(field), list):
@@ -2176,6 +2178,28 @@ class _Attribution:
     acts: _Attributed
     captures: _Attributed
     held: _Attributed
+    observations: dict[_Claim, list[tuple[str, list[tuple[int, str]]]]] = field(default_factory=dict)
+
+
+_OBSERVATION_REF = re.compile(r"@([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]+)")
+
+
+def _parse_observations(
+    rows: list[tuple[str, list[tuple[int, str]]]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """The side observations a claim holds rows on, and the `observe:` values that name no `@resource.observation`."""
+    declared: list[dict[str, Any]] = []
+    unparsed: list[dict[str, Any]] = []
+    for value, held in rows:
+        named = _OBSERVATION_REF.fullmatch(value.strip())
+        if named is None:
+            unparsed.append({"value": value, "problem": "is not `@<resource>.<observation>`"})
+            continue
+        declared.append({
+            "value": value.strip(), "resource": named.group(1), "observation": named.group(2),
+            "checks": _dedup_checks(_parse_checks([row for _, row in held])),
+        })
+    return declared, unparsed
 
 
 @dataclass(frozen=True, slots=True)
@@ -2191,6 +2215,8 @@ class _Parts:
     acts_unparsed: list[dict[str, Any]]
     captures: list[dict[str, Any]]
     captures_unparsed: list[dict[str, Any]]
+    observations: list[dict[str, Any]] = field(default_factory=list)
+    observations_unparsed: list[dict[str, Any]] = field(default_factory=list)
 
     def stamp(self, obligation: dict[str, Any]) -> None:
         """Write each part that is present onto *obligation*, and drop each one that is absent."""
@@ -2204,6 +2230,8 @@ class _Parts:
             ("actsUnparsed", self.acts_unparsed),
             ("capturesDeclared", self.captures),
             ("capturesUnparsed", self.captures_unparsed),
+            ("observationsDeclared", self.observations),
+            ("observationsUnparsed", self.observations_unparsed),
         )
         for key, value in fields:
             if value:
@@ -2214,7 +2242,7 @@ class _Parts:
 
 _PART_KEYS = ("checksDeclared", "checksUnparsed", "fixturesDeclared", "fixturesUnparsed", "arrangesNothing",
               "actsDeclared", "actsUnparsed", "capturesDeclared", "capturesUnparsed",
-              "conditionsDeclared")
+              "conditionsDeclared", "observationsDeclared", "observationsUnparsed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -2249,6 +2277,7 @@ class _PartReader:
         fixtures = attribution.fixtures.of(claim)
         acts = attribution.acts.of(claim)
         captures = attribution.captures.of(claim)
+        observations, observations_unparsed = _parse_observations(attribution.observations.get(claim, []))
         arranged = _parse_fixtures(fixtures, self.fixture_provides, self.fixture_undetermined)
         return _Parts(
             checks=_dedup_checks(_parse_checks(checks, self.resolve_locator)),
@@ -2261,6 +2290,8 @@ class _PartReader:
             acts_unparsed=_dedup_by_value([*node.acts_unparsed, *_unparsed_acts(acts)]),
             captures=_parse_captures(captures),
             captures_unparsed=_unparsed_captures(captures),
+            observations=observations,
+            observations_unparsed=observations_unparsed,
         )
 
     def _beneath(self, inherited: list[dict[str, Any]], arranged: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2478,6 +2509,7 @@ def _attribution(book_node: BookNode) -> _Attribution:
         acts=_Attributed(*registry.attributed_acts(*args)),
         captures=_Attributed(*registry.attributed_captures(*args)),
         held=_Attributed(*registry.attributed_held(*args)),
+        observations=registry.attributed_observations(*args),
     )
 
 

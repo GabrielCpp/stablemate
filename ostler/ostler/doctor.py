@@ -30,12 +30,12 @@ from ostler.finding import Finding
 from ostler.model import Graph, Epic, Story, UINode, load_config, read_doc, required_section_problems
 from ostler.path import services_root as services_root_of, specs_root_in
 from ostler.provenance import code_ref_root, effective_checkouts
-from ostler.qa import (addresses as qa_addresses, captures as captures_mod, fixture_browser,
+from ostler.qa import (addresses as qa_addresses, book_fixtures as qa_book_fixtures, captures as captures_mod, fixture_browser,
                        fixtures as fixtures_mod, references, runbook as runbook_mod, sensitivity)
 from ostler.qa.compile import Gap
 from ostler.qa.context import RELATION_KEYS, relation_subject
 from ostler.qa.outcome import QaOutcome
-from ostler import data_state_ledger, data_states, fragment_hosts, hidden_claims, milestones as milestones_mod, outcome_rules, page_size, passages, route_coverage, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, stamp as stamp_mod, step_commands
+from ostler import data_state_ledger, data_states, fragment_hosts, hidden_claims, milestones as milestones_mod, outcome_rules, page_size, passages, route_coverage, rpc_coverage, section_hosts, server_membership, resource_checks, shared_checks, stack_checks, stamp as stamp_mod, step_commands
 from ostler import values as values_mod
 from ostler.source_snapshots import book_repository
 
@@ -895,8 +895,10 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
         rel = _rel_path(graph, node)
         steps = runbook_mod.steps_of(graph, node)
         step_commands.check_fixture_launch_screen(graph, node, steps, rel, f)
+        resource_checks.check_lifetimes(node, steps, rel, f)
         for step in steps:
             fixture_steps.add(step.id)
+            resource_checks.check_request_step(graph, step, rel, f)
             kind = _bullet_value(step.meta, "kind")
             if kind and kind not in _FIXTURE_STEP_KINDS:
                 f.append(Finding(
@@ -911,7 +913,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
                                             '- arrange: click(locator="#<component-anchor>")')
                          for problem in fixture_browser.browser_step(graph, step).problems)
                 continue
-            if not _bullet_value(step.meta, "run"):
+            if not _bullet_value(step.meta, "run") and not _bullet_value(step.meta, "request"):
                 f.append(Finding(
                     "error", "fixture-step-no-run",
                     f"{step.id}: no `run:` bullet — this step would run nothing",
@@ -931,6 +933,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
                 f"a runbook step runs a command",
                 path=_rel_path(graph, step), line=step.line))
 
+    resource_checks.check_resources(graph, _rel_path, f)
     _check_fixture_needs_cycles(graph, fixtures, f)
     _check_needs_binding_args(graph, by_name, f)
     _check_fixture_call_args(graph, by_name, f)
@@ -2826,6 +2829,7 @@ def _check_ui(graph: Graph, f: list[Finding],
     _check_service_repository(graph, f)
 
     by_id = {n.id: n for n in graph.ui_nodes}
+    resources = qa_book_fixtures.resolved_resources(graph)
     for node in graph.ui_nodes:
         uitype = registry.ui_type(node.type)
         if uitype is None:
@@ -3039,6 +3043,7 @@ def _check_ui(graph: Graph, f: list[Finding],
         _check_arranged_acts(graph, node, rel, f)
         _check_identity_arrangement(node, rel, f)
         _check_intercepts(node, rel, f)
+        resource_checks.check_observations(resources, node, rel, f)
 
         verify_key = check_keys[0] if check_keys else "verify"
         contract_checks, claim_checks = registry.attributed_checks(

@@ -34,6 +34,7 @@ class ContextPacket:
     passages: dict[str, Passage] = field(default_factory=dict[str, Passage])
     data_states: dict[str, DataState] = field(default_factory=dict[str, DataState])
     moves: dict[str, tuple[Move, ...]] = field(default_factory=dict[str, tuple[Move, ...]])
+    resources: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
 
     @property
     def owed(self) -> list[Obligation]:
@@ -166,4 +167,5 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         passages=_passages(context.get("passages")),
         data_states=_data_states(context.get("dataStates")),
         moves=_moves(context.get("moves")),
+        resources=_name_table(context.get("resourceObservations"), "resourceObservations"),
     )

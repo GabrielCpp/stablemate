@@ -19,6 +19,7 @@ from ostler.checks import parse_call
 from ostler.markdown import extract_refs
 from ostler.qa import references
 from ostler.qa.harness_host import load_harness_module
+from ostler.qa.compile_observe import has_checks
 from ostler.qa.obligation import CallRow
 from ostler.qa.obligation import FlowStep
 from ostler.qa.obligation import Locators
@@ -262,7 +263,7 @@ def unarranged_state_gap(obligation: Obligation) -> Gap:
     """The `unarranged-state` gap for one check-less `states:` obligation."""
     state_text = " ".join(obligation.requirement.split())
     missing = []
-    if not obligation.checks:
+    if not has_checks(obligation):
         missing.append("no check declared — indent a `verify:` under this state's own bullet")
     if arrangement_of([obligation]).unstated:
         missing.append("no fixture arranged — indent a `fixture:` under this state's own bullet, "

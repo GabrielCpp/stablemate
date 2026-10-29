@@ -10,13 +10,15 @@ from dataclasses import dataclass, field
 from types import ModuleType
 from typing import Any
 
-from ostler import data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, milestones, outcome_rules, page_size, passages, route_coverage, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, step_commands
+from ostler import data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, milestones, outcome_rules, page_size, passages, resource_checks, route_coverage, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, step_commands
 
-DOCTOR_MODULES: tuple[ModuleType, ...] = (data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, milestones, outcome_rules, page_size, passages, route_coverage, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
+DOCTOR_MODULES: tuple[ModuleType, ...] = (data_state_ledger, data_states, doctor, fragment_hosts, hidden_claims, milestones, outcome_rules, page_size, passages, resource_checks, route_coverage, rpc_coverage, section_hosts, server_membership, shared_checks, stack_checks, step_commands)
 
 _BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan only"
 
 _NO_PASSAGES = "no book in the corpus declares a passage, so no passage is there to be malformed"
+
+_NO_RESOURCES = "no book in the corpus declares a resource page, so no resource is there to be malformed"
 
 _NO_DATA_STATES = "no book in the corpus declares a data state, so none is there to be malformed"
 
@@ -34,6 +36,7 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "needs-target-backend": _BRIDGE,
     "needs-trigger-action": _BRIDGE,
     "passage-shape": _NO_PASSAGES,
+    "resource-reach-shape": _NO_RESOURCES,
     "precondition-discharged-by-arrangement": _BRIDGE,
     "screen-preconditions-undeclared": _BRIDGE,
     "unarranged-interaction-precondition": _BRIDGE,

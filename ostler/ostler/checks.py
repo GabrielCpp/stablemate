@@ -7,7 +7,7 @@ import functools
 import re
 import warnings
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,7 @@ class CheckParam:
     key: bool = False
     event: bool = False
     nonempty: bool = False
+    hidden: bool = False
 
 
 Observation = str
@@ -69,6 +70,7 @@ class CheckSpec:
             f"{p.name}{'*' if p.required else ''}=<{p.type}>"
             f"{' (path)' if p.path else ''}{' (locator)' if p.locator else ''}"
             for p in self.params
+            if not p.hidden
         ]
         rendered = f"{self.name}({', '.join(parts)})"
         if self.one_of:
@@ -76,7 +78,7 @@ class CheckSpec:
         return rendered
 
 
-CHECKS: tuple[CheckSpec, ...] = (
+_DECLARED: tuple[CheckSpec, ...] = (
     CheckSpec(
         name="http_status",
         params=(
@@ -491,6 +493,12 @@ CHECKS: tuple[CheckSpec, ...] = (
     ),
 )
 
+WITHIN = CheckParam("within", "int", hidden=True)
+
+CHECKS: tuple[CheckSpec, ...] = tuple(
+    replace(spec, params=(*spec.params, WITHIN)) if spec.observes in ("subject", "subject-pair") else spec
+    for spec in _DECLARED)
+
 CHECK_BY_NAME: dict[str, CheckSpec] = {c.name: c for c in CHECKS}
 
 INTERCEPTS: tuple[CheckSpec, ...] = (
@@ -511,9 +519,15 @@ INTERCEPTS: tuple[CheckSpec, ...] = (
 INTERCEPT_BY_NAME: dict[str, CheckSpec] = {c.name: c for c in INTERCEPTS}
 
 
+WITHIN_PREAMBLE = (
+    "`within=<seconds>` is accepted by every check that reads a subject, and only on a `verify:` row "
+    "held on an `observe:` observation. It re-reads the observation until the row holds or the "
+    "deadline passes.")
+
+
 def describe(specs: tuple[CheckSpec, ...] = CHECKS) -> str:
-    """Each check's signature, the defect it excludes, what a plan hands it and what it reads on a cli, as text."""
-    return "\n\n".join(
+    """The `within=` note, then each check's signature, the defect it excludes, what a plan hands it and what it reads on a cli, as text."""
+    return WITHIN_PREAMBLE + "\n\n" + "\n\n".join(
         f"{s.signature()}\n    excludes {s.excludes}\n"
         f"    in a plan, qa.verify observes {s.plan_reads}\n"
         f"    on a cli, reads {s.cli_reads or 'nothing, so it does not compile there'}"

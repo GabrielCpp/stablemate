@@ -30,10 +30,10 @@ Ostler's `index`, `model`, `qa/stack`, `qa/tools` and `qa/addresses` modules imp
 - code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_power@0f757c16382b
 - code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_backend_default@0f757c16382b
 - code: ostler/ostler/_vendor/stablemate_core/profiles.py::resolve_delegates@0f757c16382b
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::scan_catalog@ebf1b69c7565
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_link@ebf1b69c7565
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_path@ebf1b69c7565
-- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_command@ebf1b69c7565
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::scan_catalog@ab9560efa3d8
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_link@ab9560efa3d8
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_path@ab9560efa3d8
+- code: ostler/ostler/_vendor/stablemate_core/skill_refs.py::skill_command@ab9560efa3d8
 
 ## Contract
 

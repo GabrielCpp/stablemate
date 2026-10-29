@@ -46,6 +46,7 @@ from ostler.qa.outcome import QaOutcome
 from ostler.qa.packet import ContextPacket
 from ostler.qa.packet import packet_of
 from ostler.qa.plan_source import EmittedScenarios
+from ostler.qa.compile_observe import has_checks
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import PlanSinks
 from ostler.qa.plan_source import ScenarioRefusal
@@ -185,7 +186,7 @@ def _split_by_entry_url(
 
 def _is_owed_for_dispatch(obligation: Obligation) -> bool:
     """Whether an obligation carries something a builder could act on."""
-    return (bool(obligation.checks) or obligation.kind == "states"
+    return (has_checks(obligation) or obligation.kind == "states"
             or obligation.node_type in ("state", "data-state", "move"))
 
 
@@ -432,8 +433,8 @@ def _cli_scenarios(
     cli_owed: list[Obligation], book: BookIndex, sinks: PlanSinks, emitted: EmittedScenarios,
 ) -> list[str]:
     """One scenario per book page whose commands owe live evidence, each run as the built tool."""
-    declared = [o for o in cli_owed if o.checks]
-    sinks.gaps.extend(unarranged_state_gap(o) for o in cli_owed if not o.checks)
+    declared = [o for o in cli_owed if has_checks(o)]
+    sinks.gaps.extend(unarranged_state_gap(o) for o in cli_owed if not has_checks(o))
     decline_captures(declared, sinks.gaps, sinks.captured, because=(
         "the CLI builder does not yet capture a fact out of a tool run"))
     lines: list[str] = []
@@ -443,7 +444,7 @@ def _cli_scenarios(
             sinks.gaps.extend(unarranged_scenario_gap(o) for o in obligations)
             continue
         covered: set[str] = set()
-        body = cli_scenario_body(obligations, sinks.gaps, covered, book.cli_binaries.get(source))
+        body = cli_scenario_body(obligations, sinks.gaps, covered, book.cli_binaries.get(source), book.resources)
         if not covered:
             continue
         emitted.covered.update(covered)
@@ -563,6 +564,7 @@ def _compile_packet(
         browser_fixtures=packet.browser_fixtures,
         fixture_launch_screens=packet.fixture_launch_screens,
         fixture_needs=packet.fixture_needs,
+        resources=packet.resources,
         states_by_screen=book_index_mod.states_by_screen(carried),
         passages=packet.passages,
         data_states=packet.data_states,

@@ -31,7 +31,7 @@ a short handle to its full id before they write.
 - code: ostler/ostler/ids.py::resolve@523968666eae
 - code: ostler/ostler/crud.py::create_milestone@ad0a12b44593
 - code: ostler/ostler/crud.py::set_milestone_source_items@ad0a12b44593
-- code: ostler/ostler/doctor.py::_check_milestones@b6bae9bf1b96
+- code: ostler/ostler/doctor.py::_check_milestones@ab71df4a76ca
 - tests: ostler/tests/test_ids.py::test_handle_stays_short_for_a_burst_and_expands_round_trip
 - tests: ostler/tests/test_ids.py::test_handle_lengthens_when_fingerprints_collide
 - tests: ostler/tests/test_crud.py::test_create_milestone_allocates_id_and_records_source_items

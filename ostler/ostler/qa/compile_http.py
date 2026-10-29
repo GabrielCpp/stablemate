@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from ostler import acts as acts_mod
@@ -44,6 +44,7 @@ from ostler.qa.obligation import NO_LOCATORS
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Arrangement
 from ostler.qa.plan_source import EmittedScenarios
+from ostler.qa.compile_observe import has_checks, observation_lines, within_off_observation
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import PlanSinks
 from ostler.qa.plan_source import ScenarioRefusal
@@ -123,8 +124,8 @@ def api_scenarios(
     """One scenario per book page whose endpoints owe live evidence, each driven over HTTP."""
     lines: list[str] = []
     for source, obligations in by_source(http_owed).items():
-        sinks.gaps.extend(unarranged_state_gap(o) for o in obligations if not o.checks)
-        declared = [o for o in obligations if o.checks]
+        sinks.gaps.extend(unarranged_state_gap(o) for o in obligations if not has_checks(o))
+        declared = [o for o in obligations if has_checks(o)]
         if not declared:
             continue
         arranging = _arranging(obligations, book)
@@ -133,7 +134,7 @@ def api_scenarios(
             sinks.gaps.extend(unarranged_scenario_gap(o) for o in declared)
             continue
         covered: set[str] = set()
-        body = _scenario_body(declared, arranging, book.fixture_pages, sinks.gaps, covered, sinks.captured)
+        body = _scenario_body(declared, arranging, book.fixture_pages, sinks.gaps, covered, sinks.captured, book.resources)
         if not covered:
             continue
         emitted.covered.update(covered)
@@ -543,7 +544,11 @@ def claim_assertions(
     oid = obligation.id
     assertions: list[str] = []
     todos: list[str] = []
+    within_off_observation(obligation, gaps)
     for row in obligation.checks:
+        if "within" in row.args:
+            todos.append(f"    # TODO(arrange): `{row.call}` waits with `within=` on a response")
+            continue
         gaps.extend(Gap(oid, "unresolved-precondition",
                         f"a verify argument references {ref!r}, not resolvable without running the plan")
                     for ref in references.find_references(json.dumps(row.args))
@@ -558,7 +563,8 @@ def claim_assertions(
 
 
 def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], fixture_pages: dict[str, frozenset[str]],
-                   gaps: list[Gap], covered: set[str], captured: set[tuple[str, str]]) -> list[str]:
+                   gaps: list[Gap], covered: set[str], captured: set[tuple[str, str]],
+                   resources: Mapping[str, frozenset[str]] | None = None) -> list[str]:
     """Compile every claim's request, captures and assertions, in book order, sending each node's credentials from every claim that arranges one, checked or not."""
     lines: list[str] = []
     produced = Produced()
@@ -586,8 +592,10 @@ def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], f
             continue
         asserted = claim_assertions(obligation, observed, produced, gaps)
         claim_lines.extend(asserted.todos or asserted.assertions)
+        side = observation_lines(obligation, observed, resources or {}, gaps)
+        claim_lines.extend(side.lines)
         lines.extend(within_claim(oid, claim_lines))
-        if not asserted.todos:
+        if not asserted.todos and side.whole:
             covered.add(oid)
     return lines
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 
 from ostler import registry
@@ -16,6 +16,7 @@ from ostler.data_states import move_obligation_id
 from ostler.data_states import siblings_of
 from ostler.data_states import state_obligation_id
 from ostler.qa.book_index import BookIndex
+from ostler.qa.compile_observe import observation_lines, within_off_observation
 from ostler.qa.compile_support import expand_passages
 from ostler.qa.compile_support import resolved_literal
 from ostler.qa.obligation import CallRow
@@ -134,6 +135,7 @@ def _verify_line(row: CallRow, operand: str, oid: str) -> str:
 
 def cli_scenario_body(
     obligations: list[Obligation], gaps: list[Gap], covered: set[str], binary: str | None,
+    resources: Mapping[str, frozenset[str]] | None = None,
 ) -> list[str]:
     """Compile every CLI obligation's assertion half — `_scenario_body`'s counterpart for a `command` node instead of a route."""
     lines: list[str] = []
@@ -186,8 +188,12 @@ def cli_scenario_body(
                 whole = False
                 continue
             assertions.append(_verify_line(row, operand, oid))
-        if whole:
+        if within_off_observation(obligation, gaps):
+            whole = False
+        side = observation_lines(obligation, name, resources or {}, gaps)
+        if whole and side.whole:
             lines.extend(assertions)
+            lines.extend(side.lines)
             covered.add(oid)
     return lines
 

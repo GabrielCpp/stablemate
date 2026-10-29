@@ -13,6 +13,7 @@ from pathlib import Path
 import yaml
 
 from ostler import autofix as autofix_mod, backfill as backfill_mod, coverage, crud, crud_generic, decisions as decisions_mod, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, layout as layout_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import explain
 from ostler import checks as checks_mod
 from ostler import carve as carve_mod
 from ostler import fragment_carve
@@ -121,6 +122,9 @@ def _build_parser() -> argparse.ArgumentParser:
     ck = sub.add_parser("checks", help="the `verify:` check vocabulary and its signatures")
     ck.add_argument("name", nargs="?", help="one check, instead of all of them")
     ck.add_argument("--json", action="store_true")
+
+    ex = sub.add_parser("explain", help="what a resource page says, what borrows it and which claims depend on it")
+    ex.add_argument("name", help="a resource's name, or the path of its page")
 
     audit = sub.add_parser("audit", help="prepare bounded two-way source/book review packets (no semantic decisions)")
     audit.add_argument("paths", nargs="+", help="explicit repo-relative source files or directories")
@@ -2001,7 +2005,7 @@ def _cmd_checks(args: argparse.Namespace) -> int:
                 "signature": s.signature(),
                 "params": [{"name": p.name, "type": p.type, "required": p.required,
                             "path": p.path, "locator": p.locator}
-                           for p in s.params],
+                           for p in s.params if not p.hidden],
                 "excludes": s.excludes,
                 "plan_reads": s.plan_reads,
                 "cli_reads": s.cli_reads,
@@ -2047,6 +2051,14 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         return _cmd_stamp(graph, args)
     if c == "audit":
         return behavior_cli.run(graph, args)
+    if c == "explain":
+        text = explain.run(graph, args.name)
+        if text is None:
+            print(f"no resource named '{args.name}'; ostler search {args.name} lists what the book holds",
+                  file=sys.stderr)
+            return 1
+        _out(text)
+        return 0
     if c == "trace":
         lines, found = trace.run(graph, ids_mod.resolve(graph, args.token))
         _out("\n".join(lines))

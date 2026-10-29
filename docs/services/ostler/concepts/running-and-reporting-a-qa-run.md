@@ -107,14 +107,14 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 `cmd_sensitivity`, `cmd_clean`, `build_report`, `build_evidence_map`, `build_context`, …) as
 `ostler.qa`'s flat namespace.
 
-- code: ostler/ostler/qa/context.py::build_context@1722899c30ab
-- code: ostler/ostler/qa/context.py::write_context@1722899c30ab
-- code: ostler/ostler/qa/context.py::cmd_context@1722899c30ab
-- code: ostler/ostler/qa/context.py::cmd_context_validate@1722899c30ab
-- code: ostler/ostler/qa/context.py::validate_context@1722899c30ab
-- code: ostler/ostler/qa/context.py::node_obligations@1722899c30ab
-- code: ostler/ostler/qa/packet.py::ContextPacket@44c9a86552b7
-- code: ostler/ostler/qa/packet.py::packet_of@44c9a86552b7
+- code: ostler/ostler/qa/context.py::build_context@9e054ade9186
+- code: ostler/ostler/qa/context.py::write_context@9e054ade9186
+- code: ostler/ostler/qa/context.py::cmd_context@9e054ade9186
+- code: ostler/ostler/qa/context.py::cmd_context_validate@9e054ade9186
+- code: ostler/ostler/qa/context.py::validate_context@9e054ade9186
+- code: ostler/ostler/qa/context.py::node_obligations@9e054ade9186
+- code: ostler/ostler/qa/packet.py::ContextPacket@6b7020cfc619
+- code: ostler/ostler/qa/packet.py::packet_of@6b7020cfc619
 - code: ostler/ostler/qa/grounding_health.py::resolve_groundings@da8a0b8f6c0f
 - code: ostler/ostler/qa/grounding_health.py::relation_fanout_warnings@da8a0b8f6c0f
 - code: ostler/ostler/qa/owners.py::map_changes@de26fdbd12b7
@@ -138,13 +138,13 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/dispatch.py::claim_driver@d42406bead4b
 - code: ostler/ostler/qa/dispatch.py::hosts_observation@d42406bead4b
 - code: ostler/ostler/qa/dispatch.py::owes_live_evidence@d42406bead4b
-- code: ostler/ostler/qa/drivers.py::QaDriver@378b768cf1f8
-- code: ostler/ostler/qa/drivers.py::PythonDriver@378b768cf1f8
-- code: ostler/ostler/qa/drivers.py::create_driver@378b768cf1f8
-- code: ostler/ostler/qa/drivers.py::Launcher@378b768cf1f8
-- code: ostler/ostler/qa/drivers.py::LocalLauncher@378b768cf1f8
-- code: ostler/ostler/qa/drivers.py::DisplayRecorder@378b768cf1f8
-- code: ostler/ostler/qa/drivers.py::DeviceRecorder@378b768cf1f8
+- code: ostler/ostler/qa/drivers.py::QaDriver@ea4f7c0dd596
+- code: ostler/ostler/qa/drivers.py::PythonDriver@ea4f7c0dd596
+- code: ostler/ostler/qa/drivers.py::create_driver@ea4f7c0dd596
+- code: ostler/ostler/qa/drivers.py::Launcher@ea4f7c0dd596
+- code: ostler/ostler/qa/drivers.py::LocalLauncher@ea4f7c0dd596
+- code: ostler/ostler/qa/drivers.py::DisplayRecorder@ea4f7c0dd596
+- code: ostler/ostler/qa/drivers.py::DeviceRecorder@ea4f7c0dd596
 - code: ostler/ostler/qa/harness_host.py::load_harness_module@be0a59e0887d
 - code: ostler/ostler/qa/harness_host.py::default_interpreter@be0a59e0887d
 - code: ostler/ostler/qa/harness_host.py::harness_argv@be0a59e0887d

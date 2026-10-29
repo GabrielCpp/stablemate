@@ -17,7 +17,7 @@ a decision past `proposed`: a person edits the file to accept, reject or superse
 - code: ostler/ostler/adr.py::propose@f14c55fafbc7
 - code: ostler/ostler/adr.py::decisions@f14c55fafbc7
 - code: ostler/ostler/api.py::Ostler.propose_decision@defd95727723
-- code: ostler/ostler/doctor.py::_check_decisions@b6bae9bf1b96
+- code: ostler/ostler/doctor.py::_check_decisions@ab71df4a76ca
 - code: ostler/ostler/path.py::adr_root_in@6a1acd1702fd
 - tests: ostler/tests/test_adr.py::test_three_records_yield_one_proposed_decision_with_repos_and_evidence
 - tests: ostler/tests/test_adr.py::test_each_record_carries_the_new_id_and_nothing_else_changed

@@ -15,6 +15,7 @@ title: ostler
 - [Authoring QA scenarios](concepts/authoring-qa-scenarios.md)
 - [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
 - [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
+- [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 - [QA working directory](concepts/qa-working-directory.md)
 - [The book's markdown model](concepts/the-books-markdown-model.md)
 - [Scaffolding and editing book files](concepts/scaffolding-and-editing-book-files.md)

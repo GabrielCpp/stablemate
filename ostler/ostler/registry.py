@@ -173,6 +173,7 @@ class BulletKey:
     one_of: tuple[str, ...] = ()
     values: tuple[str, ...] = ()
     value_kind: str = ""
+    observation: bool = False
 
 
 @dataclass(frozen=True)
@@ -200,7 +201,8 @@ class UINodeType:
 
 
 SCENARIO_FRAME_TOKEN = "scenario:"
-STEP_KIND_VALUES = ("prepare", "service", "seed", "health", "run", "verify", "probe", "serve", "drive", "teardown")
+STEP_KIND_VALUES = ("prepare", "service", "seed", "health", "run", "verify", "probe", "serve", "drive", "teardown",
+                    "borrow", "release", "observe")
 
 CODE_GROUNDING_KEYS = frozenset({"code"})
 RELATION_KEYS = ("on", "server", "host", "parent", "extends", "same-as", "steps", "presents", "detail",
@@ -249,6 +251,12 @@ def check_keys(node_type: str) -> tuple[str, ...]:
     """Every bullet key on `node_type` whose value is a named check (`ostler.checks`)."""
     uitype = UI_TYPES_BY_NAME.get(node_type)
     return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.check)
+
+
+def observe_keys(node_type: str) -> tuple[str, ...]:
+    """Every bullet key on `node_type` that names a resource observation the `verify:` rows after it read."""
+    uitype = UI_TYPES_BY_NAME.get(node_type)
+    return () if uitype is None else tuple(b.key for b in uitype.bullet_keys if b.observation)
 
 
 def effect_keys(node_type: str) -> tuple[str, ...]:
@@ -456,28 +464,42 @@ def _attributed_indexed(
     bullet_order: Iterable[Sequence[Any]],
     combiners: Mapping[int, str],
     keys: Sequence[str],
+    observed: bool = False,
 ) -> tuple[list[tuple[int, str]], dict[tuple[str, int], list[tuple[int, str]]]]:
-    """`_attributed`'s engine: the same walk, keeping each value's own authored per-key index."""
+    """`_attributed`'s engine: the same walk, keeping each value's own authored per-key index.
+
+    A check key held under an `observe:` bullet reads that observation, not the response: the walk leaves it out unless *observed* asks for exactly those rows.
+    """
     normative = set(normative_keys(node_type))
     observing = set(keys)
+    sides = set(observe_keys(node_type))
+    checking = set(check_keys(node_type))
     contract: list[tuple[int, str]] = []
     per_bullet: dict[tuple[str, int], list[tuple[int, str]]] = {}
     counts: dict[str, int] = {}
     observed_counts: dict[str, int] = {}
     owner: list[tuple[str, int]] = []
     authored = -1
+    on_side = False
     for row in bullet_order:
         key, value, bullet = str(row[0]), str(row[1]), int(row[2])
         if key in normative:
             counts[key] = counts.get(key, 0) + 1
+            on_side = False
             if states_no_claim(key, value):
                 continue
             if bullet != authored:
                 owner, authored = [], bullet
             owner.append((key, counts[key]))
+        elif key in sides:
+            on_side = True
         elif key in observing:
             observed_counts[key] = observed_counts.get(key, 0) + 1
             index = observed_counts[key]
+            if observed and not (on_side and key in checking):
+                continue
+            if not observed and on_side and key in checking:
+                continue
             if not owner:
                 contract.append((index, value))
             if bullet == authored:
@@ -488,6 +510,40 @@ def _attributed_indexed(
             for target in owner:
                 per_bullet.setdefault(target, []).append((index, value))
     return contract, per_bullet
+
+
+def attributed_observations(
+    node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
+) -> dict[tuple[str, int], list[tuple[str, list[tuple[int, str]]]]]:
+    """Each claim's side observations: the `observe:` value and the `verify:` rows held on it, each with its authored index."""
+    rows = list(bullet_order)
+    keys = check_keys(node_type)
+    sides = set(observe_keys(node_type))
+    if not sides or not keys:
+        return {}
+    _, held = _attributed_indexed(node_type, rows, combiners, keys, observed=True)
+    named: dict[int, str] = {}
+    count = 0
+    current = ""
+    normative = set(normative_keys(node_type))
+    for row in rows:
+        key = str(row[0])
+        if key in normative:
+            current = ""
+        elif key in sides:
+            current = str(row[1])
+        elif key in keys:
+            count += 1
+            named[count] = current
+    grouped: dict[tuple[str, int], list[tuple[str, list[tuple[int, str]]]]] = {}
+    for claim, values in held.items():
+        for index, value in values:
+            entries = grouped.setdefault(claim, [])
+            if entries and entries[-1][0] == named[index]:
+                entries[-1][1].append((index, value))
+            else:
+                entries.append((named[index], [(index, value)]))
+    return grouped
 
 
 def launch_bullets(entry_url_kind: str) -> tuple[BulletKey, ...]:
@@ -627,6 +683,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True, owns=True),
             BulletKey("config", owns=True),
             BulletKey("verify", check=True),
+            BulletKey("observe", observation=True),
             BulletKey("fixture", arrange=True),
             BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
@@ -671,6 +728,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
+            BulletKey("observe", observation=True),
             BulletKey("fixture", arrange=True),
             BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
@@ -699,6 +757,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("openapi", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
+            BulletKey("observe", observation=True),
             BulletKey("fixture", arrange=True),
             BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
@@ -757,6 +816,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
+            BulletKey("observe", observation=True),
             BulletKey("fixture", arrange=True),
             BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
@@ -816,6 +876,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
+            BulletKey("observe", observation=True),
             BulletKey("fixture", arrange=True),
             BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
@@ -834,6 +895,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("code", link=True, owns=True),
             BulletKey("detail", link=True),
             BulletKey("verify", check=True),
+            BulletKey("observe", observation=True),
             BulletKey("fixture", arrange=True),
             BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
@@ -849,6 +911,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("run", performs=True),
             BulletKey("code", link=True, owns=True),
             BulletKey("verify", check=True),
+            BulletKey("observe", observation=True),
             BulletKey("fixture", arrange=True),
             BulletKey("capture", capture=True),
             BulletKey("tests", link=True),
@@ -870,13 +933,29 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("depends-on"),
             BulletKey("open", link=True),
             BulletKey("arrange"),
+            BulletKey("on", link=True),
+            BulletKey("request"),
+            BulletKey("body"),
+        ),
+    ),
+    UINodeType(
+        name="resource", kind="file", context="resources",
+        required_sections=(SectionSpec("Probe", filled=True), SectionSpec("Observations")),
+        bullet_keys=(
+            BulletKey("reach", required=True, values=("http", "cli")),
+            BulletKey("base"),
+            BulletKey("credential", nested=True),
+            BulletKey("binary"),
+            BulletKey("secrets", nested=True),
+            BulletKey("install"),
+            BulletKey("code", link=True, owns=True),
         ),
     ),
     UINodeType(
         name="fixture", kind="file", context="fixtures",
         required_sections=(SectionSpec("Steps", filled=True),),
         step_bullets=(
-            BulletKey("kind", required=True, values=("run", "seed", "serve", "verify", "probe")),
+            BulletKey("kind", required=True, values=("run", "seed", "serve", "verify", "probe", "borrow", "release")),
             BulletKey("working-directory", values=(SCENARIO_FRAME_TOKEN,),
                       value_kind="checkout-path"),
         ),
@@ -912,6 +991,7 @@ LOAD_BEARING_KEYS: frozenset[str] = frozenset(
 ) - (frozenset(RELATION_KEYS) - LOCATOR_KEYS)
 UI_HEADING_TO_TYPE: dict[str, str] = {t.heading: t.name for t in UI_TYPES if t.heading}
 UI_SECTION_HEADINGS: frozenset[str] = frozenset(UI_HEADING_TO_TYPE)
+RESOURCE_CONTAINERS: dict[str, str] = {"Probe": "step", "Observations": "step"}
 
 
 def ui_type(name: str | None) -> UINodeType | None:
