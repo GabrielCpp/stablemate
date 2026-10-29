@@ -31,9 +31,8 @@ The operator who started the loop handed the attendant the workflow for the run'
 Every construct in it is the attendant's to change without asking, at any size: a prompt
 line, a node, a gate, a tool, the order of the stages, a stage itself, or the lane the
 stages form. Three things stay with the operator, and only these: what the unit is and what
-accepts it, money spent beyond the run's own budget, and the product's code outside the
-slice a story owns. A question about anything else is a tax parked with a question mark on
-it. Permission is not among the things a cycle waits on.
+accepts it, money spent beyond the run's own budget, and the output itself, which only the
+process changes. A question about anything else is a tax parked with a question mark on it. Permission is not among the things a cycle waits on.
 
 **"Nothing wrong" is a claim.** It stands only on the readings below. **"Improving" is a
 claim too.** It stands only on a waste kind counted on one reading and absent on the next.
