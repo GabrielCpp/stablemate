@@ -1828,9 +1828,7 @@ def _is_non_production_path(path: str) -> bool:
         return True
     if name == ".source-inventory.json":
         return True
-    return bool(
-        parts and parts[0] in {".github", ".gitlab", ".agents", ".opencode", ".claude", ".githooks"}
-    )
+    return bool(parts and parts[0].startswith("."))
 
 
 _GENERATED_MARKER = re.compile(r"^\s*(?://|#|/\*|--|<!--)\s*Code generated .*DO NOT EDIT", re.M)

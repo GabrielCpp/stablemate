@@ -269,6 +269,56 @@ def test_an_undeclared_stack_config_stays_filtered(tmp_path: Path):
     assert "unmapped-change" not in [f["kind"] for f in packet["healthFindings"]]
 
 
+def test_a_repo_root_dotfile_no_node_cites_is_not_an_unmapped_change(tmp_path: Path):
+    """A hidden file at the repository root is agent or editor tooling no book page documents, so it never blocks QA."""
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: concept\ntitle: Item\n---\n# Item\n\n- code: `app/main.py`\n",
+        ".agent-checks.toml",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app", "."]})
+
+    assert packet["changedCode"] == []
+    assert "unmapped-change" not in [f["kind"] for f in packet["healthFindings"]]
+
+
+def test_a_nested_dotfile_under_a_source_root_stays_production(tmp_path: Path):
+    from ostler.qa.context import _is_non_production_path as np
+
+    assert not np("web/.env")
+    assert not np("api/.golangci.yml")
+    assert np(".agent-checks.toml")
+    assert np(".github/workflows/x.yml")
+
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: concept\ntitle: Item\n---\n# Item\n\n- code: `app/main.py`\n",
+        "app/.env",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app", "."]})
+
+    assert [change["path"] for change in packet["changedCode"]] == ["app/.env"]
+
+
+def test_a_declared_repo_root_dotfile_is_a_production_unit(tmp_path: Path):
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: environment\ntitle: Checks\n---\n# Checks\n\n"
+        "- code: `app/main.py`\n- config: `.agent-checks.toml`\n",
+        ".agent-checks.toml",
+    )
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["app", "."]})
+
+    assert "unmapped-change" not in [f["kind"] for f in packet["healthFindings"]]
+    assert [change["path"] for change in packet["changedCode"]] == [".agent-checks.toml"]
+    assert [node["reasons"] for node in packet["directNodes"]] == [
+        [{"kind": "file-owner", "ref": ".agent-checks.toml", "key": "config"}]
+    ]
+
+
 def test_a_config_file_shared_by_two_nodes_is_context_evidence(tmp_path: Path):
     """The shared-file demotion applies to `config:` as to any bare-file citation: two nodes naming one config file both stay in the packet, neither owed live evidence for it."""
     base = _owning_repo(
