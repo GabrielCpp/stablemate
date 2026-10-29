@@ -33,7 +33,17 @@ The catalogue holds names, usernames, descriptions, vars, tags and which fields 
 value. It never holds a value, so `list` and `tags` cannot emit one. `fill` and `exec`
 are the two readers that use a value, and each hands it to a consumer rather than to
 the caller. `doctor` reads values without delivering them, to tell a catalogue entry
-from a keyring item deleted behind it, and discards each one at once.
+from a keyring item deleted behind it, and discards each one at once. The `classify` and
+`holds` requests behind `env` and the guard read values the same way, to compare them
+against text, and answer with a verdict or a name.
+
+A repository's non-secret configuration is not saddlebag's to hold. It lives on the
+ostler `environment` page under `variables:`, where `NAME: secret` marks the one kind of
+value the page may not carry. `ostler env exec` is the one place the two meet: it reads
+the page's literals itself and delegates the held names to `saddlebag exec --env`, so no
+file and no process other than the consumer ever holds both halves. `ostler env dotenv`
+renders the page as a file with every held name blank, and `ostler doctor` fails the page
+when a literal matches a secret rule.
 
 ## The OS keyring
 
@@ -113,6 +123,26 @@ everything a same-user process can read without a debugger.
   a value split by the command itself, or a value written to a file goes through.
   Which commands an agent may run under `exec` is the permission layer's decision,
   and the command line is visible to it in full.
+- **`env show`, `keys` and `classify` read a dotenv and print no secret value.** The
+  client sends the file's key and value pairs to the store's `classify` request, which
+  marks a pair secret when the store holds its value, when the value is a URL with
+  `user:password@`, when it has a vendor token's or a PEM block's shape, or when the key's
+  name says so. `show` prints the secret lines with `[REDACTED]` for the value, `keys` and
+  `classify` print keys, rules and verdicts. A literal the rules miss prints as written;
+  the rules are name-first so that a secret under a telling name never depends on its
+  shape.
+- **`env import` reads values from a file and writes them to the store.** It prints the
+  record names it created and never a value, and it stops before any write when a
+  requested key is absent or empty.
+- **The guard refuses before a value is read.** `guard --hook` sees a tool call's
+  arguments, not its output, and denies the ones whose output would be a secret: a read
+  of a secret-bearing file, a dump of the environment, a secret manager's read, or a
+  command whose text already carries a value the store holds. For the last it sends the
+  command text to the store's `holds` request and gets back the record names, never a
+  value. The daemon compares against every stored value's forms in memory and answers
+  with names only. A denial carries the saddlebag line that gets the same job done. On a
+  machine with no daemon, that one check is skipped with a note on stderr, because a
+  keyring read for every tool call would prompt the operator.
 - **The daemon logs no value.** Its log carries verbs, names, selectors and counts.
 - **There is no plaintext path.** If Vault is unreachable or the token is not
   authenticated, the daemon does not start. A locked or absent keyring stops the
@@ -132,3 +162,13 @@ The keyring draws the same line. A same-user process in the unlocked session can
 the Secret Service for any item under the service name, and on macOS an interpreter
 the Keychain trusts reads them without a prompt. The tool that does so by design is
 `saddlebag`, invoked with a command line the permission layer sees.
+
+The guard is a redirect for the accidental read, not an access control. It knows the
+file names, the readers, the environment dumpers and the manager reads listed in the
+README, and a command it cannot parse, a reader it does not know, an interpreter given a
+script file, or a tool outside Read, Grep, Write, Edit and Bash goes through. A pasted
+value is caught only when a daemon answers and the value is at least 8 characters, the
+same floor `exec` masks at. Nothing it denies was ever a boundary: the agent that wants
+the value can rename the file or write a loop. What the guard changes is the default,
+so that the ordinary move of reading `.env` to see a port lands on `saddlebag env show`
+and leaves the password out of the transcript.

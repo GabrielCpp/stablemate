@@ -23,8 +23,9 @@ boot. Then every `docker compose` command for that copy runs as
 `saddlebag exec --tag environment=local -- docker compose ...`, and compose reads the
 values from its own process environment. No `stack.env` is written.
 
-The tag value is the id of the ostler `environment` node the runbook links to. A
-secret created for that environment carries the same tag:
+The tag value is the `slug:` of the ostler `environment` page the runbook links to, the
+same slug `ostler env exec` resolves a held `NAME: secret` variable by. A secret created
+for that environment carries the same tag:
 
 ```bash
 saddlebag secret create api_db --var POSTGRES_PASSWORD --tag environment=local \

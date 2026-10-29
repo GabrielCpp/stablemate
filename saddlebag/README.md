@@ -6,7 +6,9 @@
 that an agent driving a `workhorse` workflow never holds a secret in its context. A
 secret leaves the store in exactly two ways. `fill` types it into a field of a browser
 over the Chrome DevTools Protocol. `exec` runs a command with it set in that command's
-process environment. Neither hands the value back to whoever ran them.
+process environment. Neither hands the value back to whoever ran them. Around the
+store, `env` reads a dotenv file with its secret lines masked, and `guard` is the
+Claude Code hook that refuses the tool call which would have printed a secret.
 
 One daemon holds the HashiCorp Vault token, and every other command is a thin client
 over a unix socket. That is what lets the same tool serve a run on the host and a run
@@ -148,7 +150,7 @@ username and the metadata may print. The two values never do.
 Tags are the whole query vocabulary. `list --tag environment=local --tag role=admin`
 returns the secrets carrying both pairs. `tags` lists the distinct pairs in use. The
 convention the ostler integration relies on is that a secret for a QA environment
-carries `environment=<ostler environment node id>`.
+carries `environment=<slug of the ostler environment page>`.
 
 ---
 
@@ -161,11 +163,17 @@ carries `environment=<ostler environment node id>`.
 | `secret create` `set` `unset` `remove` `tag` `untag` `meta` `unmeta` | manage a secret; `set` reads its value from stdin; `meta K=V` adds or overwrites printable metadata, `unmeta KEY` drops it |
 | `fill` | type a secret's username, password or current TOTP code into a browser field |
 | `exec` | run a command with matching secrets in its environment |
+| `env show` `keys` `classify` | read a dotenv file with its secret values masked, list its keys with the rule that marks each secret one, or print the verdicts as JSON |
+| `env import` | store a dotenv's chosen keys as secrets, one record per key, without printing a value |
+| `guard --hook` `guard install` | the Claude Code PreToolUse hook that denies a secret-printing tool call, and its installer |
 | `doctor` | backend and route in use, store reachable, secrets with no value, orphan keyring items, stray token file, and on the daemon route where its token came from |
 
 ```bash
 saddlebag fill NAME --field username|password|totp --selector S [--url-contains X]
 saddlebag exec [--tag k=v]... [--env VAR=NAME[.field|.meta.KEY]]... -- cmd args...
+saddlebag env show|keys|classify FILE [--json]
+saddlebag env import FILE --keys KEY[,KEY...] [--tag k=v]... [--prefix TEXT] [--json]
+saddlebag guard install --user|--project
 ```
 
 `exec` fills each tag-matched secret's `var` with its password. An explicit
@@ -194,6 +202,67 @@ value to disk. The agent's permission layer decides which commands it may run un
 
 ---
 
+## A dotenv file
+
+A `.env` mixes literals with secrets, so reading it is the commonest way a value lands
+in an agent's context. `env show FILE` prints the file with each secret value replaced
+by `[REDACTED]`, and ends with `masked N of M values`. `env keys FILE` prints one key
+per line and marks each secret one with the rule that caught it. `env classify FILE`
+prints `KEY<TAB>literal` or `KEY<TAB>secret:<rule>` per line, or the same as JSON with
+`--json`. `FILE` may be `-` for stdin.
+
+The store decides which lines are secret. A line is secret when the store already
+holds its value (`held-value`), when its value is a URL carrying `user:password@`
+(`url-userinfo`), when its value has the shape of a vendor token or a PEM block
+(`token-shape`), or when its name says so (`key-name`: a part such as `TOKEN`,
+`SECRET`, `PASSWORD` or `API_KEY`, with `PUBLIC` names exempt). The rules are
+deliberately few and name-first: a literal the rules miss prints in the clear.
+
+`env import FILE --keys K[,K...]` moves the chosen keys into the store, one record per
+key: the key becomes the record's `var`, the record is named `<prefix>` plus the key
+lowercased with `_` as `-`, and every record carries the `--tag` pairs. It prints
+`stored KEY as NAME` per key and never a value. A key the file lacks or an empty value
+stops it before any write; a record name already in use stops it at that key, and the
+keys before it stay stored.
+
+---
+
+## The guard
+
+`saddlebag guard --hook` reads a Claude Code PreToolUse payload on stdin and prints a
+deny decision when the tool call would put a secret in front of the agent. The denial's
+reason is the saddlebag line that gets the same thing done, so the agent is redirected
+rather than stopped. It covers the Read, Grep, Write, Edit and Bash tools and refuses:
+
+- a read of a file whose contents are secret: `.env` and its variants other than
+  `.env.example`, `.env.sample`, `.env.template` and `.env.dist`; `.pem`, `.key`, `.p12`
+  and `.pfx` files and `id_rsa` and its siblings; `.netrc`, `.npmrc`, `.pypirc`,
+  `.git-credentials`, `.vault-token`, `~/.aws/credentials`, `~/.docker/config.json`;
+  `/proc/<pid>/environ`. In a shell command the readers it knows are `cat`, `grep`, `sed`,
+  `head`, `source`, `python`, `jq` and the rest of that family, behind wrappers such as
+  `sudo`, `env`, `timeout` and `xargs`;
+- a dump of the whole environment: `env` with no command, `printenv` with no name,
+  `export -p`, `set`, `declare -x`;
+- a secret manager's read whose output is the value: `vault kv get`, `vault read`,
+  `aws secretsmanager get-secret-value`, `aws ssm get-parameter --with-decryption`,
+  `gcloud secrets versions access`, `az keyvault secret show`, `kubectl get secret`,
+  `op read`, `op item get`, `gh auth token`, `security find-generic-password -w`,
+  `secret-tool lookup`, `pass show`, `docker inspect`, `docker compose config`. The read
+  passes when the same stage pipes into `saddlebag secret set`, which is how a fetched
+  secret enters the store;
+- a command whose text carries a value the store holds, found by asking the daemon
+  `holds` with the command text. The daemon answers with the record names and never a
+  value. The check runs only when a daemon answers; on the keyring route the guard
+  writes one note on stderr and lets the command through.
+
+A command that starts with `saddlebag exec` passes whole, and any `saddlebag` stage is
+skipped. Anything the guard cannot parse is allowed: it is a guard against the
+accidental read, not an access control. `saddlebag guard install --user` registers it in
+`~/.claude/settings.json`, `--project` in `./.claude/settings.json`, replacing an entry
+it installed before.
+
+---
+
 ## The ostler stack
 
 A repository's `docs/services/ops/stack.yml` names one secret source for its compose
@@ -209,6 +278,15 @@ secrets:
 
 The value is one or more space-separated tag pairs. The ostler README documents the
 other two sources and the required-name check.
+
+The environment's non-secret variables live on its ostler `environment` page under
+`variables:`, with `NAME: secret` marking each value saddlebag holds in a record tagged
+`environment=<slug>` with `--var NAME`. `ostler env exec <slug> -- CMD` puts the page's
+literals in the command's environment and wraps it in `saddlebag exec --env` for the
+held names. `ostler env dotenv <slug>` renders the page as a `.env` with the held names
+blank, for a tool that wants a file. `ostler env import-dotenv FILE --environment <slug>`
+is the migration: the literals go onto the page and the secret lines go through
+`saddlebag env import` with `--tag environment=<slug> --prefix <slug>-`.
 
 ---
 
@@ -243,7 +321,8 @@ Driving saddlebag from a workflow node is in
 ## Upgrading from 1.x
 
 Version 2.0 removed the 1.x OS keyring backend, the SQLite pool, credential leases,
-AI selection, the `env` command family and the YAML manifest. Nothing is migrated.
+AI selection, the 1.x `env` command family and the YAML manifest. The `env` of 2.x
+reads dotenv files and shares only the name. Nothing is migrated.
 Credentials in a 1.x pool and 1.x keyring items under the service `saddlebag` are left
 in place and orphaned; the keyring store of 2.x reads only items under
 `stablemate-saddlebag`, which it wrote itself. Create each secret you still need with
@@ -257,6 +336,9 @@ in place and orphaned; the keyring store of 2.x reads only items under
 saddlebag/
 ├── __init__.py
 ├── cli.py        # argparse front end: build a request, route it, print the reply; `exec`
+├── guard.py      # the PreToolUse hook: the verdict on a tool call, its redirect, and the installer
+├── dotenv.py     # a dotenv file's lines, and the masked form of a secret one
+├── shapes.py     # the secret rules a classified line can match: key-name, token-shape, url-userinfo
 ├── route.py      # how a command reaches the counter: the daemon's socket, or in-process over the keyring
 ├── verbs.py      # the verb handlers over one store, used in-process or behind the daemon
 ├── store.py      # the SecretStore contract every verb talks to, and StoreUnavailable
