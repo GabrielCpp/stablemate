@@ -210,3 +210,30 @@ def test_settle_answers_and_ledger_only_settle_review_through_the_facade(repo: P
     assert not plan.error, plan.error
     assert okf.story(FOO_ID) is not None
     assert "Not started" in (epics_root() / "epic-a/stories/01-foo/story.md").read_text()
+
+
+def test_sync_story_fixtures_states_exactly_what_the_plan_uses(repo: Path):
+    okf = Ostler(repo)
+    assert okf.sync_story_fixtures(FOO_ID).paths == []
+
+    plan = Path(okf.spec_path(FOO_ID)) / "qa_plan.py"
+    plan.parent.mkdir(parents=True, exist_ok=True)
+    plan.write_text(
+        'def scenario(h):\n    h.fixture("seeded-accounts")\n    h.fixture("identity")\n',
+        encoding="utf-8",
+    )
+    synced = okf.sync_story_fixtures(FOO_ID)
+    assert synced.ok and synced.paths
+    assert present(okf.graph.story_by_slug("01-foo"))[1].fixtures == [
+        "identity", "seeded-accounts"]
+    assert okf.sync_story_fixtures(FOO_ID).paths == []
+
+    plan.write_text('def scenario(h):\n    h.fixture("identity")\n', encoding="utf-8")
+    assert okf.sync_story_fixtures(FOO_ID).paths
+    assert present(okf.graph.story_by_slug("01-foo"))[1].fixtures == ["identity"]
+
+    plan.write_text("def scenario(h):\n    pass\n", encoding="utf-8")
+    assert okf.sync_story_fixtures(FOO_ID).paths
+    story_md = present(okf.graph.story_by_slug("01-foo"))[1].story_md
+    assert story_md is not None
+    assert "## Fixtures\n\n(none)\n" in story_md.read_text(encoding="utf-8")

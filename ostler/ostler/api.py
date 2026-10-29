@@ -37,6 +37,7 @@ from ostler.qa import (
 from ostler.finding import Finding
 from ostler.model import Epic, Graph, Milestone, Story, find_root, load
 from ostler.pages import files_in_book
+from ostler.qa import fixtures as qa_fixtures
 from ostler.qa.source_context import SourceRepository
 
 if TYPE_CHECKING:
@@ -549,6 +550,15 @@ class Ostler:
                 covers=[ids_mod.resolve(graph, cover) for cover in covers],
                 depends=depends,
             )
+        )
+
+    def sync_story_fixtures(self, story: str) -> Result:
+        """State under the story's ``## Fixtures`` exactly the fixtures its ``qa_plan.py`` uses."""
+        plan = Path(self.spec_path(story)) / "qa_plan.py"
+        if not plan.is_file():
+            return Result(True, f"no qa_plan.py for '{story}' — nothing to state")
+        return self._apply(
+            crud.sync_story_fixtures(self._fresh(), story, qa_fixtures.referenced(plan))
         )
 
     def scaffold_missing_sections(self, story: str) -> Result:

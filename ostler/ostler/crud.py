@@ -360,6 +360,27 @@ def update_story(
     return Result(True, f"updated story '{slug}' in epic '{epic.name}'", [epic_md, story_md])
 
 
+def sync_story_fixtures(graph: Graph, slug: str, names: set[str]) -> Result:
+    """Make a story's ``## Fixtures`` state exactly *names*, the fixtures its plan uses."""
+    found = graph.find_story(slug)
+    if found is None:
+        return Result(False, graph.no_story(slug))
+    story = found[1]
+    story_md = story.story_md
+    if story_md is None:
+        return Result(False, f"story '{story.slug}' has no story.md to state its fixtures in")
+    doc = markdown.split(story_md.read_text(encoding="utf-8"))
+    if (
+        doc.find_section(registry.STORY_FIXTURES_HEADING) is not None
+        and set(story.fixtures) == names
+        and not story.fixture_strays
+    ):
+        return Result(True, f"story '{story.slug}' already states its plan's fixtures")
+    ensure_fixtures(doc, sorted(names))
+    story_md.write_text(doc.render(), encoding="utf-8")
+    return Result(True, f"stated {len(names)} fixture(s) on story '{story.slug}'", [story_md])
+
+
 def scaffold_missing_sections(graph: Graph, slug: str) -> Result:
     """Give one story every ``registry.STORY_SECTIONS`` heading it lacks, in the table's order."""
     found = graph.find_story(slug)
