@@ -1,25 +1,30 @@
 ---
 name: examine-process
-description: "Judging a running or finished process that nobody asked a question about: a coder run, a book pipeline, a benchmark, any loop an agent tends from a feed. The spend of every stage is held against what a competent human would need to deliver the same thing, the process is measured against itself (stage against stage, lap against lap, unit against the median), a short list of lenses covers what spend does not show, and a fresh short-context judge is asked what would surprise the operator. Each finding collapses into a question with a yardstick, is routed to the skill that answers it, and the loop continues with the top question. Load when tending a run from a feed and about to acknowledge a notification, when a unit of work was just delivered, when asked whether a process costs too much or converges, or when a run looks normal because nothing in the prompt said otherwise. For a stream of attempts stuck on one goal, load step-back. For a question already in hand, load research-study."
+description: "Improving a running process that nobody asked a question about: a coder run, a book pipeline, a benchmark, any loop an agent tends from a feed. Each delivered unit is held against its own ideal path, one pass per stage with no retry, no hand step and no dead time. Everything in the gap is waste, classified by kind, ranked by how many units it recurred in, traced to the construct in the workflow that produces it, and removed by one change before the next unit starts. The next unit grades the change. Load when tending a run from a feed and about to acknowledge a notification, when a unit of work was just delivered, when asked whether a process wastes or converges, or when a run looks normal because nothing in the prompt said otherwise. For a stream of attempts stuck on one goal, load step-back. For a question already in hand, load research-study."
 tags: [review, process]
 ---
 
 # Examine a process
 
 An agent tending a process reads silence as approval. No budget in the prompt becomes an
-unlimited budget. No word on duration makes any duration fine. The run looks normal because
-nothing said what normal is, and three notifications in four end with "nothing needs action".
+unlimited budget. A lap that repeats the previous one looks like progress because it is
+busy. The run looks normal because nothing said what normal is, and three notifications
+in four end with "nothing needs action".
 
-The operator never wrote the reference down because to them it is common sense: spend scales
-with what is delivered, and an agent finishes faster than a person. This skill carries that
-sense as two generators that produce a reference for any stage, any lap and any unit, so no
-list of expectations has to foresee the case. **"Nothing wrong" is a claim.** It stands only
-on readings taken against every generator and every lens below.
+A process improves only when a waste it paid on one unit is gone by the next. The reference
+for that is not a person, a budget or the previous run. It is the unit's own **ideal path**:
+every stage passed once, no retry, no hand step, no dead time, nothing done and undone.
+The delivered artifact fixes what the ideal path had to contain. Everything the run did
+beyond it is **waste**, and every waste has a cause in the workflow: a prompt, a node, a
+check, a gate or a tool. A waste that appears on two units is a **tax**, paid on every unit
+left until the workflow changes.
+
+**"Nothing wrong" is a claim.** It stands only on the readings below. **"Improving" is a
+claim too.** It stands only on a waste kind counted on one unit and absent on the next.
 
 [[step-back]] judges a stream of attempts once a count trips. [[research-study]] answers a
-question the operator wrote. This skill sits before both: it turns a process with no question
-into findings, each finding into a question one of them can take, and then continues with the
-top question. It changes nothing in the process it examines.
+question the operator wrote. This skill sits before both: it finds the tax, changes the
+workflow to remove it, and checks the next unit for it. The loop closes inside the skill.
 
 ## Two tiers
 
@@ -30,183 +35,182 @@ would cost more than the run, so the work splits in two:
   across ticks:
 
   ```
-  <stage> · <elapsed> of <proxy hours> · <spend> of <proxy bill> · lap <n> vs lap <n-1>: <cost> / <verdict moved or not>
+  <stage> · lap <k>, stage median <m> · turn <elapsed> · doing: <phrase from the transcript> · seen before: <lap or none>
   ```
 
-  That line is the acknowledgement. An acknowledgement with no numbers in it is a check
-  not made. A line whose elapsed time or spend crosses half the proxy starts an examination
-  at once, while a rewind or a re-scope can still save the rest of the unit.
-- **On every unit delivered**, and at run end, the **examination**: steps 1 to 6 below, with
+  "Doing" names what the current turn is at, read from its transcript, not from the node
+  name. "Seen before" names the earlier lap of this unit that did the same thing, or none.
+  That line is the acknowledgement. A line without "doing" and "seen before" is a check not
+  made. A lap count above the stage's median, or a "seen before" that names a lap, starts an
+  examination at once, while a rewind can still save the rest of the unit.
+- **On every unit delivered**, and at run end, the **examination**: steps 1 to 7 below, with
   the judge. A unit is a story through its gate, a book round closed, a benchmark task scored.
 
 Both tiers append to one file, `EXAMINED.md`, in the run's directory beside its event log.
-The run directory is the run's record, and the next examination and the fresh judge read
-the previous one from there.
+The run directory is the run's record. The next examination and the fresh judge read the
+previous one from there, and the previous examination's change is the first thing the next
+one grades.
 
 ## The records
 
-Work from what the process recorded, never from its code: the telemetry store, the ledger,
-the turn transcripts, the checker reports, the git log of what it delivered. The code says
-what the process was meant to do. The records say what it did and what that cost. For a
-workhorse run the store and the commands that read it are in [[groom-telemetry]].
+Work from what the process recorded: the telemetry store, the ledger, the turn transcripts,
+the checker reports, the git log of what it delivered. The code says what the process was
+meant to do. The records say what it did. For a workhorse run the store and the commands
+that read it are in [[groom-telemetry]]. The workflow's code is read in step 5, once a
+waste kind points at it.
 
-A process that left no record of a stage's cost has a finding before anything else is read:
-the stage is unrecorded, and adding the recording is the first question the report carries.
+A process that left no record of a stage has a finding before anything else is read: the
+stage is unrecorded, and recording it is the first change.
 
-## 1. Draw the process
+## 1. Draw the ideal path and the actual one
 
-Draw the whole before reading any stage, at the level of the whole. One box per stage, in
-order, and for each: what comes in, what goes out, who reads the output next, and the cost
-it took in wall time, tokens or money, retries, and human interventions. Take the costs from
-the records, as totals and as a share of the run.
+Name the **unit of delivery**: the thing the operator gets, such as a story merged, a page
+written, a surface documented. For the unit just delivered, draw the ideal path: one box per
+stage, in order, each passed once. Beside each box write what the run did: visits, laps,
+turns, retries, minutes, and what came out.
 
-Name the **unit of delivery**: the thing the operator gets at the end, such as a story
-merged, a page written, a surface documented. Every reading below is per unit, because
-spend only means something against what it bought.
+The gap between the two columns is the unit's waste. Write it per stage in minutes, from the
+records. Done when every stage has an ideal count, an actual count and the minutes between.
 
-Done when every stage has its share of the total and the run has its count of units.
+## 2. Classify the waste by kind
 
-## 2. The human proxy
+Every minute in the gap belongs to one kind. Read the records for each kind at every stage,
+and write the reading even when it is zero:
 
-The agent has no fatigue and no sense of money. It has a usable estimate of what a competent
-person would need. For each unit delivered, write what a competent human would have spent to
-deliver the same thing: hours of work, at a day rate the operator would pay. Assume a senior
-practitioner's rate for the operator's market, write the rate used at the top of the report,
-and let the operator correct it once. Reason from the delivered artifact, not from the run
-that produced it: the size of the change, the number of behaviours it adds, the care it
-needed. Write the estimate before reading what the run spent.
-
-Then set the run's spend for that unit beside it. Two rules follow, and neither needs a number
-from the operator:
-
-- **An agent spends less than a person.** Spend above **half** the human estimate, in hours
-  or in money, is a finding. Twelve hours for one story is a finding before anyone asks.
-- **Spend scales with delivery.** Across units, spend per unit tracks the proxy. A two-line fix
-  that cost what a feature cost is a finding, however small both numbers look.
-
-**The previous run is a reading, never a reference.** "The last run took two hours, so this
-pace is expected" shows the process is consistent, not that it is efficient. A baseline that
-sits above half the proxy is itself the first finding.
-
-The proxy is a scale, not a verdict. It turns tokens and minutes into something the operator
-feels, and the report speaks in that currency: hours of a person's time, dollars of their
-money, never counts of turns or tokens.
-
-## 3. The process against itself
-
-A process holds its own references, and these need no scale at all:
-
-- **Stage against stage.** The stage holding the largest share of cost is a finding by
-  contrast with the others. Name it and its share.
-- **Lap against the lap before.** A lap that cost what the previous lap cost and left the
-  verdict where it was is waste by contrast alone. Count such laps and price them.
-- **Unit against the median unit.** The unit furthest above the median spend is where the
-  process broke its own pattern. Read its transcript first.
-- **The slope of the progress number.** Follow the checker's count across rounds, split by
-  kind. A total that falls can hide a kind that has not moved. [[step-back]] holds the
-  moves for splitting it and pricing a flat group.
-
-This is the contrast [[isolating-causes]] uses between failing and passing cases, applied to
-spend. The contrast names where to look. It does not yet say why.
-
-## 4. Lenses beyond spend
-
-Spend misses four shapes of waste. Apply each to every stage, and write a reading for each
-even when the reading is clean:
-
-| Lens | What to look for in the records | What it indicates |
+| Kind | What it is in the records | What produces it |
 | --- | --- | --- |
-| Work by hand | the same sequence of tool calls or edits repeated across turns or units | a construct the process lacks: a command, a node, a check |
-| Open loop | an output no later stage and no person reads | a stage with no receiver, or a receiver that stopped reading |
-| Tool failure | a call that fails and is retried, worked around or ignored | a defect in the instrument, paid for on every unit |
-| Stall | a stage waiting on a gate, a lock, a person or a quota | time the process spends delivering nothing |
+| Rework lap | a stage visited again after its verdict, on the same unit | the previous lap's output did not meet the next stage's check |
+| Repeat turn | a turn doing what an earlier turn of this unit did | lost state, a stale handoff, a prompt that re-asks |
+| Retry | a tool call that fails and is called again, worked around or ignored | a defect in the instrument |
+| Hand step | work a stage should have done, done after it by a tail commit or the operator | a stage that stops before its output is finished |
+| Dead time | the run stopped, waiting on a gate, a lock, a quota or a person | a stall the workflow does not route around |
+| Undone work | an edit, file or commit made and later reverted or deleted | a stage that acts before the check that rejects it |
+| Open loop | an output no later stage and no person reads, a defect filed nowhere | a stage with no receiver |
 
-A candidate construct found through the first lens is a proposal, not a finding. It goes to
-[[whole-first]] and [[vet-proposal]] before anyone builds it.
+A kind named without the lap, turn or commit it rests on is a guess. Each row of the table
+carries its evidence and its minutes.
 
-## 5. The fresh judge
+## 3. Rank by recurrence
 
-The one who drew the process and took the readings does not grade them. Their frame
-produced the readings, and it holds the same blind spots the operator's list of expectations
-would have held. Hand the judgement to a reader with fresh context on every examination: a
-new agent started from a written brief, never a fork of the examiner, on the cheapest model
-that reasons well. Its window is short on purpose, so it holds the whole picture and nothing
-of the run's history. Skipping it when the findings are few is skipping it when the blind
-spot is in play.
+Set this unit's table beside the previous units'. For each kind, count the units it appeared
+in, out of the units delivered. That count is the rank.
+
+- **Two units make a tax.** A kind seen on two units will be seen on every unit left. Its
+  price is its minutes per unit times the units remaining. A tax of three minutes on thirty
+  remaining units outranks a one-off of an hour.
+- **A one-off is a note.** It joins the table and waits for a second occurrence. It becomes a
+  finding on its own only when it alone exceeds the unit's ideal path.
+- **The previous unit is a reading, never a reference.** A unit that cost what the last one
+  cost, with the same waste, shows the tax is stable. Stable is the problem.
+
+Spend in dollars, and what a person would need, belong to a different question: whether to
+run the process at all. That answer goes on one line at run end, once. It never ranks a
+finding, and it never clears one.
+
+## 4. The fresh judge
+
+The one who drew the paths does not grade them. Their frame produced the table, and it holds
+the blind spots the workflow's author held. Hand the table to a reader with fresh context on
+every examination: a new agent started from a written brief, never a fork of the examiner, on
+the cheapest model that reasons well. Skipping it when the table is short is skipping it when
+the blind spot is in play.
 
 The brief carries three things and no reasoning:
 
-- the drawing from step 1, with the share and the unit count on every stage,
-- the proxy table from step 2 and the readings from steps 3 and 4,
-- one question: **what here would surprise the operator?**
+- the two paths from step 1, with minutes per stage,
+- the kind table from step 2 and the recurrence counts from step 3, this unit and the previous ones,
+- one question: **which waste here will the next unit pay again, and what in the workflow produces it?**
 
-The judge argues for the operator, not for the run. It returns the surprises ranked by what
-the operator loses, each in hours or money, with the reading it rests on. The examiner adds
-them to the findings and does not overrule them.
+The judge argues for the next unit, not for the run. It returns the kinds it expects to recur,
+ranked by minutes per unit, each with the lap, turn or commit it rests on and the construct it
+suspects. The examiner adds them to the table and does not overrule them.
 
-## 6. Collapse each finding into a question
+## 5. Name the construct
 
-A finding is a reading that departs from a reference, and it carries that reading. A
-judgement written without the number it rests on is a guess, and so is its retraction. A
-finding becomes useful only as a question someone can answer. For each one write the
-question, the done-condition, and the yardstick that will show the done-condition met, then
-route it:
+Take the top tax. Read the transcript of each occurrence, oldest first, and name the construct
+in the workflow that produced it: the prompt section that stops a stage short, the node that
+runs before its check, the gate that accepts unfinished output, the tool that fails. Read the
+workflow's code now, at that construct only.
 
-- a number to move, such as a stage's share or a unit's spend → [[research-study]], which
-  takes the question and the yardstick as its steps 2 and 3,
-- an effect with a cause to find, such as a tool failure or an outlier unit → [[isolating-causes]],
-- a stream of laps that moved nothing → [[step-back]],
-- a construct the process lacks → [[whole-first]], then [[vet-proposal]].
+Two tests before the name stands:
 
-The examination changes nothing in the process. A fix done inside it is a finding nobody
-vetted.
+- **Contrast.** If the kind appears on some units and not others, [[isolating-causes]] holds
+  the move: what differs between the units that paid and the units that did not.
+- **Origin.** Ask why the construct behaves so, and why that, until the answer is a property
+  of the workflow and not of the unit. [[root-cause]] holds the chain. A tail commit that
+  restamps citations is produced by a documentation stage that does not restamp, not by the
+  story that needed restamping. A change that adds a cleanup stage handles the symptom. A
+  change that makes the stage finish its output reaches the origin.
 
-## 7. Continue with the top question
+Done when the construct is named with the file and the lines, and the why-chain ends on the
+workflow.
 
-Write the report first. Then take the top question into the skill it was routed to, one
-question at a time, and leave the rest in the report for the next examination. A loop that
-stops at a report every cycle is a report generator, and the operator reads the report when
-they come back, not while it is written.
+## 6. Change the workflow
 
-The loop stops taking up questions on a price test: when the top finding's price, in hours
-or money per unit, is below what answering it would cost. The reading tier keeps running,
-the verdict reads efficient, and the operator is told so once.
+Write the change before making it: the construct, what it becomes, the kind it removes, and
+the yardstick, which is that kind's count on the next unit. One change per examination. A
+second change on the same unit makes the next unit grade two things at once and answer for
+neither.
 
-## 8. Re-examine after a change
+Gate it. [[vet-proposal]] decides whether the change deserves to exist as written, and
+[[whole-first]] joins it when the change adds a construct the workflow did not have. A
+change that fails the gate goes back to step 5 with the reason.
 
-Once a routed question was acted on, run steps 1 to 4 again and set every stage beside the
-previous report, not only the stage the change aimed at. Name what the change took from the
-other stages, with each stage's share before and after. A fix graded on its own target alone
-is the siloed idea [[whole-first]] warns about. The re-examination's findings join the next
-report in the usual way.
+Then land it and make the run pick it up before the next unit starts. For a workhorse run
+that is a commit on the workflow and a `reload` from [[workhorse-operate]]. The run itself
+is not touched: no rewind, no answer, no edit to its state. The change lives in the
+workflow, where every later unit and every later run inherits it.
+
+Done when the change is committed, the run reports the new code, and `EXAMINED.md` names
+the change and its yardstick.
+
+## 7. Grade the change on the next unit
+
+The next examination opens with the previous change. Set the removed kind's count on the new
+unit beside its count before. Then set every other kind beside its previous reading, not
+only the one the change aimed at. A change that moved its own kind to zero and raised
+another is the siloed fix [[whole-first]] warns about, and the rise is the next tax.
+
+- Count at zero: the change holds. Say so in one line and take the next tax.
+- Count unchanged or higher: the finding reopens with the new occurrence as evidence, and
+  step 5 runs again on it. Three changes aimed at one kind with the count still standing is
+  the stream [[step-back]] judges.
+
+## When the loop stops
+
+The loop takes up a tax while there is one. When no kind appears on two units and the
+one-offs are each below the unit's ideal path, the process has **converged**. Say so once.
+The reading tier keeps running, and the first kind seen twice reopens the loop.
 
 ## The report
 
-The report fits one screen. Open with the day rate assumed. Lead with the finding that costs the operator the most, as one
-sentence in hours or money a person understands without knowing the run. Then at most five
-findings, costliest first, each with its reading, its reference, its routed question and the
-skill it goes to.
+The report fits one screen. Lead with the top tax, as one sentence: the kind, the units it
+appeared in, its minutes per unit, and the change made or the reason none was. Then at most
+five kinds, ranked by recurrence, each with its evidence, its construct and its change or
+its routing.
 
-Then the **null report**: one line per generator and per lens, saying what was checked and
-what it read. A line the examiner cannot fill is a check not made. A report that says the
-process is fine and carries no readings has examined nothing.
+Then the **grade**: the previous change, its kind's count before and after, and every other
+kind before and after.
 
-Close with one verdict for the process: **efficient**, **wasteful**, **stalled** or
-**unrecorded**, and the single question to answer first.
+Then the **null report**: one line per kind, saying which stages were read and what each
+read. A line the examiner cannot fill is a check not made. A report that says the process is
+fine and carries no table has examined nothing.
+
+Close with one verdict: **improving** when the last change removed its kind, **taxed** when
+a kind recurs and no change has landed, **converged** when no kind recurs, **unrecorded**
+when a stage left no record. At run end add the one adoption line: wall time and bill
+against what a person would need.
 
 ## Completion criterion
 
-Each line checkable from the report alone:
+Each line checkable from `EXAMINED.md` alone:
 
-- Every notification since the last examination got a reading line in the fixed shape, and
-  every line is in `EXAMINED.md`.
-- Every stage carries its share of the cost and the unit of delivery is named.
-- Every unit has a human proxy written before its spend was read, and the two stand side by
-  side, with the rate assumed stated.
-- The largest stage, the repeated laps and the outlier unit are named with their price.
-- Every lens has a reading for every stage, clean readings included.
-- A fresh judge returned its surprises, and they are in the findings.
-- Every finding carries its reading and is a question with a done-condition, a yardstick and
-  a destination skill.
-- The process was left as it was found, and the top question was taken up or the price test
-  says why not.
+- Every notification since the last examination got a reading line in the fixed shape, with
+  "doing" and "seen before" filled.
+- The unit's ideal path and actual path stand side by side, with minutes per stage.
+- Every kind has a reading at every stage, zero readings included, each with its evidence.
+- Every kind carries its recurrence count over the units delivered.
+- A fresh judge returned its expected recurrences, and they are in the table.
+- The top tax is traced to a named construct with a why-chain that ends on the workflow.
+- One change is committed and loaded, with its yardstick, or the gate's reason it was not.
+- The previous change is graded on this unit, with every kind before and after.
