@@ -109,7 +109,7 @@ is not on disk beside an installed farrier. `agents.example.yml` stays the full 
 the pruned starting point, and the two are kept consistent by hand.
 
 ### config
-- usage: `farrier config [--config PATH] <set-library|set-stablemate|set-base|set-worktree|show|reference> [args]`
+- usage: `farrier config [--config PATH] [get|set|set-library|set-stablemate|set-base|set-worktree|show|reference] [args]`
 - flags:
   - `--config <path>` — goes **before** the action (`farrier config --config ./c.toml show`):
     the [shared config file](../workhorse/concepts/profiles-and-config.md)
@@ -124,12 +124,27 @@ the pruned starting point, and the two are kept consistent by hand.
     profiles diff against each other line by line — that flattening is what `cat` cannot do, since
     a profile is three tables deep. A `key` given alongside it is looked up among those dotted keys
     (`show powers.high.model --profile cheap`). An undefined name exits with
-    `UnknownProfileError`, which lists the ones the file does define. There is **no setter**: a
-    profile is a nested table and `set-library`-style flat assignment cannot express one.
+    `UnknownProfileError`, which lists the ones the file does define. `set` writes a profile key
+    by its dotted path (`set profiles.cheap.powers.high.model=haiku`).
   - `reference --full` — print the full entry of every key instead of the one-line index:
     type, default, meaning, example, environment variable, precedence and legacy spelling.
   - `reference --file home|manifest` — describe only the home config file or only `agents.yml`.
 - args:
+  - no action — print the help of `farrier config`, which lists every action, and exit 0.
+  - `get <key>` — print the value the dotted machine-config `key` takes on this machine, or its
+    default when the file does not set it. A string prints bare. A table prints as TOML under its
+    full path, so it pastes back into the file. A `<name>` the user picked is part of the path
+    (`get profiles.claude.powers`). A key the schema does not declare exits with an error naming
+    up to three closest keys. A declared key with no value and no default exits with "is not set".
+  - `set <key>=<value>` — write one machine-config key, keeping every comment and every other key.
+    A string key takes `value` verbatim (`set default_cli=codex`). Any other key takes `value` as a
+    TOML literal: `true`, `1.5`, `["a", "b"]` or an inline table such as
+    `set 'profiles.codex={ cli = "codex" }'`. A free key of a `table of string`, such as
+    `cli.claude.env.EXAMPLE_FLAG=1`, is a string. The file is validated against the
+    [machine config schema](concepts/config-schema.md) before it is saved, and left unchanged when
+    the key is not declared, the value has the wrong type, or the tools would read the value as
+    unset. A list entry has no dotted path, so `set` writes the whole list. `set` prints
+    `key=value` on success.
   - `reference [key]` — with no key, print an index of both shared config files: one line per key
     with its path, type, default and the first sentence of its meaning, then a line naming the
     two ways to read further. The index is about half the size of `--full`, so an agent can scan
@@ -209,6 +224,23 @@ the pruned starting point, and the two are kept consistent by hand.
     - run: invoke(argv=["config", "--config", "c026/c.toml", "show"], env={"HOME": "c026/home", "STABLEMATE_CONFIG": "c026/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c026/pipx-stub-bin:$PATH"})
     - verify: stdout(text="=")
     - fixture: profiles-config dir=c026
+  - `set <key>=<value>` writes the key into the [home config file](formats/home-config.md)
+    through `write_config_value`
+    - run: invoke(argv=["config", "--config", "c908/c.toml", "set", "default_cli=codex"], env={"HOME": "c908/home", "STABLEMATE_CONFIG": "c908/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c908/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c908/c.toml", text="default_cli = \"codex\"")
+    - fixture: empty-dir dir=c908
+  - `set` refuses a key the schema does not declare and names the closest key
+    - run: invoke(argv=["config", "--config", "c909/c.toml", "set", "default_clii=codex"], env={"HOME": "c909/home", "STABLEMATE_CONFIG": "c909/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c909/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="Closest: `default_cli`")
+    - fixture: empty-dir dir=c909
+  - `get <key>` prints the value of a key under a profile the user named
+    - run: invoke(argv=["config", "--config", "c910/c.toml", "get", "profiles.cheap.powers.high.model"], env={"HOME": "c910/home", "STABLEMATE_CONFIG": "c910/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c910/pipx-stub-bin:$PATH"})
+    - verify: stdout(text="haiku")
+    - fixture: profiles-config dir=c910
+  - `farrier config` with no action prints the help that lists every action
+    - run: invoke(argv=["config"], env={"HOME": "c911/home", "STABLEMATE_CONFIG": "c911/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c911/pipx-stub-bin:$PATH"})
+    - verify: stdout(text="Write one key")
+    - fixture: empty-dir dir=c911
   - `reference` lists each key the [machine config schema](concepts/config-schema.md) declares for the [home config file](formats/home-config.md) on one line, without needing a config file to exist
     - run: invoke(argv=["config", "reference"], env={"HOME": "c028/home", "STABLEMATE_CONFIG": "c028/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c028/pipx-stub-bin:$PATH"})
     - verify: stdout(text="- `default_cli` (")
@@ -240,13 +272,18 @@ the pruned starting point, and the two are kept consistent by hand.
    `farrier/tests/test_config_reference.py::test_a_key_matches_a_name_the_user_picked_against_its_placeholder`,
    `farrier/tests/test_config_reference.py::test_a_key_matches_whole_segments_only`,
    `farrier/tests/test_config_reference.py::test_file_manifest_prints_every_key_with_its_default_and_example`,
-   `farrier/tests/test_config_reference.py::test_an_unknown_file_is_rejected`
+   `farrier/tests/test_config_reference.py::test_an_unknown_file_is_rejected`,
+   `farrier/tests/test_config_get_set.py::test_set_writes_a_nested_key_and_keeps_the_comments`,
+   `farrier/tests/test_config_get_set.py::test_get_prints_a_table_under_its_full_path`,
+   `farrier/tests/test_config_get_set.py::test_an_undeclared_key_is_refused_with_the_closest_keys`,
+   `farrier/tests/test_config_get_set.py::test_a_value_the_schema_would_read_as_unset_is_refused`,
+   `farrier/tests/test_config_get_set.py::test_bare_config_prints_every_action`
 
 The one command that reads and writes the [shared config file](../workhorse/concepts/profiles-and-config.md):
 workhorse is a library and ships no `config` of its own, so `agents.mk` and other scripts go
 through farrier for every shared setting. The
-[`[profiles.<name>]`](../workhorse/concepts/profiles-and-config.md#profiles-and-config) tables, with their nested `powers`, have no writer subcommand
-— they are edited by hand, and read back with `show --profile`.
+[`[profiles.<name>]`](../workhorse/concepts/profiles-and-config.md#profiles-and-config) tables, with their nested `powers`, are written key by key with `set`
+and read back with `get` or `show --profile`.
 
 ### library
 - usage: `farrier library list|show|check [--library DIR] [--layer base|overlay]`

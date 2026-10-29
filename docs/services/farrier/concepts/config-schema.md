@@ -13,6 +13,8 @@ The repository's [`agents.yml`](../formats/agents-yml-config.md) is the second d
 - code: `farrier/farrier/_vendor/stablemate_core/schema/reference.py::render_reference` @f6b3e5af64f0
 - code: `farrier/farrier/_vendor/stablemate_core/schema/reference.py::select_rows` @96cb06857a53
 - code: `farrier/farrier/config_reference.py::reference_text` @145be29b7ae0
+- code: `farrier/farrier/_vendor/stablemate_core/config.py::write_config_value` @e0dc8300bbc3
+- code: `farrier/farrier/config_reference.py::parse_home_value` @255c4f0b809a
 - code: `farrier/farrier/_vendor/stablemate_core/schema/manifest.py::Manifest` @29d985903bcc
 - code: `farrier/farrier/_vendor/stablemate_core/manifest.py::load_manifest` @bdf1b65128c6
 - rule: the typed schema in `stablemate_core` is the only reader of the machine config; a tool that needs a key reads it from the loaded `HomeConfig` and never parses the TOML itself
@@ -36,6 +38,8 @@ The repository's [`agents.yml`](../formats/agents-yml-config.md) is the second d
 - rule: `ostler.yml`, `ostler.yaml` and `.agents.yml` are legacy names of the whole manifest, not of a separate ostler file; `agents.yml` wins when both exist, and ostler reads `organization` and `qa` from whichever file the locator returns
 - rule: a workflow or ostler reader stops on a manifest that fails validation with a `ConfigError` naming the key paths, because reading it as absent silently drops settings such as the GitHub token env; a coder turn's role lookup is the exception and falls back to the library prompt with a warning, because a role override only replaces a prompt the library already ships
 - rule: `farrier config reference` prints a one-line index of every key by default and the full entries only for a named key and the keys under it, because the full reference of both files runs past a thousand lines and an agent looking up one key should not read every entry; `--full` keeps the whole reference for a reader who wants it
+- rule: `farrier config set <key>=<value>` writes one machine-config key by its dotted path and saves only a file that validates and reads the value back as written, because a key no tool declares and a value the schema drops on load both load without error, so a setter that only parsed would report a write no tool sees; the four `set-<dir>` actions stay because they resolve a path to an absolute one and check that a library directory holds `library/`
+- rule: `farrier config get <key>` prints the value a key takes after defaults, not only what the file sets, because the question an agent asks is what the tools will use
 - rule: a `ConfigError` from a bad machine config or manifest reaching the top of the ostler, groom, paddock or workhorse command prints its message to stderr and exits 2 instead of a traceback; farrier prints it as `error: <message>` through its own handler
 - rule: the `groom.attend` settings `mode` and `last_mode` are read in any case and lowercased, and `deny` entries are read as text
 - rule: the genesis workflow writes no `workflows` key, because no tool reads it

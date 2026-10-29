@@ -109,7 +109,9 @@ If a tool refuses, upgrade it — that is the mechanism working, not a bug.
 `farrier config reference` lists every key of this file and of a repository's `agents.yml`,
 one line each. `farrier config reference <key>` prints the full entry of a key and the keys
 under it, with type, default, meaning and example. `--file home` or `--file manifest` keeps
-to one of the two. [The configuration guide](guide/configuration.md) explains the output.
+to one of the two. `farrier config get <key>` prints a key's value, and
+`farrier config set <key>=<value>` writes one key after checking it against the schema.
+[The configuration guide](guide/configuration.md) explains the output.
 
 An overlay library shadows the base name-for-name via `farrier config set-library`, or
 `$FARRIER_LIBRARY_DIR` for a one-off.

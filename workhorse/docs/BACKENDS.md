@@ -237,7 +237,8 @@ is a library and ships no command of its own:
 farrier config reference --file home      # every key, one line each
 farrier config reference profiles         # full entries for the profile keys
 farrier config show                        # print all config keys
-farrier config show default_cli            # print one value
+farrier config get default_cli             # print one value, or its default
+farrier config set default_cli=codex       # write one key, checked against the schema
 farrier config set-library ~/path/to/lib   # set the overlay library path
 farrier config set-stablemate ~/path/to/sm # set the stablemate checkout path
 farrier config set-base ~/path/to/base     # set the base library content path
@@ -320,6 +321,7 @@ model = "haiku"
 ```bash
 workhorse-<name> run --profile cheap
 workhorse-<name> run --config ./experiment.toml   # a different config file entirely
+farrier config set profiles.cheap.powers.high.model=sonnet   # write one key of a profile
 farrier config show --profile cheap               # read one back, one dotted line per leaf
 ```
 

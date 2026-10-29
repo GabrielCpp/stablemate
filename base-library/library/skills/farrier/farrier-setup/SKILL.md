@@ -43,6 +43,10 @@ The config lives at the platform config dir: `~/.config/stablemate/config.toml`
 `$STABLEMATE_CONFIG` points the tools at another file.
 `farrier config reference --file home` lists every key the file accepts, one line each.
 Name a key or a table, as in `farrier config reference groom`, for its full entry.
+`farrier config get <key>` prints the value a key takes on this machine.
+`farrier config set <key>=<value>` writes one key, as in
+`farrier config set profiles.claude.powers.high.model=opus`. It refuses an undeclared key or a
+wrong value and leaves the file unchanged, so prefer it to editing the file.
 
 ## Repository Setup
 
