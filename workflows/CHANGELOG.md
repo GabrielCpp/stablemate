@@ -1,5 +1,58 @@
 # Changelog
 
+## [4.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v4.0.1...workhorse-workflows-v4.1.0) (2026-10-29)
+
+
+### Features
+
+* **workflows:** check an okf-book run's setup before the first turn ([d703714](https://github.com/GabrielCpp/stablemate/commit/d7037144897fa88d29286230264ec7c85e502f7e))
+* **workflows:** fail a coder lap on a copy the story added ([32e1afe](https://github.com/GabrielCpp/stablemate/commit/32e1afef6e97bf3693611e74f37768d3946eb393))
+* **workflows:** file coder decisions through ostler decisions add ([15f240e](https://github.com/GabrielCpp/stablemate/commit/15f240ed86633da5eebc639a4b3d591ee5ec5dbf))
+* **workflows:** file records and read epics outside the repository ([06ebe70](https://github.com/GabrielCpp/stablemate/commit/06ebe70e8f955cb8f3000fdcbb83534f22b0183c))
+* **workflows:** gate the services a story's shared change reaches ([90a977e](https://github.com/GabrielCpp/stablemate/commit/90a977e850bc4efd810502d8a891d6ef2eb63788))
+* **workflows:** hold back lap scenarios after two fixture faults ([b6c22d6](https://github.com/GabrielCpp/stablemate/commit/b6c22d6ec7a1204f4d8c7085ad56072ae77fdf39))
+* **workflows:** keep a failed exercise run's screenshots and logs ([5035955](https://github.com/GabrielCpp/stablemate/commit/5035955cb39c15a7c1e9012abe460489604ad093))
+* **workflows:** propose a library and record the operator's answer ([1d4d37e](https://github.com/GabrielCpp/stablemate/commit/1d4d37e7dc6f3656c289ac7d32039c620629fd5b))
+* **workflows:** split coder dev into plan, build and review turns ([d26365f](https://github.com/GabrielCpp/stablemate/commit/d26365f771d0af9da47a46e22d97c861ae69aa3b))
+* **workflows:** tell the book writer what the screen showed ([5329470](https://github.com/GabrielCpp/stablemate/commit/5329470c6628a190165e88567510bb738bf27466))
+
+
+### Bug Fixes
+
+* **workflows:** allow ostler 5.x ([1305570](https://github.com/GabrielCpp/stablemate/commit/1305570102238ef636338b097d435cd96439be4f))
+* **workflows:** build the docs packet from the story's committed work ([3b609d5](https://github.com/GabrielCpp/stablemate/commit/3b609d532c600ca35b303817d59d2e2135319963))
+* **workflows:** decide workspace membership from the run's repository ([40c58fb](https://github.com/GabrielCpp/stablemate/commit/40c58fb66cb7f08bbcbaaa4d6dd6af466bb66331))
+* **workflows:** file a dev turn's pre-existing defects on the register ([ed30ba3](https://github.com/GabrielCpp/stablemate/commit/ed30ba3aa782232cf916edbe04c8820407c61284))
+* **workflows:** isolate okf book stack leases per service ([9b20f46](https://github.com/GabrielCpp/stablemate/commit/9b20f46a427bbf5cb965ae36465bfa990ceb423c))
+* **workflows:** judge a book citation stale by its cited declaration ([9340fa2](https://github.com/GabrielCpp/stablemate/commit/9340fa2cffabce451f26fc555eb668fdea7e978b))
+* **workflows:** keep the qa turn from rebuilding the lane's okf packet ([02815e3](https://github.com/GabrielCpp/stablemate/commit/02815e39d4defda117d3320dabb2bc4aacdb7115))
+* **workflows:** leave the qa rerun of failed scenarios to the self-check ([b8d9924](https://github.com/GabrielCpp/stablemate/commit/b8d9924e2bef7509ec9959da47671c7750e53fe4))
+* **workflows:** let a stale-context finding end the qa turn ([d7ed980](https://github.com/GabrielCpp/stablemate/commit/d7ed98005d47003b3f38815133daee8a1c98cfa7))
+* **workflows:** log why a qa plan failed lint or validation ([1e742b6](https://github.com/GabrielCpp/stablemate/commit/1e742b648e9c682af168fac9fabe26002a2cfe10))
+* **workflows:** make a dev turn correct a follow-up's path-shaped area ([76d0ea8](https://github.com/GabrielCpp/stablemate/commit/76d0ea88bc78e400eb552e0d39afae5e14505a94))
+* **workflows:** match stamped citations in the docs grounding gate ([738b0b3](https://github.com/GabrielCpp/stablemate/commit/738b0b306f046e36809763fce5c7f5fc387e2d78))
+* **workflows:** point the qa turn at a scoped packet refresh ([c484a25](https://github.com/GabrielCpp/stablemate/commit/c484a25be882bfe6ad4e462979069cf44704f9f6))
+* **workflows:** print a stopped scenario's stop line once ([b00dab2](https://github.com/GabrielCpp/stablemate/commit/b00dab234cabb1a6a5fdbda2d1dcda4ed5311356))
+* **workflows:** read the plan's top-level acceptance walk ([ebd987e](https://github.com/GabrielCpp/stablemate/commit/ebd987eb66307fa15f657634b92656acf2899836))
+* **workflows:** rebuild a qa packet whose bytes moved under its stamp ([607e89a](https://github.com/GabrielCpp/stablemate/commit/607e89a38de1d80e36a2577a2c2f6a6e80718a60))
+* **workflows:** reconcile against the epics a run started with ([ab821bb](https://github.com/GabrielCpp/stablemate/commit/ab821bbd46714ae77f0cf99a1d539996f4cd9531))
+* **workflows:** rerun a writer job whose book changed after it started ([c2e6974](https://github.com/GabrielCpp/stablemate/commit/c2e69747dd86ec13755e8158d4c64f9d99ea5955))
+* **workflows:** scope an on-trunk story's qa packet to its own commits ([656e74e](https://github.com/GabrielCpp/stablemate/commit/656e74ee82e60058c6c2c726f632f72f5d9d32a6))
+* **workflows:** stop a repair turn re-filing the finding it answered ([f5231df](https://github.com/GabrielCpp/stablemate/commit/f5231df7c493b432bc2c01f4443f7ef1e129d0d8))
+* **workflows:** write the story fixtures after the qa owner turn ([648aeb5](https://github.com/GabrielCpp/stablemate/commit/648aeb5ef798c40d1a34976e4cb733c0eb1083a6))
+* **workhorse:** give a confined turn the operator's full environment ([6c4fbcd](https://github.com/GabrielCpp/stablemate/commit/6c4fbcde6d9cb50419950d9cf383d09b35b47974))
+
+
+### Performance Improvements
+
+* **workflows:** ask owner turns to spend fewer steps ([39219bf](https://github.com/GabrielCpp/stablemate/commit/39219bfbcbe0f25727b8b321e903d109b220d605))
+* **workflows:** leave a coder story's book merge to its docs phase ([9befe55](https://github.com/GabrielCpp/stablemate/commit/9befe5589226947765afbfc7c5a82059d5718259))
+
+
+### Code Refactoring
+
+* **workflows:** drop the docs/epics marker from the launch root ([a388f08](https://github.com/GabrielCpp/stablemate/commit/a388f0845ee2d6f41208e89f8e4536978ce3da31))
+
 ## [4.0.1](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v4.0.0...workhorse-workflows-v4.0.1) (2026-10-26)
 
 

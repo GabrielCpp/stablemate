@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.1.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v2.0.0...saddlebag-v2.1.0) (2026-10-29)
+
+
+### Features
+
+* **saddlebag:** deny a command that carries a stored secret value ([d3826d0](https://github.com/GabrielCpp/stablemate/commit/d3826d0bc781de723f07755a90d9cc0f7413f7cc))
+* **saddlebag:** give a secret printable metadata editable by key ([197181b](https://github.com/GabrielCpp/stablemate/commit/197181bed36b7303ecb664bbf361157a0513f35f))
+* **saddlebag:** guard agent reads of secrets and show a dotenv masked ([614212b](https://github.com/GabrielCpp/stablemate/commit/614212b1996abfc7a3a3d25bdb2b6ee0ec42ebc1))
+* **saddlebag:** import a dotenv's secret lines into records ([94e5ad6](https://github.com/GabrielCpp/stablemate/commit/94e5ad6c5816b0f642fda89fd835bb470d2400bc))
+* **saddlebag:** mask secret values in exec output off a terminal ([2f5ac1f](https://github.com/GabrielCpp/stablemate/commit/2f5ac1fe00823bbfbfe6729ebfd5f13fbe32c23a))
+* **saddlebag:** read a dotenv from stdin when FILE is - ([38a39a8](https://github.com/GabrielCpp/stablemate/commit/38a39a8675be842f3d8916c5d05cd4a2966d4a7f))
+
 ## [2.0.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v1.1.0...saddlebag-v2.0.0) (2026-10-26)
 
 

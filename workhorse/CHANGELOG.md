@@ -1,5 +1,24 @@
 # Changelog
 
+## [5.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v5.0.0...workhorse-agent-v5.1.0) (2026-10-29)
+
+
+### Features
+
+* **core:** ignore the untracked artifacts shelves by name ([969c315](https://github.com/GabrielCpp/stablemate/commit/969c31556490dd78f770ab44b676765a76ec328c))
+* **core:** name the member of the repository holding a folder ([d7042f8](https://github.com/GabrielCpp/stablemate/commit/d7042f81453365a270d5bcd99ff667d12fa73258))
+* **workhorse:** give turns an advisor and let flows render a prompt ([7395975](https://github.com/GabrielCpp/stablemate/commit/73959756aecf5a95534c34640feb2a4b05369545))
+* **workhorse:** let a confined shell call sort, list and run xargs ([4537968](https://github.com/GabrielCpp/stablemate/commit/4537968b3519e8e8321d133283fe51240b66b8c1))
+* **workhorse:** stop exporting the active workspace ([817191b](https://github.com/GabrielCpp/stablemate/commit/817191b7d040945f10bbf2748b1b36c9a8ed1396))
+
+
+### Bug Fixes
+
+* **workhorse:** fail fast when the agent's working directory is missing ([328d585](https://github.com/GabrielCpp/stablemate/commit/328d5854ddfa3db0185bd1ca22934cff48c9fd84))
+* **workhorse:** give a confined turn the operator's full environment ([6c4fbcd](https://github.com/GabrielCpp/stablemate/commit/6c4fbcde6d9cb50419950d9cf383d09b35b47974))
+* **workhorse:** name a claude turn's brief in its system prompt ([adcbb2b](https://github.com/GabrielCpp/stablemate/commit/adcbb2b7cfe5b12ae4115f10478ba337171a362c))
+* **workhorse:** resume a run in its own systemd user scope ([7ea52c8](https://github.com/GabrielCpp/stablemate/commit/7ea52c8f7569b04237ec950c6a7b9ad0c9a795e4))
+
 ## [5.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v4.0.0...workhorse-agent-v5.0.0) (2026-10-26)
 
 

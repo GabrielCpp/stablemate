@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.0.1](https://github.com/GabrielCpp/stablemate/compare/groom-v2.0.0...groom-v2.0.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **groom:** charge a resumed session's turns their own share of cost ([7731ebf](https://github.com/GabrielCpp/stablemate/commit/7731ebf5760db9a922ba950416fcc8ba8d843932))
+
 ## [2.0.0](https://github.com/GabrielCpp/stablemate/compare/groom-v1.3.0...groom-v2.0.0) (2026-10-26)
 
 
