@@ -8,6 +8,7 @@ import pytest
 
 from stablemate_core import config as cfgmod
 from stablemate_core import profiles
+from stablemate_core.schema import Profile
 
 _CFG = """\
 config_version = 2
@@ -48,13 +49,18 @@ cli = "codex"
 """
 
 
+def _chosen(profile: Profile | None) -> Profile:
+    assert profile is not None
+    return profile
+
+
 @pytest.fixture
 def cfg(tmp_path, monkeypatch):
     path = tmp_path / "config.toml"
     path.write_text(_CFG)
     monkeypatch.setenv(cfgmod.CONFIG_PATH_ENV, str(path))
     monkeypatch.delenv(cfgmod.LEGACY_CONFIG_PATH_ENV, raising=False)
-    return cfgmod.load_config()
+    return cfgmod.load_home_config()
 
 
 
@@ -78,9 +84,9 @@ def test_timeout_scale_is_resolved_per_profile(cfg):
 
 def test_a_named_profile_overrides_its_tiers_opencode_keeps_its_own(cfg):
     """Two profiles declaring the same `cli`: the one whose key matches is auto-default; the others are accessed via `--profile`."""
-    profile = profiles.select_profile(cfg, "deepseek")
+    profile = _chosen(profiles.select_profile(cfg, "deepseek"))
 
-    assert profile.get("cli") == "opencode"
+    assert profile.cli_name() == "opencode"
     assert profiles.resolve_backend_default("opencode", profile).model == (
         "openrouter/deepseek-v4-flash-0731"
     )
@@ -106,19 +112,20 @@ def test_harness_env_is_not_part_of_a_profile(cfg):
         "OPENCODE_DISABLE_AUTOCOMPACT": "1"
     }
     profile = profiles.select_profile(cfg, "opencode")
-    assert profiles.resolve_harness_env("opencode", profile) == {}
+    assert not hasattr(profile, "env")
 
 
 def test_a_profile_carries_its_own_cli(cfg):
     """Every profile declares the CLI it runs under — that is what `--profile` selects."""
     assert profiles.resolve_default_cli(cfg) == "claude"
-    profile = profiles.select_profile(cfg, "opencode")
-    assert profile.get("cli") == "opencode"
+    profile = _chosen(profiles.select_profile(cfg, "opencode"))
+    assert profile.cli_name() == "opencode"
 
 
 def test_no_profile_returns_empty_for_bare_cli_mode(cfg):
-    """`select_profile(cfg, "")` returns {} so the resolvers find no model and the workflow emits no --model/--effort flags."""
-    assert profiles.select_profile(cfg, "") == {}
+    """`select_profile(cfg, "")` returns None so the resolvers find no model and the workflow emits no --model/--effort flags."""
+    assert profiles.select_profile(cfg, "") is None
+    assert profiles.resolve_power("high", "opencode", None) == profiles.PowerMapping()
 
 
 
@@ -128,7 +135,7 @@ def test_auto_select_finds_the_profile_whose_key_matches_the_cli(cfg):
     match = profiles.auto_select_profile(cfg, "opencode")
 
     assert match is not None
-    assert match.get("cli") == "opencode"
+    assert match.cli_name() == "opencode"
     assert profiles.resolve_power("high", "opencode", match).model == "qwen/qwen3.6-27b"
 
 
@@ -147,10 +154,10 @@ def test_auto_select_does_not_pick_a_named_profile(cfg):
 
 def test_select_active_profile_combines_explicit_and_auto(cfg):
     """`select_active_profile` is the resolver the CLI uses."""
-    assert profiles.select_active_profile(cfg, name="deepseek").get("cli") == "opencode"
-    assert profiles.select_active_profile(cfg, active_cli="opencode").get("cli") == "opencode"
-    assert profiles.select_active_profile(cfg, active_cli="claude") == {}
-    assert profiles.select_active_profile(cfg) == {}
+    assert _chosen(profiles.select_active_profile(cfg, name="deepseek")).cli_name() == "opencode"
+    assert _chosen(profiles.select_active_profile(cfg, active_cli="opencode")).cli_name() == "opencode"
+    assert profiles.select_active_profile(cfg, active_cli="claude") is None
+    assert profiles.select_active_profile(cfg) is None
 
 
 
@@ -169,7 +176,7 @@ def test_an_unknown_profile_raises_and_names_the_alternatives(cfg):
 def test_an_unknown_profile_raises_when_none_are_defined(tmp_path, monkeypatch):
     monkeypatch.setenv(cfgmod.CONFIG_PATH_ENV, str(tmp_path / "config.toml"))
     with pytest.raises(profiles.UnknownProfileError, match="none defined"):
-        profiles.select_profile({}, "local")
+        profiles.select_profile(cfgmod.load_home_config(), "local")
 
 
 def test_a_profile_without_a_cli_field_is_rejected(tmp_path, monkeypatch):
@@ -178,8 +185,8 @@ def test_a_profile_without_a_cli_field_is_rejected(tmp_path, monkeypatch):
     path.write_text('[profiles.broken]\n[profiles.broken.powers.high]\nmodel = "x"\n')
     monkeypatch.setenv(cfgmod.CONFIG_PATH_ENV, str(path))
 
-    with pytest.raises(cfgmod.ConfigError, match="cli field"):
-        profiles.select_profile(cfgmod.load_config(), "broken")
+    with pytest.raises(cfgmod.ConfigVersionError, match="cli field"):
+        profiles.select_profile(cfgmod.load_home_config(), "broken")
 
 
 def test_profile_names_are_reported_sorted(cfg):
@@ -188,14 +195,14 @@ def test_profile_names_are_reported_sorted(cfg):
 
 def test_profile_backends_reports_the_cli_it_declares(cfg):
     """A profile is for one CLI; ``profile_backends`` returns the one name."""
-    profile = profiles.select_profile(cfg, "opencode")
+    profile = _chosen(profiles.select_profile(cfg, "opencode"))
     assert profiles.profile_backends(profile) == ["opencode"]
-    assert profiles.profile_backends(profiles.select_profile(cfg, "codex-only")) == ["codex"]
+    assert profiles.profile_backends(_chosen(profiles.select_profile(cfg, "codex-only"))) == ["codex"]
 
 
 def test_profile_backends_reports_a_misspelling_rather_than_hiding_it(cfg):
     """core knows no backend registry; workhorse checks these against it."""
-    profile = {"cli": "openocde"}
+    profile = Profile(cli="openocde")
 
     assert profiles.profile_backends(profile) == ["openocde"]
 
@@ -206,7 +213,7 @@ def test_profile_has_backend_matches_the_cli_field(cfg):
     assert profiles.profile_has_backend(profile, "opencode")
     assert not profiles.profile_has_backend(profile, "claude")
 
-    bare = {"cli": "opencode"}
+    bare = Profile(cli="opencode")
     assert profiles.profile_has_backend(bare, "opencode")
 
 

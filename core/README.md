@@ -7,7 +7,8 @@ library used through workflow-owned commands; none of the three depends on anoth
 its public entry point. They share runtime state and must agree about it:
 
 - **the home config** (`~/.config/stablemate/config.toml`) — `library_dir`,
-  `stablemate_dir` and `base_dir` only mean anything if every tool reads the same value;
+  `stablemate_dir` and `base_dir` only mean anything if every tool reads the same value.
+  One typed model declares every key. `farrier config reference` prints them.
 - **the artifacts folder** — `artifacts_dir` is where per-user story artifacts (the specs
   tree) live, outside git and shared by every worktree. `$STABLEMATE_ARTIFACTS_DIR` wins,
   then `artifacts_dir`, then `<user data dir>/stablemate/artifacts`
@@ -38,8 +39,8 @@ file. Pip's resolver never sees across them.
 
 So the invariant is enforced on the **file**, via `config_version` (see `config.py`): an
 older build refuses to *write* a newer config, a newer build migrates an older one
-forward, and reads stay fail-soft so a week-long run cannot be killed by another tool's
-upgrade. That guard holds however the tools got installed — separate venvs, one shared
+forward, and a read of a newer file warns instead of failing, so a week-long run
+cannot be killed by another tool's upgrade. That guard holds however the tools got installed — separate venvs, one shared
 venv, even vendored copies.
 
 What this package buys is therefore ordinary: one implementation to fix bugs in, one

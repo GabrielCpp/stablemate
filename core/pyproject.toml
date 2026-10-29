@@ -37,8 +37,10 @@ classifiers = [
 # node types, and no library content — only where files live and how they are read.
 dependencies = [
   "platformdirs>=4.0",
-  # Writing the shared config.toml (tomllib, stdlib, only reads).
-  "tomli-w>=1.0",
+  # Writing the shared config.toml in place, comments and unknown keys kept (tomllib only reads).
+  "tomlkit>=0.13",
+  "pydantic>=2.0",
+  "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
