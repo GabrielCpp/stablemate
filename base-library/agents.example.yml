@@ -3,18 +3,19 @@
 # Place this file at the root of the target repository and run:
 #   farrier --repo /path/to/repo
 #
-# All sections except `agents` are optional.
+# All sections except `agents` are optional. `farrier config reference --file manifest`
+# prints every key with its type, default, meaning and example.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # repo — Repository identity
 #
-# The repo's name is the repository DIRECTORY name, kebab-cased. It is derived,
-# not configured: it is the install prefix on every skill and prompt generated
+# The repo's name is the repository DIRECTORY name, kebab-cased, unless `repo.name`
+# sets another. It is the install prefix on every skill and prompt generated
 # here (a skill `db.md` installs as `myrepo-db`) and it is also the name the
 # workflow tooling reads off the checkout, so the two must agree by construction.
 #
 # Any OTHER key placed under `repo:` is passed through to Jinja as `repo.<key>`
-# for library templates to use. `name` and `prefix` are reserved and ignored.
+# for library templates to use. `prefix` is derived and ignored.
 # ─────────────────────────────────────────────────────────────────────────────
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -249,60 +250,15 @@ template:
   # product_promise: MyRepo helps teams do X by doing Y.
 
 # ─────────────────────────────────────────────────────────────────────────────
-# workflow — Configuration for workflow runners (story-coder and similar).
+# workflow — The keys the installed workflows read. Farrier reads nothing in it.
 #
-# Only needed when a workflow pack is installed and the runner needs
-# repo-specific settings (Docker image, service URLs, success-gate commands).
+# `farrier config reference --file manifest` lists every key with its type,
+# default and meaning.
 # ─────────────────────────────────────────────────────────────────────────────
 # workflow:
-#   storyCoder:
-#     # Docker image built from stablemate workhorse/Dockerfile
-#     dockerImage: myrepo-coder:local
+#   # Env var carrying the GitHub token for the coder workflow's PR and CI steps
+#   githubTokenEnv: GH_TOKEN
 #
-#     # Path inside the container where the repo is checked out
-#     containerRepo: /workspace/myrepo
-#
-#     # Docker label used to identify nested containers (avoid accidental cleanup)
-#     nestedDockerLabel: agents.story-coder.nested=true
-#
-#     # Installed prompt names for each workflow stage (prefix + base name)
-#     prompts:
-#       plan: myrepo-plan-story
-#       reviewPlan: myrepo-review-plan
-#       implement: myrepo-implement-plan
-#       reviewImplementation: myrepo-review-implementation
-#       applyReview: myrepo-apply-review
-#       qa: myrepo-qa-story
-#       applyQaFixes: myrepo-apply-qa-fixes
-#       unblock: myrepo-unblock-story
-#
-#     # Autonomous unblock budget — how many retries before giving up
-#     unblock:
-#       enabled: true
-#       attemptsPerStage: 3           # retries per workflow stage
-#       totalAttemptsPerStory: 12     # hard cap across all stages
-#       stageTimeoutSeconds: 2700     # 45 min per stage
-#       maxConsecutiveNoDiffAttempts: 2
-#
-#     # Services to start before running QA (docker compose profiles / service names).
-#     # NOTE: the current local-worker coder workflow does NOT read qaPreflight — it is
-#     # legacy/dead config from the older containerized story-coder harness. QA stack
-#     # capability is now decided PER STORY: the author writes a `## Verification setup`
-#     # section (the stack/profile/seed + fixtures that render the surface with realistic
-#     # data), the planner copies it into plan-context.json `verification_setup`, and the coder QA
-#     # runs against that capable stack instead of a thin default. Keep this block only if
-#     # you still run the old harness; otherwise it has no effect.
-#     qaPreflight:
-#       composeProfile: dev
-#       backendServices: [emulators, api]
-#       apiService: api
-#       backendStartCommand: make dev-start
-#       cliDir: api
-#       cliCommand: ./cmd/appctl
-#
-#     # Commands that must pass for a stage to be considered complete
-#     successGate:
-#       appPath: app
-#       appCommand: make check
-#       apiPath: api
-#       apiCommand: make test
+#   # Per-role prompt bodies that replace the library's, keyed by role
+#   prompts:
+#     dev-plan: .agents/prompts/plan.md

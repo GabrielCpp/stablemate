@@ -38,8 +38,10 @@ Verify with:
 farrier config show
 ```
 
-The config lives at the platform config dir: `~/.config/farrier/config.toml`
-(Linux), `~/Library/Application Support/farrier/config.toml` (macOS).
+The config lives at the platform config dir: `~/.config/stablemate/config.toml`
+(Linux), `~/Library/Application Support/stablemate/config.toml` (macOS).
+`$STABLEMATE_CONFIG` points the tools at another file.
+`farrier config reference --file home` prints every key the file accepts.
 
 ## Repository Setup
 
@@ -69,17 +71,16 @@ commands, roots and hooks still render per harness. A cross-skill link inside a
 shared copy points at the source harness's home skills dir, because the one file
 serves every harness.
 
-The repo's name is its **directory** name, kebab-cased. It is not configurable:
-it is the install prefix on every skill generated here and also the name the
-workflow tooling reads off the checkout, so the two agree by construction. To
-change it, rename the directory.
+The repo's name is its **directory** name, kebab-cased, unless `repo.name` sets
+another. It is the install prefix on every skill generated here and also the name the
+workflow tooling reads off the checkout, so the two agree by construction. Set
+`repo.name` when a checkout lives under another directory name, such as a git worktree.
 
 Packs are for bundles reused by ≥2 repos; a repo's own overlays and one-off
-selections go directly under top-level `skills:` / `prompts:` / `workflows:`
-keys (see `agents/packs/CLAUDE.md`). The full key reference (template values,
-`repo:` `base_branch`, `services:`, `workflow:` runtime config, `exclude:`, `scaffolds:`) lives in
-the farrier repo: `docs/services/farrier/agents-yml-config.md` and
-`agents.example.yml`.
+selections go directly under top-level `skills:` / `prompts:`
+keys (see `agents/packs/CLAUDE.md`). Run `farrier config reference --file manifest` for
+every key `agents.yml` accepts, with its type, default, meaning and example. Do not copy a
+key list from another repo's `agents.yml`. The command is the source.
 
 ## Scaffolding a New Service or Repo
 

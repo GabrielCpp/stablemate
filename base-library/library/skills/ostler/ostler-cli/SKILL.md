@@ -168,7 +168,7 @@ the check.
   collide. Older `<prefix>-<n>` counter ids keep resolving — an id is an opaque string.
 - Profile is inferred from the tree: `full` when `docs/epics` exists (the epic/story/seed/knowledge
   coverage graph), `exploration` otherwise (knowledge/docs only, no coverage graph). Override via an
-  `organization:` block in `ostler.yml`/`agents.yml`.
+  `organization:` block in `agents.yml` (the legacy `ostler.yml` name still loads).
 - For a documentation shape outside epic/story/knowledge/feature/spec, declare custom Concept kinds
   in `.agents/templates.yml` (`ostler template new/edit/find/delete/apply`), then operate on
   instances with the generic `ostler new/find/set/remove <kind> <name>` verbs.
