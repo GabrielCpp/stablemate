@@ -57,7 +57,7 @@ dependencies = [
   # reaches for (`uv tool install --force 'ostler[qa]'`) fixes the PATH tool and changes
   # nothing here: a real run spent three laps installing it, proving it worked, and getting
   # the identical blocked bundle back.
-  "ostler[qa]>=4,<5",
+  "ostler[qa]>=5,<6",
   # A unified diff is a format with a grammar, and the coder's hygiene gate reads one to
   # find the lines a branch added. Hand-scanning it means every `startswith("+++ b/")`
   # test is a guess that the line is a header rather than a hunk body that looks like one.
