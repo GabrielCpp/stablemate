@@ -87,10 +87,7 @@ def ungrounded_refs(packet: dict[str, Any], inherited: set[str]) -> list[str]:
             ref = f"repo://{repository}/{path}" if repository else path
             return f"{ref}::{symbol}" if symbol else ref
 
-        required = {
-            *(qualified(base_path, symbol) for symbol in base_symbols if base_path),
-            *(qualified(head_path, symbol) for symbol in head_symbols if head_path),
-        }
+        required = {qualified(head_path, symbol) for symbol in head_symbols if head_path}
         if base_symbols | head_symbols:
             ungrounded.extend(
                 sorted(ref for ref in required if not _is_grounded(ref, exactly_grounded))

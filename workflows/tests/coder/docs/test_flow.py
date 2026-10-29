@@ -841,6 +841,48 @@ def test_checkpointed_repair_notes_are_compacted_for_the_agent_brief() -> None:
     assert "note truncated for the agent prompt" in notes, notes
 
 
+def test_a_symbol_the_story_deleted_from_a_modified_file_needs_no_citation(
+    docs: Path,
+    logger: logging.Logger,
+    write_json: Callable[[Path, Any], Path],
+) -> None:
+    """A symbol present only at base is gone at head, so citing it would dangle and nothing requires it."""
+    route = "web/app/routes/widget.tsx"
+    write_json(
+        docs / spec_dir() / CONTEXT_FILE,
+        {
+            "changedCode": [
+                {
+                    "path": route,
+                    "basePath": route,
+                    "headPath": route,
+                    "baseSymbols": ["Kept", "Gone"],
+                    "headSymbols": ["Kept"],
+                }
+            ],
+            "directNodes": [
+                {
+                    "node": "docs/services/widget.md#route",
+                    "reasons": [{"kind": "changed-code", "ref": f"{route}::Kept"}],
+                }
+            ],
+        },
+    )
+
+    gate = verify_story_documentation(
+        logger,
+        spec_dir=str(spec_dir()),
+        author_status="documented",
+        build_status="passed",
+        validation_status="passed",
+        context_mode="local",
+        author_nodes=("docs/services/widget.md#route",),
+    )
+
+    assert "Gone" not in gate.notes, gate.notes
+    assert not [failure for failure in gate.failures if failure.startswith("G:")], gate.failures
+
+
 def test_a_deletion_needs_no_code_bullet(
     docs: Path,
     logger: logging.Logger,
