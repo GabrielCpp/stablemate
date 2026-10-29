@@ -8,7 +8,13 @@ from pathlib import Path
 import pytest
 
 from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core.config import parse_home_config
+from ostler._vendor.stablemate_core.schema import HomeConfig
 from ostler.qa import tools
+
+
+def _home(tree: dict) -> HomeConfig:
+    return parse_home_config({"config_version": 2, **tree}, Path("config.toml"))
 
 
 def _write_agents_yml(root: Path, names: list[str]) -> None:
@@ -25,15 +31,20 @@ def test_opted_in_tools_empty_when_no_config_file(tmp_path: Path) -> None:
     assert tools.opted_in_tools(tmp_path) == set()
 
 
-def test_opted_in_tools_prefers_ostler_yml_over_agents_yml(tmp_path: Path) -> None:
+def test_opted_in_tools_prefers_agents_yml_over_the_legacy_ostler_yml(tmp_path: Path) -> None:
     (tmp_path / "ostler.yml").write_text("qa:\n  tools: [tesseract]\n", encoding="utf-8")
     _write_agents_yml(tmp_path, ["convert"])
+    assert tools.opted_in_tools(tmp_path) == {"convert"}
+
+
+def test_opted_in_tools_reads_a_repo_that_only_has_ostler_yml(tmp_path: Path) -> None:
+    (tmp_path / "ostler.yml").write_text("qa:\n  tools: [tesseract]\n", encoding="utf-8")
     assert tools.opted_in_tools(tmp_path) == {"tesseract"}
 
 
 def test_catalog_resolves_builtin_with_no_config(tmp_path: Path) -> None:
     _write_agents_yml(tmp_path, ["tesseract"])
-    specs, errors = tools.catalog(tmp_path, cfg={})
+    specs, errors = tools.catalog(tmp_path, home=_home({}))
     assert errors == []
     assert specs["tesseract"].command == "tesseract"
     assert specs["tesseract"].builtin is True
@@ -42,7 +53,7 @@ def test_catalog_resolves_builtin_with_no_config(tmp_path: Path) -> None:
 def test_catalog_lets_machine_config_override_a_builtins_command(tmp_path: Path) -> None:
     _write_agents_yml(tmp_path, ["convert"])
     cfg = {"qa_tools": {"convert": {"command": "magick", "description": "ImageMagick 7"}}}
-    specs, errors = tools.catalog(tmp_path, cfg=cfg)
+    specs, errors = tools.catalog(tmp_path, home=_home(cfg))
     assert errors == []
     assert specs["convert"].command == "magick"
     assert specs["convert"].builtin is True
@@ -51,7 +62,7 @@ def test_catalog_lets_machine_config_override_a_builtins_command(tmp_path: Path)
 def test_catalog_resolves_a_user_declared_tool(tmp_path: Path) -> None:
     _write_agents_yml(tmp_path, ["ocr-diff"])
     cfg = {"qa_tools": {"ocr-diff": {"command": "ocr-diff-cli", "description": "compare OCR output"}}}
-    specs, errors = tools.catalog(tmp_path, cfg=cfg)
+    specs, errors = tools.catalog(tmp_path, home=_home(cfg))
     assert errors == []
     assert specs["ocr-diff"].command == "ocr-diff-cli"
     assert specs["ocr-diff"].builtin is False
@@ -64,7 +75,7 @@ def test_catalog_errors_on_opted_in_name_with_no_definition(
     resolved = tmp_path / "elsewhere" / "config.toml"
     monkeypatch.setenv("STABLEMATE_CONFIG", str(resolved))
     _write_agents_yml(tmp_path, ["ocr-diff"])
-    specs, errors = tools.catalog(tmp_path, cfg={})
+    specs, errors = tools.catalog(tmp_path, home=_home({}))
     assert specs == {}
     assert len(errors) == 1
     assert "ocr-diff" in errors[0]
@@ -75,7 +86,7 @@ def test_catalog_errors_on_opted_in_name_with_no_definition(
 def test_catalog_errors_on_qa_tools_entry_missing_command(tmp_path: Path) -> None:
     _write_agents_yml(tmp_path, ["ocr-diff"])
     cfg = {"qa_tools": {"ocr-diff": {"description": "no command field"}}}
-    specs, errors = tools.catalog(tmp_path, cfg=cfg)
+    specs, errors = tools.catalog(tmp_path, home=_home(cfg))
     assert specs == {}
     assert len(errors) == 1
     assert "no `command`" in errors[0]
@@ -84,7 +95,7 @@ def test_catalog_errors_on_qa_tools_entry_missing_command(tmp_path: Path) -> Non
 def test_preflight_errors_reports_missing_binary(tmp_path: Path) -> None:
     _write_agents_yml(tmp_path, ["ocr-diff"])
     cfg = {"qa_tools": {"ocr-diff": {"command": "definitely-not-a-real-binary-xyz"}}}
-    errors = tools.preflight_errors(tmp_path, cfg=cfg)
+    errors = tools.preflight_errors(tmp_path, home=_home(cfg))
     assert len(errors) == 1
     assert "not on PATH" in errors[0]
 
@@ -92,17 +103,17 @@ def test_preflight_errors_reports_missing_binary(tmp_path: Path) -> None:
 def test_preflight_errors_empty_when_tool_resolves_and_is_on_path(tmp_path: Path) -> None:
     _write_agents_yml(tmp_path, ["sh-tool"])
     cfg = {"qa_tools": {"sh-tool": {"command": "sh"}}}
-    assert tools.preflight_errors(tmp_path, cfg=cfg) == []
+    assert tools.preflight_errors(tmp_path, home=_home(cfg)) == []
 
 
 def test_preflight_errors_empty_with_no_opt_in(tmp_path: Path) -> None:
-    assert tools.preflight_errors(tmp_path, cfg={}) == []
+    assert tools.preflight_errors(tmp_path, home=_home({})) == []
 
 
 def test_resolved_commands_maps_name_to_command(tmp_path: Path) -> None:
     _write_agents_yml(tmp_path, ["tesseract", "ocr-diff"])
     cfg = {"qa_tools": {"ocr-diff": {"command": "ocr-diff-cli"}}}
-    assert tools.resolved_commands(tmp_path, cfg=cfg) == {
+    assert tools.resolved_commands(tmp_path, home=_home(cfg)) == {
         "tesseract": "tesseract",
         "ocr-diff": "ocr-diff-cli",
     }
@@ -123,7 +134,7 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path
 
 def test_a_member_opt_in_reaches_a_run_rooted_at_the_docs_home(workspace: dict[str, Path]) -> None:
     _write_agents_yml(workspace["api"], ["grpcurl"])
-    assert tools.resolved_commands(workspace["docs_home"], cfg={}) == {"grpcurl": "grpcurl"}
+    assert tools.resolved_commands(workspace["docs_home"], home=_home({})) == {"grpcurl": "grpcurl"}
 
 
 def test_a_workspace_unions_the_root_and_every_member(workspace: dict[str, Path]) -> None:

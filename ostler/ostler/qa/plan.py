@@ -15,10 +15,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-import yaml
-
 from ostler import checks
 from ostler import path as path_mod
+from ostler.manifest import read_manifest
 from ostler.model import load as load_graph
 from ostler.qa.compile import book_digest
 from ostler.qa.context import book_files, story_file_record
@@ -1165,15 +1164,5 @@ def _validate_book_locators(
 
 
 def _recording_exemptions(root: Path) -> set[str]:
-    for name in ("ostler.yml", "ostler.yaml"):
-        path = root / name
-        if not path.is_file():
-            continue
-        try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError:
-            continue
-        qa = data.get("qa", {}) if isinstance(data, dict) else {}
-        values = qa.get("recordingExemptTargets", []) if isinstance(qa, dict) else []
-        return {str(value) for value in values} if isinstance(values, list) else set()
-    return set()
+    manifest = read_manifest(root)
+    return set(manifest.qa.recordingExemptTargets) if manifest is not None else set()

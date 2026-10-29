@@ -597,8 +597,8 @@ reported as warnings rather than guessed from branch names, subjects, or current
 
 `ostler` infers a profile from the tree: **`full`** when `docs/epics` exists (the epic/story/seed/
 knowledge coverage graph), **`exploration`** otherwise (knowledge/docs only, no coverage graph).
-Override any default in an optional `organization:` block in `ostler.yml` / `agents.yml` at the repo
-root.
+Override any default in an optional `organization:` block in `agents.yml` at the repo
+root (`ostler.yml` is the legacy name of the same file and still loads, with a warning).
 
 ## Templates (custom hierarchies)
 

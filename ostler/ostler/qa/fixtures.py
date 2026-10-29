@@ -10,8 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from ostler import registry
+from ostler._vendor.stablemate_core.config import ConfigError
+from ostler._vendor.stablemate_core.schema import HomeConfig
+from ostler.manifest import read_manifest
 from ostler.qa.outcome import QaOutcome
-from ostler.qa.tools import opted_in_tools, qa_block, resolved_commands
+from ostler.qa.tools import opted_in_tools, resolved_commands
 
 DEFAULT_TIMEOUT = 120.0
 
@@ -107,43 +110,31 @@ def parse_bullet(value: str) -> FixtureRef | NoArrangement | str:
 
 def declared(root: Path) -> tuple[dict[str, FixtureSpec], list[str]]:
     """Every fixture this repo declares, plus a message for each entry that is malformed."""
-    block = qa_block(root).get("fixtures")
-    if block is None:
+    try:
+        manifest = read_manifest(root)
+    except ConfigError as exc:
+        return {}, [str(exc)]
+    if manifest is None:
         return {}, []
-    if not isinstance(block, dict):
-        return {}, ["`qa: {fixtures:}` must be a mapping of name to fixture declaration"]
 
     specs: dict[str, FixtureSpec] = {}
     errors: list[str] = []
-    for name, entry in block.items():
-        if not isinstance(entry, dict):
-            errors.append(f"qa fixture {name!r} must be a mapping, not {type(entry).__name__}")
-            continue
-        tool = entry.get("tool")
-        if not isinstance(tool, str) or not tool:
+    for name, entry in manifest.qa.fixtures.items():
+        if not entry.tool:
             errors.append(f"qa fixture {name!r} has no `tool:` naming the command that runs it")
             continue
-        raw_args = entry.get("args", [])
-        if not isinstance(raw_args, list) or not all(isinstance(arg, str) for arg in raw_args):
-            errors.append(f"qa fixture {name!r}'s `args:` must be a list of strings")
-            continue
-        provides = entry.get("provides")
-        if not isinstance(provides, str) or not provides.strip():
+        if not (entry.provides or "").strip():
             errors.append(
                 f"qa fixture {name!r} has no `provides:` — say what state it guarantees, "
                 "in the same terms a scenario's `preconditions:` are written in"
             )
             continue
-        raw_timeout = entry.get("timeout", DEFAULT_TIMEOUT)
-        if not isinstance(raw_timeout, (int, float)) or isinstance(raw_timeout, bool):
-            errors.append(f"qa fixture {name!r}'s `timeout:` must be a number of seconds")
-            continue
-        specs[str(name)] = FixtureSpec(
-            name=str(name),
-            tool=tool,
-            args=tuple(str(arg) for arg in raw_args),
-            provides=provides.strip(),
-            timeout=float(raw_timeout),
+        specs[name] = FixtureSpec(
+            name=name,
+            tool=entry.tool,
+            args=tuple(entry.args),
+            provides=(entry.provides or "").strip(),
+            timeout=float(entry.timeout),
         )
     return specs, errors
 
@@ -152,7 +143,7 @@ def _title(name: str) -> str:
     return name.replace("-", " ").replace("_", " ").strip().capitalize()
 
 
-def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> QaOutcome:
+def migrate(root: Path, out_dir: str, *, home: HomeConfig | None = None) -> QaOutcome:
     """One-shot, mechanical migration of every `qa: {fixtures:}` entry into a fixture-node file."""
     specs, errors = declared(root)
     if errors:
@@ -160,7 +151,7 @@ def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> Q
     if not specs:
         return QaOutcome(ok=True, message="no qa: {fixtures:} declared — nothing to migrate")
 
-    commands = resolved_commands(root, cfg=cfg)
+    commands = resolved_commands(root, home=home)
     unresolved = sorted(name for name, spec in specs.items() if spec.tool not in commands)
     if unresolved:
         return QaOutcome(
@@ -226,10 +217,10 @@ def migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> Q
     )
 
 
-def cmd_migrate(root: Path, out_dir: str, *, cfg: dict[str, Any] | None = None) -> QaOutcome:
+def cmd_migrate(root: Path, out_dir: str, *, home: HomeConfig | None = None) -> QaOutcome:
     """CLI-shaped wrapper: `migrate`'s errors, plus an on-disk write failure as one more."""
     try:
-        return migrate(root, out_dir, cfg=cfg)
+        return migrate(root, out_dir, home=home)
     except OSError as exc:
         return QaOutcome(ok=False, message=f"could not write migrated fixture node: {exc}")
 

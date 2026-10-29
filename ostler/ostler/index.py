@@ -18,6 +18,7 @@ from typing import Any
 
 from ostler import dynamic_registry
 from ostler._vendor.stablemate_core import base_cache, config as core_config
+from ostler.manifest import MANIFEST_FILENAMES
 
 INDEX_DIR_ENV = "OSTLER_INDEX_DIR"
 
@@ -33,7 +34,7 @@ PRUNE_INTERVAL_S = 60 * 60.0
 
 PRUNE_STAMP_NAME = ".last-prune"
 
-CONFIG_FILENAMES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
+CONFIG_FILENAMES = MANIFEST_FILENAMES
 
 IDS_RELPATH = (".agents", "ids.json")
 
@@ -212,8 +213,8 @@ def index_dir(explicit: Path | str | None = None) -> Path:
     if from_env:
         return Path(from_env).expanduser()
 
-    configured = core_config.get_config_value(CONFIG_KEY)
-    if isinstance(configured, str) and configured.strip():
+    configured = core_config.load_home_config().ostler_index_dir
+    if configured and configured.strip():
         return Path(configured).expanduser()
 
     return base_cache.cache_root() / INDEX_DIR_NAME

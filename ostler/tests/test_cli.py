@@ -158,3 +158,21 @@ def test_update_story_metadata_parse():
     assert args.story == "t-01raw" and args.title == "Raw editor"
     assert args.covers == "raw-xml,validation"
     assert args.depends == "document-tree"
+
+
+def test_a_bad_config_prints_its_message_and_exits_2(tmp_path, monkeypatch, capsys) -> None:
+    from ostler import cli
+    from ostler._vendor.stablemate_core.config import ConfigError
+
+    def broken(_cwd=None):
+        raise ConfigError("config.toml is not a valid stablemate config")
+
+    monkeypatch.setattr(cli, "load", broken)
+    (tmp_path / "docs").mkdir()
+
+    code = cli.main(["--chdir", str(tmp_path), "--no-index", "doctor"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "is not a valid stablemate config" in captured.err
+    assert "Traceback" not in captured.err

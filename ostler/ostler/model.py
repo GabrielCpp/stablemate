@@ -9,10 +9,10 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-import yaml
-
 from ostler import dynamic_registry, index, layout, markdown, registry
 from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core.schema import OrganizationTable
+from ostler.manifest import read_manifest
 from ostler.pages import files_in_book
 
 INACTIVE_SEED_STATUS = registry.INACTIVE_SEED_STATUS
@@ -650,18 +650,11 @@ def find_root(start: Path) -> Path:
     return start
 
 
-def load_config(root: Path) -> dict:
-    for name in ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml"):
-        p = root / name
-        if not p.exists():
-            continue
-        try:
-            data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError:
-            continue
-        if isinstance(data, dict) and isinstance(data.get("organization"), dict):
-            return data["organization"]
-    return {}
+def load_config(root: Path) -> OrganizationTable:
+    manifest = read_manifest(root)
+    if manifest is None or manifest.organization is None:
+        return OrganizationTable()
+    return manifest.organization
 
 
 BUILTIN_DOC_ROOTS: dict[str, str] = {
@@ -699,9 +692,9 @@ def load(
         configured_path = Path(configured)
         roots[kind] = configured_path if configured_path.is_absolute() else root / configured_path
 
-    org_name = config.get("name") or root.name
-    if config.get("profile") in ("full", "exploration"):
-        profile = config["profile"]
+    org_name = config.name or root.name
+    if config.profile in ("full", "exploration"):
+        profile = config.profile
     else:
         profile = (
             "full"

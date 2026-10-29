@@ -19,7 +19,7 @@ VENDOR_SCRIPT = REPO_ROOT / "scripts" / "vendor_core.py"
 CORE = REPO_ROOT / "core" / "stablemate_core"
 OSTLER_VENDOR = REPO_ROOT / "ostler" / "ostler" / "_vendor" / "stablemate_core"
 
-VENDORING_TOOLS = ("farrier", "workhorse", "ostler", "paddock")
+VENDORING_TOOLS = ("farrier", "workhorse", "ostler", "paddock", "saddlebag")
 
 
 def _vendor_script() -> ModuleType:
@@ -119,10 +119,10 @@ def test_the_cache_directory_resolver_is_reachable_from_ostler_code(monkeypatch,
     assert default.name == "stablemate", f"not the shared stablemate cache: {default}"
 
 
-@pytest.mark.parametrize("requirement", ["platformdirs", "tomli-w"])
+@pytest.mark.parametrize("requirement", ["platformdirs", "tomlkit"])
 def test_pyproject_declares_the_vendored_packages_requirements(requirement: str):
-    """`platformdirs>=4` and `tomli-w>=1.0`, floors included."""
-    floors = {"platformdirs": 4, "tomli-w": 1}
+    """`platformdirs>=4` and `tomlkit>=0.13`, floors included."""
+    floors = {"platformdirs": 4, "tomlkit": 0}
     pyproject = tomllib.loads((REPO_ROOT / "ostler" / "pyproject.toml").read_text("utf-8"))
     declared = {
         d.split(">=")[0].strip(): d for d in pyproject["project"]["dependencies"]
@@ -144,7 +144,7 @@ def test_the_requirements_are_annotated_as_the_vendored_packages_own():
     comments = " ".join(line.strip() for line in block.splitlines() if line.strip().startswith("#"))
 
     assert "ostler._vendor.stablemate_core" in comments, (
-        "the platformdirs/tomli-w floors must be annotated as the vendored package's "
+        "the platformdirs/tomlkit floors must be annotated as the vendored package's "
         f"requirements, not ostler's own: {comments!r}"
     )
 

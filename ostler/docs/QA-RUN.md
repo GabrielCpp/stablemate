@@ -427,7 +427,7 @@ Every external command a scenario reaches for through `qa.tool` — including th
 wrappers above — has to be opted into by this repo, and defined for this machine. Two
 tiers, because they change for different reasons and at different times:
 
-- **Opt-in** — `agents.yml` (or `.agents.yml`, `ostler.yml`, `ostler.yaml`)'s
+- **Opt-in** — `agents.yml` (or the legacy `.agents.yml`, `ostler.yml`, `ostler.yaml`)'s
   `qa: {tools: [tesseract, convert, ocr-diff]}` — is committed: which tools *this* QA
   plan is allowed to reach for.
 - **Definition** — `~/.config/stablemate/config.toml`'s `[qa_tools.<name>]` table
@@ -643,8 +643,8 @@ under the target's interpreter and reads the declarations back, so it catches:
   plan *could* cover either way.
 - a browser scenario addressing the page by text or CSS where the book documents a role,
   or navigating to a route the book does not document.
-- a `recording` a target tried to waive itself; only `ostler.yml`'s
-  `qa.recordingExemptTargets` may do that.
+- a `recording` a target tried to waive itself; only `qa.recordingExemptTargets` in
+  `agents.yml` may do that.
 - an input file under the disposable `qa/` directory, which is deleted before the run
   starts, and any path escaping the spec directory.
 - a background daemon with an empty `argv`, a `cwd` outside the repo, a readiness probe

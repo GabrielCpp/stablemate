@@ -59,7 +59,8 @@ def test_a_malformed_entry_is_an_error_and_never_a_silent_skip(tmp_path: Path) -
     _agents_yml(tmp_path, "qa:\n  tools: [node]\n  fixtures:\n    seeded: 'node auth/seed.mjs'\n")
     specs, errors = fixtures.declared(tmp_path)
     assert specs == {}
-    assert errors == ["qa fixture 'seeded' must be a mapping, not str"]
+    assert len(errors) == 1
+    assert "qa.fixtures.seeded" in errors[0]
 
 
 def test_a_plan_reference_is_read_off_the_ast(tmp_path: Path) -> None:

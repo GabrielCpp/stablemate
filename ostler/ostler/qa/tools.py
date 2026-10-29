@@ -5,11 +5,10 @@ from __future__ import annotations
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-import yaml
-
-from ostler._vendor.stablemate_core.config import config_path, load_config
+from ostler._vendor.stablemate_core.config import config_path, load_home_config
+from ostler._vendor.stablemate_core.schema import HomeConfig, QaTool
+from ostler.manifest import MANIFEST_FILENAMES, read_manifest
 from ostler.provenance import effective_checkouts
 from ostler.qa.outcome import QaOutcome
 
@@ -19,37 +18,18 @@ BUILTIN_TOOLS: dict[str, str] = {
     "grpcurl": "grpcurl",
 }
 
-_QA_CONFIG_FILES = ("ostler.yml", "ostler.yaml", "agents.yml", ".agents.yml")
-
-
-def qa_block(root: Path) -> dict[str, Any]:
-    """The first `qa:` mapping found across the repo's config files, in a fixed order."""
-    for name in _QA_CONFIG_FILES:
-        path = root / name
-        if not path.is_file():
-            continue
-        try:
-            data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError:
-            continue
-        qa = data.get("qa") if isinstance(data, dict) else None
-        if isinstance(qa, dict):
-            return qa
-    return {}
-
-
 def config_files(root: Path) -> tuple[Path, ...]:
     """Every file whose contents decide which QA tools a run on *root* can invoke, present or not."""
-    return (*(root / name for name in _QA_CONFIG_FILES), config_path())
+    return (*(root / name for name in MANIFEST_FILENAMES), config_path())
 
 
 def opted_in_tools(root: Path) -> set[str]:
     """The tool names *root*'s `qa:` block lists under `tools:`, plus each active workspace member's."""
     names: set[str] = set()
     for repo in (root, *effective_checkouts(None).values()):
-        values = qa_block(repo).get("tools", [])
-        if isinstance(values, list):
-            names.update(str(value) for value in values)
+        manifest = read_manifest(repo)
+        if manifest is not None:
+            names.update(manifest.qa.tools)
     return names
 
 
@@ -65,24 +45,20 @@ class ToolSpec:
         return shutil.which(self.command) is not None
 
 
-def _configured_tools(cfg: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
-    data = cfg if cfg is not None else load_config()
-    table = data.get("qa_tools")
-    if not isinstance(table, dict):
-        return {}
-    return {name: value for name, value in table.items() if isinstance(value, dict)}
+def _configured_tools(home: HomeConfig | None) -> dict[str, QaTool]:
+    return dict((home if home is not None else load_home_config()).qa_tools)
 
 
-def catalog(root: Path, *, cfg: dict[str, Any] | None = None) -> tuple[dict[str, ToolSpec], list[str]]:
+def catalog(root: Path, *, home: HomeConfig | None = None) -> tuple[dict[str, ToolSpec], list[str]]:
     """Every opted-in tool, resolved to a `ToolSpec`, plus errors for names that resolve to nothing."""
-    configured = _configured_tools(cfg)
+    configured = _configured_tools(home)
     specs: dict[str, ToolSpec] = {}
     errors: list[str] = []
     for name in sorted(opted_in_tools(root)):
         entry = configured.get(name)
         if entry is not None:
-            command = entry.get("command")
-            if not isinstance(command, str) or not command:
+            command = entry.command
+            if not command:
                 errors.append(
                     f"qa tool {name!r} is opted into via agents.yml but its "
                     f"[qa_tools.{name}] table in {config_path()} has no `command`"
@@ -91,7 +67,7 @@ def catalog(root: Path, *, cfg: dict[str, Any] | None = None) -> tuple[dict[str,
             specs[name] = ToolSpec(
                 name=name,
                 command=command,
-                description=str(entry.get("description", "")),
+                description=entry.description,
                 builtin=name in BUILTIN_TOOLS,
             )
         elif name in BUILTIN_TOOLS:
@@ -106,11 +82,11 @@ def catalog(root: Path, *, cfg: dict[str, Any] | None = None) -> tuple[dict[str,
     return specs, errors
 
 
-def cmd_catalog(root: Path, *, cfg: dict[str, Any] | None = None) -> QaOutcome:
+def cmd_catalog(root: Path, *, home: HomeConfig | None = None) -> QaOutcome:
     """The catalog as the rows the CLI prints and the coder workflow reads."""
     try:
-        specs, errors = catalog(root, cfg=cfg)
-    except (OSError, ValueError, yaml.YAMLError) as exc:
+        specs, errors = catalog(root, home=home)
+    except (OSError, ValueError) as exc:
         specs, errors = {}, [str(exc)]
     rows = [
         {
@@ -130,9 +106,9 @@ def cmd_catalog(root: Path, *, cfg: dict[str, Any] | None = None) -> QaOutcome:
     return QaOutcome(ok=ok, message=message, data={"tools": rows, "errors": errors})
 
 
-def preflight_errors(root: Path, *, cfg: dict[str, Any] | None = None) -> list[str]:
+def preflight_errors(root: Path, *, home: HomeConfig | None = None) -> list[str]:
     """Every reason this repo's opted-in QA tools cannot run right now."""
-    specs, errors = catalog(root, cfg=cfg)
+    specs, errors = catalog(root, home=home)
     missing = [
         f"qa tool {spec.name!r} names command {spec.command!r}, which is not on PATH"
         for spec in specs.values()
@@ -141,7 +117,7 @@ def preflight_errors(root: Path, *, cfg: dict[str, Any] | None = None) -> list[s
     return [*errors, *missing]
 
 
-def resolved_commands(root: Path, *, cfg: dict[str, Any] | None = None) -> dict[str, str]:
+def resolved_commands(root: Path, *, home: HomeConfig | None = None) -> dict[str, str]:
     """`{name: command}` for every opted-in tool that resolved to a definition."""
-    specs, _errors = catalog(root, cfg=cfg)
+    specs, _errors = catalog(root, home=home)
     return {spec.name: spec.command for spec in specs.values()}

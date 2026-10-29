@@ -29,6 +29,7 @@ from ostler import stamp as stamp_mod
 from ostler import behavior_cli
 from ostler.environments import cli as env_cli
 from ostler import book_reach
+from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.model import find_root, load
 
 _TYPES = (
@@ -2018,6 +2019,14 @@ def _cmd_checks(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _main(argv: list[str] | None) -> int:
     args = _build_parser().parse_args(argv)
     cwd = Path(args.chdir) if args.chdir else None
     if args.command == "checks":

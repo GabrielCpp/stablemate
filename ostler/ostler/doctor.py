@@ -203,7 +203,7 @@ def _check_legacy_books_root(graph: Graph, findings: list[Finding]) -> None:
 
 def _check_removed_doc_roots(graph: Graph, findings: list[Finding]) -> None:
     """The `docRoots` key is gone, so a config that still carries it is flagged and not read."""
-    if "docRoots" in load_config(graph.root):
+    if "docRoots" in (load_config(graph.root).model_extra or {}):
         findings.append(Finding(
             "error", "removed-doc-roots",
             "`docRoots` was removed from the organization config and is no longer read: "
