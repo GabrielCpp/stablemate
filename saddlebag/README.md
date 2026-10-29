@@ -294,8 +294,10 @@ is the migration: the literals go onto the page and the secret lines go through
 
 A command picks its route in this order: `SADDLEBAG_BACKEND`, then the `backend` key
 of the `[saddlebag]` table in the shared stablemate `config.toml`, then a daemon that
-answers on the socket, else the OS keyring in this process. A set `SADDLEBAG_SOCKET`
-always means the daemon, and nothing listening there is an error, never a silent
+answers on the socket, else the OS keyring in this process. The file is read through
+stablemate's typed config loader, so a `backend` other than `keyring` or `daemon`, or a
+`config.toml` that is not valid TOML, stops the command with an error that names the key
+and the file. A set `SADDLEBAG_SOCKET` always means the daemon, and nothing listening there is an error, never a silent
 fall-back to the keyring.
 
 Without a daemon, values live in the OS keyring, one item per secret and field under

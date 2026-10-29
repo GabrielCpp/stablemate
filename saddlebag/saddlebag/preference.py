@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import os
-import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 import platformdirs
+from pydantic import ValidationError
 
+from saddlebag._vendor.stablemate_core.config import ConfigError, load_home_config
 from saddlebag.store import RouteError
 
 ENV = "SADDLEBAG_BACKEND"
@@ -35,6 +36,16 @@ class Preference:
     source: str
 
 
+def _bad_backend(exc: ConfigError) -> object | None:
+    cause = exc.__cause__
+    if not isinstance(cause, ValidationError):
+        return None
+    for error in cause.errors():
+        if error["loc"] == (TABLE, KEY):
+            return error["input"]
+    return None
+
+
 def read(environ: Mapping[str, str] = os.environ) -> Preference | None:
     """The operator's preference, or None when neither the environment nor the config file states one."""
     value = environ.get(ENV)
@@ -44,16 +55,11 @@ def read(environ: Mapping[str, str] = os.environ) -> Preference | None:
         return Preference(value, ENV)
     path = config_path(environ)
     try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    try:
-        table = tomllib.loads(text).get(TABLE)
-    except tomllib.TOMLDecodeError as exc:
+        home = load_home_config(path)
+    except ConfigError as exc:
+        bad = _bad_backend(exc)
+        if bad is not None:
+            raise RouteError(f"unknown backend {bad!r} in [{TABLE}] of {path}: expected keyring or daemon") from exc
         raise RouteError(f"cannot read {path}: {exc}") from exc
-    chosen = table.get(KEY) if isinstance(table, dict) else None
-    if not isinstance(chosen, str):
-        return None
-    if chosen not in CHOICES:
-        raise RouteError(f"unknown backend {chosen!r} in [{TABLE}] of {path}: expected keyring or daemon")
-    return Preference(chosen, str(path))
+    chosen = home.saddlebag.backend if home.saddlebag is not None else None
+    return None if chosen is None else Preference(chosen, str(path))

@@ -17,6 +17,7 @@ DESTINATIONS = (
     REPO / "workhorse" / "workhorse" / "_vendor" / "stablemate_core",
     REPO / "ostler" / "ostler" / "_vendor" / "stablemate_core",
     REPO / "paddock" / "paddock" / "_vendor" / "stablemate_core",
+    REPO / "saddlebag" / "saddlebag" / "_vendor" / "stablemate_core",
 )
 
 VENDOR_INIT = '''"""Third-party and shared code copied in, not depended on.
