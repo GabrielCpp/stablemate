@@ -9,6 +9,7 @@ from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, W
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.backlog import (
+    already_fixed,
     close_fix_item,
     seed_fix_story,
     select_fix_item,
@@ -188,6 +189,12 @@ class Fix(Workflow):
         record_id = self.output(select_fix_item).record_id
         landed = self._landed()
         if not landed:
+            evidence = self.call(already_fixed, record_id)
+            if evidence.found:
+                closed = self.call(
+                    close_fix_item, record_id, {evidence.repo: evidence.sha}, prefix="already fixed in"
+                )
+                return Continue(closed, self.start)
             reason = f"no commit landed for {record_id}, so its record stays open"
             self.logger.warning(reason)
             return Done(FixPick(reason=reason))

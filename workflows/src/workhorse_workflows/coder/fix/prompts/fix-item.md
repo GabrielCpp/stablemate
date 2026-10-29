@@ -25,6 +25,10 @@ stored records are read there, after that code applied.
 
 Fix **only** the item above, against the story at that path. Do not search the backlog or git
 history for something else to repair, and do not substitute a different item.
+
+The item was written by the QA of another story. A sentence in it about what that story
+owned, or left out of its slice, binds that story and not this one. This story owns every
+file the repair needs.
 {% if report %}
 
 ## The checks failed

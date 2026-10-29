@@ -14,7 +14,7 @@ from ostler import Ostler, ids, markdown
 from ostler.register import Record
 from ostler.path import book_prefix_in
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import find_docs_root, open_repo
 from workhorse_workflows.kit.workspace import resolve_workspace
 from workhorse_workflows.coder.shared import causes, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -23,6 +23,7 @@ from workhorse_workflows.coder.shared.judge import Judge
 from workhorse_workflows.coder.shared.schemas.backlog import (
     FiledBacklog,
     FixClosed,
+    FixEvidence,
     FixPick,
     FixStorySeed,
 )
@@ -602,19 +603,69 @@ def _author_story_body(
         )
 
 
+_CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+_ULID_TIME_LEN = 10
+
+
+def _filed_epoch(record_id: str) -> int | None:
+    """The filing time in whole seconds, read from the id's ULID, or None when it carries none."""
+    ulid = ids.ulid_of(record_id).upper()
+    if not ulid:
+        return None
+    millis = 0
+    for char in ulid[:_ULID_TIME_LEN]:
+        millis = millis * 32 + _CROCKFORD.index(char)
+    return millis // 1000
+
+
+@blueprint.node
+def already_fixed(
+    logger: logging.Logger, record_id: str = "", repo_dir: str = "", workspace: str = ""
+) -> FixEvidence:
+    """Find a commit made since the record was filed that touches the symbols it names."""
+    record_id = record_id.strip()
+    records = Ostler(find_docs_root(repo_dir)).records().records
+    record = next((r for r in records if r.id == record_id), None)
+    if record is None:
+        return _unproven(logger, record_id, "no such record")
+    filed = _filed_epoch(record.id)
+    if filed is None:
+        return _unproven(logger, record_id, "its id carries no filing time")
+    if not record.symbols:
+        return _unproven(logger, record_id, "it names no symbols")
+    entry = resolve_workspace(workspace, repo_dir).get(record.repo)
+    if entry is None:
+        return _unproven(logger, record_id, f"{record.repo} is not in the workspace")
+    sha = open_repo(entry["path"]).git.log(
+        "-1", "--format=%H", f"--since=@{filed}", "HEAD", "--", *record.symbols
+    ).strip()
+    if not sha:
+        return _unproven(logger, record_id, f"no commit since it was filed touches {', '.join(record.symbols)}")
+    reason = f"{record.repo}@{sha[:7]} touched {', '.join(record.symbols)} after '{record_id}' was filed"
+    logger.info(reason)
+    return FixEvidence(found=True, repo=record.repo, sha=sha, reason=reason)
+
+
+def _unproven(logger: logging.Logger, record_id: str, why: str) -> FixEvidence:
+    reason = f"nothing shows '{record_id}' already fixed: {why}"
+    logger.info(reason)
+    return FixEvidence(reason=reason)
+
+
 @blueprint.node
 def close_fix_item(
     logger: logging.Logger,
     record_id: str = "",
     landed: dict[str, str] | None = None,
     repo_dir: str = "",
+    prefix: str = "fixed in",
 ) -> FixClosed:
     """Close a drained record as done, naming the commit that fixed it in each repository."""
     record_id = record_id.strip()
     if not record_id or not landed:
         logger.info("no record or no landed commit — nothing to close")
         return FixClosed(record_id=record_id, reason="no record or no landed commit — nothing to close")
-    reason = "fixed in " + ", ".join(f"{repo}@{sha[:7]}" for repo, sha in landed.items())
+    reason = f"{prefix} " + ", ".join(f"{repo}@{sha[:7]}" for repo, sha in landed.items())
     result = Ostler(find_docs_root(repo_dir)).close_record(record_id, "done", reason)
     if result.ok:
         logger.info("closed '%s' as done: %s", record_id, reason)
@@ -625,6 +676,7 @@ def close_fix_item(
 
 __all__ = [
     "BacklogBullet",
+    "already_fixed",
     "close_fix_item",
     "file_backlog_items",
     "file_deferred_obligations",

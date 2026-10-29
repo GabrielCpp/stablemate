@@ -173,6 +173,33 @@ def test_a_run_where_no_repository_landed_a_commit_leaves_the_record_open_and_en
     assert record_of(docs).status == "open", record_of(docs)
 
 
+def test_a_run_with_no_new_commit_closes_a_record_an_earlier_commit_already_fixed(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    Ostler(docs).close_record(RECORD, "dropped", "superseded")
+    filed = Ostler(docs).file_record(
+        repo="api", area="widget", pattern="paginate", summary=TEXT, filed_by="qa",
+        record_id="ACME-01J00000000000000000000001", symbols=["README.md"],
+    )
+    assert filed.record is not None, filed.message
+    monkeypatch.setattr(Fix, "_landed", lambda self: {})
+    sha = subprocess.run(
+        ["git", "rev-parse", "--short=7", "HEAD"], cwd=workspace["api"], check=True, capture_output=True, text=True
+    ).stdout.strip()
+    agent = ScriptedAgent(workspace)
+
+    result = drive_flow(Fix(), env(), agent)
+
+    closed = record_of(docs, "ACME-01J00000000000000000000001")
+    assert (closed.status, closed.reason) == ("done", f"already fixed in api@{sha}")
+    assert result.has_fix is False, result
+    assert "no open qa record" in result.reason, result
+
+
 def test_an_untouched_repo_is_neither_gated_nor_committed(
     docs: Path,
     workspace: dict[str, Path],

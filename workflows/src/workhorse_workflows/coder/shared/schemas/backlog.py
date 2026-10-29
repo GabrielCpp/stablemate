@@ -45,4 +45,13 @@ class FixClosed(CoderResult):
     reason: str = ""
 
 
-__all__ = ["BacklogDrain", "FiledBacklog", "FixClosed", "FixPick", "FixStorySeed"]
+class FixEvidence(CoderResult):
+    """`already_fixed` — a commit since the record was filed that touches its symbols, if there is one."""
+
+    found: bool = False
+    repo: str = ""
+    sha: str = ""
+    reason: str = ""
+
+
+__all__ = ["BacklogDrain", "FiledBacklog", "FixClosed", "FixEvidence", "FixPick", "FixStorySeed"]

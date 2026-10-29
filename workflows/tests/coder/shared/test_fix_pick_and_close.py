@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -11,7 +13,7 @@ from ostler import Ostler
 from ostler.register import FiledBy, Record, Status
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow.blueprint import node_spec
-from workhorse_workflows.coder.shared.backlog import close_fix_item, select_fix_item
+from workhorse_workflows.coder.shared.backlog import already_fixed, close_fix_item, select_fix_item
 
 OLD = "ACME-01J00000000000000000000001"
 NEWER = "ACME-01J00000000000000000000002"
@@ -168,3 +170,71 @@ def test_closing_an_unknown_record_is_reported_not_raised(
 
     assert closed.closed is False
     assert "no-such-record" in closed.reason
+
+
+def _ulid_at(seconds: int) -> str:
+    millis = seconds * 1000
+    digits = []
+    for _ in range(10):
+        millis, rem = divmod(millis, 32)
+        digits.append("0123456789ABCDEFGHJKMNPQRSTVWXYZ"[rem])
+    return "".join(reversed(digits)) + "0" * 16
+
+
+def _touch(repo: Path, name: str, when: int) -> str:
+    (repo / name).write_text(f"{when}\n", encoding="utf-8")
+    env = {"GIT_AUTHOR_DATE": f"@{when} +0000", "GIT_COMMITTER_DATE": f"@{when} +0000"}
+    subprocess.run(["git", "-C", str(repo), "add", name], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-qm", f"touch {name}"], check=True, env={**os.environ, **env})
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def _file_with(repo: Path, record_id: str, symbols: list[str]) -> None:
+    filing = Ostler(repo).file_record(
+        repo="acme", area="cart", pattern="guard-the-total", summary="s", filed_by="qa",
+        record_id=record_id, symbols=symbols,
+    )
+    assert filing.record is not None, filing.message
+
+
+def test_a_commit_after_the_filing_that_touches_a_symbol_is_the_evidence(
+    repo: Path, artifacts: Path, logger: logging.Logger
+) -> None:
+    filed = int(time.time()) - 10_000
+    record_id = f"ACME-{_ulid_at(filed)}"
+    _file_with(repo, record_id, ["cart.go"])
+    sha = _touch(repo, "cart.go", filed + 100)
+
+    evidence = already_fixed(logger, record_id, repo_dir=str(repo))
+
+    assert (evidence.found, evidence.repo, evidence.sha) == (True, "acme", sha), evidence
+
+
+def test_a_commit_that_predates_the_filing_is_no_evidence(
+    repo: Path, artifacts: Path, logger: logging.Logger
+) -> None:
+    filed = int(time.time()) - 10_000
+    record_id = f"ACME-{_ulid_at(filed)}"
+    _file_with(repo, record_id, ["cart.go"])
+    _touch(repo, "cart.go", filed - 100)
+
+    assert already_fixed(logger, record_id, repo_dir=str(repo)).found is False
+
+
+def test_a_record_naming_no_symbols_has_no_evidence(repo: Path, artifacts: Path, logger: logging.Logger) -> None:
+    filed = int(time.time()) - 10_000
+    record_id = f"ACME-{_ulid_at(filed)}"
+    _file_with(repo, record_id, [])
+    _touch(repo, "cart.go", filed + 100)
+
+    assert already_fixed(logger, record_id, repo_dir=str(repo)).found is False
+
+
+def test_a_close_prefix_leads_the_reason(repo: Path, artifacts: Path, logger: logging.Logger) -> None:
+    _file(repo, OLD)
+
+    close_fix_item(logger, OLD, {"api": "0123456789abcdef"}, repo_dir=str(repo), prefix="already fixed in")
+
+    assert _record(repo, OLD).reason == "already fixed in api@0123456"
