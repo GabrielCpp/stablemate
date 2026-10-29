@@ -95,15 +95,17 @@ through it. Evidence is kept from whatever the run wrote. The Session closes at 
 1. Scan reads through the resident Session. Done when the parity test passes on 10 kappa
    screens, a check's read drops by at least 6 s, and every 5b row holds. The session still
    restarts after each flow, so the read stays at 5 to 10 s until slice 2.
-2. Flows run through the Session's `run_flow_files`, behind the Flow runner role, one-shot as
-   fallback. Done when a check's start cost drops below 2 s, a failed check still leaves its
-   evidence, and every 5b row holds.
+2. Dropped 2026-10-29 on A2. In a warm `maestro mcp` session only the first `run_flow_files`
+   call ran its flow. Every later call failed with "Unable to launch app" after about 6.3 s,
+   in 4 sessions out of 4. The call writes no command log, junit file or screenshot, and its
+   failure payload names no step. Flows stay on the one-shot runner.
 
 ## 7. Assumptions
 
 1. The CSV tree carries every element and attribute the parsers read. Decided: slice 1 gates on
    a parity test. Basis: none measured. If wrong: slice 1 converts or keeps the one-shot.
 2. `run_flow_files` honours the same flow YAML and can write evidence. Decided: slice 2 behind a
-   role with fallback. Basis: the tool's schema only. If wrong: slice 2 is dropped.
+   role with fallback. Basis: measured 2026-10-29, and it is false. The schema has no output argument, no
+   evidence file appears, and repeat launches fail. Slice 2 is dropped.
 3. The device is free for the measurements only between run_book turns, or under
    `exercise.lock`. Decided: measure while holding the lock. Basis: the exercise command.
