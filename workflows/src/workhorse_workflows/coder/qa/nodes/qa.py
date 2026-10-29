@@ -66,6 +66,8 @@ def lint_qa_plan(
         outcome, "QA plan lint passed." if status == "passed" else "QA plan lint failed."
     )
     logger.info("qa lint for %s returned status=%s", spec_dir, status)
+    if status != "passed":
+        logger.warning("qa lint findings for %s:\n%s", spec_dir, notes)
     return QaPlanValidation(status=status, notes=notes, ostler=outcome.data)
 
 
@@ -95,6 +97,8 @@ def validate_qa_plan(
         outcome, "QA plan is valid." if status == "passed" else "QA plan is invalid."
     )
     logger.info("qa validate for %s returned status=%s", spec_dir, status)
+    if status != "passed":
+        logger.warning("qa validate findings for %s:\n%s", spec_dir, notes)
     return QaPlanValidation(status=status, notes=notes, ostler=outcome.data)
 
 
