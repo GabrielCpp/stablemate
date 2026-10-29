@@ -146,7 +146,8 @@ def cmd_up(
         if taken:
             return _fail(taken, copy=copy.name)
     reclaimed = reclaim(keep=copy, runner=runner) if copy.name != SHARED else []
-    holder = holder if holder is not None else runtime.holder_from_env()
+    if holder is None and os.environ.get(addresses.LEASE_ENV, "") == copy.name:
+        holder = runtime.holder_from_env()
     compose = Compose(copy, runner)
     if fresh and (copy.directory / render_mod.COMPOSE_FILE).is_file():
         compose.down(keep_data=False)

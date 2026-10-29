@@ -53,6 +53,9 @@ named copy, rendered from the services a target needs, brought up, and torn down
   `down` or a later `up` treats a copy as free once that process is gone, so a crashed holder
   cannot keep a lease forever, but a live process with the same reused pid is not mistaken for
   the original holder.
+- rule: only the copy a lease names records the lease's holder. A command run under a lease
+  that brings up another named copy, such as `--copy prod`, leaves that copy without a holder, so
+  the next lease does not reclaim it and drop its data when the run that started it restarts.
 - teardown: `ostler env down` always removes the copy's rendered secrets; it also drops the
   copy's data volumes unless `--keep-data` is given, and only ever deletes a directory that sits
   under the shared copies-home, never an arbitrary path.

@@ -507,10 +507,25 @@ def test_a_command_run_under_a_lease_names_its_holder(
     root = _repo(tmp_path)
     env = leases.run_env(root, "story-1", holder=os.getpid())
     assert env is not None and env[runtime.HOLDER_ENV] == str(os.getpid())
+    monkeypatch.setenv(addresses.LEASE_ENV, env[addresses.LEASE_ENV])
     monkeypatch.setenv(runtime.HOLDER_ENV, env[runtime.HOLDER_ENV])
     up = commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker())
     assert runtime.read_manifest(Path(up.data["directory"]))["holder"] == \
         runtime.holder_stamp(os.getpid())
+
+
+def test_a_named_copy_brought_up_under_a_lease_is_not_held_by_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _repo(tmp_path)
+    docker = FakeDocker()
+    monkeypatch.setenv(addresses.LEASE_ENV, "story-1")
+    monkeypatch.setenv(runtime.HOLDER_ENV, str(_gone_pid()))
+    prod = commands.cmd_up(root, ["web"], copy_name="prod", runner=docker)
+    assert runtime.read_manifest(Path(prod.data["directory"]))["holder"] == {}
+    lease = commands.cmd_up(root, ["web"], copy_name="story-1", runner=docker)
+    assert lease.data["reclaimed"] == []
+    assert [copy.name for copy in runtime.copies(root)] == ["prod", "story-1"]
 
 
 def test_a_command_run_without_a_lease_names_the_shared_copy(tmp_path: Path) -> None:
