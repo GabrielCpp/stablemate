@@ -28,4 +28,10 @@ class SpecsStamped(CoderResult):
     stamped: int = 0
 
 
-__all__ = ["SpecsStamped", "StoryPaths", "WorkspaceDirs"]
+class FixturesSynced(CoderResult):
+    """Whether the story's `## Fixtures` was rewritten to the fixtures its `qa_plan.py` uses."""
+
+    changed: bool = False
+
+
+__all__ = ["FixturesSynced", "SpecsStamped", "StoryPaths", "WorkspaceDirs"]

@@ -75,7 +75,11 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaResult,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.coder.shared.story import prepare_story, stamp_specs
+from workhorse_workflows.coder.shared.story import (
+    prepare_story,
+    stamp_specs,
+    sync_story_fixtures,
+)
 from workhorse_workflows.coder.shared.worktree import code_changed, snapshot_code_state
 from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
@@ -256,6 +260,7 @@ class Qa(Workflow):
                 },
             )
         self.call(stamp_specs, self.ctx.story_id)
+        self.call(sync_story_fixtures, self.ctx.story_id)
         if result.status == "blocked":
             return self._block(result, result.notes, "the QA turn", blocks)
         return Continue(

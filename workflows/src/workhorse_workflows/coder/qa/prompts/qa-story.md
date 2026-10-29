@@ -162,7 +162,7 @@ operator picked for them.
 | Seat | Model | Sees | May touch |
 | --- | --- | --- | --- |
 | Lookup: find a locator, summarise a ledger or a log | the cheapest and fastest | the question | nothing |
-| Planner | a strong one | the story, the context packet, the plan contract{% if has_skill("ostler-cli") %}, `{{ skill_path("ostler-cli", "references/qa-harness-reference.md") }}`{% endif %} | `qa_plan.py`, `qa-plan.md`, the story's `## Fixtures` |
+| Planner | a strong one | the story, the context packet, the plan contract{% if has_skill("ostler-cli") %}, `{{ skill_path("ostler-cli", "references/qa-harness-reference.md") }}`{% endif %} | `qa_plan.py`, `qa-plan.md` |
 | Stack and setup repairer | a strong one | the failure, the setup brief | the runbook node, local config, tooling, seeds |
 | Scenario fixer: one failing scenario | a strong one | its failure, its ledger, the plan contract{% if has_skill("ostler-cli") %}, `{{ skill_path("ostler-cli", "references/qa-harness-reference.md") }}`{% endif %} | that scenario in `qa_plan.py` |
 | Regression fixer: one failing suite | a strong one | the failing spec and its output | that spec |

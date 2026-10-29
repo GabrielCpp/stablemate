@@ -1,4 +1,4 @@
-"""The story spine: resolve a story handle to its id and paths, resolve the workspace, stamp the specs."""
+"""The story spine: resolve a story handle to its id and paths, resolve the workspace, stamp the specs, state the fixtures."""
 from __future__ import annotations
 
 import logging
@@ -7,10 +7,15 @@ from pathlib import Path
 from ostler import Ostler, markdown, path as okf_path, registry
 from ostler.model import Epic, Story
 from workhorse.pyflow import Workflow, WorkflowFailed
-from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.coder.shared import stubs
+from workhorse_workflows.kit import commit_paths, find_docs_root
+from workhorse_workflows.coder.shared import commits, stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.story import SpecsStamped, StoryPaths, WorkspaceDirs
+from workhorse_workflows.coder.shared.schemas.story import (
+    FixturesSynced,
+    SpecsStamped,
+    StoryPaths,
+    WorkspaceDirs,
+)
 from workhorse_workflows.kit import resolve_workspace
 
 
@@ -175,6 +180,40 @@ def stamp_specs(
 
 
 @blueprint.node
+def sync_story_fixtures(
+    logger: logging.Logger, story_id: str = "", repo_dir: str = ""
+) -> FixturesSynced:
+    """State under the story's `## Fixtures` the fixtures its `qa_plan.py` uses, and commit it."""
+    if not story_id:
+        return FixturesSynced()
+    okf = Ostler(find_docs_root(repo_dir))
+    found = okf.graph.find_story(story_id)
+    res = okf.sync_story_fixtures(story_id)
+    if not res.ok:
+        raise WorkflowFailed(res.message)
+    logger.info("%s", res.message)
+    if not res.paths:
+        return FixturesSynced()
+    story_md = res.paths[0].resolve()
+    root = next((d for d in story_md.parents if (d / ".git").exists()), None)
+    if root is None:
+        logger.info("%s is in no git checkout — leaving it uncommitted", story_md)
+        return FixturesSynced(changed=True)
+    rels = [str(p.resolve().relative_to(root)) for p in res.paths]
+    epic = registry.epic_slug(found[0].name) if found else ""
+    slug = found[1].slug if found else story_id
+    message = commits.message(
+        "docs",
+        commits.scope(root.name),
+        f"state the fixtures the {slug} qa plan uses",
+        epic=epic,
+        story=story_id,
+    )
+    commit_paths(root, message, *rels, verify=False)
+    return FixturesSynced(changed=True)
+
+
+@blueprint.node
 def prepare_fix_story(
     logger: logging.Logger,
     story: str = "",
@@ -191,5 +230,6 @@ __all__ = [
     "prepare_story",
     "resolve_workspace_dirs",
     "stamp_specs",
+    "sync_story_fixtures",
     "workspace_dirs",
 ]

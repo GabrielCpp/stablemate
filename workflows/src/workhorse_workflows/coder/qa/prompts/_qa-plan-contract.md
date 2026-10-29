@@ -246,10 +246,6 @@ locator that exists only when a check above passed, that check is a `require`.
   `input_file("name", "qa-inputs/thing.json")`. State one scenario needs is reached by driving
   the product's documented operations inside a `qa.step`. Writing rows behind the product's
   back is not.
-- **Name the fixtures in the story.** Every fixture the plan uses belongs under `## Fixtures`
-  in `story.md`, one `- Fixture: <name>` bullet each, or `(none)`:
-  `ostler update story <story-id> --title ... --covers ... --depends ... --fixtures '<a>, <b>'`, with
-  the story id described above.
 
 ### Locators and routes come from the book
 

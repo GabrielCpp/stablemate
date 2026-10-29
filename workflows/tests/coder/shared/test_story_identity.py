@@ -14,7 +14,7 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows import coder
 from workhorse_workflows.coder.shared.provenance import changed_files, resolve_story_sources
 from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry
-from workhorse_workflows.coder.shared.story import prepare_story
+from workhorse_workflows.coder.shared.story import prepare_story, sync_story_fixtures
 
 LOGGER = logging.getLogger("test")
 
@@ -189,3 +189,27 @@ def test_no_commit_prompt_brackets_the_story_id_into_the_subject() -> None:
     ]
 
     assert offenders == []
+
+
+def test_sync_story_fixtures_commits_the_fixtures_the_plan_uses(tmp_path: Path) -> None:
+    okf, eid = _minted_book(tmp_path)
+    book = next(d for d in Path(okf.story_path(eid)).resolve().parents if d.name == "epics").parent
+    git = ["git", "-C", str(book), "-c", "user.name=t", "-c", "user.email=t@t"]
+    subprocess.run([*git[:3], "init", "-q"], check=True)
+    subprocess.run([*git, "add", "-A"], check=True)
+    subprocess.run([*git, "commit", "-qm", "book"], check=True)
+    plan = Path(okf.spec_path(eid)) / "qa_plan.py"
+    plan.parent.mkdir(parents=True, exist_ok=True)
+    plan.write_text('def scenario(h):\n    h.fixture("identity")\n', encoding="utf-8")
+
+    assert sync_story_fixtures(LOGGER, eid, repo_dir=str(tmp_path)).changed
+    found = Ostler(tmp_path).graph.story_by_slug("01-foo")
+    assert found is not None and found[1].fixtures == ["identity"]
+    status = subprocess.run([*git, "status", "--porcelain", "epics"], check=True,
+                            capture_output=True, text=True).stdout
+    assert status == ""
+    log = subprocess.run([*git, "log", "-1", "--format=%B"], check=True,
+                         capture_output=True, text=True).stdout
+    assert f"Story: {eid}" in log
+
+    assert not sync_story_fixtures(LOGGER, eid, repo_dir=str(tmp_path)).changed
