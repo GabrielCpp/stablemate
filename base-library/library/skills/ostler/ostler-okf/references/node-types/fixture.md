@@ -77,7 +77,7 @@ parameter list is not a relation.
 ## `## Steps`
 
 Each step under a fixture's `## Steps` carries a `kind:` narrower than a runbook step's: only
-`seed`, `run`, `serve`, `verify`, `probe` are legal here (`fixture-step-kind`), because a fixture's job is to put
+`seed`, `run`, `serve`, `verify`, `probe`, `borrow`, `release` are legal here (`fixture-step-kind`), because a fixture's job is to put
 data in place and confirm it landed — not to boot a stack, which is the runbook's job.
 
 A fixture starts a process the scenario talks to, such as a mock backend on its own port, with a
@@ -220,6 +220,45 @@ title: Signed-in acme device
   screen. A claim with no such fixture starts on a cleared device.
 - A fixture with `launch-screen:` has no browser step, because the session lives on the device.
 
+### Borrowing a resource
+
+A fixture takes a thing from an outside system for the scenario's length with a `kind: borrow`
+step, and gives it back with a `kind: release` step. Both name the [`resource`](resource.md)
+with `on:`. The step grammar is in [step.md](step.md#acting-on-a-resource).
+
+```markdown
+---
+type: fixture
+title: Camera booked
+---
+# Camera booked
+
+- lifetime: scenario
+- provides:
+  - lease — the lease id the booking service issued
+    - from: [take](#take)
+    - read: id
+
+## Steps
+
+### take
+
+- kind: borrow
+- on: [Camera booking](../resources/camera-booking.md)
+- request: POST /leases
+- body: {"device": "camera-1"}
+
+### give-back
+
+- kind: release
+- on: [Camera booking](../resources/camera-booking.md)
+- request: DELETE /leases/$lease
+```
+
+A fixture with a `borrow` step has `lifetime: scenario` (`fixture-borrow-lifetime`), because
+the harness gives the thing back when the scenario ends. A fixture with a `release` step has a
+`borrow` step (`fixture-release-without-borrow`).
+
 A fixture's own steps do **not** carry `capture:`. `capture:` lives on the seven consuming
 node types, where it names what a *scenario* pulled out of a live response or the DOM — a
 fixture's `provides:` is the equivalent idea for what the arrangement itself leaves behind.
@@ -268,7 +307,8 @@ title: Seeded acme
 See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `duplicate-fixture-name`, `fixture-step-kind`,
 `fixture-step-no-run`, `fixture-browser-step`, `browser-fixture-off-browser`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
 `fixture-needs-cycle`, `fixture-undeclared-provides`, `undetermined-provided-fact`,
-`fixture-secret-name`, `unbacked-precondition`, `missing-required-section`,
+`fixture-secret-name`, `fixture-borrow-lifetime`, `fixture-release-without-borrow`,
+`unbacked-precondition`, `missing-required-section`,
 `empty-required-section`.
 
 ## When bullets are not enough

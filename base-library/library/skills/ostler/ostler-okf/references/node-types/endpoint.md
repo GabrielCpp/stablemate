@@ -41,6 +41,7 @@ touches. The okf-book run does this itself before the next lap.
 | `arrange` | no | an act — a request body member the step's own performer sends |
 | `capture` | no | a capture |
 | `moves` | no | link: the [data states](data-state.md) the record leaves and lands on, or `none, because ...` |
+| `observe` | no | link: the [resource](resource.md) observation (`@stem.name`) the claim's `verify:` rows read |
 | `tests` | no | link — the test files covering it |
 
 A `moves:` row says which data state a record leaves and which it lands on when this route succeeds. Write it one of three ways: `- moves: [Bill issued](../server.md#bill-issued) to [Bill paid](../server.md#bill-paid)`, `- moves: to [Account complete](../server.md#account-complete)` when the record lands there from any sibling state, or `- moves: none, because <reason>` when the route changes nothing. A route that moves several records carries one row per lifecycle. Both links of a row name [`data-state`](data-state.md) sections with the same `of:`. After the step runs in a walk, the walk reads the record back through the target state's `observe:` endpoint and runs that state's `verify:` rows. The step fails there when the target state does not hold, and the failure names the sibling state that does.

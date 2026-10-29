@@ -10,6 +10,14 @@ says where the bullet goes and what it binds to.
 `ostler/ostler/checks.py`. The tool is the authority; run it before writing a call you have not
 written before, not after `doctor` refuses one.
 
+## Waiting on an observation
+
+Every check that reads a subject accepts `within=<seconds>`. The parameter is legal only on a
+`verify:` row that follows an `observe:` bullet, and a row that reads the response with it is
+`within-off-observation`. The harness re-reads the observation until the row holds or the
+deadline passes. A failure reports the last value it read, so a row that never held shows what
+the system returned at the deadline. The entries below list no `within` of their own.
+
 ## How to read a signature
 
 - `name*` — required argument.

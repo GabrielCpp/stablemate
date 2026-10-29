@@ -297,6 +297,36 @@ leaves every other literal untouched.
 hand-written scenario plan must call `qa.resolve(...)` itself wherever it wants `@fixture.key` or
 `$captured-name` substituted; nothing does it implicitly on the plan's behalf.
 
+## A claim's side observation
+
+A claim reads the system under test through its response. A claim can also read a record an
+outside system keeps, such as the recordings a camera holds after the app played a video. The
+`observe:` bullet names that record as `@<resource>.<observation>`, where the resource is a
+[`resource`](node-types/resource.md) page and the observation is one of its `## Observations`.
+It is legal on the seven types that take `fixture:` and `verify:`.
+
+The `verify:` rows after an `observe:` bullet read that observation's JSON, up to the next
+`observe:`. The rows before the first `observe:` read the response, as they do without one.
+
+```markdown
+### POST /play
+
+- fixture: camera-booked — the camera is leased to this run
+- body: {"video": "calibration"}
+- verify: status(equals=202)
+- observe: @camera.recordings
+- verify: count(subject="items", equals=1, within=30)
+```
+
+The first row reads the response. The second reads the `recordings` document, and `within=30`
+re-reads it for up to thirty seconds until one item is there. `within=` is legal only on a row
+held on an `observe:`, and the vocabulary says how it behaves. See
+[check-vocabulary.md](check-vocabulary.md). An `observe:` naming no resource or no such
+observation is `unknown-observation`, a value that is not `@<stem>.<name>` is
+`unparsed-observation`, and a `within=` on a response row is `within-off-observation`. On a
+`data-state`, `observe:` keeps its own meaning, a link to the endpoint or command that reads the
+record.
+
 ## Repeated controls: `one-per:` / `unique-by:` / `variants:`
 
 A control the app renders once per member of a collection is **one node** carrying the repeat

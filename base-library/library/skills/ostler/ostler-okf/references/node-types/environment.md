@@ -24,6 +24,7 @@ File type under `docs/services/<service>/ops/`, `type: environment` in frontmatt
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 | `capture` | no | a capture |
+| `observe` | no | link: the [resource](resource.md) observation (`@stem.name`) the claim's `verify:` rows read |
 | `tests` | no | link — the test files covering it |
 
 `addresses:` names the places a client reaches this stack, such as the gateway a browser opens.

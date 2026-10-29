@@ -23,6 +23,7 @@ case rather than lowercasing it into a slug.
 | `verify` | no | a check |
 | `fixture` | no | a fixture |
 | `capture` | no | a capture |
+| `observe` | no | link: the [resource](resource.md) observation (`@stem.name`) the claim's `verify:` rows read |
 | `tests` | no | link — the test files covering it |
 
 `type:` alone is not a claim — it is a restatement of the code. The obligations are the three

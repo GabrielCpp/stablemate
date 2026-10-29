@@ -38,6 +38,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `fixture` | no | a fixture |
 | `arrange` | no | an act performed on this node's own surface |
 | `capture` | no | a capture |
+| `observe` | no | link: the [resource](resource.md) observation (`@stem.name`) the claim's `verify:` rows read |
 | `tests` | no | link — the test files covering it |
 
 `sends:` tells doctor what the act moves. The `moves:` rows of each linked node apply to the record that node addresses, so a later screen state with a `when:` on the moved-to data state is held.
