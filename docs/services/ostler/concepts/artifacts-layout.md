@@ -28,7 +28,9 @@ story's spec dir, and `researches/`, `benchmarks/` and `scratch/` for the rest. 
 tracked. `ensure_artifacts_repo` writes them to the repository's `.gitignore`, `backlogs/ epics/
 specs/ researches/ benchmarks/ scratch/`, one line each, and adds a missing line to an existing
 artifacts repo without repeating one it has. The artifacts repo tracks `docs/`: decisions, ADRs,
-services and milestones.
+services and milestones. An artifacts dir that sits inside another repository's work tree belongs
+to that repository: `ensure_artifacts_repo` creates the folder and leaves it with no `.git` and no
+`.gitignore` of its own.
 
 A decision is a folder under the docs home: `docs/decisions/<slug>/decision.md`. Its frontmatter holds
 `repo`, `status` (`accepted`) and `summary`, and its body holds `## Question`, `## Decided`,
@@ -93,6 +95,7 @@ because the home config refuses a member name bound to two folders.
 - rule: an ADR is committed alone, and only when the docs home is the artifacts repo; under any other docs home it is left in the working tree
 - rule: epics live at `epics/` in the artifacts dir, for a monorepo as much as a workspace, and never under the repository's `docs/`
 - rule: the artifacts repo ignores `backlogs/ epics/ specs/ researches/ benchmarks/ scratch/`, and an existing artifacts repo gains the lines it lacks without repeating one
+- rule: an artifacts dir inside another repository's work tree is that repository's to track, so it gets no nested git repository and no ignore file
 - rule: loading a book refuses an artifacts dir holding `backlog/` or `adr/` and a docs home holding `docs/epics/`, prints the exact moves, and uses `stat` calls only
 - rule: a service's `code:` bullets cite files of one repository, and a service citing two is a `service-spans-repositories` error
 - tests: `core/tests/test_workspaces.py::test_docs_home_is_the_artifacts_dir_from_a_member_folder`
@@ -100,6 +103,7 @@ because the home config refuses a member name bound to two folders.
 - tests: `core/tests/test_workspaces.py::test_docs_home_is_the_artifacts_dir_from_a_clone_of_a_member_url`
 - tests: `core/tests/test_workspaces.py::test_docs_home_is_none_for_a_repository_in_no_workspace`
 - tests: `core/tests/test_workspaces.py::test_one_member_name_bound_to_two_folders_raises`
+- tests: `core/tests/test_workspaces.py::test_ensure_artifacts_repo_leaves_an_artifacts_dir_inside_another_repo_alone`
 - tests: `ostler/tests/test_decisions.py::test_add_writes_the_shape_and_prints_the_path`
 - tests: `ostler/tests/test_decisions.py::test_a_taken_slug_is_refused_and_leaves_the_file_alone`
 - tests: `ostler/tests/test_decisions.py::test_a_worktree_of_a_member_files_in_the_same_folder_under_the_member_name`

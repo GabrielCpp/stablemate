@@ -187,3 +187,18 @@ def test_ensure_artifacts_repo_appends_missing_ignores_and_keeps_custom_lines(tm
     before = (root / ".gitignore").read_text()
     cfgmod.ensure_artifacts_repo()
     assert (root / ".gitignore").read_text() == before
+
+
+def test_ensure_artifacts_repo_leaves_an_artifacts_dir_inside_another_repo_alone(tmp_path, monkeypatch):
+    app = tmp_path / "web-app"
+    app.mkdir()
+    subprocess.run(["git", "-C", str(app), "init", "--quiet"], check=True)
+    target = app / "artifacts"
+    monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(target))
+
+    root = cfgmod.ensure_artifacts_repo()
+
+    assert root == target.resolve()
+    assert root.is_dir()
+    assert not (root / ".git").exists()
+    assert not (root / ".gitignore").exists()

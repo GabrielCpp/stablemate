@@ -736,10 +736,25 @@ def docs_home(start: Path) -> Path | None:
 ARTIFACTS_IGNORED = ("backlogs/", "epics/", "specs/", "researches/", "benchmarks/", "scratch/")
 
 
+def _tracked_by_enclosing_repo(root: Path) -> bool:
+    if (root / ".git").exists():
+        return False
+    probe = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    return probe.returncode == 0 and probe.stdout.strip() == "true"
+
+
 def ensure_artifacts_repo() -> Path:
-    """Create the artifacts dir as a git repository that ignores the session-owned folders; never adds a remote."""
+    """Create the artifacts dir as a git repository that ignores the session-owned folders; never adds a remote.
+
+    An artifacts dir inside another repository's work tree is that repository's to track, so it is left as it is.
+    """
     root = resolve_artifacts_dir()
     root.mkdir(parents=True, exist_ok=True)
+    if _tracked_by_enclosing_repo(root):
+        return root
     if not (root / ".git").exists():
         subprocess.run(["git", "-C", str(root), "init", "--quiet"], check=True, timeout=30)
     ignore = root / ".gitignore"
