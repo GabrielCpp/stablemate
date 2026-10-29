@@ -321,6 +321,49 @@ def cmd_env(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_env_import(args: argparse.Namespace) -> int:
+    from saddlebag.models import validate_name
+
+    keys = [key.strip() for key in args.keys.split(",") if key.strip()]
+    if not keys:
+        return _error("--keys names no key", 2)
+    if len(set(keys)) != len(keys):
+        return _error("--keys names a key twice", 2)
+    lines = _read_dotenv(args.file)
+    if isinstance(lines, int):
+        return lines
+    values = {line.key: line.value or "" for line in lines if line.key is not None}
+    for key in keys:
+        if key not in values:
+            return _error(f"{args.file} has no {key}", 2)
+        if not values[key]:
+            return _error(f"{key} has an empty value in {args.file}", 2)
+    names: dict[str, str] = {}
+    for key in keys:
+        name = args.prefix + key.lower().replace("_", "-")
+        try:
+            validate_name(name)
+        except ValueError:
+            return _error(f"{key} does not make a valid secret name ({name!r})", 2)
+        names[key] = name
+    tags = _check_tags(args.tag)
+    stored: list[dict[str, str]] = []
+    for key in keys:
+        name = names[key]
+        created = _ask("create", {"name": name, "username": None, "description": None, "var": key, "tags": tags, "metadata": []})
+        if isinstance(created, int):
+            return created
+        written = _ask("set", {"name": name, "field": "password", "value": values[key]})
+        if isinstance(written, int):
+            return written
+        stored.append({"key": key, "name": name})
+        if not args.json:
+            print(f"stored {key} as {name}")
+    if args.json:
+        _emit({"file": str(args.file), "stored": stored})
+    return 0
+
+
 def cmd_guard(args: argparse.Namespace) -> int:
     from saddlebag import guard
 
@@ -475,6 +518,13 @@ def build_parser() -> argparse.ArgumentParser:
         if verb == "classify":
             ep.add_argument("--json", action="store_true")
         ep.set_defaults(func=cmd_env, json=False)
+    ei = esub.add_parser("import", help="store FILE's chosen keys as secrets, one record per key")
+    ei.add_argument("file", type=Path, metavar="FILE", help="a dotenv file, or - for stdin")
+    ei.add_argument("--keys", required=True, metavar="KEY[,KEY...]", help="the keys to store")
+    ei.add_argument("--tag", action="append", default=[], metavar="K=V", help="tag every record; repeatable")
+    ei.add_argument("--prefix", default="", metavar="TEXT", help="put TEXT before each record name")
+    ei.add_argument("--json", action="store_true")
+    ei.set_defaults(func=cmd_env_import)
 
     g = sub.add_parser("guard", help="refuse agent actions that would print a secret")
     g.add_argument("--hook", action="store_true", help="act as a Claude Code PreToolUse hook: payload on stdin")
