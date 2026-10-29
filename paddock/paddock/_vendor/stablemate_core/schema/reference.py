@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Union, cast, get_args, get_origin
 
@@ -180,6 +181,49 @@ def _render_row(row: ReferenceRow) -> list[str]:
     return lines
 
 
+def _segments(path: str) -> list[str]:
+    return [segment.removesuffix("[]") for segment in path.split(".") if segment]
+
+
+def select_rows(rows: Sequence[ReferenceRow], query: str) -> list[ReferenceRow]:
+    """The rows at or under the key path ``query``, where a name the user picks matches its placeholder."""
+    wanted = _segments(query)
+    selected: list[ReferenceRow] = []
+    for row in rows:
+        have = _segments(row.path)
+        if len(wanted) <= len(have) and all(
+            declared in (asked, PLACEHOLDER) for asked, declared in zip(wanted, have, strict=False)
+        ):
+            selected.append(row)
+    return selected
+
+
+def _summary(description: str) -> str:
+    return re.split(r"(?<=[.!?])\s", description.strip(), maxsplit=1)[0]
+
+
+def _header(title: str, intro: str) -> list[str]:
+    lines = [f"# {title}", ""]
+    if intro:
+        lines.extend([intro, ""])
+    return lines
+
+
+def render_index(rows: Sequence[ReferenceRow], *, title: str, intro: str = "") -> str:
+    """One line per setting: its path, type, default and the first sentence of its meaning."""
+    lines = _header(title, intro)
+    lines.extend(f"- `{row.path}` ({row.type}, default {row.default}): {_summary(row.description)}" for row in rows)
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+def render_entries(rows: Sequence[ReferenceRow], *, title: str, intro: str = "") -> str:
+    """The full entry of each setting: its type, default, meaning, example, environment variable and legacy alias."""
+    lines = _header(title, intro)
+    for row in rows:
+        lines.extend(_render_row(row))
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
 def render_reference(
     model: type[Section],
     *,
@@ -188,9 +232,4 @@ def render_reference(
     render: Callable[[Any], str] = toml_value,
 ) -> str:
     """The markdown reference of ``model``: every setting with its type, default, meaning, example, environment variable and legacy alias."""
-    lines = [f"# {title}", ""]
-    if intro:
-        lines.extend([intro, ""])
-    for row in reference_rows(model, render=render):
-        lines.extend(_render_row(row))
-    return "\n".join(lines).rstrip("\n") + "\n"
+    return render_entries(reference_rows(model, render=render), title=title, intro=intro)

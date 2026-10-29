@@ -38,7 +38,16 @@ from .manifest import (
     TemplateTable,
     WorkflowTable,
 )
-from .reference import ReferenceRow, reference_rows, render_reference, yaml_value
+from .reference import (
+    ReferenceRow,
+    reference_rows,
+    render_entries,
+    render_index,
+    render_reference,
+    select_rows,
+    toml_value,
+    yaml_value,
+)
 from .selection import Exclusion, Selection
 
 __all__ = [
@@ -80,8 +89,12 @@ __all__ = [
     "cli_name",
     "positive_finite",
     "reference_rows",
+    "render_entries",
+    "render_index",
     "render_reference",
+    "select_rows",
     "setting",
     "stray_keys",
     "text_or_none",
+    "toml_value",
 ]

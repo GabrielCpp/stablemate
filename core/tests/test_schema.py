@@ -14,7 +14,9 @@ from stablemate_core import profiles
 from stablemate_core.schema import (
     HomeConfig,
     reference_rows,
+    render_index,
     render_reference,
+    select_rows,
     stray_keys,
 )
 
@@ -281,3 +283,26 @@ def test_resolvers_read_the_same_values_through_the_document(cfg_file, monkeypat
         ("api-service", "", ""),
         ("web", "https://example.com/web.git", "dev"),
     ]
+
+
+def test_select_rows_matches_a_picked_name_against_its_placeholder():
+    rows = reference_rows(HomeConfig)
+
+    selected = {row.path for row in select_rows(rows, "profiles.claude")}
+
+    assert selected == {row.path for row in rows if row.path.startswith("profiles.<name>")}
+
+
+def test_select_rows_matches_whole_segments_only():
+    rows = reference_rows(HomeConfig)
+
+    assert select_rows(rows, "profile") == []
+
+
+def test_the_index_has_one_line_per_setting_and_no_entries():
+    rows = reference_rows(HomeConfig)
+
+    text = render_index(rows, title="Home")
+
+    assert sum(line.startswith("- `") for line in text.splitlines()) == len(rows)
+    assert "### " not in text
