@@ -12,7 +12,7 @@ precondition set expected by the main coder loop. It has no agent turn and carri
 knowledge: packs, scaffolds, initialization commands, assistants, and gates
 are input values.
 
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::resolve_genesis_target` @8c8cf561a0ca
 - tests: `workflows/tests/coder/genesis/test_flow.py`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept`
@@ -33,7 +33,7 @@ are input values.
 - required: false
 - semantics: absolute or relative target directory supplied to the bootstrap run
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### service
@@ -43,7 +43,7 @@ are input values.
 - required: false
 - semantics: logical service name written as the workspace and service-gate key
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### service_root
@@ -53,7 +53,7 @@ are input values.
 - required: false
 - semantics: repository-relative directory in which the service marker and native initialization are evaluated
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### packs
@@ -64,7 +64,7 @@ are input values.
 - semantics: farrier pack ids are split before installation
 - verify: exit_status(code=0)
 - semantics: an empty pack list means no pack installation
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### scaffolds
@@ -74,7 +74,7 @@ are input values.
 - required: false
 - semantics: farrier scaffold entries enabled in `agents.yml` and rendered in order
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### init_cmd
@@ -84,7 +84,7 @@ are input values.
 - required: false
 - semantics: stack-owned native initialization command run in the service directory when its marker is absent
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### marker
@@ -94,7 +94,7 @@ are input values.
 - required: false
 - semantics: file whose presence proves the native service initialization succeeded
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### assistants
@@ -104,7 +104,7 @@ are input values.
 - required: false
 - semantics: assistant backends enabled in the farrier configuration
 - verify: exit_status(code=0)
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ### gates
@@ -116,7 +116,7 @@ are input values.
 - verify: exit_status(code=0)
 - semantics: malformed entries are reported and omitted
 - verify: json_path(path="note", matches="gate\\(s\\).*dropped")
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @6719bd9516b1
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - detail: [coder genesis bootstrap input selection](coder-genesis-bootstrap-input-selection.md)
 
 ## Methods
@@ -168,7 +168,7 @@ are input values.
 - does: fails the run with farrier's own error when the install or a scaffold fails, before validation runs
 - returns: the installation result and the queue state
 - verify: persists(subject="the farrier agent context")
-- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.farrier` @e6bab3ecda6b
+- code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis.farrier` @8a2fc7679d50
 
 ### verify
 

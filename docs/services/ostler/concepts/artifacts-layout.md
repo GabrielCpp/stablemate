@@ -73,8 +73,8 @@ because the home config refuses a member name bound to two folders.
 - code: `core/stablemate_core/config.py::workspace_members` @af98c532ae9e
 - code: `ostler/ostler/decisions.py::add` @50e809488130
 - code: `ostler/ostler/provenance.py::effective_checkouts` @9790251997db
-- code: `core/stablemate_core/config.py::ARTIFACTS_IGNORED` @7b44497bf311
-- code: `core/stablemate_core/config.py::ensure_artifacts_repo` @2f6c99c78264
+- code: `core/stablemate_core/config.py::ARTIFACTS_IGNORED` @9a75fa977d4a
+- code: `core/stablemate_core/config.py::ensure_artifacts_repo` @a467d2296af9
 - code: `ostler/ostler/layout.py::check` @35618cc53689
 - code: `ostler/ostler/layout.py::moves` @996f24fd7d70
 - code: `ostler/ostler/adr.py::propose` @61fef669e739

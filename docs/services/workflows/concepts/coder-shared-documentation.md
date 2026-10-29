@@ -10,7 +10,7 @@ whether changed source is available for deterministic local mapping, and enforce
 of changed production units. They also expose the same grounding worklist to the author before the
 author turn and scope doctor findings to the documentation nodes affected by the story.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::__all__` @a9c45b425d50
+- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::__all__` @a7155c6b8d1b
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_inside_the_docs_worktree_take_the_local_route`
 - detail: [coder documentation flow](../flows/coder-docs.md)
 - detail: [coder docs subflow package](coder-docs-subflow.md)
@@ -24,7 +24,7 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - required: true
 - semantics: names the diff-to-OKF packet stored below a story specification directory
 - verify: count(subject="OKF context packet filename", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::CONTEXT_FILE` @a9c45b425d50
+- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::CONTEXT_FILE` @a7155c6b8d1b
 
 ### MANAGED_KINDS
 - type: `tuple[str, ...]`
@@ -32,7 +32,7 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - required: true
 - semantics: names Ostler-managed document trees whose presence can establish an OKF repository
 - verify: count(subject="managed OKF document kinds", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::MANAGED_KINDS` @a9c45b425d50
+- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::MANAGED_KINDS` @a7155c6b8d1b
 
 ### DIRECT_KINDS
 - type: `set[str]`
@@ -40,7 +40,7 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - required: true
 - semantics: identifies packet reasons that directly implicate a documentation node
 - verify: count(subject="direct documentation reason kinds", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::DIRECT_KINDS` @a9c45b425d50
+- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::DIRECT_KINDS` @a7155c6b8d1b
 
 ### SEMANTIC_SUPPRESSED
 - type: `set[str]`
@@ -48,7 +48,7 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - required: true
 - semantics: suppresses local-code grounding doctor errors when semantic review has no local worktree
 - verify: count(subject="semantic doctor suppression set", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::SEMANTIC_SUPPRESSED` @a9c45b425d50
+- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::SEMANTIC_SUPPRESSED` @a7155c6b8d1b
 
 ### MAX_PROMPT_NOTE_CHARS
 - type: `int`
@@ -56,7 +56,7 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - required: true
 - semantics: keeps an inline doctor-error note below the prompt spill threshold
 - verify: count(subject="documentation prompt note limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::MAX_PROMPT_NOTE_CHARS` @a9c45b425d50
+- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::MAX_PROMPT_NOTE_CHARS` @a7155c6b8d1b
 
 ### DOCTOR_ERRORS_FILE
 - type: `str`
@@ -64,7 +64,7 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - required: true
 - semantics: names the spill file containing an overlong complete doctor-error list
 - verify: count(subject="doctor error spill filename", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::DOCTOR_ERRORS_FILE` @a9c45b425d50
+- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::DOCTOR_ERRORS_FILE` @a7155c6b8d1b
 
 ### MAX_DOCTOR_ERROR_MESSAGE_CHARS
 - type: `int`
@@ -72,7 +72,7 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - required: true
 - semantics: truncates an individual doctor message without dropping any finding from the list
 - verify: count(subject="doctor error message limit", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::MAX_DOCTOR_ERROR_MESSAGE_CHARS` @a9c45b425d50
+- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::MAX_DOCTOR_ERROR_MESSAGE_CHARS` @a7155c6b8d1b
 
 ## Methods
 
@@ -112,7 +112,7 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - verify: json_path(path="$.has_okf", equals="invalid")
 - returns: `yes` with the graph's effective services root when the graph loads
 - verify: json_path(path="$.has_okf", equals="yes")
-- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::detect_okf_docs` @541cbd12c24b
+- code: `workflows/src/workhorse_workflows/coder/shared/docs.py::detect_okf_docs` @8d7a85c3a67c
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_repo_with_no_okf_book_ends_successfully_without_an_agent_turn`
 
 ### classify_documentation_context
