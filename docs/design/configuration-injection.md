@@ -437,6 +437,12 @@ are new and the code follows none of them yet.
 5. **Say so.** The saddlebag skill, README and `docs/SECURITY.md`; the ostler skill's stack
    and environment references; the ostler book pages the change touched, restamped. Done
    when `make lint` passes and `ostler doctor` raises no new finding on a touched page.
+   Built 2026-10-28: the skill, README, SECURITY and INTEGRATION pages describe the guard,
+   the metadata slot and the environment page; the ostler stack reference carries the
+   `variables:` block and the three `ostler env` verbs; the book gained `ostler-env-exec`,
+   `ostler-env-dotenv` and the import refusal as checked command nodes over a seeded
+   fixture page, with the bring-up concept's contract extended and every touched citation
+   restamped. Doctor on the touched pages raises nothing main does not.
 
 ## 7. Assumptions
 
