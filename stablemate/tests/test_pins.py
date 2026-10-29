@@ -46,15 +46,22 @@ def test_every_pin_names_a_workspace_member() -> None:
     assert [name for name in _pins() if name not in members] == []
 
 
-def test_no_pin_falls_behind_its_member() -> None:
+def _floor(specifier: SpecifierSet) -> Version | None:
+    floors = [Version(spec.version) for spec in specifier if spec.operator in (">=", "==")]
+    return max(floors, default=None)
+
+
+def test_every_pin_requires_its_member_newest_release() -> None:
     members = _member_versions()
     stale = {
         name: f"pinned {specifier}, member is {members[name]}"
         for name, specifier in _pins().items()
-        if not specifier.contains(members[name], prereleases=True)
-        and not specifier.contains(_next_series(members[name]), prereleases=True)
+        if (floor := _floor(specifier)) is None
+        or floor < members[name]
+        or floor >= _next_series(_next_series(members[name]))
+        or not specifier.contains(floor, prereleases=True)
     }
-    assert stale == {}, "a member released a new major; run make sync-pins"
+    assert stale == {}, "a member released past the umbrella's floor; run make sync-pins"
 
 
 def test_every_pinned_command_is_exposed_by_the_umbrella() -> None:

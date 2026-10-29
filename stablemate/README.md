@@ -36,8 +36,9 @@ saddlebag --help
 
 ## Versions
 
-Each release of this package allows one major version of each tool. To move all five to
-their newest release within it, run:
+Each release of this package requires the newest release of each tool and allows later
+ones within the same major version. Every tool release ships a new release of this package,
+so upgrading it moves all five:
 
 ```bash
 uv tool upgrade stablemate
