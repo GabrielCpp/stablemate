@@ -683,6 +683,48 @@ def test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it(
     assert gate.failures == [f"G:{panel}::Badge.tone"], gate.failures
 
 
+def test_a_stamped_citation_grounds_the_symbol_it_names(
+    docs: Path,
+    logger: logging.Logger,
+    write_json: Callable[[Path, Any], Path],
+) -> None:
+    """A `code:` bullet stamped with its digest still grounds the symbol it cites."""
+    panel = "web/app/components/panel.tsx"
+    write_json(
+        docs / spec_dir() / CONTEXT_FILE,
+        {
+            "changedCode": [
+                {
+                    "path": panel,
+                    "basePath": panel,
+                    "headPath": panel,
+                    "baseSymbols": [],
+                    "headSymbols": ["Panel", "Panel.status"],
+                }
+            ],
+            "directNodes": [
+                {
+                    "node": "docs/services/widget.md#panel",
+                    "reasons": [{"kind": "changed-code", "ref": f"{panel}::Panel@0123456789ab"}],
+                }
+            ],
+        },
+    )
+
+    gate = verify_story_documentation(
+        logger,
+        spec_dir=str(spec_dir()),
+        author_status="documented",
+        build_status="passed",
+        validation_status="passed",
+        context_mode="local",
+        author_nodes=("docs/services/widget.md#panel",),
+    )
+
+    assert "not directly grounded" not in gate.notes, gate.notes
+    assert not [failure for failure in gate.failures if failure.startswith("G:")], gate.failures
+
+
 def test_a_doctor_refusal_carries_the_form_the_checker_would_accept(
     docs: Path,
     logger: logging.Logger,

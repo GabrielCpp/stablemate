@@ -51,9 +51,9 @@ def _grounded_paths(packet: dict[str, Any]) -> tuple[set[str], set[str]]:
                 continue
             ref = str(reason.get("ref", ""))
             if reason.get("kind") == "changed-code":
-                exact.add(refs_mod.normalize_ref(ref))
+                exact.add(refs_mod.strip_digest(refs_mod.normalize_ref(ref)))
             elif reason.get("kind") == "file-owner":
-                files.add(ref)
+                files.add(refs_mod.strip_digest(ref))
     return exact, files
 
 
