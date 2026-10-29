@@ -424,15 +424,37 @@ def test_releasing_the_device_shuts_the_run_resident_reader_down(monkeypatch: py
     assert stopped == ["shutdown"]
 
 
-def test_a_maestro_hierarchy_scan_releases_the_device_first(monkeypatch: pytest.MonkeyPatch) -> None:
-    events: list[str] = []
+RESIDENT_CSV = (
+    "element_num,depth,bounds,attributes,parent_num\n"
+    '0,0,"[0,0][1080,2400]","class=android.widget.FrameLayout",\n'
+    '1,1,"[40,2000][1040,2160]","resource-id=com.example.app:id/submit; text=Submit; class=android.widget.Button",0\n'
+)
+
+
+def test_a_maestro_hierarchy_scan_reads_through_the_resident_reader(monkeypatch: pytest.MonkeyPatch) -> None:
+    reads: list[float] = []
+    monkeypatch.setattr(hierarchy.shutil, "which", lambda name: "/usr/bin/maestro")
+    monkeypatch.setattr(hierarchy, "RESIDENT", lambda timeout: reads.append(timeout) or RESIDENT_CSV)
+    monkeypatch.setattr(hierarchy, "_run", lambda command, *, timeout: pytest.fail(f"one-shot {command}"))
+    monkeypatch.setattr(hierarchy, "release_device", lambda: pytest.fail("released the device"))
+
+    elements = hierarchy.maestro_elements(timeout=7)
+
+    assert reads == [7]
+    assert {element["selector"] for element in elements} >= {"Submit", "submit", "com.example.app:id/submit"}
+
+
+def test_a_maestro_hierarchy_scan_of_a_named_device_releases_it_and_runs_one_shot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[object] = []
     monkeypatch.setattr(hierarchy.shutil, "which", lambda name: "/usr/bin/maestro")
     monkeypatch.setattr(hierarchy, "release_device", lambda: events.append("release"))
-    monkeypatch.setattr(hierarchy, "_run", lambda command, *, timeout: events.append("hierarchy") or MAESTRO)
+    monkeypatch.setattr(hierarchy, "_run", lambda command, *, timeout: events.append(command) or MAESTRO)
 
-    hierarchy.maestro_elements()
+    hierarchy.maestro_elements(udid="ABC")
 
-    assert events == ["release", "hierarchy"]
+    assert events == ["release", ["maestro", "--device", "ABC", "hierarchy"]]
 
 
 def test_a_missing_maestro_raises_the_install_message(monkeypatch: pytest.MonkeyPatch) -> None:

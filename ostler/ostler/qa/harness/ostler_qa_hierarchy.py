@@ -176,9 +176,10 @@ def maestro_elements(*, udid: str = "", timeout: float = 120.0) -> list[dict[str
     """The screen's elements from `maestro hierarchy` — the default source, both platforms."""
     if shutil.which("maestro") is None:
         raise RuntimeError("the maestro CLI is not installed on this machine")
+    if not udid:
+        return parse_maestro(resident_reader(timeout))
     release_device()
-    command = ["maestro"] + (["--device", udid] if udid else []) + ["hierarchy"]
-    return parse_maestro(_run(command, timeout=timeout))
+    return parse_maestro(_run(["maestro", "--device", udid, "hierarchy"], timeout=timeout))
 
 
 def parse_maestro(raw: str) -> list[dict[str, Any]]:
