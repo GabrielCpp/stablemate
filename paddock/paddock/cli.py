@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from paddock import loader, paths, sandbox
+from paddock._vendor.stablemate_core.config import ConfigError
 from paddock.homeconfig import HomeConfigError
 from paddock.registry import TaskError
 from paddock.runner import RoundInterrupted, RunError, RunResult, execute, resume
@@ -223,6 +224,9 @@ def main(argv: list[str] | None = None) -> None:
     except RoundInterrupted as exc:
         print(exc, file=sys.stderr)
         raise SystemExit(130) from exc
+    except ConfigError as exc:
+        print(exc, file=sys.stderr)
+        raise SystemExit(2) from exc
     except (HomeConfigError, TaskError, RunError, SandboxError) as exc:
         logger.error("%s", exc)
         raise SystemExit(1) from exc

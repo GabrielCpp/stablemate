@@ -10,6 +10,8 @@ from typing import cast
 
 import tomli_w
 
+from paddock._vendor.stablemate_core.config import ConfigError, parse_home_config
+
 TomlTable = dict[str, object]
 
 
@@ -91,6 +93,10 @@ def materialize(base: Path, override: Mapping[str, object], dest: Path, *, stage
     artifacts = _anchor_artifacts_dir(merged, stage)
     members = _anchor_workspaces(merged, stage)
     rewritten = artifacts or members
+    try:
+        _ = parse_home_config(merged, dest)
+    except ConfigError as exc:
+        raise HomeConfigError(str(exc)) from exc
     if not override and not rewritten:
         _ = shutil.copyfile(base, dest)
         return dest

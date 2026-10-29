@@ -111,6 +111,10 @@ def trial_config(run: Run, root: Path) -> Path:
                     row["path"] = _reroot(row.get("path"), run.stage, root)
                 else:
                     entries[index] = _reroot(entry, run.stage, root)
+    try:
+        _ = core_config.parse_home_config(config, source)
+    except core_config.ConfigError as exc:
+        raise TrialError(str(exc)) from exc
     target = root.with_name(f"{root.name}.stablemate-config.toml")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(tomli_w.dumps(config), encoding="utf-8")

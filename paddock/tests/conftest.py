@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from paddock import loader
-from paddock._vendor.stablemate_core.config import CONFIG_PATH_ENV, write_paddock_dir
+from paddock._vendor.stablemate_core.config import CONFIG_PATH_ENV, write_config_key
 from paddock.loader import Benchmark
 from smoke import BASE_CONFIG, SMOKE_TASKS, git
 
@@ -56,7 +56,7 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     directory = tmp_path / "paddock-root"
     directory.mkdir()
     monkeypatch.setenv(CONFIG_PATH_ENV, str(tmp_path / "home.toml"))
-    write_paddock_dir(directory)
+    write_config_key("paddock_dir", str(directory))
     return directory
 
 

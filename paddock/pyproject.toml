@@ -23,9 +23,10 @@ dependencies = [
   "pydantic>=2.0",
   # `tomllib` reads and does not write; a run writes its merged home config.
   "tomli-w>=1.0",
-  # platformdirs and tomli-w are paddock._vendor.stablemate_core's, not paddock's own:
+  # platformdirs, tomlkit and tomli-w are paddock._vendor.stablemate_core's, not paddock's own:
   # `make check-vendor` compares files and cannot notice a missing requirement.
   "platformdirs>=4.0",
+  "tomlkit>=0.13",
   # The task API drives workhorse, reads the planning graph through ostler and parses
   # the front matter and answer keys the apps carry.
   "workhorse-agent>=5,<6",

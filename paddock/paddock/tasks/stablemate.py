@@ -96,11 +96,11 @@ def effective(run: Run) -> Path:
 
 def pin_config(run: Run) -> None:
     """Write the effective stablemate config the trials run under, into `scratch/`."""
-    machine = core_config.load_config()
+    machine = core_config.load_home_config()
     local = {
-        name: str(value)
+        name: value
         for name in ("library_dir", "base_dir", "stablemate_dir", "worktree_dir")
-        if isinstance(value := core_config.get_config_value(name, machine), str) and value
+        if (value := getattr(machine, name)) is not None and value
     }
     local["stablemate_dir"] = str(stablemate_checkout(run))
     if "library_dir" not in local:
@@ -113,6 +113,10 @@ def pin_config(run: Run) -> None:
         "# config; the paths below are this machine's and are why this file is not tracked.\n"
     )
     merged = {**tomllib.loads(run.config.read_text(encoding="utf-8")), **local}
+    try:
+        _ = core_config.parse_home_config(merged, effective(run))
+    except core_config.ConfigError as exc:
+        raise TrialError(str(exc)) from exc
     effective(run).write_text(header + tomli_w.dumps(merged), encoding="utf-8")
 
 

@@ -13,6 +13,7 @@ from fakes import init_repo
 from smoke import git
 
 from paddock import project as project_mod
+from paddock._vendor.stablemate_core.schema import HomeConfig
 from paddock.runner import Run
 from paddock.tasks import stablemate as sm
 
@@ -35,11 +36,8 @@ def test_pin_config_writes_the_pinned_checkout_as_stablemate_dir(
     scratch.mkdir()
     tracked = tmp_path / "models.toml"
     tracked.write_text("# model tables\n", encoding="utf-8")
-    monkeypatch.setattr(
-        sm.core_config,
-        "load_config",
-        lambda: {"library_dir": "/lib", "stablemate_dir": "/live/tree"},
-    )
+    machine = HomeConfig(library_dir="/lib", stablemate_dir="/live/tree")
+    monkeypatch.setattr(sm.core_config, "load_home_config", lambda: machine)
     run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree))
 
     sm.pin_config(run)
@@ -61,10 +59,11 @@ def test_pin_config_overrides_paths_the_benchmark_config_already_names(
     scratch.mkdir()
     tracked = tmp_path / "config.toml"
     tracked.write_text(
-        'library_dir = "/old/lib"\nstablemate_dir = "/live/tree"\n\n[profiles.opencode]\nmodel = "m"\n',
+        'library_dir = "/old/lib"\nstablemate_dir = "/live/tree"\n\n[profiles.opencode]\ncli = "opencode"\n',
         encoding="utf-8",
     )
-    monkeypatch.setattr(sm.core_config, "load_config", lambda: {"library_dir": "/lib"})
+    machine = HomeConfig(library_dir="/lib")
+    monkeypatch.setattr(sm.core_config, "load_home_config", lambda: machine)
     run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree))
 
     sm.pin_config(run)
@@ -72,7 +71,27 @@ def test_pin_config_overrides_paths_the_benchmark_config_already_names(
     loaded = tomllib.loads(sm.effective(run).read_text(encoding="utf-8"))
     assert loaded["library_dir"] == "/lib"
     assert loaded["stablemate_dir"] == str(worktree)
-    assert loaded["profiles"] == {"opencode": {"model": "m"}}
+    assert loaded["profiles"] == {"opencode": {"cli": "opencode"}}
+
+
+def test_pin_config_refuses_a_malformed_benchmark_config_before_any_trial(
+    tmp_path: Path, monkeypatch  # noqa: ANN001 - pytest fixture
+) -> None:
+    worktree = tmp_path / "project"
+    worktree.mkdir()
+    (worktree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    tracked = tmp_path / "config.toml"
+    tracked.write_text('[profiles.opencode]\nmodel = "m"\n', encoding="utf-8")
+    machine = HomeConfig(library_dir="/lib")
+    monkeypatch.setattr(sm.core_config, "load_home_config", lambda: machine)
+    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree))
+
+    with pytest.raises(sm.TrialError, match=r"profiles\.opencode|opencode"):
+        sm.pin_config(run)
+
+    assert not sm.effective(run).exists()
 
 
 @pytest.fixture
