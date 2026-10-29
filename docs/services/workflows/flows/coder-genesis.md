@@ -29,7 +29,7 @@ title: Coder genesis flow
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_an_invalid_repo_fails_the_run_with_no_repair_turn`
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_a_run_killed_in_the_farrier_step_resumes_on_that_state_alone`
 
-The stages, in order: [classify](#classify), [git-init](#git-init), [config](#config), [skeleton](#skeleton), [farrier](#farrier), [verify](#verify).
+The stages, in order: [classify](#classify), [git-init](#git-init), [config](#config), [skeleton](#skeleton), [farrier](#farrier), [queue](#queue), [verify](#verify).
 
 The flow starts when the run has a non-empty target path and checkpointed genesis parameters for the target service.
 It ends in one of these ways: the target passes all repository, service, tooling-context and documentation-root precondition checks.
@@ -83,6 +83,15 @@ is skipped so a re-run cannot clobber a live service.
 its requested directory. A failed install or scaffold fails the run with Farrier's own error, such as
 an unknown pack, before validation runs. The flow does not call an agent to repair deterministic
 tooling failures.
+
+### queue
+
+- kind: seed
+
+`create_epics_root` creates the epics root that Ostler resolves for the target, under the
+configured artifacts dir, when it is absent. The epics root sits outside the repository, so no
+scaffold renders it. An existing epics root is left unchanged. A root that cannot be created fails
+the run before validation.
 
 ### verify
 

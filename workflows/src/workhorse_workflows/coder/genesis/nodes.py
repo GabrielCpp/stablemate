@@ -23,6 +23,7 @@ from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.genesis import (
     AgentsYml,
+    EpicsRoot,
     FarrierInstall,
     GenesisReport,
     GitInit,
@@ -391,6 +392,26 @@ def install_farrier(
     return FarrierInstall(ok=True, scaffolds_rendered=rendered, note="\n".join(notes))
 
 
+
+
+@blueprint.node
+def create_epics_root(logger: logging.Logger, target_dir: str = "") -> EpicsRoot:
+    """Create the epics root ostler resolves for the target, where the work queue lives."""
+    if not target_dir:
+        return EpicsRoot(note="no target_dir was provided")
+    target = Path(target_dir).resolve()
+    if not target.is_dir():
+        return EpicsRoot(note=f"target {target} is not a directory")
+
+    root = okf_path.epics_root_in(target)
+    if root.is_dir():
+        return EpicsRoot(ok=True, path=str(root), note=f"{root} already present")
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return EpicsRoot(path=str(root), note=f"could not create {root}: {exc}")
+    logger.info("created the epics root at %s", root)
+    return EpicsRoot(ok=True, path=str(root), note=f"created {root}")
 
 
 @blueprint.node(stub=stubs.valid)

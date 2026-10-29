@@ -48,9 +48,9 @@ PARAMS: _Params = {
 class _Farrier:
     """`farrier`, as the flow uses it: install renders the context, scaffolds seed dirs."""
 
-    def __init__(self, *, install_ok: bool = True, seed_docs: bool = True) -> None:
+    def __init__(self, *, install_ok: bool = True, instructions: bool = True) -> None:
         self.install_ok = install_ok
-        self.seed_docs = seed_docs
+        self.instructions = instructions
         self.calls: list[list[str]] = []
 
     def __call__(self, args: list[str], cwd: Path) -> subprocess.CompletedProcess:
@@ -61,15 +61,13 @@ class _Farrier:
                 return subprocess.CompletedProcess(args, 1, "", "no packs resolved")
             ctx = target / ".agents" / "agents-context.json"
             ctx.parent.mkdir(parents=True, exist_ok=True)
-            ctx.write_text(json.dumps({"instructions": {"api": ["go-service.md"]}}))
+            ctx.write_text(json.dumps(
+                {"instructions": {"api": ["go-service.md"]} if self.instructions else {}}))
         else:
-            scaffold_id = args[2]
             param = next((a for a in args if a.startswith("dir=")), "dir=.")
             seeded = target / param.removeprefix("dir=")
             seeded.mkdir(parents=True, exist_ok=True)
             (seeded / ".gitignore").write_text("/tmp\n")
-            if scaffold_id == "shared-docs" and self.seed_docs:
-                (epics_root()).mkdir(parents=True, exist_ok=True)
         return subprocess.CompletedProcess(args, 0, "", "")
 
 
@@ -224,13 +222,13 @@ def test_an_invalid_repo_fails_the_run_with_no_repair_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Genesis is pure bootstrapping: an invalid target fails the run directly, carrying the validator's own words, rather than handing the errors to a repair turn that could only guess at a tooling failure the tool itself already reported."""
-    monkeypatch.setattr(genesis_nodes, "run_tool", _Farrier(seed_docs=False))
+    monkeypatch.setattr(genesis_nodes, "run_tool", _Farrier(instructions=False))
 
     with pytest.raises(WorkflowFailed) as exc:
         _run(drive_flow, env(), target)
 
     assert "genesis target is invalid" in str(exc.value), exc.value
-    assert "epics" in str(exc.value), exc.value
+    assert "instructions" in str(exc.value), exc.value
 
 
 def test_a_failed_farrier_install_fails_the_run_with_farriers_words(

@@ -49,6 +49,14 @@ class FarrierInstall(CoderResult):
     scaffolds_rendered: list[str] = []
 
 
+class EpicsRoot(CoderResult):
+    """`create_epics_root` — the folder the work queue lives in, made or found."""
+
+    ok: bool = False
+    path: str = ""
+    note: str = ""
+
+
 class GenesisReport(CoderResult):
     """`validate-genesis.py` — every precondition the main loop assumes, checked."""
 
@@ -59,6 +67,7 @@ class GenesisReport(CoderResult):
 
 __all__ = [
     "AgentsYml",
+    "EpicsRoot",
     "FarrierInstall",
     "GenesisReport",
     "GitInit",

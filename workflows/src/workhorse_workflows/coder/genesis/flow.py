@@ -8,6 +8,7 @@ from workhorse.pyflow import (
     WorkflowFailed,
 )
 from workhorse_workflows.coder.genesis.nodes import (
+    create_epics_root,
     genesis_git_init,
     init_skeleton,
     install_farrier,
@@ -87,6 +88,13 @@ class Genesis(Workflow):
         )
         if not result.ok:
             raise WorkflowFailed(f"genesis could not install the agent layer: {result.note}")
+        return Continue(result, self.queue)
+
+    def queue(self) -> Continue:
+        """Create the epics root the work queue lives in, which no scaffold renders."""
+        result = self.call(create_epics_root, self._target().target_dir)
+        if not result.ok:
+            raise WorkflowFailed(f"genesis could not create the epics root: {result.note}")
         return Continue(result, self.verify)
 
     def verify(self) -> Done:
