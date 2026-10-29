@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import fcntl
 import logging
+import shutil
 import sys
 import tempfile
+from datetime import UTC, datetime
 from dataclasses import replace
 from collections.abc import Sequence
 from pathlib import Path
@@ -31,6 +33,9 @@ from workhorse_workflows.okf_book.shared.book_run import (
 
 USAGE = f"usage: python -m {EXERCISE_MODULE} <writer-commands.json> [page | fixture page ...]"
 STACK_LOCK = "exercise.lock"
+EVIDENCE_DIR = "evidence"
+EVIDENCE_KEPT = 20
+EVIDENCE_SUFFIXES = frozenset({".png", ".xml", ".json", ".txt"})
 
 
 def repo_target(root: Path, target: str) -> str:
@@ -63,6 +68,41 @@ def exercise_book(kept: KeptStack, root: Path, service: str, spec: Path, targets
         release(kept.logger, stack)
 
 
+def keep_evidence(spec: Path, into: Path) -> Path | None:
+    """Copy what a person needs to see a failed run into a new stamped folder of *into*, and keep the newest EVIDENCE_KEPT folders there.
+
+    That is each `-output` folder the runners left under the spec's `qa/generated`, and the
+    screenshots, junit files and runner logs under `qa/screenshots` and `qa/traces`. The folder is
+    None when the run left none of them.
+    """
+    qa = spec / "qa"
+    found = [path for path in sorted((qa / "generated").glob("*-output")) if path.is_dir()]
+    for label in ("screenshots", "traces"):
+        found.extend(
+            path for path in sorted((qa / label).glob("*")) if path.is_file() and path.suffix in EVIDENCE_SUFFIXES
+        )
+    if not found:
+        return None
+    kept = into / datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    for path in found:
+        target = kept / path.relative_to(qa)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_dir():
+            _ = shutil.copytree(path, target, dirs_exist_ok=True)
+        else:
+            _ = shutil.copy2(path, target)
+    for old in sorted(path for path in into.iterdir() if path.is_dir())[:-EVIDENCE_KEPT]:
+        shutil.rmtree(old, ignore_errors=True)
+    return kept
+
+
+def _kept_evidence(spec: Path, into: Path) -> Path | None:
+    try:
+        return keep_evidence(spec, into)
+    except OSError:
+        return None
+
+
 def exercised(argv: Sequence[str]) -> CommandOutput:
     """What the run for the command state file named first in `argv`, and the targets after it, exits with and prints. One run at a time holds the app."""
     state_path = Path(argv[0])
@@ -74,7 +114,9 @@ def exercised(argv: Sequence[str]) -> CommandOutput:
         with tempfile.TemporaryDirectory(prefix="okf-spec-") as spec:
             kept = KeptStack(state_path.parent, logging.getLogger(EXERCISE_MODULE), state.source)
             result, _ = run_quietly(lambda: exercise_book(kept, root, state.service, Path(spec), targets))
-    return CommandOutput(0 if result.passed else 1, printed_lines(result.lines))
+            saved = None if result.passed else _kept_evidence(Path(spec), state_path.parent / EVIDENCE_DIR)
+    lines = (f"evidence: {saved.resolve()}", *result.lines) if saved else result.lines
+    return CommandOutput(0 if result.passed else 1, printed_lines(lines))
 
 
 def run_exercise(argv: Sequence[str], start: Start | None = None) -> CommandOutput:
