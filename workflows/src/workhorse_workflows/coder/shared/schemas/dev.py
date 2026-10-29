@@ -67,6 +67,23 @@ class PlanFixture(CoderResult):
     )
 
 
+class VerificationSetup(CoderResult):
+    """The stack a story's surface needs before QA can observe it."""
+
+    profile: str = Field(
+        default="",
+        description="The stack profile that renders this surface with realistic data.",
+    )
+    capable_of_rendering: str = Field(
+        default="",
+        description="What that stack can actually show: the surface, not a thin default.",
+    )
+    fixtures: list[str | dict[str, Any]] = Field(
+        default=[],
+        description="The fixtures the stack must hold, as `qa.fixture()` keys.",
+    )
+
+
 class PlanFields(CoderResult):
     """The structural half of a plan: which services change, in what order, verified how."""
 
@@ -93,12 +110,12 @@ class PlanFields(CoderResult):
         description="Non-service directories — libraries, shared code — the plan also "
         "changes. Same shape as a service, with no `plan_file`.",
     )
-    verification_setup: dict[str, Any] = Field(
-        default={},
+    verification_setup: VerificationSetup = Field(
+        default_factory=lambda: VerificationSetup(),
         validation_alias=AliasChoices("verification_setup", "qa_stack"),
-        description="The story's `## Verification setup`, machine-readable: the `profile` "
-        "that renders this surface with realistic data, and what that stack is "
-        "`capable_of_rendering` — the surface it can actually show, not a thin default.",
+        description="The story's `## Verification setup`, machine-readable: the stack QA "
+        "raises to render this surface with realistic data. It names a stack, never the "
+        "commands that check the code.",
     )
     fixtures: list[PlanFixture] = Field(
         default=[],

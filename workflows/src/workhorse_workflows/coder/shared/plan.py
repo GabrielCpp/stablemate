@@ -17,6 +17,7 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     PlanSummary,
     PlanValidation,
     QaRunEntry,
+    VerificationSetup,
     lift_fixture,
 )
 
@@ -79,8 +80,11 @@ def plan_document(
 
 
 def _verification_setup(doc: dict[str, Any]) -> dict[str, Any]:
-    """The story's `## Verification setup`, under either spelling."""
-    return doc.get("verification_setup") or doc.get("qa_stack") or {}
+    """The story's `## Verification setup`, under either spelling, holding only its declared keys."""
+    setup = doc.get("verification_setup") or doc.get("qa_stack") or {}
+    if not isinstance(setup, dict):
+        return {}
+    return {key: setup[key] for key in VerificationSetup.model_fields if setup.get(key)}
 
 
 def _fixtures(doc: dict[str, Any]) -> list[dict[str, str]]:
