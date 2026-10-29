@@ -79,6 +79,24 @@ def test_a_result_is_read_again_until_a_page_changes_and_then_the_command_runs_a
     assert _runs_spent(state) == 2
 
 
+def test_a_result_whose_run_began_before_a_page_changed_is_read_once_and_the_next_call_runs_anew(tmp_path: Path) -> None:
+    state = _state(tmp_path)
+    argv = (state,)
+
+    def _still_going(job: Path, _argv: Sequence[str]) -> None:
+        _pending(job, os.getpid())
+
+    _ = run_or_attach("exercise", argv, _still_going, wait_s=0)
+    _ = (tmp_path / "repo" / "docs" / "a.md").write_text("# A\n", encoding="utf-8")
+    finish_job(job_folder("exercise", argv), _passed, argv)
+    earlier = run_or_attach("exercise", argv, _still_going, wait_s=0)
+    anew = run_or_attach("exercise", argv, _still_going, wait_s=0)
+
+    assert earlier == PASSED
+    assert anew == CommandOutput(1, (STILL_RUNNING_LINE,))
+    assert _runs_spent(state) == 2
+
+
 def test_a_result_is_not_read_again_once_the_repository_opts_in_another_qa_tool(tmp_path: Path) -> None:
     state = _state(tmp_path)
     argv = (state,)

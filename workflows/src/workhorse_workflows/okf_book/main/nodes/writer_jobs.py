@@ -38,6 +38,7 @@ STOPPED_LINE = "the run stopped before it printed its result: run the command ag
 _PID = "pid"
 _RESULT = "result.json"
 _DELIVERED = "delivered"
+_STARTED = "started"
 _OUTPUT = TypeAdapter(CommandOutput)
 
 type Work = Callable[[Sequence[str]], CommandOutput]
@@ -95,12 +96,12 @@ def _root(argv: Sequence[str]) -> Path:
 
 
 def _unread_or_unchanged(job: Path, argv: Sequence[str]) -> bool:
-    delivered = job / _DELIVERED
-    return not delivered.is_file() or delivered.read_text(encoding="utf-8") == book_digest(_root(argv))
+    started = job / _STARTED
+    return not (job / _DELIVERED).is_file() or (started.is_file() and started.read_text(encoding="utf-8") == book_digest(_root(argv)))
 
 
-def _deliver(job: Path, argv: Sequence[str], result: CommandOutput) -> CommandOutput:
-    _ = (job / _DELIVERED).write_text(book_digest(_root(argv)), encoding="utf-8")
+def _deliver(job: Path, result: CommandOutput) -> CommandOutput:
+    (job / _DELIVERED).touch()
     return result
 
 
@@ -110,7 +111,7 @@ def _collect(job: Path, argv: Sequence[str], wait_s: float) -> CommandOutput:
         running = _running(job)
         result = _result(job)
         if result is not None:
-            return _deliver(job, argv, result)
+            return _deliver(job, result)
         if not running:
             shutil.rmtree(job, ignore_errors=True)
             return CommandOutput(1, (STOPPED_LINE,))
@@ -130,17 +131,18 @@ def run_or_attach(name: str, argv: Sequence[str], start: Start, wait_s: float | 
     """The result of the command `name` on `argv`, waiting up to `wait_s`, or `attach_wait_s()`, for it.
 
     A call whose job is still running waits on it. A call whose job finished reads its result, and
-    reads it again while no page changed since. Any other call spends a run and starts the job.
+    reads it again while no page changed since the job started. Any other call spends a run and starts the job.
     """
     job = job_folder(name, argv)
     result = _result(job)
     if result is not None and _unread_or_unchanged(job, argv):
-        return _deliver(job, argv, result)
+        return _deliver(job, result)
     if result is not None or not _running(job):
         if spend_check_or_scenario_run(Path(argv[0])) is None:
             return CommandOutput(1, (CHECK_AND_SCENARIO_RUNS_SPENT_MESSAGE,))
         shutil.rmtree(job, ignore_errors=True)
         job.mkdir(parents=True)
+        _ = (job / _STARTED).write_text(book_digest(_root(argv)), encoding="utf-8")
         start(job, argv)
     return _collect(job, argv, attach_wait_s() if wait_s is None else wait_s)
 

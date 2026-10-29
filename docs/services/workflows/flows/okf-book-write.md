@@ -32,7 +32,7 @@ files, waits for the operator.
 
 The implementation is `workflows/src/workhorse_workflows/okf_book/main/write_book_flow.py::WriteBook`.
 
-- code: `workflows/src/workhorse_workflows/okf_book/main/write_book_flow.py::WriteBook` @1ed9bda827b2
+- code: `workflows/src/workhorse_workflows/okf_book/main/write_book_flow.py::WriteBook` @e387d61c9e5f
 
 ## Steps
 
@@ -47,7 +47,7 @@ commands read, with none of their runs spent.
 - code: `workflows/src/workhorse_workflows/okf_book/shared/confine.py::snapshot` @a6b5e7558709
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_commands.py::WriterCommandState` @9a134c1e412b
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_commands.py::write_command_state` @9a134c1e412b
-- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_jobs.py::settle_jobs` @803c631bf44e
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_jobs.py::settle_jobs` @0c8e606f6299
 
 ### write
 
@@ -58,11 +58,11 @@ writes until its own check and run both pass, or a turn's steps run out. The tur
 owner's conversation across laps; a turn that ends without a reply starts the next one fresh. The
 turn's three commands are built once per turn and share the run cap.
 
-- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_request.py::writer_request` @89b377651f1f
-- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_request.py::offered_qa_tools` @89b377651f1f
-- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/turn_budget.py::WRITER_STEPS` @476f15aaa45c
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_request.py::writer_request` @fe46090a0ed8
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_request.py::offered_qa_tools` @fe46090a0ed8
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/turn_budget.py::WRITER_STEPS` @26493bed070e
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/owner_gate.py::gate_template_args` @2720452eda51
-- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/source_view.py::turn_folder` @303f3884bd67
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/source_view.py::turn_folder` @4b30f3b91943
 
 ### record
 
@@ -116,12 +116,17 @@ The owner's turn may run only `writer_ostler`, `check_pages` and `exercise`, eac
 the state file `write_book` wrote. Every run of `check_pages` or `exercise` spends one of a shared
 80-run budget for the turn; `writer_ostler` spends its own, smaller budget.
 
+A call that comes back before its run finishes tells the writer to make the same call again. That
+next call reads the result without spending a run. The result stays readable while no page has
+changed since its run started. A page written after the run started makes the result read once,
+and the call after that starts a new run on the edited book.
+
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_commands.py::CHECK_AND_SCENARIO_RUN_CAP` @9a134c1e412b
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_commands.py::spend_check_or_scenario_run` @9a134c1e412b
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_commands.py::spend_ostler_run` @9a134c1e412b
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_commands.py::run_quietly` @9a134c1e412b
-- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_jobs.py::run_or_attach` @803c631bf44e
-- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_jobs.py::detached` @803c631bf44e
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_jobs.py::run_or_attach` @0c8e606f6299
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_jobs.py::detached` @0c8e606f6299
 
 `check_pages` prints every problem the turn's own pages, or named sections of them, still hold,
 once the problems the book already held at the turn's start and that the turn did not touch are
