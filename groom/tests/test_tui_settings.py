@@ -7,7 +7,7 @@ import pytest
 from textual.widgets import Static, Switch
 
 from groom import app as groom_app
-from groom import attend, state
+from groom import state
 from groom.tui.link import LinkError
 from groom.tui.screens.settings import SettingsScreen
 
@@ -65,7 +65,6 @@ def test_an_off_mode_from_the_default_shows_the_switch_off():
         import os
 
         os.environ.pop("GROOM_ATTEND")
-        attend.forget_settings()
         await at.serve_settings(link)
         async with tr.booted(link) as (app, pilot):
             screen = await open_settings(app, pilot, link)

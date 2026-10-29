@@ -6,7 +6,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from workhorse._vendor.stablemate_core.config import get_config_value, load_config, write_config_section
+from workhorse._vendor.stablemate_core.config import load_home_config, write_config_section
+from workhorse._vendor.stablemate_core.schema import DispatchParam, HomeConfig
 
 ATTEND_SECTION = "groom.attend"
 
@@ -47,16 +48,16 @@ def _attend_mode(value: Any, fallback: str) -> str:
     return text if text in _ATTEND_MODES else fallback
 
 
-def resolve_attend_settings(cfg: dict[str, Any] | None = None) -> AttendSettings:
+def resolve_attend_settings(home: HomeConfig | None = None) -> AttendSettings:
     """The effective attendant settings: the config wins, the environment is the fallback."""
-    data = cfg if cfg is not None else load_config()
-    table = get_config_value(ATTEND_SECTION, data)
-    section: dict[str, Any] = table if isinstance(table, dict) else {}
+    document = home if home is not None else load_home_config()
+    section = document.groom.attend if document.groom is not None else None
+    given = section.model_fields_set if section is not None else set()
     sources: dict[str, str] = {}
 
     env_mode = os.environ.get(ATTEND_MODE_ENV)
-    if "mode" in section:
-        mode = _attend_mode(section.get("mode"), ATTEND_OFF)
+    if section is not None and "mode" in given:
+        mode = _attend_mode(section.mode, ATTEND_OFF)
         sources["mode"] = CONFIG_SOURCE
     elif env_mode is not None:
         mode = _attend_mode(env_mode, ATTEND_OFF)
@@ -65,8 +66,8 @@ def resolve_attend_settings(cfg: dict[str, Any] | None = None) -> AttendSettings
         mode = ATTEND_OFF
         sources["mode"] = DEFAULT_SOURCE
 
-    if "last_mode" in section:
-        last_mode = _attend_mode(section.get("last_mode"), ATTEND_HEADLESS)
+    if section is not None and "last_mode" in given:
+        last_mode = _attend_mode(section.last_mode, ATTEND_HEADLESS)
         sources["last_mode"] = CONFIG_SOURCE
     elif mode != ATTEND_OFF:
         last_mode = mode
@@ -78,8 +79,8 @@ def resolve_attend_settings(cfg: dict[str, Any] | None = None) -> AttendSettings
         last_mode = ATTEND_HEADLESS
 
     env_cli = os.environ.get(ATTEND_CLI_ENV)
-    raw_cli = section.get("cli")
-    if isinstance(raw_cli, str) and raw_cli.strip():
+    raw_cli = section.cli if section is not None and "cli" in given else ""
+    if raw_cli.strip():
         cli = raw_cli.strip()
         sources["cli"] = CONFIG_SOURCE
     elif env_cli is not None and env_cli.strip():
@@ -89,9 +90,8 @@ def resolve_attend_settings(cfg: dict[str, Any] | None = None) -> AttendSettings
         cli = BUILTIN_ATTEND_CLI
         sources["cli"] = DEFAULT_SOURCE
 
-    raw_deny = section.get("deny")
-    if isinstance(raw_deny, list):
-        deny = tuple(str(item).strip().lower() for item in raw_deny if str(item).strip())
+    if section is not None and "deny" in given:
+        deny = tuple(item.strip().lower() for item in section.deny if item.strip())
         sources["deny"] = CONFIG_SOURCE
     elif os.environ.get(ATTEND_DENY_ENV):
         raw_env = os.environ.get(ATTEND_DENY_ENV, "")
@@ -166,55 +166,40 @@ class DispatchQueueSettings:
         }
 
 
-def _parse_dispatch_params(raw: Any) -> tuple[DispatchParamSettings, ...]:
-    """The ``params`` array of a queue's table, tolerating a malformed entry the same way the queue itself tolerates a malformed table: skip it, keep the rest."""
-    if not isinstance(raw, list):
-        return ()
+def _dispatch_params(raw: list[DispatchParam]) -> tuple[DispatchParamSettings, ...]:
+    """A queue's ``params`` array; an entry without a name is skipped, the rest are kept."""
     params: list[DispatchParamSettings] = []
     for entry in raw:
-        if not isinstance(entry, dict):
-            continue
-        name = str(entry.get("name") or "").strip()
+        name = entry.name.strip()
         if not name:
             continue
-        options_raw = entry.get("options")
-        options = (
-            tuple(str(opt) for opt in options_raw) if isinstance(options_raw, list) else ()
-        )
         params.append(
             DispatchParamSettings(
                 name=name,
-                label=str(entry.get("label") or name),
-                type=str(entry.get("type") or "string").strip().lower() or "string",
-                required=bool(entry.get("required", False)),
-                default=str(entry.get("default") or ""),
-                options=options,
-                template=str(entry.get("template") or ""),
+                label=entry.label or name,
+                type=entry.type.strip().lower() or "string",
+                required=entry.required,
+                default=entry.default,
+                options=tuple(entry.options),
+                template=entry.template,
             )
         )
     return tuple(params)
 
 
-def resolve_dispatch_queues(cfg: dict[str, Any] | None = None) -> dict[str, DispatchQueueSettings]:
+def resolve_dispatch_queues(home: HomeConfig | None = None) -> dict[str, DispatchQueueSettings]:
     """Every configured ``[groom.dispatch.<name>]`` queue, keyed by name."""
-    data = cfg if cfg is not None else load_config()
-    table = get_config_value(DISPATCH_SECTION, data)
-    section: dict[str, Any] = table if isinstance(table, dict) else {}
+    document = home if home is not None else load_home_config()
+    section = document.groom.dispatch if document.groom is not None else {}
     queues: dict[str, DispatchQueueSettings] = {}
     for name, raw in section.items():
-        if not isinstance(raw, dict):
-            continue
-        command = str(raw.get("command") or "").strip()
+        command = raw.command.strip()
         if not command:
             continue
-        try:
-            concurrency = int(raw.get("concurrency", DEFAULT_DISPATCH_CONCURRENCY))
-        except (TypeError, ValueError):
-            concurrency = DEFAULT_DISPATCH_CONCURRENCY
         queues[name] = DispatchQueueSettings(
             name=name,
             command=command,
-            concurrency=max(1, concurrency),
-            params=_parse_dispatch_params(raw.get("params")),
+            concurrency=max(1, raw.concurrency),
+            params=_dispatch_params(raw.params),
         )
     return queues

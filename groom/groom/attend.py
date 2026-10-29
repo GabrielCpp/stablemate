@@ -18,6 +18,7 @@ import jinja2
 from workhorse import inbox
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse._vendor.stablemate_core import skill_refs
+from workhorse._vendor.stablemate_core.config import ConfigError
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
@@ -35,34 +36,15 @@ ATTENDABLE_KIND = "operator"
 _INBOX_FILE = "inbox.jsonl"
 
 
-_SETTINGS_CACHE: tuple[str, float, AttendSettings] | None = None
-
-
 def settings() -> AttendSettings:
     """The effective ``[groom.attend]`` settings: config first, then env, then default."""
-    global _SETTINGS_CACHE
     try:
-        path = core_config.config_path()
-        stamp = path.stat().st_mtime if path.exists() else 0.0
-        key = str(path)
-    except OSError:
-        path, stamp, key = None, 0.0, ""
-    cached = _SETTINGS_CACHE
-    if cached is not None and cached[0] == key and cached[1] == stamp:
-        return cached[2]
-    try:
-        resolved = resolve_attend_settings()
-    except Exception:
-        logger.warning("attend: could not read %s — treating attend as off", key or "the config")
-        resolved = AttendSettings(mode=OFF)
-    _SETTINGS_CACHE = (key, stamp, resolved)
-    return resolved
-
-
-def forget_settings() -> None:
-    """Drop the cache — for a test, and for a write that must be visible immediately."""
-    global _SETTINGS_CACHE
-    _SETTINGS_CACHE = None
+        return resolve_attend_settings()
+    except ConfigError:
+        logger.warning(
+            "attend: could not read %s — treating attend as off", core_config.config_path()
+        )
+        return AttendSettings(mode=OFF)
 
 
 def mode() -> str:

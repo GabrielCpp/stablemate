@@ -9,6 +9,7 @@ from typing import Any
 
 from groom.attention import DEFAULT_EVENTS
 from groom.wait import event_names, feed, wait
+from workhorse._vendor.stablemate_core.config import ConfigError
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8787
@@ -991,6 +992,14 @@ def dispatch_stop(queue: str, item: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    try:
+        _main(argv)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+
+def _main(argv: list[str] | None) -> None:
     parser = argparse.ArgumentParser(
         prog="groom", description="Local dashboard for workhorse operator gates."
     )

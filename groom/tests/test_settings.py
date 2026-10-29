@@ -6,6 +6,7 @@ import tomllib
 
 import pytest
 
+from groom import attend
 from groom import settings as groom_settings
 from workhorse._vendor.stablemate_core import config as cfgmod
 
@@ -94,10 +95,17 @@ def test_the_config_wins_over_the_environment(cfg_file, monkeypatch):
     assert settings.sources["mode"] == groom_settings.CONFIG_SOURCE
 
 
-def test_an_unknown_mode_falls_back_to_off(cfg_file):
+def test_an_unknown_mode_is_refused_naming_the_key(cfg_file):
     cfgmod.write_config_section(groom_settings.ATTEND_SECTION, {"mode": "enthusiastic"})
 
-    assert groom_settings.resolve_attend_settings().mode == groom_settings.ATTEND_OFF
+    with pytest.raises(cfgmod.ConfigError, match=r"groom\.attend\.mode"):
+        groom_settings.resolve_attend_settings()
+
+
+def test_the_attendant_treats_an_unreadable_mode_as_off(cfg_file):
+    cfgmod.write_config_section(groom_settings.ATTEND_SECTION, {"mode": "enthusiastic"})
+
+    assert attend.settings().mode == groom_settings.ATTEND_OFF
 
 
 def test_last_mode_round_trips_through_a_save(cfg_file):

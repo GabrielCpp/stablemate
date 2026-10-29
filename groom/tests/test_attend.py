@@ -80,13 +80,11 @@ def attending(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Confi
             monkeypatch.setenv(key, value)
         store.reset()
         attend.reset()
-        attend.forget_settings()
         return _Spawner()
 
     yield _configure
     store.reset()
     attend.reset()
-    attend.forget_settings()
 
 
 def _gate(

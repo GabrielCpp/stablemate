@@ -634,7 +634,6 @@ async def attend_settings_post(data: dict) -> dict:
         deny=current.deny,
     )
     await asyncio.to_thread(write_attend_settings, updated)
-    attend.forget_settings()
     await _broadcast_shell()
     return (await asyncio.to_thread(attend.settings)).as_dict()
 

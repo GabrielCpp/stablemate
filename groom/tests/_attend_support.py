@@ -8,7 +8,7 @@ import _tui_support as support
 import pytest
 
 from groom import app as groom_app
-from groom import attend, attend_ledger, attend_transcript, store
+from groom import attend_ledger, attend_transcript, store
 from groom.tui.link import Frame
 from groom.tui.route import route
 
@@ -28,12 +28,10 @@ def isolate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str = "") -> 
     else:
         monkeypatch.delenv("GROOM_ATTEND", raising=False)
     store.reset()
-    attend.forget_settings()
 
 
 def release() -> None:
     store.reset()
-    attend.forget_settings()
 
 
 def begin(
