@@ -902,3 +902,46 @@ def test_a_citation_without_a_symbol_is_stamped_with_the_file_digest(tmp_path: P
 
     target.write_text(TWO.replace("return 2", "return 3"), encoding="utf-8")
     assert len(_stale_refs(tmp_path)) == 1
+
+
+OPENAPI = (
+    "openapi: 3.0.0\n"
+    "paths:\n"
+    "  /a:\n"
+    "    post:\n"
+    "      summary: create a\n"
+    "\n"
+    "  /b:\n"
+    "    get:\n"
+    "      summary: read b\n"
+    "  '/v1.0/x':\n"
+    "    get:\n"
+    "      summary: read x\n"
+)
+
+
+def test_digest_citation_of_a_yaml_key_path_ignores_edits_to_other_keys():
+    before = stamp.digest_citation("api/openapi.yaml", OPENAPI.encode(), "paths./a.post")
+    other = OPENAPI.replace("read b", "read b again")
+    assert stamp.digest_citation("api/openapi.yaml", other.encode(), "paths./a.post") == before
+    assert before != stamp.digest_file(OPENAPI.encode())
+
+
+def test_digest_citation_of_a_yaml_key_path_changes_with_its_own_block():
+    before = stamp.digest_citation("api/openapi.yaml", OPENAPI.encode(), "paths./a.post")
+    edited = OPENAPI.replace("create a", "create an a")
+    assert stamp.digest_citation("api/openapi.yaml", edited.encode(), "paths./a.post") != before
+
+
+def test_digest_citation_of_a_missing_yaml_key_path_falls_back_to_the_file():
+    data = OPENAPI.encode()
+    assert stamp.digest_citation("api/openapi.yaml", data, "paths./nope.post") == stamp.digest_file(data)
+
+
+def test_digest_citation_of_a_yaml_key_containing_a_dot_matches_the_whole_key():
+    before = stamp.digest_citation("api/openapi.yaml", OPENAPI.encode(), "paths./v1.0/x.get")
+    assert before != stamp.digest_file(OPENAPI.encode())
+    edited = OPENAPI.replace("read x", "read x again")
+    assert stamp.digest_citation("api/openapi.yaml", edited.encode(), "paths./v1.0/x.get") != before
+    unrelated = OPENAPI.replace("create a", "create an a")
+    assert stamp.digest_citation("api/openapi.yaml", unrelated.encode(), "paths./v1.0/x.get") == before

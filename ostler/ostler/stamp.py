@@ -29,6 +29,56 @@ def digest_file(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()[:DIGEST_LENGTH]
 
 
+_YAML_KEY = re.compile(
+    r"""^(?P<indent> *)(?:'(?P<single>[^']*)'|"(?P<double>[^"]*)"|(?P<bare>[^\s:#'"\-][^:]*?|-[^\s:][^:]*?))\s*:(?:\s|$)"""
+)
+
+
+def _yaml_children(lines: list[str], lo: int, hi: int) -> list[tuple[str, int, int]]:
+    keys: list[tuple[int, int, str]] = []
+    for index in range(lo, hi):
+        match = _YAML_KEY.match(lines[index])
+        if match:
+            name = next(group for group in match.group("single", "double", "bare") if group is not None)
+            keys.append((len(match.group("indent")), index, name))
+    if not keys:
+        return []
+    indent = min(item[0] for item in keys)
+    children: list[tuple[str, int, int]] = []
+    for level, index, name in keys:
+        if level != indent:
+            continue
+        end = index + 1
+        while end < hi and (not lines[end].strip() or len(lines[end]) - len(lines[end].lstrip(" ")) > indent):
+            end += 1
+        children.append((name, index, end))
+    return children
+
+
+def _yaml_block(lines: list[str], lo: int, hi: int, symbol: str) -> tuple[int, int] | None:
+    parts = symbol.split(".")
+    children = _yaml_children(lines, lo, hi)
+    for count in range(len(parts), 0, -1):
+        name = ".".join(parts[:count])
+        for key, start, end in children:
+            if key != name:
+                continue
+            if count == len(parts):
+                return start, end
+            found = _yaml_block(lines, start + 1, end, ".".join(parts[count:]))
+            if found:
+                return found
+    return None
+
+
+def _yaml_citation_text(text: str, symbol: str) -> str | None:
+    lines = text.split("\n")
+    found = _yaml_block(lines, 0, len(lines), symbol)
+    if found is None:
+        return None
+    return "\n".join(lines[found[0]:found[1]])
+
+
 def digest_citation(path: str | Path, data: bytes, symbol: str = "") -> str:
     """The stamp for a citation: the cited declarations' text when *symbol* grounds in the file, else the whole file's."""
     if symbol:
@@ -37,6 +87,11 @@ def digest_citation(path: str | Path, data: bytes, symbol: str = "") -> str:
         try:
             text = data.decode("utf-8")
         except UnicodeDecodeError:
+            return digest_file(data)
+        if Path(path).suffix.lower() in (".yaml", ".yml"):
+            block = _yaml_citation_text(text, symbol)
+            if block is not None:
+                return digest_file(block.encode("utf-8"))
             return digest_file(data)
         lines = text.split("\n")
         picked = [
