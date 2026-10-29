@@ -375,6 +375,26 @@ def write_config_section(name: str, values: dict[str, Any]) -> None:
     _save(path, document)
 
 
+def write_config_value(key: str, value: Any) -> None:
+    """Persist ``value`` at the dotted ``key``, refused unless the whole file still validates."""
+    path = config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    document = _editable(path)
+    parts = key.split(".")
+    table: Any = document
+    for part in parts[:-1]:
+        if not isinstance(table.get(part), dict):
+            table[part] = tomlkit.table(is_super_table=True)
+        table = table[part]
+    table[parts[-1]] = value
+    read: Any = _validated(document.unwrap(), path).model_dump(exclude_none=True)
+    for part in parts:
+        read = read.get(part) if isinstance(read, dict) else None
+    if not isinstance(value, dict) and read != value:
+        raise ConfigError(f"{key} = {value!r} does not fit the schema: the tools would read it as {read!r}.")
+    _save(path, document)
+
+
 def _walk_migrations(cfg: dict[str, Any], from_version: int) -> dict[str, Any]:
     """Apply the migrations from ``from_version`` up to :data:`CONFIG_VERSION`, no I/O."""
     data = dict(cfg)

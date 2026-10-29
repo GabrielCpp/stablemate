@@ -89,6 +89,35 @@ def test_a_write_to_a_dotted_section_adds_no_empty_parent_header(cfg_file):
     assert "[groom]\n" not in text
 
 
+def test_a_dotted_value_lands_in_its_table_and_loads_back(cfg_file):
+    cfgmod.write_config_value("groom.attend.mode", "off")
+
+    assert "[groom.attend]" in cfg_file.read_text()
+    groom = cfgmod.load_home_config().groom
+    assert groom is not None and groom.attend is not None
+    assert groom.attend.mode == "off"
+
+
+def test_a_dotted_value_the_schema_rejects_is_not_written(cfg_file):
+    cfgmod.write_config_key("base_dir", "/p")
+    before = cfg_file.read_text()
+
+    with pytest.raises(cfgmod.ConfigError, match="saddlebag.backend"):
+        cfgmod.write_config_value("saddlebag.backend", "nope")
+
+    assert cfg_file.read_text() == before
+
+
+def test_a_dotted_value_the_schema_would_drop_is_not_written(cfg_file):
+    cfgmod.write_config_value("profiles.claude", {"cli": "claude"})
+    before = cfg_file.read_text()
+
+    with pytest.raises(cfgmod.ConfigError, match="would read it as None"):
+        cfgmod.write_config_value("profiles.claude.default.timeout_scale", -1)
+
+    assert cfg_file.read_text() == before
+
+
 def test_a_write_is_seen_by_the_next_load(cfg_file):
     cfg_file.write_text("config_version = 2\n")
     assert cfgmod.load_home_config().base_dir is None
