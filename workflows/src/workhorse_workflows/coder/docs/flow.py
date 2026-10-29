@@ -32,7 +32,7 @@ from workhorse_workflows.coder.shared.resolution import (
     answered,
     resolver_args,
 )
-from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
+from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.story import (
     prepare_story,
     resolve_workspace_dirs,
@@ -342,13 +342,16 @@ class Docs(Workflow):
             self.ctx.story_path,
             services_root(self),
             tuple(classification.source_roots),
-            "HEAD",
+            TRUNK,
             "WORKTREE",
             preexisting=tuple(self.preexisting),
             story_sources=(
                 self.output(resolve_story_sources).sources
                 if self.workspace and self.ctx.story_id
                 else ()
+            ),
+            story_refs=tuple(
+                dict.fromkeys(ref for ref in (self.ctx.story_id, self.ctx.story_slug) if ref)
             ),
         )
 

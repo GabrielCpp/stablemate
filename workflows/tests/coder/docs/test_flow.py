@@ -35,7 +35,7 @@ from workhorse_workflows.coder.shared.docs import (
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.owner import MAX_BLOCKS, MAX_LAPS
 from workhorse_workflows.coder.shared.schemas.docs import DocumentationGate
-from workhorse_workflows.coder.shared.okf import build_okf_context, validate_okf_context
+from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from _epics import epics_root
 
@@ -414,6 +414,31 @@ def test_sources_inside_the_docs_worktree_take_the_local_route(
     assert _output(run_env, validate_okf_context)["status"] == "passed"
     gate = _output(run_env, verify_story_documentation)
     assert gate["status"] == "passed", gate
+
+
+def test_the_packet_is_built_from_trunk_scoped_to_the_story_refs(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dev stage has committed the code, so the packet reads the story's trunk diff."""
+    seen: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
+    real = build_okf_context
+
+    def _spy(*args: Any, **kwargs: Any) -> Any:
+        seen.append((args, kwargs))
+        return real(*args, **kwargs)
+
+    _spy.__name__ = f"_spy_okf_{next(_GATE_NAMES)}"
+    monkeypatch.setattr(docs_flow, "build_okf_context", blueprint.node(_spy))
+
+    drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
+
+    args, kwargs = seen[0]
+    assert args[5:7] == (TRUNK, "WORKTREE"), args
+    assert STORY in kwargs["story_refs"], kwargs
 
 
 def test_the_owner_is_handed_the_grounding_worklist_before_it_writes(
