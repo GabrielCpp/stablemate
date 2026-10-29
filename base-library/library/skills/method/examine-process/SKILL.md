@@ -1,6 +1,6 @@
 ---
 name: examine-process
-description: "Improving a running process that nobody asked a question about: a coder run, a book pipeline, a benchmark, any loop an agent tends from a feed. Each delivered unit is held against its own ideal path, one pass per stage with no retry, no hand step and no dead time. Everything in the gap is waste, classified by kind, ranked by how many units it recurred in, traced to the construct in the workflow that produces it, and removed by one change before the next unit starts. The next unit grades the change. Load when tending a run from a feed and about to acknowledge a notification, when a unit of work was just delivered, when asked whether a process wastes or converges, or when a run looks normal because nothing in the prompt said otherwise. For a stream of attempts stuck on one goal, load step-back. For a question already in hand, load research-study."
+description: "Improving a running process that nobody asked a question about: a coder run, a book pipeline, a benchmark, any loop an agent tends from a feed. Each delivered unit is held against its own ideal path, one pass per stage with no retry, no hand step and no dead time. Everything in the gap is waste, classified by kind, ranked by how many units it recurred in, traced to the construct in the workflow that produces it, and removed while the run goes on, with the first reading of its yardstick grading the change. The time between two notifications is spent on the next tax, never waiting for the next unit. Load when tending a run from a feed and about to acknowledge a notification, when a unit of work was just delivered, when asked whether a process wastes or converges, or when a run looks normal because nothing in the prompt said otherwise. For a stream of attempts stuck on one goal, load step-back. For a question already in hand, load research-study."
 tags: [review, process]
 ---
 
@@ -21,10 +21,15 @@ left until the workflow changes.
 
 **"Nothing wrong" is a claim.** It stands only on the readings below. **"Improving" is a
 claim too.** It stands only on a waste kind counted on one unit and absent on the next.
+**Examine and improve, never examine and wait.** A tax written down and left for the next
+examination is paid again by the next unit, and the hours between two notifications were
+free to remove it. An attendant with a tax in the table and nothing in hand is the run's
+most expensive idle stage, and its own dead time is counted like any other.
 
 [[step-back]] judges a stream of attempts once a count trips. [[research-study]] answers a
 question the operator wrote. This skill sits before both: it finds the tax, changes the
-workflow to remove it, and checks the next unit for it. The loop closes inside the skill.
+workflow to remove it, and reads the yardstick for it. The loop closes inside the skill,
+and the other skills are methods it runs, never places it hands work to.
 
 ## Two tiers
 
@@ -35,16 +40,19 @@ would cost more than the run, so the work splits in two:
   across ticks:
 
   ```
-  <stage> · lap <k>, stage median <m> · turn <elapsed> · doing: <phrase from the transcript> · seen before: <lap or none>
+  <stage> · lap <k>, stage median <m> · turn <elapsed> · doing: <phrase from the transcript> · seen before: <lap or none> · working: <tax in hand, or converged>
   ```
 
   "Doing" names what the current turn is at, read from its transcript, not from the node
   name. "Seen before" names the earlier lap of this unit that did the same thing, or none.
-  That line is the acknowledgement. A line without "doing" and "seen before" is a check not
-  made. A lap count above the stage's median, or a "seen before" that names a lap, starts an
-  examination at once, while a rewind can still save the rest of the unit.
+  "Working" names the tax the attendant is removing between this tick and the next. That
+  line is the acknowledgement. A line without "doing" and "seen before" is a check not
+  made. A line reading "working: none" while the table holds a tax is the attendant's own
+  dead time. A lap count above the stage's median, or a "seen before" that names a lap,
+  starts an examination at once, while a rewind can still save the rest of the unit.
 - **On every unit delivered**, and at run end, the **examination**: steps 1 to 7 below, with
   the judge. A unit is a story through its gate, a book round closed, a benchmark task scored.
+  Between examinations the attendant works the queue, step 8.
 
 Both tiers append to one file, `EXAMINED.md`, in the run's directory beside its event log.
 The run directory is the run's record. The next examination and the fresh judge read the
@@ -134,8 +142,8 @@ workflow's code now, at that construct only.
 
 Two tests before the name stands:
 
-- **Contrast.** If the kind appears on some units and not others, [[isolating-causes]] holds
-  the move: what differs between the units that paid and the units that did not.
+- **Contrast.** If the kind appears on some units and not others, run [[isolating-causes]]
+  now: what differs between the units that paid and the units that did not.
 - **Origin.** Ask why the construct behaves so, and why that, until the answer is a property
   of the workflow and not of the unit. [[root-cause]] holds the chain. A tail commit that
   restamps citations is produced by a documentation stage that does not restamp, not by the
@@ -148,39 +156,63 @@ workflow.
 ## 6. Change the workflow
 
 Write the change before making it: the construct, what it becomes, the kind it removes, and
-the yardstick, which is that kind's count on the next unit. One change per examination. A
-second change on the same unit makes the next unit grade two things at once and answer for
-neither.
+the yardstick. The yardstick is the first reading that can show the kind gone, not the next
+unit by default: a prompt change is read at the stage's next visit, a tool fix at the tool's
+next call, a gate change at the next gate. One change per kind in flight. Two changes aimed
+at one kind would share a yardstick and answer for neither. Changes on different kinds each
+have their own, so several run at once.
 
 Gate it. [[vet-proposal]] decides whether the change deserves to exist as written, and
 [[whole-first]] joins it when the change adds a construct the workflow did not have. A
-change that fails the gate goes back to step 5 with the reason.
+change that fails the gate goes back to step 5 with the reason. A tax whose fix is a design
+across modules goes through [[decompose]] now, and the build follows the note. The design is
+not a reason to wait for the run to end.
 
-Then land it and make the run pick it up before the next unit starts. For a workhorse run
-that is a commit on the workflow and a `reload` from [[workhorse-operate]]. The run itself
-is not touched: no rewind, no answer, no edit to its state. The change lives in the
-workflow, where every later unit and every later run inherits it.
+Then land it and make the run pick it up at its next boundary. For a workhorse run that is
+a commit on the workflow and a `reload` from [[workhorse-operate]]. The run's state is not
+edited. The change lives in the workflow, where every later unit and every later run
+inherits it.
+
+A fix that needs something the run holds, such as the device, the backend or the checkout,
+is priced, not parked: the tax per unit times the units left, against the minutes the run
+loses while the resource is borrowed. When the tax wins, borrow it at the next turn
+boundary, take the measurement or land the fix, and resume. When the run wins, do every part
+that does not need the resource now, and write the boundary at which the rest lands.
 
 Done when the change is committed, the run reports the new code, and `EXAMINED.md` names
-the change and its yardstick.
+the change, its yardstick and the boundary it is read at.
 
-## 7. Grade the change on the next unit
+## 7. Grade the change at its yardstick
 
-The next examination opens with the previous change. Set the removed kind's count on the new
-unit beside its count before. Then set every other kind beside its previous reading, not
-only the one the change aimed at. A change that moved its own kind to zero and raised
-another is the siloed fix [[whole-first]] warns about, and the rise is the next tax.
+Read the yardstick at the first boundary it names, and write the count before and after. At
+the next examination set every other kind beside its previous reading too, not only the one
+the change aimed at. A change that moved its own kind to zero and raised another is the
+siloed fix [[whole-first]] warns about, and the rise is the next tax.
 
 - Count at zero: the change holds. Say so in one line and take the next tax.
 - Count unchanged or higher: the finding reopens with the new occurrence as evidence, and
   step 5 runs again on it. Three changes aimed at one kind with the count still standing is
   the stream [[step-back]] judges.
 
-## When the loop stops
+## 8. Work the queue between ticks
 
-The loop takes up a tax while there is one. When no kind appears on two units and the
-one-offs are each below the unit's ideal path, the process has **converged**. Say so once.
-The reading tier keeps running, and the first kind seen twice reopens the loop.
+The table is a queue, ranked by step 3. After an examination, and after every reading, the
+attendant holds the top tax that has no change in flight, and works it through steps 5 and 6
+until the change is landed or the gate refused it. Then the next one. A notification
+interrupts for its reading line and the work resumes.
+
+Three entries that look like destinations are not:
+
+- **"Route: operator"** is a question with a recommendation, asked now through the run's
+  gate or the operator's inbox, with the work that does not depend on the answer done.
+- **An open loop** has the attendant as its receiver. A defect with no owner is filed now,
+  as a story, an issue or a fix, and the filing is the evidence the row closes on.
+- **"After the run"** names a boundary and the reason the run must end first. Without the
+  reason it is waiting, and the row stays open at the top of the queue.
+
+The queue empties when no kind appears on two units and the one-offs are each below the
+unit's ideal path. The process has **converged**. Say so once. The reading tier keeps
+running, and the first kind seen twice reopens the queue.
 
 ## The report
 
@@ -197,8 +229,8 @@ read. A line the examiner cannot fill is a check not made. A report that says th
 fine and carries no table has examined nothing.
 
 Close with one verdict: **improving** when the last change removed its kind, **taxed** when
-a kind recurs and no change has landed, **converged** when no kind recurs, **unrecorded**
-when a stage left no record. At run end add the one adoption line: wall time and bill
+a kind recurs and no change is in flight for it, **converged** when no kind recurs,
+**unrecorded** when a stage left no record. At run end add the one adoption line: wall time and bill
 against what a person would need.
 
 ## Completion criterion
@@ -212,5 +244,8 @@ Each line checkable from `EXAMINED.md` alone:
 - Every kind carries its recurrence count over the units delivered.
 - A fresh judge returned its expected recurrences, and they are in the table.
 - The top tax is traced to a named construct with a why-chain that ends on the workflow.
-- One change is committed and loaded, with its yardstick, or the gate's reason it was not.
-- The previous change is graded on this unit, with every kind before and after.
+- Every tax has a change in flight, with its yardstick and the boundary it is read at, or
+  the gate's reason it has none.
+- Every change whose boundary has passed carries its count before and after, and the
+  examination sets every kind beside its previous reading.
+- No reading line says "working: none" while the table holds a tax.
