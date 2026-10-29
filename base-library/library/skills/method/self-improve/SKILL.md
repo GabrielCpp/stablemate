@@ -1,6 +1,6 @@
 ---
 name: self-improve
-description: "Running a continuous improvement loop beside a live process that nobody asked a question about: a coder run, a book pipeline, a benchmark, any loop an agent tends from a feed. Each cycle holds the last delivered unit against its own ideal path, one pass per stage with no retry, no hand step and no dead time, ranks the waste in the gap by how many units it recurred in, diagnoses the top one to a construct in the workflow, designs and lands the change while the run goes on, and reads the yardstick that grades it. The method skills are the loop's steps: isolating-causes and root-cause diagnose, decompose designs, whole-first and vet-proposal gate, step-back judges a change that keeps failing. Load when tending a run from a feed and about to acknowledge a notification, when a unit of work was just delivered, when asked whether a process wastes or converges, or when a run looks normal because nothing in the prompt said otherwise. For a question the operator already wrote, load research-study."
+description: "Running a continuous improvement loop beside a live process that nobody asked a question about: any loop an agent tends from a feed. Each cycle holds the last delivered unit against its own ideal path, one pass per stage with no retry, no hand step and no dead time, ranks the waste in the gap by how many units it recurred in, diagnoses the top one to a construct in the workflow, designs and lands the change at the size the tax sets, a prompt line or a rebuilt stage, while the run goes on, and reads the yardstick that grades it. The method skills are the loop's steps: isolating-causes and root-cause diagnose, decompose designs, whole-first and vet-proposal gate, step-back judges a change that keeps failing. Load when tending a run from a feed and about to acknowledge a notification, when a unit of work was just delivered, when asked whether a process wastes or converges, or when a run looks normal because nothing in the prompt said otherwise. For a question the operator already wrote, load research-study."
 tags: [review, process]
 ---
 
@@ -24,6 +24,16 @@ undone. The delivered artifact fixes what the ideal path had to contain. Everyth
 did beyond it is **waste**, and every waste has a cause in the workflow: a prompt, a node, a
 check, a gate or a tool. A waste that appears on two units is a **tax**, paid on every unit
 left until the workflow changes.
+
+## The mandate
+
+The operator who started the loop handed the attendant the workflow for the run's life.
+Every construct in it is the attendant's to change without asking, at any size: a prompt
+line, a node, a gate, a tool, the order of the stages, a stage itself, or the lane the
+stages form. Three things stay with the operator, and only these: what the unit is and what
+accepts it, money spent beyond the run's own budget, and the product's code outside the
+slice a story owns. A question about anything else is a tax parked with a question mark on
+it. Permission is not among the things a cycle waits on.
 
 **"Nothing wrong" is a claim.** It stands only on the readings below. **"Improving" is a
 claim too.** It stands only on a waste kind counted on one reading and absent on the next.
@@ -179,15 +189,26 @@ next call, a gate change at the next gate. One change per kind in flight. Two ch
 at one kind would share a yardstick and answer for neither. Changes on different kinds each
 have their own, so several cycles run at once.
 
+The tax sets the size of the change, not the gap between two ticks. Price the change in
+minutes to design, build and land, against the tax's minutes per unit times the units left.
+When the tax is the larger number the change is made at whatever size it needs, and a stage
+rebuilt or removed is one cycle like a prompt line is. Lean has the two words: **kaizen**,
+the small step every cycle takes, and **kaikaku**, the rebuild when the small steps have
+stopped moving the count or the tax dwarfs them. A stage whose single first pass costs
+more than the unit's whole ideal path is a kaikaku candidate on its first reading.
+
 A change that crosses two modules, adds a concept, or gives the workflow a second way to do
-something runs [[decompose]] here, and its design note is the change written. The size of
-the design is not a reason to wait for the run to end. The build follows the note in the
-same cycle.
+something runs [[decompose]] here, and its design note is the change written. A rebuild
+then runs [[vertical-slicing]] on the note, and its first slice is this cycle's change,
+with the stage's next visit as its yardstick. The size of the design is not a reason to
+wait for the run to end, and the build follows the note in the same cycle.
 
 Three entries that look like a place to leave the tax are not:
 
-- **"Route: operator"** is a question with a recommendation, asked now through the run's
-  gate or the operator's inbox, with the work that does not depend on the answer done.
+- **"Route: operator"** is a question about one of the three things the mandate leaves with
+  the operator, asked now with a recommendation through the run's gate or the operator's
+  inbox, with the work that does not depend on the answer done. Any other question the
+  attendant answers itself.
 - **An open loop** has the attendant as its receiver. A defect with no owner is filed now,
   as a story, an issue or a fix, and the filing is the evidence the row closes on.
 - **"After the run"** names a boundary and the reason the run must end first. Without the
@@ -197,7 +218,12 @@ Three entries that look like a place to leave the tax are not:
 
 Gate the design. [[vet-proposal]] decides whether the change deserves to exist as written,
 and [[whole-first]] joins it when the change adds a construct the workflow did not have. A
-change that fails the gate goes back to diagnose with the reason.
+change that fails the gate goes back to diagnose with the reason. The gate judges fit, never
+size: a rebuild that fits is landed, slice by slice.
+
+A study the loop started under [[research-study]] ends with a verdict, and a verdict that
+names what has to replace the current shape is a design written. It re-enters the cycle
+here, and the build is the next step, not a question to the operator.
 
 Then land it and make the run pick it up at its next boundary. For a workhorse run that is
 a commit on the workflow and a `reload` from [[workhorse-operate]]. The run's state is not
@@ -222,8 +248,9 @@ fix [[whole-first]] warns about, and the rise is the next tax.
 
 - Count at zero: the cycle closes. Say so in one line.
 - Count unchanged or higher: the cycle reopens with the new occurrence as evidence, back at
-  diagnose. Three changes aimed at one kind with the count still standing is the stream
-  [[step-back]] judges, in place, before a fourth.
+  diagnose. Three kaizen changes aimed at one kind with the count still standing is the
+  stream [[step-back]] judges, in place, before a fourth, and its usual answer is kaikaku:
+  the stage rebuilt, through design.
 
 ## Convergence
 
@@ -261,5 +288,7 @@ Each line checkable from `EXAMINED.md` alone:
   expected recurrences are in the table.
 - Every tax has a cycle open: a construct with a why-chain ending on the workflow, a change
   committed and loaded with its yardstick and boundary, or the gate's reason it has none.
+- Every change is priced against its tax, and no row waits on a permission the mandate
+  already grants.
 - Every change whose boundary has passed carries its count before and after, and every
   measure sets every kind beside its previous reading.

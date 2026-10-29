@@ -483,7 +483,9 @@ A study ends on one of three verdicts, and its report states it first:
 
 Write the study's report from the ledger into `reports/`. The format is in
 [references/report.md](references/report.md). Update `TRIED.md`. Then tell the operator in
-a few lines: what died or won, and what the loop takes next. Take the next candidate from
+a few lines: what died or won, and what the loop takes next. A verdict that names what has to
+replace the current shape is a design, and when the study runs inside a [[self-improve]]
+cycle the build is that cycle's next step. "Needs building" is not a verdict. Take the next candidate from
 `FIELD.md` and start the next study at step 2. When the study died of its framing, update
 `FRAMINGS.md` first, and take the next candidate from another framing. The next study does
 not start from a neighbour of the framing that just failed.
