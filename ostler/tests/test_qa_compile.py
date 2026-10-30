@@ -71,8 +71,11 @@ def cmd_compile_plan(
     story: str = "",
     run_id: str | None = None,
     base_url: str | None = _BASE_URL,
+    select: set[str] | None = None,
+    replace: bool = False,
 ) -> QaOutcome:
-    return _cmd_compile_plan(spec_dir, out=out, story=story, run_id=run_id, base_url=base_url)
+    return _cmd_compile_plan(spec_dir, out=out, story=story, run_id=run_id, base_url=base_url,
+                             select=select, replace=replace)
 
 
 def _obligation(oid: str, **extra: object) -> dict:
@@ -327,6 +330,74 @@ def test_the_command_refuses_to_overwrite_an_authored_plan(tmp_path: Path) -> No
     result = cmd_compile_plan(spec, out=out)
     assert not result.ok
     assert out.read_text(encoding="utf-8") == "# hours of arrangement\n"
+
+
+_SELECT_FIRST = "okf:docs/services/demo/api.md#post-things:does:1"
+_SELECT_SECOND = "okf:docs/services/demo/api.md#get-widgets:does:1"
+
+
+def _two_node_spec(tmp_path: Path) -> Path:
+    spec = tmp_path / "spec"
+    spec.mkdir()
+    context = _context(
+        _obligation(
+            _SELECT_FIRST,
+            node="docs/services/demo/api.md#post-things",
+            checksDeclared=[{"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}}],
+        ),
+        _obligation(
+            _SELECT_SECOND,
+            node="docs/services/demo/api.md#get-widgets",
+            locators={"route": ["GET /api/widgets"]},
+            checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200, "path": "/api/widgets"}}],
+        ),
+    )
+    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+    return spec
+
+
+def test_a_selection_drops_the_scenarios_it_does_not_name(tmp_path: Path) -> None:
+    spec = _two_node_spec(tmp_path)
+    everything = cmd_compile_plan(spec)
+    assert everything.ok
+    assert _covers(everything.message) == {_SELECT_FIRST, _SELECT_SECOND}
+    by_id = cmd_compile_plan(spec, select={_SELECT_FIRST})
+    assert by_id.ok
+    assert _covers(by_id.message) == {_SELECT_FIRST}
+    assert by_id.data["owed"] == 1
+    by_node = cmd_compile_plan(spec, select={"docs/services/demo/api.md#get-widgets"})
+    assert by_node.ok
+    assert _covers(by_node.message) == {_SELECT_SECOND}
+
+
+def test_a_selection_reports_no_gap_on_an_unselected_obligation(tmp_path: Path) -> None:
+    spec = _two_node_spec(tmp_path)
+    context = json.loads((spec / "qa-okf-context.json").read_text(encoding="utf-8"))
+    context["obligations"].append(_obligation("okf:docs/services/demo/api.md#bare:does:1", node="docs/services/demo/api.md#bare"))
+    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+    assert any(g["ref"].endswith("#bare:does:1") for g in cmd_compile_plan(spec).data["gaps"])
+    narrowed = cmd_compile_plan(spec, select={_SELECT_FIRST})
+    assert not any(g["ref"].endswith("#bare:does:1") for g in narrowed.data["gaps"])
+
+
+def test_a_selection_naming_nothing_fails_with_the_id(tmp_path: Path) -> None:
+    spec = _two_node_spec(tmp_path)
+    result = cmd_compile_plan(spec, select={_SELECT_FIRST, "okf:no-such-node"})
+    assert not result.ok
+    assert result.status == "invalid"
+    assert "okf:no-such-node" in result.message
+
+
+def test_replace_overwrites_an_existing_plan_and_its_absence_refuses(tmp_path: Path) -> None:
+    spec = _two_node_spec(tmp_path)
+    out = spec / "qa_plan.py"
+    out.write_text("# old\n", encoding="utf-8")
+    refused = cmd_compile_plan(spec, out=out, select={_SELECT_FIRST})
+    assert not refused.ok
+    assert out.read_text(encoding="utf-8") == "# old\n"
+    replaced = cmd_compile_plan(spec, out=out, select={_SELECT_FIRST}, replace=True)
+    assert replaced.ok
+    assert _covers(out.read_text(encoding="utf-8")) == {_SELECT_FIRST}
 
 
 def test_a_missing_packet_is_a_problem_not_a_traceback(tmp_path: Path) -> None:

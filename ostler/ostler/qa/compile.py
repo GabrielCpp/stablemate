@@ -513,10 +513,24 @@ def compile_plan_gaps(
     run_id: str | None = None,
     base_url: str | None = None,
     covered_ids: set[str] | None = None,
+    select: set[str] | None = None,
 ) -> Compilation:
-    """Compile the book into a plan, or refuse and say why nothing compiled."""
+    """Compile the book into a plan, or refuse and say why nothing compiled. *select* keeps only the owed obligations whose id or book node it names."""
     return _compile_packet(packet_of(context), story=story, run_id=run_id, base_url=base_url,
-                           covered_ids=covered_ids)
+                           covered_ids=covered_ids, select=select)
+
+
+def _selected(owed: list[Obligation], select: set[str] | None) -> list[Obligation]:
+    """*owed* narrowed to the obligations whose id or book node is in *select*; all of them when it is None."""
+    if select is None:
+        return owed
+    return [o for o in owed if o.id in select or o.node in select]
+
+
+def unmatched_selection(packet: ContextPacket, select: set[str]) -> list[str]:
+    """The ids of *select* that name no owed obligation and no owed obligation's book node."""
+    known = {name for o in packet.owed for name in (o.id, o.node)}
+    return sorted(select - known)
 
 
 def _compile_packet(
@@ -526,11 +540,12 @@ def _compile_packet(
     run_id: str | None,
     base_url: str | None,
     covered_ids: set[str] | None,
+    select: set[str] | None = None,
 ) -> Compilation:
     """Compile one validated packet into a plan, or refuse and say why nothing compiled."""
     sinks = PlanSinks(gaps=[], captured=set(), files={})
     emitted = EmittedScenarios(targets=set(), covered=set() if covered_ids is None else covered_ids)
-    owed = _readable(packet.owed, sinks.gaps)
+    owed = _readable(_selected(packet.owed, select), sinks.gaps)
     navigation = packet.navigation
     lanes = _dispatch(owed, navigation, sinks.gaps, packet.browser_fixtures)
     debt = _book_debt(lanes.no_verify, sinks.gaps)
@@ -629,8 +644,10 @@ def cmd_compile_plan(
     story: str = "",
     run_id: str | None = None,
     base_url: str | None = None,
+    select: set[str] | None = None,
+    replace: bool = False,
 ) -> QaOutcome:
-    """Compile `spec_dir/qa-okf-context.json` into a plan skeleton."""
+    """Compile `spec_dir/qa-okf-context.json` into a plan skeleton, narrowed to *select* when given."""
     context_file = spec_dir / "qa-okf-context.json"
     try:
         raw = json.loads(context_file.read_text(encoding="utf-8"))
@@ -641,11 +658,18 @@ def cmd_compile_plan(
         return QaOutcome(ok=False, message=f"error: {exc}", status="invalid",
                          data={"status": "invalid", "problems": [str(exc)]})
 
+    if select:
+        missing = unmatched_selection(packet, select)
+        if missing:
+            message = f"error: --select names no owed obligation or book node: {', '.join(missing)}"
+            return QaOutcome(ok=False, message=message, status="invalid",
+                             data={"status": "invalid", "problems": [message]})
+
     story_name = story or packet.story_slug or "story"
     result = _compile_packet(packet, story=story_name, run_id=run_id, base_url=base_url,
-                             covered_ids=None)
+                             covered_ids=None, select=select or None)
 
-    owed = packet.owed
+    owed = _selected(packet.owed, select or None)
     declared = [o for o in owed if o.checks]
     owed_ids = [o.id for o in owed]
     no_verify_ids = {gap.obligation_id for gap in result.gaps if gap.kind == "no-verify-declared"}
@@ -677,10 +701,10 @@ def cmd_compile_plan(
 
     if out is None:
         return QaOutcome(ok=True, message=source, status="passed", data={**data, "plan": source})
-    if out.exists():
+    if out.exists() and not replace:
         return QaOutcome(
             ok=False,
-            message=f"error: {out} already exists; move it aside or compile to stdout",
+            message=f"error: {out} already exists; pass --replace, or compile to stdout",
             status="invalid",
             data={**data, "problems": [f"{out} already exists"]},
         )

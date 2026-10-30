@@ -78,7 +78,7 @@ environment, and no plan, transcript or event carries it. See
   source file and a plan under spec s1
 - code: ostler/ostler/qa/book_index.py::captures_by_node@dd91e95d2722
 - code: ostler/ostler/qa/captures.py::CaptureDecl/parse_bullet@248120ebb77f
-- code: ostler/ostler/qa/compile.py::annotate_deferred_obligations@f211b537faac
+- code: ostler/ostler/qa/compile.py::annotate_deferred_obligations@3cf23080c032
 - code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@479bda09f64c
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@e17faa3b5f39
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
@@ -127,11 +127,16 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/context.py::select_obligations@9e054ade9186
 
 ### ostler-qa-compile-plan
-- usage: ostler qa compile-plan --spec SPEC [--out PATH] [--story STORY] [--run-id ID] [--base-url
-  URL] [--json]: compiles a qa_plan.py skeleton from the packet, reading no source
+- usage: ostler qa compile-plan --spec SPEC [--out PATH] [--replace] [--select ID ...] [--story
+  STORY] [--run-id ID] [--base-url URL] [--json]: compiles a qa_plan.py skeleton from the packet,
+  reading no source
 - flags:
-  - --out (write the plan here; an existing file is never overwritten, and without it the plan is
-    printed)
+  - --out (write the plan here; an existing file is overwritten only with --replace, and without
+    it the plan is printed)
+  - --replace (let --out overwrite an existing plan)
+  - --select (repeatable; keep only the owed obligations whose id or book node is the given id, and
+    report no gap on the others; with none given every owed obligation compiles; an id that matches
+    no owed obligation or book node is an error naming it)
   - --story (the story name for the plan; default is the one the packet was built for)
   - --run-id (the run id for the plan)
   - --base-url (the entry URL for a surface whose book states none)
@@ -144,22 +149,22 @@ environment, and no plan, transcript or event carries it. See
 - verify: json_path(path="status", equals="passed")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/book_index.py::captures_by_node@dd91e95d2722
-- code: ostler/ostler/qa/compile.py::cmd_compile_plan@f211b537faac
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@479bda09f64c
-- code: ostler/ostler/qa/compile_grpc.py::grpc_scenarios@07a9248e9e25
-- code: ostler/ostler/qa/compile_http.py::api_scenarios@e17faa3b5f39
-- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
-- code: ostler/ostler/qa/compile_maestro.py::device_state_walks@da217d55c8c0
-- code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
-- code: ostler/ostler/qa/compile_page.py::page_scenarios@606b70054ffc
-- code: ostler/ostler/qa/compile_support.py::on_href@771f910c9275
-- code: ostler/ostler/qa/dispatch.py::claim_driver@d42406bead4b
-- code: ostler/ostler/qa/navigation.py::navigation_rows@e5be923f66b9
-- code: ostler/ostler/qa/obligation.py::obligation_of@4bdc7a410ade
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/packet.py::packet_of@6b7020cfc619
-- code: ostler/ostler/qa/plan_source.py::arrangement_of@08fddc26f73f
+- code: ostler/ostler/qa/book_index.py::captures_by_node@3461b43ebf37
+- code: ostler/ostler/qa/compile.py::cmd_compile_plan@fd8658b94876
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@e77082cad485
+- code: ostler/ostler/qa/compile_grpc.py::grpc_scenarios@af1d3303dcf6
+- code: ostler/ostler/qa/compile_http.py::api_scenarios@86c721e7af1b
+- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@04deeed96801
+- code: ostler/ostler/qa/compile_maestro.py::device_state_walks@f685bb9e79dc
+- code: ostler/ostler/qa/compile_moves.py::move_walks@c8463448d0ef
+- code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
+- code: ostler/ostler/qa/compile_support.py::on_href@dd9915c8e301
+- code: ostler/ostler/qa/dispatch.py::claim_driver@7c6d2995f39d
+- code: ostler/ostler/qa/navigation.py::navigation_rows@4df2fbcf356b
+- code: ostler/ostler/qa/obligation.py::obligation_of@b558662c2212
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/packet.py::packet_of@e8972601e71a
+- code: ostler/ostler/qa/plan_source.py::arrangement_of@9dcaf902b06a
 
 ### ostler-qa-context-web-journey
 - usage: ostler qa context --base BASE --spec SPEC --json, BASE naming a commit before a screen's

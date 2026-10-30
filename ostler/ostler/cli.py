@@ -971,7 +971,16 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_compile_plan.add_argument("--spec", required=True, type=Path)
     qa_compile_plan.add_argument(
         "--out", default=None, type=Path, metavar="PATH",
-        help="write the plan here; omit to print it. An existing file is never overwritten",
+        help="write the plan here; omit to print it. An existing file is overwritten only with --replace",
+    )
+    qa_compile_plan.add_argument(
+        "--select", action="append", default=[], metavar="ID",
+        help="keep only the obligations whose id or book node is ID; repeatable. "
+        "Omit to compile every obligation",
+    )
+    qa_compile_plan.add_argument(
+        "--replace", action="store_true",
+        help="let --out overwrite an existing plan",
     )
     qa_compile_plan.add_argument(
         "--story", default="",
@@ -1914,6 +1923,8 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             story=args.story,
             run_id=args.run_id,
             base_url=args.base_url,
+            select=set(args.select) or None,
+            replace=args.replace,
         )
         _out(json.dumps(result.data, indent=2) if args.json else result.message)
         return 0 if result.ok else 1
