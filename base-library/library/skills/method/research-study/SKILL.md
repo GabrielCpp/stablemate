@@ -15,9 +15,11 @@ The operator hands over a question, not a study. The skill runs as a **loop**: w
 study ends without answering the question, the next one starts from the field without
 asking, inside the budget that remains. The operator reads one file, `TRIED.md`, and hears
 from the loop when a method dies, a method wins, the loop stops, or a decision is the
-operator's to take.
+operator's to take. The loop releases approaches and never the question: a released
+candidate is one row in the ledger, and the question closes only on the operator's word or
+on the stop conditions of step 11.
 
-Eleven traps turn a study into one idea pursued for days, or into days with no result:
+Twelve traps turn a study into one idea pursued for days, or into days with no result:
 
 - **The first idea wins.** One plausible fix absorbs the session, and the rest of the field
   is never compared against it.
@@ -44,6 +46,8 @@ Eleven traps turn a study into one idea pursued for days, or into days with no r
   more, because nothing in its own view runs out. The operator's money and quota do.
 - **The loop never looks up.** Every choice follows the loop's own rules, each one correct,
   and the operator learns what the money bought after it is gone.
+- **A stopped probe closes the question.** The operator stops one round, the loop reads it
+  as a no to the whole question, and the field dies with the probe.
 
 You do not perceive wall-clock time. A 15-minute command and a 1-minute command reach you
 as one result each. The ledger's timestamps are how you see time. Read them. You do not
@@ -86,7 +90,12 @@ An answer the loop cannot give is a question to the operator, sent with a recomm
 and the ledger's one-sentence verdict, before the step runs. These decisions are the
 operator's: the budget and its date, spending on once either is gone, a step priced above
 a tenth of the budget left, a redesign of the yardstick, and a reading of the question that
-drops or adds a premise. The loop proposes each with a figure and waits. Unattended, with
+drops or adds a premise. The loop proposes each with a figure and waits. A question about
+money offers, beside stopping, the next reading from the field at its price, and recommends
+the cheapest one that moves the answer. The operator's answer stops what it names: a probe,
+a round or an instrument. The loop then releases the candidate that probe served, takes the
+next one at a cheaper rung, and holds the question open until the operator closes it in
+words. Unattended, with
 no channel to the operator, it takes the cheaper branch, records the proposal in
 `QUESTION.md`, and the report lists every decision taken this way.
 
@@ -155,8 +164,10 @@ there is one. Without one, the loop proposes a share of what the answer is worth
 the purpose promises over the horizon the operator named, and never more than a tenth of it.
 The proposal states what the loop spent before it, in money and hours, and what that spend
 bought, and the operator takes it before the first row spends against it. When the spend so
-far already exceeds the budget the loop would propose, there is no budget to write: the loop
-stops and asks whether the question is still worth funding. A budget that would not buy
+far already exceeds what the loop would propose, the proposal says so and asks for the next
+tranche: how much more, priced as the readings it buys, and never whether. Closing the
+question is the operator's call, and the loop's recommendation is the cheapest reading that
+moves the answer. A budget that would not buy
 three readings of the cheapest decisive probe calls for a cheaper instrument, found in step
 4b, or for a question to the operator before anything runs. The ledger spends the budget
 down row by row, and the loop never extends it. At half of it with no verdict, a reflection
