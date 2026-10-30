@@ -546,7 +546,11 @@ class Dev(Workflow):
 
     def _leftovers(self) -> list[str]:
         state = self.call(
-            check_repos_clean, self.ctx.story_slug, self.ctx.spec_dir, list(self.preexisting)
+            check_repos_clean,
+            self.ctx.story_slug,
+            self.ctx.spec_dir,
+            list(self.preexisting),
+            skip_artifacts=True,
         )
         return [] if state.clean else [leftover_text(state.dirty)]
 

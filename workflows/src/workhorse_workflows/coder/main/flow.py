@@ -41,8 +41,8 @@ from workhorse_workflows.coder.shared.queue import (
 )
 from workhorse_workflows.coder.shared.story_commit import (
     check_repos_clean,
+    commit_book_delta,
     commit_leftovers,
-    commit_spec_delta,
     proof_scope,
     snapshot_proven_state,
     stamp_story_passed,
@@ -134,12 +134,13 @@ class Coder(Workflow):
         self.call(record_spec_nodes, list(result.authored_nodes))
         story = self._story
         self.call(
-            commit_spec_delta,
+            commit_book_delta,
             self._epic,
             story.story_slug,
             story.spec_dir,
             list(self._preexisting()),
             story_id=story.story_id,
+            phase="spec",
         )
         return Continue(result, self.dev)
 
@@ -171,6 +172,16 @@ class Coder(Workflow):
         result = self._document()
         if not _documented(result):
             return Continue(result, self.replan, notes=result.notes)
+        story = self._story
+        self.call(
+            commit_book_delta,
+            self._epic,
+            story.story_slug,
+            story.spec_dir,
+            list(self._preexisting()),
+            story_id=story.story_id,
+            phase="build",
+        )
         return Continue(result, self.qa)
 
     def qa(self) -> Continue:

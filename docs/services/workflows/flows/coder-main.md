@@ -90,7 +90,9 @@ phase: it writes the story's behaviour model and the book delta before any code,
 nodes it wrote on the run. The workflow then commits the book pages the pass left uncommitted, so
 `dev`'s clean-repo check never counts them as its leftovers. `dev` and the later `document` pass receive those nodes. `document`
 runs the same flow in its build phase, which grounds the book in the code and reconciles it with
-the build. A pr run hands `dev` the run branch to land on. A commit run hands it none. QA findings
+the build. The workflow commits the book pages that pass left uncommitted before `qa` runs. The
+`finalize` recheck commits nothing, so a book edit after the passing QA stays dirty and still
+reopens the scenarios that cover it. A pr run hands `dev` the run branch to land on. A commit run hands it none. QA findings
 are filed against the item and return to its dev owner, who then goes through `document` and `qa`
 again without a second `specify`. A replan from the spec pass, the dev owner, QA or documentation
 rewrites the epic and re-files its open stories. The lane order is the

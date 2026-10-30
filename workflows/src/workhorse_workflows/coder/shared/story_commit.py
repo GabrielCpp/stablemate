@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
+from typing import Literal
 
 from ostler import coverage, model, registry
 from ostler import path as okf_path
@@ -166,9 +167,20 @@ def check_repos_clean(
     repo_dir: str = "",
     workspace: str = "",
     roots: list[str] | None = None,
+    skip_artifacts: bool = False,
 ) -> WorktreeCleanliness:
-    """Did the agent commit its own work in every repo the story touched?"""
+    """Did the agent commit its own work in every repo the story touched? With *skip_artifacts*, the artifacts dir does not count, because workflow lanes write there."""
     found, names = _leftovers(logger, spec_dir, preexisting, repo_dir, workspace, roots)
+    if skip_artifacts:
+        excluded = not_product_roots(repo_dir, book=False)
+        kept = [
+            item for item in found if not (item[1] / item[2]).resolve().is_relative_to(excluded[0])
+        ]
+        if len(kept) < len(found):
+            logger.info(
+                "left %d artifacts-dir path(s) out of the clean check", len(found) - len(kept)
+            )
+        found = kept
     dirty = [f"{name}:{rel}" for name, _, rel in found]
 
     slug = story_slug or "story"
@@ -358,7 +370,7 @@ def commit_leftovers(
 
 
 @blueprint.node
-def commit_spec_delta(
+def commit_book_delta(
     logger: logging.Logger,
     epic: str = "",
     story_slug: str = "",
@@ -367,9 +379,11 @@ def commit_spec_delta(
     repo_dir: str = "",
     workspace: str = "",
     story_id: str = "",
+    phase: Literal["spec", "build"] = "spec",
 ) -> StoryCommitted:
-    """Commit the book pages the spec pass left uncommitted, so dev's clean-repo check never counts the spec as dev's leftovers."""
+    """Commit the book pages the *phase* docs pass left uncommitted, so an owner's clean-repo check never counts the book as its leftovers."""
     slug = story_slug or "story"
+    verb = "specify" if phase == "spec" else "document"
     root = find_repo_root(repo_dir)
     docs_root = find_docs_root(repo_dir)
     book = okf_path.services_root_in(docs_root).resolve()
@@ -392,7 +406,7 @@ def commit_spec_delta(
         message = commits.message(
             "docs",
             commits.scope(name),
-            f"specify {slug} in the book",
+            f"{verb} {slug} in the book",
             epic=registry.epic_slug(epic) or epic,
             story=story_id or slug,
         )
@@ -403,10 +417,10 @@ def commit_spec_delta(
                 f"git refused the commit for {slug} in {repo_path}: {exc}"
             ) from exc
         if landed:
-            logger.info("committed %d book path(s) the spec pass wrote in %s", len(rels), name)
+            logger.info("committed %d book path(s) the %s pass wrote in %s", len(rels), phase, name)
         committed = committed or landed
     if not committed:
-        logger.info("the spec pass left no uncommitted book path for %s", slug)
+        logger.info("the %s pass left no uncommitted book path for %s", phase, slug)
     return StoryCommitted(committed=committed)
 
 
@@ -517,9 +531,9 @@ def commit_story(
 
 __all__ = [
     "check_repos_clean",
+    "commit_book_delta",
     "commit_leftovers",
     "commit_plan_record",
-    "commit_spec_delta",
     "commit_story",
     "leftover_text",
     "proof_scope",

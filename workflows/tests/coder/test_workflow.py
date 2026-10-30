@@ -27,7 +27,6 @@ from workhorse_workflows.coder.shared.queue import ALL_EPICS, begin_run, resolve
 from workhorse_workflows.coder.shared.story_commit import (
     check_repos_clean,
     commit_leftovers,
-    commit_spec_delta,
     stamp_story_passed,
 )
 from workhorse_workflows.coder.shared.story import prepare_story
@@ -207,6 +206,8 @@ class _Sub:
         docs_notes: str = "",
         docs_authored_nodes: list[str] | None = None,
         spec_page: str = "",
+        build_page: str = "",
+        recheck_page: str = "",
         qa_status: QaFlowStatus = "passed",
         qa_statuses: list[QaFlowStatus] | None = None,
         qa_docs_recheck_required: bool = False,
@@ -223,6 +224,9 @@ class _Sub:
         self.docs_notes = docs_notes
         self.docs_authored_nodes = docs_authored_nodes or []
         self.spec_page = spec_page
+        self.build_page = build_page
+        self.recheck_page = recheck_page
+        self.dirty_at_qa: list[str] = []
         self.dirty_at_dev: list[str] = []
         self.qa_status: QaFlowStatus = qa_status
         self.qa_statuses: list[QaFlowStatus] = qa_statuses or []
@@ -287,6 +291,12 @@ class _Sub:
             page = self.repo / self.spec_page
             page.parent.mkdir(parents=True, exist_ok=True)
             page.write_text("# written by the spec pass\n", encoding="utf-8")
+        built = [c.phase for c in self.calls_to("Docs")].count("build")
+        for name, wanted in ((self.build_page, 1), (self.recheck_page, 2)):
+            if name and child.phase == "build" and built == wanted:
+                page = self.repo / name
+                page.parent.mkdir(parents=True, exist_ok=True)
+                page.write_text(f"# written by build pass {built}\n", encoding="utf-8")
         return DocsResult(
             status=self.docs_status,
             notes=self.docs_notes,
@@ -294,6 +304,7 @@ class _Sub:
         )
 
     def _qa(self, child: _StubFlow) -> QaFlowResult:
+        self.dirty_at_qa = _dirty(self.repo).splitlines()
         status = self.qa_statuses.pop(0) if self.qa_statuses else self.qa_status
         return QaFlowResult(
             status=status,
@@ -418,7 +429,46 @@ def test_the_spec_passs_book_page_is_committed_before_dev_starts(
 
     assert sub.dirty_at_dev == [], sub.dirty_at_dev
     assert "docs(acme): specify STORY-1 in the book" in _subjects(repo), _subjects(repo)
-    assert _output(run_env, commit_spec_delta)["committed"] is True
+    assert _dirty(repo) == "", _dirty(repo)
+
+
+def test_the_build_passs_book_page_is_committed_before_qa_runs(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The workflow commits the build docs pass's book delta, so a refixing owner's clean check never counts the book as its leftovers."""
+    repo = epic()
+    sub = _Sub(repo, build_page="docs/services/app/built.md").install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    assert sub.dirty_at_qa == [], sub.dirty_at_qa
+    assert "docs(acme): document STORY-1 in the book" in _subjects(repo), _subjects(repo)
+
+
+def test_the_finalize_rechecks_book_edit_stays_uncommitted_until_the_leftovers_commit(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An edit after the passing QA must stay dirty, so `proof_scope` still sees it."""
+    repo = epic()
+    _Sub(
+        repo, recheck_page="docs/services/app/rechecked.md", qa_docs_recheck_required=True
+    ).install(monkeypatch)
+
+    drive_flow(Coder(), env(), _Agent())
+
+    assert "docs(acme): document STORY-1 in the book" not in _subjects(repo), _subjects(repo)
+    assert "feat(acme): story STORY-1" in _subjects(repo), _subjects(repo)
+    landed = subprocess.run(
+        ["git", "log", "--format=%s", "--", "docs/services/app/rechecked.md"],
+        cwd=repo, check=True, capture_output=True, text=True,
+    ).stdout.splitlines()
+    assert landed == ["docs(acme): commit what STORY-1 left uncommitted"], landed
     assert _dirty(repo) == "", _dirty(repo)
 
 

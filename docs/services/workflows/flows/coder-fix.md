@@ -34,7 +34,7 @@ title: Coder standalone fix flow
   `start` seeds the first item. `start` records the selected `StoryPaths` as the iteration's
   source of truth, so resumed states read the same story rather than drawing a replacement.
 - `check` iterates `GATE_ORDER` for each repository with changed paths and keeps the first dirty
-  gate of each, then checks that the turn left nothing uncommitted. Clean gates and a clean tree
+  gate of each, then checks that the turn left nothing uncommitted outside the artifacts dir. Clean gates and a clean tree
   move on to `document`. Otherwise the joined reports go back to `work` while laps remain, and
   block once the laps run out.
 - A block is answered by the `resolve` turn in `auto` mode. In a human operator mode, or once

@@ -282,7 +282,7 @@ def test_the_leftovers_commit_has_nothing_to_land_when_nothing_is_dirty(
     assert not result.committed
 
 
-def test_the_spec_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_rest(
+def test_the_book_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_rest(
     repo: Path,
     logger: logging.Logger,
     write: Callable[[Path, str], Path],
@@ -300,7 +300,7 @@ def test_the_spec_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_re
     write(repo / "docs" / "services" / "app" / "fresh.md", "# fresh\n")
     write(repo / "src" / "server.py", "def run():\n    return 2\n")
 
-    result = story_commit.commit_spec_delta(
+    result = story_commit.commit_book_delta(
         logger,
         epic=EPIC,
         story_slug=SLUG,
@@ -322,7 +322,66 @@ def test_the_spec_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_re
     ]
 
 
-def test_the_spec_delta_commit_has_nothing_to_land_when_the_book_is_clean(
+def test_the_build_book_delta_commit_lands_book_pages_as_a_document_commit(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    write(repo / "docs" / "services" / "app" / "server.md", SERVER_PAGE + "\nMore.\n")
+    write(repo / "docs" / "services" / "app" / "fresh.md", "# fresh\n")
+    write(repo / "src" / "server.py", "def run():\n    return 2\n")
+
+    result = story_commit.commit_book_delta(
+        logger,
+        epic=EPIC,
+        story_slug=SLUG,
+        spec_dir=spec,
+        repo_dir=str(repo),
+        phase="build",
+    )
+
+    assert result.committed
+    landed = git(repo, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
+    assert landed[0].startswith("docs(acme): document STORY-1 in the book"), landed
+    assert sorted(line for line in landed[1:] if line) == [
+        "docs/services/app/fresh.md",
+        "docs/services/app/server.md",
+    ]
+    assert git(repo, "status", "--porcelain").stdout.strip() == "M src/server.py"
+
+
+def test_the_clean_check_skips_the_artifacts_dir_only_when_asked(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(repo / "artifacts"))
+    write(repo / "artifacts" / "backlogs" / "qa" / "record.json", "{}\n")
+    write(repo / "src" / "extra.py", "X = 1\n")
+
+    kept = story_commit.check_repos_clean(
+        logger, story_slug=SLUG, spec_dir=spec, repo_dir=str(repo), skip_artifacts=True
+    )
+    counted = story_commit.check_repos_clean(
+        logger, story_slug=SLUG, spec_dir=spec, repo_dir=str(repo)
+    )
+
+    assert kept.dirty == [f"{repo.name}:src/extra.py"], kept
+    assert sorted(counted.dirty) == [
+        f"{repo.name}:artifacts/backlogs/qa/record.json",
+        f"{repo.name}:src/extra.py",
+    ], counted
+
+
+def test_the_book_delta_commit_has_nothing_to_land_when_the_book_is_clean(
     repo: Path,
     logger: logging.Logger,
     write: Callable[[Path, str], Path],
@@ -333,7 +392,7 @@ def test_the_spec_delta_commit_has_nothing_to_land_when_the_book_is_clean(
     spec = _book(repo, write, git, monkeypatch, tmp_path)
     write(repo / "src" / "server.py", "def run():\n    return 2\n")
 
-    result = story_commit.commit_spec_delta(
+    result = story_commit.commit_book_delta(
         logger, epic=EPIC, story_slug=SLUG, spec_dir=spec, repo_dir=str(repo)
     )
 

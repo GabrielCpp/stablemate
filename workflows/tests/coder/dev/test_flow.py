@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 from collections import Counter
 import itertools
@@ -880,6 +881,28 @@ def test_work_the_turn_left_uncommitted_comes_back_named_in_the_report(
         ["git", "status", "--porcelain"],
         cwd=workspace["api"], check=True, capture_output=True, text=True,
     ).stdout == ""
+
+
+def test_a_backlog_record_filed_under_an_artifacts_dir_in_the_repo_is_not_the_owner_s_leftover(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The workflow files the record and the spec dir, so the owner's clean check does not count them."""
+    inside = workspace["api"] / "artifacts"
+    shutil.move(core_config.resolve_artifacts_dir(), inside)
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(inside))
+    agent = _Agent(
+        workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),)
+    )
+
+    result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert agent.counts()["dev-review"] == 1, agent.counts()
+    assert list((workspace["api"] / "artifacts" / "backlogs").rglob("record.md"))
 
 
 def test_a_path_dirty_before_the_story_began_is_not_the_story_s_to_commit(

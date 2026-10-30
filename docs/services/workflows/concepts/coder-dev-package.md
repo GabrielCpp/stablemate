@@ -14,7 +14,7 @@ The owner works the story in three phase turns on one conversation, as
 `Dev.build` builds it, and `Dev.review` reviews the diff and answers every finding in the story's
 answer file. A story QA sent back starts at `Dev.review`, with QA's findings in their own section.
 The flow around the turns is deterministic. It records the plan, runs the declared service gates,
-settles the findings against the answers, and checks that the story left nothing uncommitted. A
+settles the findings against the answers, and checks that the story left nothing uncommitted outside the artifacts dir. A
 failed check goes back to the review phase as a report for another repair lap. A spent lap budget
 escalates to an operator gate.
 
@@ -23,8 +23,8 @@ and QA reads its obligations from that merge. The story's opening brief says so,
 instruction that the book changes with the code does not send the plan, build and review turns
 into the same merge the docs phase then does again.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @761bf4ca906d
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @6ba2fa759f9d
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @fe9a59b929f0
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @ca8894553071
 - code: `workflows/src/workhorse_workflows/coder/dev/prompts/_dev-scope.md` @a8a851e0a839
 - rule: the plan, build and review turns write, stamp and doctor nothing under the book's services root, because the docs phase owns the story's book merge
 - rule: a copy the story adds of code the tree already has is the story's to extract to one owner, and a copy that predates the story is an `extract-module` follow-up

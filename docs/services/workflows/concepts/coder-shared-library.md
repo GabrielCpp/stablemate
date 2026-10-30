@@ -12,7 +12,7 @@ initializer; the individual modules below own the behavior and models they provi
 - code: `workflows/src/workhorse_workflows/coder/shared/__init__.py::__all__` @e517b81d10c2
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @b083ae1394dd
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @67580925bd96
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @d00d86117cea
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @665c4ab3a258
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @df9c5dcbeacb
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @df9c5dcbeacb
 - detail: [coder queue run scope](../formats/coder-queue-run-scope.md)
@@ -231,16 +231,20 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 
 ### check_repos_clean
 
-- sig: `check_repos_clean(logger: logging.Logger, story_slug: str = "", spec_dir: str = "", preexisting: list[str] | None = None, repo_dir: str = "", workspace: str = "") -> WorktreeCleanliness`
+- sig: `check_repos_clean(logger: logging.Logger, story_slug: str = "", spec_dir: str = "", preexisting: list[str] | None = None, repo_dir: str = "", workspace: str = "", roots: list[str] | None = None, skip_artifacts: bool = False) -> WorktreeCleanliness`
 - does: resolves repositories affected by the story plan, falling back to the repository root when none are named
 - does: reports staged, unstaged, and untracked paths
 - verify: count(subject="story-owned staged, unstaged, and untracked paths", equals=3)
 - does: subtracts untouched pre-existing paths and gate context files from the reported paths
 - verify: count(subject="story-owned paths after pre-existing and gate context exclusions", equals=1)
+- does: with `skip_artifacts` set, also drops each path under the artifacts dir and logs how many it dropped, because workflow lanes write there and the story commit carries what is tracked
+- verify: count(subject="story-owned paths after the artifacts dir is skipped", equals=1)
 - returns: `clean=true` only when no story-owned uncommitted paths remain, with repository names and dirty paths
 - verify: json_path(path="$.clean", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::check_repos_clean` @ed520d3ff75c
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::check_repos_clean` @473924bce7a4
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
+- tests: `workflows/tests/coder/shared/test_story_commit.py::test_the_clean_check_skips_the_artifacts_dir_only_when_asked`
+- tests: `workflows/tests/coder/dev/test_flow.py::test_a_backlog_record_filed_under_an_artifacts_dir_in_the_repo_is_not_the_owner_s_leftover`
 
 ### snapshot_proven_state
 
@@ -276,22 +280,26 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - verify: json_path(path="$.committed", equals=true)
 - code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_plan_record` @7c3b43db1590
 
-### commit_spec_delta
+### commit_book_delta
 
-- sig: `commit_spec_delta(logger: logging.Logger, epic: str = "", story_slug: str = "", spec_dir: str = "", preexisting: list[str] | None = None, repo_dir: str = "", workspace: str = "", story_id: str = "") -> StoryCommitted`
-- does: commits every uncommitted path under the book's services root in each repository the story's plan names, and in the docs repository when it is a separate checkout, as a `docs` commit named `specify <slug> in the book`
-- verify: persists(subject="the committed spec delta")
+- sig: `commit_book_delta(logger: logging.Logger, epic: str = "", story_slug: str = "", spec_dir: str = "", preexisting: list[str] | None = None, repo_dir: str = "", workspace: str = "", story_id: str = "", phase: Literal["spec", "build"] = "spec") -> StoryCommitted`
+- does: commits every uncommitted path under the book's services root in each repository the story's plan names, and in the docs repository when it is a separate checkout, as a `docs` commit
+- does: names that commit `specify <slug> in the book` for the spec phase
+- does: names that commit `document <slug> in the book` for the build phase
+- verify: persists(subject="the committed book delta")
 - does: leaves out application source
 - does: leaves out a path that was dirty at story start and still holds the bytes it held then
 - does: names the commit's `story=` field with `story_id` when given, falling back to `story_slug`
 - does: commits without running the repository's hooks
 - does: commits nothing and logs that when no book path is uncommitted
 - verify: json_path(path="$.committed", equals=false)
-- returns: whether a spec delta was committed
+- returns: whether a book delta was committed
 - verify: json_path(path="$.committed", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_spec_delta` @b3e765a2480b
-- tests: `workflows/tests/coder/shared/test_story_commit.py::test_the_spec_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_rest`
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_book_delta` @3d74cd258494
+- tests: `workflows/tests/coder/shared/test_story_commit.py::test_the_book_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_rest`
+- tests: `workflows/tests/coder/shared/test_story_commit.py::test_the_build_book_delta_commit_lands_book_pages_as_a_document_commit`
 - tests: `workflows/tests/coder/test_workflow.py::test_the_spec_passs_book_page_is_committed_before_dev_starts`
+- tests: `workflows/tests/coder/test_workflow.py::test_the_build_passs_book_page_is_committed_before_qa_runs`
 
 ### commit_story
 

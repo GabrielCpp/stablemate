@@ -142,6 +142,7 @@ class Fix(Workflow):
             self._story.spec_dir,
             self._dirty_at(snapshot_owner_baseline),
             roots=self._changed_dirs(),
+            skip_artifacts=True,
         )
         reports = [render_gate(f) for f in failures]
         if not state.clean:
