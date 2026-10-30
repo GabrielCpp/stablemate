@@ -1,6 +1,7 @@
 # The paper gates
 
-The full rules for step 6 in [`explore-then-improve`](../SKILL.md): what the card states, two
+The full rules for the paper gates of [wide-search.md](wide-search.md), the wide-search
+branch of [`explore-then-improve`](../SKILL.md): what the card states, two
 checks of gate 1, every check of gate 2, and the agent that checks the cards. The skill
 states each check in short. A section here holds the cases where that check passes wrongly.
 

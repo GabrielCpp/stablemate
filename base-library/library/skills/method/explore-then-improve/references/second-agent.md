@@ -1,6 +1,9 @@
 # The second agent
 
-The three places a second agent that never reads the author's reasoning checks the study: the cards and framings of step 6, a decisive registration before it runs in step 7, and a decisive result before it counts in step 9. The steps themselves are in [`../SKILL.md`](../SKILL.md).
+The three places a second agent that never reads the author's reasoning checks the study:
+the cards and framings of the wide search in [wide-search.md](wide-search.md), a decisive
+registration before it runs, and a decisive result before it counts in step 9 of
+[`explore-then-improve`](../SKILL.md).
 
 ## Checking the cards and framings
 
@@ -16,7 +19,7 @@ A checker finding against a gate stays open until a repair answers it in writing
 framing dies. A finding is a predicate the checker can run again, such as a line the code
 must hold or a score an arm must not reach. The author's argument closes none. No decisive
 run launches under a framing that carries an open gate finding, and none launches without
-the design check of step 7. A run that would read the same fact the finding states is
+the design check below. A run that would read the same fact the finding states is
 apparatus for a known answer.
 
 ## Checking a decisive registration
