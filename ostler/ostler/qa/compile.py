@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -514,10 +515,65 @@ def compile_plan_gaps(
     base_url: str | None = None,
     covered_ids: set[str] | None = None,
     select: set[str] | None = None,
+    cover: dict[str, set[str]] | None = None,
 ) -> Compilation:
-    """Compile the book into a plan, or refuse and say why nothing compiled. *select* keeps only the owed obligations whose id or book node it names."""
+    """Compile the book into a plan, or refuse and say why nothing compiled. *select* keeps only the owed obligations whose id or book node it names. *cover* maps an acceptance criterion id to the obligation ids or book nodes that prove it, and the plan's checks that cover those obligations then cover the criterion too; a bad *cover* raises `CoverError`."""
     return _compile_packet(packet_of(context), story=story, run_id=run_id, base_url=base_url,
-                           covered_ids=covered_ids, select=select)
+                           covered_ids=covered_ids, select=select, cover=cover,
+                           criteria=criterion_ids(context))
+
+
+class CoverError(ValueError):
+    """A `--cover` argument that names something the packet or the compiled plan does not hold."""
+
+
+def parse_cover(values: list[str]) -> dict[str, set[str]]:
+    """The `AC=ID[,ID...]` arguments as a map from criterion id to obligation ids; raises `CoverError` naming a malformed one."""
+    cover: dict[str, set[str]] = {}
+    for value in values:
+        criterion, separator, rest = value.partition("=")
+        ids = [item.strip() for item in rest.split(",")]
+        if not separator or not criterion.strip() or not all(ids):
+            raise CoverError(f"--cover takes AC=ID[,ID...], got: {value}")
+        cover.setdefault(criterion.strip(), set()).update(ids)
+    return cover
+
+
+def criterion_ids(context: dict[str, Any]) -> set[str]:
+    """The acceptance criterion ids a context packet lists."""
+    found = context.get("acceptanceCriteria", []) or []
+    return {str(item.get("id") if isinstance(item, dict) else item) for item in found if item}
+
+
+def _covering(source: str, cover: dict[str, set[str]], owed: list[Obligation]) -> tuple[str, list[str]]:
+    """*source* with each criterion appended to every `covers=` list that names an obligation proving it, and the `--cover` ids no compiled check matched."""
+    proves = {criterion: {o.id for o in _selected(owed, ids)} for criterion, ids in cover.items()}
+    starts = [0]
+    for line in source.encode("utf-8").splitlines(keepends=True):
+        starts.append(starts[-1] + len(line))
+    raw = source.encode("utf-8")
+    edits: list[tuple[int, str]] = []
+    matched: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Call):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != "covers" or not isinstance(keyword.value, ast.List) or not keyword.value.elts:
+                continue
+            held = {e.value for e in keyword.value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+            matched.update(held)
+            adds = [c for c in sorted(proves) if c not in held and proves[c] & held]
+            if not adds:
+                continue
+            last = keyword.value.elts[-1]
+            offset = starts[(last.end_lineno or 1) - 1] + (last.end_col_offset or 0)
+            edits.append((offset, "".join(f", {python_literal(c)}" for c in adds)))
+    for offset, text in sorted(edits, reverse=True):
+        raw = raw[:offset] + text.encode("utf-8") + raw[offset:]
+    unmatched = sorted(
+        name for ids in cover.values() for name in ids
+        if not {o.id for o in _selected(owed, {name})} & matched)
+    return raw.decode("utf-8"), unmatched
 
 
 def _selected(owed: list[Obligation], select: set[str] | None) -> list[Obligation]:
@@ -541,8 +597,17 @@ def _compile_packet(
     base_url: str | None,
     covered_ids: set[str] | None,
     select: set[str] | None = None,
+    cover: dict[str, set[str]] | None = None,
+    criteria: set[str] | None = None,
 ) -> Compilation:
     """Compile one validated packet into a plan, or refuse and say why nothing compiled."""
+    if cover:
+        unlisted = sorted(criterion for criterion in cover if criterion not in (criteria or set()))
+        if unlisted:
+            raise CoverError(f"--cover names no acceptance criterion the packet lists: {', '.join(unlisted)}")
+        unknown = unmatched_selection(packet, {name for ids in cover.values() for name in ids})
+        if unknown:
+            raise CoverError(f"--cover names no owed obligation or book node: {', '.join(unknown)}")
     sinks = PlanSinks(gaps=[], captured=set(), files={})
     emitted = EmittedScenarios(targets=set(), covered=set() if covered_ids is None else covered_ids)
     owed = _readable(_selected(packet.owed, select), sinks.gaps)
@@ -608,7 +673,12 @@ def _compile_packet(
     _assert_accounted(packet, owed, sinks, emitted.covered)
     if not emitted.targets:
         return Refusal(sinks.gaps)
-    return Plan("\n".join(lines).rstrip() + "\n", sinks.gaps, files=sinks.files)
+    source = "\n".join(lines).rstrip() + "\n"
+    if cover:
+        source, unmatched = _covering(source, cover, owed)
+        if unmatched:
+            raise CoverError(f"--cover names no check this plan compiled: {', '.join(unmatched)}")
+    return Plan(source, sinks.gaps, files=sinks.files)
 
 
 def deferred_obligations(packet: ContextPacket, *, story: str) -> dict[str, Gap]:
@@ -645,9 +715,10 @@ def cmd_compile_plan(
     run_id: str | None = None,
     base_url: str | None = None,
     select: set[str] | None = None,
+    cover: dict[str, set[str]] | None = None,
     replace: bool = False,
 ) -> QaOutcome:
-    """Compile `spec_dir/qa-okf-context.json` into a plan skeleton, narrowed to *select* when given."""
+    """Compile `spec_dir/qa-okf-context.json` into a plan skeleton, narrowed to *select* when given and covering the acceptance criteria *cover* maps."""
     context_file = spec_dir / "qa-okf-context.json"
     try:
         raw = json.loads(context_file.read_text(encoding="utf-8"))
@@ -666,8 +737,13 @@ def cmd_compile_plan(
                              data={"status": "invalid", "problems": [message]})
 
     story_name = story or packet.story_slug or "story"
-    result = _compile_packet(packet, story=story_name, run_id=run_id, base_url=base_url,
-                             covered_ids=None, select=select or None)
+    try:
+        result = _compile_packet(packet, story=story_name, run_id=run_id, base_url=base_url,
+                                 covered_ids=None, select=select or None, cover=cover or None,
+                                 criteria=criterion_ids(raw))
+    except CoverError as exc:
+        return QaOutcome(ok=False, message=f"error: {exc}", status="invalid",
+                         data={"status": "invalid", "problems": [str(exc)]})
 
     owed = _selected(packet.owed, select or None)
     declared = [o for o in owed if o.checks]

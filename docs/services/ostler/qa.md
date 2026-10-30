@@ -127,8 +127,8 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/context.py::select_obligations@9e054ade9186
 
 ### ostler-qa-compile-plan
-- usage: ostler qa compile-plan --spec SPEC [--out PATH] [--replace] [--select ID ...] [--story
-  STORY] [--run-id ID] [--base-url URL] [--json]: compiles a qa_plan.py skeleton from the packet,
+- usage: ostler qa compile-plan --spec SPEC [--out PATH] [--replace] [--select ID ...] [--cover AC=ID[,ID...] ...]
+  [--story STORY] [--run-id ID] [--base-url URL] [--json]: compiles a qa_plan.py skeleton from the packet,
   reading no source
 - flags:
   - --out (write the plan here; an existing file is overwritten only with --replace, and without
@@ -137,6 +137,14 @@ environment, and no plan, transcript or event carries it. See
   - --select (repeatable; keep only the owed obligations whose id or book node is the given id, and
     report no gap on the others; with none given every owed obligation compiles; an id that matches
     no owed obligation or book node is an error naming it)
+  - --cover (repeatable; AC=ID[,ID...] names an acceptance criterion the packet lists and the owed
+    obligations or book nodes that prove it, matched as --select matches; every compiled check
+    whose covers list names one of those obligations, and the scenario holding it, then covers AC
+    too, without a duplicate. A criterion the packet does not list, an id that matches no owed
+    obligation or book node, an id that compiled to no check in this plan, such as book debt or an
+    obligation --select dropped, and an argument that is not AC=ID[,ID...] are each an error
+    naming the value, and nothing is written. A criterion no obligation proves is left for a
+    scenario written by hand)
   - --story (the story name for the plan; default is the one the packet was built for)
   - --run-id (the run id for the plan)
   - --base-url (the entry URL for a surface whose book states none)
@@ -150,7 +158,7 @@ environment, and no plan, transcript or event carries it. See
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - code: ostler/ostler/qa/book_index.py::captures_by_node@3461b43ebf37
-- code: ostler/ostler/qa/compile.py::cmd_compile_plan@fd8658b94876
+- code: ostler/ostler/qa/compile.py::cmd_compile_plan@a0f77ff012ce
 - code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@e77082cad485
 - code: ostler/ostler/qa/compile_grpc.py::grpc_scenarios@af1d3303dcf6
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@86c721e7af1b

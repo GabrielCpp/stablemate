@@ -81,10 +81,10 @@ step as a browser action by resolving its locator, screen, or act against the gr
 per surface, and `maestro_launch` derives the mobile launch flow a mobile journey needs before
 its first hop.
 
-- code: ostler/ostler/qa/compile.py::compile_plan@f211b537faac
-- code: ostler/ostler/qa/compile.py::compile_plan_gaps@f211b537faac
-- code: ostler/ostler/qa/compile.py::cmd_compile_plan@f211b537faac
-- code: ostler/ostler/qa/compile.py::_plan_header@f211b537faac
+- code: ostler/ostler/qa/compile.py::compile_plan@e469fe41e5de
+- code: ostler/ostler/qa/compile.py::compile_plan_gaps@1c70c4235a8d
+- code: ostler/ostler/qa/compile.py::cmd_compile_plan@a0f77ff012ce
+- code: ostler/ostler/qa/compile.py::_plan_header@f201c67e36dc
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@e17faa3b5f39
 - code: ostler/ostler/qa/compile_http.py::http_walk@e17faa3b5f39
 - code: ostler/ostler/qa/compile_http.py::read_back@e17faa3b5f39
@@ -187,3 +187,12 @@ its first hop.
 - generated names are unique: every `*_function_name` helper in `plan_source.py` is given the
   full set of already-emitted names (`EmittedScenarios`) and never returns one already used in
   the same plan.
+- rule: `compile-plan --cover AC=ID[,ID...]` is how an acceptance criterion reaches a compiled
+  plan. The packet holds no link from a criterion to an obligation, so the owner states which
+  obligations prove each criterion, and the compiler appends the criterion to the `covers=` of
+  every compiled check that covers one of them and of the scenario holding that check. The
+  rewrite is made on the plan's syntax tree, keeps each list free of duplicates and in a stable
+  order, and runs after `--select`. A criterion the packet does not list, an id that matches no
+  owed obligation, an id that compiled to no check in this plan and a malformed argument each fail
+  by naming the value, and nothing is written. A criterion no obligation proves is not
+  covered, and the owner writes a scenario for it.

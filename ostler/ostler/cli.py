@@ -22,6 +22,7 @@ from ostler import provenance
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
+from ostler.qa import compile as qa_compile
 from ostler import index as index_mod
 from ostler import textindex as textindex_mod
 from ostler import source_snapshots
@@ -979,6 +980,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "Omit to compile every obligation",
     )
     qa_compile_plan.add_argument(
+        "--cover", action="append", default=[], metavar="AC=ID[,ID...]",
+        help="the obligations (ids or book nodes) that prove acceptance criterion AC; repeatable. "
+        "The checks covering them then cover AC too",
+    )
+    qa_compile_plan.add_argument(
         "--replace", action="store_true",
         help="let --out overwrite an existing plan",
     )
@@ -1917,6 +1923,11 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
 
     if op == "compile-plan":
         spec_dir = _resolve_spec(args.spec)
+        try:
+            cover = qa_compile.parse_cover(args.cover)
+        except qa_compile.CoverError as exc:
+            _out(f"error: {exc}")
+            return 1
         result = qa_mod.cmd_compile_plan(
             spec_dir,
             out=_resolve_out(args.out),
@@ -1924,6 +1935,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             run_id=args.run_id,
             base_url=args.base_url,
             select=set(args.select) or None,
+            cover=cover,
             replace=args.replace,
         )
         _out(json.dumps(result.data, indent=2) if args.json else result.message)

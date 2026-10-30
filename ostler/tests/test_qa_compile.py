@@ -72,10 +72,11 @@ def cmd_compile_plan(
     run_id: str | None = None,
     base_url: str | None = _BASE_URL,
     select: set[str] | None = None,
+    cover: dict[str, set[str]] | None = None,
     replace: bool = False,
 ) -> QaOutcome:
     return _cmd_compile_plan(spec_dir, out=out, story=story, run_id=run_id, base_url=base_url,
-                             select=select, replace=replace)
+                             select=select, cover=cover, replace=replace)
 
 
 def _obligation(oid: str, **extra: object) -> dict:
@@ -7515,3 +7516,115 @@ def test_refs_rename_a_bare_variable_with_its_braced_twin() -> None:
     text, variables = refs.numbered("a: ${OKF_REF_2}\nb: ${x === OKF_REF_2}\n")
     assert text == "a: ${OKF_REF_1}\nb: ${x === OKF_REF_1}\n"
     assert variables == [("OKF_REF_1", "'second'")]
+
+
+def _criteria_spec(tmp_path: Path) -> Path:
+    spec = _two_node_spec(tmp_path)
+    packet = spec / "qa-okf-context.json"
+    context = json.loads(packet.read_text(encoding="utf-8"))
+    context["acceptanceCriteria"] = [{"id": "ac:1", "text": "things are created"}, {"id": "ac:2", "text": "widgets list"}]
+    packet.write_text(json.dumps(context), encoding="utf-8")
+    return spec
+
+
+def _criterion_problems(spec: Path, plan: str, root: Path) -> list[str]:
+    from ostler.qa.plan import load_plan, validate_v2
+
+    path = spec / "qa_plan.py"
+    path.write_text(plan, encoding="utf-8")
+    document, problems = load_plan(path, spec, root)
+    assert document is not None, problems
+    return [item for item in validate_v2(document) if "acceptance criterion" in item]
+
+
+def test_cover_makes_a_compiled_plan_pass_the_criterion_check(tmp_path: Path) -> None:
+    spec = _criteria_spec(tmp_path)
+    bare = cmd_compile_plan(spec)
+    assert bare.ok
+    assert any("'ac:1'" in item for item in _criterion_problems(spec, bare.message, tmp_path))
+    covered = cmd_compile_plan(spec, cover={"ac:1": {_SELECT_FIRST}, "ac:2": {_SELECT_SECOND}})
+    assert covered.ok, covered.message
+    assert _criterion_problems(spec, covered.message, tmp_path) == []
+    assert _covers(covered.message) == {_SELECT_FIRST, _SELECT_SECOND, "ac:1", "ac:2"}
+
+
+def test_cover_appends_to_the_check_and_the_scenario_without_duplicates(tmp_path: Path) -> None:
+    spec = _criteria_spec(tmp_path)
+    once = cmd_compile_plan(spec, cover={"ac:1": {_SELECT_FIRST}})
+    twice = cmd_compile_plan(spec, cover={"ac:1": {_SELECT_FIRST, "docs/services/demo/api.md#post-things"}})
+    assert once.ok and twice.ok
+    assert once.message == twice.message
+    lists = [
+        [e.value for e in keyword.value.elts if isinstance(e, ast.Constant)]
+        for node in ast.walk(ast.parse(once.message)) if isinstance(node, ast.Call)
+        for keyword in node.keywords if keyword.arg == "covers" and isinstance(keyword.value, ast.List)
+    ]
+    assert len(lists) >= 2
+    assert all(len(items) == len(set(items)) for items in lists)
+    assert sum(_SELECT_FIRST in items and "ac:1" in items for items in lists) >= 2
+    assert not any(items == [_SELECT_SECOND, "ac:1"] for items in lists)
+
+
+def test_a_node_id_covers_every_compiled_obligation_of_that_node(tmp_path: Path) -> None:
+    spec = _criteria_spec(tmp_path)
+    packet = spec / "qa-okf-context.json"
+    context = json.loads(packet.read_text(encoding="utf-8"))
+    sibling = "okf:docs/services/demo/api.md#post-things:does:2"
+    context["obligations"].append(_obligation(
+        sibling, node="docs/services/demo/api.md#post-things",
+        checksDeclared=[{"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}}]))
+    packet.write_text(json.dumps(context), encoding="utf-8")
+    result = cmd_compile_plan(spec, cover={"ac:1": {"docs/services/demo/api.md#post-things"}})
+    assert result.ok, result.message
+    tree = ast.parse(result.message)
+    covered_by_ac = [
+        {str(e.value) for e in keyword.value.elts if isinstance(e, ast.Constant)}
+        for node in ast.walk(tree) if isinstance(node, ast.Call)
+        for keyword in node.keywords if keyword.arg == "covers" and isinstance(keyword.value, ast.List)
+    ]
+    with_ac = set().union(*(items for items in covered_by_ac if "ac:1" in items))
+    assert {_SELECT_FIRST, sibling} <= with_ac
+    assert [_SELECT_SECOND, "ac:1"] not in [sorted(items, reverse=True) for items in covered_by_ac]
+
+
+@pytest.mark.parametrize(
+    ("cover", "select", "named"),
+    [
+        ({"ac:9": {_SELECT_FIRST}}, None, "ac:9"),
+        ({"ac:1": {"okf:no-such-node"}}, None, "okf:no-such-node"),
+        ({"ac:1": {_SELECT_SECOND}}, {_SELECT_FIRST}, _SELECT_SECOND),
+    ],
+)
+def test_a_bad_cover_fails_and_writes_nothing(
+    tmp_path: Path, cover: dict[str, set[str]], select: set[str] | None, named: str
+) -> None:
+    spec = _criteria_spec(tmp_path)
+    out = spec / "qa_plan.py"
+    result = cmd_compile_plan(spec, out=out, select=select, cover=cover)
+    assert not result.ok
+    assert result.status == "invalid"
+    assert named in result.message
+    assert not out.exists()
+
+
+def test_a_cover_naming_book_debt_fails_and_names_the_id(tmp_path: Path) -> None:
+    spec = _criteria_spec(tmp_path)
+    packet = spec / "qa-okf-context.json"
+    context = json.loads(packet.read_text(encoding="utf-8"))
+    debt = "okf:docs/services/demo/api.md#bare:does:1"
+    context["obligations"].append(_obligation(debt, node="docs/services/demo/api.md#bare"))
+    packet.write_text(json.dumps(context), encoding="utf-8")
+    out = spec / "qa_plan.py"
+    result = cmd_compile_plan(spec, out=out, cover={"ac:1": {debt}})
+    assert not result.ok
+    assert debt in result.message
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("argument", ["ac:1", "=okf:x", "ac:1=", "ac:1=a,,b"])
+def test_a_malformed_cover_argument_is_refused_naming_it(argument: str) -> None:
+    from ostler.qa.compile import CoverError, parse_cover
+
+    with pytest.raises(CoverError, match=argument):
+        parse_cover([argument])
+    assert parse_cover(["ac:1=a,b", "ac:1=c", "ac:2=d"]) == {"ac:1": {"a", "b", "c"}, "ac:2": {"d"}}
