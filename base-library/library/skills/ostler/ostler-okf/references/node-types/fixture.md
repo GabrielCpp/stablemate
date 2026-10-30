@@ -83,7 +83,11 @@ data in place and confirm it landed — not to boot a stack, which is the runboo
 A fixture starts a process the scenario talks to, such as a mock backend on its own port, with a
 `kind: serve` step. The harness starts its `run:` in a process group of its own and moves to the
 next step without waiting for it to exit. It stops the group when the scenario ends, whether the
-scenario passed, failed or timed out, so the next scenario finds the port free. A `serve` step
+scenario passed, failed or timed out, so the next scenario finds the port free. The harness sends
+the group SIGTERM, waits up to 10 seconds, then SIGKILLs what is left. A `run:` that must undo
+something on its way out, such as restarting a service it stopped, does so in a trap on TERM or
+EXIT. A long-lived process that restore starts must leave the group, for example under `setsid`,
+or the SIGKILL that follows takes it too. A `serve` step
 belongs only to a `lifetime: scenario` fixture (`fixture-serve-lifetime`), because its process ends
 with the scenario that started it. Follow it with a `kind: verify` step that waits for the process
 to answer, such as `curl --fail --retry 10 --retry-connrefused <health url>`. A `run:` that ends in
