@@ -1,6 +1,6 @@
 ---
 name: research-study
-description: "Running a research or optimization loop alone until the operator's question is answered or its budget is spent, and reporting what was tried, what worked and what did not: a budget in money and hours written before the first probe, a mandatory TRIED.md in plain words, a frozen yardstick, a profile before any hypothesis, an instrument collapsed to the smallest stage that reads the variable, framings of the question written in isolation, a field of original candidates, a paper gate that discards a candidate that answers another question or cannot succeed by construction, single-variable probes cheapest-decisive first, a release rule that drops an approach once its share of the budget is gone, and a ledger that keeps every failure with its spend. Load when told to find a way to make something faster, cheaper or better, when handed a goal or research question to pursue without the operator, when a measurement comes back and the next step is unclear, or when the last hours went to apparatus rather than to results."
+description: "Running a research or optimization loop alone until the operator's question is answered or its budget is spent, and reporting what was tried, what worked and what did not: a budget in money and hours written before the first probe, a mandatory TRIED.md in plain words, a frozen yardstick, a profile before any hypothesis, an instrument collapsed to the smallest stage that reads the variable, isolated framings, a field of original candidates, a paper gate that discards a candidate that answers another question or cannot succeed by construction, single-variable probes, a release rule that drops an approach once its share of the budget is gone, a self-check that puts the loop's own spending decisions to the operator, and a ledger that keeps every failure with its spend. Load when told to find a way to make something faster, cheaper or better, when handed a goal or research question to pursue without the operator, when a measurement comes back and the next step is unclear, or when hours went to apparatus."
 argument-hint: "[the question, or the purpose: what must improve, by how much, over what workload]"
 tags: [research, process]
 ---
@@ -14,9 +14,10 @@ result is one row in it.
 The operator hands over a question, not a study. The skill runs as a **loop**: when one
 study ends without answering the question, the next one starts from the field without
 asking, inside the budget that remains. The operator reads one file, `TRIED.md`, and hears
-from the loop only when a method dies, a method wins, or the loop stops.
+from the loop when a method dies, a method wins, the loop stops, or a decision is the
+operator's to take.
 
-Ten traps turn a study into one idea pursued for days, or into days with no result:
+Eleven traps turn a study into one idea pursued for days, or into days with no result:
 
 - **The first idea wins.** One plausible fix absorbs the session, and the rest of the field
   is never compared against it.
@@ -41,6 +42,8 @@ Ten traps turn a study into one idea pursued for days, or into days with no resu
   stage, so each reading costs a whole run, and the study affords five readings a day.
 - **Patience replaces judgement.** The agent waits out any run and tries any approach once
   more, because nothing in its own view runs out. The operator's money and quota do.
+- **The loop never looks up.** Every choice follows the loop's own rules, each one correct,
+  and the operator learns what the money bought after it is gone.
 
 You do not perceive wall-clock time. A 15-minute command and a 1-minute command reach you
 as one result each. The ledger's timestamps are how you see time. Read them. You do not
@@ -65,6 +68,27 @@ is arguing about, run it and cite the reading.
 Reread `QUESTION.md` at every reflection and after every result. Then say in one sentence
 what the operator would have in hand if the loop stopped now. That sentence, not the count
 of steps finished, is the loop's progress.
+
+## Ask what you are doing
+
+The loop decides the mechanics alone. It does not decide alone what the operator's money
+buys. Before a step spends, and at every reflection, answer in writing:
+
+- What am I doing, in one line a reader outside the project follows?
+- Who asked for it: a line of `QUESTION.md`, quoted, or the loop? What the loop added is a
+  proposal until the operator takes it.
+- What does it cost, and what share of the budget left?
+- What has the spend so far bought, in one sentence of result?
+- Would the operator fund this step if shown the ledger now?
+- Is the loop still the cheapest reader of the question, or does the ledger answer it?
+
+An answer the loop cannot give is a question to the operator, sent with a recommendation
+and the ledger's one-sentence verdict, before the step runs. These decisions are the
+operator's: the budget and its date, spending on once either is gone, a step priced above
+a tenth of the budget left, a redesign of the yardstick, and a reading of the question that
+drops or adds a premise. The loop proposes each with a figure and waits. Unattended, with
+no channel to the operator, it takes the cheaper branch, records the proposal in
+`QUESTION.md`, and the report lists every decision taken this way.
 
 ## 1. Open the working directory
 
@@ -127,13 +151,17 @@ stated as a share". Read it before writing a purpose that compares against a con
 
 Then write the **budget**: the money and the wall hours the whole loop may spend, every
 probe, every briefed agent and the attending turns counted. The operator's figure wins when
-there is one. Without one, the budget is a share of what the answer is worth: the saving the
-purpose promises over the horizon the operator named, and never more than a tenth of it. A
-budget that would not buy three readings of the cheapest decisive probe calls for a cheaper
-instrument, found in step 4b, or for a question to the operator before anything runs. The
-ledger spends the budget down row by row, and the loop never extends it. At half of it with
-no verdict, a reflection fires. At all of it, the study ends banked or negative and the loop
-stops. Add a date, which works the same way.
+there is one. Without one, the loop proposes a share of what the answer is worth: the saving
+the purpose promises over the horizon the operator named, and never more than a tenth of it.
+The proposal states what the loop spent before it, in money and hours, and what that spend
+bought, and the operator takes it before the first row spends against it. When the spend so
+far already exceeds the budget the loop would propose, there is no budget to write: the loop
+stops and asks whether the question is still worth funding. A budget that would not buy
+three readings of the cheapest decisive probe calls for a cheaper instrument, found in step
+4b, or for a question to the operator before anything runs. The ledger spends the budget
+down row by row, and the loop never extends it. At half of it with no verdict, a reflection
+fires. At all of it, the study ends banked or negative and the loop stops. Add a date, which
+works the same way.
 
 A plan meets its date and its budget at the load the machine has shown during the study,
 never at idle. The rule is under "A plan at the measured load" in
@@ -499,13 +527,16 @@ Write a `reflection` row when any of these fires:
 - three probes in a row moved nothing,
 - a result met the study's number and left the question unanswered.
 
-A reflection starts by rereading `QUESTION.md`. It then answers six questions: what would
+A reflection starts by rereading `QUESTION.md`. It then answers eight questions: what would
 the operator have in hand if the loop stopped now, where did the time go, what has been
 settled, is the current path still the cheapest route to the done-condition, does the
-yardstick still measure the question, and does the framing in `QUESTION.md` still pass
-both paper gates. If a cheaper route exists, name it and take it. Continuing on the current
-path is a decision the reflection argues for in numbers: the readings the budget still
-buys, and what each one settles.
+yardstick still measure the question, does the framing in `QUESTION.md` still pass both
+paper gates, what did the loop do that no line of `QUESTION.md` asked for, and would the
+operator fund the next step if shown the ledger. If a cheaper route exists, name it and
+take it. Continuing on the current path is a decision the reflection argues for in numbers:
+the readings the budget still buys, and what each one settles. A reflection whose answers
+touch the budget, the date, the yardstick or the question goes to the operator as a
+question with a recommendation before the next probe.
 
 **Release before patience.** A candidate is released, and its `TRIED.md` line written, when
 its kill result fires, when two probes on it moved less than the resolution floor, or when
@@ -519,10 +550,11 @@ When the paper work holds the time and no probe has run, the cheaper route is a 
 Take the surviving candidate with the cheapest kill result and run it. Its reading
 replaces the argument the cards were having.
 
-**The loop holds standing authority to redesign.** When a reflection finds that a
-benchmark, a bar, a judge or an instrument measures something other than the question,
-redesign it without waiting for the operator. The redesign is its own `reflection` row,
-stating what the old yardstick measured and what the new one measures. It applies only to
+**The loop holds standing authority to propose a redesign.** When a reflection finds that
+a benchmark, a bar, a judge or an instrument measures something other than the question,
+design the replacement and put it to the operator in the same turn. The redesign is its own
+`reflection` row, stating what the old yardstick measured and what the new one measures,
+and it runs once the operator takes it, or at once when no channel exists. It applies only to
 probes that run after it and starts a new baseline, so a result already read is never
 re-scored under a friendlier judge. Earlier results stay in the ledger and in `TRIED.md`,
 unchanged.
