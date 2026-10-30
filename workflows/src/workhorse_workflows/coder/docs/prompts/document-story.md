@@ -130,7 +130,7 @@ block again.
 ## Subagents
 
 Spawn subagents through your harness's own task or agent tool. Pick each one's model by the
-task: a lookup on the strongest model wastes it, and a review on the cheapest misses what it is
+task: a lookup on the model you run on wastes it, and a review on the cheapest misses what it is
 there to catch.
 
 When your harness offers an agent named `lookup` or `worker`, send the cheapest seats to
@@ -141,7 +141,7 @@ operator picked for them.
 | --- | --- | --- | --- |
 | Lookup: is a symbol grounded, what a file declares | the cheapest and fastest | the question | nothing |
 | Writer | a strong one | the inputs above, the worklist and the skill | the book |
-| Reviewer | the strongest, started fresh | the story, the epic, the diff, the worklist and the nodes the writer touched, never the writer's notes or your reasoning | nothing |
+| Reviewer | the model you run on, started fresh | the story, the epic, the diff, the worklist and the nodes the writer touched, never the writer's notes or your reasoning | nothing |
 | Fixer: one group of real findings | a strong one | its findings, their targets and your triage verdict | the nodes its findings cite |
 
 Give each seat its inputs in the brief, and the check that proves its part. No two writing

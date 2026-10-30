@@ -67,7 +67,7 @@ any earlier assumption in the item, the story or the code. Do not raise the same
 ## Subagents
 
 Spawn subagents through your harness's own task or agent tool. Pick each one's model by the
-task: a lookup on the strongest model wastes it, and a QA check on the cheapest misses what
+task: a lookup on the model you run on wastes it, and a QA check on the cheapest misses what
 it is there to catch.
 
 When your harness offers an agent named `lookup` or `worker`, send the cheapest seats to

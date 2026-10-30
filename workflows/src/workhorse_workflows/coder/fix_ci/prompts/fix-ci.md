@@ -66,7 +66,7 @@ commit and report `blocked` with the change it would take.
 ## Subagents
 
 Spawn subagents through your harness's own task or agent tool. Pick each one's model by the
-task: a lookup on the strongest model wastes it, and a diagnosis on the cheapest misses the
+task: a lookup on the model you run on wastes it, and a diagnosis on the cheapest misses the
 cause.
 
 When your harness offers an agent named `lookup` or `worker`, send the cheapest seats to

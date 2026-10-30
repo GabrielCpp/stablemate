@@ -195,7 +195,7 @@ class Dev(Workflow):
         return Continue(None, self.plan, note=self.note)
 
     def _power(self, phase: str) -> str:
-        """The plan runs on the strongest tier; build and review run cheaper only when an advisor can answer their design calls."""
+        """The plan runs on the profile's highest tier; build and review run cheaper only when an advisor can answer their design calls."""
         if phase == "plan" or not self.has_delegate("advisor"):
             return "max"
         return "high"
@@ -291,7 +291,7 @@ class Dev(Workflow):
     def plan(
         self, note: str = "", operator_context: str = "", blocks: int = 0
     ) -> Continue | Await:
-        """Run the plan turn on the strongest tier: the plan files, before any product code."""
+        """Run the plan turn on the profile's highest tier: the plan files, before any product code."""
         self.logger.info("planning %s", self._work_id, extra={"activity": True})
         said = {"note": note, "operator_context": operator_context}
         result = self._turn("plan", PlanResult, said)

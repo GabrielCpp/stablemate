@@ -186,3 +186,14 @@ def test_the_owner_prompt_is_one_lean_turn_over_the_compiled_plan():
     for retired in ("Independent Audit", "_qa-audit-brief", "proved_scenarios", "| Seat |", "strongest"):
         assert retired not in text, f"qa-story.md still carries {retired!r}"
     assert "proved_scenarios" not in (prompt / "_qa-plan-contract.md").read_text()
+
+
+def test_no_coder_prompt_or_readme_routes_a_seat_to_the_strongest_model():
+    """The workplace has no strongest model to name: a seat runs on the model the owner runs on, or on the `worker` delegate."""
+    coder = PROMPT.parents[2]
+    offenders = [
+        str(path.relative_to(coder))
+        for path in sorted(coder.rglob("*.md"))
+        if "strongest" in path.read_text()
+    ]
+    assert not offenders, f"these still name the strongest model: {offenders}"

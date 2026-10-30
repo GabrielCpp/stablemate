@@ -7,9 +7,9 @@ title: Coder dev phase turns
 
 The dev owner works one story in three phases on one conversation: plan, build and review. Each
 phase is its own turn with its own brief, so each turn reads only the procedure it runs. The
-plan turn makes every design call on the strongest model. The build and review turns follow
+plan turn makes every design call on the profile's highest tier. The build and review turns follow
 that plan on a cheaper model, and they put each design call they still meet to an `advisor`
-delegate on the strongest model. A turn that continues a phase on the same conversation reads a
+delegate on the profile's highest tier. A turn that continues a phase on the same conversation reads a
 short note instead of the brief again. The brief stays on disk, so a turn that lost it to a
 compaction reads it back. The rules that hold for the whole story travel once per conversation,
 in the brief that opened it. A later phase on the same conversation names that brief's path
@@ -17,7 +17,7 @@ instead of repeating them. The review's own procedures, the reviewer's brief and
 file's format, sit in files beside the review brief, and the brief names their paths.
 
 - code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._turn` @cc98a367fdb8
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._power` @da67771077ca
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev._power` @735b8badeece
 - code: `workflows/src/workhorse_workflows/coder/shared/counsel.py::__all__` @b3beecb6b7d6
 - rule: the plan, build and review phases run in that order, each as its own turn, on the story's one conversation
 - rule: the plan turn runs on the `max` power tier, because every design call the story needs is made there

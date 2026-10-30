@@ -1,6 +1,6 @@
 # dev
 
-The dev lane of the coder workflow. One dev session owns a work item end to end, in three phase turns on one conversation: plan, build and review. The plan turn makes every design call on the strongest model. The build and review turns follow the plan on a cheaper model when an `advisor` subagent is there to answer the design calls they still meet, and on the strongest model otherwise. The run checks what each turn handed back.
+The dev lane of the coder workflow. One dev session owns a work item end to end, in three phase turns on one conversation: plan, build and review. The plan turn makes every design call on the profile's highest tier. The build and review turns follow the plan on a cheaper tier when an `advisor` subagent is there to answer the design calls they still meet, and on the highest tier otherwise. The tiers come from the run's profile, never from a model named in a prompt. The run checks what each turn handed back.
 
 The work item is a story or one of its follow-ups. The worklist holds both, and the review's and QA's findings, as the run's one todo list.
 

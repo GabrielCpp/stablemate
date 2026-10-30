@@ -6,14 +6,14 @@ title: Coder dev-plan prompt
 # Coder dev-plan prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-plan.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.plan` @80dd00949225
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.plan` @a8e4c8165d23
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev phase turns](../concepts/coder-dev-phase-turns.md)
 - detail: [coder development plan result](dev-plan-result.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_fresh_story_runs_plan_build_and_review_in_that_order`
 - tests: `workflows/tests/coder/dev/test_flow.py::test_the_plan_turn_on_a_fresh_conversation_carries_the_full_rules`
 
-The dev-plan envelope is the plan phase of the dev owner's story, on the strongest model. It tells
+The dev-plan envelope is the plan phase of the dev owner's story, on the profile's highest tier. It tells
 the agent to read the story, its epic, the repo's instructions and the docs nodes the story cites,
 and to make every design call the story leaves open. A plan already in the spec directory that
 still covers every Acceptance Criterion is kept. A plan that lacks a criterion is amended for that
