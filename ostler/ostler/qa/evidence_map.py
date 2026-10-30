@@ -20,6 +20,7 @@ STATUSES = (
     "uncovered",
     "claimed-but-unasserted",
     "insensitive",
+    "deferred",
     "covered",
 )
 
@@ -40,7 +41,9 @@ def read_json(path: Path, *, what: str) -> Any:
 def read_log(path: Path) -> list[dict[str, Any]]:
     """The run ledger, one record per line."""
     if not path.exists():
-        raise EvidenceMapError(f"the run log is missing at {path} — has this spec been run?")
+        raise EvidenceMapError(
+            f"the run log is missing at {path} — has this spec been run?"
+        )
     records, problems = run_log.read_records(path)
     if problems:
         raise EvidenceMapError(f"{path}: {problems[0]}")
@@ -93,7 +96,11 @@ def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str,
     log = read_log(qa_dir / "qa-run.ndjson")
     manifest = read_json(qa_dir / "run-manifest.json", what="the run manifest")
     evidence_path = spec_dir / "qa-evidence.json"
-    evidence = read_json(evidence_path, what="the evidence artifact") if evidence_path.exists() else {}
+    evidence = (
+        read_json(evidence_path, what="the evidence artifact")
+        if evidence_path.exists()
+        else {}
+    )
 
     artifacts = _artifacts_by_scenario(manifest)
     published = _published(evidence)
@@ -110,7 +117,9 @@ def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str,
         if record.get("kind") != "scenario_start":
             continue
         for obligation_id in record.get("covers", []) or []:
-            claims.setdefault(str(obligation_id), set()).add(str(record.get("scenario", "")))
+            claims.setdefault(str(obligation_id), set()).add(
+                str(record.get("scenario", ""))
+            )
 
     scope = [
         obligation
@@ -133,7 +142,10 @@ def build_evidence_map(spec_dir: Path, *, label: str | None = None) -> dict[str,
         "version": VERSION,
         "runId": str(evidence.get("runId") or context.get("runId") or ""),
         "overall": overall,
-        "counts": {status: sum(1 for row in rows if row["status"] == status) for status in STATUSES},
+        "counts": {
+            status: sum(1 for row in rows if row["status"] == status)
+            for status in STATUSES
+        },
         "contextOnly": len(scope) - len(owed),
         "obligations": rows,
     }
@@ -150,7 +162,9 @@ def _row(
 ) -> dict[str, Any]:
     """One obligation, and everything the run has to say about it."""
     obligation_id = str(obligation["id"])
-    bound = [record for record in asserts if obligation_id in (record.get("covers") or [])]
+    bound = [
+        record for record in asserts if obligation_id in (record.get("covers") or [])
+    ]
     passing = [
         record
         for record in bound
@@ -183,17 +197,23 @@ def _row(
         call
         for record in passing
         if record.get("check")
-        and (call := _call_text(str(record["check"]), record.get("check_args"))) is not None
+        and (call := _call_text(str(record["check"]), record.get("check_args")))
+        is not None
     }
     missing = [call for call in declared if not _observed(call, observed)]
     insensitive = [
-        call for call in declared
+        call
+        for call in declared
         if isinstance(parsed := checks.parse_check(call), checks.CheckCall)
         and not sensitivity.trial(parsed).sensitive
     ]
 
     evidence_files = sorted(
-        {path for record in passing for path in artifacts.get(str(record.get("scenario", "")), [])}
+        {
+            path
+            for record in passing
+            for path in artifacts.get(str(record.get("scenario", "")), [])
+        }
     )
     status, why = _classify(
         obligation_id,
@@ -206,6 +226,9 @@ def _row(
         missing=missing,
         insensitive=insensitive,
         published=published.get(obligation_id),
+        deferred=obligation.get("deferred")
+        if is_mapping(obligation.get("deferred"))
+        else None,
     )
     row: dict[str, Any] = {
         "id": obligation_id,
@@ -249,6 +272,7 @@ def _classify(
     missing: list[str],
     insensitive: list[str],
     published: dict[str, Any] | None,
+    deferred: Mapping[str, Any] | None = None,
 ) -> tuple[str, str]:
     """The status, and the sentence that says how it was reached."""
     verdict = str(published.get("verdict", "")) if published else ""
@@ -288,6 +312,12 @@ def _classify(
                 f"scenario(s) {', '.join(sorted(claimed))} declare covers=['{obligation_id}'] "
                 "and recorded no passing assertion bound to it.",
             )
+        if deferred is not None:
+            return (
+                "deferred",
+                f"the packet defers it ({deferred.get('kind', '')}): {deferred.get('detail', '')}. "
+                "No plan can prove it until the book changes, so this run owes it nothing.",
+            )
         return (
             "uncovered",
             "no scenario claims it and no assertion is bound to it — nothing in this run "
@@ -326,7 +356,10 @@ def render_evidence_map(data: dict[str, Any], *, only: str = "") -> list[str]:
     lines = [
         f"# QA evidence map — run {data.get('runId') or '(unknown)'}, "
         f"overall {data.get('overall') or '(none)'}",
-        "  " + ", ".join(f"{status}: {data['counts'].get(status, 0)}" for status in STATUSES),
+        "  "
+        + ", ".join(
+            f"{status}: {data['counts'].get(status, 0)}" for status in STATUSES
+        ),
         f"  ({data.get('contextOnly', 0)} further obligations are in scope for context and owe "
         "no evidence)",
         "",

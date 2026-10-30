@@ -9,7 +9,11 @@ from typing import Any
 import pytest
 
 from ostler.qa import sensitivity
-from ostler.qa.evidence_map import EvidenceMapError, build_evidence_map, render_evidence_map
+from ostler.qa.evidence_map import (
+    EvidenceMapError,
+    build_evidence_map,
+    render_evidence_map,
+)
 from ostler.qa.harness_host import load_harness_module
 
 CONTRACT = "okf:docs/services/orders/publish.md:contract"
@@ -38,14 +42,17 @@ def _spec(
         "".join(json.dumps(record) + "\n" for record in log), encoding="utf-8"
     )
     (spec / "qa" / "run-manifest.json").write_text(
-        json.dumps({"runId": "qa-run-1", "artifacts": artifacts or []}), encoding="utf-8"
+        json.dumps({"runId": "qa-run-1", "artifacts": artifacts or []}),
+        encoding="utf-8",
     )
     if evidence is not None:
         (spec / "qa-evidence.json").write_text(json.dumps(evidence), encoding="utf-8")
     return spec
 
 
-def _obligation(identifier: str, *, declared: list[str] | None = None) -> dict[str, Any]:
+def _obligation(
+    identifier: str, *, declared: list[str] | None = None
+) -> dict[str, Any]:
     row: dict[str, Any] = {
         "id": identifier,
         "kind": "contract" if identifier.endswith("contract") else "does",
@@ -57,7 +64,8 @@ def _obligation(identifier: str, *, declared: list[str] | None = None) -> dict[s
     }
     if declared:
         row["checksDeclared"] = [
-            {"call": call, "name": call.split("(", 1)[0], "args": {}} for call in declared
+            {"call": call, "name": call.split("(", 1)[0], "args": {}}
+            for call in declared
         ]
     return row
 
@@ -115,7 +123,10 @@ def test_an_obligation_nobody_claimed_is_uncovered(tmp_path: Path) -> None:
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT), _obligation(UNTOUCHED)],
-        log=[_claim("publish-happy", CONTRACT), _assert("publish-happy", 1, "PASS", CONTRACT)],
+        log=[
+            _claim("publish-happy", CONTRACT),
+            _assert("publish-happy", 1, "PASS", CONTRACT),
+        ],
     )
 
     rows = _by_id(build_evidence_map(spec))
@@ -123,6 +134,32 @@ def test_an_obligation_nobody_claimed_is_uncovered(tmp_path: Path) -> None:
     assert rows[UNTOUCHED]["status"] == "uncovered"
     assert rows[UNTOUCHED]["claimedBy"] == []
     assert rows[CONTRACT]["status"] == "covered"
+
+
+def test_a_deferred_obligation_nobody_claimed_is_deferred_not_uncovered(
+    tmp_path: Path,
+) -> None:
+    """validate skips a deferred obligation, so the map must not send QA back to cover it."""
+    deferred = _obligation(UNTOUCHED)
+    deferred["deferred"] = {
+        "kind": "no-verify-declared",
+        "detail": "the book declares no check",
+    }
+    spec = _spec(
+        tmp_path,
+        obligations=[_obligation(CONTRACT), deferred],
+        log=[
+            _claim("publish-happy", CONTRACT),
+            _assert("publish-happy", 1, "PASS", CONTRACT),
+        ],
+    )
+
+    data = build_evidence_map(spec)
+    rows = _by_id(data)
+
+    assert rows[UNTOUCHED]["status"] == "deferred"
+    assert "no-verify-declared" in rows[UNTOUCHED]["why"]
+    assert data["counts"]["uncovered"] == 0
 
 
 def test_a_scenario_that_claims_an_obligation_and_asserts_nothing_is_separated_out(
@@ -154,7 +191,14 @@ def test_an_assertion_that_is_not_the_declared_check_does_not_count_as_the_decla
         obligations=[_obligation(CONFLICT, declared=[DECLARED])],
         log=[
             _claim("publish-happy", CONFLICT),
-            _assert("publish-happy", 1, "PASS", CONFLICT, check="http_status", args={"code": 200}),
+            _assert(
+                "publish-happy",
+                1,
+                "PASS",
+                CONFLICT,
+                check="http_status",
+                args={"code": 200},
+            ),
         ],
     )
 
@@ -182,8 +226,13 @@ def test_the_declared_check_observed_and_passing_is_covered(tmp_path: Path) -> N
                 args={"token": "etag", "subject": "manifest"},
             ),
         ],
-        artifacts=[{"path": "qa/steps/publish-conflict.json", "sha256": "…",
-                    "scenario": "publish-conflict"}],
+        artifacts=[
+            {
+                "path": "qa/steps/publish-conflict.json",
+                "sha256": "…",
+                "scenario": "publish-conflict",
+            }
+        ],
     )
 
     row = _by_id(build_evidence_map(spec))[CONFLICT]
@@ -223,7 +272,9 @@ def test_a_published_pass_the_log_does_not_hold_is_contradicted(tmp_path: Path) 
         evidence={
             "runId": "qa-run-1",
             "overall": "Pass",
-            "obligations": [{"id": CONTRACT, "verdict": "Pass", "log_refs": [], "evidence": []}],
+            "obligations": [
+                {"id": CONTRACT, "verdict": "Pass", "log_refs": [], "evidence": []}
+            ],
         },
     )
 
@@ -250,7 +301,10 @@ def test_an_obligation_in_scope_only_for_context_is_not_a_gap(tmp_path: Path) ->
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT), _context_only(UNTOUCHED)],
-        log=[_claim("publish-happy", CONTRACT), _assert("publish-happy", 1, "PASS", CONTRACT)],
+        log=[
+            _claim("publish-happy", CONTRACT),
+            _assert("publish-happy", 1, "PASS", CONTRACT),
+        ],
     )
 
     data = build_evidence_map(spec)
@@ -265,7 +319,10 @@ def test_the_counts_and_the_rendering_lead_with_what_needs_work(tmp_path: Path) 
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONTRACT), _obligation(UNTOUCHED)],
-        log=[_claim("publish-happy", CONTRACT), _assert("publish-happy", 1, "PASS", CONTRACT)],
+        log=[
+            _claim("publish-happy", CONTRACT),
+            _assert("publish-happy", 1, "PASS", CONTRACT),
+        ],
     )
 
     data = build_evidence_map(spec)
@@ -277,14 +334,19 @@ def test_the_counts_and_the_rendering_lead_with_what_needs_work(tmp_path: Path) 
         "uncovered": 1,
         "claimed-but-unasserted": 0,
         "insensitive": 0,
+        "deferred": 0,
         "covered": 1,
     }
     body = "\n".join(lines)
     assert body.index("## uncovered") < body.index("## covered")
-    assert "\n".join(render_evidence_map(data, only="uncovered")).count("## covered") == 0
+    assert (
+        "\n".join(render_evidence_map(data, only="uncovered")).count("## covered") == 0
+    )
 
 
-def test_a_scenario_that_aborted_is_unproven_and_never_contradicted(tmp_path: Path) -> None:
+def test_a_scenario_that_aborted_is_unproven_and_never_contradicted(
+    tmp_path: Path,
+) -> None:
     """The bug this status exists for: a plan defect accusing a clean product."""
     spec = _spec(
         tmp_path,
@@ -299,7 +361,10 @@ def test_a_scenario_that_aborted_is_unproven_and_never_contradicted(tmp_path: Pa
 
     rows = _by_id(build_evidence_map(spec))
 
-    assert [rows[CONTRACT]["status"], rows[CONFLICT]["status"]] == ["unproven", "unproven"]
+    assert [rows[CONTRACT]["status"], rows[CONFLICT]["status"]] == [
+        "unproven",
+        "unproven",
+    ]
     for row in (rows[CONTRACT], rows[CONFLICT]):
         assert "failingLogRefs" not in row
         assert row["assertions"]["failing"] == 0
@@ -354,15 +419,25 @@ def test_a_pass_off_a_check_nothing_could_falsify_is_not_covered(
 ) -> None:
     """The quietest failure: every declared check ran, passed, and proved nothing."""
     monkeypatch.setitem(
-        sensitivity._VERIFIERS, "conflict_on_stale", lambda observed, args: load_harness_module("ostler_qa_verifiers").Verdict(True, {}, {})
+        sensitivity._VERIFIERS,
+        "conflict_on_stale",
+        lambda observed, args: load_harness_module("ostler_qa_verifiers").Verdict(
+            True, {}, {}
+        ),
     )
     spec = _spec(
         tmp_path,
         obligations=[_obligation(CONFLICT, declared=[DECLARED])],
         log=[
             _claim("publish-conflict", CONFLICT),
-            _assert("publish-conflict", 1, "PASS", CONFLICT,
-                    check="conflict_on_stale", args={"subject": "manifest", "token": "etag"}),
+            _assert(
+                "publish-conflict",
+                1,
+                "PASS",
+                CONFLICT,
+                check="conflict_on_stale",
+                args={"subject": "manifest", "token": "etag"},
+            ),
         ],
     )
 
@@ -382,8 +457,18 @@ def test_a_declared_path_with_a_fixture_reference_matches_the_path_the_run_sent(
         obligations=[_obligation(CONFLICT, declared=[declared])],
         log=[
             _claim("bundle-route", CONFLICT),
-            _assert("bundle-route", 1, "PASS", CONFLICT, check="http_status",
-                    args={"code": 401, "method": "GET", "path": "/projects/p-1/bundles/sha256:ab"}),
+            _assert(
+                "bundle-route",
+                1,
+                "PASS",
+                CONFLICT,
+                check="http_status",
+                args={
+                    "code": 401,
+                    "method": "GET",
+                    "path": "/projects/p-1/bundles/sha256:ab",
+                },
+            ),
         ],
     )
 
@@ -397,8 +482,20 @@ def test_a_declared_path_with_a_fixture_reference_matches_the_path_the_run_sent(
         obligations=[_obligation(CONFLICT, declared=[declared])],
         log=[
             _claim("bundle-route", CONFLICT),
-            _assert("bundle-route", 1, "PASS", CONFLICT, check="http_status",
-                    args={"code": 401, "method": "GET", "path": "/orders/p-1/bundles/sha256:ab"}),
+            _assert(
+                "bundle-route",
+                1,
+                "PASS",
+                CONFLICT,
+                check="http_status",
+                args={
+                    "code": 401,
+                    "method": "GET",
+                    "path": "/orders/p-1/bundles/sha256:ab",
+                },
+            ),
         ],
     )
-    assert _by_id(build_evidence_map(other_route))[CONFLICT]["checksMissing"] == [declared]
+    assert _by_id(build_evidence_map(other_route))[CONFLICT]["checksMissing"] == [
+        declared
+    ]
