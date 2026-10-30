@@ -19,6 +19,8 @@ _PAGE = """
 </ul>
 <input id="field" aria-label="Name">
 <p id="opened"></p>
+<form onsubmit="event.preventDefault()"><input id="signup" aria-label="Email"><button>Go</button></form>
+<input id="loose" aria-label="Search">
 <script>
   const consume = (el, act) => el.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); act(); }
@@ -55,3 +57,11 @@ def test_an_enter_nothing_handles_does_not_activate_the_entry(page: Any) -> None
 
 def test_an_enter_a_native_field_prevents_does_not_count_as_activation(page: Any) -> None:
     assert elements.read_focus(page.locator("#field"), {"activates": "Enter"}).activated is False
+
+
+def test_an_enter_that_submits_the_form_a_field_belongs_to_activates_the_field(page: Any) -> None:
+    assert elements.read_focus(page.locator("#signup"), {"activates": "Enter"}).activated is True
+
+
+def test_a_field_outside_any_form_is_not_activated_by_enter(page: Any) -> None:
+    assert elements.read_focus(page.locator("#loose"), {"activates": "Enter"}).activated is False

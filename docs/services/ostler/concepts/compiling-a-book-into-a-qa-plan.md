@@ -99,7 +99,7 @@ its first hop.
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@373cfbcaf3e9
 - code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@da217d55c8c0
 - code: ostler/ostler/qa/compile_maestro.py::maestro_walk@da217d55c8c0
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@ce61d0ffcd61
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@224915efaaf0
 - code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@b5e05dbd5366
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_moves.py::state_walks@357b72ed93c7

@@ -125,11 +125,11 @@ harness as book content.
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_attribute@0596499cd4fb
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_value@0596499cd4fb
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::verify_focused@0596499cd4fb
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_visible@ce61d0ffcd61
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_actionable@ce61d0ffcd61
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_focusable@ce61d0ffcd61
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_console@ce61d0ffcd61
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_download@ce61d0ffcd61
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_visible@529a98da1382
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_actionable@2a1c5aaa61b0
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_focusable@34ff4f2b7892
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_console@fe51e00c1e81
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::verify_download@37aeb9c07c90
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::verify_url@753b30ac1b84
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::verify_stored@753b30ac1b84
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::verify_clipboard@753b30ac1b84

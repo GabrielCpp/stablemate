@@ -242,8 +242,8 @@ class FocusReading:
 def read_focus(observed: object, args: Args) -> FocusReading:
     """Reachable by a real keypress, and — when `activates` names one — responsive to it.
 
-    A control answers its key when the key clicks it, opens its popup, leaves the page, or is an `Enter` its own
-    handler consumed. `Enter` does nothing by default on an element that is not a native control,
+    A control answers its key when the key clicks it, opens its popup, leaves the page, submits the form it belongs to,
+    or is an `Enter` its own handler consumed. `Enter` does nothing by default on an element that is not a native control,
     so a handler that prevents it has acted on it. A component library that runs its click handler
     from that keydown dispatches no click.
     """
@@ -291,6 +291,7 @@ def _left(page: object, before: object) -> bool:
 _ARM_ACTIVATION = (
     "el => { window.__ostlerActivated = false; "
     "el.addEventListener('click', () => { window.__ostlerActivated = true; }, {once: true}); "
+    "if (el.form) el.form.addEventListener('submit', () => { window.__ostlerActivated = true; }, {capture: true, once: true}); "
     "const native = el.matches('a[href], button, input, select, textarea, summary'); "
     "window.addEventListener('keydown', e => { "
     "if (e.key === 'Enter' && !native && e.target === el && e.defaultPrevented) window.__ostlerActivated = true; "
