@@ -462,6 +462,11 @@ call grammar as a check and refused against its own names:
 | `while_open(method*, request)` | a second call is made while this server stream is open: `method` is the full `package.Service/Method` name, sent to the same address, and `request` is its request message as JSON object text, `{}` when omitted. A string in it may be an `@node.key` reference | grpc |
 | `invoke(argv*, env)` | a command ran with the stated arguments, under the stated environment | cli |
 
+**`click` waits for an enabled control.** A click on a control the product disabled waits until
+the control is enabled, and the step fails when it never is. A claim that a disabled control
+ignores presses is proved by `inert` on the control and by `emitted` with the count the presses
+must not raise. Arrange no click on it.
+
 **An act's argument type is a property of that act's parameter, not of acts in general.**
 `fill`/`click`/`press`/`select`/`upload` are all-`str` because their driver is a person: what a browser
 or a device carries out is what the performer types or points at, so
