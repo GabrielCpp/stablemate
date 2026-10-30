@@ -1,7 +1,7 @@
 ## The plan contract
 
-Hand this section to the planner, and to every seat that edits the plan. The checks after
-your turn enforce it.
+This is the contract for `qa_plan.py`, whether the compile wrote it or you did. The checks
+after your turn enforce it.
 
 ### What to read
 
@@ -192,7 +192,7 @@ obligation is the story's central claim and no reachable state discriminates at 
 | `qa.diagnostics.layout()` | each region's box as a share of the viewport |
 | `qa.maestro.flow([...])` / `qa.maestro.run(flow)` | build and run a Maestro flow |
 
-This table is the short form. The planner reads the harness contract in full in place of
+This table is the short form. Read the harness contract in full in place of
 ostler's own code:
 
 {% if has_skill("ostler-cli") %}
@@ -340,9 +340,9 @@ Start every impacted flow at its documented `start`, assert its documented `end`
 a 5xx, a crash or a console error on the way. A `tests:` citation in the book is a lead, not
 proof. A green suite alone never decides a pass.
 
-### Dry runs
+### Running one scenario
 
-The stack is up, so dry-run each scenario you write or change, on its own:
+The stack is up, so run a scenario you write or change on its own while you debug it:
 
 ```bash
 ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
@@ -351,8 +351,7 @@ ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
 
 `--out-dir` takes a label, not a path. The run lands in
 `<spec_dir>/{{ workhorse_var('qa_scratch_dir') }}/<scenario-id>/`, outside the repo.
-Use one label per scenario: the runner clears its out-dir on every run. Return the ids you
-ran green in `proved_scenarios`. The checks read each one's scratch log, and an id that did
-not pass there fails them. Fix what does not resolve and run it again. Runner tooling (the
+Use one label per scenario: the runner clears its out-dir on every run. The scored run is the
+verdict, not this one. Fix what does not resolve and run it again. Runner tooling (the
 ostler environment, a browser binary, fixture plumbing) may be repaired. Product code may
 not.

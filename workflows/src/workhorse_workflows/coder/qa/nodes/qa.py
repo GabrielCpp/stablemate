@@ -18,15 +18,9 @@ from workhorse_workflows.coder.shared.stack import (
     run_qa_plan,
     stack_target,
 )
-from workhorse_workflows.coder.shared.qa_support import (
-    QA_PLAN_FILE,
-    QA_RUN_LOG,
-    assert_records,
-    notes_for,
-)
+from workhorse_workflows.coder.shared.qa_support import QA_PLAN_FILE, notes_for
 from workhorse_workflows.coder.shared.schemas.qa import (
     CompiledPlan,
-    DryRunGate,
     QaCleared,
     QaPlanValidation,
     QaToolCatalog,
@@ -131,79 +125,6 @@ def validate_qa_plan(
 
 
 @blueprint.node
-def verify_qa_dry_run(
-    logger: logging.Logger, spec_dir: str = "", scenarios: tuple[str, ...] = ()
-) -> DryRunGate:
-    """Did the repair turn run each scenario it had to repair, and did each one pass?"""
-    wanted = [s for s in dict.fromkeys(scenarios) if s]
-    if not wanted:
-        return DryRunGate(
-            status="passed", notes="No scenarios required a dry run.", scenarios=[]
-        )
-    if not spec_dir:
-        return DryRunGate(notes="QA dry-run gate: no spec_dir provided to locate the logs.")
-
-    root = Path(spec_dir) / QA_SCRATCH_DIRNAME
-    problems: list[str] = []
-    verified: list[str] = []
-    for scenario in wanted:
-        names = ("", scenario, scenario.replace("_", "-"))
-        log_path = root / scenario / QA_RUN_LOG
-        if not log_path.is_file() and (root / QA_RUN_LOG).is_file():
-            log_path = root / QA_RUN_LOG
-            names = names[1:]
-        if not log_path.is_file():
-            problems.append(
-                f"`{scenario}`: no dry run at {log_path}. Run it with "
-                f"`ostler qa run {QA_PLAN_FILE} --spec {spec_dir} --scenario {scenario} "
-                f"--out-dir {scenario}` and repair it until it passes."
-            )
-            continue
-        mine = [
-            r
-            for r in assert_records(log_path)
-            if str(r.get("scenario", "")).strip() in names
-        ]
-        if not mine:
-            problems.append(
-                f"`{scenario}`: the dry run at {log_path} recorded no assertion for it, so "
-                "it proves nothing — the scenario never reached an assert. Find out why "
-                "(locator, fixture, navigation) and re-run it."
-            )
-            continue
-        failed = [
-            str(r.get("id") or "?")
-            for r in mine
-            if str(r.get("result", "")).strip().upper() == "FAIL"
-        ]
-        if failed:
-            problems.append(
-                f"`{scenario}`: the dry run still fails {len(failed)} assertion(s) "
-                f"({', '.join(failed)}). The repair is not finished."
-            )
-            continue
-        verified.append(scenario)
-
-    if problems:
-        logger.info("qa dry-run gate refused %d of %d scenario(s)", len(problems), len(wanted))
-        return DryRunGate(
-            notes=(
-                "The QA-plan repair must prove itself before the suite runs again. "
-                + " ".join(problems)
-            ),
-            scenarios=wanted,
-            verified=verified,
-        )
-    logger.info("qa dry-run gate passed %d scenario(s)", len(verified))
-    return DryRunGate(
-        status="passed",
-        notes=f"Dry run passed for {', '.join(verified)}.",
-        scenarios=wanted,
-        verified=verified,
-    )
-
-
-@blueprint.node
 def teardown_stack(
     logger: logging.Logger,
     repo_dir: str = "",
@@ -228,5 +149,4 @@ __all__ = [
     "stack_target",
     "teardown_stack",
     "validate_qa_plan",
-    "verify_qa_dry_run",
 ]

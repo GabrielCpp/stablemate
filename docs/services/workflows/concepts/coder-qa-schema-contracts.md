@@ -14,7 +14,7 @@ One owner turn replies with `QaOwnerResult`, and the flow ends with `QaFlowResul
 vocabularies rather than accepting arbitrary strings. `QaResult`, `QaPlanRun`, `StackStatus` and `QaStatus`
 are defined in the shared QA kit and re-exported here.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::__all__` @f04604139aca
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::__all__` @c31aff7f270b
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_spends_one_owner_turn`
 - tests: `workflows/tests/coder/test_qa_plan_prompt_schema.py::test_the_example_scenario_would_survive_the_substantiveness_gate`
 - detail: [coder QA flow](../flows/coder-qa.md)
@@ -59,14 +59,6 @@ so an omitted decision is retried rather than silently routed.
 - returns: a validation result with notes and the validator payload, defaulting conservatively to invalid
 - verify: json_path(path="$.ostler", equals="{}")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaPlanValidation` @3934f6bb569e
-
-### method: DryRunGate
-- sig: `DryRunGate(status: Literal["passed", "failed"] = "failed", notes: str = "", scenarios: list[str] = [], verified: list[str] = []) -> DryRunGate`
-- does: records the scenarios demanded by a plan repair or draft and the scenarios proved by scratch evidence
-- verify: json_path(path="$.scenarios", matches="^\\[\"[^\"]+\"")
-- returns: a failed-by-default gate unless every demanded dry-run condition is later established
-- verify: json_path(path="$.status", equals="failed")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::DryRunGate` @12e53ac2444c
 
 ### method: QaToolCatalog
 - sig: `QaToolCatalog(tools: list[dict[str, Any]] = [], errors: list[str] = []) -> QaToolCatalog`
@@ -150,16 +142,14 @@ so an omitted decision is retried rather than silently routed.
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaFinding` @e7ffb892105b
 
 ### method: QaOwnerResult
-- sig: `QaOwnerResult(status: Literal["passed", "findings", "blocked"], notes: str = "", findings: list[QaFinding] = [], proved_scenarios: list[str] = []) -> QaOwnerResult`
+- sig: `QaOwnerResult(status: Literal["passed", "findings", "blocked"], notes: str = "", findings: list[QaFinding] = []) -> QaOwnerResult`
 - does: reports the QA owner turn's verdict on its story
 - verify: json_path(path="$.status", matches="^(passed|findings|blocked)$")
 - does: names the product defects the scored run proved, one finding each, and leaves the list empty on a pass or a block
 - verify: json_path(path="$.findings", equals="[]")
-- does: names every scenario the turn added or changed and dry-ran green, which the dry-run gate checks against the scratch logs
-- verify: json_path(path="$.proved_scenarios[0]", equals="login-happy-path")
 - returns: a reply whose `blocked` status is reserved for what only an operator can decide, since a plan, stack or setup problem is the owner's to repair
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult` @01b7daa76cfe
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaOwnerResult` @4d8485234442
 
 ### method: StackTarget
 - sig: `StackTarget(near: str = "", lease: str = "", env: dict[str, str] = {}) -> StackTarget`

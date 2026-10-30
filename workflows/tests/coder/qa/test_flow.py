@@ -37,7 +37,6 @@ from workhorse_workflows.coder.qa.nodes import qa as qa_nodes
 from workhorse_workflows.coder.qa.nodes import regression as regression_nodes
 from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 from workhorse_workflows.coder.shared import okf as okf_nodes
-from workhorse_workflows.coder.shared import qa_support
 from workhorse_workflows.kit.qa import evidence as qa_evidence_mod
 from workhorse_workflows.kit.qa import runner as qa_runner_mod
 from _epics import epics_root
@@ -457,8 +456,7 @@ class _Agent:
         *,
         statuses: tuple[str, ...] = ("passed",),
         findings: list[dict[str, str]] | None = None,
-        proves: tuple[str, ...] = (),
-        dry_runs: tuple[str, ...] = ("passed",),
+        claims: tuple[str, ...] = (),
         escalate: bool = False,
         scope: str = "story",
         explode_at: int = 0,
@@ -471,8 +469,7 @@ class _Agent:
         self.same = same or {}
         self.statuses = statuses
         self.findings = findings or []
-        self.proves = proves
-        self.dry_runs = dry_runs
+        self.claims = claims
         self.escalate = escalate
         self.scope = scope
         self.explode_at = explode_at
@@ -504,7 +501,7 @@ class _Agent:
         return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
 
     def _qa_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Plan unless one stands, prove what it names, and return the scripted verdict."""
+        """Plan unless one stands, and return the scripted verdict."""
         status = self.statuses[min(nth, len(self.statuses)) - 1]
         if status == "blocked":
             return {
@@ -519,30 +516,12 @@ class _Agent:
             (Path(data["spec_dir"]) / "backlog-items.json").write_text(
                 json.dumps(list(self.items)), encoding="utf-8"
             )
-        shape = self.dry_runs[min(nth, len(self.dry_runs)) - 1]
-        for scenario in self.proves:
-            self._prove(data, scenario, shape)
         return {
             "status": status,
             "notes": f"owner turn {nth}",
             "findings": self.findings if status == "findings" else [],
-            "proved_scenarios": list(self.proves),
+            "proved_scenarios": list(self.claims),
         }
-
-    def _prove(self, data: dict[str, Any], scenario: str, shape: str) -> None:
-        """Write one scenario's scratch dry-run log, in whichever of the four shapes."""
-        if shape == "missing":
-            return
-        out = Path(data["spec_dir"]) / QA_SCRATCH_DIRNAME / scenario
-        out.mkdir(parents=True, exist_ok=True)
-        records = [] if shape == "empty" else [
-            {"kind": "assert", "id": f"{scenario}-1", "result": (
-                "FAIL" if shape == "failed" else "PASS"
-            )}
-        ]
-        (out / qa_support.QA_RUN_LOG).write_text(
-            "".join(json.dumps(r) + "\n" for r in records), encoding="utf-8"
-        )
 
     def _judge(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """The judge's ruling: each subject `same` names to its bullet, the rest left new."""
@@ -922,22 +901,22 @@ def test_an_invalid_plan_goes_back_to_the_owner_before_anything_runs(
     assert okf.runs == 1, okf.runs
 
 
-def test_a_proved_scenario_that_dry_ran_red_is_not_a_finished_plan(
+def test_a_passing_scored_run_passes_with_no_dry_run_ledger_on_disk(
     docs: Path,
     ostler: Callable[..., _Ostler],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A claimed proof is checked against its scratch log before the suite spends a run."""
+    """The scored run is the verdict: a scenario the owner names as proved, with no scratch log, does not hold the story back."""
     okf = ostler()
-    agent = _Agent(docs, proves=(DRAFT_SCENARIO,), dry_runs=("failed", "passed"))
+    agent = _Agent(docs, claims=(DRAFT_SCENARIO,))
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
-    assert agent.counts()["qa-story"] == 2, agent.counts()
-    assert "dry runs" in agent.args[1]["report"]
+    assert agent.counts()["qa-story"] == 1, agent.counts()
     assert okf.runs == 1, okf.runs
+    assert not (Path(agent.args[0]["spec_dir"]) / QA_SCRATCH_DIRNAME / DRAFT_SCENARIO).exists()
 
 
 def test_a_failed_run_with_findings_sends_them_back_as_a_refix(

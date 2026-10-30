@@ -45,15 +45,6 @@ class QaPlanValidation(CoderResult):
     ostler: dict[str, Any] = {}
 
 
-class DryRunGate(CoderResult):
-    """Did the repair turn actually execute the scenarios it was told to repair?"""
-
-    status: Literal["passed", "failed"] = "failed"
-    notes: str = ""
-    scenarios: list[str] = []
-    verified: list[str] = []
-
-
 class QaToolCatalog(CoderResult):
     """`ostler qa tools list` — the tools this repo opted into, resolved for this host."""
 
@@ -172,8 +163,8 @@ class QaOwnerResult(CoderResult):
     """`qa/prompts/qa-story.md`: the QA owner's verdict on its story."""
 
     status: Literal["passed", "findings", "blocked"] = Field(
-        description="`passed` when the scored run of `qa_plan.py` passed, your auditor's "
-        "refutation attempt did not stand, and every obligation is covered. `findings` when "
+        description="`passed` when the scored run of `qa_plan.py` passed and every obligation "
+        "is covered. `findings` when "
         "the scored run failed on the product and each failure is one entry in `findings`. "
         "`blocked` only when something an operator alone can decide stops you: a credential, "
         "a deployed environment, hardware, or a product call neither the story nor the book "
@@ -190,12 +181,6 @@ class QaOwnerResult(CoderResult):
         "with the scenario and assertion that failed and the smallest product change that "
         "would pass it. Empty on `passed` and on `blocked`.",
     )
-    proved_scenarios: list[str] = Field(
-        default=[],
-        description="The id of every scenario you added or changed this turn and dry-ran "
-        "green under the scratch directory. The check reads the scratch log for each id, so "
-        "naming one you did not dry-run fails it.",
-    )
 
 
 class QaFlowResult(CoderResult):
@@ -210,7 +195,6 @@ class QaFlowResult(CoderResult):
 
 __all__ = [
     "BacklogDrain",
-    "DryRunGate",
     "CompiledPlan",
     "FailedScenarios",
     "FailureAttribution",

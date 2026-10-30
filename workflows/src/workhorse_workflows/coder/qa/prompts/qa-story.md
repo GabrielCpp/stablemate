@@ -4,11 +4,11 @@ agent: agent
 
 # Own The Story's QA
 
-You own the QA of one story. You plan it, stand its stack up, run it, judge what the run
-proved, have it audited, and repair everything on the QA side until the run's verdict can be
-believed. You do that work through subagents, each one sized to its task, and you decide what
-each one sees. This turn ends with a plan that lints and validates, a scored run on disk, a
-`qa.md` that says what it proved, and the JSON result below.
+You own the QA of one story, and you do all of it in this one turn: you select the scenarios,
+run them, debug each failure and record the result. You spawn no planner, fixer or auditor.
+A `lookup` delegate is allowed for a narrow read, such as finding a locator or summarising a
+log. The turn ends with a plan that lints and validates, a scored run on disk, a `qa.md` that
+says what it proved, and the JSON result below.
 
 The story is developed locally, on its own local stack, and it is self-contained. Its
 repositories and that stack hold everything its QA proves: the running services, the
@@ -34,11 +34,10 @@ earlier turn.
 - Target environment: `{{ workhorse_var('target_env') }}`
 - The QA runner's interpreter: `{{ workhorse_var('runtime_python') }}`
 {% if standing_plan %}- A `qa_plan.py` already stands in the spec dir, and it lints and validates against the
-  context packet. Adopt it, and change only what the story or a check calls for. The workflow
-  compiles it from the book, so a scenario it lacks is a book gap: report it in `notes`
-  and do not hand-write it.
-{% else %}- No plan that lints and validates stands in the spec dir yet. Write it, or repair the one
-  that is there.
+  context packet. The workflow compiled every obligation of the book into it with
+  `ostler qa compile-plan`. Start from it and change only what the story or a check calls for.
+{% else %}- No plan that lints and validates stands in the spec dir yet. Compile one with
+  `ostler qa compile-plan`, or repair the one that is there.
 {% endif %}{% if verification_setup and verification_setup.profile %}- The stack profile the surface needs: `{{ verification_setup.profile }}`.
 {% endif %}{% if verification_setup and verification_setup.capable_of_rendering %}- What the stack can render: {{ verification_setup.capable_of_rendering }}
 {% endif %}{% if fixtures %}- The fixtures this story declared. They are the only arrangements a scenario may stand up,
@@ -100,42 +99,46 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
 
 ## How to work
 
-1. **Read.** Read the story and its Acceptance Criteria, the repo's `AGENTS.md`,
-   `qa-okf-context.json` in the spec dir, and `docs/qa/lessons.md` under the docs root when
-   it exists. The Acceptance Criteria define done.
-2. **Plan.** Have the planner write or amend `qa_plan.py` and `qa-plan.md` to the plan
-   contract below. A standing plan is adopted, not rewritten: amend it only for what the story
-   gained or a check named. Run `ostler qa lint` and `ostler qa validate` on what it wrote.
-3. **Stand the stack up.** A context or stack failure in the report, a runner requirement,
-   or a stack that will not serve goes to the stack and setup repairer, with its brief below.
-   The workflow rebuilds the context packet before every check, so a context failure names
-   what the book or the story lacks, and the repair goes there.
-4. **Dry run.** Run each scenario the plan added or changed on its own, with `--out-dir`, and
-   fix it until it runs green. Return the ids that ran green in `proved_scenarios`. The
-   workflow reads their ledgers.
-5. **Run it.** Run the whole plan, scored, from the spec dir:
+1. **Select.** Read the story and its Acceptance Criteria, the repo's `AGENTS.md` and
+   `docs/qa/lessons.md` under the docs root when it exists. The Acceptance Criteria define
+   done. `qa-okf-context.json` in the spec dir holds the obligations, read through
+   `ostler qa context-show`. The workflow compiled every obligation into `qa_plan.py`. When an
+   obligation lies outside the story, narrow the plan:
+   `ostler qa compile-plan --spec {{ workhorse_var('spec_dir') }} --select <id> [--select <id> ...] --out {{ workhorse_var('spec_dir') }}/qa_plan.py --replace`,
+   where an id is an obligation id or its book node. A compiled scenario that is wrong is a
+   book defect: repair the book node and recompile. A scenario the compile lacks, you write.
+   Write it in the book when the book can state it, then recompile. When the book cannot
+   state it, add it by hand to `qa_plan.py` after your last recompile, since a recompile
+   replaces the file. Nobody reviews the scenarios you write. Run `ostler qa lint` and
+   `ostler qa validate` on the plan.
+2. **Run.** Stand the stack up with the setup brief below when the report names a context or
+   stack failure, or a runner requirement. The workflow rebuilds the context packet before
+   every check, so a context failure names what the book or the story lacks. Then run the
+   whole plan, scored, from the spec dir:
    `ostler qa run {{ workhorse_var('spec_dir') }}/qa_plan.py --spec {{ workhorse_var('spec_dir') }}`,
-   with no `--out-dir`. Bound it with a `timeout`.
-6. **Assess.** Judge whether the run reached its objective, and write `qa.md` (below).
-7. **Audit.** Have a fresh auditor on the strongest model try to refute the verdict, with
-   its brief below. A refutation reopens the run: it is a defect to repair or a finding.
-8. **Triage.** Classify every failure, every refutation and every regression failure:
+   with no `--out-dir`. Bound it with a `timeout`. The scored run is the verdict.
+3. **Debug.** Read `qa-report.md` and classify every failure:
    - **product**: the repo's code does not do what a criterion says, or fails where it ran
-     before. A finding.
-   - **plan**: a scenario that tests the wrong thing, misses a criterion or proves nothing.
-   - **stack or setup**: the environment, a seed, a tool, a stale build. When the cause is
-     the repo's own tracked code, such as its stack definition or setup scripts, it is a
-     finding too.
-   - **evidence**: the proof is missing, stale or does not support its claim.
-   - **regression**: an existing spec this story's change broke, or a stale spec.
-9. **Repair.** Hand each non-product defect to the seat that owns it, then run again from
-   the step it touched. Stop when the scored run passes and the audit stands, or when every
-   failure left is a product finding. One open audit runs per visit. After a repair, the
-   next auditor re-audits: it gets the earlier refutations with the brief, and checks only
-   that each one is resolved and that the repair broke nothing the map computes.
-10. **Return.** `passed` when the scored run passed and the audit stands. `findings` when
-    the scored run fails on product defects, one finding per defect. `blocked` only as
-    described below.
+     before. A finding. QA never fixes the product.
+   - **plan** (the book is wrong or silent): repair the book node, then recompile. A scenario
+     the book cannot state is fixed by hand in `qa_plan.py`.
+   - **stack or setup**: the environment, a seed, a tool, a stale build. Repair the runbook
+     node, the seed or the local config. When the cause is the repo's own tracked code, such
+     as its stack definition or setup scripts, it is a finding too.
+   - **evidence**: the proof is missing, stale or does not support its claim. Repair the
+     scenario so it records it.
+   - **regression**: an existing spec this story's change broke, or a stale spec. Fix a stale
+     or flaky spec in the spec, against the real stack, without weakening an assertion or
+     deep-linking past a broken step. A regression in the product is a finding.
+
+   You may run one scenario on its own with `--scenario <id> --out-dir <label>` while you
+   debug it. Run the whole plan again once a repair lands. Stop when the scored run passes, or
+   when every failure left is a product finding.
+4. **Record.** Judge whether the run reached its objective and write `qa.md` (below). Write
+   `{{ workhorse_var('qa_dir') }}/jira-comment.md` as the report brief below says: each
+   Acceptance Criterion, its verdict and the evidence path that proves it. Then return
+   `passed` when the scored run passed, `findings` when it fails on product defects with one
+   finding per defect, and `blocked` only as described below.
 
 The story starts from a working main, so every failure you meet is this story's. A
 failure in the repo's code is a finding wherever that code sits, and never a backlog item.
@@ -152,35 +155,6 @@ toolchain, such as commit trailers, ostler or packet attribution, is never an it
 either. Both are run findings for the operator, and they go in `notes`.
 
 {% include "shared/prompts/_step-cost.md" %}
-
-## Subagents
-
-Spawn subagents through your harness's own task or agent tool. Pick each one's model by the
-task, not by habit: a lookup on the strongest model wastes it, and an audit on the cheapest
-misses what it is there to catch.
-
-When your harness offers an agent named `lookup` or `worker`, send the cheapest seats to
-`lookup` and the seats marked a strong one to `worker`. Those agents run on the models the
-operator picked for them.
-
-| Seat | Model | Sees | May touch |
-| --- | --- | --- | --- |
-| Lookup: find a locator, summarise a ledger or a log | the cheapest and fastest | the question | nothing |
-| Planner | a strong one | the story, the context packet, the plan contract{% if has_skill("ostler-cli") %}, `{{ skill_path("ostler-cli", "references/qa-harness-reference.md") }}`{% endif %} | `qa_plan.py`, `qa-plan.md` |
-| Stack and setup repairer | a strong one | the failure, the setup brief | the runbook node, local config, tooling, seeds |
-| Scenario fixer: one failing scenario | a strong one | its failure, its ledger, the plan contract{% if has_skill("ostler-cli") %}, `{{ skill_path("ostler-cli", "references/qa-harness-reference.md") }}`{% endif %} | that scenario in `qa_plan.py` |
-| Regression fixer: one failing suite | a strong one | the failing spec and its output | that spec |
-| Auditor | the strongest | the story, the plan and the evidence, never your reasoning | the `## Independent Audit` section of `qa.md` |
-
-Give each seat its inputs in the brief, and the check that proves its part. Hand the plan
-contract over whole, and name each reference file by its path. No two writing
-seats own the same file at once. You stay the owner: read what every writing seat changed,
-run the plan yourself, and write `qa.md`, the findings and the result yourself.
-
-The regression fixer runs against the real stack. It never weakens an assertion and never
-deep-links past a broken step. A stale or flaky spec is fixed in the spec. A regression in
-the product is a finding, not a fix. It reruns the spec it fixed. The workflow reruns the
-suites.
 
 ## Assessing the run
 
@@ -228,9 +202,6 @@ every pass. Never append.
 ## Assessment
 <what the run proved, what it did not, and why>
 
-## Independent Audit
-<the auditor's section>
-
 ## History
 - <date>: <status>: <outcome>
 ```
@@ -242,17 +213,13 @@ result.
 
 {% include "_qa-setup-brief.md" %}
 
-{% include "_qa-audit-brief.md" %}
-{% if target_env == "dev" %}
 
 {% include "_dev-report-brief.md" %}
-{% endif %}
 
 ## The checks after this turn
 
 The workflow rebuilds and validates the context packet and checks the stack. It lints and
-validates the plan, and reads the dry-run ledgers of `proved_scenarios`. Then it runs the
-plan again, scored. A failed run with findings ends QA, and the findings go to the dev owner. A
+and validates the plan. Then it runs the plan again, scored. A failed run with findings ends QA, and the findings go to the dev owner. A
 passed run must also clear the evidence verification, the operator's feedback, the
 regression suites and the sentinel ids. Whatever fails comes back to you as the next turn in
 this session, with the report attached.

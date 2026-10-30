@@ -5,8 +5,9 @@ title: Coder qa package
 ---
 # Coder qa package
 
-The `qa` machine hands one story's QA to a single owner session. The owner plans, runs, audits
-and repairs through its subagents, and the flow reruns the plan it leaves and gates its claims.
+The `qa` machine hands one story's QA to a single owner session. The owner selects the
+scenarios, runs them, debugs each failure and records the result in one turn, and the flow
+reruns the plan it leaves and gates its claims.
 It is a sub-flow the Coder main flow enters after documentation passes, and `workhorse-coder run
 qa` runs it directly.
 
@@ -14,8 +15,11 @@ The flow ends in a `QaFlowResult` that is `passed`, `refix` or `replan`. Repair 
 at `MAX_LAPS` and operator blocks at `MAX_BLOCKS`. A spent cap, or a human operator mode, parks
 the run on the story's context file.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py` @5e237d8fe89d
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @848a6e8a78b1
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py` @e3a1a54e1709
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @7db733e1eac1
+- rule: the QA plan starts as ostler's compile of the book, narrowed by the owner's selection; the owner adds a missing scenario to the book, or by hand when the book cannot state it, and no reviewer checks it
+- rule: the scored run is the QA verdict, with no audit seat or dry-run gate beside it
+- rule: the QA owner spawns no planner, fixer or auditor seat; a `lookup` delegate for a narrow read stays allowed
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_spends_one_owner_turn`
 - detail: [coder QA subflow](coder-qa-subflow.md)
 - detail: [coder QA flow](../flows/coder-qa.md)

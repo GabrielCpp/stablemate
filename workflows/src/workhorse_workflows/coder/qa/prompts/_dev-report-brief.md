@@ -1,7 +1,6 @@
-## The DEV report
+## The report
 
-This run is against DEV, where the code belongs to another developer. A product finding here
-is reported to its author, not fixed. Before you return, write
+QA never fixes the product, so a product finding is reported to its author. Before you return, write
 `{{ workhorse_var('qa_dir') }}/jira-comment.md` yourself: one comment, self-contained and
 ready to paste into the tracker. Build it from `qa-report.md`, whose assertion tables hold the
 observed values, from `qa.md`, from `qa-evidence.json`, from the files under the QA dir the
@@ -20,9 +19,9 @@ Both shapes share these rules:
 When the scored run failed:
 
 ```markdown
-## ❌ QA FAIL: DEV
+## ❌ QA FAIL: {{ workhorse_var('target_env') }}
 
-**Environment:** DEV | **Story:** <slug>
+**Environment:** {{ workhorse_var('target_env') }} | **Story:** <slug>
 
 ### Summary
 
@@ -45,15 +44,15 @@ When the scored run failed:
 
 ### Reproduction steps
 
-<numbered steps the author can follow on DEV>
+<numbered steps the author can follow>
 ```
 
-When the scored run passed and the audit stands:
+When the scored run passed:
 
 ````markdown
-## ✅ QA PASS: DEV
+## ✅ QA PASS: {{ workhorse_var('target_env') }}
 
-**Environment:** DEV | **Story:** <slug>
+**Environment:** {{ workhorse_var('target_env') }} | **Story:** <slug>
 
 ### Summary
 

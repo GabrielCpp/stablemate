@@ -15,7 +15,6 @@ from workhorse_workflows.coder.qa.nodes.qa import (
     stack_target,
     teardown_stack,
     validate_qa_plan,
-    verify_qa_dry_run,
 )
 from workhorse_workflows.coder.qa.nodes.regression import (
     detect_regression_suites,
@@ -38,6 +37,5 @@ __all__ = [
     "stack_target",
     "teardown_stack",
     "validate_qa_plan",
-    "verify_qa_dry_run",
     "verify_qa_evidence",
 ]

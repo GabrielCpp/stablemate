@@ -10,7 +10,7 @@ Its public entry is `Qa`; the package initializer exposes that flow while keepin
 implementation groups below private to this subflow.
 
 The `qa` node group owns evidence cleanup, stack lifecycle, QA-plan linting and validation,
-dry-run proof, secret minting, and execution of the scored QA plan. The `evidence` group
+secret minting, and execution of the scored QA plan. The `evidence` group
 validates runner artifacts and refuses a claimed pass when its proof is missing, contradictory,
 stale, or rests on a failed scenario. The `regression` group discovers journey commands from
 the touched services and classifies each execution as passed, failed, blocked, skipped, or

@@ -1,10 +1,10 @@
 ## The stack and setup brief
 
-Hand this section to the stack and setup repairer. Its job is to make the stack
-bring-up-able by the workflow, so the next `ostler qa stack up` stands it up from cold. It
-never starts a service and leaves it running.
+Repair the stack and its setup yourself. The goal is a stack the workflow can bring up, so
+the next `ostler qa stack up` stands it up from cold. Never start a service and leave it
+running.
 
-### What it repairs
+### What to repair
 
 - **The book's runbook node**, `docs/services/<service>/ops/qa-stack.md`, which the workflow
   reads through `ostler qa stack up`. `ostler doctor` reports `runbook-missing` when it is
@@ -67,5 +67,5 @@ quote its output.
 
 `ostler qa stack up` runs what the workflow will run, off the node as written, so it is the
 check: it reports the stack serving or names the step that failed. Run `ostler doctor` too.
-Quote both outputs. A blocker only a human can clear (a real secret, hardware) is the owner's
+Quote both outputs. A blocker only a human can clear (a real secret, hardware) is a
 `blocked`.

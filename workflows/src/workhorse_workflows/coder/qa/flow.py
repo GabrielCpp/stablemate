@@ -1,4 +1,4 @@
-"""One QA owner plans, runs, audits and repairs a story's QA through its subagents, and the run checks it."""
+"""One QA owner selects, runs, debugs and records a story's QA, and the run checks it."""
 from __future__ import annotations
 
 import sys
@@ -23,7 +23,6 @@ from workhorse_workflows.coder.qa.nodes import (
     run_regression_suite,
     stack_target,
     validate_qa_plan,
-    verify_qa_dry_run,
     verify_qa_evidence,
 )
 from workhorse_workflows.coder.qa.report import (
@@ -241,7 +240,7 @@ class Qa(Workflow):
         laps: int = 0,
         blocks: int = 0,
     ) -> Continue | Await:
-        """Run the owner turn: its subagents plan, run, audit and repair the story's QA."""
+        """Run the owner turn: it selects, runs, debugs and records the story's QA."""
         self.logger.info("owning QA for %s", self.ctx.story_slug, extra={"activity": True})
         turn = roles.turn(self, "qa-story", returns=QaOwnerResult)
         with scoped_envs(self.output(stack_target).env):
@@ -270,14 +269,13 @@ class Qa(Workflow):
             result,
             self.check,
             findings=[f.model_dump() for f in result.findings],
-            proved=list(dict.fromkeys(s.strip() for s in result.proved_scenarios if s.strip())),
             laps=laps,
             blocks=blocks,
         )
 
     def recheck(self) -> Continue | Await | Done:
         """Rerun the standing plan, or the scenarios of `scope`, with no owner turn unless the stack or plan broke."""
-        failures = self._preflight() or self._plan_failures([])
+        failures = self._preflight() or self._plan_failures()
         if failures:
             return self._lap(None, failures, 0, 0)
         self.logger.info("rerunning the QA plan", extra={"activity": True})
@@ -305,13 +303,12 @@ class Qa(Workflow):
     def check(
         self,
         findings: list[dict[str, Any]] | None = None,
-        proved: list[str] | None = None,
         laps: int = 0,
         blocks: int = 0,
     ) -> Continue | Await | Done:
         """Rerun the plan the owner left, gate what it claims, and send what failed back."""
         found = [QaFinding.model_validate(f) for f in findings or []]
-        failures = self._preflight() or self._plan_failures(proved or [])
+        failures = self._preflight() or self._plan_failures()
         if failures:
             return self._lap(None, failures, laps, blocks)
         self.logger.info("running the QA plan", extra={"activity": True})
@@ -338,18 +335,15 @@ class Qa(Workflow):
             return self._finish("refix", run, [fallback_finding(self.ctx.qa_dir, notes)])
         return self._lap(run, failures, laps, blocks)
 
-    def _plan_failures(self, proved: list[str]) -> list[str]:
-        """The plan's lint, its validation against the packet, and the dry runs it claims."""
+    def _plan_failures(self) -> list[str]:
+        """The plan's lint and its validation against the packet."""
         lint = self.call(lint_qa_plan, self.ctx.spec_dir)
         if lint.status != "passed":
             return [gate_text("qa_plan.py lint", lint.notes)]
         validation = self.call(validate_qa_plan, self.ctx.spec_dir)
         if validation.status != "passed":
             return [gate_text("qa_plan.py validation", validation.notes)]
-        if not proved:
-            return []
-        gate = self.call(verify_qa_dry_run, self.ctx.spec_dir, tuple(proved))
-        return [] if gate.status == "passed" else [gate_text("the dry runs", gate.notes)]
+        return []
 
     def _pass_failures(self, run: QaPlanRun) -> list[str]:
         """The gates a passed run must also clear before the story is believed."""

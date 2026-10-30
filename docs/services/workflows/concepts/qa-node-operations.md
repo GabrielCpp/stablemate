@@ -7,14 +7,14 @@ title: QA node operations
 
 The QA node module is the deterministic boundary around planning and executing one story's QA
 plan. It clears stale evidence, resolves and manages the durable stack, lints and validates the
-plan, catalogs host-resolved tools, proves repaired scenarios with isolated dry-run evidence, and
+plan, catalogs host-resolved tools, and
 normalizes the runner and teardown outcomes into the typed results consumed by the
 [coder QA flow](../flows/coder-qa.md). It also names the stack copy a run holds, and releases that
 copy when the run settles. The stack, release and run steps are thin nodes over the shared QA runner in
 `kit/qa/runner.py`. The secret helper is private but is documented because it controls the runner's
 credential boundary.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__` @84103cd3e73c
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__` @592593ca2241
 - detail: [coder QA flow](../flows/coder-qa.md)
 
 ## Fields
@@ -49,9 +49,9 @@ credential boundary.
 - type: `str`
 - default: `qa`
 - required: true
-- semantics: spec-relative directory containing per-scenario dry-run output, removed with stale scored evidence and never read by the scored evidence gate
+- semantics: spec-relative directory containing per-scenario output of a single-scenario run, removed with stale scored evidence and never read by the scored evidence gate
 - verify: json_path(path="$.QA_SCRATCH_DIRNAME", equals="qa")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME` @84103cd3e73c
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME` @592593ca2241
 
 ## Methods
 
@@ -61,7 +61,7 @@ credential boundary.
 - verify: count(subject="empty QA evidence directory skips", equals=1)
 - does: creates the resolved specification directory when a non-empty `spec_dir` is supplied
 - verify: created(subject="QA specification directory")
-- does: removes the specification directory's `qa/` subtree when it exists, including dry-run scratch output
+- does: removes the specification directory's `qa/` subtree when it exists, including single-scenario scratch output
 - verify: removed(subject="stale QA evidence directory")
 - does: removes `qa-evidence.json` and `qa-report.md` when either stale root artifact exists
 - verify: removed(subject="stale QA root artifacts")
@@ -154,23 +154,6 @@ credential boundary.
 - returns: a `QaPlanValidation` carrying validation status, explanatory notes, and Ostler payload
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
 - code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::validate_qa_plan` @7621f7eab0ec
-
-### verify_qa_dry_run
-- sig: `verify_qa_dry_run(logger: logging.Logger, spec_dir: str = "", scenarios: tuple[str, ...] = ()) -> DryRunGate`
-- does: treats an empty scenario list as an already-passed gate with no verified scenarios
-- verify: json_path(path="$.status", equals="passed")
-- does: reads each named scenario's `qa/<scenario>/qa-run.ndjson` scratch log and refuses a scenario whose log is absent
-- verify: absent(subject="dry-run log for an unexecuted scenario")
-- does: refuses a scenario whose log contains no assertion record for that scenario, allowing an unlabeled assertion only when the scenario owns the output directory
-- verify: count(subject="dry-run assertion records", equals=1)
-- does: refuses a scenario when any of its assertion records has result `FAIL`
-- verify: count(subject="failed dry-run assertions", equals=0)
-- does: marks every named scenario with assertions and no failures as verified while retaining the complete requested scenario list
-- verify: count(subject="verified dry-run scenarios", equals=1)
-- returns: a `DryRunGate` with `passed` or `failed` status, notes, requested scenarios, and the verified subset
-- verify: json_path(path="$.status", matches="^(passed|failed)$")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::verify_qa_dry_run` @251a235df71e
-- tests: `workflows/tests/coder/qa/test_dry_run_gate.py::test_a_green_dry_run_for_every_named_scenario_passes`
 
 ### teardown_stack
 - sig: `teardown_stack(logger: logging.Logger, repo_dir: str = "") -> StackTornDown`

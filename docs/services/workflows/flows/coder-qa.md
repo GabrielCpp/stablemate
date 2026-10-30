@@ -6,7 +6,7 @@ title: Coder QA flow
 # Coder QA flow
 
 The `Qa` machine hands one story's QA to a single owner session, then reruns and gates what the
-owner claims. The owner plans, runs, audits and repairs through its own subagents. The flow
+owner claims. The owner selects the scenarios, runs them, debugs each failure and records the result in one turn, with no subagent seat. The flow
 rebuilds the context packet and the stack, reruns the plan the owner left, and decides whether
 the story passes, goes back to the dev owner with findings, or replans. The Coder main flow
 enters it after documentation passes, and `workhorse-coder run qa` enters it directly.
@@ -86,18 +86,22 @@ is never overwritten.
 wall-clock bound and a silence limit. The turn reads the story, the spec directory, the
 verification setup, the fixtures, the QA run plan, the QA tool catalog and the last report. It is
 granted only the repositories the plan touches. It also learns whether a standing `qa_plan.py`
-already lints and validates, so it adopts that plan rather than authoring a new one. The compiled
-plan counts as standing, and a scenario it lacks is a book gap the owner reports in its notes. The stack's
+already lints and validates, so it starts from that plan rather than authoring a new one. The
+compiled plan counts as standing. The owner narrows it with `ostler qa compile-plan --select
+--replace` when an obligation lies outside the story, repairs a wrong scenario in the book and
+recompiles, and writes a scenario the compile lacks into the book or, when the book cannot
+state it, into `qa_plan.py` after its last recompile. Nobody reviews those scenarios. It records
+the result in `qa.md` and in `jira-comment.md`, which names each Acceptance Criterion, its
+verdict and the evidence path that proves it. The stack's
 environment is scoped around the turn. Specs are stamped after the turn. A `blocked` result goes
-to the block path. Any other result continues to `check` with its findings and the scenarios it
-claims it dry-ran.
+to the block path. Any other result continues to `check` with its findings.
 
 ### check
 
 - kind: verify
 
-`check` rebuilds the preflight, then lints the plan, validates it against the packet, and
-verifies that every claimed scenario dry-ran green. Any failure spends a lap and returns to `work`
+`check` rebuilds the preflight, then lints the plan and validates it against the packet. No
+dry-run ledger stands between the owner's turn and the scored run. Any failure spends a lap and returns to `work`
 with the failure as the report. A clean preflight runs the plan once through `run_qa_plan`, files
 the backlog items the run wrote, and stamps the specs. Each item becomes a `qa` record on the
 [debt register](../../ostler/concepts/the-debt-register.md) unless a low-power judge reads it as

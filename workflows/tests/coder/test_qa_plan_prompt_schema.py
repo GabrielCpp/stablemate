@@ -141,12 +141,12 @@ def test_the_qa_prompts_only_interpolate_arguments_the_flow_passes():
         assert not unknown, f"{prompt.name} reads {sorted(unknown)}, which the owner turn omits"
 
 
-def test_the_dry_run_scratch_directory_nests_inside_the_ignored_one():
+def test_the_scratch_directory_nests_inside_the_ignored_one():
     """Scratch is a subdirectory of the ledger directory, not a sibling of it."""
     assert QA_SCRATCH_DIRNAME == QA_DIRNAME
     text = PROMPT.read_text()
-    assert "--out-dir" in text, f"{PROMPT.name} does not teach the dry run"
-    assert "qa_scratch_dir" in text, f"{PROMPT.name} hard-codes the dry-run directory"
+    assert "--out-dir" in text, f"{PROMPT.name} does not teach a single-scenario run"
+    assert "qa_scratch_dir" in text, f"{PROMPT.name} hard-codes the scratch directory"
 
 
 def test_no_prompt_passes_a_path_to_out_dir():
@@ -172,3 +172,17 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_the_owner_prompt_is_one_lean_turn_over_the_compiled_plan():
+    """The owner selects, runs, debugs and records alone: no seat, no audit, no dry-run ledger."""
+    prompt = PROMPT.parent
+    text = (prompt / "qa-story.md").read_text()
+    assert "ostler qa compile-plan" in text
+    assert "--select" in text
+    assert "--replace" in text
+    assert "jira-comment.md" in text
+    assert not (prompt / "_qa-audit-brief.md").exists()
+    for retired in ("Independent Audit", "_qa-audit-brief", "proved_scenarios", "| Seat |", "strongest"):
+        assert retired not in text, f"qa-story.md still carries {retired!r}"
+    assert "proved_scenarios" not in (prompt / "_qa-plan-contract.md").read_text()
