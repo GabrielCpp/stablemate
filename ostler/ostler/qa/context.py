@@ -586,6 +586,7 @@ def _selection(snapshot: _BookSnapshot, direct_reasons: dict[str, list[Reason]])
             direct_reasons.setdefault(target, []).append(Reason(ReasonKind.FLOW_CONTRACT_CLOSURE, source))
     perceivables = _close_over_passages(snapshot, contracts, direct_reasons)
     perceivables |= _close_over_state_perceivables(snapshot, contracts, direct_reasons)
+    perceivables |= _close_over_screen_states(snapshot, contracts, direct_reasons)
     _close_over_shared_subjects(snapshot.book, contracts, journeys, direct_reasons)
     judgment_by_node = _judgment_context(snapshot, contracts, journeys, direct_reasons)
     return _Selection(
@@ -622,6 +623,24 @@ def _close_over_passages(
                 if via == "steps":
                     for component in target.targets("on", book):
                         add(component.id, target.id)
+    return frozenset(perceived)
+
+
+def _close_over_screen_states(
+    snapshot: _BookSnapshot, contracts: set[str], direct_reasons: dict[str, list[Reason]]
+) -> frozenset[str]:
+    """Add the states of the screen of each selected component as context, so a plan can tell which components its screen shows when it opens."""
+    book = snapshot.book
+    screens = {node_id.split("#", 1)[0] for node_id in contracts if book.get(node_id) is not None and book[node_id].type == "component"}
+    perceived: set[str] = set()
+    for node_id, node in sorted(book.items()):
+        screen = node_id.split("#", 1)[0]
+        if node.type != "state" or screen not in screens or node_id not in snapshot.nodes_by_id:
+            continue
+        perceived.add(node_id)
+        if node_id not in contracts:
+            contracts.add(node_id)
+            direct_reasons.setdefault(node_id, []).append(Reason(ReasonKind.GRAPH_CLOSURE, screen))
     return frozenset(perceived)
 
 
@@ -2330,6 +2349,9 @@ def node_obligations(
     own = _attribution(book_node)
     ambient = _without_other_sign_ins(ambient, own.fixtures.own, signing_fixtures, fixture_needs or {})
     attribution = _with_ambient_fixtures(own, ambient)
+    if book_node.type == "state":
+        attribution = replace(attribution, fixtures=_Attributed(
+            [*attribution.fixtures.own, *(row for rows in attribution.fixtures.per_claim.values() for row in rows)], {}))
     node_parts = reader.node_parts(attribution)
     node_parts.stamp(base)
     base["docPosition"] = [book_node.line, -1]

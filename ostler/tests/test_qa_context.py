@@ -3830,3 +3830,66 @@ def test_navigation_carries_the_routes_from_each_fixture_launch_screen(repo: Pat
     routes = navigation["groom"]["fixtureLaunchRoutes"]
     assert list(routes) == ["docs/services/groom/gui/screens/inbox.md"]
     assert "docs/services/groom/gui/screens/inbox.md" in routes["docs/services/groom/gui/screens/inbox.md"]
+
+
+_STATES_SCREEN = """---
+type: screen
+title: Items
+---
+# Items
+
+- route: /items
+- params: none
+
+## Components
+
+### empty-notice
+- role: paragraph
+- name: No items are on file yet.
+- selector: p.empty-notice
+- code: app/items.py::render_empty
+
+### item-list
+- role: list
+- name: Items
+- selector: ul.items
+
+## Screen states
+
+### Idle
+- shows:
+  - [Empty notice](#empty-notice)
+  - [Item list](#item-list) absent
+- fixture: none, because the screen opens before any item is loaded
+
+### Loaded
+- shows:
+  - [Empty notice](#empty-notice) absent
+  - [Item list](#item-list)
+"""
+
+
+def test_a_selected_component_brings_its_screens_states_with_what_each_arranges(tmp_path: Path):
+    """A plan can only tell a component absent on arrival when the packet carries the screen's states and the fixture each one states."""
+    (tmp_path / "docs/services/acme/gui/screens").mkdir(parents=True)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "docs/services/acme/gui/screens/items.md").write_text(_STATES_SCREEN, encoding="utf-8")
+    (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'old'\n", encoding="utf-8")
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "qa@example.com")
+    _git(tmp_path, "config", "user.name", "QA")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "base")
+    base = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "app/items.py").write_text("def render_empty():\n    return 'new'\n", encoding="utf-8")
+
+    packet = build_context(tmp_path, base=base, source_roots={"acme": ["app"]})
+
+    states = {
+        item["node"].rsplit("#", 1)[-1]: item
+        for item in packet["obligations"]
+        if item["nodeType"] == "state"
+    }
+    assert sorted(states) == ["idle", "loaded"]
+    assert states["idle"]["arrangesNothing"] is True
+    assert not states["loaded"].get("arrangesNothing")

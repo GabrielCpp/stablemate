@@ -33,7 +33,7 @@ arguments — `argv`, `cwd=qa.scenario_checkout_copy()`, and, when the act decla
 environment the book's `invoke` act names, in both `cli_scenario_body` and `cli_journey`. `compile_page.py`'s `page_scenarios` builds a web-UI check, holding a
 conditional or mutually-exclusive component's obligations together (`_node_claims`,
 `_shared_shape`) and inserting a navigation step before the assertion when the obligation is not
-already on the right screen (`_arrival_scenario`). When the walk's acts read a fixture's fact, the scenario arranges that fixture once before the first navigation, merged with the fixtures the claims carry. `web_state_walks` compiles a `DataState`
+already on the right screen (`_arrival_scenario`). When the walk's acts read a fixture's fact, the scenario arranges that fixture once before the first navigation, merged with the fixtures the claims carry. A component whose screen opens in a state that lists it `absent` is gapped as `unarranged-state` instead of asserted on arrival, and the gap names the states that show it. `web_state_walks` compiles a `DataState`
 screen-to-screen walk. `compile_playwright.py` supplies what `compile_page.py` emits into each
 scenario body: `perform_acts` renders a book's `acts:` into Playwright action lines,
 `page_observations` renders one assertion from a locator and a check call, and `web_walk` compiles
@@ -107,9 +107,9 @@ its first hop.
 - code: ostler/ostler/qa/compile_journey.py::api_target@20652e710dad
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@a83239a8b983
 - code: ostler/ostler/qa/compile_journey.py::journey_scenario@08d7dd7c2661
-- code: ostler/ostler/qa/compile_stops.py::resolve_stop@e2a0b2312b45
-- code: ostler/ostler/qa/compile_stops.py::resolve_state@e2a0b2312b45
-- code: ostler/ostler/qa/compile_stops.py::ScreenStop@e2a0b2312b45
+- code: ostler/ostler/qa/compile_stops.py::resolve_stop@d296755be9b1
+- code: ostler/ostler/qa/compile_stops.py::resolve_state@0cd0a5f9d41c
+- code: ostler/ostler/qa/compile_stops.py::ScreenStop@8946299e4550
 - code: ostler/ostler/qa/compile_support.py::unobservable_gap@771f910c9275
 - code: ostler/ostler/qa/compile_support.py::vettable@771f910c9275
 - code: ostler/ostler/qa/compile_support.py::check_document@771f910c9275

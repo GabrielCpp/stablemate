@@ -107,12 +107,12 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 `cmd_sensitivity`, `cmd_clean`, `build_report`, `build_evidence_map`, `build_context`, …) as
 `ostler.qa`'s flat namespace.
 
-- code: ostler/ostler/qa/context.py::build_context@9e054ade9186
-- code: ostler/ostler/qa/context.py::write_context@9e054ade9186
-- code: ostler/ostler/qa/context.py::cmd_context@9e054ade9186
-- code: ostler/ostler/qa/context.py::cmd_context_validate@9e054ade9186
-- code: ostler/ostler/qa/context.py::validate_context@9e054ade9186
-- code: ostler/ostler/qa/context.py::node_obligations@9e054ade9186
+- code: ostler/ostler/qa/context.py::build_context@33cf12173172
+- code: ostler/ostler/qa/context.py::write_context@af155aaf038e
+- code: ostler/ostler/qa/context.py::cmd_context@d78961619e5c
+- code: ostler/ostler/qa/context.py::cmd_context_validate@f2fc5672fe0a
+- code: ostler/ostler/qa/context.py::validate_context@f85328d3f2ee
+- code: ostler/ostler/qa/context.py::node_obligations@1a2bc445cf90
 - code: ostler/ostler/qa/packet.py::ContextPacket@6b7020cfc619
 - code: ostler/ostler/qa/packet.py::packet_of@6b7020cfc619
 - code: ostler/ostler/qa/grounding_health.py::resolve_groundings@da8a0b8f6c0f

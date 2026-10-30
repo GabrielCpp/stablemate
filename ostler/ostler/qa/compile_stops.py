@@ -41,6 +41,11 @@ class ScreenStop:
     title: str
 
 
+def entry_modifiers(entry: str) -> list[str]:
+    """The state words a `shows:` or `busy:` entry states after its link."""
+    return _MARKDOWN_LINK.sub("", entry).split()
+
+
 def perceivable(entry: str, page: str, book: BookIndex) -> dict[str, object] | str:
     """The role, accessible name and state modifiers one `shows:` or `busy:` entry addresses, or why it addresses nothing."""
     node = on_node(page, entry)
@@ -55,7 +60,7 @@ def perceivable(entry: str, page: str, book: BookIndex) -> dict[str, object] | s
     literal = accessible_names.literal_name(name)
     if accessible_names.prose_mark(raw_name) or TEMPLATE_HOLE.search(literal):
         return f"`{node}` is found by no role and accessible name{name_refusal(locators)}"
-    modifiers = _MARKDOWN_LINK.sub("", entry).split()
+    modifiers = entry_modifiers(entry)
     unknown = [word for word in modifiers if word not in _STATE_MODIFIERS]
     if unknown:
         return f"{entry!r} carries {', '.join(unknown)}, which is no state modifier"

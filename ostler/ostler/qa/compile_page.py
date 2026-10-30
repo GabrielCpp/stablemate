@@ -24,6 +24,7 @@ from ostler.qa.compile_playwright import settle_lines
 from ostler.qa.compile_support import trigger_name
 from ostler.qa.compile_playwright import trigger_performance
 from ostler.qa.compile_playwright import walk_hops
+from ostler.qa.compile_stops import entry_modifiers
 from ostler.qa.compile_stops import resolve_state
 from ostler.qa.compile_support import PLAYWRIGHT
 from ostler.qa.compile_support import on_node
@@ -187,7 +188,34 @@ def _node_claims(page: str, node_id: str, obligations: list[Obligation], gaps: l
     return _NodeClaims(arrivals, rest, _shared_shape(rest, gaps) if rest else None)
 
 
-def _screen_scenarios(source: str, group: list[Obligation], gaps: list[Gap]) -> _ScreenScenarios:
+def _absent_on_arrival(node_id: str, book: BookIndex) -> str | None:
+    """Why the component *node_id* is not asserted on arrival, or `None` when its screen's arrival state does not list it absent. The arrival state is the one screen state that needs no arrangement."""
+    page = node_id.split("#")[0]
+    states = book.states_by_screen.get(page, [])
+    unarranged = {state.node for state in states if state.arranges_nothing}
+    if len(unarranged) != 1 or any(state.fixtures for state in states if state.node in unarranged):
+        return None
+    arrival = next(iter(unarranged))
+    absent: list[str] = []
+    shown: list[str] = []
+    for state in states:
+        for entry in state.locators.shows:
+            if on_node(page, entry) == node_id:
+                holders = absent if "absent" in entry_modifiers(entry) else shown
+                if state.node not in holders:
+                    holders.append(state.node)
+    if arrival not in absent:
+        return None
+    showing = ", ".join(f"`{node}`" for node in shown)
+    return (f"`{node_id}` is absent in `{arrival}`, the state this screen shows when it opens, "
+            f"{f'and shown in {showing}' if showing else 'and no state shows it'}. "
+            "The check holds only in that state: arrange that state (its own `fixture:`) so the state's check "
+            "proves it, or put a `when:` on the component")
+
+
+def _screen_scenarios(
+    source: str, group: list[Obligation], gaps: list[Gap], book: BookIndex,
+) -> _ScreenScenarios:
     """Assemble one screen's arrival and interaction scenarios per Amendment 3 from each node's sorted claims."""
     by_node: dict[str, list[Obligation]] = {}
     for obligation in group:
@@ -202,10 +230,14 @@ def _screen_scenarios(source: str, group: list[Obligation], gaps: list[Gap]) -> 
         arrivals.extend(claims.own_arrivals)
         if claims.remaining_shape == "interaction":
             interactions[node_id] = claims.remaining
-        elif claims.remaining_shape == "exclusive":
-            exclusive.append(_Arrival(f"{page}_{_node_slug(node_id)}", {node_id: claims.remaining}))
-        elif claims.remaining_shape == "plain":
-            plain[node_id] = claims.remaining
+        elif claims.remaining_shape in ("exclusive", "plain"):
+            absent = _absent_on_arrival(node_id, book)
+            if absent is not None:
+                gaps.extend(Gap(o.id, "unarranged-state", absent) for o in claims.remaining)
+            elif claims.remaining_shape == "exclusive":
+                exclusive.append(_Arrival(f"{page}_{_node_slug(node_id)}", {node_id: claims.remaining}))
+            else:
+                plain[node_id] = claims.remaining
     if plain:
         arrivals.append(_Arrival(f"{page}_arrival", plain))
     return _ScreenScenarios([*arrivals, *exclusive], interactions)
@@ -257,7 +289,7 @@ def _compile_page_scenarios(
                              "reachable, but this screen declares no `requires:`/`params:` bullets"))
         screen = _PageScreen(book, source, shown_on, screen_path, target_variable(surface, "web"))
         bucket = lines_by_surface.setdefault(surface, [])
-        scenarios = _screen_scenarios(source, group, gaps)
+        scenarios = _screen_scenarios(source, group, gaps, book)
         for arrival in scenarios.arrivals:
             bucket.extend(_arrival_scenario(screen, arrival, sinks, covered))
         for node_id, rest in scenarios.interactions.items():
