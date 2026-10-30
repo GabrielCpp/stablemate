@@ -19,7 +19,8 @@ from workhorse_workflows.coder.shared.schemas.queue import (
     StoryStamped,
     WorktreeCleanliness,
 )
-from workhorse_workflows.coder.shared.worktree import untouched_since
+from workhorse_workflows.coder.shared.schemas.worktree import ProvenState
+from workhorse_workflows.coder.shared.worktree import digest, not_product_roots, untouched_since
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
 from workhorse_workflows.kit import (
     GitError,
@@ -131,6 +132,30 @@ def _uncommitted(root: Path) -> list[str]:
     return sorted(dirty)
 
 
+def _leftovers(
+    logger: logging.Logger,
+    spec_dir: str,
+    preexisting: list[str] | None,
+    repo_dir: str,
+    workspace: str,
+    roots: list[str] | None,
+) -> tuple[list[tuple[str, Path, str]], list[str]]:
+    """Every uncommitted path this story owns as `(repo name, checkout, path)`, and the repo names covered."""
+    root = find_repo_root(repo_dir)
+    snapshot = tuple(preexisting or ())
+    found: list[tuple[str, Path, str]] = []
+    names: list[str] = []
+    for name, repo_path in _commit_roots(logger, root, spec_dir, workspace, repo_dir, roots):
+        names.append(name)
+        excused = untouched_since(repo_path, snapshot)
+        found.extend(
+            (name, repo_path, rel)
+            for rel in _uncommitted(repo_path)
+            if rel not in excused and not paths.is_gate_context(rel)
+        )
+    return found, names
+
+
 @blueprint.node
 def check_repos_clean(
     logger: logging.Logger,
@@ -142,18 +167,8 @@ def check_repos_clean(
     roots: list[str] | None = None,
 ) -> WorktreeCleanliness:
     """Did the agent commit its own work in every repo the story touched?"""
-    root = find_repo_root(repo_dir)
-    snapshot = tuple(preexisting or ())
-    dirty: list[str] = []
-    names: list[str] = []
-    for name, repo_path in _commit_roots(logger, root, spec_dir, workspace, repo_dir, roots):
-        names.append(name)
-        excused = untouched_since(repo_path, snapshot)
-        dirty.extend(
-            f"{name}:{rel}"
-            for rel in _uncommitted(repo_path)
-            if rel not in excused and not paths.is_gate_context(rel)
-        )
+    found, names = _leftovers(logger, spec_dir, preexisting, repo_dir, workspace, roots)
+    dirty = [f"{name}:{rel}" for name, _, rel in found]
 
     slug = story_slug or "story"
     if dirty:
@@ -164,6 +179,23 @@ def check_repos_clean(
     else:
         logger.info("%s left nothing uncommitted in %s", slug, ", ".join(names) or "the repo root")
     return WorktreeCleanliness(clean=not dirty, dirty=dirty, repos=names)
+
+
+@blueprint.node
+def snapshot_proven_state(
+    logger: logging.Logger,
+    story_slug: str = "",
+    spec_dir: str = "",
+    preexisting: list[str] | None = None,
+    repo_dir: str = "",
+    workspace: str = "",
+    roots: list[str] | None = None,
+) -> ProvenState:
+    """Record each path `check_repos_clean` would list now with its digest, because the QA that just passed saw those bytes."""
+    found, _ = _leftovers(logger, spec_dir, preexisting, repo_dir, workspace, roots)
+    entries = [f"{name}:{rel}\0{digest(repo_path, rel)}" for name, repo_path, rel in found]
+    logger.info("%s: QA passed over %d uncommitted path(s)", story_slug or "story", len(entries))
+    return ProvenState(entries=entries)
 
 
 def leftover_text(dirty: list[str]) -> str:
@@ -226,14 +258,35 @@ def proof_scope(
     dirty: list[str] | None = None,
     repo_dir: str = "",
     workspace: str = "",
+    proven: list[str] | None = None,
 ) -> ProofScope:
-    """How much of the story's proof the paths it left uncommitted reopen."""
+    """How much of the story's proof the paths it left uncommitted reopen: only the product paths whose bytes moved since the passing QA saw them."""
     root = find_repo_root(repo_dir)
     roots = _affected_roots(logger, root, spec_dir, workspace, repo_dir)
     changed = list(dirty or [])
-    inert: set[str] = set()
+    held = {entry.partition("\0")[0]: entry.partition("\0")[2] for entry in proven or ()}
+    seen: set[str] = set()
     for name, repo_path in roots:
-        inert |= inert_paths(name, repo_path, story_path, changed)
+        prefix = f"{name}:"
+        seen |= {
+            key
+            for key in changed
+            if key.startswith(prefix)
+            and key in held
+            and held[key] == digest(repo_path, key[len(prefix):])
+        }
+    inert: set[str] = set(seen)
+    unproduct: set[str] = set()
+    excluded = not_product_roots(repo_dir, book=False)
+    for name, repo_path in roots:
+        unproduct |= inert_paths(name, repo_path, story_path, changed, excluded)
+    inert |= unproduct
+    logger.info(
+        "%s: %d leftover path(s) are bytes QA already saw, %d are not product",
+        story_slug or "story",
+        len(seen),
+        len(unproduct - seen),
+    )
     docs_root = find_docs_root(repo_dir)
     cited: dict[str, set[str]] = {}
     pages: set[str] = set()
@@ -415,5 +468,6 @@ __all__ = [
     "commit_story",
     "leftover_text",
     "proof_scope",
+    "snapshot_proven_state",
     "stamp_story_passed",
 ]

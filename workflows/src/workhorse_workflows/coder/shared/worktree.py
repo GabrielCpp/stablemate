@@ -7,7 +7,10 @@ import subprocess
 from pathlib import Path
 
 from git.exc import GitError
+from ostler import path as okf_path
+from workhorse._vendor.stablemate_core import config as core_config
 from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.worktree import (
     CodeChange,
@@ -39,13 +42,13 @@ def untouched_since(root: Path, snapshot: tuple[str, ...]) -> set[str]:
     return untouched
 
 
-def _dirty_entries(root: Path, owner: str = "") -> list[str]:
-    """Each dirty path of *root* with its digest, and *owner* when the entry names its checkout."""
+def _dirty_entries(root: Path, owner: str = "", keep_missing: bool = False) -> list[str]:
+    """Each dirty path of *root* with its digest, and *owner* when the entry names its checkout; a deleted path is kept, with an empty digest, only when *keep_missing* is set."""
     repo = open_repo(root)
     dirty = [item.a_path for item in repo.index.diff(None) if item.a_path]
     dirty.extend(repo.untracked_files)
     suffix = f"\0{owner}" if owner else ""
-    return [f"{rel}\0{sha}{suffix}" for rel in sorted(set(dirty)) if (sha := digest(root, rel))]
+    return [f"{rel}\0{sha}{suffix}" for rel in sorted(set(dirty)) if (sha := digest(root, rel)) or keep_missing]
 
 
 @blueprint.node
@@ -88,15 +91,32 @@ def snapshot_owner_baseline(
 GIT_TIMEOUT = 60
 
 
-def _code_repos(repo_dir: str, workspace: str) -> list[Path]:
-    """The workspace repos the clean-tree gate covers: everything but the docs root."""
-    docs_root = find_docs_root(repo_dir).resolve()
-    repos = resolve_workspace(workspace, repo_dir)
-    return [
-        path
-        for repo in repos.values()
-        if (path := Path(repo["path"])).is_dir() and path.resolve() != docs_root
-    ]
+def _workspace_repos(repo_dir: str, workspace: str) -> list[Path]:
+    """Every workspace repo, the docs root included, each once."""
+    seen: set[Path] = set()
+    found: list[Path] = []
+    for repo in resolve_workspace(workspace, repo_dir).values():
+        path = Path(repo["path"])
+        if path.is_dir() and path.resolve() not in seen:
+            seen.add(path.resolve())
+            found.append(path)
+    return found
+
+
+def not_product_roots(repo_dir: str, *, book: bool = True) -> list[Path]:
+    """The resolved folders no proof or docs pass is reopened by: the artifacts dir, and the book when *book* is set."""
+    roots = [core_config.resolve_artifacts_dir().resolve()]
+    if book:
+        roots.append(okf_path.services_root_in(find_docs_root(repo_dir)).resolve())
+    return roots
+
+
+def is_product(repo: Path, rel: str, excluded: list[Path]) -> bool:
+    """Is *rel* of *repo* work a proof depends on: outside every *excluded* folder and not tool output?"""
+    if paths.is_tool_output(rel):
+        return False
+    absolute = (repo / rel).resolve()
+    return not any(absolute.is_relative_to(root) for root in excluded)
 
 
 def _git(repo: Path, *args: str) -> str | None:
@@ -114,22 +134,48 @@ def _git(repo: Path, *args: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def _code_state(repo_dir: str, workspace: str) -> dict[str, str]:
+def _product_entries(repo: Path, excluded: list[Path]) -> list[str] | None:
+    """The dirty product paths of *repo* as `rel\0sha`, or None when git cannot say."""
+    try:
+        entries = _dirty_entries(repo, keep_missing=True)
+    except (GitError, OSError, TypeError, ValueError, RuntimeError):
+        return None
+    return sorted(e for e in entries if is_product(repo, e.partition("\0")[0], excluded))
+
+
+def _code_state(repo_dir: str, workspace: str) -> tuple[dict[str, str], int]:
+    """Each readable repo's HEAD and product dirty entries, keyed by path, and how many repos there are."""
+    excluded = not_product_roots(repo_dir)
+    repos = _workspace_repos(repo_dir, workspace)
     state: dict[str, str] = {}
-    for repo in _code_repos(repo_dir, workspace):
+    for repo in repos:
         head = _git(repo, "rev-parse", "HEAD")
-        status = _git(repo, "status", "--porcelain")
-        if head is not None and status is not None:
-            state[str(repo)] = head + status
-    return state
+        entries = _product_entries(repo, excluded)
+        if head is not None and entries is not None:
+            state[str(repo)] = "\n".join([head.strip(), *entries])
+    return state, len(repos)
 
 
 @blueprint.node
 def snapshot_code_state(
     logger: logging.Logger, repo_dir: str = "", workspace: str = ""
 ) -> PorcelainSnapshot:
-    """Record each code repo's HEAD and porcelain status, so later edits and commits both show."""
-    return PorcelainSnapshot(status=_code_state(repo_dir, workspace))
+    """Record each repo's HEAD and its dirty product paths with digests, so later edits and commits both show."""
+    return PorcelainSnapshot(status=_code_state(repo_dir, workspace)[0])
+
+
+def _moved(repo: Path, before: str, now: str, excluded: list[Path]) -> bool:
+    """Did a product path of *repo* change between the *before* and *now* states?"""
+    old_head, *old_entries = before.split("\n")
+    new_head, *new_entries = now.split("\n")
+    if set(old_entries) != set(new_entries):
+        return True
+    if old_head == new_head:
+        return False
+    listed = _git(repo, "diff", "--name-only", old_head, new_head)
+    if listed is None:
+        return True
+    return any(is_product(repo, rel, excluded) for rel in listed.splitlines() if rel)
 
 
 @blueprint.node
@@ -139,14 +185,23 @@ def code_changed(
     repo_dir: str = "",
     workspace: str = "",
 ) -> CodeChange:
-    """Whether any code repo moved since `snapshot_code_state`, or there is no code repo to watch."""
-    now = _code_state(repo_dir, workspace)
-    return CodeChange(changed=not now or now != (before or {}))
+    """Whether a product path of any repo changed since `snapshot_code_state`, or no repo can be watched."""
+    now, total = _code_state(repo_dir, workspace)
+    if not total or len(now) != total:
+        return CodeChange(changed=True)
+    held = before or {}
+    excluded = not_product_roots(repo_dir)
+    for key, state in now.items():
+        if key not in held or _moved(Path(key), held[key], state, excluded):
+            return CodeChange(changed=True)
+    return CodeChange(changed=False)
 
 
 __all__ = [
     "code_changed",
     "digest",
+    "is_product",
+    "not_product_roots",
     "snapshot_code_state",
     "snapshot_owner_baseline",
     "snapshot_worktree_state",

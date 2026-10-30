@@ -12,7 +12,7 @@ initializer; the individual modules below own the behavior and models they provi
 - code: `workflows/src/workhorse_workflows/coder/shared/__init__.py::__all__` @e517b81d10c2
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @b083ae1394dd
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @67580925bd96
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @7b0c7e9434b5
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @606353689417
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @df9c5dcbeacb
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @df9c5dcbeacb
 - detail: [coder queue run scope](../formats/coder-queue-run-scope.md)
@@ -95,7 +95,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - verify: json_path(path="$.api[0]", equals="src/api")
 - returns: a surface-to-path-list mapping, with malformed entries ignored
 - verify: json_path(path="$.unknown", absent=true)
-- code: `workflows/src/workhorse_workflows/kit/qa/support.py::parse_source_roots` @df9c5dcbeacb
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::parse_source_roots` @cad69011db39
 
 ### assert_records
 
@@ -108,7 +108,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - verify: json_path(path="$.kind", equals="assert")
 - returns: the retained assertion dictionaries without normalizing or dropping their other keys
 - verify: json_path(path="$.id", equals="copy-link-1")
-- code: `workflows/src/workhorse_workflows/kit/qa/support.py::assert_records` @df9c5dcbeacb
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::assert_records` @2c8e153a7d57
 
 ### failed_assertions
 
@@ -119,14 +119,14 @@ permissive result models that ignore unknown keys and drop null values before ap
 - verify: json_path(path="$.blank-scenario", absent=true)
 - returns: scenario names mapped to failed assertion ids in log order, using `?` when an id is absent
 - verify: json_path(path="$.copy-link", matches="^\\[\"copy-link-1\", \"\\?\"\\]$")
-- code: `workflows/src/workhorse_workflows/kit/qa/support.py::failed_assertions` @df9c5dcbeacb
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::failed_assertions` @aefd0f851626
 
 ### scored_run_log
 
 - sig: `scored_run_log(spec_dir: Path) -> Path`
 - returns: the scored log path formed as `<spec_dir>/qa/qa-run.ndjson`
 - verify: json_path(path="$.path", matches=".*/qa/qa-run\\.ndjson")
-- code: `workflows/src/workhorse_workflows/kit/qa/support.py::scored_run_log` @df9c5dcbeacb
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::scored_run_log` @1f9923dd1e94
 
 ### notes_for
 
@@ -138,7 +138,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - does: uses the outcome message only when the outcome is not ok and no selected data value exists
 - returns: the supplied fallback when no diagnostic value is available
 - verify: json_path(path="$.notes", equals="fallback")
-- code: `workflows/src/workhorse_workflows/kit/qa/support.py::notes_for` @df9c5dcbeacb
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::notes_for` @9f57a7a8ce45
 
 ### begin_run
 
@@ -146,7 +146,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - does: when `run_dir` is supplied, removes the prior run's `worklist.json` worklist and `answers.md` answer log
 - returns: the names of removed files, or an empty list when no run directory or stale files exist
 - verify: absent(subject="stale per-run files after a fresh run begins")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::begin_run` @67580925bd96
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::begin_run` @b79c8182e0c5
 - tests: `workflows/tests/coder/test_workflow.py::test_a_fresh_run_drops_the_worklist_and_answers_a_previous_run_left_in_the_run_dir`
 
 ### legacy_queue
@@ -155,7 +155,7 @@ permissive result models that ignore unknown keys and drop null values before ap
 - does: returns the path to the legacy JSON queue sidecar for backward compatibility with repos and sandboxes that have no doc graph
 - returns: the `epics-todo.json` file path beside the ostler-managed `index.md` in the documentation root
 - verify: json_path(path="$.path", matches=".*epics-todo\\.json")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::legacy_queue` @67580925bd96
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::legacy_queue` @4bbae672f22d
 
 The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when Ostler is unavailable or cannot return an epic list from the documentation graph. It is not read or maintained by the workflow when Ostler is working — Ostler's queue is authoritative when present.
 
@@ -166,7 +166,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - does: returns an empty string when the epic identifier is empty
 - returns: the full branch ref used for an epic pull request
 - verify: json_path(path="$", equals="feat/EPIC-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::epic_branch` @b083ae1394dd
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::epic_branch` @0f36e600ea77
 
 ### epic_of_branch
 
@@ -175,7 +175,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - does: leaves branches without the `feat/` prefix unchanged
 - returns: the bare epic identifier represented by the branch ref
 - verify: json_path(path="$", equals="EPIC-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::epic_of_branch` @b083ae1394dd
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::epic_of_branch` @0c56680d9f75
 
 ### cut_run_branch
 
@@ -185,7 +185,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - raises: `WorkflowFailed` when the docs root is not a git repository
 - returns: the base branch and the `feat/<name>` run branch
 - verify: json_path(path="$.branch", equals="feat/EPIC-1")
-- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::cut_run_branch` @b083ae1394dd
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::cut_run_branch` @c0912dae81f7
 - tests: `workflows/tests/coder/test_workflow.py::test_the_run_branch_is_named_for_what_the_run_was_launched_on`
 
 ### branch_code_repos
@@ -197,7 +197,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - does: leaves repositories already on the requested branch unchanged and skips non-git repositories
 - returns: names of repositories branched and already on the branch
 - verify: count(subject="run branch dispatch", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::branch_code_repos` @b083ae1394dd
+- code: `workflows/src/workhorse_workflows/coder/shared/branches.py::branch_code_repos` @2b9576422c4b
 
 ### prune_epic
 
@@ -208,7 +208,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - does: treats a missing epic name, missing queue, absent epic, malformed sidecar, or write failure as a non-fatal no-op
 - returns: whether an epic entry was removed
 - verify: absent(subject="the merged epic in the queue after pruning")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::prune_epic` @67580925bd96
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::prune_epic` @03f0cb1527d0
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 
 ### resolve_launch
@@ -227,7 +227,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - raises: `WorkflowFailed` when the epics queue cannot be read
 - returns: the launch mode and every story the run works, in the order it works them
 - verify: json_path(path="$.entries[0].slug", equals="login-form")
-- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::resolve_launch` @67580925bd96
+- code: `workflows/src/workhorse_workflows/coder/shared/queue.py::resolve_launch` @2547821fee1a
 
 ### check_repos_clean
 
@@ -239,8 +239,17 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - verify: count(subject="story-owned paths after pre-existing and gate context exclusions", equals=1)
 - returns: `clean=true` only when no story-owned uncommitted paths remain, with repository names and dirty paths
 - verify: json_path(path="$.clean", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::check_repos_clean` @7b0c7e9434b5
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::check_repos_clean` @ed520d3ff75c
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
+
+### snapshot_proven_state
+
+- sig: `snapshot_proven_state(logger: logging.Logger, story_slug: str = "", spec_dir: str = "", preexisting: list[str] | None = None, repo_dir: str = "", workspace: str = "", roots: list[str] | None = None) -> ProvenState`
+- does: lists the paths `check_repos_clean` would report now, each as `<repo>:<path>` and the sha256 of its bytes
+- does: runs when a QA pass succeeds, so the record holds exactly the bytes that pass saw
+- returns: a `ProvenState` whose entries `proof_scope` compares against the leftovers at commit
+- verify: count(subject="proven leftover entries", equals=1)
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::snapshot_proven_state` @1bb0a05da3b7
 
 ### stamp_story_passed
 
@@ -250,7 +259,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - does: names the commit's `story=` field with `story_id` when given, falling back to `story_slug`
 - returns: whether the status was written and whether it replaced a prior non-default outcome
 - verify: persists(subject="the story's QA passed status")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::stamp_story_passed` @7b0c7e9434b5
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::stamp_story_passed` @1039a0c21250
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_is_stamped_and_the_next_selection_reads_it_as_done`
 
 ### commit_plan_record
@@ -265,7 +274,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - verify: count(subject="plan record commits", equals=1)
 - returns: whether the plan record was committed
 - verify: json_path(path="$.committed", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_plan_record` @7b0c7e9434b5
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_plan_record` @7c3b43db1590
 
 ### commit_story
 
@@ -278,20 +287,22 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - raises: `WorkflowFailed` when git refuses an implementation commit
 - returns: whether implementation work committed anywhere and whether the status stamp superseded a prior outcome
 - verify: persists(subject="the story implementation commit and separate QA status stamp")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @7b0c7e9434b5
-- code: `workflows/src/workhorse_workflows/kit/agent_files.py::render_agent_files_returning_failure` @e0542392b075
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @cbbe679d80c9
+- code: `workflows/src/workhorse_workflows/kit/agent_files.py::render_agent_files_returning_failure` @d57c5f0ad8ab
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_and_its_status_stamp_commit_as_conventional_commits`
 
 ### proof_scope
 
-- sig: `proof_scope(logger: logging.Logger, story_slug: str = "", spec_dir: str = "", story_path: str = "", dirty: list[str] | None = None, repo_dir: str = "", workspace: str = "") -> ProofScope`
-- does: treats the story's own markdown beside its spec as inert, carrying forward the rest of what was left uncommitted
+- sig: `proof_scope(logger: logging.Logger, story_slug: str = "", spec_dir: str = "", story_path: str = "", dirty: list[str] | None = None, repo_dir: str = "", workspace: str = "", proven: list[str] | None = None) -> ProofScope`
+- does: treats a leftover as inert when its bytes equal the digest `proven` holds for it, because the passing QA already saw them
+- does: treats the story's own markdown beside its spec, anything under the artifacts dir and tool output as inert, because none is product
 - does: reads the book's citations and the plan's scenario coverage only when something not inert changed
-- returns: `inert` when nothing but the story's own markdown changed, `claims` with the scenarios that cover every changed file's citing pages when each has one, or `whole` with the reasons a file had none
+- does: logs how many leftovers each rule removed
+- returns: `inert` when nothing but already-proven or non-product paths changed, `claims` with the scenarios that cover every changed file's citing pages when each has one, or `whole` with the reasons a file had none
 - verify: json_path(path="$.kind", equals="inert")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::proof_scope` @7b0c7e9434b5
-- code: `workflows/src/workhorse_workflows/coder/shared/proof_scope.py::inert_paths` @c1f961bd878b
-- code: `workflows/src/workhorse_workflows/coder/shared/proof_scope.py::scope` @c1f961bd878b
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::proof_scope` @654fff61df18
+- code: `workflows/src/workhorse_workflows/coder/shared/proof_scope.py::inert_paths` @6c17fec33d16
+- code: `workflows/src/workhorse_workflows/coder/shared/proof_scope.py::scope` @f50ffeeb4e0b
 
 Implementation commits use the requested Conventional Commit kind and the affected checkout's
 package scope. The status stamp is a separate `docs` commit, and its `superseded_outcome` flag

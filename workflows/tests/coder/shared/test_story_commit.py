@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from workhorse_workflows.coder.shared import story_commit
 from workhorse_workflows.coder.shared.schemas.queue import ProofScope
+from workhorse_workflows.coder.shared.worktree import digest
 
 
 def test_the_agent_files_are_rendered_before_the_story_commit_so_their_drift_is_not_refused(
@@ -94,7 +95,11 @@ def _book(
 
 
 def _scope(
-    logger: logging.Logger, repo: Path, spec: str, dirty: list[str]
+    logger: logging.Logger,
+    repo: Path,
+    spec: str,
+    dirty: list[str],
+    proven: list[str] | None = None,
 ) -> ProofScope:
     return story_commit.proof_scope(
         logger,
@@ -103,7 +108,73 @@ def _scope(
         story_path=f"{STORY_FOLDER}/story.md",
         dirty=dirty,
         repo_dir=str(repo),
+        proven=proven,
     )
+
+
+def _proven(repo: Path, dirty: list[str]) -> list[str]:
+    prefix = f"{repo.name}:"
+    return [f"{key}\0{digest(repo, key[len(prefix):])}" for key in dirty]
+
+
+def test_leftovers_unchanged_since_qa_passed_reopen_nothing(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    write(repo / "src" / "server.py", "def run():\n    return 2\n")
+    write(repo / "fixtures" / "seed.json", "{}\n")
+    dirty = [f"{repo.name}:src/server.py", f"{repo.name}:fixtures/seed.json"]
+
+    result = _scope(logger, repo, spec, dirty, _proven(repo, dirty))
+
+    assert result.kind == "inert", result
+
+
+def test_a_leftover_edited_after_qa_passed_reopens_the_proof(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    write(repo / "src" / "server.py", "def run():\n    return 2\n")
+    write(repo / "fixtures" / "seed.json", "{}\n")
+    dirty = [f"{repo.name}:src/server.py", f"{repo.name}:fixtures/seed.json"]
+    proven = _proven(repo, dirty)
+    write(repo / "src" / "server.py", "def run():\n    return 3\n")
+
+    result = _scope(logger, repo, spec, dirty, proven)
+
+    assert (result.kind, result.scenarios) == ("claims", ["serves"]), result
+
+
+def test_a_backlog_record_and_a_spec_file_in_an_artifacts_dir_inside_the_repo_are_inert(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(repo / "artifacts"))
+    write(repo / "artifacts" / "backlogs" / "qa" / "record.json", "{}\n")
+    write(repo / "artifacts" / "specs" / SLUG / "notes.json", "{}\n")
+    dirty = [
+        f"{repo.name}:artifacts/backlogs/qa/record.json",
+        f"{repo.name}:artifacts/specs/{SLUG}/notes.json",
+    ]
+
+    result = _scope(logger, repo, spec, dirty)
+
+    assert result.kind == "inert", result
 
 
 def test_a_story_markdown_leftover_is_inert(

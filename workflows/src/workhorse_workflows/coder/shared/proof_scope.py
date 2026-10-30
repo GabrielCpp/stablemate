@@ -5,12 +5,17 @@ from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 
 from workhorse_workflows.coder.shared.schemas.queue import ProofScope
+from workhorse_workflows.coder.shared.worktree import is_product
 
 
 def inert_paths(
-    repo_name: str, repo_root: Path, story_path: str, dirty: Iterable[str]
+    repo_name: str,
+    repo_root: Path,
+    story_path: str,
+    dirty: Iterable[str],
+    excluded: Collection[Path] = (),
 ) -> set[str]:
-    """The dirty keys of *repo_name* that are the story's own markdown, and nothing else."""
+    """The dirty keys of *repo_name* no proof depends on: the story's own markdown, and any path that is not product under *excluded*."""
     story = Path(story_path)
     story = story if story.is_absolute() else repo_root / story
     folder = story.parent.resolve()
@@ -19,8 +24,11 @@ def inert_paths(
     for key in dirty:
         if not key.startswith(prefix):
             continue
-        path = (repo_root / key[len(prefix):]).resolve()
-        if path.suffix == ".md" and path.parent == folder:
+        rel = key[len(prefix):]
+        path = (repo_root / rel).resolve()
+        if (path.suffix == ".md" and path.parent == folder) or (
+            excluded and not is_product(repo_root, rel, list(excluded))
+        ):
             inert.add(key)
     return inert
 

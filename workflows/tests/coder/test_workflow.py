@@ -24,7 +24,11 @@ from workhorse_workflows.coder.main.nodes.pr import open_run_prs
 from workhorse_workflows.coder.shared.branches import cut_run_branch
 from workhorse_workflows.coder.shared import work
 from workhorse_workflows.coder.shared.queue import ALL_EPICS, begin_run, resolve_launch
-from workhorse_workflows.coder.shared.story_commit import check_repos_clean, stamp_story_passed
+from workhorse_workflows.coder.shared.story_commit import (
+    check_repos_clean,
+    commit_leftovers,
+    stamp_story_passed,
+)
 from workhorse_workflows.coder.shared.story import prepare_story
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiStatus
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult, DocsStatus
@@ -196,6 +200,7 @@ class _Sub:
         changes: bool = True,
         leave_dirty: bool = False,
         leftover: str = "",
+        late: str = "",
         dev_status: Literal["ready", "replan"] = "ready",
         docs_status: DocsStatus = "passed",
         docs_notes: str = "",
@@ -210,6 +215,7 @@ class _Sub:
         self.changes = changes
         self.leave_dirty = leave_dirty
         self.leftover = leftover
+        self.late = late
         self.dev_status: Literal["ready", "replan"] = dev_status
         self.docs_status: DocsStatus = docs_status
         self.docs_notes = docs_notes
@@ -292,6 +298,10 @@ class _Sub:
 
     def _fix(self, child: _StubFlow) -> FixPick:
         """The drain, run to dry — which is the only shape `Fix` ever returns to a parent."""
+        if self.late and self.calls.count("Fix") == 1:
+            extra = self.repo / self.late
+            extra.parent.mkdir(parents=True, exist_ok=True)
+            extra.write_text("# written after qa passed\n", encoding="utf-8")
         return FixPick(has_fix=False, reason="the backlog is dry")
 
 
@@ -696,9 +706,9 @@ def test_an_uncited_leftover_reruns_the_whole_plan_without_another_dev_turn(
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A leftover no book page cites reproves the whole plan, and the dev owner is not called again."""
+    """A leftover written after QA passed that no book page cites reproves the whole plan, and the dev owner is not called again."""
     repo = epic()
-    sub = _Sub(repo, leave_dirty=True).install(monkeypatch)
+    sub = _Sub(repo, late="src/late.py").install(monkeypatch)
     run_env = env()
 
     result = drive_flow(Coder(), run_env, _Agent())
@@ -709,6 +719,27 @@ def test_an_uncited_leftover_reruns_the_whole_plan_without_another_dev_turn(
     assert len(qas) == 2, sub.calls
     assert (qas[0].rerun, qas[1].rerun, qas[1].scope) == (False, True, ()), qas
     assert _output(run_env, check_repos_clean)["clean"] is True
+    assert _output(run_env, stamp_story_passed)["stamped"] is True
+    assert _dirty(repo) == "", _dirty(repo)
+
+
+def test_a_leftover_qa_already_passed_over_commits_without_a_rerun_or_a_docs_pass(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Dirty paths QA saw unchanged go straight to the leftovers commit: no reprove, no second Docs pass."""
+    repo = epic()
+    sub = _Sub(repo, leave_dirty=True).install(monkeypatch)
+    run_env = env()
+
+    result = drive_flow(Coder(), run_env, _Agent())
+
+    assert result.status == "skipped", result
+    assert len(sub.calls_to("Qa")) == 1, sub.calls
+    assert sub.calls == ["Docs", "Dev", "Docs", "Qa", "Fix"], sub.calls
+    assert _output(run_env, commit_leftovers)["committed"] is True
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
 
@@ -758,7 +789,7 @@ def test_a_cited_leftover_reruns_only_the_scenarios_covering_its_page(
         " covers=['okf:docs/services/app/server.md:contract'])\n"
         "def serves(qa: Qa) -> None:\n    qa.check('it serves', True)\n"
     )
-    sub = _Sub(repo, leftover="src/server.py").install(monkeypatch)
+    sub = _Sub(repo, late="src/server.py").install(monkeypatch)
     run_env = env()
     write(Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]) / "specs" / "STORY-1" / "qa_plan.py", plan)
 
@@ -779,7 +810,7 @@ def test_a_red_rerun_of_a_leftover_goes_back_to_refix(
 ) -> None:
     """The rerun is judged like a red QA: its findings go to the dev owner."""
     repo = epic()
-    sub = _Sub(repo, leave_dirty=True, qa_statuses=["passed", "refix"]).install(monkeypatch)
+    sub = _Sub(repo, late="src/late.py", qa_statuses=["passed", "refix"]).install(monkeypatch)
 
     drive_flow(Coder(), env(), _Agent())
 

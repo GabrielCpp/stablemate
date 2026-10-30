@@ -43,6 +43,7 @@ from workhorse_workflows.coder.shared.story_commit import (
     check_repos_clean,
     commit_leftovers,
     proof_scope,
+    snapshot_proven_state,
     stamp_story_passed,
 )
 from workhorse_workflows.coder.shared.story import prepare_story, resolve_workspace_dirs
@@ -175,6 +176,7 @@ class Coder(Workflow):
         sent_back = self._sent_back(result)
         if sent_back is not None:
             return sent_back
+        self._snapshot_proven()
         return Continue(
             result,
             self.drain,
@@ -261,7 +263,12 @@ class Coder(Workflow):
         )
         if not state.clean:
             scope = self.call(
-                proof_scope, story.story_slug, story.spec_dir, story.story_path, state.dirty
+                proof_scope,
+                story.story_slug,
+                story.spec_dir,
+                story.story_path,
+                state.dirty,
+                proven=list(self._proven()),
             )
             if scope.kind != "inert":
                 return Continue(scope, self.reprove, dirty=state.dirty, scenarios=scope.scenarios)
@@ -301,6 +308,7 @@ class Coder(Workflow):
         sent_back = self._sent_back(result)
         if sent_back is not None:
             return sent_back
+        self._snapshot_proven()
         self.call(
             commit_leftovers,
             self._epic,
@@ -365,6 +373,20 @@ class Coder(Workflow):
             phase=phase,
             spec_nodes=self._spec_nodes() if phase == "build" else (),
         )
+
+    def _snapshot_proven(self) -> None:
+        """Record the leftovers the passing QA saw, so commit reproves only what moves after it."""
+        story = self._story
+        self.call(
+            snapshot_proven_state, story.story_slug, story.spec_dir, list(self._preexisting())
+        )
+
+    def _proven(self) -> tuple[str, ...]:
+        """The leftovers the last passing QA saw with their digests, or nothing when none passed."""
+        try:
+            return tuple(self.output(snapshot_proven_state).entries)
+        except NodeNotRunError:
+            return ()
 
     def _spec_nodes(self) -> tuple[str, ...]:
         """The nodes the spec pass wrote for this story, or nothing when it never ran."""
