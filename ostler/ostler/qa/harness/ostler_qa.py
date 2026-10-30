@@ -81,6 +81,8 @@ WRITING_STEPS = frozenset({"run", "seed"})
 
 _SERVE_SETTLE_S = 0.5
 
+SERVE_STOP_GRACE_S = 10
+
 _BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
 
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
@@ -459,11 +461,22 @@ def _definition_line(func: Callable[..., None]) -> int:
     return code.co_firstlineno
 
 
-def stop_server_group(pgid: int) -> None:
-    """SIGKILL a `serve` step's process group: what its shell started outlives the shell otherwise."""
+def stop_server_group(server: subprocess.Popen[Any]) -> None:
+    """SIGTERM a `serve` step's process group, wait `SERVE_STOP_GRACE_S` for its leader, then SIGKILL what is left: what its shell started outlives the shell otherwise."""
     try:
-        os.killpg(pgid, signal.SIGKILL)
+        os.killpg(server.pid, signal.SIGTERM)
+        server.wait(timeout=SERVE_STOP_GRACE_S)
+    except subprocess.TimeoutExpired:
+        pass
     except (ProcessLookupError, PermissionError):
+        return
+    try:
+        os.killpg(server.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        return
+    try:
+        server.wait(timeout=5)
+    except subprocess.TimeoutExpired:
         return
 
 
@@ -1260,13 +1273,9 @@ class Qa:
         return ToolResult(command=argv, stdout="", stderr="", exit_code=0)
 
     def stop_servers(self) -> None:
-        """Kill every process group a `serve` step started, so the next scenario finds its port free."""
+        """Stop every process group a `serve` step started, so the next scenario finds its port free."""
         for server in self._servers:
-            stop_server_group(server.pid)
-            try:
-                server.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                continue
+            stop_server_group(server)
         self._servers.clear()
 
     def _arranging_browser(self, fixture: str, index: int, kind: str) -> Any:

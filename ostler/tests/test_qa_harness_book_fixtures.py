@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import importlib
 import json
 import os
 import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
+
+import pytest
 
 from ostler.qa.drivers import stop_servers
 
@@ -1086,6 +1090,29 @@ def test_a_served_process_answers_the_next_step_and_is_gone_when_the_scenario_en
     [served] = [r for r in records if r.get("type") == "serve"]
     assert served["fixture"] == "mock-backend"
     assert not _is_running(int((tmp_path / "server.pid").read_text()))
+
+
+def test_a_served_holder_restores_on_term_before_the_scenario_ends(tmp_path: Path) -> None:
+    restored = tmp_path / "restored"
+    serve = f"trap 'touch {restored}; exit 0' TERM; echo $$ > {tmp_path / 'server.pid'}; while :; do sleep 0.1; done"
+    module = _write(tmp_path, SERVE_SCENARIO)
+    code, stdout, _records = _run(module, "talks-to-a-server", tmp_path, book_fixtures=_serve_fixture(tmp_path, serve=serve))
+    assert code == 0, stdout
+    assert restored.exists()
+
+
+def test_a_served_holder_that_ignores_term_is_killed_after_the_grace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.syspath_prepend(str(HARNESS_DIR))
+    ostler_qa = importlib.import_module("ostler_qa")
+
+    monkeypatch.setattr(ostler_qa, "SERVE_STOP_GRACE_S", 0.5)
+    server = subprocess.Popen(  # noqa: S603
+        ["/bin/sh", "-c", "trap '' TERM; while :; do sleep 0.1; done"], start_new_session=True,
+    )
+    started = time.monotonic()
+    ostler_qa.stop_server_group(server)
+    assert time.monotonic() - started < 5
+    assert server.poll() is not None
 
 
 def test_a_backgrounded_command_is_refused_naming_the_serve_step(tmp_path: Path) -> None:
