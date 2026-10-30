@@ -197,6 +197,9 @@ Excludes a control reachable only by pointer, which `visible`/`actionable` both 
 it is on the screen and enabled — and, when `activates` is given, a control that receives
 focus but does not fire on the key the book names, which no assertion about what is drawn can
 see: the defect is in what the keypress does, not in what is on the screen.
+On a field inside a form, the key activates the field when it submits that form, so
+`activates="Enter"` on a field proves Enter submits. What the submit then does is checked by the
+interaction's own checks.
 
 ### `attribute(locator*=<str> (locator), name*=<str>, equals=<str>, matches=<str>) — one of equals, matches`
 Excludes markup the user never sees drawn and still depends on. The page language a screen
