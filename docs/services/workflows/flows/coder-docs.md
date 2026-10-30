@@ -29,6 +29,8 @@ entered by the Coder main flow or directly with `workhorse-coder run docs`.
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_inside_the_docs_worktree_take_the_local_route`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_outside_the_docs_worktree_take_the_semantic_route`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_failed_check_goes_back_to_the_owner_as_one_report`
+- tests: `workflows/tests/coder/docs/test_flow.py::test_a_book_that_does_not_compile_goes_back_to_the_owner_with_its_gaps`
+- tests: `workflows/tests/coder/docs/test_flow.py::test_the_spec_pass_never_compiles_the_book`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_checks_that_stay_red_past_the_lap_budget_park_instead_of_failing`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_block_is_put_to_the_author_before_anyone_is_asked`
@@ -114,6 +116,12 @@ nothing is grounded against code.
 For local context the flow rebuilds the OKF packet against the post-author worktree, validates
 the packet, and asks `verify_story_documentation` to check every changed production unit directly
 against the accumulated authored nodes. Semantic context passes empty strings for both statuses.
+In the build phase, when the packet built, the flow also compiles the book into a QA plan through
+`compile_gaps`. Every defect gap on a page the story touched, meaning a page of the nodes the
+owner authored or the spec pass wrote, fails the gate. A discharged precondition and a node's own
+`:contract` or `:end-state` placeholder with no check are no defect. The gaps reach the owner in
+the same report as any other failure, as lines of `<code> <obligation>: <message>`, and spend a
+lap. The spec phase never runs the compile.
 Only an explicit passed gate finishes the flow. A failed gate sends its notes back to the owner
 turn as the report, with the remaining `G:` references as the new worklist. After `MAX_LAPS` repair
 laps the flow raises a block instead of approving or failing the whole caller run.

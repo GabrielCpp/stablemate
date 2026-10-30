@@ -242,6 +242,10 @@ in `notes`, and do not return `blocked` for those two codes alone. Every structu
 schema and local grounding error stays blocking. Never silence a finding by deleting a
 meaningful bullet.
 
+The book must compile into a QA plan for every page the story touched. Each surface a check
+runs on names its `driver:` on a `runbook`, and each contract the story states carries a
+`verify:`. The workflow runs that compile after your turn and returns its gaps to you.
+
 ## Blocked
 
 Return `blocked` only when the book cannot be made true of this code without a decision that is

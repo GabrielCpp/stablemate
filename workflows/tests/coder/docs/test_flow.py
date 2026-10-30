@@ -36,7 +36,7 @@ from workhorse_workflows.coder.shared.docs import (
 )
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.owner import MAX_BLOCKS, MAX_LAPS
-from workhorse_workflows.coder.shared.schemas.docs import DocumentationGate
+from workhorse_workflows.coder.shared.schemas.docs import CompileGaps, DocumentationGate
 from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from _epics import epics_root
@@ -528,6 +528,75 @@ def test_a_failed_check_goes_back_to_the_owner_as_one_report(
     assert first["report"] == "", first
     assert "one symbol is not directly grounded" in second["report"], second
     assert second["obligations"] == ["api/widget.go::Widget"], second
+
+
+def _stage_compile(
+    monkeypatch: pytest.MonkeyPatch, *gaps: list[str]
+) -> list[tuple[Any, ...]]:
+    """Stage the book's compile: each call answers the next list, and the last one repeats."""
+    seen: list[tuple[Any, ...]] = []
+
+    def _compile(*args: Any, **kwargs: Any) -> CompileGaps:
+        seen.append(args)
+        return CompileGaps(gaps=gaps[min(len(seen), len(gaps)) - 1])
+
+    _compile.__name__ = f"_staged_compile_{next(_GATE_NAMES)}"
+    monkeypatch.setattr(docs_flow, "compile_gaps", blueprint.node(_compile))
+    return seen
+
+
+def test_a_book_that_does_not_compile_goes_back_to_the_owner_with_its_gaps(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The gate holds until the compile has no defect gap, and the owner reads each one."""
+    gap = "uncompilable-claim okf:docs/services/widget.md:does:1: no driver"
+    seen = _stage_compile(monkeypatch, [gap], [])
+    agent = _Agent()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.authored() == 2, agent.counts()
+    first, second = agent.author_args()
+    assert first["report"] == "", first
+    assert gap in second["report"], second
+    assert len(seen) == 2
+    assert seen[0][-1] == ("docs/services/widget.md",), seen
+
+
+def test_a_book_that_compiles_passes_the_gate_in_one_turn(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stage_compile(monkeypatch, [])
+    agent = _Agent()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.authored() == 1, agent.counts()
+
+
+def test_the_spec_pass_never_compiles_the_book(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = _stage_compile(monkeypatch, ["uncompilable-claim x: y"])
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC, phase="spec"), env(), _Agent())
+
+    assert result.status == "passed", result
+    assert seen == []
 
 
 def test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named(

@@ -10,6 +10,7 @@ from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.provenance import resolve_story_sources
+from workhorse_workflows.coder.shared.compilation import compile_gaps
 from workhorse_workflows.coder.shared.docs import (
     MAX_PROMPT_NOTE_CHARS,
     classify_documentation_context,
@@ -41,6 +42,7 @@ from workhorse_workflows.coder.shared.story import (
 from workhorse_workflows.coder.shared.schemas.docs import (
     ContextClassification,
     DocsResult,
+    DocumentationGate,
     DocumentationObligations,
     DocumentationResult,
     SpecResult,
@@ -258,6 +260,8 @@ class Docs(Workflow):
             authored_nodes,
             preexisting=tuple(self.preexisting),
         )
+        if self.phase != "spec" and mode == "local" and build_status == "passed":
+            gate = self._with_compile_gaps(gate, authored_nodes)
         if gate.status == "passed":
             return Continue(
                 gate, self.finish, notes=gate.notes or author.notes, authored_nodes=authored_nodes
@@ -274,6 +278,38 @@ class Docs(Workflow):
             authored_nodes=authored_nodes,
             laps=laps + 1,
             blocks=blocks,
+        )
+
+    def _with_compile_gaps(
+        self, gate: DocumentationGate, authored_nodes: tuple[str, ...]
+    ) -> DocumentationGate:
+        """Fail the gate on every defect the book's QA compile reports on a page the story touched."""
+        pages = tuple(
+            dict.fromkeys(
+                node.partition("#")[0] for node in (*authored_nodes, *self.spec_nodes)
+            )
+        )
+        gaps = self.call(
+            compile_gaps,
+            self.ctx.spec_dir,
+            self.ctx.story_id or self.ctx.story_slug,
+            pages,
+        ).gaps
+        if not gaps:
+            return gate
+        note = (
+            f"The book does not compile into a QA plan: {len(gaps)} gap(s) on pages this "
+            "story touched. Repair each on the page it names, as `<code> <obligation>: "
+            "<what is missing>`:\n"
+            + "\n".join(f"- {gap}" for gap in gaps)
+        )
+        notes = f"{gate.notes}\n\n{note}" if gate.status == "invalid" and gate.notes else note
+        return DocumentationGate(
+            status="invalid",
+            notes=notes,
+            changed_code_count=gate.changed_code_count,
+            doctor_error_count=gate.doctor_error_count,
+            failures=[*gate.failures, *(f"C:{gap}" for gap in gaps)],
         )
 
     def finish(self, notes: str = "", authored_nodes: tuple[str, ...] = ()) -> Done:

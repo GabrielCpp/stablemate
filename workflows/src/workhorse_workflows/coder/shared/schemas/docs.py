@@ -88,6 +88,12 @@ class DocumentationGate(CoderResult):
     failures: list[str] = []
 
 
+class CompileGaps(CoderResult):
+    """`compile_gaps` — the defect gaps the book's QA compile reports on the pages the story touched."""
+
+    gaps: list[str] = []
+
+
 class DocumentationObligations(CoderResult):
     """`documentation_obligations` — the grounding worklist handed to the author up front."""
 
@@ -107,6 +113,7 @@ class DocsResult(CoderResult):
 
 
 __all__ = [
+    "CompileGaps",
     "ContextClassification",
     "DocsStatus",
     "DocsResult",

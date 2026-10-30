@@ -12,8 +12,8 @@ title: Coder documentation schemas
   `SpecNodes` records the nodes a spec pass wrote for the lanes after it. The deterministic gate answers with a
   `DocumentationGate`, and the flow ends with a `DocsResult`.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @e0cd3e23e768
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @e0cd3e23e768
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @8a5691c5dbb4
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @8a5691c5dbb4
 - detail: [Coder story pipeline](story-pipeline.md)
 - detail: [Coder documentation flow](../flows/coder-docs.md)
 
@@ -83,6 +83,13 @@ title: Coder documentation schemas
 - returns: an invalid gate by default so an absent gate cannot approve documentation
 - verify: json_path(path="$.status", equals="invalid")
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocumentationGate` @39abfba34d41
+
+### method: CompileGaps
+- sig: `CompileGaps(gaps: list[str] = []) -> CompileGaps`
+- does: carries the defect gaps the book's QA compile reports on the pages the story touched, each as `<code> <obligation>: <message>`
+- returns: an empty list when the book compiles cleanly on those pages
+- verify: json_path(path="$.gaps", equals="[]")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::CompileGaps` @6e5cb04f1ec1
 
 ### method: DocumentationObligations
 - sig: `DocumentationObligations(refs: list[str] = [], notes: str = "") -> DocumentationObligations`

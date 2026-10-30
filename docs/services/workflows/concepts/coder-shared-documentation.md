@@ -143,6 +143,17 @@ author turn and scope doctor findings to the documentation nodes affected by the
 - code: `workflows/src/workhorse_workflows/coder/shared/docs.py::verify_story_documentation` @e493f3963d22
 - tests: `workflows/tests/coder/docs/test_flow.py::test_grounding_the_enclosing_unit_grounds_what_is_nested_inside_it`
 
+### compile_gaps
+- sig: `compile_gaps(logger: logging.Logger, spec_dir: str = "", story: str = "", pages: tuple[str, ...] = (), repo_dir: str = "") -> CompileGaps`
+- does: compiles the story's `qa-okf-context.json` into a QA plan and keeps each gap that is a defect on one of the given pages
+- verify: json_path(path="$.gaps", equals="[]")
+- does: drops a discharged precondition and a node's own `:contract` or `:end-state` placeholder with no check
+- does: reports nothing when the packet cannot be read or compiled, because the documentation gate already fails an unreadable packet
+- returns: a `CompileGaps` whose lines read `<code> <obligation>: <message>`
+- code: `workflows/src/workhorse_workflows/coder/shared/compilation.py::compile_gaps` @2810bdc54ff3
+- tests: `workflows/tests/coder/shared/test_compilation.py::test_a_surface_with_no_runbook_driver_is_a_gap_on_a_touched_page`
+- tests: `workflows/tests/coder/shared/test_compilation.py::test_a_gap_on_a_page_the_story_did_not_touch_is_not_reported`
+
 ### documentation_obligations
 - sig: `documentation_obligations(logger: logging.Logger, spec_dir: str = "", context_mode: str = "local", build_status: str = "", repo_dir: str = "", preexisting: tuple[str, ...] = ()) -> DocumentationObligations`
 - does: returns an empty worklist with an explanatory note in semantic mode
