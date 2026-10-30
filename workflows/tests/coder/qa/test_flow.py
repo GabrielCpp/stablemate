@@ -27,6 +27,7 @@ from workhorse.records import parse_checkpoint
 
 from ostler import Ostler
 from ostler.qa import QaOutcome
+from ostler.qa.compile import Plan
 from ostler.qa.source_context import SourceRepository
 
 from workhorse_workflows.coder.shared.plan import resolve_impl_context
@@ -1470,6 +1471,25 @@ def test_a_standing_valid_plan_is_handed_to_the_owner_to_adopt(
 
     assert result.status == "passed", result
     assert agent.args[0]["standing_plan"] is True
+
+
+def test_a_book_that_compiles_hands_the_owner_its_plan_as_the_standing_one(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """With no plan in the spec dir, the first owner turn already finds the compiled one."""
+    ostler()
+    monkeypatch.setattr(qa_nodes, "compile_packet", lambda *a, **k: Plan(QA_PLAN, []))
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.args[0]["standing_plan"] is True
+    assert (docs / spec_dir() / "qa_plan.py").read_text(encoding="utf-8") == QA_PLAN
 
 
 def test_the_lane_runs_standalone_with_no_plan_context(

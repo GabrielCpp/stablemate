@@ -55,7 +55,7 @@ book's verification index for diagnosis only.
 - verify: count(subject="declared regression command selections", equals=1)
 - returns: a `RegressionSuites` containing one `RegressionSuite` per touched service with a declared command, its `<repo path>::<service path>` label, absolute working directory, and command
 - verify: count(subject="resolved regression suites", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::detect_regression_suites` @b933f5551e32
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::detect_regression_suites` @d653c18bb53c
 
 ### run_regression_suite
 - sig: `run_regression_suite(logger: logging.Logger, spec_dir: str = "", qa_dir: str = "", suites: list | None = None, repo_dir: str = "") -> RegressionRun`
@@ -81,7 +81,7 @@ book's verification index for diagnosis only.
 - verify: json_path(path="$.failure_attribution[0].classification", matches="^(impacted|outside-impact|unattributed)$")
 - returns: a `RegressionRun` carrying one of `passed`, `failed`, `blocked`, `skipped`, or `error`, failure details, persisted log paths, notes, and optional verification-index attribution
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::run_regression_suite` @b933f5551e32
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/regression.py::run_regression_suite` @36d9f30c52a3
 
 ### RegressionRun.as_qa_result
 - sig: `RegressionRun.as_qa_result(self) -> QaResult`
@@ -91,7 +91,7 @@ book's verification index for diagnosis only.
 - verify: json_path(path="$.status", equals="blocked")
 - does: preserves `passed`, `failed`, and `blocked` statuses for downstream QA routing
 - verify: count(subject="directly mirrored regression statuses", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionRun.as_qa_result` @01bc525fb1ec
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::RegressionRun.as_qa_result` @e015f084c0d2
 
 Private helpers keep the execution policy in one bounded module: `_run` invokes a shell-split
 command and distinguishes timeout from failure to start; `_run_one` applies the five-state

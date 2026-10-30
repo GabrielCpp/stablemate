@@ -34,7 +34,9 @@ earlier turn.
 - Target environment: `{{ workhorse_var('target_env') }}`
 - The QA runner's interpreter: `{{ workhorse_var('runtime_python') }}`
 {% if standing_plan %}- A `qa_plan.py` already stands in the spec dir, and it lints and validates against the
-  context packet. Adopt it, and change only what the story or a check calls for.
+  context packet. Adopt it, and change only what the story or a check calls for. The workflow
+  compiles it from the book, so a scenario it lacks is a book gap: report it in `notes`
+  and do not hand-write it.
 {% else %}- No plan that lints and validates stands in the spec dir yet. Write it, or repair the one
   that is there.
 {% endif %}{% if verification_setup and verification_setup.profile %}- The stack profile the surface needs: `{{ verification_setup.profile }}`.

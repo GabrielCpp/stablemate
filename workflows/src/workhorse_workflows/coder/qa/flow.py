@@ -12,6 +12,7 @@ from workhorse_workflows.coder.qa.nodes import (
     QA_SCRATCH_DIRNAME,
     check_sentinel_ids,
     clear_qa_evidence,
+    compile_story_plan,
     detect_regression_suites,
     ensure_stack,
     flush_root_screenshots,
@@ -186,6 +187,8 @@ class Qa(Workflow):
         failures = []
         if context.status != "passed":
             failures.append(gate_text("the OKF context packet", context.notes))
+        else:
+            self.call(compile_story_plan, self.ctx.spec_dir, self.ctx.story_id or self.ctx.story_slug)
         target = self.output(stack_target)
         stack = self.call(ensure_stack, near=target.near, lease=target.lease)
         return failures + stack_failures(stack)

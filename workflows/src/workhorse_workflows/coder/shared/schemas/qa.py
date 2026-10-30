@@ -67,6 +67,14 @@ class QaCleared(CoderResult):
     cleared: bool = False
 
 
+class CompiledPlan(CoderResult):
+    """`compile_story_plan` — whether the book compiled into the story's `qa_plan.py`, and how many scenarios it holds."""
+
+    compiled: bool = False
+    scenarios: int = 0
+    gaps: int = 0
+
+
 class StackTornDown(CoderResult):
     """`teardown_stack` — the run is over, so the stack it started need not outlive it."""
 
@@ -203,6 +211,7 @@ class QaFlowResult(CoderResult):
 __all__ = [
     "BacklogDrain",
     "DryRunGate",
+    "CompiledPlan",
     "FailedScenarios",
     "FailureAttribution",
     "QaCleared",

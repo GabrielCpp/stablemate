@@ -29,6 +29,8 @@ The flow ends in a `QaFlowResult` whose status is `passed`, `refix` or `replan`.
 - detail: [coder main flow](coder-main.md)
 - detail: [coder QA subflow](../concepts/coder-qa-subflow.md)
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_spends_one_owner_turn`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_book_that_compiles_hands_the_owner_its_plan_as_the_standing_one`
+- tests: `workflows/tests/coder/qa/test_compile_story_plan.py::test_a_compilable_packet_writes_the_plan`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_failed_run_with_findings_sends_them_back_as_a_refix`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_blocked_owner_is_answered_and_resumes_with_the_answer`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_an_epic_scoped_answer_hands_the_story_back_to_replan`
@@ -70,7 +72,11 @@ story id are both set, it also resolves story-source provenance and fails the ru
 sources are invalid. It then detects the OKF book, names the run's lease on a copy of the stack,
 and records the stack target. The preflight builds and validates the OKF context packet and
 brings the stack up. Each failure becomes a line of the first owner turn's report instead of an
-abort, because a broken packet or stack is the owner's to repair.
+abort, because a broken packet or stack is the owner's to repair. Once the packet validates and
+no `qa_plan.py` stands in the spec dir, `compile_story_plan` compiles the book into one. A
+compile that succeeds writes `qa_plan.py` and logs how many scenarios it holds. A refusal writes
+nothing and logs its gap count, and the owner then writes the plan by hand. A plan that stands
+is never overwritten.
 
 ### work
 
@@ -80,7 +86,8 @@ abort, because a broken packet or stack is the owner's to repair.
 wall-clock bound and a silence limit. The turn reads the story, the spec directory, the
 verification setup, the fixtures, the QA run plan, the QA tool catalog and the last report. It is
 granted only the repositories the plan touches. It also learns whether a standing `qa_plan.py`
-already lints and validates, so it adopts that plan rather than authoring a new one. The stack's
+already lints and validates, so it adopts that plan rather than authoring a new one. The compiled
+plan counts as standing, and a scenario it lacks is a book gap the owner reports in its notes. The stack's
 environment is scoped around the turn. Specs are stamped after the turn. A `blocked` result goes
 to the block path. Any other result continues to `check` with its findings and the scenarios it
 claims it dry-ran.
@@ -105,17 +112,17 @@ passing run go back as unproved.
 Each failed scenario is sorted onto its side (environment, book, or product) before the owner's
 next turn reads it back as a gate report.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/sides.py::run_sides` @0209bed23b75
-- code: `workflows/src/workhorse_workflows/coder/qa/report.py::unclassified_failure` @dea9057a2b52
-- code: `workflows/src/workhorse_workflows/coder/qa/report.py::book_failure` @dea9057a2b52
-- code: `workflows/src/workhorse_workflows/coder/qa/report.py::environment_failure` @dea9057a2b52
-- code: `workflows/src/workhorse_workflows/coder/qa/report.py::product_findings` @dea9057a2b52
-- code: `workflows/src/workhorse_workflows/coder/qa/report.py::unproved_findings` @dea9057a2b52
+- code: `workflows/src/workhorse_workflows/coder/qa/sides.py::run_sides` @f9433131f5bb
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::unclassified_failure` @1bf387b10302
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::book_failure` @982cc45dd078
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::environment_failure` @10ad3e5bfd91
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::product_findings` @995e9cf6f933
+- code: `workflows/src/workhorse_workflows/coder/qa/report.py::unproved_findings` @2fe6ff3afd64
 
 A passed run must also clear four gates before the story is believed. The evidence gate checks
 the runner's artifacts.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::verify_qa_evidence` @8e2f419e331c
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/evidence.py::verify_qa_evidence` @d6a24d963ac4
 
 The operator feedback inbox is read, and a note goes back to the owner.
 Declared regression suites run, and a suite that is neither passed nor skipped goes back. The

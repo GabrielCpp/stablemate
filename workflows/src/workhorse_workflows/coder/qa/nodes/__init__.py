@@ -6,6 +6,7 @@ from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush
 from workhorse_workflows.coder.qa.nodes.qa import (
     QA_SCRATCH_DIRNAME,
     clear_qa_evidence,
+    compile_story_plan,
     ensure_stack,
     lint_qa_plan,
     qa_tools_catalog,
@@ -25,6 +26,7 @@ __all__ = [
     "QA_SCRATCH_DIRNAME",
     "check_sentinel_ids",
     "clear_qa_evidence",
+    "compile_story_plan",
     "detect_regression_suites",
     "ensure_stack",
     "flush_root_screenshots",

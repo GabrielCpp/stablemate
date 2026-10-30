@@ -14,6 +14,7 @@ A QA refix sends the story back to dev and then through `document` and QA again.
 - rule: the book is written before dev from a behaviour model, so dev builds to the book's `verify:` checks and QA compiles its plan from them on its first pass
 - rule: the build pass after dev grounds `code:` bullets and never rewrites a spec bullet the build contradicts
 - rule: the build docs pass passes only when the book compiles into a QA plan with no defect gap on a page the story touched
+- rule: QA starts from the plan the book compiles and amends it, and writes a plan by hand only when the book refuses to compile
 - rule: a refix goes dev, document, QA and never specifies again, because the spec describes the story and a defect in the build does not change it
 - rule: the spec pass has no diff, so it skips context classification, source provenance and the grounding worklist, and its gate is `doctor` on the nodes it wrote
 - rule: the spec pass's book delta is committed by the workflow before dev starts, so dev's clean-repo check never counts the spec as dev's leftovers
@@ -31,4 +32,5 @@ A QA refix sends the story back to dev and then through `document` and QA again.
 - tests: `workflows/tests/coder/test_workflow.py::test_the_build_passs_book_page_is_committed_before_qa_runs`
 - tests: `workflows/tests/coder/test_workflow.py::test_the_finalize_rechecks_book_edit_stays_uncommitted_until_the_leftovers_commit`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_book_that_does_not_compile_goes_back_to_the_owner_with_its_gaps`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_book_that_compiles_hands_the_owner_its_plan_as_the_standing_one`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_the_spec_pass_writes_the_book_before_any_diff_exists`
