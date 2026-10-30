@@ -1,6 +1,6 @@
 # Measurement
 
-The rules of [`research-study`](../SKILL.md) for the cases its steps name in short: a
+The rules of [`explore-then-improve`](../SKILL.md) for the cases its steps name in short: a
 generated benchmark, a purpose stated as a share, a method that learns, a repeated unit,
 the two controls, the consumer's ceiling and leaks.
 

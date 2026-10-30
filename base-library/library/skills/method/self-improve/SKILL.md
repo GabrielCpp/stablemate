@@ -1,6 +1,6 @@
 ---
 name: self-improve
-description: "Running a continuous improvement loop beside a live process that nobody asked a question about: any loop an agent tends from a feed. Each cycle holds the last delivered unit against its own ideal path, one pass per stage with no retry, no hand step and no dead time, ranks the waste in the gap by how many units it recurred in, diagnoses the top one to a construct in the workflow, designs and lands the change at the size the tax sets, a prompt line or a rebuilt stage, while the run goes on, and reads the yardstick that grades it. The method skills are the loop's steps: isolating-causes and root-cause diagnose, decompose designs, whole-first and vet-proposal gate, step-back judges a change that keeps failing. Load when tending a run from a feed and about to acknowledge a notification, when a unit of work was just delivered, when asked whether a process wastes or converges, or when a run looks normal because nothing in the prompt said otherwise. For a question the operator already wrote, load research-study."
+description: "Running a continuous improvement loop beside a live process that nobody asked a question about: any loop an agent tends from a feed. Each cycle holds the last delivered unit against its own ideal path, one pass per stage with no retry, no hand step and no dead time, ranks the waste in the gap by how many units it recurred in, diagnoses the top one to a construct in the workflow, designs and lands the change at the size the tax sets, a prompt line or a rebuilt stage, while the run goes on, and reads the yardstick that grades it. The method skills are the loop's steps: isolating-causes and root-cause diagnose, decompose designs, whole-first and vet-proposal gate, step-back judges a change that keeps failing. Load when tending a run from a feed and about to acknowledge a notification, when a unit of work was just delivered, when asked whether a process wastes or converges, or when a run looks normal because nothing in the prompt said otherwise. For a question the operator already wrote, load explore-then-improve."
 tags: [review, process]
 ---
 
@@ -60,8 +60,8 @@ belong to. A cycle is complete when its change is loaded and its yardstick is na
 next cycle starts at once on the next tax in the table. Several cycles may be open at a
 time, one per kind, each waiting only on its own yardstick.
 
-[[research-study]] answers a question the operator wrote. The loop here produces the
-questions, and takes a routed one into research-study only when the operator asks for it.
+[[explore-then-improve]] answers a question the operator wrote. The loop here produces the
+questions, and takes a routed one into explore-then-improve only when the operator asks for it.
 
 ## The clock
 
@@ -220,7 +220,7 @@ and [[whole-first]] joins it when the change adds a construct the workflow did n
 change that fails the gate goes back to diagnose with the reason. The gate judges fit, never
 size: a rebuild that fits is landed, slice by slice.
 
-A study the loop started under [[research-study]] ends with a verdict, and a verdict that
+A study the loop started under [[explore-then-improve]] ends with a verdict, and a verdict that
 names what has to replace the current shape is a design written. It re-enters the cycle
 here, and the build is the next step, not a question to the operator.
 

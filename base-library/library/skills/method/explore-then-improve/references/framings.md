@@ -1,6 +1,6 @@
 # Building the framings
 
-The full rules for the four moves of step 5 in [`research-study`](../SKILL.md), and for
+The full rules for the four moves of step 5 in [`explore-then-improve`](../SKILL.md), and for
 the brief every framing agent receives. The skill carries each move in short. This file
 carries what each move must return and how a return is judged.
 

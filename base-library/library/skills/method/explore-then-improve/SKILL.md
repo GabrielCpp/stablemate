@@ -1,5 +1,5 @@
 ---
-name: research-study
+name: explore-then-improve
 description: "Running a research or optimization loop alone until the operator's question is answered or its budget is spent, and reporting what was tried, what worked and what did not: a budget in money and hours written before the first probe, a mandatory TRIED.md in plain words, a frozen yardstick, a profile before any hypothesis, an instrument collapsed to the smallest stage that reads the variable, isolated framings, a field of original candidates, a paper gate that discards a candidate that answers another question or cannot succeed by construction, single-variable probes, a release rule that drops an approach once its share of the budget is gone, a self-check that puts the loop's own spending decisions to the operator, and a ledger that keeps every failure with its spend. Load when told to find a way to make something faster, cheaper or better, when handed a goal or research question to pursue without the operator, when a measurement comes back and the next step is unclear, or when hours went to apparatus."
 argument-hint: "[the question, or the purpose: what must improve, by how much, over what workload]"
 tags: [research, process]
