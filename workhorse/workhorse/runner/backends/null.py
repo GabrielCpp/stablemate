@@ -36,6 +36,7 @@ class NullBackend(AgentBackend):
         effort: str | None = None,
         agent: AgentProfile | None = None,
         delegates: tuple[Delegate, ...] = (),
+        models: tuple[str, ...] = (),
     ) -> str:
         raise BackendInvocationError(
             f"node {node_id!r} needs an agent CLI and this run has none — "

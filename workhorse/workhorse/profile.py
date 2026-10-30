@@ -122,6 +122,15 @@ def resolve_delegates_for(
     return delegates_for(mappings)
 
 
+def profile_models(backend_name: str, profile: str = "") -> tuple[str, ...]:
+    """Every model ``profile`` names for ``backend_name``: its default, each power tier and each delegate role."""
+    selected = _profile(profile, backend_name)
+    if selected is None:
+        return ()
+    tiers = [selected.default, *selected.powers.values(), *selected.delegates.values()]
+    return tuple(dict.fromkeys(tier.model for tier in tiers if tier is not None and tier.model))
+
+
 def implied_profile(home: HomeConfig, cli: str) -> str:
     """The profile a run on ``cli`` takes when none is named: the one named after that CLI and declaring it, else none."""
     name = cli.strip().lower()

@@ -63,6 +63,16 @@ The turn has no grep, glob or list, because opencode answers those outside its p
 confined turn whose working directory lies in no git worktree fails before it starts with
 `a confined opencode turn needs a git worktree`.
 
+A claude turn holds the models of its subagents to its profile. The Agent tool lets the model pick
+any model alias for a subagent, and a prompt cannot stop that. The backend passes a `PreToolUse`
+hook on the `Agent` tool through `--settings`, run as a Python module. The hook denies a call whose
+`model` is outside the allowed set, and its reason lists the allowed aliases. The allowed set is
+every model the profile names, which is its `default`, each `powers` tier and each `delegates`
+role, plus the family alias of each one: `claude-opus-5-5` allows `opus`. A call with no `model`
+inherits the turn's model and passes. A run on no profile names no models, so the hook is not
+passed. A model that is not 5.5 under a profile of 5.5 models, such as `fable` or
+`claude-fable-5-1`, is denied.
+
 A claude turn names its brief in its system prompt. The engine writes each turn's rendered prompt
 to a file, and the backend passes `--append-system-prompt` with that file's absolute path and an
 instruction to read it again after a compaction. Claude compacts a long turn's conversation on its
@@ -74,29 +84,36 @@ Copilot and cline apply no box. A confined profile still runs the turn with the 
 permissions, and the backend prints `<cli> does not enforce a confined profile; the turn runs with
 the operator's full permissions` once per turn. It does not refuse the turn.
 
-- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @bd7a03e99213
-- code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @da60c2e93d28
-- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @4464f8371e1f
-- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend` @6d8d3bfe5558
-- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend` @f6c5136add76
-- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend` @39b0f1e8c0c2
-- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend` @bb84ceeeae1a
-- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend` @368bf532a646
-- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend` @9f80c4f01201
-- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @53dc2823fd84
-- code: `workhorse/workhorse/runner/backends/turn.py::OnEvent.__call__` @53dc2823fd84
-- code: `workhorse/workhorse/runner/backends/delegates.py::Delegate` @f0673c19c181
-- code: `workhorse/workhorse/runner/backends/guard.py::Policy` @d037c4d084f4
-- code: `workhorse/workhorse/runner/backends/guard_shell.py::shell_denial` @17d1634259b6
-- code: `workhorse/workhorse/runner/backends/README.md` @62d9e59d5ca1
-- code: `workhorse/docs/BACKENDS.md` @595130c671ae
-- code: `workhorse/workhorse/profile.py::resolve_delegates_for` @ff29018aab02
-- code: `workhorse/workhorse/pyflow/engine.py::Engine.has_delegate` @a6d7852198a4
+- code: `workhorse/workhorse/runner/backends/__init__.py::AgentBackend` @bba883206087
+- code: `workhorse/workhorse/runner/backends/registry.py::get_backend` @97728ec5a6f0
+- code: `workhorse/workhorse/runner/backends/null.py::NullBackend` @2bae7c6d5353
+- code: `workhorse/workhorse/runner/backends/claude.py::ClaudeBackend` @e0c48e164248
+- code: `workhorse/workhorse/runner/backends/jsonl.py::JsonlBackend` @5cb576f3f346
+- code: `workhorse/workhorse/runner/backends/codex.py::CodexBackend` @b0d7c09a1dec
+- code: `workhorse/workhorse/runner/backends/copilot.py::CopilotBackend` @64b712777b3b
+- code: `workhorse/workhorse/runner/backends/cline.py::ClineBackend` @4ca16506e4dd
+- code: `workhorse/workhorse/runner/backends/opencode.py::OpenCodeBackend` @66339f656dfb
+- code: `workhorse/workhorse/runner/backends/turn.py::TurnState` @375ce5ec8206
+- code: `workhorse/workhorse/runner/backends/turn.py::OnEvent.__call__` @a6fcb85e3163
+- code: `workhorse/workhorse/runner/backends/delegates.py::Delegate` @234ee3903391
+- code: `workhorse/workhorse/runner/backends/guard.py::Policy` @0c9ee87d8c0e
+- code: `workhorse/workhorse/runner/backends/model_guard.py::model_refusal` @8740b7720e05
+- code: `workhorse/workhorse/runner/backends/guard_shell.py::shell_denial` @112a24f311f5
+- code: `workhorse/workhorse/runner/backends/README.md` @b194b9459849
+- code: `workhorse/docs/BACKENDS.md` @51dfb498850f
+- code: `workhorse/workhorse/profile.py::resolve_delegates_for` @514c3066aced
+- code: `workhorse/workhorse/profile.py::profile_models` @e16bd2a4cda8
+- code: `workhorse/workhorse/pyflow/engine.py::Engine.has_delegate` @72ec254d7ec8
 - rule: a turn never loads less of the operator's environment than an interactive session of its CLI, and confinement is a guard layered on top of it
 - rule: a confined opencode turn gets read and write on its added directories through permission config, never through a plugin or shared state file
+- rule: a claude turn's subagents run only on models its profile names, because a prompt cannot hold the Agent tool's model pick and one run spent most of its cost on subagents from a model the workplace does not have
 - rule: a claude turn's system prompt names the turn's brief file, because a compaction summary once lost the spec dir and the turn returned a false `blocked` after searching its working directory for a plan it had already written
 - tests: `workhorse/tests/test_backends.py::test_claude_names_the_turn_brief_in_the_system_prompt`
 - tests: `workhorse/tests/test_backends.py::test_claude_without_a_brief_file_appends_no_system_prompt`
+- tests: `workhorse/tests/test_model_guard.py::test_a_model_outside_the_profile_is_denied_with_the_allowed_aliases`
+- tests: `workhorse/tests/test_model_guard.py::test_the_profile_models_and_their_family_aliases_pass`
+- tests: `workhorse/tests/test_model_guard.py::test_a_call_with_no_model_passes`
+- tests: `workhorse/tests/test_model_guard.py::test_the_claude_command_line_carries_the_hook_on_the_agent_tool`
 - tests: `workhorse/tests/test_delegates.py::test_the_advisor_defaults_to_the_max_tier_model`
 - tests: `workhorse/tests/test_delegates.py::test_an_explicit_advisor_wins_over_the_default`
 - tests: `workhorse/tests/test_delegates.py::test_no_default_advisor_when_the_cli_takes_no_subagents`

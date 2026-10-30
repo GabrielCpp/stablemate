@@ -150,6 +150,7 @@ class CopilotBackend(JsonlBackend):
         effort: str | None = None,
         agent: AgentProfile | None = None,
         delegates: tuple[Delegate, ...] = (),
+        models: tuple[str, ...] = (),
     ) -> str:
         warn_unsupported(self.name, delegates)
         warn_unenforced_confinement(self.name, node_id, agent)

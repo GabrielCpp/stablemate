@@ -442,6 +442,7 @@ class OpenCodeBackend(JsonlBackend):
         effort: str | None = None,
         agent: AgentProfile | None = None,
         delegates: tuple[Delegate, ...] = (),
+        models: tuple[str, ...] = (),
     ) -> str:
         sid = read_session_id(session_id_path)
         argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)

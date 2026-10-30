@@ -6,7 +6,7 @@ import json
 import os
 import re
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -19,6 +19,7 @@ from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import AgentBackend, AgentProfile, git_worktree, operator_config_dirs
 from workhorse.runner.backends.delegates import Delegate
+from workhorse.runner.backends import model_guard
 from workhorse.runner.backends.guard import Policy, hook_command, policy_file
 
 
@@ -53,6 +54,7 @@ class ClaudeBackend(AgentBackend):
         effort: str | None = None,
         agent: AgentProfile | None = None,
         delegates: tuple[Delegate, ...] = (),
+        models: tuple[str, ...] = (),
     ) -> str:
         """Run one Claude CLI turn and return its final result text."""
         cmd = [
@@ -83,7 +85,7 @@ class ClaudeBackend(AgentBackend):
                 cmd.extend(["--resume", sid])
                 print(f"[{node_id}] 🔄 Resuming session: {sid[:8]}...", flush=True)
 
-        with _guard_flags(_guard_policy(agent, cwd, add_dirs)) as guard_flags:
+        with _guard_flags(_guard_policy(agent, cwd, add_dirs), models) as guard_flags:
             stream = _stream_events(
                 [*cmd, *guard_flags],
                 node_id,
@@ -236,15 +238,20 @@ def _guard_policy(agent: AgentProfile | None, cwd: str | None, add_dirs: list[st
 
 
 @contextmanager
-def _guard_flags(policy: Policy | None) -> Iterator[list[str]]:
-    """The `--settings` flag that runs the guard before every tool call of the turn, with the policy file lasting as long as the turn. No flags without a policy."""
-    if policy is None:
-        yield []
-        return
-    with policy_file(policy) as path:
-        hook = {"type": "command", "command": hook_command(path)}
-        settings = {"hooks": {"PreToolUse": [{"matcher": ".*", "hooks": [hook]}]}}
-        yield ["--settings", json.dumps(settings)]
+def _guard_flags(policy: Policy | None, models: tuple[str, ...] = ()) -> Iterator[list[str]]:
+    """The `--settings` flag that runs the guard before every tool call of a confined turn and the model guard before every Agent call, with the policy file lasting as long as the turn. No flags with neither."""
+    with ExitStack() as stack:
+        matchers: list[dict[str, object]] = []
+        if policy is not None:
+            path = stack.enter_context(policy_file(policy))
+            matchers.append({"matcher": ".*", "hooks": [{"type": "command", "command": hook_command(path)}]})
+        if models:
+            hook = {"type": "command", "command": model_guard.hook_command(models)}
+            matchers.append({"matcher": model_guard.AGENT_TOOL, "hooks": [hook]})
+        if not matchers:
+            yield []
+            return
+        yield ["--settings", json.dumps({"hooks": {"PreToolUse": matchers}})]
 
 
 def _brief_anchor(prompt_path: Path) -> str:

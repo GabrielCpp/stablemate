@@ -156,11 +156,14 @@ class AgentBackend(ABC):
         effort: str | None = None,
         agent: AgentProfile | None = None,
         delegates: tuple[Delegate, ...] = (),
+        models: tuple[str, ...] = (),
     ) -> str:
         """Run one non-interactive turn for ``prompt`` and return the final result text.
 
         ``delegates`` are the subagents the turn may hand narrow work to. A backend
         defines them for its CLI at launch, or warns once that its CLI cannot.
+        ``models`` are the models the run's profile names. A backend whose CLI lets a
+        subagent pick its own model holds that pick to them.
         """
 
     @abstractmethod

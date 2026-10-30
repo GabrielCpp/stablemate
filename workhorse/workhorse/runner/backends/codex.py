@@ -255,6 +255,7 @@ class CodexBackend(JsonlBackend):
         effort: str | None = None,
         agent: AgentProfile | None = None,
         delegates: tuple[Delegate, ...] = (),
+        models: tuple[str, ...] = (),
     ) -> str:
         sid = read_session_id(session_id_path)
         profile, model_slug = _parse_codex_model(model)
