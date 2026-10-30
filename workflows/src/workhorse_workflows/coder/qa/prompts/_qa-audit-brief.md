@@ -30,6 +30,9 @@ Each row carries `status`, `why`, `checksDeclared`, `checksObserved`, `checksMis
 - **`claimed-but-unasserted`**: a scenario claimed it and no passing assertion backs it, or a
   declared check never ran. An evidence defect.
 - **`uncovered`**: nothing claimed it. A plan defect.
+- **`deferred`**: the packet defers it, because the book declares no check for it or its claim
+  does not compile. Validate does not require it, so no plan owes it. Name the book gap in
+  `notes`, and add no scenario for it.
 - **`contradicted`**: the ledger and `qa-evidence.json` disagree, or a bound assertion failed
   under a pass. Always a refutation: quote both sides from `why` and `failingLogRefs`.
 - **`insensitive`**: every declared check passed, and no observation could have failed them.
