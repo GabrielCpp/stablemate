@@ -102,14 +102,17 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
 1. **Select.** Read the story and its Acceptance Criteria, the repo's `AGENTS.md` and
    `docs/qa/lessons.md` under the docs root when it exists. The Acceptance Criteria define
    done. `qa-okf-context.json` in the spec dir holds the obligations, read through
-   `ostler qa context-show`. The workflow compiled every obligation into `qa_plan.py`. When an
-   obligation lies outside the story, narrow the plan:
-   `ostler qa compile-plan --spec {{ workhorse_var('spec_dir') }} --select <id> [--select <id> ...] --out {{ workhorse_var('spec_dir') }}/qa_plan.py --replace`,
-   where an id is an obligation id or its book node. A compiled scenario that is wrong is a
-   book defect: repair the book node and recompile. A scenario the compile lacks, you write.
-   Write it in the book when the book can state it, then recompile. When the book cannot
-   state it, add it by hand to `qa_plan.py` after your last recompile, since a recompile
-   replaces the file. Nobody reviews the scenarios you write. Run `ostler qa lint` and
+   `ostler qa context-show`. The workflow compiled every obligation into `qa_plan.py`. For
+   each Acceptance Criterion, name the obligations (or book nodes) whose checks prove it.
+   Then recompile once:
+   `ostler qa compile-plan --spec {{ workhorse_var('spec_dir') }} [--select <id> ...] --cover ac:N=<id>[,<id>...] ... --out {{ workhorse_var('spec_dir') }}/qa_plan.py --replace`,
+   where an id is an obligation id or its book node, and `--select` drops an obligation that
+   lies outside the story. A criterion no obligation proves gets a scenario: in the book when
+   the book can state it (then recompile), by hand in `qa_plan.py` after the last recompile
+   otherwise. Do not rewrite the compiled plan. Change only the scenarios a criterion or a
+   failure needs. A compiled scenario that is wrong is a book defect: repair the book node and
+   recompile. A recompile replaces the file, so a scenario written by hand goes in after your
+   last recompile. Nobody reviews the scenarios you write. Run `ostler qa lint` and
    `ostler qa validate` on the plan.
 2. **Run.** Stand the stack up with the setup brief below when the report names a context or
    stack failure, or a runner requirement. The workflow rebuilds the context packet before
@@ -218,7 +221,7 @@ result.
 
 ## The checks after this turn
 
-The workflow rebuilds and validates the context packet and checks the stack. It lints and
+The workflow rebuilds and validates the context packet and checks the stack. It lints
 and validates the plan. Then it runs the plan again, scored. A failed run with findings ends QA, and the findings go to the dev owner. A
 passed run must also clear the evidence verification, the operator's feedback, the
 regression suites and the sentinel ids. Whatever fails comes back to you as the next turn in

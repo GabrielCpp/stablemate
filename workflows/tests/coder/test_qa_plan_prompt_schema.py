@@ -180,6 +180,8 @@ def test_the_owner_prompt_is_one_lean_turn_over_the_compiled_plan():
     text = (prompt / "qa-story.md").read_text()
     assert "ostler qa compile-plan" in text
     assert "--select" in text
+    assert "--cover ac:N=" in text
+    assert "Do not rewrite the compiled plan" in text
     assert "--replace" in text
     assert "jira-comment.md" in text
     assert not (prompt / "_qa-audit-brief.md").exists()

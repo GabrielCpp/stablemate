@@ -87,9 +87,11 @@ wall-clock bound and a silence limit. The turn reads the story, the spec directo
 verification setup, the fixtures, the QA run plan, the QA tool catalog and the last report. It is
 granted only the repositories the plan touches. It also learns whether a standing `qa_plan.py`
 already lints and validates, so it starts from that plan rather than authoring a new one. The
-compiled plan counts as standing. The owner narrows it with `ostler qa compile-plan --select
---replace` when an obligation lies outside the story, repairs a wrong scenario in the book and
-recompiles, and writes a scenario the compile lacks into the book or, when the book cannot
+compiled plan counts as standing. The owner names, for each Acceptance Criterion, the obligations whose checks prove it and recompiles
+once with `ostler qa compile-plan --cover ac:N=<id>[,<id>...] --replace`, so the compiler writes the
+criterion into the coverage of those checks and the owner does not rewrite the plan. It adds
+`--select` when an obligation lies outside the story, repairs a wrong scenario in the book and
+recompiles, and writes a scenario for a criterion no obligation proves into the book or, when the book cannot
 state it, into `qa_plan.py` after its last recompile. Nobody reviews those scenarios. It records
 the result in `qa.md` and in `jira-comment.md`, which names each Acceptance Criterion, its
 verdict and the evidence path that proves it. The stack's
