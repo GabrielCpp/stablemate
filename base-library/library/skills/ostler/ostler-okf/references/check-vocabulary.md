@@ -46,6 +46,12 @@ citation inside an unbalanced code span — is still reported and still yours to
 Excludes a branch that returns the right shape under the wrong status, and an error response
 distinguished from its siblings only by a body nobody read.
 
+**`title=` is a value the reply carries, not a label for the row.** The check compares it with
+the `title` field of the JSON reply body, the field a problem-details error carries. A reply
+with no `title` field fails the check whatever its status. To name what a row is about, write
+it in the claim's prose. To check an error body of another shape, add a `json_path` row on its
+field.
+
 **A request is identified by its method and its path, not its path alone.** On the `web`
 driver, `path=` selects which of the page's own exchanges a `verify:` row is about — see
 "Selecting an exchange on a page" below — and a page that creates a thing and then lists it
