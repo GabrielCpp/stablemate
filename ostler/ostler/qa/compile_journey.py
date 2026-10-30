@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 
 from ostler import reach
 from ostler.qa.book_index import BookIndex
+from ostler.qa.book_index import walk_fixtures
 from ostler.qa.compile_cli import cli_journey
 from ostler.qa.dispatch import claim_driver
 from ostler.qa.dispatch import dispatch_target
@@ -289,7 +290,8 @@ def journey_scenarios(
             continue
         emitted.covered.update(walked.covered)
         lines.extend(target_lines(bound.target_var, backend.driver, bound.target_kwargs, emitted))
-        lines.extend(journey_scenario(source, bound.target_var, ids, walked, arrangement.rows, obligations[0].intercepts))
+        arranged = [*arrangement.rows, *walk_fixtures(walked.lines, arrangement.rows, plan.book)]
+        lines.extend(journey_scenario(source, bound.target_var, ids, walked, arranged, obligations[0].intercepts))
     return lines
 
 

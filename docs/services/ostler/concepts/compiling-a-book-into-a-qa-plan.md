@@ -33,7 +33,7 @@ arguments — `argv`, `cwd=qa.scenario_checkout_copy()`, and, when the act decla
 environment the book's `invoke` act names, in both `cli_scenario_body` and `cli_journey`. `compile_page.py`'s `page_scenarios` builds a web-UI check, holding a
 conditional or mutually-exclusive component's obligations together (`_node_claims`,
 `_shared_shape`) and inserting a navigation step before the assertion when the obligation is not
-already on the right screen (`_arrival_scenario`); `web_state_walks` compiles a `DataState`
+already on the right screen (`_arrival_scenario`). When the walk's acts read a fixture's fact, the scenario arranges that fixture once before the first navigation, merged with the fixtures the claims carry. `web_state_walks` compiles a `DataState`
 screen-to-screen walk. `compile_playwright.py` supplies what `compile_page.py` emits into each
 scenario body: `perform_acts` renders a book's `acts:` into Playwright action lines,
 `page_observations` renders one assertion from a locator and a check call, and `web_walk` compiles
@@ -92,8 +92,8 @@ its first hop.
 - code: ostler/ostler/qa/compile_cli.py::cli_journey@479bda09f64c
 - code: ostler/ostler/qa/compile_cli.py::_run_arguments@479bda09f64c
 - code: ostler/ostler/qa/compile_cli.py::invoke_env_names@479bda09f64c
-- code: ostler/ostler/qa/compile_page.py::page_scenarios@606b70054ffc
-- code: ostler/ostler/qa/compile_page.py::web_state_walks@606b70054ffc
+- code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
+- code: ostler/ostler/qa/compile_page.py::web_state_walks@8e3a88f1d3a8
 - code: ostler/ostler/qa/compile_playwright.py::perform_acts@373cfbcaf3e9
 - code: ostler/ostler/qa/compile_playwright.py::page_observations@373cfbcaf3e9
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@373cfbcaf3e9
@@ -103,10 +103,10 @@ its first hop.
 - code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@b5e05dbd5366
 - code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
 - code: ostler/ostler/qa/compile_moves.py::state_walks@357b72ed93c7
-- code: ostler/ostler/qa/compile_journey.py::journey_target@421ed1147b57
-- code: ostler/ostler/qa/compile_journey.py::api_target@421ed1147b57
-- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
-- code: ostler/ostler/qa/compile_journey.py::journey_scenario@421ed1147b57
+- code: ostler/ostler/qa/compile_journey.py::journey_target@bab75359ba6d
+- code: ostler/ostler/qa/compile_journey.py::api_target@20652e710dad
+- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@a83239a8b983
+- code: ostler/ostler/qa/compile_journey.py::journey_scenario@08d7dd7c2661
 - code: ostler/ostler/qa/compile_stops.py::resolve_stop@e2a0b2312b45
 - code: ostler/ostler/qa/compile_stops.py::resolve_state@e2a0b2312b45
 - code: ostler/ostler/qa/compile_stops.py::ScreenStop@e2a0b2312b45
@@ -123,8 +123,8 @@ its first hop.
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@59e7ee8278ae
 - code: ostler/ostler/qa/obligation_frame.py::obligation_frame@59e7ee8278ae
 - code: ostler/ostler/qa/obligation_frame.py::BookNode@59e7ee8278ae
-- code: ostler/ostler/qa/book_index.py::BookIndex@dd91e95d2722
-- code: ostler/ostler/qa/book_index.py::node_acts@dd91e95d2722
+- code: ostler/ostler/qa/book_index.py::BookIndex@0153e17c3795
+- code: ostler/ostler/qa/book_index.py::node_acts@734a965ada9c
 - code: ostler/ostler/qa/book_fixtures.py::resolved@26e58a44f4ed
 - code: ostler/ostler/qa/journey_steps.py::journey_steps@0794ea6c9659
 - code: ostler/ostler/qa/fixture_provides.py::closure@9053b42918c0

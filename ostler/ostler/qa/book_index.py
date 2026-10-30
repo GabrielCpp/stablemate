@@ -7,10 +7,12 @@ from dataclasses import dataclass
 from dataclasses import field
 
 from ostler import registry
+from ostler.qa import references
 from ostler.data_states import DataState, Move
 from ostler.passages import Passage
 from ostler.qa.compile_support import on_node
 from ostler.qa.obligation import CallRow
+from ostler.qa.obligation import FixtureRow
 from ostler.qa.obligation import Locators
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Gap
@@ -41,6 +43,7 @@ class BookIndex:
     outcomes_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     invocation_claims: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     fixture_pages: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    fixture_rows: dict[str, FixtureRow] = field(default_factory=dict[str, FixtureRow])
     hop_acts: dict[tuple[str, str], list[CallRow]] = field(default_factory=dict[tuple[str, str], list[CallRow]])
     fragment_hosts: dict[str, str] = field(default_factory=dict[str, str])
     guards_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
@@ -180,6 +183,22 @@ def fixture_pages(obligations: list[Obligation], *, rebuilt: frozenset[str] = fr
                 continue
             pages.setdefault(row.name, set()).add(obligation.source)
     return {name: frozenset(sources) for name, sources in pages.items()}
+
+
+def fixture_rows(obligations: list[Obligation]) -> dict[str, FixtureRow]:
+    """Each fixture a claim of the book names, by name, as the book's last claim to name it spells it."""
+    return {row.name: row for obligation in obligations if _is_declared_claim(obligation) for row in obligation.fixtures}
+
+
+def walk_fixtures(walk: list[str], arranged: list[FixtureRow], book: BookIndex) -> list[FixtureRow]:
+    """The declared fixtures the acts in *walk* read a fact from that *arranged* does not already hold, once each."""
+    held = {row.name for row in arranged}
+    needed: dict[str, FixtureRow] = {}
+    for line in walk:
+        for reference in references.find_references(line):
+            if isinstance(reference, references.NodeRef) and reference.node not in held and reference.node in book.fixture_rows:
+                needed.setdefault(reference.node, book.fixture_rows[reference.node])
+    return list(needed.values())
 
 
 def queries_by_node(obligations: list[Obligation]) -> dict[str, str]:

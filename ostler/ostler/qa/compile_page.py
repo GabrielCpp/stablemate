@@ -8,6 +8,7 @@ from typing import Literal
 from ostler import acts as acts_mod
 from ostler import values as values_mod
 from ostler.qa.book_index import BookIndex
+from ostler.qa.book_index import walk_fixtures
 from ostler.qa.compile_http import condition_lines
 from ostler.qa.compile_playwright import MARK_LINE
 from ostler.qa.compile_playwright import WINDOW_VAR
@@ -285,10 +286,11 @@ def _state_walk(
     if stop is None:
         return []
     screen = _PageScreen(book, page, shown_on, screen_path, target_variable(state.surface, "web"))
-    arrival = _arrive(screen, arranged.rows, gaps, [state.id])
-    if arrival is None:
+    arrived = _arrive(screen, arranged.rows, gaps, [state.id])
+    if arrived is None:
         return []
-    opening = len(arranged.rows) if len(arrival) > len(arranged.rows) else 0
+    arrival = arrived.lines
+    opening = len(arrived.rows) if len(arrival) > len(arrived.rows) else 0
     title = " ".join(stop.title.split()).replace("\\", "").replace('"', "'")
     conditions = condition_lines([state], book, gaps)
     if conditions is None:
@@ -296,7 +298,7 @@ def _state_walk(
     covered.add(state.id)
     return [
         *_scenario_head(screen.target_var, [state.id], covered,
-                        [python_literal(row.precondition) for row in arranged.rows]),
+                        [python_literal(row.precondition) for row in arrived.rows]),
         f"def {function_name}(qa: Qa) -> None:",
         f'    """Arrive at {shown_on} via the book\'s own navigation, check it settles in {title} and vet it there."""',
         "",
@@ -386,20 +388,33 @@ def _walk_acts(hops: tuple[NavHop, ...], destination: str, book: BookIndex) -> b
     )
 
 
+@dataclass(frozen=True)
+class _Arrived:
+    """The fixtures an arrival arranges, the ones the book's navigation acts needed included, and the lines that arrange them and open the screen."""
+    rows: list[FixtureRow]
+    lines: list[str]
+
+
+def _arrived(arranged: list[FixtureRow], door: list[str], walk: list[str], book: BookIndex) -> _Arrived:
+    """Arrange *arranged*, then the fixtures *walk* reads from, then *door* and *walk*."""
+    rows = [*arranged, *walk_fixtures(walk, arranged, book)]
+    return _Arrived(rows, [*(fixture_call(row) for row in rows), *door, *walk])
+
+
 def _arrive(
     screen: _PageScreen, arranged: list[FixtureRow], gaps: list[Gap], ids: list[str], *, visits: bool = False,
-) -> list[str] | None:
-    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture that drives the browser already left it there or on its route. A fixture that left the browser off the route reopens the nearest entry path on it rather than the root, so the walk does not sign in again. With no such entry, a walk from the root that performs acts on the way is refused as a gap, and None is returned: those acts, such as a sign-in, would replace the session the fixture left."""
-    fixtures = [fixture_call(row) for row in arranged]
+) -> _Arrived | None:
+    """Arrange the fixtures, then open the surface's root and click through to the screen, unless the scenario's own first act visits it or the last fixture that drives the browser already left it there or on its route. A fixture that left the browser off the route reopens the nearest entry path on it rather than the root, so the walk does not sign in again. With no such entry, a walk from the root that performs acts on the way is refused as a gap, and None is returned: those acts, such as a sign-in, would replace the session the fixture left. A fixture the walk's acts read a fact from is arranged ahead of the walk when the book declares it and the arrangement does not already hold it."""
     landed = screen.book.left_on([row.name for row in arranged])
     if visits or landed == screen.screen:
-        return fixtures
+        return _arrived(arranged, [], [], screen.book)
     onward = hops_from(screen.path.hops, landed)
     if onward is not None:
-        return [*fixtures, *walk_hops(onward, screen.screen, screen.book, gaps, ids)]
+        return _arrived(arranged, [], walk_hops(onward, screen.screen, screen.book, gaps, ids), screen.book)
     if landed is not None and screen.path.reopened is not None:
         door, rest = screen.path.reopened
-        return [*fixtures, f"    qa.goto({python_literal(door)})", *walk_hops(rest, screen.screen, screen.book, gaps, ids)]
+        return _arrived(arranged, [f"    qa.goto({python_literal(door)})"],
+                        walk_hops(rest, screen.screen, screen.book, gaps, ids), screen.book)
     if landed is not None and _walk_acts(screen.path.hops, screen.screen, screen.book):
         gaps.extend(Gap(oid, "unresolved-precondition",
                          f"fixture {arranged[-1].name!r} leaves the browser on {landed!r}, off the route to "
@@ -409,11 +424,8 @@ def _arrive(
                          "the fixture on the route")
                     for oid in ids)
         return None
-    return [
-        *fixtures,
-        f"    qa.goto({python_literal(screen.path.root_path)})",
-        *walk_hops(screen.path.hops, screen.screen, screen.book, gaps, ids),
-    ]
+    return _arrived(arranged, [f"    qa.goto({python_literal(screen.path.root_path)})"],
+                    walk_hops(screen.path.hops, screen.screen, screen.book, gaps, ids), screen.book)
 
 
 def _arrival_scenario(
@@ -429,9 +441,10 @@ def _arrival_scenario(
     arranged = arrangement_of(obligations).rows
     first_acts = [screen.book.acts_by_node.get(node_id, []) for node_id in sorted(arrival.nodes)]
     visits = bool(first_acts) and bool(first_acts[0]) and first_acts[0][0].name == "visit"
-    body = _arrive(screen, arranged, gaps, ids, visits=visits)
-    if body is None:
+    arrived = _arrive(screen, arranged, gaps, ids, visits=visits)
+    if arrived is None:
         return []
+    body = arrived.lines
     if not visits:
         body.extend(vet_calls([screen.screen], screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts))
     refused: set[str] = set()
@@ -464,11 +477,11 @@ def _arrival_scenario(
         return []
     body.extend(conditions)
     if needs_window(observed.lines):
-        body.insert(len(arranged), f"    {WINDOW_VAR} = qa.window()")
+        body.insert(len(arrived.rows), f"    {WINDOW_VAR} = qa.window()")
     covered.update(observed.covered)
     return [
         *_scenario_head(screen.target_var, ids, observed.covered,
-                        [python_literal(row.precondition) for row in arranged]),
+                        [python_literal(row.precondition) for row in arrived.rows]),
         f"def {arrival.name}(qa: Qa) -> None:",
         f'    """Arrive at {screen.screen} via the book\'s own navigation and check what it shows."""',
         "",
@@ -640,9 +653,10 @@ def _interaction_scenario(
     arranged = arrangement_of([*book.guards_by_node.get(node_id, []), *book.setups_by_node.get(node_id, []),
                                *obligations]).rows
     node_acts = book.acts_by_node.get(node_id, [])
-    arrived = _arrive(screen, arranged, gaps, ids, visits=bool(node_acts) and node_acts[0].name == "visit")
-    if arrived is None:
+    arrival = _arrive(screen, arranged, gaps, ids, visits=bool(node_acts) and node_acts[0].name == "visit")
+    if arrival is None:
         return []
+    arrived = arrival.lines
     trigger = _performed_trigger(book, node_id, arm, gaps, ids)
     if trigger is None:
         return []
@@ -656,7 +670,7 @@ def _interaction_scenario(
     departure = [] if observed.documents else vet_calls([screen.screen], book.screen_routes, ids, gaps, book.fragment_hosts)
     body = [*arrived, *conditions, *trigger.setup, *departure, *window, *trigger.action]
     covered.update(observed.covered)
-    preconditions = [python_literal(row.precondition) for row in arranged]
+    preconditions = [python_literal(row.precondition) for row in arrival.rows]
     if arm.when:
         preconditions.append(python_literal(arm.when))
     return [
