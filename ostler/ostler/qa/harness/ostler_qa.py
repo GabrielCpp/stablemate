@@ -674,6 +674,12 @@ class Http:
     def delete(self, path: str, **kwargs: Any) -> Response:
         return self.request("DELETE", path, **kwargs)
 
+    def head(self, path: str, **kwargs: Any) -> Response:
+        return self.request("HEAD", path, **kwargs)
+
+    def options(self, path: str, **kwargs: Any) -> Response:
+        return self.request("OPTIONS", path, **kwargs)
+
 
 def _allowed_statuses(expect_status: int | Sequence[int] | None) -> set[int] | None:
     if expect_status is None:

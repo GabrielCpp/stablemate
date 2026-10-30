@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 
+from ostler.qa.compile_http import HTTP_METHODS
 from ostler.qa.harness_host import load_harness_module
 
 HARNESS_DIR = Path(__file__).resolve().parents[1] / "ostler" / "qa" / "harness"
@@ -97,6 +98,12 @@ def _run(module: Path, scenario_id: str, tmp_path: Path) -> tuple[int, list[dict
         "run", str(module), scenario_id, context, records_to=tmp_path / "records.jsonl"
     )
     return code, records
+
+
+@pytest.mark.parametrize("verb", HTTP_METHODS)
+def test_the_http_client_sends_every_verb_the_compiler_emits(verb: str) -> None:
+    harness = load_harness_module("ostler_qa")
+    assert callable(getattr(harness.Http, verb.lower(), None))
 
 
 def test_describe_emits_the_declaration_set(tmp_path: Path) -> None:
