@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from ostler import graph as graph_mod
+from ostler import refs as refs_mod
 from ostler import registry
 from ostler.model import Graph, load
 from ostler.qa import context as context_mod
@@ -281,6 +282,40 @@ def test_a_repo_root_dotfile_no_node_cites_is_not_an_unmapped_change(tmp_path: P
 
     assert packet["changedCode"] == []
     assert "unmapped-change" not in [f["kind"] for f in packet["healthFindings"]]
+
+
+def test_a_change_set_of_only_test_runner_files_has_no_unmapped_change(tmp_path: Path):
+    """The gate and doctor share one definition of test source, so a path doctor forbids in `code:` is never demanded by the gate."""
+    base = _owning_repo(
+        tmp_path,
+        "---\ntype: concept\ntitle: Item\n---\n# Item\n\n- code: `web/app/main.ts`\n",
+        "web/e2e/helpers.ts",
+    )
+    for extra in ("web/playwright.config.ts", "web/vitest.config.ts"):
+        (tmp_path / extra).write_text("after\n", encoding="utf-8")
+    _git(tmp_path, "add", "-N", ".")
+
+    packet = build_context(tmp_path, base=base, source_roots={"demo": ["web", "."]})
+
+    assert packet["changedCode"] == []
+    assert "unmapped-change" not in [f["kind"] for f in packet["healthFindings"]]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        *(f"web/{folder}/helper.ts" for folder in sorted(refs_mod.TEST_DIRS)),
+        "web/__mocks__/api.ts",
+        *(f"web/src/thing{suffix}" for suffix in refs_mod.TEST_SUFFIXES),
+        *(f"web/{prefix}config.ts" for prefix in refs_mod.TEST_PREFIXES),
+        *(f"web/{name}" for name in refs_mod.TEST_FILES),
+    ],
+)
+def test_every_test_source_is_non_production_for_the_gate(path: str):
+    from ostler.qa.context import _is_non_production_path
+
+    assert refs_mod.is_test_source(path)
+    assert _is_non_production_path(path)
 
 
 def test_a_nested_dotfile_under_a_source_root_stays_production(tmp_path: Path):

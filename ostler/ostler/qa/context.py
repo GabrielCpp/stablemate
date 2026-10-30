@@ -1756,6 +1756,9 @@ def _verification_refs(node: BookNode) -> list[str]:
 
 
 def _is_non_production_path(path: str) -> bool:
+    """Whether a changed path is not production code: every test source doctor refuses in ``code:``, plus mocks, docs, locks and tooling."""
+    if refs_mod.is_test_source(path):
+        return True
     candidate = path.lower()
     parts = Path(candidate).parts
     non_production_dirs = {
