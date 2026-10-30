@@ -1,6 +1,6 @@
 ---
 name: research-study
-description: "Running a research or optimization loop alone until the operator's question is answered, and reporting what was tried, what worked and what did not: a working directory that holds the question and its done-condition, a mandatory TRIED.md in plain words, a frozen yardstick, a profile before any hypothesis, several framings of the question written in isolation, a field of original candidates, a paper gate that discards a candidate that answers another question or cannot succeed by construction, single-variable probes cheapest-decisive first, a ledger that keeps every failure, a projection of each result against the question, and a loop that starts the next study when one dies. Load when told to find a way to make something faster, cheaper or better, when handed a goal or research question to pursue without the operator, when a measurement comes back and the next step is unclear, or when the last hours went to making an experiment runnable rather than to results."
+description: "Running a research or optimization loop alone until the operator's question is answered or its budget is spent, and reporting what was tried, what worked and what did not: a budget in money and hours written before the first probe, a mandatory TRIED.md in plain words, a frozen yardstick, a profile before any hypothesis, an instrument collapsed to the smallest stage that reads the variable, framings of the question written in isolation, a field of original candidates, a paper gate that discards a candidate that answers another question or cannot succeed by construction, single-variable probes cheapest-decisive first, a release rule that drops an approach once its share of the budget is gone, and a ledger that keeps every failure with its spend. Load when told to find a way to make something faster, cheaper or better, when handed a goal or research question to pursue without the operator, when a measurement comes back and the next step is unclear, or when the last hours went to apparatus rather than to results."
 argument-hint: "[the question, or the purpose: what must improve, by how much, over what workload]"
 tags: [research, process]
 ---
@@ -13,10 +13,10 @@ result is one row in it.
 
 The operator hands over a question, not a study. The skill runs as a **loop**: when one
 study ends without answering the question, the next one starts from the field without
-asking. The operator reads one file, `TRIED.md`, and hears from the loop only when a
-method dies, a method wins, or the loop stops.
+asking, inside the budget that remains. The operator reads one file, `TRIED.md`, and hears
+from the loop only when a method dies, a method wins, or the loop stops.
 
-Eight traps turn a study into one idea pursued for days, or into days with no result:
+Ten traps turn a study into one idea pursued for days, or into days with no result:
 
 - **The first idea wins.** One plausible fix absorbs the session, and the rest of the field
   is never compared against it.
@@ -37,9 +37,15 @@ Eight traps turn a study into one idea pursued for days, or into days with no re
   paper before anything ran.
 - **The method eats the time.** Framings, cards and checker rounds multiply, each one
   correct by its own rule, and no probe runs.
+- **The instrument is the whole system.** A change to one stage is read by running every
+  stage, so each reading costs a whole run, and the study affords five readings a day.
+- **Patience replaces judgement.** The agent waits out any run and tries any approach once
+  more, because nothing in its own view runs out. The operator's money and quota do.
 
 You do not perceive wall-clock time. A 15-minute command and a 1-minute command reach you
-as one result each. The ledger's timestamps are how you see time. Read them.
+as one result each. The ledger's timestamps are how you see time. Read them. You do not
+perceive money either. Every probe, every agent you brief and every turn you spend
+attending draws on the operator's budget, and the ledger's `usd` field is how you see it.
 
 ## The question is the work
 
@@ -119,8 +125,15 @@ shortfall, with the reference it is measured to and a **resolution floor**.
 [references/measurement.md](references/measurement.md) holds the rule under "A purpose
 stated as a share". Read it before writing a purpose that compares against a control.
 
-Add a date. After it, an unmet purpose ends the study as banked or negative, and the loop
-takes the next candidate. The date is never extended.
+Then write the **budget**: the money and the wall hours the whole loop may spend, every
+probe, every briefed agent and the attending turns counted. The operator's figure wins when
+there is one. Without one, the budget is a share of what the answer is worth: the saving the
+purpose promises over the horizon the operator named, and never more than a tenth of it. A
+budget that would not buy three readings of the cheapest decisive probe calls for a cheaper
+instrument, found in step 4b, or for a question to the operator before anything runs. The
+ledger spends the budget down row by row, and the loop never extends it. At half of it with
+no verdict, a reflection fires. At all of it, the study ends banked or negative and the loop
+stops. Add a date, which works the same way.
 
 A plan meets its date and its budget at the load the machine has shown during the study,
 never at idle. The rule is under "A plan at the measured load" in
@@ -129,7 +142,7 @@ another process shares.
 
 Done when `QUESTION.md` holds the question and its done-condition, and the study's
 sentence carries a target, its reference, a resolution floor if it is a share, a workload
-size and a date.
+size, a budget in money and hours, and a date.
 
 ## 3. Freeze the yardstick
 
@@ -173,6 +186,38 @@ the machine at hand reads it in minutes. Framings cite the measure. "Deciding ra
 [references/timing.md](references/timing.md) lists the rates and what each record holds.
 
 Done when the top cost items are named with their share of the total.
+
+## 4b. Collapse the instrument
+
+A probe changes one variable, and the variable lives in one place: one stage, one turn, one
+prompt, one call. The **instrument** is the smallest apparatus that reads the variable at
+the resolution the purpose needs. Run the whole system only when the variable is the whole
+system.
+
+Build the instrument by isolating. Freeze every input the variable's stage receives from
+upstream, once, as a fixture, and cut everything downstream that the reading does not need.
+Then collapse down the ladder as far as the reading survives:
+
+| Rung | Runs | Reads |
+| --- | --- | --- |
+| whole system | every stage on a real unit | the purpose itself |
+| one stage | the stage on its frozen inputs | the stage's cost and output |
+| one turn | one prompt on a frozen context | what the turn does and spends |
+| a trace | nothing: the record of a run already paid for | what happened, replayed under the change on paper |
+
+Each rung down costs about an order of magnitude less and loses something the purpose may
+need. Take the cheapest rung that still reads the variable against the yardstick. A reading
+the trace already holds is never bought again from a run. A change proven on one stage is
+confirmed on the whole system once, at the end, and not at every probe.
+
+Price the instrument before any probe runs: its cost per reading in money and minutes, read
+from one run of it. That price, times the readings the field needs, is held against the
+budget. When it does not fit, collapse further or shrink the field. A probe whose instrument
+costs more than a tenth of the budget says in its registration why no lower rung reads the
+variable.
+
+Done when the instrument for the top cost item is named with its rung, its price per
+reading, and the fixture that freezes its inputs.
 
 ## 5. Frame the question, then map the field
 
@@ -385,14 +430,16 @@ estimates, and run the cheapest first. A long job in the background is not free:
 three-minute check can make its answer moot, and then the long job is apparatus for
 nothing.
 
-Change one variable per probe, on the frozen yardstick. Before each probe, write two
-things into its ledger row:
+Change one variable per probe, on the frozen yardstick, through the instrument of step 4b.
+Before each probe, write two things into its ledger row:
 
 - **What it settles.** "A result of ⟨X⟩ on ⟨clause, quoted⟩ settles ⟨claim⟩." A probe
   whose sentence quotes no clause is `exploration`, labelled so, and that label is a
   finding about the probe's reach, not a failure. The sentence never argues a gap away. A
   gap is a line under `gaps` or it is an open finding.
-- **The estimate.** Wall minutes, from the profile or a timed single unit.
+- **The estimate.** Wall minutes and money, from the instrument's price. A probe that
+  passes twice its estimate is stopped, its row keeps the partial reading, and the broken
+  estimate is a finding about the instrument.
 
 Run anything over a few minutes as a background job with its log in `logs/`, and do cheap
 work while it runs. Combine winners only after each has won alone, and measure the
@@ -404,7 +451,8 @@ One ledger row per step, appended before the step starts and completed when it e
 command that appends the row takes the start time from `date -Iseconds`, so the row exists
 before the work does. A row written after the step began says its start is reconstructed.
 Each row carries its `kind`: `decisive`, `exploration`, `apparatus`, `design-check` or
-`reflection`, defined in [references/ledger.md](references/ledger.md).
+`reflection`, defined in [references/ledger.md](references/ledger.md), and its `usd`, the
+spend it drew from the budget, read from the host's usage record at its start and its end.
 
 A failed probe keeps its row with the reason it failed. The row is the report. The row
 format is in [references/ledger.md](references/ledger.md).
@@ -440,7 +488,10 @@ retained replies and its number goes into the row's `checked` field. The rule is
 
 Write a `reflection` row when any of these fires:
 
-- a step ran more than 3× its estimate,
+- a probe passed twice its estimate,
+- the budget is half spent with no verdict,
+- a candidate's spend reached its cap, or two probes on it moved less than the resolution
+  floor,
 - two hours of wall time passed since the last reflection,
 - `apparatus` holds more than half the time since the last reflection, with the paper
   work of steps 5 and 6 counted as apparatus,
@@ -452,8 +503,17 @@ A reflection starts by rereading `QUESTION.md`. It then answers six questions: w
 the operator have in hand if the loop stopped now, where did the time go, what has been
 settled, is the current path still the cheapest route to the done-condition, does the
 yardstick still measure the question, and does the framing in `QUESTION.md` still pass
-both paper gates. If a cheaper route exists, name it and take it. Continuing is a decision
-the reflection has to argue for.
+both paper gates. If a cheaper route exists, name it and take it. Continuing on the current
+path is a decision the reflection argues for in numbers: the readings the budget still
+buys, and what each one settles.
+
+**Release before patience.** A candidate is released, and its `TRIED.md` line written, when
+its kill result fires, when two probes on it moved less than the resolution floor, or when
+its spend reaches its cap. The cap is set at registration: the candidate's expected gain as
+a share of the field's total, times the budget left. The spend on a released candidate
+never argues for one more probe on it. The next probe runs the next mechanism in the field,
+from another framing. Releasing is what the budget buys. Sitting out a run that is past its
+estimate, or trying the released idea again with more of the same, is what patience buys.
 
 When the paper work holds the time and no probe has run, the cheaper route is a probe.
 Take the surviving candidate with the cheapest kill result and run it. Its reading
@@ -485,8 +545,9 @@ Write the study's report from the ledger into `reports/`. The format is in
 [references/report.md](references/report.md). Update `TRIED.md`. Then tell the operator in
 a few lines: what died or won, and what the loop takes next. A verdict that names what has to
 replace the current shape is a design, and when the study runs inside a [[self-improve]]
-cycle the build is that cycle's next step. "Needs building" is not a verdict. Take the next candidate from
-`FIELD.md` and start the next study at step 2. When the study died of its framing, update
+cycle the build is that cycle's next step. "Needs building" is not a verdict. Take the next
+candidate from `FIELD.md` and start the next study at step 2, inside the budget left, and
+only when that budget holds at least three readings of the candidate's instrument. When the study died of its framing, update
 `FRAMINGS.md` first, and take the next candidate from another framing. The next study does
 not start from a neighbour of the framing that just failed.
 
@@ -495,7 +556,8 @@ The loop stops only when:
 - the done-condition in `QUESTION.md` is met, with a reached study as its evidence,
 - the field is exhausted and a refill under step 5 produced no candidate absent from
   `TRIED.md`, which answers the question in the negative,
-- the next step would spend money beyond a budget the operator agreed.
+- the budget or the date in `QUESTION.md` is spent, and the report prices what the field
+  still holds, so the operator can fund the next study or close the question.
 
 When the host offers a self-paced loop, each wake-up reads the working directory as in
 step 1 and continues. A wake-up with a background job still running does cheap work from

@@ -28,6 +28,7 @@ when the step ends. Never delete a row.
 | `findings` | for `design-check` only: each as a predicate the checker can run again, with `open` or the row that closed it |
 | `serves` | for `apparatus` only: the decisive step it makes runnable, or `the study` for setup every step needs, such as a snapshot commit |
 | `estimate_min` | wall minutes expected, written before the step starts |
+| `estimate_usd`, `usd` | money expected, written before the step starts, and money spent, read from the host's usage record at `start` and `end` |
 | `actual_min` | `end` minus `start` in minutes, computed from the two timestamps and never written by hand |
 | `outcome` | the result, projected against the purpose |
 | `commit` | the commit the step ran on, when it ran code |
@@ -58,9 +59,9 @@ only the checker can read.
 
 The ledger answers the efficiency questions without a model call:
 
-- decisive results per wall hour,
+- decisive results per wall hour, and budget spent per decisive result,
 - the share of wall time per `kind`,
-- every step whose `actual_min` exceeded 3× its `estimate_min`.
+- every step whose `actual_min` or `usd` exceeded twice its estimate.
 
 Compute them with a one-off `jq` or Python expression when writing the report.
 
