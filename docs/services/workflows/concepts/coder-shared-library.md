@@ -12,7 +12,7 @@ initializer; the individual modules below own the behavior and models they provi
 - code: `workflows/src/workhorse_workflows/coder/shared/__init__.py::__all__` @e517b81d10c2
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @b083ae1394dd
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @67580925bd96
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @606353689417
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @d00d86117cea
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @df9c5dcbeacb
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @df9c5dcbeacb
 - detail: [coder queue run scope](../formats/coder-queue-run-scope.md)
@@ -275,6 +275,23 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - returns: whether the plan record was committed
 - verify: json_path(path="$.committed", equals=true)
 - code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_plan_record` @7c3b43db1590
+
+### commit_spec_delta
+
+- sig: `commit_spec_delta(logger: logging.Logger, epic: str = "", story_slug: str = "", spec_dir: str = "", preexisting: list[str] | None = None, repo_dir: str = "", workspace: str = "", story_id: str = "") -> StoryCommitted`
+- does: commits every uncommitted path under the book's services root in each repository the story's plan names, and in the docs repository when it is a separate checkout, as a `docs` commit named `specify <slug> in the book`
+- verify: persists(subject="the committed spec delta")
+- does: leaves out application source
+- does: leaves out a path that was dirty at story start and still holds the bytes it held then
+- does: names the commit's `story=` field with `story_id` when given, falling back to `story_slug`
+- does: commits without running the repository's hooks
+- does: commits nothing and logs that when no book path is uncommitted
+- verify: json_path(path="$.committed", equals=false)
+- returns: whether a spec delta was committed
+- verify: json_path(path="$.committed", equals=true)
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_spec_delta` @b3e765a2480b
+- tests: `workflows/tests/coder/shared/test_story_commit.py::test_the_spec_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_rest`
+- tests: `workflows/tests/coder/test_workflow.py::test_the_spec_passs_book_page_is_committed_before_dev_starts`
 
 ### commit_story
 

@@ -280,3 +280,62 @@ def test_the_leftovers_commit_has_nothing_to_land_when_nothing_is_dirty(
     )
 
     assert not result.committed
+
+
+def test_the_spec_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_rest(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    write(repo / "docs" / "services" / "app" / "stale.md", "# stale\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "stale page")
+    write(repo / "docs" / "services" / "app" / "stale.md", "# stale, edited before the story\n")
+    snapshot = [f"docs/services/app/stale.md\0{digest(repo, 'docs/services/app/stale.md')}"]
+    write(repo / "docs" / "services" / "app" / "server.md", SERVER_PAGE + "\nMore.\n")
+    write(repo / "docs" / "services" / "app" / "fresh.md", "# fresh\n")
+    write(repo / "src" / "server.py", "def run():\n    return 2\n")
+
+    result = story_commit.commit_spec_delta(
+        logger,
+        epic=EPIC,
+        story_slug=SLUG,
+        spec_dir=spec,
+        preexisting=snapshot,
+        repo_dir=str(repo),
+    )
+
+    assert result.committed
+    landed = git(repo, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
+    assert landed[0].startswith("docs(acme): specify STORY-1 in the book"), landed
+    assert sorted(line for line in landed[1:] if line) == [
+        "docs/services/app/fresh.md",
+        "docs/services/app/server.md",
+    ]
+    assert sorted(git(repo, "status", "--porcelain").stdout.splitlines()) == [
+        " M docs/services/app/stale.md",
+        " M src/server.py",
+    ]
+
+
+def test_the_spec_delta_commit_has_nothing_to_land_when_the_book_is_clean(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    write(repo / "src" / "server.py", "def run():\n    return 2\n")
+
+    result = story_commit.commit_spec_delta(
+        logger, epic=EPIC, story_slug=SLUG, spec_dir=spec, repo_dir=str(repo)
+    )
+
+    assert not result.committed
+    assert git(repo, "status", "--porcelain").stdout.strip() == "M src/server.py"

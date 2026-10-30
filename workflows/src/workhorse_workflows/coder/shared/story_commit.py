@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 
 from ostler import coverage, model, registry
+from ostler import path as okf_path
 from ostler import graph as graph_mod
 from ostler.qa.plan import scenario_covers
 from workhorse.pyflow import WorkflowFailed
@@ -357,6 +358,59 @@ def commit_leftovers(
 
 
 @blueprint.node
+def commit_spec_delta(
+    logger: logging.Logger,
+    epic: str = "",
+    story_slug: str = "",
+    spec_dir: str = "",
+    preexisting: list[str] | None = None,
+    repo_dir: str = "",
+    workspace: str = "",
+    story_id: str = "",
+) -> StoryCommitted:
+    """Commit the book pages the spec pass left uncommitted, so dev's clean-repo check never counts the spec as dev's leftovers."""
+    slug = story_slug or "story"
+    root = find_repo_root(repo_dir)
+    docs_root = find_docs_root(repo_dir)
+    book = okf_path.services_root_in(docs_root).resolve()
+    snapshot = tuple(preexisting or ())
+    held = _affected_roots(logger, root, spec_dir, workspace, repo_dir)
+    if not any(repo_path.resolve() == docs_root.resolve() for _, repo_path in held) and (
+        docs_root / ".git"
+    ).exists():
+        held.append((docs_root.name, docs_root))
+    committed = False
+    for name, repo_path in held:
+        excused = untouched_since(repo_path, snapshot)
+        rels = [
+            rel
+            for rel in _uncommitted(repo_path)
+            if rel not in excused and (repo_path / rel).resolve().is_relative_to(book)
+        ]
+        if not rels:
+            continue
+        message = commits.message(
+            "docs",
+            commits.scope(name),
+            f"specify {slug} in the book",
+            epic=registry.epic_slug(epic) or epic,
+            story=story_id or slug,
+        )
+        try:
+            landed = commit_paths(repo_path, message, *rels, verify=False)
+        except GitError as exc:
+            raise WorkflowFailed(
+                f"git refused the commit for {slug} in {repo_path}: {exc}"
+            ) from exc
+        if landed:
+            logger.info("committed %d book path(s) the spec pass wrote in %s", len(rels), name)
+        committed = committed or landed
+    if not committed:
+        logger.info("the spec pass left no uncommitted book path for %s", slug)
+    return StoryCommitted(committed=committed)
+
+
+@blueprint.node
 def stamp_story_passed(
     logger: logging.Logger,
     epic: str = "",
@@ -465,6 +519,7 @@ __all__ = [
     "check_repos_clean",
     "commit_leftovers",
     "commit_plan_record",
+    "commit_spec_delta",
     "commit_story",
     "leftover_text",
     "proof_scope",

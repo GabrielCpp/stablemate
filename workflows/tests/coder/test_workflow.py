@@ -27,6 +27,7 @@ from workhorse_workflows.coder.shared.queue import ALL_EPICS, begin_run, resolve
 from workhorse_workflows.coder.shared.story_commit import (
     check_repos_clean,
     commit_leftovers,
+    commit_spec_delta,
     stamp_story_passed,
 )
 from workhorse_workflows.coder.shared.story import prepare_story
@@ -205,6 +206,7 @@ class _Sub:
         docs_status: DocsStatus = "passed",
         docs_notes: str = "",
         docs_authored_nodes: list[str] | None = None,
+        spec_page: str = "",
         qa_status: QaFlowStatus = "passed",
         qa_statuses: list[QaFlowStatus] | None = None,
         qa_docs_recheck_required: bool = False,
@@ -220,6 +222,8 @@ class _Sub:
         self.docs_status: DocsStatus = docs_status
         self.docs_notes = docs_notes
         self.docs_authored_nodes = docs_authored_nodes or []
+        self.spec_page = spec_page
+        self.dirty_at_dev: list[str] = []
         self.qa_status: QaFlowStatus = qa_status
         self.qa_statuses: list[QaFlowStatus] = qa_statuses or []
         self.qa_docs_recheck_required = qa_docs_recheck_required
@@ -257,6 +261,7 @@ class _Sub:
 
 
     def _dev(self, child: _StubFlow) -> DevOutcome:
+        self.dirty_at_dev = _dirty(self.repo).splitlines()
         if self.changes:
             path = self.repo / "src" / f"{child.story}.py"
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -278,6 +283,10 @@ class _Sub:
         return DevOutcome(status=self.dev_status, operator_notes="rescope to the epic")
 
     def _docs(self, child: _StubFlow) -> DocsResult:
+        if self.spec_page and child.phase == "spec":
+            page = self.repo / self.spec_page
+            page.parent.mkdir(parents=True, exist_ok=True)
+            page.write_text("# written by the spec pass\n", encoding="utf-8")
         return DocsResult(
             status=self.docs_status,
             notes=self.docs_notes,
@@ -392,6 +401,25 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert (repo / "src" / "STORY-1.py").is_file()
     assert EPIC not in (epics_root() / "index.md").read_text(encoding="utf-8")
     assert _output(run_env, resolve_launch)["mode"] == "epic"
+
+
+def test_the_spec_passs_book_page_is_committed_before_dev_starts(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The workflow commits the spec pass's book delta, so dev's clean-repo check never counts the spec as dev's leftovers."""
+    repo = epic()
+    sub = _Sub(repo, spec_page="docs/services/app/widget.md").install(monkeypatch)
+    run_env = env()
+
+    drive_flow(Coder(), run_env, _Agent())
+
+    assert sub.dirty_at_dev == [], sub.dirty_at_dev
+    assert "docs(acme): specify STORY-1 in the book" in _subjects(repo), _subjects(repo)
+    assert _output(run_env, commit_spec_delta)["committed"] is True
+    assert _dirty(repo) == "", _dirty(repo)
 
 
 def test_the_dev_owner_is_handed_its_work_item_and_the_branch_it_lands_on(

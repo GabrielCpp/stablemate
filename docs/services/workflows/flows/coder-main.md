@@ -87,7 +87,8 @@ the helpers that file, find, replace and merge them.
 Each claimed item is snapshotted against pre-existing work, resolved to its story's paths, and
 sent through `specify`, `dev`, `document` and `qa`. `specify` runs the `Docs` flow in its spec
 phase: it writes the story's behaviour model and the book delta before any code, and records the
-nodes it wrote on the run. `dev` and the later `document` pass receive those nodes. `document`
+nodes it wrote on the run. The workflow then commits the book pages the pass left uncommitted, so
+`dev`'s clean-repo check never counts them as its leftovers. `dev` and the later `document` pass receive those nodes. `document`
 runs the same flow in its build phase, which grounds the book in the code and reconciles it with
 the build. A pr run hands `dev` the run branch to land on. A commit run hands it none. QA findings
 are filed against the item and return to its dev owner, who then goes through `document` and `qa`
