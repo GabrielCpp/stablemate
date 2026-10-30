@@ -13,21 +13,21 @@ borrows from it, gives back what it borrowed, and reads its own record of what t
 The page lives at `docs/services/<service>/resources/<name>.md`, and its stem is the name every
 other bullet uses. The ostler book depends on no outside system, so it holds no resource page.
 
-- code: ostler/ostler/resource_checks.py::check_resources@2a4781418347
-- code: ostler/ostler/resource_checks.py::check_request_step@2a4781418347
-- code: ostler/ostler/explain.py::run@ca5fa7fbe8d3
-- code: ostler/ostler/qa/book_fixtures.py::resolved_resources@26e58a44f4ed
-- code: ostler/ostler/qa/compile_observe.py::observation_lines@53b6536bb58c
-- code: ostler/ostler/qa/compile_observe.py::within_off_observation@53b6536bb58c
-- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk@6b2c8a83c7cd
-- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk.ensure_reachable@6b2c8a83c7cd
-- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk.release_all@6b2c8a83c7cd
-- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk.observe@6b2c8a83c7cd
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa._owe_releases@80d0580df929
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa.release_all@80d0580df929
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa.observe@80d0580df929
-- code: ostler/ostler/qa/drivers.py::run_pending_releases@ea4f7c0dd596
-- code: ostler/ostler/qa/attribution.py::Signature@9cd259bdbe3c
+- code: ostler/ostler/resource_checks.py::check_resources@4642faef62de
+- code: ostler/ostler/resource_checks.py::check_request_step@02e7743e4f99
+- code: ostler/ostler/explain.py::run@1fcc0de8bbfe
+- code: ostler/ostler/qa/book_fixtures.py::resolved_resources@48ca191dff1a
+- code: ostler/ostler/qa/compile_observe.py::observation_lines@2b9b5b48ab8c
+- code: ostler/ostler/qa/compile_observe.py::within_off_observation@3468f4224495
+- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk@953f0758c607
+- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk.ensure_reachable@bbb5c80511be
+- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk.release_all@71ebfd9c976e
+- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk.observe@6a7b48f53c2f
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa._owe_releases@fd9f865aeb69
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa.release_all@3cf1264210dd
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa.observe@e3cb352f9828
+- code: ostler/ostler/qa/drivers.py::run_pending_releases@cb8a7479c6bb
+- code: ostler/ostler/qa/attribution.py::Signature@bf4e9cc1700c
 - code: ostler/ostler/checks.py::WITHIN_PREAMBLE@b3b97ff94fb4
 - rule: a fixture that borrows from a resource states `lifetime: scenario`, so each scenario takes its own borrow and gives it back
 - rule: releases run last borrowed first, and a release that fails never stops the others

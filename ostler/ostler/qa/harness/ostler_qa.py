@@ -1204,14 +1204,17 @@ class Qa:
         """Read a resource's observation, re-reading for up to *within* seconds until every check in *until* holds, and return the last read."""
         spec = self._resources.known(resource)
         step = (spec.get("observations") or {}).get(observation) or {}
-        path = self.resolve(str((step.get("request") or {}).get("path", "")))
+        if spec.get("reach") == "cli":
+            target = self.resolve(str(step.get("command", "")))
+        else:
+            target = self.resolve(str((step.get("request") or {}).get("path", "")))
         waiting = [(VERIFIERS[name], args) for name, args in until]
 
         def holds(observed: Observed) -> bool:
             document = observed.json()
             return all(verifier(document, args).passed for verifier, args in waiting)
 
-        return self._resources.observe(resource, observation, path, within=float(within), holds=holds)
+        return self._resources.observe(resource, observation, target, within=float(within), holds=holds)
 
     def _step_cwd(self, fixture: str, index: int, step: Mapping[str, Any]) -> str:
         kind = str(step.get("kind", ""))

@@ -164,6 +164,18 @@ class ResourceDesk:
         except urllib.error.URLError as exc:
             raise OSError(str(exc.reason)) from exc
 
+    def _read_cli(self, stem: str, command: str, timeout: float) -> tuple[Reply | None, str]:
+        """One run of a CLI observation: its stdout as a 200 reply, or the reason it could not be read."""
+        env = {**os.environ, **self.secrets_of(stem)}
+        try:
+            done = subprocess.run(  # noqa: S603 - a book-declared observation
+                ["/bin/sh", "-c", command], env=env, capture_output=True, text=True, check=False, timeout=timeout)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return None, f"run could not run: {exc}"
+        if done.returncode != 0:
+            return None, f"run exited {done.returncode}: {(done.stderr or done.stdout).strip()[-300:]}"
+        return Reply(200, done.stdout), ""
+
     def register_release(self, pending: PendingRelease, secrets: Sequence[str]) -> None:
         """Remember a release the scenario owes, and announce it so a run that dies before it can still be cleaned up."""
         self.releases.append(pending)
@@ -193,10 +205,12 @@ class ResourceDesk:
         return problems
 
     def observe(
-        self, stem: str, observation: str, path: str, *, within: float,
+        self, stem: str, observation: str, target: str, *, within: float,
         holds: Callable[[Observed], bool],
     ) -> Observed:
-        """Read an observation, re-reading until *holds* or *within* seconds pass, and return the last read."""
+        """Read an observation, re-reading until *holds* or *within* seconds pass, and return the last read.
+
+        *target* is the resolved path of an HTTP resource, or the resolved command of a CLI one."""
         self.ensure_reachable(stem)
         spec = self.known(stem)
         step = (spec.get("observations") or {}).get(observation)
@@ -209,17 +223,22 @@ class ResourceDesk:
         polls = 0
         last: Observed | None = None
         error = ""
+        cli = spec.get("reach") == "cli"
         while True:
             polls += 1
             try:
-                reply = self.send(stem, "GET", path, None, timeout)
-                last, error = Observed(reply.status, reply.body), ""
-                if reply.ok and holds(last):
-                    break
-                if not reply.ok:
-                    error = f"GET {path} answered {reply.status}"
+                if cli:
+                    reply, error = self._read_cli(stem, target, timeout)
+                else:
+                    reply, error = self.send(stem, "GET", target, None, timeout), ""
+                if reply is not None:
+                    last = Observed(reply.status, reply.body)
+                    if reply.ok and holds(last):
+                        break
+                    if not reply.ok:
+                        error = f"GET {target} answered {reply.status}"
             except OSError as exc:
-                error = f"GET {path} could not connect: {exc}"
+                error = f"GET {target} could not connect: {exc}"
             except ValueError:
                 error = ""
             elapsed = time.monotonic() - started
@@ -230,7 +249,7 @@ class ResourceDesk:
         self.emit({"type": "observe", "scenario": self.scenario, "resource": stem, "observation": observation,
                    "polls": polls, "elapsed_ms": int(elapsed * 1000)})
         if last is None or error:
-            detail = error or f"GET {path} returned nothing"
+            detail = error or f"GET {target} returned nothing"
             self.fault(stem, -1, "observe", "defect", detail)
             raise RuntimeError(f"qa observation {stem}.{observation}: {detail}")
         return last

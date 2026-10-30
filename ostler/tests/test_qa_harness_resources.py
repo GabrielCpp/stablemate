@@ -186,3 +186,54 @@ def test_a_release_the_scenario_already_sent_is_not_sent_again(fake: BookingFake
     ]
     run_pending_releases(records, context["resources"], {"BOOKING_URL": fake.url, "CAMERA_BOOKING_TOKEN": TOKEN})
     assert fake.leases == {"7": "camera-1"}
+
+
+CLI_OBSERVES = '''\
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def reads_a_cli_count(qa: Qa) -> None:
+    """Read a count from a cli resource."""
+    seen = qa.observe("counter", "count")
+    qa.check("three", seen.json() == {"n": 3})
+
+
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def reads_a_captured_count(qa: Qa) -> None:
+    """Read a cli observation whose command names a captured value."""
+    qa.capture("total", 7)
+    seen = qa.observe("counter", "echoed")
+    qa.check("seven", seen.json() == {"n": 7})
+
+
+@scenario(target=api, mechanism="live", covers=["ac:1"])
+def reads_a_failing_cli(qa: Qa) -> None:
+    """Read a cli observation that exits non-zero."""
+    qa.observe("counter", "broken")
+'''
+
+
+def _cli_context(context: dict) -> dict:
+    observations = {
+        "count": {"command": "printf '{\"n\": 3}'", "timeout": 5.0},
+        "echoed": {"command": "printf '{\"n\": $total}'", "timeout": 5.0},
+        "broken": {"command": "echo boom >&2; exit 1", "timeout": 5.0},
+    }
+    counter = {"reach": "cli", "binary": "sh", "observations": observations}
+    return {**context, "resources": {**context["resources"], "counter": counter}}
+
+
+def test_a_cli_resource_observation_reads_the_command_stdout(tmp_path: Path, context: dict) -> None:
+    code, output, records = _go(tmp_path, CLI_OBSERVES, "reads-a-cli-count", _cli_context(context), None)
+    assert code == 0, output
+    assert [r["passed"] for r in _of(records, "assert")] == [True]
+
+
+def test_a_cli_observation_command_reads_a_captured_value(tmp_path: Path, context: dict) -> None:
+    code, output, records = _go(tmp_path, CLI_OBSERVES, "reads-a-captured-count", _cli_context(context), None)
+    assert code == 0, output
+    assert [r["passed"] for r in _of(records, "assert")] == [True]
+
+
+def test_a_cli_observation_that_exits_nonzero_raises_with_the_exit_detail(tmp_path: Path, context: dict) -> None:
+    code, output, _records = _go(tmp_path, CLI_OBSERVES, "reads-a-failing-cli", _cli_context(context), None)
+    assert code != 0
+    assert "qa observation counter.broken: run exited 1: boom" in output
