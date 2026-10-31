@@ -252,7 +252,7 @@ def _story_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
     return []
 
 
-def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
+def validate_v2(document: PlanDocument, *, require_coverage: bool = True) -> list[str]:  # noqa: C901
     plan, spec_dir = document.data, document.spec_dir
     problems: list[str] = []
     if not document.context:
@@ -361,7 +361,7 @@ def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
             problems.append(f"required OKF obligation '{obligation['id']}' is not covered by an asserted scenario")
     problems.extend(_validate_declared_checks(document, asserted_coverage))
     required_acs = document.context.get("acceptanceCriteria", [])
-    for criterion in required_acs if isinstance(required_acs, list) else []:
+    for criterion in required_acs if require_coverage and isinstance(required_acs, list) else []:
         criterion_id = criterion.get("id") if isinstance(criterion, dict) else criterion
         if criterion_id and criterion_id not in asserted_coverage:
             problems.append(f"required acceptance criterion '{criterion_id}' is not covered by an asserted scenario")

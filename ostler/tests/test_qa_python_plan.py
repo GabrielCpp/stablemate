@@ -1393,3 +1393,24 @@ def test_qa_instance_writes_the_declaration_into_the_ledger(tmp_path: Path) -> N
     records = [r for r in _ledger(spec) if r.get("kind") == "instance"]
     assert {r["obligation"] for r in records} == {REPEAT_OBLIGATION}
     assert {r["bindings"]["stage.name"] for r in records} == {"Fondations", "Toiture"}
+
+
+def test_a_labelled_run_does_not_require_every_acceptance_criterion_covered(
+    tmp_path: Path,
+) -> None:
+    spec = _spec(tmp_path)
+    context = spec / "qa-okf-context.json"
+    document = json.loads(context.read_text(encoding="utf-8"))
+    document["acceptanceCriteria"] = [{"id": "ac:1", "requirement": "The reader is operable."}]
+    context.write_text(json.dumps(document), encoding="utf-8")
+    module = _plan(spec)
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
+
+    scored = cmd_run(module, spec, root=tmp_path)
+    assert scored.status == "invalid", scored.message
+    assert "required acceptance criterion 'ac:1' is not covered" in scored.message
+    checked = cmd_validate(module, spec, root=tmp_path)
+    assert checked.status == "invalid", checked.message
+
+    dry = cmd_run(module, spec, root=tmp_path, label="dry")
+    assert dry.status == "passed", dry.message

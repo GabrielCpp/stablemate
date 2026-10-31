@@ -332,6 +332,7 @@ def cmd_validate(
     spec_dir: Path | None = None,
     *,
     root: Path | None = None,
+    require_coverage: bool = True,
 ) -> QaOutcome:
     """Validate a `qa_plan.py` without executing it."""
     root = (root or Path.cwd()).resolve()
@@ -360,7 +361,7 @@ def cmd_validate(
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
     document, problems = load_plan(resolved_plan, resolved_spec, root)
     if document is not None and not problems:
-        problems = validate_v2(document)
+        problems = validate_v2(document, require_coverage=require_coverage)
     deferred = [
         {"id": o["id"], **o["deferred"]}
         for o in (document.context.get("obligations", []) if document is not None else [])
@@ -401,7 +402,9 @@ def cmd_run(
             )
     resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
-    validate_result = cmd_validate(resolved_plan, resolved_spec, root=root)
+    validate_result = cmd_validate(
+        resolved_plan, resolved_spec, root=root, require_coverage=label is None
+    )
     if not validate_result.ok:
         return validate_result
 

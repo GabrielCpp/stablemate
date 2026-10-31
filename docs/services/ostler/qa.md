@@ -46,7 +46,7 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="^demo \\(echo\\) \\[ok\\]")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
 - code: ostler/ostler/qa/tools.py::catalog@b9ec43ce49bb
 
 ### ostler-qa-context
@@ -76,30 +76,30 @@ environment, and no plan, transcript or event carries it. See
 - verify: contents(subject="qa-scratch/art/specs/s1/qa-okf-context.json", matches="names no source")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/book_index.py::captures_by_node@dd91e95d2722
+- code: ostler/ostler/qa/book_index.py::captures_by_node@3461b43ebf37
 - code: ostler/ostler/qa/captures.py::CaptureDecl/parse_bullet@248120ebb77f
 - code: ostler/ostler/qa/compile.py::annotate_deferred_obligations@3cf23080c032
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@479bda09f64c
-- code: ostler/ostler/qa/compile_http.py::api_scenarios@e17faa3b5f39
-- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@421ed1147b57
-- code: ostler/ostler/qa/compile_maestro.py::device_state_walks@da217d55c8c0
-- code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
-- code: ostler/ostler/qa/compile_page.py::page_scenarios@606b70054ffc
-- code: ostler/ostler/qa/compile_support.py::on_href@771f910c9275
-- code: ostler/ostler/qa/context.py::book_files@9e054ade9186
-- code: ostler/ostler/qa/dispatch.py::claim_driver@d42406bead4b
-- code: ostler/ostler/qa/fixture_provides.py::closure@9053b42918c0
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@b17165cba10a
+- code: ostler/ostler/qa/compile_http.py::api_scenarios@8469d8aac445
+- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@a83239a8b983
+- code: ostler/ostler/qa/compile_maestro.py::device_state_walks@f685bb9e79dc
+- code: ostler/ostler/qa/compile_moves.py::move_walks@c8463448d0ef
+- code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
+- code: ostler/ostler/qa/compile_support.py::on_href@dd9915c8e301
+- code: ostler/ostler/qa/context.py::book_files@223cd8ab76ef
+- code: ostler/ostler/qa/dispatch.py::claim_driver@7c6d2995f39d
+- code: ostler/ostler/qa/fixture_provides.py::closure@bdd1adf2dc1d
 - code: ostler/ostler/qa/fixtures.py::parse_bullet@69e389c684f7
-- code: ostler/ostler/qa/grounding_health.py::resolve_groundings@da8a0b8f6c0f
-- code: ostler/ostler/qa/journey_steps.py::journey_steps@0794ea6c9659
-- code: ostler/ostler/qa/navigation.py::navigation_rows@e5be923f66b9
-- code: ostler/ostler/qa/obligation.py::obligation_of@4bdc7a410ade
-- code: ostler/ostler/qa/obligation_frame.py::book_nodes@59e7ee8278ae
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/owners.py::book_relative@de26fdbd12b7
-- code: ostler/ostler/qa/packet.py::packet_of@6b7020cfc619
-- code: ostler/ostler/qa/plan_source.py::arrangement_of@08fddc26f73f
-- code: ostler/ostler/qa/runbook.py::bullet_text@66911fe4abd5
+- code: ostler/ostler/qa/grounding_health.py::resolve_groundings@add94afddb88
+- code: ostler/ostler/qa/journey_steps.py::journey_steps@348541ac03a5
+- code: ostler/ostler/qa/navigation.py::navigation_rows@4df2fbcf356b
+- code: ostler/ostler/qa/obligation.py::obligation_of@b558662c2212
+- code: ostler/ostler/qa/obligation_frame.py::book_nodes@1d8c8dad0e49
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/owners.py::book_relative@8f7d64d535b5
+- code: ostler/ostler/qa/packet.py::packet_of@6f73061e9eed
+- code: ostler/ostler/qa/plan_source.py::arrangement_of@9dcaf902b06a
+- code: ostler/ostler/qa/runbook.py::bullet_text@e93f60504e6f
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
 
 ### ostler-qa-context-validate
@@ -111,8 +111,8 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="^Context is valid\\.$")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/context.py::cmd_context_validate@9e054ade9186
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
+- code: ostler/ostler/qa/context.py::cmd_context_validate@f2fc5672fe0a
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
 
 ### ostler-qa-context-show
 - usage: ostler qa context-show --spec SPEC [--required | --context-only] [--node SUBSTR] [--kind
@@ -124,7 +124,7 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="demo-greet:exits:1")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/context.py::select_obligations@9e054ade9186
+- code: ostler/ostler/qa/context.py::select_obligations@08db3c322d31
 
 ### ostler-qa-compile-plan
 - usage: ostler qa compile-plan --spec SPEC [--out PATH] [--replace] [--select ID ...] [--cover AC=ID[,ID...] ...]
@@ -159,10 +159,10 @@ environment, and no plan, transcript or event carries it. See
   source file and a plan under spec s1
 - code: ostler/ostler/qa/book_index.py::captures_by_node@3461b43ebf37
 - code: ostler/ostler/qa/compile.py::cmd_compile_plan@a0f77ff012ce
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@e77082cad485
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@b17165cba10a
 - code: ostler/ostler/qa/compile_grpc.py::grpc_scenarios@af1d3303dcf6
-- code: ostler/ostler/qa/compile_http.py::api_scenarios@86c721e7af1b
-- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@04deeed96801
+- code: ostler/ostler/qa/compile_http.py::api_scenarios@8469d8aac445
+- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@a83239a8b983
 - code: ostler/ostler/qa/compile_maestro.py::device_state_walks@f685bb9e79dc
 - code: ostler/ostler/qa/compile_moves.py::move_walks@c8463448d0ef
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
@@ -171,7 +171,7 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/navigation.py::navigation_rows@4df2fbcf356b
 - code: ostler/ostler/qa/obligation.py::obligation_of@b558662c2212
 - code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
-- code: ostler/ostler/qa/packet.py::packet_of@e8972601e71a
+- code: ostler/ostler/qa/packet.py::packet_of@6f73061e9eed
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@9dcaf902b06a
 
 ### ostler-qa-context-web-journey
@@ -184,8 +184,8 @@ environment, and no plan, transcript or event carries it. See
 - verify: json_path(path="status", equals="passed")
 - verify: json_path(path="changedCode[0].path", equals="src/frontend.py")
 - fixture: [qa web journey repo](fixtures/qa-web-journey-repo.md)
-- code: ostler/ostler/qa/context.py::book_files@9e054ade9186
-- code: ostler/ostler/qa/dispatch.py::claim_driver@d42406bead4b
+- code: ostler/ostler/qa/context.py::book_files@223cd8ab76ef
+- code: ostler/ostler/qa/dispatch.py::claim_driver@7c6d2995f39d
 
 ### ostler-qa-compile-plan-web-journey
 - usage: ostler qa compile-plan --spec SPEC --out PATH --json, SPEC naming a packet whose flow
@@ -197,10 +197,10 @@ environment, and no plan, transcript or event carries it. See
 - verify: contents(subject="qa-web-scratch/art/specs/s1/qa_plan_compiled.py", matches="qa\\.by_role\\(\"button\", name=\"Open\"\\)")
 - verify: contents(subject="qa-web-scratch/art/specs/s1/qa_plan_compiled.py", matches="qa\\.settle\\(")
 - fixture: [qa web journey repo](fixtures/qa-web-journey-repo.md)
-- code: ostler/ostler/qa/compile_playwright.py::web_walk@373cfbcaf3e9
-- code: ostler/ostler/qa/compile_playwright.py::page_locator_expr@373cfbcaf3e9
-- code: ostler/ostler/qa/compile_stops.py::resolve_state@e2a0b2312b45
-- code: ostler/ostler/qa/compile_stops.py::perceivable@e2a0b2312b45
+- code: ostler/ostler/qa/compile_playwright.py::web_walk@40e28af83b41
+- code: ostler/ostler/qa/compile_playwright.py::page_locator_expr@0905f9bd057a
+- code: ostler/ostler/qa/compile_stops.py::resolve_state@0cd0a5f9d41c
+- code: ostler/ostler/qa/compile_stops.py::perceivable@f6ae21c4fb9c
 
 ### ostler-qa-lint
 - usage: ostler qa lint PLAN [--json]: lints a qa_plan.py by its syntax tree, without importing or
@@ -211,8 +211,8 @@ environment, and no plan, transcript or event carries it. See
 - verify: json_path(path="status", equals="passed")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
+- code: ostler/ostler/qa/lint.py::cmd_lint@73eb987731e2
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
 
 ### ostler-qa-validate
 - usage: ostler qa validate PLAN [--spec SPEC] [--json]: loads a qa_plan.py against its packet and
@@ -223,14 +223,14 @@ environment, and no plan, transcript or event carries it. See
 - verify: json_path(path="status", equals="passed")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/context.py::book_files@9e054ade9186
-- code: ostler/ostler/qa/harness_host.py::default_interpreter@be0a59e0887d
-- code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
+- code: ostler/ostler/qa/context.py::book_files@223cd8ab76ef
+- code: ostler/ostler/qa/harness_host.py::default_interpreter@21a724f89dbc
+- code: ostler/ostler/qa/lint.py::cmd_lint@73eb987731e2
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
 - code: ostler/ostler/qa/plan.py::load_plan@9193a20ade5e
-- code: ostler/ostler/qa/run.py::cmd_validate@166d32882457
+- code: ostler/ostler/qa/run.py::cmd_validate@652387ec658e
 - code: ostler/ostler/qa/tools.py::catalog@b9ec43ce49bb
-- code: ostler/ostler/untyped.py::is_mapping@c964a61d4a94
+- code: ostler/ostler/untyped.py::is_mapping@58e488a40df0
 
 ### ostler-qa-run
 - usage: ostler qa run PLAN [--spec SPEC] [--stop-on-fail] [--scenario ID] [--out-dir LABEL]
@@ -239,7 +239,7 @@ environment, and no plan, transcript or event carries it. See
 - flags:
   - --stop-on-fail (stop at the first failed scenario)
   - --scenario (run only this scenario, repeatable)
-  - --out-dir (make the run a dry run into the spec's qa/LABEL directory, writing no evidence file)
+  - --out-dir (make the run a dry run into the spec's qa/LABEL directory, writing no evidence file and not requiring every acceptance criterion to be covered)
   - --json (print the closing record)
 - exits: 0 when every scenario passes
 - run: invoke(argv=["-C", "qa-scratch", "qa", "run", "art/specs/s1/qa_plan.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
@@ -251,46 +251,46 @@ environment, and no plan, transcript or event carries it. See
 - verify: contents(subject="qa-scratch/art/specs/s1/qa-evidence.json", matches="okf:docs/services/demo/cli.md#demo-greet:exits:1")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/attribution.py::signatures@9cd259bdbe3c
-- code: ostler/ostler/qa/book_fixtures.py::resolved@26e58a44f4ed
-- code: ostler/ostler/qa/context.py::book_files@9e054ade9186
-- code: ostler/ostler/qa/drivers.py::create_driver@ea4f7c0dd596
-- code: ostler/ostler/qa/evidence_map.py::build_evidence_map@b2b27057b604
-- code: ostler/ostler/qa/fixtures.py::declared@c55cf0689287
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@80d0580df929
-- code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::UrlReading@753b30ac1b84
-- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk@6b2c8a83c7cd
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa._owe_releases@80d0580df929
-- code: ostler/ostler/qa/drivers.py::run_pending_releases@ea4f7c0dd596
-- code: ostler/ostler/qa/compile_observe.py::observation_lines@53b6536bb58c
-- code: ostler/ostler/qa/harness/ostler_qa_checkout.py::copy_checkout@d2d64738e2dc
-- code: ostler/ostler/qa/harness/ostler_qa_documents.py::DocumentReading@c7b9f1b585d5
-- code: ostler/ostler/qa/harness/ostler_qa_dom.py::AttributeReading@0596499cd4fb
-- code: ostler/ostler/qa/harness/ostler_qa_elements.py::template_pattern@ce61d0ffcd61
-- code: ostler/ostler/qa/harness/ostler_qa_files.py::Tree@1c99efa3cc05
-- code: ostler/ostler/qa/harness/ostler_qa_lap.py::LapRecord@908f9ce8d348
-- code: ostler/ostler/qa/harness/ostler_qa_paths.py::Wild@092f327030cd
-- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@9f63d115538b
-- code: ostler/ostler/qa/harness/ostler_qa_settle.py::Settled@dbcb037d3798
-- code: ostler/ostler/qa/harness/ostler_qa_transfer.py::paste@02ae85efa7b7
-- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
-- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@f540620c6633
-- code: ostler/ostler/qa/harness_host.py::capped_argv@be0a59e0887d
-- code: ostler/ostler/qa/lint.py::cmd_lint@7072719988f2
-- code: ostler/ostler/qa/manifest.py::RunManifest@2d00c95675d5
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
+- code: ostler/ostler/qa/attribution.py::signatures@390aad61dd56
+- code: ostler/ostler/qa/book_fixtures.py::resolved@c2327c8c4431
+- code: ostler/ostler/qa/context.py::book_files@223cd8ab76ef
+- code: ostler/ostler/qa/drivers.py::create_driver@7652064de163
+- code: ostler/ostler/qa/evidence_map.py::build_evidence_map@5273008138a7
+- code: ostler/ostler/qa/fixtures.py::declared@218d9dd9d05a
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@ac5165446d46
+- code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::UrlReading@585f67d0e3dd
+- code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk@953f0758c607
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa._owe_releases@fd9f865aeb69
+- code: ostler/ostler/qa/drivers.py::run_pending_releases@cb8a7479c6bb
+- code: ostler/ostler/qa/compile_observe.py::observation_lines@8db0acb37755
+- code: ostler/ostler/qa/harness/ostler_qa_checkout.py::copy_checkout@7d9282dec218
+- code: ostler/ostler/qa/harness/ostler_qa_documents.py::DocumentReading@ce936961df83
+- code: ostler/ostler/qa/harness/ostler_qa_dom.py::AttributeReading@6e8baa69531a
+- code: ostler/ostler/qa/harness/ostler_qa_elements.py::template_pattern@4db02c4ffde6
+- code: ostler/ostler/qa/harness/ostler_qa_files.py::Tree@ede54670f377
+- code: ostler/ostler/qa/harness/ostler_qa_lap.py::LapRecord@4ff057faf213
+- code: ostler/ostler/qa/harness/ostler_qa_paths.py::Wild@e6ee42610d2f
+- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@de55f6adfd9d
+- code: ostler/ostler/qa/harness/ostler_qa_settle.py::Settled@fca033cc48d0
+- code: ostler/ostler/qa/harness/ostler_qa_transfer.py::paste@5278310185fb
+- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@2e9d64d79798
+- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@e0792d3a1d2a
+- code: ostler/ostler/qa/harness_host.py::capped_argv@bfeef6bc1ff0
+- code: ostler/ostler/qa/lint.py::cmd_lint@73eb987731e2
+- code: ostler/ostler/qa/manifest.py::RunManifest@39012ecc04b9
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
 - code: ostler/ostler/qa/plan.py::check_runtime_requirements@076b9e807404
-- code: ostler/ostler/qa/repeats.py::pages@1074839ca608
-- code: ostler/ostler/qa/report.py::build_report@0d73d5c319d1
-- code: ostler/ostler/qa/run.py::cmd_run@166d32882457
-- code: ostler/ostler/qa/run_log.py::failing_log_refs@b2d1c68eaf42
-- code: ostler/ostler/qa/sensitivity.py::trial@3625df8ad673
-- code: ostler/ostler/qa/session.py::_check_scenario_verdict@b93f384fd8c4
+- code: ostler/ostler/qa/repeats.py::pages@e916ba15c0c6
+- code: ostler/ostler/qa/report.py::build_report@37a6da59f531
+- code: ostler/ostler/qa/run.py::cmd_run@a96c0f7685d2
+- code: ostler/ostler/qa/run_log.py::failing_log_refs@c597bebbcd3b
+- code: ostler/ostler/qa/sensitivity.py::trial@b1443f118000
+- code: ostler/ostler/qa/session.py::_check_scenario_verdict@0cee10420eeb
 - code: ostler/ostler/qa/tools.py::catalog@b9ec43ce49bb
-- code: ostler/ostler/qa/v2.py::run_plan@b8f050f42df9
-- code: ostler/ostler/qa/verdict.py::judge@667c513201c2
-- code: ostler/ostler/untyped.py::is_mapping@c964a61d4a94
-- code: ostler/ostler/util.py::is_mapping@6c753ed2df8c
+- code: ostler/ostler/qa/v2.py::run_plan@c81455b40dc1
+- code: ostler/ostler/qa/verdict.py::judge@ce8a35c1087f
+- code: ostler/ostler/untyped.py::is_mapping@58e488a40df0
+- code: ostler/ostler/util.py::is_mapping@12fd23931817
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
@@ -306,8 +306,8 @@ environment, and no plan, transcript or event carries it. See
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - fixture: [qa browser scratch plan](fixtures/qa-browser-scratch-plan.md)
-- code: ostler/ostler/qa/harness/ostler_qa.py::_open_browser@80d0580df929
-- code: ostler/ostler/qa/harness/ostler_qa_browser.py::Browser@7a9c15e1ccae
+- code: ostler/ostler/qa/harness/ostler_qa.py::_open_browser@a5ccf0c48a8e
+- code: ostler/ostler/qa/harness/ostler_qa_browser.py::Browser@abc312bd9a1c
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-run-maestro-target
@@ -323,9 +323,9 @@ environment, and no plan, transcript or event carries it. See
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - fixture: [qa maestro scratch plan](fixtures/qa-maestro-scratch-plan.md)
-- code: ostler/ostler/qa/harness/ostler_qa.py::settle@80d0580df929
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@21931566bfbc
-- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@21931566bfbc
+- code: ostler/ostler/qa/harness/ostler_qa.py::settle@e8ab67f257dd
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::DeviceScreen@ddbe7b318607
+- code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::resident_reader@6b312ede8e81
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-run-grpc-target
@@ -339,7 +339,7 @@ environment, and no plan, transcript or event carries it. See
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - fixture: [qa grpc scratch plan](fixtures/qa-grpc-scratch-plan.md)
-- code: ostler/ostler/qa/harness/ostler_qa_grpc.py::Grpc@66e08b67e87e
+- code: ostler/ostler/qa/harness/ostler_qa_grpc.py::Grpc@255bd25a056c
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-run-scenario-timeout
@@ -353,8 +353,8 @@ environment, and no plan, transcript or event carries it. See
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - fixture: [qa timeout scratch plan](fixtures/qa-timeout-scratch-plan.md)
-- code: ostler/ostler/qa/drivers.py::LocalLauncher.execute@ea4f7c0dd596
-- code: ostler/ostler/qa/maestro_sessions.py::retire_dead_sessions@7f45b672bb4e
+- code: ostler/ostler/qa/drivers.py::LocalLauncher.execute@1479d0383bd8
+- code: ostler/ostler/qa/maestro_sessions.py::retire_dead_sessions@f39e8b1a115d
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-report
@@ -370,16 +370,16 @@ environment, and no plan, transcript or event carries it. See
 - verify: contents(subject="qa-scratch/art/specs/s1/qa-report.md", matches="PASSED")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/evidence_map.py::build_evidence_map@b2b27057b604
-- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@9f63d115538b
-- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
-- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@f540620c6633
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/report.py::build_report@0d73d5c319d1
-- code: ostler/ostler/qa/run.py::cmd_report@166d32882457
-- code: ostler/ostler/qa/run_log.py::read_records@b2d1c68eaf42
-- code: ostler/ostler/qa/sensitivity.py::trial@3625df8ad673
-- code: ostler/ostler/util.py::is_mapping@6c753ed2df8c
+- code: ostler/ostler/qa/evidence_map.py::build_evidence_map@5273008138a7
+- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@de55f6adfd9d
+- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@2e9d64d79798
+- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@e0792d3a1d2a
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/report.py::build_report@37a6da59f531
+- code: ostler/ostler/qa/run.py::cmd_report@2feca403e7fc
+- code: ostler/ostler/qa/run_log.py::read_records@372a3e98dbea
+- code: ostler/ostler/qa/sensitivity.py::trial@b1443f118000
+- code: ostler/ostler/util.py::is_mapping@12fd23931817
 
 ### ostler-qa-evidence-map
 - usage: ostler qa evidence-map [--spec SPEC] [--out-dir LABEL] [--status STATUS] [--out PATH]
@@ -399,13 +399,13 @@ environment, and no plan, transcript or event carries it. See
 - verify: json_path(path="counts.uncovered", equals=2)
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/evidence_map.py::build_evidence_map@b2b27057b604
-- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@9f63d115538b
-- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
-- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@f540620c6633
-- code: ostler/ostler/qa/run_log.py::read_records@b2d1c68eaf42
-- code: ostler/ostler/qa/sensitivity.py::trial@3625df8ad673
-- code: ostler/ostler/util.py::is_mapping@6c753ed2df8c
+- code: ostler/ostler/qa/evidence_map.py::build_evidence_map@5273008138a7
+- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@de55f6adfd9d
+- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@2e9d64d79798
+- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@e0792d3a1d2a
+- code: ostler/ostler/qa/run_log.py::read_records@372a3e98dbea
+- code: ostler/ostler/qa/sensitivity.py::trial@b1443f118000
+- code: ostler/ostler/util.py::is_mapping@12fd23931817
 
 ### ostler-qa-sensitivity
 - usage: ostler qa sensitivity [--node SUBSTR] [--json]: reports which declared checks could have
@@ -419,11 +419,11 @@ environment, and no plan, transcript or event carries it. See
 - verify: json_path(path="status", equals="sensitive")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@9f63d115538b
-- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
-- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@f540620c6633
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/sensitivity.py::cmd_sensitivity@3625df8ad673
+- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@de55f6adfd9d
+- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@2e9d64d79798
+- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@e0792d3a1d2a
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/sensitivity.py::cmd_sensitivity@98b7251d8c51
 
 ### ostler-qa-replay
 - usage: ostler qa replay --spec SPEC: prints a shell script that replays the steps of a run from
@@ -434,9 +434,9 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="^#!/usr/bin/env bash")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/run.py::cmd_replay@166d32882457
-- code: ostler/ostler/qa/run_log.py::read_records@b2d1c68eaf42
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/run.py::cmd_replay@ba435f9598dd
+- code: ostler/ostler/qa/run_log.py::read_records@372a3e98dbea
 
 ### ostler-qa-frames
 - usage: ostler qa frames --spec SPEC (--step STEP | --at SECONDS) [--target T] [--around SECONDS]
@@ -446,17 +446,17 @@ environment, and no plan, transcript or event carries it. See
 - verify: exit_status(code=1)
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/evidence_map.py::build_evidence_map@b2b27057b604
-- code: ostler/ostler/qa/frames.py::extract_frames@fb07c5fc799e
-- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@9f63d115538b
-- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@6473ea39a89f
-- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@f540620c6633
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/report.py::build_report@0d73d5c319d1
-- code: ostler/ostler/qa/run.py::cmd_frames@166d32882457
-- code: ostler/ostler/qa/run_log.py::read_records@b2d1c68eaf42
-- code: ostler/ostler/qa/sensitivity.py::trial@3625df8ad673
-- code: ostler/ostler/util.py::is_mapping@6c753ed2df8c
+- code: ostler/ostler/qa/evidence_map.py::build_evidence_map@5273008138a7
+- code: ostler/ostler/qa/frames.py::extract_frames@17801d4185c0
+- code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@de55f6adfd9d
+- code: ostler/ostler/qa/harness/ostler_qa_verdicts.py::recorded@2e9d64d79798
+- code: ostler/ostler/qa/harness/ostler_qa_verifiers.py::_verifier@e0792d3a1d2a
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/report.py::build_report@37a6da59f531
+- code: ostler/ostler/qa/run.py::cmd_frames@05c250130b2e
+- code: ostler/ostler/qa/run_log.py::read_records@372a3e98dbea
+- code: ostler/ostler/qa/sensitivity.py::trial@b1443f118000
+- code: ostler/ostler/util.py::is_mapping@12fd23931817
 
 ### ostler-qa-clean
 - usage: ostler qa clean --spec DIR [--yes] [--json]: lists, and with --yes deletes, the legacy qa-*
@@ -468,8 +468,8 @@ environment, and no plan, transcript or event carries it. See
 - verify: json_path(path="status", equals="passed")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/clean.py::cmd_clean@96a5108c86d5
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
+- code: ostler/ostler/qa/clean.py::cmd_clean@caa5b8678b25
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
 
 ### ostler-qa-fixtures-migrate
 - usage: ostler qa fixtures migrate --in DIR [--json]: writes the fixture nodes a repo declared
@@ -481,7 +481,7 @@ environment, and no plan, transcript or event carries it. See
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
 - code: ostler/ostler/qa/fixtures.py::cmd_migrate@997ab43e30ec
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
 
 ### ostler-qa-stack-up
 - usage: ostler qa stack up: brings the stack the book declares to ready
@@ -491,9 +491,9 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="declares no runbook")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/environments/leases.py::books_near@f4228a813f39
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/runbook.py::cmd_stack_up@66911fe4abd5
+- code: ostler/ostler/environments/leases.py::books_near@f3dc55131ce7
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/runbook.py::cmd_stack_up@d2bb4506563e
 
 ### ostler-qa-stack-down
 - usage: ostler qa stack down: runs the teardown recipe the book declares
@@ -503,9 +503,9 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="declares no runbook")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/environments/leases.py::books_near@f4228a813f39
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/runbook.py::cmd_stack_down@66911fe4abd5
+- code: ostler/ostler/environments/leases.py::books_near@f3dc55131ce7
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/runbook.py::cmd_stack_down@9622f73c5557
 
 ### ostler-qa-stack-up-no-probe
 - usage: ostler qa stack up: brings a runbook with no `entry-url:` up by its launch command's
@@ -517,10 +517,10 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="^stack brought up and healthy at \\(no entry url\\)$")
 - fixture: [qa stack no-probe repo](fixtures/qa-stack-no-probe-repo.md) — a runbook whose one
   service step launches `true` and declares no `entry-url:`
-- code: ostler/ostler/qa/runbook.py::cmd_stack_up@66911fe4abd5
-- code: ostler/ostler/qa/stack.py::ensure_stack@ba847d04a4fd
-- code: ostler/ostler/qa/stack.py::boot_app@ba847d04a4fd
-- code: ostler/ostler/qa/stack.py::_boot_without_probe@ba847d04a4fd
+- code: ostler/ostler/qa/runbook.py::cmd_stack_up@d2bb4506563e
+- code: ostler/ostler/qa/stack.py::ensure_stack@2562d217d605
+- code: ostler/ostler/qa/stack.py::boot_app@e08996ac308e
+- code: ostler/ostler/qa/stack.py::_boot_without_probe@83391bc598d1
 - code: ostler/ostler/_vendor/stablemate_core/clock.py::SYSTEM_CLOCK@99322cfda640
 
 ### ostler-qa-start
@@ -537,10 +537,10 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="^QA session started: run_id=run2, story=s2$")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/manifest.py::RunManifest@2d00c95675d5
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/run.py::cmd_start@166d32882457
-- code: ostler/ostler/qa/session.py::_now@b93f384fd8c4
+- code: ostler/ostler/qa/manifest.py::RunManifest@39012ecc04b9
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/run.py::cmd_start@2b9497471805
+- code: ostler/ostler/qa/session.py::_now@5145bcfad514
 
 ### ostler-qa-step
 - usage: ostler qa step --id ID --label LABEL --mechanism {live,fixture} --cmd CMD --spec SPEC
@@ -552,10 +552,10 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="^step 'a' recorded$")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/manifest.py::RunManifest@2d00c95675d5
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/run.py::cmd_step@166d32882457
-- code: ostler/ostler/qa/session.py::_expand@b93f384fd8c4
+- code: ostler/ostler/qa/manifest.py::RunManifest@39012ecc04b9
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/run.py::cmd_step@b2c4501d858f
+- code: ostler/ostler/qa/session.py::_expand@53fc47a524ca
 
 ### ostler-qa-assert
 - usage: ostler qa assert --id ID --label LABEL --check CHECK --spec SPEC [KEY=VALUE ...]: runs a
@@ -566,10 +566,10 @@ environment, and no plan, transcript or event carries it. See
 - verify: stdout(matches="^assert 'b': PASS$")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/manifest.py::RunManifest@2d00c95675d5
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/run.py::cmd_assert@166d32882457
-- code: ostler/ostler/qa/session.py::_check_field_equal@b93f384fd8c4
+- code: ostler/ostler/qa/manifest.py::RunManifest@39012ecc04b9
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/run.py::cmd_assert@83e8404a4fb5
+- code: ostler/ostler/qa/session.py::_check_field_equal@c47e1882a91f
 
 ### ostler-qa-stop
 - usage: ostler qa stop --spec SPEC: kills the session's daemons and writes its closing record
@@ -580,7 +580,7 @@ environment, and no plan, transcript or event carries it. See
 - verify: contents(subject="qa-scratch/art/specs/s2/qa/qa-run.ndjson", matches="session_stop")
 - fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
   source file and a plan under spec s1
-- code: ostler/ostler/qa/manifest.py::RunManifest@2d00c95675d5
-- code: ostler/ostler/qa/outcome.py::QaOutcome@a11c201f424c
-- code: ostler/ostler/qa/run.py::cmd_stop@166d32882457
-- code: ostler/ostler/qa/session.py::_now@b93f384fd8c4
+- code: ostler/ostler/qa/manifest.py::RunManifest@39012ecc04b9
+- code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
+- code: ostler/ostler/qa/run.py::cmd_stop@924d13c43e6a
+- code: ostler/ostler/qa/session.py::_now@5145bcfad514
