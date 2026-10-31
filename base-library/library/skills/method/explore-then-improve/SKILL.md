@@ -206,19 +206,26 @@ a retry, a step that runs when nothing needs its output, an input larger than th
 reads, a check that fails for a reason nobody looks at. A stage name is where the cost sits,
 not why. The fix goes at the why.
 
-Load [[isolating-causes]]. Show the cost on demand through the cheapest rung of step 8,
-contrast the units that pay it with the units that do not, and change one variable at a
-time until one cause is confirmed. The traces of runs already paid for answer most of this
-at no cost: read them before running anything.
+Load [[isolating-causes]] and run its loop here, before any cause is written down. Show
+the cost on demand through the cheapest rung of step 8, contrast the units that pay it with
+the units that do not, and change one variable at a time until one cause is confirmed. The
+traces of runs already paid for answer most of this at no cost: read them before running
+anything. The row holds the contrast: which units pay, which do not, and the one variable
+that separates them.
 
-Then ask of the cost itself: what work does it buy, who asked for that work, and what fails
-when the work is not done? Ask why of each answer until the answer is a property of the
-task or a construct the loop can change. A cost whose work nobody asked for has a one-line
-fix. A cost whose work the task needs has a fix in how the work is done, and the chain says
-which part of how.
+Then load [[root-cause]] and write its why-chain into the row: why the cost exists, what
+decision caused that, how it could have been prevented, asked again on the prevention until
+the answer is a property of the task or of the process that produces the system's inputs.
+The chain stops at a producer, never at its product. A defect in an artifact another process
+produced, a book, a plan, a fixture, a generated file, a prompt rendered from a template, is
+a symptom: the producer will produce it again, and the question the chain asks is why the
+producer let it through, which construct of the producer, and whether the producer's own
+check ran on it. A cost whose work nobody asked for has a one-line fix. A cost whose work the
+task needs has a fix in how the work is done, and the chain says which part of how.
 
-Done when the cause is named as a construct the loop can edit, and one sentence predicts
-what the yardstick reads once it changes.
+Done when the row holds the contrast and the why-chain, the cause is named as a construct
+of the producer or the process, and one sentence predicts what the yardstick reads once it
+changes.
 
 ## 7. Fix at the cause
 
@@ -226,18 +233,21 @@ Write the smallest change that removes the cause. Removing work beats making it 
 and making it cheaper beats making it faster. One variable per fix, on the frozen
 yardstick.
 
-Before adding a retry, a cap, a sleep, a skip, a default, a fallback or a smaller model,
-load [[root-cause]] and write the why-chain. A fix that handles the symptom is taken only
-with that chain written into its row, and its `TRIED.md` line says it is a symptom fix,
-so the next reader knows the cause still stands.
+The fix lands where the why-chain of step 6 stopped. When that is a producer, the fix
+changes the producer, and the artifact it produced is repaired beside it only to unblock the
+reading, as its own row that names the producer fix it stands in for. A retry, a cap, a
+sleep, a skip, a default, a fallback, a smaller model or a hand repair of an artifact is a
+symptom fix. It is taken only with the chain in its row saying why the cause is out of
+reach, and its `TRIED.md` line says it is a symptom fix, so the next reader knows the cause
+still stands.
 
 Register the fix as a ledger row before it runs: the problem it removes, the cause, the
 prediction from step 6, the estimate in minutes and money from the instrument's price, and
 the cap from step 5. A fix whose row cannot quote a clause of the done-condition it bears
 on is `exploration`, labelled so, and the label is a finding about its reach.
 
-Done when the change exists on a commit and its row holds the prediction, the estimate and
-the cap.
+Done when the change exists on a commit at the level the chain named, and its row holds the
+prediction, the estimate and the cap.
 
 ## 8. Read it through the cheapest instrument
 
