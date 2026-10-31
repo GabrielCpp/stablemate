@@ -13,8 +13,8 @@ initializer; the individual modules below own the behavior and models they provi
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @b083ae1394dd
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @67580925bd96
 - code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @665c4ab3a258
-- code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @df9c5dcbeacb
-- code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @df9c5dcbeacb
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @7709a90ae30b
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @7709a90ae30b
 - detail: [coder queue run scope](../formats/coder-queue-run-scope.md)
 - detail: [coder queue run branch](../formats/coder-queue-run-branch.md)
 - detail: [coder queue epic pruned](../formats/coder-queue-epic-pruned.md)
@@ -127,6 +127,13 @@ permissive result models that ignore unknown keys and drop null values before ap
 - returns: the scored log path formed as `<spec_dir>/qa/qa-run.ndjson`
 - verify: json_path(path="$.path", matches=".*/qa/qa-run\\.ndjson")
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::scored_run_log` @1f9923dd1e94
+
+### labelled_run_log
+
+- sig: `labelled_run_log(spec_dir: Path, label: str) -> Path`
+- returns: the log of a run given a label, formed as `<spec_dir>/qa/<label>/qa-run.ndjson`, beside the scored log and never over it
+- verify: json_path(path="$.path", matches=".*/qa/docs-exercise/qa-run\\.ndjson")
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::labelled_run_log` @e880f833ec98
 
 ### notes_for
 

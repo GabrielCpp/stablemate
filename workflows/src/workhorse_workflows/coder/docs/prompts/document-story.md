@@ -97,6 +97,10 @@ This turn repairs what the report names, and runs no new review. If the report p
 `doctor-errors.txt`, read that file. It is the full list, and the note only points at it. A
 note beginning `conformant;` is successful gate evidence, not a repair item. Every node the
 report does not name stays exactly as it is.
+
+A report that begins `Exercise:` lists scenarios the compiled QA plan failed on the running
+product. Each is a claim in the book to correct on its page. It is never a cue to change product
+code.
 {% endif %}
 {% if operator_context %}
 

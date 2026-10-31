@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler.qa import QaOutcome
+from ostler.qa.session import scratch_dirname
 
 QA_PLAN_FILE = "qa_plan.py"
 
@@ -55,6 +56,11 @@ def scored_run_log(spec_dir: Path) -> Path:
     return spec_dir / "qa" / QA_RUN_LOG
 
 
+def labelled_run_log(spec_dir: Path, label: str) -> Path:
+    """The log of a run given *label* — it sits beside the scored ledger and never touches it."""
+    return spec_dir / scratch_dirname(label) / QA_RUN_LOG
+
+
 def notes_for(outcome: QaOutcome, fallback: str) -> str:
     """Concise routing notes off an outcome, keeping the deterministic diagnostics."""
     for key in ("notes", "message", "problems", "errors", "healthFindings"):
@@ -73,6 +79,7 @@ __all__ = [
     "QA_RUN_LOG",
     "assert_records",
     "failed_assertions",
+    "labelled_run_log",
     "notes_for",
     "parse_source_roots",
     "scored_run_log",

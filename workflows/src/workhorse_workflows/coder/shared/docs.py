@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Literal
 
@@ -24,6 +25,8 @@ from workhorse_workflows.coder.shared.worktree import untouched_since
 from workhorse_workflows.kit import open_repo, trunk_base
 
 CONTEXT_FILE = "qa-okf-context.json"
+
+EXERCISE_LABEL = "docs-exercise"
 
 MANAGED_KINDS = ("services",)
 
@@ -470,15 +473,34 @@ def documentation_obligations(
     )
 
 
+def exercise_text(spec_dir: str, failed: Sequence[dict[str, Any]]) -> str:
+    """The scenarios the compiled plan failed on the running product, as the owner's next turn reads them."""
+    lines = [
+        "Exercise: the workflow compiled this story's QA plan from the book and ran it on the "
+        "stack before accepting the book. These scenarios failed. Each one is a claim the book "
+        "makes that the running product does not bear out. Read each failure with "
+        f"`ostler qa report --spec {spec_dir} --out-dir {EXERCISE_LABEL}`, then repair the claim on its "
+        "page: a wrong value, locator, step or fixture is a book defect. Do not change product "
+        "code, and do not run the QA plan yourself. The workflow runs it again when you hand off.",
+        "",
+    ]
+    for entry in failed:
+        assertions = ", ".join(f"`{a}`" for a in entry["failed_assertions"])
+        lines.append(f"- `{entry['id']}`" + (f": failed {assertions}" if assertions else ""))
+    return "\n".join(lines)
+
+
 def services_root(flow: Workflow) -> str:
     """Where the OKF feature docs live, as `detect_okf_docs` resolved it in `setup`."""
     return flow.output(detect_okf_docs).services_root
 
 
 __all__ = [
+    "EXERCISE_LABEL",
     "classify_documentation_context",
     "detect_okf_docs",
     "documentation_obligations",
+    "exercise_text",
     "services_root",
     "ungrounded_refs",
     "verify_story_documentation",

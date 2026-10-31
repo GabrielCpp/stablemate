@@ -1,6 +1,7 @@
 """One docs owner folds a finished story into the as-built OKF book through its subagents, and the run checks it."""
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any, ClassVar, Literal
 
@@ -9,13 +10,17 @@ from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_con
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.dev import read_operator_context
+from workhorse_workflows.coder.qa.nodes import compile_story_plan
+from workhorse_workflows.coder.shared.failed import failed_scenario_ids, failed_scenarios_arg
 from workhorse_workflows.coder.shared.provenance import resolve_story_sources
 from workhorse_workflows.coder.shared.compilation import compile_gaps
 from workhorse_workflows.coder.shared.docs import (
+    EXERCISE_LABEL,
     MAX_PROMPT_NOTE_CHARS,
     classify_documentation_context,
     detect_okf_docs,
     documentation_obligations,
+    exercise_text,
     services_root,
     verify_story_documentation,
 )
@@ -34,6 +39,12 @@ from workhorse_workflows.coder.shared.resolution import (
     resolver_args,
 )
 from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
+from workhorse_workflows.coder.shared.stack import (
+    ensure_stack,
+    release_copy,
+    run_qa_plan,
+    stack_target,
+)
 from workhorse_workflows.coder.shared.story import (
     prepare_story,
     resolve_workspace_dirs,
@@ -50,6 +61,8 @@ from workhorse_workflows.coder.shared.schemas.docs import (
 from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
+from workhorse_workflows.kit.qa.runner import copy_lease
+from workhorse_workflows.kit.qa.support import QA_PLAN_FILE
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
@@ -148,6 +161,7 @@ class Docs(Workflow):
         operator_context: str = "",
         laps: int = 0,
         blocks: int = 0,
+        exercised: bool = False,
     ) -> Continue | Await:
         """Run the owner turn: its subagents write the story into the book, review it and fix it."""
         spec = self.phase == "spec"
@@ -193,6 +207,7 @@ class Docs(Workflow):
             authored_nodes=tuple(dict.fromkeys((*authored_nodes, *result.nodes))),
             laps=laps,
             blocks=blocks,
+            exercised=exercised,
         )
 
     def _spec_brief(self) -> dict[str, object]:
@@ -232,6 +247,7 @@ class Docs(Workflow):
         authored_nodes: tuple[str, ...] = (),
         laps: int = 0,
         blocks: int = 0,
+        exercised: bool = False,
     ) -> Continue | Await | Done:
         """Check the book against the diff, and send what failed back to the owner."""
         mode: Literal["local", "semantic", "error"] = "semantic"
@@ -262,11 +278,24 @@ class Docs(Workflow):
         )
         if self.phase != "spec" and mode == "local" and build_status == "passed":
             gate = self._with_compile_gaps(gate, authored_nodes)
+            if gate.status == "passed":
+                gate = self._with_exercise(gate, exercised)
         if gate.status == "passed":
             return Continue(
                 gate, self.finish, notes=gate.notes or author.notes, authored_nodes=authored_nodes
             )
         carried = {"obligations": obligations, "authored_nodes": authored_nodes}
+        if any(f.startswith("X:") for f in gate.failures):
+            return Continue(
+                gate,
+                self.work,
+                report=gate.notes,
+                obligations=obligations,
+                authored_nodes=authored_nodes,
+                laps=laps,
+                blocks=blocks,
+                exercised=True,
+            )
         if laps >= MAX_LAPS:
             notes = f"{gate.notes}\n\nThe checks still fail after {laps} repair turn(s)."
             return self._block(gate, notes, "the checks", blocks, carried)
@@ -278,6 +307,7 @@ class Docs(Workflow):
             authored_nodes=authored_nodes,
             laps=laps + 1,
             blocks=blocks,
+            exercised=exercised,
         )
 
     def _with_compile_gaps(
@@ -310,6 +340,65 @@ class Docs(Workflow):
             changed_code_count=gate.changed_code_count,
             doctor_error_count=gate.doctor_error_count,
             failures=[*gate.failures, *(f"C:{gap}" for gap in gaps)],
+        )
+
+    def _with_exercise(self, gate: DocumentationGate, exercised: bool) -> DocumentationGate:
+        """Run the book's compiled QA plan on the stack, and fail the gate on each scenario the product does not bear out."""
+        spec_dir = self.ctx.spec_dir
+        plan = Path(spec_dir) / QA_PLAN_FILE
+        if plan.exists():
+            self.logger.info("exercise skipped: %s stands, so QA owns the plan", plan)
+            return gate
+        story = self.ctx.story_id or self.ctx.story_slug
+        if not self.call(compile_story_plan, spec_dir, story).compiled:
+            self.logger.info("exercise skipped: the book compiled no QA plan")
+            return gate
+        lease = copy_lease(story, self.run_id, "docs")
+        target = self.call(stack_target, self.ctx.story_slug, lease)
+        started = time.monotonic()
+        try:
+            return self._exercise(gate, exercised, target.near, target.lease)
+        finally:
+            self.call(release_copy, near=target.near, lease=target.lease)
+            plan.unlink(missing_ok=True)
+            self.logger.info("exercise took %.0fs", time.monotonic() - started)
+
+    def _exercise(
+        self, gate: DocumentationGate, exercised: bool, near: str, lease: str
+    ) -> DocumentationGate:
+        stack = self.call(ensure_stack, near=near, lease=lease)
+        if stack.ready not in ("yes", "unneeded"):
+            self.logger.info("exercise skipped: the QA stack is not up (%s)", stack.ready)
+            return gate
+        run = self.call(
+            run_qa_plan, self.ctx.spec_dir, near=near, lease=lease, label=EXERCISE_LABEL
+        )
+        if run.status == "passed":
+            self.logger.info("exercise: the compiled plan passes on the stack")
+            return gate
+        if run.status != "failed":
+            self.logger.info("exercise skipped: the run ended %s", run.status)
+            return gate
+        ids = failed_scenario_ids(run)
+        if not ids:
+            self.logger.info("exercise skipped: the failed run named no scenario")
+            return gate
+        if exercised:
+            self.logger.info(
+                "exercise: %d scenario(s) still fail after one bounce, QA owns them now: %s",
+                len(ids),
+                ", ".join(ids),
+            )
+            return gate
+        note = exercise_text(
+            self.ctx.spec_dir, failed_scenarios_arg(self.ctx.spec_dir, ids, EXERCISE_LABEL)
+        )
+        return DocumentationGate(
+            status="invalid",
+            notes=note,
+            changed_code_count=gate.changed_code_count,
+            doctor_error_count=gate.doctor_error_count,
+            failures=[*gate.failures, *(f"X:{sid}" for sid in ids)],
         )
 
     def finish(self, notes: str = "", authored_nodes: tuple[str, ...] = ()) -> Done:

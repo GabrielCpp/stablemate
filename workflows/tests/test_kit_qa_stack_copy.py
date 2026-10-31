@@ -117,3 +117,21 @@ def test_bring_up_boots_the_device_beside_the_copy_and_reports_a_failed_install(
     assert "adb: no devices" in status.notes and "app-qa" in status.notes
     monkeypatch.setattr(runbook, "bring_up_devices", lambda *_a, **_kw: [{"ready": "yes"}])
     assert runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1").ready == "yes"
+
+
+def test_a_label_reaches_the_ostler_run(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[object] = []
+
+    class _Ostler:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def qa_run(self, *_args: object, **kw: object) -> QaOutcome:
+            seen.append(kw.get("label"))
+            return QaOutcome(True, "passed", {"status": "passed"})
+
+    monkeypatch.setattr(runner, "Ostler", _Ostler)
+    runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), lease="story-1")
+    runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), lease="story-1",
+                       label="docs-exercise")
+    assert seen == [None, "docs-exercise"]

@@ -6,7 +6,7 @@ title: Coder document-story prompt
 # Coder document-story prompt
 
 - file: `workflows/src/workhorse_workflows/coder/docs/prompts/document-story.md`
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.work` @949e33da23fc
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs.work` @c717a4bfc5fc
 - detail: [coder documentation flow](../flows/coder-docs.md)
 - detail: [coder documentation schemas](../concepts/coder-docs-schemas.md)
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_outside_the_docs_worktree_take_the_semantic_route`
@@ -94,7 +94,7 @@ before running the grounding gate.
 - type: string
 - default: empty string
 - required: false
-- semantics: the failed grounding-gate report this turn repairs
+- semantics: the failed grounding-gate report this turn repairs, or an `Exercise:` report listing the scenarios the book's compiled QA plan failed on the running stack, each a claim to correct on its page and never a cue to change product code
 - verify: json_path(path="$.report", equals="example report")
 
 ### operator_context

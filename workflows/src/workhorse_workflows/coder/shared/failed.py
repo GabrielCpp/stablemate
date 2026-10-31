@@ -31,11 +31,18 @@ def failed_scenario_ids(result: QaPlanRun) -> tuple[str, ...]:
     )
 
 
-def failed_scenarios_arg(spec_dir: str, ids: Sequence[str]) -> list[dict[str, Any]]:
+def failed_scenarios_arg(
+    spec_dir: str, ids: Sequence[str], label: str | None = None
+) -> list[dict[str, Any]]:
     """Each failed scenario with the assertions it failed, as the owner prompt lists them."""
     if not spec_dir or not ids:
         return []
-    failed = qa_support.failed_assertions(qa_support.scored_run_log(Path(spec_dir)))
+    log = (
+        qa_support.scored_run_log(Path(spec_dir))
+        if label is None
+        else qa_support.labelled_run_log(Path(spec_dir), label)
+    )
+    failed = qa_support.failed_assertions(log)
     return [{"id": sid, "failed_assertions": failed.get(sid, [])} for sid in ids]
 
 

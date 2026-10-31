@@ -10,7 +10,7 @@ import subprocess
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import patch
 
 import pytest
@@ -37,6 +37,13 @@ from workhorse_workflows.coder.shared.docs import (
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.owner import MAX_BLOCKS, MAX_LAPS
 from workhorse_workflows.coder.shared.schemas.docs import CompileGaps, DocumentationGate
+from workhorse_workflows.coder.shared.schemas.qa import (
+    CompiledPlan,
+    QaPlanRun,
+    StackStatus,
+    StackTarget,
+    StackTornDown,
+)
 from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from _epics import epics_root
@@ -582,6 +589,233 @@ def test_a_book_that_compiles_passes_the_gate_in_one_turn(
 
     assert result.status == "passed", result
     assert agent.authored() == 1, agent.counts()
+
+
+class _Exercise:
+    """The exercise's nodes, scripted: what each plan run returns, and every call the flow made."""
+
+    def __init__(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        runs: tuple[str, ...] = ("failed",),
+        compiles: bool = True,
+        ready: Literal["yes", "no", "none", "unneeded"] = "yes",
+        failed: tuple[str, ...] = ("scenario-a",),
+    ) -> None:
+        self.runs = runs
+        self.compiles = compiles
+        self.ready: Literal["yes", "no", "none", "unneeded"] = ready
+        self.failed = failed
+        self.calls: list[str] = []
+        self.labels: list[str | None] = []
+        
+        self.spec = Path()
+        returns = {
+            "compile_story_plan": CompiledPlan,
+            "stack_target": StackTarget,
+            "ensure_stack": StackStatus,
+            "run_qa_plan": QaPlanRun,
+            "release_copy": StackTornDown,
+        }
+        for name, model in returns.items():
+            method = getattr(self, f"_{name}")
+            monkeypatch.setattr(docs_flow, name, blueprint.node(self._staged(name, method, model)))
+
+    @staticmethod
+    def _staged(name: str, method: Callable[..., Any], model: type) -> Callable[..., Any]:
+        def staged(*args: Any, **kwargs: Any) -> Any:
+            return method(*args, **kwargs)
+
+        staged.__name__ = f"_staged_{name}_{next(_GATE_NAMES)}"
+        staged.__annotations__ = {"return": model}
+        return staged
+
+    def _compile_story_plan(self, *args: Any, **kwargs: Any) -> CompiledPlan:
+        self.calls.append("compile_story_plan")
+        self.spec = Path(args[1])
+        if self.compiles:
+            (self.spec / "qa_plan.py").write_text("# plan\n", encoding="utf-8")
+        return CompiledPlan(compiled=self.compiles)
+
+    def _stack_target(self, *args: Any, **kwargs: Any) -> StackTarget:
+        self.calls.append("stack_target")
+        return StackTarget(near="book", lease=args[2])
+
+    def _ensure_stack(self, *args: Any, **kwargs: Any) -> StackStatus:
+        self.calls.append("ensure_stack")
+        return StackStatus(ready=self.ready)
+
+    def _run_qa_plan(self, *args: Any, **kwargs: Any) -> QaPlanRun:
+        self.calls.append("run_qa_plan")
+        self.labels.append(kwargs.get("label"))
+        status = self.runs[min(self.calls.count("run_qa_plan"), len(self.runs)) - 1]
+        if status != "failed":
+            return QaPlanRun(status="passed")
+        ledger = self.spec / "qa" / "docs-exercise" / "qa-run.ndjson"
+        ledger.parent.mkdir(parents=True, exist_ok=True)
+        ledger.write_text(
+            "\n".join(
+                json.dumps({"kind": "assert", "scenario": sid, "id": f"{sid}-a1", "result": "FAIL"})
+                for sid in self.failed
+            ),
+            encoding="utf-8",
+        )
+        return QaPlanRun(
+            status="failed", ostler={"scenarios": {sid: {"status": "failed"} for sid in self.failed}}
+        )
+
+    def _release_copy(self, *args: Any, **kwargs: Any) -> StackTornDown:
+        self.calls.append("release_copy")
+        return StackTornDown(torn_down="yes")
+
+
+def test_a_failing_exercise_goes_back_to_the_owner_once_as_a_repair_report(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stage_compile(monkeypatch, [])
+    exercise = _Exercise(monkeypatch, runs=("failed", "passed"))
+    agent = _Agent()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.authored() == 2, agent.counts()
+    first, second = agent.author_args()
+    assert first["report"] == "", first
+    assert second["report"].startswith("Exercise:"), second
+    assert "scenario-a" in second["report"] and "scenario-a-a1" in second["report"], second
+    assert "--out-dir docs-exercise" in second["report"], second
+    assert exercise.labels == ["docs-exercise", "docs-exercise"], exercise.labels
+
+
+def test_an_exercise_that_still_fails_after_one_bounce_passes_to_qa(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stage_compile(monkeypatch, [])
+    exercise = _Exercise(monkeypatch, runs=("failed",))
+    agent = _Agent()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.authored() == 2, agent.counts()
+    assert exercise.calls.count("run_qa_plan") == 2, exercise.calls
+
+
+def test_a_plan_that_already_stands_skips_the_exercise(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stage_compile(monkeypatch, [])
+    exercise = _Exercise(monkeypatch)
+    standing = spec_dir() / "qa_plan.py"
+    standing.parent.mkdir(parents=True, exist_ok=True)
+    standing.write_text("# QA's plan\n", encoding="utf-8")
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
+
+    assert result.status == "passed", result
+    assert exercise.calls == [], exercise.calls
+    assert standing.read_text(encoding="utf-8") == "# QA's plan\n"
+
+
+def test_a_stack_that_is_not_up_skips_the_run_and_still_cleans_up(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stage_compile(monkeypatch, [])
+    exercise = _Exercise(monkeypatch, ready="no")
+    agent = _Agent()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.authored() == 1, agent.counts()
+    assert exercise.calls == [
+        "compile_story_plan", "stack_target", "ensure_stack", "release_copy"
+    ], exercise.calls
+    assert not (spec_dir() / "qa_plan.py").exists()
+
+
+def test_a_plan_that_did_not_compile_skips_the_exercise(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stage_compile(monkeypatch, [])
+    exercise = _Exercise(monkeypatch, compiles=False)
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
+
+    assert result.status == "passed", result
+    assert exercise.calls == ["compile_story_plan"], exercise.calls
+
+
+def test_a_passing_exercise_keeps_the_gate_and_leaves_no_plan_behind(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stage_compile(monkeypatch, [])
+    exercise = _Exercise(monkeypatch, runs=("passed",))
+    agent = _Agent()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.authored() == 1, agent.counts()
+    assert exercise.calls[-1] == "release_copy", exercise.calls
+    assert not (spec_dir() / "qa_plan.py").exists()
+
+
+def test_the_exercise_removes_the_plan_after_a_failing_run(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stage_compile(monkeypatch, [])
+    exercise = _Exercise(monkeypatch, runs=("failed",))
+
+    drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
+
+    assert exercise.calls.count("release_copy") == exercise.calls.count("run_qa_plan") == 2
+    assert not (spec_dir() / "qa_plan.py").exists()
+
+
+def test_the_spec_pass_never_exercises_the_book(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    exercise = _Exercise(monkeypatch)
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC, phase="spec"), env(), _Agent())
+
+    assert result.status == "passed", result
+    assert exercise.calls == [], exercise.calls
 
 
 def test_the_spec_pass_never_compiles_the_book(

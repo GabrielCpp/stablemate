@@ -78,6 +78,7 @@ def run_qa_plan(
     near: str = "",
     lease: str = "",
     only: list[str] | None = None,
+    label: str | None = None,
 ) -> QaPlanRun:
     """Execute the QA plan through ostler and normalize its four-state outcome."""
     return _qa_runner.run_qa_plan(
@@ -87,6 +88,7 @@ def run_qa_plan(
         only=only,
         near=near,
         lease=lease,
+        label=label,
     )
 
 

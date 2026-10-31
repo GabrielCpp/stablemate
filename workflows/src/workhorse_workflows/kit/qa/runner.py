@@ -328,6 +328,7 @@ def run_qa_plan(
     plan_file: str | None = None,
     near: str = "",
     lease: str = "",
+    label: str | None = None,
 ) -> QaPlanRun:
     """Execute the QA plan through ostler and normalize its four-state outcome."""
     docs_root = find_docs_root(repo_dir)
@@ -344,7 +345,7 @@ def run_qa_plan(
         logger.warning("QA secret refresh failed: %s", error)
         return QaPlanRun(status="blocked", notes=f"QA secret refresh failed: {error}")
     with scoped_envs(leased | minted):
-        outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir, only=only)
+        outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir, only=only, label=label)
     status = RUN_STATUSES.get(outcome.status.lower(), "invalid")
     notes = notes_for(outcome, f"Ostler QA run returned {status}.")
     logger.info("ostler qa run for %s returned status=%s", spec_dir, status)

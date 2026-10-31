@@ -32,10 +32,10 @@ The separate prompt directories are why a role name such as `dev-review` can exi
 
 - code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow` @a28e84f788c2
 - code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.dev` @eada17fbfc29
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @ca8894553071
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @fc89f307ca4f
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @acd258ee078d
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @57dcd7a6d263
 - code: `workflows/src/workhorse_workflows/coder/fix_ci/flow.py::FixCi` @8ed31c53b617
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @848a6e8a78b1
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @7db733e1eac1
 - code: `workflows/src/workhorse_workflows/coder/genesis/flow.py::Genesis` @b04ab08af1fa
 - code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @52dd48c243df
 - detail: [Coder prompt role resolution](coder-prompt-role-resolution.md)
