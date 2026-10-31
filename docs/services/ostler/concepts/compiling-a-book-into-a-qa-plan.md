@@ -85,24 +85,24 @@ its first hop.
 - code: ostler/ostler/qa/compile.py::compile_plan_gaps@1c70c4235a8d
 - code: ostler/ostler/qa/compile.py::cmd_compile_plan@a0f77ff012ce
 - code: ostler/ostler/qa/compile.py::_plan_header@f201c67e36dc
-- code: ostler/ostler/qa/compile_http.py::api_scenarios@e17faa3b5f39
-- code: ostler/ostler/qa/compile_http.py::http_walk@e17faa3b5f39
-- code: ostler/ostler/qa/compile_http.py::read_back@e17faa3b5f39
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@479bda09f64c
-- code: ostler/ostler/qa/compile_cli.py::cli_journey@479bda09f64c
-- code: ostler/ostler/qa/compile_cli.py::_run_arguments@479bda09f64c
-- code: ostler/ostler/qa/compile_cli.py::invoke_env_names@479bda09f64c
+- code: ostler/ostler/qa/compile_http.py::api_scenarios@4dc4547ef07a
+- code: ostler/ostler/qa/compile_http.py::http_walk@62469eaf0f71
+- code: ostler/ostler/qa/compile_http.py::read_back@2eba39db5fe6
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@b17165cba10a
+- code: ostler/ostler/qa/compile_cli.py::cli_journey@afb3667f295c
+- code: ostler/ostler/qa/compile_cli.py::_run_arguments@51585c8ef3f6
+- code: ostler/ostler/qa/compile_cli.py::invoke_env_names@cab445496b1b
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
 - code: ostler/ostler/qa/compile_page.py::web_state_walks@8e3a88f1d3a8
-- code: ostler/ostler/qa/compile_playwright.py::perform_acts@373cfbcaf3e9
-- code: ostler/ostler/qa/compile_playwright.py::page_observations@373cfbcaf3e9
-- code: ostler/ostler/qa/compile_playwright.py::web_walk@373cfbcaf3e9
-- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@da217d55c8c0
-- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@da217d55c8c0
+- code: ostler/ostler/qa/compile_playwright.py::perform_acts@b1e0dd466b28
+- code: ostler/ostler/qa/compile_playwright.py::page_observations@e610be86684b
+- code: ostler/ostler/qa/compile_playwright.py::web_walk@40e28af83b41
+- code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@3f09b3d2d52d
+- code: ostler/ostler/qa/compile_maestro.py::maestro_walk@6bb3e55179b5
 - code: ostler/ostler/qa/harness/ostler_qa_elements.py::maestro_pattern@224915efaaf0
 - code: ostler/ostler/qa/harness/ostler_qa.py::Maestro@b5e05dbd5366
-- code: ostler/ostler/qa/compile_moves.py::move_walks@357b72ed93c7
-- code: ostler/ostler/qa/compile_moves.py::state_walks@357b72ed93c7
+- code: ostler/ostler/qa/compile_moves.py::move_walks@c8463448d0ef
+- code: ostler/ostler/qa/compile_moves.py::state_walks@5e62aca2c37f
 - code: ostler/ostler/qa/compile_journey.py::journey_target@bab75359ba6d
 - code: ostler/ostler/qa/compile_journey.py::api_target@20652e710dad
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@a83239a8b983
@@ -110,28 +110,28 @@ its first hop.
 - code: ostler/ostler/qa/compile_stops.py::resolve_stop@d296755be9b1
 - code: ostler/ostler/qa/compile_stops.py::resolve_state@0cd0a5f9d41c
 - code: ostler/ostler/qa/compile_stops.py::ScreenStop@8946299e4550
-- code: ostler/ostler/qa/compile_support.py::unobservable_gap@771f910c9275
-- code: ostler/ostler/qa/compile_support.py::vettable@771f910c9275
-- code: ostler/ostler/qa/compile_support.py::check_document@771f910c9275
-- code: ostler/ostler/qa/plan_source.py::Gap@08fddc26f73f
-- code: ostler/ostler/qa/plan_source.py::ScenarioRefusal@08fddc26f73f
-- code: ostler/ostler/qa/plan_source.py::python_literal@08fddc26f73f
-- code: ostler/ostler/qa/plan_source.py::arrangement_of@08fddc26f73f
-- code: ostler/ostler/qa/obligation.py::Obligation@4bdc7a410ade
-- code: ostler/ostler/qa/obligation.py::obligation_of@4bdc7a410ade
-- code: ostler/ostler/qa/obligation.py::obligations_of@4bdc7a410ade
-- code: ostler/ostler/qa/obligation_frame.py::book_nodes@59e7ee8278ae
-- code: ostler/ostler/qa/obligation_frame.py::obligation_frame@59e7ee8278ae
-- code: ostler/ostler/qa/obligation_frame.py::BookNode@59e7ee8278ae
-- code: ostler/ostler/qa/book_index.py::BookIndex@0153e17c3795
+- code: ostler/ostler/qa/compile_support.py::unobservable_gap@8fa6d6b4555a
+- code: ostler/ostler/qa/compile_support.py::vettable@fb6ad09a98f2
+- code: ostler/ostler/qa/compile_support.py::check_document@e58546e37917
+- code: ostler/ostler/qa/plan_source.py::Gap@d9fcecfd2b4b
+- code: ostler/ostler/qa/plan_source.py::ScenarioRefusal@7f7a2c2cefe2
+- code: ostler/ostler/qa/plan_source.py::python_literal@cb8bccf55a79
+- code: ostler/ostler/qa/plan_source.py::arrangement_of@9dcaf902b06a
+- code: ostler/ostler/qa/obligation.py::Obligation@8aa729c4f7da
+- code: ostler/ostler/qa/obligation.py::obligation_of@b558662c2212
+- code: ostler/ostler/qa/obligation.py::obligations_of@103f496c84c3
+- code: ostler/ostler/qa/obligation_frame.py::book_nodes@1d8c8dad0e49
+- code: ostler/ostler/qa/obligation_frame.py::obligation_frame@32a66096777d
+- code: ostler/ostler/qa/obligation_frame.py::BookNode@89d602494fca
+- code: ostler/ostler/qa/book_index.py::BookIndex@eea59e696855
 - code: ostler/ostler/qa/book_index.py::node_acts@734a965ada9c
-- code: ostler/ostler/qa/book_fixtures.py::resolved@26e58a44f4ed
-- code: ostler/ostler/qa/journey_steps.py::journey_steps@0794ea6c9659
-- code: ostler/ostler/qa/fixture_provides.py::closure@9053b42918c0
-- code: ostler/ostler/qa/fixture_provides.py::index@9053b42918c0
-- code: ostler/ostler/qa/fixture_browser.py::browser_step@d769665467aa
-- code: ostler/ostler/qa/navigation.py::navigation_rows@e5be923f66b9
-- code: ostler/ostler/qa/navigation.py::maestro_launch@e5be923f66b9
+- code: ostler/ostler/qa/book_fixtures.py::resolved@c2327c8c4431
+- code: ostler/ostler/qa/journey_steps.py::journey_steps@348541ac03a5
+- code: ostler/ostler/qa/fixture_provides.py::closure@bdd1adf2dc1d
+- code: ostler/ostler/qa/fixture_provides.py::index@5cf4090d392b
+- code: ostler/ostler/qa/fixture_browser.py::browser_step@190da9181967
+- code: ostler/ostler/qa/navigation.py::navigation_rows@4df2fbcf356b
+- code: ostler/ostler/qa/navigation.py::maestro_launch@cf1797f85188
 - detail: [ostler](../cli.md)
 
 ## Contract
@@ -184,9 +184,13 @@ its first hop.
 - rule: a text field is never checked with `visible(text=)`. A field shows its content as a value and
   never as text, so doctor refuses that check on a `textbox` or `searchbox` component with
   `text-of-a-field`, and the check is `value(locator=..., equals=...)` instead.
+- rule: an HTTP page's claims share one scenario, except a claim that names a fixture with
+  `lifetime: scenario`, which runs in a scenario of its own. Such a fixture holds a condition one
+  request can consume, such as an account with no list yet, and the harness builds it once per
+  scenario. A second claim in the same scenario would read what the first claim's request left.
 - generated names are unique: every `*_function_name` helper in `plan_source.py` is given the
   full set of already-emitted names (`EmittedScenarios`) and never returns one already used in
-  the same plan.
+  the same plan. A page with several scenarios on one target numbers the names after the first.
 - rule: `compile-plan --cover AC=ID[,ID...]` is how an acceptance criterion reaches a compiled
   plan. The packet holds no link from a criterion to an obligation, so the owner states which
   obligations prove each criterion, and the compiler appends the criterion to the `covers=` of

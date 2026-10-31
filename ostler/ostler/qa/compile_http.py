@@ -122,31 +122,42 @@ def expect_status(rows: tuple[CallRow, ...]) -> int | None:
 def api_scenarios(
     http_owed: list[Obligation], book: BookIndex, sinks: PlanSinks, emitted: EmittedScenarios,
 ) -> list[str]:
-    """One scenario per book page whose endpoints owe live evidence, each driven over HTTP."""
+    """One scenario per book page whose endpoints owe live evidence, each driven over HTTP, and one more for each claim that names a fixture every scenario rebuilds."""
     lines: list[str] = []
     for source, obligations in by_source(http_owed).items():
         sinks.gaps.extend(unarranged_state_gap(o) for o in obligations if not has_checks(o))
-        declared = [o for o in obligations if has_checks(o)]
-        if not declared:
-            continue
         arranging = _arranging(obligations, book)
-        arrangement = _with_lent_fixtures(arrangement_of(declared), _credential_lenders(declared, arranging), declared)
-        if arrangement.unstated:
-            sinks.gaps.extend(unarranged_scenario_gap(o) for o in declared)
-            continue
-        covered: set[str] = set()
-        body = _scenario_body(declared, arranging, book.fixture_pages, sinks.gaps, covered, sinks.captured, book.resources,
-                               book.resource_reads)
-        if not covered:
-            continue
-        emitted.covered.update(covered)
-        target_var, base_url = api_target(obligations[0].surface, source, book)
-        lines.extend(target_lines(target_var, PYTHON.name, f", base_url={python_literal(base_url)}", emitted))
-        scenario = SourceScenario(
-            source, target_var, [o.id for o in declared if o.id in covered],
-            arrangement, body)
-        lines.extend(scenario_lines(scenario, claim_scenario_function_name(scenario, emitted)))
+        for declared in _scenario_groups([o for o in obligations if has_checks(o)], book.scenario_fixtures):
+            lines.extend(_api_scenario(source, obligations, declared, arranging, book, sinks, emitted))
     return lines
+
+
+def _scenario_groups(declared: list[Obligation], rebuilt: frozenset[str]) -> list[list[Obligation]]:
+    """The page's claims that share one scenario, then each claim that names a fixture in *rebuilt* on its own, since the condition such a fixture holds lasts one claim."""
+    alone = [o for o in declared if any(row.name in rebuilt for row in o.fixtures)]
+    shared = [o for o in declared if o not in alone]
+    return [group for group in [shared, *([o] for o in alone)] if group]
+
+
+def _api_scenario(
+    source: str, obligations: list[Obligation], declared: list[Obligation], arranging: list[Obligation],
+    book: BookIndex, sinks: PlanSinks, emitted: EmittedScenarios,
+) -> list[str]:
+    """The scenario that drives *declared*, claims of the page *source*, over HTTP, or nothing when none of them is covered."""
+    arrangement = _with_lent_fixtures(arrangement_of(declared), _credential_lenders(declared, arranging), declared)
+    if arrangement.unstated:
+        sinks.gaps.extend(unarranged_scenario_gap(o) for o in declared)
+        return []
+    covered: set[str] = set()
+    body = _scenario_body(declared, arranging, book.fixture_pages, sinks.gaps, covered, sinks.captured, book.resources,
+                          book.resource_reads)
+    if not covered:
+        return []
+    emitted.covered.update(covered)
+    target_var, base_url = api_target(obligations[0].surface, source, book)
+    lines = target_lines(target_var, PYTHON.name, f", base_url={python_literal(base_url)}", emitted)
+    scenario = SourceScenario(source, target_var, [o.id for o in declared if o.id in covered], arrangement, body)
+    return [*lines, *scenario_lines(scenario, claim_scenario_function_name(scenario, emitted))]
 
 
 _REFUSED = (401, 403)

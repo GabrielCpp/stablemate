@@ -237,11 +237,15 @@ class SourceScenario:
 
 
 def claim_scenario_function_name(scenario: SourceScenario, emitted: EmittedScenarios) -> str:
-    """Reserve the function name *scenario* gets, and return it: its page's, or its page's and its target's when another target on that page took the page's already."""
+    """Reserve the function name *scenario* gets, and return it: its page's, its page's and its target's when another target on that page took the page's already, else that name numbered."""
     page = python_identifier(scenario.source)
     name = f"{page}_from_the_book"
     if name in emitted.functions:
-        name = f"{page}_on_{scenario.target_var}_from_the_book"
+        name = base = f"{page}_on_{scenario.target_var}_from_the_book"
+        number = 1
+        while name in emitted.functions:
+            number += 1
+            name = f"{base}_{number}"
     emitted.functions.add(name)
     return name
 

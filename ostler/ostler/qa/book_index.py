@@ -43,6 +43,7 @@ class BookIndex:
     outcomes_by_node: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     invocation_claims: dict[str, list[Obligation]] = field(default_factory=dict[str, list[Obligation]])
     fixture_pages: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    scenario_fixtures: frozenset[str] = frozenset()
     fixture_rows: dict[str, FixtureRow] = field(default_factory=dict[str, FixtureRow])
     hop_acts: dict[tuple[str, str], list[CallRow]] = field(default_factory=dict[tuple[str, str], list[CallRow]])
     fragment_hosts: dict[str, str] = field(default_factory=dict[str, str])

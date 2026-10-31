@@ -906,6 +906,40 @@ def test_a_delete_of_a_fixture_each_scenario_rebuilds_is_sent_though_other_pages
     assert 'qa.http.delete(qa.resolve("/api/ledgers/@seeded-ledger.id"), expect_status=204)' in source
 
 
+def test_each_claim_naming_a_fixture_each_scenario_rebuilds_gets_its_own_scenario() -> None:
+    """A fixture rebuilt per scenario holds a condition one request consumes, so a second claim sharing the build reads what the first claim left."""
+    creating, untouched, plain = (f"okf:docs/services/demo/read-ledger.md#read-ledger:{arm}"
+                                  for arm in ("does:1", "auth:1", "emits:1"))
+    context = _context(
+        _obligation(creating, source="docs/services/demo/read-ledger.md", node="read-ledger",
+                    locators={"route": ["GET /api/ledgers/{id}"]}, docPosition=[1, 0],
+                    checksDeclared=[{"call": "ok", "name": "http_status",
+                                     "args": {"code": 200, "path": "/api/ledgers/@fresh-ledger.id"}}],
+                    fixturesDeclared=[_ledger_fixture("fresh-ledger")]),
+        _obligation(untouched, source="docs/services/demo/read-ledger.md", node="read-ledger",
+                    locators={"route": ["GET /api/ledgers/{id}"]}, docPosition=[2, 0],
+                    checksDeclared=[{"call": "no", "name": "http_status",
+                                     "args": {"code": 401, "path": "/api/ledgers/@fresh-ledger.id"}}],
+                    fixturesDeclared=[_ledger_fixture("fresh-ledger")]),
+        _obligation(plain, source="docs/services/demo/read-ledger.md", node="read-ledger",
+                    locators={"route": ["GET /api/ledgers/{id}"]}, docPosition=[3, 0],
+                    checksDeclared=[{"call": "gone", "name": "http_status",
+                                     "args": {"code": 404, "path": "/api/ledgers/missing"}}]),
+    )
+    context["scenarioFixtures"] = ["fresh-ledger"]
+    source, gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert gaps == []
+    scenarios = source.split("@scenario(")[1:]
+    holding = {oid: [s for s in scenarios if f'"{oid}"' in s] for oid in (creating, untouched, plain)}
+    assert all(len(found) == 1 for found in holding.values())
+    assert holding[creating][0] is not holding[untouched][0]
+    assert holding[creating][0].count('qa.fixture("fresh-ledger"') == 1
+    assert holding[untouched][0].count('qa.fixture("fresh-ledger"') == 1
+    assert 'qa.fixture("fresh-ledger"' not in holding[plain][0]
+    compile(source, "qa_plan.py", "exec")
+
+
 def test_each_claim_of_a_page_runs_in_its_own_claim_block() -> None:
     """A page's first refused request must not stop the run from trying the claims after it."""
     first, second = (f"okf:docs/services/demo/globex.md#get-things:{arm}" for arm in ("does:1", "emits:1"))

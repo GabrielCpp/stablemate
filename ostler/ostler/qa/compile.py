@@ -637,6 +637,7 @@ def _compile_packet(
         invocation_claims=book_index_mod.invocation_claims(carried),
         hop_acts=book_index_mod.hop_acts(carried, acts.by_node, frozenset(packet.screen_routes)),
         fixture_pages=book_index_mod.fixture_pages(carried, rebuilt=packet.scenario_fixtures),
+        scenario_fixtures=packet.scenario_fixtures,
         fixture_rows=book_index_mod.fixture_rows(carried),
         fragment_hosts=packet.fragment_hosts,
         guards_by_node=book_index_mod.guards_by_node(carried),
