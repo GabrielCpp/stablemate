@@ -17,7 +17,7 @@ other bullet uses. The ostler book depends on no outside system, so it holds no 
 - code: ostler/ostler/resource_checks.py::check_request_step@02e7743e4f99
 - code: ostler/ostler/explain.py::run@1fcc0de8bbfe
 - code: ostler/ostler/qa/book_fixtures.py::resolved_resources@48ca191dff1a
-- code: ostler/ostler/qa/compile_observe.py::observation_lines@2b9b5b48ab8c
+- code: ostler/ostler/qa/compile_observe.py::observation_lines@8db0acb37755
 - code: ostler/ostler/qa/compile_observe.py::within_off_observation@3468f4224495
 - code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk@953f0758c607
 - code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk.ensure_reachable@bbb5c80511be
@@ -33,6 +33,7 @@ other bullet uses. The ostler book depends on no outside system, so it holds no 
 - rule: releases run last borrowed first, and a release that fails never stops the others
 - rule: a failed release fails a scenario that had passed
 - rule: a release sees the fixture's facts as they stand when the scenario ends, so a fact a later step binds is in reach
+- rule: a reference in an observation's request or command that no earlier step of the scenario produced is `unresolved-precondition` at compile time, never a failure at run time
 - rule: `within=` is legal only on a row held on an `observe:`, and a row that never held reports the last value the harness read
 - rule: a probe runs once per harness process, before the first step or observation on its resource
 - rule: the check vocabulary has no entry for `within=`, because it applies to every check that reads a subject, and the `ostler checks` preamble documents it once
@@ -115,6 +116,11 @@ the last read. A row that never held fails with the value of that last read. The
 observation to a `qa.observe(resource, observation, within=N, until=[...])` call, and each row to
 a `qa.verify` on the document it returned. The harness records one `observe` event per read with
 the resource, the observation, the number of polls and the elapsed milliseconds.
+
+An observation's request path or `run:` command may read `@<fixture>.<key>` and `$<captured-name>`
+references. The context packet carries each observation's references, and the compiler resolves
+them against the facts and captures earlier steps of the scenario left behind. A reference nothing
+produced files `unresolved-precondition` on the claim, and the claim compiles no `qa.observe` call.
 
 ## When the resource is absent
 

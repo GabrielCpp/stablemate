@@ -16,6 +16,8 @@ from ostler.data_states import move_obligation_id
 from ostler.data_states import siblings_of
 from ostler.data_states import state_obligation_id
 from ostler.qa.book_index import BookIndex
+from ostler.qa import references
+from ostler.qa.compile_support import Produced
 from ostler.qa.compile_observe import observation_lines, within_off_observation
 from ostler.qa.compile_support import expand_passages
 from ostler.qa.compile_support import resolved_literal
@@ -136,13 +138,16 @@ def _verify_line(row: CallRow, operand: str, oid: str) -> str:
 def cli_scenario_body(
     obligations: list[Obligation], gaps: list[Gap], covered: set[str], binary: str | None,
     resources: Mapping[str, frozenset[str]] | None = None,
+    resource_reads: Mapping[str, tuple[references.Reference, ...]] | None = None,
 ) -> list[str]:
     """Compile every CLI obligation's assertion half — `_scenario_body`'s counterpart for a `command` node instead of a route."""
     lines: list[str] = []
     index = 0
+    produced = Produced()
     for obligation in sorted(obligations, key=lambda o: o.doc_position):
         oid = obligation.id
         rows = obligation.checks
+        produced.record_fixtures(obligation)
         requirement = " ".join(obligation.requirement.split())
         lines.append("")
         lines.append(f"    # {oid}")
@@ -190,7 +195,7 @@ def cli_scenario_body(
             assertions.append(_verify_line(row, operand, oid))
         if within_off_observation(obligation, gaps):
             whole = False
-        side = observation_lines(obligation, name, resources or {}, gaps)
+        side = observation_lines(obligation, name, resources or {}, gaps, resource_reads, produced.resolves)
         if whole and side.whole:
             lines.extend(assertions)
             lines.extend(side.lines)

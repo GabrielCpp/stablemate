@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from ostler.checks import CheckValue
@@ -54,8 +54,14 @@ def within_off_observation(obligation: Obligation, gaps: list[Gap]) -> bool:
     return found
 
 
+def _spelled(ref: references.Reference) -> str:
+    return f"@{ref.node}.{ref.key}" if isinstance(ref, references.NodeRef) else f"${ref.name}"
+
+
 def observation_lines(
     obligation: Obligation, variable: str, resources: Mapping[str, frozenset[str]], gaps: list[Gap],
+    reads: Mapping[str, tuple[references.Reference, ...]] | None = None,
+    resolves: Callable[[references.Reference], bool] = lambda _ref: True,
 ) -> ObservationLines:
     """Each of the claim's observations read once through the harness, then its rows asserted on what the read returned."""
     oid = obligation.id
@@ -70,6 +76,16 @@ def observation_lines(
             named = f"@{row.resource}.{row.observation}"
             why = "names no resource page" if held is None else "names an observation the page does not hold"
             gaps.append(Gap(oid, "unknown-observation", f"`observe: {named}` {why}"))
+            whole = False
+            continue
+        unproduced = [ref for ref in (reads or {}).get(f"{row.resource}.{row.observation}", ()) if not resolves(ref)]
+        for ref in unproduced:
+            gaps.append(Gap(oid, "unresolved-precondition",
+                            f"`observe: @{row.resource}.{row.observation}` reads {_spelled(ref)!r} in its target, "
+                            f"and nothing earlier in the scenario produced it. "
+                            f"Name the fact the observation reads as `@<fixture>.<key>` of a fixture the claim "
+                            f"arranges, or capture it first"))
+        if unproduced:
             whole = False
             continue
         name = f"{variable}_o{number}"

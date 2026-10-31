@@ -44,6 +44,7 @@ from ostler.qa.obligation import NO_LOCATORS
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Arrangement
 from ostler.qa.plan_source import EmittedScenarios
+from ostler.qa.compile_support import Produced
 from ostler.qa.compile_observe import has_checks, observation_lines, within_off_observation
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import PlanSinks
@@ -134,7 +135,8 @@ def api_scenarios(
             sinks.gaps.extend(unarranged_scenario_gap(o) for o in declared)
             continue
         covered: set[str] = set()
-        body = _scenario_body(declared, arranging, book.fixture_pages, sinks.gaps, covered, sinks.captured, book.resources)
+        body = _scenario_body(declared, arranging, book.fixture_pages, sinks.gaps, covered, sinks.captured, book.resources,
+                               book.resource_reads)
         if not covered:
             continue
         emitted.covered.update(covered)
@@ -287,27 +289,6 @@ def _tree_literal(tree: dict[str, Any]) -> str:
     members = (f"{json.dumps(k)}: {_tree_literal(v) if isinstance(v, dict) else resolved_literal(v, 'resolve_body')}"
                for k, v in tree.items())
     return "{" + ", ".join(members) + "}"
-
-
-@dataclass(frozen=True)
-class Produced:
-    """What earlier claims in one endpoint scenario left for a later one to reference: fixture facts and captured names."""
-    facts: set[tuple[str, str]] = field(default_factory=set[tuple[str, str]])
-    captures: set[str] = field(default_factory=set[str])
-
-    def resolves(self, ref: references.Reference) -> bool:
-        """Whether *ref* names a fact some earlier producer in the scenario already left behind."""
-        if isinstance(ref, references.NodeRef):
-            return (ref.node, ref.key) in self.facts
-        return ref.name in self.captures
-
-    def record_fixtures(self, obligation: Obligation) -> None:
-        """Add the `node.key` facts *obligation*'s fixtures provide."""
-        for fixture_row in obligation.fixtures:
-            for qualified in fixture_row.provides_keys:
-                owner, sep, key = qualified.rpartition(".")
-                if sep:
-                    self.facts.add((owner, key))
 
 
 @dataclass(frozen=True)
@@ -564,7 +545,8 @@ def claim_assertions(
 
 def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], fixture_pages: dict[str, frozenset[str]],
                    gaps: list[Gap], covered: set[str], captured: set[tuple[str, str]],
-                   resources: Mapping[str, frozenset[str]] | None = None) -> list[str]:
+                   resources: Mapping[str, frozenset[str]] | None = None,
+                   resource_reads: Mapping[str, tuple[references.Reference, ...]] | None = None) -> list[str]:
     """Compile every claim's request, captures and assertions, in book order, sending each node's credentials from every claim that arranges one, checked or not."""
     lines: list[str] = []
     produced = Produced()
@@ -592,7 +574,7 @@ def _scenario_body(obligations: list[Obligation], arranging: list[Obligation], f
             continue
         asserted = claim_assertions(obligation, observed, produced, gaps)
         claim_lines.extend(asserted.todos or asserted.assertions)
-        side = observation_lines(obligation, observed, resources or {}, gaps)
+        side = observation_lines(obligation, observed, resources or {}, gaps, resource_reads, produced.resolves)
         claim_lines.extend(side.lines)
         lines.extend(within_claim(oid, claim_lines))
         if not asserted.todos and side.whole:

@@ -52,8 +52,10 @@ Name the page after the system, so `camera-booking.md` gaps its claims as
 One step per observation, a `### <name>` heading with `kind: observe`. An `http` observation
 states `request: GET <path>` and a `cli` observation states `run: <command>` that prints JSON on
 stdout. The JSON the request returns or the command prints is the document a claim's checks read.
-The path may carry `@<fixture>.<key>` and `$<captured-name>` references, the way a route path
-does.
+The path and the `run:` command may carry `@<fixture>.<key>` and `$<captured-name>` references,
+the way a route path does.
+A reference that no earlier producer in the claim's scenario left behind is
+`unresolved-precondition`.
 
 A claim reads an observation with `observe: @<stem>.<name>`. See
 [bullet-grammar.md](../bullet-grammar.md#a-claims-side-observation).

@@ -445,7 +445,8 @@ def _cli_scenarios(
             sinks.gaps.extend(unarranged_scenario_gap(o) for o in obligations)
             continue
         covered: set[str] = set()
-        body = cli_scenario_body(obligations, sinks.gaps, covered, book.cli_binaries.get(source), book.resources)
+        body = cli_scenario_body(obligations, sinks.gaps, covered, book.cli_binaries.get(source), book.resources,
+                                 book.resource_reads)
         if not covered:
             continue
         emitted.covered.update(covered)
@@ -646,6 +647,7 @@ def _compile_packet(
         fixture_launch_screens=packet.fixture_launch_screens,
         fixture_needs=packet.fixture_needs,
         resources=packet.resources,
+        resource_reads=packet.resource_reads,
         states_by_screen=book_index_mod.states_by_screen(carried),
         passages=packet.passages,
         data_states=packet.data_states,

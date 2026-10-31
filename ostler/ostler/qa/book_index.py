@@ -58,6 +58,7 @@ class BookIndex:
     moves: dict[str, tuple[Move, ...]] = field(default_factory=dict[str, tuple[Move, ...]])
     browser_fixtures: frozenset[str] = frozenset()
     resources: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    resource_reads: dict[str, tuple[references.Reference, ...]] = field(default_factory=dict[str, tuple[references.Reference, ...]])
 
     def left_on(self, names: Sequence[str]) -> str | None:
         """The screen the last browser fixture of *names* leaves the browser on. A fixture with no browser step, such as one that only seeds data, leaves the browser where the one before it did."""

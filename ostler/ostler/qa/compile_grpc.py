@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from ostler.checks import CheckValue
 from ostler.qa import references
 from ostler.qa.book_index import BookIndex
-from ostler.qa.compile_http import Produced
+from ostler.qa.compile_support import Produced
 from ostler.qa.compile_http import claim_assertions
 from ostler.qa.compile_http import claim_captures
 from ostler.qa.compile_http import nested_body_literal

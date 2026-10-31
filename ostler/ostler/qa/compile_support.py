@@ -8,6 +8,7 @@ from collections.abc import Callable
 from collections.abc import Container
 from collections.abc import Mapping
 from dataclasses import dataclass
+from dataclasses import field
 from types import ModuleType
 from typing import TYPE_CHECKING
 from typing import get_args
@@ -357,3 +358,24 @@ def resolved_literal(value: CheckValue, resolver: str = "resolve") -> str:
     if isinstance(value, str) and references.find_references(value):
         return f"qa.{resolver}({literal})"
     return literal
+
+
+@dataclass(frozen=True)
+class Produced:
+    """What earlier claims in one endpoint scenario left for a later one to reference: fixture facts and captured names."""
+    facts: set[tuple[str, str]] = field(default_factory=set[tuple[str, str]])
+    captures: set[str] = field(default_factory=set[str])
+
+    def resolves(self, ref: references.Reference) -> bool:
+        """Whether *ref* names a fact some earlier producer in the scenario already left behind."""
+        if isinstance(ref, references.NodeRef):
+            return (ref.node, ref.key) in self.facts
+        return ref.name in self.captures
+
+    def record_fixtures(self, obligation: Obligation) -> None:
+        """Add the `node.key` facts *obligation*'s fixtures provide."""
+        for fixture_row in obligation.fixtures:
+            for qualified in fixture_row.provides_keys:
+                owner, sep, key = qualified.rpartition(".")
+                if sep:
+                    self.facts.add((owner, key))

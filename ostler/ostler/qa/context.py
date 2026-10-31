@@ -25,6 +25,7 @@ from ostler.pages import files_in_book
 from ostler import reach
 from ostler import routes as routes_mod
 from ostler.qa import captures as captures_mod
+from ostler.qa import references
 from ostler.qa.book_fixtures import resolved_resources
 from ostler.qa.dispatch import owes_live_evidence
 from ostler.qa.fixture_browser import BROWSER_KEYS
@@ -414,6 +415,7 @@ def build_context(
         "fixtureScreens": _fixture_screens(snapshot.head_graph, snapshot.book),
         "fixtureLaunchScreens": _fixture_launch_screens(snapshot.head_dump),
         "resourceObservations": {stem: sorted(row["observations"]) for stem, row in resolved_resources(snapshot.head_graph).items()},
+        "resourceReads": _resource_reads(resolved_resources(snapshot.head_graph)),
         "fixtureNeeds": {stem: sorted(needs) for stem, needs in _fixture_needs_index(snapshot.book).items() if needs},
         "fragmentHosts": _fragment_hosts(snapshot.book),
         "passages": _passages(snapshot.book, selection.contracts | selection.journeys),
@@ -2005,6 +2007,22 @@ def _fixture_undetermined_index(book: Mapping[str, BookNode]) -> dict[str, list[
     """Every reachable `provides:` key whose *source* the book left undetermined, by fixture stem."""
     resolved = provides_mod.closure(book)
     return {name: sorted(ref for ref, bad in pairs if bad) for name, pairs in resolved.items()}
+
+
+def _reference_text(ref: references.Reference) -> str:
+    return f"@{ref.node}.{ref.key}" if isinstance(ref, references.NodeRef) else f"${ref.name}"
+
+
+def _resource_reads(resources: Mapping[str, Mapping[str, Any]]) -> dict[str, list[str]]:
+    """Each `<resource>.<observation>` whose target carries `@fixture.key` or `$name` references, with those references: the command for a `cli` resource, the request path for any other."""
+    out: dict[str, list[str]] = {}
+    for stem, row in resources.items():
+        for name, step in row["observations"].items():
+            target = step.get("command", "") if row.get("reach") == "cli" else (step.get("request") or {}).get("path", "")
+            found = sorted({_reference_text(ref) for ref in references.find_references(str(target))})
+            if found:
+                out[f"{stem}.{name}"] = found
+    return out
 
 
 def _fixture_needs_index(book: Mapping[str, BookNode]) -> dict[str, frozenset[str]]:

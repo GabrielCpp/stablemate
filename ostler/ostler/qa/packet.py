@@ -10,6 +10,7 @@ from typing import Any, cast
 
 from ostler.data_states import DataState, Move
 from ostler.passages import Passage
+from ostler.qa import references
 from ostler.qa.navigation import SurfaceNavigation
 from ostler.qa.navigation import navigation_rows
 from ostler.qa.obligation import Obligation
@@ -35,6 +36,7 @@ class ContextPacket:
     data_states: dict[str, DataState] = field(default_factory=dict[str, DataState])
     moves: dict[str, tuple[Move, ...]] = field(default_factory=dict[str, tuple[Move, ...]])
     resources: dict[str, frozenset[str]] = field(default_factory=dict[str, frozenset[str]])
+    resource_reads: dict[str, tuple[references.Reference, ...]] = field(default_factory=dict[str, tuple[references.Reference, ...]])
 
     @property
     def owed(self) -> list[Obligation]:
@@ -73,6 +75,17 @@ def _name_table(value: object, what: str) -> dict[str, frozenset[str]]:
         if not isinstance(key, str):
             raise ValueError(f"context `{what}` maps {key!r} to {item!r}; the key must be a string")
         table[key] = _names(item, f"{what}.{key}")
+    return table
+
+
+def _reference_table(value: object, what: str) -> dict[str, tuple[references.Reference, ...]]:
+    """A packet mapping of `<resource>.<observation>` to the references its target carries, empty when unset, refused loudly when anything else."""
+    table: dict[str, tuple[references.Reference, ...]] = {}
+    for key, texts in _name_table(value, what).items():
+        parsed = [references.parse_reference(text) for text in sorted(texts)]
+        if any(ref is None for ref in parsed):
+            raise ValueError(f"context `{what}` maps {key!r} to {sorted(texts)!r}; each must be `@node.key` or `$name`")
+        table[key] = tuple(ref for ref in parsed if ref is not None)
     return table
 
 
@@ -168,4 +181,5 @@ def packet_of(context: Mapping[str, Any]) -> ContextPacket:
         data_states=_data_states(context.get("dataStates")),
         moves=_moves(context.get("moves")),
         resources=_name_table(context.get("resourceObservations"), "resourceObservations"),
+        resource_reads=_reference_table(context.get("resourceReads"), "resourceReads"),
     )
