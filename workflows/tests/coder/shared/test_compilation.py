@@ -1,10 +1,12 @@
 """The book's compile, read as the gaps the story's own pages owe."""
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 
 from _compiling_book import LIST_ENTRIES, write_packet
+from ostler.qa.readiness import cmd_compile_gaps
 
 from workhorse_workflows.coder.shared.compilation import compile_gaps
 
@@ -38,3 +40,23 @@ def test_a_book_that_compiles_has_no_gap(tmp_path: Path) -> None:
     result = compile_gaps(LOG, spec_dir=str(spec), story="STORY-1", pages=(LIST_ENTRIES,))
 
     assert result.gaps == []
+
+
+def test_the_writer_command_and_workflow_return_the_same_readiness_verdict(tmp_path: Path) -> None:
+    spec = tmp_path / "spec"
+    write_packet(tmp_path, spec, runbook=True)
+    packet_path = spec / "qa-okf-context.json"
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    obligation = next(
+        row for row in packet["obligations"]
+        if row.get("checksDeclared") and not row["id"].endswith((":contract", ":end-state"))
+    )
+    obligation["checksDeclared"] = []
+    packet_path.write_text(json.dumps(packet), encoding="utf-8")
+
+    workflow = compile_gaps(LOG, spec_dir=str(spec), story="STORY-1", pages=(LIST_ENTRIES,))
+    writer = cmd_compile_gaps(spec, story="STORY-1", pages=(LIST_ENTRIES,))
+
+    assert not writer.ok
+    assert workflow.gaps == writer.message.splitlines()
+    assert [gap["ref"] for gap in writer.data["gaps"]] == [obligation["id"]]

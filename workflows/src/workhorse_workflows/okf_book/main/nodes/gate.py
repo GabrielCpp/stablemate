@@ -9,6 +9,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
 from ostler.qa.attribution import Cause, Signature
+from ostler.qa.readiness import obligation_page
 from ostler.qa.verdict import Verdict
 from pydantic import BaseModel, ConfigDict, TypeAdapter
 
@@ -24,7 +25,6 @@ from workhorse_workflows.okf_book.main.nodes.writer_commands import (
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import settle_jobs
 from workhorse_workflows.okf_book.main.nodes.writer_stack import KeptStack
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side, forget_blocker, read_blockers, record_blocker
-from workhorse_workflows.okf_book.shared.book_compilation import obligation_page
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem, page_problems, tool_blockers

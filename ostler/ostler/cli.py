@@ -1000,6 +1000,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_compile_plan.add_argument("--json", action="store_true")
 
+    qa_compile_gaps = qas.add_parser(
+        "compile-gaps",
+        help="report the blocking compile gaps on pages a story touched",
+    )
+    qa_compile_gaps.add_argument("--spec", required=True, type=Path)
+    qa_compile_gaps.add_argument("--story", default="")
+    qa_compile_gaps.add_argument(
+        "--page", action="append", required=True, default=[],
+        help="repo-relative book page the story touched; repeatable",
+    )
+    qa_compile_gaps.add_argument("--json", action="store_true")
+
     qa_context_validate = qas.add_parser(
         "context-validate", help="validate qa-okf-context.json"
     )
@@ -1937,6 +1949,13 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             select=set(args.select) or None,
             cover=cover,
             replace=args.replace,
+        )
+        _out(json.dumps(result.data, indent=2) if args.json else result.message)
+        return 0 if result.ok else 1
+
+    if op == "compile-gaps":
+        result = qa_mod.cmd_compile_gaps(
+            _resolve_spec(args.spec), story=args.story, pages=args.page,
         )
         _out(json.dumps(result.data, indent=2) if args.json else result.message)
         return 0 if result.ok else 1

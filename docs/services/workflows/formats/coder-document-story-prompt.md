@@ -17,8 +17,10 @@ and repairs it. The prompt supplies the story and epic context, the classified d
 context, the changed-reference grounding worklist, the nodes the spec pass wrote before dev, and
 the last gate report and operator answer. It is the build pass of the docs lane. The spec pass
 runs a separate prompt before dev.
-The turn must return a `DocumentationResult`; the flow uses its status and authored node ids
-before running the grounding gate.
+Before returning, the agent refreshes the story packet and runs `ostler qa compile-gaps` for every
+page it edited and every spec-pass page. It repairs every reported defect instead of inventing its
+own gap filter or treating a partial `compile-plan` success as readiness. The turn must return a
+`DocumentationResult`; the flow uses its status and authored node ids before running the grounding gate.
 
 ## Fields
 

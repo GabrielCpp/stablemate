@@ -132,6 +132,9 @@ its first hop.
 - code: ostler/ostler/qa/fixture_browser.py::browser_step@190da9181967
 - code: ostler/ostler/qa/navigation.py::navigation_rows@4df2fbcf356b
 - code: ostler/ostler/qa/navigation.py::maestro_launch@cf1797f85188
+- code: ostler/ostler/qa/readiness.py::cmd_compile_gaps@f2be3f75e500
+- code: ostler/ostler/qa/readiness.py::defect_gaps@ee9178710def
+- tests: ostler/tests/test_qa_readiness.py::test_compile_gaps_reads_the_same_missing_component_checks_the_workflow_rejects
 - detail: [ostler](../cli.md)
 
 ## Contract
@@ -143,6 +146,12 @@ its first hop.
 - a refusal is not an error: `Gap` and `ScenarioRefusal` are ordinary return values threaded back
   up to `compile_plan`, which reports them in the plan's debt section rather than raising, so a
   compile always finishes with a plan, even a partial one.
+- rule: `compile-plan` reporting `passed` means it emitted a plan, possibly a partial one. It is
+  not the book-readiness verdict. `ostler qa compile-gaps` applies the acceptance policy to a
+  refreshed packet and an explicit set of touched pages: discharged preconditions and unchecked
+  node placeholders are exempt, while every other gap on those pages is blocking. The coder
+  documentation writer and its workflow call this same policy, so neither invents a different
+  filter for missing checks.
 - captures resolve forward only: `read_back` and the `{node-id.capture}` reference syntax
   resolve a value an earlier step in the same scenario produced; a reference to a step later in
   the same scenario is a gap, not a forward declaration.

@@ -106,7 +106,7 @@ stops instead of looping.
 - code: `workflows/src/workhorse_workflows/okf_book/shared/page_check.py::page_problems` @a8db22322976
 - code: `workflows/src/workhorse_workflows/okf_book/shared/page_check.py::PageProblem` @18046d49ead7
 - code: `workflows/src/workhorse_workflows/okf_book/shared/source_coverage.py::uncited_by_folder` @7f14eaf78858
-- code: `workflows/src/workhorse_workflows/okf_book/shared/book_compilation.py::obligation_page` @fa2f092b6c61
+- code: `ostler/ostler/qa/readiness.py::obligation_page` @fa2f092b6c61
 
 ### run
 

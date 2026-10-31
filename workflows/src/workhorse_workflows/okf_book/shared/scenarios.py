@@ -15,9 +15,10 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 from ostler.provenance import CONTEXT_FILE
 from ostler.qa.attribution import Cause, Signature
 from ostler.qa.plan import PlanDocument, load_plan
+from ostler.qa.readiness import obligation_node, obligation_page
 from ostler.qa.v2 import run_plan
 from ostler.qa.verdict import Verdict
-from workhorse_workflows.okf_book.shared.book_compilation import BookCompilation, compile_services, obligation_node, obligation_page
+from workhorse_workflows.okf_book.shared.book_compilation import BookCompilation, compile_services
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 

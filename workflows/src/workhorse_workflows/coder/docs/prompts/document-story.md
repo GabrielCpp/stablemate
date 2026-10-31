@@ -240,6 +240,14 @@ narrow the report, `ostler doctor --json 2>/dev/null` emits `{org, profile, epic
 warnings, findings}`: `findings` is the list, and `errors` and `warnings` are counts. Keep stderr
 out of the pipe, because one warning line on stdout makes the document unparseable.
 
+Once doctor is green, run `ostler qa context --refresh --spec {{ workhorse_var('spec_dir') }}`,
+then `ostler qa compile-gaps --spec {{ workhorse_var('spec_dir') }} --story {{ workhorse_var('story_id') }} --page <page> ...`.
+Pass one `--page` for every page in `spec_nodes` and every page you edited, without section
+anchors. Every line this command prints is a blocking defect on that page. Repair it and repeat
+both commands until the readiness check passes. Do not filter gap kinds yourself: this is the
+same verdict the workflow applies after your turn, and a successful `compile-plan` alone does
+not prove it.
+
 In `semantic` multi-repo mode, repository-local doctor cannot resolve service-repo `code:` paths
 beneath the separate docs root. Report its `dangling-code-ref` and `missing-code-symbol` findings
 in `notes`, and do not return `blocked` for those two codes alone. Every structural, relation,

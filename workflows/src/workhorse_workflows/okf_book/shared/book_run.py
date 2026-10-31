@@ -14,6 +14,7 @@ from ostler import index, model
 from ostler.environments import leases
 from ostler.qa.attribution import Cause
 from ostler.qa.plan_source import is_journey, is_probe
+from ostler.qa.readiness import gap_page
 from ostler.qa.runbook import select_stack
 from pydantic import BaseModel, ConfigDict
 from workhorse.reload import ReloadRequested, cut_requested
@@ -23,7 +24,7 @@ from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease, ensure_stack, release_stack, stack_stopped
 from workhorse_workflows.okf_book.shared.entries import book_dir
 from workhorse_workflows.okf_book.shared.local_calls import CallWatch, Runbook, read_runbook
-from workhorse_workflows.okf_book.shared.book_compilation import declares_unexercised, gap_page
+from workhorse_workflows.okf_book.shared.book_compilation import declares_unexercised
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
 from workhorse_workflows.okf_book.shared.scenarios import RunSummary, compile_book, plan_scenarios, run_scenarios, select_scenarios

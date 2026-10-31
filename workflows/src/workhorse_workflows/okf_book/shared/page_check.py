@@ -23,19 +23,18 @@ from pathlib import Path
 
 from pydantic import AliasPath, BaseModel, ConfigDict, Field, JsonValue, TypeAdapter, field_validator
 
-from ostler import doctor
-from ostler import graph as graph_mod
-from ostler import index
+from ostler import doctor, graph as graph_mod, index
 from ostler.book_reach import DeadPage, dead_pages
 from ostler.model import Graph, load
 from ostler.pages import files_in_book
 from ostler.qa.compile import HARNESS_LIMIT_GAPS
 from ostler.qa.plan_source import Gap
+from ostler.qa.readiness import gap_page, obligation_node
 from ostler.qa.runbook import bullet_text
 from ostler.qa.tools import opted_in_tools
 from workhorse_workflows.okf_book.shared.book_links import inbound_broken
 from workhorse_workflows.okf_book.shared.blockers import Blocker, Phase, Side
-from workhorse_workflows.okf_book.shared.book_compilation import compile_services, declares_unexercised, gap_page, obligation_node
+from workhorse_workflows.okf_book.shared.book_compilation import compile_services, declares_unexercised
 from workhorse_workflows.okf_book.shared.entries import book_dir, entries_path
 from workhorse_workflows.okf_book.shared.source_coverage import SAMPLE_FILES, UNCITED_CODE, uncited_by_folder
 from workhorse_workflows.okf_book.shared.source_repo import SourceRepo

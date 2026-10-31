@@ -584,3 +584,21 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/outcome.py::QaOutcome@d89b9acaf3b3
 - code: ostler/ostler/qa/run.py::cmd_stop@924d13c43e6a
 - code: ostler/ostler/qa/session.py::_now@5145bcfad514
+
+### ostler-qa-compile-gaps
+- usage: ostler qa compile-gaps --spec SPEC --story STORY --page PAGE [--page PAGE ...] [--json]:
+  reports the blocking compile gaps on the pages a story touched
+- flags:
+  - --spec (directory containing the refreshed qa-okf-context.json)
+  - --story (story identity passed to the compiler)
+  - --page (required and repeatable; a repo-relative book page whose readiness the caller must prove)
+  - --json (print each blocking gap with its code, obligation, message and page)
+- exits: 0 when no blocking gap belongs to a given page
+- run: invoke(argv=["-C", "qa-scratch", "qa", "compile-gaps", "--spec", "s1", "--story", "demo-story", "--page", "docs/services/demo/api.md", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=0)
+- verify: json_path(path="gaps", equals="[]")
+- fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
+  source file and a plan under spec s1
+- code: ostler/ostler/qa/readiness.py::cmd_compile_gaps@f2be3f75e500
+- detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
+- tests: ostler/tests/test_qa_readiness.py::test_the_cli_exposes_the_workflow_verdict

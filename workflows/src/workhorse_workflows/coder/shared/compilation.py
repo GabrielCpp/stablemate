@@ -9,7 +9,7 @@ from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 from workhorse_workflows.coder.shared.schemas.docs import CompileGaps
 from workhorse_workflows.kit import find_docs_root, load_json
-from workhorse_workflows.okf_book.shared.book_compilation import gap_page, is_defect
+from ostler.qa.readiness import defect_gaps, format_gap
 
 
 def compile_packet(spec_root: Path, story: str, logger: logging.Logger) -> Compilation | None:
@@ -36,12 +36,7 @@ def compile_gaps(
     spec = Path(spec_dir)
     spec_root = spec if spec.is_absolute() else Path(find_docs_root(repo_dir)) / spec
     compiled = compile_packet(spec_root, story, logger)
-    touched = set(pages)
-    gaps = [
-        f"{gap.kind} {gap.obligation_id}: {gap.detail}"
-        for gap in (compiled.gaps if compiled else [])
-        if is_defect(gap) and gap_page(gap) in touched
-    ]
+    gaps = [format_gap(gap) for gap in defect_gaps(compiled.gaps if compiled else [], pages)]
     logger.info("the book compiles with %d defect gap(s) on the story's pages", len(gaps))
     return CompileGaps(gaps=gaps)
 

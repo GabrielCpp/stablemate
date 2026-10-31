@@ -14,6 +14,7 @@ from ostler.qa.run import (
     cmd_validate,
 )
 from ostler.qa.compile import cmd_compile_plan, compile_plan
+from ostler.qa.readiness import cmd_compile_gaps
 from ostler.qa.lint import cmd_lint
 from ostler.qa.sensitivity import cmd_sensitivity
 from ostler.qa.clean import cmd_clean, legacy_scratch_roots
@@ -59,6 +60,7 @@ __all__ = [
     "cmd_run",
     "cmd_lint",
     "cmd_compile_plan",
+    "cmd_compile_gaps",
     "compile_plan",
     "cmd_sensitivity",
     "cmd_validate",

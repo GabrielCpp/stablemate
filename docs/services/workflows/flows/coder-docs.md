@@ -117,15 +117,17 @@ In the spec phase the gate is the semantic route with no packet: `verify_story_d
 checks the author's status and that `doctor` reports no error on the nodes the owner wrote, and
 nothing is grounded against code.
 
-For local context the flow rebuilds the OKF packet against the post-author worktree, validates
-the packet, and asks `verify_story_documentation` to check every changed production unit directly
-against the accumulated authored nodes. Semantic context passes empty strings for both statuses.
-In the build phase, when the packet built, the flow also compiles the book into a QA plan through
-`compile_gaps`. Every defect gap on a page the story touched, meaning a page of the nodes the
-owner authored or the spec pass wrote, fails the gate. A discharged precondition and a node's own
-`:contract` or `:end-state` placeholder with no check are no defect. The gaps reach the owner in
-the same report as any other failure, as lines of `<code> <obligation>: <message>`, and spend a
-lap. The spec phase never runs the compile.
+For local context the owner refreshes the OKF packet and runs `ostler qa compile-gaps` before
+returning, scoped to every page it edited and every spec-pass page. The flow rebuilds that packet
+against the post-author worktree, validates it, and asks `verify_story_documentation` to check
+every changed production unit directly against the accumulated authored nodes. Semantic context
+passes empty strings for both statuses. In the build phase, when the packet built, the flow also
+compiles the book into a QA plan through `compile_gaps`, which shares the writer command's defect
+policy, page scope and line format. Every defect gap on a page the story touched, meaning a page
+of the nodes the owner authored or the spec pass wrote, fails the gate. A discharged precondition
+and a node's own `:contract` or `:end-state` placeholder with no check are no defect. The gaps
+reach the owner in the same report as any other failure, as lines of
+`<code> <obligation>: <message>`, and spend a lap. The spec phase never runs the compile.
 
 Once the gate holds in the build phase, local context and a built packet, the flow exercises the
 book. Unless `<spec_dir>/qa_plan.py` already stands, which means QA has visited and owns its plan,
