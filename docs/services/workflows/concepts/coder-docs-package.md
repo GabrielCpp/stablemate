@@ -20,9 +20,10 @@ when the book is unusable. For a usable
 book, a failed grounding gate goes back to the owner as a report for another repair lap, and a
 spent lap budget escalates to the resolver and then to an operator gate.
 
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @039ed33dfda9
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @57dcd7a6d263
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py` @e43ec68115c6
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @1ebd7f882eb0
 - rule: the document stage runs the story's compiled QA plan on the stack before it accepts the book, on a labelled ledger that never touches QA's scored log; a failing scenario goes back to the writer once, and after one bounce QA owns it
+- rule: an exercise run that ends in any status but `passed` or `failed`, or a `failed` run that names no scenario, fails the docs gate with an `E:exercise-<status>` failure and the run's message, because a draft that cannot run has checked nothing and passing it would hide that; the `E:` prefix takes the ordinary lap route to `MAX_LAPS` and a block, and never the one-bounce `X:` route that passes on the second visit
 - tests: `workflows/tests/coder/docs/test_flow.py`
 - detail: [coder docs subflow](coder-docs-subflow.md)
 

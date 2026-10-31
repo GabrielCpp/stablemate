@@ -376,13 +376,10 @@ class Docs(Workflow):
         if run.status == "passed":
             self.logger.info("exercise: the compiled plan passes on the stack")
             return gate
-        if run.status != "failed":
-            self.logger.info("exercise skipped: the run ended %s", run.status)
-            return gate
-        ids = failed_scenario_ids(run)
+        ids = failed_scenario_ids(run) if run.status == "failed" else []
         if not ids:
-            self.logger.info("exercise skipped: the failed run named no scenario")
-            return gate
+            self.logger.info("exercise: the run ended %s and named no failed scenario", run.status)
+            return self._unrunnable(gate, run.status, run.notes)
         if exercised:
             self.logger.info(
                 "exercise: %d scenario(s) still fail after one bounce, QA owns them now: %s",
@@ -399,6 +396,19 @@ class Docs(Workflow):
             changed_code_count=gate.changed_code_count,
             doctor_error_count=gate.doctor_error_count,
             failures=[*gate.failures, *(f"X:{sid}" for sid in ids)],
+        )
+
+    @staticmethod
+    def _unrunnable(gate: DocumentationGate, status: str, message: str) -> DocumentationGate:
+        note = f"The compiled QA plan could not run: the run ended {status}."
+        if message:
+            note = f"{note}\n\n{message}"
+        return DocumentationGate(
+            status="invalid",
+            notes="\n\n".join(part for part in (gate.notes, note) if part),
+            changed_code_count=gate.changed_code_count,
+            doctor_error_count=gate.doctor_error_count,
+            failures=[*gate.failures, f"E:exercise-{status}"],
         )
 
     def finish(self, notes: str = "", authored_nodes: tuple[str, ...] = ()) -> Done:

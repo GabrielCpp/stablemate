@@ -33,6 +33,7 @@ entered by the Coder main flow or directly with `workhorse-coder run docs`.
 - tests: `workflows/tests/coder/docs/test_flow.py::test_the_spec_pass_never_compiles_the_book`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_failing_exercise_goes_back_to_the_owner_once_as_a_repair_report`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_an_exercise_that_still_fails_after_one_bounce_passes_to_qa`
+- tests: `workflows/tests/coder/docs/test_flow.py::test_an_exercise_that_cannot_run_fails_the_gate_and_goes_back_as_a_lap`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_plan_that_already_stands_skips_the_exercise`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_checks_that_stay_red_past_the_lap_budget_park_instead_of_failing`
 - tests: `workflows/tests/coder/docs/test_flow.py::test_a_repair_lap_with_nothing_left_to_edit_keeps_the_nodes_already_named`
@@ -132,8 +133,11 @@ it compiles the story's QA plan from the book, leases a copy of the stack as `do
 and runs the plan with the label `docs-exercise`. The labelled run writes its ledger under
 `<spec_dir>/qa/docs-exercise/`, so QA's scored log stays untouched. The flow releases the copy and
 deletes `qa_plan.py` afterwards in every branch, so QA's preflight compiles the plan again from
-the final book. A compile that yields no plan, a stack that is not up and a run that ends in any
-status but `passed` or `failed` leave the gate as it was. A failing run turns the gate invalid
+the final book. A compile that yields no plan and a stack that is not up leave the gate as it was.
+A run that ends in any status but `passed` or `failed`, and a `failed` run that names no scenario,
+turn the gate invalid with an `E:exercise-<status>` failure and a note that the compiled plan could
+not run, carrying the run's own message. That failure takes the ordinary lap route and not the
+one-bounce route, so it spends a lap and parks at `MAX_LAPS` like any other red check. A failing run turns the gate invalid
 once, with one `X:<scenario id>` failure per failed scenario and a report that begins
 `Exercise:`, one bullet per scenario with its failed assertions. The owner repairs the claim on
 its page, and that bounce is one lap. A second failing run passes: QA owns what still fails,

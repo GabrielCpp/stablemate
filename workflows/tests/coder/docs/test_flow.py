@@ -650,6 +650,8 @@ class _Exercise:
         self.calls.append("run_qa_plan")
         self.labels.append(kwargs.get("label"))
         status = self.runs[min(self.calls.count("run_qa_plan"), len(self.runs)) - 1]
+        if status == "invalid":
+            return QaPlanRun(status="invalid", notes="Plan validation failed: no scenario")
         if status != "failed":
             return QaPlanRun(status="passed")
         ledger = self.spec / "qa" / "docs-exercise" / "qa-run.ndjson"
@@ -709,6 +711,27 @@ def test_an_exercise_that_still_fails_after_one_bounce_passes_to_qa(
     assert result.status == "passed", result
     assert agent.authored() == 2, agent.counts()
     assert exercise.calls.count("run_qa_plan") == 2, exercise.calls
+
+
+def test_an_exercise_that_cannot_run_fails_the_gate_and_goes_back_as_a_lap(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stage_compile(monkeypatch, [])
+    exercise = _Exercise(monkeypatch, runs=("invalid", "passed"))
+    agent = _Agent()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.authored() == 2, agent.counts()
+    assert exercise.calls.count("run_qa_plan") == 2, exercise.calls
+    _, second = agent.author_args()
+    assert "could not run" in second["report"], second
+    assert "Plan validation failed" in second["report"], second
 
 
 def test_a_plan_that_already_stands_skips_the_exercise(
