@@ -94,6 +94,13 @@ to answer, such as `curl --fail --retry 10 --retry-connrefused <health url>`. A 
 `&` never finishes, because the harness waits on what the backgrounded process holds open, so
 `ostler doctor` refuses it (`fixture-step-backgrounded`).
 
+A fault fixture puts the stack in a failure the product is built to meet, so a claim can say how
+the product meets it. It fails the way the product's own world fails: it stops the service so the
+connection is refused, or it answers a 4xx the book documents for that route. It never answers a
+5xx. A browser scenario fails on any response of 500 or higher, including one a stand-in sends,
+because a 5xx is the defect that check exists to catch. A stand-in that answers 503 for a stopped
+api fakes a reply the product never sends. Stop the api and let the request fail instead.
+
 A fixture confirms it landed with a `kind: verify` step whose `run:` exits non-zero when the
 arrangement did not take. The harness runs that step. A fixture carries no `verify:` bullet,
 because no runner performs one on a fixture and `ostler doctor` raises `unknown-bullet` on it.
