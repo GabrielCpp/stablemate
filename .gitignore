@@ -218,30 +218,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 .playwright-mcp
-
-.agents/*
-
-
-# A benchmark round's built repo, its run artifacts and its scorecard. Untracked for
-# three separate reasons, any one of which is sufficient — it is large (a whole app per
-# round), it is derived (re-runnable from the task module), and the built repo is its OWN
-# git repo, which is the whole point: nesting one working tree inside another is only safe
-# while the outer one cannot see it. Paddock's work and result roots live outside the tree
-# entirely (`~/.local/share/stablemate/paddock`) for the same reason; this entry stays as
-# the backstop for a round pointed at the repo by hand.
-/data/
-
-
-# Internal planning notes: maintainer paths, private-project references and
-# retired-engine prose live here by nature. The directory stays (kept by .gitkeep)
-# but its contents never ship.
-docs/plans/*
-!docs/plans/.gitkeep
-progress.md
-docs/specs
 .opencode/opencode-loop
-
-docs/backload.md
 
 # >>> farrier: QA evidence (generated) >>>
 **/qa/**/steps/
