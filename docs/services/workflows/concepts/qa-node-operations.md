@@ -14,7 +14,7 @@ copy when the run settles. The stack, release and run steps are thin nodes over 
 `kit/qa/runner.py`. The secret helper is private but is documented because it controls the runner's
 credential boundary.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__` @592593ca2241
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__` @c509d491149e
 - detail: [coder QA flow](../flows/coder-qa.md)
 
 ## Fields
@@ -49,9 +49,9 @@ credential boundary.
 - type: `str`
 - default: `qa`
 - required: true
-- semantics: spec-relative directory containing per-scenario output of a single-scenario run, removed with stale scored evidence and never read by the scored evidence gate
+- semantics: spec-relative directory holding the scored ledger and, one subdirectory per label, the dry-run ledgers of single-scenario runs (a pass's reset empties the scored ledger and keeps the dry-run ledgers, which the scored evidence gate never reads)
 - verify: json_path(path="$.QA_SCRATCH_DIRNAME", equals="qa")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME` @592593ca2241
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME` @c509d491149e
 
 ## Methods
 
@@ -61,13 +61,15 @@ credential boundary.
 - verify: count(subject="empty QA evidence directory skips", equals=1)
 - does: creates the resolved specification directory when a non-empty `spec_dir` is supplied
 - verify: created(subject="QA specification directory")
-- does: removes the specification directory's `qa/` subtree when it exists, including single-scenario scratch output
+- does: empties the scored ledger under `qa/` when it exists (its run log and its `steps/`, `asserts/`, `traces/`, `videos/` and `screenshots/` directories)
 - verify: removed(subject="stale QA evidence directory")
+- does: keeps every dry-run ledger `qa/<label>/` for the owner's next turn
+- verify: unchanged(subject="dry-run ledgers under qa/")
 - does: removes `qa-evidence.json` and `qa-report.md` when either stale root artifact exists
 - verify: removed(subject="stale QA root artifacts")
 - returns: `QaCleared(cleared=True)` after clearing a supplied specification directory and `QaCleared(cleared=False)` when no directory was supplied
 - verify: json_path(path="$.cleared", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::clear_qa_evidence` @3349a19fcc81
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::clear_qa_evidence` @cfc5bc5a3db6
 
 ### compile_story_plan
 - sig: `compile_story_plan(logger: logging.Logger, spec_dir: str = "", story: str = "") -> CompiledPlan`

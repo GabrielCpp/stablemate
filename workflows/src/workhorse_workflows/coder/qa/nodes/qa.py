@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import logging
-import shutil
 from pathlib import Path
 
 from ostler import Ostler
 from ostler.qa.compile import Plan
+from ostler.qa.session import clear_ledger
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.qa import runner as _qa_runner
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -32,16 +32,14 @@ QA_SCRATCH_DIRNAME = "qa"
 
 @blueprint.node
 def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
-    """Delete last pass's `qa/` outputs, verdict and report, and make sure the spec dir exists."""
+    """Delete last pass's scored outputs, verdict and report, keep its dry-run ledgers, and make sure the spec dir exists."""
     if not spec_dir:
         logger.warning("no spec_dir given — nothing to clear")
         return QaCleared()
     root = Path(spec_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    stale = root / QA_SCRATCH_DIRNAME
-    if stale.exists():
-        shutil.rmtree(stale)
-        logger.info("removed stale qa dir %s", stale)
+    stale = clear_ledger(root, QA_SCRATCH_DIRNAME)
+    logger.info("cleared the scored ledger under %s", stale)
     for name in ("qa-evidence.json", "qa-report.md"):
         stale_file = root / name
         if stale_file.exists():

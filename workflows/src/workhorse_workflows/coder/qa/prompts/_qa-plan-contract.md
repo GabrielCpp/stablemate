@@ -351,7 +351,7 @@ ostler qa run <spec_dir>/qa_plan.py --spec <spec_dir> \
 
 `--out-dir` takes a label, not a path. The run lands in
 `<spec_dir>/{{ workhorse_var('qa_scratch_dir') }}/<scenario-id>/`, outside the repo.
-Use one label per scenario: the runner clears its out-dir on every run. The scored run is the
-verdict, not this one. Fix what does not resolve and run it again. Runner tooling (the
+Use one label per scenario: the runner clears its out-dir on every run, and the scored run
+leaves every label's ledger standing. The scored run is the verdict, not this one. Fix what does not resolve and run it again. Runner tooling (the
 ostler environment, a browser binary, fixture plumbing) may be repaired. Product code may
 not.
