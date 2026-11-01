@@ -317,9 +317,10 @@ class _UnbuiltClaimRequest:
 
 
 def _arranging(obligations: list[Obligation], book: BookIndex) -> list[Obligation]:
-    """Every claim on these obligations' nodes that arranges an act, whether it checks anything or not."""
+    """Every claim on these obligations' nodes that arranges an act, whether it checks anything or not, and these obligations themselves, since a claim with no act still states what its request is answered with."""
     nodes = dict.fromkeys(obligation.node for obligation in obligations)
-    return [claim for node in nodes for claim in book.claims_by_node.get(node, [])]
+    arranged = {claim.id: claim for node in nodes for claim in book.claims_by_node.get(node, [])}
+    return [*arranged.values(), *(obligation for obligation in obligations if obligation.id not in arranged)]
 
 
 def _node_credentials(obligations: list[Obligation]) -> dict[str, tuple[CallRow, ...]]:

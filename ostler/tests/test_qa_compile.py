@@ -977,6 +977,22 @@ def test_a_claim_checking_only_the_body_expects_the_status_its_same_request_sibl
     compile(source, "qa_plan.py", "exec")
 
 
+def test_a_body_claim_on_a_request_with_no_acts_expects_the_status_its_sibling_states() -> None:
+    """An anonymous refusal carries no act, and its body claim must still expect the 401 its sibling states, or the driver raises before the body is read."""
+    status, detail = (f"okf:docs/services/demo/globex.md#get-things:auth:{arm}" for arm in (1, 2))
+    context = _context(
+        _obligation(status, checksDeclared=[{"call": "no", "name": "http_status", "args": {"code": 401}}],
+                    docPosition=[1, 0], node="get-things"),
+        _obligation(detail, checksDeclared=[{"call": "d", "name": "json_path",
+                                             "args": {"path": "$.id", "absent": True}}],
+                    docPosition=[2, 0], node="get-things"),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    assert 'observed_2 = qa.http.get("/api/things", expect_status=401)' in source
+    compile(source, "qa_plan.py", "exec")
+
+
 def test_a_response_header_check_compiles_against_the_response_it_reads() -> None:
     """A route that streams a file is proven by the header that names its type, read off the same response the status came from."""
     oid = "okf:docs/services/demo/globex.md#get-report:does:1"

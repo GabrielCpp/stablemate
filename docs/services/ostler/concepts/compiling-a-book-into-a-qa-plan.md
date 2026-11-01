@@ -23,7 +23,7 @@ variable, not only when a check needs one.
 Each backend owns one driver. `compile_http.py`'s `api_scenarios` builds a check function around
 an `Http` call for an HTTP-observed obligation, assembling a request body from a `CheckValue`
 tree (`_tree_literal`) and threading a captured field from an earlier step into a later one's
-assertion (`read_back`); `http_walk` compiles an HTTP-only journey the same way. `compile_cli.py`'s
+assertion (`read_back`); `http_walk` compiles an HTTP-only journey the same way. A claim that states no status expects the one its siblings on the same request state, whether or not the request carries an act, so a body check on a refusal reads the refusal. `compile_cli.py`'s
 `cli_scenario_body` runs the book's CLI binary as a subprocess and asserts on its exit status or
 captured stdout, deciding first whether a check is about the file tree before or after
 (`reads_the_tree`, `compares_the_tree`); `cli_journey` and `cli_move_walk` compile a CLI-driven
@@ -134,6 +134,7 @@ its first hop.
 - code: ostler/ostler/qa/navigation.py::maestro_launch@cf1797f85188
 - code: ostler/ostler/qa/readiness.py::cmd_compile_gaps@f2be3f75e500
 - code: ostler/ostler/qa/readiness.py::defect_gaps@ee9178710def
+- rule: a body claim and a status claim about one request are read off one response, with or without an act. A body claim that made the driver raise on the stated refusal would never be read.
 - tests: ostler/tests/test_qa_readiness.py::test_compile_gaps_reads_the_same_missing_component_checks_the_workflow_rejects
 - detail: [ostler](../cli.md)
 
