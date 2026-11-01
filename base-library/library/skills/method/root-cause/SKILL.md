@@ -1,12 +1,12 @@
 ---
 name: root-cause
-description: "Judging whether a fix reaches a defect's origin or handles its symptom, with no knowledge of the domain: the why-chain written per fix before the edit (why is it needed, what decision caused that, how could it have been prevented, asked again on the prevention until the answer is a core property of the problem), the stop test for a core property, the shape tests that reject a story on its form, the unfixable-versus-unclassifiable question, and what a hatch carries when taken. Load when about to add or extend a waiver, retry, sleep, default, fallback, skip, broader except, null check or IOU, when a loop converges only with an exception list, when reviewing a diff that clears a failure, or when reporting a phase complete with a workaround inside it. For finding the defect itself, load isolating-causes."
+description: "Judging whether a fix reaches a defect's origin or handles its symptom, with no knowledge of the domain: the why-chain written per fix before the edit (why is it needed, what decision caused that, how could it have been prevented, asked again on the prevention until the answer is a core property of the problem), the stop test for a core property, the shape tests that reject a story on its form, the unfixable-versus-unclassifiable question, and what a hatch carries when taken. Load when about to add or extend a waiver, retry, sleep, default, fallback, skip, broader except, null check or IOU, when a loop converges only with an exception list, when reviewing a diff that clears a failure, or when reporting a phase complete with a workaround inside it."
 tags: [standards, review]
 ---
 
 # Root cause or symptom
 
-[[isolating-causes]] finds the defect. This skill judges the **fix**. It fires on an action,
+This skill judges the **fix**. It fires on an action,
 whatever the topic: the moment you reach for a waiver, retry, sleep, default, fallback, skip,
 broader `except`, null check or IOU. Each of these is a **hatch**. A hatch lets the work
 converge while the case stays.
@@ -169,7 +169,7 @@ hatch is then a **debt**, and it carries two things.
   nobody revisits is a test that used to exist.
 
 A hatch is one decision each time. When the same loop asks for a third hatch, the plan is in
-question and the next fix is not the answer. Load [[step-back]].
+question and the next fix is not the answer.
 
 ## Completion criterion
 

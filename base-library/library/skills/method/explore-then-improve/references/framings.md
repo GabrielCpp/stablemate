@@ -42,9 +42,9 @@ one vocabulary, so every value on them varies one literal reading.
 1. **Restate the question by analogy.** At least three agents each restate the question
    in the terms of one distant field, such as a type system, the geometry of a space, a
    research line that met the same problem, or, for a question about learning, what the
-   learned space must hold rather than the arithmetic that fills it. The study picks the
+   learned space must hold rather than the arithmetic that fills it. The search picks the
    fields. A field the operator named is a seed, not the list. At least half the fields
-   are the study's own, and each sits far from the question's domain, from the operator's
+   are the search's own, and each sits far from the question's domain, from the operator's
    examples and from the other fields: a physical or life science, a craft with its own
    practice, a theory of communication or of decisions. Each agent reads the
    question and the premises, and no other restatement. Each maps the question's parts
@@ -58,12 +58,12 @@ one vocabulary, so every value on them varies one literal reading.
    of the operator's real work through it. It then states what share of that sample the
    part covers, and which cases it leaves to another part. It ends with where to start:
    the part whose check is cheapest and whose failure would change the most.
-2. **List the axes.** One agent reads the question, the premises from the study's `QUESTION.md` and the
+2. **List the axes.** One agent reads the question, the premises from the caller's goal and the
    restatements, and nothing else. It lays the decompositions side by side. A part one
    field names and another misses is an axis. It lists the axes a reading must choose on: the role the thing under
    study plays, the input it reads when it runs, the output it produces, what counts as
    right and who judges, what the question's key verb is measured against, which part of
-   the problem the study may redesign, whose work supplies the training data, and any axis
+   the problem the search may redesign, whose work supplies the training data, and any axis
    the question adds. Every check gate 2 makes turns on some axis, and that axis is listed. For each axis it
    writes **fixed**, with the operator's words that fix it, or **open**, with at least
    three values. An axis is fixed only as far as its words go. "Reduce my dependency"
@@ -83,7 +83,7 @@ one vocabulary, so every value on them varies one literal reading.
    no row is written first for the others to vary. Each clause of the question is the
    measure a verdict rests on in at least one row. A clause such as "at low
    cost" that no row is judged by is a reading the field never tests. Each clause's
-   measure passes the proxy test of the study's purpose before any row is drawn. A measure that reads zero
+   measure passes the proxy test of the search's purpose before any row is drawn. A measure that reads zero
    or a constant for some part of a named lever, whatever the method does, is a proxy.
    A share of cases a prior admits is a proxy when the prior always admits a move that
    covers any output. The rank of a right output, found by judging candidates in order, is
@@ -101,7 +101,7 @@ one vocabulary, so every value on them varies one literal reading.
    A case alone in its stratum makes the control equal the method by construction.
 4. **Write each row in isolation.** A fresh agent, or a fresh context, gets the question,
    the premises word for word, pointers into the project and its row. It reads nothing the
-   study has produced and no other row's framing. It writes the framing its row implies. A
+   search has produced and no other row's framing. It writes the framing its row implies. A
    row agent never repairs its own row. When a value fails gate 1, the agent stops and
    returns that value with the operator's words that break it. When a value makes the
    framing fail gate 2, the agent returns that value with the check it fails, such as a
@@ -114,7 +114,7 @@ one vocabulary, so every value on them varies one literal reading.
    allows for that rate returns the row. A break-even outside that whole range returns
    nothing. It becomes the kill result of the first timed unit that reads the rate, and
    the schedule runs that unit before the spending it guards. A rate one timed unit on
-   things that exist today can read is read by a gated probe, and it returns no row. A rule that
+   things that exist today can read is read by a short run, and it returns no row. A rule that
    returns every row with an unbuilt part makes the question unsolvable by construction.
    The row computes each break-even itself, with a script it names and hashes, by one
    stated method. A break-even the row did not compute is no break-even, whether another
@@ -127,7 +127,7 @@ one vocabulary, so every value on them varies one literal reading.
    A rate the verdict itself reads is no condition. A rate that decides whether the
    verdict can be read at all, such as a run time, a writer's pace or a judge's error
    rate, is a condition unless the card shows the check passes across the whole range the
-   record allows for it. The card states that range and its source. A rate a short probe could
+   record allows for it. The card states that range and its source. A rate a short run could
    measure is measured there, and the card cites the measure instead of a range. A return claims
    the value cannot work, and it carries the same burden as a pass. Before returning, the
    agent names the obstacle and asks whether it is real: whether a premise or another
@@ -167,10 +167,10 @@ Four rules hold for every framing agent:
   never in paraphrase, and ends with them as a checklist. The row answers each item by
   name. The checker ticks each row against the decisions themselves, not against the
   brief's list,
-- anything the loop or its agents made earlier counts as study output: a roadmap line, a
+- anything the loop or its agents made earlier counts as search output: a roadmap line, a
   hypothesis, a result, and also code, a benchmark, a judge or a testbed. A framing agent
-  reads study output for facts it can check, never for goals, bars or verdicts. An artifact
-  the study built is one value on an axis, never the default,
-- on a refill after a study ends, the framing agents also read the one-line status of each
+  reads search output for facts it can check, never for goals, thresholds or verdicts. An artifact
+  the search built is one value on an axis, never the default,
+- on a refill after a search ends, the framing agents also read the one-line status of each
   past framing in `FRAMINGS.md`, so they can avoid it. They read none of its
   implementation, because a dead framing's details are the main route of contamination.

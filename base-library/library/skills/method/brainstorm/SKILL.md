@@ -55,8 +55,9 @@ Group the near-duplicates. Drop each option another one beats on every axis. Pre
    <one line on the main tradeoff, and who or what it suits>
 ```
 
-Rank by fit to the stated problem. Familiarity earns no rank, so the obvious option goes
-first only when it fits best.
+Rank by fit to the stated problem. When the caller handed a list of dimensions in order,
+rank by the dimension an option protects, in that order, then by how much. Familiarity earns
+no rank, so the obvious option goes first only when it fits best.
 
 Then stop and wait. I pick one, ask for two to be developed further, or send you back to
 diverge from a direction that looked promising. A pick starts a decision. Hand the chosen

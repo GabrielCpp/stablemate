@@ -17,8 +17,8 @@ come from and how many exist,
 - **every assumption** the method needs, one per line, each marked as stated by the
 operator, checked, or assumed,
 - **which inputs are fixed and which are designed**: an input the world hands over, such
-as an existing system, is fixed. An input whose format the study may choose, such as
-the notation a request is written in, is designed. An input the study wrote, such as
+as an existing system, is fixed. An input whose format the search may choose, such as
+the notation a request is written in, is designed. An input the search wrote, such as
 its own sample requests, is designed even when it already exists. Mark each, and cite
 the premise that makes it so,
 - **the named method's defining parts**, when the candidate borrows a name such as an
@@ -44,11 +44,11 @@ that mechanism first, because the trained component can at best tie it.
 A check of gate 1.
 
 Trace one request from the operator's hands to the method's
-input, as it would run after the study ends, and name the producer of every designed input
+input, as it would run after the search ends, and name the producer of every designed input
 there. When the operator's words place the input in a form and leave its writing outside
 the question, its writer in use is the operator's own process, and the method is not
 charged for it. Otherwise the producer in use must be the one the test set used. When the
-study's own session writes the test inputs and nothing named writes them in use, the test
+search's own session writes the test inputs and nothing named writes them in use, the test
 measures a pipeline nobody will run. Write the producer in use and its cost per request on
 the card, with the operator's words that place it.
 
@@ -160,8 +160,8 @@ needs a defect or an event to exist first counts only where one exists, and the 
 counts where. State how many test cases exist today, the rate at which new ones arrive,
 and the date the set reaches the resolution floor, and price the wait. A set that starts
 empty and grows only if someone changes how they work states that change as an
-assumption, with its current rate. A verdict whose floor date falls after the study's
-date returns the value that sets the test form. The study's date and every pace it
+assumption, with its current rate. A verdict whose floor date falls after the search's
+date returns the value that sets the test form. The search's date and every pace it
 sets for itself are values too, and the same checks apply to them. A date or a pace
 under which no framing reads its verdict by its cheapest path makes the question
 unsolvable by construction. Re-derive it once, before any row runs, from the operator's
@@ -171,7 +171,7 @@ in the units that writer produces. It never uses the rate of outputs from a syst
 writer directs. When several rows draw on one writer, split the rate among them first. A
 rate above the writer's record is a condition, and the value that needs it returns.
 Before returning it, read the operator's words for who may write that input. A writer
-the operator named, the study included, is a source, and its rate is what that writer
+the operator named, the search included, is a source, and its rate is what that writer
 can produce. A form of input the operator's words call for is part of the question,
 never a smaller question. A writer of training inputs is priced the same way: at its
 record, in the units that carry the volume this check needs. A pace and a volume that
@@ -204,7 +204,7 @@ A pace taken from a builder the operator does not use is an assumption, and it i
 as one. When the build and a test source draw on one limited resource, such as people,
 sessions or machines, price them together, and move the floor date by the time the
 build holds it. A budget in machine days counts from the time the row's inputs are
-ready, not from the study's start. A row whose verdict lands after the study's date
+ready, not from the search's start. A row whose verdict lands after the search's date
 fails the date check even when its machine days fit. Under a serial schedule the row
 states whether the next case may start while the current one waits on a step that uses
 no local machine time. If it may not, the row prices that wait on the calendar. A budget the operator's words fix, such as a named machine, is never a
@@ -237,7 +237,7 @@ agent, like a value that fails gate 1. Only a fixed axis may cap it, and the car
 quotes the operator's words that fix it. A framing that passes with a cap from an open
 axis answers a smaller question than the one asked. The ceiling counts the work a value
 serves at run time. How many past cases exist to test a value is a resolution question
-for the study's yardstick, never a ceiling. When the operator names more than one body of work, the
+for the goal's reading, never a ceiling. When the operator names more than one body of work, the
 card states for each whether the verdict reads it. A body on which no test source can
 reach the resolution floor under the test-input rules is a finding with its count. The
 verdict then says it does not speak for that body, and the ceiling still counts it. A
@@ -254,7 +254,7 @@ that ignores a named lever tests the question without its premise.
 ## The checker
 
 Have the framings and the cards checked. A second agent that did not write them reads the
-question, the premises, the framings and the cards, and nothing of the study's reasoning.
+question, the premises, the framings and the cards, and nothing of the search's reasoning.
 It answers both gates for each, names any assumption that makes the question unsolvable,
 and names any two framings that share their input, output and role. A card or a framing it
 fails goes back to repair. The rules for its counts, and for a rule that would return
@@ -263,9 +263,7 @@ every row, follow.
 A checker finding against a gate stays open until a repair answers it in writing or the
 framing dies. A finding is a predicate the checker can run again, such as a line the code
 must hold or a score an arm must not reach. The author's argument closes none. No decisive
-run launches under a framing that carries an open gate finding, and none launches without
-the design check under "Checking a decisive registration" in the research-study skill's
-second-agent reference. A run that would read the same fact the finding states is
+run launches under a framing that carries an open gate finding, A run that would read the same fact the finding states is
 apparatus for a known answer.
 
 When two counts of one fact disagree, it states both with the method behind each. A count
@@ -277,7 +275,7 @@ date or count disagree fails that check until the axis agent reconciles them. Ma
 facts are read once, on the day of the check, and every row cites that reading. Before the
 checker proposes a rule that returns every row, it asks whether the rule makes the
 question unsolvable by construction. Such a rule is a finding about the checker, and it
-goes to the study with the operator's words it contradicts.
+goes to the caller with the operator's words it contradicts.
 
 The checker reads the operator's words, the cards, the code and the commands, and never
 the author's reasoning about them. Its deliverable is a mismatch or a cheat, not a verdict:

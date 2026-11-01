@@ -1,6 +1,6 @@
 ---
 name: isolating-causes
-description: "Load when you need to know why something happens: a bug or an error, a flaky test, a slowdown, a metric or score that moved, a behaviour that differs between two runs, inputs or versions, or a set where some cases fail and others pass. Also load when a fix or a change did not have the effect you expected. Builds a loop that shows the effect on demand before any hypothesis, then reproduces and minimises it, ranks 3 to 5 falsifiable hypotheses by contrast between the cases that show the effect and the cases that do not, and changes one variable at a time until one cause is confirmed. A defect ends with its fix behind a regression test. To judge whether a fix reaches the origin, load root-cause. After three attempts that left the effect in place, load step-back."
+description: "Load when you need to know why something happens: a bug or an error, a flaky test, a slowdown, a metric or score that moved, a behaviour that differs between two runs, inputs or versions, or a set where some cases fail and others pass. Also load when a fix or a change did not have the effect you expected. Builds a loop that shows the effect on demand before any hypothesis, then reproduces and minimises it, ranks 3 to 5 falsifiable hypotheses by contrast between the cases that show the effect and the cases that do not, and changes one variable at a time until one cause is confirmed. A defect ends with its fix behind a regression test."
 tags: [tests, standards]
 ---
 
@@ -167,8 +167,8 @@ hypothesis off the Phase 3 list and take the next one. A second change stacked o
 tests two variables at once, and the loop can no longer say which one mattered. When the list is
 exhausted, return to Phase 3 with what the refutations showed and write a new list.
 
-Three refuted hypotheses on one effect is a stream of attempts. Load [[step-back]] before the
-fourth.
+Three refuted hypotheses on one effect is a stream of attempts. Judge the stream from
+outside before the fourth.
 
 ### A defect: fix behind a regression test at a confirmed seam
 
@@ -205,15 +205,6 @@ Before calling it done:
 When the effect was a defect, ask what would have prevented it. If the answer is a gate the repo
 could have had, that is an automated check, not a note. Make the recommendation *after* the fix
 is in, because you know more now than when you started.
-
-## When to reach for the neighbours
-
-- **You have a fix and must judge whether it reaches the origin**, or you are about to add a
-  retry, a waiver, a default or a broader catch: [[root-cause]].
-- **Three hypotheses have been refuted**, or the work on the loop has grown larger than the
-  question: [[step-back]].
-- **The loop runs one of the repo's own tools**, such as its test harness, its telemetry or its
-  graph checks: the skill that owns that tool carries its commands and its traps.
 
 ---
 

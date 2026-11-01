@@ -1,6 +1,6 @@
 ---
 name: self-improve
-description: "Running a continuous improvement loop beside a process that delivers units, as the converge state of a research study or as any loop an agent tends from a feed. Each cycle holds the last unit against its ideal path, one pass per stage with no retry, no hand step and no dead time, profiles the gap by stage and waste kind with each item's reach and roof, ranks the waste by its cost on every unit left, takes one problem under a cap, finds its cause as a construct of the workflow or its producer, sorts it as execution or design, lands the smallest fix at the cause, reads it through the cheapest instrument, and grades it held, missed or released. Load when tending a run from a feed and about to acknowledge a notification, when a unit was just delivered, when a study's state line reads converge, when asked whether a process wastes or converges, or when a run looks normal because nothing said otherwise. For a question with no mechanism yet, load explore-then-improve; for the study's budget, research-study."
+description: "Running a continuous improvement loop beside a process that delivers units, as a loop an agent tends from a feed or as the way a goal's track is worked. Each cycle holds the last unit against its ideal path, one pass per stage with no retry, no hand step and no dead time, profiles the gap by stage and waste kind with each item's reach and roof, ranks the waste by its cost on every unit left, takes one problem under a cap, finds its cause as a construct of the workflow or its producer, sorts it as execution or design, lands the smallest fix at the cause, reads it through the cheapest instrument, and grades it held, missed or released. Load when tending a run from a feed and about to acknowledge a notification, when a unit was just delivered, when asked whether a process wastes or converges, or when a run looks normal because nothing said otherwise. For a question with no mechanism yet, load explore-then-improve."
 tags: [review, process]
 ---
 
@@ -24,10 +24,10 @@ did beyond it is **waste**, and every waste has a cause in the workflow: a promp
 check, a gate or a tool. A waste that appears on two units is a **tax**, paid on every unit
 left until the workflow changes.
 
-Inside a [[research-study]] this skill is the **converge** state. The unit is the study's
-yardstick run, the ideal path is the one the prototype priced, the bar is the study's cost
-bar, and the loop ends when a real unit clears it. Beside a live process with no study, the
-purpose is the process's own, and the loop runs for the process's life.
+When a caller hands this loop a goal with its dimensions in order, the purpose is that goal:
+the unit is the goal's unit, the dimensions decide which waste counts first, and the loop
+runs until the caller reads the goal again. Beside a live process with no caller, the purpose
+is the process's own, and the loop runs for the process's life.
 
 ## The mandate
 
@@ -35,7 +35,7 @@ The operator who started the loop handed the attendant the workflow for the run'
 Every construct in it is the attendant's to change without asking, at any size: a prompt
 line, a node, a gate, a tool, the order of the stages, a stage itself, or the lane the
 stages form. Three things stay with the operator, and only these: what the unit is and what
-accepts it, money spent beyond the run's own budget or the study's, and the output itself,
+accepts it, money spent beyond the run's own ceiling, and the output itself,
 which only the process changes. A question about anything else is a tax parked with a
 question mark on it. Permission is not among the things a cycle waits on.
 
@@ -83,24 +83,22 @@ A unit reaches the loop from one of two sources, and the loop names which:
   while the table holds a tax is the attendant's own dead time, and it counts like any
   other. A lap count above the stage's median, or a "seen before" that names a lap, starts
   a measure at once, while a rewind can still save the rest of the unit.
-- **A paid rung.** No feed delivers, as in a study, so the loop runs the unit itself on the
-  frozen yardstick, at the cheapest rung of the instrument ladder under "Change" that
-  reads what the cycle needs. Each run is a probe row with the study's probe gate: the
-  ideal path it serves, the roof of its stage, and the trace already paid for that answers
-  it, or why none does. A trace that answers is cited, not re-run.
+- **A paid run.** No feed delivers, so the loop runs the unit itself, at the cheapest rung
+  of the instrument ladder under "Change" that reads what the cycle needs. Before each run,
+  name the record already paid for that answers the same question, or why none does. A
+  record that answers is cited, not re-run.
 
 Every unit delivered, from either source, is a full **measure** and **rank**: the whole
 table rebuilt with the new unit, the fresh judge, and the grade of every open cycle.
 Between units, the loop runs the diagnose, design and change steps of the top open tax.
 
 Everything appends to one file, `EXAMINED.md`, in the run's directory beside its event log,
-or in the study's working directory. The next cycle and the fresh judge read the previous
-ones from there. Inside a study every probe is also a row of the study's ledger, each
-diagnosis a `cause` row and each landed change a `fix` row, in the ledger's own kinds.
+or in the caller's working directory. The next cycle and the fresh judge read the previous
+ones from there.
 
 ## The records
 
-Work from what the process recorded: the telemetry store, the ledger, the turn transcripts,
+Work from what the process recorded: the telemetry store, the turn transcripts,
 the checker reports, the git log of what it delivered. The code says what the process was
 meant to do. The records say what it did. For a workhorse run the store and the commands
 that read it are in [[groom-telemetry]]. The workflow's code is read in the diagnose step,
@@ -135,12 +133,12 @@ The last kind is the profile's own: a stage that costs more than its term on the
 even when it passes once. Break its cost down by turn, by test, by call or by failure kind,
 from what the system records, or add the recording first. A total says a stage is slow. A
 breakdown says one fixture runs 400 times, or one turn reads the whole corpus. A timed
-breakdown follows the timing rules of [[research-study]]: the script, its hash, and the
-machine's load at the start and the end, with repeated short readings on a shared machine.
+breakdown records the script, its hash, and the machine's load at the start and the end,
+with repeated short readings on a shared machine.
 
 For each item in the gap write its **reach**: what the unit's cost reads if the item went
-to zero, held against the bar. An item whose vanishing moves the unit less than the study's
-resolution floor is not a problem, whatever its share. Write the **roof** of each large
+to zero, held against the purpose. An item whose vanishing moves the unit less than the
+reading can resolve is not a problem, whatever its share. Write the **roof** of each large
 item too: the fastest the hardware or the task allows for the work it does. An item near its
 roof needs less work, not more tuning, and its problem is the work's existence.
 
@@ -155,8 +153,8 @@ Set this unit's table beside the previous units'. For each kind, count the units
 in, out of the units delivered. That count, times the item's reach, is the rank.
 
 - **Two units make a tax.** A kind seen on two units will be seen on every unit left. Its
-  **price** is its waste per unit times the units remaining, in the purpose's own units:
-  the study's bar, or minutes for a live run with no purpose written. A tax of three minutes
+  **price** is its waste per unit times the units remaining, in the purpose's own units,
+  or minutes for a live run with no purpose written. A tax of three minutes
   on thirty remaining units outranks a one-off of an hour.
 - **A one-off is a note.** It joins the table and waits for a second occurrence. It becomes a
   tax on its own only when it alone exceeds the unit's ideal path.
@@ -176,17 +174,15 @@ question: **which waste here will the next unit pay again, and what in the workf
 it?** The judge argues for the next unit, not for the run. It returns the kinds it expects
 to recur, ranked by cost per unit, each with the lap, turn or commit it rests on and the
 construct it suspects. The attendant adds them to the table and does not overrule them. The
-judge reads records and runs nothing, so it spends the attending line of a study's budget
-and is never a probe.
+judge reads records and runs nothing.
 
-The ranked table is the loop's queue, and `PROBLEMS.md` in a study is the same table. Take
+The ranked table is the loop's queue. Take
 the top tax with no cycle open whose reach clears the floor and whose cheapest instrument
 fits the budget left, and mark it **in hand**. One problem is in hand at a time per kind: a
 fix that would touch two problems at once is two fixes measured apart. Set its **cap** at
-registration: the problem's reach as a share of the unit's total gap to the bar, times the
-budget left on each line, probes and attending, in money and hours. A zero probe line
-leaves a cap in attending hours alone, and every reading of the problem then comes from a
-trace. The cap is what the loop may spend on this problem, cause-finding included, before
+registration: the problem's reach as a share of the unit's total gap to the ideal path, times the
+budget left, in money and hours. A budget with no money left leaves a cap in hours alone,
+and every reading of the problem then comes from a record. The cap is what the loop may spend on this problem, cause-finding included, before
 it releases it.
 
 Done when the table carries every kind's recurrence and price, the judge's expected
@@ -225,9 +221,9 @@ the mechanism's ideal path?
 - **Design cause.** The waste is inherent to a decision of the mechanism: a stage exists
   that the unit does not need, two stages redo each other's work, a stage's single pass
   costs more than its term because of what it was built to do. Removing it redraws the
-  ideal path. Re-price the path with the cost inherent and hand it to the ceiling test of
-  [[research-study]]. A pass returns here with the new path as the reference. A miss sends
-  the study to explore, and this loop releases every problem on the dead mechanism.
+  ideal path. Redraw the path with the cost inherent and hand it to the caller, who judges
+  whether the mechanism still serves the goal. One that does returns here with the new path
+  as the reference. One that does not is dead, and this loop releases every problem on it.
 
 Done when the row holds the contrast and the why-chain, the cause is named as a construct
 of the producer or the process with the file and the lines, its class is written, and one
@@ -239,7 +235,7 @@ Write the change before making it: the construct, what it becomes, the kind it r
 prediction from the diagnosis, the estimate in minutes and money from the instrument's
 price, the cap from the rank, and the yardstick. Write the smallest change that removes the
 cause. Removing work beats making it cheaper, and making it cheaper beats making it faster.
-One variable per fix, on the frozen yardstick.
+One variable per fix, on the same yardstick.
 
 The fix lands where the why-chain stopped. When that is a producer, the fix changes the
 producer, and the artifact it produced is repaired beside it only to unblock the reading, as
@@ -259,7 +255,7 @@ number the change is made at whatever size it needs, and a stage rebuilt or remo
 cycle like a prompt line is. Lean has the two words: **kaizen**, the small step every cycle
 takes, and **kaikaku**, the rebuild when the small steps have stopped moving the count or
 the tax dwarfs them. Both keep the mechanism's stages, so both are execution fixes. A change
-that drops or merges a stage is a design cause and goes through the ceiling test first.
+that drops or merges a stage is a design cause and goes to the caller first.
 
 A change that crosses two modules, adds a concept, or gives the workflow a second way to do
 something runs [[decompose]] here, and its design note is the change written. A rebuild
@@ -301,13 +297,13 @@ reading does not need, and collapse down the ladder as far as the reading surviv
 | a trace | nothing: the record of a run already paid for | what happened, replayed under the change on paper |
 | one turn | one prompt on a frozen context | what the turn does and spends |
 | one stage | the stage on its frozen inputs | the stage's cost and output |
-| whole system | every stage on a real unit | the bar itself |
+| whole system | every stage on a real unit | the purpose itself |
 
 Each rung up costs about an order of magnitude more. Take the cheapest rung that still reads
 the variable, and price it from one run. A reading the trace already holds is never bought
 again. An instrument that costs more than a tenth of the budget left says in the row why no
 lower rung reads the variable. A fix proven on one stage is confirmed on the whole system
-once, when the loop claims a real unit clears the bar, and not at every probe. Before the
+once, when the loop claims the process serves its purpose, and not at every run. Before the
 expensive part runs, compute the best result the run could show from its inputs alone: a
 best case under the prediction kills the run before it costs anything. A probe past twice
 its estimate is stopped, its row keeps the partial reading, and the estimate is a finding.
@@ -324,7 +320,7 @@ the change, its instrument with its rung and price, and the boundary it is read 
 ## Verify
 
 Read the yardstick at the first boundary it names, project it to the full workload, and
-hold it against the bar and against the prediction, in the row: "30 min a page × 1,000
+hold it against the purpose and against the prediction, in the row: "30 min a page × 1,000
 pages is 3 weeks against 8 hours: 60× off." The reading has one of three verdicts:
 
 - **Held.** The kind's count fell by at least the floor, in the direction predicted. Keep
@@ -351,9 +347,8 @@ The queue empties when no kind appears on two units and the one-offs are each be
 unit's ideal path. The process has **converged**. Say so once. The read step keeps running,
 and the first kind seen twice opens a new cycle.
 
-Inside a study, convergence has a bar: the loop ends when a real unit, on the frozen
-yardstick, clears the study's cost bar and outcome bar. The study's verdict is then reached.
-The waste still above the ideal path is priced per unit in the study's report, and a loop
+Under a caller, the loop also ends when the caller reads the goal again and says the process
+serves it. The waste still above the ideal path is priced per unit in the report, and a loop
 beside the live process keeps removing it.
 
 ## The report
@@ -372,7 +367,7 @@ is fine and carries no table has examined nothing.
 
 Close with one verdict: **improving** when the last change held, **taxed** when a kind
 recurs and no cycle is open on it, **converged** when no kind recurs, **unrecorded** when a
-stage left no record. Inside a study add the unit's cost against the bar. At run end add
+stage left no record. At run end add
 the one adoption line: wall time and bill against what a person would need.
 
 ## Completion criterion
@@ -380,7 +375,7 @@ the one adoption line: wall time and bill against what a person would need.
 Each line checkable from `EXAMINED.md` alone:
 
 - Every unit source got its reading: a line in the fixed shape per notification with
-  "doing", "seen before" and "working" filled, or a probe row with the gate's three fields.
+  "doing", "seen before" and "working" filled, or a paid run with the record it cites.
 - Every delivered unit has its ideal path and actual path side by side, with cost per
   stage, a reading for every kind, zero readings included, and each gap item's reach.
 - Every kind carries its recurrence count and its price, and a fresh judge's expected
@@ -388,7 +383,7 @@ Each line checkable from `EXAMINED.md` alone:
 - Every tax has a cycle open: a problem in hand with its cap, a construct with a contrast,
   a why-chain ending on the workflow or its producer and a cause class, a change committed
   with its prediction, instrument and boundary, or the gate's reason it has none.
-- Every design cause went through the ceiling test before its change, and every symptom
+- Every design cause went to the caller before its change, and every symptom
   fix is labelled as one.
 - Every change whose boundary has passed carries its verdict with the count before and
   after, and every measure sets every kind beside its previous reading.
