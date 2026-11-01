@@ -12,16 +12,18 @@ import hashlib
 import json
 import resource
 import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ostler import doctor as doctor_mod
 from ostler import model
 from ostler.qa import sensitivity as sensitivity_mod
 from ostler.qa.assess_evidence import EvidenceSnapshot, snapshot_evidence
 from ostler.qa.compile import compile_plan_gaps
 from ostler.qa.context import book_context
-from ostler.qa.gap_owner import gap_owner
+from ostler.qa.gap_owner import doctor_finding_owner, gap_owner
 from ostler.qa.outcome import QaOutcome
 from ostler.qa.plan_source import Gap
 from ostler.qa.readiness import is_defect
@@ -56,6 +58,18 @@ class AssessmentGap:
 
 
 @dataclass(frozen=True)
+class DoctorFinding:
+    """One structural finding of the selected scope: severity, owner, and where the fix lands."""
+
+    severity: str
+    code: str
+    owner: str
+    path: str
+    line: int
+    message: str
+
+
+@dataclass(frozen=True)
 class ObligationRow:
     """One obligation's independent dimensions: capability, sensitivity, evidence."""
 
@@ -87,6 +101,8 @@ class Assessment:
     complete: bool
     unclassified_gap_kinds: tuple[str, ...]
     evidence: EvidenceSnapshot | None
+    doctor_findings: tuple[DoctorFinding, ...]
+    structure_complete: bool
     seconds: float
     peak_memory_kb: int
 
@@ -210,6 +226,26 @@ def _verdict(rows: tuple[ObligationRow, ...], unclassified: tuple[str, ...]) -> 
     return capabilities, sensitivity, evidence, complete
 
 
+def _doctor_findings(graph: model.Graph, scope: str) -> tuple[DoctorFinding, ...]:
+    """The structural findings doctor raises on the selected scope's pages, each with its owner."""
+    prefix = f"{scope}/"
+    findings = [
+        finding for finding in doctor_mod.run(graph).findings
+        if finding.path == scope or finding.path.startswith(prefix)
+    ]
+    return tuple(
+        DoctorFinding(
+            severity=finding.severity,
+            code=finding.code,
+            owner=doctor_finding_owner(finding.code),
+            path=finding.path,
+            line=finding.line,
+            message=finding.message,
+        )
+        for finding in sorted(findings, key=lambda f: (f.path, f.line, f.code))
+    )
+
+
 def assess(root: Path, *, book: str, spec_dir: Path | None = None) -> Assessment:
     """Assess one selected book directory against its contract and any recorded evidence."""
     started = time.perf_counter()
@@ -217,11 +253,14 @@ def assess(root: Path, *, book: str, spec_dir: Path | None = None) -> Assessment
     context = book_context(root, books=[scope])
     fingerprint = contract_fingerprint(context)
     compilation = compile_plan_gaps(context, story="surface-assessment")
-    claims = {row.claim: row for row in sensitivity_mod.report(model.load(cwd=root))}
+    graph = model.load(cwd=root)
+    claims = {row.claim: row for row in sensitivity_mod.report(graph)}
     snapshot = (snapshot_evidence(spec_dir, fingerprint, schema_version=ASSESSMENT_SCHEMA_VERSION)
                 if spec_dir is not None else None)
     rows = _rows(context, list(compilation.gaps), claims, snapshot)
     unclassified = tuple(sorted({gap.code for row in rows for gap in row.gaps if not gap.owner}))
+    doctor_findings = _doctor_findings(graph, scope)
+    structure_complete = not any(f.severity == "error" for f in doctor_findings)
     capabilities, sensitivity, evidence, complete = _verdict(rows, unclassified)
     return Assessment(
         scope=scope,
@@ -230,9 +269,11 @@ def assess(root: Path, *, book: str, spec_dir: Path | None = None) -> Assessment
         capabilities_complete=capabilities,
         sensitivity_complete=sensitivity,
         evidence_complete=evidence,
-        complete=complete,
+        complete=complete and structure_complete,
         unclassified_gap_kinds=unclassified,
         evidence=snapshot,
+        doctor_findings=doctor_findings,
+        structure_complete=structure_complete,
         seconds=round(time.perf_counter() - started, 3),
         peak_memory_kb=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
     )
@@ -278,8 +319,11 @@ def to_json(assessment: Assessment) -> dict[str, Any]:
         "capabilities_complete": assessment.capabilities_complete,
         "sensitivity_complete": assessment.sensitivity_complete,
         "evidence_complete": assessment.evidence_complete,
+        "structure_complete": assessment.structure_complete,
         "complete": assessment.complete,
         "unclassified_gap_kinds": list(assessment.unclassified_gap_kinds),
+        "gap_counts": dict(Counter(gap.code for row in assessment.rows for gap in row.gaps)),
+        "doctor_findings": [finding.__dict__ for finding in assessment.doctor_findings],
         "evidence": None if assessment.evidence is None else {
             "applicability": assessment.evidence.applicability,
             "recorded_fingerprint": assessment.evidence.recorded_fingerprint,
@@ -309,6 +353,8 @@ def render(assessment: Assessment) -> str:
         f"  capabilities: {'complete' if assessment.capabilities_complete else 'INCOMPLETE'}",
         f"  sensitivity: {'complete' if assessment.sensitivity_complete else 'INCOMPLETE'}",
         f"  evidence: {'complete' if assessment.evidence_complete else 'not-run'}",
+        f"  structure: {'complete' if assessment.structure_complete else 'INCOMPLETE'}"
+        f" ({len(assessment.doctor_findings)} doctor findings in scope)",
         f"  verdict: {'COMPLETE' if assessment.complete else 'INCOMPLETE'}"
         f" ({assessment.seconds}s, peak {assessment.peak_memory_kb} KB)",
     ]
@@ -323,4 +369,7 @@ def render(assessment: Assessment) -> str:
             lines.append(f"    [{owner}] {gap.code}{discharged}: {gap.remedy}")
     for kind in assessment.unclassified_gap_kinds:
         lines.append(f"  UNCLASSIFIED gap kind: {kind} — the assessment cannot place its ownership")
+    for finding in assessment.doctor_findings:
+        lines.append(f"  [{finding.severity}/{finding.owner}] {finding.code} {finding.path}:"
+                     f" {finding.message}")
     return "\n".join(lines)

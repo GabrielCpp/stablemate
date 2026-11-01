@@ -12,7 +12,7 @@ capabilities, and zero required checks lacking applicable execution and sensitiv
 evidence. Completeness says the declared contract is proven, not that every possible
 behavior was discovered — source inventory coverage is reported separately.
 
-- code: ostler/ostler/qa/assessment.py::assess@ef2c58924257
+- code: ostler/ostler/qa/assessment.py::assess@a97580592455
 - rule: every selected required obligation has exactly one assessment row, and unknown,
   unavailable, excluded and failed obligations are never counted as passed.
 - rule: capability, sensitivity and execution evidence are independent dimensions, not
@@ -29,6 +29,11 @@ behavior was discovered — source inventory coverage is reported separately.
 - rule: every gap names its owner — the book's author, the tooling, or the environment —
   and a gap kind nobody classified fails the assessment rather than defaulting to a
   passing owner.
+- rule: doctor's structural findings on the selected scope's pages join the report as
+  their own section, never flattened into tooling gaps; error-severity findings make
+  the surface incomplete, warnings stay visible without blocking, and the
+  address/environment family is owned by the environment because no book edit can
+  supply the missing runtime input.
 - rule: assessment is read-only — it compiles, trials witnesses and reads recorded
   evidence, and never starts the product, runs a scenario, or adds a required network
   dependency.

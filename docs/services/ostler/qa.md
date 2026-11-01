@@ -630,4 +630,5 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/assessment.py::cmd_assess@f2c6d797750e
 - code: ostler/ostler/qa/assessment.py::contract_fingerprint@7d26a1e09b67
 - code: ostler/ostler/qa/gap_owner.py::gap_owner@67cbabc05472
+- code: ostler/ostler/qa/gap_owner.py::doctor_finding_owner@cd526e562e3c
 - detail: [surface completeness](concepts/surface-completeness.md)

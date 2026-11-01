@@ -36,8 +36,8 @@ def _hello_page(extra: str = "") -> str:
         "## Commands\n\n"
         "### hello\n"
         "- usage: `tool hello`\n"
-        '- run: invoke(argv=["hello"])\n'
         "- does: prints its greeting on stdout.\n"
+        '  - run: invoke(argv=["hello"])\n'
         '  - verify: stdout(text="hello world")\n'
         "  - fixture: none, because the greeting does not depend on any world\n"
         + extra
@@ -192,8 +192,8 @@ def _greet_page(verify: str = 'stdout(text="hello")') -> str:
         "## Commands\n\n"
         "### greet\n"
         "- usage: `tool greet`\n"
-        '- run: invoke(argv=["hello"])\n'
         "- does: says its greeting on stdout.\n"
+        '  - run: invoke(argv=["hello"])\n'
         f"  - verify: {verify}\n"
         "  - fixture: none, because nothing is seeded\n"
     )
@@ -318,3 +318,101 @@ def test_a_run_that_proves_only_a_subset_cannot_complete_the_surface(tmp_path: P
 
     assert not assessed.ok
     assert assessed.data["evidence"]["applicability"] == "stale"
+
+
+# --- slice 3: gap ownership, doctor findings in scope, the blocking policy ---
+
+from ostler.qa.compile import GAP_KINDS  # noqa: E402
+from ostler.qa.gap_owner import BOOK as OWNER_BOOK, ENVIRONMENT, TOOLING, gap_owner  # noqa: E402
+
+
+def test_every_compile_gap_kind_is_classified_by_owner() -> None:
+    """The owner table is exhaustive: an unclassified kind must fail the assessment, never pass it."""
+    unclassified = sorted(GAP_KINDS - {kind for kind in GAP_KINDS if gap_owner(kind)})
+    assert unclassified == []
+
+
+def test_a_missing_declaration_routes_to_the_book_author(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    write(root / BOOK / "tool.md", (
+        "---\ntype: cli\nslug: tool\ntitle: tool\n---\n# tool\n\n- binary: tool\n\n"
+        "## Commands\n\n### bare\n- usage: `tool bare`\n- does: declares nothing observable.\n"))
+    _commit(root)
+
+    data = cmd_assess(root, book=BOOK).data
+    gaps = [gap for row in data["obligations"] for gap in row["gaps"]]
+    assert gaps and all(gap["owner"] == OWNER_BOOK for gap in gaps)
+
+
+def test_a_capture_the_cli_builder_cannot_emit_routes_to_tooling(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    write(root / BOOK / "tool.md", (
+        "---\ntype: cli\nslug: tool\ntitle: tool\n---\n# tool\n\n- binary: tool\n\n"
+        "## Commands\n\n### greet\n"
+        "- usage: `tool greet`\n"
+        '- run: invoke(argv=["hello"])\n'
+        "- does: says hello and names the capture nothing can emit.\n"
+        '  - verify: stdout(text="hello")\n'
+        "  - fixture: none, because nothing is seeded\n"
+        "- capture: greeting from stdout\n"))
+    _commit(root)
+
+    data = cmd_assess(root, book=BOOK).data
+    gaps = [gap for row in data["obligations"] for gap in row["gaps"]]
+    tooling = [gap for gap in gaps if gap["owner"] == TOOLING]
+    assert any(gap["code"] == "uncaptured-declaration" for gap in tooling)
+    # the gap carries its address and remedy, not just its cause
+    assert all(gap["path"] and gap["remedy"] for gap in gaps)
+
+
+def _ops_book(root: Path, health: str) -> None:
+    write(root / BOOK / "ops/test.md", (
+        "---\ntype: environment\ntitle: Test\n---\n\n# Test\n\n"
+        "- sharing: per-run\n- addresses:\n  - `gateway`: the front door\n"))
+    write(root / BOOK / "ops/web.md", (
+        "---\ntype: runbook\ntitle: Web\n---\n\n# Web\n\n- driver: web\n"
+        "- environment: [Test](test.md)\n- entry-url: {gateway}\n- stop: make down\n\n"
+        f"## Steps\n\n### serve\n\n- kind: service\n- run: make copy\n- health: {health}\n"))
+
+
+def test_a_missing_runtime_input_routes_to_the_environment(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _ops_book(root, health="curl -fsS {api}/health")
+    _commit(root)
+
+    result = cmd_assess(root, book=BOOK)
+    data = result.data
+
+    assert not result.ok
+    assert data["structure_complete"] is False
+    finding = next(f for f in data["doctor_findings"] if f["code"] == "runbook-unknown-address")
+    assert finding["owner"] == ENVIRONMENT
+    assert finding["path"].startswith(BOOK)
+
+
+def test_a_warning_severity_finding_does_not_block_the_structure_verdict(tmp_path: Path) -> None:
+    """The finding policy blocks on error-severity findings; warnings stay visible without blocking."""
+    root = _repo(tmp_path)
+    write(root / BOOK / "tool.md", _greet_page().replace(
+        '- verify: stdout(text="hello")',
+        '- verify: stdout(matches="\\\\A\\\\n\\\\Z")'))
+    _commit(root)
+
+    data = cmd_assess(root, book=BOOK).data
+    assert any(f["severity"] == "warn" for f in data["doctor_findings"])
+    assert data["structure_complete"] is True
+
+
+def test_gap_counts_group_by_cause_keeping_per_gap_detail(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    write(root / BOOK / "tool.md", _greet_page().replace(
+        "- does: says its greeting on stdout.\n",
+        "- does: says its greeting on stdout.\n- does: a second claim nobody proves.\n"))
+    _commit(root)
+
+    data = cmd_assess(root, book=BOOK).data
+    # three rows carry the cause: the unproven claim, and the two discharged contracts
+    assert data["gap_counts"].get("no-verify-declared") == 3
+    detail = [gap for row in data["obligations"] for gap in row["gaps"]
+              if gap["code"] == "no-verify-declared"]
+    assert all(gap["line"] > 0 and "verify:" in gap["remedy"] for gap in detail)

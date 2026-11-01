@@ -61,6 +61,18 @@ _ENVIRONMENT_KINDS = frozenset({
     "unresolved-runtime-input",
 })
 
+# Doctor checks the book's own conformance, so a structural finding is the book
+# author's to fix; the exceptions name a runtime input only the environment page
+# or the operator's address book can supply.
+_ENVIRONMENT_FINDINGS = frozenset({
+    "environment-address-name",
+    "environment-address-value",
+    "environment-variable-name",
+    "environment-variable-secret",
+    "environment-variables-unchecked",
+    "runbook-unknown-address",
+})
+
 
 def gap_owner(kind: str) -> str | None:
     """The party that can fix a gap of *kind*: `book`, `tooling`, or `environment`.
@@ -75,3 +87,12 @@ def gap_owner(kind: str) -> str | None:
     if kind in _ENVIRONMENT_KINDS:
         return ENVIRONMENT
     return None
+
+
+def doctor_finding_owner(code: str) -> str:
+    """Who fixes a doctor finding: the environment page for runtime-input findings, else the book.
+
+    Every doctor finding is a conformance defect in the book itself except the
+    address/environment family, which names an input no book edit can supply.
+    """
+    return ENVIRONMENT if code in _ENVIRONMENT_FINDINGS else BOOK
