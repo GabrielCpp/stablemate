@@ -138,8 +138,8 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: json_path(path="findings[3].code", equals="decision-back-link-missing")
 - verify: json_path(path="findings[3].message", equals="record 'X-1' names decision 'D-9', and no decision file has that id")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a broken register beside an empty book
-- code: ostler/ostler/doctor.py::_check_register_records@ab71df4a76ca
-- code: ostler/ostler/doctor.py::_check_decisions@ab71df4a76ca
+- code: ostler/ostler/doctor.py::_check_register_records@fb4e8dec596b
+- code: ostler/ostler/doctor.py::_check_decisions@1c443528c84a
 - code: ostler/ostler/adr.py::decisions@f14c55fafbc7
 - detail: [The debt register](concepts/the-debt-register.md)
 

@@ -2514,7 +2514,34 @@ _UNAVAILABLE_WORDS = frozenset({
     "disabled", "greyed", "grayed", "readonly", "read-only", "inactive", "unclickable",
 })
 
+_AVAILABILITY_PREPOSITIONS = frozenset({
+    "until", "when", "while", "because", "with", "in", "on", "for", "so", "and", "or",
+    "but", "to", "of", "as", "at", "by", "per", "via", "during", "after", "before",
+    "if", "though", "out", "off",
+})
+
 _AVAILABILITY_CHECKS = frozenset({"actionable", "inert"})
+
+
+def _claims_unavailability(value: str) -> bool:
+    """Whether a `states:` bullet claims *this control* cannot be used.
+
+    The unavailable word counts only when it is predicated of the control itself:
+    "disabled until valid" claims unavailability, "inactive panes are `display:none`"
+    describes sibling panes, "not by a disabled state" asserts the control stays
+    enabled, and an `aria-pressed` bullet names a toggle's selected state, which
+    `actionable`/`inert` cannot observe and `visible` on the pressed attribute does.
+    """
+    lowered = value.lower()
+    if "aria-pressed" in lowered:
+        return False
+    for match in re.finditer(r"[a-z-]+", lowered):
+        if match.group(0) not in _UNAVAILABLE_WORDS:
+            continue
+        following = re.match(r"[a-z-]+", lowered[match.end():].lstrip())
+        if following is None or following.group(0) in _AVAILABILITY_PREPOSITIONS:
+            return True
+    return False
 
 
 def _availability_observed(graph: Graph) -> set[str]:
@@ -2542,8 +2569,7 @@ def _check_availability_states(graph: Graph, f: list[Finding]) -> None:
             continue
         rel = _rel_posix(node.path, graph.root)
         for index, value in enumerate(_bullet_values(node.meta.get("states", "")), 1):
-            words = set(re.split(r"[^a-z-]+", value.lower()))
-            if not words & _UNAVAILABLE_WORDS:
+            if not _claims_unavailability(value):
                 continue
             f.append(Finding(
                 "warn", "unchecked-availability-state",

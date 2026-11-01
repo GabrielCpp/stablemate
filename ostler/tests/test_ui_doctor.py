@@ -267,6 +267,34 @@ def test_a_states_bullet_claiming_the_control_is_disabled_with_no_check_is_flagg
     assert finding.ref == "docs/services/groom/gui/screens/s.md#body#states:1"
 
 
+def test_an_aria_pressed_toggle_state_is_not_an_availability_claim(repo: Path):
+    """`inactive with aria-pressed="false"` names an unselected toggle, which stays actionable — `inert` would be the wrong observation, and the pressed state is what `visible` on the attribute checks."""
+    _screen_with(repo, (
+        "- role: button\n- name: Runs\n"
+        '- states: inactive with `aria-pressed="false"` in any other mode.\n'
+        '- verify: visible(locator="#body[aria-pressed=\'false\']", text="Runs")\n'))
+    assert "unchecked-availability-state" not in all_codes(_run(repo))
+
+
+def test_an_unavailable_word_describing_sibling_panes_is_not_an_availability_claim(repo: Path):
+    """`inactive panes are display:none` describes the panes, not the control — the control itself is hidden, which `hidden`/`visible` observe, not `inert`."""
+    _screen_with(repo, (
+        "- role: button\n- name: Send\n"
+        "- states: `data-mode` selects a single active pane, and inactive panes are `display:none`, "
+        "removed from the accessibility tree entirely.\n"
+        '- verify: hidden(locator="#body", text="Send")\n'))
+    assert "unchecked-availability-state" not in all_codes(_run(repo))
+
+
+def test_a_bullet_asserting_the_control_stays_enabled_is_not_an_availability_claim(repo: Path):
+    """`always enabled ... not by a disabled state` asserts availability, the opposite of the claim the check hunts."""
+    _screen_with(repo, (
+        "- role: button\n- name: Send\n"
+        "- states: always enabled. The result is reported by a toast, not by a disabled state.\n"
+        '- verify: json_path(path="answer_button.disabled", equals=false)\n'))
+    assert "unchecked-availability-state" not in all_codes(_run(repo))
+
+
 def test_a_scaffolded_empty_arrange_bullet_does_not_count_as_an_arrangement(repo: Path):
     write(repo / "docs/services/groom/gui/screens/s.md", _ARM_BOOK
           + "### refuse-act\n- extends: [act](#act)\n- when: `name` empty\n- arrange:\n"
