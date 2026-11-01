@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from workhorse_workflows.kit.qa.support import (
+    QA_COMPILED_PLAN_FILE,
     QA_PLAN_FILE,
     QA_RUN_LOG,
     assert_records,
@@ -13,6 +14,7 @@ from workhorse_workflows.kit.qa.support import (
 )
 
 __all__ = [
+    "QA_COMPILED_PLAN_FILE",
     "QA_PLAN_FILE",
     "QA_RUN_LOG",
     "assert_records",

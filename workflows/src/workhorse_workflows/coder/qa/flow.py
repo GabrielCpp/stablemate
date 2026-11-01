@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
+from ostler.qa.compile import compiled_from_the_book
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 
 from workhorse_workflows.kit import find_docs_root
@@ -25,6 +26,7 @@ from workhorse_workflows.coder.qa.nodes import (
     validate_qa_plan,
     verify_qa_evidence,
 )
+from workhorse_workflows.coder.shared.qa_support import QA_COMPILED_PLAN_FILE, QA_PLAN_FILE
 from workhorse_workflows.coder.qa.report import (
     book_failure,
     environment_failure,
@@ -221,16 +223,26 @@ class Qa(Workflow):
             "qa_only_scenarios": qa_only_arg(spec_dir),
             "qa_tools": self.call(qa_tools_catalog).tools,
             "standing_plan": self._standing_plan(),
+            "hand_written_plan": self._hand_written_plan(),
+            "compiled_plan_file": QA_COMPILED_PLAN_FILE,
         }
 
     def _standing_plan(self) -> bool:
         """Does a `qa_plan.py` already stand that lints and validates against the packet?"""
         spec_dir = self.ctx.spec_dir
-        if not spec_dir or not (Path(spec_dir) / "qa_plan.py").is_file():
+        if not spec_dir or not (Path(spec_dir) / QA_PLAN_FILE).is_file():
             return False
         if self.call(lint_qa_plan, spec_dir).status != "passed":
             return False
         return self.call(validate_qa_plan, spec_dir).status == "passed"
+
+    def _hand_written_plan(self) -> bool:
+        """Does the standing `qa_plan.py` lack the banner `compile-plan` writes, so its `covers=` are its author's and the book compiled beside it?"""
+        spec_dir = self.ctx.spec_dir
+        plan = Path(spec_dir) / QA_PLAN_FILE if spec_dir else None
+        if plan is None or not plan.is_file():
+            return False
+        return not compiled_from_the_book(plan.read_text(encoding="utf-8"))
 
     def work(
         self,

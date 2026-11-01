@@ -14,7 +14,7 @@ copy when the run settles. The stack, release and run steps are thin nodes over 
 `kit/qa/runner.py`. The secret helper is private but is documented because it controls the runner's
 credential boundary.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__` @c509d491149e
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__` @12322d64ca70
 - detail: [coder QA flow](../flows/coder-qa.md)
 
 ## Fields
@@ -51,7 +51,7 @@ credential boundary.
 - required: true
 - semantics: spec-relative directory holding the scored ledger and, one subdirectory per label, the dry-run ledgers of single-scenario runs (a pass's reset empties the scored ledger and keeps the dry-run ledgers, which the scored evidence gate never reads)
 - verify: json_path(path="$.QA_SCRATCH_DIRNAME", equals="qa")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME` @c509d491149e
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME` @12322d64ca70
 
 ## Methods
 
@@ -73,16 +73,21 @@ credential boundary.
 
 ### compile_story_plan
 - sig: `compile_story_plan(logger: logging.Logger, spec_dir: str = "", story: str = "") -> CompiledPlan`
-- does: leaves an existing `<spec_dir>/qa_plan.py` untouched and reports nothing compiled
+- does: leaves an existing `<spec_dir>/qa_plan.py` that opens with the `compile-plan` banner untouched and reports nothing compiled
 - verify: json_path(path="$.compiled", equals=false)
-- does: compiles the packet in the spec directory and writes `qa_plan.py`, with the auxiliary files the compile names, when the book compiles
+- does: compiles the packet in the spec directory and writes `qa_plan.py`, with the auxiliary files the compile names, when no plan stands and the book compiles
 - verify: created(subject="compiled QA plan")
+- does: compiles the packet beside an existing `qa_plan.py` that lacks the banner, into `qa_plan.compiled.py`, because a plan without the banner was written by hand and its `covers=` are its author's
+- verify: created(subject="compiled QA plan beside the hand-written one")
+- does: reports `beside` when the compile went beside a hand-written plan
+- verify: json_path(path="$.beside", equals=true)
 - does: writes nothing when the compile is refused or the packet cannot be read, and reports the gap count
 - verify: json_path(path="$.gaps", matches="^[0-9]+$")
-- returns: a `CompiledPlan` carrying whether a plan was written and the scenario count it holds
+- returns: a `CompiledPlan` carrying whether a plan was written, whether it was written beside a hand-written one, and the scenario count it holds
 - verify: json_path(path="$.scenarios", matches="^[0-9]+$")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::compile_story_plan` @842a7066e91d
-- tests: `workflows/tests/coder/qa/test_compile_story_plan.py::test_a_plan_that_stands_is_left_alone`
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::compile_story_plan` @9d09262999cc
+- tests: `workflows/tests/coder/qa/test_compile_story_plan.py::test_a_compiled_plan_that_stands_is_left_alone`
+- tests: `workflows/tests/coder/qa/test_compile_story_plan.py::test_a_hand_written_plan_gets_the_books_plan_compiled_beside_it`
 
 ### stack_target
 - sig: `stack_target(logger: logging.Logger, story: str = "", lease: str = "", repo_dir: str = "") -> StackTarget`

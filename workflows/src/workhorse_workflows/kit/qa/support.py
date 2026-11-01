@@ -9,6 +9,7 @@ from ostler.qa import QaOutcome
 from ostler.qa.session import scratch_dirname
 
 QA_PLAN_FILE = "qa_plan.py"
+QA_COMPILED_PLAN_FILE = "qa_plan.compiled.py"
 
 QA_RUN_LOG = "qa-run.ndjson"
 

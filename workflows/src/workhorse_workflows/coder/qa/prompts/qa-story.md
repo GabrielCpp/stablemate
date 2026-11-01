@@ -33,7 +33,12 @@ earlier turn.
 - Docs root: `{{ workhorse_var('docs_root') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - The QA runner's interpreter: `{{ workhorse_var('runtime_python') }}`
-{% if standing_plan %}- A `qa_plan.py` already stands in the spec dir, and it lints and validates against the
+{% if standing_plan and hand_written_plan %}- A hand-written `qa_plan.py` stands in the spec dir, and it lints and validates against the
+  context packet. No compile produced it, so its `covers=` labels are its author's and not the
+  book's. The workflow compiled every obligation of the book into `{{ compiled_plan_file }}`
+  beside it. Bind the criteria on the compiled plan with `--cover`, port only the hand-written
+  scenarios the book cannot state, and replace `qa_plan.py` with the result.
+{% elif standing_plan %}- A `qa_plan.py` already stands in the spec dir, and it lints and validates against the
   context packet. The workflow compiled every obligation of the book into it with
   `ostler qa compile-plan`. Start from it and change only what the story or a check calls for.
 {% else %}- No plan that lints and validates stands in the spec dir yet. Compile one with
@@ -102,7 +107,8 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
 1. **Select.** Read the story and its Acceptance Criteria, the repo's `AGENTS.md` and
    `docs/qa/lessons.md` under the docs root when it exists. The Acceptance Criteria define
    done. `qa-okf-context.json` in the spec dir holds the obligations, read through
-   `ostler qa context-show`. The workflow compiled every obligation into `qa_plan.py`. For
+   `ostler qa context-show`. The workflow compiled every obligation into
+   `{% if hand_written_plan %}{{ compiled_plan_file }}{% else %}qa_plan.py{% endif %}`. For
    each Acceptance Criterion, name the obligations (or book nodes) whose checks prove it.
    Then recompile once:
    `ostler qa compile-plan --spec {{ workhorse_var('spec_dir') }} [--select <id> ...] --cover ac:N=<id>[,<id>...] ... --out {{ workhorse_var('spec_dir') }}/qa_plan.py --replace`,

@@ -72,11 +72,14 @@ story id are both set, it also resolves story-source provenance and fails the ru
 sources are invalid. It then detects the OKF book, names the run's lease on a copy of the stack,
 and records the stack target. The preflight builds and validates the OKF context packet and
 brings the stack up. Each failure becomes a line of the first owner turn's report instead of an
-abort, because a broken packet or stack is the owner's to repair. Once the packet validates and
-no `qa_plan.py` stands in the spec dir, `compile_story_plan` compiles the book into one. A
-compile that succeeds writes `qa_plan.py` and logs how many scenarios it holds. A refusal writes
-nothing and logs its gap count, and the owner then writes the plan by hand. A plan that stands
-is never overwritten.
+abort, because a broken packet or stack is the owner's to repair. Once the packet validates,
+`compile_story_plan` reads the standing `qa_plan.py` for its provenance. The banner
+`compile-plan` writes on its first line is the only provenance a plan file carries. A plan that
+opens with it is the book's and is never overwritten. A plan without it was written by hand, so
+its `covers=` labels are its author's and not the book's, and the node compiles the book beside
+it into `qa_plan.compiled.py`. With no plan at all, the node compiles the book into `qa_plan.py`.
+A compile that succeeds logs how many scenarios it holds. A refusal writes nothing and logs its
+gap count, and the owner then writes the plan by hand.
 
 ### work
 
@@ -86,8 +89,12 @@ is never overwritten.
 wall-clock bound and a silence limit. The turn reads the story, the spec directory, the
 verification setup, the fixtures, the QA run plan, the QA tool catalog and the last report. It is
 granted only the repositories the plan touches. It also learns whether a standing `qa_plan.py`
-already lints and validates, so it starts from that plan rather than authoring a new one. The
-compiled plan counts as standing. The owner names, for each Acceptance Criterion, the obligations whose checks prove it and recompiles
+already lints and validates, so it starts from that plan rather than authoring a new one, and
+whether that plan was written by hand. The compiled plan counts as standing. A hand-written one
+stands too, and the turn then says so, names `qa_plan.compiled.py` as the book's plan beside it,
+and asks the owner to bind the criteria on the compiled plan, port only the hand-written
+scenarios the book cannot state, and replace `qa_plan.py` with the result, because a hand-written
+plan's `covers=` labels prove nothing the book owes. The owner names, for each Acceptance Criterion, the obligations whose checks prove it and recompiles
 once with `ostler qa compile-plan --cover ac:N=<id>[,<id>...] --replace`, so the compiler writes the
 criterion into the coverage of those checks and the owner does not rewrite the plan. It adds
 `--select` when an obligation lies outside the story, repairs a wrong scenario in the book and

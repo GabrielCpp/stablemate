@@ -14,7 +14,7 @@ One owner turn replies with `QaOwnerResult`, and the flow ends with `QaFlowResul
 vocabularies rather than accepting arbitrary strings. `QaResult`, `QaPlanRun`, `StackStatus` and `QaStatus`
 are defined in the shared QA kit and re-exported here.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::__all__` @c31aff7f270b
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::__all__` @ec641201b012
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_spends_one_owner_turn`
 - tests: `workflows/tests/coder/test_qa_plan_prompt_schema.py::test_the_example_scenario_would_survive_the_substantiveness_gate`
 - detail: [coder QA flow](../flows/coder-qa.md)
@@ -75,12 +75,14 @@ so an omitted decision is retried rather than silently routed.
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::QaCleared` @aef91b1ea5a1
 
 ### method: CompiledPlan
-- sig: `CompiledPlan(compiled: bool = False, scenarios: int = 0, gaps: int = 0) -> CompiledPlan`
+- sig: `CompiledPlan(compiled: bool = False, beside: bool = False, scenarios: int = 0, gaps: int = 0) -> CompiledPlan`
 - does: reports whether the book compiled into the story's `qa_plan.py` and how many scenarios the plan holds
 - verify: json_path(path="$.compiled", matches="^(true|false)$")
+- does: reports whether the compile went beside a hand-written `qa_plan.py`, into `qa_plan.compiled.py`
+- verify: json_path(path="$.beside", matches="^(true|false)$")
 - does: carries the count of gaps the compile reported
 - verify: json_path(path="$.gaps", matches="^[0-9]+$")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::CompiledPlan` @4d5ec7393b01
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/qa.py::CompiledPlan` @8b2e5b5f18cd
 
 ### method: StackStatus
 - sig: `StackStatus(ready: Literal["yes", "no", "none", "unneeded"] = "no", app_pid: str = "", app_pgid: str = "", entry_url: str = "", failed_step: str = "", notes: str = "", owned_pgids: tuple[str, ...] = (), app_logs: tuple[str, ...] = ()) -> StackStatus`

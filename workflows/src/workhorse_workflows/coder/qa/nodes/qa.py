@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler
-from ostler.qa.compile import Plan
+from ostler.qa.compile import Plan, compiled_from_the_book
 from ostler.qa.session import clear_ledger
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.qa import runner as _qa_runner
@@ -18,7 +18,7 @@ from workhorse_workflows.coder.shared.stack import (
     run_qa_plan,
     stack_target,
 )
-from workhorse_workflows.coder.shared.qa_support import QA_PLAN_FILE, notes_for
+from workhorse_workflows.coder.shared.qa_support import QA_COMPILED_PLAN_FILE, QA_PLAN_FILE, notes_for
 from workhorse_workflows.coder.shared.schemas.qa import (
     CompiledPlan,
     QaCleared,
@@ -52,17 +52,22 @@ def clear_qa_evidence(logger: logging.Logger, spec_dir: str = "") -> QaCleared:
 def compile_story_plan(
     logger: logging.Logger, spec_dir: str = "", story: str = ""
 ) -> CompiledPlan:
-    """Write `<spec_dir>/qa_plan.py` from the plan the book compiles, unless one already stands or the book refuses."""
+    """Write `<spec_dir>/qa_plan.py` from the plan the book compiles, or `qa_plan.compiled.py` beside a hand-written plan, unless a compiled plan already stands or the book refuses."""
     root = Path(spec_dir)
     target = root / QA_PLAN_FILE
+    beside = False
     if target.exists():
-        logger.info("%s already stands, so nothing is compiled", target)
-        return CompiledPlan()
+        if compiled_from_the_book(target.read_text(encoding="utf-8")):
+            logger.info("%s already stands, so nothing is compiled", target)
+            return CompiledPlan()
+        beside = True
+        target = root / QA_COMPILED_PLAN_FILE
+        logger.info("%s was written by hand, so the book compiles beside it into %s", root / QA_PLAN_FILE, target)
     compiled = compile_packet(root, story, logger)
     if not isinstance(compiled, Plan):
         gaps = len(compiled.gaps) if compiled else 0
         logger.info("the book refused to compile a QA plan with %d gap(s)", gaps)
-        return CompiledPlan(gaps=gaps)
+        return CompiledPlan(gaps=gaps, beside=beside)
     target.write_text(compiled.source, encoding="utf-8")
     for name, text in compiled.files.items():
         aux = root / name
@@ -70,7 +75,7 @@ def compile_story_plan(
         aux.write_text(text, encoding="utf-8")
     scenarios = compiled.source.count("\n@scenario(")
     logger.info("compiled %d scenario(s) from the book into %s", scenarios, target)
-    return CompiledPlan(compiled=True, scenarios=scenarios, gaps=len(compiled.gaps))
+    return CompiledPlan(compiled=True, beside=beside, scenarios=scenarios, gaps=len(compiled.gaps))
 
 
 @blueprint.node

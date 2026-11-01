@@ -59,9 +59,10 @@ class QaCleared(CoderResult):
 
 
 class CompiledPlan(CoderResult):
-    """`compile_story_plan` — whether the book compiled into the story's `qa_plan.py`, and how many scenarios it holds."""
+    """`compile_story_plan` — whether the book compiled into the story's `qa_plan.py`, or beside a hand-written one, and how many scenarios it holds."""
 
     compiled: bool = False
+    beside: bool = False
     scenarios: int = 0
     gaps: int = 0
 
