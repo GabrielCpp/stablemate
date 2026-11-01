@@ -17,6 +17,7 @@ from ostler.qa.compile import cmd_compile_plan, compile_plan
 from ostler.qa.readiness import cmd_compile_gaps
 from ostler.qa.lint import cmd_lint
 from ostler.qa.sensitivity import cmd_sensitivity
+from ostler.qa.assessment import Assessment, assess, cmd_assess, contract_fingerprint, render as render_assessment
 from ostler.qa.clean import cmd_clean, legacy_scratch_roots
 from ostler.qa.session import QA_DIRNAME, RESERVED_LABELS, ScratchLabelError, scratch_dirname
 from ostler.qa import addresses, fixtures, runbook, tools
@@ -63,6 +64,11 @@ __all__ = [
     "cmd_compile_gaps",
     "compile_plan",
     "cmd_sensitivity",
+    "Assessment",
+    "assess",
+    "cmd_assess",
+    "contract_fingerprint",
+    "render_assessment",
     "cmd_validate",
     "cmd_clean",
     "legacy_scratch_roots",

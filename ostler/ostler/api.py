@@ -25,6 +25,7 @@ from ostler import registry, select, todo as todo_mod
 from ostler.crud import Result
 from ostler.qa import (
     QaOutcome,
+    cmd_assess,
     cmd_context,
     cmd_context_validate,
     cmd_lint,
@@ -718,6 +719,12 @@ class Ostler:
         """This repo's opted-in QA tools, resolved against the machine's stablemate config (``ostler qa tools list``)."""
 
         return qa_tools_mod.cmd_catalog(self.root)
+
+    def qa_assess(self, *, book: str, spec: str | Path | None = None) -> QaOutcome:
+        """Assess one book directory's surface completeness (``ostler qa assess``); ``data`` is the verdict report."""
+
+        return cmd_assess(self.root, book=book,
+                          spec_dir=self._resolve(spec) if spec else None)
 
     def artifact_vet(self, kind: str, spec: str | Path) -> QaOutcome:
         """Validate a workflow artifact against its contract (``ostler artifact vet``)."""

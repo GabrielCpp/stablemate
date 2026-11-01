@@ -854,6 +854,21 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_sensitivity.add_argument("--json", action="store_true")
 
+    qa_assess = qas.add_parser(
+        "assess",
+        help="assess one book directory's surface completeness: capability, "
+             "sensitivity and evidence for every owed obligation, read-only",
+    )
+    qa_assess.add_argument(
+        "--book", required=True,
+        help="repo-relative services directory to assess, e.g. docs/services/groom",
+    )
+    qa_assess.add_argument(
+        "--spec", default=None, type=Path,
+        help="an existing run's spec directory whose evidence the assessment reads",
+    )
+    qa_assess.add_argument("--json", action="store_true")
+
     qa_run = qas.add_parser("run", help="execute a qa_plan.py in batch mode")
     qa_run.add_argument("plan_file", type=Path)
     qa_run.add_argument("--spec", default=None, type=Path)
@@ -1811,6 +1826,17 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         else:
             _out(result.message)
         return 0 if result.ok else 1
+
+    if op == "assess":
+        spec_dir = _resolve_spec(args.spec) if args.spec is not None else None
+        result = qa_mod.cmd_assess(root, book=args.book, spec_dir=spec_dir)
+        if args.json:
+            _out(json.dumps(result.data, indent=2))
+        else:
+            _out(result.message)
+        if result.ok:
+            return 0
+        return 2 if result.status == "invalid" else 1
 
     if op == "run":
         spec_dir = args.spec

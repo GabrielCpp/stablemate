@@ -602,3 +602,31 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/readiness.py::cmd_compile_gaps@f2be3f75e500
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
 - tests: ostler/tests/test_qa_readiness.py::test_the_cli_exposes_the_workflow_verdict
+
+### ostler-qa-assess
+- usage: ostler qa assess --book BOOK [--spec SPEC] [--json]: assesses one book
+  directory's surface completeness — capability, sensitivity and evidence for every
+  owed obligation — without running anything
+- flags:
+  - --book (the repo-relative services directory to assess; required)
+  - --spec (an existing run's spec directory whose recorded evidence the assessment reads)
+  - --json (print the verdict as JSON)
+- does:
+  - builds a whole-book context for the selected directory, compiles it with the real compiler, puts every declared check to synthetic sensitivity trials, joins any recorded run evidence, and exits 1 while the surface is incomplete, reporting one row per owed obligation.
+- run: invoke(argv=["-C", "qa-scratch", "qa", "assess", "--book", "docs/services/demo", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=1)
+- verify: json_path(path="complete", equals=false)
+- verify: json_path(path="sensitivity_complete", equals=true)
+- verify: json_path(path="required_count", equals=7)
+- fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
+  source file and a plan under spec s1
+- does:
+  - refuses an empty or missing scope with exit 2 before assessing anything.
+- run: invoke(argv=["-C", "qa-scratch", "qa", "assess", "--book", "docs/services/missing"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})
+- verify: exit_status(code=2)
+- fixture: [qa scratch repo](fixtures/qa-scratch-repo.md) with a QA scratch repo with one changed
+  source file and a plan under spec s1
+- code: ostler/ostler/qa/assessment.py::cmd_assess@f2c6d797750e
+- code: ostler/ostler/qa/assessment.py::contract_fingerprint@7d26a1e09b67
+- code: ostler/ostler/qa/gap_owner.py::gap_owner@67cbabc05472
+- detail: [surface completeness](concepts/surface-completeness.md)
