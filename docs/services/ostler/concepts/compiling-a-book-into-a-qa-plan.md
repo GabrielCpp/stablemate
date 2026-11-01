@@ -33,7 +33,7 @@ arguments — `argv`, `cwd=qa.scenario_checkout_copy()`, and, when the act decla
 environment the book's `invoke` act names, in both `cli_scenario_body` and `cli_journey`. `compile_page.py`'s `page_scenarios` builds a web-UI check, holding a
 conditional or mutually-exclusive component's obligations together (`_node_claims`,
 `_shared_shape`) and inserting a navigation step before the assertion when the obligation is not
-already on the right screen (`_arrival_scenario`). When the walk's acts read a fixture's fact, the scenario arranges that fixture once before the first navigation, merged with the fixtures the claims carry. A component whose screen opens in a state that lists it `absent` is gapped as `unarranged-state` instead of asserted on arrival, and the gap names the states that show it. `web_state_walks` compiles a `DataState`
+already on the right screen (`_arrival_scenario`). When the walk's acts read a fixture's fact, the scenario arranges that fixture once before the first navigation, merged with the fixtures the claims carry. Components that declare different fixtures get separate arrival scenarios (`_plain_arrivals`). A component whose screen opens in a state that lists it `absent` is gapped as `unarranged-state` instead of asserted on arrival, and the gap names the states that show it. `web_state_walks` compiles a `DataState`
 screen-to-screen walk. `compile_playwright.py` supplies what `compile_page.py` emits into each
 scenario body: `perform_acts` renders a book's `acts:` into Playwright action lines,
 `page_observations` renders one assertion from a locator and a check call, and `web_walk` compiles
@@ -134,6 +134,7 @@ its first hop.
 - code: ostler/ostler/qa/navigation.py::maestro_launch@cf1797f85188
 - code: ostler/ostler/qa/readiness.py::cmd_compile_gaps@f2be3f75e500
 - code: ostler/ostler/qa/readiness.py::defect_gaps@ee9178710def
+- rule: a fixture's condition belongs to the claim that declared it, so a compiled arrival never holds two claims with different fixtures. Two arms of one fault fixture replace each other, and the first claim would read a state nobody declared.
 - rule: a body claim and a status claim about one request are read off one response, with or without an act. A body claim that made the driver raise on the stated refusal would never be read.
 - tests: ostler/tests/test_qa_readiness.py::test_compile_gaps_reads_the_same_missing_component_checks_the_workflow_rejects
 - detail: [ostler](../cli.md)

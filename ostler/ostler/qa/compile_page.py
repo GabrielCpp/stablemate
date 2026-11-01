@@ -238,9 +238,19 @@ def _screen_scenarios(
                 exclusive.append(_Arrival(f"{page}_{_node_slug(node_id)}", {node_id: claims.remaining}))
             else:
                 plain[node_id] = claims.remaining
-    if plain:
-        arrivals.append(_Arrival(f"{page}_arrival", plain))
+    arrivals.extend(_plain_arrivals(page, plain))
     return _ScreenScenarios([*arrivals, *exclusive], interactions)
+
+
+def _plain_arrivals(page: str, plain: dict[str, list[Obligation]]) -> list[_Arrival]:
+    """The arrivals of a screen's plain nodes, one per set of fixtures their claims declare, since a fixture's condition belongs to the claim that declared it and two of them can replace each other."""
+    by_fixtures: dict[frozenset[tuple[str, tuple[str, ...]]], dict[str, list[Obligation]]] = {}
+    for node_id, obligations in plain.items():
+        declared = frozenset((row.name, row.args) for obligation in obligations for row in obligation.fixtures)
+        by_fixtures.setdefault(declared, {})[node_id] = obligations
+    arrival = frozenset() if frozenset() in by_fixtures else next(iter(by_fixtures), None)
+    return [_Arrival(f"{page}_arrival" if declared == arrival else f"{page}_{_node_slug(next(iter(nodes)))}", nodes)
+            for declared, nodes in by_fixtures.items()]
 
 
 def _web_target_lines(

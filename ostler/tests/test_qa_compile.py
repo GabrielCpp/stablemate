@@ -1693,6 +1693,32 @@ def test_exclusive_with_pairing_never_shares_a_scenario() -> None:
     assert _gap_kinds(gaps, "okf:policy-list:empty-register-notice:visible:1") == []
 
 
+def test_sibling_components_with_different_fixtures_never_share_an_arrival() -> None:
+    """A stalled load and a failed load are two arms of one fault fixture: in one scenario the later replaces the earlier, and the first claim reads a state nobody declared."""
+    stalled = {"name": "api-fault", "args": ["answers=stall"], "provides": "a load that hangs"}
+    failing = {"name": "api-fault", "args": ["answers=fail"], "provides": "a load that fails"}
+    context = _navigation_context(
+        _page_obligation("okf:policy-list:heading:visible:1", f"{_SCREEN}#heading",
+                          locators={"selector": ["h1"]}, checks=[_visible("#heading")]),
+        _page_obligation("okf:policy-list:spinner:visible:1", f"{_SCREEN}#spinner",
+                          locators={"selector": ["#spinner"]}, checks=[_visible("#spinner")], fixtures=[stalled]),
+        _page_obligation("okf:policy-list:retry:visible:1", f"{_SCREEN}#retry",
+                          locators={"selector": ["#retry"]}, checks=[_visible("#retry")], fixtures=[failing]),
+        navigation=_arrival_navigation(),
+    )
+    source, _gaps = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    scenarios = source.split("@scenario(")[1:]
+    spinner = [s for s in scenarios if "okf:policy-list:spinner:visible:1" in s]
+    retry = [s for s in scenarios if "okf:policy-list:retry:visible:1" in s]
+    heading = [s for s in scenarios if "okf:policy-list:heading:visible:1" in s]
+    assert len(spinner) == len(retry) == len(heading) == 1
+    assert "okf:policy-list:retry:visible:1" not in spinner[0]
+    assert "okf:policy-list:heading:visible:1" not in spinner[0]
+    assert "okf:policy-list:heading:visible:1" not in retry[0]
+
+
 def test_a_page_scenario_with_no_root_path_gaps_uncompilable_claim_not_a_fabricated_root() -> None:
     """A driver with no path grammar (`routes.is_path_addressed` says no) states no `rootPath` at all — `reach.root_path` now returns `(None, None)` for it rather than the app root."""
     oid = "okf:policy-list:policy-table:visible:1"
