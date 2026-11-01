@@ -159,7 +159,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/plan.py::load_plan@9193a20ade5e
 - code: ostler/ostler/qa/plan.py::validate_v2@0fc5e2d5e7b6
 - code: ostler/ostler/qa/plan.py::check_runtime_requirements@076b9e807404
-- code: ostler/ostler/qa/v2.py::run_plan@c81455b40dc1
+- code: ostler/ostler/qa/v2.py::run_plan@38eb59b5533e
 - code: ostler/ostler/qa/captures.py::CaptureDecl@10b921bebae2
 - code: ostler/ostler/qa/captures.py::parse_bullet@7374dad1096a
 - code: ostler/ostler/qa/report.py::build_report@37a6da59f531
@@ -216,6 +216,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - rule: a scenario whose process passes the memory cap is killed whole with SIGKILL and fails naming the cap, because under systemd's default policy the scope sent the scenario SIGTERM and the run reported only `exit -15`, which a QA turn could not tell from any other termination
 - rule: a gRPC stack bring-up with no `grpcurl` opted in fails at once at the `tools` step and never waits out its boot timeout
 - rule: when the entry address already answers before the launch, readiness waits for the launch to finish instead of trusting the probe: a launch that exits 0 handed its stack off and the serving stack is the run's, one that exits nonzero fails as a dead launch, and one still running at the boot timeout is a foreground server shadowed by the holder, so its process group is reaped and the run fails naming the holder
+- rule: a run empties its own ledger before it starts and no other: the scored run removes `qa/`'s files and its `steps/`, `asserts/`, `traces/`, `videos/` and `screenshots/` directories and keeps every `qa/LABEL/` a dry run left, and a dry run removes `qa/LABEL/` alone, because a QA turn that found its dry-run ledgers gone after the scored run paid for them again on every visit
 - rule: a labelled run, a dry run into `qa/LABEL`, checks whether claims hold and does not require every acceptance criterion to be covered by an asserted scenario, because a compiled plan is a draft whose acceptance coverage QA's agent binds later; the unlabelled scored run and `ostler qa validate` still reject a plan that leaves a required acceptance criterion uncovered, and a labelled run still requires every required OKF obligation covered
 - rule: a browser scenario's clean check fails on every response of status 500 or higher, a stand-in's included, and it never reads which fixture the scenario arranged, because a 5xx is the product defect the check exists to catch and a check cannot tell an injected 5xx from a found one by status alone; a fault fixture therefore fails the network, by stopping the service so the connection is refused or by `route.abort()`, or answers a 4xx the book documents for that route, and never a 5xx
 - detail: [ostler](../cli.md)

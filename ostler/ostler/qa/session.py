@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import time
@@ -44,6 +45,30 @@ _DAEMON_TIMING = _DaemonTiming()
 
 class ScratchLabelError(ValueError):
     """A dry run was asked for under a name that cannot be a scratch directory."""
+
+
+def clear_ledger(spec_dir: Path, qa_dirname: str = QA_DIRNAME) -> Path:
+    """Empty the ledger a run about to start writes, and leave the other runs' ledgers under it standing.
+
+    The scored ledger is ``qa/`` itself: its files and the directories in ``RESERVED_LABELS``.
+    A dry run's ledger is ``qa/<label>/`` whole. A scored reset therefore keeps every
+    ``qa/<label>/`` a dry run left, so the next QA turn finds the ledgers it already paid for.
+    """
+    qa_dir = spec_dir / qa_dirname
+    if qa_dirname != QA_DIRNAME:
+        if qa_dir.exists():
+            shutil.rmtree(qa_dir)
+        return qa_dir
+    if not qa_dir.exists():
+        return qa_dir
+    for entry in qa_dir.iterdir():
+        if entry.is_dir() and not entry.is_symlink() and entry.name not in RESERVED_LABELS:
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
+    return qa_dir
 
 
 def scratch_dirname(label: str) -> str:

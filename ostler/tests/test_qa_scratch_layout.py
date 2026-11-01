@@ -12,6 +12,7 @@ from ostler.qa.session import (
     RESERVED_LABELS,
     ScratchLabelError,
     _resolve_out,
+    clear_ledger,
     scratch_dirname,
 )
 
@@ -98,6 +99,52 @@ def test_an_out_path_may_still_not_escape_the_spec(tmp_path: Path):
 
     with pytest.raises(ValueError, match="escapes spec directory"):
         _resolve_out("../../../etc/passwd", spec, qa_dir)
+
+
+
+def _ledgers(spec: Path) -> None:
+    for name in ("steps", "asserts", "traces"):
+        (spec / "qa" / name).mkdir(parents=True)
+        (spec / "qa" / name / "a.txt").write_text("x", encoding="utf-8")
+    (spec / "qa" / "qa-run.ndjson").write_text("", encoding="utf-8")
+    for label in ("copy-link", "open-form"):
+        (spec / "qa" / label / "steps").mkdir(parents=True)
+        (spec / "qa" / label / "qa-run.ndjson").write_text("", encoding="utf-8")
+
+
+def test_a_scored_reset_keeps_the_dry_run_ledgers(tmp_path: Path):
+    """A QA turn after a scored run was finding every `qa/<label>/` gone and running the dry runs again, one visit after another, because the scored run reset `qa/` whole."""
+    spec = tmp_path / "docs" / "specs" / "story"
+    _ledgers(spec)
+
+    qa_dir = clear_ledger(spec, QA_DIRNAME)
+
+    assert qa_dir == spec / "qa"
+    assert not (spec / "qa" / "steps").exists()
+    assert not (spec / "qa" / "qa-run.ndjson").exists()
+    assert (spec / "qa" / "copy-link" / "qa-run.ndjson").is_file()
+    assert (spec / "qa" / "open-form" / "steps").is_dir()
+
+
+def test_a_dry_run_reset_removes_only_its_own_ledger(tmp_path: Path):
+    spec = tmp_path / "docs" / "specs" / "story"
+    _ledgers(spec)
+
+    qa_dir = clear_ledger(spec, scratch_dirname("copy-link"))
+
+    assert qa_dir == spec / "qa" / "copy-link"
+    assert not qa_dir.exists()
+    assert (spec / "qa" / "open-form" / "qa-run.ndjson").is_file()
+    assert (spec / "qa" / "qa-run.ndjson").is_file()
+    assert (spec / "qa" / "steps" / "a.txt").is_file()
+
+
+def test_a_reset_of_an_absent_ledger_is_a_no_op(tmp_path: Path):
+    spec = tmp_path / "docs" / "specs" / "story"
+    spec.mkdir(parents=True)
+
+    assert clear_ledger(spec, QA_DIRNAME) == spec / "qa"
+    assert not (spec / "qa").exists()
 
 
 

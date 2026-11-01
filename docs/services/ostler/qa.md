@@ -239,7 +239,7 @@ environment, and no plan, transcript or event carries it. See
 - flags:
   - --stop-on-fail (stop at the first failed scenario)
   - --scenario (run only this scenario, repeatable)
-  - --out-dir (make the run a dry run into the spec's qa/LABEL directory, writing no evidence file and not requiring every acceptance criterion to be covered)
+  - --out-dir (make the run a dry run into the spec's qa/LABEL directory, which the run empties first and a later scored run leaves standing, writing no evidence file and not requiring every acceptance criterion to be covered)
   - --json (print the closing record)
 - exits: 0 when every scenario passes
 - run: invoke(argv=["-C", "qa-scratch", "qa", "run", "art/specs/s1/qa_plan.py", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "qa-scratch/art", "STABLEMATE_CONFIG": "qa-scratch/qa.toml", "GIT_DIR": "repo.git"})

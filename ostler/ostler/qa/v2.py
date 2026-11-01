@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -12,10 +11,11 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from ostler.qa.attribution import signatures
+from ostler.qa.assessment import ASSESSMENT_SCHEMA_VERSION, contract_fingerprint
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
 from ostler.qa import run_log
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
-from ostler.qa.session import QA_DIRNAME, QaSession
+from ostler.qa.session import QA_DIRNAME, QaSession, clear_ledger
 from ostler.qa.verdict import Verdict, judge, merged
 from ostler.qa.quarantine import FixtureQuarantine
 from ostler.qa.repeats import watch_for
@@ -97,10 +97,8 @@ def run_plan(
         message = "QA run blocked:\n" + "\n".join(f"  - {item}" for item in runtime_problems)
         return "blocked", message, {"status": "blocked", "problems": runtime_problems}
 
-    qa_dir = spec_dir / qa_dirname
-    if qa_dir.exists():
-        shutil.rmtree(qa_dir)
-    qa_dir.mkdir(parents=True)
+    qa_dir = clear_ledger(spec_dir, qa_dirname)
+    qa_dir.mkdir(parents=True, exist_ok=True)
     if scored:
         (spec_dir / "qa-evidence.json").unlink(missing_ok=True)
         (spec_dir / REPORT_FILE).unlink(missing_ok=True)
@@ -379,6 +377,8 @@ def _write_evidence(
         "runId": document.run_id,
         "qa_run_log": "qa/qa-run.ndjson",
         "report": REPORT_FILE,
+        "contractFingerprint": contract_fingerprint(document.context),
+        "fingerprintVersion": ASSESSMENT_SCHEMA_VERSION,
         "overall": {
             "passed": "Pass",
             "failed": "Fail",
