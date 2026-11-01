@@ -84,7 +84,8 @@ its first hop.
 - code: ostler/ostler/qa/compile.py::compile_plan@e469fe41e5de
 - code: ostler/ostler/qa/compile.py::compile_plan_gaps@1c70c4235a8d
 - code: ostler/ostler/qa/compile.py::cmd_compile_plan@a0f77ff012ce
-- code: ostler/ostler/qa/compile.py::_plan_header@f201c67e36dc
+- code: ostler/ostler/qa/compile.py::_plan_header@1df6921235ab
+- code: ostler/ostler/qa/compile.py::compiled_from_the_book@dedfe53e8b6d
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@4dc4547ef07a
 - code: ostler/ostler/qa/compile_http.py::http_walk@62469eaf0f71
 - code: ostler/ostler/qa/compile_http.py::read_back@2eba39db5fe6
@@ -211,3 +212,8 @@ its first hop.
   owed obligation, an id that compiled to no check in this plan and a malformed argument each fail
   by naming the value, and nothing is written. A criterion no obligation proves is not
   covered, and the owner writes a scenario for it.
+- rule: the banner `compile-plan` writes on a plan's first line is the plan's provenance, and
+  `compiled_from_the_book` reads it. A plan that opens with the banner carries the book's
+  `covers=`. A plan that lacks it was written by hand, its `covers=` are its author's, and a
+  stage that must prove the book's obligations compiles the book beside it instead of trusting
+  them. A plan's existence and its validity say nothing about where it came from.

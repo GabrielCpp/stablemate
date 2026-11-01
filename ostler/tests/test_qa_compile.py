@@ -25,6 +25,7 @@ from ostler.qa.compile import (
     cmd_compile_plan as _cmd_compile_plan,
     compile_plan as _compile_plan,
     compile_plan_gaps as _compile_plan_gaps,
+    compiled_from_the_book,
     deferred_obligations as _deferred_obligations,
 )
 from ostler.qa.compile_support import MAESTRO, PLAYWRIGHT, PYTHON, DriverSpec
@@ -128,6 +129,20 @@ def test_a_compiled_plan_is_valid_python() -> None:
     ast.parse(source)
     assert "qa.http.get" in source
     assert "expect_status=201" in source
+
+
+def test_a_compiled_plan_opens_with_the_banner_a_hand_written_one_lacks() -> None:
+    """The banner is the only provenance a plan file carries, so the QA stage reads it to tell the book's plan from an author's."""
+    context = _context(
+        _obligation(
+            "okf:docs/services/demo/api.md#post-things:does:1",
+            checksDeclared=[{"call": "created", "name": "http_status", "args": {"code": 201, "path": "/api/things"}}],
+        )
+    )
+    source = compile_plan(context, story="demo-story")
+    assert compiled_from_the_book(source)
+    assert not compiled_from_the_book("from ostler_qa import Qa, plan\n")
+    assert not compiled_from_the_book("")
 
 
 def test_a_compiled_plan_carries_the_books_own_digest() -> None:

@@ -409,13 +409,21 @@ def _book_debt(no_verify: list[Obligation], gaps: list[Gap]) -> list[Obligation]
     return debt
 
 
+COMPILED_BANNER = "# Compiled from the book by `ostler qa compile-plan`."
+
+
+def compiled_from_the_book(source: str) -> bool:
+    """Does this plan source open with the banner only `compile-plan` writes? A plan without it was written by hand."""
+    return source.lstrip().startswith(COMPILED_BANNER)
+
+
 def _plan_header(
     digest: str, story: str, run_id: str | None, env_names: list[str], secrets: list[str] | None = None,
 ) -> list[str]:
     """The plan module's banner, imports, `plan(...)` call and the environment names its commands set."""
     imports = "Qa, plan, scenario, target" + (", tool_env" if env_names else "") + (", secret" if secrets else "")
     return [
-        "# Compiled from the book by `ostler qa compile-plan`. Every `covers=` below is the",
+        f"{COMPILED_BANNER} Every `covers=` below is the",
         "# obligation the book itself attributed the check to. Fill the TODO markers from the",
         "# story, the fixtures and the flows — not from the implementation, which is the thing",
         "# under test and cannot also be the specification it is tested against.",
