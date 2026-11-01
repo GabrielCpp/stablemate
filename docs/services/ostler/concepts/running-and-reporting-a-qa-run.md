@@ -245,3 +245,5 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - outcome is uniform: every `ostler qa` subcommand in `run.py`, `lint.py`, `clean.py` and
   `sensitivity.py` returns a `QaOutcome`, never raises for an expected failure mode, so the CLI
   layer has one shape to render regardless of which subcommand ran.
+- rule: `qa.settle` records an assertion about the reached screen state, so plan validation counts it and credits its explicit `covers` just as execution does. A state walk with only a settle and a vet can prove its state; removing the settle removes that assertion credit even if the scenario still promises coverage.
+- tests: `ostler/tests/test_screen_state_stops.py::test_a_compiled_state_walk_gets_assertion_credit_only_from_its_settle`

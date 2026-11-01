@@ -6,6 +6,8 @@ import ast
 import json
 import re
 
+import pytest
+
 from ostler.qa.compile import Gap, Plan, Refusal, compile_plan_gaps
 from ostler.qa.harness_host import load_harness_module
 
@@ -302,6 +304,23 @@ def test_a_state_no_flow_stops_at_gets_a_one_screen_walk_on_the_web() -> None:
     assert 'expect="empty"' in empty
     assert f'covers=["{EMPTY_ID}"]' in empty
     assert "Arrive at" in empty and "check it settles in Empty" in empty
+
+
+@pytest.mark.parametrize("device", [False, True])
+def test_a_compiled_state_walk_gets_assertion_credit_only_from_its_settle(device: bool) -> None:
+    """The compiler's real output must credit its state proof, not just promise coverage."""
+    source, _, _ = _compile_all(_walk_context(device=device, error_fixtures=_RESULTS_FAIL))
+    harness = load_harness_module("ostler_qa")
+    counts = harness.count_checks(source)
+    covers = harness.extract_check_covers(source)
+    for state, oid in (("error", ERROR_ID), ("empty", EMPTY_ID)):
+        function = next(name for name in _scenarios(source) if name.endswith(f"{state}_settles"))
+        assert counts[function] == 1
+        assert covers[function] == [oid]
+        # Keeping the decorator and vet while removing the proof must lose credit.
+        without_proof = source.replace("qa.settle(", "qa.mark(")
+        assert harness.count_checks(without_proof)[function] == 0
+        assert harness.extract_check_covers(without_proof)[function] == []
 
 
 def test_a_state_walk_on_a_device_launches_cold_and_settles_without_a_request_feed() -> None:

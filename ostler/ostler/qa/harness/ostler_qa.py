@@ -2426,7 +2426,7 @@ class Convert:
 
 
 
-CHECK_METHODS = frozenset({"check", "require", "eventually", "require_eventually", "verify"})
+CHECK_METHODS = frozenset({"check", "require", "eventually", "require_eventually", "verify", "settle"})
 
 VET_METHOD = "vet"
 ARRIVAL_WAIT_S = 10.0
@@ -2455,7 +2455,7 @@ def _parsed(source: str) -> _ParsedPlan:
 
 
 def count_checks(source: str) -> dict[str, int]:
-    """How many `qa.check` / `qa.require` calls each top-level function contains."""
+    """How many assertion calls each function reaches, including a state settle's recorded verdict."""
     reachable = _parsed(source).reachable
     return {
         name: sum(
@@ -2502,7 +2502,7 @@ def _reachable_calls(tree: ast.Module) -> dict[str, list[ast.Call]]:
 
 
 def extract_check_covers(source: str) -> dict[str, list[str]]:
-    """Which obligation ids each scenario's `qa.check`/`qa.require` calls claim, as written."""
+    """Which obligation ids each scenario's assertion calls claim, as written."""
     parsed = _parsed(source)
     constants = parsed.constants
     found: dict[str, list[str]] = {}
