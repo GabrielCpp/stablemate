@@ -287,7 +287,8 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/sensitivity.py::trial@b1443f118000
 - code: ostler/ostler/qa/session.py::_check_scenario_verdict@0cee10420eeb
 - code: ostler/ostler/qa/tools.py::catalog@b9ec43ce49bb
-- code: ostler/ostler/qa/v2.py::run_plan@c81455b40dc1
+- code: ostler/ostler/qa/v2.py::run_plan@38eb59b5533e
+- code: ostler/ostler/qa/v2.py::_write_evidence@fb3ed4029e77
 - code: ostler/ostler/qa/verdict.py::judge@ce8a35c1087f
 - code: ostler/ostler/untyped.py::is_mapping@58e488a40df0
 - code: ostler/ostler/util.py::is_mapping@12fd23931817

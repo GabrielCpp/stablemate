@@ -12,7 +12,7 @@ capabilities, and zero required checks lacking applicable execution and sensitiv
 evidence. Completeness says the declared contract is proven, not that every possible
 behavior was discovered — source inventory coverage is reported separately.
 
-- code: ostler/ostler/qa/assessment.py::assess@a368a7e5c741
+- code: ostler/ostler/qa/assessment.py::assess@ef2c58924257
 - rule: every selected required obligation has exactly one assessment row, and unknown,
   unavailable, excluded and failed obligations are never counted as passed.
 - rule: capability, sensitivity and execution evidence are independent dimensions, not
@@ -20,7 +20,10 @@ behavior was discovered — source inventory coverage is reported separately.
   surface with full capability but no run is `not-run`, not complete.
 - rule: evidence is current only for its recorded contract fingerprint; a claim edited
   while its obligation id is kept makes prior evidence stale, because the id-set digest
-  a compiled plan names cannot see claim content.
+  a compiled plan names cannot see claim content. Every run records the versioned
+  fingerprint of the contract packet it executed against in its `qa-evidence.json`
+  (`contractFingerprint` with `fingerprintVersion`), and evidence without that identity
+  — legacy, interrupted or malformed — proves nothing.
 - rule: an explicitly excluded obligation stays visible with its reason and satisfies
   no other obligation.
 - rule: every gap names its owner — the book's author, the tooling, or the environment —

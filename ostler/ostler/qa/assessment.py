@@ -18,6 +18,7 @@ from typing import Any
 
 from ostler import model
 from ostler.qa import sensitivity as sensitivity_mod
+from ostler.qa.assess_evidence import EvidenceSnapshot, snapshot_evidence
 from ostler.qa.compile import compile_plan_gaps
 from ostler.qa.context import book_context
 from ostler.qa.gap_owner import gap_owner
@@ -36,7 +37,6 @@ _FINGERPRINT_FIELDS = (
     "fixturesUnparsed", "capturesDeclared", "capturesUnparsed", "arrangesNothing", "steps",
     "locators", "conditionsDeclared", "intercepts", "observationsDeclared",
     "observationsUnparsed", "claimCombiner", "extendsUnresolved", "evidenceRequired",
-    "deferred",
 )
 
 _NO_LIVE_EVIDENCE_TYPES = frozenset({"concept", "method"})
@@ -70,6 +70,7 @@ class ObligationRow:
     capability: str
     sensitivity: str
     evidence: str
+    evidence_note: str
     gaps: tuple[AssessmentGap, ...]
 
 
@@ -85,6 +86,7 @@ class Assessment:
     evidence_complete: bool
     complete: bool
     unclassified_gap_kinds: tuple[str, ...]
+    evidence: EvidenceSnapshot | None
     seconds: float
     peak_memory_kb: int
 
@@ -147,6 +149,7 @@ def _claim_of(row: dict[str, Any], claims: dict[str, sensitivity_mod.ClaimReport
 def _rows(
     context: dict[str, Any], gaps: list[Gap],
     claims: dict[str, sensitivity_mod.ClaimReport],
+    evidence: EvidenceSnapshot | None,
 ) -> tuple[ObligationRow, ...]:
     """One assessment row per in-scope obligation, required and excluded alike."""
     by_id: dict[str, list[Gap]] = {}
@@ -173,6 +176,7 @@ def _rows(
             )
             for gap in owed_gaps
         )
+        status, note = (("not-run", "") if evidence is None else evidence.status_of(oid))
         rows.append(ObligationRow(
             id=oid,
             node=str(raw.get("node", "")),
@@ -184,7 +188,8 @@ def _rows(
             excluded_reason="" if required else _exclusion_reason(raw),
             capability="incomplete" if required and any(gap.blocking for gap in assessed) else "complete",
             sensitivity=_sensitivity_status(_claim_of(raw, claims)) if required and declares_checks else "not-declared",
-            evidence="not-run" if required and declares_checks else "not-declared",
+            evidence=status if required and declares_checks else "not-declared",
+            evidence_note=note,
             gaps=assessed,
         ))
     return tuple(sorted(rows, key=lambda row: row.id))
@@ -207,24 +212,27 @@ def _verdict(rows: tuple[ObligationRow, ...], unclassified: tuple[str, ...]) -> 
 
 def assess(root: Path, *, book: str, spec_dir: Path | None = None) -> Assessment:
     """Assess one selected book directory against its contract and any recorded evidence."""
-    del spec_dir  # slice 2 wires the evidence snapshot; slice 1 assesses capability and sensitivity
     started = time.perf_counter()
     scope = book.strip().strip("/")
     context = book_context(root, books=[scope])
+    fingerprint = contract_fingerprint(context)
     compilation = compile_plan_gaps(context, story="surface-assessment")
     claims = {row.claim: row for row in sensitivity_mod.report(model.load(cwd=root))}
-    rows = _rows(context, list(compilation.gaps), claims)
+    snapshot = (snapshot_evidence(spec_dir, fingerprint, schema_version=ASSESSMENT_SCHEMA_VERSION)
+                if spec_dir is not None else None)
+    rows = _rows(context, list(compilation.gaps), claims, snapshot)
     unclassified = tuple(sorted({gap.code for row in rows for gap in row.gaps if not gap.owner}))
     capabilities, sensitivity, evidence, complete = _verdict(rows, unclassified)
     return Assessment(
         scope=scope,
-        fingerprint=contract_fingerprint(context),
+        fingerprint=fingerprint,
         rows=rows,
         capabilities_complete=capabilities,
         sensitivity_complete=sensitivity,
         evidence_complete=evidence,
         complete=complete,
         unclassified_gap_kinds=unclassified,
+        evidence=snapshot,
         seconds=round(time.perf_counter() - started, 3),
         peak_memory_kb=resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
     )
@@ -272,6 +280,11 @@ def to_json(assessment: Assessment) -> dict[str, Any]:
         "evidence_complete": assessment.evidence_complete,
         "complete": assessment.complete,
         "unclassified_gap_kinds": list(assessment.unclassified_gap_kinds),
+        "evidence": None if assessment.evidence is None else {
+            "applicability": assessment.evidence.applicability,
+            "recorded_fingerprint": assessment.evidence.recorded_fingerprint,
+            "reasons": list(assessment.evidence.reasons),
+        },
         "measurements": {"seconds": assessment.seconds, "peakMemoryKb": assessment.peak_memory_kb},
         "obligations": [
             {
@@ -279,7 +292,7 @@ def to_json(assessment: Assessment) -> dict[str, Any]:
                 "required": row.required, "declares_checks": row.declares_checks,
                 "excluded_reason": row.excluded_reason,
                 "capability": row.capability, "sensitivity": row.sensitivity,
-                "evidence": row.evidence,
+                "evidence": row.evidence, "evidence_note": row.evidence_note,
                 "gaps": [gap.__dict__ for gap in row.gaps],
             }
             for row in assessment.rows
@@ -301,8 +314,9 @@ def render(assessment: Assessment) -> str:
     ]
     for row in assessment.rows:
         mark = "required" if row.required else f"excluded: {row.excluded_reason}"
+        note = f" — {row.evidence_note}" if row.evidence_note else ""
         lines.append(f"  {row.id}  [{mark}] capability={row.capability}"
-                     f" sensitivity={row.sensitivity} evidence={row.evidence}")
+                     f" sensitivity={row.sensitivity} evidence={row.evidence}{note}")
         for gap in row.gaps:
             owner = gap.owner or "UNCLASSIFIED"
             discharged = "" if gap.blocking else " (discharged)"

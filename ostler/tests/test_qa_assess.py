@@ -175,3 +175,146 @@ def test_the_cli_reports_incomplete_with_exit_1_and_invalid_with_exit_2(tmp_path
 
     refused = ostler_process(root, "qa", "assess", "--book", "docs/services/nope")
     assert refused.returncode == 2
+
+
+# --- slice 2: the contract snapshot and recorded run evidence ---
+
+from ostler.qa import cmd_run  # noqa: E402
+from ostler.qa.compile import annotate_deferred_obligations, compile_plan  # noqa: E402
+from ostler.qa.context import build_context, write_context  # noqa: E402
+
+GREET_BOOK = "docs/services/tool"
+
+
+def _greet_page(verify: str = 'stdout(text="hello")') -> str:
+    return (
+        "---\ntype: cli\nslug: tool\ntitle: tool\n---\n# tool\n\n- binary: tool\n\n"
+        "## Commands\n\n"
+        "### greet\n"
+        "- usage: `tool greet`\n"
+        '- run: invoke(argv=["hello"])\n'
+        "- does: says its greeting on stdout.\n"
+        f"  - verify: {verify}\n"
+        "  - fixture: none, because nothing is seeded\n"
+    )
+
+
+def _experiment_repo(tmp_path: Path, monkeypatch, verify: str = 'stdout(text="hello")') -> tuple[Path, Path]:
+    """A repo whose whole-book context, compiled plan and executed run all agree."""
+    root = _repo(tmp_path)
+    write(root / GREET_BOOK / "tool.md", _greet_page(verify))
+    write(root / GREET_BOOK / "greeting.md", _concept_page())
+    write(root / "agents.yml", "qa:\n  tools:\n    - tool\n")
+    write(root / "qa.toml", '[qa_tools.tool]\ncommand = "echo"\ndescription = "echoes its arguments"\n')
+    write(root / ".gitignore", "art/\n")
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(root / "qa.toml"))
+    _commit(root)
+    base = _git(root, "rev-parse", "HEAD")
+    context = build_context(root, base=base, whole_book=True, books=[GREET_BOOK])
+    annotate_deferred_obligations(context, story="s1")
+    spec_dir = root / "art/specs/s1"
+    write_context(context, spec_dir)
+    plan = compile_plan(context, story="s1")
+    write(spec_dir / "qa_plan.py", plan)
+    result = cmd_run(spec_dir / "qa_plan.py", spec_dir, root=root)
+    assert result.status in ("passed", "failed"), result.message
+    return root, spec_dir
+
+
+def test_a_surface_with_a_matching_run_is_complete(tmp_path: Path, monkeypatch) -> None:
+    root, spec_dir = _experiment_repo(tmp_path, monkeypatch)
+
+    result = cmd_assess(root, book=GREET_BOOK, spec_dir=spec_dir)
+
+    assert result.ok, result.message
+    assert result.status == "complete"
+    data = result.data
+    assert data["complete"] is True
+    assert data["evidence_complete"] is True
+    assert data["evidence"]["applicability"] == "applicable"
+    owing = [row for row in data["obligations"] if row["required"] and row["declares_checks"]]
+    assert owing and all(row["evidence"] == "complete" for row in owing)
+
+
+def test_a_claim_edit_with_its_id_kept_makes_the_run_evidence_stale(tmp_path: Path, monkeypatch) -> None:
+    root, spec_dir = _experiment_repo(tmp_path, monkeypatch)
+
+    write(root / GREET_BOOK / "tool.md", _greet_page('stdout(text="hello there")'))
+    result = cmd_assess(root, book=GREET_BOOK, spec_dir=spec_dir)
+
+    assert not result.ok
+    assert result.status == "incomplete"
+    assert result.data["evidence"]["applicability"] == "stale"
+    owing = [row for row in result.data["obligations"] if row["required"] and row["declares_checks"]]
+    assert all(row["evidence"] == "stale" for row in owing)
+
+
+def test_a_failed_run_cannot_pass(tmp_path: Path, monkeypatch) -> None:
+    root, spec_dir = _experiment_repo(tmp_path, monkeypatch, verify='stdout(text="goodbye")')
+
+    result = cmd_assess(root, book=GREET_BOOK, spec_dir=spec_dir)
+
+    assert not result.ok
+    owing = [row for row in result.data["obligations"]
+             if row["id"].endswith(":does:1") and row["declares_checks"]]
+    assert owing and all(row["evidence"] == "unavailable" for row in owing)
+
+
+def test_legacy_evidence_without_a_fingerprint_cannot_pass(tmp_path: Path, monkeypatch) -> None:
+    root, spec_dir = _experiment_repo(tmp_path, monkeypatch)
+    evidence_path = spec_dir / "qa-evidence.json"
+    legacy = json.loads(evidence_path.read_text(encoding="utf-8"))
+    legacy.pop("contractFingerprint", None)
+    legacy.pop("fingerprintVersion", None)
+    evidence_path.write_text(json.dumps(legacy), encoding="utf-8")
+
+    result = cmd_assess(root, book=GREET_BOOK, spec_dir=spec_dir)
+
+    assert not result.ok
+    assert result.data["evidence"]["applicability"] == "unusable"
+
+
+def test_an_interrupted_run_without_its_ledger_cannot_pass(tmp_path: Path, monkeypatch) -> None:
+    root, spec_dir = _experiment_repo(tmp_path, monkeypatch)
+    import shutil
+    shutil.rmtree(spec_dir / "qa")
+
+    result = cmd_assess(root, book=GREET_BOOK, spec_dir=spec_dir)
+
+    assert not result.ok
+    assert result.data["evidence"]["applicability"] == "unusable"
+
+
+def test_malformed_and_duplicated_evidence_cannot_pass(tmp_path: Path, monkeypatch) -> None:
+    root, spec_dir = _experiment_repo(tmp_path, monkeypatch)
+    (spec_dir / "qa-evidence.json").write_text("{not json", encoding="utf-8")
+    malformed = cmd_assess(root, book=GREET_BOOK, spec_dir=spec_dir)
+    assert malformed.data["evidence"]["applicability"] == "unusable"
+
+    root2, spec_dir2 = _experiment_repo(tmp_path / "dup", monkeypatch)
+    evidence_path = spec_dir2 / "qa-evidence.json"
+    data = json.loads(evidence_path.read_text(encoding="utf-8"))
+    data["obligations"] = data["obligations"] + data["obligations"][:1]
+    evidence_path.write_text(json.dumps(data), encoding="utf-8")
+    duplicated = cmd_assess(root2, book=GREET_BOOK, spec_dir=spec_dir2)
+    assert duplicated.data["evidence"]["applicability"] == "unusable"
+
+
+def test_a_run_that_proves_only_a_subset_cannot_complete_the_surface(tmp_path: Path, monkeypatch) -> None:
+    root, _ = _experiment_repo(tmp_path, monkeypatch)
+    # A second spec whose packet owes only the greet claim: a diff-selected subset.
+    subset_dir = root / "art/specs/subset"
+    context = build_context(root, base=_git(root, "rev-parse", "HEAD"), whole_book=True,
+                            books=[GREET_BOOK])
+    greet = next(row for row in context["obligations"]
+                 if row["id"] == "okf:docs/services/tool/tool.md#greet:does:1")
+    write_context({**context, "obligations": [greet]}, subset_dir)
+    plan = compile_plan({**context, "obligations": [greet]}, story="subset")
+    write(subset_dir / "qa_plan.py", plan)
+    result = cmd_run(subset_dir / "qa_plan.py", subset_dir, root=root)
+    assert result.ok, result.message
+
+    assessed = cmd_assess(root, book=GREET_BOOK, spec_dir=subset_dir)
+
+    assert not assessed.ok
+    assert assessed.data["evidence"]["applicability"] == "stale"
