@@ -1,8 +1,8 @@
 # The paper gates
 
-The full rules for the paper gates of [wide-search.md](wide-search.md), the wide-search
-branch of [`explore-then-improve`](../SKILL.md): what the card states, two
-checks of gate 1, every check of gate 2, and the agent that checks the cards. The skill
+The full rules for the paper gates of step 3 of [`explore-then-improve`](../SKILL.md): what
+the card states, two checks of gate 1, every check of gate 2, and the agent that checks the
+cards. The skill
 states each check in short. A section here holds the cases where that check passes wrongly.
 
 ## The card
@@ -237,7 +237,7 @@ agent, like a value that fails gate 1. Only a fixed axis may cap it, and the car
 quotes the operator's words that fix it. A framing that passes with a cap from an open
 axis answers a smaller question than the one asked. The ceiling counts the work a value
 serves at run time. How many past cases exist to test a value is a resolution question
-for step 3, never a ceiling. When the operator names more than one body of work, the
+for the study's yardstick, never a ceiling. When the operator names more than one body of work, the
 card states for each whether the verdict reads it. A body on which no test source can
 reach the resolution floor under the test-input rules is a finding with its count. The
 verdict then says it does not speak for that body, and the ceiling still counts it. A
@@ -252,6 +252,21 @@ a prior, a representation or a budget, the card says how the method uses it. A m
 that ignores a named lever tests the question without its premise.
 
 ## The checker
+
+Have the framings and the cards checked. A second agent that did not write them reads the
+question, the premises, the framings and the cards, and nothing of the study's reasoning.
+It answers both gates for each, names any assumption that makes the question unsolvable,
+and names any two framings that share their input, output and role. A card or a framing it
+fails goes back to repair. The rules for its counts, and for a rule that would return
+every row, follow.
+
+A checker finding against a gate stays open until a repair answers it in writing or the
+framing dies. A finding is a predicate the checker can run again, such as a line the code
+must hold or a score an arm must not reach. The author's argument closes none. No decisive
+run launches under a framing that carries an open gate finding, and none launches without
+the design check under "Checking a decisive registration" in the research-study skill's
+second-agent reference. A run that would read the same fact the finding states is
+apparatus for a known answer.
 
 When two counts of one fact disagree, it states both with the method behind each. A count
 by text search does not overturn a count by reading the artifacts. A framing that relies

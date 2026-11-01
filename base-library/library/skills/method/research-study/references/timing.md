@@ -1,6 +1,7 @@
 # Timed readings
 
-The full rules for the timed readings of step 4 in [`explore-then-improve`](../SKILL.md).
+The full rules for every timed reading a study of [`research-study`](../SKILL.md) takes, in
+its baseline and in the profile [[self-improve]] draws under it.
 
 Every timed reading stores the script that took it and the script's hash beside the
 number, with the machine's load at the start and the end. A reading whose script changed

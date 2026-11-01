@@ -1,6 +1,6 @@
 # Measurement
 
-The rules of [`explore-then-improve`](../SKILL.md) for the cases its steps name in short: a
+The rules of [`research-study`](../SKILL.md) for the cases its steps name in short: a
 generated benchmark, a purpose stated as a share, a method that learns, a repeated unit,
 the two controls, the consumer's ceiling and leaks.
 
@@ -69,7 +69,7 @@ The field also holds the **broken-link control**: the method's own output, attac
 the wrong case or the wrong site. A method that beats the no-method control and ties the
 broken-link control wins on what it adds, such as more text or more compute, and not on
 the link it claims. A weaker break, such as shuffling labels inside the same case, is a
-different control, and it enters only through the change row that step 3 requires.
+different control, and it enters only through the change row that step 3 of the skill requires.
 
 Before each decisive run the design checker adds a **cheat arm**: the cheapest route from
 the inputs to a passing score that uses none of the method. It starts from the unchanged

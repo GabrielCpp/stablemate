@@ -1,8 +1,7 @@
 # Building the framings
 
-The full rules for the four moves of framing in [wide-search.md](wide-search.md), the
-wide-search branch of [`explore-then-improve`](../SKILL.md), and for
-the brief every framing agent receives. The skill carries each move in short. This file
+The full rules for the four moves of framing in step 1 of
+[`explore-then-improve`](../SKILL.md), and for the brief every framing agent receives. The skill carries each move in short. This file
 carries what each move must return and how a return is judged.
 
 ## Where the premises come from
@@ -59,7 +58,7 @@ one vocabulary, so every value on them varies one literal reading.
    of the operator's real work through it. It then states what share of that sample the
    part covers, and which cases it leaves to another part. It ends with where to start:
    the part whose check is cheapest and whose failure would change the most.
-2. **List the axes.** One agent reads the question, the premises from step 2 and the
+2. **List the axes.** One agent reads the question, the premises from the study's `QUESTION.md` and the
    restatements, and nothing else. It lays the decompositions side by side. A part one
    field names and another misses is an axis. It lists the axes a reading must choose on: the role the thing under
    study plays, the input it reads when it runs, the output it produces, what counts as
@@ -84,7 +83,7 @@ one vocabulary, so every value on them varies one literal reading.
    no row is written first for the others to vary. Each clause of the question is the
    measure a verdict rests on in at least one row. A clause such as "at low
    cost" that no row is judged by is a reading the field never tests. Each clause's
-   measure passes step 2's proxy test before any row is drawn. A measure that reads zero
+   measure passes the proxy test of the study's purpose before any row is drawn. A measure that reads zero
    or a constant for some part of a named lever, whatever the method does, is a proxy.
    A share of cases a prior admits is a proxy when the prior always admits a move that
    covers any output. The rank of a right output, found by judging candidates in order, is
@@ -115,7 +114,7 @@ one vocabulary, so every value on them varies one literal reading.
    allows for that rate returns the row. A break-even outside that whole range returns
    nothing. It becomes the kill result of the first timed unit that reads the rate, and
    the schedule runs that unit before the spending it guards. A rate one timed unit on
-   things that exist today can read is read in step 4, and it returns no row. A rule that
+   things that exist today can read is read by a gated probe, and it returns no row. A rule that
    returns every row with an unbuilt part makes the question unsolvable by construction.
    The row computes each break-even itself, with a script it names and hashes, by one
    stated method. A break-even the row did not compute is no break-even, whether another
@@ -128,7 +127,7 @@ one vocabulary, so every value on them varies one literal reading.
    A rate the verdict itself reads is no condition. A rate that decides whether the
    verdict can be read at all, such as a run time, a writer's pace or a judge's error
    rate, is a condition unless the card shows the check passes across the whole range the
-   record allows for it. The card states that range and its source. A rate step 4 could
+   record allows for it. The card states that range and its source. A rate a short probe could
    measure is measured there, and the card cites the measure instead of a range. A return claims
    the value cannot work, and it carries the same burden as a pass. Before returning, the
    agent names the obstacle and asks whether it is real: whether a premise or another
