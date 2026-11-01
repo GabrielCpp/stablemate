@@ -196,7 +196,15 @@ def _set_path(document: dict[str, Any], path: str, value: Any) -> Any:
             if not cursor:
                 cursor.append(None)
             if following is None:
-                cursor[0] = value if isinstance(step, _path_grammar.Wild) else (value if isinstance(value, dict) else {})
+                if isinstance(step, _path_grammar.Wild):
+                    cursor[0] = value
+                elif isinstance(value, dict):
+                    cursor[0] = dict(value)
+                else:
+                    # a filtered selection must stay selectable AND carry the claim's
+                    # value: the filter key keeps it chosen, a field holds the value a
+                    # `matches=` pattern is searched for
+                    cursor[0] = {"value": value}
             elif cursor[0] is None:
                 cursor[0] = nxt
             if isinstance(step, _path_grammar.Filter) and isinstance(cursor[0], dict):
@@ -274,9 +282,42 @@ def _matching(pattern: str) -> str | None:
     return built if built is not None and re.search(pattern, built) else None
 
 
+@functools.lru_cache(maxsize=4096)
+def _negated_contents(pattern: str) -> list[str]:
+    """What a negative assertion in *pattern* forbids: one synthesis per `ASSERT_NOT` body."""
+    if "(" not in pattern:
+        return []
+    try:
+        tree = _parser.parse(pattern)
+    except re.error:
+        return []
+
+    def bodies(subtree: Any) -> list[str]:
+        found: list[str] = []
+        for op, av in subtree:
+            if op.name == "ASSERT_NOT":
+                out: list[str] = []
+                # an assertion's payload is (direction, body) — the body is what it forbids
+                if _emit(av[1], out, {}):
+                    found.append("".join(out))
+            elif op.name == "SUBPATTERN":
+                found.extend(bodies(av[3]))
+            elif op.name == "BRANCH":
+                for arm in av[1]:
+                    found.extend(bodies(arm))
+            elif op.name == "ATOMIC_GROUP":
+                found.extend(bodies(av))
+            elif op.name in {"MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT"}:
+                found.extend(bodies(av[2]))
+        return found
+
+    return bodies(tree)
+
+
 def _avoiding(pattern: str | None, text: str | None) -> str | None:
     """A string the pattern rejects and the forbidden text stays out of, or None when there is none."""
-    for candidate in ("a message that says nothing it may not", "", *_CLASS_POOL, "\n"):
+    negated = _negated_contents(pattern) if pattern is not None else []
+    for candidate in (*negated, "a message that says nothing it may not", "", *_CLASS_POOL, "\n"):
         if text is not None and text in candidate:
             continue
         if pattern is None or re.search(pattern, candidate) is None:
@@ -287,15 +328,49 @@ def _avoiding(pattern: str | None, text: str | None) -> str | None:
 _CLASS_POOL = "abcdefghijklmnopqrstuvwxyz0123456789_-"
 
 
+_SYNTHESIZE_MAX_PATTERN = 1000
+_SYNTHESIZE_MAX_OUTPUT = 10_000
+_QUANTIFIER_NESTING_LIMIT = 2
+
+
+def _quantifiers_nested_too_deep(tree: Any, depth: int = 0) -> bool:
+    """Whether *tree* nests quantifiers past the synthesis bound — the shape whose search blows up."""
+    for op, av in tree:
+        name = op.name
+        if name in {"MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT"}:
+            if depth >= _QUANTIFIER_NESTING_LIMIT or _quantifiers_nested_too_deep(av[2], depth + 1):
+                return True
+        elif name == "SUBPATTERN":
+            if _quantifiers_nested_too_deep(av[3], depth):
+                return True
+        elif name == "BRANCH":
+            if any(_quantifiers_nested_too_deep(arm, depth) for arm in av[1]):
+                return True
+        elif name == "ATOMIC_GROUP" and _quantifiers_nested_too_deep(av, depth):
+            return True
+    return False
+
+
 def _synthesize(pattern: str) -> str | None:
-    """One member of the language, read off the parse tree the `re` module itself builds."""
+    """One member of the language, read off the parse tree the `re` module itself builds.
+
+    Refuses — with `None`, never a hang — what cannot be synthesized safely: a pattern
+    past the length bound, quantifiers nested past the nesting bound, or an output the
+    repetition counts demand past the output bound.
+    """
+    if len(pattern) > _SYNTHESIZE_MAX_PATTERN:
+        return None
     try:
         tree = _parser.parse(pattern)
     except re.error:
         return None
+    if _quantifiers_nested_too_deep(tree):
+        return None
     out: list[str] = []
     groups: dict[int, str] = {}
-    return "".join(out) if _emit(tree, out, groups) else None
+    if not _emit(tree, out, groups):
+        return None
+    return "".join(out) if len(out) <= _SYNTHESIZE_MAX_OUTPUT else None
 
 
 def _emit(tree: Any, out: list[str], groups: dict[int, str]) -> bool:
@@ -316,7 +391,7 @@ def _emit(tree: Any, out: list[str], groups: dict[int, str]) -> bool:
         elif name in {"MAX_REPEAT", "MIN_REPEAT", "POSSESSIVE_REPEAT"}:
             low, _, body = av
             for _ in range(max(low, 0)):
-                if not _emit(body, out, groups):
+                if len(out) > _SYNTHESIZE_MAX_OUTPUT or not _emit(body, out, groups):
                     return False
         elif name == "SUBPATTERN":
             group, _, _, body = av
@@ -455,7 +530,9 @@ def _witness_texts(args: Mapping[str, checks.CheckValue]) -> _WitnessTexts | _No
         matched = _matching(pattern)
         if matched is None:
             return _NoWitness(f"no output can be invented for /{pattern}/")
-        expected_output = f"{expected_output} {matched}".strip()
+        # the invented text is joined, never stripped: a pattern may bind leading
+        # or trailing whitespace (`^  → ...$`, `\A\n\Z`) that strip would corrupt
+        expected_output = f"{expected_output} {matched}" if expected_output else matched
     other_output = _avoiding(pattern, str(args["text"]) if "text" in args else None)
     if other_output is None:
         return _NoWitness(f"every output carries something /{pattern}/ matches")
@@ -468,11 +545,13 @@ def _plan_stream(stream: str, args: Mapping[str, checks.CheckValue]) -> _Witness
     if isinstance(texts, _NoWitness):
         return texts
     expected_output, other_output = texts.matching, texts.other
-    other_stream = "stderr" if stream == "stdout" else "stdout"
-    return _WitnessPlan.of(_printed(stream, expected_output), [
-        (f"the command printed something else on {stream}", _printed(stream, other_output)),
-        (f"the command printed it on {other_stream} instead", _printed(other_stream, expected_output)),
-    ])
+    mutations = [("the command printed something else on "
+                  + stream, _printed(stream, other_output))]
+    if expected_output:
+        other_stream = "stderr" if stream == "stdout" else "stdout"
+        mutations.append((f"the command printed it on {other_stream} instead",
+                          _printed(other_stream, expected_output)))
+    return _WitnessPlan.of(_printed(stream, expected_output), mutations)
 
 def _plan_contents(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _NoWitness:
     """A working directory whose file holds what the call names, and the directories where it holds something else or is not there."""
@@ -573,6 +652,13 @@ def _plan_json_path(args: Mapping[str, checks.CheckValue]) -> _WitnessPlan | _No
         if args["absent"]:
             return _WitnessPlan.of({}, [("the field the claim forbids is there", _set_path({}, path, "x"))])
         return _WitnessPlan.of(_set_path({}, path, "x"), [("the field the claim requires is missing", {})])
+    steps = _steps(path)
+    if "equals" in args and steps and isinstance(steps[-1], _path_grammar.Filter):
+        return _NoWitness(
+            "an `equals` on a filtered selection can never hold: the selected element is a "
+            "record chosen by its key, and a record never equals a scalar — state the claim "
+            "with `matches`, or continue the path past the filter to the scalar it reads"
+        )
     if "equals" in args:
         value: checks.CheckValue = args["equals"]
     elif "matches" in args:

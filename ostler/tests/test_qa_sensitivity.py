@@ -395,3 +395,53 @@ def test_an_unobserved_claim_does_not_fail_the_command_but_is_named(tmp_path: Pa
     assert "unobserved" in outcome.message
     unobserved = [row["claim"] for row in outcome.data["claims"] if row["status"] == "undeclared"]
     assert "docs/services/api.md#post-policies:errors:1" in unobserved
+
+
+# --- witness synthesis: significant whitespace, filtered selections, bounds ---
+
+def test_a_witness_preserves_whitespace_the_pattern_binds() -> None:
+    """`\\A\\n\\Z` demands exactly a newline — the join must not strip it away."""
+    trial = _trial('stdout(matches="\\A\\n\\Z")')
+    assert trial.sensitive
+
+
+def test_a_dotall_pattern_with_significant_edges_is_witnessed() -> None:
+    trial = _trial('stdout(matches="(?s)missing: .*changed: .*extra: ")')
+    assert trial.sensitive
+
+
+def test_an_anchored_multiline_pattern_with_leading_spaces_is_witnessed() -> None:
+    trial = _trial('stdout(matches="(?m)^  → docs/services/demo/cli\\.md  \\[ok\\]$")')
+    assert trial.sensitive
+
+
+def test_anchored_file_content_with_dotall_is_witnessed() -> None:
+    trial = _trial('contents(subject="f.txt", matches="(?s)^\\[\\]\\n$")')
+    assert trial.sensitive
+
+
+def test_a_filtered_selection_with_matches_is_witnessed() -> None:
+    """The selected record must stay selectable and carry the matched value — both, or the filter finds nothing."""
+    trial = _trial("json_path(path=\"result[?(@.kind=='tool')]\", matches=\"name\")")
+    assert trial.sensitive
+
+
+def test_an_equals_on_a_filtered_selection_is_reported_impossible() -> None:
+    """A record chosen by its key never equals a scalar — measured as impossible, never forced sensitive."""
+    trial = _trial("json_path(path=\"result[?(@.kind=='tool')]\", equals=\"x\")")
+    assert not trial.witnessed and not trial.unsatisfiable
+    assert "can never hold" in trial.note
+
+
+def test_a_negated_lookahead_supplies_its_own_forbidden_output() -> None:
+    """What `(?!...)` forbids is synthesized from the assertion, so the defect it names goes red."""
+    trial = _trial('stdout(matches="(?s)^(?!.*worktree).*$")')
+    assert trial.sensitive
+
+
+def test_quantifiers_nested_past_the_bound_refuse_synthesis() -> None:
+    """Deeply nested repetition is refused as unwitnessable — a bounded answer, never a hang."""
+    pattern = "((a*)*)*$"
+    assert sensitivity._synthesize(pattern) is None
+    trial = _trial(f'stdout(matches="{pattern}")')
+    assert not trial.witnessed
