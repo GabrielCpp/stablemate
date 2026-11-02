@@ -395,7 +395,7 @@ def test_a_warning_severity_finding_does_not_block_the_structure_verdict(tmp_pat
     root = _repo(tmp_path)
     write(root / BOOK / "tool.md", _greet_page().replace(
         '- verify: stdout(text="hello")',
-        '- verify: stdout(matches="\\\\A\\\\n\\\\Z")'))
+        '- verify: stdout(matches="((a*)*)*$")'))
     _commit(root)
 
     data = cmd_assess(root, book=BOOK).data
