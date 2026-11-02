@@ -233,3 +233,42 @@ def node_breakdown(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for row in merged.values():
         row["kind"] = "agent" if row["turns"] else "step"
     return sorted(merged.values(), key=lambda row: (-row["time_s"], row["node"]))
+
+
+def turn_passes(spans: list[dict[str, Any]]) -> dict[str, tuple[str, int]]:
+    """Each agent turn's flow and which pass of that flow it belongs to, by span id.
+
+    A pass is one run of the flow's node span, counted from one in the order they started. A turn outside any flow node is absent.
+    """
+    by_id = {span["span_id"]: span for span in spans}
+    containers = {
+        span["parent_id"]
+        for span in spans
+        if span["parent_id"] and (_is_state(span) or _is_node(span))
+    }
+    started = sorted(
+        (span for span in spans if _is_node(span) and span["span_id"] in containers),
+        key=lambda span: span["start_ts"],
+    )
+    ordinals: dict[str, int] = {}
+    seen: dict[str, int] = {}
+    for span in started:
+        seen[span["node"]] = seen.get(span["node"], 0) + 1
+        ordinals[span["span_id"]] = seen[span["node"]]
+    found: dict[str, tuple[str, int]] = {}
+    for turn in spans:
+        if not _is_turn(turn):
+            continue
+        parent = by_id.get(turn["parent_id"])
+        item = parent if parent is not None and _is_node(parent) and parent["span_id"] not in containers else turn
+        chain = [item]
+        visited = {item["span_id"]}
+        while (above := by_id.get(chain[-1]["parent_id"])) is not None and above["span_id"] not in visited:
+            chain.append(above)
+            visited.add(above["span_id"])
+        state = next((span for span in chain if _is_state(span)), None)
+        beyond = chain[chain.index(state) + 1 :] if state is not None else chain[1:]
+        flow = next((span for span in beyond if _is_node(span)), None)
+        if flow is not None and flow["span_id"] in ordinals:
+            found[turn["span_id"]] = (flow["node"], ordinals[flow["span_id"]])
+    return found

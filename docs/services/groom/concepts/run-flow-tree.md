@@ -13,6 +13,7 @@ Spans export when they end. A flow or state that is still open, and the run's ow
 - code: groom/groom/overview.py::run_overview@d4e666f27ee7
 - code: groom/groom/live_history.py::LiveHistory@3671ced6241f
 - code: groom/groom/assets/dashboard.js::Overview@f656729cd4fc
+- code: groom/groom/flows.py::turn_passes@74192984c983
 - tests: groom/tests/test_flows.py::test_an_ended_flow_is_named_from_its_own_span
 - tests: groom/tests/test_flows.py::test_work_under_an_unexported_parent_gets_one_unfinished_row_per_parent
 - tests: groom/tests/test_flows.py::test_work_in_an_open_flow_is_named_from_its_own_attributes
@@ -21,6 +22,7 @@ Spans export when they end. A flow or state that is still open, and the run's ow
 - tests: groom/tests/test_a11y_dynamic.py::test_new_telemetry_updates_the_open_overview_and_keeps_the_operators_place
 - tests: groom/tests/test_a11y_dynamic.py::test_the_time_since_the_last_finished_turn_counts_up_every_second
 - tests: groom/tests/test_live_history.py::test_only_a_span_batch_advances_the_figures_revision
+- tests: groom/tests/test_activity.py::test_a_turn_is_numbered_by_the_runs_of_its_flow_node
 - refs: [overview tiles](overview-tiles.md), [run breakdown views](run-breakdown-views.md), [groom store](groom-store.md), [groom projection module](groom-projection-module.md), [groom CLI](../groom-cli.md), [get run overview](../http/get-run-overview.md), [the groom dashboard detail pane](../gui/screens/groom-dashboard.md#detail-pane)
 
 ## Rows
@@ -72,6 +74,10 @@ Spans export when they end. A flow or state that is still open, and the run's ow
 - rule: the running mark follows the pushed run detail, not the refetch, so a node that finishes loses it and the next running node gains it as soon as the run reports the change.
 - rule: the [run now strip](run-now-strip.md) sits above the [overview tiles](overview-tiles.md) and the tree, and a refetch of the figures leaves it untouched.
 - rule: the cost tile's "ago" and the attention tile's waiting time tick every second in the browser from the last finished turn's end time, with no read and no server frame. The figures do not announce themselves to a screen reader as they change.
+
+## Turn passes
+
+- rule: a turn's pass is which run of its flow's node span it belongs to, counted from one in the order those runs started. The [Activity tab](run-activity-tab.md) shows it as `1st pass`. A turn outside any flow node has no pass.
 
 ## Cost coverage
 

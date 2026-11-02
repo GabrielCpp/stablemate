@@ -18,11 +18,12 @@ from typing import Annotated, Literal
 from litestar import Litestar, Request, Response, delete, get, post, websocket
 from litestar.connection import WebSocket
 from litestar.enums import MediaType
-from litestar.exceptions import WebSocketDisconnect
+from litestar.exceptions import NotFoundException, ServiceUnavailableException, WebSocketDisconnect
 from litestar.params import PathParameter, QueryParameter
 from litestar.static_files import create_static_files_router
 
 from groom import (
+    activity,
     alerts,
     archive,
     attend,
@@ -622,6 +623,41 @@ async def outbox_get(run_id: Annotated[str, PathParameter()]) -> dict:
 async def run_overview(run_id: Annotated[str, PathParameter()]) -> dict:
     """One run's cost so far and its time per flow, from the queries behind ``groom cost`` and ``groom profile``."""
     return await pools.QUERY.run(overview.run_overview, run_id)
+
+
+async def _live_turns(run_id: str) -> activity.LiveRows:
+    """The watched run's live transcript rows by turn slug, brought up to date first when the run is native."""
+    wf = _workflow_by_run_id(run_id)
+    if wf is not None and wf.native:
+        await _tail_transcript(wf)
+    history = state.HISTORIES.get(run_id)
+    if history is None:
+        return {}
+    async with state.HISTORY_LOCK:
+        rows = list(history.transcript)
+    live: activity.LiveRows = {}
+    for row in rows:
+        live.setdefault(str(row["slug"]), []).append(row)
+    return live
+
+
+@get("/api/run/{run_id:str}/activity", include_in_schema=False)
+async def run_activity(run_id: Annotated[str, PathParameter()]) -> dict:
+    """One run's agent turns, oldest first, with the one still running read from its live transcript."""
+    return await pools.QUERY.run(activity.timeline, run_id, await _live_turns(run_id))
+
+
+@get("/api/run/{run_id:str}/activity/{slug:str}", include_in_schema=False)
+async def run_turn(
+    run_id: Annotated[str, PathParameter()], slug: Annotated[str, PathParameter()]
+) -> dict:
+    """One agent turn: its head figures, its messages and its tool calls."""
+    try:
+        return await pools.QUERY.run(activity.turn, run_id, slug, await _live_turns(run_id))
+    except activity.TurnNotFound as exc:
+        raise NotFoundException(detail="no such turn") from exc
+    except activity.TurnUnreadable as exc:
+        raise ServiceUnavailableException(detail="the turn could not be read") from exc
 
 
 @post("/api/run/{run_id:str}/outbox", include_in_schema=False)
@@ -1607,6 +1643,8 @@ def create_app() -> Litestar:
             diff,
             outbox_get,
             run_overview,
+            run_activity,
+            run_turn,
             outbox_post,
             inbox_get,
             inbox_post,

@@ -131,10 +131,10 @@ def test_a_rejected_answer_frame_is_toasted_as_text():
 
 def test_the_overview_refetches_only_when_the_pushed_revision_moves():
     src = CLIENT.read_text()
-    overview = src[src.index("function Overview") : src.index("function DetailsTab")]
+    overview = src[src.index("function Overview") : src.index("function TurnRow")]
     assert "detail.figures_rev" in overview
     assert "setInterval" not in overview
-    assert "aria-live" not in src[src.index("function CostTile") : src.index("function DetailsTab")]
+    assert "aria-live" not in src[src.index("function CostTile") : src.index("function TurnRow")]
 
 
 def test_the_cost_tile_ticks_in_the_browser_every_second():

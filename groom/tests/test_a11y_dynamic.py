@@ -414,6 +414,8 @@ def test_tabs_switch_with_the_arrow_keys_and_details_keeps_todays_content():
         overview = page.get_by_role("tab", name="Overview")
         overview.focus()
         page.keyboard.press("ArrowRight")
+        expect(page.get_by_role("tab", name="Activity")).to_be_focused()
+        page.keyboard.press("ArrowRight")
         details = page.get_by_role("tab", name="Details")
         expect(details).to_have_attribute("aria-selected", "true")
         expect(details).to_be_focused()
@@ -422,6 +424,8 @@ def test_tabs_switch_with_the_arrow_keys_and_details_keeps_todays_content():
         expect(panel).to_contain_text("Recent telemetry history")
         expect(panel).not_to_contain_text("Working-tree diff")
         expect(panel).to_contain_text("Nothing to answer")
+        page.keyboard.press("ArrowLeft")
+        expect(page.get_by_role("tab", name="Activity")).to_have_attribute("aria-selected", "true")
         page.keyboard.press("ArrowLeft")
         expect(overview).to_have_attribute("aria-selected", "true")
     finally:

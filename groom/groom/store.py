@@ -1351,6 +1351,12 @@ def _run_spans(run: str) -> list[dict[str, Any]]:
 
 
 @reading
+def run_turn_spans(run: str) -> list[dict[str, Any]]:
+    """Every span of one run, oldest first, with the cost, token and duration figures the profile computes."""
+    return _run_spans(run) if run else []
+
+
+@reading
 def run_flows(run: str) -> dict[str, Any]:
     """One run's finished work as flow, state and node rows, with the totals the rows add up to."""
     spans = _run_spans(run) if run else []

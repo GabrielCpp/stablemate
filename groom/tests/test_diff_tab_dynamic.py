@@ -179,7 +179,7 @@ def test_a_container_run_with_a_connected_sidecar_has_a_diff_tab_beside_overview
         try:
             _pick(page)
             tabs = page.get_by_role("tablist", name="Run detail").get_by_role("tab")
-            expect(tabs).to_have_text([re.compile("^Overview$"), re.compile("^Details$"), re.compile("^Files$"), re.compile(r"^Diff")])
+            expect(tabs).to_have_text([re.compile("^Overview$"), re.compile("^Activity$"), re.compile("^Details$"), re.compile("^Files$"), re.compile(r"^Diff")])
         finally:
             page.close()
             sidecar.drop()

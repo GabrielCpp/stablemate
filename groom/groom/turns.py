@@ -97,6 +97,11 @@ def _sources(run_dir: Path, slug: str, session_id: str) -> list[tuple[str, Path]
     return found
 
 
+def run_dir_files(run_dir: Path, slug: str, session_id: str) -> dict[str, Path]:
+    """One visit's record files still in its run dir, by the name an archived record gives them."""
+    return {name: path for name, path in _sources(run_dir, slug, session_id) if path.is_file()}
+
+
 def _capture_source(run_dir: Path, slug: str, session_id: str) -> str:
     """What capture reported — ``store``, ``export``, ``tee``, or empty when absent."""
     meta = run_dir / RUN_TRANSCRIPTS / f"{slug}__{session_id}.meta.json"

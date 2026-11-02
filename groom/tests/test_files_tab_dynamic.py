@@ -154,7 +154,7 @@ def test_a_run_that_shows_a_diff_tab_shows_a_files_tab_before_it_and_other_runs_
         try:
             _pick(page)
             tabs = page.get_by_role("tablist", name="Run detail").get_by_role("tab")
-            expect(tabs).to_have_text([re.compile("^Overview$"), re.compile("^Details$"), re.compile("^Files$"), re.compile(r"^Diff")])
+            expect(tabs).to_have_text([re.compile("^Overview$"), re.compile("^Activity$"), re.compile("^Details$"), re.compile("^Files$"), re.compile(r"^Diff")])
             for container in ("nativebox456", OTHER, "quietbox5678"):
                 _pick(page, container)
                 expect(page.get_by_role("tab", name="Overview")).to_be_visible()

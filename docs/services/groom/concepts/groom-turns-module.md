@@ -302,6 +302,16 @@ These functions retrieve archived records and their contents.
 - code: groom/groom/turns.py::record_path
 - semantics: live is checked first because that is where anything still being written is; frozen is checked next because that is where a run lives once deleted from the live root; the derived-name glob is the last resort for re-runs that were archived twice.
 
+### run-dir-files
+
+- sig: `run_dir_files(run_dir: Path, slug: str, session_id: str) -> dict[str, Path]`
+- abstract: false
+- does: list the files of one visit's record that are still in its run directory, by the name an archived record gives them, so a turn that was not harvested yet can be read from where capture wrote it
+- verify: json_path(path="$.*", matches=".+")
+- returns: a `dict` of file name to path, empty when the run directory holds none of the visit's files
+- code: groom/groom/turns.py::run_dir_files@863cd311f347
+- tests: groom/tests/test_activity.py::test_a_visit_still_in_its_run_dir_lists_the_files_an_archived_record_would_name
+
 ### read-record
 
 - sig: `read_record(row: dict[str, Any]) -> dict[str, Any]`

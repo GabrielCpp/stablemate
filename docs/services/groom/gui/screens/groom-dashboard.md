@@ -280,13 +280,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#detail-close-button")
 - states: the Overview tab is selected first and shows the [run now strip](../../concepts/run-now-strip.md) for a run with a running node, then the [overview tiles](#detail-cost-tile) and the [breakdown table](#detail-flow-table).
 - verify: visible(locator="#detail-flow-table", text="Retries")
+- states: the [Activity tab](#detail-activity-tab) sits between Overview and Details and lists the run's agent turns beside the open turn's messages and tool calls.
+- verify: visible(locator="#detail-activity-tab", text="Activity")
 - states: the Details tab shows the state note, the metrics and the recent telemetry history.
 - verify: visible(locator="#detail .live-sec .metrics-grid")
 - verify: absent(subject="a working-tree diff disclosure on the Details tab")
 - states: a live container run with a connected sidecar, or one whose sidecar dropped after this page read its diff, also has a [Diff tab](#detail-diff-tab) with the run's uncommitted change or its change since the branch started, and a [Files tab](#detail-files-tab) before it with a read-only view of the checkout.
 - states: the chosen breakdown view and sort stay across a Details round trip and every live refresh.
 - states: the chosen breakdown view and sort reset when another run opens.
-- code: groom/groom/assets/dashboard.js::Detail@563f7e2cc72a
+- code: groom/groom/assets/dashboard.js::Detail@ec913ac4bce1
 - code: groom/groom/assets/dashboard.js::NowStrip@5e02e693e272
 - tests: groom/tests/test_projection.py::test_run_detail_carries_gates_head_metrics_and_logs
 - dom: a shell `<div>` the detail island renders into. It is refreshed by pushed `detail` frames for the watched run, not by re-fetching.
@@ -438,12 +440,12 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: the selected tab is the one tab stop. ArrowLeft and ArrowRight move to the other tab, select it and move focus to it.
 - verify: json_path(path="keyboard.arrow_keys_switch_tabs", equals=true)
 - parent: [detail-pane](#detail-pane)
-- states: two tabs, `Overview` and `Details`, each with role tab and `aria-selected`, plus a `Files` tab and a `Diff` tab after them, while the run is a live container run with a connected sidecar. Overview is selected when a run opens.
+- states: three tabs, `Overview`, `Activity` and `Details`, each with role tab and `aria-selected`, plus a `Files` tab and a `Diff` tab after them, while the run is a live container run with a connected sidecar. Overview is selected when a run opens.
 - verify: visible(locator="#detail-tabs", text="Overview")
 - states: the selected tab controls the single tabpanel `#detail-panel`, whose accessible name is the selected tab's.
 - states: the Diff tab adds the [diff view switch](#detail-diff-view-switch) at the right of the bar.
 - states: the Files and Diff tabs add the [checkout selector](#detail-checkout-select) for a run with several checkouts.
-- code: groom/groom/assets/dashboard.js::DetailTabs@7758bd0de773
+- code: groom/groom/assets/dashboard.js::DetailTabs@c23c8518540f
 - tests: groom/tests/test_a11y_dynamic.py::test_tabs_switch_with_the_arrow_keys_and_details_keeps_todays_content
 - tests: groom/tests/test_diff_tab_dynamic.py::test_diff_tab_controls_have_roles_names_and_keyboard_operation_and_pass_axe
 - leads-to: [switch detail tab](#switch-detail-tab), which swaps the panel's content.
@@ -1000,7 +1002,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: shown only while the Files or Diff tab is selected and the run has more than one checkout, at the right of the tab bar before the read time and the refresh button.
 - states: a run with one checkout shows none.
 - states: a sidecar that names no checkouts shows none.
-- states: the Overview and Details tabs show none.
+- states: the Overview, Activity and Details tabs show none.
 - verify: absent(subject="#detail-checkout for a run with one checkout")
 - states: its options are the run's checkouts by name alone, and the workspace root reads `(workspace root)`.
 - verify: visible(locator="#detail-checkout", text="api-service")
@@ -1260,7 +1262,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: Enter or Space presses the focused button.
 - verify: json_path(path="keyboard.tab_reachable", equals=true)
 - parent: [detail-tabs](#detail-tabs)
-- states: shown only while the Diff tab is selected, at the right of the tab bar before the checkout selector and the read time. The Overview, Details and Files tabs show none.
+- states: shown only while the Diff tab is selected, at the right of the tab bar before the checkout selector and the read time. The Overview, Activity, Details and Files tabs show none.
 - states: each button exposes `aria-pressed`, and exactly one is pressed. Uncommitted is pressed for a run selected for the first time.
 - verify: visible(locator="#detail-diff-view-switch", text="Since branch start")
 - states: the pressed button is also set apart by a heavier weight and an underline, so its position is never colour alone.
@@ -1290,6 +1292,136 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - tests: groom/tests/test_diff_since_branch_dynamic.py::test_the_switch_keeps_its_position_when_the_diff_is_refreshed
 - tests: groom/tests/test_diff_since_branch_dynamic.py::test_selecting_another_run_and_coming_back_keeps_each_runs_own_position
 - tests: groom/tests/test_diff_since_branch_dynamic.py::test_the_switch_has_a_role_a_name_keyboard_operation_and_shows_its_position_by_more_than_color
+
+### detail-activity-tab
+
+- selector: `#tab-activity`
+- role: tab
+- name: Activity
+- keyboard: ArrowLeft and ArrowRight reach it from Overview and Details.
+- keyboard: Enter or Space on it selects it.
+- verify: visible(locator="#detail-activity-tab", text="Activity")
+- parent: [detail-tabs](#detail-tabs)
+- states: present for every open run, native or container, with or without a sidecar, between the Overview tab and the Details tab.
+- states: it carries no count and no chip.
+- states: its accessible name is `Activity`.
+- states: the selected tab controls the single tabpanel `#detail-panel`, as the other tabs do.
+- code: groom/groom/assets/dashboard.js::DetailTabs@c23c8518540f
+- code: groom/groom/assets/dashboard.js::ActivityTab@46f65e17d3bd
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_sits_between_overview_and_details
+- tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_and_each_row_have_a_role_a_name_and_keyboard_operation_and_axe_is_clean
+- tests: groom/tests/test_activity_tab_dynamic.py::test_the_other_tabs_behave_as_they_did
+
+### detail-activity-list
+
+- selector: `div.tl`
+- role: log
+- name: `Run activity`
+- placement: width 20-40%, x 0-40%
+- keyboard: each turn row is a button in the tab order, and the list is not a tab stop itself.
+- parent: [detail-activity-tab](#detail-activity-tab)
+- states: lists the run's agent turns oldest first, one [turn row](#detail-activity-row) each, at the left of the tab beside the [turn pane](#detail-activity-pane).
+- verify: visible(locator="#detail-activity-list", text="Run activity")
+- states: a turn that starts while the tab is open appears at the end of the list without a reload and without moving the operator's scroll.
+- states: a list with no turn is replaced by `No activity yet. The first agent turn appears here when it starts.` and says whether the run is alive or has finished.
+- states: while the list reads, a status named `Reading this run's activity…` shows and clears when the list arrives.
+- code: groom/groom/assets/dashboard.js::ActivityTab@46f65e17d3bd
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_run_with_no_turn_says_it_has_no_activity_and_that_it_is_alive
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_container_runs_activity_tab_works_as_a_native_runs_does
+
+### detail-activity-row
+
+- selector: `button.ev`
+- role: button
+- one-per: agent turn of the run
+- name: `<node>, <running|finished|failed>, started <hh:mm>, <duration and cost>, <result>`
+- keyboard: Tab reaches each row, and Enter or Space opens the turn.
+- parent: [detail-activity-list](#detail-activity-list)
+- states: shows the turn's start time, its node, the first line of its result and its duration, with the cost after the duration once the turn has one.
+- verify: visible(locator="#detail-activity-row", text="code")
+- states: the open turn's row is marked with `aria-current` and a heavier weight, so position is never colour alone.
+- states: a running turn reads `running` with the time it has run and no cost.
+- states: a failed turn reads `failed`.
+- states: the result line cuts at the row's width and carries its whole text in the accessible name.
+- code: groom/groom/assets/dashboard.js::TurnRow@1c4a1b3d9bbd
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_selecting_a_row_opens_the_turn_beside_the_list_and_marks_it_selected
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_running_turn_reads_running_in_its_row_and_pane_with_elapsed_time_and_no_cost_yet
+
+### detail-activity-pane
+
+- selector: `div.rd`
+- role: none
+- name: none
+- placement: width 60-80%, x 40-100%
+- parent: [detail-activity-tab](#detail-activity-tab)
+- states: holds the open turn's [head](#detail-activity-head) above its [reading](#detail-activity-reading), beside the list.
+- states: while the turn reads, a status named `Reading this turn…` shows in its place and clears when the turn arrives.
+- states: when the turn cannot be read, an alert `This turn could not be read` shows with `Retry now`, and the list stays.
+- verify: visible(locator="#detail-activity-pane", text="Reading this turn")
+- code: groom/groom/assets/dashboard.js::TurnPane@7a8a1dc6ca8d
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_being_read_shows_a_reading_state_that_clears_when_it_appears
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
+
+### detail-activity-head
+
+- selector: `div.rd-head`
+- role: none
+- name: none
+- parent: [detail-activity-pane](#detail-activity-pane)
+- states: names the turn's node and work item, with a chip `running`, `finished` or `failed`.
+- states: a second line gives the flow and its pass as `1st pass`, the visit, the model, the duration, the cost and the output tokens, each only when it is known.
+- verify: visible(locator="#detail-activity-head", text="1st pass")
+- states: a turn outside any flow shows no flow and no pass.
+- states: no turn reads `pass 0`.
+- states: a running turn omits the model, the pass and the output tokens.
+- states: a running turn reads its cost as `lands at turn end`.
+- states: a finished turn with no priced span omits the cost and never shows `$0`.
+- code: groom/groom/assets/dashboard.js::TurnHead@11e7e5459438
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_the_pane_head_names_node_work_item_pass_visit_model_duration_cost_and_output
+
+### detail-activity-reading
+
+- selector: `div.rd-body`
+- role: none
+- name: `Turn <node>`
+- keyboard: the body is a tab stop and scrolls with the arrow keys.
+- parent: [detail-activity-pane](#detail-activity-pane)
+- states: shows the turn's agent messages as formatted prose under a role label.
+- states: shows each tool call as one line with the tool's name and its summary.
+- verify: visible(locator="#detail-activity-reading", text="Read")
+- states: a failed tool call is marked failed on its line.
+- states: HTML in a message or a tool line shows as literal text, an image shows as its alt text, and no script in a turn runs.
+- states: a turn with nothing recorded says `This turn recorded no messages or tool calls.`
+- states: a turn of an old run with no matching record says `The record of this turn could not be matched, so its messages and tool calls are not shown.`
+- states: a turn read from the live history that lost its start says `Earlier output of this turn is not shown.`
+- code: groom/groom/assets/dashboard.js::TurnReading@db17ea2a3a72
+- code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_the_pane_shows_messages_as_prose_and_each_tool_call_as_one_line
+- tests: groom/tests/test_activity_tab_dynamic.py::test_html_in_a_message_or_a_tool_line_renders_as_text_and_no_script_runs
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_message_written_in_markdown_reads_as_formatted_prose
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_of_an_old_run_matches_its_one_archived_record_and_a_turn_with_none_says_so
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_running_turn_whose_start_the_live_history_dropped_says_earlier_output_is_not_shown
+
+### detail-activity-state
+
+- selector: `div.act-state`
+- role: alert
+- name: none
+- keyboard: its `Retry now` button is a tab stop.
+- parent: [detail-activity-tab](#detail-activity-tab)
+- states: shown in place of the list when the run's turns could not be read, as `This run's activity could not be read`, with `The Details tab still works.`
+- verify: visible(locator="#detail-activity-state", text="could not be read")
+- states: a failed list never reads as `No activity yet`.
+- code: groom/groom/assets/dashboard.js::ActivityTab@46f65e17d3bd
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it
 
 ## Interactions
 
@@ -1491,6 +1623,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: visible(locator="#detail", text="Loading telemetry history…")
   - Keeps the [gate strip](#detail-gate-strip)'s collapsed state when the id is the run already selected, and opens it expanded for any other run.
   - verify: json_path(path="store.gatesCollapsed", equals=false)
+  - Clears the Activity tab's list and open turn, so a newly selected run never shows the previous run's turns.
   - Keeps the text typed in each of the previous run's answer boxes in the page-held draft, so it returns when the operator selects that run again.
   - verify: persists(subject="typed answer text for a run after selecting another run and coming back")
   - Sends this tab's watch subscription for the id over the dashboard websocket, replacing whatever it was watching.
@@ -1515,7 +1648,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: unchanged(subject="active dashboard mode after selecting a run")
   - Does not mutate server state beyond the watch subscription.
   - verify: unchanged(subject="server state except the selecting tab's watch subscription")
-- code: groom/groom/assets/dashboard.js::select@90d0cfa4c531
+- code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
 - code: groom/groom/assets/dashboard.js::onDetail@f9e46aa48020
 - code: groom/groom/assets/dashboard.js::RunRow@703c0edbc1b1
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
@@ -2136,3 +2269,62 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - tests: groom/tests/test_checkout_selector_dynamic.py::test_one_selection_governs_files_and_diff_and_moving_between_them_reads_nothing_more
 - tests: groom/tests/test_checkout_selector_dynamic.py::test_changing_the_checkout_clears_the_open_file_and_the_collapsed_folders_of_files
 - tests: groom/tests/test_checkout_selector_dynamic.py::test_j_and_k_with_the_selector_focused_do_not_move_the_run_selection
+
+### open-detail-activity-tab
+
+- on: [detail-activity-tab](#detail-activity-tab)
+- trigger: click or tap on the Activity tab, or ArrowLeft or ArrowRight to it, or Enter or Space while it has focus.
+- role: tab
+- name: `Activity`
+- keyboard: ArrowRight from Overview selects it and moves focus to it.
+- when:
+  - A run is open in the detail pane.
+- does:
+  - Writes the chosen tab to the store.
+  - Requests `GET /api/run/{run_id}/activity` once for the run when the page holds no list for it.
+  - verify: http_status(code=200, path="/api/run/{run_id}/activity")
+  - Opens the newest turn and requests `GET /api/run/{run_id}/activity/{slug}` for it.
+  - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
+  - Reads the list again when the run's figures revision moves, and every 3 seconds while a turn runs.
+- code: groom/groom/assets/dashboard.js::ActivityTab@46f65e17d3bd
+- code: groom/groom/assets/dashboard.js::loadActivity@dd61e637ac89
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
+
+### select-detail-activity-turn
+
+- on: [detail-activity-row](#detail-activity-row)
+- trigger: click or tap on a turn row, or Enter or Space while it has focus.
+- role: button
+- name: `<node>, finished, started <hh:mm>, <duration and cost>, <result>`
+- keyboard: Enter or Space on the focused row opens its turn.
+- when:
+  - The Activity tab is open with a list read.
+- does:
+  - Marks the chosen row `aria-current` and clears the mark from the other rows.
+  - Shows `Reading this turn…` in the pane and requests `GET /api/run/{run_id}/activity/{slug}` for the chosen turn.
+  - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
+  - Drops the reply of an earlier selection that arrives after a later one.
+  - Does not read the list again and does not move the list's scroll.
+- code: groom/groom/assets/dashboard.js::loadTurn@593959b66a7c
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_selecting_a_row_opens_the_turn_beside_the_list_and_marks_it_selected
+
+### retry-detail-activity
+
+- on: [detail-activity-state](#detail-activity-state)
+- trigger: click or tap on `Retry now`, or Enter or Space while it has focus.
+- role: button
+- name: `Retry now`
+- keyboard: Enter or Space on the focused button reads again.
+- when:
+  - The list or the open turn failed to read.
+- does:
+  - Reads the list again, or the open turn again, whichever failed, and clears the alert when the read succeeds.
+  - verify: absent(subject=".act-state after a successful retry")
+  - Keeps the list on screen while a turn is read again.
+- code: groom/groom/assets/dashboard.js::loadActivity@dd61e637ac89
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it
+

@@ -9,7 +9,7 @@ The persistent, queryable half of groom's telemetry collection: a SQLite databas
 
 Connection discipline is load-bearing: one process-wide writer with an `RLock`, many readers with per-thread read-only connections, both autocommit and explicit `BEGIN IMMEDIATE`, and resilience that retries once on failure. The design separates read and write contention so a cold dashboard query does not stall OTLP ingest, which used to cause collector 500s under load. Query methods use keyset pagination (cursor-based) rather than OFFSET, which remains stable when new rows are inserted by concurrent writers — essential for live telemetry queries where OFFSET would drift across page boundaries.
 
-- code: `groom/groom/store.py` @6f5e4987df6f
+- code: `groom/groom/store.py` @45c74ebc82b3
 - extends: [run-telemetry](run-telemetry.md)
 - rule: a turn on a backend that reports the session's running total (`claude`, whose `--resume` result carries the conversation's cumulative `total_cost_usd`) is charged its reported cost minus the previous report on the same run and session, ordered by start, end and span id. A report below the previous one starts a new count and is charged whole. A turn with no session id, no reported cost, or another backend is charged its reported cost. The stored attribute keeps the raw report, so the charge is computed when a cost is read and corrects rows already ingested.
 - tests: `groom/tests/test_store.py`
@@ -97,6 +97,15 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - returns: newest visit last (so `[1:]` is "every pass after the first" for loop analysis)
 - code: `groom/groom/store.py::query_turns` @c979483e42a5
 - tests: `groom/tests/test_store.py::test_turns_ordered_by_visit_across_generations`
+
+### run_turn_spans
+
+- sig: `run_turn_spans(run: str) -> list[dict[str, Any]]`
+- does: return every span of one run, oldest first, with the cost, token and duration figures the profile computes, so the Activity tab builds its turns from the same figures `groom profile` reports
+- verify: json_path(path="$[0].profile_cost_usd", matches="^(null|\\d+(\\.\\d+)?)$")
+- returns: an empty list for an empty run id
+- code: `groom/groom/store.py::run_turn_spans` @9fc7372c5d67
+- tests: `groom/tests/test_activity.py::test_the_timeline_lists_a_finished_turn_with_its_figures_and_pass`
 
 ### run_summaries
 

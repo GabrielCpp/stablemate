@@ -57,6 +57,7 @@ const store = {
     tab: "overview",
     gatesCollapsed: false,
     overview: { runId: "", status: "idle", data: null, rev: 0 },
+    activity: idleActivity(),
     breakdown: { view: "flow", sort: "time" },
     // per-tab, per-selection panels (HTTP; cancel- and cache-friendly)
     mode: "runs",
@@ -327,6 +328,28 @@ function mdHtml(source) {
   const text = source || "";
   if (!window.marked || !window.DOMPurify) return null;
   return DOMPurify.sanitize(marked.parse(text));
+}
+
+function escapeText(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+let transcriptMarked = null;
+
+function transcriptHtml(source) {
+  if (!window.marked || !window.DOMPurify || !window.marked.Marked) return null;
+  if (!transcriptMarked) {
+    transcriptMarked = new window.marked.Marked({
+      renderer: { html: (token) => escapeText(token.text), image: (token) => escapeText(token.text) },
+    });
+  }
+  return DOMPurify.sanitize(transcriptMarked.parse(source || ""), { FORBID_TAGS: ["img", "picture", "source"] });
+}
+
+function TranscriptText({ source }) {
+  const markup = transcriptHtml(source);
+  if (markup === null) return html`<div class="at-text plain">${source || ""}</div>`;
+  return html`<div class="at-text" dangerouslySetInnerHTML=${{ __html: markup }}></div>`;
 }
 
 function Markdown({ className, source }) {
@@ -1380,6 +1403,196 @@ function Overview({ detail }) {
   </div>`;
 }
 
+function idleActivity() {
+  return { runId: "", status: "idle", rows: [], selected: "", turn: { slug: "", status: "idle", data: null }, rev: 0 };
+}
+
+let activitySeq = 0;
+let turnSeq = 0;
+
+function ordinal(n) {
+  const tail = n % 100;
+  if (tail >= 11 && tail <= 13) return n + "th";
+  return n + (["th", "st", "nd", "rd"][n % 10] || "th");
+}
+
+async function loadTurn(runId, slug, refresh = false) {
+  const seq = ++turnSeq;
+  const held = store.get().activity;
+  if (!refresh) store.set({ activity: { ...held, selected: slug, turn: { slug, status: "loading", data: null } } });
+  try {
+    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/activity/" + encodeURIComponent(slug));
+    if (!response.ok) throw new Error("turn " + response.status);
+    const data = await response.json();
+    if (seq !== turnSeq) return;
+    store.set({ activity: { ...store.get().activity, turn: { slug, status: "ready", data } } });
+  } catch (err) {
+    if (seq !== turnSeq) return;
+    if (refresh) return;
+    store.set({ activity: { ...store.get().activity, turn: { slug, status: "failed", data: null } } });
+  }
+}
+
+async function loadActivity(runId, rev = 0, refresh = false) {
+  const seq = ++activitySeq;
+  if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev } });
+  try {
+    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/activity");
+    if (!response.ok) throw new Error("activity " + response.status);
+    const data = await response.json();
+    if (seq !== activitySeq) return;
+    const held = store.get().activity;
+    const rows = data.rows;
+    const chosen = rows.some((row) => row.slug === held.selected) ? held.selected : "";
+    store.set({ activity: { ...held, runId, status: "ready", rows, selected: chosen, rev } });
+    if (!chosen && rows.length) loadTurn(runId, rows[rows.length - 1].slug);
+    else if (chosen && rows.some((row) => row.slug === chosen && row.status === "running")) loadTurn(runId, chosen, true);
+  } catch (err) {
+    if (seq !== activitySeq) return;
+    if (refresh) store.set({ activity: { ...store.get().activity, rev } });
+    else store.set({ activity: { ...idleActivity(), runId, status: "failed", rev } });
+  }
+}
+
+function resetActivity() {
+  activitySeq++;
+  turnSeq++;
+  return idleActivity();
+}
+
+function turnWhen(row) {
+  return clockTime(row.started_ts * 1000).slice(0, 5);
+}
+
+function turnSpan(row) {
+  if (row.status === "running") return fmtSpan(Date.now() / 1000 - row.started_ts);
+  const secs = Math.round(row.duration_s || 0);
+  return secs >= 60 && secs < 3600 ? Math.round(secs / 60) + "m" : fmtSpan(secs);
+}
+
+function turnMeta(row) {
+  if (row.status === "running") return turnSpan(row);
+  return turnSpan(row) + (row.cost_usd === null ? "" : " · " + fmtUsd(row.cost_usd));
+}
+
+function turnLabel(row) {
+  const state = row.status === "running" ? "running" : row.status === "failed" ? "failed" : "finished";
+  return row.node + ", " + state + ", started " + turnWhen(row) + ", " + turnMeta(row) + (row.result ? ", " + row.result : "");
+}
+
+function TurnRow({ row, selected, pick }) {
+  const running = row.status === "running";
+  return html`<button
+    type="button"
+    class=${"ev " + (running ? "live" : row.status === "failed" ? "bad" : "turn") + (selected ? " sel" : "")}
+    data-slug=${row.slug}
+    aria-current=${selected ? "true" : null}
+    aria-label=${turnLabel(row)}
+    onClick=${() => pick(row.slug)}
+  >
+    <span class="t">${turnWhen(row)}</span>
+    <span class="i" aria-hidden="true">${running ? "●" : "◆"}</span>
+    <span class="main"><span class="n">${row.node}</span><span class="w">${row.result}</span></span>
+    <span class="m">${turnMeta(row)}</span>
+  </button>`;
+}
+
+function TurnHead({ row }) {
+  const running = row.status === "running";
+  const flowText = row.flow ? row.flow + (row.pass ? " · " + ordinal(row.pass) + " pass" : "") : "";
+  const chip = running ? html`<span class="chip ok" style="margin-left:auto">running</span>`
+    : row.status === "failed" ? html`<span class="chip bad" style="margin-left:auto">failed</span>`
+    : html`<span class="chip ok" style="margin-left:auto">finished</span>`;
+  return html`<div class="rd-head">
+    <div class="l1">
+      <span class=${"dot " + (running ? "running" : row.status === "failed" ? "blocked" : "finished")} style=${row.status === "failed" ? "animation:none" : null} aria-hidden="true"></span>${row.node}${row.work_id ? html`<span class="dim">·</span><span class="dim">${row.work_id}</span>` : null}${chip}
+    </div>
+    <div class="l2">
+      ${flowText || row.visit ? html`<span>${flowText}${flowText && row.visit ? " · " : ""}${row.visit ? html`visit <b>${row.visit}</b>` : null}</span>` : null}
+      ${row.model ? html`<span>model <b>${row.model}</b></span>` : null}
+      <span>${turnSpan(row)}</span>
+      ${running ? html`<span>cost <b>lands at turn end</b></span>` : row.cost_usd === null ? null : html`<span>cost <b>${fmtUsd(row.cost_usd)}</b></span>`}
+      ${running ? null : html`<span>out <b>${fmtTokens(row.output_tokens)}</b>${row.cache_read_tokens ? html` · cache read <b>${fmtTokens(row.cache_read_tokens)}</b>` : null}</span>`}
+    </div>
+  </div>`;
+}
+
+function TurnReading({ row, entries, cut }) {
+  return html`<div class="rd-body" tabindex="0" aria-label=${"Turn " + row.node}>
+    ${!row.matched ? html`<div class="dim at-note" style="font-size:11.5px">The record of this turn could not be matched, so its messages and tool calls are not shown.</div>`
+      : entries.length ? null : html`<div class="dim" style="font-size:11.5px">This turn recorded no messages or tool calls.</div>`}
+    ${cut ? html`<div class="dim at-note" style="font-size:11.5px">Earlier output of this turn is not shown.</div>` : null}
+    ${entries.map((entry) => entry.kind === "tool"
+      ? html`<div class="at-tool"><div class=${"at-tool-head" + (entry.failed ? " failed" : "")}><span class="at-tool-name">${entry.name}</span><span class="at-tool-sum">${entry.summary}</span></div></div>`
+      : html`<div class="at-msg"><div class="at-role">${entry.role}</div><${TranscriptText} source=${entry.text} /></div>`)}
+  </div>`;
+}
+
+function TurnPane({ runId, rows, turn }) {
+  const row = rows.find((one) => one.slug === turn.slug);
+  if (!row) return html`<div class="rd"></div>`;
+  if (turn.status === "failed") {
+    return html`<div class="rd"><div class="side-state act-state" role="alert">
+      <h3>This turn could not be read</h3>
+      The rest of the run is still here.
+      <button type="button" class="btn ghost retry-turn" onClick=${() => loadTurn(runId, turn.slug)}>Retry now</button>
+    </div></div>`;
+  }
+  if (turn.status !== "ready") {
+    return html`<div class="rd"><div class="detail-empty loading" role="status" aria-busy="true">
+      <span class="spin" aria-hidden="true"></span>Reading this turn…
+    </div></div>`;
+  }
+  return html`<div class="rd"><${TurnHead} row=${row} /><${TurnReading} row=${row} entries=${turn.data.entries} cut=${turn.data.cut} /></div>`;
+}
+
+function ActivityTab({ detail }) {
+  const { activity } = useStore();
+  useSecondTick();
+  const runId = detail.run_id;
+  const rev = detail.figures_rev || 0;
+  const alive = detail.state !== "finished";
+  const running = activity.rows.some((row) => row.status === "running");
+  useEffect(() => {
+    if (!runId) return;
+    const current = store.get().activity;
+    if (current.status === "loading") return;
+    if (current.runId !== runId) loadActivity(runId, rev);
+    else if (current.status === "ready" && current.rev !== rev) loadActivity(runId, rev, true);
+  }, [runId, rev, activity.runId, activity.status, activity.rev]);
+  useEffect(() => {
+    if (!runId || !running) return undefined;
+    const timer = setInterval(() => loadActivity(runId, store.get().activity.rev, true), 3000);
+    return () => clearInterval(timer);
+  }, [runId, running]);
+  if (!runId) {
+    return html`<div class="side-state"><h3>No activity for this run</h3>It has not reported a telemetry run id.</div>`;
+  }
+  if (activity.runId === runId && activity.status === "failed") {
+    return html`<div class="side-state act-state" role="alert">
+      <h3>This run's activity could not be read</h3>
+      The Details tab still works.
+      <button type="button" class="btn ghost retry-activity" onClick=${() => loadActivity(runId, rev)}>Retry now</button>
+    </div>`;
+  }
+  if (activity.runId !== runId || activity.status !== "ready") {
+    return html`<div class="detail-empty loading" role="status" aria-busy="true">
+      <span class="spin" aria-hidden="true"></span>Reading this run's activity…
+    </div>`;
+  }
+  if (!activity.rows.length) {
+    const beat = detail.strip && detail.strip.beat_ts ? ": last beat " + fmtSpan(Date.now() / 1000 - detail.strip.beat_ts) + " ago." : ".";
+    return html`<div class="empty-big" role="status">No activity yet. The first agent turn appears here when it starts.<br />${alive ? "The run is alive" + beat : "The run has finished."}</div>`;
+  }
+  const pick = (slug) => loadTurn(runId, slug);
+  return html`<div class="feed">
+    <div class="tl" role="log" aria-label="Run activity">
+      ${activity.rows.map((row) => html`<${TurnRow} key=${row.slug} row=${row} selected=${row.slug === activity.selected} pick=${pick} />`)}
+    </div>
+    <${TurnPane} runId=${runId} rows=${activity.rows} turn=${activity.turn} />
+  </div>`;
+}
+
 function DetailsTab({ detail }) {
   return html`<div class="ov">
     <${AttendLink} runId=${detail.run_id} />
@@ -1403,6 +1616,7 @@ function DetailsTab({ detail }) {
 
 const BASE_TABS = [
   ["overview", "Overview"],
+  ["activity", "Activity"],
   ["details", "Details"],
 ];
 
@@ -1625,6 +1839,8 @@ function Detail() {
           ? (mark ? html`<${StaleFiles} id=${selected} lostAt=${mark.lostAt} still=${mark.still} />` : html`<${FilesTab} runFiles=${runFiles} />`)
           : tab === "details"
             ? html`<${DetailsTab} detail=${detail} />`
+            : tab === "activity"
+              ? html`<${ActivityTab} detail=${detail} />`
             : html`<${Overview} detail=${detail} />`}
     </div>
   `;
@@ -1644,7 +1860,7 @@ async function select(id) {
   const gatesCollapsed = same ? store.get().gatesCollapsed : false;
   runDiffSeq++;
   resetRunFiles();
-  store.set({ selected: id, detail: null, tab: "overview", gatesCollapsed, runDiff: idleRunDiff(), runFiles: idleRunFiles(), overview: { runId: "", status: "idle", data: null, rev: 0 }, breakdown });
+  store.set({ selected: id, detail: null, tab: "overview", gatesCollapsed, runDiff: idleRunDiff(), runFiles: idleRunFiles(), overview: { runId: "", status: "idle", data: null, rev: 0 }, activity: resetActivity(), breakdown });
   if (sendWatch(id)) return;
   try {
     const response = await fetch("/worker/" + encodeURIComponent(id));
@@ -1664,7 +1880,7 @@ function closeDetail() {
   sendWatch("");
   runDiffSeq++;
   resetRunFiles();
-  store.set({ selected: null, detail: null, tab: "overview", gatesCollapsed: false, runDiff: idleRunDiff(), runFiles: idleRunFiles(), overview: { runId: "", status: "idle", data: null, rev: 0 }, breakdown: { view: "flow", sort: "time" } });
+  store.set({ selected: null, detail: null, tab: "overview", gatesCollapsed: false, runDiff: idleRunDiff(), runFiles: idleRunFiles(), overview: { runId: "", status: "idle", data: null, rev: 0 }, activity: resetActivity(), breakdown: { view: "flow", sort: "time" } });
 }
 
 /** A pushed refresh of the open run. It carries the whole pane — gates included —
