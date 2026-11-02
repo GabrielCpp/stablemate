@@ -140,19 +140,6 @@ def test_a_different_book_gets_a_different_snapshot(repo, tmp_path, index_home):
     assert features == {"only"}
 
 
-def test_ids_json_is_part_of_the_snapshot(repo, index_home):
-    """`epoch` covers only the `frozen` table; the graph carries the whole registry."""
-    write(repo / ".agents/ids.json", '{"counter": 1, "frozen": {}}\n')
-    Ostler(repo).graph
-    write(repo / ".agents/ids.json", '{"counter": 2, "frozen": {}}\n')
-
-    okf = Ostler(repo)
-    ids = okf.graph.ids or {}
-
-    assert okf.snapshot_stats()["misses"] == 1
-    assert ids.get("counter") == 2
-
-
 def test_a_corrupt_entry_is_a_miss_not_a_failure(repo, index_home):
     Ostler(repo).graph
     written = entries(index_home)

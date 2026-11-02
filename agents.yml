@@ -6,6 +6,7 @@ agents:
 repo:
   name: stablemate
   base_branch: main
+  id_prefix: SM
 
 # The hook manager farrier splices its one entry into. `githooks` — git's own
 # `core.hooksPath`, pointed at `.githooks/`, with no runner in front of it. The

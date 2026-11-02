@@ -72,7 +72,7 @@ seeds and stories back out of the markdown body with its hierarchical parser (`m
 ```yaml
 ---
 type: epic
-id: ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC   # allocated id (ostler-owned, from .agents/ids.json)
+id: ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC   # allocated id (ostler-owned, prefix from repo.id_prefix in agents.yml)
 title: Account Credits "Aperçu" Billing Body at Legacy Parity
 status: in-progress    # optional: planned | in-progress | done
 ---
@@ -189,13 +189,12 @@ agree with the copy in the parent epic's `## Stories` block.
 
 ## 6. Id allocation
 
-Ostler owns `.agents/ids.json` (`{prefix, frozen}`). `ostler create` allocates ids for backlog items,
+`ostler create` allocates ids for backlog items,
 milestones, epics, stories, and features, scaffolds their canonical Markdown, and (for stories) adds
 the `### <slug>` block to the epic's `## Stories`. No external id allocator exists. The registry has
-no counter: only the repo prefix and optional frozen-entity records are persisted.
+no counter and no registry file. The prefix is `repo.id_prefix` in the `agents.yml` at the graph root, a letter then up to 15 letters, digits or underscores. A mint refuses while it is unset or malformed.
 
-An id is `<PREFIX>-<ULID>`: the repo prefix (first four letters of the repo name, pinned in the
-registry on first use) followed by a monotonic ULID — 26 Crockford-Base32 chars, a 48-bit
+An id is `<PREFIX>-<ULID>`: the repo prefix (`repo.id_prefix`) followed by a monotonic ULID — 26 Crockford-Base32 chars, a 48-bit
 millisecond timestamp plus 80 bits of randomness. It is lexicographically sortable by mint time and
 allocates with **no coordination**, so concurrent worktrees, processes and clones cannot collide.
 Ids minted by the former `<prefix>-<n>` counter keep resolving; an id is an opaque, sortable string.
@@ -216,7 +215,7 @@ referential-integrity contract over the graph parsed from the markdown:
 `cross-epic-seed`, `dangling-seed`, `cross-epic-dependency`, `dangling-dependency`,
 `missing-story-file`, `story-covers-no-seed`
 (warn), `orphan-seed`,
-`frozen-removed`, `frozen-mutated`, plus `schema` (warn) for per-type frontmatter schema violations.
+plus `schema` (warn) for per-type frontmatter schema violations.
 
 ## 8. Versioning
 
@@ -230,7 +229,7 @@ Minor bumps add backward-compatible fields; major bumps may change required fron
 The entity types in §2 are **built in** (`ostler/registry.py`) and fixed for every repo. A repo
 that needs a *different* OKF hierarchy — its own Concept kinds, nesting, required frontmatter,
 and status enums — declares one in a **per-repo** file: `.agents/templates.yml`. This sits
-alongside `.agents/ids.json` (§6): `.agents/` is ostler's repo-local, non-`docs/` state, and
+in `.agents/`, ostler's repo-local, non-`docs/` state, and
 `.agents/templates.yml` extends that same convention rather than a global `~/.config/` store.
 
 A template kind is **live the moment it's written** — `ostler new/find/set/remove` and `ostler

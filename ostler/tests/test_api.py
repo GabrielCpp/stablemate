@@ -11,6 +11,8 @@ from ostler import Ostler
 
 from conftest import FOO_ID, present, specs_root, write, epics_root
 
+pytestmark = pytest.mark.usefixtures("minting_root")
+
 
 def test_reads_match_the_underlying_core(repo: Path):
     okf = Ostler(repo)

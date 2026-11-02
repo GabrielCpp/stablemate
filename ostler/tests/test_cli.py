@@ -129,9 +129,8 @@ def test_create_backlog_item_and_milestone_parse_generated_id_inputs():
 
 
 def test_backlog_adopt_names_the_list_and_its_repository():
-    args = parse(["backlog", "adopt", "--repo", "api-service", "docs/old.md", "--prefix", "acme"])
+    args = parse(["backlog", "adopt", "--repo", "api-service", "docs/old.md"])
     assert args.op == "adopt" and args.repo == "api-service" and args.source == "docs/old.md"
-    assert args.prefix == "acme"
     with pytest.raises(SystemExit):
         parse(["backlog", "adopt", "docs/old.md"])
 

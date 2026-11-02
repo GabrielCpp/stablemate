@@ -14,6 +14,8 @@ from ostler.api import Ostler
 from ostler.cli import main
 from ostler.model import load
 
+pytestmark = pytest.mark.usefixtures("minting_root")
+
 
 def run(root: Path, *argv: str) -> int:
     return main(["-C", str(root), *argv])
@@ -93,7 +95,7 @@ def test_the_listing_has_one_line_per_record_closed_ones_included(tmp_path: Path
 
 def test_a_short_handle_locates_the_records_folder(tmp_path: Path) -> None:
     graph = load(tmp_path)
-    minted = ids.allocate(graph, "acme")
+    minted = ids.allocate(graph)
     register.write(graph, record(id=minted))
 
     handle = ids.table(ids.known(graph))[minted]

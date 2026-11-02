@@ -87,7 +87,7 @@ def _title_line(doc: markdown.MarkdownDoc) -> int:
 
 
 def _built(
-    graph: Graph, text: str, repo: str, prefix: str | None
+    graph: Graph, text: str, repo: str
 ) -> tuple[list[register.Record], set[str], str]:
     """Every record the list yields, the ids it kept, and the reason it cannot be built when it cannot."""
     doc = markdown.split(text)
@@ -110,7 +110,7 @@ def _built(
                 wrapped.pop()
             try:
                 record = register.Record(
-                    id=ident or ids.allocate(graph, prefix), repo=repo, area=area, pattern=PATTERN,
+                    id=ident or ids.allocate(graph), repo=repo, area=area, pattern=PATTERN,
                     filed_by=filed_by, summary=_summary(bullet.bracketed[1] if ident else bullet.text),
                     body=f"{_body_of(wrapped)}\n\n{context}",
                 )
@@ -130,11 +130,11 @@ def _rollback(written: list[Path]) -> None:
         register.discard(file)
 
 
-def import_list(graph: Graph, source: Path, repo: str, prefix: str | None = None) -> Imported:
+def import_list(graph: Graph, source: Path, repo: str) -> Imported:
     """Turn the bullets of *source* into records of *repo*, all or none, then delete *source*."""
     if not source.is_file():
         return Imported(False, f"no list at {source}")
-    built, kept, reason = _built(graph, source.read_text(encoding="utf-8"), repo, prefix)
+    built, kept, reason = _built(graph, source.read_text(encoding="utf-8"), repo)
     if reason:
         return Imported(False, reason)
     if not built:

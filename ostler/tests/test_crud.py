@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 
@@ -8,33 +7,33 @@ import pytest
 from ostler import crud, doctor, markdown, query, registry, select, todo
 from ostler.model import load
 
-from conftest import FOO_ID, present, epics_root
+from conftest import FOO_ID, present, epics_root, write_prefix
+
+pytestmark = pytest.mark.usefixtures("minting_root")
 
 
 def test_create_epic_allocates_id_and_parses(tmp_path: Path):
     g = load(tmp_path)
-    res = crud.create_epic(g, "billing", "Billing at parity", prefix="acme")
+    res = crud.create_epic(g, "billing", "Billing at parity")
     assert res.ok
     assert res.entity_name == "0001-billing"
     g2 = load(tmp_path)
     assert g2.profile == "full"
     epic = select.epic_by_name(g2, "billing")
     assert epic is not None
-    assert epic.eid.startswith("acme-") and epic.title == "Billing at parity"
+    assert epic.eid.startswith("X-") and epic.title == "Billing at parity"
     assert len(epic.eid.split("-", 1)[1]) == 26
-    ids = json.loads((tmp_path / ".agents/ids.json").read_text())
-    assert ids["prefix"] == "acme" and "counter" not in ids
 
 
 def test_create_milestone_allocates_id_and_records_source_items(tmp_path: Path):
     source = "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC"
 
     res = crud.create_milestone(
-        load(tmp_path), "docs-app-mvp", "Docs App MVP", [source], prefix="acme"
+        load(tmp_path), "docs-app-mvp", "Docs App MVP", [source]
     )
 
     assert res.ok and res.entity_name == "docs-app-mvp"
-    assert res.entity_id.startswith("acme-")
+    assert res.entity_id.startswith("X-")
     milestone = load(tmp_path).milestone_by_name("docs-app-mvp")
     assert milestone is not None
     assert milestone.eid == res.entity_id
@@ -50,7 +49,7 @@ def test_create_milestone_allocates_id_and_records_source_items(tmp_path: Path):
 
 def test_create_story_adds_block_and_scaffold(tmp_path: Path):
     g = load(tmp_path)
-    crud.create_epic(g, "billing", "Billing", prefix="acme")
+    crud.create_epic(g, "billing", "Billing")
     crud.add_seed(load(tmp_path), "billing", "apercu-body", status="researched", summary="the body")
     res = crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu body",
                             covers=["apercu-body"], depends=[])
@@ -79,7 +78,7 @@ def test_create_story_adds_block_and_scaffold(tmp_path: Path):
 
 def test_story_scaffold_writes_every_required_section(tmp_path: Path):
     """And stamps nothing: the sections are the record that the contract was honored."""
-    crud.create_epic(load(tmp_path), "billing", "Billing", prefix="acme")
+    crud.create_epic(load(tmp_path), "billing", "Billing")
     assert crud.create_story(load(tmp_path), "billing", "01-current", "Current shape").ok
 
     story_path = epics_root() / "0001-billing/stories/01-current/story.md"
@@ -92,7 +91,7 @@ def test_story_scaffold_writes_every_required_section(tmp_path: Path):
 
 def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):
     """The scaffold states the DAG edge in the file a reader has open, not one file up."""
-    crud.create_epic(load(tmp_path), "billing", "Billing", prefix="acme")
+    crud.create_epic(load(tmp_path), "billing", "Billing")
     assert crud.create_story(load(tmp_path), "billing", "01-first", "First").ok
     assert crud.create_story(load(tmp_path), "billing", "02-second", "Second",
                              depends=["01-first"]).ok
@@ -117,7 +116,7 @@ def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):
 
 def test_none_passed_as_a_blocker_is_not_written_as_one(tmp_path: Path):
     """`--depends '(none)'` is how a caller says "no blockers"; it must not name one."""
-    crud.create_epic(load(tmp_path), "billing", "Billing", prefix="acme")
+    crud.create_epic(load(tmp_path), "billing", "Billing")
     assert crud.create_story(load(tmp_path), "billing", "01-only", "Only",
                              depends=["(none)"]).ok
     text = (epics_root() / "0001-billing/stories/01-only/story.md"
@@ -137,7 +136,7 @@ def test_set_status_updates_frontmatter_and_line(repo: Path):
 def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
     """A story may legitimately write about status and about QA passing."""
     g = load(tmp_path)
-    epic_dir = crud.create_epic(g, "billing", "Billing", prefix="acme").entity_name
+    epic_dir = crud.create_epic(g, "billing", "Billing").entity_name
     story_id = crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu").entity_id
     story_md = epics_root() / f"{epic_dir}/stories/01-apercu/story.md"
     prose = (
@@ -162,7 +161,7 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
 def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path: Path):
     """The read half on its own: prose mentioning "QA passed" must not make a story done."""
     g = load(tmp_path)
-    epic_dir = crud.create_epic(g, "billing", "Billing", prefix="acme").entity_name
+    epic_dir = crud.create_epic(g, "billing", "Billing").entity_name
     crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
     story_md = epics_root() / f"{epic_dir}/stories/01-apercu/story.md"
     story_md.write_text(
@@ -186,7 +185,7 @@ def test_delete_story_removes_block_and_dir(repo: Path):
 
 def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
     """The two edges are written where each is read, and nothing else in either file moves."""
-    assert crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t").ok
+    assert crud.create_epic(load(tmp_path), "accounts", "Accounts").ok
     assert crud.add_seed(load(tmp_path), "accounts", "sign-in", status="researched").ok
     assert crud.add_seed(load(tmp_path), "accounts", "raw-xml", status="researched").ok
     assert crud.create_story(
@@ -241,7 +240,7 @@ def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
 
 def test_update_story_states_its_fixtures_only_when_asked(tmp_path: Path):
     """`--fixtures` is optional where `--depends` is not, and that asymmetry is deliberate."""
-    assert crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t").ok
+    assert crud.create_epic(load(tmp_path), "accounts", "Accounts").ok
     editor_id = crud.create_story(load(tmp_path), "accounts", "editor", "Editor").entity_id
     story_path = epics_root() / "0001-accounts/stories/editor/story.md"
     assert "## Fixtures\n\n(none)\n" in story_path.read_text(encoding="utf-8")
@@ -279,10 +278,10 @@ def test_ensure_fixtures_adds_the_section_to_a_story_written_before_it_existed(t
 
 
 def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):
-    created = crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t")
+    created = crud.create_epic(load(tmp_path), "accounts", "Accounts")
     assert created.ok
-    assert crud.create_epic(load(tmp_path), "profiles", "Profiles", prefix="t").ok
-    assert crud.create_milestone(load(tmp_path), "mvp", "MVP", prefix="t").ok
+    assert crud.create_epic(load(tmp_path), "profiles", "Profiles").ok
+    assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
     milestone_path = tmp_path / "docs/milestones/mvp/milestone.md"
     milestone_path.write_text(
         milestone_path.read_text(encoding="utf-8").replace(
@@ -306,9 +305,9 @@ def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):
 def test_delete_epic_finishes_cleanup_after_interruption(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    created = crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t")
+    created = crud.create_epic(load(tmp_path), "accounts", "Accounts")
     assert created.ok
-    assert crud.create_milestone(load(tmp_path), "mvp", "MVP", prefix="t").ok
+    assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
     milestone_path = tmp_path / "docs/milestones/mvp/milestone.md"
     milestone_path.write_text(
         milestone_path.read_text(encoding="utf-8").replace("epics: []", "epics:\n- accounts")
@@ -338,9 +337,9 @@ def test_delete_epic_finishes_cleanup_after_interruption(
 
 def test_list_epics_falls_back_to_milestone_order_without_index(tmp_path: Path):
     """A milestone-based repo with no docs/epics/index.md still yields a work queue."""
-    created = crud.create_epic(load(tmp_path), "accounts", "Accounts", prefix="t")
+    created = crud.create_epic(load(tmp_path), "accounts", "Accounts")
     assert created.ok
-    assert crud.create_milestone(load(tmp_path), "mvp", "MVP", prefix="t").ok
+    assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
     milestone_path = tmp_path / "docs/milestones/mvp/milestone.md"
     milestone_path.write_text(
         milestone_path.read_text(encoding="utf-8").replace("epics: []", "epics:\n- accounts")
@@ -359,7 +358,7 @@ def test_seed_add_remove(repo: Path):
 
 def test_create_feature(tmp_path: Path):
     res = crud.create_feature(load(tmp_path), "signin", "Sign in", area="auth",
-                              route="/signin", prefix="x")
+                              route="/signin")
     assert res.ok
     feats = load(tmp_path).features
     assert any(f.slug == "signin" and f.area == "auth" for f in feats)
@@ -431,9 +430,10 @@ def test_story_frontmatter_carries_the_allocated_id(repo: Path):
 
 
 def test_story_id_uses_the_repo_prefix(tmp_path: Path):
-    """Prefix is the first four letters of the repo name, uppercased — so `todo-app` mints TODO-n."""
+    """The prefix is the repo's `repo.id_prefix`, so a repo that sets `TODO` mints TODO-n."""
     root = tmp_path / "todo-app"
     (root / "docs").mkdir(parents=True)
+    write_prefix(root, "TODO")
     crud.create_epic(load(root), "e1", "E1")
     crud.add_seed(load(root), "e1", "s1", status="researched")
     res = crud.create_story(load(root), "e1", "01-x", "X", covers=["s1"])

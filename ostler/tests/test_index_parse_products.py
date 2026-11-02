@@ -42,7 +42,7 @@ COMMANDS = pytest.mark.parametrize(
 )
 
 GLOBAL_CHECKS = ("_check_reachability", "_check_locators", "_check_milestones",
-                 "_check_epic", "_check_frozen")
+                 "_check_epic")
 
 
 def record_parses(monkeypatch: pytest.MonkeyPatch) -> tuple[list[str], list[str]]:

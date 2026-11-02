@@ -5,23 +5,23 @@ title: plan scratch repo
 ---
 # plan scratch repo
 
-Seeds `plan-scratch/`, a small planning repo of its own under the checkout: an id prefix `TST`, two
+Seeds `plan-scratch/`, a small planning repo of its own under the checkout: an `agents.yml` whose `repo.id_prefix` is `TST`, two
 templates (`tpl` with a `note` kind, `tpl2` with a `memo` kind) and two `note` documents. It holds four
 epics: `0001-first` with nine stories, `0002-second` with one, and `0003-third` and `0004-junk` with
 none. It also holds two features and one milestone. Its artifacts dir is `plan-scratch/art`, and the
 register there holds two open records of `api-service`, X-1 and X-2, both in the `billing` area.
 Every command that reads or writes the register runs with `STABLEMATE_ARTIFACTS_DIR` set to that
 dir, so no check touches the operator's own artifacts repo. Beside the repo sits
-`plan-scratch/old-list.md`, an old two-bullet list for the import. The first two epics are queued. One story carries a conflict, one is blocked and two are
-frozen. Commands run there with `-C plan-scratch`, and each command acts on an entity of its own, so
-the order they run in does not matter.
+`plan-scratch/old-list.md`, an old two-bullet list for the import. The first two epics are queued. One story carries a conflict and one is blocked. Commands run there with `-C plan-scratch`, and each command acts on an entity of its own, so
+the order they run in does not matter. Beside it sits `plan-bare/`, a repo with an empty epics shelf and
+no `agents.yml`, where a mint has no prefix to read and refuses.
 
 ## Steps
 
-### write-plan-ids
+### write-plan-config
 
 - kind: seed
-- run: mkdir -p plan-scratch/.agents && printf -- '{\n  "prefix": "TST",\n  "frozen": {\n    "TST-01M585PAZRC83P9AZVSSQB33SZ": {\n      "kind": "story",\n      "hash": "fe8f225fbc91df20",\n      "approvedAt": "2026-10-18T18:52:05.677246+00:00",\n      "approvedBy": "me",\n      "note": "ok"\n    },\n    "TST-01M585PBPH32Q9TTFVDW00K8HZ": {\n      "kind": "story",\n      "hash": "5daeaad5163fa9d6",\n      "approvedAt": "2026-10-18T18:52:06.402413+00:00",\n      "approvedBy": "me",\n      "note": "ok"\n    }\n  }\n}\n' > plan-scratch/.agents/ids.json && printf -- 'tpl:\n  title: tpl\n  kinds:\n  - name: note\n    doc_root: note\n    default_path: docs/note\n    path_template: '\''{name}/note.md'\''\n    required:\n    - type\ntpl2:\n  title: tpl2\n  kinds:\n  - name: memo\n    doc_root: memo\n    default_path: docs/memo\n    path_template: '\''{name}/memo.md'\''\n    required:\n    - type\n' > plan-scratch/.agents/templates.yml
+- run: mkdir -p plan-scratch/.agents && printf -- 'repo:\n  id_prefix: TST\n' > plan-scratch/agents.yml && printf -- 'tpl:\n  title: tpl\n  kinds:\n  - name: note\n    doc_root: note\n    default_path: docs/note\n    path_template: '\''{name}/note.md'\''\n    required:\n    - type\ntpl2:\n  title: tpl2\n  kinds:\n  - name: memo\n    doc_root: memo\n    default_path: docs/memo\n    path_template: '\''{name}/memo.md'\''\n    required:\n    - type\n' > plan-scratch/.agents/templates.yml
 
 ### write-plan-epics
 
@@ -48,3 +48,7 @@ the order they run in does not matter.
 - kind: seed
 - run: mkdir -p plan-scratch/docs/note/n2 plan-scratch/docs/note/n3 && printf -- '---\ntype: note\n---\n# n2\n\n' > plan-scratch/docs/note/n2/note.md && printf -- '---\ntype: note\n---\n# n3\n\n' > plan-scratch/docs/note/n3/note.md
 
+### write-plan-bare
+
+- kind: seed
+- run: mkdir -p plan-bare/art/epics plan-bare/docs/services

@@ -180,12 +180,11 @@ def file_record(
     body: str = "",
     status: Status = "open",
     record_id: str = "",
-    prefix: str | None = None,
 ) -> Filing:
     """Build a record, minting its id when none is given, and shelve it."""
     try:
         record = Record(
-            id=record_id or ids.allocate(graph, prefix),
+            id=record_id or ids.allocate(graph),
             repo=repo, area=area, pattern=pattern, symbols=list(symbols),
             filed_by=filed_by, source_story=source_story, summary=summary, body=body, status=status,
         )
@@ -251,12 +250,11 @@ def file_person(
     symbols: Iterable[str] = (),
     body: str = "",
     record_id: str = "",
-    prefix: str | None = None,
 ) -> Filing:
     """File a record a person wrote."""
     return file_record(
         graph, repo=repo, area=area, pattern=pattern, summary=summary, filed_by="person",
-        symbols=symbols, body=body, record_id=record_id, prefix=prefix,
+        symbols=symbols, body=body, record_id=record_id,
     )
 
 

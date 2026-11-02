@@ -30,7 +30,7 @@ index = _Seam()
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 EXPECTED_EPOCH_LABELS = frozenset(
-    {"version", "schemas", "kinds", "config", "freeze", "shape"}
+    {"version", "schemas", "kinds", "config", "shape"}
 )
 
 PAYLOAD = {"frontmatter": {"type": "feature"}, "nodes": ["screen/save"]}
@@ -41,7 +41,6 @@ def make_repo(root: Path, *, doc: str = "one\n") -> Path:
     write(root / "docs/services/area/rec.md", doc)
     write(root / "ostler.yml", "organization: {}\n")
     write(root / ".agents/templates.yml", "{}\n")
-    write(root / ".agents/ids.json", '{"frozen": {}}\n')
     return root
 
 
@@ -119,11 +118,10 @@ def test_changing_any_single_epoch_input_invalidates_every_entry(tmp_path, monke
     [
         ("config", "ostler.yml", "organization: {name: renamed}\n"),
         ("kinds", ".agents/templates.yml", "spike:\n  doc_root: docs/spikes\n"),
-        ("freeze", ".agents/ids.json", '{"frozen": {"01-foo": {"hash": "abc"}}}\n'),
     ],
 )
 def test_editing_a_global_input_on_disk_invalidates_every_entry(tmp_path, label, relpath, text):
-    """The three inputs that live in the repo, moved the way a run actually moves them."""
+    """The two inputs that live in the repo, moved the way a run actually moves them."""
     root = make_repo(tmp_path / "acme")
     doc = root / "docs/services/area/rec.md"
     directory = tmp_path / "index"

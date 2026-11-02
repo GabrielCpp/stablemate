@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from conftest import write
-from ostler import doctor
+from conftest import write, write_prefix
+from ostler import doctor, ids
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.model import find_root, load
 
@@ -91,3 +91,12 @@ def test_an_explicit_checkout_beats_the_member(workspace, tmp_path):
     report = doctor.run(load(workspace["api"]), checkouts={"api-service": other})
 
     assert "missing-code-symbol" in {finding.code for finding in report.findings}
+
+
+def test_a_mint_from_a_member_uses_the_artifacts_repos_prefix(workspace):
+    write_prefix(workspace["artifacts"], "ARTI")
+    write_prefix(workspace["api"], "MEMB")
+
+    minted = ids.allocate(load(workspace["api"] / "src"))
+
+    assert minted.startswith("ARTI-")

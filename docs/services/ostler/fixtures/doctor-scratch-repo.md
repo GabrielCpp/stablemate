@@ -11,8 +11,7 @@ shell command. The `launch` book has a fixture that names a launch screen the sc
 not support. The `ui` book has a screen that names its component with a description, checks a key no
 browser can press, and answers a dialog with neither accept nor dismiss. The `ops` book has a runbook
 that names a driver that does not exist. The same repo also gets a flat `docs/milestones/sample.md`,
-a milestone filed as a single file instead of its own `<slug>/milestone.md` folder. The seed also
-writes `doctor-ids-scratch/`, a repo of its own whose id registry holds a prefix of the wrong type.
+a milestone filed as a single file instead of its own `<slug>/milestone.md` folder.
 Commands run there with `-C`, so no scenario sees these defects in the book of the checkout.
 
 The seed also writes three books about outside systems under `doctor-scratch/docs/services/`. The
@@ -58,15 +57,10 @@ which is on no shelf. Its commands run with `STABLEMATE_ARTIFACTS_DIR` set to th
 - kind: seed
 - run: mkdir -p doctor-scratch/docs/services/ops && printf -- '---\ntype: entries\nslug: entries\ntitle: ops\n---\n\n- \133Stack](stack.md)\n' > doctor-scratch/docs/services/ops/entries.md && printf -- '---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n- driver: ftp\n' > doctor-scratch/docs/services/ops/stack.md
 
-### write-doctor-ids
-
-- kind: seed
-- run: mkdir -p doctor-ids-scratch/.agents doctor-ids-scratch/art/epics doctor-ids-scratch/docs/services/demo && printf -- '{"prefix": 5}\n' > doctor-ids-scratch/.agents/ids.json && printf -- '---\ntype: entries\nslug: entries\ntitle: Demo\n---\n# Demo\n' > doctor-ids-scratch/docs/services/demo/entries.md
-
 ### write-doctor-register
 
 - kind: seed
-- run: mkdir -p doctor-register-scratch/.agents doctor-register-scratch/art/epics doctor-register-scratch/docs/services/demo doctor-register-scratch/art/backlogs/api-service/billing/X-1 doctor-register-scratch/art/backlogs/api-service/billing/X-2 doctor-register-scratch/art/adr && printf -- '{"prefix": "TST"}\n' > doctor-register-scratch/.agents/ids.json && printf -- '---\ntype: entries\nslug: entries\ntitle: Demo\n---\n# Demo\n' > doctor-register-scratch/docs/services/demo/entries.md && printf -- '---\nid: X-1\nrepo: api-service\narea: billing\npattern: untriaged\nfiled_by: person\nsummary: first item\ndecision: D-9\n---\n' > doctor-register-scratch/art/backlogs/api-service/billing/X-1/record.md && printf -- 'no frontmatter here\n' > doctor-register-scratch/art/backlogs/api-service/billing/X-2/record.md && printf -- '---\nid: D-1\ntitle: One retry policy\nstatus: proposed\nrepos:\n- api-service\nevidence:\n- X-1\n- X-7\n---\n\n## Context\n\n## Decision\n\n## Consequences\n' > doctor-register-scratch/art/adr/D-1.md
+- run: mkdir -p doctor-register-scratch/art/epics doctor-register-scratch/docs/services/demo doctor-register-scratch/art/backlogs/api-service/billing/X-1 doctor-register-scratch/art/backlogs/api-service/billing/X-2 doctor-register-scratch/art/adr && printf -- '---\ntype: entries\nslug: entries\ntitle: Demo\n---\n# Demo\n' > doctor-register-scratch/docs/services/demo/entries.md && printf -- '---\nid: X-1\nrepo: api-service\narea: billing\npattern: untriaged\nfiled_by: person\nsummary: first item\ndecision: D-9\n---\n' > doctor-register-scratch/art/backlogs/api-service/billing/X-1/record.md && printf -- 'no frontmatter here\n' > doctor-register-scratch/art/backlogs/api-service/billing/X-2/record.md && printf -- '---\nid: D-1\ntitle: One retry policy\nstatus: proposed\nrepos:\n- api-service\nevidence:\n- X-1\n- X-7\n---\n\n## Context\n\n## Decision\n\n## Consequences\n' > doctor-register-scratch/art/adr/D-1.md
 
 ### write-doctor-resources
 

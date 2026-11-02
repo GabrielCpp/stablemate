@@ -61,9 +61,9 @@ every repository's `RepositorySnapshot`. `catalog_path`/`load_catalog` locate an
 byte under a repository's declared scopes so a catalog entry can detect its source has moved
 without re-walking the full diff on every run.
 
-- code: ostler/ostler/api.py::Ostler@6811a24f7c94
+- code: ostler/ostler/api.py::Ostler@f5ce9e70ddcc
 - code: ostler/ostler/api.py::Snapshot@bb8069f3cdad
-- code: ostler/ostler/api.py::_snapshot_of@3687ae57a7e6
+- code: ostler/ostler/api.py::_snapshot_of@2ff6f81340e1
 - code: ostler/ostler/api.py::_listing@8f45c9c13650
 - code: ostler/ostler/api.py::_file_sha@0e0444e1f3e9
 - code: ostler/ostler/api.py::_story_candidates@71c4b40f2cdd

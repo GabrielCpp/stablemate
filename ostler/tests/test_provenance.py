@@ -9,6 +9,7 @@ from ostler import Ostler, crud, query as query_mod
 from ostler.cli import main
 from ostler.model import load
 from ostler.provenance import commit_story, node_provenance, story_for_node, story_provenance
+from conftest import write_prefix
 
 def _git(root: Path, *args: str) -> str:
     result = subprocess.run(
@@ -27,8 +28,9 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, str, str]:
     docs = tmp_path / "product-docs"
     source = tmp_path / "api-service"
     docs.mkdir()
+    write_prefix(docs, "BILL")
     source.mkdir()
-    created_epic = crud.create_epic(load(docs), "billing", "Billing", prefix="BILL")
+    created_epic = crud.create_epic(load(docs), "billing", "Billing")
     assert created_epic.ok
     created_story = crud.create_story(load(docs), "billing", "create-invoice", "Create invoice")
     assert created_story.ok

@@ -1,9 +1,8 @@
-"""Id allocation — ostler owns ``.agents/ids.json`` (subsumes the workflow's allocate-ids script)."""
+"""Id allocation — a mint takes its prefix from ``repo.id_prefix`` in the ``agents.yml`` at the graph root."""
 
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 import re
 import threading
@@ -13,6 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from ostler import path as path_mod
+from ostler._vendor.stablemate_core.config import ConfigError
+from ostler._vendor.stablemate_core.manifest import MANIFEST_NAME
+from ostler.manifest import read_manifest
 from ostler.model import Graph
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -24,45 +26,6 @@ HANDLE_MIN = 6
 _mono_lock = threading.Lock()
 _last_ms = -1
 _last_rand = 0
-
-
-def path_for(graph: Graph) -> Path:
-    return graph.root / ".agents" / "ids.json"
-
-
-def load(graph: Graph) -> dict | None:
-    if graph.ids is not None:
-        return dict(graph.ids)
-    p = path_for(graph)
-    if p.exists():
-        try:
-            return json.loads(p.read_text(encoding="utf-8"))
-        except ValueError:
-            return None
-    return None
-
-
-def save(graph: Graph, ids: dict) -> None:
-    p = path_for(graph)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(ids, indent=2) + "\n", encoding="utf-8")
-    graph.ids = ids
-
-
-def _repo_prefix(graph: Graph) -> str:
-    """Derived id prefix: the first 4 letters of the CWD repo's name, uppercased."""
-    letters = re.sub(r"[^A-Za-z0-9]", "", graph.root.name)
-    return (letters[:4] or "REPO").upper()
-
-
-def ensure(graph: Graph, prefix: str | None = None) -> dict:
-    """Return the registry, creating it if absent (prefix derived from the repo name, then pinned)."""
-    ids = load(graph)
-    if ids is not None:
-        return ids
-    ids = {"prefix": prefix or _repo_prefix(graph)}
-    save(graph, ids)
-    return ids
 
 
 def _b32(value: int, length: int) -> str:
@@ -89,9 +52,27 @@ def new_ulid() -> str:
         return _b32(_last_ms, _TIME_LEN) + _b32(_last_rand, _RAND_LEN)
 
 
-def allocate(graph: Graph, prefix: str | None = None) -> str:
+_PREFIX = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,15}")
+
+
+def repo_prefix(graph: Graph) -> str:
+    """The id prefix the manifest at the graph root sets, or a :class:`ConfigError` naming where to set it."""
+    manifest_path = graph.root / MANIFEST_NAME
+    manifest = read_manifest(graph.root)
+    prefix = manifest.repo.id_prefix if manifest is not None else None
+    if not prefix:
+        raise ConfigError(f"no id prefix: set `repo.id_prefix` in {manifest_path}")
+    if not _PREFIX.fullmatch(prefix):
+        raise ConfigError(
+            f"`repo.id_prefix` in {manifest_path} is {prefix!r}: "
+            "use a letter, then up to 15 letters, digits or underscores"
+        )
+    return prefix
+
+
+def allocate(graph: Graph) -> str:
     """Mint the next id: ``<PREFIX>-<ULID>``."""
-    return f"{ensure(graph, prefix)['prefix']}-{new_ulid()}"
+    return f"{repo_prefix(graph)}-{new_ulid()}"
 
 
 def _split(identifier: str) -> tuple[str, str]:
@@ -206,7 +187,7 @@ def table(existing: Iterable[str], min_len: int = HANDLE_MIN) -> dict[str, str]:
 
 
 _ID_TOKEN = re.compile(
-    rf"(?<![/\\])\b[A-Za-z][A-Za-z0-9_]{{0,15}}-[{_CROCKFORD}]{{{ULID_LEN}}}\b(?![/\\]|\.\w)"
+    rf"(?<![/\\])\b{_PREFIX.pattern}-[{_CROCKFORD}]{{{ULID_LEN}}}\b(?![/\\]|\.\w)"
 )
 
 

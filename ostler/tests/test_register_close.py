@@ -7,10 +7,13 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 from ostler import ids, register
 from ostler.api import Ostler
 from ostler.cli import main
 from ostler.model import load
+
+pytestmark = pytest.mark.usefixtures("minting_root")
 
 
 def run(root: Path, *argv: str) -> int:
@@ -144,7 +147,7 @@ def test_prune_exits_non_zero_for_an_unknown_id_and_a_conflicting_status(tmp_pat
 
 def test_prune_takes_a_short_handle(tmp_path: Path) -> None:
     minted = Ostler(tmp_path).file_record(
-        repo="api-service", area="billing", pattern="p", summary="s", filed_by="qa", prefix="acme")
+        repo="api-service", area="billing", pattern="p", summary="s", filed_by="qa")
     assert minted.record and minted.path
     handle = ids.table(ids.known(load(tmp_path)))[minted.record.id]
 

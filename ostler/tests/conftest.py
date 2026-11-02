@@ -62,8 +62,13 @@ def write(path: Path, text: str) -> None:
 
 
 def write_json(path: Path, data: dict) -> None:
-    """Only ``.agents/ids.json`` remains JSON in this format."""
+    """A JSON file under a test root."""
     write(path, json.dumps(data, indent=2) + "\n")
+
+
+def write_prefix(root: Path, prefix: str = "X") -> None:
+    """A manifest at *root* whose ``repo.id_prefix`` is *prefix*, so a mint there has one to read."""
+    write(root / "agents.yml", f"repo:\n  id_prefix: {prefix}\n")
 
 
 def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
@@ -237,6 +242,13 @@ UNKNOWN_BULLET_ALLOWED_TESTS = frozenset({
 def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
     """Specs live in the user's artifacts folder, so no test may resolve to the real one."""
     monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(tmp_path_factory.mktemp("artifacts")))
+
+
+@pytest.fixture
+def minting_root(tmp_path: Path) -> Path:
+    """The test's own root, carrying the ``repo.id_prefix`` a mint there reads."""
+    write_prefix(tmp_path)
+    return tmp_path
 
 
 @pytest.fixture(autouse=True)

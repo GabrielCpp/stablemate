@@ -13,12 +13,12 @@ records, and `ostler doctor` names a record that does not parse. The review-debt
 the whole shelf and groups it into trends. A cluster of records can become a
 [decision record](decision-records.md) that names them as its evidence.
 
-- code: ostler/ostler/register.py::Record@c830fda449ae
-- code: ostler/ostler/register.py::records@c830fda449ae
-- code: ostler/ostler/register.py::write@c830fda449ae
-- code: ostler/ostler/register.py::close@c830fda449ae
-- code: ostler/ostler/register.py::file_person@c830fda449ae
-- code: ostler/ostler/register_import.py::import_list@307db9c8d802
+- code: ostler/ostler/register.py::Record@d1f96413c9a5
+- code: ostler/ostler/register.py::records@610073197f8a
+- code: ostler/ostler/register.py::write@55d6c57dad0c
+- code: ostler/ostler/register.py::close@24c40f91b445
+- code: ostler/ostler/register.py::file_person@10c95185670e
+- code: ostler/ostler/register_import.py::import_list@5ee3b576864a
 - code: ostler/ostler/path.py::register_root@6a1acd1702fd
 - tests: ostler/tests/test_register.py::test_write_lays_the_record_under_repo_area_id_in_the_artifacts_dir
 - tests: ostler/tests/test_register.py::test_the_listing_has_one_line_per_record_closed_ones_included

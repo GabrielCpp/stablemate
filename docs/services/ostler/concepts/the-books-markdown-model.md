@@ -73,7 +73,7 @@ run on it.
 `index.py` is the on-disk half of the caching `model.py`'s in-memory `_Cached` only covers within
 one process: `IndexStore` is a content-addressed store of parse products for one repository root,
 keyed by `epoch` (a single combined hash over every input that could invalidate it —
-`epoch_inputs`, `_schemas_material`, `_kinds_material`, `_config_material`, `_freeze_material`,
+`epoch_inputs`, `_schemas_material`, `_kinds_material`, `_config_material`,
 `_shape_material`, `_ostler_version`); `content_sha`/`_file_sha`/`_sha` hash one file's content,
 `_nested_types`/`_reachable_dataclasses`/`dataclass_shape_digest` hash a dataclass's shape so a
 code change to a model class invalidates the store without a content change to any book file;
@@ -95,7 +95,7 @@ group (and most of the scaffolding and editing group) returns. `keys.py`'s `pres
 parse a `press:` bullet's key name against the small grammar of pressable key names a book can
 declare. `__init__.py` is empty.
 
-- code: ostler/ostler/model.py::Graph@4cecd6440d86
+- code: ostler/ostler/model.py::Graph@96b7acc196ed
 - code: ostler/ostler/model.py::UINode@c71aa17614e7
 - code: ostler/ostler/model.py::Story@cc19afdc0a41
 - code: ostler/ostler/model.py::Epic@0351d65b6600
@@ -103,7 +103,7 @@ declare. `__init__.py` is empty.
 - code: ostler/ostler/model.py::FeatureRecord@f25f266314bb
 - code: ostler/ostler/model.py::SeedItem@50d55f6e9e46
 - code: ostler/ostler/model.py::Entry@5c7160a18c7a
-- code: ostler/ostler/model.py::load@cd542ca5a0c9
+- code: ostler/ostler/model.py::load@35c0d4f2eede
 - code: ostler/ostler/model.py::find_root@a03e6d51e782
 - code: ostler/ostler/model.py::doc_roots@cc98ffe30811
 - code: ostler/ostler/model.py::read_doc@839985ca5f85

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
-import json
 import os
 import pickle
 import time
@@ -36,14 +35,11 @@ PRUNE_STAMP_NAME = ".last-prune"
 
 CONFIG_FILENAMES = MANIFEST_FILENAMES
 
-IDS_RELPATH = (".agents", "ids.json")
-
 EPOCH_LABELS: tuple[str, ...] = (
     "version",
     "schemas",
     "kinds",
     "config",
-    "freeze",
     "shape",
 )
 
@@ -157,17 +153,6 @@ def _config_material(root: Path) -> str:
     return _sha(*chunks)
 
 
-def _freeze_material(root: Path) -> str:
-    """The ``frozen`` table of ``.agents/ids.json``, not the whole registry."""
-    path = root.joinpath(*IDS_RELPATH)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return _absent()
-    frozen = data.get("frozen") if isinstance(data, dict) else None
-    return _sha(json.dumps(frozen, sort_keys=True, default=str).encode("utf-8"))
-
-
 def _shape_material() -> str:
     """The stored dataclasses' field-name-and-annotation digest, as an epoch input.
 
@@ -189,7 +174,6 @@ def epoch_inputs(root: Path) -> dict[str, str]:
         "schemas": _schemas_material(),
         "kinds": _kinds_material(root),
         "config": _config_material(root),
-        "freeze": _freeze_material(root),
         "shape": _shape_material(),
     }
 

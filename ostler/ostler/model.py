@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from collections.abc import Mapping, Sequence
@@ -146,7 +145,6 @@ class Graph:
     features: list[FeatureRecord] = field(default_factory=list)
     ui_nodes: list[UINode] = field(default_factory=list)
     surfaces: dict[str, dict] = field(default_factory=dict)
-    ids: dict | None = None
     template_kinds: tuple = ()
     _ui_index: tuple[list[UINode] | None, int, dict[str, UINode]] = field(
         default=(None, -1, {}), init=False, repr=False, compare=False)
@@ -712,17 +710,7 @@ def load(
     _load_milestones(graph)
     if profile == "full":
         _load_epics(graph)
-        _load_ids(graph)
     return graph
-
-
-def _load_ids(graph: Graph) -> None:
-    p = graph.root / ".agents" / "ids.json"
-    if p.exists():
-        try:
-            graph.ids = json.loads(p.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            graph.ids = None
 
 
 @dataclass

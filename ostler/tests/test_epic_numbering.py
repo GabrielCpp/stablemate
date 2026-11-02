@@ -4,14 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from ostler import crud, doctor, path as path_mod, query, registry, select, todo
 from ostler.model import load
 
 from conftest import write, epics_root
 
+pytestmark = pytest.mark.usefixtures("minting_root")
+
 
 def _create(root: Path, name: str, title: str = "T") -> str:
-    return crud.create_epic(load(root), name, title, prefix="x").entity_name
+    return crud.create_epic(load(root), name, title).entity_name
 
 
 def test_directories_are_numbered_in_creation_order(tmp_path: Path):
@@ -40,7 +43,7 @@ def test_a_missing_number_in_the_middle_never_renumbers_its_survivors(tmp_path: 
 def test_creating_the_same_slug_twice_is_refused(tmp_path: Path):
     """Not "already exists" by directory name — `checkout` and `0001-checkout` are one epic, and creating the slug again would otherwise scaffold a second folder over the same work."""
     _create(tmp_path, "checkout")
-    res = crud.create_epic(load(tmp_path), "checkout", "Again", prefix="x")
+    res = crud.create_epic(load(tmp_path), "checkout", "Again")
     assert not res.ok and "already exists" in res.message
     assert len(path_mod.epic_dirs(load(tmp_path))) == 1
 

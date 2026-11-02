@@ -30,7 +30,6 @@ CHECKS = (
     "_check_locators",
     "_check_milestones",
     "_check_epic",
-    "_check_frozen",
 )
 UI_COMPONENTS = ("_check_ui_file", "_check_code_grounding", "required-bullet")
 

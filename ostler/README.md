@@ -182,7 +182,7 @@ accepted as input either way).
 | `doctor` `trace` | check conformance and referential integrity; walk the graph from any node |
 | `list` `search` `index` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
 | `create` `update` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, move the queue |
-| `edit` `freeze` `unfreeze` | repair a rename across the whole graph, or pin an approved story as ground truth |
+| `edit` | repair a rename across the whole graph |
 | `gc` | delete the book pages no link path from their service's `entries` page reaches |
 | `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
 | `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` `audit` | the `docs/services/` node/edge book — see below |
@@ -382,8 +382,7 @@ Three products, and only three:
 
 All three are pure functions of bytes, which is what lets them be stored under a content key
 with no invalidation rule beyond a single *epoch* hash over the global inputs (ostler's
-version, the bundled schemas, the dynamic kind registry, the config files, the freeze
-manifest). Change any of those and every entry is invalidated at once.
+version, the bundled schemas, the dynamic kind registry, the config files). Change any of those and every entry is invalidated at once.
 
 The verdict memo is the one product that is not ostler's own computation: it is what a model
 said, stored so an audit never asks twice. Its key says what could have moved the
@@ -395,7 +394,7 @@ to its node and rebased on recall. The two-week prune applies to it as to every 
 **Doctor's findings are not cached.** Nothing that a check *concluded* is ever served from the
 index — only the parse products a check reads. And the **graph-global checks are always
 recomputed**, on every run, never cached: reachability, the cross-epic seed and dependency
-constraints, milestones, locators and the frozen-story check together cost around 0.06s, so
+constraints, milestones, and locators together cost around 0.06s, so
 there is nothing to win by caching them and a whole class of transitive invalidation to lose.
 The hard half of the invalidation problem is the half that had nothing to gain.
 
@@ -528,7 +527,6 @@ referential-integrity contract:
 - **cross-epic references** — an id/slug used inside epic E that only resolves in another epic;
 - **orphan seeds** — an active seed no story covers;
 - **dangling references** — a knowledge path or sibling slug that resolves to nothing;
-- **frozen drift** — an approved (frozen) story/seed that changed or vanished.
 
 It exits non-zero when any error-level finding is present, so it drops straight into CI or a pre-commit
 hook. Warning-level findings (e.g. `story-covers-no-seed`, `ungrounded-surface`) are reported but do
@@ -536,12 +534,13 @@ not fail the check.
 
 ## Id allocation
 
-Ostler owns `.agents/ids.json` (`{prefix, frozen}`). `create backlog-item|milestone|epic|story|feature` allocates an id,
+`create backlog-item|milestone|epic|story|feature` allocates an id,
 scaffolds the canonical markdown, and (for stories) inserts the `### <slug>` block into the epic's
 `## Stories`. There is no external id allocator.
 
-An id is `<PREFIX>-<ULID>` — the repo prefix (first four letters of the repo name, pinned on first
-use) plus a monotonic ULID: 26 Crockford-Base32 chars encoding a millisecond timestamp and 80 bits
+The id prefix is `repo.id_prefix` in the `agents.yml` at the graph root: a letter, then up to 15 letters, digits or underscores. A mint refuses while it is unset or malformed, and the error names the key and the file.
+
+An id is `<PREFIX>-<ULID>` — the repo prefix (`repo.id_prefix`) plus a monotonic ULID: 26 Crockford-Base32 chars encoding a millisecond timestamp and 80 bits
 of randomness. It sorts by mint time and needs **no coordination**, so two worktrees, two processes
 or two clones never collide and there is no counter to lock or merge. An id is an opaque string.
 
@@ -604,7 +603,7 @@ root (`ostler.yml` is the legacy name of the same file and still loads, with a w
 
 The built-in types above (epic/story/knowledge/feature/spec) are fixed. For a *different*
 documentation shape — your own Concept kinds, nesting, required fields, status enums — declare it
-per-repo in **`.agents/templates.yml`** (git-tracked, alongside `.agents/ids.json`). A kind is live
+per-repo in **`.agents/templates.yml`** (git-tracked). A kind is live
 for `new`/`find`/`set`/`remove`/`doctor` the moment it's written — no separate activation step.
 
 ```bash

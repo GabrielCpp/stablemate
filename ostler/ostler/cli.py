@@ -12,7 +12,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import autofix as autofix_mod, backfill as backfill_mod, coverage, crud, crud_generic, decisions as decisions_mod, doctor, edit, fmt as fmt_mod, freeze as freeze_mod, graph as graph_mod, ids as ids_mod, layout as layout_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import autofix as autofix_mod, backfill as backfill_mod, coverage, crud, crud_generic, decisions as decisions_mod, doctor, edit, fmt as fmt_mod, graph as graph_mod, ids as ids_mod, layout as layout_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import explain
 from ostler import checks as checks_mod
 from ostler import carve as carve_mod
@@ -342,13 +342,11 @@ def _build_parser() -> argparse.ArgumentParser:
     cre = crs.add_parser("epic")
     cre.add_argument("name")
     cre.add_argument("--title", required=True)
-    cre.add_argument("--prefix")
     cre.add_argument("--json", action="store_true")
     crm = crs.add_parser("milestone")
     crm.add_argument("name")
     crm.add_argument("--title", required=True)
     crm.add_argument("--source-items", default="", dest="source_items")
-    crm.add_argument("--prefix")
     crm.add_argument("--json", action="store_true")
     crb = crs.add_parser("backlog-item", help="file a record on the Register, as `backlog add`")
     _record_flags(crb)
@@ -360,14 +358,12 @@ def _build_parser() -> argparse.ArgumentParser:
     crt.add_argument("--depends", default="",
                      help="sibling slugs that block this story; written as `- Blocked by:` "
                           "bullets in the story's own `## Dependencies` section")
-    crt.add_argument("--prefix")
     crt.add_argument("--json", action="store_true")
     crf = crs.add_parser("feature")
     crf.add_argument("slug")
     crf.add_argument("--title", required=True)
     crf.add_argument("--area", default="")
     crf.add_argument("--route", default="")
-    crf.add_argument("--prefix")
     crf.add_argument("--json", action="store_true")
     crp = crs.add_parser("spec", help="create/stamp a spec doc (idempotent; safe after the write)")
     crp.add_argument("story", help="the story id (its spec folder is `ostler path spec <id>`)")
@@ -492,7 +488,6 @@ def _build_parser() -> argparse.ArgumentParser:
     blad = bls.add_parser("adopt", help="import an old bullet list as records, once, then delete the list")
     blad.add_argument("source", help="the markdown list to import")
     blad.add_argument("--repo", required=True, help="the workspace repository the list belongs to")
-    blad.add_argument("--prefix")
     blad.add_argument("--json", action="store_true")
     blp = bls.add_parser("prune", help="close a record as done, dropped or promoted")
     blp.add_argument("id")
@@ -638,15 +633,6 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="is_epic",
         help="emit feat/<slug> instead of the bare <slug>",
     )
-
-    fz = sub.add_parser(
-        "freeze", help="pin an approved story/seed as immutable ground truth"
-    )
-    fz.add_argument("ident")
-    fz.add_argument("--by", default="")
-    fz.add_argument("--note", default="")
-    uf = sub.add_parser("unfreeze", help="lift the freeze on a story/seed")
-    uf.add_argument("ident")
 
     vt = sub.add_parser(
         "vet", parents=[write_parent], help="deterministic visual-fidelity check"
@@ -1169,7 +1155,6 @@ def _record_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--symbol", action="append", default=[], dest="symbols")
     parser.add_argument("--id", default="", dest="record_id")
     parser.add_argument("--body", default="")
-    parser.add_argument("--prefix")
     parser.add_argument("--json", action="store_true")
 
 
@@ -1177,7 +1162,7 @@ def _file_person(graph, args) -> register_mod.Filing:
     """File the record the parsed ``_record_flags`` describe."""
     return register_mod.file_person(
         graph, summary=args.summary, repo=args.repo, area=args.area, pattern=args.pattern,
-        symbols=args.symbols, body=args.body, record_id=args.record_id, prefix=args.prefix,
+        symbols=args.symbols, body=args.body, record_id=args.record_id,
     )
 
 
@@ -1190,7 +1175,7 @@ def _prune_record(graph, args) -> int:
 
 def _adopt_list(graph, args) -> int:
     """Import an old bullet list: one listing line per record and a summary line, or the refusal."""
-    outcome = register_import.import_list(graph, Path(args.source).expanduser().resolve(), args.repo, args.prefix)
+    outcome = register_import.import_list(graph, Path(args.source).expanduser().resolve(), args.repo)
     if not outcome.ok:
         _out(outcome.message)
         return 1
@@ -2227,14 +2212,13 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         return _emit(select.next_story(graph, args.epic), args.json)
     if c == "create":
         if args.what == "epic":
-            res = crud.create_epic(graph, args.name, args.title, args.prefix)
+            res = crud.create_epic(graph, args.name, args.title)
         elif args.what == "milestone":
             res = crud.create_milestone(
                 graph,
                 args.name,
                 args.title,
                 [ids_mod.resolve(graph, item) for item in _split(args.source_items)],
-                args.prefix,
             )
         elif args.what == "backlog-item":
             res = register_mod.filing_result(_file_person(graph, args))
@@ -2246,7 +2230,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
                 args.title,
                 [ids_mod.resolve(graph, s) for s in _split(args.covers)],
                 _split(args.depends),
-                args.prefix,
             )
         elif args.what == "spec":
             try:
@@ -2255,9 +2238,7 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
                 return _result(crud.Result(False, str(exc)), getattr(args, "json", False))
             res = crud.create_spec(graph.doc_roots["specs"], key, args.doc, args.title)
         else:
-            res = crud.create_feature(
-                graph, args.slug, args.title, args.area, args.route, args.prefix
-            )
+            res = crud.create_feature(graph, args.slug, args.title, args.area, args.route)
         return _result(res, getattr(args, "json", False))
     if c == "delete":
         if args.what == "epic":
@@ -2378,23 +2359,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         return _cmd_edit(graph, args)
     if c == "gc":
         return _cmd_gc(graph, args)
-    if c == "freeze":
-        plan = freeze_mod.freeze(graph, ids_mod.resolve(graph, args.ident), by=args.by, note=args.note)
-        _out(plan.render())
-        if plan.error:
-            return 1
-        plan.apply()
-        _out(
-            f"frozen â€” recorded in {(graph.root / '.agents' / 'ids.json').as_posix()}"
-        )
-        return 0
-    if c == "unfreeze":
-        plan = freeze_mod.unfreeze(graph, ids_mod.resolve(graph, args.ident))
-        _out(plan.render())
-        if plan.error:
-            return 1
-        plan.apply()
-        return 0
     if c == "vet":
         return _cmd_vet(graph, args)
     if c == "artifact":

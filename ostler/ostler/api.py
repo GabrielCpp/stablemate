@@ -107,7 +107,6 @@ def _snapshot_of(graph: Graph, roots: Iterable[Path]) -> Snapshot:
         else:
             files[str(path)] = sha
 
-    record(graph.root / ".agents" / "ids.json")
     for feature in graph.features:
         record(feature.path)
     for node in graph.ui_nodes:
@@ -350,13 +349,12 @@ class Ostler:
         body: str = "",
         status: register_mod.Status = "open",
         record_id: str = "",
-        prefix: str | None = None,
     ) -> register_mod.Filing:
         """Shelve one record, minting its id when *record_id* is empty."""
         filing = register_mod.file_record(
             self._fresh(), repo=repo, area=area, pattern=pattern, summary=summary,
             filed_by=filed_by, symbols=symbols, source_story=source_story, body=body,
-            status=status, record_id=record_id, prefix=prefix,
+            status=status, record_id=record_id,
         )
         self._graph = None
         return filing
@@ -465,10 +463,10 @@ class Ostler:
         return ids_mod.resolve(self.graph, token)
 
     def create_epic(
-        self, name: str, title: str, *, prefix: str | None = None, followups: bool = False,
+        self, name: str, title: str, *, followups: bool = False,
     ) -> Result:
         """Create an epic, allocating its id (``ostler create epic``)."""
-        return self._apply(crud.create_epic(self._fresh(), name, title, prefix, followups=followups))
+        return self._apply(crud.create_epic(self._fresh(), name, title, followups=followups))
 
     def create_milestone(
         self,
@@ -476,7 +474,6 @@ class Ostler:
         title: str,
         *,
         source_items: builtins.list[str] | None = None,
-        prefix: str | None = None,
     ) -> Result:
         """Create a milestone with a generated full id and backlog ownership."""
         graph = self._fresh()
@@ -485,7 +482,6 @@ class Ostler:
             name,
             title,
             [ids_mod.resolve(graph, item) for item in (source_items or [])],
-            prefix,
         ))
 
     def create_backlog_item(
@@ -498,12 +494,11 @@ class Ostler:
         symbols: Iterable[str] = (),
         body: str = "",
         record_id: str = "",
-        prefix: str | None = None,
     ) -> Result:
         """File a person's record on the Register and commit it in the artifacts repo (``ostler create backlog-item``)."""
         return self.backlog_add(
             summary, repo=repo, area=area, pattern=pattern, symbols=symbols, body=body,
-            record_id=record_id, prefix=prefix,
+            record_id=record_id,
         )
 
     def set_milestone_source_items(
@@ -521,13 +516,12 @@ class Ostler:
 
     def create_story(self, epic: str, slug: str, title: str, *,
                       covers: builtins.list[str] | None = None,
-                      depends: builtins.list[str] | None = None,
-                      prefix: str | None = None) -> Result:
+                      depends: builtins.list[str] | None = None) -> Result:
         """Create a story under ``epic`` (``ostler create story``)."""
         graph = self._fresh()
         return self._apply(crud.create_story(
             graph, epic, slug, title,
-            [ids_mod.resolve(graph, c) for c in (covers or [])], depends or [], prefix))
+            [ids_mod.resolve(graph, c) for c in (covers or [])], depends or []))
 
     def delete_story(self, story: str) -> Result:
         """Delete a story by id (``ostler delete story``)."""
@@ -609,12 +603,11 @@ class Ostler:
         symbols: Iterable[str] = (),
         body: str = "",
         record_id: str = "",
-        prefix: str | None = None,
     ) -> Result:
         """File a person's record on the Register (``ostler backlog add``)."""
         filing = register_mod.file_person(
             self._fresh(), summary=summary, repo=repo, area=area, pattern=pattern,
-            symbols=symbols, body=body, record_id=record_id, prefix=prefix,
+            symbols=symbols, body=body, record_id=record_id,
         )
         return self._apply(register_mod.filing_result(filing))
 
@@ -626,10 +619,10 @@ class Ostler:
         )
 
     def backlog_import(
-        self, source: str | Path, *, repo: str, prefix: str | None = None
+        self, source: str | Path, *, repo: str
     ) -> register_import.Imported:
         """Turn an old bullet list into records of *repo* and delete the list (``ostler backlog adopt``)."""
-        outcome = register_import.import_list(self._fresh(), self._resolve(source), repo, prefix)
+        outcome = register_import.import_list(self._fresh(), self._resolve(source), repo)
         self._graph = None
         return outcome
 
@@ -638,7 +631,7 @@ class Ostler:
         return self._apply(register_mod.close(self._fresh(), token, status, reason))
 
     def allocate_id(self) -> str:
-        """Mint and persist the next repo-prefixed ostler id (``ACME-15``) — the same id space stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""
+        """Mint the next repo-prefixed ostler id (``ACME-15``) — the same id space stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""
         return ids_mod.allocate(self.graph)
 
     def todo_add(self, name: str, *, front: bool = False) -> Result:

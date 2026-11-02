@@ -23,7 +23,7 @@ from ostler.qa import compile_support
 from ostler.qa import plan_source
 from ostler.qa.context import build_context
 
-from conftest import BAR_ID, FOO_ID, epic_md, screen_md, story_md, write, epics_root
+from conftest import BAR_ID, FOO_ID, epic_md, screen_md, story_md, write, write_prefix, epics_root
 
 FOO_STORY = "epic-a/stories/01-foo/story.md"
 
@@ -386,7 +386,8 @@ def _unwritten(root: Path) -> list:
 
 def _scaffolded(root: Path, slugs: list[str]) -> str:
     """Scaffold the stories under a fresh epic; return its numbered directory name."""
-    epic_dir = crud.create_epic(load(root), "billing", "Billing", prefix="acme").entity_name
+    write_prefix(root)
+    epic_dir = crud.create_epic(load(root), "billing", "Billing").entity_name
     for slug in slugs:
         crud.create_story(load(root), "billing", slug, slug.title())
     return epic_dir
@@ -550,6 +551,7 @@ def _foundation_owning(*epics: str) -> str:
 
 
 def test_an_epic_of_filed_follow_ups_needs_no_milestone(repo: Path):
+    write_prefix(repo)
     write(repo / "docs/milestones/foundation/milestone.md", _foundation_owning("epic-a", "epic-b"))
     assert crud.create_epic(load(repo), "fixes", "Filed fixes", followups=True).ok
     assert crud.create_epic(load(repo), "loose", "Loose").ok
@@ -561,6 +563,7 @@ def test_an_epic_of_filed_follow_ups_needs_no_milestone(repo: Path):
 
 
 def test_a_milestone_listing_the_epic_of_filed_follow_ups_is_flagged(repo: Path):
+    write_prefix(repo)
     assert crud.create_epic(load(repo), "fixes", "Filed fixes", followups=True).ok
     write(repo / "docs/milestones/foundation/milestone.md",
           _foundation_owning("epic-a", "epic-b", "0001-fixes"))

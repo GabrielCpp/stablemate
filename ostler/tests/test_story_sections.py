@@ -3,10 +3,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from ostler import Ostler, crud, markdown, registry
 from ostler.model import load, section_order_problems
 
 from conftest import present
+
+pytestmark = pytest.mark.usefixtures("minting_root")
 
 
 def _id(root: Path) -> str:
@@ -15,7 +18,7 @@ def _id(root: Path) -> str:
 
 def _story(root: Path) -> Path:
     """A story whose prose is written but whose last two prose sections were never added."""
-    crud.create_epic(load(root), "e", "E", prefix="x")
+    crud.create_epic(load(root), "e", "E")
     crud.create_story(load(root), "e", "a", "A")
     story_md = present(present(load(root).story_by_slug("a"))[1].story_md)
     text = story_md.read_text(encoding="utf-8")

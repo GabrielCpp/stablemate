@@ -13,7 +13,7 @@ The commands fall into three surfaces that barely overlap:
 
 | Surface | Verbs | What it operates on |
 |---|---|---|
-| **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `freeze` `path` | `docs/milestones/`, `docs/epics/`, `docs/specs/` |
+| **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `path` | `docs/milestones/`, `docs/epics/`, `docs/specs/` |
 | **The feature graph** (UI profile) | `reach` `locators` `graph` `coverage` `scaffold` `fmt` `vet` | `docs/services/` — the node/edge book |
 | **Verification** | `qa` `artifact` | a story's spec dir, and what a QA run produces |
 
@@ -33,7 +33,7 @@ short token, a program wants the identity that never changes. The two flags over
 default.
 
 Input is not modal. **A handle is accepted wherever a command takes an id** — `trace`, `query`,
-`create story --covers`, `seed add`/`seed remove`, `backlog prune`, `freeze`/`unfreeze` — no matter
+`create story --covers`, `seed add`/`seed remove`, `backlog prune` — no matter
 how the run prints, so a token copied out of one command goes straight into the next. Anything that
 is not a handle (a slug, a doc path) passes through untouched.
 
@@ -84,11 +84,11 @@ the error names the id to use.
 ## Mutate
 
 ```bash
-ostler create epic    <name> --title T [--prefix P] [--json]
-ostler create milestone <name> --title T [--source-items id,id] [--prefix P] [--json]
-ostler create backlog-item <text> [--section S] [--prefix P] [--json]
-ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--prefix P] [--json]
-ostler create feature <slug> --title T [--area A] [--route R] [--prefix P] [--json]
+ostler create epic    <name> --title T [--json]
+ostler create milestone <name> --title T [--source-items id,id] [--json]
+ostler create backlog-item <text> [--section S] [--json]
+ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--json]
+ostler create feature <slug> --title T [--area A] [--route R] [--json]
 ostler create spec    <story-id> <doc> [--title T] [--json]   # idempotent; retro-stamps free-form docs
 ostler update story   <story-id> --title T --covers a,b --depends a,b
 ostler delete epic <name> | delete story <story-id> | delete feature <slug>
@@ -99,7 +99,7 @@ ostler seed remove <epic> <id>
 ostler set-status <story-id> <status>
 ostler unblock <story-id> | unblock --epic <name> | unblock --all   [--status S] [--json]
 
-ostler backlog adopt --repo R <file> [--prefix P] [--json]
+ostler backlog adopt --repo R <file> [--json]
 ostler backlog add <summary> --repo R --area A [--pattern P] | backlog prune <id> | backlog list [--json]
 ostler milestone set-source-items <name> <id> [id ...]
 ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | todo list [--json]
@@ -154,9 +154,6 @@ ostler edit rename        <old-slug> <new-slug> [--write]
 ostler edit settle-review <story-id> [--write]
 #   flip a story's status from its review-resolution.json, gated on the artifacts
 #   and assertions the verdict cites.
-
-ostler freeze   <ident> [--by WHO] [--note …]   # pin an approved story/seed as ground truth
-ostler unfreeze <ident>
 ```
 
 ## Template-declared kinds

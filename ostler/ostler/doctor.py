@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from ostler import (acts, book_reach, checks, dynamic_registry, freeze, inventory, links as links_mod, markdown,
+from ostler import (acts, book_reach, checks, dynamic_registry, inventory, links as links_mod, markdown,
                     model, registry, schemas, select)
 from ostler import drivers, graph as graph_mod, locators as loc_mod, reach, routes as routes_mod
 from ostler import selector_forms
@@ -168,7 +168,6 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
     _check_bullet_value_kinds(graph, ui_data, f)
 
     if graph.profile != "full":
-        _check_frozen(graph, report.findings)
         return report
 
     all_story_slugs = graph.all_story_slugs()
@@ -187,7 +186,6 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
         keep = {e.name for e in graph.epics if _epic_matches(e, epic_filter)} or {epic_filter}
         report.findings = [fd for fd in report.findings if fd.epic in keep]
 
-    _check_frozen(graph, report.findings)
     return report
 
 
@@ -387,30 +385,6 @@ def _apply_known_defects(graph: Graph, findings: list[Finding]) -> None:
     if suppressed:
         findings[:] = [fd for i, fd in enumerate(findings) if i not in suppressed]
     findings.extend(stale)
-
-
-def _check_frozen(graph: Graph, f: list[Finding]) -> None:
-    """Flag approved (frozen) entities that were removed or whose content changed since approval."""
-    frozen = (graph.ids or {}).get("frozen") or {}
-    for ident, meta in frozen.items():
-        if not isinstance(meta, dict) or "hash" not in meta:
-            continue
-        by = f" by {meta['approvedBy']}" if meta.get("approvedBy") else ""
-        resolved = freeze.resolve_content(graph, ident)
-        if resolved is None:
-            f.append(Finding("error", "frozen-removed",
-                             f"frozen {meta.get('kind', 'entity')} '{ident}' (approved{by}) no "
-                             f"longer exists — restore it, or `ostler unfreeze {ident}` if the "
-                             f"removal is intended", ref=ident))
-            continue
-        kind, content = resolved
-        if freeze.fingerprint(content) != meta["hash"]:
-            found = graph.find_story(ident)
-            epic_name = found[0].name if found else ""
-            f.append(Finding("error", "frozen-mutated",
-                             f"frozen {kind} '{ident}' (approved{by}) changed since approval — "
-                             f"revert it, or `ostler unfreeze {ident}` to intentionally let it "
-                             f"evolve", epic=epic_name, ref=ident))
 
 
 def _epic_facts(epic: Epic) -> dict:
@@ -1437,9 +1411,6 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
             if schema:
                 for msg in schemas.validate(fm, schema):
                     f.append(Finding("warn", "schema", f"{rel}: {msg}", path=rel))
-    if graph.ids is not None:
-        for msg in schemas.validate(graph.ids, "ids.schema.json"):
-            f.append(Finding("warn", "schema", f"ids.json: {msg}"))
 
 
 def _check_misplaced_book_pages(graph: Graph, f: list[Finding]) -> None:

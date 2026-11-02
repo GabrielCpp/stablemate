@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from ostler import crud, ids, register
 from ostler.api import Ostler
 from ostler.cli import main
 from ostler.model import load
+
+pytestmark = pytest.mark.usefixtures("minting_root")
 
 
 def run(root: Path, *argv: str) -> int:
@@ -157,7 +160,7 @@ def test_a_handle_is_accepted_wherever_an_id_is(tmp_path: Path, capsys):
     assert json.loads(capsys.readouterr().out), "the handle resolved to the seed"
 
     record = okf.file_record(repo="api-service", area="billing", pattern="p", summary="s",
-                             filed_by="qa", prefix="acme")
+                             filed_by="qa")
     assert record.record and record.path
     handle = ids.table(ids.known(okf.reload().graph))[record.record.id]
     assert run(tmp_path, "backlog", "prune", handle) == 0

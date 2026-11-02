@@ -31,7 +31,6 @@ CHECKS = (
     "_check_locators",
     "_check_milestones",
     "_check_epic",
-    "_check_frozen",
 )
 
 UI_FILE_LOOP = "_check_ui_file loop"

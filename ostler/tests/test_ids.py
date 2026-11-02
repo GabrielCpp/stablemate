@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
-from ostler import doctor, ids
+import pytest
+
+from conftest import write, write_prefix
+from ostler import ids
+from ostler._vendor.stablemate_core.config import ConfigError
+from ostler.cli import main
 from ostler.model import load
 
 _ULID = re.compile(r"^[0-9A-HJKMNP-TV-Z]{26}$")
 
 
-def _repo(tmp_path: Path, name: str) -> Path:
+def _repo(tmp_path: Path, name: str, prefix: str | None = "ACME") -> Path:
     root = tmp_path / name
     (root / ".git").mkdir(parents=True)
+    if prefix is not None:
+        write_prefix(root, prefix)
     return root
 
 
@@ -22,34 +28,59 @@ def _ulid_of(identifier: str) -> str:
     return identifier.split("-", 1)[1]
 
 
-
-def test_prefix_is_first_four_letters_of_repo_name_uppercased(tmp_path: Path):
-    ident = ids.allocate(load(_repo(tmp_path, "stablemate")))
-    assert ident.startswith("STAB-")
+def test_the_minted_id_starts_with_the_manifest_prefix(tmp_path: Path):
+    root = _repo(tmp_path, "stablemate", "Acme_1")
+    ident = ids.allocate(load(root))
+    assert ident.startswith("Acme_1-")
     assert _ULID.match(_ulid_of(ident))
 
 
-def test_prefix_skips_non_alphanumerics_and_handles_short_names(tmp_path: Path):
-    assert ids.allocate(load(_repo(tmp_path, "my-app"))).startswith("MYAP-")
-    assert ids.allocate(load(_repo(tmp_path, "ai"))).startswith("AI-")
-
-
-def test_explicit_prefix_overrides_and_registry_pins_it(tmp_path: Path):
-    root = _repo(tmp_path, "stablemate")
-    assert ids.allocate(load(root), prefix="acme").startswith("acme-")
-    assert ids.allocate(load(root)).startswith("acme-")
-    registry = json.loads((root / ".agents/ids.json").read_text())
-    assert registry == {"prefix": "acme"}
-
-
-def test_new_counter_free_registry_passes_schema_validation(tmp_path: Path):
+def test_a_mint_creates_no_registry_file(tmp_path: Path):
     root = _repo(tmp_path, "acme")
     ids.allocate(load(root))
+    assert not (root / ".agents" / "ids.json").exists()
 
-    report = doctor.run(load(root))
 
-    assert not [finding for finding in report.findings if finding.code == "schema"]
+def test_a_leftover_registry_file_is_ignored(tmp_path: Path):
+    root = _repo(tmp_path, "acme")
+    write(root / ".agents/ids.json", '{"prefix": "OLD"}\n')
+    assert ids.allocate(load(root)).startswith("ACME-")
 
+
+def test_a_repo_without_a_manifest_refuses_to_mint(tmp_path: Path):
+    root = _repo(tmp_path, "acme", None)
+    with pytest.raises(ConfigError) as refused:
+        ids.allocate(load(root))
+    assert "repo.id_prefix" in str(refused.value)
+    assert str(root / "agents.yml") in str(refused.value)
+
+
+def test_a_manifest_without_the_key_refuses_to_mint(tmp_path: Path):
+    root = _repo(tmp_path, "acme", None)
+    write(root / "agents.yml", "repo:\n  name: acme\n")
+    with pytest.raises(ConfigError) as refused:
+        ids.allocate(load(root))
+    assert "repo.id_prefix" in str(refused.value)
+
+
+@pytest.mark.parametrize("prefix", ["my-app", "1ACME", "A" * 17, "ac me"])
+def test_a_malformed_prefix_refuses_to_mint(tmp_path: Path, prefix: str):
+    root = _repo(tmp_path, "acme", None)
+    write(root / "agents.yml", f'repo:\n  id_prefix: "{prefix}"\n')
+    with pytest.raises(ConfigError) as refused:
+        ids.allocate(load(root))
+    assert "repo.id_prefix" in str(refused.value)
+
+
+def test_the_cli_mint_fails_with_the_message_and_no_traceback(tmp_path: Path, capsys):
+    root = _repo(tmp_path, "acme", None)
+
+    code = main(["-C", str(root), "create", "epic", "billing", "--title", "Billing"])
+
+    err = capsys.readouterr().err
+    assert code != 0
+    assert "repo.id_prefix" in err
+    assert "Traceback" not in err
 
 
 def test_ids_are_unique_and_lexicographically_increasing(tmp_path: Path):

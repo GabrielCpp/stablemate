@@ -87,24 +87,6 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - code: ostler/ostler/values.py::dialog_answer@e0f43edd44dc
 - code: ostler/ostler/vet/placement.py::parse_placement@557c406d181b
 
-### ostler-doctor-malformed-ids
-- usage: ostler doctor --json: warns when the id registry does not match its schema, and still exits
-  0
-- exits: 0 when the registry is the only finding, because a schema finding is a warning
-- run: invoke(argv=["-C", "doctor-ids-scratch", "doctor", "--json"])
-- verify: exit_status(code=0)
-- verify: json_path(path="warnings", equals=1)
-- verify: json_path(path="findings[0].code", equals="schema")
-- fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
-  books that each carry one kind of defect
-- code: ostler/ostler/accessible_names.py::literal_name@c5e91020c76a
-- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@f348085e1eeb
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@bc81067f4925
-- code: ostler/ostler/schemas.py::validate@8901df4c3ca5
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@d161c8ab9dcd
-- code: ostler/ostler/values.py::dialog_answer@e0f43edd44dc
-- code: ostler/ostler/vet/placement.py::parse_placement@557c406d181b
-
 ### ostler-doctor-census
 - usage: ostler doctor --census: prints how many finding codes the checker defines, how many fired
   on this book, and which the run never entered

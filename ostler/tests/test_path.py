@@ -9,10 +9,12 @@ from ostler import crud
 from ostler.model import load
 from ostler.path import epics_root as epics_root_of, resolve_branch, resolve_spec, resolve_story
 
+pytestmark = pytest.mark.usefixtures("minting_root")
+
 
 def _minted_story(tmp_path):
     """A crud-created story, so it carries a real minted id in epic block and frontmatter."""
-    crud.create_epic(load(tmp_path), "e", "E", prefix="x")
+    crud.create_epic(load(tmp_path), "e", "E")
     crud.create_story(load(tmp_path), "e", "01-foo", "Foo")
     graph = load(tmp_path)
     found = graph.story_by_slug("01-foo")

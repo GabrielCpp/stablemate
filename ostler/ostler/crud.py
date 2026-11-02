@@ -117,14 +117,13 @@ def create_milestone(
     name: str,
     title: str,
     source_items: list[str] | None = None,
-    prefix: str | None = None,
 ) -> Result:
     """Create a release milestone with a generated id and backlog ownership."""
     folder = graph.doc_roots["milestones"] / name
     path = folder / registry.MILESTONE_FILE
     if folder.exists():
         return Result(False, f"milestone '{name}' already exists")
-    eid = ids.allocate(graph, prefix)
+    eid = ids.allocate(graph)
     fm = {
         "type": "milestone",
         "id": eid,
@@ -185,7 +184,6 @@ def create_epic(
     graph: Graph,
     name: str,
     title: str,
-    prefix: str | None = None,
     *,
     followups: bool = False,
 ) -> Result:
@@ -199,7 +197,7 @@ def create_epic(
         registry.epic_slug(name))
     edir = eroot / dir_name
     epic_md = edir / "epic.md"
-    eid = ids.allocate(graph, prefix)
+    eid = ids.allocate(graph)
     fm: dict[str, object] = {"type": "epic", "id": eid, "title": title, "status": "planned"}
     if followups:
         fm["followups"] = True
@@ -270,8 +268,7 @@ def _story_body(title: str, depends: list[str]) -> str:
 
 
 def create_story(graph: Graph, epic_name: str, slug: str, title: str,
-                 covers: list[str] | None = None, depends: list[str] | None = None,
-                 prefix: str | None = None) -> Result:
+                 covers: list[str] | None = None, depends: list[str] | None = None) -> Result:
     edir = path_mod.epic_dir(graph, epic_name)
     epic_md = edir / "epic.md"
     if not epic_md.exists():
@@ -280,7 +277,7 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
     if story_md.exists():
         return Result(True, f"story '{slug}' already exists in epic '{epic_name}'", [story_md])
 
-    sid = ids.allocate(graph, prefix)
+    sid = ids.allocate(graph)
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     _insert_subsection(doc, registry.STORIES_HEADING,
                        _story_block(slug, title, sid, covers or []))
@@ -590,12 +587,12 @@ def remove_seed(graph: Graph, epic_name: str, seed_id: str) -> Result:
 
 
 def create_feature(graph: Graph, slug: str, title: str, area: str = "",
-                   route: str = "", prefix: str | None = None) -> Result:
+                   route: str = "") -> Result:
     froot = graph.doc_roots["services"]
     path = (froot / area / f"{slug}.md") if area else (froot / f"{slug}.md")
     if path.exists():
         return Result(False, f"feature '{slug}' already exists")
-    fid = ids.allocate(graph, prefix)
+    fid = ids.allocate(graph)
     fm = {"type": "feature", "id": fid, "slug": slug, "title": title}
     if area:
         fm["area"] = area

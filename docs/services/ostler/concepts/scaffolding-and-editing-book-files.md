@@ -59,9 +59,7 @@ point at its new page (`references`, `_claims`, `_broken`, `_rewrite`). `fragmen
 `_apart`/`_pack`/`_chosen` decide which fragments are worth splitting out and `_slim` rewrites the
 host page once they are.
 
-`freeze.py` locks a page's content against accidental drift: `freeze` computes and stores a
-content fingerprint (`resolve_content`, `fingerprint`) keyed by the node's id (`_ids_path`,
-`_load_ids`), and `unfreeze` removes it; `FreezePlan` is the dry-run shape. `autofix.py` and
+`autofix.py` and
 `fmt.py` are the two passes behind `ostler fmt`: `autofix.py`'s `run_autofix`/`fix_text` repair a
 small, fixed set of common bullet mistakes (`_unwrap_code_span`, `_is_null_equals`,
 `_colon_keywords_as_equals`) that would otherwise read as a different, wrong value;
@@ -109,10 +107,6 @@ order (`_canonical_frontmatter`), bullet key order (`_bullet_key`, `_bullet_run`
 - code: ostler/ostler/carve.py::references@7c397615aad5
 - code: ostler/ostler/carve.py::CarvePlan@eeb1c1b27b2c
 - code: ostler/ostler/fragment_carve.py::carve_fragments@9b1e415c5333
-- code: ostler/ostler/freeze.py::freeze@cce15a1cc8f8
-- code: ostler/ostler/freeze.py::unfreeze@c8162e6a2793
-- code: ostler/ostler/freeze.py::fingerprint@ff9181d26dbf
-- code: ostler/ostler/freeze.py::FreezePlan@46ff024d4d77
 - code: ostler/ostler/autofix.py::run_autofix@e65fcc1b1bb7
 - code: ostler/ostler/autofix.py::fix_text@19668ae09cdf
 - code: ostler/ostler/autofix.py::AutofixResult@012563083f99
@@ -125,7 +119,7 @@ order (`_canonical_frontmatter`), bullet key order (`_bullet_key`, `_bullet_run`
 ## Contract
 
 - a plan before a write: every command in this group returns a dry-run shape (`Result`,
-  `FileChange`/`EditPlan`, `CarvePlan`, `FreezePlan`, `AutofixResult`, `FmtResult`) describing
+  `FileChange`/`EditPlan`, `CarvePlan`, `AutofixResult`, `FmtResult`) describing
   what it would change before — or instead of — writing it, so a caller can show a diff first.
 - a declared kind validates once, at the template boundary: `validate_kinds` runs when a template
   is created or edited, not on every `load_kinds`, so a book that already has a template applied

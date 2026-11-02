@@ -10,16 +10,16 @@ holds one epic with a story `sx` and a review resolution that declines its one f
 `demo` service with a `cli` page, an `api` page whose endpoint cites its test in a `verify:` bullet, a
 `tidy` page with out-of-order frontmatter and a wikilink, an `idea` page beside the others instead of
 under `concepts/`, a `server` page with two endpoints and an invocation, and a `ledger` page past the
-page size limit. A feature page `area/rec.md` is linked from the story. Commands run there with
+page size limit. A feature page `area/rec.md` is linked from the story. Its `agents.yml` sets `repo.id_prefix` to `TST`, so a mint there has a prefix to read. Commands run there with
 `-C edit-scratch` and an artifacts directory inside it, so no run writes into the artifacts directory
 of the person running the book.
 
 ## Steps
 
-### write-edit-ids
+### write-edit-prefix
 
 - kind: seed
-- run: mkdir -p edit-scratch/.agents && printf -- '{\n  "prefix": "TST"\n}\n' > edit-scratch/.agents/ids.json
+- run: mkdir -p edit-scratch && printf -- 'repo:\n  id_prefix: TST\n' > edit-scratch/agents.yml
 
 ### write-edit-story
 

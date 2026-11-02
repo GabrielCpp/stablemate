@@ -6,7 +6,7 @@ title: ostler planning commands
 # ostler planning commands
 
 The commands that plan work in a repo: epics, stories, features, milestones, the debt register, the epic
-queue, frozen stories, templates and the documents a template declares. Every claim here runs
+queue, templates and the documents a template declares. Every claim here runs
 against a small plan repo seeded under the checkout, with `-C plan-scratch`, and each command acts
 on an entity of its own, so the order the claims run in does not change an outcome.
 
@@ -16,11 +16,10 @@ on an entity of its own, so the order the claims run in does not change an outco
 ## Commands
 
 ### ostler-create-epic
-- usage: ostler create epic NAME --title TITLE [--prefix PREFIX] [--json]: allocates an id, numbers
+- usage: ostler create epic NAME --title TITLE [--json]: allocates an id from the repo's `repo.id_prefix`, numbers
   the epic after the last one and writes its epic page and index entry
 - flags:
   - --title (the epic's heading)
-  - --prefix (the id prefix to record, when the repo has none yet)
   - --json (print `{ok, id, name, message}`)
 - args: name: the bare slug, which the command prefixes with the next four-digit number
 - exits: 0 when the epic is created and its directory name is printed
@@ -32,7 +31,7 @@ on an entity of its own, so the order the claims run in does not change an outco
   numbered after the last
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@254195c1d2aa
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@333a1e67799e
-- code: ostler/ostler/crud.py::create_epic@0142324bc19c
+- code: ostler/ostler/crud.py::create_epic@d9d5972a4de4
 - code: ostler/ostler/dynamic_registry.py::load_kinds@ca1b93afa65c
 - code: ostler/ostler/index.py::active@bb6bee252338
 - code: ostler/ostler/markdown.py::extract_refs@185c57ef4c03
@@ -40,6 +39,18 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/pages.py::files_in_book@2ffb748edb94
 - code: ostler/ostler/registry.py::base_type@57e382012b26
 - detail: [Planning identities](concepts/planning-identities.md)
+
+### ostler-create-epic-without-prefix
+- usage: ostler create epic NAME --title TITLE [--json]: refuses to mint in a repo whose `agents.yml` sets no `repo.id_prefix`, and names the key and the file
+- exits: 1 with the error on stderr, and no epic is written
+- run: invoke(argv=["-C", "plan-bare", "create", "epic", "first", "--title", "First epic"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-bare/art"})
+- verify: exit_status(code=1)
+- verify: stderr(matches="repo\\.id_prefix")
+- verify: stderr(matches="agents\\.yml")
+- verify: absent(subject="plan-bare/art/epics/0001-first")
+- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a second, bare repo that has no `agents.yml`
+- code: ostler/ostler/ids.py::repo_prefix@86fb1a75f717
+- code: ostler/ostler/crud.py::create_epic@d9d5972a4de4
 
 ### ostler-create-story
 - usage: ostler create story EPIC SLUG --title TITLE [--covers ...] [--depends ...] [--json]: adds a
@@ -53,7 +64,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an epic that holds one story
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@254195c1d2aa
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@333a1e67799e
-- code: ostler/ostler/crud.py::create_story@d1f54e2038b0
+- code: ostler/ostler/crud.py::create_story@d193868da73b
 - code: ostler/ostler/dynamic_registry.py::load_kinds@ca1b93afa65c
 - code: ostler/ostler/index.py::active@bb6bee252338
 - code: ostler/ostler/markdown.py::extract_refs@185c57ef4c03
@@ -72,7 +83,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with two features
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@254195c1d2aa
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@333a1e67799e
-- code: ostler/ostler/crud.py::create_feature@8c5fd26b6633
+- code: ostler/ostler/crud.py::create_feature@ae51ffb87b00
 - code: ostler/ostler/dynamic_registry.py::load_kinds@ca1b93afa65c
 - code: ostler/ostler/index.py::active@bb6bee252338
 - code: ostler/ostler/markdown.py::extract_refs@185c57ef4c03
@@ -91,7 +102,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with one milestone
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@254195c1d2aa
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@333a1e67799e
-- code: ostler/ostler/crud.py::create_milestone@d719cc60e553
+- code: ostler/ostler/crud.py::create_milestone@393c0ec8ce2a
 - code: ostler/ostler/dynamic_registry.py::load_kinds@ca1b93afa65c
 - code: ostler/ostler/index.py::active@bb6bee252338
 - code: ostler/ostler/markdown.py::extract_refs@185c57ef4c03
@@ -216,45 +227,6 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@57e382012b26
 - code: ostler/ostler/select.py::is_blocked@21bffa3c4741
 
-### ostler-freeze
-- usage: ostler freeze STORY --by NAME [--note TEXT]: records the story's content fingerprint, with
-  who approved it, in `.agents/ids.json`
-- flags:
-  - --by (who approves the story)
-  - --note (a free-text note kept with the record)
-- exits: 0 when the story exists
-- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "freeze", "TST-01M585PD385GTJPSFXM5M5WV5N", "--by", "me", "--note", "ok"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
-- verify: exit_status(code=0)
-- verify: stdout(matches="freeze story 'TST-01M585PD385GTJPSFXM5M5WV5N'")
-- verify: stdout(matches="recorded in .*ids\\.json")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an unfrozen story
-- code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@254195c1d2aa
-- code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@333a1e67799e
-- code: ostler/ostler/dynamic_registry.py::load_kinds@ca1b93afa65c
-- code: ostler/ostler/freeze.py::fingerprint@ff9181d26dbf
-- code: ostler/ostler/index.py::active@bb6bee252338
-- code: ostler/ostler/markdown.py::extract_refs@185c57ef4c03
-- code: ostler/ostler/model.py::doc_roots@cc98ffe30811
-- code: ostler/ostler/pages.py::files_in_book@2ffb748edb94
-- code: ostler/ostler/registry.py::base_type@57e382012b26
-
-### ostler-unfreeze
-- usage: ostler unfreeze STORY: removes the story's frozen record from `.agents/ids.json`
-- exits: 0 when the story is frozen
-- run: invoke(argv=["-C", "plan-scratch", "--full-ids", "unfreeze", "TST-01M585PAZRC83P9AZVSSQB33SZ"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
-- verify: exit_status(code=0)
-- verify: stdout(matches="^unfreeze 'TST-01M585PAZRC83P9AZVSSQB33SZ'$")
-- fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with a story that is frozen
-- code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@254195c1d2aa
-- code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@333a1e67799e
-- code: ostler/ostler/dynamic_registry.py::load_kinds@ca1b93afa65c
-- code: ostler/ostler/freeze.py::unfreeze@c8162e6a2793
-- code: ostler/ostler/index.py::active@bb6bee252338
-- code: ostler/ostler/markdown.py::extract_refs@185c57ef4c03
-- code: ostler/ostler/model.py::doc_roots@cc98ffe30811
-- code: ostler/ostler/pages.py::files_in_book@2ffb748edb94
-- code: ostler/ostler/registry.py::base_type@57e382012b26
-
 ### ostler-path-epic
 - usage: ostler path epic EPIC: prints the epic directory, an absolute path under the artifacts dir's `epics/` shelf
 - exits: 0 when the epic exists
@@ -372,7 +344,7 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/todo.py::list_epics@0d5c2b9b44de
 
 ### ostler-backlog-add
-- usage: ostler backlog add SUMMARY --repo REPO --area AREA [--pattern PATTERN] [--symbol SYMBOL ...] [--id ID] [--body TEXT] [--prefix PREFIX] [--json]: files a record a person wrote on the [debt register](concepts/the-debt-register.md) under the artifacts dir's `backlogs/` shelf, which no git repository tracks; `ostler create backlog-item` is the same command under another name
+- usage: ostler backlog add SUMMARY --repo REPO --area AREA [--pattern PATTERN] [--symbol SYMBOL ...] [--id ID] [--body TEXT] [--json]: files a record a person wrote on the [debt register](concepts/the-debt-register.md) under the artifacts dir's `backlogs/` shelf, which no git repository tracks; `ostler create backlog-item` is the same command under another name
 - flags:
   - --repo (the workspace repository the record is about, one lowercase kebab segment)
   - --area (the area folder the record is shelved under, one lowercase kebab segment)
@@ -380,7 +352,6 @@ on an entity of its own, so the order the claims run in does not change an outco
   - --symbol (a code symbol or path the record names; repeatable)
   - --id (file under this id instead of a minted one)
   - --body (the record's text below the frontmatter)
-  - --prefix (the id prefix to pin when the repo has none yet)
   - --json (print `{ok, id, name, message}` instead of the message line)
 - args: summary (the record's one-line listing text)
 - exits: 0 when the record is filed; 1 with the reason when it is refused (an id the workspace already holds, a repo or area that is not one lowercase kebab segment, or an empty or multi-line summary)
@@ -418,18 +389,17 @@ on an entity of its own, so the order the claims run in does not change an outco
 - code: ostler/ostler/registry.py::base_type@57e382012b26
 
 ### ostler-backlog-adopt
-- usage: ostler backlog adopt --repo REPO FILE [--prefix PREFIX] [--json]: turns every top-level bullet of an old backlog list into a record of REPO by the import rules of [the debt register](concepts/the-debt-register.md#importing-an-old-list), then deletes FILE; it prints one listing line per record, then `imported N records, kept K ids`
+- usage: ostler backlog adopt --repo REPO FILE [--json]: turns every top-level bullet of an old backlog list into a record of REPO by the import rules of [the debt register](concepts/the-debt-register.md#importing-an-old-list), then deletes FILE; it prints one listing line per record, then `imported N records, kept K ids`
 - flags:
   - --repo (the workspace repository every imported record belongs to; required)
-  - --prefix (the id prefix to pin when the repo has none yet)
   - --json (print the imported records as one indented JSON array of their full fields instead of the listing)
 - args: file (the markdown list to import)
 - exits: 0 when the list is imported; 1 with the reason, leaving FILE and the shelf as they were, when FILE is missing, holds no bullets, uses one id twice, keeps an id the workspace already holds, or holds a bullet that makes an invalid record
-- run: invoke(argv=["-C", "plan-scratch", "backlog", "adopt", "--repo", "api-service", "plan-scratch/old-list.md", "--prefix", "BL"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
+- run: invoke(argv=["-C", "plan-scratch", "backlog", "adopt", "--repo", "api-service", "plan-scratch/old-list.md"], env={"STABLEMATE_ARTIFACTS_DIR": "plan-scratch/art"})
 - verify: exit_status(code=0)
 - verify: stdout(matches="(?m)^imported 2 records, kept 0 ids$")
 - fixture: [plan scratch repo](fixtures/plan-scratch-repo.md) with an old two-bullet list beside it
-- code: ostler/ostler/register_import.py::import_list@95c6b10a7c8b
+- code: ostler/ostler/register_import.py::import_list@5ee3b576864a
 - code: ostler/ostler/_vendor/stablemate_core/base_cache.py::cache_root@254195c1d2aa
 - code: ostler/ostler/_vendor/stablemate_core/config.py::config_path@333a1e67799e
 - code: ostler/ostler/dynamic_registry.py::load_kinds@ca1b93afa65c

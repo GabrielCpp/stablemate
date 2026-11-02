@@ -8,7 +8,7 @@ from ostler import Ostler, crud, doctor
 from ostler.milestones import MilestoneSelectionError, approved_milestone, journey_slug
 from ostler.model import load
 
-from conftest import write
+from conftest import write, write_prefix
 
 SECTIONS = ("Outcome", "Release Boundary", "User Journeys", "Architecture Decisions",
             "Constraints", "Acceptance", "Non-Goals")
@@ -282,7 +282,8 @@ def test_readiness_runs_when_the_profile_is_exploration(repo: Path):
 
 
 def test_create_milestone_writes_the_folder_with_every_section_as_a_stub(tmp_path: Path):
-    result = crud.create_milestone(load(tmp_path), "sign-in", "Sign in", prefix="t")
+    write_prefix(tmp_path)
+    result = crud.create_milestone(load(tmp_path), "sign-in", "Sign in")
 
     path = tmp_path / "docs/milestones/sign-in/milestone.md"
     assert result.ok and result.paths == [path]

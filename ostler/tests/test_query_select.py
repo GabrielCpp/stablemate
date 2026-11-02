@@ -9,6 +9,8 @@ from ostler.model import load
 
 from conftest import FOO_ID, present, write, epics_root
 
+pytestmark = pytest.mark.usefixtures("minting_root")
+
 
 def _sid(root: Path, slug: str) -> str:
     return present(load(root).story_by_slug(slug))[1].eid
@@ -55,10 +57,10 @@ def test_next_epic_and_story(repo: Path):
 
 
 def test_next_story_reports_the_minted_id(tmp_path: Path):
-    crud.create_epic(load(tmp_path), "e", "E", prefix="x")
+    crud.create_epic(load(tmp_path), "e", "E")
     crud.create_story(load(tmp_path), "e", "a", "A")
     ns = present(select.next_story(load(tmp_path), "e"))
-    assert ns["id"].startswith("x-")
+    assert ns["id"].startswith("X-")
 
 
 def test_story_id_survives_an_epic_block_that_never_recorded_it(tmp_path: Path):
@@ -108,7 +110,7 @@ epics:
 
 def test_next_story_respects_dependencies(tmp_path: Path):
     g = load(tmp_path)
-    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_epic(g, "e", "E")
     crud.create_story(load(tmp_path), "e", "a", "A")
     crud.create_story(load(tmp_path), "e", "b", "B", depends=["a"])
     assert present(select.next_story(load(tmp_path), "e"))["slug"] == "a"
@@ -119,8 +121,8 @@ def test_next_story_respects_dependencies(tmp_path: Path):
 def test_todo_queue(tmp_path: Path):
     """The queue names the directories that exist; every operation still takes a bare epic slug."""
     g = load(tmp_path)
-    crud.create_epic(g, "one", "One", prefix="x")
-    crud.create_epic(load(tmp_path), "two", "Two", prefix="x")
+    crud.create_epic(g, "one", "One")
+    crud.create_epic(load(tmp_path), "two", "Two")
     todo.add(load(tmp_path), "one")
     todo.add(load(tmp_path), "two")
     assert todo.list_epics(load(tmp_path)) == ["0001-one", "0002-two"]
@@ -141,7 +143,7 @@ def test_todo_add_warns_when_the_epic_has_no_doc(tmp_path: Path):
 
 
 def test_todo_add_does_not_warn_for_a_real_epic(tmp_path: Path):
-    crud.create_epic(load(tmp_path), "real", "Real", prefix="x")
+    crud.create_epic(load(tmp_path), "real", "Real")
     res = todo.add(load(tmp_path), "real")
     assert res.ok and "WARNING" not in res.message
 
@@ -149,7 +151,7 @@ def test_todo_add_does_not_warn_for_a_real_epic(tmp_path: Path):
 def test_next_story_skips_given_up_without_stranding_the_epic(tmp_path: Path):
     """The premature-epic-completion bug: a story that gave up on QA is not "done", so it stays first-runnable forever and the selector keeps returning it."""
     g = load(tmp_path)
-    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_epic(g, "e", "E")
     crud.create_story(load(tmp_path), "e", "first", "First")
     crud.create_story(load(tmp_path), "e", "independent", "Indep")
     crud.create_story(load(tmp_path), "e", "dependent", "Dep", depends=["first"])
@@ -164,7 +166,7 @@ def test_next_story_skips_given_up_without_stranding_the_epic(tmp_path: Path):
 def test_next_story_keeps_dependents_of_a_given_up_story_blocked(tmp_path: Path):
     """A skipped story is not 'done', so its dependents stay blocked — you don't build on unverified work."""
     g = load(tmp_path)
-    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_epic(g, "e", "E")
     crud.create_story(load(tmp_path), "e", "base", "Base")
     crud.create_story(load(tmp_path), "e", "onbase", "OnBase", depends=["base"])
 
@@ -174,7 +176,7 @@ def test_next_story_keeps_dependents_of_a_given_up_story_blocked(tmp_path: Path)
 def test_next_story_skip_is_backward_compatible(tmp_path: Path):
     """Existing callers pass no skip set; behaviour is unchanged."""
     g = load(tmp_path)
-    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_epic(g, "e", "E")
     crud.create_story(load(tmp_path), "e", "only", "Only")
     assert present(select.next_story(load(tmp_path), "e"))["slug"] == "only"
     assert present(select.next_story(load(tmp_path), "e", skip=set()))["slug"] == "only"
@@ -183,7 +185,7 @@ def test_next_story_skip_is_backward_compatible(tmp_path: Path):
 def test_report_separates_done_from_blocked(tmp_path: Path):
     """The four ``None`` cases must be four distinct states — that split is the whole point."""
     g = load(tmp_path)
-    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_epic(g, "e", "E")
     crud.create_story(load(tmp_path), "e", "a", "A")
     crud.create_story(load(tmp_path), "e", "b", "B", depends=["a"])
 
@@ -208,7 +210,7 @@ def test_report_separates_done_from_blocked(tmp_path: Path):
 def test_a_ready_report_counts_the_work_left_like_every_other_state(tmp_path: Path):
     """`ready` is where a run spends the whole build, and it must not be the blind state."""
     g = load(tmp_path)
-    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_epic(g, "e", "E")
     for slug in ("a", "b", "c"):
         crud.create_story(load(tmp_path), "e", slug, slug.upper())
     crud.set_status(load(tmp_path), _sid(tmp_path, "a"), "QA passed")
@@ -224,7 +226,7 @@ def test_a_ready_report_counts_the_work_left_like_every_other_state(tmp_path: Pa
 def test_declared_order_wins_over_the_slugs_numeric_prefix(tmp_path: Path):
     """A story numbered `02` declared after `03` does not jump the queue — and must not."""
     g = load(tmp_path)
-    crud.create_epic(g, "e", "E", prefix="x")
+    crud.create_epic(g, "e", "E")
     crud.create_story(load(tmp_path), "e", "01-first", "First")
     crud.create_story(load(tmp_path), "e", "03-independent", "Independent")
     crud.create_story(load(tmp_path), "e", "02-after-first", "After first", depends=["01-first"])
@@ -243,7 +245,7 @@ def test_declared_order_wins_over_the_slugs_numeric_prefix(tmp_path: Path):
 def test_report_distinguishes_an_unwritten_epic_from_a_finished_one(tmp_path: Path):
     """An epic that lists no stories at all is ``no-stories``, never ``done``."""
     g = load(tmp_path)
-    crud.create_epic(g, "empty", "Empty", prefix="x")
+    crud.create_epic(g, "empty", "Empty")
 
     empty = select.next_story_report(load(tmp_path), "empty")
     assert empty["state"] == "no-stories"
@@ -272,7 +274,7 @@ def _authored(root: Path, slug: str) -> None:
 
 
 def _epic_of_scaffolds(root: Path, stories: list[tuple[str, list[str]]]) -> None:
-    crud.create_epic(load(root), "e", "E", prefix="x")
+    crud.create_epic(load(root), "e", "E")
     for slug, depends in stories:
         crud.create_story(load(root), "e", slug, slug.upper(), depends=depends)
 
@@ -354,7 +356,7 @@ def test_epic_authored_needs_stories_a_doc_and_content(tmp_path: Path):
 
 
 def test_epic_with_no_stories_is_not_authored(tmp_path: Path):
-    crud.create_epic(load(tmp_path), "empty", "Empty", prefix="x")
+    crud.create_epic(load(tmp_path), "empty", "Empty")
     epic = select.epic_by_name(load(tmp_path), "empty")
     assert epic is not None and not select.epic_authored(epic)
 

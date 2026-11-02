@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from ostler import crud_generic
 from ostler.model import load
 
 from conftest import write
+
+pytestmark = pytest.mark.usefixtures("minting_root")
 
 RESEARCH_TEMPLATE = """
 research:

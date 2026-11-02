@@ -14,6 +14,8 @@ from ostler.api import Ostler
 from ostler.cli import main
 from ostler.model import load
 
+pytestmark = pytest.mark.usefixtures("minting_root")
+
 
 def run(root: Path, *argv: str) -> int:
     return main(["-C", str(root), *argv])
@@ -44,13 +46,12 @@ def test_backlog_add_files_a_person_record_and_commits_nothing(tmp_path: Path, c
     code = run(
         tmp_path, "backlog", "add", "Extract the invoice rounding rules",
         "--repo", "api-service", "--area", "billing", "--symbol", "billing/rounding.py",
-        "--symbol", "Invoice.total", "--body", "The slice worked without it.",
-        "--prefix", "acme", "--json",
+        "--symbol", "Invoice.total", "--body", "The slice worked without it.", "--json",
     )
 
     assert code == 0
     out = json.loads(capsys.readouterr().out)
-    assert out["ok"] and out["id"].startswith("acme-")
+    assert out["ok"] and out["id"].startswith("X-")
     read = register.records(load(tmp_path)).records
     assert [(r.id, r.repo, r.area, r.pattern, r.filed_by, r.status) for r in read] == [
         (out["id"], "api-service", "billing", "untriaged", "person", "open")]
@@ -71,7 +72,7 @@ def test_backlog_add_keeps_a_given_id_and_a_given_pattern(tmp_path: Path) -> Non
 
 def test_create_backlog_item_files_the_same_record(tmp_path: Path, capsys) -> None:
     code = run(tmp_path, "create", "backlog-item", "Ship draft recovery",
-               "--repo", "web-app", "--area", "drafts", "--prefix", "acme", "--json")
+               "--repo", "web-app", "--area", "drafts", "--json")
 
     assert code == 0
     out = json.loads(capsys.readouterr().out)
@@ -126,9 +127,9 @@ def test_a_filing_without_repo_or_area_is_a_usage_error(tmp_path: Path) -> None:
 def test_the_facade_files_a_person_record_and_commits_nothing(tmp_path: Path) -> None:
     okf = Ostler(tmp_path)
 
-    result = okf.create_backlog_item("Ship draft recovery", repo="web-app", area="drafts", prefix="acme")
+    result = okf.create_backlog_item("Ship draft recovery", repo="web-app", area="drafts")
 
-    assert result.ok and result.entity_id.startswith("acme-")
+    assert result.ok and result.entity_id.startswith("X-")
     assert [r.id for r in okf.records().records] == [result.entity_id]
     assert subjects() == []
 

@@ -39,7 +39,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="findings[0].severity", equals="warn")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a sound `demo` book whose
   citations carry no digest stamp, so it reports warnings and no error
-- code: ostler/ostler/doctor.py::run@5daa3c203b98
+- code: ostler/ostler/doctor.py::run@ab8462bb5f23
 - code: ostler/ostler/doctor.py::_check_service_repository@2122aafa61b2
 - code: ostler/ostler/book_reach.py::dead_pages@1b04d3198b2e
 - code: ostler/ostler/checks.py::bind@f5907a5ae8cb
@@ -95,7 +95,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="findings[0].path", equals="docs/services/demo/entries.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds `book-scratch-broken/`, whose
   entries page links to a page that does not exist
-- code: ostler/ostler/doctor.py::run@5daa3c203b98
+- code: ostler/ostler/doctor.py::run@ab8462bb5f23
 - code: ostler/ostler/finding.py::Finding@7a656ee8e8b6
 - code: ostler/ostler/markdown.py::comment_blocks@778e6de4247e
 - code: ostler/ostler/model.py::doc_roots@cc98ffe30811
