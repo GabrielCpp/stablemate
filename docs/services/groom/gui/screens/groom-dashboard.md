@@ -341,15 +341,19 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: Enter inserts a newline rather than submitting.
 - verify: created(subject="a newline in the textarea")
 - parent: [detail-pane](#detail-pane)
-- states: empty on render.
+- states: empty on render, unless the operator typed into this run's gate box earlier in this page and selected another run, in which case the kept text returns.
 - verify: json_path(path="states.on_render.value", equals="")
-- states: cleared after a successfully sent answer.
+- states: cleared after a successfully sent answer, and its kept draft goes with it.
+- states: keeps what was typed for this run's gate while another run is selected, and shows it again when the operator comes back.
+- verify: json_path(path="states.after_reselect.value", equals="draft answer")
 - verify: json_path(path="states.after_success.value", equals="")
 - states: a rejected send leaves the text in the box.
 - verify: json_path(path="states.after_rejected.value", equals="draft answer")
-- code: groom/groom/assets/dashboard.js::AnswerForm@79bd2b4e6c51
+- code: groom/groom/assets/dashboard.js::AnswerForm@8a9e54c1b5c4
 - tests: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard
-- dom: two rows, inside a form carrying hidden `cmd`, `workflow_id`, and `file_path` fields. The form is re-rendered on every push, but the gate block is keyed by file path, so Preact reuses the same `<textarea>` DOM node and a half-typed answer survives. Each gate's draft belongs to that gate alone.
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_selecting_another_run_keeps_what_was_typed_for_this_runs_gate_until_it_is_sent
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_the_answer_box_and_send_control_have_roles_names_and_keyboard_operation_and_pass_axe_on_diff_and_files
+- dom: two rows, inside a form carrying hidden `cmd`, `workflow_id`, and `file_path` fields. The form is re-rendered on every push, but the gate block is keyed by file path, so Preact reuses the same `<textarea>` DOM node and a half-typed answer survives. Each gate's draft belongs to that gate alone. The text is also kept in a page-held draft keyed by run and gate, and a newly mounted box restores it.
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-answer-textarea.png
 
 ### detail-send-answer-button
@@ -372,7 +376,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="#detail form[data-answer] button[type='submit'] in the accessibility tree when `data-mode` is not `runs`")
 - states: it can never co-render with the run Files tab's [detail-files-file-row](#detail-files-file-row) or the run Diff tab's [detail-diff-file-row](#detail-diff-file-row) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Send answer'})` can rely on.
 - verify: count(subject="elements matching role=button name='Send answer' in the rendered DOM", equals=1)
-- code: groom/groom/assets/dashboard.js::AnswerForm@79bd2b4e6c51
+- code: groom/groom/assets/dashboard.js::AnswerForm@8a9e54c1b5c4
 - leads-to: [send detail answer](#send-detail-answer), which serializes the form and sends it over the dashboard websocket.
 - screenshot: docs/specs/groom-dashboard/vet/run-detail-detail-send-answer-button.png
 
@@ -1086,6 +1090,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="keyboard.text_selectable", equals=true)
 - parent: [detail-diff-panel](#detail-diff-panel)
 - states: shows the selected file's lines, rendered by diff2html under the tab's own file header.
+- states: scrolls inside a region the keyboard reaches, with the role `region` and the name `Changes in <path>`.
 - verify: visible(locator="#detail-diff-body")
 - states: diff2html escapes the file content, so it cannot inject markup.
 - code: groom/groom/assets/dashboard.js::fileDiffMarkup@1286720f9b96
@@ -1155,7 +1160,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: that state offers `Retry now`, and a retry that finds no sidecar adds `The sidecar is still not answering.`
 - states: the tree is not kept, and the state clears when the sidecar returns.
 - verify: visible(locator="#detail-files-panel", text="The sidecar stopped answering")
-- code: groom/groom/assets/dashboard.js::FilesTab@6bf5e97b9175
+- code: groom/groom/assets/dashboard.js::FilesTab@44ffdf1c1d9a
 - tests: groom/tests/test_files_tab_dynamic.py::test_opening_files_lists_the_checkout_in_a_folder_tree_and_a_folder_collapses_and_expands
 - tests: groom/tests/test_files_tab_dynamic.py::test_a_checkout_with_no_files_says_so
 - tests: groom/tests/test_files_tab_dynamic.py::test_before_a_file_is_selected_the_tab_asks_for_one
@@ -1208,6 +1213,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: the source is selectable text.
 - verify: json_path(path="keyboard.text_selectable", equals=true)
 - parent: [detail-files-panel](#detail-files-panel)
+- states: scrolls inside a region the keyboard reaches, with the role `region` and the name `Contents of <path>`.
 - states: shows line numbers in a 44 px gutter that is hidden from the accessibility tree, beside the highlighted source.
 - states: the code sits on a band darker than the pane that is as tall as the code, so the rest of the pane keeps the pane's own colour.
 - states: the source is highlighted by the dashboard's own code renderer, so its text is escaped.
@@ -1485,6 +1491,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: visible(locator="#detail", text="Loading telemetry history…")
   - Keeps the [gate strip](#detail-gate-strip)'s collapsed state when the id is the run already selected, and opens it expanded for any other run.
   - verify: json_path(path="store.gatesCollapsed", equals=false)
+  - Keeps the text typed in each of the previous run's answer boxes in the page-held draft, so it returns when the operator selects that run again.
+  - verify: persists(subject="typed answer text for a run after selecting another run and coming back")
   - Sends this tab's watch subscription for the id over the dashboard websocket, replacing whatever it was watching.
   - verify: json_path(path="watch.subscription", equals="selected run")
   - Limits a tab to watching one run.
@@ -1507,8 +1515,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: unchanged(subject="active dashboard mode after selecting a run")
   - Does not mutate server state beyond the watch subscription.
   - verify: unchanged(subject="server state except the selecting tab's watch subscription")
-- code: groom/groom/assets/dashboard.js::select@46f96b77d0ce
-- code: groom/groom/assets/dashboard.js::onDetail@c3947e8317c9
+- code: groom/groom/assets/dashboard.js::select@90d0cfa4c531
+- code: groom/groom/assets/dashboard.js::onDetail@f9e46aa48020
 - code: groom/groom/assets/dashboard.js::RunRow@703c0edbc1b1
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 - tests: groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately
@@ -1573,15 +1581,18 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - when:
   - The open run has at least one open gate, so the answer form is rendered.
 - does:
-  - Changes nothing but the field's own value — there is no input handler, no draft written to the store, and no request.
+  - Writes the field's value to a page-held draft keyed by run and gate, through one delegated input handler. It writes nothing to the store and sends no request.
+  - Brings the kept text back when the operator selects another run and returns to this one.
   - Survives the fleet's 5-second push: the gate block is keyed by gate file path, so Preact reuses the same `<textarea>` DOM node across re-renders and neither the text, the caret, the selection nor the focus is lost.
   - Survives a pushed `detail` frame for the same run for the same reason, including one carrying a newly opened gate for a different file. Another gate's box keeps its own draft.
   - Survives collapsing and expanding the [gate strip](#detail-gate-strip), because the boxes are hidden and not removed.
   - Does nothing else for a shortcut key: the list shortcuts ignore a focused text field.
-- code: groom/groom/assets/dashboard.js::AnswerForm@79bd2b4e6c51
+- code: groom/groom/assets/dashboard.js::AnswerForm@8a9e54c1b5c4
 - code: groom/groom/assets/dashboard.js::GateBlock@0b60fdd379ab
 - tests: groom/tests/test_gate_strip_dynamic.py::test_a_live_push_keeps_the_draft_the_collapsed_state_and_the_focused_gate
 - tests: groom/tests/test_gate_strip_dynamic.py::test_shortcut_keys_typed_in_the_answer_box_do_nothing_else
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_j_and_k_typed_in_the_answer_box_type_those_letters_and_leave_the_run_and_the_file_alone
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_selecting_another_run_keeps_what_was_typed_for_this_runs_gate_until_it_is_sent
 - screenshot: docs/services/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png
 
 ### send-detail-answer
@@ -1621,7 +1632,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Sends one answer frame over the open dashboard websocket.
 - verify: count(subject="answer frames sent after one submission", equals=1)
 - does:
-  - Clears the textarea after a successful send.
+  - Clears the textarea and its page-held draft after a successful send.
 - verify: json_path(path="answer_textarea.value", equals="")
 - does:
   - Leaves the textarea unchanged when the send is refused.
@@ -1659,10 +1670,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Keeps the open tab and its scroll position when the last gate leaves the strip.
 - verify: persists(subject="the open tab and its scroll position after the last gate leaves the strip")
-- code: groom/groom/assets/dashboard.js::wireAnswerForm@b01eb15fd000
+- code: groom/groom/assets/dashboard.js::wireAnswerForm@37509043cbdd
 - code: groom/groom/assets/dashboard.js::sendCommand@37a75c09204d
 - code: groom/groom/assets/dashboard.js::onAnswered@cf3cd6e147fe
-- code: groom/groom/assets/dashboard.js::onAnswerRejected@fa7936059273
+- code: groom/groom/assets/dashboard.js::onAnswerRejected@de5d47f81c94
 - tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
 - tests: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
 - tests: groom/tests/test_a11y_dynamic.py::test_the_answer_form_is_reachable_and_submittable_by_keyboard

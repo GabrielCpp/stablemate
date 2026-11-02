@@ -685,11 +685,16 @@ function LogTrail({ lines }) {
 // writes its value, and the keyed gate block keeps it the same DOM node across a
 // push, so a half-typed answer survives a refresh.
 function AnswerForm({ workflowId, filePath }) {
+  const box = useRef(null);
+  useLayoutEffect(() => {
+    const kept = drafts.get(gateKey(workflowId, filePath));
+    if (kept && box.current && !box.current.value) box.current.value = kept;
+  }, []);
   return html`<form class="answer" data-answer>
     <input type="hidden" name="cmd" value="answer" />
     <input type="hidden" name="workflow_id" value=${workflowId} />
     <input type="hidden" name="file_path" value=${filePath} />
-    <textarea name="answer" aria-label="Your answer" placeholder="Your answer…" rows="2"></textarea>
+    <textarea ref=${box} name="answer" aria-label="Your answer" placeholder="Your answer…" rows="2"></textarea>
     <div class="answer-actions"><button type="submit" class="btn">Send answer</button></div>
   </form>`;
 }
@@ -1644,7 +1649,10 @@ async function select(id) {
   try {
     const response = await fetch("/worker/" + encodeURIComponent(id));
     const body = await response.json();
-    if (seq === detailSeq && store.get().detail === null) store.set({ detail: body });
+    if (seq === detailSeq && store.get().detail === null) {
+      dropSettledDrafts(id, body);
+      store.set({ detail: body });
+    }
   } catch (err) {
     // Reconnecting re-declares the watch and seeds the pane.
   }
@@ -1664,6 +1672,7 @@ function closeDetail() {
  *  without a round trip and the answer textarea keeps its DOM node regardless. */
 function onDetail(msg) {
   if (msg.id !== store.get().selected) return;
+  dropSettledDrafts(msg.id, msg.detail);
   store.set({ detail: msg.detail });
 }
 
@@ -1671,6 +1680,20 @@ function onDetail(msg) {
 // submit handler is delegated rather than bound per-form. The client serializes
 // the frame itself, which is also what lets a failed send *say* it failed.
 const sentAnswers = new Map();
+const drafts = new Map();
+
+function setDraft(workflowId, filePath, text) {
+  if (text) drafts.set(gateKey(workflowId, filePath), text);
+  else drafts.delete(gateKey(workflowId, filePath));
+}
+
+function dropSettledDrafts(id, detail) {
+  if (!detail || !detail.gates) return;
+  const open = new Set(detail.gates.map((gate) => gateKey(id, gate.file_path)));
+  for (const key of [...drafts.keys()]) {
+    if (key.startsWith(id + "\n") && !open.has(key)) drafts.delete(key);
+  }
+}
 
 function gateKey(workflowId, filePath) {
   return workflowId + "\n" + filePath;
@@ -1686,6 +1709,10 @@ function answerBox(workflowId, filePath) {
 }
 
 function wireAnswerForm() {
+  document.addEventListener("input", (e) => {
+    const form = e.target.closest && e.target.closest("form[data-answer]");
+    if (form) setDraft(form.elements.workflow_id.value, form.elements.file_path.value, e.target.value);
+  });
   document.addEventListener("submit", (e) => {
     const form = e.target.closest("form[data-answer]");
     if (!form) return;
@@ -1698,6 +1725,7 @@ function wireAnswerForm() {
     if (sendCommand(payload)) {
       sentAnswers.set(gateKey(payload.workflow_id, payload.file_path), payload.answer);
       form.querySelector("textarea").value = "";
+      setDraft(payload.workflow_id, payload.file_path, "");
     } else pushToast("blocked", "✗ not sent", "No connection to groom — your answer is still in the box.", 7000);
   });
 }
@@ -2453,6 +2481,7 @@ function onAnswerRejected(msg) {
   sentAnswers.delete(key);
   const box = sent === undefined ? null : answerBox(msg.id, msg.file_path);
   if (box && !box.value) box.value = sent;
+  if (sent !== undefined && (!box || box.value === sent)) setDraft(msg.id, msg.file_path, sent);
   pushToast("blocked", "✗ answer not taken", msg.reason || "groom refused the answer.", 7000);
 }
 
@@ -2834,7 +2863,7 @@ function DiffBody({ runDiff, mark }) {
       <${TreeLevel} node=${tracked} leaf=${leaf} />
       ${runDiff.untracked.length ? html`<${TreeDir} name=${UNTRACKED_GROUP} node=${untrackedNode} leaf=${leaf} />` : null}
     </div>
-    <div class="fd-view">${view}</div>
+    <div class="fd-view" role="region" tabindex="0" aria-label=${chosen ? "Changes in " + chosen.path : "Changes"}>${view}</div>
   </div>`;
 }
 
@@ -3003,7 +3032,7 @@ function FilesTab({ runFiles }) {
   };
   return html`<div class="fd-split">
     <div class="fd-tree"><${TreeLevel} node=${tree} leaf=${leaf} fold=${{ shut: runFiles.shut, toggle: toggleRunFolder }} /></div>
-    <div class="fd-view"><${RunFileView} runFiles=${runFiles} /></div>
+    <div class="fd-view" role="region" tabindex="0" aria-label=${runFiles.path ? "Contents of " + runFiles.path : "File contents"}><${RunFileView} runFiles=${runFiles} /></div>
   </div>`;
 }
 

@@ -22,6 +22,8 @@ The run Diff tab shows the uncommitted change of one live container run, or the 
 - rule: a native run, a finished run, and a container run without a connected sidecar have no Diff tab.
 - rule: the dashboard reads the diff once when a run with a connected sidecar is selected, and once more when a sidecar connects while its run is selected.
 - rule: unselected rows cost no diff read.
+- rule: a gate that opens or is answered while the Diff tab is open leaves the tab, the selected file and the scroll position alone and reads no diff, as [run gate strip](run-gate-strip.md) describes.
+- rule: the selected file's diff scrolls inside a region the keyboard reaches, with the role `region` and the name `Changes in <path>`, or `Changes` when no file is selected, so the operator scrolls it without a pointer.
 - rule: the tab shows the `+N −M` size of the tracked change before it is opened, so the operator sees whether a change exists without opening the tab.
 - rule: untracked files are listed in their own group and are not counted in the tab's size, because git has no diff for them.
 - rule: a read that did not happen is never shown as no changes. A `failed` reply, a rejected fetch, and non-empty text that diff2html cannot parse all show the unreadable message with a retry control.
@@ -52,6 +54,9 @@ The run Diff tab shows the uncommitted change of one live container run, or the 
 - rule: diff content is rendered by diff2html, which escapes file content, and the client sets no other markup from the diff.
 - verify: absent(subject="the Diff tab for a run without a connected sidecar")
 - verify: absent(subject="a count on the Diff tab for a branch with no change since it started")
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_a_gate_that_opens_while_diff_is_open_shows_above_the_tabs_and_leaves_the_file_and_scroll_alone
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_answering_above_the_diff_sends_the_answer_removes_the_question_and_keeps_tab_file_and_scroll_without_a_new_read
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_the_answer_box_and_send_control_have_roles_names_and_keyboard_operation_and_pass_axe_on_diff_and_files
 - tests: groom/tests/test_checkout_selector_dynamic.py::test_the_diff_sits_on_the_pane_background_without_a_card_border_and_tints_changed_text
 - tests: groom/tests/test_diff_tab_dynamic.py::test_a_container_run_with_a_connected_sidecar_has_a_diff_tab_beside_overview_and_details
 - tests: groom/tests/test_diff_tab_dynamic.py::test_rows_that_are_not_selected_cost_no_diff_read

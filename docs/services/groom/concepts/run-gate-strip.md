@@ -10,12 +10,20 @@ A run waiting on the operator shows its open gates in a strip above the Overview
 - code: groom/groom/assets/dashboard.js::GateStrip@5921a2b7243b
 - code: groom/groom/assets/dashboard.js::GateBlock@0b60fdd379ab
 - code: groom/groom/assets/dashboard.js::useHoldPlace@5e6b749cb8ef
+- code: groom/groom/assets/dashboard.js::AnswerForm@8a9e54c1b5c4
 - code: groom/groom/assets/dashboard.js::paintRunsBadge@bd8cea76ff7e
 - tests: groom/tests/test_gate_strip_dynamic.py::test_the_strip_stays_above_the_tabs_while_a_tab_scrolls
 - tests: groom/tests/test_gate_strip_dynamic.py::test_a_gate_that_opens_while_the_operator_reads_leaves_the_text_where_it_was
 - tests: groom/tests/test_gate_strip_dynamic.py::test_two_open_gates_both_show_with_their_own_question_and_box
 - tests: groom/tests/test_gate_strip_dynamic.py::test_the_strip_collapses_to_one_line_with_the_start_of_the_question_and_expands_again
 - tests: groom/tests/test_gate_strip_dynamic.py::test_a_live_push_keeps_the_draft_the_collapsed_state_and_the_focused_gate
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_a_gate_that_opens_while_diff_is_open_shows_above_the_tabs_and_leaves_the_file_and_scroll_alone
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_the_question_collapses_to_one_line_and_the_diff_keeps_scrolling
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_answering_above_the_diff_sends_the_answer_removes_the_question_and_keeps_tab_file_and_scroll_without_a_new_read
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_files_keeps_its_file_and_scroll_through_a_gate_and_an_answer_without_a_new_read
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_j_and_k_typed_in_the_answer_box_type_those_letters_and_leave_the_run_and_the_file_alone
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_selecting_another_run_keeps_what_was_typed_for_this_runs_gate_until_it_is_sent
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_the_answer_box_and_send_control_have_roles_names_and_keyboard_operation_and_pass_axe_on_diff_and_files
 - tests: groom/tests/test_gate_strip_dynamic.py::test_the_runs_button_carries_a_counted_badge_while_another_pane_is_open_and_clears_with_the_last_block
 - refs: [run now strip](run-now-strip.md), [run breakdown views](run-breakdown-views.md), [the gate strip](../gui/screens/groom-dashboard.md#detail-gate-strip), [send detail answer](../gui/screens/groom-dashboard.md#send-detail-answer)
 
@@ -36,6 +44,7 @@ A run waiting on the operator shows its open gates in a strip above the Overview
 ## Drafts, focus and collapse
 
 - rule: each gate's draft is keyed to that gate's file path. A live update, a new gate for the same run or another gate's removal leaves every other gate's typed text, caret, selection and focus where they were.
+- rule: the page keeps what was typed in each answer box in a draft held per run and gate, so selecting another run and coming back restores the text in that gate's box. Sending the answer clears the draft, a gate that is no longer open drops its draft, and a refused send puts the sent text back unless the operator has typed since.
 - rule: the strip collapses to one line and expands again with one button, named `Collapse` when open and `Answer` when collapsed. The button carries `aria-expanded`.
 - rule: a collapsed strip keeps its boxes out of the page but not out of the draft. Expanding shows the same text, and focus moves to the first answer box. Collapsing moves focus to the button that expands it.
 - rule: the collapsed line names the start of the question, the time waited when the run reports it and, with more than one open gate, how many are open. A gate that opens while the strip is collapsed raises that count, so the operator sees it.
@@ -45,6 +54,8 @@ A run waiting on the operator shows its open gates in a strip above the Overview
 
 - rule: sending an answer uses the same command, endpoint and failure message as before the strip. The strip changes where the form sits, not how it sends.
 - rule: a sent answer takes its own gate out of the strip. When the last gate goes, the strip goes with it, and the open tab and its scroll position stay.
+- rule: a gate that opens or is answered while the Diff or Files tab is open leaves that tab selected, with its selected file and scroll position, and reads neither the diff nor the tree again. The answer goes to the run as it does on the Overview tab.
+- rule: the answer box and the send button are a textbox named `Your answer` and a button, reachable and operable by keyboard, on the Diff and Files tabs as on Overview.
 - rule: a refused send keeps the typed text in its gate's box and says it was not taken, with the reason.
 - rule: a shortcut key typed inside an answer box does nothing else. The list shortcuts ignore a focused text field.
 

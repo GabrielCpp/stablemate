@@ -81,10 +81,10 @@ with the same command has already replaced the pane's gate list, so no tab re-fe
      `file_path`, the [detail answer textarea](../gui/screens/groom-dashboard.md#detail-answer-textarea),
      and the [detail send answer button](../gui/screens/groom-dashboard.md#detail-send-answer-button).
   7. The operator enters answer text through [edit detail answer textarea](../gui/screens/groom-dashboard.md#edit-detail-answer-textarea).
-     Text editing stays local to the browser form control: no input handler, no draft
-     in the store, no websocket message. It survives every subsequent push because the
-     gate block is keyed by gate file path, so the reconciler reuses the same
-     `<textarea>` DOM node rather than replacing it.
+     The page keeps the text in a draft held per run and gate, with no store write and
+     no websocket message. It survives every subsequent push because the gate block is
+     keyed by gate file path, and it survives selecting another run because a newly
+     mounted box restores the draft. Sending clears it.
   8. The operator activates [send detail answer](../gui/screens/groom-dashboard.md#send-detail-answer).
      The client's own submit handler prevents the browser's navigation, serializes the
      form fields into one [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md)

@@ -7,7 +7,7 @@ title: Run Files tab
 
 The run Files tab shows the checkout of one live container run, read-only, beside the Overview, Details and Diff tabs in the [groom dashboard](../gui/screens/groom-dashboard.md). The [detail Files tab](../gui/screens/groom-dashboard.md#detail-files-tab) holds the screen contract. This page holds the decisions behind it, so a later change to the tab, to the `/files/` and `/file/` replies or to the sidecar `getTree` and `getFile` replies can check them in one place. The data shapes are [workspace file list data](../formats/workspace-file-list-data.md) and [workspace file content data](../formats/workspace-file-content-data.md), and the sibling tab is the [run Diff tab](run-diff-tab.md).
 
-- code: groom/groom/assets/dashboard.js::FilesTab@6bf5e97b9175
+- code: groom/groom/assets/dashboard.js::FilesTab@44ffdf1c1d9a
 - code: groom/groom/assets/dashboard.js::RunFileView@91777ea958ea
 - code: groom/groom/assets/dashboard.js::useRunFiles@9ef89b78abfa
 - code: groom/groom/assets/dashboard.js::loadRunFiles@0928854e5520
@@ -21,6 +21,8 @@ The run Files tab shows the checkout of one live container run, read-only, besid
 - rule: a native run, a finished run, and a container run without a connected sidecar have no Files tab.
 - rule: the dashboard reads the tree on the first open of Files for a run selection, never on selecting a run, so a run nobody opens Files on costs no tree read.
 - rule: moving between tabs of the same run keeps the tree and the selected file and reads nothing new, and selecting another run resets both.
+- rule: a gate that opens or is answered while the Files tab is open leaves the tab, the selected file and the scroll position alone and reads no tree or file, as [run gate strip](run-gate-strip.md) describes.
+- rule: the selected file scrolls inside a region the keyboard reaches, with the role `region` and the name `Contents of <path>`, or `File contents` when no path is set.
 - rule: the tab asks for a file before one is selected, and an empty file says `This file is empty.`, a different state from a file that could not be read.
 - rule: a read that did not happen is never shown as no files or as an empty file. A `failed` reply, a rejected fetch and a missing checkout show the unreadable message with a retry control.
 - rule: a tree walk that cannot enter a folder counts as failed, because a partial listing would claim a checkout without files it has.
@@ -37,6 +39,8 @@ The run Files tab shows the checkout of one live container run, read-only, besid
 - rule: the tree and file replies carry `served`, `sidecar` or `volume`, beside the existing members.
 - rule: the Files and Diff tabs are the only way to read a run's files and diff in the dashboard, and a run with several checkouts chooses among them as [run checkout selection](run-checkout-selection.md) describes.
 - verify: absent(subject="the Files tab for a run without a connected sidecar")
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_files_keeps_its_file_and_scroll_through_a_gate_and_an_answer_without_a_new_read
+- tests: groom/tests/test_gate_above_diff_dynamic.py::test_the_answer_box_and_send_control_have_roles_names_and_keyboard_operation_and_pass_axe_on_diff_and_files
 - tests: groom/tests/test_files_tab_dynamic.py::test_a_run_that_shows_a_diff_tab_shows_a_files_tab_before_it_and_other_runs_show_neither
 - tests: groom/tests/test_files_tab_dynamic.py::test_selecting_a_run_reads_no_tree_and_the_first_open_of_files_reads_it_once
 - tests: groom/tests/test_files_tab_dynamic.py::test_files_keeps_its_tree_and_selected_file_across_tabs_of_the_same_run_without_another_read
