@@ -188,6 +188,11 @@ def intercept_call(row: InterceptRow) -> str:
             + "".join(f", {name}={python_literal(row.args[name])}" for name in ordered) + ")")
 
 
+def hold_call(event: str) -> str:
+    """The `qa.intercept(...)` line that keeps the request *event* names open."""
+    return intercept_call(InterceptRow(effect="hold", args={"event": event}))
+
+
 def release_call(event: str) -> str:
     """The `qa.release(...)` line that lets the request *event* names go on to the server."""
     return f"    qa.release({python_literal(event)})"

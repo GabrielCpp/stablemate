@@ -49,6 +49,7 @@ from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import fixture_call
+from ostler.qa.plan_source import hold_call
 from ostler.qa.plan_source import state_walk_function_name
 from ostler.qa.plan_source import intercept_call
 from ostler.qa.plan_source import python_identifier
@@ -472,8 +473,10 @@ def _arrive(
 
 
 def _installed_intercepts(obligations: list[Obligation]) -> list[str]:
-    """The lines that install every intercept *obligations* declare, each once."""
-    return list(dict.fromkeys(intercept_call(row) for obligation in obligations for row in obligation.intercepts))
+    """The lines that install every intercept *obligations* declare, each once, with a hold only where the claim it serves is read."""
+    return list(dict.fromkeys(
+        line for obligation in obligations
+        for line in [*map(intercept_call, obligation.intercepts), *map(hold_call, obligation.releases)]))
 
 
 def _arrival_scenario(

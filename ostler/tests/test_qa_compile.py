@@ -7789,7 +7789,6 @@ def _held_save() -> str:
     button = f"{_SCREEN}#create-policy-button"
     interaction = f"{_SCREEN}#submit-new-policy"
     event = "PUT /api/policies/{id}"
-    hold = [{"effect": "hold", "args": {"event": event}}]
     locators = {"on": ["[create-policy-button](#create-policy-button)"], "trigger": ["click"]}
     table = _located("#policy-table", f"{_SCREEN}#policy-table", {"role": ["table"], "name": ["Policies on file"]})
     context = _navigation_context(
@@ -7797,9 +7796,8 @@ def _held_save() -> str:
                          locators={"role": ["button"], "name": ["Create policy"]},
                          checks=[_visible("button:Create policy")]),
         _page_obligation("okf:new-policy:submit-new-policy:does:1", interaction, locators=locators, checks=[table])
-        | {"intercepts": hold, "releases": [event]},
-        _page_obligation("okf:new-policy:submit-new-policy:does:2", interaction, locators=locators, checks=[table])
-        | {"intercepts": hold},
+        | {"releases": [event]},
+        _page_obligation("okf:new-policy:submit-new-policy:does:2", interaction, locators=locators, checks=[table]),
         navigation=_arrival_navigation(),
     )
     source, _ = compile_plan_gaps(context, story="demo-story")

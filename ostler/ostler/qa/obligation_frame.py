@@ -379,7 +379,7 @@ def obligation_frame(
         steps = journey_steps(node, book)
     parsed = (parse_intercept(value) for key in registry.effect_keys(node.type)
               for value in node.bullets.get(key, ()))
-    intercepts = tuple(call for call in parsed if isinstance(call, CheckCall))
+    intercepts = tuple(call for call in parsed if isinstance(call, CheckCall) and call.name != "hold")
     locators = control_locators(node, book)
     extends_unresolved = False
     if node.type in ("interaction", "invocation"):

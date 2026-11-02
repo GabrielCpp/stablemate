@@ -131,7 +131,7 @@ its first hop.
 - code: ostler/ostler/qa/obligation.py::obligation_of@d10cd4b24ffa
 - code: ostler/ostler/qa/obligation.py::obligations_of@103f496c84c3
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@1d8c8dad0e49
-- code: ostler/ostler/qa/obligation_frame.py::obligation_frame@be8d7c466ba4
+- code: ostler/ostler/qa/obligation_frame.py::obligation_frame@25464ac4aebf
 - code: ostler/ostler/qa/obligation_frame.py::BookNode@89d602494fca
 - code: ostler/ostler/qa/book_index.py::BookIndex@eea59e696855
 - code: ostler/ostler/qa/book_index.py::node_acts@734a965ada9c
@@ -180,7 +180,8 @@ its first hop.
 - rule: a state that lasts only while a request is open is read by holding that request. An
   `intercept: hold(event=...)` under a claim goes on before the trigger, because the trigger sends
   the request, and comes off after the last check of that claim, so the claims below it read the
-  settled screen. A hold binds by document order, as `verify:` does, so a hold above every claim
+  settled screen. Only a scenario that reads that claim installs the hold, because a scenario that
+  sends no such request would report a rule nothing reached. A hold binds by document order, as `verify:` does, so a hold above every claim
   has no end and `doctor` refuses it. The settling checks ignore a held request, or each would wait
   out its timeout on a request the scenario itself keeps open. A hold no request reached fails the
   scenario, because the claim it serves read a state nothing proved was in progress.

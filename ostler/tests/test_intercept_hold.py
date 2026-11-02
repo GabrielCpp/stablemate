@@ -92,11 +92,12 @@ def test_a_hold_takes_only_the_request_it_keeps_open() -> None:
     assert isinstance(checks.parse_intercept('hold(event="/a")'), checks.Refusal)
 
 
-def test_an_interaction_hands_its_intercepts_to_the_frame() -> None:
+def test_a_hold_stays_out_of_what_every_claim_of_a_node_shares() -> None:
+    rewrite = 'rewrite(event="GET /api/items", find="1", replace="2")'
     node = BookNode(id="items.md#save-item", type="interaction", page_type="", surface="acme",
-                    bullets={"intercept": (_HOLD,)}, edges=())
+                    bullets={"intercept": (_HOLD, rewrite)}, edges=())
 
-    assert [call.name for call in obligation_frame(node, None, {}).intercepts] == ["hold"]
+    assert [call.name for call in obligation_frame(node, None, {}).intercepts] == ["rewrite"]
 
 
 def test_a_hold_binds_to_the_claim_above_it_and_not_to_the_next_one() -> None:
@@ -129,8 +130,8 @@ def test_the_packet_says_which_claim_ends_the_hold(tmp_path: Path) -> None:
     by_tail = {row["id"].rsplit("#", 1)[-1]: row for row in packet["obligations"]}
     assert by_tail["save-item:does:1"]["releases"] == ["PUT /api/items/{id}"]
     assert "releases" not in by_tail["save-item:does:2"]
-    assert by_tail["save-item:does:1"]["intercepts"] == [{"effect": "hold", "args": {"event": "PUT /api/items/{id}"}}]
-    assert by_tail["save-item:does:2"]["intercepts"] == by_tail["save-item:does:1"]["intercepts"]
+    assert "intercepts" not in by_tail["save-item:does:1"]
+    assert "intercepts" not in by_tail["save-item:does:2"]
 
 
 def test_the_route_stays_unanswered_until_release(tmp_path: Path) -> None:
