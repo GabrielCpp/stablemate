@@ -5,19 +5,23 @@ title: Run Activity tab
 ---
 # Run Activity tab
 
-The Activity tab answers one question about a run: what did each agent turn say and do. The Overview shows where the time and money went, and the Details tab shows the run's live metrics and telemetry trail. Neither shows the words of a turn. The Activity tab lists the run's agent turns, and the steps, gates, retries and churn alerts around them, under the work item and flow pass they happened in. The operator opens a turn to read its prompt, its thinking, its messages and its tool calls, with the long parts folded away until asked for, or any other row to read its name, time and one-line result, beside the list.
+The Activity tab answers one question about a run: what did each agent turn say and do. The Overview shows where the time and money went, and the Details tab shows the run's live metrics and telemetry trail. Neither shows the words of a turn. The Activity tab lists the run's agent turns, and the steps, gates, retries and churn alerts around them, under the work item and flow pass they happened in. The operator opens a turn to read its prompt, its thinking, its messages and its tool calls, with the long parts folded away until asked for, or a step or a gate to read its error, its logs, its question and answer and what came next, or a retry or a churn alert to read its name, time and one-line result, beside the list.
 
-The tab sits between Overview and Details in the [detail tab bar](../gui/screens/groom-dashboard.md#detail-tabs) and is there for every run, native or container, with or without a sidecar. A turn's figures come from the run's stored spans through [get-run-activity](../http/get-run-activity.md), and a turn's words come from its stored record or, while it runs, from the run's live transcript, through [get-run-turn](../http/get-run-turn.md). The browser holds one list, the fold state of its headings and one open row.
+The tab sits between Overview and Details in the [detail tab bar](../gui/screens/groom-dashboard.md#detail-tabs) and is there for every run, native or container, with or without a sidecar. A turn's figures come from the run's stored spans through [get-run-activity](../http/get-run-activity.md), and a turn's words come from its stored record or, while it runs, from the run's live transcript, through [get-run-turn](../http/get-run-turn.md). A step's or a gate's details come from the run's stored spans and logs, its live telemetry and its gate file, through [get-run-entry](../http/get-run-entry.md). The browser holds one list, the fold state of its headings and one open row.
 
 Transcript text is untrusted. A model or a tool can write any characters, so no part of a turn reaches the page as markup the server or the browser did not choose.
 
-- code: groom/groom/activity.py::timeline@7ae2217373d7
+- code: groom/groom/activity.py::timeline@e8613a504a4b
 - code: groom/groom/activity.py::turn@5b3443f1a116
-- code: groom/groom/app.py::run_activity@ee906a04819d
+- code: groom/groom/app.py::run_activity@7e795c810caa
 - code: groom/groom/app.py::run_turn@353c67ab773c
-- code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
+- code: groom/groom/app.py::run_entry@877266517ded
+- code: groom/groom/activity.py::entry@5a64cec9f144
+- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
 - code: groom/groom/assets/dashboard.js::TurnReading@89ba73f95707
+- code: groom/groom/assets/dashboard.js::StepReading@b14789843b86
+- code: groom/groom/assets/dashboard.js::GateReading@693ed5f15c67
 - code: groom/groom/transcript_parse.py::from_updates@1ccc9263ddd8
 - code: groom/groom/churn.py::alerts@641e36a47ca5
 - code: groom/groom/flows.py::span_passes@55f223c1146d
@@ -29,7 +33,16 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: a work item's state reads `running` while its turn runs, `in progress` for the newest item of a live run, then `done`, `not counted` or `count unknown` from the Overview's outcome. A flow pass reads `running`, `open`, `failed` or `passed`.
 - rule: a heading is a button that opens and closes its rows, with `aria-expanded` and an accessible name that says its state, time and cost in words. A finished work item or flow pass starts folded. The item and the pass in progress start open. The group holding the selected row is open whatever the fold state. A choice the operator made on a heading holds across reads.
 - rule: a run of successful steps folds to one row that says the count, the time and `all passed`. Selecting the row opens it into one row per step, and selecting it again closes it. A failed step, a gate, a backend retry and a churn alert each stand as their own row between the folds, and each has a mark of its own, a cross, a question mark or an exclamation mark, so the kind never rests on color alone.
-- rule: selecting a step, a failed step, a gate, a retry or a churn alert shows its name, its time and its one-line result in the pane in place of a transcript. A failed step's result is its error message, and a gate's is its question or activity label with how it ended.
+- rule: selecting a retry or a churn alert shows its name, its time and its one-line result in the pane in place of a transcript. Selecting a step, a failed step or a gate opens its full reading instead, and a row that opens one has the same name, time and one-line result in the list as before.
+- rule: a step's reading is its head, its error, its logs and what came next. The head names the step, its work item, its flow pass, its duration and, when it failed, its error class. A failed step shows its whole error text under the label `Error` marked with a cross, so the error never rests on color. The error class shows as a name and the server's error kind is not shown.
+- rule: a step's logs are the log lines the run recorded for the step's node inside the step's own window, oldest first, each with its time, its level, its node and its message, up to 500 lines. A line at level `ERROR` or `FATAL` is bold, and a warning is amber. A step with no lines says it recorded none.
+- rule: what came next is the row that follows the selected one in the list's time order, and it names that row's kind. The reading offers a button that opens that row in the list, unfolds its groups and scrolls it into view. A step with no row after it says `Nothing came after this.`
+- rule: a gate's reading is its question, its answer, when it was answered and how long it waited, and the answer is read from the gate file the wait named, after the place the question stands in it that belongs to that asking, and before the next question. When the same question stands in the file more than once, the nth asking reads the nth place, counting the waits that completed. An asking with no place of its own reads as unanswered and never takes a neighbour's answer, and the pane then says `The gate file holds no answer for this asking.` An older gate finds its own answer above a newer question. A gate file that cannot be read says the answer is not available and never shows an empty answer.
+- rule: a gate's key is `gate:<node>#<n>`, where `n` counts the node's operator waits in the order they started, so the key of a gate stays the same while it is open and after it is answered. The pane answered from the box above the tabs keeps the same row selected.
+- rule: a step that is running and a gate that is open have no stored span, because a span is stored when it ends. They come from the run's live telemetry as rows of their own, a running step as `step:running:<node>`, in the group last worked in. A running step reads `running` and says nothing has come next, and the key moves to the finished step when the step ends. A run whose telemetry has gone silent shows neither row.
+- rule: while a step runs or a gate is open, the pane reads again every 3 seconds, and answering an open gate reads it again at once, so the pane turns answered without a reload and without moving the selection.
+- rule: a step or gate that is being read shows `Reading this step…` and clears it when the details arrive. A step that cannot be read says `The details of this step could not be read` with `Retry now`, keeps its row and its one line in the list, and a successful retry replaces the message with the details.
+- rule: log lines, error text, questions and answers are untrusted. The page shows them as text, and the question and the answer as formatted prose with raw markup neutralised.
 - rule: a retry comes from the `retry` event on the turn's span and a churn alert from replaying the churn rule over the run's stored spans, so both come back unchanged after groom restarts and nothing is stored apart from the spans.
 - rule: a turn that is running has its own mark and is the last row of its flow pass. Its figures come from the live rows until it ends, and it is placed in the group last worked in.
 - rule: a heading stays in view while its rows scroll, the flow pass heading under the work item heading it sits in.
@@ -118,4 +131,35 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - tests: groom/tests/test_activity_groups_dynamic.py::test_a_run_with_no_work_items_groups_its_rows_directly_under_the_flow_pass
 - tests: groom/tests/test_activity_groups_dynamic.py::test_a_heading_adds_up_to_the_overview_figures_for_its_work_item
 - tests: groom/tests/test_activity_groups_dynamic.py::test_headings_and_rows_keep_a_role_a_name_and_state_in_words_and_pass_an_axe_scan
+- tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_with_its_head_and_error_class
+- tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_its_full_error_text
+- tests: groom/tests/test_activity_entries.py::test_a_step_reads_its_logs_with_time_level_node_and_message
+- tests: groom/tests/test_activity_entries.py::test_a_step_that_recorded_no_logs_reads_an_empty_list
+- tests: groom/tests/test_activity_entries.py::test_a_step_says_what_came_next_and_the_key_of_that_row
+- tests: groom/tests/test_activity_entries.py::test_a_running_step_reads_running_with_nothing_next
+- tests: groom/tests/test_activity_entries.py::test_an_answered_gate_reads_its_question_answer_and_how_long_it_waited
+- tests: groom/tests/test_activity_entries.py::test_an_older_gate_finds_its_answer_above_the_newer_question
+- tests: groom/tests/test_activity_entries.py::test_an_open_gate_keeps_its_key_when_it_is_answered
+- tests: groom/tests/test_activity_entries.py::test_a_question_asked_twice_gives_each_gate_the_answer_of_its_own_asking
+- tests: groom/tests/test_activity_entries.py::test_a_gate_whose_asking_the_file_no_longer_holds_reads_no_answer_and_never_a_neighbours
+- tests: groom/tests/test_activity_entries.py::test_a_wait_that_was_interrupted_reads_no_answer_and_the_wait_that_completed_reads_it
+- tests: groom/tests/test_activity_entries.py::test_the_timeline_lists_the_running_step_and_the_open_gate_as_rows
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_failed_step_opens_a_pane_naming_the_step_work_item_pass_duration_and_error_class
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_full_error_text_is_shown_and_marked_as_an_error_in_words
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_logs_of_the_step_show_time_level_node_and_message
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_an_error_log_line_differs_from_the_others_by_more_than_its_color
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_step_with_no_logs_says_it_recorded_none
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_pane_says_what_came_next_and_its_control_opens_that_row_in_the_timeline
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_step_followed_by_a_gate_offers_to_open_that_gate_and_it_opens
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_running_step_says_it_is_running_and_that_nothing_has_come_next
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_passed_step_shows_its_logs_and_what_came_next
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_an_answered_gate_shows_the_question_the_answer_when_it_was_answered_and_how_long_it_waited
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_an_open_gate_shows_its_question_and_how_long_it_has_waited
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_an_open_gate_says_it_is_not_answered_and_points_to_the_box_above_the_tabs
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_answering_in_the_box_above_the_tabs_turns_the_pane_answered_and_keeps_the_selection
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_step_being_read_shows_a_reading_state_that_clears_when_it_appears
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_step_that_cannot_be_read_says_so_keeps_its_row_and_a_retry_replaces_it_with_the_details
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_html_in_a_log_line_or_an_answer_renders_as_text_and_no_script_runs
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_hostile_gate_answer_renders_without_markup_or_script
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_controls_of_the_new_panes_have_a_role_a_name_keyboard_operation_and_axe_is_clean
 - refs: [operator reads an agent turn](../flows/operator-reads-an-agent-turn.md), [groom activity module](groom-activity-module.md), [groom transcript parse module](groom-transcript-parse-module.md), [the groom dashboard detail pane](../gui/screens/groom-dashboard.md#detail-pane)

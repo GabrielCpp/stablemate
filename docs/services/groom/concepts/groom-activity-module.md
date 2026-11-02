@@ -9,7 +9,7 @@ The activity module builds what the [Activity tab](run-activity-tab.md) shows: t
 
 The module reads and returns plain data. It writes nothing, holds no state between calls and raises two errors the server maps to statuses: `TurnNotFound` for a slug the run has no turn under, and `TurnUnreadable` for a turn that exists whose record is not on this machine.
 
-- code: groom/groom/activity.py@a6f9070f05f6
+- code: groom/groom/activity.py@34d85920b953
 - tests: groom/tests/test_activity.py
 - tests: groom/tests/test_activity_groups.py
 - refs: [groom transcript parse module](groom-transcript-parse-module.md), [groom store](groom-store.md), [groom turns module](groom-turns-module.md), [run flow tree](run-flow-tree.md)
@@ -18,12 +18,13 @@ The module reads and returns plain data. It writes nothing, holds no state betwe
 
 ### timeline
 
-- sig: `timeline(run_id: str, live: LiveRows | None = None) -> dict[str, Any]`
+- sig: `timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None) -> dict[str, Any]`
 - abstract: false
 - does: lists the run's agent turns oldest first, a finished turn from its spans and a turn with live rows and no span from its first live row
+- does: lists the run's running step and open operator gate, taken from the live telemetry in `standing`, among its rows in the group last worked in
 - verify: json_path(path="$.rows[0].status", matches="^(done|failed)$")
 - returns: `{"run_id", "rows", "items", "as_of"}`
-- code: groom/groom/activity.py::timeline@7ae2217373d7
+- code: groom/groom/activity.py::timeline@e8613a504a4b
 - tests: groom/tests/test_activity.py::test_the_timeline_lists_a_finished_turn_with_its_figures_and_pass
 - endpoint: [get-run-activity](../http/get-run-activity.md)
 
@@ -45,6 +46,20 @@ The module reads and returns plain data. It writes nothing, holds no state betwe
 - tests: groom/tests/test_activity.py::test_a_turn_carries_its_recorded_prompt_and_its_thinking
 - tests: groom/tests/test_activity.py::test_the_last_assistant_message_of_a_finished_turn_is_final_and_a_running_turns_is_not
 - endpoint: [get-run-turn](../http/get-run-turn.md)
+
+### entry
+
+- sig: `entry(run_id: str, key: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None, read: Callable[[str], str | None] = ...) -> dict[str, Any]`
+- abstract: false
+- does: reads one step, failed step or operator gate of the run in full, from its stored span and logs, or from the live telemetry in `standing` while it runs or is open
+- verify: json_path(path="$.kind", matches="^(step|gate)$")
+- raises: `EntryNotFound` when the run's timeline has no row under the key
+- returns: for a step, `{"run_id", "kind", "key", "head", "error", "logs", "cut", "next"}`
+- returns: for a gate, `{"run_id", "kind", "key", "head", "question", "answer", "taken", "readable", "next"}`
+- code: groom/groom/activity.py::entry@5a64cec9f144
+- tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_its_full_error_text
+- tests: groom/tests/test_activity_entries.py::test_an_answered_gate_reads_its_question_answer_and_how_long_it_waited
+- endpoint: [get-run-entry](../http/get-run-entry.md)
 
 ## Rules
 

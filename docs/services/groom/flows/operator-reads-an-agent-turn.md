@@ -16,10 +16,13 @@ Every response on this path is JSON. The server sends the turn's text as it was 
 - steps:
   1. [Serve the run's turns](../http/groom.md#serve-run-activity)
   2. [Serve the turn](../http/groom.md#serve-run-turn)
+  3. [Serve the step or gate](../http/groom.md#serve-run-entry)
 - end: the Activity tab lists the run's turns oldest first under their work item and flow pass headings with exactly one row marked `aria-current`
 - verify: json_path(path="$.rows[-1].slug", matches="^\\d{3}-\\d{5}-")
 - end: the pane beside the list shows the selected turn's head, its messages as prose and each tool call as one line
 - verify: json_path(path="$.entries[0].kind", matches="^(message|tool)$")
+- end: a selected step or gate reads in the pane with its error or question, its logs or answer, and what came next
+- verify: json_path(path="$.kind", matches="^(step|gate)$")
 - detail: [run Activity tab](../concepts/run-activity-tab.md)
 - detail: [groom activity module](../concepts/groom-activity-module.md)
 - detail: [groom transcript parse module](../concepts/groom-transcript-parse-module.md)

@@ -1308,7 +1308,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: it lists the run's rows under work item and flow pass headings, each a button that opens and closes its rows, with folded runs of passed steps and separate rows for failed steps, gates, retries and churn alerts.
 - states: the selected tab controls the single tabpanel `#detail-panel`, as the other tabs do.
 - code: groom/groom/assets/dashboard.js::DetailTabs@c23c8518540f
-- code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
+- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_sits_between_overview_and_details
 - tests: groom/tests/test_activity_groups_dynamic.py::test_selecting_a_heading_opens_or_closes_it_by_pointer_and_by_keyboard
@@ -1329,7 +1329,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a turn that starts while the tab is open appears at the end of the list without a reload and without moving the operator's scroll.
 - states: a list with no turn is replaced by `No activity yet. The first agent turn appears here when it starts.` and says whether the run is alive or has finished.
 - states: while the list reads, a status named `Reading this run's activity…` shows and clears when the list arrives.
-- code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
+- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_run_with_no_turn_says_it_has_no_activity_and_that_it_is_alive
@@ -1362,11 +1362,14 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - placement: width 60-80%, x 40-100%
 - parent: [detail-activity-tab](#detail-activity-tab)
 - states: holds the open turn's [head](#detail-activity-head) above its [reading](#detail-activity-reading), beside the list.
-- states: selecting a step, a failed step, a gate, a backend retry or a churn alert holds that row's name, time and one-line result in the pane in place of a turn.
+- states: selecting a step, a failed step or a gate holds the [step reading](#detail-step-reading) or the [gate reading](#detail-gate-reading) in the pane in place of a turn.
+- states: selecting a backend retry or a churn alert holds that row's name, time and one-line result in the pane in place of a turn.
 - states: while the turn reads, a status named `Reading this turn…` shows in its place and clears when the turn arrives.
+- states: while a step or a gate reads, a status named `Reading this step…` shows in its place and clears when it arrives.
 - states: when the turn cannot be read, an alert `This turn could not be read` shows with `Retry now`, and the list stays.
+- states: when a step or a gate cannot be read, an alert `The details of this step could not be read` shows with `Retry now`, the row in the list stays with its one line, and a retry that succeeds replaces the alert with the details.
 - verify: visible(locator="#detail-activity-pane", text="Reading this turn")
-- code: groom/groom/assets/dashboard.js::TurnPane@f4a4b806c2fc
+- code: groom/groom/assets/dashboard.js::TurnPane@6656ea3ec53f
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_being_read_shows_a_reading_state_that_clears_when_it_appears
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
@@ -1447,9 +1450,84 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: shown in place of the list when the run's turns could not be read, as `This run's activity could not be read`, with `The Details tab still works.`
 - verify: visible(locator="#detail-activity-state", text="could not be read")
 - states: a failed list never reads as `No activity yet`.
-- code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
+- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it
+
+### detail-step-reading
+
+- selector: `div.rd-step`
+- role: none
+- name: none
+- parent: [detail-activity-pane](#detail-activity-pane)
+- states: its head names the step and its work item, with a chip `failed`, `running` or `passed`.
+- verify: visible(locator="#detail-step-reading", text="step")
+- states: its second line gives the flow pass as `1st pass`, then `step`, then the duration.
+- states: a failed step adds its error class to the second line.
+- states: a failed step shows the label `Error` with a cross before it.
+- verify: visible(locator="#detail-step-reading", text="Error")
+- states: the whole error text of a failed step stands in a box of its own below the label.
+- states: the logs come under `Logs from this step`, one line each with its time, its level, its node and its message.
+- verify: visible(locator="#detail-step-reading", text="INFO")
+- states: a log line at level `ERROR` or `FATAL` is set in bold and a warning line is amber, so a line differs by more than its color.
+- states: a step that recorded no logs says `This step recorded no logs.`
+- states: a step whose earlier lines the server did not keep says `Earlier lines of this step are not shown.`
+- states: `What came next` says which row followed in time order.
+- states: `What came next` carries a button `Open that step`, `Open that gate` or `Open that turn` that opens that row in the list.
+- verify: visible(locator="#detail-step-reading", text="Open that")
+- states: a step with no row after it says `Nothing came after this.`
+- states: a running step reads `running`, shows its logs so far, and says `Nothing yet. This is still running.`
+- states: the pane reads again every 3 seconds while its step runs and moves to the finished step when the step ends.
+- states: log lines and error text show as text and never as markup.
+- code: groom/groom/assets/dashboard.js::StepReading@b14789843b86
+- code: groom/groom/assets/dashboard.js::StepLogs@fcf7d98758af
+- code: groom/groom/assets/dashboard.js::StepNext@4af39f756b11
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_failed_step_opens_a_pane_naming_the_step_work_item_pass_duration_and_error_class
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_full_error_text_is_shown_and_marked_as_an_error_in_words
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_logs_of_the_step_show_time_level_node_and_message
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_an_error_log_line_differs_from_the_others_by_more_than_its_color
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_step_with_no_logs_says_it_recorded_none
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_pane_says_what_came_next_and_its_control_opens_that_row_in_the_timeline
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_step_followed_by_a_gate_offers_to_open_that_gate_and_it_opens
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_running_step_says_it_is_running_and_that_nothing_has_come_next
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_passed_step_shows_its_logs_and_what_came_next
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_step_being_read_shows_a_reading_state_that_clears_when_it_appears
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_a_step_that_cannot_be_read_says_so_keeps_its_row_and_a_retry_replaces_it_with_the_details
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_html_in_a_log_line_or_an_answer_renders_as_text_and_no_script_runs
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_controls_of_the_new_panes_have_a_role_a_name_keyboard_operation_and_axe_is_clean
+
+### detail-gate-reading
+
+- selector: `div.rd-gate`
+- role: none
+- name: none
+- parent: [detail-activity-pane](#detail-activity-pane)
+- states: its head reads `operator gate` with its work item and a chip.
+- verify: visible(locator="#detail-gate-reading", text="operator gate")
+- states: the chip reads `waiting 9m` while the gate is open, `answered in 9m` once answered and `ended after 23s` when it ended with no answer.
+- states: its second line gives the flow pass and the gate file's path.
+- states: it shows `Question` with the question as the agent wrote it, then `Your answer`.
+- verify: visible(locator="#detail-gate-reading", text="Question")
+- states: an answered gate shows the answer and the time it was answered.
+- states: an answered gate shows how long it waited in its chip.
+- states: an open gate reads `Not answered yet. Answer in the box above the tabs.` under `Your answer`.
+- verify: visible(locator="#detail-gate-reading", text="Not answered yet")
+- states: answering in the box above the tabs turns the open pane into the answered one with the answer in it.
+- states: answering in the box above the tabs does not move the selection.
+- states: a gate whose file holds an answer the run has not taken yet reads `Answered. The run has not picked the answer up yet.`
+- states: a gate that ended with no answer of its own in its file reads `The gate file holds no answer for this asking.`
+- states: a gate file that could not be read says `The answer is not available. The gate file could not be read.`
+- states: an answered or ended gate says what came next, like a [step](#detail-step-reading).
+- states: an open gate says nothing came next.
+- states: the question and the answer show as formatted text and never as markup.
+- code: groom/groom/assets/dashboard.js::GateReading@693ed5f15c67
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_an_answered_gate_shows_the_question_the_answer_when_it_was_answered_and_how_long_it_waited
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_an_open_gate_shows_its_question_and_how_long_it_has_waited
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_an_open_gate_says_it_is_not_answered_and_points_to_the_box_above_the_tabs
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_answering_in_the_box_above_the_tabs_turns_the_pane_answered_and_keeps_the_selection
+- tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_hostile_gate_answer_renders_without_markup_or_script
 
 ## Interactions
 
@@ -1826,6 +1904,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Continues to handle answer-form submissions after a detail push re-renders the form.
 - verify: count(subject="answer frames sent after a detail-push re-render", equals=1)
 - does:
+  - Reads the selected gate row of the Activity tab again at once, so its [gate reading](#detail-gate-reading) turns answered and the selection does not move.
+- verify: visible(locator="#detail-gate-reading", text="Your answer")
+- does:
   - Leaves the answered gate out of the [gate strip](#detail-gate-strip) once the refreshed detail arrives.
 - verify: absent(subject="the answered gate's block in the gate strip")
 - does:
@@ -1833,7 +1914,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: persists(subject="the open tab and its scroll position after the last gate leaves the strip")
 - code: groom/groom/assets/dashboard.js::wireAnswerForm@37509043cbdd
 - code: groom/groom/assets/dashboard.js::sendCommand@37a75c09204d
-- code: groom/groom/assets/dashboard.js::onAnswered@cf3cd6e147fe
+- code: groom/groom/assets/dashboard.js::onAnswered@054f98f0ef29
 - code: groom/groom/assets/dashboard.js::onAnswerRejected@de5d47f81c94
 - tests: groom/tests/test_app.py::test_handle_answer_flips_state_and_broadcasts_an_answered_event
 - tests: groom/tests/test_app.py::test_handle_answer_failure_does_not_flip_or_dispatch
@@ -2314,8 +2395,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Opens the newest turn and requests `GET /api/run/{run_id}/activity/{slug}` for it.
   - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
   - Reads the list again when the run's figures revision moves, and every 3 seconds while a turn runs.
-- code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
-- code: groom/groom/assets/dashboard.js::loadActivity@2b4708550316
+- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
+- code: groom/groom/assets/dashboard.js::loadActivity@eac259719e20
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 
@@ -2334,7 +2415,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
   - Drops the reply of an earlier selection that arrives after a later one.
   - Does not read the list again and does not move the list's scroll.
-- code: groom/groom/assets/dashboard.js::loadTurn@593959b66a7c
+- code: groom/groom/assets/dashboard.js::loadTurn@e82692951f08
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_selecting_a_row_opens_the_turn_beside_the_list_and_marks_it_selected
 
@@ -2351,7 +2432,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Reads the list again, or the open turn again, whichever failed, and clears the alert when the read succeeds.
   - verify: absent(subject=".act-state after a successful retry")
   - Keeps the list on screen while a turn is read again.
-- code: groom/groom/assets/dashboard.js::loadActivity@2b4708550316
+- code: groom/groom/assets/dashboard.js::loadActivity@eac259719e20
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it

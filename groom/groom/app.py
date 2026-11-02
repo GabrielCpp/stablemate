@@ -52,7 +52,7 @@ from groom import (
     turns,
 )
 from groom.attention import RULE_EVENTS, AttentionEvent, AttentionFrame, DigestFrame, EventFrame
-from groom.gates import answer_gate, native_questions
+from groom.gates import answer_gate, extract_question, native_questions
 from groom.live_history import LiveHistory
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from groom.settings import AttendSettings, write_attend_settings
@@ -641,10 +641,51 @@ async def _live_turns(run_id: str) -> activity.LiveRows:
     return live
 
 
+def _standing(run_id: str) -> dict | None:
+    """Where a live run is now: its current step, or the operator gate it waits at."""
+    wf = _workflow_by_run_id(run_id)
+    if wf is None:
+        return None
+    tel = projection.telemetry_for(wf)
+    here = projection.running_node(wf, tel)
+    if here is None or tel is None:
+        return None
+    gate = next(iter(projection.reported_gates(wf, tel)), None)
+    return {
+        "node": here["node"],
+        "since_ts": here["since_ts"],
+        "wait_kind": here["wait_kind"],
+        "turn_active": tel.turn_active,
+        "path": gate.file_path if gate else "",
+        "question": extract_question(gate.question) if gate and gate.question else "",
+    }
+
+
+def _gate_reader(run_id: str):
+    """A reader of one gate file in the run's workspace, or none when the run keeps no workspace groom can read."""
+    wf = _workflow_by_run_id(run_id)
+    if wf is None or not wf.workspace_volume:
+        return lambda _path: None
+    read = localfs.read_file if wf.native else docker_io.read_file
+    volume = wf.workspace_volume
+    return lambda path: read(volume, path)
+
+
 @get("/api/run/{run_id:str}/activity", include_in_schema=False)
 async def run_activity(run_id: Annotated[str, PathParameter()]) -> dict:
     """One run's agent turns, oldest first, with the one still running read from its live transcript."""
-    return await pools.QUERY.run(activity.timeline, run_id, await _live_turns(run_id))
+    return await pools.QUERY.run(activity.timeline, run_id, await _live_turns(run_id), _standing(run_id))
+
+
+@get("/api/run/{run_id:str}/entry/{key:str}", include_in_schema=False)
+async def run_entry(
+    run_id: Annotated[str, PathParameter()], key: Annotated[str, PathParameter()]
+) -> dict:
+    """One step or operator gate of the run, read in full."""
+    try:
+        return await pools.QUERY.run(activity.entry, run_id, key, await _live_turns(run_id), _standing(run_id), _gate_reader(run_id))
+    except activity.EntryNotFound as exc:
+        raise NotFoundException(detail="no such step or gate") from exc
 
 
 @get("/api/run/{run_id:str}/activity/{slug:str}", include_in_schema=False)
@@ -1647,6 +1688,7 @@ def create_app() -> Litestar:
             run_overview,
             run_activity,
             run_turn,
+            run_entry,
             outbox_post,
             inbox_get,
             inbox_post,

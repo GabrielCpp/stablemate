@@ -1,0 +1,81 @@
+---
+type: endpoint
+slug: get-run-entry
+title: get-run-entry
+---
+# get-run-entry
+
+- server: [groom server](groom.md)
+- method: `GET`
+- path: `/api/run/{run_id}/entry/{key}`
+- does:
+  - Returns `kind` as `step` for a step row or `gate` for an operator gate row, with the row's `key` and the run's `run_id`.
+- verify: json_path(path="$.kind", matches="^(step|gate)$")
+- does: all
+  - Returns a step's `head` with its `name`, `work_id`, `flow`, `pass`, `started_ts`, `duration_s` and `error_class`.
+  - Gives the head `state` as `running`, `passed` or `failed`.
+- verify: json_path(path="$.head.state", matches="^(running|passed|failed)$")
+- does:
+  - Gives `pass` as the number of the flow pass heading the step sits under, and 0 outside any flow.
+- does:
+  - Returns a failed step's `error` as the whole error text the step recorded, and an empty string for a step that did not fail.
+- does:
+  - Returns a step's `logs` as the log lines the run recorded for that step's node inside the step's own window, each `{"ts", "level", "node", "body"}`, oldest first, up to 500 lines.
+  - Returns `cut` true when more lines were recorded than the list holds.
+- does: all
+  - Returns `next` as `{"key", "noun", "text"}` naming the row that followed in time order.
+  - Gives `noun` as `step`, `gate`, `turn` or `row`, and `key` as the key of that row.
+- verify: json_path(path="$.next.noun", matches="^(step|gate|turn|row|)$")
+- does:
+  - Returns an empty `key` and the text `Nothing came after this.` when no row follows.
+  - Returns the text `Nothing yet. This is still running.` for a step that is running with no row after it.
+- does: all
+  - Returns a gate's `head` with `work_id`, `flow`, `pass`, `started_ts`, `ended_ts`, `waited_s` and `path`.
+  - Gives the head `state` as `open`, `answered` or `ended`.
+  - Returns a gate's `question`, `answer` and `readable`.
+- verify: json_path(path="$.head.state", matches="^(open|answered|ended)$")
+- does:
+  - Reads the question and the answer from the gate file the wait named.
+  - Takes the answer as the text after the occurrence of the question that belongs to the asking, cut at the next question heading. The nth asking of one question reads the nth occurrence, and an asking with no occurrence of its own returns no answer, never a neighbour's, so an older gate finds its own answer above a newer question.
+- does:
+  - Returns `taken` true when the run took the answer, and false for an open gate whose file already holds an answer the run has not picked up, which reads as `answered`.
+- does:
+  - Returns `readable` false when the gate file could not be read.
+  - Takes the `question` from the wait's activity label when the wait recorded none.
+- does:
+  - Answers a step that is running or a gate that is open from the run's live telemetry, because a span is stored only when it ends.
+  - Answers a `step:running:<node>` key whose step has since ended with the finished step and its own `key`.
+- does:
+  - Keeps a gate's key `gate:<node>#<n>` the same while the gate is open and after it is answered, where `n` counts the node's operator waits in the order they started.
+- does:
+  - Sends every text as it was recorded and applies no markup of its own.
+- response:
+  - media: `application/json`
+  - body: `{"run_id": str, "kind": "step" | "gate", "key": str, "head": {...}, "next": {...}, ...}`
+- status: `200`
+- verify: http_status(code=200, path="/api/run/{run_id}/entry/{key}")
+- errors:
+  - `404` with detail `no such step or gate` when the run's timeline has no row under the key.
+- verify: json_path(path="$.detail", equals="no such step or gate")
+- code: groom/groom/app.py::run_entry@877266517ded
+- code: groom/groom/activity.py::entry@5a64cec9f144
+- detail: [groom activity module](../concepts/groom-activity-module.md)
+- detail: [run Activity tab](../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_with_its_head_and_error_class
+- tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_its_full_error_text
+- tests: groom/tests/test_activity_entries.py::test_a_step_reads_its_logs_with_time_level_node_and_message
+- tests: groom/tests/test_activity_entries.py::test_a_step_that_recorded_no_logs_reads_an_empty_list
+- tests: groom/tests/test_activity_entries.py::test_a_step_says_what_came_next_and_the_key_of_that_row
+- tests: groom/tests/test_activity_entries.py::test_a_step_with_nothing_after_it_says_nothing_came_after
+- tests: groom/tests/test_activity_entries.py::test_a_running_step_reads_running_with_nothing_next
+- tests: groom/tests/test_activity_entries.py::test_a_running_step_that_ended_reads_as_the_finished_step
+- tests: groom/tests/test_activity_entries.py::test_a_passed_step_reads_its_logs_and_what_came_next
+- tests: groom/tests/test_activity_entries.py::test_an_answered_gate_reads_its_question_answer_and_how_long_it_waited
+- tests: groom/tests/test_activity_entries.py::test_an_older_gate_finds_its_answer_above_the_newer_question
+- tests: groom/tests/test_activity_entries.py::test_an_open_gate_reads_its_question_and_that_it_is_not_answered
+- tests: groom/tests/test_activity_entries.py::test_an_open_gate_keeps_its_key_when_it_is_answered
+- tests: groom/tests/test_activity_entries.py::test_an_open_gate_whose_file_is_already_answered_reads_as_answered_and_not_taken
+- tests: groom/tests/test_activity_entries.py::test_the_timeline_lists_the_running_step_and_the_open_gate_as_rows
+- tests: groom/tests/test_activity_entries.py::test_an_unknown_key_is_not_found
+
+The route is `GET /api/run/{run_id}/entry/{key}`, registered by the [groom server](groom.md) and requested through the [serve-run-entry](groom.md#serve-run-entry) invocation. The `key` is the `key` of a step, failed step or gate entry of [get-run-activity](get-run-activity.md). The request has no query, no required headers and no body. The dashboard reads one entry at a time, when the operator selects its row.

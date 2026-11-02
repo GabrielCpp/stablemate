@@ -213,8 +213,9 @@ def test_selecting_a_problem_row_shows_its_name_its_time_and_its_one_line_result
             expect(row).to_have_attribute("aria-current", "true")
             head = page.locator(".rd .rd-head")
             expect(head).to_contain_text(name)
-            expect(head).to_contain_text(row.locator(".t").inner_text())
-            expect(page.locator(".rd .rd-body")).to_contain_text(result)
+            if kind in ("retry", "churn"):
+                expect(head).to_contain_text(row.locator(".t").inner_text())
+            expect(page.locator(".rd .rd-body")).to_contain_text(result.removesuffix(" · answered"))
     finally:
         page.close()
         context.__exit__(None, None, None)

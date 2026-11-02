@@ -11,9 +11,9 @@ It is a client-side unit. The server no longer renders script fragments that dis
 
 - code: groom/groom/assets/dashboard.js::pushToast@f1678abc58fe
 - code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
-- code: groom/groom/assets/dashboard.js::onAnswered@cf3cd6e147fe
-- code: groom/groom/assets/dashboard.css::#toasts@cafd8832be54
-- code: groom/groom/assets/dashboard.css::.toast@cafd8832be54
+- code: groom/groom/assets/dashboard.js::onAnswered@054f98f0ef29
+- code: groom/groom/assets/dashboard.css::#toasts@8403af13e351
+- code: groom/groom/assets/dashboard.css::.toast@8403af13e351
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
 
 ## Contract
@@ -117,8 +117,9 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
 - verify: absent(subject="a groom-transformed exception from onAnswered")
-- code: groom/groom/assets/dashboard.js::onAnswered@cf3cd6e147fe
+- code: groom/groom/assets/dashboard.js::onAnswered@054f98f0ef29
 - step: Receive a `{"type": "answered", "id": …, "file_path": …}` frame, dispatched by the socket frame handler to every connected tab.
 - step: Call `pushToast("ok", "✓ answer sent", "", 3500)` to append a success toast with no body node.
 - step: Read the frame's `id` and `file_path` only to drop the answer text this tab held for that gate. Do not compare them to this tab's selection, and do not re-fetch run detail — the accompanying `detail` push has already refreshed the pane for the tabs that have that run open.
+- step: When this tab's Activity tab has an operator gate row selected, read that entry again at once so the pane turns answered without moving the selection.
 - step: Do not include the gate file path, submitted answer text, answer result message, or answer log entry in the success toast.

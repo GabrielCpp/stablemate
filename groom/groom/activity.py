@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from workhorse import gates as gate_file
 from workhorse.turnkey import VisitKey
 
-from groom import churn, flows, localfs, overview, problems, store, transcript_parse, turns
+from groom import churn, flows, gates, localfs, overview, problems, store, transcript_parse, turns
 from groom.projection import TURN_SPAN, transcript_entry
 
 LiveRows = dict[str, list[dict[str, Any]]]
@@ -21,6 +24,10 @@ RESULT_CHARS = 140
 UNMATCHED_PREFIX = "unmatched-"
 
 VISIT_MARK = "~"
+
+RUNNING_STEP = "step:running:"
+
+LOG_LINES = 500
 
 READ_ROLES = ("assistant", "plan")
 
@@ -251,14 +258,36 @@ def _event_entries(span: dict[str, Any]) -> list[dict[str, Any]]:
     return found
 
 
-def _gate_entry(span: dict[str, Any]) -> dict[str, Any]:
+def _gate_key(node: str, ordinal: int) -> str:
+    return f"gate:{node}#{ordinal}"
+
+
+def _gate_entry(span: dict[str, Any], ordinal: int) -> dict[str, Any]:
     attrs = span["attrs"]
     asked = _plain(str(attrs.get("activity") or "")) or _plain(str(attrs.get("workhorse.gate_question") or ""))
     outcome = str(attrs.get("workhorse.wait_outcome") or "")
     state = "answered" if outcome == "completed" else outcome or "ended"
     entry = _span_entry("gate", span, (asked + " · " if asked else "") + state)
     entry["name"] = "operator gate"
+    entry["key"] = _gate_key(entry["node"], ordinal)
     return entry
+
+
+def _open_gate_entry(standing: dict[str, Any], ordinal: int) -> dict[str, Any]:
+    asked = _plain(str(standing.get("question") or ""))
+    node = str(standing["node"])
+    return {
+        "kind": "gate", "key": _gate_key(node, ordinal), "name": "operator gate", "node": node,
+        "ts": float(standing["since_ts"]), "duration_s": None, "open": True, "result": (asked + " " if asked else "") + "Waiting",
+    }
+
+
+def _doing_entry(standing: dict[str, Any]) -> dict[str, Any]:
+    node = str(standing["node"])
+    return {
+        "kind": "doing", "key": f"{RUNNING_STEP}{node}", "name": node, "node": node,
+        "ts": float(standing["since_ts"]), "duration_s": None, "open": True, "result": "",
+    }
 
 
 class _Group:
@@ -335,11 +364,13 @@ def _groups(spans: list[dict[str, Any]], rows: list[dict[str, Any]], placed: dic
         failed = span["status"] == "ERROR" or problems.gate_check_failed(span)
         one.entries.append(_span_entry("failed" if failed else "step", span, _failure(span) if failed else _plain(str(span["attrs"].get("workhorse.out.reason") or ""))))
         one.see(float(span["start_ts"]))
+    asked_at: dict[str, int] = {}
     for span in spans:
         if span["attrs"].get("workhorse.span_kind") == "wait" and span["attrs"].get("workhorse.wait_kind") == "operator":
+            ordinal = asked_at[_name(span)] = asked_at.get(_name(span), 0) + 1
             key = (_work_id(span), *placed.get(span["span_id"], nowhere)[:2]) if span["span_id"] in placed else near(_work_id(span), float(span["start_ts"]))
             one = group(*key)
-            one.entries.append(_gate_entry(span))
+            one.entries.append(_gate_entry(span, ordinal))
             one.see(float(span["start_ts"]))
         for entry in _event_entries(span):
             key = (_work_id(span), *placed[span["span_id"]][:2]) if span["span_id"] in placed else near(_work_id(span), entry["ts"])
@@ -390,8 +421,23 @@ def _items(run_id: str, groups: dict[tuple[str, str, int], _Group], statuses: di
     return items
 
 
-def timeline(run_id: str, live: LiveRows | None = None) -> dict[str, Any]:
-    """The run's agent turns oldest first, and the same turns grouped by work item and flow pass with the steps, gates, retries and churn alerts around them."""
+def _waits(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [span for span in spans if span["attrs"].get("workhorse.span_kind") == "wait" and span["attrs"].get("workhorse.wait_kind") == "operator"]
+
+
+def _standing_entry(spans: list[dict[str, Any]], standing: dict[str, Any], held: bool) -> dict[str, Any] | None:
+    node = str(standing.get("node") or "")
+    if not node:
+        return None
+    if standing.get("wait_kind") == "operator":
+        return _open_gate_entry(standing, sum(1 for span in _waits(spans) if _name(span) == node) + 1)
+    if standing.get("wait_kind") or standing.get("turn_active") is True or held:
+        return None
+    return _doing_entry(standing)
+
+
+def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The run's agent turns oldest first, and the same turns grouped by work item and flow pass with the steps, gates, retries and churn alerts around them. `standing` is where the run is now: the step it is in, or the operator gate it waits at, which no stored span shows yet."""
     spans = store.run_turn_spans(run_id)
     placed = flows.span_passes(spans)
     archived = store.query_turns(run=run_id, limit=100_000)
@@ -417,6 +463,13 @@ def timeline(run_id: str, live: LiveRows | None = None) -> dict[str, Any]:
         group = groups.setdefault(target, _Group(False))
         group.entries.append({"kind": "running", "key": row["slug"], "slug": row["slug"], "ts": row["started_ts"]})
         group.see(row["started_ts"])
+    here = _standing_entry(spans, standing, bool(running)) if standing else None
+    if here is not None:
+        target = max(groups, key=lambda key: groups[key].last_ts, default=("", "", 0))
+        group = groups.setdefault(target, _Group(False))
+        here["place"] = list(target)
+        group.entries.append(here)
+        group.see(here["ts"])
     return {"run_id": run_id, "rows": rows, "items": _items(run_id, groups, flows.pass_status(spans)), "as_of": time.time()}
 
 
@@ -519,3 +572,197 @@ def turn(run_id: str, slug: str, live: LiveRows | None = None, pending: bool = F
         "prompt": (recorded if recorded.strip() else _joined(entries, "user")) or None,
         "thinking": _joined(entries, "thought") or None,
     }
+
+
+class EntryNotFound(LookupError):
+    """The run has no timeline row under this key."""
+
+
+def _flat(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    found: list[dict[str, Any]] = []
+    for item in items:
+        for one in item["passes"]:
+            for entry in one["entries"]:
+                found.extend(entry["steps"] if entry["kind"] == "steps" else [entry])
+    return sorted(found, key=lambda entry: (entry["ts"], entry["key"]))
+
+
+NOUNS = {"turn": "turn", "running": "turn", "gate": "gate", "step": "step", "failed": "step", "doing": "step"}
+
+
+def _next(key: str, flat: list[dict[str, Any]], names: dict[str, str], going: bool) -> dict[str, Any]:
+    keys = [entry["key"] for entry in flat]
+    after = flat[keys.index(key) + 1] if key in keys and keys.index(key) + 1 < len(keys) else None
+    if after is None:
+        return {"key": "", "noun": "", "text": "Nothing yet. This is still running." if going else "Nothing came after this."}
+    name = after.get("name") or names.get(after["key"], after["key"])
+    kind = after["kind"]
+    text = {
+        "turn": f"{name} ran next, an agent turn.",
+        "running": f"{name} is running next, an agent turn.",
+        "gate": f"The run stopped at {name} next.",
+        "step": f"{name} ran next and passed.",
+        "failed": f"{name} ran next and failed.",
+        "doing": f"{name} is running next.",
+        "retry": f"{name} followed.",
+        "churn": f"{name} followed.",
+    }.get(kind, f"{name} followed.")
+    return {"key": after["key"], "noun": NOUNS.get(kind, "row"), "text": text}
+
+
+def _lines(run_id: str, node: str, start: float, end: float | None) -> tuple[list[dict[str, Any]], bool]:
+    found = store.query_logs(run=run_id, node=node, limit=LOG_LINES + 1, since_ts=start - 0.001, before_ts=None if end is None else end + 0.001)
+    return (
+        [{"ts": float(row["ts"]), "level": str(row["severity"] or ""), "node": str(row["node"] or node), "body": str(row["body"] or "")} for row in reversed(found[:LOG_LINES])],
+        len(found) > LOG_LINES,
+    )
+
+
+def _placed(key: str, context: dict[str, Any]) -> tuple[str, str, int]:
+    for one in context["flat"]:
+        if one["key"] == key and one.get("place"):
+            work_id, flow, number = one["place"]
+            return str(work_id), str(flow), int(number)
+    return "", "", 0
+
+
+def _step_reading(run_id: str, key: str, span: dict[str, Any] | None, standing: dict[str, Any] | None, context: dict[str, Any]) -> dict[str, Any]:
+    if span is None:
+        assert standing is not None
+        node, started, ended = str(standing["node"]), float(standing["since_ts"]), None
+        work_id, flow, number = _placed(key, context)
+        head = {"name": node, "work_id": work_id, "flow": flow, "pass": number, "state": "running", "started_ts": started, "duration_s": None, "error_class": ""}
+        error = None
+    else:
+        attrs = span["attrs"]
+        node, started, ended = _name(span), float(span["start_ts"]), float(span["end_ts"])
+        failed = key.startswith("failed:")
+        flow, number, _ = context["placed"].get(span["span_id"], ("", 0, False))
+        head = {
+            "name": node, "work_id": _work_id(span), "flow": flow, "pass": number, "state": "failed" if failed else "passed",
+            "started_ts": started, "duration_s": _seconds_of(span), "error_class": str(attrs.get("error.class") or ""),
+        }
+        error = (str(attrs.get("status_message") or attrs.get("workhorse.out.reason") or "").strip() or "failed") if failed else None
+    logs, cut = _lines(run_id, node, started, ended)
+    return {
+        "run_id": run_id, "kind": "step", "key": key, "head": head, "error": error, "logs": logs, "cut": cut,
+        "next": _next(key, context["flat"], context["names"], ended is None),
+    }
+
+
+def _answer_after(text: str, asked: str, which: int = -1) -> str:
+    want = asked.strip()
+    if not want:
+        return ""
+    spots = [found.start() for found in re.finditer(re.escape(want), text)]
+    if not spots or which >= len(spots):
+        return ""
+    at = spots[which]
+    end = spots[which + 1] if which != -1 and which + 1 < len(spots) else len(text)
+    rest = text[at + len(want):end]
+    cut = _NEXT_QUESTION.search(rest)
+    return (rest[: cut.start()] if cut else rest).strip()
+
+
+def _asked_of(span: dict[str, Any]) -> str:
+    attrs = span["attrs"]
+    return gates.extract_question(str(attrs.get("workhorse.gate_question") or "")) or str(attrs.get("activity") or "").strip()
+
+
+def _asking(text: str, asked: str, path: str, waits: list[dict[str, Any]], mine: dict[str, Any] | None) -> int | None:
+    same = [
+        one for one in waits
+        if str(one["attrs"].get("workhorse.gate_path") or "") == path and _asked_of(one) == asked
+        and one["attrs"].get("workhorse.wait_outcome") == "completed"
+    ]
+    if mine is not None and mine not in same:
+        return None
+    total = len(re.findall(re.escape(asked.strip()), text)) if asked.strip() else 0
+    askings = len(same) + (1 if mine is None else 0)
+    position = len(same) if mine is None else same.index(mine)
+    index = position - (askings - total)
+    return index if 0 <= index < total else None
+
+
+_NEXT_QUESTION = re.compile(r"^#{1,2}\s+questions?\s+from\s+the\s+agent\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _gate_reading(
+    run_id: str, key: str, span: dict[str, Any] | None, standing: dict[str, Any] | None, context: dict[str, Any], read: Callable[[str], str | None],
+) -> dict[str, Any]:
+    if span is None:
+        assert standing is not None
+        path, asked = str(standing.get("path") or ""), str(standing.get("question") or "")
+        work_id, flow, number = _placed(key, context)
+        head = {"work_id": work_id, "flow": flow, "pass": number, "state": "open", "started_ts": float(standing["since_ts"]), "ended_ts": None, "waited_s": None, "path": path}
+    else:
+        attrs = span["attrs"]
+        path = str(attrs.get("workhorse.gate_path") or "")
+        asked = gates.extract_question(str(attrs.get("workhorse.gate_question") or "")) or str(attrs.get("activity") or "").strip()
+        flow, number, _ = context["placed"].get(span["span_id"], ("", 0, False))
+        outcome = str(attrs.get("workhorse.wait_outcome") or "")
+        head = {
+            "work_id": _work_id(span), "flow": flow, "pass": number, "state": "answered" if outcome == "completed" else "ended",
+            "started_ts": float(span["start_ts"]), "ended_ts": float(span["end_ts"]), "waited_s": _seconds_of(span), "path": path,
+        }
+    text = read(path) if path else None
+    if not asked and text:
+        asked = gate_file.latest_question(text)
+    answer = ""
+    if text and asked:
+        which = _asking(text, asked, path, context["waits"], span)
+        answer = "" if which is None else _answer_after(text, asked, which)
+    taken = head["state"] != "open"
+    if head["state"] == "open" and answer and gate_file.status_of(text or "") in ("ANSWERED", "CONSUMED"):
+        head["state"] = "answered"
+    elif head["state"] == "open":
+        answer = ""
+    return {
+        "run_id": run_id, "kind": "gate", "key": key, "head": head, "question": asked, "answer": answer, "taken": taken,
+        "readable": text is not None, "next": _next(key, context["flat"], context["names"], head["ended_ts"] is None),
+    }
+
+
+def entry(
+    run_id: str,
+    key: str,
+    live: LiveRows | None = None,
+    standing: dict[str, Any] | None = None,
+    read: Callable[[str], str | None] = lambda _path: None,
+) -> dict[str, Any]:
+    """A step or an operator gate read in full: for a step its error, its logs and what came next, for a gate its question, its answer and how long it waited."""
+    spans = store.run_turn_spans(run_id)
+    overview_ = timeline(run_id, live, standing)
+    flat = _flat(overview_["items"])
+    context = {
+        "placed": flows.span_passes(spans), "flat": flat,
+        "waits": sorted(_waits(spans), key=lambda span: float(span["start_ts"])),
+        "names": {row["slug"]: row["node"] for row in overview_["rows"]},
+    }
+    by_id = {span["span_id"]: span for span in spans}
+    kind, _, rest = key.partition(":")
+    if kind in ("step", "failed") and not key.startswith(RUNNING_STEP):
+        span = by_id.get(rest)
+        if span is None:
+            raise EntryNotFound(key)
+        return _step_reading(run_id, key, span, None, context)
+    if key.startswith(RUNNING_STEP):
+        node = key[len(RUNNING_STEP):]
+        if standing and standing.get("node") == node and not standing.get("wait_kind"):
+            return _step_reading(run_id, key, None, standing, context)
+        done = [span for span in flows.leaf_steps(spans) if _name(span) == node]
+        if not done:
+            raise EntryNotFound(key)
+        last = max(done, key=lambda span: float(span["end_ts"]))
+        failed = last["status"] == "ERROR" or problems.gate_check_failed(last)
+        return _step_reading(run_id, f"{'failed' if failed else 'step'}:{last['span_id']}", last, None, context)
+    if kind == "gate":
+        node, _, number = rest.rpartition("#")
+        waits = [span for span in _waits(spans) if _name(span) == node]
+        if not number.isdigit() or not node or int(number) < 1:
+            raise EntryNotFound(key)
+        if int(number) <= len(waits):
+            return _gate_reading(run_id, key, waits[int(number) - 1], None, context, read)
+        if standing and standing.get("wait_kind") == "operator" and standing.get("node") == node and int(number) == len(waits) + 1:
+            return _gate_reading(run_id, key, None, standing, context, read)
+    raise EntryNotFound(key)

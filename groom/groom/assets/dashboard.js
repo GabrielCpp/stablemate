@@ -1404,11 +1404,15 @@ function Overview({ detail }) {
 }
 
 function idleActivity() {
-  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, rev: 0 };
+  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0 };
 }
 
 let activitySeq = 0;
 let turnSeq = 0;
+let entrySeq = 0;
+
+const READABLE_ENTRY = /^(step|failed|gate):/;
+const RUNNING_STEP = "step:running:";
 
 function ordinal(n) {
   const tail = n % 100;
@@ -1416,8 +1420,28 @@ function ordinal(n) {
   return n + (["th", "st", "nd", "rd"][n % 10] || "th");
 }
 
+async function loadEntry(runId, key, refresh = false) {
+  const seq = ++entrySeq;
+  turnSeq++;
+  const held = store.get().activity;
+  if (!refresh) store.set({ activity: { ...held, selected: key, entry: { key, status: "loading", data: null } } });
+  try {
+    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/entry/" + encodeURIComponent(key));
+    if (!response.ok) throw new Error("entry " + response.status);
+    const data = await response.json();
+    if (seq !== entrySeq) return;
+    const now = store.get().activity;
+    store.set({ activity: { ...now, selected: now.selected === key ? data.key : now.selected, entry: { key: data.key, status: "ready", data } } });
+  } catch (err) {
+    if (seq !== entrySeq) return;
+    if (refresh) return;
+    store.set({ activity: { ...store.get().activity, entry: { key, status: "failed", data: null } } });
+  }
+}
+
 async function loadTurn(runId, slug, refresh = false) {
   const seq = ++turnSeq;
+  entrySeq++;
   const held = store.get().activity;
   if (!refresh) store.set({ activity: { ...held, selected: slug, turn: { slug, status: "loading", data: null } } });
   try {
@@ -1444,10 +1468,15 @@ async function loadActivity(runId, rev = 0, refresh = false) {
     const held = store.get().activity;
     const rows = data.rows;
     const items = data.items || [];
-    const chosen = rows.some((row) => row.slug === held.selected) || findEntry(items, held.selected) ? held.selected : "";
+    const chosen = rows.some((row) => row.slug === held.selected) || findEntry(items, held.selected) || held.selected.startsWith(RUNNING_STEP) ? held.selected : "";
     store.set({ activity: { ...held, runId, status: "ready", rows, items, selected: chosen, rev } });
     if (!chosen && rows.length) loadTurn(runId, rows[rows.length - 1].slug);
     else if (chosen && rows.some((row) => row.slug === chosen && row.status === "running")) loadTurn(runId, chosen, true);
+    else if (READABLE_ENTRY.test(chosen)) {
+      const found = findEntry(items, chosen);
+      const unfinished = held.entry.key === chosen && ["open", "running"].includes(held.entry.data && held.entry.data.head.state);
+      if (!found || found.entry.open || unfinished) loadEntry(runId, chosen, true);
+    }
   } catch (err) {
     if (seq !== activitySeq) return;
     if (refresh) store.set({ activity: { ...store.get().activity, rev } });
@@ -1471,6 +1500,7 @@ function findEntry(items, key) {
 
 function pickEntry(key) {
   turnSeq++;
+  entrySeq++;
   const held = store.get().activity;
   store.set({ activity: { ...held, selected: key, turn: { slug: "", status: "idle", data: null } } });
 }
@@ -1483,6 +1513,7 @@ function setFold(key, open) {
 function resetActivity() {
   activitySeq++;
   turnSeq++;
+  entrySeq++;
   return idleActivity();
 }
 
@@ -1523,9 +1554,9 @@ function TurnRow({ row, selected, pick }) {
   </button>`;
 }
 
-const ENTRY_MARKS = { failed: "✕", gate: "?", retry: "!", churn: "!", step: "✓" };
-const ENTRY_CLASS = { failed: "bad", gate: "gate", retry: "warn", churn: "warn", step: "step" };
-const ENTRY_WORDS = { failed: "failed step", gate: "operator gate", retry: "backend retry", churn: "churn alert", step: "step passed" };
+const ENTRY_MARKS = { failed: "✕", gate: "?", retry: "!", churn: "!", step: "✓", doing: "●" };
+const ENTRY_CLASS = { failed: "bad", gate: "gate", retry: "warn", churn: "warn", step: "step", doing: "step" };
+const ENTRY_WORDS = { failed: "failed step", gate: "operator gate", retry: "backend retry", churn: "churn alert", step: "step passed", doing: "step running" };
 
 function entrySpan(seconds) {
   if (seconds > 0 && seconds < 1) return "<1s";
@@ -1537,6 +1568,7 @@ function entryWhen(entry) {
 }
 
 function entryMeta(entry) {
+  if (entry.open) return fmtSpan(Math.max(0, Date.now() / 1000 - entry.ts));
   return entry.duration_s > 0 ? entrySpan(entry.duration_s) : "";
 }
 
@@ -1554,7 +1586,7 @@ function EntryRow({ entry, selected, pick }) {
   >
     <span class="t">${entryWhen(entry)}</span>
     <span class="i" aria-hidden="true">${ENTRY_MARKS[entry.kind]}</span>
-    <span class="main"><span class="n">${entry.name}</span><span class="w">${entry.kind === "step" ? "passed" : entry.result}</span></span>
+    <span class="main"><span class="n">${entry.name}</span><span class="w">${entry.kind === "step" ? "passed" : entry.kind === "doing" ? "running" : entry.result}</span></span>
     <span class="m">${meta}</span>
   </button>`;
 }
@@ -1787,8 +1819,122 @@ function StubPane({ found }) {
   </div>`;
 }
 
-function TurnPane({ runId, rows, turn, items, selected }) {
+function ordinalPass(head) {
+  return head.flow ? head.flow + (head.pass ? " · " + ordinal(head.pass) + " pass" : "") : "";
+}
+
+function logClock(ts) {
+  return clockTime(ts * 1000);
+}
+
+function StepNext({ next }) {
+  return html`<div class="at-msg"><div class="at-role">What came next</div><div class="at-text">${next.text}${next.key ? html` <button type="button" class="btn ghost open-next" onClick=${() => openRow(next.key)}>${"Open that " + next.noun}</button>` : null}</div></div>`;
+}
+
+function StepLogs({ logs, cut }) {
+  return html`<div class="sec-h" style="margin:6px 0 0"><span>Logs from this step</span></div>
+    ${cut ? html`<div class="dim at-note" style="font-size:11.5px">Earlier lines of this step are not shown.</div>` : null}
+    ${logs.length
+      ? html`<div class="log-trail" style="max-height:none" role="list" aria-label="Logs from this step">${logs.map((line, at) => html`<div key=${at} role="listitem" class=${"log-line" + (line.level === "ERROR" || line.level === "FATAL" ? " bad" : line.level === "WARNING" ? " warn" : "")}>
+          <span class="lt-ts">${logClock(line.ts)}</span><span class="lt-lvl">${line.level}</span><span class="lt-node">${line.node}</span><span class="lt-body">${line.body}</span>
+        </div>`)}</div>`
+      : html`<div class="dim" style="font-size:11.5px">This step recorded no logs.</div>`}`;
+}
+
+function StepReading({ data, runId }) {
+  const head = data.head;
+  const failed = head.state === "failed";
+  const running = head.state === "running";
+  const chip = failed ? html`<span class="chip bad" style="margin-left:auto">failed</span>`
+    : running ? html`<span class="chip ok" style="margin-left:auto">running</span>`
+    : html`<span class="chip ok" style="margin-left:auto">passed</span>`;
+  const flowText = ordinalPass(head);
+  const span = running ? fmtSpan(Date.now() / 1000 - head.started_ts) : entrySpan(head.duration_s);
+  return html`<div class="rd rd-step" data-reading="step" data-state=${head.state}>
+    <div class="rd-head">
+      <div class="l1"><span class=${"dot " + (failed ? "blocked" : running ? "running" : "finished")} style=${failed ? "animation:none" : null} aria-hidden="true"></span>${head.name}${head.work_id ? html`<span class="dim">·</span><span class="dim">${head.work_id}</span>` : null}${chip}</div>
+      <div class="l2"><span>${flowText ? flowText + " · step" : "step"}</span><span>${span}</span>${head.error_class ? html`<span>error <b>${head.error_class}</b></span>` : null}</div>
+    </div>
+    <div class="rd-body" tabindex="0" aria-label=${"Step " + head.name}>
+      ${failed ? html`<div class="at-role err-role"><span aria-hidden="true">✕ </span>Error</div><pre class="err-box" aria-label="Error">${data.error}</pre>` : null}
+      <${StepLogs} logs=${data.logs} cut=${data.cut} />
+      <${StepNext} next=${data.next} />
+    </div>
+  </div>`;
+}
+
+function GateReading({ data }) {
+  const head = data.head;
+  const open = head.state === "open";
+  const waited = groupSpan(open ? Date.now() / 1000 - head.started_ts : head.waited_s);
+  const chip = open ? html`<span class="chip bad" style="margin-left:auto">${"waiting " + waited}</span>`
+    : head.state === "answered" && data.taken ? html`<span class="chip" style="margin-left:auto">${"answered in " + waited}</span>`
+    : head.state === "answered" ? html`<span class="chip" style="margin-left:auto">${"answered, waiting " + waited}</span>`
+    : html`<span class="chip" style="margin-left:auto">${"ended after " + waited}</span>`;
+  const flowText = ordinalPass(head);
+  const answeredAt = head.ended_ts ? clockTime(head.ended_ts * 1000).slice(0, 5) : "";
+  return html`<div class="rd rd-gate" data-reading="gate" data-state=${head.state}>
+    <div class="rd-head">
+      <div class="l1"><span class=${"dot " + (open ? "blocked" : "finished")} aria-hidden="true"></span>operator gate${head.work_id ? html`<span class="dim">·</span><span class="dim">${head.work_id}</span>` : null}${chip}</div>
+      <div class="l2">${flowText ? html`<span>${flowText}</span>` : null}${head.path ? html`<span>${head.path}</span>` : null}</div>
+    </div>
+    <div class="rd-body" tabindex="0" aria-label="Operator gate">
+      <div class="at-msg"><div class="at-role">Question</div>${data.question ? html`<${TranscriptText} source=${data.question} />` : html`<div class="at-text dim">The question could not be read.</div>`}</div>
+      ${head.state === "answered" && data.answer
+        ? html`<div class="at-msg user"><div class="at-role">${"Your answer" + (data.taken && answeredAt ? " · " + answeredAt : "")}</div><${TranscriptText} source=${data.answer} /></div>`
+        : open || head.state === "answered"
+          ? html`<div class="at-msg"><div class="at-role">Your answer</div><div class="at-text">${open ? "Not answered yet. Answer in the box above the tabs." : data.taken ? "The gate file holds no answer for this asking." : "Answered. The run has not picked the answer up yet."}</div></div>`
+          : html`<div class="at-msg"><div class="at-role">Your answer</div><div class="at-text">${data.readable ? "The gate ended without an answer in its file." : "The answer is not available. The gate file could not be read."}</div></div>`}
+      ${open ? null : html`<${StepNext} next=${data.next} />`}
+    </div>
+  </div>`;
+}
+
+function EntryPane({ runId, entry }) {
+  if (entry.status === "failed") {
+    return html`<div class="rd"><div class="side-state act-state" role="alert">
+      <h3>The details of this step could not be read</h3>
+      The row in the timeline stays.
+      <button type="button" class="btn ghost retry-entry" onClick=${() => loadEntry(runId, entry.key)}>Retry now</button>
+    </div></div>`;
+  }
+  if (entry.status !== "ready") {
+    return html`<div class="rd"><div class="detail-empty loading" role="status" aria-busy="true">
+      <span class="spin" aria-hidden="true"></span>Reading this step…
+    </div></div>`;
+  }
+  return entry.data.kind === "gate"
+    ? html`<${GateReading} key=${entry.key} data=${entry.data} />`
+    : html`<${StepReading} key=${entry.key} data=${entry.data} runId=${runId} />`;
+}
+
+function openRow(key) {
+  const held = store.get().activity;
+  const found = findEntry(held.items, key);
+  const row = held.rows.find((one) => one.slug === key);
+  const folds = { ...held.folds };
+  if (found) {
+    folds["item:" + found.item.work_id] = true;
+    folds["pass:" + found.item.work_id + "|" + found.pass.flow + "|" + found.pass.pass] = true;
+    if (found.fold) folds[found.fold.key] = true;
+  }
+  store.set({ activity: { ...held, folds } });
+  pickRow(held.runId, key, row);
+  setTimeout(() => {
+    const target = document.querySelector('[data-entry="' + CSS.escape(key) + '"], [data-slug="' + CSS.escape(key) + '"]');
+    if (target) target.scrollIntoView({ block: "nearest" });
+  }, 0);
+}
+
+function pickRow(runId, key, row) {
+  if (row) loadTurn(runId, key);
+  else if (READABLE_ENTRY.test(key)) loadEntry(runId, key);
+  else pickEntry(key);
+}
+
+function TurnPane({ runId, rows, turn, items, selected, entry }) {
   const found = findEntry(items, selected);
+  if (READABLE_ENTRY.test(selected) && !rows.some((one) => one.slug === selected)) return html`<${EntryPane} runId=${runId} entry=${entry} />`;
   if (found && !rows.some((one) => one.slug === selected)) return html`<${StubPane} found=${found} />`;
   const row = rows.find((one) => one.slug === turn.slug);
   if (!row) return html`<div class="rd"></div>`;
@@ -1813,7 +1959,7 @@ function ActivityTab({ detail }) {
   const runId = detail.run_id;
   const rev = detail.figures_rev || 0;
   const alive = detail.state !== "finished";
-  const running = activity.rows.some((row) => row.status === "running");
+  const running = activity.rows.some((row) => row.status === "running") || activity.items.some((item) => item.passes.some((pass) => pass.entries.some((entry) => entry.open)));
   useEffect(() => {
     if (!runId) return;
     const current = store.get().activity;
@@ -1841,17 +1987,17 @@ function ActivityTab({ detail }) {
       <span class="spin" aria-hidden="true"></span>Reading this run's activity…
     </div>`;
   }
-  if (!activity.rows.length) {
+  if (!activity.rows.length && !activity.items.length) {
     const beat = detail.strip && detail.strip.beat_ts ? ": last beat " + fmtSpan(Date.now() / 1000 - detail.strip.beat_ts) + " ago." : ".";
     return html`<div class="empty-big" role="status">No activity yet. The first agent turn appears here when it starts.<br />${alive ? "The run is alive" + beat : "The run has finished."}</div>`;
   }
-  const pick = (key) => (activity.rows.some((row) => row.slug === key) ? loadTurn(runId, key) : pickEntry(key));
+  const pick = (key) => pickRow(runId, key, activity.rows.find((row) => row.slug === key));
   const headed = !(activity.items.length === 1 && activity.items[0].work_id === "");
   return html`<div class="feed">
     <div class=${"tl" + (headed ? "" : " flat")} role="log" aria-label="Run activity">
       ${activity.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${activity.rows} selected=${activity.selected} pick=${pick} folds=${activity.folds} headed=${headed} />`)}
     </div>
-    <${TurnPane} runId=${runId} rows=${activity.rows} turn=${activity.turn} items=${activity.items} selected=${activity.selected} />
+    <${TurnPane} runId=${runId} rows=${activity.rows} turn=${activity.turn} items=${activity.items} selected=${activity.selected} entry=${activity.entry} />
   </div>`;
 }
 
@@ -2951,6 +3097,8 @@ function onNotify(message) {
 function onAnswered(msg) {
   sentAnswers.delete(gateKey(msg.id, msg.file_path));
   pushToast("ok", "✓ answer sent", "", 3500);
+  const held = store.get().activity;
+  if (held.runId && held.selected.startsWith("gate:")) loadEntry(held.runId, held.selected, true);
 }
 
 function onAnswerRejected(msg) {

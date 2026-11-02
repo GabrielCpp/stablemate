@@ -5,7 +5,7 @@ title: groom server
 ---
 # groom server
 
-- code: groom/groom/app.py::create_app@95fa5c490913
+- code: groom/groom/app.py::create_app@24ab2743ae11
 - openapi: none; every first-party handler is registered with `include_in_schema=False`.
 
 The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves one HTML document — the shell for the [groom dashboard service](../groom.md) — and then speaks JSON for everything else: the [dashboard state payload](../formats/dashboard-state-payload.md) behind the [runs fleet view](../runs-fleet-view.md), the [run detail payload](#get-run-detail), and the repository/file/diff panel data. It also receives the residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md) and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member, which registers 32 route handlers: one dashboard HTML entry point, nine JSON read endpoints, four mutation/push endpoints, four run outbox/inbox endpoints, six attendant endpoints (four reads, two writes), three OTLP ingest routes and one telemetry query route, one reload endpoint, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`, which registers five startup hooks — [schedule startup discovery scan](#schedule-startup-discovery-scan), the alert-rule ticker, the [live clock](#schedule-live-clock), the run-telemetry archive routine, and the attend-recovery routine — and cancels the three loop-driven ones (alert-rule, live clock, archive), plus shuts down the process worker pools, on shutdown.
@@ -19,6 +19,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - [get-run-overview](get-run-overview.md)
 - [get-run-activity](get-run-activity.md)
 - [get-run-turn](get-run-turn.md)
+- [get-run-entry](get-run-entry.md)
 
 ### get-root-dashboard-html
 
@@ -646,7 +647,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - body: bytes of the matched packaged asset; no application JSON envelope is added by groom.
 - status: `200` for an existing requested asset; missing files, unsupported methods, and conditional request outcomes use the framework static-file response for the mounted router.
 - errors: no endpoint-specific error body is produced by groom; absent assets and invalid static-file requests are handled by the mounted framework router.
-- code: groom/groom/app.py::create_app@95fa5c490913
+- code: groom/groom/app.py::create_app@24ab2743ae11
 - route: `GET /assets/*`
 - parent: [groom server](#groom-server)
 - invocation: [serve-static-asset](#serve-static-asset)
@@ -2227,7 +2228,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: count(subject="request-body reads for a static asset request", equals=0)
 - status: `200` when the path maps to an existing packaged asset; otherwise the framework static-file status.
 - errors: no endpoint-specific error body is produced by groom; missing files, unsupported methods, invalid paths, and conditional request outcomes are handled by the mounted static-file router.
-- code: groom/groom/app.py::create_app@95fa5c490913
+- code: groom/groom/app.py::create_app@24ab2743ae11
 - request:
   - method: `GET`
   - path: `/assets/{path...}` where `{path...}` is required and relative to `groom/groom/assets`.
@@ -2627,3 +2628,25 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - command-response: no acknowledgement frame is sent for `hello`, `progress`, or `blocked`; successful effects are visible only through browser dashboard websocket broadcasts.
   - rpc-result-response: no websocket reply is sent for `rpc_result`; a matching pending in-process future is resolved or failed, and unknown, late, duplicate, or already-completed ids are ignored.
   - cleanup-result: ordinary websocket disconnect ends the session without an endpoint payload; if a connection was established, cleanup unregisters this connection only when it is still current, fails its unresolved RPC futures with `sidecar connection closed`, and broadcasts the dashboard shell for that container.
+
+### serve-run-entry
+
+- on: [get-run-entry](get-run-entry.md)
+- trigger: the operator selects a step, failed step or gate row of the Activity tab, presses Retry on an entry that failed to read, answers the open gate that is selected, or three seconds pass while a running step or an open gate is selected, and the dashboard requests `GET /api/run/{run_id}/entry/{key}`.
+- when:
+  - The groom process has started and the route table includes the run entry route.
+  - `run_id` and `key` are supplied as string path variables.
+  - verify: json_path(path="$.kind", matches="^(step|gate)$")
+- does:
+  - Enters `groom/groom/app.py::run_entry` and runs `groom/groom/activity.py::entry` on the query pool.
+  - Reads the step's stored span and logs, or the run's live telemetry for a running step and an open gate.
+  - Reads a gate's file through the run's reader.
+  - Returns the body described by [get-run-entry](get-run-entry.md) under `200 OK`.
+  - verify: http_status(code=200, path="/api/run/run-1/entry/step:running:lint")
+  - Answers `404` when the run's timeline has no row under the key.
+  - verify: json_path(path="$.detail", equals="no such step or gate")
+  - Does not write the telemetry store, mutate `state.WORKFLOWS`, or broadcast a websocket frame.
+- emits: one `application/json` HTTP response.
+- verify: emitted(event="run-entry HTTP response", count=1)
+- emits: no websocket frame is emitted.
+- verify: emitted(event="run-entry websocket frame", count=0)
