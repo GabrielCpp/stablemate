@@ -10,7 +10,7 @@ It identifies whether the requested operation adds or removes a story, names the
 story or source record, preserves the record's text, carries the human change reason, and records
 whether destructive scope is explicitly forced. It is an in-memory payload, not an on-disk file.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @1b4a873ffe8b
 - detail: [author story edit subflow](../concepts/author-story-edit-subflow.md)
 
 ## Fields
@@ -21,7 +21,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - required: false
 - semantics: identifies the edit operation consumed by epic reconciliation
 - verify: json_path(path="$.kind", equals="add-story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @1b4a873ffe8b
 - detail: [edit intent field roles](../concepts/edit-intent-field-roles.md)
 
 ### epic
@@ -32,7 +32,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - verify: json_path(path="$.epic", equals="acme-epic")
 - semantics: story removal obtains the parent epic from the existing story
 - verify: json_path(path="$.kind", equals="remove-story")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @1b4a873ffe8b
 - detail: [edit intent field roles](../concepts/edit-intent-field-roles.md)
 
 ### story
@@ -41,7 +41,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - required: false
 - semantics: names the story selected for removal
 - verify: json_path(path="$.story", equals="")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @1b4a873ffe8b
 - detail: [edit intent field roles](../concepts/edit-intent-field-roles.md)
 
 ### record_id
@@ -50,7 +50,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - required: false
 - semantics: id of the open register record an added story covers
 - verify: json_path(path="$.record_id", equals="CASE-1234")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @1b4a873ffe8b
 - detail: [edit intent field roles](../concepts/edit-intent-field-roles.md)
 
 ### summary
@@ -59,7 +59,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - required: false
 - semantics: the register record's summary line, kept for the added story
 - verify: json_path(path="$.summary", equals="example summary")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @1b4a873ffe8b
 - detail: [edit intent field roles](../concepts/edit-intent-field-roles.md)
 
 ### body
@@ -68,7 +68,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - required: false
 - semantics: the register record's body text, kept for the added story
 - verify: json_path(path="$.body", equals="example body")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @1b4a873ffe8b
 - detail: [edit intent field roles](../concepts/edit-intent-field-roles.md)
 
 ### change
@@ -77,7 +77,7 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - required: false
 - semantics: carries the supplied reason, or the operation-specific generated reason
 - verify: json_path(path="$.change", equals="example change")
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @1b4a873ffe8b
 - detail: [edit intent field roles](../concepts/edit-intent-field-roles.md)
 
 ### force
@@ -86,5 +86,5 @@ whether destructive scope is explicitly forced. It is an in-memory payload, not 
 - required: false
 - semantics: authorizes destructive reconciliation that the normal safety checks reject
 - verify: json_path(path="$.force", equals=False)
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EditIntent` @1b4a873ffe8b
 - detail: [edit intent field roles](../concepts/edit-intent-field-roles.md)

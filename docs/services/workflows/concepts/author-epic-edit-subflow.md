@@ -55,7 +55,7 @@ selection](epic-edit-invocation-selection.md).
 - type: boolean
 - default: false
 - required: false
-- semantics: permits explicitly requested collateral or frozen-scope removal according to plan validation
+- semantics: permits explicitly requested collateral removal according to plan validation
 - verify: json_path(path="$.force", equals=false)
 - code: `workflows/src/workhorse_workflows/author/epic_edit/flow.py::EpicEdit` @2882a05baa0b
 - detail: [epic edit input selection](epic-edit-input-selection.md)
@@ -250,7 +250,7 @@ The deterministic nodes owned by the epic-edit package are registered with the `
 - does: returns the text `no open records` when the register holds none
 - verify: json_path(path="$.text", equals="no open records")
 - returns: returns a `RegisterListing` holding the listing text
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::read_register_listing` @85ab2cf6cdff
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::read_register_listing` @2288bb8964c7
 - code: `workflows/src/workhorse_workflows/author/shared/listing.py::open_listing` @85958b15a6c1
 - tests: `workflows/tests/author/test_workflow.py::test_the_epic_edit_planner_reads_the_register_listing_of_a_filed_record`
 - tests: `workflows/tests/author/test_workflow.py::test_the_epic_edit_planner_is_told_when_the_register_is_empty`
@@ -265,24 +265,19 @@ The deterministic nodes owned by the epic-edit package are registered with the `
 - verify: json_path(path="$.stories", equals="example stories")
 - does: captures story body hashes
 - verify: json_path(path="$.stories[*].body_hash", matches="^[0-9a-f]{64}$")
-- does: captures frozen seed identities by matching each seed's id against the frozen id set
-- verify: json_path(path="$.seeds[*].frozen", matches="^(true|false)$")
-- does: captures frozen story identities by matching each story's id, not its slug, against the frozen id set
-- verify: json_path(path="$.stories[*].frozen", matches="^(true|false)$")
 - does: captures referencing milestones
 - verify: json_path(path="$.milestones", equals="example milestones")
 - raises: raises `WorkflowFailed` when the epic does not exist
 - returns: returns the baseline used to validate planning and application
 - verify: created(subject="an epic edit snapshot")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic` @85ab2cf6cdff
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::snapshot_epic` @c86f2156293a
 
 ### method: validate_edit_plan
 - sig: `validate_edit_plan(logger: logging.Logger, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, repo_dir: str = "") -> Defects`
-- does: rejects incomplete, wrong-epic, duplicate, missing-id, dangling-cover, dangling-dependency, orphan-seed, cyclic, unsatisfied, frozen, unforced, deletion, and omitted-rewrite plans
-- does: rejects a frozen story removal exactly when `snapshot_epic` marked that story frozen by story id, which matches the actually-frozen stories instead of always reading false
+- does: rejects incomplete, wrong-epic, duplicate, missing-id, dangling-cover, dangling-dependency, orphan-seed, cyclic, unsatisfied, unforced, deletion, and omitted-rewrite plans
 - returns: returns `Defects(ok=True)` only when the projected graph satisfies all edit constraints
 - verify: json_path(path="$.ok", equals=True)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_edit_plan` @85ab2cf6cdff
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_edit_plan` @24ee8dc9643f
 
 ### method: apply_edit_plan
 - sig: `apply_edit_plan(logger: logging.Logger, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan, repo_dir: str = "") -> AppliedEpicEdit`
@@ -293,7 +288,7 @@ The deterministic nodes owned by the epic-edit package are registered with the `
 - does: safely skips already-removed entities when the same approved plan is reapplied
 - returns: returns the applied epic identity and affected and removed story lists
 - verify: persists(subject="the approved epic graph delta")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::apply_edit_plan` @85ab2cf6cdff
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::apply_edit_plan` @288cc5e56a2f
 
 ### validate_applied_edit
 This validation returns `Defects(ok=True)` when the on-disk graph matches the approved delta.
@@ -302,7 +297,7 @@ This validation returns `Defects(ok=True)` when the on-disk graph matches the ap
 - does: compares resulting seed and story identities and metadata with the approved projection
 - does: requires every unaffected story body to remain byte-stable
 - verify: unchanged(subject="unaffected story bodies")
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit` @85ab2cf6cdff
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_applied_edit` @b9587fc69694
 - detail: [applied edit validation](applied-edit-validation.md)
 
 ### method: validate_epic_document
@@ -311,7 +306,7 @@ This validation returns `Defects(ok=True)` when the on-disk graph matches the ap
 - does: requires at least one child journey under `User Journeys`
 - returns: returns `Defects(ok=True)` only when the human-owned epic prose is structurally valid
 - verify: json_path(path="$.ok", equals=True)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_epic_document` @85ab2cf6cdff
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::validate_epic_document` @8ab90a57010d
 
 ### select_affected_story
 - sig: `select_affected_story(logger: logging.Logger, epic: str, affected_stories: list[str], index: int, repo_dir: str = "") -> StoryChoice`
@@ -321,5 +316,5 @@ This validation returns `Defects(ok=True)` when the on-disk graph matches the ap
 - raises: raises `WorkflowFailed` when an approved affected story no longer exists
 - returns: returns the story path, slug, id, directory, progress, and remaining count
 - verify: count(subject="selected affected stories", equals=1)
-- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @85ab2cf6cdff
+- code: `workflows/src/workhorse_workflows/author/epic_edit/nodes/edit.py::select_affected_story` @6d8282ed415d
 - detail: [affected story selection](affected-story-selection.md)

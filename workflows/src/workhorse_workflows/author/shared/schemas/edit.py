@@ -35,7 +35,6 @@ class SeedSnapshot(AuthorResult):
     backing: str = ""
     prerequisites: str = ""
     source_record: str = ""
-    frozen: bool = False
 
 
 class StorySnapshot(AuthorResult):
@@ -46,7 +45,6 @@ class StorySnapshot(AuthorResult):
     depends: list[str] = []
     story_path: str = ""
     body_hash: str = ""
-    frozen: bool = False
 
 
 class MilestoneSnapshot(AuthorResult):

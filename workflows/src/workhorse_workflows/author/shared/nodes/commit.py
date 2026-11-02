@@ -38,7 +38,6 @@ def commit_author(
     milestone: str = "",
     repo_dir: str = "",
     docs_dir: str = "docs",
-    id_registry: str = ".agents/ids.json",
 ) -> Committed:
     """Commit the epic/story docs this run wrote, in the one repo it wrote them in."""
     repo_root = find_docs_root(repo_dir)
@@ -46,16 +45,14 @@ def commit_author(
         logger.info("no .git at %s — nothing to commit", repo_root)
         return Committed()
 
-    scope = [
-        rel for rel in (docs_dir.strip(), id_registry.strip()) if rel and (repo_root / rel).exists()
-    ]
-    if not scope:
+    docs = docs_dir.strip()
+    if not docs or not (repo_root / docs).exists():
         logger.info("nothing author writes exists under %s — nothing to commit", repo_root)
         return Committed()
 
-    committed = commit_paths(repo_root, _commit_message(mode, epic, bullet, milestone), *scope)
+    committed = commit_paths(repo_root, _commit_message(mode, epic, bullet, milestone), docs)
     if committed:
-        logger.info("committed %s in %s", " ".join(scope), repo_root)
+        logger.info("committed %s in %s", docs, repo_root)
     return Committed(committed=committed)
 
 

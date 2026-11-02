@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import io
 import logging
+import re
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -141,6 +142,12 @@ def genesis_git_init(logger: logging.Logger, target_dir: str = "") -> GitInit:
 
 
 
+def _id_prefix(repo_name: str) -> str:
+    """The id prefix a new repo starts with: its name's first four letters and digits, led by a letter, uppercased."""
+    letters = re.sub(r"[^A-Za-z0-9]", "", repo_name).lstrip("0123456789")
+    return (letters[:4] or "REPO").upper()
+
+
 @blueprint.node
 def write_agents_yml(
     logger: logging.Logger,
@@ -208,6 +215,7 @@ def write_agents_yml(
     data.setdefault("repo", {})
     if isinstance(data["repo"], dict):
         data["repo"].setdefault("name", repo_name)
+        data["repo"].setdefault("id_prefix", _id_prefix(repo_name))
 
     data.setdefault("agents", {name: name in assistants for name in ASSISTANTS})
 

@@ -216,6 +216,8 @@ are input values.
 - does: returns an explanatory result without mutation when `target_dir` is empty or is not a directory
 - does: preserves existing `agents.yml` values, comments, key order, and scalar style while merging
 - does: sets the repository name from the target directory when no repository name exists
+- does: sets `repo.id_prefix` from the repository name when none exists, as its alphanumerics with leading digits stripped, the first four of them uppercased, or `REPO` when none remain
+- does: leaves an existing `repo.id_prefix` unchanged
 - does: declares the three supported assistant names as enabled or disabled from `assistants`, while preserving an existing assistant choice
 - does: unions requested packs and scaffold identifiers with existing lists without duplicates
 - does: writes no `workflows` key
@@ -225,7 +227,7 @@ are input values.
 - does: reports gates as dropped when no service name is supplied
 - returns: whether the file changed, its relative path, and an operator note describing retained or dropped configuration
 - verify: persists(subject="the target agents.yml configuration")
-- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::write_agents_yml` @bd2c145e399b
+- code: `workflows/src/workhorse_workflows/coder/genesis/nodes.py::write_agents_yml` @f39fbd08ce0b
 - tests: `workflows/tests/coder/genesis/test_flow.py::test_agents_yml_carries_the_services_block_the_planner_reads`
 
 ### init_skeleton

@@ -297,16 +297,16 @@ The node advances one validated milestone from `approved` to `authored` (idempot
 - code: `workflows/src/workhorse_workflows/author/finalize/nodes/milestone.py::mark_milestone_authored` @80dc0611e6d5
 
 ### commit_author
-- sig: `commit_author(logger: logging.Logger, mode: str = "epic", epic: str = "", bullet: str = "", milestone: str = "", repo_dir: str = "", docs_dir: str = "docs", id_registry: str = ".agents/ids.json") -> Committed`
+- sig: `commit_author(logger: logging.Logger, mode: str = "epic", epic: str = "", bullet: str = "", milestone: str = "", repo_dir: str = "", docs_dir: str = "docs") -> Committed`
 - does: commit the epic/story docs this run wrote to the current branch
 - verify: count(subject="finalize commits", equals=1)
-- does: scope commits to the docs directory and id registry, skipping paths that do not exist
+- does: scope commits to the docs directory only, skipping the commit when that path does not exist
 - verify: count(subject="scoped commit paths", equals=1)
 - does: format the commit message with the mode, epic, and bullet for human readability
 - verify: count(subject="authored commit messages", equals=1)
-- returns: a `Committed` carrying the success flag — `committed=True` when `commit_paths` produced a commit, `committed=False` when the repository has no git root, the configured scope is empty, or `commit_paths` did not produce a commit
+- returns: a `Committed` carrying the success flag — `committed=True` when `commit_paths` produced a commit, `committed=False` when the repository has no git root, the docs directory does not exist, or `commit_paths` did not produce a commit
 - verify: persists(subject="authored planning documents")
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @e936b2106147
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @2d27d477bd61
 
 ### blueprint
 - sig: `Blueprint("author-finalize") -> Blueprint`

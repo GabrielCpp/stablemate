@@ -112,7 +112,7 @@ def test_a_record_carries_what_the_proposal_said_and_an_id_ostler_minted(
     assert record.summary == "Clear the cache on sign-out"
     assert record.body == "it goes stale"
     assert record.symbols == ["cache.py", "Session.close"]
-    assert record.id.startswith("ACME-") and len(record.id) > len("acme-story-12345678")
+    assert record.id.startswith("X-") and len(record.id) > len("acme-story-12345678")
     assert (artifacts / "backlogs/acme/billing" / record.id / "record.md").is_file()
 
 

@@ -3,8 +3,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import Ostler, freeze
-from ostler.model import load
+from ostler import Ostler
 from workhorse_workflows.author.epic_edit.nodes.edit import snapshot_epic, validate_edit_plan
 from workhorse_workflows.author.shared.schemas import (
     EditIntent,
@@ -20,6 +19,7 @@ def _snapshot(repo: Path) -> EpicSnapshot:
 
 
 def test_plan_requires_force_for_removals_beyond_requested_story(tmp_path: Path) -> None:
+    (tmp_path / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
     okf = Ostler(tmp_path)
     assert okf.create_epic("accounts", "Accounts").ok
     assert okf.add_seed("accounts", "requested", status="researched").ok
@@ -59,36 +59,3 @@ def test_plan_requires_force_for_removals_beyond_requested_story(tmp_path: Path)
         repo_dir=str(tmp_path),
     )
     assert forced.ok, forced.errors
-
-
-def test_plan_refuses_frozen_removal_even_with_force(tmp_path: Path) -> None:
-    okf = Ostler(tmp_path)
-    assert okf.create_epic("accounts", "Accounts").ok
-    assert okf.add_seed("accounts", "seed-sign-in", status="researched").ok
-    created = okf.create_story("accounts", "sign-in", "Sign in", covers=["seed-sign-in"])
-    assert created.ok
-    seed_freeze = freeze.freeze(load(tmp_path), "seed-sign-in")
-    assert not seed_freeze.error
-    seed_freeze.apply()
-    story_freeze = freeze.freeze(load(tmp_path), created.entity_id)
-    assert not story_freeze.error
-    story_freeze.apply()
-    snapshot = _snapshot(tmp_path)
-    plan = EpicEditPlan(
-        status="complete",
-        epic="accounts",
-        delete_epic=True,
-        seed_changes=[SeedChange(action="remove", id="seed-sign-in", disposition="drop")],
-        story_changes=[StoryChange(action="remove", slug="sign-in")],
-    )
-
-    report = validate_edit_plan(
-        logging.getLogger("test.epic-edit"),
-        EditIntent(kind="remove-story", epic="accounts", story="sign-in", force=True),
-        snapshot,
-        plan,
-        repo_dir=str(tmp_path),
-    )
-
-    assert "[E_FROZEN_SCOPE] seed 'seed-sign-in'" in report.errors
-    assert "[E_FROZEN_SCOPE] story 'sign-in'" in report.errors

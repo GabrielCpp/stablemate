@@ -47,6 +47,7 @@ def repo(
     """A real git repo with one commit, pinned as the consuming repo for the test."""
     root = tmp_path / "acme"
     root.mkdir()
+    (root / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
     git(root, "init", "-q", "-b", "main")
     (root / "README.md").write_text("# acme\n", encoding="utf-8")
     git(root, "add", "-A")

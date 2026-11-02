@@ -135,6 +135,7 @@ def test_finalizes_with_one_commit_on_the_current_branch(repo: Path, tmp_path: P
 
 def test_terminal_validation_commits_incomplete_then_fails(repo: Path, tmp_path: Path) -> None:
     _planning_graph(repo, selectable=False)
+    (repo / "docs" / "notes.md").write_text("# Notes\n\nWork the run left under docs.\n", encoding="utf-8")
     before = int(_git(repo, "rev-list", "--count", "HEAD"))
 
     with pytest.raises(WorkflowFailed, match="authored artifacts did not validate"):

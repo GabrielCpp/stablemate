@@ -37,7 +37,7 @@ def _settle(
     reuse: list[str] | None = None,
 ):
     okf = Ostler(repo)
-    assert okf.create_epic("acme-epic", "Acme epic", prefix="acme").ok
+    assert okf.create_epic("acme-epic", "Acme epic").ok
     created = okf.create_story("acme-epic", "acme-story", "Acme story")
     assert created.ok
     write(Path(okf.spec_path(created.entity_id)) / ANSWERS_FILE, answer)

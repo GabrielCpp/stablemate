@@ -125,8 +125,7 @@ workhorse-author run story-edit --params '{
 ```
 
 Story removal refuses work beyond `Not started` unless `"force": true` is explicit. A plan
-also needs force to remove any story or seed beyond the scope implied by that story request;
-frozen scope must be explicitly unfrozen first. Direct `epic-edit` accepts the same force
+also needs force to remove any story or seed beyond the scope implied by that story request. Direct `epic-edit` accepts the same force
 parameter for destructive reconciliation. The edit planner is read-only and returns a typed
 replacement plan. Deterministic checks project that plan before any write, then feed coded
 findings back to the plan refiner: every active seed remains covered, dependencies remain local

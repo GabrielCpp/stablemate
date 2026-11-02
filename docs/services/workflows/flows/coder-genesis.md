@@ -60,7 +60,7 @@ is left unchanged, while an unborn repository receives the initial commit. No re
 - kind: prepare
 
 `write_agents_yml` round-trip-merges the service into `agents.yml`, preserving existing values and
-comments. It ensures the repository name, assistant map, requested pack/workflow/scaffold ids,
+comments. It ensures the repository name, the repository's `repo.id_prefix` (the first four alphanumerics of the name after any leading digits, uppercased, or `REPO`), assistant map, requested pack/workflow/scaffold ids,
 the service's `services` entry with its `path`, and its gate commands are present.
 Existing configuration is not replaced, and malformed gate entries or unknown assistant names are
 reported in the result rather than interpreted.

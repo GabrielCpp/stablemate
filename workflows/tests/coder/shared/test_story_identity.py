@@ -21,7 +21,8 @@ LOGGER = logging.getLogger("test")
 
 def _minted_book(tmp_path: Path) -> tuple[Ostler, str]:
     """A crud-built book with one story, returning its minted id."""
-    crud.create_epic(load(tmp_path), "e", "E", prefix="x")
+    (tmp_path / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
+    crud.create_epic(load(tmp_path), "e", "E")
     crud.create_story(load(tmp_path), "e", "01-foo", "Foo")
     graph = load(tmp_path)
     found = graph.story_by_slug("01-foo")

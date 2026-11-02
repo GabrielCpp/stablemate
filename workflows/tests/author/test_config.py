@@ -147,6 +147,7 @@ def test_a_milestone_must_list_at_least_one_epic(tmp_path: Path) -> None:
     assert not empty.ok
     assert "lists no epics" in empty.errors
 
+    (tmp_path / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
     assert Ostler(tmp_path).create_epic("account-access", "Account access").ok
     _write(tmp_path, epics="[account-access]")
     valid = validate_milestone_epics(LOGGER, MILESTONE, repo_dir=str(tmp_path))

@@ -861,8 +861,7 @@ def test_the_commit_leaves_work_the_run_did_not_do_alone(
         text=True,
     ).stdout.split()
     assert committed, "the run committed nothing at all"
-    assert all(p.startswith("docs/") or p == ".agents/ids.json" for p in committed), committed
-    assert ".agents/ids.json" in committed, committed
+    assert all(p.startswith("docs/") for p in committed), committed
     assert stray.read_text() == "def in_progress(): ...\n"
     untracked = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],

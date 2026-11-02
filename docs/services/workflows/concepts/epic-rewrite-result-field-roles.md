@@ -11,5 +11,5 @@ complementary parts of one rewrite reply: `status` supplies the result used to d
 outcome, and `notes` supplies any accompanying agent context. Neither replaces the other, and
 the source declares no ranking between them.
 
-- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @f582abc9a049
+- code: `workflows/src/workhorse_workflows/author/shared/schemas/edit.py::EpicRewriteResult` @9dc1e55b3c31
 - rule: use `status` to determine the rewrite outcome and `notes` to read accompanying agent context; no selection rule applies because the fields serve distinct roles in the same reply

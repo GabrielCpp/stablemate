@@ -15,7 +15,7 @@ def _authored_story(
 ) -> str:
     (repo / "docs/services/api-service").mkdir(parents=True, exist_ok=True)
     okf = Ostler(repo)
-    okf.create_epic("parser", "Parser", prefix="acme")
+    okf.create_epic("parser", "Parser")
     assert okf.create_story("parser", "safe-ast", "Safe AST").ok
     story_dir = str(epics_root() / "0001-parser/stories/safe-ast")
     path = repo / story_dir / "story.md"

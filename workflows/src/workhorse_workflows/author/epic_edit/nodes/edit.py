@@ -82,7 +82,6 @@ def snapshot_epic(
     """Capture the graph and story-body baseline an edit is allowed to change."""
     resolved_epics_dir = paths.epics_dir(repo_dir)
     okf = Ostler(repo_dir)
-    frozen = (okf.graph.ids or {}).get("frozen") or {}
     wanted = registry.epic_slug(epic)
     epic_row = next(
         (row for row in okf.list("epic") if registry.epic_slug(str(row["name"])) == wanted),
@@ -102,7 +101,6 @@ def snapshot_epic(
             backing=str(row["backing"]),
             prerequisites=str(row["prerequisites"]),
             source_record=str(row["sourceRecord"]),
-            frozen=str(row["id"]) in frozen,
         )
         for row in okf.list("seed", epic=name)
     ]
@@ -115,7 +113,6 @@ def snapshot_epic(
             depends=[str(value) for value in row["dependsOn"]],
             story_path=str(row["path"]),
             body_hash=_hash(Path(repo_dir) / str(row["path"])),
-            frozen=str(row["id"]) in frozen,
         )
         for row in okf.list("story", epic=name)
     ]
@@ -265,10 +262,6 @@ def validate_edit_plan(
         if change.action != "remove" or change.slug not in original_stories:
             continue
         original = original_stories[change.slug]
-        if original.frozen:
-            errors.append(
-                f"[E_FROZEN_SCOPE] story '{change.slug}' must be unfrozen before removal"
-            )
         requested = intent.kind == "remove-story" and change.slug == intent.story
         if not intent.force and not requested:
             errors.append(
@@ -281,11 +274,6 @@ def validate_edit_plan(
     for change in plan.seed_changes:
         if change.action != "remove" or change.id not in original_seeds:
             continue
-        original = original_seeds[change.id]
-        if original.frozen:
-            errors.append(
-                f"[E_FROZEN_SCOPE] seed '{change.id}' must be unfrozen before removal"
-            )
         if not intent.force and change.id not in implied_seed_removals:
             errors.append(
                 f"[E_FORCE_REQUIRED] collateral seed '{change.id}' removal needs force=true"

@@ -23,6 +23,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A real git repo, pinned as the consuming repo for the duration of the test."""
     root = tmp_path / "acme"
     root.mkdir()
+    (root / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
     subprocess.run(
         ["git", "init", "-q", "-b", "main"],
         cwd=root,

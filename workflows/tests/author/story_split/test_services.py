@@ -19,7 +19,7 @@ def _books(repo: Path) -> None:
 def _epic(repo: Path) -> str:
     _books(repo)
     okf = Ostler(repo)
-    okf.create_epic("accounts", "Accounts", prefix="acme")
+    okf.create_epic("accounts", "Accounts")
     for seed_id, services in (
         ("a", ["worker", "api-service"]),
         ("b", ["api-service"]),

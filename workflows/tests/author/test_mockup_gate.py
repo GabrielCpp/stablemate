@@ -40,7 +40,7 @@ def _epic(
 ) -> None:
     _books(root)
     okf = Ostler(root)
-    okf.create_epic(EPIC, "Accounts", prefix="acme")
+    okf.create_epic(EPIC, "Accounts")
     for seed_id, services in seeds.items():
         meta: dict[str, object] = {"services": services} if services else {}
         res = okf.add_seed(EPIC, seed_id, status="researched", summary=seed_id, meta=meta)

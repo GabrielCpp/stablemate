@@ -167,7 +167,7 @@ Finalization is implemented by `Finalize.close`, `validate_milestone_epics`,
 - code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts` @419e36ea677e
 - code: `workflows/src/workhorse_workflows/author/shared/nodes/integrity.py::verify_integrity` @44b9278b362a
 - code: `workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::verify_reconcile` @e86481111697
-- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @e936b2106147
+- code: `workflows/src/workhorse_workflows/author/shared/nodes/commit.py::commit_author` @2d27d477bd61
 
 When the completion gate finds a contract that held and no unfinished item, the dispatcher hands off
 to `Finalize` and ends after its result.
