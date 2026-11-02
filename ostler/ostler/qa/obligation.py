@@ -114,7 +114,7 @@ class UnparsedRow:
 
 @dataclass(frozen=True)
 class InterceptRow:
-    """One flow `intercept:` declaration: the effect's name and its arguments."""
+    """One `intercept:` declaration: the effect's name and its arguments."""
     effect: str
     args: dict[str, CheckValue]
 
@@ -157,6 +157,7 @@ class Obligation:
     captures_unparsed: tuple[UnparsedRow, ...]
     conditions: tuple[str, ...] = ()
     intercepts: tuple[InterceptRow, ...] = ()
+    releases: tuple[str, ...] = ()
     observations: tuple[ObservationRow, ...] = ()
     observations_unparsed: tuple[UnparsedRow, ...] = ()
 
@@ -333,6 +334,7 @@ def obligation_of(raw: Mapping[str, Any]) -> Obligation:
         captures_unparsed=_unparsed(row.get("capturesUnparsed"), "`capturesUnparsed`"),
         conditions=_texts(row.get("conditionsDeclared"), "`conditionsDeclared`"),
         intercepts=tuple(_intercept_row(item) for item in _rows(row.get("intercepts"), "`intercepts`")),
+        releases=_texts(row.get("releases"), "`releases`"),
         observations=tuple(
             _observation_row(item) for item in _rows(row.get("observationsDeclared"), "`observationsDeclared`")),
         observations_unparsed=_unparsed(row.get("observationsUnparsed"), "`observationsUnparsed`"),

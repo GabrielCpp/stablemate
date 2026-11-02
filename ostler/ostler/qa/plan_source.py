@@ -188,6 +188,11 @@ def intercept_call(row: InterceptRow) -> str:
             + "".join(f", {name}={python_literal(row.args[name])}" for name in ordered) + ")")
 
 
+def release_call(event: str) -> str:
+    """The `qa.release(...)` line that lets the request *event* names go on to the server."""
+    return f"    qa.release({python_literal(event)})"
+
+
 def contained_fixture_call(row: FixtureRow, covers: list[str]) -> list[str]:
     """The claim that arranges *row* in a book page's scenario, so a fixture that fails fails the claims in *covers* that need it and the scenario goes on to the next."""
     return [f"    with qa.claim([{', '.join(python_literal(oid) for oid in covers)}]):", f"    {fixture_call(row)}"]

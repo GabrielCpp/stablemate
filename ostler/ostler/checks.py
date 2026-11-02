@@ -514,6 +514,14 @@ INTERCEPTS: tuple[CheckSpec, ...] = (
         observes="response",
         plan_reads="nothing, because an intercept effect observes no claim",
     ),
+    CheckSpec(
+        name="hold",
+        params=(CheckParam("event", "str", required=True, event=True),),
+        excludes="a screen that shows its in-progress state only once the server has answered, "
+                 "or that stays usable while the answer is outstanding",
+        observes="response",
+        plan_reads="nothing, because an intercept effect observes no claim",
+    ),
 )
 
 INTERCEPT_BY_NAME: dict[str, CheckSpec] = {c.name: c for c in INTERCEPTS}

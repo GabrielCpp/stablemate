@@ -7783,3 +7783,38 @@ def test_a_malformed_cover_argument_is_refused_naming_it(argument: str) -> None:
     with pytest.raises(CoverError, match=argument):
         parse_cover([argument])
     assert parse_cover(["ac:1=a,b", "ac:1=c", "ac:2=d"]) == {"ac:1": {"a", "b", "c"}, "ac:2": {"d"}}
+
+
+def _held_save() -> str:
+    button = f"{_SCREEN}#create-policy-button"
+    interaction = f"{_SCREEN}#submit-new-policy"
+    event = "PUT /api/policies/{id}"
+    hold = [{"effect": "hold", "args": {"event": event}}]
+    locators = {"on": ["[create-policy-button](#create-policy-button)"], "trigger": ["click"]}
+    table = _located("#policy-table", f"{_SCREEN}#policy-table", {"role": ["table"], "name": ["Policies on file"]})
+    context = _navigation_context(
+        _page_obligation("okf:new-policy:create-policy-button:visible:1", button,
+                         locators={"role": ["button"], "name": ["Create policy"]},
+                         checks=[_visible("button:Create policy")]),
+        _page_obligation("okf:new-policy:submit-new-policy:does:1", interaction, locators=locators, checks=[table])
+        | {"intercepts": hold, "releases": [event]},
+        _page_obligation("okf:new-policy:submit-new-policy:does:2", interaction, locators=locators, checks=[table])
+        | {"intercepts": hold},
+        navigation=_arrival_navigation(),
+    )
+    source, _ = compile_plan_gaps(context, story="demo-story")
+    assert source is not None
+    ast.parse(source)
+    return source
+
+
+def test_a_hold_goes_on_before_the_trigger_and_comes_off_after_the_claim_it_follows() -> None:
+    source = _held_save()
+    held = source.index('qa.intercept("hold", event="PUT /api/policies/{id}")')
+    click = source.index('qa.by_role("button", name="Create policy").click()', held)
+    released = source.index('qa.release("PUT /api/policies/{id}")', click)
+    first, second = (source.index(f'"okf:new-policy:submit-new-policy:does:{n}"', click) for n in (1, 2))
+
+    assert held < click < first < released < second
+    assert source.count("qa.intercept(") == 1
+    assert source.count("qa.release(") == 1

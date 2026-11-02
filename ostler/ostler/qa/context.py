@@ -2216,6 +2216,7 @@ class _Attribution:
     acts: _Attributed
     captures: _Attributed
     held: _Attributed
+    intercepts: _Attributed
     observations: dict[_Claim, list[tuple[str, list[tuple[int, str]]]]] = field(default_factory=dict)
 
 
@@ -2240,6 +2241,12 @@ def _parse_observations(
     return declared, unparsed
 
 
+def _held_events(values: list[str]) -> list[str]:
+    """The event of each `hold` among a claim's intercept *values*, whose request is answered once that claim has been read."""
+    parsed = (checks_mod.parse_intercept(value) for value in values)
+    return [str(call.args["event"]) for call in parsed if isinstance(call, checks_mod.CheckCall) and call.name == "hold"]
+
+
 @dataclass(frozen=True, slots=True)
 class _Parts:
     """The checks, fixtures, acts and captures one obligation declares, with the bullets each parser refused."""
@@ -2255,6 +2262,7 @@ class _Parts:
     captures_unparsed: list[dict[str, Any]]
     observations: list[dict[str, Any]] = field(default_factory=list)
     observations_unparsed: list[dict[str, Any]] = field(default_factory=list)
+    releases: list[str] = field(default_factory=list)
 
     def stamp(self, obligation: dict[str, Any]) -> None:
         """Write each part that is present onto *obligation*, and drop each one that is absent."""
@@ -2270,6 +2278,7 @@ class _Parts:
             ("capturesUnparsed", self.captures_unparsed),
             ("observationsDeclared", self.observations),
             ("observationsUnparsed", self.observations_unparsed),
+            ("releases", self.releases),
         )
         for key, value in fields:
             if value:
@@ -2280,7 +2289,7 @@ class _Parts:
 
 _PART_KEYS = ("checksDeclared", "checksUnparsed", "fixturesDeclared", "fixturesUnparsed", "arrangesNothing",
               "actsDeclared", "actsUnparsed", "capturesDeclared", "capturesUnparsed",
-              "conditionsDeclared", "observationsDeclared", "observationsUnparsed")
+              "conditionsDeclared", "observationsDeclared", "observationsUnparsed", "releases")
 
 
 @dataclass(frozen=True, slots=True)
@@ -2330,6 +2339,7 @@ class _PartReader:
             captures_unparsed=_unparsed_captures(captures),
             observations=observations,
             observations_unparsed=observations_unparsed,
+            releases=_held_events(attribution.intercepts.of(claim)),
         )
 
     def _beneath(self, inherited: list[dict[str, Any]], arranged: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -2550,6 +2560,7 @@ def _attribution(book_node: BookNode) -> _Attribution:
         acts=_Attributed(*registry.attributed_acts(*args)),
         captures=_Attributed(*registry.attributed_captures(*args)),
         held=_Attributed(*registry.attributed_held(*args)),
+        intercepts=_Attributed(*registry.attributed_intercepts(*args)),
         observations=registry.attributed_observations(*args),
     )
 

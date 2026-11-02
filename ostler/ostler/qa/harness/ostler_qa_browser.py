@@ -212,6 +212,7 @@ class Browser:
         self._responses: list[dict[str, Any]] = []
         self._by_request: dict[int, dict[str, Any]] = {}
         self._open: dict[int, str] = {}
+        self._kept_back: set[int] = set()
         self._held: list[Any] = []
         self._body_budget = MAX_BODY_BUDGET_BYTES
         self._secrets = [value for value in secrets if value]
@@ -295,6 +296,12 @@ class Browser:
                 f"the scenario answers a browser dialog with {self._dialog_answer!r}, and none opened"
             )
         for rule in self._intercepts:
+            if rule["effect"] == "hold":
+                if not rule["matched"]:
+                    problems.append(f"intercept hold {rule['event']} held 0 exchanges: no exchange reached the rule")
+                elif not rule["released"]:
+                    problems.append(f"intercept hold {rule['event']} held {rule['matched']} and never let them go")
+                continue
             if rule["rewritten"]:
                 continue
             seen = rule["matched"]
@@ -309,15 +316,23 @@ class Browser:
             )
         return problems
 
-    def intercept(self, effect: str, *, event: str, find: str, replace: str) -> None:
-        """Alter the answer to every request *event* names, for the rest of the scenario: `rewrite` replaces *find* with *replace* in the body."""
-        if effect != "rewrite":
-            raise ValueError(f"unknown intercept effect {effect!r}; the effects are: rewrite")
+    def intercept(self, effect: str, *, event: str, find: str = "", replace: str = "") -> None:
+        """Alter the answer to every request *event* names: `rewrite` replaces *find* with *replace* in the body for the rest of the scenario, and `hold` keeps the request open until `release`."""
         method, _, path = event.partition(" ")
         method, path = method.upper(), path.strip()
         pattern = path_pattern(path)
+        if effect == "rewrite":
+            handler = self._rewriting(event, method, find, replace)
+        elif effect == "hold":
+            handler = self._holding(event, method)
+        else:
+            raise ValueError(f"unknown intercept effect {effect!r}; the effects are: hold, rewrite")
+        self._context.route(lambda url: pattern.fullmatch(urlsplit(url).path) is not None, handler)
+
+    def _rewriting(self, event: str, method: str, find: str, replace: str) -> Any:
+        """The route handler that replaces *find* with *replace* in every answer to *method*."""
         rule: dict[str, Any] = {
-            "effect": effect,
+            "effect": "rewrite",
             "event": event,
             "find": find,
             "replace": replace,
@@ -337,10 +352,37 @@ class Browser:
             replacements = text.count(find)
             if replacements:
                 rule["rewritten"] += 1
-            self._record(request)["intercepted"] = {"effect": effect, "replacements": replacements}
+            self._record(request)["intercepted"] = {"effect": "rewrite", "replacements": replacements}
             route.fulfill(response=response, body=text.replace(find, replace))
 
-        self._context.route(lambda url: pattern.fullmatch(urlsplit(url).path) is not None, handler)
+        return handler
+
+    def _holding(self, event: str, method: str) -> Any:
+        """The route handler that keeps every *method* request open until `release` lets it go."""
+        rule: dict[str, Any] = {"effect": "hold", "event": event, "matched": 0, "released": False, "routes": []}
+        self._intercepts.append(rule)
+
+        def handler(route: Any) -> None:
+            request = route.request
+            if rule["released"] or request.method.upper() != method:
+                route.fallback()
+                return
+            rule["matched"] += 1
+            rule["routes"].append(route)
+            self._kept_back.add(id(request))
+
+        return handler
+
+    def release(self, event: str) -> None:
+        """Let every request the hold on *event* kept open go on to the server, and stop holding new ones."""
+        for rule in self._intercepts:
+            if rule["effect"] != "hold" or rule["event"] != event:
+                continue
+            rule["released"] = True
+            for route in rule["routes"]:
+                self._kept_back.discard(id(route.request))
+                route.fallback()
+            rule["routes"] = []
 
     def answer_dialogs(self, answer: str) -> None:
         """Answer every browser dialog the page opens from here on with *answer*, `accept` or `dismiss`."""
@@ -548,7 +590,7 @@ class Browser:
         while waited < timeout_ms and still < quiet_ms:
             self.page.wait_for_timeout(QUIET_STEP_MS)
             waited += QUIET_STEP_MS
-            if self._open or len(self._requests) != seen:
+            if set(self._open) - self._kept_back or len(self._requests) != seen:
                 still, seen = 0, len(self._requests)
             else:
                 still += QUIET_STEP_MS
@@ -558,7 +600,9 @@ class Browser:
         if self.page is None:
             return
         waited = 0
-        while waited < timeout_ms and any(method not in READ_METHODS for method in self._open.values()):
+        while waited < timeout_ms and any(
+            method not in READ_METHODS for key, method in self._open.items() if key not in self._kept_back
+        ):
             self.page.wait_for_timeout(QUIET_STEP_MS)
             waited += QUIET_STEP_MS
 

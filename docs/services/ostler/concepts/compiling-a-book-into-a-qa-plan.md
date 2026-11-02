@@ -102,7 +102,7 @@ its first hop.
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
 - code: ostler/ostler/qa/compile_page.py::web_state_walks@8e3a88f1d3a8
 - code: ostler/ostler/qa/compile_playwright.py::perform_acts@f2d8ab58f2a3
-- code: ostler/ostler/qa/compile_playwright.py::page_observations@e610be86684b
+- code: ostler/ostler/qa/compile_playwright.py::page_observations@c7e2abc32d22
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@40e28af83b41
 - code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@3f09b3d2d52d
 - code: ostler/ostler/qa/compile_maestro.py::maestro_walk@6bb3e55179b5
@@ -127,11 +127,11 @@ its first hop.
 - code: ostler/ostler/qa/plan_source.py::ScenarioRefusal@7f7a2c2cefe2
 - code: ostler/ostler/qa/plan_source.py::python_literal@cb8bccf55a79
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@9dcaf902b06a
-- code: ostler/ostler/qa/obligation.py::Obligation@8aa729c4f7da
-- code: ostler/ostler/qa/obligation.py::obligation_of@b558662c2212
+- code: ostler/ostler/qa/obligation.py::Obligation@5d8ad161892e
+- code: ostler/ostler/qa/obligation.py::obligation_of@d10cd4b24ffa
 - code: ostler/ostler/qa/obligation.py::obligations_of@103f496c84c3
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@1d8c8dad0e49
-- code: ostler/ostler/qa/obligation_frame.py::obligation_frame@349f70a0df11
+- code: ostler/ostler/qa/obligation_frame.py::obligation_frame@be8d7c466ba4
 - code: ostler/ostler/qa/obligation_frame.py::BookNode@89d602494fca
 - code: ostler/ostler/qa/book_index.py::BookIndex@eea59e696855
 - code: ostler/ostler/qa/book_index.py::node_acts@734a965ada9c
@@ -177,6 +177,13 @@ its first hop.
   rendered value to `qa.maestro.run(..., env=...)`. A flow that still holds an unrendered hole or
   reference is a compiler defect, and the compile raises. A claim Maestro cannot observe, such as
   `visible(count=)` or a `fill` value with a hole in it, is a gap.
+- rule: a state that lasts only while a request is open is read by holding that request. An
+  `intercept: hold(event=...)` under a claim goes on before the trigger, because the trigger sends
+  the request, and comes off after the last check of that claim, so the claims below it read the
+  settled screen. A hold binds by document order, as `verify:` does, so a hold above every claim
+  has no end and `doctor` refuses it. The settling checks ignore a held request, or each would wait
+  out its timeout on a request the scenario itself keeps open. A hold no request reached fails the
+  scenario, because the claim it serves read a state nothing proved was in progress.
 - rule: an interaction is performed the same way on every driver: its `arrange:` acts in order, then
   its trigger as the act it names, so a `fill(value=...)` trigger types the value and a
   `press(key=...)` trigger presses the key. The book fixes what an interaction does, through

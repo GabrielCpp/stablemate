@@ -391,7 +391,7 @@ arrived — its heading, its record summary — and declare that component if th
 
 ## Intercept effects
 
-A flow's `intercept:` bullet uses the same call grammar as `verify:`, with a vocabulary of its own.
+An `intercept:` bullet on a flow or an interaction uses the same call grammar as `verify:`, with a vocabulary of its own.
 An effect alters the world the screen reads. It observes nothing, so it adds no coverage.
 
 `rewrite(event*=<str>, find*=<str>, replace*=<str>)`
@@ -404,6 +404,21 @@ never appeared in a body fails the scenario.
 ```markdown
 - intercept: rewrite(event="POST /api/report/data", find="1300", replace="4200")
 - verify: visible(locator="report.md#total", text="1300")
+```
+
+`hold(event*=<str>)`
+Keeps every request `event` names open, so a claim can read a state that lasts only until the
+server answers. The bullet sits under that claim. The rule starts before the trigger, and the
+requests go on to the server once the last check of that claim has been read, so the claims
+after it read the settled screen. A rule no request reached fails the scenario. A hold with no
+claim above it is `bad-intercept`.
+
+```markdown
+- does: disables the save button until the server has answered
+- intercept: hold(event="PUT /api/items/{id}")
+- verify: inert(locator="items.md#save-button")
+- does: shows the saved notice
+- verify: visible(locator="items.md#saved-notice")
 ```
 
 ## Why the vocabulary is small

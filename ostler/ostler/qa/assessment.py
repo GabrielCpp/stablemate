@@ -37,7 +37,7 @@ _FINGERPRINT_FIELDS = (
     "id", "required", "kind", "node", "nodeType", "source", "surface", "requirement",
     "checksDeclared", "checksUnparsed", "actsDeclared", "actsUnparsed", "fixturesDeclared",
     "fixturesUnparsed", "capturesDeclared", "capturesUnparsed", "arrangesNothing", "steps",
-    "locators", "conditionsDeclared", "intercepts", "observationsDeclared",
+    "locators", "conditionsDeclared", "intercepts", "releases", "observationsDeclared",
     "observationsUnparsed", "claimCombiner", "extendsUnresolved", "evidenceRequired",
 )
 

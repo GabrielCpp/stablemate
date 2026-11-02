@@ -2783,7 +2783,8 @@ IDENTITY_KEYS = ("role", "name", "keyboard")
 
 
 def _check_intercepts(node: UINode, rel: str, f: list[Finding]) -> None:
-    """`bad-intercept` — an `intercept:` value that is not a well-formed call of a known effect."""
+    """`bad-intercept` — an `intercept:` value that is not a well-formed call of a known effect, or a `hold` with no claim above it to end at."""
+    unbound = registry.attributed_intercepts(node.type, node.bullet_order, node.combiners)[0]
     for key in registry.effect_keys(node.type):
         for index, value in enumerate(_bullet_values(node.meta.get(key, "")), 1):
             parsed = checks.parse_intercept(value)
@@ -2794,6 +2795,14 @@ def _check_intercepts(node: UINode, rel: str, f: list[Finding]) -> None:
                     path=rel, line=node.line,
                     ref=refs_mod.bullet_ref(node.id, key, index),
                     suggestion=f"- {key}: {parsed.form}"))
+            elif parsed.name == "hold" and value in unbound:
+                f.append(Finding(
+                    "error", "bad-intercept",
+                    f"{node.id}: `{key}:{index}` ({value}) has no claim above it, and a hold "
+                    f"ends once the claim it follows has been read",
+                    path=rel, line=node.line,
+                    ref=refs_mod.bullet_ref(node.id, key, index),
+                    suggestion="move it under the claim that reads the in-progress state"))
 
 
 def _check_identity_arrangement(node: UINode, rel: str, f: list[Finding]) -> None:

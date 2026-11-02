@@ -2072,7 +2072,7 @@ class Qa:
         return recorder.window()
 
     def intercept(self, effect: str, **params: Any) -> None:
-        """Alter the server's answer to one request for the whole scenario, so a `verify:` can prove the screen did not take its figures from it."""
+        """Alter or keep back the server's answer to one request, so a `verify:` can prove the screen did not take its figures from it, or read a state that lasts only until it arrives."""
         recorder = self.diagnostics
         if recorder is None or not hasattr(recorder, "intercept"):
             raise RuntimeError(
@@ -2081,6 +2081,17 @@ class Qa:
                 "only driver='playwright' can alter what the page receives"
             )
         recorder.intercept(effect, **params)
+
+    def release(self, event: str) -> None:
+        """Let the requests a `hold` on *event* kept open go on to the server."""
+        recorder = self.diagnostics
+        if recorder is None or not hasattr(recorder, "release"):
+            raise RuntimeError(
+                f"scenario {self.scenario_id!r} releases a request the browser made, but "
+                f"its target '{self.target.name}' declares driver '{self.target.driver}' — "
+                "only driver='playwright' can keep back what the page receives"
+            )
+        recorder.release(event)
 
     def mark(self) -> int:
         """The number of the next request the page makes, to hand `settle` as the point after which its requests count."""
@@ -2874,7 +2885,7 @@ def _open_browser(qa: Qa) -> Any:
 
 
 BROWSER_CLEAN_EXPECTED = ("no uncaught page error, no response of status 500 or higher, and every "
-                          "browser dialog answered as the scenario declared, and every intercept rule rewrote a body")
+                          "browser dialog answered as the scenario declared, and every intercept rule altered an answer")
 
 
 def _bind_browser_unclean(qa: Qa, problems: Sequence[str]) -> list[str]:

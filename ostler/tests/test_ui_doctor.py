@@ -1866,3 +1866,15 @@ def test_self_relation_separates_a_node_from_the_page_it_sits_on(repo: Path):
     codeset = all_codes(_run(repo))
     assert "unresolved-relation" not in codeset
     assert "self-relation" not in codeset
+
+
+def test_a_hold_with_no_claim_above_it_is_an_error(repo: Path):
+    write(repo / "docs/services/groom/flows/read-the-report.md",
+          "---\ntype: flow\nslug: read-the-report\ntitle: Read the report\n---\n# Read the report\n\n"
+          '- intercept: hold(event="POST /api/report/data")\n- start: the editor is open\n- end: the report shows the total\n')
+    (finding,) = [f for f in _run(repo).findings if f.code == "bad-intercept"]
+    assert "has no claim above it" in finding.message
+
+
+def test_a_hold_under_a_claim_is_not_a_finding(repo: Path):
+    assert _intercept_findings(repo, 'hold(event="POST /api/report/data")') == []

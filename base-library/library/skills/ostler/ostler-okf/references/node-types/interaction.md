@@ -38,6 +38,7 @@ Section type. A `### <id>` under a `## Interactions` heading, normally in a
 | `fixture` | no | a fixture |
 | `arrange` | no | an act performed on this node's own surface |
 | `capture` | no | a capture |
+| `intercept` | no | an effect on the server's answer to one request, installed before the trigger. `hold` under a claim keeps the request open until that claim has been read |
 | `observe` | no | link: the [resource](resource.md) observation (`@stem.name`) the claim's `verify:` rows read |
 | `tests` | no | link — the test files covering it |
 

@@ -51,6 +51,7 @@ from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import file_refusal
 from ostler.qa.plan_source import out_of_band
 from ostler.qa.plan_source import python_literal
+from ostler.qa.plan_source import release_call
 from ostler.qa.plan_source import typed_literal
 from ostler import selector_forms
 
@@ -373,18 +374,21 @@ class PageObservations:
 def page_observations(
     obligations: list[Obligation], gaps: list[Gap], *, scenario: str = "scenario",
 ) -> PageObservations:
-    """Every obligation's assertions, with a TODO in place of each one that is not whole."""
+    """Every obligation's assertions, with a TODO in place of each one that is not whole, and each held request released after the last claim that holds it."""
     observed = PageObservations([], set(), [])
-    for obligation in obligations:
+    last_holding = {event: index for index, obligation in enumerate(obligations) for event in obligation.releases}
+    for index, obligation in enumerate(obligations):
         compiled = _page_assertions(obligation, gaps)
         if compiled is None:
             observed.lines.append(f"    # TODO(arrange): {obligation.id} declares an "
                                   f"observation this {scenario} cannot make")
-            continue
-        observed.lines.extend(compiled[0])
-        observed.documents.extend(document for document in compiled[1]
-                                  if document not in observed.documents)
-        observed.covered.add(obligation.id)
+        else:
+            observed.lines.extend(compiled[0])
+            observed.documents.extend(document for document in compiled[1]
+                                      if document not in observed.documents)
+            observed.covered.add(obligation.id)
+        observed.lines.extend(release_call(event) for event in dict.fromkeys(obligation.releases)
+                              if last_holding[event] == index)
     return observed
 
 

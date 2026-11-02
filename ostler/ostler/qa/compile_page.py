@@ -50,6 +50,7 @@ from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import fixture_call
 from ostler.qa.plan_source import state_walk_function_name
+from ostler.qa.plan_source import intercept_call
 from ostler.qa.plan_source import python_identifier
 from ostler.qa.plan_source import python_literal
 from ostler.qa.plan_source import target_variable
@@ -470,6 +471,11 @@ def _arrive(
                     walk_hops(screen.path.hops, screen.screen, screen.book, gaps, ids), screen.book)
 
 
+def _installed_intercepts(obligations: list[Obligation]) -> list[str]:
+    """The lines that install every intercept *obligations* declare, each once."""
+    return list(dict.fromkeys(intercept_call(row) for obligation in obligations for row in obligation.intercepts))
+
+
 def _arrival_scenario(
     screen: _PageScreen, arrival: _Arrival, sinks: PlanSinks, covered: set[str],
 ) -> list[str]:
@@ -486,7 +492,7 @@ def _arrival_scenario(
     arrived = _arrive(screen, arranged, gaps, ids, visits=visits)
     if arrived is None:
         return []
-    body = arrived.lines
+    body = [*_installed_intercepts(obligations), *arrived.lines]
     if not visits:
         body.extend(vet_calls([screen.screen], screen.book.screen_routes, ids, gaps, screen.book.fragment_hosts))
     refused: set[str] = set()
@@ -710,7 +716,7 @@ def _interaction_scenario(
         return []
     window = [f"    {WINDOW_VAR} = qa.window()"] if needs_window(observed.lines) else []
     departure = [] if observed.documents else vet_calls([screen.screen], book.screen_routes, ids, gaps, book.fragment_hosts)
-    body = [*arrived, *conditions, *trigger.setup, *departure, *window, *trigger.action]
+    body = [*arrived, *conditions, *trigger.setup, *departure, *window, *_installed_intercepts(obligations), *trigger.action]
     covered.update(observed.covered)
     preconditions = [python_literal(row.precondition) for row in arrival.rows]
     if arm.when:

@@ -373,12 +373,13 @@ def obligation_frame(
     node: BookNode, repeat: RepeatContract | None, book: Mapping[str, BookNode]
 ) -> ObligationFrame:
     """The frame every obligation of *node* shares."""
-    surface, steps, intercepts = "", (), ()
+    surface, steps = "", ()
     if node.type == "flow":
         surface = linked_surface(node, node.bullets.get("end", ()), book)
         steps = journey_steps(node, book)
-        parsed = (parse_intercept(value) for value in node.bullets.get("intercept", ()))
-        intercepts = tuple(call for call in parsed if isinstance(call, CheckCall))
+    parsed = (parse_intercept(value) for key in registry.effect_keys(node.type)
+              for value in node.bullets.get(key, ()))
+    intercepts = tuple(call for call in parsed if isinstance(call, CheckCall))
     locators = control_locators(node, book)
     extends_unresolved = False
     if node.type in ("interaction", "invocation"):

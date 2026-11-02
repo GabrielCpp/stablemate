@@ -31,7 +31,8 @@ that answer on its way to the browser, so a `verify:` that still sees the origin
 the screen computed it. `- intercept: rewrite(event="POST /api/report/data", find="1300",
 replace="4200")` replaces the text in every matching response, page-sent or worker-sent.
 A rule that rewrites nothing fails the run, because a proof whose altered answer never
-reached the page proves nothing. `doctor` reports a bullet that is not a well-formed effect
+reached the page proves nothing. `hold` keeps a request open instead, and
+[../check-vocabulary.md](../check-vocabulary.md#intercept-effects) says when it ends. `doctor` reports a bullet that is not a well-formed effect
 as `bad-intercept`. An effect is not a check, so it adds no obligation and no coverage.
 
 `start:` and `end:` are the flow's claims, and the pair is what makes a flow provable: the

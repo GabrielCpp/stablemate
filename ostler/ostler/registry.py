@@ -322,6 +322,13 @@ def attributed_acts(
     return _attributed(node_type, bullet_order, combiners, performed_keys(node_type))
 
 
+def attributed_intercepts(
+    node_type: str, bullet_order: Iterable[Sequence[Any]], combiners: Mapping[int, str]
+) -> tuple[list[str], dict[tuple[str, int], list[str]]]:
+    """Split a node's intercept bullets between the node and the claims they sit under."""
+    return _attributed(node_type, bullet_order, combiners, effect_keys(node_type))
+
+
 def capture_keys(node_type: str) -> tuple[str, ...]:
     """Every bullet key on `node_type` whose value captures a fact for later reference."""
     uitype = UI_TYPES_BY_NAME.get(node_type)
@@ -820,6 +827,7 @@ UI_TYPES: tuple[UINodeType, ...] = (
             BulletKey("fixture", arrange=True),
             BulletKey("arrange", performs=True),
             BulletKey("capture", capture=True),
+            BulletKey("intercept", effect=True),
             BulletKey("tests", link=True),
         ),
     ),
