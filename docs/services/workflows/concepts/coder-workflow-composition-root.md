@@ -11,8 +11,7 @@ registered flow. The default [Coder flow](../../../../workflows/src/workhorse_wo
 coordinates story implementation, documentation, QA, backlog draining, and
 the epic pull-request lifecycle; its complete state-machine contract is the [Coder main flow](../flows/coder-main.md).
 
-The registry is rooted at `workhorse_workflows.coder`, keeping prompt paths and repository flavor
-lookup relative to the whole workflow rather than the default `main` subpackage. It contributes
+The registry is rooted at `workhorse_workflows.coder`, keeping prompt paths relative to the whole workflow rather than the default `main` subpackage. It contributes
 the shared node blueprint and exposes six named flows: `genesis`, `dev`, `docs`, `qa`,
 `fix`, and `fix_ci`. Only `genesis` is entered directly; the main Coder flow hands off to the other five. Each result schema declares its own dry-run reply, so a dry run advances through its gates
 without an agent backend.

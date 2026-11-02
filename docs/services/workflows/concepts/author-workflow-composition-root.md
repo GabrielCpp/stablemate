@@ -11,8 +11,7 @@ separate machine. The default path implements the [milestone intake](../flows/au
 the two direct editing machines implement [epic edit](../flows/author-epic-edit.md) and
 [story edit](../flows/author-story-edit.md).
 
-The registry is rooted at the `workhorse_workflows.author` package so prompt paths and repository
-flavor lookup remain relative to the whole workflow, rather than the default flow's `main`
+The registry is rooted at the `workhorse_workflows.author` package so prompt paths remain relative to the whole workflow, rather than the default flow's `main`
 subpackage. It contributes the main, shared, survey, epic-edit, story-edit, epic-split,
 epic-author, story-author, story-split, and finalize node blueprints. It exposes nine named subflows:
 `surveyor`, `parity-surveyor`, `epic-edit`, `story-edit`, `epic-split`, `epic-author`,

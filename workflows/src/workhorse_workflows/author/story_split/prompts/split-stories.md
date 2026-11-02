@@ -44,7 +44,6 @@ stage does that next.
   {{ find_by_tags("planning") | default("(none installed — size stories so each is independently shippable)", true) }}.
   Where it says "use existing stories as templates", size stories from the **researched seed**, not
   from how any existing epic split the work — existing breakdowns are references, not templates.
-{% block repo_split_rules %}{% endblock %}
 - `{{ epic_dir }}/context.md` and the epic's existing `## Stories` section when present.
 - The milestone file under `docs/milestones/` that lists this epic. Cross-epic readiness belongs in the milestone graph, not
   in a sibling-story blocker. A `- Blocked by:` value may name only a story in this same

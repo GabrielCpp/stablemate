@@ -92,25 +92,6 @@ def test_a_template_global_resolves_in_an_inline_body(tmp_path):
     assert out == "login!"
 
 
-def test_a_flavor_file_shadows_an_inline_body(tmp_path):
-    """Converting a prompt file to inline must not silently drop a repo's override."""
-    workflow_dir = tmp_path / "lib" / "workflows" / "author"
-    workflow_dir.mkdir(parents=True)
-    repo = tmp_path / "repo"
-    flavors = repo / ".agents" / "flavors" / "author"
-    flavors.mkdir(parents=True)
-    (flavors / "fix-findings.md").write_text("REPO RULE for {{ subject }}\n")
-
-    out = render_text(
-        "fix-findings",
-        BODY,
-        {"subject": "login", "_repo_root": str(repo)},
-        workflow_dir,
-    )
-
-    assert out == "REPO RULE for login\n"
-
-
 def test_the_label_names_the_node_the_turn_and_the_artifact():
     seen.clear()
     with tempfile.TemporaryDirectory() as tmp:

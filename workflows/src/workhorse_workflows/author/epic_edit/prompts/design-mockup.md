@@ -67,8 +67,6 @@ The story cannot be written without a mockup. If you genuinely cannot produce on
    - Do not create or update any inventory, manifest, or OKF book file. Return the story-local path in
      `mockup`; the workflow passes it directly to `write_story`.
 
-{% block repo_design_rules %}{% endblock %}
-
 ## Final response (REQUIRED, exact shape)
 
 ```json

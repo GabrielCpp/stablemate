@@ -102,8 +102,6 @@ Rules:
   decided this story does not need is not one either.
 {%- endif %}
 
-{% block repo_authoring_rules %}{% endblock %}
-
 ## Context (what & why — short)
 
 A few sentences in the user's terms: what surface or behaviour this story is about, where it lives,

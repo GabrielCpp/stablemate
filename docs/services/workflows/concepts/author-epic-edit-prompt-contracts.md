@@ -13,9 +13,9 @@ always read-only to these prompts.
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/plan-epic-edit.md` @9bd6bedd06ce
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/refine-epic-edit-plan.md` @9c92addea733
 - code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rewrite-epic-edit.md` @031fe29f72ac
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md` @f918719466f5
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @cc175e9b0ee9
-- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md` @d16914d79c20
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/design-mockup.md` @bcd64b605bdb
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/write-story.md` @15942f0c8ae3
+- code: `workflows/src/workhorse_workflows/author/epic_edit/prompts/rework-story.md` @f9ec1e81fc8d
 - detail: [author epic edit subflow](author-epic-edit-subflow.md)
 - detail: [author PM review angles](author-pm-angles.md)
 

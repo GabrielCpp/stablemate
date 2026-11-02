@@ -140,24 +140,6 @@ def template_globals(context: dict[str, Any], *, quiet: bool = False) -> dict[st
     }
 
 
-def _flavor_override(
-    template_path: Path, context: dict[str, Any], workflow_dir: Path
-) -> tuple[str, str] | None:
-    """Locate a repo-authored flavor override for this node's prompt, if any."""
-    node_cwd = context.get("_node_cwd")
-    repo_root = node_cwd if node_cwd else ManifestContext.from_context(context).repo_root
-    if not repo_root:
-        return None
-    node_name = template_path.name
-    root = Path(repo_root) / ".agents" / "flavors" / workflow_dir.name
-    owner = template_path.parent.parent
-    candidates = dict.fromkeys((root / owner, root))
-    for flavor_dir in candidates:
-        if (flavor_dir / node_name).is_file():
-            return str(flavor_dir), node_name
-    return None
-
-
 BODY_PREFIX = "body"
 
 
@@ -174,11 +156,6 @@ def render(template_path: str | Path, context: dict[str, Any], workflow_dir: str
         template_name = str(template_path)
         siblings = str(workflow_dir / template_path.parent)
         search_paths = list(dict.fromkeys([str(workflow_dir), siblings]))
-        override = _flavor_override(template_path, context, workflow_dir)
-        if override is not None:
-            flavor_dir, node_name = override
-            search_paths = [flavor_dir, *search_paths]
-            template_name = node_name
 
     env = _environment(
         _stack(body_dir, FileSystemLoader(search_paths)), context, workflow_dir
@@ -213,14 +190,8 @@ def render_text(
     name = f"{label}.md"
     inline = DictLoader({name: text})
     files = FileSystemLoader([str(workflow_dir)])
-    override = _flavor_override(Path(name), context, workflow_dir)
-    loaders = (
-        [FileSystemLoader([override[0]]), inline, files]
-        if override is not None
-        else [inline, files]
-    )
     body_dir = str(context.get("_body_dir") or "")
-    env = _environment(_stack(body_dir, *loaders), context, workflow_dir)
+    env = _environment(_stack(body_dir, inline, files), context, workflow_dir)
     return env.get_template(name).render(**context)
 
 

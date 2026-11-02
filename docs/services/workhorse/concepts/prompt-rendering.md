@@ -6,8 +6,7 @@ title: Prompt rendering
 
 A node's prompt is a Jinja2 template, rendered with the run's values just before its
 [agent turn](agent-turns.md). A prompt file resolves against the workflow directory and the
-folder beside it. A repository can override one prompt by placing a file of the same name under
-`.agents/flavors/<workflow>/`, and the override wins. An inline prompt written in the state's own
+folder beside it. An inline prompt written in the state's own
 source renders in the same environment as a prompt file.
 
 An undefined value renders empty and logs a `[template] ⚠` warning, so one missing value does not
@@ -38,11 +37,12 @@ with `farrier install`. A live run prints it as a `[workhorse] WARNING:` and goe
 prints it as a `[workhorse] ERROR:` and exits 1. The [shared core](shared-core.md) holds the catalog the helpers resolve
 against.
 
-- code: `workhorse/workhorse/templates.py::render` @921bcf52f398
-- code: `workhorse/workhorse/templates.py::template_globals` @921bcf52f398
-- code: `workhorse/workhorse/references.py::missing_references` @c6ff9b16296e
-- code: `workhorse/workhorse/references.py::format_missing` @c6ff9b16296e
+- rule: a repository changes what a turn says through its instruction files and skills, or for a coder role through `workflow.prompts`, and no path under `.agents/` overrides a prompt file.
+- code: `workhorse/workhorse/templates.py::render` @c276df74955b
+- code: `workhorse/workhorse/templates.py::template_globals` @886c35bc48ef
+- code: `workhorse/workhorse/references.py::missing_references` @8e2d760ce437
+- code: `workhorse/workhorse/references.py::format_missing` @076d76edf355
 - code: `workhorse/docs/CHECKING.md` @792e2e8e883a
-- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.render_prompt` @c123d36ff73e
+- code: `workhorse/workhorse/pyflow/workflow.py::Workflow.render_prompt` @be399583fec8
 - tests: `workhorse/tests/test_pipeline.py::test_a_dry_run_render_returns_the_placeholder`
 - tests: `workhorse/tests/test_pipeline.py::test_a_render_returns_the_text_a_turn_would_send_and_writes_no_step`

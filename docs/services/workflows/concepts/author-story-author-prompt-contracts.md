@@ -18,12 +18,12 @@ When a story write or rework cannot proceed, the writer returns `status: "blocke
 product question. The subflow hands that question to the [PM gap answer](author-pm-gap-answer.md),
 which answers from the milestone and the ledger. The writer retries with the answer as its `note`.
 
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @2336f43d893e
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @2336f43d893e
-- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @2336f43d893e
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @f918719466f5
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @5f480169138e
-- code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @82b7f0e83713
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.design_mockup` @4e7873453309
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.write_story` @792e25750480
+- code: `workflows/src/workhorse_workflows/author/story_author/flow.py::StoryAuthor.rework_story` @45d40102e0b6
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/design-mockup.md` @bcd64b605bdb
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/write-story.md` @ee63cbf13bef
+- code: `workflows/src/workhorse_workflows/author/story_author/prompts/rework-story.md` @a939f9abb8e9
 - tests: `workflows/tests/test_prompts_exist.py::test_the_prompt_file_is_there`
 - tests: `workflows/tests/test_prompt_variables.py::test_the_prompt_reads_only_names_the_workflow_can_supply`
 - tests: `workflows/tests/test_prompt_output_shape.py::test_the_prompt_documents_the_keys_the_turn_is_asked_for`

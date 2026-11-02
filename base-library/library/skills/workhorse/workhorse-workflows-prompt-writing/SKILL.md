@@ -69,11 +69,10 @@ both files. Shared *dispatch* is not.
 `self.agent(text, label="fix-findings", …)` writes the turn at the call site instead of
 in a file. That is not a way around *one prompt per aim* — the label is the aim, and two
 aims are still two turns. It is a size rule: inline is a short fixed turn with no skill
-reference and nothing an operator would flavor, a file is everything else.
+reference, a file is everything else.
 
 What a file gives up when a turn goes inline is the reason the default stands. No
-`.agents/flavors/**` override reaches it, and no reference preflight resolves a manifest
-name inside it, which is why `self.agent` refuses one outright. A prompt carrying all
+reference preflight resolves a manifest name inside it, which is why `self.agent` refuses one outright. A prompt carrying all
 four mechanics is past the size line by the time it carries the second one.
 
 ## What never belongs in a prompt

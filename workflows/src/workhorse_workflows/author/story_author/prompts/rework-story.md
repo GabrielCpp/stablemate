@@ -67,8 +67,6 @@ Address every error or finding above. Common fixes:
   Acceptance Criteria even if no prior OKF node specifies the detail. Do not block merely because
   the existing OKF book is silent. Block only if the choice would broaden scope, contradict an
   existing source, or resolve a genuine conflict the supplied evidence cannot settle.
-{% block repo_rework_rules %}{% endblock %}
-
 If **Operator feedback to apply** above is non-empty, the validator and the reviewer may have nothing
 to flag — the feedback is mid-flight guidance a human dropped into the run's inbox while the run
 was in progress. Treat it as **required changes for this pass**, within the epic's existing scope.

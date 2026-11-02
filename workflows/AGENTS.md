@@ -111,15 +111,13 @@ machinery around the run.
 ## A prompt is a file, unless it is too small to be one
 
 `self.agent("fix_ci/prompts/fix-merge.md", …)` stays the default spelling. The file is
-what a repo's `.agents/flavors/**` override replaces, what `references.missing_references`
-reads, and what the AST sweeps under `workflows/tests/` check for output shape, undeclared
+what `references.missing_references` reads, and what the AST sweeps under `workflows/tests/` check for output shape, undeclared
 variables and existence.
 
 A turn carrying `label=` writes its text at the call site instead. Inline is a short fixed
-turn with no skill reference and nothing an operator would flavor. A file is everything
-else. `self.agent` refuses a bad label, un-parseable Jinja and a manifest reference
+turn with no skill reference. A file is everything else. `self.agent` refuses a bad label, un-parseable Jinja and a manifest reference
 outright. The rest is a judgement call, and it goes the file's way whenever the turn
-carries a skill reference, needs an operator's override, or runs past a screen.
+carries a skill reference or runs past a screen.
 
 Nothing under `coder/` goes inline at all. `scripts/check_prompt_agnostic.py` and
 `coder/test_prompt_stack_neutrality.py` glob `coder/*/prompts/*.md`, so an inline body

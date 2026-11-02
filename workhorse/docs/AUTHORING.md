@@ -225,8 +225,7 @@ type) and raises when the node has not run.
 ## A turn written in the state's own source (`label=`)
 
 A prompt is a file under the workflow package, and that is the default for a reason: a
-file is what a repo's flavor override, the reference preflight and the prompt sweeps all
-read. A three-line turn does not earn one, so `label=` puts the text at the call site:
+file is what the reference preflight and the prompt sweeps read. A three-line turn does not earn one, so `label=` puts the text at the call site:
 
 ```python
 fixed = self.agent(
@@ -246,9 +245,7 @@ directory's subdirectory, the `output.json` and `prompt.md` inside it, the span,
 the flow.
 
 The text renders in the environment a file gets: the same globals, the same `{{ }}` over
-`args`, the same `{% include %}` of a package partial, and the same
-`.agents/flavors/<workflow>/<label>.md` override, which shadows the inline body when a
-repo ships one. `events.jsonl` records `inline:<label>` rather than the body, so a prompt
+`args`, and the same `{% include %}` of a package partial. `events.jsonl` records `inline:<label>` rather than the body, so a prompt
 does not land on a line of the event log every turn.
 
 Two things an inline turn may not do. `self.agent` refuses each one with a
@@ -259,8 +256,8 @@ Two things an inline turn may not do. `self.agent` refuses each one with a
 | a skill reference (`skill_link`, `skill_command`, `find_by_tags`, …) | the reference sweep globs prompt files, and an inline body is not one |
 | text that is not valid Jinja | a file prompt fails this late at render time; an inline one fails at authoring time |
 
-The boundary: inline is a short fixed turn with no skill reference and nothing an
-operator would flavor. A file is everything else.
+The boundary: inline is a short fixed turn with no skill reference. A file is everything
+else.
 
 ## Where an agent turn runs (`cwd` / `add_dirs`)
 

@@ -25,7 +25,7 @@ The entry point is deliberately **not** registered in `add_flows` — it is reac
 at runtime, and naming it twice would give one machine two registry entries. The `main` package
 sits at `coder/main/`, housing the machine (`flow.py`) and the nodes only this graph calls
 (`nodes/`). The wider registry composition — the blueprint, the flow table, and the console script — lives at `../workflow.py`, which remains at the package root so that
-every flow's prompt paths and `.agents/flavors/coder/` resolve correctly.
+every flow's prompt paths resolve correctly.
 
 - code: `workflows/src/workhorse_workflows/coder/main/__init__.py` @7ace1e5304ae
 - code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder` @a73e14cb41a8

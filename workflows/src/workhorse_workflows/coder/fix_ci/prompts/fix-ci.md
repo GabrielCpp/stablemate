@@ -26,8 +26,6 @@ again.
 {{ operator_context }}
 {% endif %}
 
-{% block repo_ci_guide %}{% endblock %}
-
 ## How to work
 
 1. **Confirm the branch.** Run `git branch --show-current`. It must be `{{ ci_branch }}`.
