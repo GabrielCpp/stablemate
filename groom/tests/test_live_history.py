@@ -168,3 +168,13 @@ def test_a_span_keeps_the_visit_slug_from_a_column_or_its_attributes():
     assert {key: row["slug"] for key, row in history.spans.items()} == {
         "a": "001-00001-plan", "b": "001-00002-impl", "c": ""
     }
+
+
+def test_only_a_span_batch_advances_the_figures_revision():
+    history = LiveHistory(log_limit=3)
+    start = history.revision
+    history.update_logs([{"body": "x", "ts": 1}])
+    history.update_metrics([{"name": "workhorse.tokens", "ts": 1, "value": 1}])
+    assert history.revision == start
+    history.update_spans([{"span_id": "a", "start_ts": 1, "end_ts": 2, "status": "OK"}])
+    assert history.revision == start + 1

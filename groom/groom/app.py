@@ -33,10 +33,14 @@ from groom import (
     dispatch_ledger,
     digest,
     docker_io,
+    figures,
+    gitdiff,
     live_transcript,
     localfs,
     notify,
     otlp,
+    norms,
+    overview,
     pools,
     projection,
     run_inbox,
@@ -87,6 +91,8 @@ PRUNE_EVERY_S = float(os.environ.get("GROOM_PRUNE_EVERY_S", "3600"))
 HARVEST_EVERY_S = float(os.environ.get("GROOM_HARVEST_EVERY_S", "300"))
 LIVE_TICK_S = float(os.environ.get("GROOM_LIVE_TICK_S", "5"))
 ARCHIVE_EVERY_S = archive.ARCHIVE_EVERY_S
+SERVED_BY_SIDECAR = "sidecar"
+SERVED_BY_VOLUME = "volume"
 
 
 def _all_workflows() -> list:
@@ -100,10 +106,39 @@ async def _broadcast_shell(changed: str = "") -> None:
         await _push_detail(changed)
 
 
+def _figures_rev(wf: WorkflowContainer) -> int:
+    """How many span batches the watched run has absorbed plus how many cached norms changed after their first read, so a pane knows when its Overview figures are stale."""
+    history = state.HISTORIES.get(projection.run_id_of(wf))
+    return (history.revision if history is not None else 0) + norms.revision()
+
+
+_NORM_TASKS: set[asyncio.Task] = set()
+
+
+async def _read_norms(container_id: str, workflow: str, node: str) -> None:
+    """Read one node's norms through the query pool, then push the watching tabs when they changed."""
+    if await norms.refresh(workflow, node):
+        await _push_detail(container_id)
+
+
+def _queue_norms(wf: WorkflowContainer, tel: RunTelemetry | None) -> None:
+    """Queue a norm read when the run's node has none cached or the run just moved to it. A render never waits on the read."""
+    node = tel.current_node if tel else wf.current_node
+    workflow = projection.run_workflow(wf, tel)
+    if not norms.needs_read(projection.run_id_of(wf), workflow, node):
+        return
+    task = asyncio.create_task(_read_norms(wf.container_id, workflow, node))
+    _NORM_TASKS.add(task)
+    task.add_done_callback(_NORM_TASKS.discard)
+
+
 async def _detail_message(wf: WorkflowContainer) -> dict:
     """One run's detail pane, addressed to the tabs watching that run."""
     tel, facts, logs, history = await _run_facts(wf)
-    return projection.detail_message(wf, tel, facts, logs, history=history)
+    _queue_norms(wf, tel)
+    message = projection.detail_message(wf, tel, facts, logs, history=history)
+    message["detail"]["figures_rev"] = _figures_rev(wf)
+    return message
 
 
 async def _push_detail(container_id: str) -> None:
@@ -297,6 +332,46 @@ async def _project_native_rows(records: list) -> None:
             )
 
 
+_FIGURES_RUNNING: set[str] = set()
+_FIGURES_DIRTY: set[str] = set()
+_FIGURES_TASKS: set[asyncio.Task] = set()
+
+
+async def _refresh_figures(run_id: str) -> None:
+    """Recompute one run's row figures through the query pool, with at most one pass running per run and one rerun queued behind it."""
+    if run_id in _FIGURES_RUNNING:
+        _FIGURES_DIRTY.add(run_id)
+        return
+    _FIGURES_RUNNING.add(run_id)
+    try:
+        while True:
+            _FIGURES_DIRTY.discard(run_id)
+            try:
+                computed = await pools.QUERY.run(figures.run_figures, run_id)
+            except Exception:
+                logger.warning("row figures for %s could not be read", run_id, exc_info=True)
+            else:
+                run = state.RUNS.get(run_id)
+                if run is not None and run.figures != computed:
+                    run.figures = computed
+                    await _broadcast_shell()
+            if run_id not in _FIGURES_DIRTY:
+                return
+    finally:
+        _FIGURES_RUNNING.discard(run_id)
+
+
+def _schedule_figures(records: list, *, stale: bool) -> None:
+    """After a committed batch, refresh the figures of the runs it touched; ``stale`` False refreshes only runs that have none yet."""
+    for run_id in {r.get("run_id") for r in records if r.get("run_id")}:
+        run = state.RUNS.get(run_id)
+        if run is None or (not stale and run.figures is not None):
+            continue
+        task = asyncio.create_task(_refresh_figures(run_id))
+        _FIGURES_TASKS.add(task)
+        task.add_done_callback(_FIGURES_TASKS.discard)
+
+
 @get("/", include_in_schema=False)
 async def index() -> Response:
     return Response(content=_DASHBOARD_HTML, media_type=MediaType.HTML)
@@ -333,23 +408,47 @@ async def _sidecar_rpc(container_id: str, method: str, params: dict) -> dict | N
         return None
 
 
+def _checkout_names(served: dict) -> dict:
+    """The checkouts a sidecar reports beside a read, or nothing when it is too old to name them."""
+    return {"repos": [str(name) for name in served["repos"]]} if isinstance(served.get("repos"), list) else {}
+
+
+def _branch_start(served: dict) -> dict:
+    """Where a sidecar says the branch started, or ``based: False`` when it is too old to say."""
+    if not isinstance(served.get("base_reason"), str):
+        return {"based": False}
+    return {
+        "based": True,
+        "base": str(served.get("base") or ""),
+        "base_ref": str(served.get("base_ref") or ""),
+        "base_branch": str(served.get("base_branch") or ""),
+        "base_reason": served["base_reason"],
+    }
+
+
 @get("/files/{container_id:str}", include_in_schema=False)
 async def files(
     container_id: Annotated[str, PathParameter()],
     repo: Annotated[str, QueryParameter()] = "",
 ) -> dict:
-    """The repo-relative file paths of one checkout, as ``{"paths": [...]}``."""
+    """The repo-relative file paths of one checkout, whether the read failed, and whether the source reports failures, as ``{"paths", "failed", "reported", "served"}``, plus ``"repos"`` when the sidecar names the run's checkouts."""
     served = await _sidecar_rpc(container_id, "getTree", {"repo": repo})
     if served is not None:
-        return {"paths": list(served.get("paths") or [])}
+        return {
+            "paths": list(served.get("paths") or []),
+            "failed": bool(served.get("failed")),
+            "reported": "failed" in served,
+            "served": SERVED_BY_SIDECAR,
+            **_checkout_names(served),
+        }
 
     wf = state.WORKFLOWS.get(container_id)
     volume = wf.workspace_volume if wf else ""
     if not volume:
-        return {"paths": []}
-    reader = localfs.list_files if wf and wf.native else docker_io.list_files
-    paths = await asyncio.to_thread(reader, volume, repo)
-    return {"paths": list(paths)}
+        return {"paths": [], "failed": True, "reported": True, "served": SERVED_BY_VOLUME}
+    reader = localfs.read_tree if wf and wf.native else docker_io.read_tree
+    read = await asyncio.to_thread(reader, volume, repo)
+    return {"paths": list(read["paths"]), "failed": read["failed"], "reported": True, "served": SERVED_BY_VOLUME}
 
 
 @get("/file/{container_id:str}", include_in_schema=False)
@@ -358,11 +457,21 @@ async def file_content(
     repo: Annotated[str, QueryParameter()] = "",
     path: Annotated[str, QueryParameter()] = "",
 ) -> dict:
-    """One file's text plus the highlight.js language its name implies, as ``{"path", "content", "lang"}``."""
+    """One file's text, the highlight.js language its name implies, whether the read failed, and whether the source reports failures, as ``{"path", "content", "lang", "failed", "reported", "served"}``. ``served`` is ``"sidecar"`` when the run's sidecar answered and ``"volume"`` for every fallback reader, so a client can tell a live answer from a stand-in."""
     lang = projection.file_lang(path)
     served = await _sidecar_rpc(container_id, "getFile", {"repo": repo, "path": path})
     if served is not None:
-        return {"path": path, "content": served.get("content") or "", "lang": lang}
+        return {
+            "path": path,
+            "content": served.get("content") or "",
+            "lang": lang,
+            "failed": bool(served.get("failed")),
+            "reported": "failed" in served,
+            "served": SERVED_BY_SIDECAR,
+        }
+
+    def unread() -> dict:
+        return {"path": path, "content": "", "lang": lang, "failed": True, "reported": True, "served": SERVED_BY_VOLUME}
 
     wf = state.WORKFLOWS.get(container_id)
     volume = wf.workspace_volume if wf else ""
@@ -375,13 +484,15 @@ async def file_content(
             if absolute.is_absolute():
                 volume, rel = str(absolute.parent), absolute.name
     if not volume or not rel:
-        return {"path": path, "content": "", "lang": lang}
+        return unread()
     reader = localfs.read_file if wf and wf.native else docker_io.read_file
     try:
         text = await asyncio.to_thread(reader, volume, rel)
     except ValueError:
-        return {"path": path, "content": "", "lang": lang}
-    return {"path": path, "content": text or "", "lang": lang}
+        return unread()
+    if text is None:
+        return unread()
+    return {"path": path, "content": text, "lang": lang, "failed": False, "reported": True, "served": SERVED_BY_VOLUME}
 
 
 async def _run_facts(wf: WorkflowContainer) -> tuple:
@@ -455,26 +566,39 @@ async def worker_detail(container_id: Annotated[str, PathParameter()]) -> dict:
     if wf is None:
         return {"found": False, "id": container_id}
     tel, facts, logs, history = await _run_facts(wf)
-    return projection.run_detail(wf, tel, facts, logs, history=history)
+    _queue_norms(wf, tel)
+    detail = projection.run_detail(wf, tel, facts, logs, history=history)
+    detail["figures_rev"] = _figures_rev(wf)
+    return detail
 
 
 @get("/diff/{container_id:str}", include_in_schema=False)
 async def diff(
     container_id: Annotated[str, PathParameter()],
     repo: Annotated[str, QueryParameter()] = "",
+    view: Annotated[str, QueryParameter()] = "",
 ) -> dict:
-    """One checkout's working-tree git diff, as ``{"diff": "<unified diff>"}``."""
-    served = await _sidecar_rpc(container_id, "getDiff", {"repo": repo})
+    """One checkout's uncommitted change: the diff, the untracked files, whether the read failed, and whether the source reports failures, and ``"served"`` saying whether the sidecar or a fallback reader answered, plus ``"repos"`` when the sidecar names the run's checkouts. ``?view=branch`` reads the change since the branch started instead, with the base the sidecar computed and ``"based"`` saying whether it reported one."""
+    branch = view == gitdiff.VIEW_BRANCH
+    served = await _sidecar_rpc(container_id, "getDiff", {"repo": repo, **({"view": view} if branch else {})})
     if served is not None:
-        return {"diff": served.get("diff") or ""}
+        return {
+            "diff": served.get("diff") or "",
+            "untracked": list(served.get("untracked") or []),
+            "failed": bool(served.get("failed")),
+            "reported": "failed" in served,
+            "served": SERVED_BY_SIDECAR,
+            **(_branch_start(served) if branch else {}),
+            **_checkout_names(served),
+        }
 
     wf = state.WORKFLOWS.get(container_id)
     volume = wf.workspace_volume if wf else ""
-    if not volume:
-        return {"diff": ""}
-    differ = localfs.git_diff if wf and wf.native else docker_io.git_diff
-    text = await asyncio.to_thread(differ, volume, repo)
-    return {"diff": text or ""}
+    if not volume or branch:
+        return {**gitdiff.unreadable(), "reported": True, "served": SERVED_BY_VOLUME}
+    reader = localfs.read_diff if wf and wf.native else docker_io.read_diff
+    read = await asyncio.to_thread(reader, volume, repo)
+    return {**read, "reported": True, "served": SERVED_BY_VOLUME}
 
 
 @get("/api/run/{run_id:str}/outbox", include_in_schema=False)
@@ -492,6 +616,12 @@ async def outbox_get(run_id: Annotated[str, PathParameter()]) -> dict:
         "question": gate.question,
         "status": gate.status,
     }
+
+
+@get("/api/run/{run_id:str}/overview", include_in_schema=False)
+async def run_overview(run_id: Annotated[str, PathParameter()]) -> dict:
+    """One run's cost so far and its time per flow, from the queries behind ``groom cost`` and ``groom profile``."""
+    return await pools.QUERY.run(overview.run_overview, run_id)
 
 
 @post("/api/run/{run_id:str}/outbox", include_in_schema=False)
@@ -829,6 +959,7 @@ async def otlp_traces(request: Request) -> Response:
         return _store_unavailable()
     await _dispatch_alerts(alerts.ingest_spans(spans))
     await _project_native_rows(spans)
+    _schedule_figures(spans, stale=True)
     await _push_received(spans)
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
@@ -846,6 +977,7 @@ async def otlp_metrics(request: Request) -> Response:
         return _store_unavailable()
     await _dispatch_alerts(alerts.ingest_metrics(points))
     await _project_native_rows(points)
+    _schedule_figures(points, stale=False)
     await _push_received(points)
     return Response(content=b"", media_type="application/x-protobuf", status_code=200)
 
@@ -1283,6 +1415,7 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
     finally:
         if conn is not None:
             sidecar_hub.unregister(conn)
+            await _broadcast_shell(conn.container_id)
 
 
 @post("/reload", include_in_schema=False)
@@ -1473,6 +1606,7 @@ def create_app() -> Litestar:
             worker_detail,
             diff,
             outbox_get,
+            run_overview,
             outbox_post,
             inbox_get,
             inbox_post,

@@ -45,6 +45,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - client-side query: the fleet component filters again in the browser over the row's own fields, because the fleet is small and the server pushes the whole thing on every tick — a server-filtered live list would be clobbered by the next push. The two filters are independent by design and neither is the other's fallback.
 - fleet counts: filtering never changes the status counts. Those are fleet-wide, computed from the unfiltered snapshot, because a status bar narrowed by one tab's search box misreports the fleet it claims to describe.
 - empty versus loading: an empty result is rendered as the discovery spinner only when the [dashboard discovery scanning flag](concepts/dashboard-discovery-scanning-flag.md) is true *and* no query is active; a query that matches nothing renders the ordinary empty state even mid-scan, because there an empty result is the honest answer.
+- row figures: each row carries the run's cost with coverage, active time and items from the hot cache, so a list of many runs costs no more to render than before. They change no row's rank and no position in the list. See [run row figures](concepts/run-row-figures.md).
 - delta identity: a single-run push carries a row of exactly this shape, so the client merges it into the array by id and re-sorts by the same `(rank, name)` key rather than maintaining a second merge rule.
 - selection handoff: each row carries its container id; selection, detail fetching, and the `watch` subscription are the client's, not this projection's.
 - JSON only: every field is a JSON primitive. No dataclass, enum, or `datetime` escapes; `state` is the enum's string value and `native` is a real boolean.
@@ -116,12 +117,19 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - required: true
 - meaning: process liveness from telemetry, its display label, and the raw seconds of observed silence. `live_label` is empty for `unknown`, because a run that never reported must not be labelled as anything.
 
+### field-row-figures
+
+- type: `dict | None`, with `finished`, `reports_cost`, `cost_usd`, `turns`, `priced_turns`, `active_s`, `items_done` and `items_total`
+- default: `null`
+- required: true
+- meaning: the run's cost so far with its coverage, its active time and its items done out of the total, read from the run's hot-cache record, which leaves the telemetry store unread. It is `null` until the first computation completes. `items_done` and `items_total` are `null` when the run reports no count. The [run row figures](concepts/run-row-figures.md) concept holds how each is derived and drawn.
+
 ### field-row-progress
 
 - type: `str` `node`, `float` `node_elapsed_s`, `float` `turn_idle_s`, `str` `mini`, `str` `activity`
 - default: `""` / `0.0`
 - required: true
-- meaning: where the run is and whether being there is normal. `mini` is the pre-formatted at-a-glance line — how long the node has been open, and agent idle time once it exceeds a minute.
+- meaning: where the run is and whether being there is normal. `mini` is the pre-formatted at-a-glance line — how long the node has been open, and agent idle time once it exceeds a minute. `clock` carries the same figures as server timestamps (`label`, `since_ts`, `idle_since_ts`), and the dashboard counts the row's line up from them every second, so the row, the [run now strip](concepts/run-now-strip.md) and the flow tree read one length.
 
 ### field-row-doing
 
@@ -146,10 +154,10 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 
 ### field-row-process
 
-- type: `int | null` `pid`, `bool` `native`
-- default: `null` / `false`
+- type: `int | null` `pid`, `bool` `native`, `bool` `sidecar`
+- default: `null` / `false` / `false`
 - required: true
-- meaning: how the run is hosted. A native run is a local process with a pid; a docker run is a container.
+- meaning: how the run is hosted. A native run is a local process with a pid; a docker run is a container. `sidecar` is true only for a docker run whose sidecar holds a connection in the sidecar hub right now, which is what lets the run detail show the Diff tab.
 
 ### field-row-rank
 
@@ -166,7 +174,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none intentionally raised for empty, unmatched, or partially populated snapshots.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::fleet_rows
+- code: groom/groom/projection.py::fleet_rows@4de05fc045f9
 - detail: [fleet rows documentation contexts](concepts/fleet-rows-documentation-contexts.md)
 - step: Resolve the clock once, so every row in the list is labelled against the same instant.
 - step: Project each workflow that satisfies the query, looking its telemetry up from the hot cache by run id.
@@ -179,11 +187,12 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none intentionally raised for a workflow with or without gates, telemetry, or an exit code.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::run_row
+- code: groom/groom/projection.py::run_row@f4041c085d72
 - step: Sort the workflow's open gates by file path and take the first, if any.
 - step: Derive liveness from telemetry and the clock, and the exit hint from state and exit code.
 - step: Resolve the `doing` line gate-path → exit-hint → activity → node.
 - step: Attach the question preview only when blocked with a gate.
+- step: Derive the row's `clock` from the gauge arrival times, so the dashboard can count the line up.
 - step: Compute the rank and return the flat row.
 
 ### method-match-fleet-query
@@ -192,7 +201,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none intentionally raised for missing optional text fields.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::matches
+- code: groom/groom/projection.py::matches@8820335f0b1a
 - step: Return true immediately for an empty query, without reading any haystack.
 - step: Lowercase the query and each documented haystack; a missing value compares as the empty string.
 - step: Return true when any haystack contains the query as a substring.
@@ -203,7 +212,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::liveness
+- code: groom/groom/projection.py::liveness@57ca552ff851
 - step: Without telemetry, fall back to the container: `done`/`ended` when the workflow is finished, else `unknown` with an empty label — a run that never reported must not be guessed about.
 - step: Return `done` when this session's telemetry reports a terminal, labelled with the terminal reason.
 - step: Return `live`/`alive` when observed silence is within the server-side liveness window, whatever the container says.
@@ -215,7 +224,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::fleet_rank
+- code: groom/groom/projection.py::fleet_rank@428340d585ce
 - step: Blocked is 0, whatever its liveness — it is waiting on the operator.
 - step: Finished, or liveness `done`, is 3.
 - step: Otherwise 1 when liveness is `live`, else 2.
@@ -226,7 +235,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none intentionally raised for missing repository name or branch.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::repo_label
+- code: groom/groom/projection.py::repo_label@28ce19d20393
 - step: Return `{repo_name}@{repo_branch}` when a branch is known.
 - step: Return `repo_name` when it is not.
 - step: Return the em dash placeholder when neither is set.
@@ -237,7 +246,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none intentionally raised for empty or short container ids.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::row_id
+- code: groom/groom/projection.py::row_id@95c2c93ac61c
 - step: Use the full run id, falling back to the container id, for a native run; the helper was renamed from `short_id` because a chosen native run name must not be truncated.
 - step: For a docker run, return the first four characters of the container id, whole if it is shorter, or `----` when it is empty. The `#` prefix is the row component's, not this value's.
 
@@ -247,7 +256,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none intentionally raised for live, code-less, or non-zero-code workflows.
 - verify: json_path(path="$.exit_hint", matches="^exited -?[0-9]+$")
-- code: groom/groom/projection.py::exit_hint
+- code: groom/groom/projection.py::exit_hint@81f8768e7142
 - tests: `groom/tests/test_projection.py::test_exit_hint_only_on_finished_with_a_code`
 - step: Return the empty string unless the workflow is finished and its exit code is known.
 - step: Otherwise return `exited {code}`. Classifying zero as success and non-zero as failure is the row component's styling decision, made from `exit_code`.
@@ -258,7 +267,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::row_mini
+- code: groom/groom/projection.py::row_mini@8c846e6b6621
 - step: Return the empty string without telemetry.
 - step: Add `in node {duration}` when the node has a measured elapsed time.
 - step: Add `agent idle {duration}` only past a minute, so ordinary turn latency does not read as a stall.
@@ -270,7 +279,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::type_hue
+- code: groom/groom/projection.py::type_hue@0502a3aa85f2
 - detail: [workflow type badge style rules](concepts/workflow-type-badge-style-rules.md)
 - step: Fold the type string into a stable value in `0`–`359` and return it, so an unknown workflow type is still visually distinct without a stylesheet change.
 

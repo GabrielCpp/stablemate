@@ -7,10 +7,10 @@ title: Attendant dispatch
 
 When a run announces it is blocked on a gate or has died without reaching its own end, groom dispatches an attendant — an outside actor that can investigate, make a decision, and carry the run forward. The attendant contract is channel-agnostic: the same job can be claimed by an interactive session from a fleet-wide queue, or spawned as a headless Claude agent in the run's workspace.
 
-- code: `groom/groom/attend.py` @39ef0dee7f5f
+- code: `groom/groom/attend.py` @955e5ac1d852
 - tests: `groom/tests/test_attend.py`
 
-The module is called from `groom.app._poll_gate_soon` and the exit-alert pathway. Nothing here reaches upward to groom's own state — every dispatch is a fire-and-forget notification that drives a row in the `attend` table or publishes a job to the session queue.
+The module is called from `groom.app._attend_gates`, for a native run parked on gates, and `groom.app._attend_death`, for a run that ended without reaching its own end. Nothing here reaches upward to groom's own state — every dispatch is a fire-and-forget notification that drives a row in the `attend` table or publishes a job to the session queue.
 
 ## Modes and configuration
 
@@ -24,7 +24,7 @@ Settings are resolved from config first, then environment (`GROOM_ATTEND*` vars)
 
 ## Deny patterns and gatekeeping
 
-Certain gates are not an attendant's to answer — a red PR that cannot be pushed is an infrastructure problem, not one the attendant clears by trying harder. The `deny` setting is a list of substrings; a dispatch checks both the gate path and the question text against the deny list (lowercased). A match vetos the dispatch. An empty list (the default) allows all operator-gated dispatches.
+Certain gates are not an attendant's to answer — a red PR that cannot be pushed is an infrastructure problem, not one the attendant clears by trying harder. The `deny` setting is a list of substrings; a dispatch checks both the gate path and the question text against the deny list (lowercased). The question is first reduced to the latest question set the dashboard shows, so only that text is checked. A match vetos the dispatch. An empty list (the default) allows all operator-gated dispatches.
 
 ## Queue lifecycle
 
@@ -47,7 +47,7 @@ A second dispatch for the same run is rejected — the blocked check calls `_blo
 ### method: attend_gate
 - sig: `(*, run_id: str, workflow: str, run_dir: str, workspace: str, gate_path: str, question: str, kind: str = ATTENDABLE_KIND, now: float | None = None, spawner: Spawner | None = None) -> AttendJob | None`
 - does: reject if `kind != "operator"` (machine waits are not attendable)
-- does: reject if `gate_path` or `question` contains a deny pattern
+- does: reject if `gate_path` or the latest question set extracted from `question` contains a deny pattern
 - does: reject if an attendant is already on this run
 - does: dispatch an `AttendJob` with `kind = "gate"` and return it when no rejection fires
 - returns: the job if dispatched, `None` if any reject clause fired
@@ -59,6 +59,7 @@ A second dispatch for the same run is rejected — the blocked check calls `_blo
 - sig: `(*, run_id: str, workflow: str, run_dir: str, workspace: str, now: float | None = None, spawner: Spawner | None = None) -> AttendJob | None`
 - does: reject if an attendant is already on this run
 - does: read the failure handoff from `inbox.jsonl` in run_dir, returning machine-readable `failure_class` and `node`
+- does: yield empty fields from an unreadable inbox and still dispatch
 - does: create an `AttendJob` with `kind = "death"` and the captured failure metadata
 - does: dispatch the job and return it
 - returns: the job if dispatched, `None` if rejected
@@ -91,11 +92,11 @@ The spawned prompt is the attendant doctrine (shipped in `groom/groom/prompts/at
 
 ### stop
 - sig: `(job_id: str) -> bool`
-- does: if the row shows `status = running`, send `SIGTERM` then `SIGKILL` to the process group; fetch and store its transcript; mark the row `status = stopped`
+- does: if the row shows `status = running`, send `SIGTERM` then `SIGKILL` to the process group, 0.2 seconds apart; copy the transcript of every session id the row holds; finish the row as `completed` with released state `stopped` and release the run's job from the ledger
 - returns: `True` if a process was killed, `False` if the row doesn't exist or is not running
-- errors: if `pid` is stale (process already dead), the second signal may fail — caught and logged, not raised
+- errors: if `pid` is stale (process already dead), a failed signal ends the signalling and the row is still finished — caught, not raised
 - code: `groom/groom/attend.py::stop` @032d86a8ec03
-- verify: persists(subject="attend table row", field="status", value="stopped")
+- verify: persists(subject="attend table row", field="released_state", value="stopped")
 
 ### recover_orphans
 - sig: `() -> int`
@@ -108,7 +109,7 @@ The spawned prompt is the attendant doctrine (shipped in `groom/groom/prompts/at
 - code: `groom/groom/attend.py::recover_orphans` @c8c70622805a
 - verify: persists(subject="attend table row", field="session_ids", value="appended")
 
-Boot recovery is called from `groom.main` as groom starts up, one time. A row that survived a restart represents a run that was still held by an attendant when groom died, and the respawn continues the repair on the old code — the code the run is actually executing. Restarting without respawning would abandon the run with its checkpoint frozen.
+Boot recovery is called from the `_recover_attend` startup hook as groom starts up, one time. A row that survived a restart represents a run that was still held by an attendant when groom died, and the respawn continues the repair on the old code — the code the run is actually executing. Restarting without respawning would abandon the run with its checkpoint frozen.
 
 ## Queue and release
 

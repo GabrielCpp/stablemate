@@ -15,18 +15,13 @@
 </head>
 <body>
   <div class="app" data-mode="runs">
-    <!-- activity bar: the four panels + settings. A <nav> rather than a
+    <!-- activity bar: the three panels + settings. A <nav> rather than a
          role="toolbar" div — switching panes *is* the page's navigation, and a
          toolbar is not a landmark, so its contents sat outside every region. -->
     <nav id="activitybar" aria-label="Panels">
       <button type="button" class="act-btn active" data-mode="runs" title="Runs" aria-label="Runs" aria-pressed="true">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h9"/><circle cx="19" cy="17" r="2"/></svg>
-      </button>
-      <button type="button" class="act-btn" data-mode="files" title="Files" aria-label="Files" aria-pressed="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 5h6l2 2h8v11H4z"/></svg>
-      </button>
-      <button type="button" class="act-btn" data-mode="diff" title="Diff" aria-label="Diff" aria-pressed="false">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 7h10M7 7l3-3M7 7l3 3"/><path d="M17 17H7M17 17l-3-3M17 17l-3 3"/></svg>
+        <span class="rail-badge" id="runs-badge" aria-hidden="true" hidden></span>
       </button>
       <button type="button" class="act-btn" data-mode="attend" title="Attendant" aria-label="Attendant" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"/></svg>
@@ -58,36 +53,10 @@
           </div>
           <div class="runs-list" id="runs-list" role="log" aria-live="polite" aria-label="Workhorse runs"></div>
         </div>
-        <div id="detail"><div class="detail-empty">Select a run to see its activity, answer its gate, and read its metrics and logs.</div></div>
+        <div id="detail"></div>
       </div>
 
-      <!-- 2) FILES: container+repo tree + syntax-highlighted viewer -->
-      <div id="files-pane" class="pane">
-        <div class="picker-bar">
-          <button class="repo-picker" type="button" data-picker="files">
-            <span class="repo-picker-label">Select container / repo…</span><span class="caret">▾</span>
-          </button>
-        </div>
-        <div class="fd-split">
-          <div class="fd-tree" id="files-tree"><div class="fd-empty">Pick a container / repo above.</div></div>
-          <div class="fd-view" id="file-view"><div class="fd-empty">Select a file to view it.</div></div>
-        </div>
-      </div>
-
-      <!-- 3) DIFF: changeset tree + diff viewer -->
-      <div id="diff-pane" class="pane">
-        <div class="picker-bar">
-          <button class="repo-picker" type="button" data-picker="diff">
-            <span class="repo-picker-label">Select container / repo…</span><span class="caret">▾</span>
-          </button>
-        </div>
-        <div class="fd-split">
-          <div class="fd-tree" id="diff-tree"><div class="fd-empty">Pick a container / repo above.</div></div>
-          <div class="fd-view" id="diff-view"><div class="fd-empty">Select a changed file to see its diff.</div></div>
-        </div>
-      </div>
-
-      <!-- 4) ATTENDANT: every claude groom dispatched at a run that stopped.
+      <!-- 2) ATTENDANT: every claude groom dispatched at a run that stopped.
            A list and a record, and nothing else: no paging, no date filter, no
            refresh button. The list is the latest 200, newest first, and nothing is
            ever pruned from it — the point is reading a season back at once. -->
@@ -101,7 +70,7 @@
         <div id="attend-detail"><div class="detail-empty">Select an attendance to read what the agent did.</div></div>
       </div>
 
-      <!-- 5) DISPATCH: config-declared work queues. Occupancy per queue at the
+      <!-- 3) DISPATCH: config-declared work queues. Occupancy per queue at the
            top, its items (newest first) below — an item's row carries its own
            cancel/stop button, live-updated the same way the runs list is.
            Clicking an item opens its params/pid on the right, the same
@@ -132,15 +101,6 @@
          connection chip inside it, and the open run's header). Each carries its
          own aria-label so a screen reader — and getByRole — can tell them apart. -->
     <div id="statusbar" role="status" aria-live="polite" aria-label="Fleet status"></div>
-  </div>
-
-  <!-- shared Zed-style container+repo menu (positioned under the active picker) -->
-  <div id="repo-menu-wrap">
-    <div class="repo-menu-box">
-      <input id="repo-search" type="text" aria-label="Search container / repo" placeholder="Search container / repo…"
-             role="combobox" aria-expanded="false" aria-controls="repo-menu" aria-autocomplete="list">
-      <div id="repo-menu" role="listbox" aria-label="Containers and repositories"></div>
-    </div>
   </div>
 
   <!-- command palette -->

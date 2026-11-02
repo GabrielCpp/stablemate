@@ -4,12 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 
 LIVENESS_METRICS = (
     "workhorse.run.heartbeat",
     "workhorse.turn.heartbeat",
     "workhorse.cap_wait.heartbeat",
+)
+
+ELAPSED_GAUGES = (
+    "workhorse.node.elapsed_s",
+    "workhorse.turn.elapsed_s",
+    "workhorse.turn.idle_s",
+    "workhorse.wait.elapsed_s",
 )
 
 UNARCHIVED_DELETABLE_METRICS = (
@@ -116,3 +124,5 @@ class RunTelemetry:
     node_counts: dict[str, int] = field(default_factory=dict)
     node_labels: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     fired: set[str] = field(default_factory=set)
+    figures: dict[str, Any] | None = None
+    gauge_ts: dict[str, float] = field(default_factory=dict)

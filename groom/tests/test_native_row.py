@@ -185,11 +185,21 @@ def test_localfs_lists_files_and_prunes_vendor(tmp_path):
     assert not any(f.startswith(".venv/") for f in files)
 
 
-def test_localfs_git_diff(tmp_path):
+def test_localfs_read_tree_reports_a_missing_checkout_as_failed(tmp_path):
+    assert localfs.read_tree(str(tmp_path / "gone")) == {"paths": [], "failed": True}
+
+
+def test_localfs_read_tree_lists_a_checkout_as_not_failed(tmp_path):
+    (tmp_path / "a.py").write_text("x")
+    assert localfs.read_tree(str(tmp_path)) == {"paths": ["a.py"], "failed": False}
+
+
+def test_localfs_read_diff(tmp_path):
     _git_repo(tmp_path)
     (tmp_path / "a.txt").write_text("one\ntwo\n")
-    diff = localfs.git_diff(str(tmp_path))
-    assert "+two" in diff
+    read = localfs.read_diff(str(tmp_path))
+    assert "+two" in read["diff"]
+    assert read["failed"] is False
 
 
 def test_localfs_read_write_roundtrip_and_traversal_guard(tmp_path):

@@ -8,7 +8,6 @@ import contextlib
 import json
 import os
 import socket
-import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -19,6 +18,7 @@ from websockets.exceptions import ConnectionClosed
 
 from workhorse import control
 
+from groom import gitdiff
 from groom.checkpoints import parse_position
 from groom.gates import AWAITING, extract_question, status_of
 
@@ -224,13 +224,38 @@ def _find_repo_dirs() -> list[str]:
     return sorted(repos)
 
 
-def _list_tree(repo: str) -> list[str]:
-    """Repo-relative paths of every file in one checkout, heavy vendor/VCS dirs pruned (same set as the watcher)."""
-    base = _repo_base(repo)
-    if not base.is_dir():
+def _repo_names() -> list[str]:
+    """The checkouts a read can name, or none when the workspace cannot be listed."""
+    try:
+        return _find_repo_dirs()
+    except OSError:
         return []
+
+
+def _checkout(repo: str) -> str:
+    """The checkout a read names, or the one the diff reads when it names none."""
+    if repo:
+        return repo
+    try:
+        repos = _find_repo_dirs()
+    except OSError:
+        return ""
+    return repos[0] if repos else ""
+
+
+def _list_tree(repo: str) -> tuple[list[str], bool]:
+    """Repo-relative paths of every file in one checkout, heavy vendor/VCS dirs pruned (same set as the watcher), and whether the read failed."""
+    base = _repo_base(_checkout(repo))
+    if not base.is_dir():
+        return [], True
     paths: list[str] = []
-    for dirpath, dirnames, filenames in os.walk(base):
+    failed = False
+
+    def unreadable(_error: OSError) -> None:
+        nonlocal failed
+        failed = True
+
+    for dirpath, dirnames, filenames in os.walk(base, onerror=unreadable):
         dirnames[:] = [d for d in dirnames if d not in _SKIP_DIR_NAMES]
         for fname in filenames:
             full = Path(dirpath) / fname
@@ -238,48 +263,42 @@ def _list_tree(repo: str) -> list[str]:
                 paths.append(str(full.relative_to(base)))
             except ValueError:
                 continue
-    return sorted(paths)
+    return sorted(paths), failed
 
 
-def _git_diff(repo: str) -> str:
-    """Unified working-tree-vs-HEAD diff for one checkout, run against local disk."""
+def _git_diff(repo: str, view: str = "") -> gitdiff.DiffRead | gitdiff.BranchRead:
+    """Working-tree-vs-HEAD diff and untracked files for one checkout, run against local disk, or against where its branch started when ``view`` is ``branch``."""
     if not repo:
         repos = _find_repo_dirs()
         if not repos:
-            return ""
+            return gitdiff.unreadable()
         repo = repos[0]
-    try:
-        proc = subprocess.run(
-            ["git", "-c", "safe.directory=*", "-C", str(_repo_base(repo)), "diff", "HEAD"],
-            capture_output=True,
-            text=True,
-            timeout=20,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return ""
-    return proc.stdout if proc.returncode == 0 else ""
+    if view == gitdiff.VIEW_BRANCH:
+        return gitdiff.read_branch_local(_repo_base(repo), 20)
+    return gitdiff.read_local(_repo_base(repo), 20)
 
 
 def _rpc_get_tree(params: dict) -> dict:
-    return {"paths": _list_tree(str(params.get("repo", "")))}
+    paths, failed = _list_tree(str(params.get("repo", "")))
+    return {"paths": paths, "failed": failed, "repos": _repo_names()}
 
 
 def _rpc_get_file(params: dict) -> dict:
-    repo = str(params.get("repo", ""))
+    repo = _checkout(str(params.get("repo", "")))
     path = str(params.get("path", ""))
     rel = f"{repo}/{path}".lstrip("/") if repo else path
     if not rel:
-        return {"content": ""}
+        return {"content": "", "failed": True}
     safe = _safe_relpath(rel)
     try:
         content = (WORKSPACE_DIR / safe).read_text(errors="replace")
     except OSError:
-        content = ""
-    return {"content": content}
+        return {"content": "", "failed": True}
+    return {"content": content, "failed": False}
 
 
 def _rpc_get_diff(params: dict) -> dict:
-    return {"diff": _git_diff(str(params.get("repo", "")))}
+    return {**_git_diff(str(params.get("repo", "")), str(params.get("view", ""))), "repos": _repo_names()}
 
 
 

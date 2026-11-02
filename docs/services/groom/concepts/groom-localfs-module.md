@@ -137,7 +137,7 @@ Each helper returns a specific shape: boolean for existence/readiness checks, st
 - repository resolution: delegates to [_base](#_base) to resolve the checkout root; returns `[]` if resolution fails.
 - pruning: skips any directory named `.git`, `node_modules`, `__pycache__`, or `.venv` during the tree walk.
 - path normalization: returned paths use forward slashes as separators, regardless of host OS, for consistent wire representation.
-- consumer: used by the Files pane to render the repository tree; also consumed by [workspace file list data](../formats/workspace-file-list-data.md).
+- consumer: used by the run Files tab's fallback read to list a native run's checkout; also consumed by [workspace file list data](../formats/workspace-file-list-data.md).
 - effects: walks the host filesystem tree; reads only metadata and does not read file contents, launch processes, mutate files, or call docker.
 - algorithm:
   1. Resolve the checkout root with [_base](#_base); return `[]` if it fails.
@@ -160,7 +160,7 @@ Each helper returns a specific shape: boolean for existence/readiness checks, st
 - discovery depth: does not recurse below immediate children; a nested checkout under a child checkout is discovered as a `.git` inside the first child.
 - empty-state behavior: returns `[]` when base is unreadable; returns `[""]` for a workspace root that is a git checkout but has no child checkouts; returns child names only (no `""`) when child checkouts exist but the root is not a checkout.
 - repository selection: workspace root is represented as `""`; child checkouts are represented by child directory name only. Later repository selection (e.g., in diff handlers) passes these values to [_base](#_base) to resolve them to paths.
-- consumer: used by diff and file-list handlers to enumerate available checkouts for the repository picker; also used by git-diff defaulting when no repository is specified.
+- consumer: used by diff and file-list handlers to enumerate available checkouts for the terminal client's repository picker; also used by git-diff defaulting when no repository is specified.
 - effects: reads only filesystem directory metadata; does not read file contents, launch git, mutate files, or call docker.
 - algorithm:
   1. Resolve the workspace root with [_base](#_base); return `[]` if it fails.
@@ -186,29 +186,30 @@ Each helper returns a specific shape: boolean for existence/readiness checks, st
 
 ### git-diff
 
-- sig: `git_diff(base: str, /, repo_dir: str = "") -> str`
+- sig: `read_diff(base: str, /, repo_dir: str = "") -> DiffRead`
 - abstract: false
 - raises: no exception for missing checkout or non-zero git exit.
 - verify: json_path(path="exception.type", absent=true)
-- returns: raw unified working-tree-versus-HEAD diff text, or `""` when no checkout resolves or git exits non-zero.
-- code: groom/groom/localfs.py::git_diff
+- returns: raw unified working-tree-versus-HEAD diff text and the untracked file names, or an unreadable result (`failed` true) when no checkout resolves or git exits non-zero.
+- code: groom/groom/localfs.py::read_diff@5e5b04abdd29
 - input: `base` is the run's host-absolute workspace root; `repo_dir` is an optional base-relative checkout directory.
-- output: raw git diff stdout or empty string.
+- output: a [workspace diff data](../formats/workspace-diff-data.md) read: git diff stdout, untracked names and the `failed` flag.
 - repository selection: resolves `base/repo_dir` first with [_base](#_base); when that fails and no `repo_dir` was supplied, calls [method-find-repo-dir](#find-repo-dir) and resolves again.
 - command: runs host-local `git -c safe.directory=* -C <selected checkout> diff HEAD` with captured text stdout and the shared [DOCKER_TIMEOUT](#field-docker-timeout) timeout.
 - timeout: maximum of [field-docker-timeout](#field-docker-timeout) seconds to allow the git process to run.
-- failure behavior: process launch failures, subprocess exceptions, timeout exceptions, and non-zero git exit all return `""`.
+- failure behavior: process launch failures, subprocess exceptions, timeout exceptions, and non-zero git exit all return an unreadable result.
 - consumer: used by the Changes pane to show working-tree differences; also consumed by [workspace diff data](../formats/workspace-diff-data.md).
-- parity: returns the same string the Docker-volume reader would for the same checkout, which is what lets the endpoint pick between them by a boolean and return one shape.
+- parity: returns the same read the Docker-volume reader would for the same checkout, which is what lets the endpoint pick between them by a boolean and return one shape.
 - detail: [native git diff documentation scope](native-git-diff-documentation-scope.md)
 - effects: reads the host filesystem and launches a read-only git subprocess; does not mutate files, touch docker, send sidecar frames, or update workflow/dashboard state.
 - algorithm:
   1. Resolve the checkout root with [_base](#_base).
   2. If resolution fails and no `repo_dir` was supplied, call [method-find-repo-dir](#find-repo-dir) and resolve again.
-  3. If the second attempt also fails, return `""`.
+  3. If the second attempt also fails, return an unreadable result.
   4. Launch `git -c safe.directory=* -C <selected checkout> diff HEAD` with captured stdout and a [field-docker-timeout](#field-docker-timeout) timeout.
-  5. If the command exits non-zero, return `""`.
-  6. Return stdout unchanged.
+  5. Run `git ls-files --others --exclude-standard -z` the same way.
+  6. If either command exits non-zero, return an unreadable result.
+  7. Return stdout and the untracked names unchanged.
 
 ### read-file
 

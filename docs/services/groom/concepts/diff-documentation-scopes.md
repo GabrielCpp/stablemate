@@ -8,7 +8,7 @@ title: Diff documentation scopes
 `diff` is one HTTP handler, not two implementations to choose between. It requests `getDiff`
 over the connected sidecar RPC helper, falls back to the workspace volume diff reader (or its
 native equivalent) only when the sidecar returns no data and the workflow has a known workspace
-volume, and returns the result as `{"diff": "<unified diff text>"}`.
+volume, and returns the result as `{"diff", "untracked", "failed", "reported"}`.
 
 Read [diff](groom-app-module.md#method-diff) for the handler's place in the [groom app
 module](groom-app-module.md): its route wiring, its exception behavior, and its role among the
@@ -16,7 +16,7 @@ module's other endpoint handlers. Read [workspace diff data method-diff](../form
 when the question concerns the [workspace diff data](../formats/workspace-diff-data.md) format it
 produces: the sidecar-versus-fallback algorithm, the empty-state and error rules, and how it
 relates to the sibling producer methods (`_rpc_get_diff`, `_git_diff`, the Docker and native
-`git_diff` functions) that ultimately supply its diff text. Neither view supersedes the other;
+`read_diff` functions) that ultimately supply its diff text. Neither view supersedes the other;
 each describes the same current handler from its own documented scope.
 
 - code: groom/groom/app.py::diff

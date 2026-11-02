@@ -6,21 +6,23 @@ title: Dashboard event wiring interaction contexts
 # Dashboard event wiring interaction contexts
 
 `wireEvents` is the dashboard's one-time browser event registration point. Its
-handlers serve separate controls and gestures: filtering runs, opening and
-searching the repository menu, choosing a run with `j` or `k`, requesting
-[notification permission](browser-notification-permission.md), and toggling
-the command palette. They are not alternative implementations of one
-operation.
+handlers serve separate controls and gestures: switching panels from the
+activity bar, filtering runs, selecting a run by click or with `j` or `k` unless focus is in a text field, text area or select, refreshing the fleet,
+opening the command palette from its button or with Ctrl or Cmd plus `k`,
+navigating and choosing palette results, opening and closing the new-run
+dispatch dialog, closing every open overlay with Escape, keeping Tab inside
+the palette and the dispatch dialog, and requesting
+[notification permission](browser-notification-permission.md) on the first
+click. They are not alternative implementations of one operation.
 
 Choose the interaction that matches the operator's event target or shortcut.
-The repository-picker interactions share menu mechanics but differ by the
-active Files or Diff pane; the remaining interactions, including the
+Every interaction, including the
 [browser notification permission](browser-notification-permission.md)
-requests, each operate on their own control or global shortcut. The source
-records no preferred or deprecated handler because all seven contexts are
-current and independently reachable.
+requests, operates on their own control or global shortcut. The source
+records no preferred or deprecated handler because every context is current
+and independently reachable.
 
-- code: `groom/groom/assets/dashboard.js::wireEvents` @8ab4513909c0
+- code: `groom/groom/assets/dashboard.js::wireEvents` @99f073783401
 - rule: use the interaction for the operator's event target or keyboard shortcut; the shared wiring function does not rank its independently current handlers
 - detail: [browser notification permission](browser-notification-permission.md)
 - detail: [dashboard wire events scope](dashboard-wire-events-scope.md)

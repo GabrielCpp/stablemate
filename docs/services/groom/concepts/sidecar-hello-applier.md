@@ -9,7 +9,7 @@ The sidecar hello applier is the groom server layer that folds a connected sidec
 
 The [method contract](groom-app-module.md#method-apply-hello) and [sidecar hello state transition](workflow-state.md#transition-sidecar-hello) document the same implementation from different contexts; neither supersedes the other. Use the method contract for its callable interface and propagated failures. Use the transition for lifecycle-state inputs and outcomes. `_apply_hello` clears the existing gate map before inspecting the snapshot, then selects `finished` for a terminal marker or `blocked`/`running` from the rebuilt gates, so the two views must remain aligned.
 
-- code: groom/groom/app.py::_apply_hello@2d7aba1619b0
+- code: groom/groom/app.py::_apply_hello@9bad466f6fed
 - rule: use [method-apply-hello](groom-app-module.md#method-apply-hello) for the callable contract and [transition-sidecar-hello](workflow-state.md#transition-sidecar-hello) for lifecycle-state semantics; neither is a replacement for the other.
 - tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
 - tests: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
@@ -26,12 +26,12 @@ The [method contract](groom-app-module.md#method-apply-hello) and [sidecar hello
 - consistency: workflow-container — missing or falsey `snapshot` is treated as an empty object, leaving the workflow running when no gates remain.
 - verify: json_path(path="$.state", equals="RUNNING")
 - nested-object rule: truthy `identity` and `snapshot` values must expose object-style `get` lookup; this layer tolerates absent or falsey nested objects but does not coerce truthy non-mapping values.
-- identity fields: `identity.name`, `identity.repo_name`, and `identity.repo_branch` are passed to workflow upsert as optional replacements; omitted or `None` values preserve the current workflow field through the registry upsert semantics.
+- identity fields: `identity.name`, `identity.repo_name`, `identity.repo_branch`, `identity.run_id`, and `identity.workflow` are passed to workflow upsert as optional replacements, the last two as the workflow's run id and type, and an empty `run_id` or `workflow` counts as omitted; omitted or `None` values preserve the current workflow field through the registry upsert semantics.
 - current-node rule: a truthy `snapshot.current_node` replaces the workflow's current node; a falsey or absent value preserves the existing current node.
 - gate rule: every useful hello clears the workflow's existing gate map before applying snapshot gates, so reconnect snapshots replace stale host-side gates rather than merging with them.
 - retained gate rule: each `snapshot.gates[]` entry whose string-normalized `file_path` is non-empty creates or replaces one gate record keyed by that file path, with `workflow_id` set to `container_id`, `file_path` set to the normalized path, and `question` set to `str(gate.get("question", ""))`.
 - gate-entry shape rule: retained gate candidates are expected to be mapping-like objects with `get`; entries without that interface are not skipped by this layer and fail the hello application if iterated.
-- state rule: a truthy `snapshot.terminal` marks the workflow `FINISHED`; otherwise any retained gate marks it `BLOCKED`, and no retained gates marks it `RUNNING`.
+- state rule: a truthy `snapshot.terminal` marks the workflow `FINISHED` and, when the container's sidecar connection is registered, schedules one final [turn pull](sidecar-turn-pulling.md) for the run; otherwise any retained gate marks it `BLOCKED`, and no retained gates marks it `RUNNING`.
 - output: no return value; completion means metadata resolution, registry mutation, authoritative gate rebuilding, state selection, and shell broadcast have completed or an upstream exception has interrupted the operation.
 
 ## Effects
@@ -40,7 +40,7 @@ The [method contract](groom-app-module.md#method-apply-hello) and [sidecar hello
 - Creates or updates the workflow registry entry through [upsert workflow](workflow-registry.md#method-upsert-workflow), preserving existing workflow fields for identity values omitted by the hello frame.
 - Mutates the returned [workflow container](workflow-container.md) in place by optionally updating `current_node`, clearing `gates`, adding retained [gate info](gate-info.md) records, and setting [workflow state](workflow-state.md) according to the terminal/gate rules.
 - Broadcasts one out-of-band dashboard shell fragment through the [dashboard shell broadcaster](dashboard-shell-broadcaster.md) after the registry has been mutated.
-- Does not register or unregister sidecar sockets, resolve pending RPCs, send acknowledgement frames, answer gate files, persist workflow state outside memory, append answer logs, prune vanished workflows, read workspace files, compute diffs, or emit a blocked notification script.
+- Does not register or unregister sidecar sockets, wait for the final turn pull, resolve pending RPCs, send acknowledgement frames, answer gate files, persist workflow state outside memory, append answer logs, prune vanished workflows, read workspace files, compute diffs, or emit a blocked notification script.
 
 ## Methods
 
@@ -55,7 +55,7 @@ The [method contract](groom-app-module.md#method-apply-hello) and [sidecar hello
 - verify: json_path(path="$.state", equals="RUNNING")
 - verify: json_path(path="$.state", equals="FINISHED")
 - verify: removed(subject="stale workflow gate")
-- code: groom/groom/app.py::_apply_hello@2d7aba1619b0
+- code: groom/groom/app.py::_apply_hello@9bad466f6fed
 - tests: groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate
 - tests: groom/tests/test_app.py::test_apply_hello_running_when_no_gates
 - tests: groom/tests/test_app.py::test_apply_hello_finished_when_terminal
@@ -67,7 +67,7 @@ Fold one useful sidecar `hello` frame for one already accepted sidecar websocket
 
 - Reads: `identity` and `snapshot` from the decoded [sidecar websocket frame](../formats/sidecar-websocket-frame.md), replacing missing or falsey objects with empty objects.
 - Calls: [push-first volume metadata resolver](push-first-volume-metadata-resolver.md) for the normalized container id before any hello-specific registry upsert.
-- Calls: [workflow registry upsert](workflow-registry.md#method-upsert-workflow) with `name`, `repo_name`, and `repo_branch` from the hello identity.
+- Calls: [workflow registry upsert](workflow-registry.md#method-upsert-workflow) with `name`, `repo_name`, `repo_branch`, `run_id`, and `workflow` from the hello identity.
 - Writes: the returned [workflow container](workflow-container.md)'s current node only when `snapshot.current_node` is truthy.
 - Writes: clears the workflow container's gate map before applying any snapshot gate entries.
 - Writes: for each retained snapshot gate with a non-empty string-normalized file path, stores a [gate info](gate-info.md) record keyed by that path with the connected container id and string-normalized question.
@@ -84,7 +84,7 @@ Fold one useful sidecar `hello` frame for one already accepted sidecar websocket
 - step: Upsert the workflow registry entry with the optional identity fields carried by the hello frame.
 - step: If the snapshot carries a truthy current node, replace the workflow container's current node with that value; otherwise leave the previous current node untouched.
 - step: Clear all existing gates for the workflow because a useful hello is a full current-gate advertisement, not a delta.
-- step: If the snapshot carries a truthy terminal marker, mark the workflow finished and retain no snapshot gates.
+- step: If the snapshot carries a truthy terminal marker, mark the workflow finished, retain no snapshot gates, and schedule one final turn pull for the run when the container has a registered sidecar connection.
 - step: Otherwise iterate the advertised gates, skip entries whose string-normalized file path is empty, and store one gate record per retained path.
 - step: Mark the non-terminal workflow blocked when at least one gate remains, or running when the rebuilt gate map is empty.
 - step: Broadcast the current dashboard shell so connected browser dashboards converge on the rebuilt workflow state.

@@ -8,33 +8,34 @@ area: groom
 ---
 # Changes view — working-tree diff for one checkout
 
-The **diff** activity mode shows one checkout's uncommitted work as a browsable
-file tree beside a single-file diff. The operator picks a container and repo from
-the repository menu; the pane fetches that checkout's raw unified diff once and
-renders one file at a time.
+A run's **Diff** tab shows one checkout's uncommitted work, or its whole change
+since the branch started, as a browsable file tree beside a single-file diff. A
+switch in the tab bar chooses between the two, and Uncommitted is the default. A run with several checkouts shows a
+checkout selector beside the tabs, and the tab fetches the chosen checkout's raw
+unified diff once and renders one file at a time.
 
-It is scoped to one checkout rather than showing every run's diff at once. The
-earlier design grouped every worker's changes under a repo header in a single
-tree, which meant every mode switch paid for a `git diff` per container — on a
-fleet of a dozen runs the pane was the slowest thing in the dashboard, and almost
-all of what it fetched was never looked at.
+It is scoped to one checkout of one run rather than showing every run's diff at
+once. The earlier design grouped every worker's changes under a repo header in a
+single tree, which meant every mode switch paid for a `git diff` per container.
+On a fleet of a dozen runs that view was the slowest thing in the dashboard, and
+almost all of what it fetched was never looked at.
 
 ## Behaviour
 
 The spec-complete behaviour lives in the typed book, not here. The user
-journey — picking a checkout, fetching the diff, selecting a file — is the
+journey, choosing a checkout, fetching the diff and selecting a file, is the
 [operator inspects working tree diff](flows/operator-inspects-working-tree-diff.md)
-flow, and its claims are split into one obligation per step. The pane's
+flow, and its claims are split into one obligation per step. The tab's
 interactive controls are
-[activity diff mode](gui/screens/groom-dashboard.md#activity-diff-mode),
-[diff directory toggle](gui/screens/groom-dashboard.md#diff-directory-toggle),
-[diff file row](gui/screens/groom-dashboard.md#diff-file-row), and
-[diff view region](gui/screens/groom-dashboard.md#diff-view-region);
+[detail diff tab](gui/screens/groom-dashboard.md#detail-diff-tab),
+[detail checkout select](gui/screens/groom-dashboard.md#detail-checkout-select),
+[detail diff view switch](gui/screens/groom-dashboard.md#detail-diff-view-switch),
+and [detail diff file row](gui/screens/groom-dashboard.md#detail-diff-file-row);
 their interactions are
-[select activity diff mode](gui/screens/groom-dashboard.md#select-activity-diff-mode),
-[toggle diff directory](gui/screens/groom-dashboard.md#toggle-diff-directory),
+[open detail diff tab](gui/screens/groom-dashboard.md#open-detail-diff-tab),
+[select detail checkout](gui/screens/groom-dashboard.md#select-detail-checkout),
 and
-[select diff file row](gui/screens/groom-dashboard.md#select-diff-file-row).
+[refresh detail diff](gui/screens/groom-dashboard.md#refresh-detail-diff).
 The HTTP endpoint is
 [get working tree diff](http/groom.md#get-working-tree-diff), which serves
 [workspace diff data](formats/workspace-diff-data.md) as the unified-diff text the
@@ -43,52 +44,48 @@ browser parses. The parsed array lives in the
 nested tree comes from the
 [dashboard tree builder](concepts/dashboard-tree-builder.md), and the
 [diff representation selection](concepts/dashboard-diff-representation-selection.md)
-concept names the split between raw wire text and parsed cache. The run-detail
-disclosure shares the endpoint and is covered by
-[toggle detail working tree diff](gui/screens/groom-dashboard.md#toggle-detail-working-tree-diff).
+concept names the split between raw wire text and parsed cache. The tab itself
+is covered by [run Diff tab](concepts/run-diff-tab.md), the checkout choice by
+[run checkout selection](concepts/run-checkout-selection.md), and the second view by
+[branch start diff](concepts/branch-start-diff.md).
 
 ## Invariants (load-bearing)
 
-The diff pane is the only place in the UI that injects untrusted markup
+The Diff tab is the only place in the UI that injects untrusted markup
 (unified diff text), and every choice below is the smallest one that keeps
 the untrusted surface narrow. The XSS boundary is the single
 `dangerouslySetInnerHTML` site fed by `Diff2Html.html`; the assets are
 vendored under the static mount so the browser never reaches for a CDN; and
 the diff is a pull, never a broadcast, so a 5-second fleet tick cannot
-re-render the pane out from under a reading operator.
+re-render the tab out from under a reading operator.
 
 - consistency: changes-view — no diff markup reaches the DOM until one file is selected, server-side or client-side.
-- verify: visible(locator=".fd-empty", text="Select a changed file to see its diff.")
-- code: groom/groom/app.py::diff
-- code: groom/groom/assets/dashboard.js::DiffView
-- code: groom/groom/assets/dashboard.js::loadDiff
+- code: groom/groom/app.py::diff@3b4a38e8e9ca
+- code: groom/groom/assets/dashboard.js::DiffTab@ed8babf5c628
+- code: groom/groom/assets/dashboard.js::loadRunDiff@a79bfdf4c0b1
 - tests: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through
-- tests: groom/tests/test_a11y_dynamic.py::test_diff_pane_is_accessible
+- tests: groom/tests/test_diff_tab_dynamic.py::test_diff_tab_controls_have_roles_names_and_keyboard_operation_and_pass_axe
 
 The HTTP endpoint (`groom/groom/app.py::diff`) returns the raw unified text
-as `{"diff": text or ""}` and never renders it server-side. The store starts
-with `diff: { status: "idle", files: [], idx: -1 }`, so the tree pane mounts
-no `DiffView` markup until a row is clicked; `DiffView` itself returns the
-empty placeholder `Select a changed file to see its diff.` whenever
-`files[idx]` is undefined, which the initial `-1` index reaches on first load.
+as `{"diff", "untracked", "failed", "reported", "repos"}`, plus `based` and the
+base members for the branch view, and never renders it server-side. The tab renders a placeholder until a changed file is chosen, and
+a file's markup is built only for the file at the selected index.
 
-- consistency: changes-view — within the diff pane, the only `dangerouslySetInnerHTML` site is fed by `Diff2Html.html`, which escapes what it emits. The XSS boundary is one function wide.
-- verify: visible(locator=".diff-wrap", text="<script>alert(1)</script>")
-- code: groom/groom/assets/dashboard.js::DiffView
-- code: groom/groom/assets/dashboard.js::diffMarkup
+- consistency: changes-view — within the Diff tab, the only `dangerouslySetInnerHTML` site is fed by `Diff2Html.html`, which escapes what it emits. The XSS boundary is one function wide.
+- code: groom/groom/assets/dashboard.js::RunFileDiff@139e9580d270
+- code: groom/groom/assets/dashboard.js::fileDiffMarkup@1286720f9b96
 - tests: groom/tests/test_dashboard_client.py::test_the_only_markup_the_client_sets_comes_from_a_sanitizer_or_a_renderer
 
-`DiffView` and the run-detail disclosure's `DiffDisclosure` both pass
-`Diff2Html.html(...)` into `dangerouslySetInnerHTML`; no other markup in this
-pane is set rather than built. The diff pane is the only surface that owns
-this injection — gate questions go through `Markdown` (DOMPurify-sourced)
-and the files pane goes through `highlight.js`, neither of which is rendered
-here.
+`RunFileDiff` passes `Diff2Html.html(...)` into `dangerouslySetInnerHTML`; no
+other markup in this tab is set rather than built. The Diff tab is the only
+surface that owns this injection. Gate questions go through `Markdown`
+(DOMPurify-sourced) and the Files tab goes through `highlight.js`, neither of
+which is rendered here.
 
 - consistency: changes-view — no runtime CDN: `diff2html`, `marked`, `DOMPurify`, `highlight.js`, and the Preact/htm bundle are all vendored under the static asset mount.
 - verify: count(subject="CDN hostnames in the served shell", equals=0)
-- code: groom/groom/templates/dashboard.html
-- code: groom/groom/app.py::stamp_assets
+- code: groom/groom/templates/dashboard.html@65323b15e0f8
+- code: groom/groom/app.py::stamp_assets@daf0c62ee7d3
 - tests: groom/tests/test_app.py::test_an_asset_that_is_not_on_disk_keeps_its_url
 - tests: groom/tests/test_app.py::test_the_shell_stamps_every_asset_url_with_the_files_version
 - tests: groom/tests/test_app.py::test_the_served_shell_is_the_stamped_one
@@ -103,10 +100,10 @@ rather than being silently redirected to one.
 
 - consistency: changes-view — the diff is a pull, never a push. The websocket frames carry fleet state and detail, never unified diff text.
 - verify: count(subject="diff-bearing frames broadcast by the websocket", equals=0)
-- code: groom/groom/app.py::diff
+- code: groom/groom/app.py::diff@3b4a38e8e9ca
 
 `groom/groom/app.py::diff` is a `GET /diff/{container_id}` handler: the
-browser fetches the unified text on demand and the pane never re-renders on
+browser fetches the unified text on demand and the tab never re-renders on
 a websocket tick. The websocket fan-out
 ([`groom/groom/state.py::broadcast`](concepts/dashboard-client-queue-set.md#method-broadcast-dashboard-message))
 only carries JSON frames built by the projection module; the unified diff
@@ -117,5 +114,4 @@ file the operator is currently reading with another file's diff.
 
 - [runs-fleet-view](runs-fleet-view.md) ·
   [workspace-diff-data](formats/workspace-diff-data.md) ·
-  [repository-menu-data](formats/repository-menu-data.md) ·
   [dashboard path tree](formats/dashboard-path-tree.md)

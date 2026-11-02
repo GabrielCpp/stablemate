@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -33,7 +34,7 @@ def test_rpc_get_tree_lists_files_skipping_vendor_dirs():
         (repo / ".git" / "cfg").write_text("z")
         with patch.object(sidecar, "WORKSPACE_DIR", ws):
             out = sidecar._rpc_get_tree({"repo": "acme"})
-    assert out == {"paths": ["README.md", "src/a.py"]}
+    assert out == {"paths": ["README.md", "src/a.py"], "failed": False, "repos": ["acme"]}
 
 
 def test_rpc_get_file_reads_local_file():
@@ -43,7 +44,126 @@ def test_rpc_get_file_reads_local_file():
         (ws / "acme" / "a.py").write_text("print(1)\n")
         with patch.object(sidecar, "WORKSPACE_DIR", ws):
             out = sidecar._rpc_get_file({"repo": "acme", "path": "a.py"})
-    assert out == {"content": "print(1)\n"}
+    assert out == {"content": "print(1)\n", "failed": False}
+
+
+def test_rpc_get_tree_reports_a_missing_checkout_as_failed():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            out = sidecar._rpc_get_tree({"repo": "gone"})
+    assert out == {"paths": [], "failed": True, "repos": []}
+
+
+def test_rpc_get_tree_reports_an_empty_checkout_as_not_failed():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        (ws / "acme").mkdir()
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            out = sidecar._rpc_get_tree({"repo": "acme"})
+    assert out == {"paths": [], "failed": False, "repos": []}
+
+
+def test_rpc_get_tree_reports_a_folder_it_could_not_walk_as_failed():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        (ws / "sealed").mkdir()
+        (ws / "sealed" / "a.py").write_text("x")
+        (ws / "open.py").write_text("y")
+        (ws / "sealed").chmod(0)
+        try:
+            with patch.object(sidecar, "WORKSPACE_DIR", ws):
+                out = sidecar._rpc_get_tree({"repo": ""})
+        finally:
+            (ws / "sealed").chmod(0o755)
+    assert out["failed"] is (os.geteuid() != 0)
+
+
+def test_rpc_get_tree_with_no_repo_reads_the_checkout_the_diff_reads():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        (ws / "acme" / ".git").mkdir(parents=True)
+        (ws / "acme" / "a.py").write_text("x")
+        (ws / "stray.txt").write_text("y")
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            out = sidecar._rpc_get_tree({"repo": ""})
+    assert out == {"paths": ["a.py"], "failed": False, "repos": ["acme"]}
+
+
+def _two_checkouts(ws: Path) -> None:
+    for name in ("web-app", "api-service"):
+        (ws / name / ".git").mkdir(parents=True)
+        (ws / name / f"{name}.txt").write_text(name)
+
+
+def test_rpc_get_tree_names_every_checkout_of_the_workspace_beside_the_one_it_read():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        _two_checkouts(ws)
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            second = sidecar._rpc_get_tree({"repo": "web-app"})
+            default = sidecar._rpc_get_tree({"repo": ""})
+    assert second["paths"] == ["web-app.txt"]
+    assert default["paths"] == ["api-service.txt"]
+    assert second["repos"] == default["repos"] == ["api-service", "web-app"]
+
+
+def test_rpc_get_diff_names_every_checkout_of_the_workspace_even_when_the_read_failed():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        _two_checkouts(ws)
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            out = sidecar._rpc_get_diff({"repo": "web-app"})
+    assert out["failed"] is True
+    assert out["repos"] == ["api-service", "web-app"]
+
+
+def test_the_checkout_list_is_empty_when_the_workspace_cannot_be_listed():
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch.object(sidecar, "WORKSPACE_DIR", Path(tmp) / "missing"):
+            assert sidecar._rpc_get_tree({"repo": ""})["repos"] == []
+        ws = Path(tmp)
+        with patch.object(sidecar, "WORKSPACE_DIR", ws), patch.object(Path, "iterdir", side_effect=PermissionError):
+            assert sidecar._rpc_get_tree({"repo": ""})["repos"] == []
+
+
+def test_rpc_get_file_with_no_repo_reads_inside_the_checkout_the_diff_reads():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        (ws / "acme" / ".git").mkdir(parents=True)
+        (ws / "acme" / "a.py").write_text("inside\n")
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            out = sidecar._rpc_get_file({"repo": "", "path": "a.py"})
+    assert out == {"content": "inside\n", "failed": False}
+
+
+def test_rpc_get_file_reads_an_empty_file_as_empty_and_not_failed():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        (ws / "blank.txt").write_text("")
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            out = sidecar._rpc_get_file({"repo": "", "path": "blank.txt"})
+    assert out == {"content": "", "failed": False}
+
+
+def test_rpc_get_file_reports_a_missing_file_as_failed():
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch.object(sidecar, "WORKSPACE_DIR", Path(tmp)):
+            out = sidecar._rpc_get_file({"repo": "", "path": "gone.txt"})
+    assert out == {"content": "", "failed": True}
+
+
+def test_rpc_get_file_reports_an_unreadable_file_as_failed():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        (ws / "locked.txt").write_text("secret")
+        (ws / "locked.txt").chmod(0)
+        try:
+            with patch.object(sidecar, "WORKSPACE_DIR", ws):
+                out = sidecar._rpc_get_file({"repo": "", "path": "locked.txt"})
+        finally:
+            (ws / "locked.txt").chmod(0o644)
+    assert out["failed"] is (os.geteuid() != 0)
 
 
 def test_rpc_get_file_rejects_traversal():
@@ -67,14 +187,76 @@ def test_git_diff_reports_working_tree_changes():
         subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
         (repo / "f.txt").write_text("two\n")
         with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            (repo / "extra.txt").write_text("new\n")
             out = sidecar._rpc_get_diff({"repo": "app"})
     assert "-one" in out["diff"] and "+two" in out["diff"]
+    assert out["failed"] is False
+    assert out["untracked"] == ["extra.txt"]
+
+
+def _feature_checkout(ws: Path) -> Path:
+    repo = ws / "app"
+    repo.mkdir()
+    def run(*args):
+        return subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=repo, check=True, capture_output=True, text=True).stdout
+    run("init", "-q", "-b", "main")
+    (repo / "f.txt").write_text("one\n")
+    run("add", ".")
+    run("commit", "-qm", "init")
+    run("checkout", "-q", "-b", "feature")
+    (repo / "f.txt").write_text("two\n")
+    run("commit", "-qam", "work")
+    (repo / "f.txt").write_text("three\n")
+    (repo / "extra.txt").write_text("new\n")
+    return repo
+
+
+def test_a_get_diff_with_no_view_returns_exactly_the_uncommitted_reply():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        _feature_checkout(ws)
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            plain = sidecar._rpc_get_diff({"repo": "app"})
+            empty = sidecar._rpc_get_diff({"repo": "app", "view": ""})
+    assert plain == empty
+    assert set(plain) == {"diff", "untracked", "failed", "repos"}
+    assert "-two" in plain["diff"] and "+three" in plain["diff"] and "-one" not in plain["diff"]
+
+
+def test_a_get_diff_with_the_branch_view_reads_from_where_the_branch_started():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        repo = _feature_checkout(ws)
+        start = subprocess.run(["git", "merge-base", "HEAD", "main"], cwd=repo, check=True, capture_output=True, text=True).stdout.strip()
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            out = sidecar._rpc_get_diff({"repo": "app", "view": "branch"})
+    assert "-one" in out["diff"] and "+three" in out["diff"]
+    assert out["untracked"] == ["extra.txt"]
+    assert out["failed"] is False
+    assert (out["base"], out["base_ref"], out["base_branch"], out["base_reason"]) == (start, "main", "main", "")
+    assert out["repos"] == ["app"]
+
+
+def test_a_get_diff_with_the_branch_view_and_no_checkout_is_a_failed_read():
+    with tempfile.TemporaryDirectory() as tmp:
+        with patch.object(sidecar, "WORKSPACE_DIR", Path(tmp)):
+            out = sidecar._rpc_get_diff({"repo": "", "view": "branch"})
+    assert out == {"diff": "", "untracked": [], "failed": True, "repos": []}
 
 
 def test_git_diff_empty_when_no_repo():
     with tempfile.TemporaryDirectory() as tmp:
         with patch.object(sidecar, "WORKSPACE_DIR", Path(tmp)):
-            assert sidecar._rpc_get_diff({"repo": ""}) == {"diff": ""}
+            assert sidecar._rpc_get_diff({"repo": ""}) == {"diff": "", "untracked": [], "failed": True, "repos": []}
+
+
+def test_git_diff_failed_when_the_checkout_is_not_a_git_repo():
+    with tempfile.TemporaryDirectory() as tmp:
+        ws = Path(tmp)
+        (ws / "app").mkdir()
+        with patch.object(sidecar, "WORKSPACE_DIR", ws):
+            out = sidecar._rpc_get_diff({"repo": "app"})
+    assert out == {"diff": "", "untracked": [], "failed": True, "repos": []}
 
 
 class _FakeWS:
@@ -103,7 +285,7 @@ def test_handle_rpc_get_tree_replies_ok():
         sock = _FakeWS()
         with patch.object(sidecar, "WORKSPACE_DIR", ws_dir):
             asyncio.run(sidecar._handle_rpc(sock, {"type": "rpc", "id": "9", "method": "getTree", "params": {}}))
-    assert sock.sent == [{"type": "rpc_result", "id": "9", "ok": True, "data": {"paths": ["a.py"]}}]
+    assert sock.sent == [{"type": "rpc_result", "id": "9", "ok": True, "data": {"paths": ["a.py"], "failed": False, "repos": []}}]
 
 
 def test_handle_rpc_unknown_method_replies_error():

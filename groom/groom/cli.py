@@ -506,7 +506,25 @@ def loops(
     print(_format_loops(rows))
 
 
+def _flow_lines(rows: list[dict], depth: int = 1) -> list[str]:
+    lines = []
+    for row in rows:
+        cost = f"${row['cost_usd']:.2f}" if row["cost_usd"] is not None else "-"
+        visits = row["visits"] if row["visits"] is not None else "-"
+        lines.append(
+            f"{'  ' * depth}{row['name']}  visits={visits}"
+            f"  time={row['time_s'] / 60:.1f}m  cost={cost}"
+            f"  retries={row['retries']}"
+        )
+        lines.extend(_flow_lines(row["children"], depth + 1))
+    return lines
+
+
 def _format_profile(result: dict | None) -> str:
+    import time as _time
+
+    from groom import store
+
     if result is None:
         return "no telemetry found for that run."
     time_s = result["time_s"]
@@ -525,6 +543,7 @@ def _format_profile(result: dict | None) -> str:
         f"  wall={time_s['wall'] / 3600:.2f}h  agent={time_s['agent'] / 3600:.2f}h"
         f"  deterministic={time_s['deterministic'] / 3600:.2f}h"
         f"  infra={time_s['infra'] / 3600:.2f}h",
+        f"  active={store.active_seconds(time_s) / 3600:.2f}h (agent + deterministic + infra)",
         f"  waits={time_s['wait'] / 3600:.2f}h ({waits})"
         f"  resume={time_s['resume_gap'] / 3600:.2f}h"
         f"  unclassified={time_s['unclassified'] / 3600:.2f}h",
@@ -537,6 +556,26 @@ def _format_profile(result: dict | None) -> str:
         f"  priced={work['cost_turns']}/{work['turns']}"
         f"  suspect-zero={work['zero_cost_output_turns']}",
     ]
+    models = result.get("models") or []
+    if models:
+        lines.append("models")
+        for row in models:
+            model_cost = f"${row['cost_usd']:.2f}" if row["cost_usd"] is not None else "not reported"
+            share = f"{row['cache_read_share']:.0%}" if row["cache_read_share"] is not None else "-"
+            lines.append(
+                f"  {row['model']}  turns={row['turns']}  cost={model_cost}"
+                f"  output={row['output_tokens']}  cache-read={share}"
+            )
+    sessions = result.get("session_rows") or []
+    if sessions:
+        lines.append("sessions")
+        for number, row in enumerate(sessions, 1):
+            ended = row["ended"]["terminal"] if row["ended"] else "no recorded ending"
+            gap = f"{row['gap_s'] / 3600:.2f}h" if row["gap_s"] is not None else "-"
+            lines.append(
+                f"  {number}  started={_time.strftime('%Y-%m-%d %H:%M', _time.localtime(row['start_ts']))}"
+                f"  active={row['active_s'] / 3600:.2f}h  next={gap}  ended={ended}"
+            )
     for title, key in (
         ("attempt groups", "attempt_groups"),
         ("verdict groups", "verdict_groups"),
@@ -553,6 +592,10 @@ def _format_profile(result: dict | None) -> str:
                 f"  turns={row['turns']}  agent={row['agent_s'] / 60:.1f}m"
                 f"  cost={row_cost}"
             )
+    flows = result.get("flows") or []
+    if flows:
+        lines.append("flows (flow > state > node)")
+        lines.extend(_flow_lines(flows))
     decisions = result.get("verdict_decisions") or []
     if decisions:
         lines.append("verdict decisions (every gate outcome, priced or not)")

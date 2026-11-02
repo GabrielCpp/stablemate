@@ -38,13 +38,13 @@ Workflow state is the lifecycle enum stored on each [workflow container](workflo
 The default is observed by `created(subject="workflow container")` and `json_path(path="$.state", equals="idle")`.
 - source precedence: terminal evidence wins over gates; gate evidence wins over running/idle; progress evidence sets running; an exited push sets finished and clears gates.
 - mutation: server, registry, and discovery layers assign enum members directly; no parser accepts arbitrary lifecycle strings as supported workflow states, and registry upserts ignore `None` state values rather than clearing the current state.
-- sorting: dashboard state order is `blocked`, then `running`, then `idle`, then `finished` for inbox rows and repository menu options.
+- sorting: dashboard state order is `blocked`, then `running`, then `idle`, then `finished` for inbox rows and the terminal client's repository picker options.
 - status order: status-bar counts are emitted in the order `blocked`, `running`, `idle`, then `finished`.
-- rendering: rows, repository picker options, status text, state dots, command-palette hints, detail headers, no-open-gate messages, and exit-code hints consume the enum value as lowercase text.
+- rendering: rows, the terminal client's repository picker options, status text, state dots, command-palette hints, detail headers, no-open-gate messages, and exit-code hints consume the enum value as lowercase text.
 - search: dashboard inbox search does not match the state string itself; it filters open-gate workflows by workflow name, repository name, repository branch, workflow type, current node, and gate file path.
 - gate invariant: a workflow with open gates should normally be `blocked`; a successful last-gate answer changes only a still-existing `blocked` workflow with no remaining gates to `running`.
 - terminal invariant: a `finished` workflow cannot act on an answer; exited handling clears open gates and terminal discovery/snapshot paths avoid applying gates after a terminal marker.
-- connection invariant: sidecar websocket connection presence is not itself a workflow state; sidecar disconnect unregisters the live data-plane connection and fails pending RPCs, but does not change the stored workflow state or gate map.
+- connection invariant: sidecar websocket connection presence is not itself a workflow state; sidecar disconnect unregisters the live data-plane connection, fails pending RPCs and broadcasts the shell, but does not change the stored workflow state or gate map.
 - unknowns: missing or unavailable sidecar, Docker, run-artifact, or gate evidence preserves the current/default state for that path instead of inventing a new enum value.
 
 ## Transitions
@@ -178,7 +178,7 @@ This invariant is covered by `groom/tests/test_sidecar_hub.py::test_unregister_o
 - value: `running`
 - meaning: the workflow is active, connected without open gates, progressing through a node, or has just resumed after its last open gate was answered.
 - sources: Docker discovery for running containers, progress push handling, sidecar progress frames, sidecar hello snapshots without terminal or gates, and successful last-gate answer handling.
-- displays: contributes to running status-bar count, sorts after blocked and before idle, renders a `running` state dot/text, appears in repository-picker order, and is omitted from the operator inbox unless open gates still exist.
+- displays: contributes to running status-bar count, sorts after blocked and before idle, renders a `running` state dot/text, appears in the terminal client's repository-picker order, and is omitted from the operator inbox unless open gates still exist.
 
 ### field-blocked
 
@@ -200,7 +200,7 @@ This invariant is covered by `groom/tests/test_sidecar_hub.py::test_unregister_o
 - value: `idle`
 - meaning: the workflow has a record but no active, blocked, or terminal evidence has been supplied yet.
 - sources: dataclass default, registry upsert default for a newly seen workflow without supplied state, and Docker discovery for stopped containers before run-volume or gate-volume evidence refines the record.
-- displays: contributes to idle status-bar count, sorts after running and before finished, renders an `idle` state dot/text, appears in repository-picker order, and is omitted from the operator inbox unless open gates still exist.
+- displays: contributes to idle status-bar count, sorts after running and before finished, renders an `idle` state dot/text, appears in the terminal client's repository-picker order, and is omitted from the operator inbox unless open gates still exist.
 
 ### field-finished
 
@@ -211,4 +211,4 @@ This invariant is covered by `groom/tests/test_sidecar_hub.py::test_unregister_o
 - value: `finished`
 - meaning: the workflow process has ended and cannot act on an answer.
 - sources: exited push handling, sidecar hello snapshots with a terminal marker, sidecar query snapshots with a terminal marker, and run-volume reconstruction with a terminal marker.
-- displays: contributes to finished status-bar count, sorts last, renders a `finished` state dot/text, appears after live workers in repository-picker order, may show an exit-code hint when `WorkflowContainer.exit_code` is known, and is omitted from the operator inbox unless a stale gate map is still present.
+- displays: contributes to finished status-bar count, sorts last, renders a `finished` state dot/text, appears after live workers in the terminal client's repository-picker order, may show an exit-code hint when `WorkflowContainer.exit_code` is known, and is omitted from the operator inbox unless a stale gate map is still present.

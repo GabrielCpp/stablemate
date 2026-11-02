@@ -6,9 +6,9 @@ title: Docker git diff documentation scope
 # Docker git diff documentation scope
 
 The three method nodes cite the same Docker-volume diff helper, not alternative implementations.
-`groom/groom/docker_io.py::git_diff` uses an explicit `repo_dir` when supplied, otherwise resolves
-the first repository in the volume; it returns the git container's stdout or an empty string when
-no repository resolves or the command fails.
+`groom/groom/docker_io.py::read_diff` uses an explicit `repo_dir` when supplied, otherwise resolves
+the first repository in the volume; it returns the git container's stdout and the untracked file names, or an unreadable result when
+no repository resolves or a command fails.
 
 Use [the Docker I/O module method](groom-docker-io-module.md#git-diff) for the adapter's public
 API, [the workspace-volume diff reader method](workspace-volume-diff-reader.md#git-diff) for the
@@ -16,4 +16,4 @@ fallback reader's request context and read-only behavior, and [the workspace dif
 for its role in the data handoff. These views are complementary; source code records no preference
 or deprecation among them because they name the one callable at different documentation scopes.
 
-- rule: choose the node by the documentation question, not as an implementation selection; all three describe the same Docker-volume `git_diff` callable
+- rule: choose the node by the documentation question, not as an implementation selection; all three describe the same Docker-volume `read_diff` callable

@@ -45,26 +45,33 @@ def test_find_repo_dir_returns_empty_on_docker_failure():
         assert docker_io.find_repo_dir("vol-1") == ""
 
 
-def test_git_diff_returns_empty_when_no_repo_found():
+def test_read_diff_fails_when_no_repo_found():
     with patch.object(docker_io, "find_repo_dir", return_value=""):
-        assert docker_io.git_diff("vol-1") == ""
+        assert docker_io.read_diff("vol-1") == {"diff": "", "untracked": [], "failed": True}
 
 
-def test_git_diff_returns_stdout_on_success():
+def test_read_diff_returns_stdout_and_untracked_on_success():
     diff_text = "diff --git a/x b/x\n+added line\n"
+    replies = [_completed(stdout=diff_text), _completed(stdout="new.py\0")]
     with patch.object(docker_io, "find_repo_dir", return_value="Acme"), \
-         patch.object(docker_io.subprocess, "run", return_value=_completed(stdout=diff_text)) as run:
-        result = docker_io.git_diff("vol-1")
-    assert result == diff_text
-    args = run.call_args[0][0]
+         patch.object(docker_io.subprocess, "run", side_effect=replies) as run:
+        result = docker_io.read_diff("vol-1")
+    assert result == {"diff": diff_text, "untracked": ["new.py"], "failed": False}
+    args = run.call_args_list[0][0][0]
     assert "/vol/Acme" in args
     assert "safe.directory=*" in args
 
 
-def test_git_diff_returns_empty_on_git_failure():
+def test_read_diff_fails_on_git_failure():
     with patch.object(docker_io, "find_repo_dir", return_value="Acme"), \
          patch.object(docker_io.subprocess, "run", return_value=_completed(returncode=128)):
-        assert docker_io.git_diff("vol-1") == ""
+        assert docker_io.read_diff("vol-1")["failed"] is True
+
+
+def test_read_diff_fails_when_docker_cannot_run():
+    with patch.object(docker_io, "find_repo_dir", return_value="Acme"), \
+         patch.object(docker_io.subprocess, "run", side_effect=OSError("no docker")):
+        assert docker_io.read_diff("vol-1")["failed"] is True
 
 
 def test_grep_awaiting_files_prunes_heavy_dirs_and_parses_paths():
@@ -177,3 +184,18 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_read_tree_reports_a_failed_docker_run_as_failed():
+    with patch.object(docker_io.subprocess, "run", return_value=_completed(returncode=1)):
+        assert docker_io.read_tree("vol-1", "Acme") == {"paths": [], "failed": True}
+
+
+def test_read_tree_reports_a_docker_that_cannot_start_as_failed():
+    with patch.object(docker_io.subprocess, "run", side_effect=OSError("no docker")):
+        assert docker_io.read_tree("vol-1", "Acme") == {"paths": [], "failed": True}
+
+
+def test_read_tree_reports_an_empty_checkout_as_not_failed():
+    with patch.object(docker_io.subprocess, "run", return_value=_completed(stdout="")):
+        assert docker_io.read_tree("vol-1", "Acme") == {"paths": [], "failed": False}

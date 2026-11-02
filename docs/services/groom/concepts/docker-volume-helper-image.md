@@ -8,7 +8,7 @@ title: Docker volume helper image
 `ALPINE_IMAGE` is the shared image selection for temporary containers that inspect, list, or
 read workspace volumes. Its fixed `alpine:3.20` value supplies the BusyBox-style `find`, `grep`,
 `cat`, and `cp` commands used by those helpers. `GIT_IMAGE` is a separate choice for
-`git_diff`, whose temporary container must instead provide Git; it is not an alternative for
+`read_diff`, whose temporary container must instead provide Git; it is not an alternative for
 the volume operations documented here.
 
 The module-level Alpine field is the canonical definition. The reader-specific fields retain

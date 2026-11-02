@@ -7,21 +7,19 @@ title: Dashboard tree builder
 
 Dashboard tree builder is the browser-side function that turns a flat list of
 path-carrying entries into the nested [dashboard path tree](../formats/dashboard-path-tree.md)
-the Files and Diff panes render. Both panes go through it: the Files pane feeds it
-[workspace file list data](../formats/workspace-file-list-data.md) paths, and the Diff pane
+the Files and Diff tabs render. Both tabs go through it: the Files tab feeds it
+[workspace file list data](../formats/workspace-file-list-data.md) paths, and the Diff tab
 feeds it one entry per file in the [dashboard parsed diff file cache](../formats/dashboard-parsed-diff-file-cache.md).
 Its output is walked by the shared tree renderer, which emits a
-[files directory toggle](../gui/screens/groom-dashboard.md#files-directory-toggle)
-or [diff directory toggle](../gui/screens/groom-dashboard.md#diff-directory-toggle)
-per directory node and a [files file row](../gui/screens/groom-dashboard.md#files-file-row)
-or [diff file row](../gui/screens/groom-dashboard.md#diff-file-row) per leaf.
+directory rows and a [files file row](../gui/screens/groom-dashboard.md#detail-files-file-row)
+or [diff file row](../gui/screens/groom-dashboard.md#detail-diff-file-row) per leaf.
 
 There is one function here where the htmx-era dashboard had two — a path builder
-for the Files pane and a separate file builder for the Diff pane, each with its own
+for the Files tab and a separate file builder for the Diff tab, each with its own
 copy of the split-and-nest loop and its own idea of what a leaf carries. They
 differed only in what the leaf had to remember, so the builder now stores the
-caller's whole entry object on the leaf and stops caring: the Diff pane's entry
-carries a parsed-array index and line counts, the Files pane's carries nothing but
+caller's whole entry object on the leaf and stops caring: the Diff tab's entry
+carries a parsed-array index and line counts, the Files tab's carries nothing but
 the path, and neither shape is named here.
 
 Nesting is computed in the browser rather than sent by the server. The server's two
@@ -43,9 +41,9 @@ renderer answers. Flat paths are the narrow contract between them.
 ## Contract
 
 - purpose: group a flat entry list into directory nodes and file leaves for the shared tree renderer.
-- input: an array of objects each carrying a `path` member. The Files pane maps its plain path strings into that shape; the Diff pane maps each parsed file into that shape plus `idx`, `add`, and `del`. No other member is read.
+- input: an array of objects each carrying a `path` member. The Files tab maps its plain path strings into that shape; the Diff tab maps each parsed file into that shape plus `idx`, `add`, and `del`. No other member is read.
 - output: one fresh [dashboard path tree](../formats/dashboard-path-tree.md) root node with `dirs` and `files`. A new root and new child nodes are created per call; the caller's entry objects are neither copied nor mutated.
-- path source: the builder reads `entry.path` only. Choosing that path — `newName` unless it is missing or `/dev/null`, otherwise `oldName` — is the Diff pane's decision, made before the entry reaches here.
+- path source: the builder reads `entry.path` only. Choosing that path — `newName` unless it is missing or `/dev/null`, otherwise `oldName` — is the Diff tab's decision, made before the entry reaches here.
 - path coercion: the value is converted with JavaScript `String(...)` before splitting, so a missing or null path becomes the literal string `undefined` or `null` and is grouped and displayed as such. A deleted file whose entry has no usable name stays visible and labelled rather than throwing partway through the list and losing every entry after it.
 - path interpretation: `/` separates segments; every segment before the last is a directory name under the current parent, and the last is the leaf's displayed name.
 - directory merging: repeated segments under the same parent reuse the same node object, so entries sharing a prefix appear under one branch.
@@ -89,16 +87,16 @@ client store, fetch anything, or retain state between calls.
 
 ## Algorithms
 
-### algorithm-one-builder-two-panes
+### algorithm-one-builder-two-tabs
 
-The Files and Diff panes hold different data and want the same picture. Files has
+The Files and Diff tabs hold different data and want the same picture. Files has
 strings; Diff has parsed diff2html objects it must be able to address by index when
 a row is clicked. The builder reconciles them by narrowing what it reads to one
 member and widening what it carries to the whole object.
 
 That is why the leaf is `{name, entry}` rather than a flattened record. A leaf with
 named members — `path`, `idx`, `add`, `del` — would have to grow a member every time
-one pane needed something the other did not, and every unused member would be
-present-and-meaningless in the other pane's leaves. Carrying the caller's object by
-reference means each pane's leaf renderer reads exactly the entry it built, and the
+one tab needed something the other did not, and every unused member would be
+present-and-meaningless in the other tab's leaves. Carrying the caller's object by
+reference means each tab's leaf renderer reads exactly the entry it built, and the
 builder stays ignorant of both.

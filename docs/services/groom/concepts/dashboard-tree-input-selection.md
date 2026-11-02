@@ -5,9 +5,9 @@ title: Dashboard tree input selection
 ---
 # Dashboard tree input selection
 
-The Files and Diff panes share the same browser tree builder while supplying it
+The Files and Diff tabs share the same browser tree builder while supplying it
 with entries from different stages of their own flows. Neither format supersedes
-the other: one is the Files pane's flat input and the other is the derived shape
+the other: one is the Files tab's flat input and the other is the derived shape
 the shared renderer walks.
 
 Use [workspace file list data](../formats/workspace-file-list-data.md) when the Files

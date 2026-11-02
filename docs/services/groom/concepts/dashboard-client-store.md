@@ -9,7 +9,7 @@ Dashboard client store is the [groom dashboard](../gui/screens/groom-dashboard.m
 
 It is deliberately not a per-component `useState`. The socket is a singleton and the islands read overlapping slices of the same truth: the fleet list, the status bar, and the command palette are three views of one `runs` array. Keeping the state outside the component tree makes the components pure functions of it, which is what allows the whole page to be re-rendered from a single 5-second push without any island owning a private copy that could disagree.
 
-The store is also the boundary that decides what is fleet-wide and what is per-tab. `runs`, `status`, `scanning`, and `conn` come from the server. `mode`, `query`, `repo`, `files`, `diff`, `traces`, and `palette` never leave the browser — the server has no idea which pane a tab is looking at, and does not need one. The single exception is `selected`, which is echoed to the server as a subscription in the [run watch registry](run-watch-registry.md) because a pushed detail has to be addressed somewhere.
+The store is also the boundary that decides what is fleet-wide and what is per-tab. `runs`, `status`, `scanning`, and `conn` come from the server. `mode`, `query`, `checkouts`, `runFiles`, `runDiff`, `traces`, and `palette` never leave the browser — the server has no idea which pane a tab is looking at, and does not need one. The single exception is `selected`, which is echoed to the server as a subscription in the [run watch registry](run-watch-registry.md) because a pushed detail has to be addressed somewhere.
 
 - code: groom/groom/assets/dashboard.js::store
 - code: groom/groom/assets/dashboard.js::applyState
@@ -100,26 +100,26 @@ boundary are covered by `groom/tests/test_dashboard_client.py::test_the_client_m
 - required: true
 - meaning: which pane the activity rail has active. Mirrored onto `.app[data-mode]` so CSS can show the right pane, and onto each rail button's `aria-pressed`.
 
-### field-repo
+### field-checkouts
 
-- type: `{loading, groups, query, active, container, dir, label}`
-- default: nothing loaded, no container selected
+- type: `{[run id]: checkout name}`
+- default: `{}`, so every run starts at its first checkout
 - required: true
-- meaning: the repository picker's own state — the containers and checkouts offered, and the one currently chosen for the files and diff panes.
+- meaning: the checkout each run's Files and Diff tabs show, held in memory for the life of the page. See [run checkout selection](run-checkout-selection.md).
 
-### field-files
+### field-run-files
 
-- type: `{status, paths, path, view: {status, path, content, lang}}`
+- type: `{id, status, paths, reported, repos, path, shut, view}`
 - default: `idle`, nothing loaded
 - required: true
-- meaning: the file browser's path list and the currently open file's content and language hint.
+- meaning: the selected run's file list for its chosen checkout, the open file's path and content, and the checkout names the sidecar reported. See [run Files tab](run-files-tab.md).
 
-### field-diff
+### field-run-diff
 
-- type: `{status, files, idx}`
-- default: `idle`, no files, `idx: -1`
+- type: `{id, status, files, untracked, path, readAt, reported, refreshing, repos}`
+- default: `idle`, no files
 - required: true
-- meaning: the working-tree diff's per-file list and which file is shown.
+- meaning: the selected run's working-tree diff for its chosen checkout, as the [dashboard parsed diff file cache](../formats/dashboard-parsed-diff-file-cache.md), the chosen file's path, and the checkout names the sidecar reported. See [run Diff tab](run-diff-tab.md).
 
 ### field-traces
 

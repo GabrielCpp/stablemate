@@ -40,7 +40,7 @@ It replaced an HTML fragment pair that was swapped into the page out-of-band. No
 - JSON primitives only: every value is a `str`, `int`, `float`, `bool`, `null`, list, or object. No dataclass, enum, `datetime`, or set escapes into it.
 - no markup: the payload contains data, including operator-supplied gate question text, which travels as text and is rendered as text. Nothing in it is escaped for HTML because nothing in it becomes HTML.
 - no companions: notifications and answer confirmations are separate `notify` and `answered` messages, delivered as their own frames. This payload never embeds them.
-- excluded content: the open run's detail, the repository menu, the files tree, file content, diff content, and telemetry are not part of this format. They are per-selection data with their own endpoints, and pushing them to every tab would send bandwidth proportional to tabs × runs for data almost every tab would discard.
+- excluded content: the open run's detail, the files tree, file content, diff content, and telemetry are not part of this format. They are per-selection data with their own endpoints, and pushing them to every tab would send bandwidth proportional to tabs × runs for data almost every tab would discard.
 - mutation: projecting this payload mutates nothing — not workflow containers, gates, repositories, answer logs, websocket clients, or the scanning flag.
 - failure model: no embedded error channel. A projection exception propagates before any send or queueing step completes, and a tab that misses a payload recovers on the next tick or through the [dashboard resync poller](../concepts/dashboard-resync-poller.md).
 

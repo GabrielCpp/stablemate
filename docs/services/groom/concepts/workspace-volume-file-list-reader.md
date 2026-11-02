@@ -7,7 +7,7 @@ title: Workspace volume file-list reader
 
 Workspace volume file-list reader is the fallback implementation used by the [serve workspace file list](../http/groom.md#serve-workspace-file-list) invocation when the connected sidecar cannot provide [workspace file list data](../formats/workspace-file-list-data.md). It is the [Groom Docker I/O module](groom-docker-io-module.md) detail for [list-files](groom-docker-io-module.md#list-files): it delegates process execution to the [Docker subprocess runner](docker-subprocess-runner.md), reads one selected checkout inside a known workspace Docker volume through a shell-free, read-only Docker command, and returns repo-relative file paths without mutating the workflow container or broadcasting dashboard updates.
 
-- code: groom/groom/docker_io.py::list_files@9dc5eb2e112e
+- code: groom/groom/docker_io.py::list_files@e49bcdc817f1
 - tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
   groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty,
   groom/tests/test_docker_io.py::test_list_files_empty_on_docker_failure
@@ -31,7 +31,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - failure: any non-zero Docker reader process returns an empty list rather than raising to the HTTP handler.
 - consistency: list-files-result — is `[]` whenever the Docker process exits with a non-zero return code.
 - verify: count(subject="returned file paths after Docker failure", equals=0)
-- exceptions: process-launch and timeout exceptions are not converted by this reader; callers that need to recover from those exceptions must do so outside this function.
+- exceptions: process-launch and timeout exceptions are converted to an empty list. The `read_tree` form of this reader reports them as `failed` true, so a caller can tell a failed read from an empty checkout.
 - side effects: creates only a throwaway read-only Docker container for the read; it does not change files, workflow state, sidecar registry state, or dashboard clients.
 
 ## Fields
@@ -60,7 +60,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - type: `tuple[str, ...]`
 - default: `(".git", "node_modules", "__pycache__", ".venv")`
 - required: true
-- code: groom/groom/docker_io.py::_SKIP_DIRS@9dc5eb2e112e
+- code: groom/groom/docker_io.py::_SKIP_DIRS@3c8783ab9798
 - detail: [workspace volume skip directory names](workspace-volume-skip-directory-names.md)
 - meaning: directory basenames pruned from traversal before file output is collected.
 - constraints: this is the same skip set exposed by the [Groom Docker I/O module skip dirs field](groom-docker-io-module.md#field-skip-dirs) and keeps fallback file-list data aligned with the sidecar tree reader's vendor and VCS exclusions.
@@ -70,7 +70,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - type: Docker image reference string
 - default: `alpine:3.20`
 - required: true
-- code: groom/groom/docker_io.py::ALPINE_IMAGE@9dc5eb2e112e
+- code: groom/groom/docker_io.py::ALPINE_IMAGE@3c8783ab9798
 - detail: [Docker volume helper image](docker-volume-helper-image.md)
 - meaning: minimal image used for the throwaway read-only `find` process.
 - constraints: the image must provide BusyBox-compatible `find` with `-prune` and `-print` behavior.
@@ -80,7 +80,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - type: `int`
 - default: `20`
 - required: true
-- code: groom/groom/docker_io.py::DOCKER_TIMEOUT@9dc5eb2e112e
+- code: groom/groom/docker_io.py::DOCKER_TIMEOUT@3c8783ab9798
 - detail: [Docker command timeout](docker-command-timeout.md)
 - meaning: maximum seconds allowed for the Docker command through the shared runner.
 - constraints: a timeout exception from the subprocess layer is not converted by this reader.
@@ -151,7 +151,7 @@ prefix filtering — are stated as normative claims in [Contract](#contract) and
 - verify: count(subject="returned file paths after Docker failure", equals=0)
 - returns: an empty list when no stdout paths match the selected base prefix.
 - verify: count(subject="returned file paths with no matching base prefix", equals=0)
-- code: groom/groom/docker_io.py::list_files@9dc5eb2e112e
+- code: groom/groom/docker_io.py::list_files@e49bcdc817f1
 - detail: [List-files documentation views](list-files-documentation-views.md)
 - tests: groom/tests/test_docker_io.py::test_list_files_returns_repo_relative_paths_and_prunes_vendor_dirs,
   groom/tests/test_docker_io.py::test_list_files_volume_root_when_repo_dir_empty,

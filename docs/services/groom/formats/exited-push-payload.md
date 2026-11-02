@@ -69,7 +69,7 @@ Exited push payload is the JSON request body produced by the residual HTTP sidec
 - required: false
 - producer: first-party sidecar requests set this from `REPO_NAME` when that environment variable is present, otherwise from the sidecar process hostname.
 - consumer: when present and non-null on an existing workflow, the value replaces the workflow's current `name`; when a valid payload creates a new workflow, a truthy value becomes the initial name.
-- meaning: human-facing workflow/container label used in dashboard rows, worker detail headings, and repository picker labels.
+- meaning: human-facing workflow/container label used in dashboard rows, worker detail headings, and the terminal client's repository picker labels.
 - constraints: omitted or `null` preserves an existing workflow name; omitted, `null`, or a falsey value creates a new workflow with the normalized container id as its name. The handler does not convert this field to text before assignment.
 
 ### field-repo-name

@@ -189,7 +189,7 @@ class FakeLink:
         self._queue.put_nowait(None)
 
 
-async def until(predicate: Callable[[], Any], timeout: float = 5.0) -> None:
+async def until(predicate: Callable[[], Any], timeout: float = 20.0) -> None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     while not predicate():

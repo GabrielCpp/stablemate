@@ -14,7 +14,7 @@ and logs belong to the SQLite store, while the three [liveness metrics](groom-mo
 remain memory-only because they are needed only for the current live picture.
 The [alert](alert.md) value is returned when an ingest or periodic rule newly pages an operator.
 
-- code: groom/groom/models.py::RunTelemetry
+- code: groom/groom/models.py::RunTelemetry@f8fa7c521e64
 - tests: groom/tests/test_telemetry.py::test_live_status_row_shape_is_the_cli_json_contract
 - tests: groom/tests/test_telemetry.py::test_a_resumed_run_clears_the_previous_sessions_terminal
 - tests: groom/tests/test_store_memory.py::test_terminated_run_evicted_after_grace
@@ -27,8 +27,10 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - lifecycle: alert ingestion creates a record on the first span or metric carrying a run id, progressively fills it from later evidence, and eviction removes terminal or long-silent entries from the process-local cache.
 - time basis: ingest-time wall-clock timestamps govern absence checks, while producer timestamps preserve the newest reported beat and delimit the terminal session; no field is a durable event history.
 - liveness: any [liveness metric](groom-models-module.md#field-liveness-metrics) updates heartbeat timestamps; the absence of such evidence is distinct from a slow node or active agent turn.
+- gauge arrival: each elapsed gauge (node, turn, idle and wait) records the ingest time it arrived at in `gauge_ts`, cleared when a resumed session starts, so the [run now strip](run-now-strip.md) can turn a reported length into a start time that keeps counting.
 - terminal: a root span records `terminal` and `terminal_ts`; a later span or metric clears both and all fired alerts because it proves a resumed session under the same run id.
 - alert state: `node_counts`, `node_labels`, and `fired` are mutable alert-engine working state; they are reset or retired by the alerting layer when forward progress, recovery, or resume disproves their associated conditions.
+- figures: `figures` holds the run's row figures, set by the app after a span batch commits and `null` until the first computation returns. See [run row figures](run-row-figures.md).
 - persistence: run-telemetry — the record is never written to SQLite, a file, Docker, or a websocket frame
 - persistence: run-telemetry — process restart starts with an empty cache and waits for new telemetry
 
@@ -43,7 +45,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - verify: unchanged(subject="RUNS")
 - returns: a list of run ids eligible for removal from the hot cache.
 - verify: count(subject="stale run ids", equals=1)
-- code: `groom/groom/alerts.py::stale_run_ids` @ce23672ba8a4
+- code: `groom/groom/alerts.py::stale_run_ids` @4c397d0f7b2e
 - tests: `groom/tests/test_store_memory.py::test_terminated_run_evicted_after_grace`
 
 ### ingest_spans
@@ -52,20 +54,21 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - does: creates or updates one hot-cache record per span with run identity, location, activity, backend, model, timestamps, and terminal state.
 - does: fires `ENDED` for a root `run:*` span and retires the run from absence-rule evaluation.
 - does: fires `WATCHDOG` for a `watchdog_kill` event and `GAVE-UP` for a configured give-up node.
-- does: counts completed node repeats only when the same workflow-label signature recurs.
+- does: counts completed node repeats only when the same workflow-label signature recurs. The tally is the one in `groom.churn`, which the run profile's problem count replays over stored spans.
 - does: excludes cut spans and agent-turn retries from the repeat count.
 - verify: absent(subject="cut spans in repeat count")
 - does: fires `CHURN` at the configured repeat threshold.
 - verify: emitted(event="CHURN", count=1)
 - returns: newly-fired alerts, with duplicate `(run_id, rule)` pages omitted.
 - verify: count(subject="span-ingest alerts", equals=2)
-- code: `groom/groom/alerts.py::ingest_spans` @777d4be85477
+- code: `groom/groom/alerts.py::ingest_spans` @efeb84ae01b7
 - tests: `groom/tests/test_telemetry.py::test_watchdog_and_giveup_fire_once_per_run`
 
 ### ingest_metrics
 
 - sig: `ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> list[Alert]`
 - does: creates or updates one hot-cache record per metric with liveness, node, turn, wait, activity, and gas state.
+- does: records the ingest time at which each elapsed gauge arrived.
 - does: treats each liveness metric as process evidence and stores its newest producer timestamp for live status.
 - does: fires `BLOCKED` immediately when an operator wait opens and excludes cap and machine waits.
 - does: retires `STUCK`, `BLOCKED`, and `WAITING` when the corresponding node or wait condition closes.
@@ -74,7 +77,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - verify: unchanged(subject="node_counts")
 - returns: newly-fired alerts after per-run rule deduplication.
 - verify: count(subject="metric-ingest alerts", equals=1)
-- code: `groom/groom/alerts.py::ingest_metrics` @777d4be85477
+- code: `groom/groom/alerts.py::ingest_metrics` @cc2096b5806d
 - tests: `groom/tests/test_telemetry.py::test_an_operator_gate_pages_the_moment_it_opens`
 
 ### live_status
@@ -88,7 +91,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - verify: count(subject="live status rows", equals=1)
 - returns: no rows when the cache entry lacks a heartbeat
 - verify: count(subject="live status rows", equals=0)
-- code: `groom/groom/alerts.py::live_status` @ce23672ba8a4
+- code: `groom/groom/alerts.py::live_status` @3a6ad1e8702f
 - tests: `groom/tests/test_telemetry.py::test_live_status_row_shape_is_the_cli_json_contract`, `groom/tests/test_telemetry.py::test_live_status_marks_an_ended_run_dead_while_its_heartbeat_is_fresh`
 
 ### live_run_ids
@@ -97,7 +100,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - does: returns exactly the run ids whose live-status rows are currently alive.
 - returns: a set containing no id for a run that has ended or whose newest signal is outside the live window.
 - verify: count(subject="currently live run ids", equals=1)
-- code: `groom/groom/alerts.py::live_run_ids` @ce23672ba8a4
+- code: `groom/groom/alerts.py::live_run_ids` @e8df4b36643f
 - tests: `groom/tests/test_telemetry.py::test_live_status_row_shape_is_the_cli_json_contract`
 
 ### check_time_rules
@@ -111,7 +114,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - does: fires `WAITING` when an unanswered operator wait exceeds the wait threshold while leaving cap and machine waits exempt.
 - returns: newly-fired time-based alerts after per-run rule deduplication.
 - verify: count(subject="time-rule alerts", equals=1)
-- code: `groom/groom/alerts.py::check_time_rules` @ce23672ba8a4
+- code: `groom/groom/alerts.py::check_time_rules` @2202d9fad14c
 - tests: `groom/tests/test_telemetry.py::test_stall_fires_on_silence_but_heartbeat_suppresses_it`
 
 ## Fields

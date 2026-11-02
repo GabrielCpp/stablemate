@@ -160,7 +160,7 @@ stablemate/groom/
         state.py          # WORKFLOWS/LOG/CLIENTS/_gate_locks + mutators + async broadcast()
         gates.py          # status_of/is_awaiting/extract_question/apply_answer + answer_gate()
         docker_io.py      # docker_ps_all, docker_inspect, docker_start, is_running, safe_relpath,
-                           # grep_awaiting_files, list_run_dirs, find_repo_dir, git_diff,
+                           # grep_awaiting_files, list_run_dirs, find_repo_dir, read_diff,
                            # read_file, write_file (each a purpose-built throwaway-container helper)
         discovery.py      # scan(): startup/on-demand reconciliation only, no answer/restart role
         projection.py     # registry -> the JSON payloads; the one shape both /ws and /api/state send
@@ -188,7 +188,7 @@ stablemate/groom/
 | --- | --- |
 | `GET /` | serves the static dashboard HTML |
 | `GET /search?q=` | plain-string-filtered HTML fragment of rows |
-| `GET /diff/{container_id}` | plaintext `git diff HEAD` for that workflow's working tree, lazily fetched by the UI's collapsible diff panel |
+| `GET /diff/{container_id}` | JSON with the `git diff HEAD` text, the untracked file names and whether the read failed, fetched when a run with a connected sidecar is selected |
 | `POST /refresh` | re-runs `discovery.scan()` on demand |
 | `POST /push/progress` | sidecar's progress push handler; upserts `RUNNING` + `current_node`, broadcasts |
 | `POST /push/blocked` | shared by the sidecar and the `await_operator.py` backstop push; upserts `BLOCKED`, records a `GateInfo`, broadcasts fragment + notify script |
@@ -222,7 +222,7 @@ order:
 - sig: `write_file(volume: str, /, rel_path: str, content: str) -> bool`
 - consistency: docker-write-command — the Docker write command omits `sh -c`, so operator-provided
   content is never interpolated into a shell command.
-- code: `groom/groom/docker_io.py::write_file` @9dc5eb2e112e
+- code: `groom/groom/docker_io.py::write_file` @5a502c51a333
 - verify: omits(subject="Docker write command", text="sh -c")
 - detail: [Write-file documentation views](concepts/write-file-documentation-views.md)
 
@@ -236,8 +236,8 @@ notification permission granted.
 **UI**: one table, one row per workflow (idle/running/blocked/finished), with blocked rows showing
 an expandable question banner (rendered client-side from markdown, sanitized with DOMPurify) and
 an answer textarea + submit (a JSON frame up the websocket). Search filters the run list the
-browser already holds, so it costs no request. Each row has a collapsible working-tree diff panel,
-lazily fetched from `/diff/{container_id}` and rendered with the vendored `diff2html`. A
+browser already holds, so it costs no request. A live container run with a connected sidecar has a Diff tab,
+read from `/diff/{container_id}` and rendered with the vendored `diff2html`. A
 connection chip reports whether the socket is live, stale, reconnecting, or offline — derived
 from how recently a *frame* arrived, not from `readyState`, because a half-open socket reads
 open forever.

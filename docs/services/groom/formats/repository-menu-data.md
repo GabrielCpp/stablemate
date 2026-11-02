@@ -5,17 +5,15 @@ title: Repository menu data
 ---
 # Repository menu data
 
-Repository menu data is the JSON body of the [serve repository menu](../http/groom.md#serve-repository-menu) invocation: one group per workflow container, each carrying the checkouts found on that container's workspace. The [Groom projection module](../concepts/groom-projection-module.md) produces the groups after the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md) has enumerated checkouts; the [groom dashboard](../gui/screens/groom-dashboard.md) picker turns them into selectable rows. The container/repository pair the operator picks is what every later files and diff request is scoped to.
+Repository menu data is the JSON body of the [serve repository menu](../http/groom.md#serve-repository-menu) invocation: one group per workflow container, each carrying the checkouts found on that container's workspace. The [Groom projection module](../concepts/groom-projection-module.md) produces the groups after the [workspace volume repository-directory reader](../concepts/workspace-volume-repository-directory-reader.md) has enumerated checkouts; the terminal client's repository picker turns them into selectable rows. The container/repository pair the operator picks is what every later files and diff request is scoped to.
 
 It arrives **grouped, not flat**, because grouped is the shape the server actually has — one checkout enumeration per container — and because a row's label is derived from both halves of the pair. Flattening on the server would throw away the grouping and then oblige the client to reconstruct it to render group order. The client flattens instead, in one function, at render time.
 
-Nothing in this format is markup. Every value is a string or an integer, and the picker's state dot, type badge, and label are Preact components fed from those values. That is the difference from the fragment era, when this endpoint returned rendered option rows and the escaping of an operator-supplied repository path was the renderer's responsibility.
+Nothing in this format is markup. Every value is a string or an integer, and the terminal client's picker builds its rows from those values. That is the difference from the fragment era, when this endpoint returned rendered option rows and the escaping of an operator-supplied repository path was the renderer's responsibility.
 
-- code: groom/groom/app.py::repos
-- code: groom/groom/projection.py::repo_entries
-- code: groom/groom/assets/dashboard.js::repoItems
-- code: groom/groom/assets/dashboard.js::RepoMenu
-- detail: [repository picker item projection](../concepts/repository-picker-item-projection.md)
+- code: groom/groom/app.py::repos@0267bc41cbb9
+- code: groom/groom/projection.py::repo_entries@c2ec9212dad9
+- code: groom/groom/tui/changes.py::repo_items@4700c0a1f916
 - tests: groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo,
   groom/tests/test_app.py::test_repos_endpoint_reads_native_run_from_local_disk,
   groom/tests/test_projection.py::test_repo_entries_group_checkouts_under_their_container,
@@ -35,13 +33,13 @@ An empty repository menu contains zero groups.
 - checkout discovery: each eligible workflow's checkout list is resolved independently and concurrently; no eligible workflow skips discovery.
 - error behavior: a non-zero checkout-discovery process for one workflow becomes that workflow's empty checkout list and does not remove other workflows' groups; process-launch and timeout exceptions are not converted by this contract and can fail the `/repos` request at the framework level.
 - empty-checkout behavior: a workflow with no discovered checkout still contributes one entry with `repo: ""`, so its workspace root can be browsed at all.
-- empty-menu behavior: no eligible workflows serializes as `[]`. The picker renders the non-interactive `No repositories available.` state from that, and a still-in-flight fetch renders `Loading…` — two distinct states, so an empty fleet never reads as a slow one.
+- empty-menu behavior: no eligible workflows serializes as `[]`. The terminal client's picker renders `No repositories available.` from that, and a still-in-flight fetch renders `Loading…` — two distinct states, so an empty fleet never reads as a slow one.
 - ordering: groups arrive in the fleet's own order — blocked first, then by workflow name — and each group's entries keep the sorted order checkout discovery returned. The client does not re-sort.
-- filtering: the picker's search box filters entries client-side by case-insensitive substring over `label`. The server does not receive the query, because the menu is already in the tab.
-- no escaping: values are JSON data set as text or as attribute values by Preact. There is no HTML-escaping step anywhere on this path, because nothing here becomes markup.
+- filtering: the picker's search box filters entries in the terminal client by case-insensitive substring over `label`. The server does not receive the query, because the menu is already in the client.
+- no escaping: values are JSON data set as text by the terminal client. There is no HTML-escaping step anywhere on this path, because nothing here becomes markup.
 - side effects: building this data never mutates workflow state, writes workspace files, contacts sidecar sockets, broadcasts websocket updates, reads file contents, or computes diffs.
 
-The picker fetches this shape from `GET /repos` in `groom/groom/assets/dashboard.js::openRepoMenu`; its WebSocket dispatcher handles state, run, detail, notification, and answer frames instead. Each fetch enumerates one workspace per eligible container, so the on-demand pull avoids doing that work for tabs whose picker is closed.
+The terminal client's picker fetches this shape from `GET /repos`. The browser dashboard no longer reads it: it learns a run's checkouts from the `repos` member of the diff and files replies, as [run checkout selection](../concepts/run-checkout-selection.md) describes. Each fetch enumerates one workspace per eligible container, so the on-demand pull avoids doing that work for clients whose picker is closed.
 
 ## Fields
 

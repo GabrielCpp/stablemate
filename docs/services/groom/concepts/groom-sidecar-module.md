@@ -8,8 +8,8 @@ title: Groom sidecar module
 The Groom sidecar module is the in-container runtime implementation behind the
 [`groom-sidecar`](../groom-sidecar.md) command. It owns the sidecar process'
 import-time configuration, local snapshot readers, residual HTTP push producers,
-recursive watch-backed websocket session, sidecar-local RPC data plane, reload
-control signal, and the blocking handoff from the CLI into [sidecar live
+recursive watch-backed websocket session, sidecar-local RPC data plane, relay of
+operator answers to the run's control socket, reload control signal, and the blocking handoff from the CLI into [sidecar live
 sessions](../sidecar-live-sessions.md). The module exchanges [sidecar identity
 data](../formats/sidecar-identity-data.md), [sidecar snapshot data](../formats/sidecar-snapshot-data.md),
 [sidecar websocket frame](../formats/sidecar-websocket-frame.md), [progress push
@@ -20,7 +20,8 @@ data](../formats/workspace-file-content-data.md), and [workspace diff data](../f
 without owning host workflow registry state or deciding the workflow process'
 exit result.
 
-- code: groom/groom/sidecar.py@6473ed7cc706
+- code: groom/groom/sidecar.py@8975f7819597
+- code: groom/groom/gitdiff.py@fe3d826e67b5
 - tests: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates,
   groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape,
   groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape,
@@ -37,13 +38,15 @@ exit result.
 - process boundary: runs as its own OS process through the `groom-sidecar`
   executable; it is not embedded in workhorse and does not share the host groom
   process event loop.
-- authority: observes local workspace/run mounts, advertises current state, and
-  serves local read-only data-plane requests; it does not decide workhorse exit
-  status, mutate host workflow registry state directly, answer gates, or write
-  workspace files.
+- authority: observes local workspace/run mounts, advertises current state,
+  serves local read-only data-plane requests, and relays a host `answerGate`
+  or `getQuestions` request to the named run's workhorse control socket; it does
+  not decide workhorse exit status, mutate host workflow registry state
+  directly, write gate answers or workspace files itself, or run any git
+  command that writes.
 - primary transport: opens an outbound websocket client connection to the host
   groom service at `WS /sidecar`, sends a full `hello` state advertisement on
-  every connection, streams `progress` and `blocked` deltas from filesystem
+  every connection, streams `progress`, `blocked` and `turn` deltas from filesystem
   events, and handles host-issued `rpc` frames.
 - consistency: reload-requested — a host `reload` frame is the only live-session
   command that raises the [`ReloadRequested`](#concept-reloadrequested) signal,
@@ -54,8 +57,22 @@ exit result.
   sidecar protocol.
 - local data plane: answers `getTree`, `getFile`, and `getDiff` RPC methods from
   the sidecar's own mounted workspace; file-content requests use the sidecar
-  local relative path guard, tree reads prune heavy directories, and diffs are
-  best-effort working-tree-vs-HEAD output.
+  local relative path guard, tree reads prune heavy directories, and `getDiff`
+  reads either the working tree against `HEAD` or, when `params.view` is
+  `branch`, against the merge base of `HEAD` and the default branch. It answers
+  `listTurns` and `readTurnFile` from the runs mount, and `getQuestions` and
+  `answerGate` through the run's control socket.
+- git reads: the git commands, the merge-base search and the untracked listing
+  live in `groom/groom/gitdiff.py`. The sidecar's `_git_diff` only picks the
+  checkout, falling back to the first discovered one, and delegates to
+  `gitdiff.read_local` or `gitdiff.read_branch_local` with a 20-second timeout.
+  Every git call there runs with `diff.autoRefreshIndex=false` and
+  `--no-optional-locks`, so reading a view leaves the checkout's index and refs
+  unchanged. The host fallback readers in `groom/groom/docker_io.py` and
+  `groom/groom/localfs.py` share the same parser and failure rule.
+- branch view: the default branch is found from local refs only, in the order
+  the ref `origin/HEAD` names, a local `main`, a local `master`. See [branch
+  start diff](branch-start-diff.md).
 - snapshot model: state is ephemeral and non-authoritative. A reconnect sends a
   fresh snapshot so dropped sockets, host restarts, and container recreation are
   reconciled from current local files instead of persisted sidecar state.
@@ -77,7 +94,7 @@ exit result.
 - type: `pathlib.Path`
 - default: `/workspace`
 - required: true
-- code: groom/groom/sidecar.py::WORKSPACE_DIR@6473ed7cc706
+- code: groom/groom/sidecar.py::WORKSPACE_DIR@8975f7819597
 - meaning: local mount root for repository/workspace reads, gate scanning,
   workspace watches, and sidecar RPC file-tree/file-content service.
 - source: `GROOM_WORKSPACE_DIR` environment variable when present.
@@ -87,7 +104,7 @@ exit result.
 - type: `pathlib.Path`
 - default: `/runs`
 - required: true
-- code: groom/groom/sidecar.py::RUNS_DIR@6473ed7cc706
+- code: groom/groom/sidecar.py::RUNS_DIR@8975f7819597
 - meaning: local mount root for workhorse run metadata, latest checkpoint reads,
   terminal-state reads, and run-progress watches.
 - source: `GROOM_RUNS_DIR` environment variable when present.
@@ -97,7 +114,7 @@ exit result.
 - type: `str`
 - default: `host.docker.internal`
 - required: true
-- code: groom/groom/sidecar.py::GROOM_HOST@6473ed7cc706
+- code: groom/groom/sidecar.py::GROOM_HOST@8975f7819597
 - meaning: host name used for both residual HTTP pushes and the persistent
   websocket client connection back to groom.
 - source: `GROOM_HOST` environment variable when present.
@@ -107,7 +124,7 @@ exit result.
 - type: `str`
 - default: `8787`
 - required: true
-- code: groom/groom/sidecar.py::GROOM_PORT@6473ed7cc706
+- code: groom/groom/sidecar.py::GROOM_PORT@8975f7819597
 - meaning: TCP port text used in the residual HTTP URL and websocket URL.
 - source: `GROOM_PORT` environment variable when present.
 
@@ -116,7 +133,7 @@ exit result.
 - type: `float` seconds
 - default: `1.0`
 - required: true
-- code: groom/groom/sidecar.py::PUSH_TIMEOUT@6473ed7cc706
+- code: groom/groom/sidecar.py::PUSH_TIMEOUT@8975f7819597
 - meaning: maximum duration passed to one residual HTTP push attempt before the
   HTTP helper raises into the module's fire-and-forget suppression boundary.
 - source: `GROOM_PUSH_TIMEOUT` environment variable parsed as a float at import.
@@ -126,7 +143,7 @@ exit result.
 - type: `int`
 - default: `3`
 - required: true
-- code: groom/groom/sidecar.py::RELOAD_EXIT_CODE@6473ed7cc706
+- code: groom/groom/sidecar.py::RELOAD_EXIT_CODE@8975f7819597
 - meaning: reserved sidecar process status used to ask the container entrypoint to
   recopy edited sidecar source and relaunch the sidecar after a host reload frame.
 - used-by: [sidecar serving loop](sidecar-serving-loop.md) and [sidecar live
@@ -137,7 +154,7 @@ exit result.
 - type: `watchfiles.DefaultFilter`
 - default: constructed from [field-skip-dir-names](#field-skip-dir-names)
 - required: true
-- code: groom/groom/sidecar.py::_WATCH_FILTER@6473ed7cc706
+- code: groom/groom/sidecar.py::_WATCH_FILTER@8975f7819597
 - meaning: the directory exclusions applied to the recursive watch. Spelled from
   the same skip set the pull-side gate scan uses rather than left at the
   backend's own larger default, so a gate the scan reports is a gate the watch
@@ -150,25 +167,25 @@ exit result.
 - type: `set[str]`
 - default: `{ ".git", "node_modules", "__pycache__", ".venv" }`
 - required: true
-- code: groom/groom/sidecar.py::_SKIP_DIR_NAMES@6473ed7cc706
+- code: groom/groom/sidecar.py::_SKIP_DIR_NAMES@8975f7819597
 - meaning: heavy or irrelevant directory names pruned by snapshot gate scans,
-  recursive watch installation, and workspace file-tree RPC listing.
+  the recursive watch's filter, and workspace file-tree RPC listing.
 
 ### field-gate-scan-head
 
 - type: `int` characters
 - default: `512`
 - required: true
-- code: groom/groom/sidecar.py::_GATE_SCAN_HEAD@6473ed7cc706
+- code: groom/groom/sidecar.py::_GATE_SCAN_HEAD@8975f7819597
 - meaning: prefix length read from each candidate workspace file before deciding
   whether the full file must be read as an awaiting operator gate.
 
 ### field-rpc-methods
 
 - type: `dict[str, callable]`
-- default: `{ "getTree": _rpc_get_tree, "getFile": _rpc_get_file, "getDiff": _rpc_get_diff }`
+- default: `{ "getTree": _rpc_get_tree, "getFile": _rpc_get_file, "getDiff": _rpc_get_diff, "listTurns": _rpc_list_turns, "readTurnFile": _rpc_read_turn_file, "getQuestions": _rpc_get_questions, "answerGate": _rpc_answer_gate }`
 - required: true
-- code: groom/groom/sidecar.py::_RPC_METHODS@6473ed7cc706
+- code: groom/groom/sidecar.py::_RPC_METHODS@8975f7819597
 - meaning: first-party sidecar data-plane dispatch table for host-issued RPC
   method names.
 
@@ -179,7 +196,7 @@ exit result.
 - sig: `push_progress(current_node: str = "") -> None`
 - abstract: false
 - raises: same producer-side propagation boundary as [method-_push](sidecar-residual-http-push-helper.md#method-_push); residual HTTP open and close failures are swallowed by the helper.
-- code: groom/groom/sidecar.py::push_progress@6473ed7cc706
+- code: groom/groom/sidecar.py::push_progress@aeb73d026b04
 - verify: groom/tests/test_sidecar.py::test_push_progress_posts_expected_shape
 - refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-progress), [progress push payload](../formats/progress-push-payload.md)
 - input: current workhorse graph-node id or `""` when no current node is known.
@@ -198,7 +215,7 @@ its caller.
 - sig: `push_blocked(file_path: str, question: str) -> None`
 - abstract: false
 - raises: same producer-side propagation boundary as [method-_push](sidecar-residual-http-push-helper.md#method-_push); residual HTTP open and close failures are swallowed by the helper.
-- code: groom/groom/sidecar.py::push_blocked@6473ed7cc706
+- code: groom/groom/sidecar.py::push_blocked@31dc76ce67e1
 - verify: groom/tests/test_sidecar.py::test_push_blocked_posts_expected_shape
 - refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-blocked), [blocked push payload](../formats/blocked-push-payload.md)
 - input-file-path: workspace-relative awaiting gate file path or the observed path
@@ -219,7 +236,7 @@ its caller.
 - sig: `push_exited(exit_code: int) -> None`
 - abstract: false
 - raises: same producer-side propagation boundary as [method-_push](sidecar-residual-http-push-helper.md#method-_push); residual HTTP open and close failures are swallowed by the helper.
-- code: groom/groom/sidecar.py::push_exited@6473ed7cc706
+- code: groom/groom/sidecar.py::push_exited@62978e9c55bd
 - verify: groom/tests/test_sidecar.py::test_push_exited_posts_expected_shape
 - verify: groom/tests/test_sidecar.py::test_push_exited_is_silent_when_groom_is_unreachable
 - refs: [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md#method-push-exited), [exited push payload](../formats/exited-push-payload.md)
@@ -265,7 +282,7 @@ its caller.
 - raises: delegated reader exceptions outside their normalization contracts can
   propagate; expected missing/unreadable run and gate files become empty fields or
   skipped gate entries.
-- code: groom/groom/sidecar.py::snapshot@6473ed7cc706
+- code: groom/groom/sidecar.py::snapshot@a604bcdb985e
 - verify: groom/tests/test_sidecar.py::test_snapshot_reports_node_terminal_and_gates
 - verify: groom/tests/test_sidecar.py::test_cli_query_prints_snapshot_json_and_does_not_watch
 - detail: [sidecar snapshot](sidecar-snapshot.md#method-snapshot)
@@ -303,7 +320,7 @@ serialized on the websocket or exposed through the CLI or HTTP API.
 
 - sig: `class ReloadRequested(Exception)`
 - abstract: false
-- code: groom/groom/sidecar.py::ReloadRequested@6473ed7cc706
+- code: groom/groom/sidecar.py::ReloadRequested@d1fca2f31cf6
 - tests: groom/tests/test_sidecar_session.py::test_run_session_advertises_hello_then_reload_raises,
   groom/tests/test_sidecar_session.py::test_serve_returns_reload_code_when_session_requests_reload
 - refs: [sidecar connected session](sidecar-connected-session.md), [sidecar serving loop](sidecar-serving-loop.md), [sidecar websocket frame](../formats/sidecar-websocket-frame.md)
@@ -328,7 +345,7 @@ the caller.
 - consistency: reload-exit-code — the only non-zero value the serving loop
   returns is [field-reload-exit-code](#field-reload-exit-code), and `run()`
   raises `SystemExit` with that same numeric code rather than swallowing it.
-- code: groom/groom/sidecar.py::run@6473ed7cc706
+- code: groom/groom/sidecar.py::run@3b8d511118ce
 - verify: groom/tests/test_sidecar_session.py::test_run_maps_reload_code_to_systemexit
 - detail: [sidecar live session runner](sidecar-live-session-runner.md)
 - refs: [sidecar serving loop](sidecar-serving-loop.md), [`groom-sidecar`](../groom-sidecar.md#groom-sidecar-root)
@@ -343,13 +360,13 @@ the caller.
 
 ## Folded Private Helper Contract
 
-- identity producer: `groom/groom/sidecar.py::_identity` is folded into [sidecar identity data](../formats/sidecar-identity-data.md); it derives `container_id`, `name`, `repo_name`, and `repo_branch` from hostname and repository environment variables.
+- identity producer: `groom/groom/sidecar.py::_identity` is folded into [sidecar identity data](../formats/sidecar-identity-data.md); it derives `container_id`, `name`, `repo_name`, `repo_branch`, `run_id` and `workflow` from the hostname and the repository, run and workflow environment variables.
 - residual push core: `groom/groom/sidecar.py::_push` is folded into [sidecar residual HTTP push helper](sidecar-residual-http-push-helper.md); it merges identity and event fields, serializes JSON, and performs one best-effort HTTP `POST`.
 - run-state readers: `groom/groom/sidecar.py::_latest_run_dir`, `groom/groom/sidecar.py::_current_node`, and `groom/groom/sidecar.py::_terminal` are folded into [sidecar snapshot](sidecar-snapshot.md); they select the latest run directory, checkpoint current node, and terminal marker.
 - filesystem watch: `groom/groom/sidecar.py::_watch_roots` and `groom/groom/sidecar.py::_watch_loop` are folded into [sidecar filesystem watch](sidecar-filesystem-watch.md); together they select the watchable mounts and feed classified frames to the session's outbound queue.
 - event classifiers: `groom/groom/sidecar.py::_classify_event` is folded into [sidecar websocket frame](../formats/sidecar-websocket-frame.md#method-_classify_event); `groom/groom/sidecar.py::_handle_event` is the residual HTTP adapter for the same classification result and emits progress or blocked push wrappers.
-- path guard and repository readers: `groom/groom/sidecar.py::_safe_relpath`, `groom/groom/sidecar.py::_repo_base`, `groom/groom/sidecar.py::_find_repo_dirs`, `groom/groom/sidecar.py::_list_tree`, and `groom/groom/sidecar.py::_git_diff` are folded into [sidecar-local relative path guard](sidecar-local-relative-path-guard.md), [workspace file list data](../formats/workspace-file-list-data.md), and [workspace diff data](../formats/workspace-diff-data.md).
-- RPC handlers: `groom/groom/sidecar.py::_rpc_get_tree`, `groom/groom/sidecar.py::_rpc_get_file`, and `groom/groom/sidecar.py::_rpc_get_diff` are folded into [workspace file list data](../formats/workspace-file-list-data.md), [workspace file content data](../formats/workspace-file-content-data.md), and [workspace diff data](../formats/workspace-diff-data.md); `groom/groom/sidecar.py::_handle_rpc` is folded into [sidecar websocket frame](../formats/sidecar-websocket-frame.md#method-_handle_rpc).
+- path guard and repository readers: `groom/groom/sidecar.py::_safe_relpath`, `groom/groom/sidecar.py::_repo_base`, `groom/groom/sidecar.py::_find_repo_dirs`, `groom/groom/sidecar.py::_repo_names`, `groom/groom/sidecar.py::_checkout`, `groom/groom/sidecar.py::_list_tree`, and `groom/groom/sidecar.py::_git_diff` (which delegates the git reads to `groom/groom/gitdiff.py`) are folded into [sidecar-local relative path guard](sidecar-local-relative-path-guard.md), [workspace file list data](../formats/workspace-file-list-data.md), and [workspace diff data](../formats/workspace-diff-data.md).
+- RPC handlers: `groom/groom/sidecar.py::_rpc_get_tree`, `groom/groom/sidecar.py::_rpc_get_file`, and `groom/groom/sidecar.py::_rpc_get_diff` are folded into [workspace file list data](../formats/workspace-file-list-data.md), [workspace file content data](../formats/workspace-file-content-data.md), and [workspace diff data](../formats/workspace-diff-data.md); `groom/groom/sidecar.py::_rpc_list_turns`, `groom/groom/sidecar.py::_rpc_read_turn_file`, `groom/groom/sidecar.py::_rpc_get_questions`, `groom/groom/sidecar.py::_rpc_answer_gate` and `groom/groom/sidecar.py::_relay_to_control` serve the turn records and the control socket; `groom/groom/sidecar.py::_turn_announce` makes the `turn` frame; `groom/groom/sidecar.py::_handle_rpc` is folded into [sidecar websocket frame](../formats/sidecar-websocket-frame.md#method-_handle_rpc).
 - session helpers: `groom/groom/sidecar.py::_hello_frame`, `groom/groom/sidecar.py::_sender_loop`, `groom/groom/sidecar.py::_run_session`, and `groom/groom/sidecar.py::_serve` are folded into [sidecar websocket frame](../formats/sidecar-websocket-frame.md#method-_hello_frame), [sidecar outbound sender](sidecar-outbound-sender.md), [sidecar connected session](sidecar-connected-session.md), and [sidecar serving loop](sidecar-serving-loop.md).
 
 ## Module Flow
@@ -363,9 +380,10 @@ the caller.
    dials [websocket-sidecar](../http/groom.md#websocket-sidecar).
 4. Each connected session emits a `hello` frame built from sidecar identity and a
    fresh snapshot, then observes workspace and run filesystem events.
-5. Runs events emit `progress` frames; awaiting gate file events emit `blocked`
-   frames; directory events extend the watch set without emitting protocol frames.
-6. Host `rpc` frames are answered from local workspace data as correlated
+5. Runs events emit `progress` frames, and a change to a run's turn records also
+   emits a `turn` frame; awaiting gate file events emit `blocked` frames. The one
+   recursive watch covers new directories, and deletions are dropped.
+6. Host `rpc` frames are answered from local workspace and run data, or by the run's control socket, as correlated
    `rpc_result` frames, with handler errors represented as failed results.
 7. Host `reload` frames raise the module's reload control exception so the serving
    loop returns the reserved reload exit code and the runner surfaces it to the
@@ -381,5 +399,8 @@ the caller.
 - Does not provide Docker fallback reads; host fallback behavior belongs to the
   [Groom Docker I/O module](groom-docker-io-module.md) and workspace-volume reader
   concepts.
-- Does not write gate answers or workspace files; operator answers are handled by
-  the [gate answering layer](gate-answering-layer.md) and workspace-volume writer.
+- Does not write gate answers or workspace files itself; operator answers are
+  handled by the [gate answering layer](gate-answering-layer.md) and workspace-volume
+  writer, or relayed by `answerGate` to the run's control socket.
+- Does not run a git command that writes, and does not fetch: the default branch
+  is found from refs already in the checkout.

@@ -7,7 +7,7 @@ title: Dashboard wire events scope
 
 `wireEvents` is called once, at dashboard initialization, and registers every
 browser-native listener the dashboard uses for the rest of the page session —
-repository-picker input and menu clicks, the activity-bar mode switch, the
+the activity-bar mode switch, the
 runs and traces filters, the delegated body click that routes worker
 selection, refresh, and the command palette, the palette's own input and
 keyboard navigation, the global `j`/`k`/`Escape`/`Ctrl+K` shortcuts, and the

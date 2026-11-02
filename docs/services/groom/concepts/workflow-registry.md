@@ -5,7 +5,7 @@ title: Workflow registry
 ---
 # Workflow registry
 
-The workflow registry is groom's process-local map of live [workflow containers](workflow-container.md), keyed by container id and read by the [groom server](../http/groom.md). The [serve dashboard state](../http/groom.md#serve-dashboard-state) invocation reads it through the [all workflows snapshot](#method-all-workflows-snapshot) method before projecting the [runs fleet view](../runs-fleet-view.md); the [receive progress push](../http/groom.md#receive-progress-push), [receive blocked push](../http/groom.md#receive-blocked-push), and [receive exited push](../http/groom.md#receive-exited-push) invocations update entries through the [upsert workflow](#method-upsert-workflow) method; and the [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) invocation updates it through the [reconcile workflow fleet](#method-reconcile-workflow-fleet) method, which consumes the [workflow discovery scan](workflow-discovery-scan.md), replaces discovered entries, and delegates stale-container deletion to [prune workflows](#method-prune-workflows). The [exited push payload](../formats/exited-push-payload.md) terminal path preserves registry membership while marking one workflow finished, storing an accepted exit code, and clearing all open gates on that workflow; removal remains a later discovery-prune concern. The [per-gate answer lock](per-gate-answer-lock.md) registry is cleaned when vanished workflows are pruned, while the [workflow gate clearer](workflow-gate-clearer.md) removes one answered gate from a workflow already stored here. Other server paths use the same registry to populate the [dashboard state payload](../formats/dashboard-state-payload.md), repository picker, file/diff reads, websocket shell updates, sidecar snapshot application, and gate-answer routing.
+The workflow registry is groom's process-local map of live [workflow containers](workflow-container.md), keyed by container id and read by the [groom server](../http/groom.md). The [serve dashboard state](../http/groom.md#serve-dashboard-state) invocation reads it through the [all workflows snapshot](#method-all-workflows-snapshot) method before projecting the [runs fleet view](../runs-fleet-view.md); the [receive progress push](../http/groom.md#receive-progress-push), [receive blocked push](../http/groom.md#receive-blocked-push), and [receive exited push](../http/groom.md#receive-exited-push) invocations update entries through the [upsert workflow](#method-upsert-workflow) method; and the [refresh workflow fleet](../http/groom.md#refresh-workflow-fleet) invocation updates it through the [reconcile workflow fleet](#method-reconcile-workflow-fleet) method, which consumes the [workflow discovery scan](workflow-discovery-scan.md), replaces discovered entries, and delegates stale-container deletion to [prune workflows](#method-prune-workflows). The [exited push payload](../formats/exited-push-payload.md) terminal path preserves registry membership while marking one workflow finished, storing an accepted exit code, and clearing all open gates on that workflow; removal remains a later discovery-prune concern. The [per-gate answer lock](per-gate-answer-lock.md) registry is cleaned when vanished workflows are pruned, while the [workflow gate clearer](workflow-gate-clearer.md) removes one answered gate from a workflow already stored here. Other server paths use the same registry to populate the [dashboard state payload](../formats/dashboard-state-payload.md), the terminal client's repository picker, file/diff reads, websocket shell updates, sidecar snapshot application, and gate-answer routing.
 
 - code: groom/groom/state.py::WORKFLOWS@c9e8d6a5a83b
 - tests: `groom/tests/test_app.py::test_push_exited_marks_finished_clears_gates_and_records_code`
@@ -72,7 +72,7 @@ The workflow registry is groom's process-local map of live [workflow containers]
 - abstract: false
 - raises: none intentionally raised for an empty or populated registry.
 - verify: json_path(path="$.exception", absent=true)
-- code: groom/groom/app.py::_all_workflows@2d7aba1619b0
+- code: groom/groom/app.py::_all_workflows@c9ff944cd7cd
 
 Returns a new list containing the current registry values. The snapshot freezes only membership of the returned sequence at the moment of the call; the list items remain the same mutable [workflow container](workflow-container.md) objects held by the registry.
 
@@ -137,7 +137,7 @@ Creates or updates one workflow registry entry and returns the exact mutable [wo
 - raises: propagates exceptions from the first-party registry prune.
 - verify: removed(subject="WORKFLOWS['gone']")
 - verify: unchanged(subject="WORKFLOWS['keep']")
-- code: groom/groom/app.py::_reconcile@2d7aba1619b0
+- code: groom/groom/app.py::_reconcile@584bc06f1a7d
 - tests: groom/tests/test_app.py::test_refresh_prunes_vanished_containers
 - tests: groom/tests/test_app.py::test_refresh_skips_prune_when_docker_unavailable
 

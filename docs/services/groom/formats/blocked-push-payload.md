@@ -113,7 +113,7 @@ The payload contract is covered by `groom/tests/test_sidecar.py::test_push_block
 - parent: [blocked-push-payload](blocked-push-payload.md)
 - producer: sidecar identity uses the `REPO_NAME` environment variable when present, including when it is an empty string; only an absent `REPO_NAME` falls back to the sidecar process hostname.
 - consumer: when present and non-null, the value is passed to workflow upsert as `name`; omitted or `null` preserves the existing name, and a newly created workflow without a non-empty name defaults to the normalized container id.
-- meaning: human-facing workflow/container label used in dashboard rows, notification messages, and repository picker labels.
+- meaning: human-facing workflow/container label used in dashboard rows, notification messages, and the terminal client's repository picker labels.
 - constraints: the handler does not convert this field to text; downstream dashboard rendering and searching expect a string-like value.
 
 ### field-repo-name

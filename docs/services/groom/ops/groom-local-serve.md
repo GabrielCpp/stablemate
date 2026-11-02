@@ -9,7 +9,7 @@ title: groom local server
 - environment: [local Python uv workspace](local-python-uv-workspace.md)
 - cli: [groom](../groom-cli.md)
 - surfaces: [groom HTTP API](../http/groom.md)
-- code: `groom/groom/cli.py::serve` @873d680b416f
+- code: `groom/groom/cli.py::serve` @5a0f50482098
 - entry-url: `http://127.0.0.1:8787`
 - health-path: `/api/state`
 - identity: `"workflows"` — the JSON response body contains a `"workflows"` key (an object literal, structure subject to change)
@@ -30,7 +30,7 @@ will exit cleanly.
 
 The default host is `127.0.0.1` (loopback only). To accept connections from containers over the
 Docker bridge (e.g., for a containerized groom-sidecar inside an agent), pass `--host 0.0.0.0`
-and acknowledge the warning. The default port is `8787`. The `/api/state` endpoint returns the
+and `--allow-non-loopback`. Without that flag groom prints a no-authentication warning to stderr and still binds the address. The default port is `8787`. The `/api/state` endpoint returns the
 current dashboard state as JSON; its presence and structure are the readiness check.
 
 ## Steps

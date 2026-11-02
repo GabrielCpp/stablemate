@@ -179,7 +179,7 @@ def test_the_notify_message_truncates_the_question_to_the_limit():
     assert notify_frame["message"] == "w: " + "q" * limit
 
 
-def test_worker_detail_and_pushed_slices():
+def test_worker_detail_and_pushed_slices(monkeypatch):
     _reset()
     wf = WorkflowContainer(
         container_id="abc123", name="w", state=WorkflowState.RUNNING,
@@ -187,6 +187,7 @@ def test_worker_detail_and_pushed_slices():
     )
     state.WORKFLOWS["abc123"] = wf
 
+    monkeypatch.setattr("groom.projection.time.time", lambda: 1000.0)
     client = _hermetic_client()
     try:
         detail = client.get("/worker/abc123")
@@ -524,6 +525,37 @@ def test_snapshot_and_ingest_do_not_lose_or_duplicate_a_log(ingest_first):
         asyncio.run(drive())
 
 
+def test_a_span_batch_moves_the_watched_figures_revision_and_only_for_an_open_pane():
+    _reset()
+    state.WORKFLOWS["worker"] = WorkflowContainer(
+        container_id="worker", name="worker", run_id="run-1"
+    )
+    span = {
+        "span_id": "s1", "trace_id": "t", "run_id": "run-1", "node": "plan",
+        "name": "plan", "start_ts": 1000.0, "end_ts": 1001.0, "status": "OK",
+    }
+
+    async def drive():
+        await groom_app._store_history_batch([span], store.insert_spans)
+        assert not state.HISTORIES
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        await groom_app._handle_command({"cmd": "watch", "run_id": "worker"}, queue)
+        opened = (await groom_app.worker_detail.fn("worker"))["figures_rev"]
+        await groom_app._store_history_batch(
+            [{**span, "span_id": "s2"}], store.insert_spans
+        )
+        await groom_app._push_received([span])
+        pushed = []
+        while not queue.empty():
+            pushed.append(queue.get_nowait())
+        state.remove_client(queue)
+        return opened, [m["detail"]["figures_rev"] for m in pushed if m.get("type") == "detail"]
+
+    opened, revisions = asyncio.run(drive())
+    assert revisions[-1] == opened + 1
+
+
 def test_api_state_is_the_resync_payload():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
@@ -733,18 +765,30 @@ def test_repos_endpoint_reads_native_run_from_local_disk():
     assert [g["repos"] for g in groups] == [[{"repo": "", "label": "author-docs-app"}]]
 
 
+def _tree(paths, failed=False):
+    return {"paths": list(paths), "failed": failed}
+
+
+def _get(url, **params):
+    client = _hermetic_client()
+    try:
+        return client.get(url, params=params).json()
+    finally:
+        client.__exit__(None, None, None)
+
+
 def test_files_endpoint_returns_a_json_path_list():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
 
     client = _hermetic_client()
     try:
-        with patch.object(groom_app.docker_io, "list_files", return_value=["README.md", "src/a.py"]) as lf:
+        with patch.object(groom_app.docker_io, "read_tree", return_value=_tree(["README.md", "src/a.py"])) as lf:
             resp = client.get("/files/abc123", params={"repo": "acme"})
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.json() == {"paths": ["README.md", "src/a.py"]}
+    assert resp.json() == {"paths": ["README.md", "src/a.py"], "failed": False, "reported": True, "served": "volume"}
     assert lf.call_args[0] == ("ws-vol", "acme")
 
 
@@ -759,7 +803,7 @@ def test_file_endpoint_joins_repo_and_path_and_returns_content():
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.json() == {"path": "src/a.py", "content": "print(1)\n", "lang": "python"}
+    assert resp.json() == {"path": "src/a.py", "content": "print(1)\n", "lang": "python", "failed": False, "reported": True, "served": "volume"}
     assert rf.call_args[0] == ("ws-vol", "acme/src/a.py")
 
 
@@ -793,22 +837,118 @@ def test_file_endpoint_reads_a_native_runs_workspace_by_gate_path(tmp_path):
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.json() == {"path": "docs/context.md", "content": gate.read_text(), "lang": "markdown"}
+    assert resp.json() == {
+        "path": "docs/context.md", "content": gate.read_text(), "lang": "markdown", "failed": False, "reported": True, "served": "volume",
+    }
+
+
+def _read(diff="", untracked=(), failed=False):
+    return {"diff": diff, "untracked": list(untracked), "failed": failed}
+
+
+def _get_diff(container_id="abc123", **params):
+    client = _hermetic_client()
+    try:
+        return client.get(f"/diff/{container_id}", params=params).json()
+    finally:
+        client.__exit__(None, None, None)
 
 
 def test_diff_endpoint_passes_repo_through():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
 
-    client = _hermetic_client()
-    try:
-        with patch.object(groom_app.docker_io, "git_diff", return_value="diff --git a/x b/x\n") as gd:
-            resp = client.get("/diff/abc123", params={"repo": "acme"})
-    finally:
-        client.__exit__(None, None, None)
+    with patch.object(groom_app.docker_io, "read_diff", return_value=_read("diff --git a/x b/x\n")) as gd:
+        body = _get_diff(repo="acme")
 
-    assert resp.json() == {"diff": "diff --git a/x b/x\n"}
+    assert body == {"diff": "diff --git a/x b/x\n", "untracked": [], "failed": False, "reported": True, "served": "volume"}
     assert gd.call_args[0] == ("ws-vol", "acme")
+
+
+def test_diff_endpoint_says_a_volume_read_failed_instead_of_returning_no_changes():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+
+    with patch.object(groom_app.docker_io, "read_diff", return_value=_read(failed=True)):
+        body = _get_diff()
+
+    assert body["diff"] == ""
+    assert body["failed"] is True
+
+
+def test_diff_endpoint_says_failed_when_no_volume_is_known():
+    _reset()
+    assert _get_diff("nobody") == {"diff": "", "untracked": [], "failed": True, "reported": True, "served": "volume"}
+
+
+def test_diff_endpoint_reads_a_native_run_from_local_disk():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="/tmp/ws", native=True)
+
+    with patch.object(groom_app.localfs, "read_diff", return_value=_read("d", ["u.py"])) as local, \
+         patch.object(groom_app.docker_io, "read_diff") as docker:
+        body = _get_diff()
+
+    assert body == {"diff": "d", "untracked": ["u.py"], "failed": False, "reported": True, "served": "volume"}
+    docker.assert_not_called()
+    assert local.call_args[0] == ("/tmp/ws", "")
+
+
+def _served(reply: dict):
+    sent: list[dict] = []
+
+    async def rpc(_container_id, _method, params):
+        sent.append(params)
+        return reply
+
+    return rpc, sent
+
+
+def test_diff_endpoint_without_a_view_sends_the_sidecar_no_new_parameter_and_returns_no_base():
+    _reset()
+    rpc, sent = _served({"diff": "d", "untracked": ["u"], "failed": False, "repos": ["a"]})
+    with patch.object(groom_app, "_sidecar_rpc", rpc):
+        body = _get_diff(repo="a")
+
+    assert sent == [{"repo": "a"}]
+    assert body == {"diff": "d", "untracked": ["u"], "failed": False, "reported": True, "served": "sidecar", "repos": ["a"]}
+
+
+def test_diff_endpoint_with_the_branch_view_forwards_it_and_returns_the_base_the_sidecar_computed():
+    _reset()
+    reply = {
+        "diff": "d", "untracked": [], "failed": False, "repos": ["a"],
+        "base": "4f1c9ab0", "base_ref": "origin/main", "base_branch": "main", "base_reason": "",
+    }
+    rpc, sent = _served(reply)
+    with patch.object(groom_app, "_sidecar_rpc", rpc):
+        body = _get_diff(repo="a", view="branch")
+
+    assert sent == [{"repo": "a", "view": "branch"}]
+    assert body["based"] is True
+    assert (body["base"], body["base_ref"], body["base_branch"], body["base_reason"]) == ("4f1c9ab0", "origin/main", "main", "")
+    assert body["diff"] == "d" and body["failed"] is False
+
+
+def test_diff_endpoint_says_a_sidecar_that_reports_no_base_is_too_old_for_the_branch_view():
+    _reset()
+    rpc, sent = _served({"diff": "uncommitted", "untracked": [], "failed": False})
+    with patch.object(groom_app, "_sidecar_rpc", rpc):
+        body = _get_diff(view="branch")
+
+    assert body["based"] is False
+    assert "base_reason" not in body
+
+
+def test_diff_endpoint_never_answers_the_branch_view_from_a_volume():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+
+    with patch.object(groom_app.docker_io, "read_diff", return_value=_read("d")) as docker:
+        body = _get_diff(view="branch")
+
+    assert body["failed"] is True and body["diff"] == ""
+    docker.assert_not_called()
 
 
 def test_refresh_prunes_vanished_containers():
@@ -1271,16 +1411,16 @@ def test_background_scan_clears_scanning_on_error():
 def test_files_prefers_sidecar_socket_when_connected():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
-    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"paths": ["a.py", "b.py"]})
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"paths": ["a.py", "b.py"], "failed": False})
 
     client = _hermetic_client()
     try:
-        with patch.object(groom_app.docker_io, "list_files") as lf:
+        with patch.object(groom_app.docker_io, "read_tree") as lf:
             resp = client.get("/files/abc123", params={"repo": "acme"})
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.json() == {"paths": ["a.py", "b.py"]}
+    assert resp.json() == {"paths": ["a.py", "b.py"], "failed": False, "reported": True, "served": "sidecar"}
     lf.assert_not_called()
 
 
@@ -1291,12 +1431,12 @@ def test_files_falls_back_to_volume_when_socket_errors():
 
     client = _hermetic_client()
     try:
-        with patch.object(groom_app.docker_io, "list_files", return_value=["README.md"]) as lf:
+        with patch.object(groom_app.docker_io, "read_tree", return_value=_tree(["README.md"])) as lf:
             resp = client.get("/files/abc123", params={"repo": "acme"})
     finally:
         client.__exit__(None, None, None)
 
-    assert resp.json() == {"paths": ["README.md"]}
+    assert resp.json() == {"paths": ["README.md"], "failed": False, "reported": True, "served": "volume"}
     assert lf.call_args[0] == ("ws-vol", "acme")
 
 
@@ -1316,20 +1456,147 @@ def test_file_content_prefers_sidecar_socket():
     rf.assert_not_called()
 
 
+def test_files_relays_a_sidecar_that_says_its_read_failed():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"paths": [], "failed": True})
+
+    assert _get("/files/abc123") == {"paths": [], "failed": True, "reported": True, "served": "sidecar"}
+
+
+def test_files_from_an_old_sidecar_is_marked_as_unable_to_report_failure():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"paths": []})
+
+    assert _get("/files/abc123") == {"paths": [], "failed": False, "reported": False, "served": "sidecar"}
+
+
+def test_files_endpoint_says_failed_when_no_volume_is_known():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w")
+
+    assert _get("/files/abc123") == {"paths": [], "failed": True, "reported": True, "served": "volume"}
+
+
+def test_files_endpoint_says_failed_when_the_volume_read_failed():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+
+    with patch.object(groom_app.docker_io, "read_tree", return_value=_tree([], failed=True)):
+        assert _get("/files/abc123") == {"paths": [], "failed": True, "reported": True, "served": "volume"}
+
+
+def test_files_endpoint_reads_a_native_checkout_from_local_disk(tmp_path):
+    _reset()
+    checkout = tmp_path / "checkout"
+    (checkout / "src").mkdir(parents=True)
+    (checkout / "src" / "a.py").write_text("x")
+    state.WORKFLOWS["run-9"] = WorkflowContainer(
+        container_id="run-9", name="w", run_id="run-9", native=True, workspace_volume=str(checkout)
+    )
+
+    assert _get("/files/run-9") == {"paths": ["src/a.py"], "failed": False, "reported": True, "served": "volume"}
+
+
+def test_files_endpoint_says_failed_for_a_native_checkout_that_is_gone(tmp_path):
+    _reset()
+    state.WORKFLOWS["run-9"] = WorkflowContainer(
+        container_id="run-9", name="w", run_id="run-9", native=True, workspace_volume=str(tmp_path / "gone")
+    )
+
+    assert _get("/files/run-9") == {"paths": [], "failed": True, "reported": True, "served": "volume"}
+
+
+def test_file_relays_a_sidecar_that_says_its_read_failed():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"content": "", "failed": True})
+
+    assert _get("/file/abc123", path="a.py") == {
+        "path": "a.py", "content": "", "lang": "python", "failed": True, "reported": True, "served": "sidecar",
+    }
+
+
+def test_file_from_an_old_sidecar_is_marked_as_unable_to_report_failure():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"content": ""})
+
+    body = _get("/file/abc123", path="a.py")
+    assert (body["failed"], body["reported"]) == (False, False)
+
+
+def test_file_endpoint_reads_an_empty_file_as_empty_and_not_failed():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+
+    with patch.object(groom_app.docker_io, "read_file", return_value=""):
+        body = _get("/file/abc123", path="blank.txt")
+
+    assert (body["content"], body["failed"]) == ("", False)
+
+
+def test_file_endpoint_says_failed_when_the_volume_read_returns_nothing():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
+
+    with patch.object(groom_app.docker_io, "read_file", return_value=None):
+        body = _get("/file/abc123", path="a.py")
+
+    assert (body["content"], body["failed"]) == ("", True)
+
+
 def test_diff_prefers_sidecar_socket():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(container_id="abc123", name="w", workspace_volume="ws-vol")
-    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"diff": "diff --git a/x b/x\n"})
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result=_read("diff --git a/x b/x\n", ["u.py"]))
 
-    client = _hermetic_client()
-    try:
-        with patch.object(groom_app.docker_io, "git_diff") as gd:
-            resp = client.get("/diff/abc123", params={"repo": "acme"})
-    finally:
-        client.__exit__(None, None, None)
+    with patch.object(groom_app.docker_io, "read_diff") as gd:
+        body = _get_diff(repo="acme")
 
-    assert resp.json() == {"diff": "diff --git a/x b/x\n"}
+    assert body == {"diff": "diff --git a/x b/x\n", "untracked": ["u.py"], "failed": False, "reported": True, "served": "sidecar"}
     gd.assert_not_called()
+
+
+def test_diff_relays_a_sidecar_that_says_its_read_failed():
+    _reset()
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result=_read(failed=True))
+    body = _get_diff()
+    assert body["failed"] is True
+    assert body["reported"] is True
+
+
+def test_diff_from_an_old_sidecar_is_marked_as_unable_to_confirm():
+    _reset()
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"diff": ""})
+    body = _get_diff()
+    assert body == {"diff": "", "untracked": [], "failed": False, "reported": False, "served": "sidecar"}
+
+
+def test_diff_from_an_old_sidecar_still_returns_its_diff():
+    _reset()
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"diff": "diff --git a/x b/x\n"})
+    body = _get_diff()
+    assert body["diff"] == "diff --git a/x b/x\n"
+    assert body["reported"] is False
+
+
+def test_files_and_diff_pass_the_sidecars_checkout_list_through():
+    _reset()
+    both = ["api-service", "web-app"]
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"paths": ["a.py"], "failed": False, "repos": both})
+    assert _get("/files/abc123", repo="web-app") == {"paths": ["a.py"], "failed": False, "reported": True, "served": "sidecar", "repos": both}
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={**_read("d"), "repos": both})
+    assert _get_diff(repo="web-app")["repos"] == both
+
+
+def test_files_and_diff_from_a_sidecar_that_names_no_checkouts_carry_no_list():
+    _reset()
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result={"paths": [], "failed": False})
+    assert "repos" not in _get("/files/abc123")
+    sidecar_hub.CONNECTIONS["abc123"] = _FakeConn("abc123", result=_read("d"))
+    assert "repos" not in _get_diff()
 
 
 def test_reload_broadcasts_to_all_connected_sidecars():
@@ -1377,6 +1644,44 @@ def _run_apply_hello(container_id: str, data: dict) -> None:
             await groom_app._apply_hello(container_id, data)
 
     asyncio.run(_scenario())
+
+
+async def _noop_ensure_volumes(container_id: str) -> None:
+    return None
+
+
+def _sidecar_frames(ws):
+    while True:
+        frame = ws.receive_json()
+        if frame["type"] == "state":
+            yield frame
+
+
+def _row_flag(frame, container_id):
+    return next(run["sidecar"] for run in frame["runs"] if run["id"] == container_id)
+
+
+def test_a_tab_is_told_when_a_sidecar_connects_and_when_it_drops():
+    _reset()
+    container_id = "abc123def456"
+    hello = {
+        "type": "hello",
+        "identity": {"container_id": container_id, "name": "coder-1"},
+        "snapshot": {"current_node": "build", "terminal": "", "gates": []},
+    }
+    client = _hermetic_client()
+    try:
+        with patch.object(groom_app, "_ensure_volumes", _noop_ensure_volumes):
+            with client.websocket_connect("/ws") as tab:
+                tab.receive_json()
+                with client.websocket_connect("/sidecar") as sidecar_socket:
+                    sidecar_socket.send_json(hello)
+                    seen = next(f for f in _sidecar_frames(tab) if container_id in {r["id"] for r in f["runs"]})
+                    assert _row_flag(seen, container_id) is True
+                dropped = next(f for f in _sidecar_frames(tab) if not _row_flag(f, container_id))
+                assert _row_flag(dropped, container_id) is False
+    finally:
+        client.__exit__(None, None, None)
 
 
 def test_apply_hello_marks_blocked_with_gate():

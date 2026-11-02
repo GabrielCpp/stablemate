@@ -41,7 +41,7 @@ def test_the_client_module_parses():
 def test_every_endpoint_is_read_as_json():
     src = CLIENT.read_text()
     assert ".text()" not in src
-    for route in ("/api/state", "/worker/", "/repos", "/files/", "/file/", "/diff/"):
+    for route in ("/api/state", "/worker/", "/files/", "/file/", "/diff/"):
         assert route in src, route
 
 
@@ -89,9 +89,31 @@ if __name__ == "__main__":
     raise SystemExit(1 if failed else 0)
 
 
+def test_closing_the_detail_keeps_the_run_filter():
+    src = CLIENT.read_text()
+    close = src[src.index("function closeDetail") : src.index("/** A pushed refresh")]
+    assert 'sendWatch("")' in close
+    assert "query" not in close
+
+
+def test_the_detail_tabs_are_a_tablist_with_a_labelled_panel():
+    src = CLIENT.read_text()
+    assert 'role="tablist"' in src
+    assert 'role="tabpanel"' in src
+    assert 'aria-label="Close run detail"' in src
+    assert 'aria-label="Open gates"' in src
+
+
+def test_the_overview_marks_waiting_in_words_and_never_prints_a_blank_cost():
+    src = CLIENT.read_text()
+    assert "the operator" in src
+    assert "\"waiting on \"" in src
+    assert "reports no cost" in src
+
+
 def test_a_gate_block_shows_questions_without_a_context_disclosure():
     src = CLIENT.read_text()
-    gate_block = src[src.index("function GateBlock") : src.index("function DiffDisclosure")]
+    gate_block = src[src.index("function GateBlock") : src.index("function GateStrip")]
     assert 'source=${gate.question}' in gate_block
     assert "ContextDisclosure" not in src
     assert "Full context" not in src
@@ -105,3 +127,29 @@ def test_a_rejected_answer_frame_is_toasted_as_text():
     handler = handler[: handler.index("\n}\n")]
     assert "pushToast(" in handler and "msg.reason" in handler
     assert "innerHTML" not in handler
+
+
+def test_the_overview_refetches_only_when_the_pushed_revision_moves():
+    src = CLIENT.read_text()
+    overview = src[src.index("function Overview") : src.index("function DetailsTab")]
+    assert "detail.figures_rev" in overview
+    assert "setInterval" not in overview
+    assert "aria-live" not in src[src.index("function CostTile") : src.index("function DetailsTab")]
+
+
+def test_the_cost_tile_ticks_in_the_browser_every_second():
+    src = CLIENT.read_text()
+    tick = src[src.index("function useSecondTick") : src.index("function timeCell")]
+    assert "setInterval" in tick and "1000" in tick
+    tile = src[src.index("function CostTile") : src.index("function FlowRows")]
+    assert "useSecondTick()" in tile
+
+
+def test_a_run_row_prints_its_figures_in_words_and_keeps_the_coverage_when_narrowed():
+    src = CLIENT.read_text()
+    figures = src[src.index("function RowFigures") : src.index("function RunRow")]
+    assert "no cost yet" in figures
+    assert "no cost reported" in figures
+    assert "figures.priced_turns" in figures and "figures.turns" in figures
+    assert "items_total" in figures
+    assert "narrow=${Boolean(selected)}" in src

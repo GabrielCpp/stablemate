@@ -5,44 +5,42 @@ title: Dashboard parsed diff file cache
 ---
 # Dashboard parsed diff file cache
 
-Dashboard parsed diff file cache is the parsed changed-file array the Diff pane
+Dashboard parsed diff file cache is the parsed changed-file array the run Diff tab
 holds in the [dashboard client store](../concepts/dashboard-client-store.md) as the
-`diff` slice's `files` member. It is created once per Diff pane load, when
+`runDiff` slice's `files` member. It is created once per diff read, when
 [workspace diff data](workspace-diff-data.md) comes back with non-whitespace unified
 diff text and the third-party diff2html parser turns it into file entries. It feeds
-the [dashboard tree builder](../concepts/dashboard-tree-builder.md) — which is what puts
-[diff file row](../gui/screens/groom-dashboard.md#diff-file-row) entries on the page —
-and it is what makes [select diff file row](../gui/screens/groom-dashboard.md#select-diff-file-row)
-free: the whole diff was parsed when the pane loaded, so choosing a file renders one
-already-parsed entry rather than issuing another request.
+the [dashboard tree builder](../concepts/dashboard-tree-builder.md), which is what puts
+[diff file row](../gui/screens/groom-dashboard.md#detail-diff-file-row) entries on the page,
+and it is what makes choosing a file free: the whole diff was parsed when the tab
+loaded, so choosing a file renders one already-parsed entry rather than issuing
+another request.
 
-It used to live on the DOM, assigned as a `_files` property on the `#diff-tree`
-element and read back out by a click handler through a `data-file-idx` attribute.
-Both of those are gone. The array is store state now and the selected index is store
-state beside it, which removes the whole class of bug where a stale property outlived
-the rows that indexed into it — there is no longer a way for the rows on screen and
-the array they address to come from different loads, because one render derives both.
+The array is store state and the chosen file is store state beside it, which removes
+the whole class of bug where a stale property outlived the rows that indexed into
+it. The rows on screen and the array they address always come from one render of
+one read.
 
 - file: not an on-disk artifact; this is a transient in-memory slice of one tab's client store.
-- code: groom/groom/assets/dashboard.js::loadDiff
-- code: groom/groom/assets/dashboard.js::DiffTree
-- code: groom/groom/assets/dashboard.js::DiffView
+- code: groom/groom/assets/dashboard.js::loadRunDiff@a79bfdf4c0b1
+- code: groom/groom/assets/dashboard.js::DiffTab@ed8babf5c628
+- code: groom/groom/assets/dashboard.js::RunFileDiff@139e9580d270
 - detail: [dashboard diff representation selection](../concepts/dashboard-diff-representation-selection.md)
 - refs: [workspace diff data](workspace-diff-data.md), [dashboard path tree](dashboard-path-tree.md)
 
 ## Contract
 
-The Diff pane loader starts with `GET /diff/{container_id}?repo={repo}` and decodes a
+The diff read starts with `GET /diff/{container_id}?repo={repo}`, with `&view=branch` while the run's switch is on Since branch start, and decodes a
 fulfilled response as JSON before considering its `diff` member.
 
-- parser input: the loader hands the raw diff text to the parser exactly as the endpoint returned it. It does not pre-split, filter, normalize paths, redact content, or inspect the HTTP status of a fulfilled response.
-- storage: the parsed array is written to the client store's `diff` slice as `files`, alongside the selected index `idx` and a `status`. It is not serialized into markup, browser storage, URL state, server state, or any websocket frame.
-- consumer: the Diff tree island maps each entry to a `{path, idx, add, del}` builder entry and renders the resulting [dashboard path tree](dashboard-path-tree.md); the viewer island reads `files[idx]` and passes that one entry to diff2html's renderer.
-- scope: one tab, one loaded pane, one container/repository selection. Loading the pane again — for the same repository or another — replaces the slice wholesale.
-- absent states: an empty array is stored, rather than the slice left untouched, for whitespace-only diff text and for a parse that yields no files. The two are indistinguishable by design and both render `(no changes)`. A rejected fetch or unparseable body sets `status: "error"` with an empty array.
-- reset rule: every load begins by writing `{status: "loading", files: [], idx: -1}`, so a failed or empty reload cannot leave the previous load's entries addressable. This is what the DOM-property version could not guarantee.
-- selection invariant: `idx` is a position in the array stored in the same slice, and both are written by the same store update. There is no path by which a row's index and the array it indexes come from different loads, and no bounds check is needed beyond the viewer's `files[idx]` returning undefined for the initial `-1`.
-- consistency: field-files — array positions in `files` are parser order and are never reordered — each diff-tree entry's `idx` is fixed to its position at build time (`diff.files.map((file, i) => ({..., idx: i}))`), not recomputed after the [dashboard tree builder](../concepts/dashboard-tree-builder.md) sorts a copy of the entries per level for display, so a row's position on screen says nothing about its index into `files`.
+- parser input: the loader hands the raw diff text to the parser exactly as the endpoint returned it. It does not pre-split, filter, normalize paths, redact content, or inspect the HTTP status of a fulfilled response beyond requiring success.
+- storage: the parsed array is written to the client store's `runDiff` slice as `files`, alongside the chosen file's `path` and a `status`. It is not serialized into markup, browser storage, URL state, server state, or any websocket frame.
+- consumer: the Diff tab maps each entry to a `{path, idx, add, del}` builder entry and renders the resulting [dashboard path tree](dashboard-path-tree.md); the viewer reads the entry for the chosen path and passes `files[idx]` to diff2html's renderer.
+- scope: one run, one checkout, one view. Reading again, for the same checkout and view or another, replaces the slice wholesale, and a refresh of the same checkout keeps the chosen path.
+- absent states: an empty array is stored, rather than the slice left untouched, for whitespace-only diff text and for a parse that yields no files. A failed body, a rejected fetch or a parser that cannot read the text sets `status: "failed"` with an empty array, and the tab shows that as unreadable instead of as no changes.
+- reset rule: a read of another run, another checkout or the other view begins by writing a loading slice with no files and no chosen path, so a failed or empty reload cannot leave the previous read's entries addressable.
+- selection invariant: `idx` on a builder entry is a position in the array stored in the same slice, and both are written by the same store update. A chosen path that is absent from the new read falls back to the first changed file.
+- consistency: field-files — array positions in `files` are parser order and are never reordered — each diff-tree entry's `idx` is fixed to its position at build time, not recomputed after the [dashboard tree builder](../concepts/dashboard-tree-builder.md) sorts a copy of the entries per level for display, so a row's position on screen says nothing about its index into `files`.
 - third-party boundary: each entry is an opaque diff2html payload for final rendering. First-party code reads only `newName`, `oldName`, `addedLines` and `deletedLines`, and retains the whole object for the viewer.
 - escaping: diff2html escapes what it emits, which is why the raw diff crosses the wire unsplit rather than having half a parser reimplemented server-side. Nothing in this cache is interpolated into markup by first-party code.
 
@@ -57,14 +55,14 @@ fulfilled response as JSON before considering its `diff` member.
 - meaning: the ordered parsed changed-file entries for the currently loaded repository diff.
 - write rule: written exactly twice per load — emptied when the load starts, replaced when it settles.
 
-### field-idx
+### field-path
 
-- type: `int`
-- default: `-1`
+- type: `str | null`
+- default: `null`
 - required: true
-- wire-key: `idx`, within the store's `diff` slice
-- meaning: the position in `files` of the changed file whose diff the viewer is showing. `-1` means none, which renders the viewer's prompt.
-- source: written by the diff-file row's click handler, which closes over the index rather than reading it back off a data attribute.
+- wire-key: `path`, within the store's `runDiff` slice
+- meaning: the path of the changed file whose diff the viewer is showing. `null`, or a path the latest read does not contain, shows the first changed file.
+- source: written by the diff-file row's click handler, and kept across a refresh of the same checkout.
 
 ### field-new-name
 

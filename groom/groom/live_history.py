@@ -15,6 +15,7 @@ class LiveHistory:
     log_limit: int
     transcript_limit: int = 200
     loaded: bool = False
+    revision: int = 0
     spans: dict[str, dict[str, Any]] = field(default_factory=dict)
     logs: list[dict[str, Any]] = field(default_factory=list)
     metrics: list[dict[str, Any]] = field(default_factory=list)
@@ -25,6 +26,7 @@ class LiveHistory:
     last_ts: dict[str, float] = field(default_factory=dict)
 
     def update_spans(self, rows: list[dict[str, Any]]) -> None:
+        self.revision += 1
         for row in rows:
             self.spans[row["span_id"]] = {
                 "start_ts": row["start_ts"],

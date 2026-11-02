@@ -8,7 +8,7 @@ title: Sidecar session and workflow state
 The sidecar websocket has one connection lifecycle and one separate workflow-state
 consequence. `dashboard_sidecar` accepts the socket, creates and registers a
 connection only after a usable `hello` identity, dispatches later frames through
-that connection, and unregisters that same connection in its `finally` cleanup.
+that connection, and unregisters that same connection in its `finally` cleanup, then broadcasts the dashboard shell for that container.
 
 Use [dashboard sidecar](groom-app-module.md#method-dashboard-sidecar) to understand
 the websocket session, accepted frame sequence, RPC resolution, and connection

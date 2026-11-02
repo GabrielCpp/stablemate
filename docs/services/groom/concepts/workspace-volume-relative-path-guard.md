@@ -7,7 +7,7 @@ title: Workspace volume relative path guard
 
 Workspace volume relative path guard is the validation layer used by the [workspace volume file-content reader](workspace-volume-file-content-reader.md), the [workspace volume file writer](workspace-volume-file-writer.md), and the [gate-answering layer](gate-answering-layer.md) before a dashboard-selected or gate-selected path is embedded in a Docker volume destination. It accepts only one non-empty path inside the mounted workspace volume, normalizes Windows-style separators to `/`, and rejects absolute paths, empty path segments, and parent traversal before any Docker container, file read, file write, workflow-state mutation, or dashboard update can occur.
 
-- code: groom/groom/docker_io.py::safe_relpath@9dc5eb2e112e
+- code: groom/groom/docker_io.py::safe_relpath@729ee7824208
 - detail: [safe relpath documentation views](safe-relpath-documentation-views.md)
 - refs: [workspace volume file-content reader](workspace-volume-file-content-reader.md), [workspace volume file writer](workspace-volume-file-writer.md), [gate-answering layer](gate-answering-layer.md), [workspace file content data](../formats/workspace-file-content-data.md), [operator gate context file](../formats/operator-gate-context-file.md)
 
@@ -69,7 +69,7 @@ Workspace volume relative path guard is the validation layer used by the [worksp
 - verify: omits(subject="accepted normalized path", text="\\")
 - raises: `ValueError` for empty, leading-root, empty-segment, trailing-separator, or parent-traversal paths.
 - returns: [field-return-value](#field-return-value) on acceptance.
-- code: groom/groom/docker_io.py::safe_relpath@9dc5eb2e112e
+- code: groom/groom/docker_io.py::safe_relpath@729ee7824208
 - detail: [safe relpath documentation views](safe-relpath-documentation-views.md)
 
 #### Effects

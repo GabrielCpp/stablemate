@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import subprocess
-from typing import Any
+from typing import Any, TypedDict
+
+from groom import gitdiff
 
 DOCKER_TIMEOUT = 20
 ALPINE_IMAGE = "alpine:3.20"
@@ -143,35 +145,48 @@ def grep_awaiting_files(volume: str, mount_subdir: str = "") -> list[str]:
     return paths
 
 
-def list_files(volume: str, /, repo_dir: str = "") -> list[str]:
-    """Repo-relative paths of every file in one checkout inside ``volume`` — the tree shown in groom's Files panel."""
+class TreeRead(TypedDict):
+    paths: list[str]
+    failed: bool
+
+
+def read_tree(volume: str, /, repo_dir: str = "") -> TreeRead:
+    """Repo-relative paths of every file in one checkout inside ``volume``, and whether the read failed."""
     base = f"/vol/{repo_dir}".rstrip("/") if repo_dir else "/vol"
     prune: list[str] = []
     for i, name in enumerate(_SKIP_DIRS):
         if i:
             prune.append("-o")
         prune += ["-name", name]
-    proc = _run(
-        [
-            "docker", "run", "--rm",
-            "-v", f"{volume}:/vol:ro",
-            ALPINE_IMAGE,
-            "find", base,
-            "(", "-type", "d", "(", *prune, ")", "-prune", ")",
-            "-o",
-            "(", "-type", "f", "-print", ")",
-        ],
-        timeout=DOCKER_TIMEOUT,
-    )
+    try:
+        proc = _run(
+            [
+                "docker", "run", "--rm",
+                "-v", f"{volume}:/vol:ro",
+                ALPINE_IMAGE,
+                "find", base,
+                "(", "-type", "d", "(", *prune, ")", "-prune", ")",
+                "-o",
+                "(", "-type", "f", "-print", ")",
+            ],
+            timeout=DOCKER_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {"paths": [], "failed": True}
     if proc.returncode != 0:
-        return []
+        return {"paths": [], "failed": True}
     prefix = base + "/"
     files = []
     for line in proc.stdout.splitlines():
         line = line.strip()
         if line.startswith(prefix):
             files.append(line[len(prefix):])
-    return sorted(files)
+    return {"paths": sorted(files), "failed": False}
+
+
+def list_files(volume: str, /, repo_dir: str = "") -> list[str]:
+    """Repo-relative paths of every file in one checkout inside ``volume``, empty when the read failed."""
+    return read_tree(volume, repo_dir)["paths"]
 
 
 def list_run_dirs(volume: str) -> list[str]:
@@ -222,25 +237,30 @@ def find_repo_dir(volume: str) -> str:
     return repos[0] if repos else ""
 
 
-def git_diff(volume: str, /, repo_dir: str = "") -> str:
-    """Unified working-tree-vs-HEAD diff for one repo inside ``volume``."""
+def read_diff(volume: str, /, repo_dir: str = "") -> gitdiff.DiffRead:
+    """Working-tree-vs-HEAD diff and untracked files for one repo inside ``volume``."""
     repo_dir = repo_dir or find_repo_dir(volume)
     if not repo_dir:
-        return ""
-    proc = _run(
-        [
-            "docker", "run", "--rm",
-            "-v", f"{volume}:/vol:ro",
-            GIT_IMAGE,
-            "-c", "safe.directory=*",
-            "-C", f"/vol/{repo_dir}",
-            "diff", "HEAD",
-        ],
-        timeout=DOCKER_TIMEOUT,
-    )
-    if proc.returncode != 0:
-        return ""
-    return proc.stdout
+        return gitdiff.unreadable()
+    outputs: list[tuple[int, str]] = []
+    for args in (gitdiff.DIFF_ARGS, gitdiff.UNTRACKED_ARGS):
+        try:
+            proc = _run(
+                [
+                    "docker", "run", "--rm",
+                    "-v", f"{volume}:/vol:ro",
+                    GIT_IMAGE,
+                    "-c", "safe.directory=*",
+                    "-C", f"/vol/{repo_dir}",
+                    *args,
+                ],
+                timeout=DOCKER_TIMEOUT,
+            )
+        except (OSError, subprocess.SubprocessError):
+            return gitdiff.unreadable()
+        outputs.append((proc.returncode, proc.stdout))
+    (diff_rc, diff_out), (untracked_rc, untracked_out) = outputs
+    return gitdiff.parse(diff_rc, diff_out, untracked_rc, untracked_out)
 
 
 def read_file(volume: str, /, rel_path: str) -> str | None:

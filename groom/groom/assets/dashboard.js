@@ -16,8 +16,7 @@
 //      anything changed, so silence is information: see `deriveConnection()`.
 //
 // Every panel is a Preact island mounted into an id the static shell already
-// ships (`#runs-list`, `#statusbar`, `#detail`, `#repo-menu`, the files/diff
-// trees and views, `#palette-results`), so the live-region and
+// ships (`#runs-list`, `#statusbar`, `#detail`, `#palette-results`), so the live-region and
 // landmark attributes stay on elements that outlive every update. Nothing on
 // either side of the wire is HTML any more: the server sends data, this module
 // decides what it looks like, and the only strings that ever reach `innerHTML`
@@ -33,7 +32,10 @@
 // to it alone (`onDetail`). That subscription is what replaced polling
 // `GET /worker/{id}/live` every five seconds from every open tab.
 
-import { html, render, useState, useEffect, useRef } from "/assets/htm-preact.js";
+import { html, render, useState, useEffect, useLayoutEffect, useRef } from "/assets/htm-preact.js";
+
+const UNCOMMITTED_VIEW = "uncommitted";
+const BRANCH_VIEW = "branch";
 
 // --------------------------------------------------------------------------- //
 // Store — one snapshot, subscribed to by every island
@@ -52,11 +54,19 @@ const store = {
     // the open run (subscription snapshot, then ingestion pushes)
     selected: null,
     detail: null,
+    tab: "overview",
+    gatesCollapsed: false,
+    overview: { runId: "", status: "idle", data: null, rev: 0 },
+    breakdown: { view: "flow", sort: "time" },
     // per-tab, per-selection panels (HTTP; cancel- and cache-friendly)
     mode: "runs",
-    repo: { loading: false, groups: [], query: "", active: 0, container: null, dir: "", label: null },
-    files: { status: "idle", paths: [], path: null, view: { status: "idle", path: "", content: "", lang: "" } },
-    diff: { status: "idle", files: [], idx: -1 },
+    checkouts: {},
+    diffViews: {},
+    diffKept: {},
+    sidecarLost: {},
+    stillDown: {},
+    runDiff: idleRunDiff(),
+    runFiles: idleRunFiles(),
     // the attendant: a per-run summary rides every `state` frame, the log does not
     attend: { mode: "off", by_run: {}, rev: 0, status: "idle", sessions: [], selected: null, record: null },
     // dispatch queues have no socket push — occupancy changes on a launch/exit
@@ -93,7 +103,7 @@ function useStore() {
 
 /** The single entry point for fleet-wide state, from either delivery path. */
 function applyState(msg) {
-  store.set({ runs: msg.runs || [], status: msg.status || store.get().status, scanning: !!msg.scanning });
+  store.set({ runs: msg.runs || [], status: msg.status || store.get().status, scanning: !!msg.scanning, ...sidecarTrack(msg.runs || []) });
   // The frame carries one entry per attended run and a revision, never the log —
   // 200 rows on a 5s tick would dwarf the fleet itself. A `rev` that moved is what
   // tells an open Attendant pane its list is stale.
@@ -115,7 +125,31 @@ function applyRun(msg) {
   if (at >= 0) runs[at] = row;
   else runs.push(row);
   runs.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
-  store.set({ runs: runs });
+  store.set({ runs: runs, ...sidecarTrack(runs) });
+}
+
+/** When the page first saw each container run without its sidecar, and which
+ *  runs answered a retry with nothing. Both clear the moment the row says the
+ *  sidecar is back, because the row is what tells the page it dropped. */
+function sidecarTrack(runs) {
+  const snap = store.get();
+  let lost = snap.sidecarLost;
+  let still = snap.stillDown;
+  for (const row of runs) {
+    if (row.native) continue;
+    if (row.sidecar) {
+      if (lost[row.id] !== undefined) lost = Object.assign({}, lost, { [row.id]: undefined });
+      if (still[row.id]) still = Object.assign({}, still, { [row.id]: false });
+    } else if (lost[row.id] === undefined) {
+      lost = Object.assign({}, lost, { [row.id]: Date.now() });
+    }
+  }
+  return { sidecarLost: lost, stillDown: still };
+}
+
+function sidecarDown(id) {
+  const row = store.get().runs.find((run) => run.id === id);
+  return !!row && !row.native && !row.sidecar;
 }
 
 // --------------------------------------------------------------------------- //
@@ -323,26 +357,45 @@ function buildTree(entries) {
 // Collapse state is component-local on purpose: it belongs to this directory in
 // this tab and nothing else reads it, so it stays out of the store — and it
 // survives a re-render because the node is keyed by name.
-function TreeDir({ name, node, leaf }) {
-  const [open, setOpen] = useState(true);
+function TreeDir({ name, node, leaf, fold, trail = "" }) {
+  const [localOpen, setLocalOpen] = useState(true);
+  const key = trail + name;
+  const open = fold ? !fold.shut[key] : localOpen;
+  const toggle = fold ? () => fold.toggle(key) : () => setLocalOpen(!localOpen);
   return html`<div class=${"tree-dir" + (open ? "" : " collapsed")}>
     <button
       type="button"
       class="tree-dir-head"
       aria-expanded=${String(open)}
-      onClick=${() => setOpen(!open)}
+      onClick=${toggle}
     >
       <span class="tchev" aria-hidden="true">▾</span>${name}
     </button>
-    <div class="tree-children"><${TreeLevel} node=${node} leaf=${leaf} /></div>
+    <div class="tree-children"><${TreeLevel} node=${node} leaf=${leaf} fold=${fold} trail=${key + "/"} /></div>
   </div>`;
 }
 
-function TreeLevel({ node, leaf }) {
+function compactDirs(node) {
+  const dirs = {};
+  Object.keys(node.dirs).forEach((name) => {
+    let label = name;
+    let child = node.dirs[name];
+    for (;;) {
+      const names = Object.keys(child.dirs);
+      if (names.length !== 1 || child.files.length) break;
+      label += "/" + names[0];
+      child = child.dirs[names[0]];
+    }
+    dirs[label] = compactDirs(child);
+  });
+  return { dirs, files: node.files };
+}
+
+function TreeLevel({ node, leaf, fold, trail = "" }) {
   const dirs = Object.keys(node.dirs).sort();
   const files = node.files.slice().sort((a, b) => a.name.localeCompare(b.name));
   return html`
-    ${dirs.map((d) => html`<${TreeDir} key=${"dir:" + d} name=${d} node=${node.dirs[d]} leaf=${leaf} />`)}
+    ${dirs.map((d) => html`<${TreeDir} key=${"dir:" + d} name=${d} node=${node.dirs[d]} leaf=${leaf} fold=${fold} trail=${trail} />`)}
     ${files.map((f) => leaf(f))}
   `;
 }
@@ -353,7 +406,21 @@ function TreeLevel({ node, leaf }) {
 // `data-worker-id` / `data-state` / `data-live` are not decoration: the j/k row
 // navigation reads the fleet back off the DOM through them, so they are part of
 // this component's contract.
-function RunRow({ run, selected }) {
+function RowFigures({ figures, narrow }) {
+  let cost;
+  if (!figures.finished) cost = html`<span class="dim">no cost yet</span>`;
+  else if (!figures.reports_cost) cost = html`<span class="warn">no cost reported</span>`;
+  else {
+    cost = html`<span>${fmtUsd(figures.cost_usd)} <span class="dim">${figures.priced_turns}/${figures.turns}${narrow ? "" : " priced"}</span></span>`;
+  }
+  return html`<span class="line3">
+    ${cost}
+    <span>${fmtSpan(figures.active_s)} <span class="dim">active</span></span>
+    ${figures.items_total ? html`<span class="dim">${figures.items_done}/${figures.items_total} items</span>` : null}
+  </span>`;
+}
+
+function RunRow({ run, selected, narrow }) {
   const cls = "row" + (run.state === "blocked" ? " blocked" : "") + (selected ? " selected" : "");
   return html`
     <button
@@ -373,9 +440,10 @@ function RunRow({ run, selected }) {
       </span>
       <span class="line2">
         <span class="doing">${run.doing}</span>
-        ${run.mini ? html`<span class="mini">${run.mini}</span>` : null}
+        <${MiniClock} clock=${run.clock} mini=${run.mini} />
       </span>
       ${run.question ? html`<span class="q">${run.question}</span>` : null}
+      ${run.figures ? html`<${RowFigures} figures=${run.figures} narrow=${narrow} />` : null}
     </button>
   `;
 }
@@ -396,7 +464,7 @@ function Fleet() {
     }
     return html`<div class="empty">No workhorse runs — nothing is running.</div>`;
   }
-  return shown.map((run) => html`<${RunRow} key=${run.id} run=${run} selected=${run.id === selected} />`);
+  return shown.map((run) => html`<${RunRow} key=${run.id} run=${run} selected=${run.id === selected} narrow=${Boolean(selected)} />`);
 }
 
 function rowHaystack(run) {
@@ -461,7 +529,7 @@ function StatusBar() {
 // --------------------------------------------------------------------------- //
 // Detail pane — the open run (`GET /worker/{id}` + the pushed `detail` frame)
 // --------------------------------------------------------------------------- //
-function RunHead({ head }) {
+function RunHead({ head, onClose, sidecar }) {
   const meta =
     head.state + (head.node ? " · node " + head.node : "") +
     (head.cli ? " · " + head.cli : "") + (head.pid ? " · pid " + head.pid : "");
@@ -477,12 +545,16 @@ function RunHead({ head }) {
     <span class="repo-branch">${head.repo}</span>
     ${head.live_label ? html`<span class="pulse ${head.live}">${head.live_label}</span>` : null}
     <span class="run-id" title="Run id — click to select">${head.handle}</span>
+    ${sidecar ? html`<span id="run-sidecar-chip" class="chip">${sidecar === "live" ? "docker · sidecar" : "docker"}</span>` : null}
     <span class="meta">${meta}</span>
     ${head.exit_hint
       ? html`<span class=${"exit-hint " + (head.exit_ok ? "exit-ok" : "exit-err")}>${head.exit_hint}</span>`
       : null}
     ${head.activity ? html`<span class="doing-line">${head.activity}</span>` : null}
     ${head.worktree ? html`<span class="doing-line">${head.worktree}</span>` : null}
+    ${onClose
+      ? html`<button type="button" class="btn ghost close-detail" aria-label="Close run detail" title="Close run detail" onClick=${onClose}>Close</button>`
+      : null}
   </div>`;
 }
 
@@ -617,75 +689,938 @@ function AnswerForm({ workflowId, filePath }) {
     <input type="hidden" name="cmd" value="answer" />
     <input type="hidden" name="workflow_id" value=${workflowId} />
     <input type="hidden" name="file_path" value=${filePath} />
-    <textarea name="answer" aria-label="Your answer" placeholder="Your answer…" rows="4"></textarea>
+    <textarea name="answer" aria-label="Your answer" placeholder="Your answer…" rows="2"></textarea>
     <div class="answer-actions"><button type="submit" class="btn">Send answer</button></div>
   </form>`;
 }
 
-function GateBlock({ workflowId, gate }) {
+function GateWait({ running }) {
+  useSecondTick();
+  return fmtSpan(Date.now() / 1000 - running.since_ts);
+}
+
+function gateLead(gate) {
+  return gate.kind === "machine" ? "Waiting on a machine result" : "Waiting on you";
+}
+
+function GateBlock({ detail, gate, onCollapse }) {
+  const waiting = detail.running && detail.running.wait_kind ? detail.running : null;
   return html`<div class="gate-block">
-    <div class="gate-path">${gate.file_path}</div>
+    <div class="gate-line">
+      <${StateDot} state="blocked" />
+      <b>${gateLead(gate)}</b>
+      <span class="dim mono gate-meta" title=${gate.file_path}>${detail.node ? detail.node + " · " : ""}${waiting ? html`<${GateWait} running=${waiting} /> · ` : null}${gate.file_path}</span>
+      ${onCollapse ? html`<button type="button" class="btn ghost gate-fold" aria-expanded="true" aria-controls="gate-blocks" onClick=${onCollapse}>Collapse</button>` : null}
+    </div>
     <${Markdown} className="question" source=${gate.question} />
     ${gate.kind === "machine"
       ? html`<div class="no-gate">Waiting for a machine result.</div>`
-      : html`<${AnswerForm} workflowId=${workflowId} filePath=${gate.file_path} />`}
+      : html`<${AnswerForm} workflowId=${detail.id} filePath=${gate.file_path} />`}
   </div>`;
 }
 
-// The working-tree diff, fetched only when the disclosure is opened — it is the
-// one part of the pane that costs a git invocation, and most visits never want it.
-function DiffDisclosure({ containerId }) {
-  const [loaded, setLoaded] = useState(null); // null = untouched, "" = no changes
-  const [failed, setFailed] = useState(false);
-  const onToggle = (e) => {
-    if (!e.target.open || loaded !== null || failed) return;
-    fetch("/diff/" + encodeURIComponent(containerId))
-      .then((r) => r.json())
-      .then((body) => setLoaded(body.diff || ""))
-      .catch(() => setFailed(true));
+function GateStrip({ detail, collapsed }) {
+  const root = useRef(null);
+  const moveFocusTo = useRef("");
+  useEffect(() => {
+    const want = moveFocusTo.current;
+    if (!want || !root.current) return;
+    if ((want === "unfold") !== collapsed) return;
+    moveFocusTo.current = "";
+    const target = want === "unfold"
+      ? root.current.querySelector(".gate-unfold")
+      : root.current.querySelector(".gate-blocks textarea") || root.current.querySelector(".gate-fold");
+    if (target) target.focus();
+  });
+  const fold = (next) => {
+    moveFocusTo.current = next ? "unfold" : "answer";
+    store.set({ gatesCollapsed: next });
   };
-  let body;
-  if (failed) body = html`<div class="detail-empty">failed to load diff</div>`;
-  else if (loaded === null) body = html`<div class="detail-empty">Loading diff…</div>`;
-  else if (!loaded.trim()) body = html`<div class="detail-empty">(no changes)</div>`;
-  else body = html`<div dangerouslySetInnerHTML=${{ __html: diffMarkup(loaded, true) }}></div>`;
-  return html`<details class="disclosure" onToggle=${onToggle}>
-    <summary>Working-tree diff</summary>
-    <div class="diff-wrap">${body}</div>
-  </details>`;
+  const gates = detail.gates;
+  const waiting = detail.running && detail.running.wait_kind ? detail.running : null;
+  const answerable = gates.some((gate) => gate.kind !== "machine");
+  return html`<div class="gate-strip" role="region" aria-label="Open gates" ref=${root}>
+    ${collapsed
+      ? html`<div class="gate-line gate-folded">
+          <${StateDot} state="blocked" />
+          <b>${gateLead(gates[0])}</b>
+          ${gates.length > 1 ? html`<span class="chip">${gates.length} gates open</span>` : null}
+          <span class="gq">${gates[0].preview || gates[0].question}</span>
+          ${waiting ? html`<span class="dim mono gate-meta"><${GateWait} running=${waiting} /></span>` : null}
+          <button type="button" class="btn gate-unfold" aria-expanded="false" aria-controls="gate-blocks" onClick=${() => fold(false)}>${answerable ? "Answer" : "Show"}</button>
+        </div>`
+      : null}
+    <div class="gate-blocks" id="gate-blocks" hidden=${collapsed}>
+      ${gates.map((gate, index) => html`<${GateBlock} key=${gate.file_path} detail=${detail} gate=${gate} onCollapse=${index === 0 ? () => fold(true) : null} />`)}
+    </div>
+  </div>`;
+}
+
+function fmtSpan(seconds) {
+  const secs = Math.max(0, Math.round(seconds || 0));
+  if (secs < 60) return secs + "s";
+  if (secs < 3600) return Math.floor(secs / 60) + "m " + (secs % 60) + "s";
+  return Math.floor(secs / 3600) + "h " + Math.floor((secs % 3600) / 60) + "m";
+}
+
+function fmtUsd(value) {
+  return "$" + value.toFixed(2);
+}
+
+function fmtTokens(count) {
+  if (count >= 1e6) return (count / 1e6).toFixed(1) + "M";
+  if (count >= 1e3) return (count / 1e3).toFixed(1) + "k";
+  return String(count);
+}
+
+function fmtPercent(part, whole) {
+  return whole > 0 ? ((part / whole) * 100).toFixed(1) + "%" : "—";
+}
+
+function runningMark(running) {
+  if (!running.wait_kind) return { lead: "running", cls: "ok" };
+  const on = running.wait_kind === "operator" ? "the operator" : running.wait_kind;
+  return { lead: "waiting on " + on, cls: "bad" };
+}
+
+const tickers = new Set();
+let tickTimer = null;
+
+function useSecondTick() {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const listener = () => setTick((n) => n + 1);
+    tickers.add(listener);
+    if (tickTimer === null) tickTimer = setInterval(() => tickers.forEach((fn) => fn()), 1000);
+    return () => {
+      tickers.delete(listener);
+      if (tickers.size === 0) {
+        clearInterval(tickTimer);
+        tickTimer = null;
+      }
+    };
+  }, []);
+}
+
+function Elapsed({ since, seconds }) {
+  useSecondTick();
+  return fmtSpan(since === null || since === undefined ? seconds : Date.now() / 1000 - since);
+}
+
+function MiniClock({ clock, mini }) {
+  useSecondTick();
+  if (!clock) return mini ? html`<span class="mini">${mini}</span>` : null;
+  const now = Date.now() / 1000;
+  const idle = clock.idle_since_ts === null ? 0 : now - clock.idle_since_ts;
+  return html`<span class="mini">${clock.label} ${fmtSpan(now - clock.since_ts)}${idle > 60 ? " · agent idle " + fmtSpan(idle) : ""}</span>`;
+}
+
+function timeCell(seconds, total) {
+  const share = total > 0 ? Math.max(1, Math.min(100, (seconds / total) * 100)) : 0;
+  return html`<span class="tb">${fmtSpan(seconds)}<s aria-hidden="true"><u style=${"width:" + share + "%"}></u></s></span>`;
+}
+
+function plural(count, one, many) {
+  return count + " " + (count === 1 ? one : many);
+}
+
+function Tile({ label, value, children, id }) {
+  return html`<div class="kpi" id=${id}>
+    <div class="kk"><span>${label}</span></div>
+    <div class="vv">${value}</div>
+    <div class="ss">${children}</div>
+  </div>`;
+}
+
+function CostTile({ figures, asOf }) {
+  useSecondTick();
+  if (!figures.reports_cost) {
+    const who = figures.backends.length ? figures.backends.join(", ") : "This backend";
+    return html`<${Tile} label="Cost" id="detail-cost-tile" value=${html`<span class="dim">—</span>`}>
+      <span class="warn">${who} reports no cost</span>
+      ${figures.est_usd !== null ? html` · est ${fmtUsd(figures.est_usd)} at list price` : null}
+    <//>`;
+  }
+  const ago = asOf ? ", " + fmtSpan(Date.now() / 1000 - asOf) + " ago" : "";
+  const burn = figures.active_s > 0 ? " · " + fmtUsd(figures.cost_usd / (figures.active_s / 3600)) + " per active hour" : "";
+  return html`<${Tile} label="Cost so far" id="detail-cost-tile" value=${fmtUsd(figures.cost_usd)}>
+    as of the last finished turn${ago} · ${figures.priced_turns} of ${figures.turns} turns priced${burn}
+  <//>`;
+}
+
+function ItemsTile({ figures }) {
+  if (!figures.items_total) {
+    return html`<${Tile} label="Work items" id="detail-items-tile" value=${html`<span class="dim">—</span>`}>no item count reported<//>`;
+  }
+  let each = "none finished yet";
+  if (figures.items_done > 0) {
+    each = figures.reports_cost
+      ? fmtUsd(figures.cost_usd / figures.items_done) + " per finished item"
+      : "no cost per item without a price";
+  }
+  return html`<${Tile} label="Work items" id="detail-items-tile" value=${figures.items_done + " of " + figures.items_total}>${each}<//>`;
+}
+
+function AttentionTile({ standing, running }) {
+  useSecondTick();
+  const open = running && running.wait_kind === "operator" ? running : null;
+  const gates = standing.gates + (open ? 1 : 0);
+  const waited = standing.gate_wait_s + (open ? Math.max(0, Date.now() / 1000 - open.since_ts) : 0);
+  const parts = [
+    plural(standing.failed_steps, "failed step", "failed steps"),
+    plural(standing.retries, "backend retry", "backend retries"),
+    plural(standing.failed_gate_checks, "failed gate check", "failed gate checks"),
+    plural(standing.churn_alerts, "churn alert", "churn alerts"),
+  ];
+  return html`<${Tile} label="Attention" id="detail-attention-tile" value=${plural(gates, "gate", "gates")}>
+    ${fmtSpan(waited)} waiting · <span title=${parts.join(", ")}>${plural(standing.problems, "problem", "problems")}</span>
+  <//>`;
+}
+
+function OverviewTiles({ data, running }) {
+  const figures = data.figures;
+  return html`<div class="kpis">
+    <${CostTile} figures=${figures} asOf=${data.as_of_ts} />
+    <${Tile} label="Active time" id="detail-active-tile" value=${fmtSpan(figures.active_s)}>${fmtSpan(figures.wall_s)} wall, ${plural(figures.sessions, "session", "sessions")}<//>
+    <${ItemsTile} figures=${figures} />
+    <${Tile} label="Agent turns" id="detail-turns-tile" value=${String(figures.turns)}>${plural(data.standing.retries, "backend retry", "backend retries")}<//>
+    <${AttentionTile} standing=${data.standing} running=${running} />
+  </div>`;
+}
+
+function normNote(strip, lasted) {
+  const norm = strip.norm;
+  if (!norm) return html`<span class="dim">reading the norm</span>`;
+  if (strip.kind === "node") return html`<span class="dim">no finished visit to compare yet</span>`;
+  if (norm.median_s === null) {
+    return html`<span class="dim">no norm yet: ${norm.runs} comparable ${norm.runs === 1 ? "run" : "runs"}</span>`;
+  }
+  const usual = (strip.kind === "step" ? "this step" : "a turn here") + " usually takes " + fmtSpan(norm.median_s);
+  return lasted > norm.median_s && strip.kind !== "between"
+    ? html`<span class="warn">longer than usual: ${usual}</span>`
+    : html`<span class="dim">${usual}</span>`;
+}
+
+function NowStrip({ strip }) {
+  useSecondTick();
+  const now = Date.now() / 1000;
+  const lasted = now - strip.started_ts;
+  const waiting = strip.kind === "wait";
+  const operator = waiting && strip.wait_kind === "operator";
+  const lead = waiting
+    ? operator ? "Waiting on you" : "Waiting on " + strip.wait_kind
+    : { step: "In step", between: "Between turns", node: "In node" }[strip.kind] || "In turn";
+  const quiet = { step: "no agent in a step", between: "no turn running", node: "—" }[strip.kind] || "";
+  let idle = html`<span class="dim">${quiet}</span>`;
+  if (strip.idle_since_ts !== null) idle = fmtSpan(now - strip.idle_since_ts);
+  return html`<div class="now" role="group" aria-label="Where the run is now">
+    <div><span class="k2">Node</span><span class="v2"><span class=${"dot " + (operator ? "blocked" : "running")} aria-hidden="true"></span>${strip.node}</span></div>
+    <div><span class="k2">${lead}</span><span class="v2">${fmtSpan(lasted)} ${waiting ? html`<span class="dim">no norm while waiting</span>` : normNote(strip, lasted)}</span></div>
+    <div><span class="k2">Agent idle</span><span class="v2">${idle}</span></div>
+    <div><span class="k2">Last beat</span><span class="v2">${strip.beat_ts ? fmtSpan(now - strip.beat_ts) + " ago" : "—"}</span></div>
+  </div>`;
+}
+
+function flowKey(path, row) {
+  return path + "/" + row.kind + ":" + row.name + ":" + (row.title || "");
+}
+
+function sortRows(rows, sort, reports) {
+  const weight = (row) => {
+    const value = reports ? row.cost_usd : row.output_tokens;
+    return value === null ? -1 : value;
+  };
+  const rank = sort === "cost" ? weight : (row) => row.time_s;
+  return [...rows].sort((a, b) => rank(b) - rank(a));
+}
+
+function moneyCell(row, data) {
+  const reports = data.cost.reports_cost;
+  if (!reports) return fmtTokens(row.output_tokens);
+  return row.cost_usd !== null ? fmtUsd(row.cost_usd) : "—";
+}
+
+function moneyShare(row, data) {
+  const reports = data.cost.reports_cost;
+  return reports && row.cost_usd !== null ? fmtPercent(row.cost_usd, data.cost.usd) : "—";
+}
+
+function FlowRows({ rows, depth, path, open, toggle, data, sort }) {
+  return sortRows(rows, sort, data.cost.reports_cost).map((row) => {
+    const key = flowKey(path, row);
+    const has = row.children.length > 0;
+    const expanded = open.has(key);
+    return html`<tr key=${key} class=${row.kind}>
+        <td style=${"padding-left:" + (8 + depth * 14) + "px"}>
+          ${has
+            ? html`<button type="button" class="ch-btn" aria-expanded=${expanded ? "true" : "false"} aria-label=${(expanded ? "Collapse " : "Expand ") + row.name} onClick=${() => toggle(key)}>
+                <span class="ch" aria-hidden="true">${expanded ? "▾" : "▸"}</span>${row.name}
+              </button>`
+            : html`<span class="ch" aria-hidden="true"></span><span>${row.name}</span>`}
+          ${row.title ? html` <span class="dim" title=${"missing parent span " + row.title}>(no span recorded)</span>` : null}
+        </td>
+        <td>${row.visits === null ? html`<span class="none">—</span>` : row.visits}</td>
+        <td class="barcell">${timeCell(row.time_s, data.time_s)}</td>
+        <td>${fmtPercent(row.time_s, data.time_s)}</td>
+        <td>${moneyCell(row, data)}</td>
+        <td>${moneyShare(row, data)}</td>
+        <td>${row.retries}</td>
+      </tr>
+      ${has && expanded
+        ? html`<${FlowRows} key=${key + "/rows"} rows=${row.children} depth=${depth + 1} path=${key} open=${open} toggle=${toggle} data=${data} sort=${sort} />`
+        : null}`;
+  });
+}
+
+function RunningRow({ running, before, after }) {
+  const mark = runningMark(running);
+  const seconds = running.wait_kind ? running.wait_elapsed_s : running.elapsed_s;
+  const blanks = (count) => Array.from({ length: count }, (_, i) => html`<td key=${i}><span class="none">—</span></td>`);
+  return html`<tr class="flow cur">
+    <td><span class="ch" aria-hidden="true"></span>${running.node} <span class=${"chip " + mark.cls}>${mark.lead} <${Elapsed} since=${running.since_ts} seconds=${seconds} /></span></td>
+    ${blanks(before)}
+    <td><${Elapsed} since=${running.since_ts} seconds=${seconds} /></td>
+    ${blanks(after)}
+  </tr>`;
+}
+
+const BREAKDOWN_TITLES = { flow: "Time and cost per flow", node: "Time and cost per node", item: "Time and cost per work item" };
+
+function Segment({ id, label, value, options, onPick, marked }) {
+  return html`<span id=${id} class=${"seg" + (marked ? " marked" : "")} role="group" aria-label=${label}>
+    ${options.map(([key, text]) => html`<button type="button" key=${key} aria-pressed=${value === key ? "true" : "false"} onClick=${() => onPick(key)}>${text}</button>`)}
+  </span>`;
+}
+
+function BreakdownHead({ view, sort, hasItems, finished }) {
+  const views = [["flow", "By flow"], ["node", "By node"]];
+  if (hasItems) views.push(["item", "By work item"]);
+  return html`<div class="sec-h">
+    <span>${BREAKDOWN_TITLES[view]}</span>
+    ${finished
+      ? html`<${Segment} label="Breakdown view" value=${view} options=${views} onPick=${(next) => setIn("breakdown", { view: next })} />`
+      : null}
+    ${finished && view !== "item"
+      ? html`<span class="aside"><${Segment} label="Sort by" value=${sort} options=${[["time", "Time"], ["cost", "Cost"]]} onPick=${(next) => setIn("breakdown", { sort: next })} /></span>`
+      : null}
+  </div>`;
+}
+
+function FlowTree({ data, running, finished, sort, open, toggle, head }) {
+  const reports = data.cost.reports_cost;
+  return html`<section>
+    ${head}
+    <table class="tt" aria-label="Time and cost per flow">
+      <thead><tr>
+        <th scope="col">Flow › state › node</th>
+        <th scope="col">Visits</th>
+        <th scope="col">Time</th>
+        ${finished
+          ? html`<th scope="col">Time %</th>
+              <th scope="col">${reports ? "Cost" : "Output tokens"}</th>
+              <th scope="col">Cost %</th>
+              <th scope="col">Retries</th>`
+          : null}
+      </tr></thead>
+      <tbody>
+        ${running ? html`<${RunningRow} running=${running} before=${1} after=${finished ? 4 : 0} />` : null}
+        <${FlowRows} rows=${data.flows} depth=${0} path="" open=${open} toggle=${toggle} data=${data} sort=${sort} />
+      </tbody>
+    </table>
+  </section>`;
+}
+
+const MEDIAN_WARN = 20;
+
+function medianCell(row) {
+  const norm = row.norm;
+  if (!norm) return html`<span class="none">—</span>`;
+  if (norm.median_s === null) {
+    return html`<span class="none" title=${plural(norm.runs, "comparable run", "comparable runs") + ", under five"}>—</span>`;
+  }
+  const mean = row.time_s / row.samples;
+  const change = ((mean - norm.median_s) / norm.median_s) * 100;
+  const text = (change >= 0 ? "+" : "-") + Math.abs(change).toFixed(0) + "%";
+  const title = "mean " + fmtSpan(mean) + ", median " + fmtSpan(norm.median_s) + " across " + plural(norm.runs, "run", "runs");
+  return change >= MEDIAN_WARN
+    ? html`<span class="warn" title=${title}>${text} longer</span>`
+    : html`<span class="dim" title=${title}>${text}</span>`;
+}
+
+function medianHeading(runs) {
+  return runs >= 5 ? "vs median of " + runs : "vs median: " + plural(runs, "run", "runs") + ", under five";
+}
+
+function NodeTable({ data, running, sort }) {
+  const reports = data.cost.reports_cost;
+  const rows = sortRows(data.nodes, sort, reports);
+  return html`<table class="tt" aria-label="Time and cost per node">
+    <thead><tr>
+      <th scope="col">Node</th>
+      <th scope="col">Kind</th>
+      <th scope="col">Visits</th>
+      <th scope="col">Time</th>
+      <th scope="col">Mean</th>
+      <th scope="col">${medianHeading(data.norm_runs)}</th>
+      <th scope="col">Longest</th>
+      <th scope="col">${reports ? "Cost" : "Output tokens"}</th>
+      <th scope="col">Cost %</th>
+      <th scope="col">Retries</th>
+    </tr></thead>
+    <tbody>
+      ${running ? html`<${RunningRow} running=${running} before=${2} after=${6} />` : null}
+      ${rows.map((row) => html`<tr key=${row.node} class="flow">
+        <td><span class="ch" aria-hidden="true"></span>${row.node}</td>
+        <td><span class="dim">${row.kind}</span></td>
+        <td>${row.visits}</td>
+        <td class="barcell">${timeCell(row.time_s, data.time_s)}</td>
+        <td>${row.samples > 0 ? fmtSpan(row.time_s / row.samples) : html`<span class="none">—</span>`}</td>
+        <td>${medianCell(row)}</td>
+        <td>${fmtSpan(row.longest_s)}</td>
+        <td>${moneyCell(row, data)}</td>
+        <td>${moneyShare(row, data)}</td>
+        <td>${row.retries}</td>
+      </tr>`)}
+    </tbody>
+  </table>`;
+}
+
+function itemOutcome(row, open) {
+  if (open) return html`<span class="chip ok">open</span>`;
+  if (row.outcome === "done") return html`<span class="chip ok">done</span>`;
+  if (row.outcome === "uncounted") return html`<span class="dim" title="The run's item count has not moved past this item">not counted</span>`;
+  return html`<span class="none" title="No item count reported for this item">—</span>`;
+}
+
+function passMix(nodes) {
+  return Object.entries(nodes)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .map(([node, count]) => node + " ×" + count);
+}
+
+function ItemTable({ data, running }) {
+  const reports = data.cost.reports_cost;
+  const { rows, outside, total } = data.items;
+  const latest = running ? rows.reduce((best, row, i) => (row.last_ts > rows[best].last_ts ? i : best), 0) : -1;
+  const money = (usd, tokens) => (reports ? (usd !== null ? fmtUsd(usd) : "—") : fmtTokens(tokens));
+  return html`<table class="tt" aria-label="Time and cost per work item">
+    <thead><tr>
+      <th scope="col">Work item</th>
+      <th scope="col">Passes</th>
+      <th scope="col">Agent time</th>
+      <th scope="col">${reports ? "Cost" : "Output tokens"}</th>
+      <th scope="col">Outcome</th>
+    </tr></thead>
+    <tbody>
+      ${rows.map((row, i) => html`<tr key=${row.work_id} class=${i === latest ? "flow cur" : "flow"}>
+        <td><span class="ch" aria-hidden="true"></span>${row.work_id}</td>
+        <td>${row.passes} <span class="dim" title=${passMix(row.nodes).join(", ")}>${passMix(row.nodes)[0].split(" ×")[0]}</span></td>
+        <td class="barcell">${timeCell(row.seconds, total.time_s)}</td>
+        <td>${money(row.cost_usd, row.output_tokens)}</td>
+        <td>${itemOutcome(row, i === latest)}</td>
+      </tr>`)}
+      <tr class="flow">
+        <td><span class="ch" aria-hidden="true"></span><span class="dim">outside any work item</span></td>
+        <td><span class="none">—</span></td>
+        <td class="barcell">${timeCell(outside.time_s, total.time_s)}</td>
+        <td>${money(outside.cost_usd, outside.output_tokens)}</td>
+        <td><span class="none">—</span></td>
+      </tr>
+      <tr class="workflow">
+        <td><span class="ch" aria-hidden="true"></span>Total</td>
+        <td><span class="none">—</span></td>
+        <td>${fmtSpan(total.time_s)}</td>
+        <td>${money(total.cost_usd, total.output_tokens)}</td>
+        <td><span class="none">—</span></td>
+      </tr>
+    </tbody>
+  </table>`;
+}
+
+function Breakdown({ data, running, finished }) {
+  const { breakdown } = useStore();
+  const [open, setOpen] = useState(() => new Set(data.flows.map((row) => flowKey("", row))));
+  const toggle = (key) => {
+    const next = new Set(open);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setOpen(next);
+  };
+  const hasItems = Boolean(data.items);
+  const view = breakdown.view === "item" && !hasItems ? "flow" : breakdown.view;
+  const head = html`<${BreakdownHead} view=${view} sort=${breakdown.sort} hasItems=${hasItems} finished=${finished} />`;
+  if (view === "node") {
+    return html`<section>${head}<${NodeTable} data=${data} running=${running} sort=${breakdown.sort} /></section>`;
+  }
+  if (view === "item") {
+    return html`<section>${head}<${ItemTable} data=${data} running=${running} /></section>`;
+  }
+  return html`<${FlowTree} data=${data} running=${running} finished=${finished} sort=${breakdown.sort} open=${open} toggle=${toggle} head=${head} />`;
+}
+
+let overviewSeq = 0;
+
+async function loadOverview(runId, rev = 0, refresh = false) {
+  const seq = ++overviewSeq;
+  if (!refresh) store.set({ overview: { runId, status: "loading", data: null, rev } });
+  try {
+    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/overview");
+    if (!response.ok) throw new Error("overview " + response.status);
+    const data = await response.json();
+    if (seq === overviewSeq) store.set({ overview: { runId, status: "ready", data, rev } });
+  } catch (err) {
+    if (seq !== overviewSeq) return;
+    if (refresh) store.set({ overview: { ...store.get().overview, rev } });
+    else store.set({ overview: { runId, status: "failed", data: null, rev } });
+  }
+}
+
+const CLOCK_SEGMENTS = [
+  ["agent", "Agent turns", "seg-agent"],
+  ["deterministic", "Deterministic", "seg-det"],
+  ["infra", "Infrastructure", "seg-infra"],
+  ["wait", "Waits", "seg-wait"],
+  ["unclassified", "Unclassified", "seg-unc"],
+  ["resume_gap", "Stopped between sessions", "seg-gap"],
+];
+
+function WallClock({ clock }) {
+  const wall = clock.wall;
+  const named = CLOCK_SEGMENTS.map(([key, label]) => label + " " + fmtSpan(clock[key])).join(", ");
+  return html`<section id="detail-wall-clock" aria-label="Where the wall clock went">
+    <div class="sec-h"><span>Where the wall clock went</span><span class="aside">${fmtSpan(wall)} from first to last record</span></div>
+    <div class="tbar" role="img" aria-label=${"Wall clock split: " + named}>
+      ${CLOCK_SEGMENTS.map(([key, , cls]) => html`<i class=${cls} style=${"width:" + (wall > 0 ? (clock[key] / wall) * 100 : 0) + "%"}></i>`)}
+    </div>
+    <ul class="legend">
+      ${CLOCK_SEGMENTS.map(([key, label, cls]) => html`<li data-segment=${key} data-seconds=${clock[key]}><i class=${cls} aria-hidden="true"></i>${label} <b>${fmtSpan(clock[key])}</b></li>`)}
+    </ul>
+  </section>`;
+}
+
+function ModelCost({ row }) {
+  if (row.cost_usd === null) return html`<span class="cov">not reported</span>`;
+  const partial = row.cost_turns < row.turns ? html`<span class="cov">${row.cost_turns} of ${row.turns} priced</span>` : null;
+  return html`${fmtUsd(row.cost_usd)}${partial}`;
+}
+
+function Models({ models }) {
+  return html`<section id="detail-models">
+    <div class="sec-h"><span>Models</span></div>
+    <table class="tt" aria-label="Models">
+      <thead><tr>
+        <th scope="col">Model</th>
+        <th scope="col">Turns</th>
+        <th scope="col">Cost</th>
+        <th scope="col">Output</th>
+        <th scope="col">Cache read</th>
+      </tr></thead>
+      <tbody>
+        ${models.map((row) => html`<tr key=${row.model} class="sub">
+          <td>${row.model}</td>
+          <td>${row.turns}</td>
+          <td><${ModelCost} row=${row} /></td>
+          <td>${fmtTokens(row.output_tokens)}</td>
+          <td title=${fmtTokens(row.cache_read_tokens) + " tokens"}>${row.cache_read_share === null ? "—" : Math.round(row.cache_read_share * 100) + "%"}</td>
+        </tr>`)}
+      </tbody>
+    </table>
+  </section>`;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function CopyButton({ what, text }) {
+  const [result, setResult] = useState("");
+  const timer = useRef(0);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async () => {
+    const ok = await copyText(text);
+    setResult(ok ? "Copied " + what : "Could not copy " + what);
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => setResult(""), 4000);
+  };
+  const failed = result.startsWith("Could not");
+  return html`<button type="button" class="copy" title=${"Copy " + what} aria-label=${"Copy " + what} onClick=${copy}><span aria-hidden="true">⧉</span></button><span class=${failed ? "copy-note bad" : "copy-note"} role="status">${result}</span>`;
+}
+
+function fmtWhen(ts) {
+  return new Date(ts * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+}
+
+function RunFacts({ facts, runId, checkout }) {
+  const rows = [
+    facts.started_ts ? ["Started", fmtWhen(facts.started_ts), "start time"] : null,
+    facts.branch ? ["Branch", facts.branch, "branch"] : null,
+    facts.run_dir ? ["Run dir", facts.run_dir, "run directory"] : null,
+    checkout ? ["Checkout", checkout, "checkout path"] : null,
+    ["Run id", runId, "run id"],
+  ].filter(Boolean);
+  return html`<section id="detail-facts">
+    <div class="sec-h"><span>Run</span></div>
+    <dl class="facts">
+      ${rows.map(([label, value, what]) => html`<dt>${label}</dt><dd><span class="fv">${value}</span><${CopyButton} what=${what} text=${value} /></dd>`)}
+    </dl>
+  </section>`;
+}
+
+const ENDINGS = {
+  terminal: "finished",
+  ended: "finished",
+  interrupted: "interrupted",
+  reload: "reloaded",
+  fail: "failed",
+  aborted: "aborted",
+};
+
+function sessionEnding(row, last, live) {
+  if (row.ended) {
+    const word = ENDINGS[row.ended.terminal] || row.ended.terminal;
+    const why = row.ended.message || row.ended.error_class;
+    return why ? word + ": " + why : word;
+  }
+  return last && live ? "running" : "no recorded ending";
+}
+
+function Sessions({ sessions, live }) {
+  return html`<section id="detail-sessions">
+    <div class="sec-h"><span>Sessions</span><span class="aside">why the run stopped between them</span></div>
+    <table class="tt" aria-label="Sessions">
+      <thead><tr>
+        <th scope="col">Session</th>
+        <th scope="col">Started</th>
+        <th scope="col">Active</th>
+        <th scope="col">Stopped for</th>
+        <th scope="col">How it stopped</th>
+      </tr></thead>
+      <tbody>
+        ${sessions.map((row, i) => {
+          const last = i === sessions.length - 1;
+          const gap = row.gap_s !== null ? fmtSpan(row.gap_s) : last && live && !row.ended ? "still running" : "—";
+          return html`<tr key=${row.start_ts} class="sub">
+            <td>${i + 1}</td>
+            <td>${fmtWhen(row.start_ts)}</td>
+            <td>${fmtSpan(row.active_s)}</td>
+            <td>${gap}</td>
+            <td class="how">${sessionEnding(row, last, live)}</td>
+          </tr>`;
+        })}
+      </tbody>
+    </table>
+  </section>`;
+}
+
+function Overview({ detail }) {
+  const { overview } = useStore();
+  const runId = detail.run_id;
+  const rev = detail.figures_rev || 0;
+  const mounted = useRef(false);
+  useEffect(() => {
+    const first = !mounted.current;
+    mounted.current = true;
+    const current = store.get().overview;
+    if (!runId || current.status === "loading") return;
+    if (current.status === "failed" && current.runId === runId) {
+      if (first) loadOverview(runId, rev);
+      return;
+    }
+    if (current.runId !== runId) loadOverview(runId, rev);
+    else if (current.rev !== rev) loadOverview(runId, rev, true);
+  }, [runId, rev, overview.status, overview.rev]);
+  if (!runId) {
+    return html`<div class="side-state"><h3>No figures for this run</h3>It has not reported a telemetry run id.</div>`;
+  }
+  if (overview.runId === runId && overview.status === "failed") {
+    return html`<div class="side-state" role="alert">
+      <h3>These figures could not be read</h3>
+      The Details tab still works.
+      <div class="acts"><button type="button" class="btn ghost retry-overview" onClick=${() => loadOverview(runId, rev)}>Retry now</button></div>
+    </div>`;
+  }
+  if (overview.runId !== runId || overview.status !== "ready") {
+    return html`<div class="detail-empty loading" role="status" aria-busy="true">
+      <span class="spin" aria-hidden="true"></span>Reading this run's figures…
+    </div>`;
+  }
+  const data = overview.data;
+  const strip = detail.strip ? html`<${NowStrip} strip=${detail.strip} />` : null;
+  if (!data.finished) {
+    return html`<div class="ov">
+      ${strip}
+      <div class="side-state" role="status">
+        <h3>No finished work yet</h3>
+        Figures appear when the first node finishes.
+      </div>
+      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} />
+      ${detail.running ? html`<${Breakdown} data=${Object.assign({}, data, { flows: [], items: null })} running=${detail.running} finished=${false} />` : null}
+    </div>`;
+  }
+  return html`<div class="ov">
+    ${strip}
+    <${OverviewTiles} data=${data} running=${detail.running} />
+    <${WallClock} clock=${data.clock} />
+    <${Breakdown} key=${runId} data=${data} running=${detail.running} finished=${true} />
+    <div class="pair">
+      <${Models} models=${data.models} />
+      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} />
+    </div>
+    <${Sessions} sessions=${data.sessions} live=${detail.head.state === "running" || detail.head.state === "blocked"} />
+  </div>`;
+}
+
+function DetailsTab({ detail }) {
+  return html`<div class="ov">
+    <${AttendLink} runId=${detail.run_id} />
+    ${detail.gates.length
+      ? null
+      : html`<div class="no-gate">
+          Nothing to answer — this run is <b>${detail.state}</b>${detail.node
+            ? html` at node <code>${detail.node}</code>`
+            : null}.
+        </div>`}
+    <div class="live-sec">
+      <div class="live-sec-head">Metrics</div>
+      <${Metrics} metrics=${detail.metrics} />
+    </div>
+    <div class="live-sec">
+      <div class="live-sec-head">Recent telemetry history</div>
+      <${LogTrail} key=${detail.id} lines=${detail.history || []} />
+    </div>
+  </div>`;
+}
+
+const BASE_TABS = [
+  ["overview", "Overview"],
+  ["details", "Details"],
+];
+
+function runDiffSize(runDiff) {
+  if (runDiff.status !== "ready") return null;
+  const add = runDiff.files.reduce((sum, file) => sum + file.addedLines, 0);
+  const del = runDiff.files.reduce((sum, file) => sum + file.deletedLines, 0);
+  return add || del ? { add, del } : null;
+}
+
+function clockTime(epochMs) {
+  const at = new Date(epochMs);
+  return [at.getHours(), at.getMinutes(), at.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
+}
+
+function StillNote({ still }) {
+  return html`<span class="sr-only" role="status">${still ? "The sidecar is still not answering." : ""}</span>`;
+}
+
+function StaleStrip({ lostAt, still, readAt, busy, onRetry }) {
+  useSecondTick();
+  const ago = fmtSpan((Date.now() - lostAt) / 1000);
+  return html`<div id="detail-stale-strip" class="stale-strip" role="group" aria-label="Sidecar not answering">
+    <${StillNote} still=${still} />
+    <b>${still ? "The sidecar is still not answering." : "The sidecar stopped answering " + ago + " ago."}</b>
+    ${still ? " It stopped answering " + ago + " ago." : ""} The run may still be working. This is the diff from ${clockTime(readAt)}.
+    <button type="button" class="btn ghost" disabled=${busy} onClick=${onRetry}>Retry now</button>
+  </div>`;
+}
+
+function StaleFiles({ id, lostAt, still }) {
+  useSecondTick();
+  const ago = fmtSpan((Date.now() - lostAt) / 1000);
+  return html`<div id="detail-files-stale" class="side-state">
+    <${StillNote} still=${still} />
+    <h3>The sidecar stopped answering ${ago} ago</h3>
+    The run may still be working.${still ? " The sidecar is still not answering." : ""}
+    <div class="acts"><button type="button" class="btn ghost" onClick=${() => loadRunFiles(id)}>Retry now</button></div>
+  </div>`;
+}
+
+function DiffRead({ runDiff, onRefresh }) {
+  useSecondTick();
+  const ago = Math.max(0, Math.round((Date.now() - runDiff.readAt) / 1000));
+  return html`<span id="detail-diff-read" class="dim" style="font-size:11px">${runDiff.refreshing ? "reading…" : "read " + clockTime(runDiff.readAt) + " · " + fmtSpan(ago) + " ago"}</span>
+    <button type="button" class="btn ghost" aria-label="Read the diff again" disabled=${runDiff.refreshing} onClick=${onRefresh}>Refresh</button>`;
+}
+
+function checkoutNames(snap) {
+  return snap.runDiff.repos.length ? snap.runDiff.repos : snap.runFiles.repos;
+}
+
+function checkoutFor(id, snap = store.get()) {
+  const repos = checkoutNames(snap);
+  const chosen = snap.checkouts[id] || "";
+  return repos.length && !repos.includes(chosen) ? repos[0] : chosen;
+}
+
+function setCheckout(id, name) {
+  resetRunFiles();
+  const snap = store.get();
+  store.set({
+    checkouts: Object.assign({}, snap.checkouts, { [id]: name }),
+    runFiles: Object.assign(idleRunFiles(), { repos: snap.runFiles.repos }),
+  });
+}
+
+function selectCheckout(id, name) {
+  if (name === checkoutFor(id)) return;
+  setCheckout(id, name);
+  if (sidecarDown(id)) showKept(id);
+  else loadRunDiff(id, true);
+}
+
+function CheckoutSelect({ id, repos, value }) {
+  return html`<select
+    class="repo-mini"
+    id="detail-checkout"
+    aria-label="Checkout"
+    value=${value}
+    onChange=${(e) => selectCheckout(id, e.target.value)}
+  >${repos.map((name) => html`<option key=${name} value=${name} selected=${name === value}>${name || "(workspace root)"}</option>`)}</select>`;
+}
+
+function diffViewFor(id, snap = store.get()) {
+  return snap.diffViews[id] === BRANCH_VIEW ? BRANCH_VIEW : UNCOMMITTED_VIEW;
+}
+
+function selectDiffView(id, view) {
+  if (view === diffViewFor(id)) return;
+  const snap = store.get();
+  store.set({ diffViews: Object.assign({}, snap.diffViews, { [id]: view }) });
+  if (sidecarDown(id)) showKept(id);
+  else loadRunDiff(id, true);
+}
+
+function DiffViewSwitch({ id, value }) {
+  return html`<${Segment}
+    id="detail-diff-view-switch"
+    label="Diff view"
+    value=${value}
+    marked=${true}
+    options=${[[UNCOMMITTED_VIEW, "Uncommitted"], [BRANCH_VIEW, "Since branch start"]]}
+    onPick=${(next) => selectDiffView(id, next)}
+  />`;
+}
+
+function DetailTabs({ id, tab, hasDiff, stale, runDiff, repos, checkout, view }) {
+  const tabs = hasDiff ? BASE_TABS.concat([["files", "Files"], ["diff", "Diff"]]) : BASE_TABS;
+  const size = hasDiff && !stale ? runDiffSize(runDiff) : null;
+  const switcher = hasDiff && tab === "diff" ? html`<${DiffViewSwitch} id=${id} value=${view} />` : null;
+  const picker = hasDiff && (tab === "diff" || tab === "files") && repos.length > 1
+    ? html`<${CheckoutSelect} id=${id} repos=${repos} value=${checkout} />`
+    : null;
+  const read = tab === "diff" && hasDiff && !stale && runDiff.readAt && !(view === BRANCH_VIEW && runDiff.start && runDiff.start.state !== "found")
+    ? html`<${DiffRead} runDiff=${runDiff} onRefresh=${() => loadRunDiff(runDiff.id)} />`
+    : null;
+  const onKeyDown = (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    const index = tabs.findIndex(([id]) => id === tab);
+    const next = tabs[(index + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length][0];
+    store.set({ tab: next });
+    requestAnimationFrame(() => {
+      const button = document.getElementById("tab-" + next);
+      if (button) button.focus();
+    });
+    e.preventDefault();
+  };
+  return html`<div class="dtabs">
+    <div class="dtablist" role="tablist" aria-label="Run detail" onKeyDown=${onKeyDown}>
+    ${tabs.map(([id, label]) => {
+      const counted = id === "diff" && size;
+      const marked = id === "diff" && stale;
+      return html`<button
+        type="button"
+        class="dtab"
+        role="tab"
+        id=${"tab-" + id}
+        aria-selected=${id === tab ? "true" : "false"}
+        aria-controls="detail-panel"
+        aria-label=${marked ? "Diff, stale" : counted ? "Diff, " + plural(size.add, "line", "lines") + " added, " + plural(size.del, "line", "lines") + " removed" : null}
+        tabindex=${id === tab ? "0" : "-1"}
+        onClick=${() => store.set({ tab: id })}
+      >${label}${marked ? html`<span id="detail-diff-stale" class="cnt"><span class="chip warn">stale</span></span>` : counted ? html`<span id="detail-diff-count" class="cnt"><span class="add">+${size.add}</span> <span class="del">−${size.del}</span></span>` : null}</button>`;
+    })}
+    </div>
+    ${switcher || picker || read ? html`<span class="right">${switcher}${picker}${read}</span>` : null}
+  </div>`;
+}
+
+function useHoldPlace() {
+  const held = useRef({ el: null, top: 0, scroll: 0, watcher: null });
+  useLayoutEffect(() => {
+    const now = held.current;
+    const hold = () => {
+      if (!now.el || !now.el.isConnected) return;
+      const top = now.el.getBoundingClientRect().top;
+      const moved = top - now.top;
+      now.top = top;
+      if (Math.abs(moved) >= 0.5 && now.scroll > 0) now.el.scrollTop = now.scroll + moved;
+      now.scroll = now.el.scrollTop;
+    };
+    const scroller = document.querySelector("#detail-panel > .ov");
+    if (scroller === now.el) {
+      hold();
+      return;
+    }
+    if (now.watcher) now.watcher.disconnect();
+    now.watcher = null;
+    now.el = scroller;
+    if (!scroller) return;
+    now.top = scroller.getBoundingClientRect().top;
+    now.scroll = scroller.scrollTop;
+    scroller.addEventListener("scroll", () => { now.scroll = scroller.scrollTop; });
+    if (typeof ResizeObserver !== "undefined") {
+      now.watcher = new ResizeObserver(hold);
+      now.watcher.observe(scroller);
+      for (const above of scroller.parentElement.children) {
+        if (above === scroller) break;
+        now.watcher.observe(above);
+      }
+    }
+  });
+  useEffect(() => () => {
+    if (held.current.watcher) held.current.watcher.disconnect();
+  }, []);
 }
 
 function Detail() {
-  const { selected, detail } = useStore();
-  if (!selected) {
-    return html`<div class="detail-empty">
-      Select a run to see its activity, answer its gate, and read its metrics and logs.
-    </div>`;
-  }
+  const snap = useStore();
+  const { selected, detail, tab: chosen, gatesCollapsed, runs, runDiff, runFiles } = snap;
+  useHoldPlace();
+  const row = runs.find((run) => run.id === selected);
+  const container = !!row && !row.native && row.state !== "finished";
+  const live = container && row.sidecar;
+  const stale = container && !row.sidecar && !!snap.diffKept[selected];
+  const hasDiff = live || stale;
+  const mark = stale
+    ? { lostAt: snap.sidecarLost[selected] || Date.now(), still: !!snap.stillDown[selected], anyRead: Object.keys(snap.diffKept[selected].entries).length > 0 }
+    : null;
+  useRunDiff(selected, live, stale, runDiff.id, runDiff.shownKept);
+  useRunFiles(selected, live, chosen === "files", runFiles.id);
+  const tab = (chosen === "diff" || chosen === "files") && !hasDiff ? "overview" : chosen;
+  useEffect(() => {
+    if (chosen !== tab) store.set({ tab });
+  }, [chosen, tab]);
+  if (!selected) return null;
   if (!detail) return html`<div class="detail-empty loading" role="status" aria-label="Loading telemetry history" aria-busy="true">
     <span class="spin" aria-hidden="true"></span>Loading telemetry history…
   </div>`;
   if (!detail.found) return html`<div class="detail-empty">Run not found.</div>`;
   return html`
-    <${RunHead} head=${detail.head} />
-    <div class="detail-body">
-      <${AttendLink} runId=${detail.run_id} />
-      ${detail.gates.length
-        ? detail.gates.map((gate) => html`<${GateBlock} key=${gate.file_path} workflowId=${detail.id} gate=${gate} />`)
-        : html`<div class="no-gate">
-            Nothing to answer — this run is <b>${detail.state}</b>${detail.node
-              ? html` at node <code>${detail.node}</code>`
-              : null}.
-          </div>`}
-      <div class="live-sec">
-        <div class="live-sec-head">Metrics</div>
-        <${Metrics} metrics=${detail.metrics} />
-      </div>
-      <div class="live-sec">
-        <div class="live-sec-head">Recent telemetry history</div>
-        <${LogTrail} key=${detail.id} lines=${detail.history || []} />
-      </div>
-      <${DiffDisclosure} key=${detail.id} containerId=${detail.id} />
+    <${RunHead} head=${detail.head} onClose=${closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
+    ${detail.gates.length ? html`<${GateStrip} detail=${detail} collapsed=${gatesCollapsed} />` : null}
+    <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} />
+    <div class="fill" id="detail-panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
+      ${tab === "diff"
+        ? html`<${DiffTab} runDiff=${runDiff} mark=${mark} />`
+        : tab === "files"
+          ? (mark ? html`<${StaleFiles} id=${selected} lostAt=${mark.lostAt} still=${mark.still} />` : html`<${FilesTab} runFiles=${runFiles} />`)
+          : tab === "details"
+            ? html`<${DetailsTab} detail=${detail} />`
+            : html`<${Overview} detail=${detail} />`}
     </div>
   `;
 }
@@ -698,7 +1633,13 @@ let detailSeq = 0;
 
 async function select(id) {
   const seq = ++detailSeq;
-  store.set({ selected: id, detail: null });
+  overviewSeq++;
+  const same = id === store.get().selected;
+  const breakdown = same ? store.get().breakdown : { view: "flow", sort: "time" };
+  const gatesCollapsed = same ? store.get().gatesCollapsed : false;
+  runDiffSeq++;
+  resetRunFiles();
+  store.set({ selected: id, detail: null, tab: "overview", gatesCollapsed, runDiff: idleRunDiff(), runFiles: idleRunFiles(), overview: { runId: "", status: "idle", data: null, rev: 0 }, breakdown });
   if (sendWatch(id)) return;
   try {
     const response = await fetch("/worker/" + encodeURIComponent(id));
@@ -707,6 +1648,15 @@ async function select(id) {
   } catch (err) {
     // Reconnecting re-declares the watch and seeds the pane.
   }
+}
+
+function closeDetail() {
+  detailSeq++;
+  overviewSeq++;
+  sendWatch("");
+  runDiffSeq++;
+  resetRunFiles();
+  store.set({ selected: null, detail: null, tab: "overview", gatesCollapsed: false, runDiff: idleRunDiff(), runFiles: idleRunFiles(), overview: { runId: "", status: "idle", data: null, rev: 0 }, breakdown: { view: "flow", sort: "time" } });
 }
 
 /** A pushed refresh of the open run. It carries the whole pane — gates included —
@@ -752,148 +1702,6 @@ function wireAnswerForm() {
   });
 }
 
-// --------------------------------------------------------------------------- //
-// Shared container+repo selection (Files / Diff)
-// --------------------------------------------------------------------------- //
-const menuWrap = document.getElementById("repo-menu-wrap");
-const menuBox = menuWrap.querySelector(".repo-menu-box");
-const repoSearch = document.getElementById("repo-search");
-let menuInvoker = null;
-
-/** The picker's rows, flattened from the server's per-container groups and
- *  filtered by the search box — the list the keyboard actually moves through. */
-function repoItems(repoState) {
-  const q = repoState.query.trim().toLowerCase();
-  const items = [];
-  repoState.groups.forEach((group) => {
-    group.repos.forEach((entry) => {
-      if (q && entry.label.toLowerCase().indexOf(q) < 0) return;
-      items.push({
-        container: group.container,
-        repo: entry.repo,
-        label: entry.label,
-        state: group.state,
-        type: group.type,
-        type_hue: group.type_hue,
-      });
-    });
-  });
-  return items;
-}
-
-function RepoMenu() {
-  const { repo } = useStore();
-  const items = repoItems(repo);
-  const active = Math.max(0, Math.min(items.length - 1, repo.active));
-  // The combobox lives in the static shell, outside this island, so the
-  // active-option pointer is published to it here rather than by the keyboard
-  // handler — this is the one place that knows which row ended up where.
-  useEffect(() => {
-    const current = items[active];
-    if (!current) {
-      repoSearch.removeAttribute("aria-activedescendant");
-      return;
-    }
-    repoSearch.setAttribute("aria-activedescendant", "repo-opt-" + active);
-    const el = document.getElementById("repo-opt-" + active);
-    if (el) el.scrollIntoView({ block: "nearest" });
-  });
-  if (repo.loading) return html`<div class="repo-empty">Loading…</div>`;
-  if (!items.length) return html`<div class="repo-empty">No repositories available.</div>`;
-  return items.map(
-    (item, i) => html`<div
-      class=${"repo-item" + (i === active ? " active" : "")}
-      id=${"repo-opt-" + i}
-      key=${item.container + "/" + item.repo}
-      role="option"
-      aria-selected=${i === active ? "true" : "false"}
-      data-container=${item.container}
-      data-repo=${item.repo}
-      data-label=${item.label}
-      onClick=${() => {
-        selectRepo(item);
-        closeRepoMenu();
-      }}
-    >
-      <${StateDot} state=${item.state} />
-      <${TypeBadge} type=${item.type} hue=${item.type_hue} />
-      <span class="repo-item-label">${item.label}</span>
-    </div>`
-  );
-}
-
-function openRepoMenu(btn) {
-  const r = btn.getBoundingClientRect();
-  menuInvoker = btn;
-  menuBox.style.left = r.left + "px";
-  menuBox.style.top = r.bottom + 4 + "px";
-  menuBox.style.minWidth = Math.max(r.width, 240) + "px";
-  menuWrap.classList.add("open");
-  repoSearch.setAttribute("aria-expanded", "true");
-  repoSearch.value = "";
-  setIn("repo", { loading: true, groups: [], query: "", active: 0 });
-  fetch("/repos")
-    .then((r2) => r2.json())
-    .then((groups) => setIn("repo", { loading: false, groups: groups || [], active: 0 }))
-    .catch(() => setIn("repo", { loading: false, groups: [], active: 0 }));
-  repoSearch.focus();
-}
-
-function closeRepoMenu() {
-  if (!menuWrap.classList.contains("open")) return;
-  menuWrap.classList.remove("open");
-  repoSearch.setAttribute("aria-expanded", "false");
-  repoSearch.removeAttribute("aria-activedescendant");
-  // Escape/Enter close with focus still in the box: return it to the picker, never <body>
-  if (menuInvoker && menuWrap.contains(document.activeElement)) menuInvoker.focus();
-}
-
-function moveRepoActive(delta) {
-  const repo = store.get().repo;
-  const items = repoItems(repo);
-  if (!items.length) return;
-  setIn("repo", { active: Math.max(0, Math.min(items.length - 1, repo.active + delta)) });
-}
-
-function selectRepo(item) {
-  setIn("repo", { container: item.container, dir: item.repo || "", label: item.label });
-  document.querySelectorAll(".repo-picker-label").forEach((el) => {
-    el.textContent = item.label;
-  });
-  loadActivePane();
-}
-
-function loadActivePane() {
-  const mode = store.get().mode;
-  if (mode === "files") loadFiles();
-  else if (mode === "diff") loadDiff();
-}
-
-// --------------------------------------------------------------------------- //
-// Files panel — flat paths in, tree + highlighted viewer out
-// --------------------------------------------------------------------------- //
-function FilesTree() {
-  const { repo, files } = useStore();
-  if (!repo.container) return html`<div class="fd-empty">Pick a container / repo above.</div>`;
-  if (files.status === "loading") return html`<div class="fd-empty">Loading files…</div>`;
-  if (files.status === "error") return html`<div class="fd-empty">failed to load</div>`;
-  if (!files.paths.length) return html`<div class="fd-empty">(no files)</div>`;
-  const leaf = (node) => {
-    const path = node.entry.path;
-    const on = path === files.path;
-    return html`<button
-      type="button"
-      key=${path}
-      class=${"tree-file" + (on ? " active" : "")}
-      aria-current=${on ? "true" : null}
-      onClick=${() => openFile(path)}
-    >
-      <span class="fname">${node.name}</span>
-    </button>`;
-  };
-  return html`<${TreeLevel} node=${buildTree(files.paths.map((p) => ({ path: p })))} leaf=${leaf} />`;
-}
-
 /** highlight.js output is escaped HTML, so it is safe to set; `null` means the
  *  library is absent or choked and the caller should fall back to a text node. */
 function highlight(text, lang) {
@@ -906,132 +1714,36 @@ function highlight(text, lang) {
   }
 }
 
-function FileView() {
-  const { files } = useStore();
-  const view = files.view;
-  if (view.status === "idle") return html`<div class="fd-empty">Select a file to view it.</div>`;
-  if (view.status === "loading") return html`<div class="fd-empty">Loading…</div>`;
-  if (view.status === "error") return html`<div class="fd-empty">failed to load</div>`;
-  if (!view.content) {
-    return html`
-      <div class="file-head">${view.path}</div>
-      <div class="file-body"><div class="fd-empty">(empty or binary file)</div></div>
-    `;
-  }
-  // The language comes from the server (projection.file_lang) so the extension
-  // table is one table, next to the rest of the presentation policy.
-  const markup = highlight(view.content, view.lang);
-  const code =
-    markup === null
-      ? html`<code class=${view.lang ? "language-" + view.lang : null}>${view.content}</code>`
-      : html`<code
-          class=${view.lang ? "language-" + view.lang : null}
-          dangerouslySetInnerHTML=${{ __html: markup }}
-        ></code>`;
-  return html`
-    <div class="file-head">${view.path}</div>
-    <div class="file-body"><pre class="file-pre hljs">${code}</pre></div>
-  `;
-}
-
-function loadFiles() {
-  const repo = store.get().repo;
-  if (!repo.container) return;
-  setIn("files", { status: "loading", paths: [], path: null, view: { status: "idle", path: "", content: "", lang: "" } });
-  fetch("/files/" + encodeURIComponent(repo.container) + "?repo=" + encodeURIComponent(repo.dir))
-    .then((r) => r.json())
-    .then((body) => setIn("files", { status: "ready", paths: body.paths || [] }))
-    .catch(() => setIn("files", { status: "error", paths: [] }));
-}
-
-function openFile(path) {
-  const repo = store.get().repo;
-  setIn("files", { path: path, view: { status: "loading", path: path, content: "", lang: "" } });
-  fetch(
-    "/file/" +
-      encodeURIComponent(repo.container) +
-      "?repo=" +
-      encodeURIComponent(repo.dir) +
-      "&path=" +
-      encodeURIComponent(path)
-  )
-    .then((r) => r.json())
-    .then((body) => {
-      if (store.get().files.path !== path) return; // a later click won the race
-      setIn("files", { view: { status: "ready", path: body.path || path, content: body.content || "", lang: body.lang || "" } });
-    })
-    .catch(() => {
-      if (store.get().files.path !== path) return;
-      setIn("files", { view: { status: "error", path: path, content: "", lang: "" } });
-    });
+// The language comes from the server (projection.file_lang) so the extension
+// table is one table, next to the rest of the presentation policy.
+function fileCode(content, lang) {
+  const markup = highlight(content, lang);
+  return markup === null
+    ? html`<code class=${lang ? "language-" + lang : null}>${content}</code>`
+    : html`<code
+        class=${lang ? "language-" + lang : null}
+        dangerouslySetInnerHTML=${{ __html: markup }}
+      ></code>`;
 }
 
 // --------------------------------------------------------------------------- //
-// Diff panel — raw unified diff in, changeset tree + rendered diff out
+// Diff rendering shared by the run Diff tab
 // --------------------------------------------------------------------------- //
 // diff2html both parses the unified text and renders it, and it escapes what it
 // emits — which is why the raw diff rides through the wire unsplit rather than
 // having half a parser reimplemented server-side.
-function diffMarkup(text, drawFileList) {
+function fileDiffMarkup(file) {
   if (!window.Diff2Html) return "";
-  return Diff2Html.html(text, {
-    drawFileList: !!drawFileList,
-    matching: "lines",
-    outputFormat: "line-by-line",
-    colorScheme: "dark",
-  });
+  return Diff2Html.html([file], { drawFileList: false, matching: "lines", outputFormat: "line-by-line", colorScheme: "dark" });
 }
 
-function DiffTree() {
-  const { repo, diff } = useStore();
-  if (!repo.container) return html`<div class="fd-empty">Pick a container / repo above.</div>`;
-  if (diff.status === "loading") return html`<div class="fd-empty">Loading changes…</div>`;
-  if (diff.status === "error") return html`<div class="fd-empty">failed to load</div>`;
-  if (!diff.files.length) return html`<div class="fd-empty">(no changes)</div>`;
-  const entries = diff.files.map((file, i) => ({
+function diffEntries(files) {
+  return files.map((file, i) => ({
     path: file.newName && file.newName !== "/dev/null" ? file.newName : file.oldName,
     idx: i,
     add: file.addedLines,
     del: file.deletedLines,
   }));
-  const leaf = (node) => {
-    const on = node.entry.idx === diff.idx;
-    return html`<button
-      type="button"
-      key=${node.entry.idx}
-      class=${"tree-file" + (on ? " active" : "")}
-      aria-current=${on ? "true" : null}
-      onClick=${() => setIn("diff", { idx: node.entry.idx })}
-    >
-      <span class="fname">${node.name}</span>
-      <span class="fstat"><span class="add">+${node.entry.add}</span> <span class="del">-${node.entry.del}</span></span>
-    </button>`;
-  };
-  return html`<${TreeLevel} node=${buildTree(entries)} leaf=${leaf} />`;
-}
-
-function DiffView() {
-  const { diff } = useStore();
-  const file = diff.files[diff.idx];
-  if (!file) return html`<div class="fd-empty">Select a changed file to see its diff.</div>`;
-  const markup = window.Diff2Html
-    ? Diff2Html.html([file], { drawFileList: false, matching: "lines", outputFormat: "line-by-line", colorScheme: "dark" })
-    : "";
-  return html`<div dangerouslySetInnerHTML=${{ __html: markup }}></div>`;
-}
-
-function loadDiff() {
-  const repo = store.get().repo;
-  if (!repo.container) return;
-  setIn("diff", { status: "loading", files: [], idx: -1 });
-  fetch("/diff/" + encodeURIComponent(repo.container) + "?repo=" + encodeURIComponent(repo.dir))
-    .then((r) => r.json())
-    .then((body) => {
-      const text = body.diff || "";
-      const files = text.trim() && window.Diff2Html ? Diff2Html.parse(text) : [];
-      setIn("diff", { status: "ready", files: files, idx: -1 });
-    })
-    .catch(() => setIn("diff", { status: "error", files: [], idx: -1 }));
 }
 
 // --------------------------------------------------------------------------- //
@@ -1552,6 +2264,7 @@ function stopDispatchPoll() {
 // Activity bar (mode switch)
 // --------------------------------------------------------------------------- //
 function setMode(mode) {
+  if (!document.getElementById(mode + "-pane")) mode = "runs";
   document.querySelector(".app").dataset.mode = mode;
   document.querySelectorAll(".act-btn").forEach((b) => {
     const on = b.dataset.mode === mode;
@@ -1559,11 +2272,8 @@ function setMode(mode) {
     b.setAttribute("aria-pressed", String(on));
   });
   store.set({ mode: mode });
-  closeRepoMenu();
   if (mode !== "dispatch") stopDispatchPoll();
-  if (mode === "files") loadFiles();
-  else if (mode === "diff") loadDiff();
-  else if (mode === "attend") loadAttend();
+  if (mode === "attend") loadAttend();
   else if (mode === "dispatch") loadDispatch();
   else if (mode === "settings") loadAttendSettings();
 }
@@ -1750,39 +2460,6 @@ function onAnswerRejected(msg) {
 // Wiring
 // --------------------------------------------------------------------------- //
 function wireEvents() {
-  repoSearch.addEventListener("input", (e) => setIn("repo", { query: e.target.value, active: 0 }));
-  repoSearch.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-      e.preventDefault();
-      moveRepoActive(e.key === "ArrowDown" ? 1 : -1);
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const repo = store.get().repo;
-      const items = repoItems(repo);
-      const item = items[Math.max(0, Math.min(items.length - 1, repo.active))];
-      if (item) {
-        selectRepo(item);
-        closeRepoMenu();
-      }
-    }
-  });
-  document.querySelectorAll(".repo-picker").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (menuWrap.classList.contains("open")) closeRepoMenu();
-      else openRepoMenu(btn);
-    });
-  });
-  document.addEventListener("click", (e) => {
-    if (
-      menuWrap.classList.contains("open") &&
-      !e.target.closest("#repo-menu-wrap") &&
-      !e.target.closest(".repo-picker")
-    ) {
-      closeRepoMenu();
-    }
-  });
-
   document.getElementById("activitybar").addEventListener("click", (e) => {
     const btn = e.target.closest(".act-btn");
     if (btn) setMode(btn.dataset.mode);
@@ -1796,7 +2473,7 @@ function wireEvents() {
   // re-rendered on every push, and a delegated handler outlives every one of them.
   document.body.addEventListener("click", (e) => {
     if (e.target.closest("form")) return; // don't hijack the answer form
-    if (e.target.closest("#repo-menu-wrap, .repo-picker, .fd-tree")) return; // panel-local handlers own these
+    if (e.target.closest(".fd-tree")) return; // panel-local handlers own these
     const node = e.target.closest("[data-worker-id]");
     if (node) {
       select(node.dataset.workerId);
@@ -1843,7 +2520,6 @@ function wireEvents() {
     }
     if (e.key === "Escape") {
       closePalette();
-      closeRepoMenu();
       closeDispatchEnqueue();
       return;
     }
@@ -1864,7 +2540,7 @@ function wireEvents() {
       if (hit) choosePaletteHit(hit.id);
       return;
     }
-    const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
     if (!typing && (e.key === "j" || e.key === "k")) {
       const rows = [].slice.call(document.querySelectorAll("#runs-list .row"));
       const idx = rows.findIndex((r) => r.dataset.workerId === store.get().selected);
@@ -1901,11 +2577,6 @@ const ISLANDS = [
   ["runs-list", Fleet],
   ["statusbar", StatusBar],
   ["detail", Detail],
-  ["repo-menu", RepoMenu],
-  ["files-tree", FilesTree],
-  ["file-view", FileView],
-  ["diff-tree", DiffTree],
-  ["diff-view", DiffView],
   ["attend-list", AttendList],
   ["attend-detail", AttendDetail],
   ["dispatch-queues", DispatchQueues],
@@ -1917,7 +2588,452 @@ const ISLANDS = [
 ];
 ISLANDS.forEach(([id, Component]) => render(html`<${Component} />`, document.getElementById(id)));
 
+const runsPane = document.getElementById("runs-pane");
+store.subscribe((snap) => runsPane.classList.toggle("has-detail", !!snap.selected));
+
+const runsButton = document.querySelector('.act-btn[data-mode="runs"]');
+const runsBadge = document.getElementById("runs-badge");
+function paintRunsBadge(snap) {
+  const blocked = ((snap.status || {}).counts || {}).blocked || 0;
+  const show = snap.mode !== "runs" && blocked > 0;
+  const name = show ? "Runs, " + plural(blocked, "blocked run", "blocked runs") : "Runs";
+  runsBadge.hidden = !show;
+  runsBadge.textContent = show ? String(blocked) : "";
+  runsButton.setAttribute("aria-label", name);
+  runsButton.title = name;
+}
+store.subscribe(paintRunsBadge);
+paintRunsBadge(store.get());
+
 wireEvents();
 wireAnswerForm();
 wireDispatchEnqueueForm();
 startConnection();
+
+// --------------------------------------------------------------------------- //
+// Run Diff tab — a connected container run's uncommitted change
+// --------------------------------------------------------------------------- //
+// The read is driven by the selection and the sidecar's presence, not by the tab
+// being open: the tab's size shows before it is opened, and the one read serves both.
+
+function idleRunDiff() {
+  return { id: "", status: "idle", view: UNCOMMITTED_VIEW, files: [], untracked: [], path: null, readAt: 0, reported: true, refreshing: false, repos: [], start: null, startState: "", key: "", shownKept: false };
+}
+
+function keptKey(name, view) {
+  return name + "\n" + view;
+}
+
+function keepDiff(id, repo, view, entry) {
+  const snap = store.get();
+  const prev = snap.diffKept[id] || { repos: [], entries: {} };
+  const repos = entry.repos.length ? entry.repos : prev.repos;
+  const kept = { repos, entries: Object.assign({}, prev.entries, { [keptKey(repo || repos[0] || "", view)]: entry }) };
+  store.set({ diffKept: Object.assign({}, snap.diffKept, { [id]: kept }) });
+}
+
+function pickDiffFile(path) {
+  const { id, key } = store.get().runDiff;
+  setIn("runDiff", { path });
+  const kept = store.get().diffKept[id];
+  if (!kept || !kept.entries[key]) return;
+  const entries = Object.assign({}, kept.entries, { [key]: Object.assign({}, kept.entries[key], { path }) });
+  store.set({ diffKept: Object.assign({}, store.get().diffKept, { [id]: Object.assign({}, kept, { entries }) }) });
+}
+
+function showKept(id) {
+  const snap = store.get();
+  const kept = snap.diffKept[id];
+  if (!kept) return;
+  runDiffSeq++;
+  const view = diffViewFor(id, snap);
+  const chosen = snap.checkouts[id] || "";
+  const name = kept.repos.length && !kept.repos.includes(chosen) ? kept.repos[0] : chosen;
+  const entry = kept.entries[keptKey(name, view)];
+  const shown = entry
+    ? Object.assign({}, entry, { id, shownKept: true, refreshing: false })
+    : Object.assign(idleRunDiff(), { id, view, status: "unread", repos: kept.repos, shownKept: true });
+  store.set({ runDiff: shown });
+}
+
+function markStill(id) {
+  store.set({ stillDown: Object.assign({}, store.get().stillDown, { [id]: true }) });
+}
+
+let runDiffSeq = 0;
+
+function useRunDiff(id, live, stale, have, shownKept) {
+  useEffect(() => {
+    if (live && (have !== id || shownKept)) loadRunDiff(id);
+    else if (stale && (have !== id || !shownKept)) showKept(id);
+    else if (!live && !stale && have) {
+      runDiffSeq++;
+      setIn("runDiff", idleRunDiff());
+    }
+  }, [id, live, stale, have, shownKept]);
+}
+
+function loadRunDiff(id, switched) {
+  const seq = ++runDiffSeq;
+  const before = store.get().runDiff;
+  const known = before.id === id ? before.repos : [];
+  const view = diffViewFor(id);
+  const refresh = !switched && before.id === id && before.status === "ready" && before.view === view;
+  const repo = checkoutFor(id);
+  if (!store.get().diffKept[id]) store.set({ diffKept: Object.assign({}, store.get().diffKept, { [id]: { repos: [], entries: {} } }) });
+  if (refresh) setIn("runDiff", { refreshing: true });
+  else setIn("runDiff", Object.assign(idleRunDiff(), { id, view, status: "loading", repos: known }));
+  const failed = (repos) => {
+    if (seq === runDiffSeq) setIn("runDiff", Object.assign(idleRunDiff(), { id, view, status: "failed", repos: repos || known }));
+  };
+  const miss = () => {
+    if (seq !== runDiffSeq) return;
+    if (sidecarDown(id)) {
+      markStill(id);
+      showKept(id);
+    } else failed();
+  };
+  const query = "?repo=" + encodeURIComponent(repo) + (view === BRANCH_VIEW ? "&view=" + BRANCH_VIEW : "");
+  fetch("/diff/" + encodeURIComponent(id) + query)
+    .then((response) => {
+      if (!response.ok) throw new Error("diff " + response.status);
+      return response.json();
+    })
+    .then((body) => {
+      if (seq !== runDiffSeq) return;
+      const repos = body.repos || [];
+      if (repos.length && repo && !repos.includes(repo)) {
+        setCheckout(id, repos[0]);
+        return loadRunDiff(id, true);
+      }
+      if (body.served === "volume" || (body.failed && sidecarDown(id))) return miss();
+      const text = body.diff || "";
+      if (body.failed || (text.trim() && !window.Diff2Html)) return failed(repos);
+      const start = view !== BRANCH_VIEW ? null : branchStart(body);
+      const shown = !start || start.state === "found";
+      const files = shown && text.trim() ? Diff2Html.parse(text) : [];
+      const entry = {
+        id,
+        view,
+        start,
+        startState: start ? start.state : "",
+        status: "ready",
+        files,
+        untracked: shown ? body.untracked || [] : [],
+        reported: body.reported !== false,
+        readAt: Date.now(),
+        refreshing: false,
+        path: refresh ? before.path : null,
+        repos,
+        key: keptKey(repo || repos[0] || "", view),
+        shownKept: false,
+      };
+      setIn("runDiff", entry);
+      keepDiff(id, repo, view, entry);
+    })
+    .catch(miss);
+}
+
+const UNTRACKED_GROUP = "Not tracked by git yet";
+
+function branchStart(body) {
+  if (!body.based) return { state: "old", commit: "", branch: "", ref: "" };
+  const state = body.base_reason === "default-branch" ? "default-branch" : body.base_reason ? "not-found" : "found";
+  return { state, commit: body.base || "", branch: body.base_branch || "", ref: body.base_ref || "" };
+}
+
+function startName(start) {
+  return start.commit.slice(0, 7) + " on " + start.branch;
+}
+
+function BranchStartNotice({ runDiff }) {
+  const start = runDiff.start;
+  if (start.state === "old") {
+    return html`<div class="fd-view"><div id="detail-diff-branch-old" class="detail-empty">This view needs a newer sidecar. Uncommitted still works.</div></div>`;
+  }
+  if (start.state === "default-branch") {
+    return html`<div class="fd-view"><div id="detail-diff-branch-default" class="detail-empty">This checkout is on ${start.branch}, its default branch, so it has no branch of its own to compare.</div></div>`;
+  }
+  return html`<div id="detail-diff-branch-missing" class="side-state" role="status">
+    <h3>Where this branch started could not be found</h3>
+    ${start.branch
+      ? "This branch shares no history with " + start.branch + ". Uncommitted still works."
+      : "The checkout has no default branch to compare with. Uncommitted still works."}
+    <div class="acts"><button type="button" class="btn ghost" onClick=${() => loadRunDiff(runDiff.id)}>Retry now</button></div>
+  </div>`;
+}
+
+function DiffTab({ runDiff, mark }) {
+  const strip = mark && runDiff.status === "ready"
+    ? html`<${StaleStrip} lostAt=${mark.lostAt} still=${mark.still} readAt=${runDiff.readAt} busy=${runDiff.refreshing} onRetry=${() => loadRunDiff(runDiff.id)} />`
+    : null;
+  return html`${strip}<${DiffBody} runDiff=${runDiff} mark=${mark} />`;
+}
+
+function DiffBody({ runDiff, mark }) {
+  const branch = runDiff.view === BRANCH_VIEW;
+  if (runDiff.status === "unread" && mark) {
+    return html`<div id="detail-diff-unread" class="side-state">
+      <${StillNote} still=${mark.still} />
+      <h3>${mark.anyRead ? "This view was not read before the sidecar stopped answering" : "The sidecar stopped answering before a diff was read"}</h3>
+      The run may still be working.${mark.still ? " The sidecar is still not answering." : ""}
+      <div class="acts"><button type="button" class="btn ghost" onClick=${() => loadRunDiff(runDiff.id)}>Retry now</button></div>
+    </div>`;
+  }
+  if (runDiff.status === "idle" || runDiff.status === "loading" || runDiff.status === "unread") {
+    return html`<div class="detail-empty loading" role="status" aria-busy="true">
+      <span class="spin" aria-hidden="true"></span>${branch ? "Reading the change since the branch started…" : "Reading the diff…"}
+    </div>`;
+  }
+  if (runDiff.status === "failed") {
+    return html`<div id="detail-diff-unreadable" class="side-state" role="alert">
+      <h3>${branch ? "This view could not be read" : "This diff could not be read"}</h3>
+      ${branch ? "This does not mean there is no change." : "This does not mean there are no changes."}
+      <div class="acts"><button type="button" class="btn ghost" onClick=${() => loadRunDiff(runDiff.id)}>Retry now</button></div>
+    </div>`;
+  }
+  if (branch && runDiff.start.state !== "found") return html`<${BranchStartNotice} runDiff=${runDiff} />`;
+  if (!runDiff.files.length && !runDiff.untracked.length) {
+    if (branch) {
+      return html`<div class="fd-view"><div id="detail-diff-branch-empty" class="detail-empty">This branch has no change since it started at ${startName(runDiff.start)}.</div></div>`;
+    }
+    return html`<div class="fd-view"><div class="detail-empty">${runDiff.reported
+      ? "There are no uncommitted changes in this checkout."
+      : "This sidecar is too old to report a failed read, so it cannot confirm there are no changes."}</div></div>`;
+  }
+  const entries = diffEntries(runDiff.files);
+  const tracked = compactDirs(buildTree(entries));
+  const untrackedNode = {
+    dirs: {},
+    files: runDiff.untracked.map((path) => ({ name: path, entry: { path, untracked: true } })),
+  };
+  const paths = new Map(entries.map((entry) => [entry.path, entry]));
+  runDiff.untracked.forEach((path) => paths.set(path, { path, untracked: true }));
+  const firstTracked = firstLeaf(tracked);
+  const current = paths.has(runDiff.path) ? runDiff.path : firstTracked ? firstTracked.entry.path : null;
+  const leaf = (node) => {
+    const on = node.entry.path === current;
+    return html`<button
+      type="button"
+      key=${(node.entry.untracked ? "u:" : "t:") + node.entry.path}
+      class=${"tree-file" + (on ? " active" : "")}
+      aria-current=${on ? "true" : null}
+      onClick=${() => pickDiffFile(node.entry.path)}
+    >
+      <span class="fname">${node.name}</span>
+      ${node.entry.untracked ? null : html`<span class="fstat"><span class="add">+${node.entry.add}</span> <span class="del">−${node.entry.del}</span></span>`}
+    </button>`;
+  };
+  const chosen = current === null ? null : paths.get(current);
+  let view;
+  if (!chosen) view = html`<div class="detail-empty">${branch ? "No tracked file has changed since this branch started at " + startName(runDiff.start) + "." : "No tracked file has changed in this checkout."}</div>`;
+  else if (chosen.untracked) view = html`<div class="detail-empty">${chosen.path} has no diff because git does not track it yet.</div>`;
+  else view = html`<${RunFileDiff} file=${runDiff.files[chosen.idx]} entry=${chosen} scope=${branch ? "since " + startName(runDiff.start) : "uncommitted"} title=${branch ? "against " + runDiff.start.commit + " from " + runDiff.start.ref : null} />`;
+  return html`<div class=${"fd-split" + (mark ? " stale" : "")}>
+    <div class="fd-tree">
+      <${TreeLevel} node=${tracked} leaf=${leaf} />
+      ${runDiff.untracked.length ? html`<${TreeDir} name=${UNTRACKED_GROUP} node=${untrackedNode} leaf=${leaf} />` : null}
+    </div>
+    <div class="fd-view">${view}</div>
+  </div>`;
+}
+
+function RunFileDiff({ file, entry, scope, title }) {
+  const renamed = file.oldName && file.newName && file.oldName !== file.newName && !file.isNew && !file.isDeleted;
+  const kind = file.isNew ? "new file" : file.isDeleted ? "deleted file" : renamed ? "renamed from " + file.oldName : "";
+  return html`<div class="run-file-diff">
+    <div id="detail-diff-file-head" class="diff-head">
+      <span class="diff-path">${entry.path}</span>
+      <span class="add">+${entry.add}</span> <span class="del">−${entry.del}</span>
+      ${kind ? html`<span class="dim">${kind}</span>` : null}
+      <span class="dim diff-scope" title=${title}>${scope}</span>
+    </div>
+    <div dangerouslySetInnerHTML=${{ __html: fileDiffMarkup(file) }}></div>
+  </div>`;
+}
+
+function firstLeaf(node) {
+  const dirs = Object.keys(node.dirs).sort();
+  for (const name of dirs) {
+    const found = firstLeaf(node.dirs[name]);
+    if (found) return found;
+  }
+  const files = node.files.slice().sort((a, b) => a.name.localeCompare(b.name));
+  return files.length ? files[0] : null;
+}
+
+// --------------------------------------------------------------------------- //
+// Run Files tab — a connected container run's checkout, read-only
+// --------------------------------------------------------------------------- //
+// Unlike the Diff read, the tree is read when the tab is first opened for a
+// selection, so selecting a run costs no tree read. Leaving the tab keeps the
+// tree, the open file and the collapsed folders; selecting another run, or losing the sidecar, drops them.
+function idleRunFiles() {
+  return {
+    id: "",
+    status: "idle",
+    paths: [],
+    reported: true,
+    repos: [],
+    path: null,
+    shut: {},
+    view: { status: "idle", content: "", lang: "", reported: true },
+  };
+}
+
+function toggleRunFolder(key) {
+  const shut = Object.assign({}, store.get().runFiles.shut);
+  if (shut[key]) delete shut[key];
+  else shut[key] = true;
+  setIn("runFiles", { shut });
+}
+
+let runFilesSeq = 0;
+let runFileSeq = 0;
+
+function resetRunFiles() {
+  runFilesSeq++;
+  runFileSeq++;
+}
+
+function useRunFiles(id, present, open, have) {
+  useEffect(() => {
+    if (present && open && have !== id) loadRunFiles(id);
+    else if (!present && have) {
+      resetRunFiles();
+      setIn("runFiles", idleRunFiles());
+    }
+  }, [id, present, open, have]);
+}
+
+function loadRunFiles(id) {
+  resetRunFiles();
+  const seq = runFilesSeq;
+  const known = store.get().runFiles.repos;
+  const repo = checkoutFor(id);
+  if (!sidecarDown(id)) setIn("runFiles", Object.assign(idleRunFiles(), { id, status: "loading", repos: known }));
+  const failed = (repos) => {
+    if (seq === runFilesSeq) setIn("runFiles", Object.assign(idleRunFiles(), { id, status: "failed", repos: repos || known }));
+  };
+  const miss = () => {
+    if (seq !== runFilesSeq) return;
+    if (sidecarDown(id)) markStill(id);
+    else failed();
+  };
+  fetch("/files/" + encodeURIComponent(id) + "?repo=" + encodeURIComponent(repo))
+    .then((response) => {
+      if (!response.ok) throw new Error("files " + response.status);
+      return response.json();
+    })
+    .then((body) => {
+      if (seq !== runFilesSeq) return;
+      const repos = body.repos || [];
+      if (repos.length && repo && !repos.includes(repo)) {
+        setCheckout(id, repos[0]);
+        return loadRunDiff(id, true);
+      }
+      if (body.served === "volume" || (body.failed && sidecarDown(id))) return miss();
+      if (body.failed) return failed(repos);
+      setIn("runFiles", { status: "ready", paths: body.paths || [], reported: body.reported !== false, repos });
+    })
+    .catch(miss);
+}
+
+function openRunFile(id, path) {
+  const seq = ++runFileSeq;
+  setIn("runFiles", { path, view: { status: "loading", content: "", lang: "", reported: true } });
+  const failed = () => {
+    if (seq === runFileSeq) setIn("runFiles", { view: { status: "failed", content: "", lang: "", reported: true } });
+  };
+  fetch("/file/" + encodeURIComponent(id) + "?repo=" + encodeURIComponent(checkoutFor(id)) + "&path=" + encodeURIComponent(path))
+    .then((response) => {
+      if (!response.ok) throw new Error("file " + response.status);
+      return response.json();
+    })
+    .then((body) => {
+      if (seq !== runFileSeq) return;
+      if (body.failed) return failed();
+      setIn("runFiles", {
+        view: { status: "ready", content: body.content || "", lang: body.lang || "", reported: body.reported !== false },
+      });
+    })
+    .catch(failed);
+}
+
+function ReadFailed({ id, title, text, onRetry }) {
+  return html`<div id=${id} class="side-state" role="alert">
+    <h3>${title}</h3>
+    ${text}
+    <div class="acts"><button type="button" class="btn ghost" onClick=${onRetry}>Retry now</button></div>
+  </div>`;
+}
+
+function FilesTab({ runFiles }) {
+  if (runFiles.status === "idle" || runFiles.status === "loading") {
+    return html`<div class="detail-empty loading" role="status" aria-busy="true">
+      <span class="spin" aria-hidden="true"></span>Reading the checkout…
+    </div>`;
+  }
+  if (runFiles.status === "failed") {
+    return html`<${ReadFailed}
+      id="detail-files-unreadable"
+      title="This checkout could not be read"
+      text=""
+      onRetry=${() => loadRunFiles(runFiles.id)}
+    />`;
+  }
+  if (!runFiles.paths.length) {
+    return html`<div class="fd-view"><div class="detail-empty">${runFiles.reported
+      ? "This checkout has no files."
+      : "This sidecar is too old to report a failed read, so it cannot confirm this checkout has no files."}</div></div>`;
+  }
+  const tree = compactDirs(buildTree(runFiles.paths.map((path) => ({ path }))));
+  const leaf = (node) => {
+    const path = node.entry.path;
+    const on = path === runFiles.path;
+    return html`<button
+      type="button"
+      key=${path}
+      class=${"tree-file" + (on ? " active" : "")}
+      aria-current=${on ? "true" : null}
+      onClick=${() => openRunFile(runFiles.id, path)}
+    >
+      <span class="fname">${node.name}</span>
+    </button>`;
+  };
+  return html`<div class="fd-split">
+    <div class="fd-tree"><${TreeLevel} node=${tree} leaf=${leaf} fold=${{ shut: runFiles.shut, toggle: toggleRunFolder }} /></div>
+    <div class="fd-view"><${RunFileView} runFiles=${runFiles} /></div>
+  </div>`;
+}
+
+function RunFileView({ runFiles }) {
+  const { path, view } = runFiles;
+  if (path === null) return html`<div class="detail-empty">Select a file to read it.</div>`;
+  if (view.status === "loading") {
+    return html`<div class="detail-empty loading" role="status" aria-busy="true">
+      <span class="spin" aria-hidden="true"></span>Reading ${path}…
+    </div>`;
+  }
+  if (view.status === "failed") {
+    return html`<${ReadFailed}
+      id="detail-file-unreadable"
+      title=${path + " could not be read"}
+      text="This does not mean the file is empty."
+      onRetry=${() => openRunFile(runFiles.id, path)}
+    />`;
+  }
+  const lines = view.content.replace(/\n$/, "").split("\n");
+  const head = html`<div id="detail-files-file-head" class="file-head">${path}${view.content
+    ? " · " + plural(lines.length, "line", "lines") + (view.lang ? " · " + view.lang : "")
+    : ""}</div>`;
+  if (!view.content) {
+    return html`${head}<div class="detail-empty">${view.reported
+      ? "This file is empty."
+      : "This sidecar is too old to report a failed read, so it cannot confirm this file is empty."}</div>`;
+  }
+  return html`${head}<div class="code-view">
+    <pre class="code-gutter" aria-hidden="true">${lines.map((_, i) => i + 1).join("\n")}</pre>
+    <pre class="file-pre hljs">${fileCode(view.content, view.lang)}</pre>
+  </div>`;
+}

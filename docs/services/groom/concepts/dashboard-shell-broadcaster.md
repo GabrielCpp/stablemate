@@ -20,7 +20,7 @@ push has been enqueued.
 - sig: `async _broadcast_shell(changed: str = "") -> None`
 - purpose: produce one current dashboard state payload, enqueue it for all browser dashboard websocket clients registered with the groom process, and — when a single run is what changed — enqueue that run's detail payload for the tabs watching it.
 - input: an optional container id naming the run that changed; the fleet half reads the process-local workflow registry through [all workflows snapshot](workflow-registry.md#method-all-workflows-snapshot) rather than accepting a caller-supplied workflow list, query string, client list, or transport object.
-- fleet scope: the state payload carries the run list and the status-bar counts as a single JSON object; it does not carry selected run detail, files, diff, repository picker contents, traces, or toasts.
+- fleet scope: the state payload carries the run list and the status-bar counts as a single JSON object; it does not carry selected run detail, files, diff, traces, or toasts.
 - detail scope: the optional second half carries one run's detail slices — head, gates, metrics, log trail — addressed only to the queues watching that run.
 - client scope: the fleet half targets only browser dashboard websocket clients registered in the process-local [dashboard client queue set](dashboard-client-queue-set.md); it does not send to sidecar websockets and does not create a websocket connection for absent clients.
 - call graph: the helper calls exactly the local workflow snapshot helper, [state message](groom-projection-module.md#method-state-message), [broadcast dashboard message](dashboard-client-queue-set.md#method-broadcast-dashboard-message), and — for a named change — the run-detail push; it has no direct Docker, gate-file, HTTP-response, sidecar-RPC, or browser-session logic.
@@ -114,7 +114,7 @@ Project and enqueue the current dashboard state for browser dashboard websocket 
 - Calls: the run-detail push once when `changed` is non-empty.
 - Emits: one [dashboard state payload](../formats/dashboard-state-payload.md) and, conditionally, one detail payload per watching queue.
 - Preserves: workflow registry contents, individual workflow fields, gate maps, discovery scanning flag, answer log entries, sidecar websocket registrations, dashboard client membership, watch subscriptions, and Docker volume state.
-- Excludes: repository menu, files tree, file contents, diffs, traces, notification messages, answered confirmations, sidecar JSON frames, and HTTP response metadata.
+- Excludes: files tree, file contents, diffs, traces, notification messages, answered confirmations, sidecar JSON frames, and HTTP response metadata.
 
 ### method-push-detail
 

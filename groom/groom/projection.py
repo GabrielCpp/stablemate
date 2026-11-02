@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import PurePath
 from typing import Any
 
-from groom import attend, attend_ledger, gates, state, store
+from groom import attend, attend_ledger, gates, norms, sidecar_hub, state, store
 from groom.attention import RULE_EVENTS, AttentionEvent
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
@@ -157,6 +157,30 @@ def row_mini(tel: RunTelemetry | None) -> str:
     return " · ".join(bits)
 
 
+def started_at(tel: RunTelemetry | None, gauge: str, elapsed: float, now: float) -> float:
+    """The wall-clock moment an elapsed gauge began: when the gauge last arrived, less the length it reported."""
+    return (tel.gauge_ts.get(gauge, now) if tel else now) - elapsed
+
+
+def row_clock(tel: RunTelemetry | None, now: float) -> dict[str, Any] | None:
+    """The row's ticking clock: what the run is doing, when that began and when the agent last spoke."""
+    if tel is None:
+        return None
+    if tel.wait_kind:
+        label = f"waiting {tel.wait_kind}"
+        since = started_at(tel, "workhorse.wait.elapsed_s", tel.wait_elapsed_s, now)
+    elif tel.turn_active is True:
+        label = "in turn"
+        since = started_at(tel, "workhorse.turn.elapsed_s", tel.turn_elapsed_s, now)
+    elif tel.node_elapsed_s:
+        label = "in node"
+        since = started_at(tel, "workhorse.node.elapsed_s", tel.node_elapsed_s, now)
+    else:
+        return None
+    idle = started_at(tel, "workhorse.turn.idle_s", tel.turn_idle_s, now) if tel.turn_active is not False else None
+    return {"label": label, "since_ts": since, "idle_since_ts": idle}
+
+
 def gate_dict(gate: GateInfo) -> dict[str, Any]:
     question = gates.extract_question(gate.question) if gate.kind != "machine" else gate.question
     return {
@@ -214,6 +238,7 @@ def run_row(
         "turn_elapsed_s": tel.turn_elapsed_s if tel else 0.0,
         "turn_idle_s": tel.turn_idle_s if tel else 0.0,
         "mini": row_mini(tel),
+        "clock": row_clock(tel, now),
         "activity": tel.activity if tel else wf.activity,
         "doing": (
             gate_path
@@ -228,6 +253,8 @@ def run_row(
         "exit_hint": hint,
         "pid": tel.pid if (tel and tel.pid) else wf.pid,
         "native": bool(wf.native),
+        "sidecar": not wf.native and sidecar_hub.get(wf.container_id) is not None,
+        "figures": tel.figures if tel else None,
         "rank": fleet_rank_for(state, live_cls),
     }
 
@@ -419,6 +446,7 @@ def head(
         "exit_ok": wf.exit_code == 0,
         "activity": tel.activity if tel else wf.activity,
         "worktree": tel.worktree if tel else "",
+        "checkout": wf.workspace_volume if wf.native else "",
     }
 
 
@@ -643,6 +671,94 @@ def run_live(
     }
 
 
+def running_node(
+    wf: WorkflowContainer,
+    tel: RunTelemetry | None = None,
+    facts: dict[str, Any] | None = None,
+    now: float | None = None,
+) -> dict[str, Any] | None:
+    """The node the run is in now, and whether it is held at a wait, for the Overview's tree."""
+    facts = facts or {}
+    now = now if now is not None else time.time()
+    if _row_state(wf, tel) == WorkflowState.FINISHED.value:
+        return None
+    node = tel.current_node if tel else str(facts.get("node") or wf.current_node or "")
+    if not node:
+        return None
+    elapsed = tel.node_elapsed_s if tel else float(facts.get("node_elapsed_s") or 0.0)
+    wait_kind = tel.wait_kind if tel else str(facts.get("wait_kind") or "")
+    wait_elapsed = tel.wait_elapsed_s if tel else float(facts.get("wait_elapsed_s") or 0.0)
+    return {
+        "node": node,
+        "elapsed_s": elapsed,
+        "wait_kind": wait_kind,
+        "wait_elapsed_s": wait_elapsed,
+        "since_ts": started_at(tel, "workhorse.wait.elapsed_s" if wait_kind else "workhorse.node.elapsed_s", wait_elapsed if wait_kind else elapsed, now),
+    }
+
+
+def run_workflow(wf: WorkflowContainer, tel: RunTelemetry | None = None) -> str:
+    """The workflow name the norm is keyed by: the one the run's spans carry, else the row's type."""
+    return (tel.workflow if tel and tel.workflow else "") or wf.workflow_type
+
+
+def running_strip(
+    wf: WorkflowContainer,
+    tel: RunTelemetry | None = None,
+    facts: dict[str, Any] | None = None,
+    now: float | None = None,
+) -> dict[str, Any] | None:
+    """The strip above the Overview: where the run is, how long this turn, step or wait has lasted, and the norm for it.
+
+    Every count is a server timestamp, so the browser counts up from it between pushes. The norm comes from the cache only.
+    """
+    now = now if now is not None else time.time()
+    running = running_node(wf, tel, facts, now)
+    if running is None:
+        return None
+    facts = facts or {}
+
+    turn_active = tel.turn_active if tel else facts.get("turn_active")
+    beat = tel.last_heartbeat_ts if tel else float(facts.get("last_beat_ts") or 0.0)
+    node = running["node"]
+    idle_since: float | None = None
+    norm: dict[str, Any] | None = None
+    if running["wait_kind"]:
+        kind = "wait"
+        started = running["since_ts"]
+        idle_since = started
+    else:
+        if turn_active is True:
+            elapsed = tel.turn_elapsed_s if tel else float(facts.get("turn_elapsed_s") or 0.0)
+            idle = tel.turn_idle_s if tel else float(facts.get("turn_idle_s") or 0.0)
+            started = started_at(tel, "workhorse.turn.elapsed_s", elapsed, now)
+            idle_since = started_at(tel, "workhorse.turn.idle_s", idle, now)
+        else:
+            started = running["since_ts"]
+        cached = norms.cached(run_workflow(wf, tel), node)
+        if turn_active is True:
+            kind = "turn"
+            norm = norms.reading(cached["turn"]) if cached else None
+        else:
+            known = cached.get("node", {}).get("kind") if cached else None
+            kind = {"agent": "between", "step": "step"}.get(known or "", "node")
+            if cached is None:
+                norm = None
+            elif known:
+                norm = norms.reading(cached["turn" if known == "agent" else "step"])
+            else:
+                norm = {"median_s": None, "runs": 0}
+    return {
+        "node": node,
+        "kind": kind,
+        "wait_kind": running["wait_kind"],
+        "started_ts": started,
+        "idle_since_ts": idle_since,
+        "beat_ts": beat or None,
+        "norm": norm,
+    }
+
+
 def run_detail(
     wf: WorkflowContainer,
     tel: RunTelemetry | None = None,
@@ -660,6 +776,8 @@ def run_detail(
         "state": _row_state(wf, tel),
         "node": tel.current_node if tel else wf.current_node,
         "gates": [gate_dict(gate) for gate in reported_gates(wf, tel)],
+        "running": running_node(wf, tel, facts, now),
+        "strip": running_strip(wf, tel, facts, now),
         **run_live(wf, tel, facts, logs, now, history=history),
     }
 

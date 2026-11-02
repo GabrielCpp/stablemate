@@ -13,8 +13,8 @@ perform. It replaces the retired static linter, which parsed
 `groom/groom/templates/dashboard.html` with a hand-rolled tag scanner.
 
 The static reader stopped being able to see the dashboard the moment the panes
-became islands. The template now ships five empty pane roots, and every control an
-operator can reach — run rows, the answer form, the repository listbox, the file
+became islands. The template now ships empty pane roots, and every control an
+operator can reach — run rows, the answer form, the file
 tree, the diff table, the trace rows — is created by JavaScript from JSON that
 arrives over a socket. A static lint of that template inspects markup no operator
 ever meets, so a green result asserted nothing. The audit had to move to where the
@@ -38,7 +38,7 @@ instrument, not part of the product surface.
 - steps:
   1. The harness builds a workspace the way a native run leaves one: a checkout
      under a temporary directory, committed, then dirtied. That is what gives the
-     Files pane a tree to render and the Diff pane a working-tree diff to parse.
+     run's Files tab a tree to render and its Diff tab a working-tree diff to parse.
      Repository and branch names are neutral placeholders, because this repository
      ships publicly.
   2. The harness seeds the process-local [workflow registry](../concepts/workflow-registry.md)
@@ -57,7 +57,7 @@ instrument, not part of the product surface.
   4. Playwright launches Chromium once and the booted server, browser, and
      temporary directories are shared across every check in the file. A browser
      launch plus a lifespan startup costs about two seconds; paying it once per
-     pane to prove the same five panes accessible would be time spent on nothing.
+     pane to prove the same panes accessible would be time spent on nothing.
   5. Each check opens a page at the server's root, waits for the first run row to
      exist — which only happens after the socket has delivered a
      [dashboard state payload](../formats/dashboard-state-payload.md) and the islands have
@@ -65,8 +65,7 @@ instrument, not part of the product surface.
   6. The harness drives the page into one pane and waits for that pane's content to
      actually load. An empty pane passes axe trivially and proves nothing, so the
      runs check selects the blocked row and waits for the answer textarea; the
-     files and diff checks open the repository picker, select an entry, and wait for
-     a tree leaf and a rendered viewer; the telemetry check waits for table rows.
+     telemetry check waits for table rows.
   7. axe runs against `document` — not against the pane's subtree — once per mode.
      That is deliberate rather than lazy: inactive panes are `display:none`, which
      axe already excludes, so one scan per mode covers that mode's pane *plus* the
@@ -74,7 +73,7 @@ instrument, not part of the product surface.
      the [status bar](../gui/screens/groom-dashboard.md#statusbar-region), the
      [connection chip](../gui/screens/groom-dashboard.md#connection-chip), and the
      [toast region](../gui/screens/groom-dashboard.md#toast-region) — and so catches
-     a shell regression five times over.
+     a shell regression in every pane.
   8. Only violations are collected, and each is reported with its rule id, impact,
      help text, and up to six offending selectors. A non-empty violation list fails
      that pane's check with that report as the message, so the failure names the
@@ -112,8 +111,6 @@ instrument, not part of the product surface.
 - end: nothing persists between runs.
 - detail: [application factory usage](../concepts/application-factory-usage.md)
 - tests: groom/tests/test_a11y_dynamic.py::test_runs_pane_with_an_open_gate_is_accessible,
-  groom/tests/test_a11y_dynamic.py::test_files_pane_is_accessible,
-  groom/tests/test_a11y_dynamic.py::test_diff_pane_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_telemetry_pane_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_settings_pane_is_accessible,
   groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard,

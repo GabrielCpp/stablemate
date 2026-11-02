@@ -7,8 +7,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from groom import projection, state
-from groom.models import LIVENESS_METRICS, RunTelemetry
+from groom import churn, projection, state
+from groom.models import ELAPSED_GAUGES, LIVENESS_METRICS, RunTelemetry
 
 
 @dataclass
@@ -28,10 +28,6 @@ def _stuck_after_s() -> float:
 
 def _wait_after_s() -> float:
     return float(os.environ.get("GROOM_WAIT_MIN", "30")) * 60
-
-
-def _churn_repeats() -> int:
-    return int(os.environ.get("GROOM_CHURN_REPEATS", "5"))
 
 
 def _giveup_nodes() -> set[str]:
@@ -83,20 +79,6 @@ def _fire(run: RunTelemetry, rule: str, message: str, alerts: list[Alert]) -> No
         return
     run.fired.add(rule)
     alerts.append(Alert(run_id=run.run_id, rule=rule, message=message))
-
-
-_RESERVED_ATTRS = ("workhorse.", "status_message", "events")
-
-
-def _label_signature(attrs: dict[str, Any]) -> tuple[tuple[str, str], ...]:
-    """The workflow-declared dimensions on a span, as a comparable key."""
-    return tuple(
-        sorted(
-            (key, str(value))
-            for key, value in attrs.items()
-            if not key.startswith(_RESERVED_ATTRS[0]) and key not in _RESERVED_ATTRS[1:]
-        )
-    )
 
 
 def _note_progress(run: RunTelemetry) -> None:
@@ -196,6 +178,7 @@ def _accept_session(run: RunTelemetry, record: dict[str, Any]) -> bool:
     run.worktree = ""
     run.last_heartbeat_ts = 0.0
     run.last_beat_ts = 0.0
+    run.gauge_ts = {}
     run.backend = ""
     run.model = ""
     run.gas = None
@@ -272,19 +255,15 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
             )
 
         node = span.get("node") or ""
-        if node and span.get("name") == node and not attrs.get("workhorse.cut"):
-            signature = _label_signature(attrs)
-            if run.node_labels.get(node) != signature:
-                run.node_labels[node] = signature
-                run.node_counts[node] = 1
+        if churn.counts_as_visit(span):
+            repeated, moved = churn.observe(run.node_labels, run.node_counts, node, attrs)
+            if moved:
                 _note_progress(run)
-            else:
-                run.node_counts[node] = run.node_counts.get(node, 0) + 1
-            if run.node_counts[node] >= _churn_repeats():
+            if repeated >= churn.repeats():
                 _fire(
                     run,
                     "CHURN",
-                    f"{label}: node '{node}' completed {run.node_counts[node]}× "
+                    f"{label}: node '{node}' completed {repeated}× "
                     f"on the same work — likely a loop whose exit condition "
                     f"never trips",
                     alerts,
@@ -327,6 +306,8 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 and attrs.get("wait_kind")
                 and _wait_series(attrs) in run.closed_wait_series):
             continue
+        if name in ELAPSED_GAUGES:
+            run.gauge_ts[name] = now
         if activity := _activity(attrs):
             run.activity = activity
         if name in LIVENESS_METRICS:

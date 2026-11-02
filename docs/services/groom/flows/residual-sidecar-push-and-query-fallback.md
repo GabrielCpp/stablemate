@@ -142,7 +142,7 @@ The implementation anchors for this flow are `groom/groom/cli.py::sidecar_main`,
       Missing workflow ids, missing volume metadata, unsafe paths, non-zero
       reader processes, and absent content become empty-but-well-formed `200 OK`
       JSON — `{"paths": []}`, an empty `content` alongside the `lang` the path
-      already determined, `{"diff": ""}` — rather than endpoint-specific error
+      already determined, `{"diff": "", "failed": true, ...}` — rather than endpoint-specific error
       bodies. The browser therefore takes the same parse path for a failed read as
       for a successful one, and renders `(no files)` or `(no changes)` from the
       data itself.
@@ -183,5 +183,3 @@ cases usable.
    groom/tests/test_app.py::test_push_exited_rejects_missing_container_id,
    groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors,
    groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
-- screenshot: docs/services/groom/gui/screenshots/residual-sidecar-push-and-query-fallback-files-file-selected.png
-- screenshot: docs/services/groom/gui/screenshots/residual-sidecar-push-and-query-fallback-diff-file-selected.png

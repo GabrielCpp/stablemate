@@ -5,15 +5,15 @@ title: Workflow type badge style rules
 ---
 # Workflow type badge style rules
 
-Workflow type badges present a workflow kind supplied with the fleet row or repository-menu
-data. The [fleet view's type-hue method](../runs-fleet-view.md#method-type-hue) supplies a
+Workflow type badges present a workflow kind supplied with the fleet row or the selected
+run's header. The [fleet view's type-hue method](../runs-fleet-view.md#method-type-hue) supplies a
 stable `0`--`359` hue for any kind without requiring a palette entry. The [badge renderer](#typebadge)
 applies that hue as a CSS custom property; these rules give it its appearance and reserve fixed
 colours for the established `coder` and `author` kinds.
 
-The renderer is shared by fleet rows, selected-run headers, and repository-menu options. It emits
+The renderer is shared by fleet rows and selected-run headers. It emits
 only the badge for a non-empty type, so an unknown or missing workflow kind does not leave an empty
-chip in any of those surfaces. The type is text content and the same value is copied to
+chip on either surface. The type is text content and the same value is copied to
 `data-type`, while the projected hue is passed through as `--type-hue`; CSS is responsible for
 the visual treatment.
 
@@ -25,9 +25,9 @@ fallback: `coder` is teal `#2f9e8f` and `author` is purple `#8a6ff0`. New non-em
 the generic treatment, while the [workflow type field](workflow-container.md#field-workflow-type)
 documents why an empty kind renders no badge at all.
 
-- code: `groom/groom/assets/dashboard.css::.badge` @9c3e3078564c
-- code: `groom/groom/assets/dashboard.css::.badge[data-type="coder"]` @9c3e3078564c
-- code: `groom/groom/assets/dashboard.css::.badge[data-type="author"]` @9c3e3078564c
+- code: `groom/groom/assets/dashboard.css::.badge` @cafd8832be54
+- code: `groom/groom/assets/dashboard.css::.badge[data-type="coder"]` @cafd8832be54
+- code: `groom/groom/assets/dashboard.css::.badge[data-type="author"]` @cafd8832be54
 
 ## Methods
 
@@ -42,4 +42,4 @@ documents why an empty kind renders no badge at all.
 - verify: visible(locator="#runs-list .row[data-worker-id] .badge[data-type='coder']", text="coder")
 - does: passes the projected hue through as the `--type-hue` inline custom property
 - verify: visible(locator="#runs-list .row[data-worker-id] .badge[data-type='coder'][style*='--type-hue']", text="coder")
-- code: `groom/groom/assets/dashboard.js::TypeBadge` @9b3683b0ffb1
+- code: `groom/groom/assets/dashboard.js::TypeBadge` @3d0cdcd50eee

@@ -17,7 +17,7 @@ concrete message schema and where each piece lives.
 
 ## Motivation
 
-groom's Files and Diff panels need fast, per-container reads: the file tree of a
+groom's run Files and Diff tabs need fast, per-container reads: the file tree of a
 checkout, a single file's contents, and a repo's working-tree diff. Today every
 such read spawns a **throwaway container** — `docker run alpine find` /
 `docker run alpine/git diff` / `docker run alpine cat` against the workflow's
@@ -266,7 +266,7 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
 - `{"type":"rpc","id":…,"method":"getTree"|"getFile"|"getDiff","params":{repo,path}}`
   — correlation id is a per-connection counter (`SidecarConnection`), answered
   from local disk. `getTree`→`{paths:[…]}`, `getFile`→`{content}`,
-  `getDiff`→`{diff}`.
+  `getDiff`→`{diff,untracked,failed}`.
 - `{"type":"rpc",…,"method":"listTurns"|"readTurnFile","params":{run,path,offset}}`
   — the turn-record half of the data plane, rooted at `RUNS_DIR` rather than
   `WORKSPACE_DIR`. `listTurns`→`{run,files:[{path,size}]}`,
@@ -294,8 +294,8 @@ groom's `dashboard_sidecar` handler accepts it. All frames are JSON with a
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
 - consistency: sidecar-rpc — when it returns `None` for an absent connection or `SidecarError`, endpoints fall back to volume readers, so stopped, finished, and legacy containers remain browsable.
 - verify: http_status(code=200)
-- **Liveness is soft.** A socket close unregisters the RPC connection (and fails
-  its in-flight RPCs) but does **not** delete the workflow row — the reconcile
+- **Liveness is soft.** A socket close unregisters the RPC connection (fails
+  its in-flight RPCs and broadcasts the shell so open dashboards drop the Diff tab) but does **not** delete the workflow row — the reconcile
   scan still owns removal, so a transient drop or a groom restart doesn't flap
   the fleet. Re-advertise-on-reconnect is what restores authority.
 - **`inotify` overflow / streamed-diff backpressure / coalescing** are not yet

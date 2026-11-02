@@ -9,7 +9,7 @@ Startup background discovery scan is the private coroutine that [schedule startu
 
 The coroutine has no input or task-management API: its startup hook owns scheduling and its caller observes completion or failure through that task. It neither retries discovery nor serializes it with manual refreshes.
 
-- code: groom/groom/app.py::_background_scan@2d7aba1619b0
+- code: groom/groom/app.py::_background_scan@a079b5769727
 - tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
 - tests: groom/tests/test_app.py::test_background_scan_clears_scanning_on_error
 
@@ -32,7 +32,7 @@ The coroutine has no input or task-management API: its startup hook owns schedul
 - verify: json_path(path="scanning", equals=False)
 - returns: `None` after reconciliation and the completion broadcast both succeed.
 - verify: json_path(path="result", matches="^null$")
-- code: groom/groom/app.py::_background_scan@2d7aba1619b0
+- code: groom/groom/app.py::_background_scan@a079b5769727
 - tests: groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes
 - tests: groom/tests/test_app.py::test_background_scan_clears_scanning_on_error
 

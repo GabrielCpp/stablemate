@@ -9,16 +9,16 @@ Dashboard toast pusher is the groom dashboard's in-page notification helper. It 
 
 It is a client-side unit. The server no longer renders script fragments that dispatch DOM CustomEvents; it pushes JSON, and the frame dispatcher in the client module calls this helper directly.
 
-- code: groom/groom/assets/dashboard.js::pushToast@9b3683b0ffb1
-- code: groom/groom/assets/dashboard.js::onNotify@9b3683b0ffb1
-- code: groom/groom/assets/dashboard.js::onAnswered@9b3683b0ffb1
-- code: groom/groom/assets/dashboard.css::#toasts@9c3e3078564c
-- code: groom/groom/assets/dashboard.css::.toast@9c3e3078564c
+- code: groom/groom/assets/dashboard.js::pushToast@f1678abc58fe
+- code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
+- code: groom/groom/assets/dashboard.js::onAnswered@cf3cd6e147fe
+- code: groom/groom/assets/dashboard.css::#toasts@cafd8832be54
+- code: groom/groom/assets/dashboard.css::.toast@cafd8832be54
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
 
 ## Contract
 
-- purpose: show short-lived, page-local confirmation or blocked-work notifications without changing server state, browser route, selected run, selected repository, websocket connection, or notification permission.
+- purpose: show short-lived, page-local confirmation or blocked-work notifications without changing server state, browser route, selected run, selected checkout, websocket connection, or notification permission.
 - trigger model: the helper is called from ordinary module functions — `onNotify`, `onAnswered`, and the answer-form submit handler — which the socket frame dispatcher invokes by frame `type`. No CustomEvent, no server-rendered script, and no `document.body` listener is involved.
 - host: every toast is appended to the existing `#toasts` element at the end of the dashboard body.
 - ordering: newer toasts are appended after older toasts in DOM order; the CSS host stacks them as a fixed vertical column.
@@ -31,7 +31,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - variant styling: the default/blocked toast uses the blocked accent color; the `ok` variant overrides only the left accent stripe with the running/success color.
 - announcement: the `#toasts` host itself carries `role="alert"` and `aria-live="assertive"` in the shell, so a toast inserted into it is announced without the generated nodes needing roles of their own. Individual toasts still have no focus movement, no keyboard interaction, and no close control.
 - error handling: missing `#toasts`, DOM append failures, invalid timeout values, and timer failures are not caught or transformed by groom.
-- excluded effects: the helper does not create system browser notifications, request Notification permission, send HTTP requests, send websocket messages, mutate workflow containers, mutate gate records, update the client store, refresh run detail, or navigate.
+- excluded effects: the helper does not create system browser notifications, request Notification permission, send HTTP requests, send websocket messages, mutate workflow containers, mutate gate records, update the client store, refresh run detail, or navigate. The answered frame also drops the answer text the tab held for that gate, in module state outside the store.
 
 ## Fields
 
@@ -88,7 +88,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
 - verify: absent(subject="a groom-transformed exception from pushToast")
-- code: groom/groom/assets/dashboard.js::pushToast@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::pushToast@f1678abc58fe
 - step: Create one `div` element for the toast root.
 - step: Set the root class string to `toast ` followed by the caller-supplied variant.
 - step: Create one title `div`, set its class to `t-title`, assign `titleText` through `textContent`, and append it to the toast root.
@@ -103,7 +103,7 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
 - verify: absent(subject="a groom-transformed exception")
-- code: groom/groom/assets/dashboard.js::onNotify@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
 - step: Receive the `message` string carried by a `{"type": "notify"}` frame, dispatched by the socket frame handler.
 - step: Compute the visible body as `message || "A workflow needs your input."`.
@@ -113,12 +113,12 @@ It is a client-side unit. The server no longer renders script fragments that dis
 
 ### method-on-answered
 
-- sig: `onAnswered() -> void`
+- sig: `onAnswered(msg) -> void`
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
 - verify: absent(subject="a groom-transformed exception from onAnswered")
-- code: groom/groom/assets/dashboard.js::onAnswered@9b3683b0ffb1
+- code: groom/groom/assets/dashboard.js::onAnswered@cf3cd6e147fe
 - step: Receive a `{"type": "answered", "id": …, "file_path": …}` frame, dispatched by the socket frame handler to every connected tab.
 - step: Call `pushToast("ok", "✓ answer sent", "", 3500)` to append a success toast with no body node.
-- step: Do not read the frame's `id` or `file_path`, do not compare them to this tab's selection, and do not re-fetch run detail — the accompanying `detail` push has already refreshed the pane for the tabs that have that run open.
+- step: Read the frame's `id` and `file_path` only to drop the answer text this tab held for that gate. Do not compare them to this tab's selection, and do not re-fetch run detail — the accompanying `detail` push has already refreshed the pane for the tabs that have that run open.
 - step: Do not include the gate file path, submitted answer text, answer result message, or answer log entry in the success toast.

@@ -429,6 +429,7 @@ The client removes terminal control characters and escape sequences from every s
 - exits: Parser failures exit with status 2 before the command handler runs.
 - verify: exit_status(code=2)
 - code: groom/groom/cli.py::loops@93880bc73bf9
+- detail: [run breakdown views](concepts/run-breakdown-views.md)
 - detail: [loop analysis lap](concepts/loop-analysis-lap.md)
 - detail: [groom store](concepts/groom-store.md)
 - detail: [groom archive module](concepts/groom-archive-module.md)
@@ -506,6 +507,9 @@ The client removes terminal control characters and escape sequences from every s
   - Includes retained metric timestamps when determining the observed start and end.
 - verify: json_path(path="$.observed_start_ts", equals=0.0)
 - does:
+  - Reports `sessions` in the JSON, the count of distinct resume generations among the run's spans, and one for a run that reports none, which the [overview tiles](concepts/overview-tiles.md) show beside the wall time.
+- verify: json_path(path="$.sessions", equals=1)
+- does:
   - Partitions observed wall time into a disjoint agent bucket.
 - verify: json_path(path="$.time_s.agent", equals=30.0)
 - does:
@@ -526,6 +530,8 @@ The client removes terminal control characters and escape sequences from every s
 - does:
   - Groups explicit waits by wait kind.
 - verify: json_path(path="$.time_s.waits_by_kind.operator", equals=10.0)
+- does:
+  - Prints the active time as the agent, deterministic and infrastructure buckets together, on its own `active=` line, so the figure on a run row is read directly.
 - does:
   - Reports agent turns as raw CLI invocations.
 - verify: json_path(path="$.work.turns", equals=3)
@@ -556,6 +562,14 @@ The client removes terminal control characters and escape sequences from every s
 - does:
   - Preserves backend-retry totals for each agent-work group.
 - verify: json_path(path="$.attempt_groups[0].backend_retries", equals=1)
+- does:
+  - Prints a `models` section in text mode, one line per model with its turns, cost (`not reported` when no turn is priced), output tokens and cache-read share (`-` when the turns read no context). The JSON output carries the same rows as `models`.
+- does:
+  - Prints a `sessions` section in text mode, one numbered line per session with its start, active time, the gap before the next session and how its root span ended (`no recorded ending` when it has none). The JSON output carries the same rows as `session_rows`.
+- does:
+  - Reports the run's latest branch and run directory as `facts` in the JSON.
+- does:
+  - Prints a `flows (flow > state > node)` section after the work summary in text mode, one indented line per [run flow tree](concepts/run-flow-tree.md) row with its visits, time in minutes, cost (`-` when no turn is priced), retries. The JSON output carries the same tree as `flows`.
 - does:
   - Preserves duration totals for each agent-work group.
 - verify: json_path(path="$.attempt_groups[0].agent_s", equals=20.0)

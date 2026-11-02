@@ -125,7 +125,7 @@ Browser notification permission is browser-owned state requested by the dashboar
 - verify: emitted(event="Notification.requestPermission from #btn-notify activation", count=1)
 - code: groom/groom/assets/dashboard.js::wireEvents
 - detail: [browser notification permission](browser-notification-permission.md)
-- step: The one delegated `document.body` click handler resolves repository-picker, tree, refresh, and command-palette targets before it reaches settings-button handling.
+- step: The one delegated `document.body` click handler resolves tree, refresh, and command-palette targets before it reaches settings-button handling.
 - step: If the event target's id is exactly `btn-notify` and the browser exposes `window.Notification`, call `Notification.requestPermission()` without arguments.
 - step: Do not read, await, branch on, or display the returned permission value.
 - step: If the Notification API is unavailable or the event target is not exactly `#btn-notify`, make no permission request.

@@ -48,3 +48,24 @@ def _no_real_spawn() -> Iterator[None]:
         patch.setattr(dispatch, "ProcessSupervisor", _RefusingSupervisor)
         patch.setattr(attend, "ProcessSupervisor", _RefusingSupervisor)
         yield
+
+
+def _reset_module_state() -> None:
+    from groom import app, norms, state
+
+    state.RUNS.clear()
+    state.EVENTS.clear()
+    state.HISTORIES.clear()
+    state._gate_locks.clear()
+    norms.reset()
+    app._TAILS.clear()
+    app._TAIL_RUNS.clear()
+    app._FIGURES_RUNNING.clear()
+    app._FIGURES_DIRTY.clear()
+
+
+@pytest.fixture(autouse=True, scope="module")
+def _module_state_does_not_outlive_the_module() -> Iterator[None]:
+    _reset_module_state()
+    yield
+    _reset_module_state()

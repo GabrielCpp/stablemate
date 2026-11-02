@@ -9,7 +9,7 @@ title: Dashboard tree selection
 concept nodes: [dashboard tree builder](dashboard-tree-builder.md), which documents the
 function itself, and [dashboard tree flow selection](dashboard-tree-flow-selection.md) and
 [dashboard tree input selection](dashboard-tree-input-selection.md), which each document one
-orthogonal choice a caller makes before reaching it — which journey (Files vs Diff) and which
+orthogonal choice a caller makes before reaching it — which tab (Files vs Diff) and which
 input shape (flat path list vs already-nested tree). None of the three is an alternative
 implementation of another: there is exactly one `buildTree`, and the other two describe
 decisions made *before* the call, not a second way to make it.

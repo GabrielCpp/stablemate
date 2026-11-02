@@ -580,3 +580,57 @@ def test_a_span_without_a_visit_slug_stays_a_plain_span_line():
     assert sorted(line["kind"] for line in lines) == ["span", "turn"]
     assert "absorbed" not in next(line for line in lines if line["kind"] == "span")
     assert next(line for line in lines if line["kind"] == "turn")["status"] == "running"
+
+
+def test_running_node_names_the_node_and_its_wait():
+    wf = _wf()
+    tel = _tel(current_node="await_operator", node_elapsed_s=30.0, wait_kind="operator", wait_elapsed_s=125.0)
+    assert projection.running_node(wf, tel, now=1000.0) == {
+        "node": "await_operator", "elapsed_s": 30.0, "wait_kind": "operator", "wait_elapsed_s": 125.0,
+        "since_ts": 875.0,
+    }
+
+
+def test_running_node_is_none_when_the_run_finished_or_names_no_node():
+    assert projection.running_node(_wf(), _tel(current_node="x", terminal=True)) is None
+    assert projection.running_node(_wf(), _tel(current_node="")) is None
+
+
+def test_run_detail_carries_the_running_node():
+    detail = projection.run_detail(_wf(), _tel(current_node="build", node_elapsed_s=12.0))
+    assert detail["running"]["node"] == "build"
+    assert detail["running"]["wait_kind"] == ""
+
+
+def test_the_row_says_whether_a_sidecar_is_connected_by_reading_the_hub():
+    from groom import sidecar_hub
+
+    class _Socket:
+        async def send_json(self, data):
+            pass
+
+    wf = _wf("abc123def456")
+    sidecar_hub.CONNECTIONS.clear()
+    try:
+        assert projection.run_row(wf)["sidecar"] is False
+        sidecar_hub.register(sidecar_hub.SidecarConnection("abc123def456", _Socket()))
+        assert projection.run_row(wf)["sidecar"] is True
+        sidecar_hub.CONNECTIONS.clear()
+        assert projection.run_row(wf)["sidecar"] is False
+    finally:
+        sidecar_hub.CONNECTIONS.clear()
+
+
+def test_a_native_row_never_claims_a_sidecar():
+    from groom import sidecar_hub
+
+    class _Socket:
+        async def send_json(self, data):
+            pass
+
+    sidecar_hub.CONNECTIONS.clear()
+    try:
+        sidecar_hub.register(sidecar_hub.SidecarConnection("abc123", _Socket()))
+        assert projection.run_row(_wf("abc123", native=True))["sidecar"] is False
+    finally:
+        sidecar_hub.CONNECTIONS.clear()

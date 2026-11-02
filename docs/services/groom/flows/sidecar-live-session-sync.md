@@ -111,9 +111,9 @@ and the visible workflow row state is stored as a [workflow container](../concep
       mutating workflow state or broadcasting.
   14. If a sidecar RPC succeeds, the HTTP handler wraps the returned sidecar data
       in the endpoint's JSON body and returns it: [workspace file list data](../formats/workspace-file-list-data.md)
-      as `{"paths": [...]}`, [workspace file content data](../formats/workspace-file-content-data.md)
+      as `{"paths": [...], "repos": [...]}`, [workspace file content data](../formats/workspace-file-content-data.md)
       as `{"path", "content", "lang"}`, or [workspace diff data](../formats/workspace-diff-data.md)
-      as `{"diff": "..."}`. The handler does not consult Docker volumes on the
+      as `{"diff", "untracked", "failed", "reported", "repos"}`. The handler does not consult Docker volumes on the
       successful sidecar path. The sidecar's own frames are unchanged by this —
       the JSON body is the browser's contract, not the sidecar's.
   15. If no connection is registered, the socket send fails, the RPC times out,
@@ -123,7 +123,7 @@ and the visible workflow row state is stored as a [workflow container](../concep
       fallback readers when the workflow has volume metadata, or return the
       endpoint's empty JSON body — `{"paths": []}`, empty `content`, empty
       `diff` — when no fallback data is available. A missing sidecar is never an
-      error status; the pane renders an empty state.
+      error status; the tab renders an empty state.
   16. On an ordinary sidecar websocket disconnect, the host unregisters the
       connection only if it is still current for that container id, fails every
       pending RPC on that closing connection with `sidecar connection closed`, and
@@ -215,5 +215,3 @@ The implementation anchors for this journey are `groom/groom/cli.py::sidecar_mai
 `groom/groom/app.py::files`, `groom/groom/app.py::file_content`,
 `groom/groom/app.py::diff`, and `groom/groom/app.py::reload`.
 - screenshot: docs/services/groom/gui/screenshots/sidecar-live-session-sync-detail-diff.png
-- screenshot: docs/services/groom/gui/screenshots/sidecar-live-session-sync-files-pane.png
-- screenshot: docs/services/groom/gui/screenshots/sidecar-live-session-sync-diff-file-selected.png

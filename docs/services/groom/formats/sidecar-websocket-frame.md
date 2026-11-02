@@ -206,7 +206,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - required: false
 - meaning: successful RPC payload delivered to the waiting host-side caller.
 - applies-to: `rpc_result`
-- variant shape: for `getTree`, data is an object with `paths` matching [workspace file list data](workspace-file-list-data.md); for `getFile`, data is an object with `content` matching [workspace file content data](workspace-file-content-data.md); for `getDiff`, data is an object with `diff` matching [workspace diff data](workspace-diff-data.md); when `ok` is false this field is absent or ignored by the host-side resolver.
+- variant shape: for `getTree`, data is an object with `paths` matching [workspace file list data](workspace-file-list-data.md); for `getFile`, data is an object with `content` matching [workspace file content data](workspace-file-content-data.md); for `getDiff`, data is an object with `diff`, `untracked` and `failed` matching [workspace diff data](workspace-diff-data.md); when `ok` is false this field is absent or ignored by the host-side resolver.
 
 ### field-error
 
@@ -271,7 +271,7 @@ The format's behavior is covered by `groom/tests/test_app.py::test_apply_hello_m
 - type: `str`
 - default: `""`
 - required: true for successful `getDiff`
-- meaning: unified working-tree-versus-HEAD diff for the requested or default repository; no repository, subprocess failure, timeout, or non-zero diff command status returns an empty string.
+- meaning: unified working-tree-versus-HEAD diff for the requested or default repository; an empty string with `failed` true in the same object when no repository exists or a git command fails, times out, or exits non-zero.
 - applies-to: `rpc_result.data` for `getDiff`
 
 ### field-reload-payload
