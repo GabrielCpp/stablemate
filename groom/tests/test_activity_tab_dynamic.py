@@ -459,12 +459,12 @@ def test_a_turn_of_an_old_run_matches_its_one_archived_record_and_a_turn_with_no
             expect(page.locator(".rd .rd-head")).to_contain_text("$6.12")
             head = page.locator(".rd .rd-head").inner_text()
             assert "0th" not in head and "pass 0" not in head and "visit" not in head and "1st pass" in head, head
-            expect(page.locator(".rd .at-note")).to_contain_text("could not be matched")
+            expect(page.locator(".rd .at-note")).to_contain_text("No record of this turn")
             assert page.locator(".rd .at-msg").count() == 0
             assert page.locator(".rd .retry-turn, .rd button").count() == 0
             _rows(page).nth(0).click()
             expect(page.locator(".rd .at-msg .at-text")).to_have_text("Documented the flow.")
-            assert page.locator(".rd .at-note").count() == 0
+            assert page.locator(".rd .at-note", has_text="No record of this turn").count() == 0
         finally:
             page.close()
 

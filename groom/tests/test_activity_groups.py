@@ -313,3 +313,12 @@ def test_a_row_key_stays_the_same_across_two_reads() -> None:
         first = [row["slug"] for row in activity.timeline(RUN)["rows"]]
         again = [row["slug"] for row in activity.timeline(RUN)["rows"]]
     assert first == again and len(set(first)) == 2
+
+
+def test_a_suffixed_key_with_no_archive_rows_and_no_files_reads_as_unmatched() -> None:
+    with _DB():
+        _resumed(kept=())
+        first, second = (row["slug"] for row in activity.timeline(RUN)["rows"])
+        bodies = [activity.turn(RUN, key) for key in (first, second)]
+    assert second.startswith(SHARED + "~")
+    assert [(body["entries"], body["head"]["matched"]) for body in bodies] == [([], False), ([], False)]

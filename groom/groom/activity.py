@@ -434,17 +434,44 @@ def _record_files(run_id: str, head: dict[str, Any], archived: list[dict[str, An
     return None
 
 
-def _kept(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _recorded_prompt(files: dict[str, Path] | None) -> str:
+    path = (files or {}).get("prompt.md")
+    if path is None:
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _joined(entries: list[dict[str, Any]], role: str) -> str:
+    return "\n\n".join(entry["text"].strip() for entry in entries if entry["kind"] == "message" and entry["role"] == role and entry["text"].strip())
+
+
+def _kept(entries: list[dict[str, Any]], finished: bool = False) -> list[dict[str, Any]]:
     kept: list[dict[str, Any]] = []
     for entry in entries:
         if entry["kind"] == "tool":
+            failed = bool(entry.get("failed"))
             kept.append({
-                "kind": "tool", "name": entry["name"], "summary": entry["summary"],
-                "failed": bool(entry.get("failed")),
+                "kind": "tool", "name": entry["name"], "summary": entry["summary"], "failed": failed,
+                "duration_s": entry.get("duration_s"), "result": entry.get("result", "") if failed else "",
             })
         elif entry["kind"] == "message" and entry["role"] in READ_ROLES and entry["text"].strip():
-            kept.append({"kind": "message", "role": entry["role"], "text": entry["text"]})
+            kept.append({"kind": "message", "role": entry["role"], "text": entry["text"], "final": False})
+    if finished:
+        said = [entry for entry in kept if entry["kind"] == "message" and entry["role"] == "assistant"]
+        if said:
+            said[-1]["final"] = True
     return kept
+
+
+def _blank(run_id: str, head: dict[str, Any]) -> dict[str, Any]:
+    return {"run_id": run_id, "head": head, "entries": [], "cut": False, "prompt": None, "thinking": None}
+
+
+def _stamped(held: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [{**row["update"], "_ts": float(row["ts"])} for row in held]
 
 
 def _cut(slug: str, held: list[dict[str, Any]]) -> bool:
@@ -452,8 +479,8 @@ def _cut(slug: str, held: list[dict[str, Any]]) -> bool:
     return not any(row.get("key") == f"{slug}:0" for row in held)
 
 
-def turn(run_id: str, slug: str, live: LiveRows | None = None) -> dict[str, Any]:
-    """One turn: its head figures and what the agent said and did in it, from the stored record or the live transcript. A key that names one of several visits sharing a slug reads only that visit's records."""
+def turn(run_id: str, slug: str, live: LiveRows | None = None, pending: bool = False) -> dict[str, Any]:
+    """One turn: its head figures and what the agent said and did in it, from the stored record or the live transcript. A key that names one of several visits sharing a slug reads only that visit's records. A finished turn with no transcript in any record reads as unmatched, unless `pending` says its records may still be pulled from a container."""
     spans = store.run_turn_spans(run_id)
     archived = store.query_turns(run=run_id, limit=100_000)
     attempted = _attempts(spans, archived)
@@ -464,25 +491,31 @@ def turn(run_id: str, slug: str, live: LiveRows | None = None) -> dict[str, Any]
     if attempts is None and (not held or slug != base):
         raise TurnNotFound(slug)
     cut = False
+    recorded = ""
     if attempts is None:
         head = _running_row(slug, held)
-        entries: list[dict[str, Any]] | None = transcript_parse.from_updates(row["update"] for row in held)
+        entries: list[dict[str, Any]] | None = transcript_parse.from_updates(_stamped(held))
         cut = _cut(slug, held)
     elif slug.startswith(UNMATCHED_PREFIX):
         head = _finished_row(slug, attempts, flows.span_passes(spans))
-        return {"run_id": run_id, "head": head, "entries": [], "cut": False}
+        return _blank(run_id, head)
     else:
         head = _finished_row(slug, attempts, flows.span_passes(spans))
         window = (head["started_ts"] - WINDOW_SLACK_S, head["ended_ts"] + WINDOW_SLACK_S)
         if strict:
             held = [row for row in held if window[0] <= float(row["ts"]) <= window[1]]
         files = _record_files(run_id, head, archived, strict)
-        if strict and files is None and not held:
-            return {"run_id": run_id, "head": head | {"matched": False}, "entries": [], "cut": False}
         entries = transcript_parse.read_files(files, window) if files else None
+        recorded = _recorded_prompt(files) if entries is not None else ""
         if entries is None and held:
-            entries = transcript_parse.from_updates(row["update"] for row in held)
+            entries = transcript_parse.from_updates(_stamped(held))
             cut = _cut(base, held)
     if entries is None:
+        if attempts is not None and not pending:
+            return _blank(run_id, head | {"matched": False})
         raise TurnUnreadable(slug)
-    return {"run_id": run_id, "head": head, "entries": _kept(entries), "cut": cut}
+    return {
+        "run_id": run_id, "head": head, "entries": _kept(entries, attempts is not None), "cut": cut,
+        "prompt": (recorded if recorded.strip() else _joined(entries, "user")) or None,
+        "thinking": _joined(entries, "thought") or None,
+    }

@@ -8,12 +8,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from groom.attend_transcript import _result_text, _text_of
+from groom.attend_transcript import _text_of
 from groom.projection import transcript_entry
 
 Window = tuple[float, float]
 
-MAX_RESULT_CHARS = 4000
+MAX_RESULT_CHARS = 1_000_000
+
+MAX_DETAIL_CHARS = 4000
 
 
 def _records(path: Path) -> Iterator[dict[str, Any]]:
@@ -66,11 +68,28 @@ def _tool_summary(args: Any) -> str:
     return ""
 
 
-def _tool(name: str, summary: str, detail: str = "", result: str = "", failed: bool = False) -> dict[str, Any]:
+def _tool(
+    name: str, summary: str, detail: str = "", result: str = "", failed: bool = False, duration_s: float | None = None,
+) -> dict[str, Any]:
     return {
         "kind": "tool", "name": name, "summary": summary,
-        "detail": detail[:MAX_RESULT_CHARS], "result": result[:MAX_RESULT_CHARS], "failed": failed,
+        "detail": detail[:MAX_DETAIL_CHARS], "result": result[:MAX_RESULT_CHARS], "failed": failed,
+        "duration_s": duration_s,
     }
+
+
+def _result_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(str(block.get("text") or "") for block in content if isinstance(block, dict) and block.get("type") == "text")
+    return ""
+
+
+def _span(begun: float | None, ended: float | None) -> float | None:
+    if begun is None or ended is None or ended < begun:
+        return None
+    return ended - begun
 
 
 def _args_text(args: Any) -> str:
@@ -82,16 +101,28 @@ def _args_text(args: Any) -> str:
 CHUNKS = ("user_message_chunk", "agent_message_chunk", "agent_thought_chunk")
 
 
+def _acp_tool(entry: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
+    """An ACP call is titled with its tool and its arguments, so the tool is the first word and the rest is the summary."""
+    head, _, rest = str(entry["name"]).partition(" ")
+    summary = rest.strip() or _tool_summary(update.get("rawInput")) or str(entry["summary"])
+    return entry | {"name": head, "summary": summary.splitlines()[0][:160] if summary else ""}
+
+
 def from_updates(updates: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
-    """ACP updates, the live transcript's own shape, as entries; streamed chunks join and a call's updates merge."""
+    """ACP updates, the live transcript's own shape, as entries; streamed chunks join and a call's updates merge. An update stamped ``_ts`` gives its call a time, from the call's first update to its last."""
     merged: list[dict[str, Any]] = []
     slots: dict[str, int] = {}
+    begun: dict[str, float] = {}
+    ended: dict[str, float] = {}
     for update in updates:
         kind = str(update.get("sessionUpdate") or "")
         call_id = str(update.get("toolCallId") or "")
+        stamp = update.get("_ts")
         if call_id in slots:
             into = merged[slots[call_id]]
-            into.update({k: v for k, v in update.items() if k != "sessionUpdate" or kind == "tool_call"})
+            into.update({k: v for k, v in update.items() if k not in ("sessionUpdate", "_ts") or kind == "tool_call"})
+            if isinstance(stamp, (int, float)) and update.get("status") in ("completed", "failed"):
+                ended[call_id] = float(stamp)
             continue
         content = update.get("content")
         if kind in CHUNKS and merged and merged[-1].get("sessionUpdate") == kind and isinstance(content, dict):
@@ -101,7 +132,16 @@ def from_updates(updates: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         merged.append({**update, "content": dict(content)} if kind in CHUNKS and isinstance(content, dict) else dict(update))
         if call_id:
             slots[call_id] = len(merged) - 1
-    return [transcript_entry(update) for update in merged]
+            if isinstance(stamp, (int, float)):
+                begun[call_id] = float(stamp)
+    entries: list[dict[str, Any]] = []
+    for update in merged:
+        entry = transcript_entry(update)
+        if entry["kind"] == "tool":
+            call_id = str(update.get("toolCallId") or "")
+            entry = _acp_tool(entry, update) | {"duration_s": _span(begun.get(call_id), ended.get(call_id))}
+        entries.append(entry)
+    return entries
 
 
 def _acp(path: Path) -> list[dict[str, Any]]:
@@ -112,15 +152,19 @@ def _acp(path: Path) -> list[dict[str, Any]]:
             continue
         update = record.get("update")
         if isinstance(update, dict):
-            updates.append(update)
+            meta = record.get("_meta")
+            stamp = meta.get("ts") if isinstance(meta, dict) else None
+            updates.append({**update, "_ts": stamp} if isinstance(stamp, (int, float)) else update)
     return from_updates(updates)
 
 
 def _claude(path: Path, window: Window | None) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     pending: dict[str, dict[str, Any]] = {}
+    called: dict[int, float | None] = {}
     for record in _records(path):
-        if not _within(_epoch(record.get("timestamp")), window):
+        stamp = _epoch(record.get("timestamp"))
+        if not _within(stamp, window):
             continue
         message = record.get("message")
         if not isinstance(message, dict):
@@ -132,8 +176,9 @@ def _claude(path: Path, window: Window | None) -> list[dict[str, Any]]:
         for block in results:
             call = pending.pop(str(block.get("tool_use_id") or ""), None)
             if call is not None:
-                call["result"] = _result_text(block.get("content"))
+                call["result"] = _result_text(block.get("content"))[:MAX_RESULT_CHARS]
                 call["failed"] = bool(block.get("is_error"))
+                call["duration_s"] = _span(called.pop(id(call), None), stamp)
         if results:
             continue
         text = _text_of(content)
@@ -150,6 +195,7 @@ def _claude(path: Path, window: Window | None) -> list[dict[str, Any]]:
             entries.append(call)
             if block.get("id"):
                 pending[str(block["id"])] = call
+                called[id(call)] = stamp
     return entries
 
 
@@ -202,9 +248,11 @@ def _opencode_tool(part: dict[str, Any]) -> dict[str, Any]:
     state: dict[str, Any] = raw if isinstance(raw, dict) else {}
     args = state.get("input")
     output = state.get("output")
+    timing = state.get("time")
+    begun, ended = (_epoch(timing.get("start")), _epoch(timing.get("end"))) if isinstance(timing, dict) else (None, None)
     return _tool(
         name, _tool_summary(args), _args_text(args),
-        output if isinstance(output, str) else "", state.get("status") == "error",
+        output if isinstance(output, str) else "", state.get("status") == "error", _span(begun, ended),
     )
 
 

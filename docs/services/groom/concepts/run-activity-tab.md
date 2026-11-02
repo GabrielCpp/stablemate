@@ -5,23 +5,25 @@ title: Run Activity tab
 ---
 # Run Activity tab
 
-The Activity tab answers one question about a run: what did each agent turn say and do. The Overview shows where the time and money went, and the Details tab shows the run's live metrics and telemetry trail. Neither shows the words of a turn. The Activity tab lists the run's agent turns, and the steps, gates, retries and churn alerts around them, under the work item and flow pass they happened in. The operator opens a turn to read its messages and one line per tool call, or any other row to read its name, time and one-line result, beside the list.
+The Activity tab answers one question about a run: what did each agent turn say and do. The Overview shows where the time and money went, and the Details tab shows the run's live metrics and telemetry trail. Neither shows the words of a turn. The Activity tab lists the run's agent turns, and the steps, gates, retries and churn alerts around them, under the work item and flow pass they happened in. The operator opens a turn to read its prompt, its thinking, its messages and its tool calls, with the long parts folded away until asked for, or any other row to read its name, time and one-line result, beside the list.
 
 The tab sits between Overview and Details in the [detail tab bar](../gui/screens/groom-dashboard.md#detail-tabs) and is there for every run, native or container, with or without a sidecar. A turn's figures come from the run's stored spans through [get-run-activity](../http/get-run-activity.md), and a turn's words come from its stored record or, while it runs, from the run's live transcript, through [get-run-turn](../http/get-run-turn.md). The browser holds one list, the fold state of its headings and one open row.
 
 Transcript text is untrusted. A model or a tool can write any characters, so no part of a turn reaches the page as markup the server or the browser did not choose.
 
 - code: groom/groom/activity.py::timeline@7ae2217373d7
-- code: groom/groom/activity.py::turn@a2d68ce89ba6
+- code: groom/groom/activity.py::turn@5b3443f1a116
 - code: groom/groom/app.py::run_activity@ee906a04819d
-- code: groom/groom/app.py::run_turn@b044082c2db0
+- code: groom/groom/app.py::run_turn@353c67ab773c
 - code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
+- code: groom/groom/assets/dashboard.js::TurnReading@89ba73f95707
+- code: groom/groom/transcript_parse.py::from_updates@1ccc9263ddd8
 - code: groom/groom/churn.py::alerts@641e36a47ca5
 - code: groom/groom/flows.py::span_passes@55f223c1146d
 - extends: [run flow tree](run-flow-tree.md)
 - rule: the list groups its rows under a work item heading, then a flow pass heading, and one row is one visit. A node that runs twice has two rows. A run with no work item reads as one unnamed item whose heading is left out, so the flow pass headings stand directly in the list. Work done outside any work item is the first group, headed `Outside any work item`, and work outside any flow is a pass headed `outside any flow`.
-- rule: one row is one visit, the turns of one slug under one parent span, so a retry inside a visit stays one row. A slug that a resumed pass repeats gives one row per visit, each under its own heading and each with its own start, time, cost and pass, so the rows of a pass add up to its heading. The first visit keeps the plain slug as its key. A later visit's key adds `~` and the millisecond its own turns began, which does not change when the list is read again. A row reads only the records of its own visit. When the archive kept none for it, the pane says its record could not be matched and offers no retry.
+- rule: one row is one visit, the turns of one slug under one parent span, so a retry inside a visit stays one row. A slug that a resumed pass repeats gives one row per visit, each under its own heading and each with its own start, time, cost and pass, so the rows of a pass add up to its heading. The first visit keeps the plain slug as its key. A later visit's key adds `~` and the millisecond its own turns began, which does not change when the list is read again. A row reads only the records of its own visit. When the archive kept none for it, the pane says no record of the turn could be found and offers no retry.
 - rule: a pass number counts from one within one work item and one flow, in the order the pass headings are shown, so the headings of a work item read `dev · 1st pass`, `dev · 2nd pass`, `dev · 3rd pass` with no gap and none out of order. A run with no work item counts within the flow across the run. The pane head of a turn shows the number of the heading the turn sits under.
 - rule: a work item heading carries its state, active time and cost from the same figures as the Overview's work item table, so the two agree. A flow pass heading carries its state, time and cost from the flow tree's leaf rule, so the passes of one flow add up to that flow's row in the Overview.
 - rule: a work item's state reads `running` while its turn runs, `in progress` for the newest item of a live run, then `done`, `not counted` or `count unknown` from the Overview's outcome. A flow pass reads `running`, `open`, `failed` or `passed`.
@@ -32,7 +34,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: a turn that is running has its own mark and is the last row of its flow pass. Its figures come from the live rows until it ends, and it is placed in the group last worked in.
 - rule: a heading stays in view while its rows scroll, the flow pass heading under the work item heading it sits in.
 - rule: the tab opens on the newest turn, the last row of the list, and selecting another row opens that one. A list that is read again keeps the open turn when its row is still there, and otherwise opens the newest.
-- rule: a turn of a run recorded before spans carried a visit slug takes the slug of the one stored turn record of the same node and session whose time lies within 5 seconds of the span's start and end. When exactly one record fits, the turn reads from that record. When none fits or several fit, the turn gets the stable key `unmatched-<span id>`, its pane says its record could not be matched, and the server never retries the match or guesses between records.
+- rule: a turn of a run recorded before spans carried a visit slug takes the slug of the one stored turn record of the same node and session whose time lies within 5 seconds of the span's start and end. When exactly one record fits, the turn reads from that record. When none fits or several fit, the turn gets the stable key `unmatched-<span id>`, its pane says no record of the turn could be found, and the server never retries the match or guesses between records.
 - rule: a message renders as Markdown. Raw HTML inside it shows as literal text, an image shows as its alt text and produces no image element, and the result goes through DOMPurify before it is set as markup. A client where the Markdown renderer or the sanitizer did not load shows the message as plain text with its line breaks kept.
 - rule: a turn's result is the first line of its recorded `summary`, else of its recorded `notes`, else of the span's activity label, else for a running turn the first line of its last agent message. The row and the pane head show that line and never a line the operator has to open the turn to find.
 - rule: a finished turn reads only the entries inside its own window, from 5 seconds before its start to 5 seconds after its end. A session resumed across turns holds earlier turns' lines in the same file, and the window is what keeps them out of this turn.
@@ -41,13 +43,44 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: a turn outside any flow node shows no pass. The head never reads `pass 0` or `0th pass`.
 - rule: the tab reads the list once when it opens and again when the run's figures revision moves, and while a turn runs it reads the list and the open turn every 3 seconds. Both reads keep the operator's scroll and selection.
 - rule: a list that fails to read says so with a retry and never reads as empty. A turn that fails to read says so with a retry and keeps the list. A run with no turn says it has no activity yet and whether the run is alive.
-- rule: the tab shows the agent's messages and tool calls only. The prompt, the model's thinking and archived runs' turns stay out of it.
+- rule: a turn's pane reads, from the top, the prompt, the thinking, then the messages and tool calls in the order they happened. The prompt and the thinking each start collapsed, and the prompt's label carries its size in words, as `Prompt · 3,412 words`. Opening one shows its text and closing it removes the text again.
+- rule: the prompt is the turn's recorded `prompt.md`, else the text of the transcript's user messages in the turn's window. The thinking is the turn's thinking blocks joined in order into one part. A turn that has neither says `This backend did not record the prompt or the thinking for this turn.` where they would sit, and names only the missing one when the other exists. A running turn shows no such note, because its prompt and thinking land at turn end, and neither does a turn read from the live history that lost its start.
+- rule: three or more tool calls in a row that all succeeded fold to one line that counts them by tool, most used first, and gives their summed time, as `11 Read · 4 Grep · 2 Bash · 1m 12s`. One or two successful calls stay as their own lines. A call with no recorded time adds none to the sum, and a fold with no timed call omits the time. The tool is the first word of the call's name, so a backend that names a call by its whole title still counts by tool.
+- rule: the fold is a button with `aria-expanded`. Opening it shows one line per call with the tool, its summary and its time, and closing it folds the lines again. A call's time runs from its call to its result in a Claude transcript, from the first to the last update of its tool call id in an ACP transcript or the live history, and from the recorded start to end in an opencode transcript. A Codex transcript records no tool time, so its calls show none.
+- rule: a failed tool call never sits inside a fold. It splits the run of successful calls around it, stands on its own line marked in red and with the words `failed`, shows its time, and shows its output in full in a box of its own. A box taller than about 220 pixels scrolls inside itself and leaves the rest of the turn where it was. The server carries a failed call's output up to 1,000,000 characters and carries none for a call that succeeded.
+- rule: the last assistant message of a finished turn is its final output. It is labelled `Output` and set apart from the other messages by a bar down its left edge. A running turn has no final output yet.
+- rule: the prompt, the thinking and a tool's output are untrusted text. The prompt and the thinking render as Markdown under the message rule, and a tool's output renders as literal text in a `pre` box that is a named, focusable region, so a script or an image in any of them runs nothing and loads nothing.
+- rule: a part's open state belongs to the turn on screen. Selecting another turn, or reading the same one again after another, shows every part collapsed. A read that only refreshes the open turn keeps the parts the operator opened.
+- rule: a finished turn of a native run whose record is not on this machine, because no record was archived for it or the record holds no transcript, reads as a turn with no messages, for a plain slug and for a suffixed key alike. The server answers `200`, the pane says no record of the turn could be found, and it offers no retry. Only a turn of a container run whose records are not pulled yet answers `503` with a retry, and a still-running turn with no rows yet is unchanged.
+- rule: the tab shows no archived run's turns.
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_sits_between_overview_and_details
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 - tests: groom/tests/test_activity_tab_dynamic.py::test_html_in_a_message_or_a_tool_line_renders_as_text_and_no_script_runs
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_message_written_in_markdown_reads_as_formatted_prose
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_of_an_old_run_matches_its_one_archived_record_and_a_turn_with_none_says_so
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_running_turn_whose_start_the_live_history_dropped_says_earlier_output_is_not_shown
+- tests: groom/tests/test_turn_reading_dynamic.py::test_the_prompt_starts_collapsed_and_is_labelled_with_its_size
+- tests: groom/tests/test_turn_reading_dynamic.py::test_opening_the_prompt_shows_it_and_closing_it_hides_it
+- tests: groom/tests/test_turn_reading_dynamic.py::test_the_thinking_starts_collapsed
+- tests: groom/tests/test_turn_reading_dynamic.py::test_opening_the_thinking_shows_it_and_closing_it_hides_it
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_run_of_successful_tool_calls_folds_to_one_line_counting_them_by_tool_with_their_time
+- tests: groom/tests/test_turn_reading_dynamic.py::test_opening_the_tool_line_shows_one_line_per_tool_call_and_closing_it_folds_them
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_failed_tool_call_stands_outside_any_fold
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_failed_tool_call_is_marked_in_red_and_in_words_with_its_output_in_full
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_long_failed_output_scrolls_in_its_own_box_and_the_turn_around_it_stays_in_place
+- tests: groom/tests/test_turn_reading_dynamic.py::test_the_final_output_is_set_apart_from_the_other_messages
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_backend_that_recorded_no_prompt_or_thinking_says_so_where_they_would_sit
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_turn_with_only_its_thinking_missing_names_just_the_thinking
+- tests: groom/tests/test_turn_reading_dynamic.py::test_selecting_another_turn_starts_it_collapsed_again
+- tests: groom/tests/test_turn_reading_dynamic.py::test_prompt_thinking_and_tool_output_render_as_text_and_no_script_runs
+- tests: groom/tests/test_turn_reading_dynamic.py::test_each_collapsible_part_has_a_role_a_name_keyboard_operation_and_its_open_state_is_exposed
+- tests: groom/tests/test_activity.py::test_a_turn_carries_its_recorded_prompt_and_its_thinking
+- tests: groom/tests/test_activity.py::test_a_prompt_the_record_lacks_comes_from_the_transcripts_user_messages
+- tests: groom/tests/test_activity.py::test_a_turn_with_no_recorded_prompt_or_thinking_carries_none
+- tests: groom/tests/test_activity.py::test_a_failed_tool_call_carries_its_whole_output_and_a_passed_one_carries_none
+- tests: groom/tests/test_activity.py::test_a_tool_call_carries_its_time_from_its_call_to_its_result
+- tests: groom/tests/test_activity.py::test_an_acp_call_is_named_by_its_tool_and_timed_from_its_first_update_to_its_last
+- tests: groom/tests/test_activity.py::test_the_last_assistant_message_of_a_finished_turn_is_final_and_a_running_turns_is_not
 - tests: groom/tests/test_activity.py::test_an_old_span_with_several_matching_rows_picks_none_of_them
 - tests: groom/tests/test_activity_groups.py::test_rows_group_under_a_work_item_with_its_state_time_and_cost
 - tests: groom/tests/test_activity_groups.py::test_inside_a_work_item_rows_group_under_a_flow_pass_with_its_state_time_and_cost

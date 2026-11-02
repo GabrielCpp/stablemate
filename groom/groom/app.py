@@ -653,7 +653,9 @@ async def run_turn(
 ) -> dict:
     """One agent turn: its head figures, its messages and its tool calls."""
     try:
-        return await pools.QUERY.run(activity.turn, run_id, slug, await _live_turns(run_id))
+        wf = state.WORKFLOWS.get(run_id)
+        pending = wf is not None and not wf.native
+        return await pools.QUERY.run(activity.turn, run_id, slug, await _live_turns(run_id), pending)
     except activity.TurnNotFound as exc:
         raise NotFoundException(detail="no such turn") from exc
     except activity.TurnUnreadable as exc:

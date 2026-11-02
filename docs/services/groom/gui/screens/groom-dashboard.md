@@ -428,7 +428,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - parent: [detail-pane](#detail-pane)
 - states: always enabled while a run is open.
 - states: it stays at the top right of the head's first row, with the run's doing line on the row below it.
-- code: groom/groom/assets/dashboard.js::RunHead@13be7a1c6eb7
+- code: groom/groom/assets/dashboard.js::RunHead@ffc2c446b5ec
 - tests: groom/tests/test_a11y_dynamic.py::test_selecting_a_run_narrows_the_list_and_close_restores_it_with_its_filter
 - leads-to: [close run detail](#close-run-detail), which clears the selection and returns the list to full width.
 
@@ -937,7 +937,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the change size is figures and words in the accessible name, never colour alone.
 - states: untracked files are not counted.
 - states: it is absent when the tracked change is empty.
-- code: groom/groom/assets/dashboard.js::DetailTabs@7758bd0de773
+- code: groom/groom/assets/dashboard.js::DetailTabs@c23c8518540f
 - tests: groom/tests/test_diff_tab_dynamic.py::test_the_diff_tab_shows_the_size_of_the_change_before_it_is_opened_after_exactly_one_read
 - tests: groom/tests/test_diff_tab_dynamic.py::test_untracked_files_sit_in_their_own_group_and_are_not_counted_in_the_tab
 
@@ -1062,7 +1062,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: exactly one row is `active`, the first changed file until another is selected.
 - verify: count(subject="active rows in the run Diff tab", equals=1)
 - states: untracked rows sit in the `Not tracked by git yet` group and show no counts.
-- code: groom/groom/assets/dashboard.js::DiffTab@ed8babf5c628
+- code: groom/groom/assets/dashboard.js::DiffTab@8ed2100fd582
 - code: groom/groom/assets/dashboard.js::diffEntries@ffb64254c8fd
 - code: groom/groom/assets/dashboard.js::compactDirs@3a253a447ec9
 - tests: groom/tests/test_diff_tab_dynamic.py::test_opening_diff_lists_changed_files_in_a_tree_with_counts_and_shows_the_first_file
@@ -1109,7 +1109,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#detail-diff-unreadable", text="This diff could not be read")
 - states: it fills the width of the pane, with `Retry now` after the message on the same line, as the panel for a branch start that was not found does.
 - states: it clears when a read succeeds.
-- code: groom/groom/assets/dashboard.js::DiffTab@ed8babf5c628
+- code: groom/groom/assets/dashboard.js::DiffTab@8ed2100fd582
 - tests: groom/tests/test_diff_tab_dynamic.py::test_an_unreadable_diff_says_so_offers_a_retry_and_clears_when_a_read_succeeds
 
 ### detail-files-tab
@@ -1187,7 +1187,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: count(subject="active rows in the run Files tab before a file is selected", equals=0)
 - states: the folders `.git`, `node_modules`, `__pycache__` and `.venv` never appear.
 - states: a folder the operator collapsed stays collapsed while they move between the tabs of the same run, and every folder is open again once another run or another checkout is selected.
-- code: groom/groom/assets/dashboard.js::FilesTab@6bf5e97b9175
+- code: groom/groom/assets/dashboard.js::FilesTab@44ffdf1c1d9a
 - code: groom/groom/assets/dashboard.js::openRunFile@aa3dd1ae20a1
 - tests: groom/tests/test_files_tab_dynamic.py::test_opening_files_lists_the_checkout_in_a_folder_tree_and_a_folder_collapses_and_expands
 - tests: groom/tests/test_files_tab_dynamic.py::test_folders_the_operator_collapsed_stay_collapsed_across_tabs_of_the_same_run_and_reset_on_another_run
@@ -1236,7 +1236,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: says `This checkout could not be read`, and a read that did not happen is never shown as no files.
 - verify: visible(locator="#detail-files-unreadable", text="This checkout could not be read")
 - states: it clears when a read succeeds.
-- code: groom/groom/assets/dashboard.js::FilesTab@6bf5e97b9175
+- code: groom/groom/assets/dashboard.js::FilesTab@44ffdf1c1d9a
 - code: groom/groom/assets/dashboard.js::ReadFailed@c688a54f6211
 - tests: groom/tests/test_files_tab_dynamic.py::test_a_tree_that_cannot_be_read_says_so_offers_a_retry_and_clears_when_a_read_succeeds
 
@@ -1282,7 +1282,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: an unreadable read says `This view could not be read` and `This does not mean there is no change.` with `Retry now`.
 - verify: absent(subject="#detail-diff-count for a branch with no change since it started")
 - code: groom/groom/assets/dashboard.js::DiffViewSwitch@6de2b73f3db9
-- code: groom/groom/assets/dashboard.js::selectDiffView@3a2b2daaeae5
+- code: groom/groom/assets/dashboard.js::selectDiffView@977e018d4f66
 - code: groom/groom/assets/dashboard.js::Segment@d29ccddabf83
 - code: groom/groom/assets/dashboard.js::BranchStartNotice@95b98f3f8489
 - detail: [branch start diff](../../concepts/branch-start-diff.md)
@@ -1366,7 +1366,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: while the turn reads, a status named `Reading this turn…` shows in its place and clears when the turn arrives.
 - states: when the turn cannot be read, an alert `This turn could not be read` shows with `Retry now`, and the list stays.
 - verify: visible(locator="#detail-activity-pane", text="Reading this turn")
-- code: groom/groom/assets/dashboard.js::TurnPane@b724c2dc0c40
+- code: groom/groom/assets/dashboard.js::TurnPane@f4a4b806c2fc
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_being_read_shows_a_reading_state_that_clears_when_it_appears
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
@@ -1395,16 +1395,25 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - role: none
 - name: `Turn <node>`
 - keyboard: the body is a tab stop and scrolls with the arrow keys.
+- keyboard: Enter or Space on a part's summary opens or closes it.
 - parent: [detail-activity-pane](#detail-activity-pane)
 - states: shows the turn's agent messages as formatted prose under a role label.
 - states: shows each tool call as one line with the tool's name and its summary.
 - verify: visible(locator="#detail-activity-reading", text="Read")
-- states: a failed tool call is marked failed on its line.
+- states: starts with the turn's prompt as a collapsed part labelled `Prompt · <n> words`, then its thinking as a collapsed part labelled `Thinking`.
+- states: each part is a native disclosure whose summary has the role of a disclosure triangle and exposes its open state.
+- states: opening a part shows its text as formatted prose, and closing it removes the text.
+- states: a turn whose backend recorded no prompt or thinking says `This backend did not record the prompt or the thinking for this turn.` where they would sit, and names only the missing one when the other exists.
+- states: a running turn shows no such note, because its prompt and thinking land at turn end.
+- states: three or more successful tool calls in a row fold to one button such as `11 Read · 4 Grep · 2 Bash · 1m 12s` with `aria-expanded`, and opening it shows one line per call with its time.
+- states: a failed tool call stands outside any fold, with its name in red, the words `failed`, its time, and its output in full in a focusable box named `Output of <tool>` that scrolls inside itself past about 220 pixels.
+- states: the last assistant message of a finished turn is labelled `Output` and set apart by a bar down its left edge.
+- states: selecting another turn shows every part collapsed again.
 - states: HTML in a message or a tool line shows as literal text, an image shows as its alt text, and no script in a turn runs.
 - states: a turn with nothing recorded says `This turn recorded no messages or tool calls.`
-- states: a turn of an old run with no matching record says `The record of this turn could not be matched, so its messages and tool calls are not shown.`
+- states: a turn with no record on this machine says `No record of this turn could be found, so its messages and tool calls are not shown.`
 - states: a turn read from the live history that lost its start says `Earlier output of this turn is not shown.`
-- code: groom/groom/assets/dashboard.js::TurnReading@db17ea2a3a72
+- code: groom/groom/assets/dashboard.js::TurnReading@89ba73f95707
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_pane_shows_messages_as_prose_and_each_tool_call_as_one_line
@@ -1412,6 +1421,21 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_message_written_in_markdown_reads_as_formatted_prose
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_of_an_old_run_matches_its_one_archived_record_and_a_turn_with_none_says_so
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_running_turn_whose_start_the_live_history_dropped_says_earlier_output_is_not_shown
+- tests: groom/tests/test_turn_reading_dynamic.py::test_the_prompt_starts_collapsed_and_is_labelled_with_its_size
+- tests: groom/tests/test_turn_reading_dynamic.py::test_opening_the_prompt_shows_it_and_closing_it_hides_it
+- tests: groom/tests/test_turn_reading_dynamic.py::test_the_thinking_starts_collapsed
+- tests: groom/tests/test_turn_reading_dynamic.py::test_opening_the_thinking_shows_it_and_closing_it_hides_it
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_run_of_successful_tool_calls_folds_to_one_line_counting_them_by_tool_with_their_time
+- tests: groom/tests/test_turn_reading_dynamic.py::test_opening_the_tool_line_shows_one_line_per_tool_call_and_closing_it_folds_them
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_failed_tool_call_stands_outside_any_fold
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_failed_tool_call_is_marked_in_red_and_in_words_with_its_output_in_full
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_long_failed_output_scrolls_in_its_own_box_and_the_turn_around_it_stays_in_place
+- tests: groom/tests/test_turn_reading_dynamic.py::test_the_final_output_is_set_apart_from_the_other_messages
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_backend_that_recorded_no_prompt_or_thinking_says_so_where_they_would_sit
+- tests: groom/tests/test_turn_reading_dynamic.py::test_a_turn_with_only_its_thinking_missing_names_just_the_thinking
+- tests: groom/tests/test_turn_reading_dynamic.py::test_selecting_another_turn_starts_it_collapsed_again
+- tests: groom/tests/test_turn_reading_dynamic.py::test_prompt_thinking_and_tool_output_render_as_text_and_no_script_runs
+- tests: groom/tests/test_turn_reading_dynamic.py::test_each_collapsible_part_has_a_role_a_name_keyboard_operation_and_its_open_state_is_exposed
 
 ### detail-activity-state
 
@@ -1697,7 +1721,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Does nothing when the list is empty.
 - verify: json_path(path="selection.empty_list_does_nothing", equals=true)
 - code: groom/groom/assets/dashboard.js::wireEvents@99f073783401
-- code: groom/groom/assets/dashboard.js::select@46f96b77d0ce
+- code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
 - code: groom/groom/assets/dashboard.js::setMode@d01c7d7c3d9c
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
@@ -2112,7 +2136,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Closes the palette and returns focus to whatever opened it.
   - Chooses by run id rather than by rendered position, so the result list re-rendering under a concurrent push cannot open the wrong run.
 - code: groom/groom/assets/dashboard.js::choosePaletteHit@79c641f3d2fb
-- code: groom/groom/assets/dashboard.js::select@46f96b77d0ce
+- code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
 - code: groom/groom/assets/dashboard.js::setMode@d01c7d7c3d9c
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
@@ -2186,7 +2210,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: visible(locator="#detail-diff-panel", text="has no diff because git does not track it yet")
   - Sends no request, because the diff was read when the run was selected.
   - verify: count(subject="GET /diff/{container_id} requests when the tab opens", equals=0)
-- code: groom/groom/assets/dashboard.js::DiffTab@ed8babf5c628
+- code: groom/groom/assets/dashboard.js::DiffTab@8ed2100fd582
 - code: groom/groom/assets/dashboard.js::diffEntries@ffb64254c8fd
 - code: groom/groom/assets/dashboard.js::fileDiffMarkup@1286720f9b96
 - tests: groom/tests/test_diff_tab_dynamic.py::test_opening_diff_lists_changed_files_in_a_tree_with_counts_and_shows_the_first_file
@@ -2214,7 +2238,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Keeps the selected file when its path is still in the diff.
   - Keeps the chosen checkout and the chosen view.
 - code: groom/groom/assets/dashboard.js::DiffRead@4ceebad9cc73
-- code: groom/groom/assets/dashboard.js::loadRunDiff@a79bfdf4c0b1
+- code: groom/groom/assets/dashboard.js::loadRunDiff@6b1e2d0423d6
 - tests: groom/tests/test_diff_tab_dynamic.py::test_the_tab_says_when_the_diff_was_read_and_refresh_reads_again_and_updates_the_counts
 
 ### retry-detail-diff
@@ -2234,8 +2258,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: absent(subject="the unreadable-diff message after a successful read")
   - Keeps the message when the read fails again, and never shows it as no changes.
   - verify: omits(subject="unreadable diff panel", text="no uncommitted changes")
-- code: groom/groom/assets/dashboard.js::DiffTab@ed8babf5c628
-- code: groom/groom/assets/dashboard.js::loadRunDiff@a79bfdf4c0b1
+- code: groom/groom/assets/dashboard.js::DiffTab@8ed2100fd582
+- code: groom/groom/assets/dashboard.js::loadRunDiff@6b1e2d0423d6
 - tests: groom/tests/test_diff_tab_dynamic.py::test_an_unreadable_diff_says_so_offers_a_retry_and_clears_when_a_read_succeeds
 - tests: groom/tests/test_diff_tab_dynamic.py::test_a_read_the_sidecar_errors_on_also_reads_as_unreadable_never_as_no_changes
 - tests: groom/tests/test_diff_tab_dynamic.py::test_an_empty_diff_from_a_sidecar_too_old_to_report_failure_cannot_be_confirmed
@@ -2266,7 +2290,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: unchanged(subject="selected run")
   - Does not move the run selection when `j` or `k` is pressed with the select focused.
   - verify: unchanged(subject="selected run after j or k with the select focused")
-- code: groom/groom/assets/dashboard.js::selectCheckout@fe08d1478779
+- code: groom/groom/assets/dashboard.js::selectCheckout@dfd6eb4f7100
 - code: groom/groom/assets/dashboard.js::setCheckout@912b63a12a8d
 - detail: [run checkout selection](../../concepts/run-checkout-selection.md)
 - tests: groom/tests/test_checkout_selector_dynamic.py::test_selecting_a_checkout_shows_its_change_and_its_tree_and_the_size_follows

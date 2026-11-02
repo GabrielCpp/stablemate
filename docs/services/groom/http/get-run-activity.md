@@ -52,7 +52,7 @@ title: get-run-activity
 - tests: groom/tests/test_activity.py::test_the_timeline_lists_a_finished_turn_with_its_figures_and_pass
 - tests: groom/tests/test_activity.py::test_a_turn_with_no_span_yet_is_running_and_reads_from_the_live_rows
 - tests: groom/tests/test_activity.py::test_a_turns_result_is_its_recorded_summary_before_the_spans_activity_label
-- tests: groom/tests/test_activity.py::test_the_endpoints_answer_the_list_the_turn_and_the_two_failures
+- tests: groom/tests/test_activity.py::test_the_endpoints_answer_the_list_the_turn_and_the_missing_turn
 - tests: groom/tests/test_activity_groups.py::test_rows_group_under_a_work_item_with_its_state_time_and_cost
 - tests: groom/tests/test_activity_groups.py::test_a_gate_a_retry_and_a_failed_step_each_have_their_own_entry_with_name_time_and_result
 

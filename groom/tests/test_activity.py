@@ -9,8 +9,9 @@ from litestar.testing import TestClient
 from test_flows import _span, _state, _turn
 from test_run_clock import RUN, STATE, _DB, span
 
-from groom import activity, flows, store, transcript_parse, turns
+from groom import activity, flows, state, store, transcript_parse, turns
 from groom import app as groom_app
+from groom.models import WorkflowContainer
 
 BASE = 1_700_000_000.0
 SESSION = "sess-1"
@@ -188,7 +189,7 @@ def test_a_finished_turn_reads_only_its_own_window_and_drops_the_rest(tmp_path: 
     assert [(entry["kind"], entry.get("text") or entry["summary"]) for entry in body["entries"]] == [
         ("message", "Bringing the stack up."), ("tool", "make up"),
     ]
-    assert set(body["entries"][1]) == {"kind", "name", "summary", "failed"}
+    assert set(body["entries"][1]) == {"kind", "name", "summary", "failed", "duration_s", "result"}
 
 
 def _live(slug: str, text: str, ts: float) -> dict:
@@ -205,7 +206,7 @@ def test_a_turn_with_no_span_yet_is_running_and_reads_from_the_live_rows() -> No
     assert [entry["text"] for entry in body["entries"]] == ["Rerunning it."]
 
 
-def test_an_unknown_turn_is_not_found_and_an_unarchived_one_is_unreadable(tmp_path: Path) -> None:
+def test_an_unknown_turn_is_not_found_and_a_container_turn_with_no_transcript_is_unreadable(tmp_path: Path) -> None:
     import pytest
 
     with _DB():
@@ -214,10 +215,10 @@ def test_an_unknown_turn_is_not_found_and_an_unarchived_one_is_unreadable(tmp_pa
             activity.turn(RUN, "009-00009-nothing")
         (turns.transcripts_root() / RUN / f"{SLUG}__{SESSION}" / "transcript.jsonl").unlink()
         with pytest.raises(activity.TurnUnreadable):
-            activity.turn(RUN, SLUG)
+            activity.turn(RUN, SLUG, pending=True)
 
 
-def test_the_endpoints_answer_the_list_the_turn_and_the_two_failures(tmp_path: Path) -> None:
+def test_the_endpoints_answer_the_list_the_turn_and_the_missing_turn(tmp_path: Path) -> None:
     with _DB():
         _seed_run(tmp_path)
         with TestClient(app=groom_app.create_app()) as client:
@@ -229,9 +230,7 @@ def test_the_endpoints_answer_the_list_the_turn_and_the_two_failures(tmp_path: P
     assert listing.status_code == 200 and [row["slug"] for row in listing.json()["rows"]] == [SLUG]
     assert one.status_code == 200 and one.json()["head"]["node"] == "qa-story"
     assert missing.status_code == 404
-    assert broken.status_code == 503
-
-
+    assert broken.status_code == 200 and broken.json()["head"]["matched"] is False
 
 
 def test_a_turns_result_is_its_recorded_summary_before_the_spans_activity_label(tmp_path: Path) -> None:
@@ -312,3 +311,134 @@ def test_a_live_turn_whose_start_the_history_dropped_is_marked_cut() -> None:
     with _DB():
         assert activity.turn(RUN, slug, {slug: [whole, tail]})["cut"] is False
         assert activity.turn(RUN, slug, {slug: [tail]})["cut"] is True
+
+
+def _seed_reading(tmp_path: Path, *, prompt: str | None, records: list[dict]) -> None:
+    _seed_run(tmp_path)
+    root = turns.transcripts_root() / RUN / f"{SLUG}__{SESSION}"
+    _write(root / "transcript.jsonl", records)
+    if prompt is not None:
+        (root / "prompt.md").write_text(prompt)
+
+
+def test_a_turn_carries_its_recorded_prompt_and_its_thinking(tmp_path: Path) -> None:
+    with _DB():
+        _seed_reading(tmp_path, prompt="You own QA for the story.\n\nRun every scenario.", records=[
+            _claude(110, "assistant", [{"type": "thinking", "thinking": "The port is taken."}, {"type": "text", "text": "Bringing it up."}]),
+        ])
+        body = activity.turn(RUN, SLUG)
+    assert body["prompt"] == "You own QA for the story.\n\nRun every scenario."
+    assert body["thinking"] == "The port is taken."
+    assert [entry["role"] for entry in body["entries"]] == ["assistant"]
+
+
+def test_a_prompt_the_record_lacks_comes_from_the_transcripts_user_messages(tmp_path: Path) -> None:
+    with _DB():
+        _seed_reading(tmp_path, prompt=None, records=[_claude(105, "user", "Run the plan."), _claude(110, "assistant", "Done.")])
+        body = activity.turn(RUN, SLUG)
+    assert body["prompt"] == "Run the plan."
+
+
+def test_a_turn_with_no_recorded_prompt_or_thinking_carries_none(tmp_path: Path) -> None:
+    with _DB():
+        _seed_reading(tmp_path, prompt=None, records=[_claude(110, "assistant", "Done.")])
+        body = activity.turn(RUN, SLUG)
+    assert body["prompt"] is None and body["thinking"] is None
+
+
+def test_a_failed_tool_call_carries_its_whole_output_and_a_passed_one_carries_none(tmp_path: Path) -> None:
+    long_output = "\n".join(f"line {number}" for number in range(2000))
+    with _DB():
+        _seed_reading(tmp_path, prompt=None, records=[
+            _claude(110, "assistant", [
+                {"type": "tool_use", "id": "a", "name": "Bash", "input": {"command": "make test"}},
+                {"type": "tool_use", "id": "b", "name": "Read", "input": {"file_path": "x.py"}},
+            ]),
+            _claude(112, "user", [
+                {"type": "tool_result", "tool_use_id": "a", "content": long_output, "is_error": True},
+                {"type": "tool_result", "tool_use_id": "b", "content": "ten lines", "is_error": False},
+            ]),
+        ])
+        failed, passed = activity.turn(RUN, SLUG)["entries"]
+    assert failed["failed"] is True and failed["result"] == long_output
+    assert passed["failed"] is False and passed["result"] == ""
+
+
+def test_a_tool_call_carries_its_time_from_its_call_to_its_result(tmp_path: Path) -> None:
+    with _DB():
+        _seed_reading(tmp_path, prompt=None, records=[
+            _claude(110, "assistant", [
+                {"type": "tool_use", "id": "a", "name": "Bash", "input": {"command": "make test"}},
+                {"type": "tool_use", "id": "b", "name": "Read", "input": {"file_path": "x.py"}},
+            ]),
+            _claude(134, "user", [{"type": "tool_result", "tool_use_id": "a", "content": "ok"}]),
+        ])
+        timed, open_call = activity.turn(RUN, SLUG)["entries"]
+    assert timed["duration_s"] == 24.0 and open_call["duration_s"] is None
+
+
+def test_an_acp_call_is_named_by_its_tool_and_timed_from_its_first_update_to_its_last() -> None:
+    def record(ts: float, update: dict) -> dict:
+        return {"update": update, "_meta": {"ts": ts}}
+
+    updates = [
+        record(100.0, {"sessionUpdate": "tool_call", "toolCallId": "c1", "title": "Bash pytest -k locked", "kind": "execute", "status": "in_progress"}),
+        record(108.0, {"sessionUpdate": "tool_call_update", "toolCallId": "c1", "status": "failed", "content": [{"type": "content", "content": {"type": "text", "text": "E  assert 401 == 423"}}]}),
+    ]
+    entries = transcript_parse.from_updates({**record_["update"], "_ts": record_["_meta"]["ts"]} for record_ in updates)
+    assert len(entries) == 1
+    call = entries[0]
+    assert (call["name"], call["summary"], call["failed"], call["duration_s"]) == ("Bash", "pytest -k locked", True, 8.0)
+    assert call["result"] == "E  assert 401 == 423"
+
+
+def test_the_last_assistant_message_of_a_finished_turn_is_final_and_a_running_turns_is_not(tmp_path: Path) -> None:
+    with _DB():
+        _seed_reading(tmp_path, prompt=None, records=[_claude(110, "assistant", "First."), _claude(115, "assistant", "Last.")])
+        finished = activity.turn(RUN, SLUG)["entries"]
+        slug = "001-00003-qa-story"
+        live = {slug: [_live(slug, "Working.", BASE + 5) | {"key": f"{slug}:0"}]}
+        running = activity.turn(RUN, slug, live)["entries"]
+    assert [entry["final"] for entry in finished] == [False, True]
+    assert [entry["final"] for entry in running] == [False]
+
+
+def _drop_the_record(tmp_path: Path) -> None:
+    import shutil
+
+    _seed_run(tmp_path)
+    shutil.rmtree(turns.transcripts_root() / RUN / f"{SLUG}__{SESSION}")
+
+
+def test_a_finished_native_turn_with_no_record_reads_as_unmatched_never_a_failure(tmp_path: Path) -> None:
+    with _DB():
+        _drop_the_record(tmp_path)
+        body = activity.turn(RUN, SLUG)
+        with TestClient(app=groom_app.create_app()) as client:
+            answer = client.get(f"/api/run/{RUN}/activity/{SLUG}")
+    assert body["entries"] == [] and body["head"]["matched"] is False
+    assert answer.status_code == 200 and answer.json()["head"]["matched"] is False
+
+
+def test_a_finished_native_turn_whose_record_holds_no_transcript_reads_as_unmatched(tmp_path: Path) -> None:
+    with _DB():
+        _seed_run(tmp_path)
+        (turns.transcripts_root() / RUN / f"{SLUG}__{SESSION}" / "transcript.jsonl").unlink()
+        body = activity.turn(RUN, SLUG)
+    assert body["entries"] == [] and body["head"]["matched"] is False
+
+
+def test_a_finished_container_turn_whose_records_are_not_pulled_still_answers_503(tmp_path: Path) -> None:
+    import pytest
+
+    with _DB():
+        _drop_the_record(tmp_path)
+        with pytest.raises(activity.TurnUnreadable):
+            activity.turn(RUN, SLUG, pending=True)
+        state.WORKFLOWS[RUN] = WorkflowContainer(container_id=RUN, name="coder")
+        try:
+            with TestClient(app=groom_app.create_app()) as client:
+                answer = client.get(f"/api/run/{RUN}/activity/{SLUG}")
+        finally:
+            state.WORKFLOWS.pop(RUN, None)
+    assert answer.status_code == 503

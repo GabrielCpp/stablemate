@@ -1675,14 +1675,93 @@ function TurnHead({ row }) {
   </div>`;
 }
 
-function TurnReading({ row, entries, cut }) {
+const FOLD_FROM = 3;
+
+function fmtToolTime(seconds) {
+  return seconds < 1 ? "<1s" : fmtSpan(seconds);
+}
+
+function toolRuns(entries) {
+  const out = [];
+  let run = [];
+  const flush = () => {
+    if (run.length >= FOLD_FROM) out.push({ kind: "run", key: "run:" + run[0].at, calls: run.map((one) => one.entry) });
+    else run.forEach((one) => out.push(one.entry));
+    run = [];
+  };
+  entries.forEach((entry, at) => {
+    if (entry.kind === "tool" && !entry.failed) {
+      run.push({ entry, at });
+      return;
+    }
+    flush();
+    out.push(entry);
+  });
+  flush();
+  return out;
+}
+
+function runLabel(calls) {
+  const counts = new Map();
+  for (const call of calls) counts.set(call.name, (counts.get(call.name) || 0) + 1);
+  const named = [...counts].sort((a, b) => b[1] - a[1]).map(([name, count]) => count + " " + name);
+  const timed = calls.filter((call) => call.duration_s !== null && call.duration_s !== undefined);
+  if (timed.length) named.push(fmtToolTime(timed.reduce((sum, call) => sum + call.duration_s, 0)));
+  return named.join(" · ");
+}
+
+function ToolLine({ entry }) {
+  const timed = entry.duration_s !== null && entry.duration_s !== undefined;
+  return html`<div class="at-tool">
+    <div class=${"at-tool-head" + (entry.failed ? " failed" : "")}>
+      <span class="at-tool-name">${entry.name}</span><span class="at-tool-sum">${entry.summary}</span>
+      ${entry.failed ? html`<span class="at-tool-state"><span aria-hidden="true">✕ </span>failed</span>` : null}
+      ${timed ? html`<span class="at-tool-time">${fmtToolTime(entry.duration_s)}</span>` : null}
+    </div>
+    ${entry.failed && entry.result ? html`<pre class="at-tool-body" tabindex="0" aria-label=${"Output of " + entry.name}>${entry.result}</pre>` : null}
+  </div>`;
+}
+
+function ToolRun({ run, open, toggle }) {
+  return [
+    html`<button type="button" class="tool-run" aria-expanded=${open ? "true" : "false"} onClick=${toggle}><span aria-hidden="true">${open ? "▾" : "▸"} </span>${runLabel(run.calls)}</button>`,
+    ...(open ? run.calls.map((call, at) => html`<${ToolLine} key=${at} entry=${call} />`) : []),
+  ];
+}
+
+function PartFold({ cls, label, open, toggle, source }) {
+  return html`<details class=${"at-msg " + cls} open=${open} onToggle=${(event) => toggle(event.currentTarget.open)}>
+    <summary class="at-role">${label}</summary>
+    ${open ? html`<${TranscriptText} source=${source} />` : null}
+  </details>`;
+}
+
+function wordCount(text) {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return words.toLocaleString("en-US") + (words === 1 ? " word" : " words");
+}
+
+function missingParts(prompt, thinking) {
+  const gone = [prompt ? "" : "the prompt", thinking ? "" : "the thinking"].filter(Boolean);
+  return gone.length ? "This backend did not record " + gone.join(" or ") + " for this turn." : "";
+}
+
+function TurnReading({ row, entries, cut, prompt, thinking }) {
+  const [opened, setOpened] = useState({});
+  const flip = (key) => (open) => setOpened((held) => (held[key] === open ? held : { ...held, [key]: open }));
+  const missing = cut || row.status === "running" ? "" : missingParts(prompt, thinking);
   return html`<div class="rd-body" tabindex="0" aria-label=${"Turn " + row.node}>
-    ${!row.matched ? html`<div class="dim at-note" style="font-size:11.5px">The record of this turn could not be matched, so its messages and tool calls are not shown.</div>`
+    ${!row.matched ? html`<div class="dim at-note" style="font-size:11.5px">No record of this turn could be found, so its messages and tool calls are not shown.</div>`
       : entries.length ? null : html`<div class="dim" style="font-size:11.5px">This turn recorded no messages or tool calls.</div>`}
     ${cut ? html`<div class="dim at-note" style="font-size:11.5px">Earlier output of this turn is not shown.</div>` : null}
-    ${entries.map((entry) => entry.kind === "tool"
-      ? html`<div class="at-tool"><div class=${"at-tool-head" + (entry.failed ? " failed" : "")}><span class="at-tool-name">${entry.name}</span><span class="at-tool-sum">${entry.summary}</span></div></div>`
-      : html`<div class="at-msg"><div class="at-role">${entry.role}</div><${TranscriptText} source=${entry.text} /></div>`)}
+    ${row.matched && prompt ? html`<${PartFold} cls="prompt" label=${"Prompt · " + wordCount(prompt)} open=${!!opened.prompt} toggle=${flip("prompt")} source=${prompt} />` : null}
+    ${row.matched && thinking ? html`<${PartFold} cls="thought" label="Thinking" open=${!!opened.thinking} toggle=${flip("thinking")} source=${thinking} />` : null}
+    ${row.matched && missing ? html`<div class="dim at-note" style="font-size:11.5px">${missing}</div>` : null}
+    ${toolRuns(entries).map((entry) => entry.kind === "run"
+      ? html`<${ToolRun} key=${entry.key} run=${entry} open=${!!opened[entry.key]} toggle=${() => flip(entry.key)(!opened[entry.key])} />`
+      : entry.kind === "tool"
+        ? html`<${ToolLine} entry=${entry} />`
+        : html`<div class=${"at-msg" + (entry.final ? " output" : "")}><div class="at-role">${entry.final ? "Output" : entry.role}</div><${TranscriptText} source=${entry.text} /></div>`)}
   </div>`;
 }
 
@@ -1725,7 +1804,7 @@ function TurnPane({ runId, rows, turn, items, selected }) {
       <span class="spin" aria-hidden="true"></span>Reading this turn…
     </div></div>`;
   }
-  return html`<div class="rd"><${TurnHead} row=${row} /><${TurnReading} row=${row} entries=${turn.data.entries} cut=${turn.data.cut} /></div>`;
+  return html`<div class="rd"><${TurnHead} row=${row} /><${TurnReading} key=${turn.slug} row=${row} entries=${turn.data.entries} cut=${turn.data.cut} prompt=${turn.data.prompt} thinking=${turn.data.thinking} /></div>`;
 }
 
 function ActivityTab({ detail }) {
