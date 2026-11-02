@@ -28,6 +28,7 @@ PAUSE_RE = re.compile(r"\[([a-zA-Z0-9_.-]+)\]\s*⏸[^\n]*pausing\s*~?(\d+)\s*s")
 WATCHED = ("qa-story", "document-story")
 
 DRIVING_NODE = "run_qa_plan"
+MAIN_FLOW = "main"
 
 
 
@@ -223,6 +224,74 @@ def laps_of(run_id: str, since_ts: float = 0.0) -> list[dict[str, Any]]:
             run=run_id, min_work_items=1, since_ts=since_ts or None
         )
     ]
+
+
+def _is_compaction(line: str) -> bool:
+    return '"compact_boundary"' in line and json.loads(line).get("subtype") == "compact_boundary"
+
+
+def compactions_by_node(run_dir: Path) -> dict[str, int]:
+    """How often each node's turns compacted, charging a resumed session's growth to the turn that grew it."""
+    seen: dict[str, int] = {}
+    found: dict[str, int] = defaultdict(int)
+    for path in sorted((run_dir / "transcripts").glob("*__*.jsonl")):
+        stem, _, session = path.name.removesuffix(".jsonl").partition("__")
+        if session.endswith(".acp"):
+            continue
+        count = sum(_is_compaction(line) for line in path.read_text(encoding="utf-8").splitlines())
+        found[stem.split("-", 2)[-1]] += max(0, count - seen.get(session, 0))
+        seen[session] = max(count, seen.get(session, 0))
+    return dict(found)
+
+
+def flow_rows(turns: list[dict[str, Any]], run_dir: Path) -> list[dict[str, Any]]:
+    """One row per flow of the run dir: dollars, minutes, compactions and each turn's dollars."""
+    flow_of = {path.name: path.parent.parent.name for path in run_dir.glob("*/_flow/*")}
+    rows: dict[str, dict[str, Any]] = {}
+
+    def row_of(node: str) -> dict[str, Any]:
+        flow = flow_of.get(node, MAIN_FLOW)
+        return rows.setdefault(
+            flow, {"flow": flow, "usd": 0.0, "seconds": 0.0, "compactions": 0, "unpriced": 0, "turns": []}
+        )
+
+    for turn in turns:
+        if turn.get("name") != "agent_turn":
+            continue
+        node = str(turn.get("node") or "")
+        row = row_of(node)
+        usd = turn.get("profile_cost_usd")
+        row["usd"] = round(row["usd"] + (usd or 0.0), 2)
+        row["unpriced"] += usd is None
+        row["seconds"] += float(turn.get("profile_duration_ms") or 0.0) / 1000.0
+        row["turns"].append({"node": node, "usd": round(usd or 0.0, 2)})
+    for node, count in compactions_by_node(run_dir).items():
+        row_of(node)["compactions"] += count
+    return sorted(rows.values(), key=lambda row: row["flow"])
+
+
+def flow_costs(run_dir: Path) -> list[dict[str, Any]]:
+    """The per-flow rows of one finished run dir, read back from groom by the run id it recorded."""
+    from groom import store
+
+    run_id = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["run_id"]
+    return flow_rows(store.run_turn_spans(run_id), run_dir)
+
+
+def flow_cost_lines(rows: list[dict[str, Any]]) -> list[str]:
+    """One line per flow and a total, or a line saying groom never saw the run's turns."""
+    if not any(row["turns"] for row in rows):
+        return ["cost: groom holds no turn for this run, so start groom before the round"]
+    lines = []
+    for row in rows:
+        turns = " ".join(f"{turn['node']} ${turn['usd']:.2f}" for turn in row["turns"])
+        unpriced = f"  unpriced {row['unpriced']}" if row["unpriced"] else ""
+        lines.append(
+            f"{row['flow']}: ${row['usd']:.2f}  {minutes(row['seconds'])}  "
+            f"compactions {row['compactions']}{unpriced}  {turns}"
+        )
+    lines.append(f"total: ${sum(row['usd'] for row in rows):.2f}")
+    return lines
 
 
 def money(rows: list[dict[str, Any]]) -> str:

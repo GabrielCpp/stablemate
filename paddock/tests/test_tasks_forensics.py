@@ -151,3 +151,51 @@ def test_churn_reads_subflows_too(tmp_path: Path) -> None:
     found = fx.churn_candidates(runs)
     assert [row["cycle"] for row in found] == [["author_plan", "repair_plan"]]
     assert found[0]["where"].endswith("_flow")
+
+
+def write_transcript(run_dir: Path, name: str, compactions: int) -> None:
+    folder = run_dir / "transcripts"
+    folder.mkdir(parents=True, exist_ok=True)
+    lines = ['{"subtype": "compact_boundary"}'] * compactions + ['{"type": "assistant"}']
+    (folder / name).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_a_resumed_session_charges_only_its_growth_to_the_later_turn(tmp_path: Path) -> None:
+    write_transcript(tmp_path, "001-00001-dev-plan__aaa.jsonl", 1)
+    write_transcript(tmp_path, "001-00002-dev-build__aaa.jsonl", 3)
+    write_transcript(tmp_path, "001-00002-dev-build__aaa.acp.jsonl", 9)
+    write_transcript(tmp_path, "001-00003-qa-story__bbb.jsonl", 2)
+
+    assert fx.compactions_by_node(tmp_path) == {"dev-plan": 1, "dev-build": 2, "qa-story": 2}
+
+
+def test_flow_rows_split_dollars_by_the_flow_that_holds_each_node(tmp_path: Path) -> None:
+    (tmp_path / "review" / "_flow" / "review-diff").mkdir(parents=True)
+    (tmp_path / "dev" / "_flow" / "dev-build").mkdir(parents=True)
+    write_transcript(tmp_path, "001-00001-dev-build__aaa.jsonl", 2)
+    turn = {"name": "agent_turn", "profile_duration_ms": 60000.0}
+
+    rows = fx.flow_rows(
+        [
+            {**turn, "node": "dev-build", "profile_cost_usd": 3.5},
+            {**turn, "node": "review-diff", "profile_cost_usd": 1.25},
+            {**turn, "node": "review-diff", "profile_cost_usd": 0.75},
+            {**turn, "node": "specify-story", "profile_cost_usd": None},
+            {"name": "dev-build", "node": "dev-build", "profile_cost_usd": 99.0},
+        ],
+        tmp_path,
+    )
+
+    by_flow = {row["flow"]: row for row in rows}
+    assert by_flow["dev"]["usd"] == 3.5
+    assert by_flow["dev"]["compactions"] == 2
+    assert [turn["usd"] for turn in by_flow["review"]["turns"]] == [1.25, 0.75]
+    assert by_flow[fx.MAIN_FLOW]["unpriced"] == 1
+
+
+def test_a_round_groom_never_saw_says_so_and_prints_no_zero(tmp_path: Path) -> None:
+    write_transcript(tmp_path, "001-00001-dev-build__aaa.jsonl", 1)
+
+    lines = fx.flow_cost_lines(fx.flow_rows([], tmp_path))
+
+    assert lines == ["cost: groom holds no turn for this run, so start groom before the round"]
