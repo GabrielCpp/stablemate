@@ -474,8 +474,55 @@ def test_an_observed_fact_is_clean(repo: Path) -> None:
 def test_a_fact_asserted_by_construction_is_clean(repo: Path) -> None:
     _stack(repo)
     write(repo / "docs/services/acme/fixtures/seeded-acme.md",
-          _fixture_book(provides="id — the seeded account's id|is: 7"))
+          _fixture_book(provides="count — accounts on file after the restart|is: 0"))
     assert _findings(repo, "undetermined-provided-fact") == []
+
+
+def test_fixture_fixed_id_when_a_provided_id_is_asserted(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="account_id — the seeded account's id|is: 7"))
+    found = _findings(repo, "fixture-fixed-id")
+    assert [f.severity for f in found] == ["error"]
+    assert "`provides: account_id` is asserted with `is: 7`" in found[0].message
+
+
+def test_fixture_fixed_id_is_clean_for_an_observed_id_and_an_asserted_count(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id|from: [seed-it](#seed-it)|read: account.id"
+                                 ";count — accounts after the seed|is: 1"))
+    assert _findings(repo, "fixture-fixed-id") == []
+
+
+@pytest.mark.parametrize("run", [
+    "mysql -e \"INSERT INTO account (id, name) VALUES (950001, 'acme')\"",
+    "mysql -e \"INSERT IGNORE INTO entry (id) VALUES (CAST('950001' AS BINARY(16)))\"",
+    "mysql -e \"INSERT INTO row (project_id, qty) VALUES (UNHEX('CA1C0000000000000000000000000001'), 2)\"",
+    "curl -sf -d '{\"id\":\"3f2a1b4c-9d8e-4f00-a1b2-c3d4e5f60718\"}' http://localhost:18099/api/accounts",
+])
+def test_fixture_fixed_id_when_a_step_writes_a_literal_id(repo: Path, run: str) -> None:
+    _stack(repo)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id|from: [seed-it](#seed-it)").replace(
+              "- run: ./scripts/seed-acme.sh", f"- run: {run}"))
+    found = _findings(repo, "fixture-fixed-id")
+    assert [f.severity for f in found] == ["error"]
+    assert "writes the fixed id" in found[0].message
+
+
+@pytest.mark.parametrize("run", [
+    "id=$(uuidgen) && mysql -e \"INSERT INTO account (id, name) VALUES ('$id', 'acme')\" && printf '{\"id\":\"%s\"}' \"$id\"",
+    "mysql -e \"INSERT INTO account (name, qty) VALUES ('acme', 950001)\"",
+    "mysql -e \"INSERT INTO row (project_id, qty) VALUES (@project.id, 2)\"",
+    "curl -sf -d '{\"name\":\"acme\"}' http://localhost:18099/api/accounts",
+])
+def test_fixture_fixed_id_is_clean_for_generated_and_product_assigned_ids(repo: Path, run: str) -> None:
+    _stack(repo)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="id — the seeded account's id|from: [seed-it](#seed-it)").replace(
+              "- run: ./scripts/seed-acme.sh", f"- run: {run}"))
+    assert _findings(repo, "fixture-fixed-id") == []
 
 
 def _fixture_in(directory: str) -> str:

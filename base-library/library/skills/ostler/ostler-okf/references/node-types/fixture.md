@@ -151,6 +151,14 @@ one from a fixture step that prints it:
 `run: printf '{"email":"qa-%s@example.com"}' "$(date +%s%N)"`. The step prints a fresh value
 for every field the source holds unique, such as a company name beside the email.
 
+A fixture never fixes an id. Every record it creates takes the id the product assigns, or one
+the step generates as it runs, and the fixture provides it with `from:`/`read:`:
+`run: id=$(uuidgen) && ./scripts/seed-account.sh "$id" && printf '{"id":"%s"}' "$id"`. Fixtures
+compose on one copy of the stack, and two that write the same literal id rewrite each other's
+rows, so a scenario passes or fails by which fixture built last. A `run:` or `body:` that writes
+a uuid, a hex or `UNHEX`/`CAST … AS BINARY` literal, or an `INSERT` pairing an `id`-named column
+with a literal, and a `provides:` id asserted with `is:`, are each `fixture-fixed-id`.
+
 ### Signing a browser in
 
 A token in a step's environment never reaches a browser. A browser claim behind a sign-in
@@ -316,7 +324,7 @@ title: Seeded acme
 ## Doctor codes it can trip
 
 See [`../doctor-codes.md`](../doctor-codes.md): `unknown-book-fixture`, `duplicate-fixture-name`, `fixture-step-kind`,
-`fixture-step-no-run`, `fixture-browser-step`, `browser-fixture-off-browser`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
+`fixture-step-no-run`, `fixture-fixed-id`, `fixture-browser-step`, `browser-fixture-off-browser`, `fixture-arg-mismatch`, `fixture-needs-target-args`,
 `fixture-needs-cycle`, `fixture-undeclared-provides`, `undetermined-provided-fact`,
 `fixture-secret-name`, `fixture-borrow-lifetime`, `fixture-release-without-borrow`,
 `unbacked-precondition`, `missing-required-section`,

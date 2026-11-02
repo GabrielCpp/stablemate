@@ -23,6 +23,8 @@ borrow without `lifetime: scenario`, a release with no borrow, a `request:` with
 and a `run:` sent to an `http` resource. The `observing` book holds a cli page with three commands
 that each break one rule: an `observe:` naming an observation the resource lacks, an `observe:` that
 is not `@<resource>.<observation>`, and a `within=` on a row held on the response.
+The `fixed-id` book holds two fixtures that each fix an id: one whose seed step inserts a row
+under a literal id, and one that provides an id asserted with `is:`.
 
 The seed also writes `doctor-register-scratch/`, a repo with an empty book whose artifacts dir
 `doctor-register-scratch/art` holds a broken register. Record X-2 has no frontmatter. Record X-1
@@ -80,3 +82,8 @@ which is on no shelf. Its commands run with `STABLEMATE_ARTIFACTS_DIR` set to th
 
 - kind: seed
 - run: mkdir -p doctor-scratch/docs/services/observing doctor-scratch/docs/services/observing/resources && printf -- '---\ntype: entries\nslug: entries\ntitle: observing\n---\n\n- \133Lab app](cli.md)\n- \133Camera](resources/camera.md)\n' > doctor-scratch/docs/services/observing/entries.md && printf -- '---\ntype: resource\ntitle: Camera\n---\n# Camera\n\n- reach: http\n- base: http://camera.example.internal:9000\n\n## Probe\n\n### answers\n\n- kind: probe\n- request: GET /health\n\n## Observations\n\n### recordings\n\n- kind: observe\n- request: GET /recordings\n' > doctor-scratch/docs/services/observing/resources/camera.md && printf -- '---\ntype: cli\nslug: cli\ntitle: Lab app\n---\n# Lab app\n\nThe lab app.\n\n- binary: lab\n\n## Commands\n\n### nothing\n- usage: lab nothing\n- exits: 0 once the video plays\n- run: invoke(argv=\133"nothing"])\n- verify: exit_status(code=0)\n- observe: @camera.nothing\n- verify: count(subject="items", equals=1)\n### badref\n- usage: lab badref\n- exits: 0 once the video plays\n- run: invoke(argv=\133"badref"])\n- verify: exit_status(code=0)\n- observe: the camera recordings\n- verify: count(subject="items", equals=1)\n### offobs\n- usage: lab offobs\n- exits: 0 once the video plays\n- run: invoke(argv=\133"offobs"])\n- verify: exit_status(code=0)\n- verify: count(subject="items", equals=1, within=5)\n' > doctor-scratch/docs/services/observing/cli.md
+
+### write-doctor-fixed-id
+
+- kind: seed
+- run: chosen=950001; mkdir -p doctor-scratch/docs/services/fixed-id doctor-scratch/docs/services/fixed-id/fixtures && printf -- '---\ntype: entries\nslug: entries\ntitle: fixed-id\n---\n\n- \133Fixed row](fixtures/fixed-row.md)\n- \133Asserted id](fixtures/asserted-id.md)\n' > doctor-scratch/docs/services/fixed-id/entries.md && printf -- '---\ntype: fixture\ntitle: Fixed row\n---\n# Fixed row\n\nSeeds one account under an id the book chose.\n\n## Steps\n\n### seed-row\n\n- kind: seed\n- run: mysql -e "INSERT INTO account (id, name) VALUES (%s, \047acme\047)"\n' "$chosen" > doctor-scratch/docs/services/fixed-id/fixtures/fixed-row.md && printf -- '---\ntype: fixture\ntitle: Asserted id\n---\n# Asserted id\n\nSeeds one account and asserts its id.\n\n- provides:\n  - account_id - the seeded account\n    - is: 7\n\n## Steps\n\n### seed-row\n\n- kind: seed\n- run: ./scripts/seed-account.sh\n' > doctor-scratch/docs/services/fixed-id/fixtures/asserted-id.md

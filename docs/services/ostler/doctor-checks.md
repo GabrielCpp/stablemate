@@ -25,13 +25,13 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: json_path(path="findings[0].path", equals="docs/services/shell/fixtures/prepare.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
   books that each carry one kind of defect
-- code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
-- code: ostler/ostler/keys.py::pressable@a22c2b93f53b
-- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
-- code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7d128ab112d9
+- code: ostler/ostler/accessible_names.py::literal_name@c5e91020c76a
+- code: ostler/ostler/keys.py::pressable@c60cef0f162a
+- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@f348085e1eeb
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@bc81067f4925
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@d161c8ab9dcd
+- code: ostler/ostler/values.py::dialog_answer@e0f43edd44dc
+- code: ostler/ostler/vet/placement.py::parse_placement@557c406d181b
 
 ### ostler-doctor-launch-screen
 - usage: ostler doctor --path PATH --json: refuses a fixture that names a launch screen the screen's
@@ -42,12 +42,12 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"fixture-launch-screen-lifetime\"")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
   books that each carry one kind of defect
-- code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
-- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
-- code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7d128ab112d9
+- code: ostler/ostler/accessible_names.py::literal_name@c5e91020c76a
+- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@f348085e1eeb
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@bc81067f4925
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@d161c8ab9dcd
+- code: ostler/ostler/values.py::dialog_answer@e0f43edd44dc
+- code: ostler/ostler/vet/placement.py::parse_placement@557c406d181b
 
 ### ostler-doctor-ui-defects
 - usage: ostler doctor --path PATH --json: refuses a component whose name describes the label, a
@@ -62,13 +62,13 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"unparsable-bullet-value\"")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
   books that each carry one kind of defect
-- code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
-- code: ostler/ostler/locator_findings.py::ProseName@7318d29e242e
-- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
-- code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7d128ab112d9
+- code: ostler/ostler/accessible_names.py::literal_name@c5e91020c76a
+- code: ostler/ostler/locator_findings.py::ProseName@8173300180b6
+- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@f348085e1eeb
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@bc81067f4925
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@d161c8ab9dcd
+- code: ostler/ostler/values.py::dialog_answer@e0f43edd44dc
+- code: ostler/ostler/vet/placement.py::parse_placement@557c406d181b
 
 ### ostler-doctor-unknown-driver
 - usage: ostler doctor --path PATH --json: refuses a runbook whose driver is not one of the drivers
@@ -79,13 +79,13 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"unknown-driver\"")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
   books that each carry one kind of defect
-- code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
+- code: ostler/ostler/accessible_names.py::literal_name@c5e91020c76a
 - code: ostler/ostler/drivers.py::DRIVERS@cc0927c9bd8e
-- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
-- code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7d128ab112d9
+- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@f348085e1eeb
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@bc81067f4925
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@d161c8ab9dcd
+- code: ostler/ostler/values.py::dialog_answer@e0f43edd44dc
+- code: ostler/ostler/vet/placement.py::parse_placement@557c406d181b
 
 ### ostler-doctor-malformed-ids
 - usage: ostler doctor --json: warns when the id registry does not match its schema, and still exits
@@ -97,13 +97,13 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: json_path(path="findings[0].code", equals="schema")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
   books that each carry one kind of defect
-- code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
-- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
-- code: ostler/ostler/schemas.py::validate@17d011398cb2
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
-- code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7d128ab112d9
+- code: ostler/ostler/accessible_names.py::literal_name@c5e91020c76a
+- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@f348085e1eeb
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@bc81067f4925
+- code: ostler/ostler/schemas.py::validate@8901df4c3ca5
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@d161c8ab9dcd
+- code: ostler/ostler/values.py::dialog_answer@e0f43edd44dc
+- code: ostler/ostler/vet/placement.py::parse_placement@557c406d181b
 
 ### ostler-doctor-census
 - usage: ostler doctor --census: prints how many finding codes the checker defines, how many fired
@@ -115,13 +115,13 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="(?m)^\\s+\\d+ dormant-unreachable")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
   books that each carry one kind of defect
-- code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
-- code: ostler/ostler/census.py::code_sites@f8e626f5c0c1
-- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@d769665467aa
-- code: ostler/ostler/qa/stack.py::shell_syntax_error@ba847d04a4fd
-- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@a44a1ff496dd
-- code: ostler/ostler/values.py::dialog_answer@5fe41ca9c074
-- code: ostler/ostler/vet/placement.py::parse_placement@7d128ab112d9
+- code: ostler/ostler/accessible_names.py::literal_name@c5e91020c76a
+- code: ostler/ostler/census.py::code_sites@0d0cee8fee15
+- code: ostler/ostler/qa/fixture_browser.py::is_browser_step@f348085e1eeb
+- code: ostler/ostler/qa/stack.py::shell_syntax_error@bc81067f4925
+- code: ostler/ostler/step_commands.py::check_fixture_launch_screen@d161c8ab9dcd
+- code: ostler/ostler/values.py::dialog_answer@e0f43edd44dc
+- code: ostler/ostler/vet/placement.py::parse_placement@557c406d181b
 
 ### ostler-doctor-register-links
 - usage: ostler doctor --json: refuses a register record that does not parse, and a decision and its evidence records that do not name each other
@@ -140,7 +140,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a broken register beside an empty book
 - code: ostler/ostler/doctor.py::_check_register_records@fb4e8dec596b
 - code: ostler/ostler/doctor.py::_check_decisions@1c443528c84a
-- code: ostler/ostler/adr.py::decisions@f14c55fafbc7
+- code: ostler/ostler/adr.py::decisions@02dde8a1ad94
 - detail: [The debt register](concepts/the-debt-register.md)
 
 ### ostler-doctor-milestone-layout
@@ -153,8 +153,8 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: json_path(path="findings[0].code", equals="legacy-milestone-file")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo of four
   books that each carry one kind of defect
-- code: ostler/ostler/milestones.py::check_layout@03e29bd2aeb7
-- code: ostler/ostler/registry.py::RESERVED_FILES@ed7d2a4e4855
+- code: ostler/ostler/milestones.py::check_layout@9bb701183e61
+- code: ostler/ostler/registry.py::RESERVED_FILES@eded04d48db4
 
 ### ostler-doctor-resource-reach-shape
 - usage: ostler doctor --path PATH --json: refuses a resource page whose `reach:` is neither `http` nor `cli`, that lacks the `base:` or `binary:` its reach takes, that carries a key of the other reach, or whose `secret:` is not an environment variable name
@@ -164,7 +164,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"resource-reach-shape\"")
 - verify: stdout(matches="docs/services/resources/reach-ftp.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_resources@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_resources@4642faef62de
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-resource-probe-shape
@@ -175,7 +175,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"resource-probe-shape\"")
 - verify: stdout(matches="docs/services/resources/probe-kind.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_resources@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_resources@4642faef62de
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-resource-observation-shape
@@ -186,7 +186,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"resource-observation-shape\"")
 - verify: stdout(matches="docs/services/resources/observation-post.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_resources@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_resources@4642faef62de
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-fixture-probe-local
@@ -197,7 +197,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"fixture-probe-local\"")
 - verify: stdout(matches="docs/services/resources/local-base.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_resources@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_resources@4642faef62de
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-step-request-shape
@@ -208,7 +208,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"step-request-shape\"")
 - verify: stdout(matches="docs/services/borrowing/fixtures/bad-request.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_request_step@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_request_step@02e7743e4f99
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-step-reach-mismatch
@@ -219,7 +219,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"step-reach-mismatch\"")
 - verify: stdout(matches="docs/services/borrowing/fixtures/mismatched.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_request_step@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_request_step@02e7743e4f99
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-fixture-borrow-lifetime
@@ -230,8 +230,21 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"fixture-borrow-lifetime\"")
 - verify: stdout(matches="docs/services/borrowing/fixtures/no-lifetime.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_lifetimes@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_lifetimes@66ac83b7e61e
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
+
+### ostler-doctor-fixture-fixed-id
+- usage: ostler doctor --path PATH --json: refuses a fixture step that writes a literal id, or a provided id asserted with `is:`, because two fixtures that fix the same id rewrite each other's rows on one copy of the stack
+- exits: 1 when the book holds an error finding
+- run: invoke(argv=["-C", "doctor-scratch", "doctor", "--path", "docs/services/fixed-id", "--json"])
+- verify: exit_status(code=1)
+- verify: stdout(matches="\"code\": \"fixture-fixed-id\"")
+- verify: stdout(matches="docs/services/fixed-id/fixtures/fixed-row.md")
+- verify: stdout(matches="docs/services/fixed-id/fixtures/asserted-id.md")
+- fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
+- code: ostler/ostler/step_commands.py::check_fixture_fixed_id@ad03710191e5
+- code: ostler/ostler/step_commands.py::check_fixture_asserted_id@383a89f83452
+- detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
 
 ### ostler-doctor-fixture-release-without-borrow
 - usage: ostler doctor --path PATH --json: refuses a fixture with a `kind: release` step and no `kind: borrow` step
@@ -241,7 +254,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"fixture-release-without-borrow\"")
 - verify: stdout(matches="docs/services/borrowing/fixtures/release-only.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_lifetimes@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_lifetimes@66ac83b7e61e
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-unknown-observation
@@ -252,7 +265,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"unknown-observation\"")
 - verify: stdout(matches="docs/services/observing/cli.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_observations@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_observations@07b075289f09
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-unparsed-observation
@@ -263,7 +276,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"unparsed-observation\"")
 - verify: stdout(matches="docs/services/observing/cli.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_observations@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_observations@07b075289f09
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-within-off-observation
@@ -274,5 +287,5 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="\"code\": \"within-off-observation\"")
 - verify: stdout(matches="docs/services/observing/cli.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
-- code: ostler/ostler/resource_checks.py::check_observations@2a4781418347
+- code: ostler/ostler/resource_checks.py::check_observations@07b075289f09
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)

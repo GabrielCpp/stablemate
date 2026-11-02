@@ -15,6 +15,19 @@ _BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
 
 _THIS_MACHINE = re.compile(r"\b(?:localhost|127\.0\.0\.1|0\.0\.0\.0)\b|\[::1\]")
 
+_ID_KEY = re.compile(r"(?:^|_)(?:id|uuid|guid)$|(?<=[a-z])(?:Id|Uuid|Guid)$", re.IGNORECASE)
+
+_ID_LITERAL = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+    r"|\b[0-9a-fA-F]{32}\b"
+    r"|\bUNHEX\(\s*'[0-9a-fA-F]+'"
+    r"|\bCAST\(\s*'[^']*'\s+AS\s+BINARY\b",
+    re.IGNORECASE)
+
+_INSERT = re.compile(r"\bINSERT\b[^()]*\(([^()]*)\)\s*VALUES\s*\(", re.IGNORECASE)
+
+_FIXED_VALUE = re.compile(r"^(?:-?\d+|'[^'$@]*'|\"[^\"$@]*\")$")
+
 
 def check_step_command_bullets(step: UINode, rel: str, f: list[Finding]) -> None:
     """A `run:`/`health:` bullet is shelled, never parsed — a check expression there is wrong."""
@@ -170,3 +183,70 @@ def check_fixture_probe_remote(step: UINode, rel: str, f: list[Finding]) -> None
         f"someone else's. Start it in the runbook on a free port, as another book's runbook may "
         f"already do, point the app at it, and drop this probe",
         path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "kind")))
+
+
+def _split_values(text: str, start: int) -> list[str]:
+    """The comma-separated values of the parenthesis opening at `start`, nested calls kept whole."""
+    depth, item, out = 0, "", []
+    for ch in text[start:]:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            if depth == 0:
+                break
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(item.strip())
+            item = ""
+            continue
+        item += ch
+    out.append(item.strip())
+    return out
+
+
+def fixed_ids(text: str) -> list[str]:
+    """Every literal an arrangement writes where a product-assigned or generated id belongs."""
+    found = [m.group(0) for m in _ID_LITERAL.finditer(text)]
+    for insert in _INSERT.finditer(text):
+        columns = [c.strip().strip("`\"'") for c in insert.group(1).split(",")]
+        values = _split_values(text, insert.end())
+        for column, value in zip(columns, values, strict=False):
+            if _ID_KEY.search(column) and _FIXED_VALUE.match(value) and value not in found:
+                found.append(value)
+    return found
+
+
+def check_fixture_fixed_id(step: UINode, rel: str, f: list[Finding]) -> None:
+    """A fixture step lets the product assign every id or generates one as it runs, never fixes one."""
+    for key in ("run", "body"):
+        value = runbook_mod.bullet_value(step.meta, key)
+        literals = fixed_ids(value) if value else []
+        if not literals:
+            continue
+        f.append(Finding(
+            "error", "fixture-fixed-id",
+            f"{step.id}: `{key}:` writes the fixed id {', '.join(f'`{v}`' for v in literals)}. "
+            f"Fixtures compose on one copy of the stack, and two that fix the same id rewrite "
+            f"each other's rows, so a scenario passes or fails by build order. Let the product "
+            f"assign the id, or generate one in the step as it runs (`uuidgen`, "
+            f"`$(date +%s%N)`), and provide it with `from:`/`read:`",
+            path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, key),
+            suggestion="- run: id=$(uuidgen) && <create the record with $id> && printf '{\"id\":\"%s\"}' \"$id\""))
+
+
+def check_fixture_asserted_id(node: UINode, rel: str, f: list[Finding]) -> None:
+    """An id a fixture provides is read back from the step that created the record, never asserted."""
+    for entry in node.entries.get("provides", []):
+        head = entry.headline.partition("—")[0].split()
+        asserted = entry.property_text("is")
+        if not head or not _ID_KEY.search(head[0]) or not asserted:
+            continue
+        f.append(Finding(
+            "error", "fixture-fixed-id",
+            f"{node.id}: `provides: {head[0]}` is asserted with `is: {asserted.strip()}`, so the "
+            f"fixture fixed the id instead of reading the one the product assigned. Fixtures "
+            f"compose on one copy of the stack, and two that fix the same id rewrite each "
+            f"other's rows. Point the fact at the step that created the record with "
+            f"`from:`/`read:`",
+            path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "provides"),
+            suggestion=f"  - {head[0]} — <what it is>\n    - from: [<step>](#<step>)\n    - read: {head[0]}"))

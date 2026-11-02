@@ -895,6 +895,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
         rel = _rel_path(graph, node)
         steps = runbook_mod.steps_of(graph, node)
         step_commands.check_fixture_launch_screen(graph, node, steps, rel, f)
+        step_commands.check_fixture_asserted_id(node, rel, f)
         resource_checks.check_lifetimes(node, steps, rel, f)
         for step in steps:
             fixture_steps.add(step.id)
@@ -924,6 +925,7 @@ def _check_fixture_grammar(graph: Graph, f: list[Finding]) -> None:
             step_commands.check_fixture_step_directory(graph, step, rel, f)
             step_commands.check_fixture_step_serves(node, step, rel, f)
             step_commands.check_fixture_probe_remote(step, rel, f)
+            step_commands.check_fixture_fixed_id(step, rel, f)
 
     for step in graph.ui_nodes_of_type("step"):
         if step.id not in fixture_steps and fixture_browser.is_browser_step(step):
