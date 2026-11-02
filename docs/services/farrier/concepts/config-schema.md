@@ -15,7 +15,7 @@ The repository's [`agents.yml`](../formats/agents-yml-config.md) is the second d
 - code: `farrier/farrier/config_reference.py::reference_text` @145be29b7ae0
 - code: `farrier/farrier/_vendor/stablemate_core/config.py::write_config_value` @e0dc8300bbc3
 - code: `farrier/farrier/config_reference.py::parse_home_value` @255c4f0b809a
-- code: `farrier/farrier/_vendor/stablemate_core/schema/manifest.py::Manifest` @29d985903bcc
+- code: `farrier/farrier/_vendor/stablemate_core/schema/manifest.py::Manifest` @a8f21a5120c8
 - code: `farrier/farrier/_vendor/stablemate_core/manifest.py::load_manifest` @bdf1b65128c6
 - rule: the typed schema in `stablemate_core` is the only reader of the machine config; a tool that needs a key reads it from the loaded `HomeConfig` and never parses the TOML itself
 - rule: a key the schema does not declare loads anyway and is kept, and the loader logs one warning per process naming the key path and the closest declared key; a file written by a newer release therefore never stops an older tool from reading

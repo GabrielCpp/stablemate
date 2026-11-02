@@ -229,6 +229,12 @@ class RepoTable(FreeSection):
         examples=["develop"],
         default_text="unset",
     )
+    id_prefix: str | None = setting(
+        None,
+        description="The prefix of every id ostler mints in this repository. A letter, then up to 15 letters, digits or underscores. A mint refuses while it is unset.",
+        examples=["ACME"],
+        default_text="unset",
+    )
 
     def mapping(self) -> dict[str, Any]:
         """Every key the file sets, declared or free."""
@@ -450,8 +456,8 @@ class Manifest(Section):
     )
     repo: RepoTable = setting(
         factory=RepoTable,
-        description="The repository's identity. Any key beyond the two below is passed to library templates as `repo.<key>`.",
-        examples=[{"name": "acme-api", "base_branch": "develop", "support_email": "team@example.com"}],
+        description="The repository's identity. Any key beyond the three below is passed to library templates as `repo.<key>`.",
+        examples=[{"name": "acme-api", "base_branch": "develop", "id_prefix": "ACME", "support_email": "team@example.com"}],
         default_text="empty",
     )
     hooks: HooksTable = setting(
