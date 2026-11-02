@@ -33,7 +33,7 @@ def test_fresh_repo_appends_block():
         assert _ignored(repo, ".agents/agents.mk") is True
         assert _ignored(repo, ".agents/skills/foo/SKILL.md") is False
         assert _ignored(repo, ".agents/prompts/foo.prompt.md") is False
-        assert _ignored(repo, ".agents/ids.json") is False
+        assert _ignored(repo, ".agents/templates.yml") is False
     print("ok: fresh repo appends block")
 
 
@@ -88,7 +88,7 @@ def test_migrates_exclude_list_block():
         assert "/.agents/*" not in lines
         assert "!/.agents/agents.mk" not in lines
         assert "node_modules" in lines
-        assert _ignored(repo, ".agents/ids.json") is False
+        assert _ignored(repo, ".agents/templates.yml") is False
         assert _ignored(repo, ".agents/runs/run.json") is True
     print("ok: migrates exclude-list block")
 
