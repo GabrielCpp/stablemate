@@ -13,6 +13,8 @@ from opentelemetry.exporter.otlp.proto.common.metrics_encoder import encode_metr
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import InMemoryMetricReader
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from _fakes import FakeBackend, FakeClock, RecordingTelemetry
 from workhorse import artifacts, otel, records, reload, turnkey
@@ -1086,3 +1088,72 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def _real_telemetry() -> tuple:
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    t = otel._Telemetry(
+        trace,
+        provider.get_tracer("test"),
+        FakeMeter(),
+        lambda: None,
+        otel.OtelSettings().heartbeat_every_s,
+    )
+    t.start_root("wf")
+    return t, exporter
+
+
+
+
+def test_every_step_names_its_flow_and_state_from_the_open_stack():
+    t, exporter = _real_telemetry()
+    t.state_start("top", 1)
+    t.record_event(_event("solo", 1, "enter"))
+    t.turn_start("solo", None, None, 1.0)
+    t.turn_end()
+    t.record_event(_event("solo", 1, "done"))
+    t.state_end("top", 1)
+    t.record_event(_event("qa_flow", 2, "enter"))
+    t.state_start("review", 3)
+    t.record_event(_event("check", 1, "enter"))
+    token = t.wait_start("cap", "check")
+    t.wait_end(token)
+    t.turn_start("check", None, None, 1.0)
+    t.turn_end()
+    t.record_event(_event("check", 1, "done"))
+    t.state_end("review", 3)
+    t.record_event(_event("loose", 4, "enter"))
+    t.turn_start("loose", None, None, 1.0)
+    t.turn_end()
+    t.record_event(_event("loose", 4, "done"))
+    t.record_event(_event("qa_flow", 2, "done"))
+    placed = {}
+    for span in exporter.get_finished_spans():
+        placed.setdefault(span.name, []).append(
+            (span.attributes["workhorse.flow"], span.attributes["workhorse.state"])
+        )
+    assert placed["state:top"] == [("", "top")]
+    assert placed["solo"] == [("", "top")]
+    assert placed["qa_flow"] == [("", "")]
+    assert placed["state:review"] == [("qa_flow", "review")]
+    assert placed["check"] == [("qa_flow", "review")]
+    assert placed["wait:cap"] == [("qa_flow", "review")]
+    assert placed["loose"] == [("qa_flow", "")]
+    assert placed["agent_turn"] == [
+        ("", "top"),
+        ("qa_flow", "review"),
+        ("qa_flow", ""),
+    ]
+
+
+def test_a_node_at_depth_zero_carries_empty_names_not_missing_ones():
+    t, exporter = _real_telemetry()
+    t.record_event(_event("plain", 1, "enter"))
+    t.turn_start("plain", None, None, 1.0)
+    t.turn_end()
+    t.record_event(_event("plain", 1, "done"))
+    for span in exporter.get_finished_spans():
+        assert span.attributes["workhorse.flow"] == ""
+        assert span.attributes["workhorse.state"] == ""

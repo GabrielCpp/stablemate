@@ -25,6 +25,14 @@ scalar becomes a `workhorse.out.<key>` attribute, a list becomes `workhorse.out.
 string over 128 characters or an output past the 32nd key is left off. Exports are best effort,
 and `events.jsonl` in the [run directory](run-directory.md) stays the durable record.
 
+Every node, state, wait and agent-turn span also carries `workhorse.flow` and `workhorse.state`,
+stamped when the span starts. The state is the nearest open state span at or above the step. The
+flow is the nearest open node span above that state, or above the step when there is no state.
+The node an agent turn belongs to is not its own flow. A step with no enclosing flow or state
+carries the attribute with an empty value, so a span from a run before this change is told apart
+by the attribute being absent. A span exports only when it ends, so these two names are how a
+collector names a flow that is still open.
+
 Live gauges show where a run is while it is still going. A run heartbeat ticks every
 `WORKHORSE_OTEL_HEARTBEAT_S` seconds, default 10, from a thread that keeps beating through a long
 node or cap sleep. A turn's idle seconds stay small while the agent streams and climb while it is
@@ -35,7 +43,7 @@ Logs go to stderr as `[<logger>] <message>`, at the level `WORKHORSE_LOG_LEVEL` 
 `INFO`. While telemetry is on, the same records also go to the collector, stamped with the node
 the run is in. A workflow can add its own span dimensions by overriding `labels()`.
 
-- code: `workhorse/workhorse/otel.py::Telemetry` @c3d8848371ee
-- code: `workhorse/workhorse/otel.py::OtelSettings` @c3d8848371ee
+- code: `workhorse/workhorse/otel.py::Telemetry` @3c6f01fec4a6
+- code: `workhorse/workhorse/otel.py::OtelSettings` @4163c5367a35
 - code: `workhorse/workhorse/logsetup.py::setup` @dbe8304930de
 - code: `workhorse/docs/TELEMETRY.md` @1a5a741770e1

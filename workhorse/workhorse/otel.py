@@ -720,6 +720,7 @@ class _Telemetry:
         self._span_repositories: dict[
             int, tuple[str | None, tuple[str, ...], dict[str, str]]
         ] = {}
+        self._span_roles: dict[int, str] = {}
         self._wait_seq = 0
         self._wait_keys: dict[int, tuple[str, str, int]] = {}
         self._wait_live: dict[int, _LiveWait] = {}
@@ -1012,6 +1013,23 @@ class _Telemetry:
             attrs["gate_question"] = gate_question
         return attrs
 
+    def _placement(self, *, own_state: str = "", skip_leaf: bool = False) -> dict[str, str]:
+        chain = [
+            (self._span_roles.get(id(span), ""), key[1])
+            for key, span, _ in reversed(self._stack)
+        ]
+        if skip_leaf and chain and chain[0][0] == "node":
+            chain = chain[1:]
+        state = own_state
+        above = chain
+        if not state:
+            at = next((i for i, (role, _) in enumerate(chain) if role == "state"), None)
+            if at is not None:
+                state = chain[at][1]
+                above = chain[at + 1 :]
+        flow = next((name for role, name in above if role == "node"), "")
+        return {"workhorse.flow": flow, "workhorse.state": state}
+
     def _start_execution(
         self,
         key: tuple[str, str, int],
@@ -1024,6 +1042,8 @@ class _Telemetry:
         add_dirs: tuple[str, ...] = (),
     ) -> None:
         snapshot = _repository_attrs(cwd, add_dirs)
+        span_kind = attributes.get("workhorse.span_kind")
+        role = "state" if span_kind == "state" else "node" if key[0] == "node" and not span_kind else ""
         span = self._tracer.start_span(
             span_name,
             context=self._parent_ctx(),
@@ -1031,12 +1051,17 @@ class _Telemetry:
                 "workhorse.node": node_id,
                 "workhorse.seq": key[2],
                 "workhorse.depth": len(self._stack),
+                **self._placement(
+                    own_state=node_id if role == "state" else "",
+                    skip_leaf=key[0] == "wait",
+                ),
                 **_span_repository_attrs(snapshot, "start"),
                 **attributes,
                 **self._labels,
             },
         )
         self._stack.append((key, span, time.monotonic()))
+        self._span_roles[id(span)] = role
         self._span_repositories[id(span)] = (cwd, add_dirs, snapshot)
         if mark_active:
             self._set_node_active(node_id, 1)
@@ -1054,6 +1079,7 @@ class _Telemetry:
         while self._stack:
             stack_key, span, _ = self._stack.pop()
             cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
+            self._span_roles.pop(id(span), None)
             end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
             for name, value in _span_repository_attrs(end_snapshot, "end").items():
                 span.set_attribute(name, value)
@@ -1103,6 +1129,7 @@ class _Telemetry:
             while len(self._stack) > depth:
                 _, span, _ = self._stack.pop()
                 cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
+                self._span_roles.pop(id(span), None)
                 end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
                 for name, value in _span_repository_attrs(end_snapshot, "end").items():
                     span.set_attribute(name, value)
@@ -1145,6 +1172,7 @@ class _Telemetry:
                 _, span, _ = self._stack.pop()
                 span.set_attribute("workhorse.outcome", "abandoned")
                 cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
+                self._span_roles.pop(id(span), None)
                 end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
                 for name, value in _span_repository_attrs(end_snapshot, "end").items():
                     span.set_attribute(name, value)
@@ -1201,6 +1229,7 @@ class _Telemetry:
                     "model": model or "",
                     "effort": effort or "",
                     "timeout_s": -1 if timeout == float("inf") else int(timeout),
+                    **self._placement(skip_leaf=True),
                     **_span_repository_attrs(snapshot, "start"),
                     **visit_attrs,
                     **self._labels,
