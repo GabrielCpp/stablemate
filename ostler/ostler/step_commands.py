@@ -24,6 +24,8 @@ _ID_LITERAL = re.compile(
     r"|\bCAST\(\s*'[^'$]*'\s+AS\s+BINARY\b",
     re.IGNORECASE)
 
+_NIL_ID = re.compile(r"(?:UNHEX\(\s*')?(?:0{32}|0{8}-0{4}-0{4}-0{4}-0{12})'?")
+
 _INSERT = re.compile(r"\bINSERT\b[^()]*\(([^()]*)\)\s*VALUES\s*\(", re.IGNORECASE)
 
 _FIXED_VALUE = re.compile(r"^(?:-?\d+|'[^'$@]*'|\"[^\"$@]*\")$")
@@ -206,7 +208,7 @@ def _split_values(text: str, start: int) -> list[str]:
 
 def fixed_ids(text: str) -> list[str]:
     """Every literal an arrangement writes where a product-assigned or generated id belongs."""
-    found = [m.group(0) for m in _ID_LITERAL.finditer(text)]
+    found = [m.group(0) for m in _ID_LITERAL.finditer(text) if not _NIL_ID.fullmatch(m.group(0))]
     for insert in _INSERT.finditer(text):
         columns = [c.strip().strip("`\"'") for c in insert.group(1).split(",")]
         values = _split_values(text, insert.end())
@@ -239,7 +241,7 @@ def check_fixture_asserted_id(node: UINode, rel: str, f: list[Finding]) -> None:
     for entry in node.entries.get("provides", []):
         head = entry.headline.partition("—")[0].split()
         asserted = entry.property_text("is")
-        if not head or not _ID_KEY.search(head[0]) or not asserted or "$" in asserted:
+        if not head or not _ID_KEY.search(head[0]) or not asserted or "$" in asserted or _NIL_ID.fullmatch(asserted.strip()):
             continue
         f.append(Finding(
             "error", "fixture-fixed-id",

@@ -207,7 +207,9 @@ its first hop.
   step may generate one itself as it runs. Fixtures compose on one copy of the stack, and two
   that write the same literal id rewrite each other's rows, so a scenario passes or fails by
   build order. Doctor refuses a step whose `run:` or `body:` writes a literal id, and a
-  `provides:` id asserted with a literal `is:`, as `fixture-fixed-id`.
+  `provides:` id asserted with a literal `is:`, as `fixture-fixed-id`. The all-zero id is exempt,
+  because it names no record: a product uses it for "no parent", and no two fixtures can collide
+  on it.
 - rule: a route's `{name}` variable binds to the fact that names it. An earlier capture in the
   scenario wins, then the one fixture the claim declares that provides `name`. A generated id has
   no spelling to copy into a check's `path=`, so the variable is how a claim requests it. Two

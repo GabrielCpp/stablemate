@@ -494,6 +494,13 @@ def test_fixture_fixed_id_is_clean_for_an_id_generated_as_the_fixture_builds(rep
     assert _findings(repo, "fixture-fixed-id") == []
 
 
+def test_fixture_fixed_id_is_clean_for_the_nil_id_that_names_no_record(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="parentId — the id a row with no parent holds|is: 00000000-0000-0000-0000-000000000000"))
+    assert _findings(repo, "fixture-fixed-id") == []
+
+
 def test_fixture_fixed_id_is_clean_for_an_observed_id_and_an_asserted_count(repo: Path) -> None:
     _stack(repo)
     write(repo / "docs/services/acme/fixtures/seeded-acme.md",
@@ -520,6 +527,7 @@ def test_fixture_fixed_id_when_a_step_writes_a_literal_id(repo: Path, run: str) 
 
 @pytest.mark.parametrize("run", [
     "mysql -e \"INSERT INTO entry (id) VALUES (CAST('$id' AS BINARY(16)))\"",
+    "mysql -e \"INSERT INTO row (name, parent) VALUES ('acme', UNHEX('00000000000000000000000000000000'))\"",
     "id=$(uuidgen) && mysql -e \"INSERT INTO account (id, name) VALUES ('$id', 'acme')\" && printf '{\"id\":\"%s\"}' \"$id\"",
     "mysql -e \"INSERT INTO account (name, qty) VALUES ('acme', 950001)\"",
     "mysql -e \"INSERT INTO row (project_id, qty) VALUES (@project.id, 2)\"",
