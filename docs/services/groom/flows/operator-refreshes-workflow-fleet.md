@@ -61,8 +61,8 @@ in it the socket does not already deliver, in a shape the renderer already knows
      `Discovering containers…` instead of `No workhorse runs — nothing is
      running.` — a fleet that has not been scanned yet must read as loading, not
      as finished and empty, but an empty filter result is the honest answer and
-     is left alone. Open run detail, repository menus, files, diffs, the command
-     palette, selected-run and selected-repository state, the toast stack, and
+     is left alone. Open run detail, files, diffs, the command
+     palette, selected-run state, each run's selected checkout, the toast stack, and
      the browser URL are not part of this frame and do not change.
   5. The endpoint runs [reconcile workflow fleet](../concepts/workflow-registry.md#method-reconcile-workflow-fleet)
      on the default thread pool. Reconciliation calls the

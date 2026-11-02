@@ -20,7 +20,9 @@ spans, per-node timings and error status, filterable without leaving the browser
 
 - Each run pushes its telemetry to `groom` over OTLP. A run on groom's own host also
   advertises its run directory, workspace and pid. `groom` reads both from local disk
-  to serve the run's Files and Diff panels and to answer its gates. A run with no
+  to answer the run's gates and to show its checkout path. A container run whose
+  sidecar is connected also gets Files and Diff tabs in its detail. A native run
+  has neither tab. A run with no
   `groom` listening behaves the same.
 - `groom` holds live fleet and browser state in memory and pushes
   JSON state to open browser tabs over a websocket; the browser renders it with
@@ -58,9 +60,9 @@ spans, per-node timings and error status, filterable without leaving the browser
   headings. Questions render as Markdown (`marked`, sanitized with `DOMPurify`
   before insertion since the content is LLM-authored). The automatic attendant
   receives that same latest question set. Earlier exchanges stay in the gate file;
-  the pane has no additional context disclosure. Each workflow row can expand a
-  `git diff` of its working tree (rendered
-  with `diff2html`). All front-end assets are vendored locally; nothing is loaded
+  the pane has no additional context disclosure. A container run with a connected
+  sidecar has a Diff tab that shows its `git diff` by file (rendered with
+  `diff2html`), either uncommitted or since the branch started. All front-end assets are vendored locally; nothing is loaded
   from a CDN at runtime.
 - Gates travel over the run's control socket, with the file as the record. An
   answer goes socket-first — `groom` asks the run what it is waiting on and
@@ -216,8 +218,9 @@ naming a run is asking for that run, finished or not.
 groom's own host advertises its `run_dir`, workspace path, pid, and per-node
 `activity` label on the OTLP resource; groom materializes a fleet row from that
 (keyed by `run_id`), shows what it is doing ("coder · reviewing ACME-A2JX"), and —
-because it shares the host — serves the row's Files/Diff panels and answers its
-operator gates straight from the local filesystem (`groom.localfs`). The native test
+because it shares the host — shows the row's checkout path and answers its
+operator gates straight from the local filesystem (`groom.localfs`). A native row
+has no Files or Diff tab. Those tabs belong to a container run with a connected sidecar. The native test
 is self-validating. groom draws the row only for a run whose `run_dir` it can read
 locally, so a run whose paths don't resolve on this host never double-lists.
 

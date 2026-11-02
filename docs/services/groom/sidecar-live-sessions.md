@@ -42,7 +42,7 @@ reconstruction) into one connection.
   `http://host.docker.internal:8787/push/*`; groom pulls a snapshot for a running
   container with `docker exec … groom-sidecar --query`; stopped/legacy containers
   fall back to volume reads.
-- **Interactive data plane** (Files/Diff) is the throwaway-container volume-read
+- **Interactive data plane** (a run's Files and Diff tabs) is the throwaway-container volume-read
   path described above.
 - The sidecar is **installed at container start** from a read-only bind of the host
   source (see [sidecar-autostart](sidecar-autostart.md)) and supervised by
@@ -94,7 +94,7 @@ container is connected. The `safe_relpath` traversal guard moves into the sideca
 - **No stopped/legacy-container support for the interactive data plane.** We do
   not build tooling to browse files/diffs of a container without a live, current
   sidecar. The interactive data plane is **sidecar-only** — the
-  throwaway-container volume reads for Files/Diff can be retired once the sidecar
+  throwaway-container volume reads for the Files and Diff tabs can be retired once the sidecar
   serves them.
 - **Upgrade by recreation, not by coping.** To run a newer sidecar, **recreate**
   the container from a fresh image against the **same** `workspace`/`runs`

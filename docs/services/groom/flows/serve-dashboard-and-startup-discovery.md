@@ -128,7 +128,7 @@ resync path are not two renderers that can drift apart, and the first frame a fr
       by run id, so rows that were already visible keep their DOM nodes and
       neither scroll position nor focus moves; an empty discovered fleet now reads
       as `No workhorse runs — nothing is running.` rather than as loading. Selected
-      run detail, repository menus, files, diffs, telemetry, and toasts are not
+      run detail, files, diffs, telemetry, and toasts are not
       part of this frame and change only through their own later interactions.
   12. From then on the [live clock](../http/groom.md#schedule-live-clock) pushes a
       fresh state payload — plus one detail payload per *watched* run — every tick,

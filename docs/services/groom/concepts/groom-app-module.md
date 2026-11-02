@@ -7,7 +7,7 @@ title: Groom app module
 
 The Groom app module is the HTTP and websocket composition point for the [groom server](../http/groom.md): it owns the Litestar route table, loads the static dashboard entry document used by the [groom dashboard](../gui/screens/groom-dashboard.md), connects browser and sidecar transports to the process-local [workflow registry](workflow-registry.md) owned by the [Groom state module](groom-state-module.md), and schedules startup discovery through the [startup background discovery scan](startup-background-discovery-scan.md). At import, `groom/groom/app.py` resolves package-local paths and preloads the asset-stamped dashboard HTML; `groom/groom/app.py::create_app` configures route handlers plus discovery, alert-rule, live-state, and archival startup routines, with discovery scheduling its scan task without delaying application startup. Its public route handlers are the code anchors for the server's endpoints and invocations; its private helpers are folded into the module contract through linked helper concepts such as the [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [sidecar RPC helper](sidecar-rpc-helper.md), [push-first volume metadata resolver](push-first-volume-metadata-resolver.md), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), and [sidecar blocked applier](sidecar-blocked-applier.md). The module consumes [progress push payload](../formats/progress-push-payload.md), [blocked push payload](../formats/blocked-push-payload.md), [exited push payload](../formats/exited-push-payload.md), [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md), and [sidecar websocket frame](../formats/sidecar-websocket-frame.md) formats while emitting HTML fragments, plain workspace data, JSON status objects, browser websocket frames, and sidecar websocket frames through the server surface. Its behavior is covered by `groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo`, `groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list`, `groom/tests/test_app.py::test_refresh_prunes_vanished_containers`, `groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes`, `groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected`, `groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars`, and `groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate`.
 
-- code: groom/groom/app.py@64d2a173881e
+- code: groom/groom/app.py@0641f3b05ddc
 
 Endpoint validation is handler-local: the push handlers return compact `{"ok": false}` responses
 for missing required identifiers, while their other exceptions propagate rather than passing through
@@ -30,7 +30,7 @@ a module-wide error envelope (`groom/groom/app.py::push_progress`,
 - type: `pathlib.Path`
 - default: package path `groom/groom/assets`
 - required: true
-- code: groom/groom/app.py::ASSETS_DIR@64d2a173881e
+- code: groom/groom/app.py::ASSETS_DIR@0641f3b05ddc
 - meaning: package-local directory mounted by [get static assets](../http/groom.md#get-static-assets) at `/assets` for dashboard CSS and vendored browser libraries.
 
 ### field-dashboard-html
@@ -39,7 +39,7 @@ a module-wide error envelope (`groom/groom/app.py::push_progress`,
 - default: contents of package file `groom/groom/templates/dashboard.html`, loaded and passed through `groom/groom/app.py::stamp_assets` when the module is imported.
 - required: true
 - semantics: the `stamp_assets` helper rewrites every `/assets/...` URL in the HTML to carry the referenced file's mtime and size, so a browser's asset cache is busted whenever the underlying file changes rather than reused heuristically.
-- code: groom/groom/app.py::_DASHBOARD_HTML@64d2a173881e
+- code: groom/groom/app.py::_DASHBOARD_HTML@0641f3b05ddc
 - meaning: immutable browser entry document returned by [serve root dashboard html](../http/groom.md#serve-root-dashboard-html) for `GET /`.
 
 ### field-question-notify-limit
@@ -47,7 +47,7 @@ a module-wide error envelope (`groom/groom/app.py::push_progress`,
 - type: `int`
 - default: `200`
 - required: true
-- code: groom/groom/app.py::_QUESTION_NOTIFY_LIMIT@64d2a173881e
+- code: groom/groom/app.py::_QUESTION_NOTIFY_LIMIT@0641f3b05ddc
 - meaning: maximum gate-question prefix included in browser notification script text for blocked-push and sidecar-blocked updates; stored gate question text remains untruncated.
 
 ### field-scan-task
@@ -55,7 +55,7 @@ a module-wide error envelope (`groom/groom/app.py::push_progress`,
 - type: `asyncio.Task | None`
 - default: `None`
 - required: true
-- code: groom/groom/app.py::_scan_task@64d2a173881e
+- code: groom/groom/app.py::_scan_task@0641f3b05ddc
 - meaning: strong process-local reference to the startup background discovery task created by [schedule startup discovery scan](../http/groom.md#schedule-startup-discovery-scan), preventing the event loop from retaining only a weak task reference while the scan runs.
 
 ## Public Members
@@ -125,13 +125,13 @@ The dashboard entry response leaves fleet, gate, file, diff, and websocket state
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
 - verify: json_path(path="exception.type", equals="FileNotFoundError")
 - verify: json_path(path="exception.type", equals="TimeoutExpired")
-- code: groom/groom/app.py::files@1c1f943b617a
+- code: groom/groom/app.py::files@1a8049542599
 - endpoint: [get workspace file list](../http/groom.md#get-workspace-file-list)
 - invocation: [serve workspace file list](../http/groom.md#serve-workspace-file-list)
 
-For a connected sidecar, the method reads the selected repository through `getTree` on the [sidecar RPC helper](sidecar-rpc-helper.md). When that is unavailable, it reads through the [workspace volume file-list reader](workspace-volume-file-list-reader.md) if the workflow has a workspace volume; an unknown workflow or missing volume produces an empty list with `failed` true. Fallback launch and timeout errors become `failed` true as well.
+For a connected sidecar, the method reads the selected repository through `getTree` on the [sidecar RPC helper](sidecar-rpc-helper.md). When that is unavailable, it reads through the [workspace volume file-list reader](workspace-volume-file-list-reader.md) if the workflow has a workspace volume, or through the local filesystem reader for a native run; an unknown workflow or missing volume produces an empty list with `failed` true. Fallback launch and timeout errors become `failed` true as well.
 
-- returns: a JSON object whose `paths` field contains the available repository-relative file paths, whose `failed` field says whether the read failed, and whose `reported` field says whether the source reports failures at all.
+- returns: a JSON object whose `paths` field contains the available repository-relative file paths, whose `failed` field says whether the read failed, whose `reported` field says whether the source reports failures at all, and whose `served` field says whether the sidecar or a fallback reader answered. A sidecar answer also carries the run's checkout names as `repos`.
 - verify: count(subject="fixture workspace file-list response paths", equals=2)
 - verify: json_path(path="$.paths[1]", equals="src/a.py")
 - tests: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
@@ -145,22 +145,26 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
 - verify: json_path(path="exception.type", equals="FileNotFoundError")
 - verify: json_path(path="exception.type", equals="TimeoutExpired")
-- code: groom/groom/app.py::file_content@13698e6ec6a6
+- code: groom/groom/app.py::file_content@6a4a53a92140
 - detail: [file content documentation scopes](file-content-documentation-scopes.md)
 - endpoint: [get workspace file content](../http/groom.md#get-workspace-file-content)
 - invocation: [serve workspace file content](../http/groom.md#serve-workspace-file-content)
 - does: branches
   - Requests `getFile` over the [sidecar RPC helper](sidecar-rpc-helper.md) for the selected repository and path.
-    - verify: json_path(path="$.content", equals="print(1)\n")
-  - Falls back to the [workspace volume file-content reader](workspace-volume-file-content-reader.md) with a combined repository-relative path when the sidecar path is unavailable.
-    - verify: json_path(path="$.content", equals="print(1)\n")
+    - verify: json_path(path="$.served", equals="sidecar")
+  - Falls back to the [workspace volume file-content reader](workspace-volume-file-content-reader.md) with a combined repository-relative path when the sidecar path is unavailable, and to the local filesystem reader for a native run.
+    - verify: json_path(path="$.served", equals="volume")
   - Skips the fallback and returns empty text when the workflow, volume, or relative path is missing.
     - verify: count(subject="Docker volume reads made when the workflow or workspace volume is unknown", equals=0)
   - Converts unsafe fallback paths to an empty text response instead of raising.
     - verify: json_path(path="$.content", equals="")
-- returns: the requested file's content or empty text without raising, with `failed` true when the read did not happen and `reported` false when the sidecar does not report failures.
+- returns: a JSON object with `path`, `lang` and the file's `content` or empty text without raising.
 - verify: http_status(code=200, path="/repos/{container_id}/file", title="Workspace File Content")
 - verify: json_path(path="$.content", absent=false)
+- returns: `failed` true when the read did not happen, and `reported` false when the sidecar does not report failures.
+- verify: json_path(path="$.failed", equals=true)
+- returns: `served`, which is `sidecar` when the run's sidecar answered and `volume` for every fallback reader.
+- verify: json_path(path="$.served", matches="^(sidecar|volume)$")
 - tests: groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
   groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path,
   groom/tests/test_app.py::test_file_content_prefers_sidecar_socket
@@ -189,8 +193,9 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - code: groom/groom/app.py::run_overview@1fc6eaf7565a
 - endpoint: [get run overview](../http/get-run-overview.md)
 - invocation: [serve run overview](../http/groom.md#serve-run-overview)
-- does: Runs the cost summary and the [run flow tree](run-flow-tree.md) for one run on the query pool.
+- does: Runs the cost summary and the [run flow tree](run-flow-tree.md) for one run on the query pool, with the per-node breakdown and its norms, the work items and the overview tiles.
 - verify: json_path(path="$.finished", equals=true)
+- returns: a JSON object with the cost summary, the run flow tree, `nodes`, `norm_runs`, `items` and `figures`, the overview tiles.
 - does: Reads one run's spans only, not the whole telemetry store. It does not mutate workflow state.
 - tests: groom/tests/test_flows.py::test_the_overview_endpoint_serves_the_same_figures
 
@@ -199,12 +204,14 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - sig: `async diff(container_id: str, repo: str = "", view: str = "") -> dict`
 - abstract: false
 - raises: propagates unexpected sidecar-registry, Docker, or response-construction failures.
-- code: groom/groom/app.py::diff@3b4a38e8e9ca
+- code: groom/groom/app.py::diff@09402337f758
 - detail: [diff documentation scopes](diff-documentation-scopes.md)
 - does: branches
   - Requests `getDiff` over the [sidecar RPC helper](sidecar-rpc-helper.md) for the selected repository, adding `view` `branch` when the change since the branch started is asked for, and returns the sidecar's base members with it.
   - Falls back to the [workspace volume diff reader](workspace-volume-diff-reader.md) when the sidecar cannot serve the diff and the workflow has a known workspace volume. The branch view has no fallback and answers an unreadable reply.
 - does: returns [workspace diff data](../formats/workspace-diff-data.md) as plain text for client-side diff rendering, regardless of which branch served it.
+- returns: `served` naming the branch that answered, and from a sidecar the run's checkout names as `repos`.
+- returns: the base members `based`, `base`, `base_ref`, `base_branch` and `base_reason` for the Since branch start view.
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
 - tests: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through,
   groom/tests/test_app.py::test_diff_prefers_sidecar_socket

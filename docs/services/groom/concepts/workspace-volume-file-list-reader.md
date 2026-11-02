@@ -91,7 +91,7 @@ Workspace volume file-list reader is the fallback implementation used by the [se
 - Builds: a `find` prune expression from the skipped directory names, joining multiple directory-name tests with `-o`.
 - Calls: the [Docker subprocess runner](docker-subprocess-runner.md) once with a tokenized `docker run --rm -v <volume>:/vol:ro alpine:3.20 find <base> ... -type f -print` argv list.
 - Scans: regular files reachable below the selected base after skip-directory pruning.
-- Converts: any non-zero Docker process return code to `[]` because the HTTP file-list endpoint can render an empty Files panel.
+- Converts: any non-zero Docker process return code to `[]` because the HTTP file-list endpoint can render an empty file list for the terminal client.
 - Parses: stdout line by line, stripping surrounding whitespace from each line.
 - Emits: only stripped stdout lines beginning with `<base>/`, with that prefix removed so callers receive paths relative to the selected checkout root.
 - Ignores: blank lines, Docker noise, warnings, and any stdout path outside the selected base prefix.

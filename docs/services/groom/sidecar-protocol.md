@@ -16,7 +16,7 @@ up to groom, and groom queries the container's sidecar back down.
 > persistent WebSocket session in
 > [sidecar-live-sessions](sidecar-live-sessions.md): the sidecar advertises
 > full state on connect and streams `progress`/`blocked` over the socket, and
-> groom serves the Files/Diff panels via `getTree`/`getFile`/`getDiff` RPC over
+> groom serves a run's Files and Diff tabs via `getTree`/`getFile`/`getDiff` RPC over
 > the same socket instead of `docker exec … --query` + throwaway volume reads.
 > What remains of the HTTP path below is **residual best-effort**: the one-shot
 > `exited` notice the entrypoint fires after workhorse returns, and the
