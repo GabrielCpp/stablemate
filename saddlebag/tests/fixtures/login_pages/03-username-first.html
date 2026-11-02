@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>03 Username first</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="probe.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Sign in to your account</h1>
+    <p>Username, Next, then a password step built in place.</p>
+    <form id="step-username">
+      <label for="username">Username or email</label>
+      <input id="username" name="username" type="text" autofocus autocomplete="username">
+      <button type="button" id="next">Next</button>
+    </form>
+  </main>
+  <pre id="probe"></pre>
+  <script>
+    document.getElementById("next").addEventListener("click", () => {
+      const username = document.getElementById("username").value;
+      const form = document.createElement("form");
+      form.id = "kc-form-login";
+      form.innerHTML = `
+        <input type="hidden" name="username">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" autofocus>
+        <button id="kc-login" name="login" type="submit">Sign In</button>`;
+      form.elements.username.value = username;
+      document.getElementById("step-username").replaceWith(form);
+      document.getElementById("password").focus();
+    });
+  </script>
+</body>
+</html>

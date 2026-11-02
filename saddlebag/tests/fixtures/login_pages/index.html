@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Login fill fixtures</title>
+  <link rel="stylesheet" href="style.css">
+  <style>body { display: block; }</style>
+</head>
+<body>
+  <h1>Login fill fixtures</h1>
+  <p>Every page shows lengths and event counts, never a value. Each page asks for <code>#username</code> and <code>#password</code>.</p>
+  <pre><code>saddlebag fill NAME --field username --selector "#username" --url-contains PAGE
+saddlebag fill NAME --field password --selector "#password" --url-contains PAGE</code></pre>
+  <table>
+    <tr><th>Page</th><th>What it does</th><th>What it tests</th></tr>
+    <tr><td><a href="01-keycloak-classic.html">01-keycloak-classic</a></td><td>Keycloak classic theme markup</td><td>The baseline</td></tr>
+    <tr><td><a href="02-keycloak-v2.html">02-keycloak-v2</a></td><td>Keycloak v2 theme, wrapped inputs and a show-password button</td><td>Nested wrappers</td></tr>
+    <tr><td><a href="03-username-first.html">03-username-first</a></td><td>Username, Next, then a password step built in place</td><td>Filling across two steps</td></tr>
+    <tr><td><a href="04-controlled-rerender.html">04-controlled-rerender</a></td><td>Replaces the input on each keystroke and submits from state</td><td>Framework state stays in step with the field</td></tr>
+    <tr><td><a href="05-readonly-until-focus.html">05-readonly-until-focus</a></td><td>Inputs stay read-only until a focus event fires</td><td>Whether a focus event reaches the page</td></tr>
+    <tr><td><a href="06-late-render.html">06-late-render</a></td><td>Builds the form at 1 s and rebuilds it empty at 2.5 s</td><td>Filling before the form settles</td></tr>
+    <tr><td><a href="07-iframe.html">07-iframe</a></td><td>The form sits in a same-origin iframe</td><td>Top-frame selector scope</td></tr>
+    <tr><td><a href="08-shadow-dom.html">08-shadow-dom</a></td><td>The form sits in an open shadow root</td><td>Shadow DOM selector scope</td></tr>
+    <tr><td><a href="09-duplicate-ids.html">09-duplicate-ids</a></td><td>A hidden form holds the same ids first</td><td>Selector landing on a hidden twin</td></tr>
+    <tr><td><a href="10-wrapper-id.html">10-wrapper-id</a></td><td>The ids sit on wrapper divs and the inputs carry only a name</td><td>The wrong-element error</td></tr>
+    <tr><td><a href="11-keystroke-only.html">11-keystroke-only</a></td><td>Clears any input not preceded by a keydown</td><td>Pages that reject inserted text</td></tr>
+  </table>
+</body>
+</html>

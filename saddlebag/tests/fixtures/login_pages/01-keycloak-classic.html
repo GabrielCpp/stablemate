@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>01 Keycloak classic</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="probe.js"></script>
+</head>
+<body id="keycloak-bg">
+  <main id="kc-content">
+    <h1 id="kc-page-title">Sign in to your account</h1>
+    <p>Keycloak classic theme markup.</p>
+    <form id="kc-form-login" onsubmit="login.disabled = true; return true;" action="#" method="post">
+      <label for="username" class="pf-c-form__label">Username or email</label>
+      <input tabindex="1" id="username" class="pf-c-form-control" name="username" value="" type="text" autofocus autocomplete="off" aria-invalid="">
+      <label for="password" class="pf-c-form__label">Password</label>
+      <input tabindex="2" id="password" class="pf-c-form-control" name="password" type="password" autocomplete="off" aria-invalid="">
+      <input type="hidden" id="id-hidden-input" name="credentialId">
+      <input tabindex="4" class="pf-c-button" name="login" id="kc-login" type="submit" value="Sign In">
+    </form>
+  </main>
+  <pre id="probe"></pre>
+</body>
+</html>

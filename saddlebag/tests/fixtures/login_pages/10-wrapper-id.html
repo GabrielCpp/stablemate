@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>10 Wrapper id</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="probe.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Sign in to your account</h1>
+    <p>The ids sit on wrapper divs and the inputs carry only a name.</p>
+    <form id="login">
+      <div id="username">
+        <label>Username or email <input name="username" type="text" autocomplete="username"></label>
+      </div>
+      <div id="password">
+        <label>Password <input name="password" type="password" autocomplete="current-password"></label>
+      </div>
+      <button type="submit">Sign In</button>
+    </form>
+  </main>
+  <pre id="probe"></pre>
+</body>
+</html>

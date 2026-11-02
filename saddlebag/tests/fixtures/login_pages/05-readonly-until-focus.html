@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>05 Readonly until focus</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="probe.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Sign in to your account</h1>
+    <p>Inputs stay read-only until a focus event fires.</p>
+    <form id="login">
+      <label for="username">Username or email</label>
+      <input id="username" name="username" type="text" readonly autocomplete="off">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" readonly autocomplete="off">
+      <button type="submit">Sign In</button>
+    </form>
+  </main>
+  <pre id="probe"></pre>
+  <script>
+    for (const field of document.querySelectorAll("#username, #password")) {
+      field.addEventListener("focus", () => field.removeAttribute("readonly"));
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>11 Keystroke only</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="probe.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Sign in to your account</h1>
+    <p>Clears any input not preceded by a keydown.</p>
+    <form id="login">
+      <label for="username">Username or email</label>
+      <input id="username" name="username" type="text" autocomplete="username">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password">
+      <button type="submit">Sign In</button>
+    </form>
+  </main>
+  <pre id="probe"></pre>
+  <script>
+    for (const field of document.querySelectorAll("#username, #password")) {
+      let keyed = false;
+      field.addEventListener("keydown", () => { keyed = true; });
+      field.addEventListener("input", () => {
+        if (!keyed) field.value = "";
+        keyed = false;
+      });
+    }
+  </script>
+</body>
+</html>

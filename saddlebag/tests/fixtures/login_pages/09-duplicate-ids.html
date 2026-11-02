@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>09 Duplicate ids</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="probe.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Sign in to your account</h1>
+    <p>A hidden form holds the same ids first.</p>
+    <form id="register" hidden>
+      <input id="username" name="register-username" type="text">
+      <input id="password" name="register-password" type="password">
+    </form>
+    <form id="login">
+      <label for="login-username">Username or email</label>
+      <input id="username" name="username" type="text" autofocus autocomplete="username">
+      <label for="login-password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password">
+      <button type="submit">Sign In</button>
+    </form>
+  </main>
+  <pre id="probe"></pre>
+</body>
+</html>

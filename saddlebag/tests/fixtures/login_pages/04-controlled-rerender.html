@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>04 Controlled rerender</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="probe.js"></script>
+</head>
+<body>
+  <main>
+    <h1>Sign in to your account</h1>
+    <p>Replaces the input on each keystroke and submits from state.</p>
+    <form id="login">
+      <label for="username">Username or email</label>
+      <span id="slot-username"></span>
+      <label for="password">Password</label>
+      <span id="slot-password"></span>
+      <button type="submit">Sign In</button>
+    </form>
+  </main>
+  <pre id="probe"></pre>
+  <script>
+    const state = { username: "", password: "" };
+    const types = { username: "text", password: "password" };
+
+    function mount(name, focus) {
+      const field = document.createElement("input");
+      field.id = name;
+      field.name = name;
+      field.type = types[name];
+      field.value = state[name];
+      field.addEventListener("input", () => {
+        state[name] = field.value;
+        mount(name, true);
+      });
+      document.getElementById(`slot-${name}`).replaceChildren(field);
+      if (focus) field.focus();
+    }
+
+    mount("username", false);
+    mount("password", false);
+    probe.setExtra(() => ({
+      stateLengths: { username: state.username.length, password: state.password.length },
+    }));
+  </script>
+</body>
+</html>
