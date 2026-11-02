@@ -109,7 +109,7 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
   stack.yml
 - code: ostler/ostler/environments/spec.py::schema@ece1017c2482
 - code: ostler/ostler/environments/spec.py::KEYS@ece1017c2482
-- code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
+- code: ostler/ostler/environments/cli.py::run@a2cdf551584c
 
 ### ostler-vet
 - usage: ostler vet SCREENSHOT --manifest PATH (--cdp-url URL | --regions PATH) --story STORY
@@ -202,5 +202,5 @@ managed markdown tree (backlog, milestones, epics, features) under a repo root.
   whose book's ops/stack.yml is a YAML list instead of a mapping, so no other scenario reads it
 - code: ostler/ostler/environments/spec.py::load@ece1017c2482
 - code: ostler/ostler/environments/spec.py::_read_book@ece1017c2482
-- code: ostler/ostler/environments/commands.py::cmd_check@05411233ab32
-- code: ostler/ostler/environments/cli.py::run@f1b74cc1cc17
+- code: ostler/ostler/environments/commands.py::cmd_check@97145d809f39
+- code: ostler/ostler/environments/cli.py::run@a2cdf551584c

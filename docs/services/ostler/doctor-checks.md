@@ -225,7 +225,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="docs/services/fixed-id/fixtures/asserted-id.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
 - code: ostler/ostler/step_commands.py::check_fixture_fixed_id@ad03710191e5
-- code: ostler/ostler/step_commands.py::check_fixture_asserted_id@3a0fc0d2e6b7
+- code: ostler/ostler/step_commands.py::check_fixture_asserted_id@38876a32a69b
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
 
 ### ostler-doctor-fixture-release-without-borrow

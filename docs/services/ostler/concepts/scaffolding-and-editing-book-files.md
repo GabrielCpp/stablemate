@@ -88,7 +88,7 @@ order (`_canonical_frontmatter`), bullet key order (`_bullet_key`, `_bullet_run`
 - code: ostler/ostler/scaffold.py::_scaffold_hosted_page@c0dc91c5f8ae
 - code: ostler/ostler/scaffold.py::_scaffold_section@ad26a161a34c
 - code: ostler/ostler/stamp.py::digest_file@dc3807532e47
-- code: ostler/ostler/stamp.py::digest_citation@dbcdb8522dc9
+- code: ostler/ostler/stamp.py::digest_citation@dd4fa0140ee3
 - code: ostler/ostler/stamp.py::citation_is_fresh@9e99ef458898
 - code: ostler/ostler/stamp.py::stamp_page@8420b2b4484f
 - code: ostler/ostler/stamp.py::stamp_page_from_catalog@c1399661dae6

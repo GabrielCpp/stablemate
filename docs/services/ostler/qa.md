@@ -99,7 +99,7 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/owners.py::book_relative@8f7d64d535b5
 - code: ostler/ostler/qa/packet.py::packet_of@6f73061e9eed
 - code: ostler/ostler/qa/plan_source.py::arrangement_of@9dcaf902b06a
-- code: ostler/ostler/qa/runbook.py::bullet_text@e93f60504e6f
+- code: ostler/ostler/markdown.py::bullet_text@44779fe79ecf
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
 
 ### ostler-qa-context-validate

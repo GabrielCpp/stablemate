@@ -331,7 +331,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - fixture: none, because the groom book is tracked in the repo and holds one screen
 - code: ostler/ostler/reach.py::literal_entries@9283335c8d5a
 - code: ostler/ostler/routes.py::entry_address@dce0a6260cff
-- code: ostler/ostler/qa/runbook.py::bullet_text@e93f60504e6f
+- code: ostler/ostler/markdown.py::bullet_text@44779fe79ecf
 - code: ostler/ostler/registry.py::base_type@57e382012b26
 
 ### ostler-locators

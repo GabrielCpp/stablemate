@@ -211,7 +211,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/runbook.py::select_server@a11aa8704163
 - code: ostler/ostler/qa/runbook.py::step_command@b1083cdcd9d4
 - code: ostler/ostler/qa/runbook.py::stack_runbooks@30935db408a1
-- code: ostler/ostler/qa/__init__.py@8ab478d8d2f2
+- code: ostler/ostler/qa/__init__.py@fc8bdd1c9837
 - rule: in a workspace, a tool is opted in when the docs home or any workspace member lists it under `qa: {tools: [...]}`
 - rule: a scenario whose process passes the memory cap is killed whole with SIGKILL and fails naming the cap, because under systemd's default policy the scope sent the scenario SIGTERM and the run reported only `exit -15`, which a QA turn could not tell from any other termination
 - rule: a gRPC stack bring-up with no `grpcurl` opted in fails at once at the `tools` step and never waits out its boot timeout

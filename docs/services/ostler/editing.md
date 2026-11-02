@@ -88,7 +88,7 @@ last.
 - verify: contents(subject="edit-scratch/docs/services/demo/cli.md", matches="src/demo\\.py::greet@[0-9a-f]+")
 - fixture: [edit scratch repo](fixtures/edit-scratch-repo.md) with an edit scratch repo whose book
   and story have not been edited yet
-- code: ostler/ostler/stamp.py::digest_file@b578fea528ce
+- code: ostler/ostler/stamp.py::digest_file@dc3807532e47
 
 ### ostler-scaffold
 - usage: ostler scaffold TYPE NAME [--service SERVICE] [--in FILE] [--title TITLE] [--json]: creates
