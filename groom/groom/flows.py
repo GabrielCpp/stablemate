@@ -115,7 +115,7 @@ def _state_row(name: str, state: _State) -> dict[str, Any]:
 def _flow_row(flow: _Flow) -> dict[str, Any]:
     rows = [_node_row(node, acc) for node, acc in flow.direct.items()]
     rows += [_state_row(name, state) for name, state in flow.states.items()]
-    visits = len(flow.span_ids) if flow.kind == "flow" else None
+    visits = (len(flow.span_ids) or None) if flow.kind == "flow" else None
     return _sum(flow.kind, flow.name, visits, rows, title=flow.title)
 
 
@@ -149,18 +149,26 @@ def build_flows(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
         above = chain[chain.index(state) + 1 :] if state is not None else ancestors
         flow_span = next((span for span in above if _is_node(span)), None)
         top = chain[-1]
+        attrs = item["attrs"]
+        named_flow = attrs.get("workhorse.flow")
+        stopped = bool(top["parent_id"]) and top["parent_id"] not in by_id and _depth(top) != 0
         if flow_span is not None:
             flow = flow_for("flow", flow_span["node"])
             flow.span_ids.add(flow_span["span_id"])
-        elif top["parent_id"] and top["parent_id"] not in by_id and (_depth(top) != 0):
+        elif stopped and isinstance(named_flow, str):
+            flow = flow_for("flow", named_flow) if named_flow else flow_for("workflow", workflow)
+        elif stopped:
             flow = flow_for("unfinished", top["parent_id"], top["parent_id"])
         else:
             flow = flow_for("workflow", workflow)
-        if state is None:
-            return flow, None
-        found = flow.states[state["node"]]
-        found.span_ids.add(state["span_id"])
-        return flow, found
+        if state is not None:
+            found = flow.states[state["node"]]
+            found.span_ids.add(state["span_id"])
+            return flow, found
+        named_state = attrs.get("workhorse.state")
+        if stopped and flow_span is None and isinstance(named_state, str) and named_state:
+            return flow, flow.states[named_state]
+        return flow, None
 
     for span in spans:
         if _is_turn(span):

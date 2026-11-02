@@ -166,6 +166,253 @@ def test_rows_sort_by_time_descending() -> None:
     assert [row["name"] for row in build_flows(spans)[0]["children"]] == ["slow › b", "quick › a"]
 
 
+def _placed(span_id: str, name: str, flow: str | None, state: str | None, *, parent: str, depth: int, turn: bool = False, **kwargs) -> dict:
+    attrs: dict = {"workhorse.depth": depth}
+    if flow is not None:
+        attrs["workhorse.flow"] = flow
+    if state is not None:
+        attrs["workhorse.state"] = state
+    if turn:
+        return _span(span_id, "agent_turn", parent=parent, node=name, attrs=attrs, **kwargs)
+    return _span(span_id, name, parent=parent, attrs=attrs, **kwargs)
+
+
+def test_work_in_an_open_flow_is_named_from_its_own_attributes() -> None:
+    spans = [
+        _placed("n1", "check", "qa", "review", parent="open-state", depth=2),
+        _placed("t1", "check", "qa", "review", parent="n1", depth=2, turn=True, duration_ms=4000),
+    ]
+    rows = build_flows(spans)
+    assert [(row["kind"], row["name"]) for row in rows] == [("flow", "qa")]
+    assert rows[0]["visits"] is None
+    state = rows[0]["children"][0]
+    assert (state["kind"], state["name"]) == ("state", "review › check")
+    assert UNFINISHED not in [row["name"] for row in rows]
+
+
+def test_an_open_state_under_an_ended_flow_joins_the_flows_row() -> None:
+    spans = [
+        _span("f1", "qa", attrs={"workhorse.depth": 0}),
+        _state("s1", "plan", parent="f1", depth=1),
+        _span("n1", "draft", parent="s1"),
+        _placed("n2", "check", "qa", "review", parent="open-state", depth=2),
+    ]
+    rows = build_flows(spans)
+    assert [(row["kind"], row["name"]) for row in rows] == [("flow", "qa")]
+    assert rows[0]["visits"] == 1
+    assert {child["name"] for child in rows[0]["children"]} == {"plan › draft", "review › check"}
+
+
+def test_an_ended_state_under_an_open_flow_takes_the_flow_from_the_work() -> None:
+    spans = [
+        _state("s1", "review", parent="open-flow", depth=1),
+        _placed("n1", "check", "qa", "review", parent="s1", depth=2),
+    ]
+    rows = build_flows(spans)
+    assert [(row["kind"], row["name"]) for row in rows] == [("flow", "qa")]
+    assert rows[0]["visits"] is None
+    assert rows[0]["children"][0]["name"] == "review › check"
+
+
+def test_an_open_state_at_depth_zero_sits_under_the_workflow_row() -> None:
+    spans = [
+        _placed("n1", "pick", "", "resolve", parent="open-state", depth=1),
+        _placed("n2", "land", "", "resolve", parent="open-state", depth=1),
+    ]
+    rows = build_flows(spans)
+    assert [(row["kind"], row["name"]) for row in rows] == [("workflow", "coder")]
+    state = rows[0]["children"][0]
+    assert (state["kind"], state["name"]) == ("state", "resolve")
+    assert state["visits"] is None
+
+
+def test_work_with_no_flow_or_state_attributes_keeps_the_unfinished_row() -> None:
+    spans = [_span("n1", "alpha", parent="gone", attrs={"workhorse.depth": 2})]
+    rows = build_flows(spans)
+    assert [row["name"] for row in rows] == [UNFINISHED]
+    assert rows[0]["title"] == "gone"
+
+
+def test_a_flow_that_ends_between_two_reads_stays_one_row() -> None:
+    open_work = [_placed("n1", "check", "qa", "review", parent="open-state", depth=2)]
+    ended = [
+        *open_work,
+        _span("f1", "qa", attrs={"workhorse.depth": 0}),
+        _state("s1", "review", parent="f1", depth=1),
+        _placed("n2", "check", "qa", "review", parent="s1", depth=2),
+    ]
+    before = build_flows(open_work)
+    after = build_flows(ended)
+    assert [row["name"] for row in before] == [row["name"] for row in after] == ["qa"]
+    assert before[0]["visits"] is None
+    assert after[0]["visits"] == 1
+    assert after[0]["children"][0]["name"] == "review › check"
+    assert after[0]["children"][0]["visits"] == 2
+
+
+def test_a_row_for_an_open_flow_has_no_visit_count_and_no_zero() -> None:
+    rows = build_flows([_placed("n1", "check", "qa", "", parent="open-flow", depth=1)])
+    assert rows[0]["visits"] is None
+
+
+def _engine_spans() -> list[dict]:
+    import tempfile as tmpfile
+    from typing import Any
+
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from pydantic import BaseModel
+
+    from workhorse import otel
+    from workhorse.artifacts import ArtifactWriter
+    from workhorse.config_run import RunConfig
+    from workhorse.pyflow import Blueprint, Continue, Done, Workflow
+    from workhorse.pyflow.driver import drive
+    from workhorse.pyflow.engine import RunEnv
+
+    class Meter:
+        def create_gauge(self, *_a, **_k):
+            return None
+
+        def create_counter(self, *_a, **_k):
+            return None
+
+    class Out(BaseModel):
+        ok: bool = True
+
+    blueprint = Blueprint("coder")
+
+    @blueprint.node
+    def pick(logger: Any) -> Out:
+        otel.turn_start("pick", None, None, 1.0)
+        otel.turn_end()
+        return Out()
+
+    @blueprint.node
+    def check(logger: Any) -> Out:
+        otel.turn_start("check", None, None, 1.0)
+        otel.turn_end()
+        return Out()
+
+    @blueprint.node
+    def loose(logger: Any) -> Out:
+        return Out()
+
+    class Review(Workflow):
+        def start(self) -> Any:
+            self.call(check)
+            return Continue(None, self.report)
+
+        def report(self) -> Any:
+            self.call(loose)
+            return Done(None)
+
+    class Parent(Workflow):
+        def start(self) -> Any:
+            self.call(pick)
+            return Continue(None, self.review)
+
+        def review(self) -> Any:
+            return Done(self.handoff(Review))
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+
+    def build(workflow, run_id, run_dir, settings):
+        telemetry = otel._Telemetry(trace, provider.get_tracer("t"), Meter(), lambda: None, 30.0)
+        telemetry.start_root(workflow)
+        return telemetry
+
+    previous = otel.install(otel.TelemetryHost(settings=otel.OtelSettings(forced=True), build=build))
+    try:
+        with tmpfile.TemporaryDirectory() as tmp:
+            writer = ArtifactWriter("coder", Path(tmp) / "runs", run_id="t")
+            env = RunEnv(
+                writer=writer,
+                workflow_dir=Path(tmp),
+                session_id_path=writer.run_dir / ".session_id",
+                config=RunConfig(),
+            )
+            otel.start_run("coder", "t")
+            drive(Parent(), env)
+            otel.end_run("done")
+    finally:
+        otel.install(previous)
+    spans = []
+    for number, span in enumerate(exporter.get_finished_spans()):
+        context = span.get_span_context()
+        attrs = dict(span.attributes or {})
+        assert context is not None
+        spans.append(
+            {
+                "span_id": format(context.span_id, "016x"),
+                "trace_id": format(context.trace_id, "032x"),
+                "parent_id": format(span.parent.span_id, "016x") if span.parent else "",
+                "workflow": "coder",
+                "node": str(attrs.get("workhorse.node", "")),
+                "name": span.name,
+                "start_ts": float(number),
+                "end_ts": float(number) + 1.0,
+                "attrs": attrs,
+                "profile_duration_ms": 1000.0 if span.name == "agent_turn" else None,
+                "profile_cost_usd": 1.0 if span.name == "agent_turn" else None,
+                "profile_output_tokens": None,
+            }
+        )
+    return spans
+
+
+def _shape(rows: list[dict]) -> list[tuple]:
+    return [
+        (row["kind"], row["name"], row["time_s"], row["turns"], row["cost_usd"], _shape(row["children"]))
+        for row in rows
+    ]
+
+
+def test_dropping_the_flow_and_state_spans_of_a_finished_run_changes_no_row() -> None:
+    spans = _engine_spans()
+    containers = {span["parent_id"] for span in spans if span["parent_id"]}
+    kept = [
+        span
+        for span in spans
+        if span["attrs"].get("workhorse.span_kind") != "state"
+        and not (span["name"] != "agent_turn" and span["span_id"] in containers)
+        and not span["name"].startswith("run:")
+    ]
+    assert len(kept) < len(spans)
+    assert any(span["attrs"].get("workhorse.span_kind") == "state" for span in spans)
+    whole = build_flows([span for span in spans if not span["name"].startswith("run:")])
+    assert _shape(build_flows(kept)) == _shape(whole)
+    assert len(whole) >= 2
+    assert any(row["kind"] == "flow" for row in whole)
+
+
+def test_an_empty_flow_name_survives_the_wire_and_the_store() -> None:
+    from opentelemetry.exporter.otlp.proto.common.trace_encoder import encode_spans
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    from groom import otlp
+
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider(resource=Resource({"run_id": "run-1"}))
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    provider.get_tracer("t").start_span(
+        "pick", attributes={"workhorse.flow": "", "workhorse.state": "resolve"}
+    ).end()
+    parsed = otlp.parse_traces(encode_spans(exporter.get_finished_spans()).SerializeToString())
+    with _DB():
+        store.insert_spans(parsed)
+        stored = store._run_spans("run-1")
+    assert stored[0]["attrs"]["workhorse.flow"] == ""
+    assert stored[0]["attrs"]["workhorse.state"] == "resolve"
+
+
 class _DB:
     def __enter__(self) -> _DB:
         self._tmp = tempfile.TemporaryDirectory()

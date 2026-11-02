@@ -127,9 +127,13 @@ The reading pane depends on the kind of row:
 
 ## Forces and the choices they produce
 
-**Old runs must work on day one, so flow identity is derived.** Spans already link through their
-parents, and a flow is the handoff under a state. Walking the parents gives time per flow for old
-runs and archives. Stamping a new attribute would leave every existing run without flows.
+**Old runs must work on day one, so flow identity is derived, and new runs also carry it.** Spans
+already link through their parents, and a flow is the handoff under a state. Walking the parents
+gives time per flow for old runs and archives, so that walk stays first. A span exports only when
+it ends, so a live run's open flow has no span to name. Workhorse therefore stamps
+`workhorse.flow` and `workhorse.state` on each step when it starts, and where the walk meets a
+missing parent the step's own names place it. An old run keeps its flows and its unfinished label.
+A live new run names its open flow.
 
 **Hundreds of archives must list instantly, so each carries a stored summary.** Opening a frozen
 archive for its totals would make History slow in proportion to its age. The archive manifest

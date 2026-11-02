@@ -158,8 +158,9 @@ under Raw. A problem badge on the tab always equals the Problems count.
 - **Files and Diff follow a sidecar capability on the run row.** The dashboard reads it and decides the
   tabs. The workspace endpoints stay as they are, because the terminal client uses them. Native runs get
   no browser Files or Diff, by owner decision.
-- **Flow identity is derived by walking span parents.** This covers old runs and archives. Stamping a new
-  span attribute would leave every existing run without flows.
+- **Flow identity is derived by walking span parents, and new runs also carry it.** The walk covers old
+  runs and archives and stays first. Workhorse also stamps `workhorse.flow` and `workhorse.state` on each
+  step when it starts, so a live new run names its open flow and an old run keeps its flows.
 - **Each archive carries a stored summary.** The manifest gains cost, ending and active time, and an older
   archive gets its summary lazily, once. Listing must not open a frozen telemetry database per row.
 - **Overview endpoints reuse the terminal's profile, node cost and loop queries.** They go through the
