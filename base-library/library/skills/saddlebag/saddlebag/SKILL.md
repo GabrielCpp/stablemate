@@ -1,13 +1,13 @@
 ---
 name: saddlebag
-description: "saddlebag: the secret store (the OS keyring on this machine, or a Vault behind a daemon) that hands a secret to its consumer (a browser field over CDP, or a command's environment) so the agent never holds the value. Covers which store a command uses, finding a secret by tag, signing in with `fill` (username, password, TOTP), running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, the ostler environment page that holds a repo's literal variables and `ostler env exec|dotenv|import-dotenv`, the `secrets: saddlebag:` source in an ostler stack.yml, the PreToolUse guard that refuses a secret-printing tool call and what to do when it does, a workflow node that wraps a command, a run in a container, registering a secret, and reading its errors. Load when a QA run or an agent turn must sign in to a page, when a command needs a password or token in its environment, when a `.env` or a credentials file is in your way, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
+description: "saddlebag: the secret store (the OS keyring on this machine, or a Vault behind a daemon) that hands a secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers which store a command uses, finding a secret by tag, signing in with `fill` (username, password, TOTP), typing into a native Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, the ostler environment page that holds a repo's literal variables and `ostler env exec|dotenv|import-dotenv`, the `secrets: saddlebag:` source in an ostler stack.yml, the PreToolUse guard that refuses a secret-printing tool call and what to do when it does, a workflow node that wraps a command, a run in a container, registering a secret, and reading its errors. Load when a QA run or an agent turn must sign in to a page or an Android app, when a command needs a password or token in its environment, when a `.env` or a credentials file is in your way, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
 tags: [cli, tests, qa]
 ---
 
 # Operating saddlebag
 
 saddlebag holds the secrets a run needs and delivers each one to the place that consumes
-it. The value goes into a browser field or into a child process's environment. It never
+it. The value goes into a browser field, an Android field or a child process's environment. It never
 comes back to the caller, so it never reaches your transcript. Every move below keeps it
 that way: **the value travels to its consumer, and you handle names, tags and
 descriptions.**
@@ -104,6 +104,33 @@ saddlebag fill admin_login --field totp     --selector "#app_totp"    --url-cont
 
 Confirm the sign-in by what the page shows next, through your browser tooling. The
 field's value is the one thing on that page you leave unread.
+
+## Sign in to an Android app: `type`
+
+`type` types one value into the field that has focus on an Android device or emulator.
+Drive the screen with your usual tool, such as Maestro, and let `type` carry the value:
+tap the field, run `type`, then tap submit.
+
+```bash
+saddlebag type admin_login --field username --device emulator-5554
+saddlebag type admin_login --field password --device emulator-5554
+saddlebag type admin_login --field totp     --device emulator-5554
+```
+
+- `--device` takes an adb serial. Leave it out when exactly one device is ready. USB
+  devices and emulators work. A device attached over the network is refused.
+- `--field password` is the default. It goes only into a field the device marks as a
+  password field. A username, a TOTP code or `meta.KEY` goes into any focused field.
+- The reply carries the character count, the serial, the package and the field id.
+  Confirm the sign-in by what the app shows next.
+- Keep the value out of Maestro. Maestro writes the text of `inputText` in the clear to
+  its logs, so `saddlebag exec -- maestro test` with a secret in `inputText` leaves it on
+  disk.
+- A plain field holds its text in the clear, so avoid reading the screen while a secret
+  sits in one. Any screen read returns it. A password field reads back as bullets.
+- The value shows in the device's own process list for the moments it is being typed.
+  Use a device you trust.
+- iOS has no such verb.
 
 ## Run a command with secrets: `exec`
 
@@ -335,6 +362,15 @@ permanent, so ask the operator before you run it.
 | `the browser has no inspectable pages open` | Open the page first, in the browser that owns the debug port. |
 | `no element matches <selector> on that page` | Read the page's structure through your browser tooling and pick the input's selector. |
 | `<selector> matches a <tag>, which cannot hold typed text` | Point the selector at the `<input>` itself, not its wrapper or label. |
+| `no editable field has focus` | `type` found nothing to type into. Tap the field with your device tooling, then retry. |
+| `the focused field <id> in <package> is not a password field` | The focus is on the wrong field, or the app does not mark its password field. Tap the right one. A field the app does not mark is the operator's call: nothing here overrides the refusal. |
+| `the field holds <n> characters after typing <m>` | It held text already, or it dropped or changed characters. Clear the field with your device tooling, then retry. |
+| `the focus moved while typing` | The value may have reached another field. Read the screen before you retry, and tell the operator if it landed somewhere visible. |
+| `the value holds something the device's input command would drop or change` | Nothing was typed, and `type` cannot deliver this value. Tell the operator, who decides whether to change the secret. |
+| `<n> devices are ready` / `no device is ready` / `<serial> is not a ready device` | The line lists what is attached and each state. Pick a serial with `--device`, or ask the operator to accept the debugging prompt on an `unauthorized` device. |
+| `<serial> is attached over the network` | `type` refuses it. Attach the device over USB or use an emulator. |
+| `adb was not found` | Put the platform-tools on PATH or set `ANDROID_HOME` where saddlebag runs. On the daemon route that is the daemon's environment. |
+| `<serial> did not return its screen` | The device is asleep, locked or still booting. Wake it, then retry. |
 | `<selector> is still empty after the insert` | The field is read-only or the page re-rendered it. Wait for the form to settle, then fill again. |
 | `<path> holds secrets. Read it masked: ...` (guard) | A dotenv. Run the `saddlebag env show` or `env keys` line it names. |
 | `<path> holds secrets. Store it: ...` (guard) | A key or credentials file. Hand the operator the `secret set NAME < <path>` line, then run the consumer under `exec --env`. |
