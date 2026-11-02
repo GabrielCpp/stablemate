@@ -234,7 +234,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - detail: [Describing an outside system a QA run depends on](concepts/describing-an-outside-system-a-qa-run-depends-on.md)
 
 ### ostler-doctor-fixture-fixed-id
-- usage: ostler doctor --path PATH --json: refuses a fixture step that writes a literal id, or a provided id asserted with `is:`, because two fixtures that fix the same id rewrite each other's rows on one copy of the stack
+- usage: ostler doctor --path PATH --json: refuses a fixture step that writes a literal id, or a provided id asserted with a literal `is:` rather than a generated one such as `$(uuidgen)`, because two fixtures that fix the same id rewrite each other's rows on one copy of the stack
 - exits: 1 when the book holds an error finding
 - run: invoke(argv=["-C", "doctor-scratch", "doctor", "--path", "docs/services/fixed-id", "--json"])
 - verify: exit_status(code=1)
@@ -243,7 +243,7 @@ defects in the book of the checkout. A caller reads the finding code, the page a
 - verify: stdout(matches="docs/services/fixed-id/fixtures/asserted-id.md")
 - fixture: [doctor scratch repo](fixtures/doctor-scratch-repo.md) with a doctor scratch repo whose books each carry one kind of defect
 - code: ostler/ostler/step_commands.py::check_fixture_fixed_id@ad03710191e5
-- code: ostler/ostler/step_commands.py::check_fixture_asserted_id@383a89f83452
+- code: ostler/ostler/step_commands.py::check_fixture_asserted_id@3a0fc0d2e6b7
 - detail: [Compiling a book into a QA plan](concepts/compiling-a-book-into-a-qa-plan.md)
 
 ### ostler-doctor-fixture-release-without-borrow

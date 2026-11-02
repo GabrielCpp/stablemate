@@ -45,7 +45,7 @@ its own children:
 | spelling | means |
 | --- | --- |
 | `- from: [<step>](#<step>)` plus `- read: <path>` | **Observed.** The named step is one of this fixture's own `## Steps`; the harness parses that step's stdout as JSON and reads `<path>` out of it. `read:` defaults to the key's own name. |
-| `- is: <value>` | **Asserted.** The fixture's construction makes this value true, and no step prints it. |
+| `- is: <value>` | **Asserted.** The fixture's construction makes this value true, and no step prints it. A value holding `$` is a shell expression the harness expands once as the fixture builds, in the fixture's own environment, so `is: $(uuidgen)` is a fresh id on every build and `is: $region` reads an arg. |
 
 Exactly one of the two, never both and never neither — `undetermined-provided-fact` otherwise,
 and `ostler qa compile-plan` refuses to compile any obligation whose arrangement reaches such a
@@ -151,13 +151,14 @@ one from a fixture step that prints it:
 `run: printf '{"email":"qa-%s@example.com"}' "$(date +%s%N)"`. The step prints a fresh value
 for every field the source holds unique, such as a company name beside the email.
 
-A fixture never fixes an id. Every record it creates takes the id the product assigns, or one
-the step generates as it runs, and the fixture provides it with `from:`/`read:`:
+A fixture never fixes an id. Every record it creates takes the id the product assigns, read
+back with `from:`/`read:`, or one generated on the build: `is: $(uuidgen)` under `provides:`,
+which every step then reads as `$account_id`, or in the step itself,
 `run: id=$(uuidgen) && ./scripts/seed-account.sh "$id" && printf '{"id":"%s"}' "$id"`. Fixtures
 compose on one copy of the stack, and two that write the same literal id rewrite each other's
 rows, so a scenario passes or fails by which fixture built last. A `run:` or `body:` that writes
 a uuid, a hex or `UNHEX`/`CAST … AS BINARY` literal, or an `INSERT` pairing an `id`-named column
-with a literal, and a `provides:` id asserted with `is:`, are each `fixture-fixed-id`.
+with a literal, and a `provides:` id asserted with a literal `is:`, are each `fixture-fixed-id`.
 
 ### Signing a browser in
 

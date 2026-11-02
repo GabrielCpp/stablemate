@@ -484,7 +484,14 @@ def test_fixture_fixed_id_when_a_provided_id_is_asserted(repo: Path) -> None:
           _fixture_book(provides="account_id — the seeded account's id|is: 7"))
     found = _findings(repo, "fixture-fixed-id")
     assert [f.severity for f in found] == ["error"]
-    assert "`provides: account_id` is asserted with `is: 7`" in found[0].message
+    assert "`provides: account_id` is asserted with the literal `is: 7`" in found[0].message
+
+
+def test_fixture_fixed_id_is_clean_for_an_id_generated_as_the_fixture_builds(repo: Path) -> None:
+    _stack(repo)
+    write(repo / "docs/services/acme/fixtures/seeded-acme.md",
+          _fixture_book(provides="account_id — the seeded account's id|is: $(uuidgen)"))
+    assert _findings(repo, "fixture-fixed-id") == []
 
 
 def test_fixture_fixed_id_is_clean_for_an_observed_id_and_an_asserted_count(repo: Path) -> None:

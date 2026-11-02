@@ -235,18 +235,18 @@ def check_fixture_fixed_id(step: UINode, rel: str, f: list[Finding]) -> None:
 
 
 def check_fixture_asserted_id(node: UINode, rel: str, f: list[Finding]) -> None:
-    """An id a fixture provides is read back from the step that created the record, never asserted."""
+    """An id a fixture provides is generated as it builds or read back from the step that created the record, never a literal."""
     for entry in node.entries.get("provides", []):
         head = entry.headline.partition("—")[0].split()
         asserted = entry.property_text("is")
-        if not head or not _ID_KEY.search(head[0]) or not asserted:
+        if not head or not _ID_KEY.search(head[0]) or not asserted or "$" in asserted:
             continue
         f.append(Finding(
             "error", "fixture-fixed-id",
-            f"{node.id}: `provides: {head[0]}` is asserted with `is: {asserted.strip()}`, so the "
-            f"fixture fixed the id instead of reading the one the product assigned. Fixtures "
-            f"compose on one copy of the stack, and two that fix the same id rewrite each "
-            f"other's rows. Point the fact at the step that created the record with "
-            f"`from:`/`read:`",
+            f"{node.id}: `provides: {head[0]}` is asserted with the literal `is: {asserted.strip()}`, "
+            f"so every build of the fixture fixes the same id. Fixtures compose on one copy of "
+            f"the stack, and two that fix the same id rewrite each other's rows. Generate the id "
+            f"as the fixture builds (`is: $(uuidgen)`), or point the fact at the step that created "
+            f"the record with `from:`/`read:`",
             path=rel, line=node.line, ref=refs_mod.bullet_ref(node.id, "provides"),
-            suggestion=f"  - {head[0]} — <what it is>\n    - from: [<step>](#<step>)\n    - read: {head[0]}"))
+            suggestion=f"  - {head[0]} — <what it is>\n    - is: $(uuidgen)"))

@@ -201,11 +201,13 @@ its first hop.
   request can consume, such as an account with no list yet, and the harness builds it once per
   scenario. A second claim in the same scenario would read what the first claim's request left.
 - rule: a fixture never fixes an id. Every record a fixture creates takes the id the product
-  assigns, or one the step generates as it runs, such as a uuid or a timestamp, and the fixture
-  provides it with `from:`/`read:`. Fixtures compose on one copy of the stack, and two that write
-  the same literal id rewrite each other's rows, so a scenario passes or fails by build order.
-  Doctor refuses a step whose `run:` or `body:` writes a literal id, and a `provides:` id that is
-  asserted with `is:`, as `fixture-fixed-id`.
+  assigns, which the fixture reads back with `from:`/`read:`, or one generated on the build: an
+  asserted `is:` whose value holds `$` is a shell expression the harness expands once per build
+  in the fixture's environment, so `is: $(uuidgen)` is a fresh id every step then reads, and a
+  step may generate one itself as it runs. Fixtures compose on one copy of the stack, and two
+  that write the same literal id rewrite each other's rows, so a scenario passes or fails by
+  build order. Doctor refuses a step whose `run:` or `body:` writes a literal id, and a
+  `provides:` id asserted with a literal `is:`, as `fixture-fixed-id`.
 - generated names are unique: every `*_function_name` helper in `plan_source.py` is given the
   full set of already-emitted names (`EmittedScenarios`) and never returns one already used in
   the same plan. A page with several scenarios on one target numbers the names after the first.

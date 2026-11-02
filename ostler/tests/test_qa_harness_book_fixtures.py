@@ -348,6 +348,49 @@ def test_a_later_step_reads_each_fact_an_earlier_step_provided_from_its_environm
     assert seen.read_text(encoding="utf-8") == "tok-1 eu"
 
 
+def test_an_asserted_fact_holding_a_shell_expression_expands_once_per_build(tmp_path: Path) -> None:
+    sign_in = tmp_path / "sign-in.sh"
+    _seed_step(sign_in, "#!/bin/sh\necho '{\"idToken\": \"tok-1\"}'\n")
+    seen = tmp_path / "seen.txt"
+    seed = tmp_path / "seed.sh"
+    _seed_step(seed, f'#!/bin/sh\nprintf "%s %s" "$token" "$region" > {seen}\necho \'{{}}\'\n')
+    module = _write(tmp_path, CHAINED_STEPS_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [
+                {"kind": "seed", "id": "sign-in", "command": str(sign_in), "cwd": str(tmp_path)},
+                {"kind": "seed", "id": "seed-it", "command": str(seed), "cwd": str(tmp_path)},
+            ],
+            "args": [], "needs": [], "secrets": [],
+            "provides": [
+                {"key": "token", "from": "sign-in", "read": "idToken"},
+                {"key": "region", "is": "$(printf 'eu-%s' fresh)"},
+            ],
+        }
+    }
+    code, stdout, _records = _run(module, "a-later-step-reads-what-an-earlier-step-provided", tmp_path, book_fixtures=book_fixtures)
+    assert code == 0, stdout
+    assert seen.read_text(encoding="utf-8") == "tok-1 eu-fresh"
+
+
+def test_an_asserted_fact_whose_expression_fails_is_a_defect(tmp_path: Path) -> None:
+    script = tmp_path / "seed.sh"
+    _seed_step(script, "#!/bin/sh\necho '{}'\n")
+    module = _write(tmp_path, SECRET_SCENARIO)
+    book_fixtures = {
+        "seeded-acme": {
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
+            "args": [], "needs": [], "secrets": [],
+            "provides": [{"key": "id", "is": "$(exit 3)"}],
+        }
+    }
+    code, _stdout, records = _run(module, "needs-a-secret", tmp_path, book_fixtures=book_fixtures)
+    assert code != 0
+    [fault] = [r for r in records if r.get("type") == "fixture_fault"]
+    assert fault["fault_class"] == "defect"
+    assert "$(exit 3)" in fault["detail"]
+
+
 def test_provides_from_naming_an_unknown_step_is_a_defect(tmp_path: Path) -> None:
     script = tmp_path / "seed.sh"
     _seed_step(script, "#!/bin/sh\necho '{}'\n")

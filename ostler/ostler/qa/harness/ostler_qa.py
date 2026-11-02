@@ -903,6 +903,7 @@ class Qa:
         self._held: list[str] = []
         self._node: str | None = None
         self.http = Http(target.base_url, on_unexpected_status=self._status_mismatch, on_exchange=self._saw_exchange)
+
         self._grpc_caller = grpc_caller
         self.grpc = Grpc(target.base_url, self._grpc_caller_for, on_unexpected_status=self._grpc_status_mismatch)
         self._index = 0
@@ -915,6 +916,20 @@ class Qa:
         self.maestro = Maestro(self)
         self.tesseract = Tesseract(self)
         self.convert = Convert(self)
+
+    def http_for(self, target_name: str) -> Http:
+        """An HTTP client bound to another declared target's `base_url` — one journey may reach several servers.
+
+        The target must be named by this plan's own `target(...)` declarations; requests through
+        the returned client record and status-check exactly like the scenario's own.
+        """
+        declared = REGISTRY.targets.get(target_name)
+        if declared is None:
+            raise ValueError(f"this plan declares no target {target_name!r} to send a request to")
+        if declared.base_url is None:
+            raise ValueError(f"target {target_name!r} declares no base_url to send a request to")
+        return Http(declared.base_url, on_unexpected_status=self._status_mismatch,
+                    on_exchange=self._saw_exchange)
 
     def _grpc_caller_for(self) -> Caller:
         """The caller `qa.grpc` makes its calls with: the one a test handed over, else grpcurl as the qa tools resolve it."""
@@ -1347,12 +1362,36 @@ class Qa:
             self._fault(fixture, index, "reload", "defect", detail)
             raise RuntimeError(f"qa fixture {fixture!r} {detail}") from exc
 
+    def _asserted_facts(
+        self, fixture: str, declared: Sequence[Mapping[str, str]], env: Mapping[str, str],
+    ) -> dict[str, str]:
+        """Each `is:` fact as the step environment carries it: a value holding `$` is a shell expression bash expands once, in the fixture's own environment, so `$(uuidgen)` is fresh per build."""
+        facts: dict[str, str] = {}
+        for entry in declared:
+            asserted = entry.get("is") or ""
+            if not asserted or entry.get("from"):
+                continue
+            if "$" not in asserted:
+                facts[entry["key"]] = asserted
+                continue
+            argv = [_SHELL, "-c", f'set -e\nvalue="{asserted}"\nprintf "%s" "$value"']
+            done = subprocess.run(  # noqa: S603 - fixed shell invocation of a book-declared value
+                argv, env={**os.environ, **env}, capture_output=True, text=True, timeout=60, check=False,
+            )
+            if done.returncode != 0:
+                detail = f"`is: {asserted}` failed to expand (exit {done.returncode}): {done.stderr.strip()[-500:]}"
+                self._fault(fixture, -1, "provides", "defect", detail)
+                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
+            facts[entry["key"]] = done.stdout
+        return facts
+
     def _extract_provides(
         self,
         fixture: str,
         declared: Sequence[Mapping[str, str]],
         step_results: Mapping[str, "ToolResult"],
         last_index: int,
+        asserted_facts: Mapping[str, str],
     ) -> dict[str, str]:
         """Bind each declared `provides:` fact the way its own entry says the fact comes to be."""
         facts: dict[str, str] = {}
@@ -1366,7 +1405,7 @@ class Qa:
                 self._fault(fixture, last_index, "provides", "defect", detail)
                 raise RuntimeError(f"qa fixture {fixture!r} {detail}")
             if asserted:
-                facts[key] = asserted
+                facts[key] = asserted_facts[key]
                 continue
             if not step_id:
                 detail = (f"declares provides {key!r} with neither `from:` nor `is:` — the book "
@@ -1490,9 +1529,9 @@ class Qa:
                 env[arg_name] = args[arg_name]
         steps = spec.get("steps", [])
         provides = spec.get("provides", [])
-        for entry in provides:
-            if entry.get("is") and not entry.get("from"):
-                env.setdefault(entry["key"], entry["is"])
+        asserted_facts = self._asserted_facts(name, provides, env)
+        for key, value in asserted_facts.items():
+            env.setdefault(key, value)
         result: ToolResult | None = None
         step_results: dict[str, ToolResult] = {}
         signed_in = False
@@ -1532,7 +1571,9 @@ class Qa:
             self._node_sessions[name] = self._settled_session(name, len(steps) - 1)
         if wrote and self.diagnostics is not None:
             self._shown_written(name, len(steps) - 1)
-        self._node_facts[name] = self._extract_provides(name, provides, step_results, len(steps) - 1)
+        self._node_facts[name] = self._extract_provides(
+            name, provides, step_results, len(steps) - 1, asserted_facts,
+        )
         if result is None:
             result = ToolResult(command=[], stdout="", stderr="", exit_code=0)
         return result

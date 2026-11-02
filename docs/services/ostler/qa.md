@@ -80,8 +80,8 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/captures.py::CaptureDecl/parse_bullet@248120ebb77f
 - code: ostler/ostler/qa/compile.py::annotate_deferred_obligations@3cf23080c032
 - code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@b17165cba10a
-- code: ostler/ostler/qa/compile_http.py::api_scenarios@8469d8aac445
-- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@a83239a8b983
+- code: ostler/ostler/qa/compile_http.py::api_scenarios@4dc4547ef07a
+- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@89108ef98180
 - code: ostler/ostler/qa/compile_maestro.py::device_state_walks@f685bb9e79dc
 - code: ostler/ostler/qa/compile_moves.py::move_walks@c8463448d0ef
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
@@ -161,8 +161,8 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/compile.py::cmd_compile_plan@a0f77ff012ce
 - code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@b17165cba10a
 - code: ostler/ostler/qa/compile_grpc.py::grpc_scenarios@af1d3303dcf6
-- code: ostler/ostler/qa/compile_http.py::api_scenarios@8469d8aac445
-- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@a83239a8b983
+- code: ostler/ostler/qa/compile_http.py::api_scenarios@4dc4547ef07a
+- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@89108ef98180
 - code: ostler/ostler/qa/compile_maestro.py::device_state_walks@f685bb9e79dc
 - code: ostler/ostler/qa/compile_moves.py::move_walks@c8463448d0ef
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
@@ -257,7 +257,7 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/drivers.py::create_driver@7652064de163
 - code: ostler/ostler/qa/evidence_map.py::build_evidence_map@5273008138a7
 - code: ostler/ostler/qa/fixtures.py::declared@218d9dd9d05a
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@ac5165446d46
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@e8e9e751fd27
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::UrlReading@585f67d0e3dd
 - code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk@953f0758c607
 - code: ostler/ostler/qa/harness/ostler_qa.py::Qa._owe_releases@fd9f865aeb69
