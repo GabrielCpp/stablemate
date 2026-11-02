@@ -1404,7 +1404,7 @@ function Overview({ detail }) {
 }
 
 function idleActivity() {
-  return { runId: "", status: "idle", rows: [], selected: "", turn: { slug: "", status: "idle", data: null }, rev: 0 };
+  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, rev: 0 };
 }
 
 let activitySeq = 0;
@@ -1443,8 +1443,9 @@ async function loadActivity(runId, rev = 0, refresh = false) {
     if (seq !== activitySeq) return;
     const held = store.get().activity;
     const rows = data.rows;
-    const chosen = rows.some((row) => row.slug === held.selected) ? held.selected : "";
-    store.set({ activity: { ...held, runId, status: "ready", rows, selected: chosen, rev } });
+    const items = data.items || [];
+    const chosen = rows.some((row) => row.slug === held.selected) || findEntry(items, held.selected) ? held.selected : "";
+    store.set({ activity: { ...held, runId, status: "ready", rows, items, selected: chosen, rev } });
     if (!chosen && rows.length) loadTurn(runId, rows[rows.length - 1].slug);
     else if (chosen && rows.some((row) => row.slug === chosen && row.status === "running")) loadTurn(runId, chosen, true);
   } catch (err) {
@@ -1452,6 +1453,31 @@ async function loadActivity(runId, rev = 0, refresh = false) {
     if (refresh) store.set({ activity: { ...store.get().activity, rev } });
     else store.set({ activity: { ...idleActivity(), runId, status: "failed", rev } });
   }
+}
+
+function findEntry(items, key) {
+  if (!key) return null;
+  for (const item of items) {
+    for (const pass of item.passes) {
+      for (const entry of pass.entries) {
+        if (entry.key === key) return { entry, item, pass };
+        const step = (entry.steps || []).find((one) => one.key === key);
+        if (step) return { entry: step, item, pass, fold: entry };
+      }
+    }
+  }
+  return null;
+}
+
+function pickEntry(key) {
+  turnSeq++;
+  const held = store.get().activity;
+  store.set({ activity: { ...held, selected: key, turn: { slug: "", status: "idle", data: null } } });
+}
+
+function setFold(key, open) {
+  const held = store.get().activity;
+  store.set({ activity: { ...held, folds: { ...held.folds, [key]: open } } });
 }
 
 function resetActivity() {
@@ -1497,6 +1523,138 @@ function TurnRow({ row, selected, pick }) {
   </button>`;
 }
 
+const ENTRY_MARKS = { failed: "✕", gate: "?", retry: "!", churn: "!", step: "✓" };
+const ENTRY_CLASS = { failed: "bad", gate: "gate", retry: "warn", churn: "warn", step: "step" };
+const ENTRY_WORDS = { failed: "failed step", gate: "operator gate", retry: "backend retry", churn: "churn alert", step: "step passed" };
+
+function entrySpan(seconds) {
+  if (seconds > 0 && seconds < 1) return "<1s";
+  return fmtSpan(seconds);
+}
+
+function entryWhen(entry) {
+  return clockTime(entry.ts * 1000).slice(0, 5);
+}
+
+function entryMeta(entry) {
+  return entry.duration_s > 0 ? entrySpan(entry.duration_s) : "";
+}
+
+function EntryRow({ entry, selected, pick }) {
+  const meta = entryMeta(entry);
+  const label = entry.name + ", " + ENTRY_WORDS[entry.kind] + ", " + entryWhen(entry) + (meta ? ", " + meta : "") + (entry.result ? ", " + entry.result : "");
+  return html`<button
+    type="button"
+    class=${"ev " + ENTRY_CLASS[entry.kind] + (selected ? " sel" : "")}
+    data-entry=${entry.key}
+    data-kind=${entry.kind}
+    aria-current=${selected ? "true" : null}
+    aria-label=${label}
+    onClick=${() => pick(entry.key)}
+  >
+    <span class="t">${entryWhen(entry)}</span>
+    <span class="i" aria-hidden="true">${ENTRY_MARKS[entry.kind]}</span>
+    <span class="main"><span class="n">${entry.name}</span><span class="w">${entry.kind === "step" ? "passed" : entry.result}</span></span>
+    <span class="m">${meta}</span>
+  </button>`;
+}
+
+function foldText(entry) {
+  return entry.count + (entry.count === 1 ? " step" : " steps") + " · " + entrySpan(entry.time_s) + " · all passed";
+}
+
+function FoldRow({ entry, open, selected, pick }) {
+  return html`<button
+    type="button"
+    class="ev steps"
+    data-fold=${entry.key}
+    aria-expanded=${open ? "true" : "false"}
+    aria-label=${foldText(entry) + (open ? ", open" : ", closed")}
+    onClick=${() => setFold(entry.key, !open)}
+  >
+    <span class="t">${entryWhen(entry)}</span>
+    <span class="i" aria-hidden="true">${open ? "▾" : "▸"}</span>
+    <span class="main">${foldText(entry)}</span>
+    <span class="m"></span>
+  </button>
+  ${open ? entry.steps.map((step) => html`<${EntryRow} key=${step.key} entry=${{ ...step, kind: "step" }} selected=${step.key === selected} pick=${pick} />`) : null}`;
+}
+
+function groupSpan(seconds) {
+  const secs = Math.round(seconds || 0);
+  return secs >= 60 && secs < 3600 ? Math.round(secs / 60) + "m" : fmtSpan(secs);
+}
+
+function groupFigures(group) {
+  return groupSpan(group.time_s) + (group.cost_usd === null ? "" : " · " + fmtUsd(group.cost_usd));
+}
+
+function itemState(item, alive) {
+  if (item.running) return "running";
+  if (item.latest && alive) return "in progress";
+  if (item.outcome === "done") return "done";
+  if (item.outcome === "uncounted") return "not counted";
+  return "count unknown";
+}
+
+function itemOpenByDefault(item, alive) {
+  return item.running || (item.latest && alive);
+}
+
+function passOpenByDefault(pass) {
+  return pass.state === "running" || pass.state === "open";
+}
+
+function passTitle(pass) {
+  if (!pass.flow) return "outside any flow";
+  return pass.flow + " · " + ordinal(pass.pass) + " pass";
+}
+
+function groupHasKey(entries, key) {
+  return entries.some((entry) => entry.key === key || (entry.steps || []).some((step) => step.key === key));
+}
+
+function GroupHead({ cls, open, title, aside, label, toggle }) {
+  return html`<button type="button" class=${cls} aria-expanded=${open ? "true" : "false"} aria-label=${label} onClick=${toggle}>
+    <span><span aria-hidden="true">${open ? "▾" : "▸"} </span>${title}</span><span class="aside">${aside}</span>
+  </button>`;
+}
+
+function PassSection({ item, pass, rows, selected, pick, folds }) {
+  const key = "pass:" + item.work_id + "|" + pass.flow + "|" + pass.pass;
+  const open = folds[key] !== undefined ? folds[key] : passOpenByDefault(pass) || groupHasKey(pass.entries, selected);
+  const stateWord = pass.state === "running" ? "running" : pass.state === "open" ? "in progress" : pass.state;
+  const aside = (pass.state === "running" || pass.state === "open" || pass.state === "failed" ? stateWord + " · " : "") + groupFigures(pass);
+  const label = passTitle(pass) + ", " + (stateWord ? stateWord + ", " : "") + groupFigures(pass).replace(" · ", ", ");
+  return html`<div class="tl-sub" data-pass=${key}>
+    <${GroupHead} cls="tl-flow" open=${open} title=${passTitle(pass)} aside=${aside} label=${label} toggle=${() => setFold(key, !open)} />
+    ${open ? pass.entries.map((entry) => {
+      if (entry.kind === "steps") {
+        const foldOpen = folds[entry.key] !== undefined ? folds[entry.key] : groupHasKey([entry], selected);
+        return html`<${FoldRow} key=${entry.key} entry=${entry} open=${foldOpen} selected=${selected} pick=${pick} />`;
+      }
+      if (entry.kind === "turn" || entry.kind === "running") {
+        const row = rows.find((one) => one.slug === entry.slug);
+        return row ? html`<${TurnRow} key=${entry.key} row=${row} selected=${entry.slug === selected} pick=${pick} />` : null;
+      }
+      return html`<${EntryRow} key=${entry.key} entry=${entry} selected=${entry.key === selected} pick=${pick} />`;
+    }) : null}
+  </div>`;
+}
+
+function ItemSection({ item, alive, rows, selected, pick, folds, headed }) {
+  const key = "item:" + item.work_id;
+  const open = !headed || (folds[key] !== undefined ? folds[key] : itemOpenByDefault(item, alive) || item.passes.some((pass) => groupHasKey(pass.entries, selected)));
+  const title = item.work_id || "outside any work item";
+  const state = item.work_id ? itemState(item, alive) : "";
+  const aside = (state ? state + " · " : "") + groupFigures(item);
+  const label = (item.work_id ? "Work item " + item.work_id : "Outside any work item") + ", " + (state ? state + ", " : "") + groupFigures(item).replace(" · ", ", ");
+  return html`<div class="tl-sec" data-item=${item.work_id}>
+    ${headed ? html`<${GroupHead} cls="tl-group" open=${open} title=${title} aside=${aside} label=${label} toggle=${() => setFold(key, !open)} />` : null}
+    ${open ? item.passes.map((pass) => html`<${PassSection} key=${pass.flow + pass.pass} item=${item} pass=${pass} rows=${rows} selected=${selected} pick=${pick} folds=${folds} />`) : null}
+  </div>`;
+}
+
 function TurnHead({ row }) {
   const running = row.status === "running";
   const flowText = row.flow ? row.flow + (row.pass ? " · " + ordinal(row.pass) + " pass" : "") : "";
@@ -1528,7 +1686,31 @@ function TurnReading({ row, entries, cut }) {
   </div>`;
 }
 
-function TurnPane({ runId, rows, turn }) {
+function StubPane({ found }) {
+  const { entry, item, pass } = found;
+  const kind = entry.kind === "steps" ? "step" : entry.kind;
+  const failed = kind === "failed";
+  const flowText = passTitle(pass);
+  const meta = entryMeta(entry);
+  const chip = failed ? html`<span class="chip bad" style="margin-left:auto">failed</span>`
+    : kind === "step" ? html`<span class="chip ok" style="margin-left:auto">passed</span>`
+    : kind === "gate" ? html`<span class="chip" style="margin-left:auto">operator gate</span>`
+    : html`<span class="chip warn" style="margin-left:auto">problem</span>`;
+  const dot = failed ? "blocked" : kind === "step" || kind === "gate" ? "finished" : "idle";
+  return html`<div class="rd" data-stub=${kind}>
+    <div class="rd-head">
+      <div class="l1"><span class=${"dot " + dot} style=${failed ? "animation:none" : null} aria-hidden="true"></span>${entry.name}${item.work_id ? html`<span class="dim">·</span><span class="dim">${item.work_id}</span>` : null}${chip}</div>
+      <div class="l2"><span>${flowText}</span><span>${entryWhen(entry)}</span>${meta ? html`<span>${meta}</span>` : null}</div>
+    </div>
+    <div class="rd-body" tabindex="0" aria-label=${entry.name}>
+      ${failed ? html`<div class="err-box">${entry.result}</div>` : html`<div class="at-msg"><div class="at-role">${ENTRY_WORDS[kind]}</div><div class="at-text plain">${entry.result || "Passed."}</div></div>`}
+    </div>
+  </div>`;
+}
+
+function TurnPane({ runId, rows, turn, items, selected }) {
+  const found = findEntry(items, selected);
+  if (found && !rows.some((one) => one.slug === selected)) return html`<${StubPane} found=${found} />`;
   const row = rows.find((one) => one.slug === turn.slug);
   if (!row) return html`<div class="rd"></div>`;
   if (turn.status === "failed") {
@@ -1584,12 +1766,13 @@ function ActivityTab({ detail }) {
     const beat = detail.strip && detail.strip.beat_ts ? ": last beat " + fmtSpan(Date.now() / 1000 - detail.strip.beat_ts) + " ago." : ".";
     return html`<div class="empty-big" role="status">No activity yet. The first agent turn appears here when it starts.<br />${alive ? "The run is alive" + beat : "The run has finished."}</div>`;
   }
-  const pick = (slug) => loadTurn(runId, slug);
+  const pick = (key) => (activity.rows.some((row) => row.slug === key) ? loadTurn(runId, key) : pickEntry(key));
+  const headed = !(activity.items.length === 1 && activity.items[0].work_id === "");
   return html`<div class="feed">
-    <div class="tl" role="log" aria-label="Run activity">
-      ${activity.rows.map((row) => html`<${TurnRow} key=${row.slug} row=${row} selected=${row.slug === activity.selected} pick=${pick} />`)}
+    <div class=${"tl" + (headed ? "" : " flat")} role="log" aria-label="Run activity">
+      ${activity.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${activity.rows} selected=${activity.selected} pick=${pick} folds=${activity.folds} headed=${headed} />`)}
     </div>
-    <${TurnPane} runId=${runId} rows=${activity.rows} turn=${activity.turn} />
+    <${TurnPane} runId=${runId} rows=${activity.rows} turn=${activity.turn} items=${activity.items} selected=${activity.selected} />
   </div>`;
 }
 

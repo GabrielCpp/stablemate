@@ -14,6 +14,7 @@ Spans export when they end. A flow or state that is still open, and the run's ow
 - code: groom/groom/live_history.py::LiveHistory@3671ced6241f
 - code: groom/groom/assets/dashboard.js::Overview@f656729cd4fc
 - code: groom/groom/flows.py::turn_passes@74192984c983
+- code: groom/groom/flows.py::span_passes@55f223c1146d
 - tests: groom/tests/test_flows.py::test_an_ended_flow_is_named_from_its_own_span
 - tests: groom/tests/test_flows.py::test_work_under_an_unexported_parent_gets_one_unfinished_row_per_parent
 - tests: groom/tests/test_flows.py::test_work_in_an_open_flow_is_named_from_its_own_attributes
@@ -77,7 +78,7 @@ Spans export when they end. A flow or state that is still open, and the run's ow
 
 ## Turn passes
 
-- rule: a turn's pass is which run of its flow's node span it belongs to, counted from one in the order those runs started. The [Activity tab](run-activity-tab.md) shows it as `1st pass`. A turn outside any flow node has no pass.
+- rule: a turn's pass is which run of its flow's node span it belongs to, counted from one in the order those runs started. The [Activity tab](run-activity-tab.md) shows it as `1st pass`. A turn outside any flow node has no pass. The Activity tab places a step, a gate and a turn in a pass by the same walk up the spans, numbers the passes within a work item and flow, and a pass still open is named by its span's flow attribute and numbered after the stored passes.
 
 ## Cost coverage
 

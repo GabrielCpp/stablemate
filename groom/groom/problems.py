@@ -5,7 +5,7 @@ from typing import Any
 from groom import churn
 
 
-def _gate_check_failed(span: dict[str, Any]) -> bool:
+def gate_check_failed(span: dict[str, Any]) -> bool:
     attrs = span["attrs"]
     return "workhorse.out.gate" in attrs and attrs.get("workhorse.out.status") == "dirty"
 
@@ -43,7 +43,7 @@ def standing(spans: list[dict[str, Any]], retries: int) -> dict[str, Any]:
     Problems are failed steps, backend retries, failed gate checks and churn alerts. An answered gate is not one.
     """
     failed = failed_steps(spans)
-    checks = sum(1 for span in spans if _gate_check_failed(span))
+    checks = sum(1 for span in spans if gate_check_failed(span))
     churned = churn.count_alerts(spans)
     gates = operator_gates(spans)
     return {

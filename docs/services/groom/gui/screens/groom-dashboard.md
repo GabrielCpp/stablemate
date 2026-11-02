@@ -1305,11 +1305,14 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: present for every open run, native or container, with or without a sidecar, between the Overview tab and the Details tab.
 - states: it carries no count and no chip.
 - states: its accessible name is `Activity`.
+- states: it lists the run's rows under work item and flow pass headings, each a button that opens and closes its rows, with folded runs of passed steps and separate rows for failed steps, gates, retries and churn alerts.
 - states: the selected tab controls the single tabpanel `#detail-panel`, as the other tabs do.
 - code: groom/groom/assets/dashboard.js::DetailTabs@c23c8518540f
-- code: groom/groom/assets/dashboard.js::ActivityTab@46f65e17d3bd
+- code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_sits_between_overview_and_details
+- tests: groom/tests/test_activity_groups_dynamic.py::test_selecting_a_heading_opens_or_closes_it_by_pointer_and_by_keyboard
+- tests: groom/tests/test_activity_groups_dynamic.py::test_headings_and_rows_keep_a_role_a_name_and_state_in_words_and_pass_an_axe_scan
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_and_each_row_have_a_role_a_name_and_keyboard_operation_and_axe_is_clean
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_other_tabs_behave_as_they_did
 
@@ -1321,12 +1324,12 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - placement: width 20-40%, x 0-40%
 - keyboard: each turn row is a button in the tab order, and the list is not a tab stop itself.
 - parent: [detail-activity-tab](#detail-activity-tab)
-- states: lists the run's agent turns oldest first, one [turn row](#detail-activity-row) each, at the left of the tab beside the [turn pane](#detail-activity-pane).
+- states: lists the run's agent turns oldest first within their work item and flow pass headings, one [turn row](#detail-activity-row) each, with folded runs of passed steps and a row of its own for a failed step, a gate, a backend retry and a churn alert, at the left of the tab beside the [turn pane](#detail-activity-pane).
 - verify: visible(locator="#detail-activity-list", text="Run activity")
 - states: a turn that starts while the tab is open appears at the end of the list without a reload and without moving the operator's scroll.
 - states: a list with no turn is replaced by `No activity yet. The first agent turn appears here when it starts.` and says whether the run is alive or has finished.
 - states: while the list reads, a status named `Reading this run's activity…` shows and clears when the list arrives.
-- code: groom/groom/assets/dashboard.js::ActivityTab@46f65e17d3bd
+- code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_run_with_no_turn_says_it_has_no_activity_and_that_it_is_alive
@@ -1359,10 +1362,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - placement: width 60-80%, x 40-100%
 - parent: [detail-activity-tab](#detail-activity-tab)
 - states: holds the open turn's [head](#detail-activity-head) above its [reading](#detail-activity-reading), beside the list.
+- states: selecting a step, a failed step, a gate, a backend retry or a churn alert holds that row's name, time and one-line result in the pane in place of a turn.
 - states: while the turn reads, a status named `Reading this turn…` shows in its place and clears when the turn arrives.
 - states: when the turn cannot be read, an alert `This turn could not be read` shows with `Retry now`, and the list stays.
 - verify: visible(locator="#detail-activity-pane", text="Reading this turn")
-- code: groom/groom/assets/dashboard.js::TurnPane@7a8a1dc6ca8d
+- code: groom/groom/assets/dashboard.js::TurnPane@b724c2dc0c40
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_being_read_shows_a_reading_state_that_clears_when_it_appears
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
@@ -1419,7 +1423,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: shown in place of the list when the run's turns could not be read, as `This run's activity could not be read`, with `The Details tab still works.`
 - verify: visible(locator="#detail-activity-state", text="could not be read")
 - states: a failed list never reads as `No activity yet`.
-- code: groom/groom/assets/dashboard.js::ActivityTab@46f65e17d3bd
+- code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it
 
@@ -2286,8 +2290,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Opens the newest turn and requests `GET /api/run/{run_id}/activity/{slug}` for it.
   - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
   - Reads the list again when the run's figures revision moves, and every 3 seconds while a turn runs.
-- code: groom/groom/assets/dashboard.js::ActivityTab@46f65e17d3bd
-- code: groom/groom/assets/dashboard.js::loadActivity@dd61e637ac89
+- code: groom/groom/assets/dashboard.js::ActivityTab@f909e1eeee52
+- code: groom/groom/assets/dashboard.js::loadActivity@2b4708550316
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 
@@ -2323,7 +2327,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Reads the list again, or the open turn again, whichever failed, and clears the alert when the read succeeds.
   - verify: absent(subject=".act-state after a successful retry")
   - Keeps the list on screen while a turn is read again.
-- code: groom/groom/assets/dashboard.js::loadActivity@dd61e637ac89
+- code: groom/groom/assets/dashboard.js::loadActivity@2b4708550316
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it

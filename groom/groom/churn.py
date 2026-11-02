@@ -40,13 +40,13 @@ def observe(labels: dict[str, Signature], counts: dict[str, int], node: str, att
     return counts[node], False
 
 
-def count_alerts(spans: list[dict[str, Any]]) -> int:
-    """How many churn alerts the stored spans would have fired, replaying them in the order they ended."""
+def alerts(spans: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int]]:
+    """The churn alerts the stored spans would have fired, each as the visit that tipped it and its repeat count, replaying them in the order they ended."""
     labels: dict[str, Signature] = {}
     counts: dict[str, int] = {}
     fired = False
     generation = None
-    total = 0
+    found: list[tuple[dict[str, Any], int]] = []
     limit = repeats()
     for span in sorted(spans, key=lambda item: (item["end_ts"], item["start_ts"])):
         if span.get("resume_generation") != generation and span.get("resume_generation") is not None:
@@ -60,5 +60,10 @@ def count_alerts(spans: list[dict[str, Any]]) -> int:
             fired = False
         if count >= limit and not fired:
             fired = True
-            total += 1
-    return total
+            found.append((span, count))
+    return found
+
+
+def count_alerts(spans: list[dict[str, Any]]) -> int:
+    """How many churn alerts the stored spans would have fired."""
+    return len(alerts(spans))

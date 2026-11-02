@@ -10,8 +10,8 @@ Five tiles sit at the top of a run's Overview: Cost, Active time, Work items, Ag
 The tiles are not a second set of numbers. Cost, coverage, active time and items come from the figures module that feeds the [run row figures](run-row-figures.md), so a tile and its run row read the same at the same moment. The retries and the problem count come from the one store read that builds the [run flow tree](run-flow-tree.md), so the tile's retries are the sum of the tree's Retries column.
 
 - code: groom/groom/figures.py::tile_figures@56086656f4a0
-- code: groom/groom/problems.py::standing@5a10b790ed15
-- code: groom/groom/churn.py::count_alerts@ade33e9e676b
+- code: groom/groom/problems.py::standing@2c9cd56a1366
+- code: groom/groom/churn.py::count_alerts@156655db35bb
 - code: groom/groom/overview.py::run_overview@d4e666f27ee7
 - code: groom/groom/assets/dashboard.js::OverviewTiles@1e3959a72410
 - tests: groom/tests/test_overview_tiles.py::test_the_problem_count_adds_failed_steps_retries_failed_gate_checks_and_churn

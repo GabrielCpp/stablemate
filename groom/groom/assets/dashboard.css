@@ -560,3 +560,14 @@ table.tt { width:100%; border-collapse:collapse; font-size:12px; }
 .empty-big { padding:40px 20px; text-align:center; color:var(--text-2); font-size:12.5px; }
 .act-state { margin:16px; max-width:none; }
 .act-state .btn { margin-left:4px; }
+.tl-group { position:sticky; top:0; z-index:3; display:flex; align-items:center; gap:8px; width:100%; padding:5px 10px; background:var(--bg-2); border:0; border-bottom:1px solid var(--border); font-family:var(--mono); font-size:11.5px; color:var(--text-0); text-align:left; cursor:pointer; }
+.tl-group .aside, .tl-flow .aside { margin-left:auto; color:var(--text-2); font-size:10.5px; white-space:nowrap; }
+.tl-flow { position:sticky; top:var(--tl-group-h,29px); z-index:2; display:flex; align-items:center; gap:7px; width:100%; padding:6px 10px 3px; background:var(--bg-0); border:0; font-family:var(--mono); font-size:10.5px; color:var(--text-2); text-transform:uppercase; letter-spacing:.05em; text-align:left; cursor:pointer; }
+.tl-flow .aside { text-transform:none; letter-spacing:0; }
+.tl.flat .tl-flow { top:0; }
+.tl-group:hover, .tl-flow:hover { color:var(--text-0); }
+.ev.steps .main { color:var(--text-2); font-size:11.5px; }
+.ev.gate .i, .ev.gate .main .n { color:var(--idle); }
+.ev.step .i { color:var(--running); }
+.ev.step { padding-left:18px; }
+.err-box { background:var(--bg-0); border:1px solid var(--blocked); border-radius:4px; padding:8px 10px; font-family:var(--mono); font-size:11.5px; color:#ffc9c5; white-space:pre-wrap; overflow-wrap:anywhere; }

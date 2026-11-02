@@ -27,6 +27,7 @@ title: get-run-turn
 - verify: json_path(path="$.cut", equals=false)
 - does:
   - Returns an empty `entries` with status `200` for a turn whose slug starts `unmatched-`, because no record was matched to it, and never retries the match.
+  - Reads a key of the form `<slug>~<milliseconds>` as a later visit of a slug that a resumed pass repeated. It returns that visit's records only, and an empty `entries` with status `200` when the archive kept none for it.
 - does:
   - Sends transcript text as it was recorded and applies no markup of its own.
 - response:
@@ -41,7 +42,7 @@ title: get-run-turn
   - `503` with detail `the turn could not be read` when the turn exists but its record is not on this machine, which is a turn of a container run whose records the sidecar has not pulled yet, and the live history does not hold it.
 - verify: json_path(path="$.detail", equals="the turn could not be read")
 - code: groom/groom/app.py::run_turn@b044082c2db0
-- code: groom/groom/activity.py::turn@01b84cdb4aec
+- code: groom/groom/activity.py::turn@a2d68ce89ba6
 - detail: [groom activity module](../concepts/groom-activity-module.md)
 - detail: [groom transcript parse module](../concepts/groom-transcript-parse-module.md)
 - tests: groom/tests/test_activity.py::test_a_finished_turn_reads_only_its_own_window_and_drops_the_rest

@@ -5,7 +5,7 @@ from typing import Any
 from groom import archive, figures, flows, norms, store
 
 
-def _outcome(item: dict[str, Any], progress: tuple[int, int] | None) -> str:
+def outcome(item: dict[str, Any], progress: tuple[int, int] | None) -> str:
     if progress is None or item["done"] is None:
         return "unknown"
     return "done" if progress[0] > item["done"] else "uncounted"
@@ -30,7 +30,7 @@ def _items(
     item_tokens = sum(row["output_tokens"] for row in rows)
     item_time = sum(row["seconds"] for row in rows)
     return {
-        "rows": [{**row, "outcome": _outcome(row, progress)} for row in rows],
+        "rows": [{**row, "outcome": outcome(row, progress)} for row in rows],
         "outside": {
             "time_s": max(0.0, time_s - item_time),
             "cost_usd": outside_cost,

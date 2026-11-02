@@ -272,3 +272,107 @@ def turn_passes(spans: list[dict[str, Any]]) -> dict[str, tuple[str, int]]:
         if flow is not None and flow["span_id"] in ordinals:
             found[turn["span_id"]] = (flow["node"], ordinals[flow["span_id"]])
     return found
+
+
+def _work_of(span: dict[str, Any]) -> str:
+    return str(span["attrs"].get("work_id") or span["attrs"].get("wf.work_id") or "")
+
+
+def _numbered(spans: list[dict[str, Any]]) -> tuple[dict[str, tuple[str, int, bool]], dict[tuple[str, str, int], str]]:
+    by_id = {span["span_id"]: span for span in spans}
+    containers = {
+        span["parent_id"]
+        for span in spans
+        if span["parent_id"] and (_is_state(span) or _is_node(span))
+    }
+    started = sorted(
+        (span for span in spans if _is_node(span) and span["span_id"] in containers),
+        key=lambda span: (span["start_ts"], span["end_ts"], span["span_id"]),
+    )
+    order = {span["span_id"]: place for place, span in enumerate(started)}
+    seen_in: dict[tuple[str, str], dict[str, None]] = {}
+    where: dict[str, tuple[str, str]] = {}
+    for original in spans:
+        item = original
+        if _is_turn(item):
+            parent = by_id.get(item["parent_id"])
+            if parent is not None and _is_node(parent) and parent["span_id"] not in containers:
+                item = parent
+        elif not (_is_node(item) and item["span_id"] not in containers) and item["attrs"].get("workhorse.span_kind") != "wait":
+            continue
+        chain = [item]
+        visited = {item["span_id"]}
+        while (above := by_id.get(chain[-1]["parent_id"])) is not None and above["span_id"] not in visited:
+            chain.append(above)
+            visited.add(above["span_id"])
+        state = next((span for span in chain if _is_state(span)), None)
+        beyond = chain[chain.index(state) + 1 :] if state is not None else chain[1:]
+        flow = next((span for span in beyond if _is_node(span)), None)
+        if flow is not None and flow["span_id"] in order:
+            where[original["span_id"]] = (_work_of(original), flow["span_id"])
+            seen_in.setdefault((_work_of(original), flow["node"]), {})[flow["span_id"]] = None
+    rank: dict[tuple[str, str], int] = {}
+    by_container = {span["span_id"]: span for span in started}
+    for (work, name), ids in seen_in.items():
+        for number, container in enumerate(sorted(ids, key=lambda one: order[one]), start=1):
+            rank[(work, container)] = number
+    found: dict[str, tuple[str, int, bool]] = {}
+    for original in spans:
+        key = original["span_id"]
+        if key in where:
+            work, container = where[key]
+            found[key] = (by_container[container]["node"], rank[(work, container)], False)
+    statuses = {
+        (work, by_container[container]["node"], number): str(by_container[container].get("status") or "")
+        for (work, container), number in rank.items()
+    }
+    for original in spans:
+        key = original["span_id"]
+        if key in found:
+            continue
+        item = original
+        if _is_turn(item):
+            parent = by_id.get(item["parent_id"])
+            if parent is not None and _is_node(parent) and parent["span_id"] not in containers:
+                item = parent
+        elif not (_is_node(item) and item["span_id"] not in containers) and item["attrs"].get("workhorse.span_kind") != "wait":
+            continue
+        chain = [item]
+        visited = {item["span_id"]}
+        while (above := by_id.get(chain[-1]["parent_id"])) is not None and above["span_id"] not in visited:
+            chain.append(above)
+            visited.add(above["span_id"])
+        top = chain[-1]
+        named = item["attrs"].get("workhorse.flow")
+        if top["parent_id"] and top["parent_id"] not in by_id and _depth(top) != 0 and isinstance(named, str) and named:
+            work = _work_of(original)
+            found[key] = (named, len(seen_in.get((work, named), {})) + 1, True)
+    return found, statuses
+
+
+def span_passes(spans: list[dict[str, Any]]) -> dict[str, tuple[str, int, bool]]:
+    """Each agent turn's and each leaf step's flow and pass, by span id, and whether that pass is still open.
+
+    A pass is numbered from one within its work item and flow, in the order the flow's node spans started. A run with no work item numbers within the flow across the run. A span in a pass that has not ended has no stored flow span, so it takes the flow it names and the pass after the last stored one of its work item. A span outside any flow is absent.
+    """
+    return _numbered(spans)[0]
+
+
+def pass_status(spans: list[dict[str, Any]]) -> dict[tuple[str, str, int], str]:
+    """The ended status of each stored flow pass, keyed by work item, flow and pass number as ``span_passes`` counts them."""
+    return _numbered(spans)[1]
+
+
+def span_seconds(span: dict[str, Any]) -> float:
+    """The seconds the flow tree counts for one span."""
+    return _seconds(span)
+
+
+def leaf_steps(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The node spans that hold no other node or state, in the order given."""
+    containers = {
+        span["parent_id"]
+        for span in spans
+        if span["parent_id"] and (_is_state(span) or _is_node(span))
+    }
+    return [span for span in spans if _is_node(span) and span["span_id"] not in containers]
