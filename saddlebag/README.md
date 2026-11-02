@@ -4,9 +4,10 @@
 
 `saddlebag` holds the secrets a QA run needs and puts each one where it is consumed, so
 that an agent driving a `workhorse` workflow never holds a secret in its context. A
-secret leaves the store in exactly two ways. `fill` types it into a field of a browser
-over the Chrome DevTools Protocol. `exec` runs a command with it set in that command's
-process environment. Neither hands the value back to whoever ran them. Around the
+secret leaves the store in exactly three ways. `fill` types it into a field of a browser
+over the Chrome DevTools Protocol. `type` types it into the focused field of an Android
+device over adb. `exec` runs a command with it set in that command's process
+environment. None of them hands the value back to whoever ran it. Around the
 store, `env` reads a dotenv file with its secret lines masked, and `guard` is the
 Claude Code hook that refuses the tool call which would have printed a secret.
 
@@ -162,6 +163,7 @@ carries `environment=<slug of the ostler environment page>`.
 | `list` `tags` | query by tag; neither can emit a value |
 | `secret create` `set` `unset` `remove` `tag` `untag` `meta` `unmeta` | manage a secret; `set` reads its value from stdin; `meta K=V` adds or overwrites printable metadata, `unmeta KEY` drops it |
 | `fill` | type a secret's username, password or current TOTP code into a browser field |
+| `type` | type a secret's username, password, current TOTP code or metadata value into the focused field of an Android device |
 | `exec` | run a command with matching secrets in its environment |
 | `env show` `keys` `classify` | read a dotenv file with its secret values masked, list its keys with the rule that marks each secret one, or print the verdicts as JSON |
 | `env import` | store a dotenv's chosen keys as secrets, one record per key, without printing a value |
@@ -170,6 +172,7 @@ carries `environment=<slug of the ostler environment page>`.
 
 ```bash
 saddlebag fill NAME --field username|password|totp --selector S [--url-contains X]
+saddlebag type NAME [--field username|password|totp|meta.KEY] [--device SERIAL]
 saddlebag exec [--tag k=v]... [--env VAR=NAME[.field|.meta.KEY]]... -- cmd args...
 saddlebag env show|keys|classify FILE [--json]
 saddlebag env import FILE --keys KEY[,KEY...] [--tag k=v]... [--prefix TEXT] [--json]
@@ -184,7 +187,9 @@ not a silent skip.
 **What each verb guarantees.** `fill` reports a character count, a selector and a URL.
 The value is typed through `Input.insertText` and never interpolated into an evaluated
 expression. A TOTP seed leaves the store only as a computed six-digit code, and only
-by being typed. `exec` masks what the command prints when its output goes to a pipe,
+by being typed. `type` reports a character count, a device and a field id. It covers
+Android only, and iOS has no such verb. `docs/SECURITY.md` states what the device itself
+can see. `exec` masks what the command prints when its output goes to a pipe,
 which is how an agent's tool call runs it. Saddlebag stays as the command's parent and
 copies its stdout and stderr through, with each secret value replaced by `[REDACTED]`.
 It masks the value as written and in the forms tools escape it into: compose's `$$`,
@@ -353,6 +358,7 @@ saddlebag/
 ├── models.py     # Secret and tag parsing; no field of it carries a value
 ├── redact.py     # `exec` off a terminal: the child's output relayed with every secret form masked
 ├── browser.py    # CDP target discovery and Input.insertText; only a length comes back
+├── device.py     # adb device selection and the focused field; only a length comes back
 └── totp.py       # RFC 6238, computed in-process so the seed never leaves
 ```
 

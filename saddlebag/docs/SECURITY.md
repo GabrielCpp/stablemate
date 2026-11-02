@@ -30,8 +30,8 @@ one of two stores, chosen per command as the README describes:
 | Vault, behind `saddlebag serve` | the secret's data under `secret/saddlebag/<name>` | the same secret's custom metadata |
 
 The catalogue holds names, usernames, descriptions, vars, tags and which fields hold a
-value. It never holds a value, so `list` and `tags` cannot emit one. `fill` and `exec`
-are the two readers that use a value, and each hands it to a consumer rather than to
+value. It never holds a value, so `list` and `tags` cannot emit one. `fill`, `type` and `exec`
+are the three readers that use a value, and each hands it to a consumer rather than to
 the caller. `doctor` reads values without delivering them, to tell a catalogue entry
 from a keyring item deleted behind it, and discards each one at once. The `classify` and
 `holds` requests behind `env` and the guard read values the same way, to compare them
@@ -89,7 +89,8 @@ Only `saddlebag serve` talks to Vault. Everything else is a client over a unix s
   token helper, and `doctor` reports the file when it exists. The operator's own Vault
   use on the machine must not leave it behind.
 - A run in a container gets the socket bind-mounted and nothing else. It never holds
-  a token and never sees the browser's debug port.
+  a token and never sees the browser's debug port or the adb server. `fill` and `type`
+  run where the daemon runs, so the browser and the device stay on the host.
 
 The stronger variant, running the daemon under a second user and chowning the socket,
 is possible and not done. The stdin-and-memory daemon already removes the token from
@@ -108,6 +109,27 @@ everything a same-user process can read without a debugger.
   protocol log either. Both the DevTools endpoint and the websocket URL it returns
   must be on loopback. That port is unauthenticated, and a non-local one is a password
   sent to whoever answers.
+- **`type` moves a value into an Android device, not back to its caller.** The value
+  reaches adb on stdin, so it stays out of the host's process table, and adb's output
+  is discarded. `type` reports a character count, a device serial, a package and a field
+  id. It types only into the field that has focus, and a password goes only into a field
+  the device marks as a password field. A value the device's input command would change
+  is refused before the device is touched, by one message that does not say which
+  character caused it. The verb reads the field back for its length and keeps nothing
+  else. It talks only to the adb server on loopback, and it refuses a device attached
+  over the network, because that connection carries the value in the clear.
+- **`type` does not hide the value from the device.** Android's input command takes its
+  text as an argument, so the value shows in the device's process list while it types.
+  A measurement on an Android 15 emulator read it there from a second `adb shell`. Any
+  process with shell access to that device during those moments can read it, so use a
+  device you trust. A plain field holds its text in the clear after typing, and any later
+  screen read returns it. A password field reads back as bullets. On that same emulator
+  neither logcat nor a file on the device held the value. A real device over USB has not
+  been measured.
+- **Maestro under `exec` leaves the value on disk.** Maestro writes the text it types in
+  the clear to its own `maestro.log` and `commands-*.json`. Use Maestro to tap the field
+  and the submit button, and use `type` for the value. Saddlebag has no verb for a native
+  iOS field.
 - **A TOTP seed leaves the store only as a computed code**, and only by being typed or
   bound into a command's environment. The seed itself is never filled anywhere.
 - **`exec` is the one path that carries values out, and it carries them to a child

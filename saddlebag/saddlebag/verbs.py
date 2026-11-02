@@ -9,7 +9,7 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any
 
-from saddlebag import browser, redact, shapes, totp
+from saddlebag import browser, device, redact, shapes, totp
 from saddlebag.models import (
     META_PREFIX,
     VALUE_FIELDS,
@@ -102,7 +102,7 @@ class Verbs:
             return Reply(True, handler(request.args))
         except RequestError as exc:
             return Reply(False, error=str(exc))
-        except (browser.BrowserError, StoreUnavailable) as exc:
+        except (browser.BrowserError, device.DeviceError, StoreUnavailable) as exc:
             return Reply(False, error=str(exc))
         except Exception as exc:
             logger.error("verb %s failed with %s", request.verb, type(exc).__name__)
@@ -211,25 +211,27 @@ class Verbs:
             raise RequestError(f"{secret.name} has no {field}.{hint}")
         return value
 
+    def _typable(self, secret: Secret, field: str, args: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+        value = self._value(secret, field)
+        if field != "totp":
+            return value, {}
+        minimum = args.get("min_seconds", 5)
+        if not isinstance(minimum, int):
+            raise RequestError("argument 'min_seconds' must be an integer")
+        remaining = totp.seconds_remaining()
+        if remaining < minimum:
+            time.sleep(remaining)
+            remaining = totp.seconds_remaining()
+        try:
+            return totp.code(value), {"valid_for_seconds": remaining}
+        except totp.SeedError as exc:
+            raise RequestError(f"{secret.name}: {exc}") from exc
+
     def verb_fill(self, args: dict[str, Any]) -> dict[str, Any]:
         secret = self._existing(args)
         field = _checked(validate_field, _required(args, "field"))
         selector = _required(args, "selector")
-        value = self._value(secret, field)
-        detail: dict[str, Any] = {}
-        if field == "totp":
-            minimum = args.get("min_seconds", 5)
-            if not isinstance(minimum, int):
-                raise RequestError("argument 'min_seconds' must be an integer")
-            remaining = totp.seconds_remaining()
-            if remaining < minimum:
-                time.sleep(remaining)
-                remaining = totp.seconds_remaining()
-            try:
-                value = totp.code(value)
-            except totp.SeedError as exc:
-                raise RequestError(f"{secret.name}: {exc}") from exc
-            detail["valid_for_seconds"] = remaining
+        value, detail = self._typable(secret, field, args)
         endpoint = _text(args, "cdp", required=False) or self.browser_endpoint
         target = browser.select_target(browser.list_targets(endpoint), _text(args, "url_contains", required=False))
         session = browser.WebSocketSession(target.websocket_url)
@@ -238,6 +240,22 @@ class Verbs:
         finally:
             session.close()
         return {"name": secret.name, "field": field, "selector": selector, "characters": length, "url": target.url, **detail}
+
+    def verb_type(self, args: dict[str, Any]) -> dict[str, Any]:
+        secret = self._existing(args)
+        field = _checked(validate_field, _required(args, "field"))
+        value, detail = self._typable(secret, field, args)
+        session = device.connect(_text(args, "device", required=False))
+        typed = device.type_value(session, value, password=field == "password")
+        return {
+            "name": secret.name,
+            "field": field,
+            "device": session.serial,
+            "characters": typed.length,
+            "package": typed.package,
+            "resource_id": typed.resource_id,
+            **detail,
+        }
 
     def verb_env(self, args: dict[str, Any]) -> dict[str, Any]:
         tags = _tags(args)

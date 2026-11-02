@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 
-from saddlebag import browser, cli, daemon, verbs
+from saddlebag import browser, cli, daemon, device, verbs
 from saddlebag.models import Secret
 
-from conftest import FakeBackend, RecordingSession, Running
+from conftest import FakeBackend, FakeDevice, RecordingSession, Running
 
 PASSWORD = "hunter2-pw"
 Run = Callable[..., int]
@@ -521,3 +521,38 @@ def test_the_keyring_route_carries_metadata(keyring_route: FakeBackend, run: Run
     [entry] = json.loads(capsys.readouterr().out)["secrets"]
     assert entry["metadata"] == {"phone": "+1", "role": "admin"}
     assert keyring_route.items == {}
+
+
+def test_type_prints_a_count_and_never_the_value(running: Running, run: Run, fake_device: FakeDevice, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    assert run("type", "login") == 0
+    captured = capsys.readouterr()
+    assert "typed 10 characters into com.acme.app:id/entry on emulator-5554" in captured.out
+    assert PASSWORD not in captured.out + captured.err
+    assert fake_device.typed == [PASSWORD]
+
+
+def test_type_json_reports_the_character_count(running: Running, run: Run, fake_device: FakeDevice, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    assert run("type", "login", "--json") == 0
+    assert json.loads(capsys.readouterr().out)["characters"] == 10
+
+
+def test_type_passes_the_chosen_device_on(running: Running, run: Run, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    asked: list[str | None] = []
+
+    def connect(serial: str | None) -> FakeDevice:
+        asked.append(serial)
+        return FakeDevice()
+
+    monkeypatch.setattr(device, "connect", connect)
+    assert run("type", "login", "--device", "R5CT") == 0
+    assert asked == ["R5CT"]
+
+
+def test_a_type_refusal_exits_one_with_its_message(running: Running, run: Run, fake_device: FakeDevice, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    fake_device.focused = False
+    assert run("type", "login") == 1
+    assert "no editable field has focus" in capsys.readouterr().err

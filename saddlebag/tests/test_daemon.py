@@ -15,7 +15,7 @@ from saddlebag.models import Secret
 from saddlebag.protocol import Reply, Request
 from saddlebag.verbs import Verbs
 
-from conftest import FakeVault, RecordingSession, Running
+from conftest import FakeDevice, FakeVault, RecordingSession, Running
 
 RFC_SEED = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 PASSWORD = "hunter2-pw"
@@ -392,3 +392,40 @@ def test_send_reports_a_missing_daemon(daemon_path: Path) -> None:
 
 def test_doctor_carries_the_token_source_the_daemon_was_given(vault: FakeVault) -> None:
     assert Verbs(vault, "http://127.0.0.1:9222", "socket x", "stdin").verb_doctor({})["token_source"] == "stdin"
+
+
+def test_type_reports_a_count_and_the_field_and_never_the_value(running: Running, fake_device: FakeDevice) -> None:
+    seed(running)
+    reply = running.ask("type", name="login", field="password")
+    assert fake_device.typed == [PASSWORD]
+    assert ok(reply) == {
+        "name": "login",
+        "field": "password",
+        "device": "emulator-5554",
+        "characters": len(PASSWORD),
+        "package": "com.acme.app",
+        "resource_id": "com.acme.app:id/entry",
+    }
+    assert PASSWORD not in str(reply.result)
+
+
+def test_type_computes_a_totp_code_and_never_sends_the_seed(running: Running, fake_device: FakeDevice) -> None:
+    seed(running)
+    fake_device.password = False
+    result = ok(running.ask("type", name="login", field="totp", min_seconds=0))
+    assert fake_device.typed[0].isdigit() and len(fake_device.typed[0]) == 6
+    assert result["characters"] == 6 and "valid_for_seconds" in result
+
+
+def test_type_refuses_a_password_on_a_plain_field_as_a_reply_not_a_crash(running: Running, fake_device: FakeDevice) -> None:
+    seed(running)
+    fake_device.password = False
+    reply = running.ask("type", name="login", field="password")
+    assert not reply.ok and "not a password field" in str(reply.error)
+    assert fake_device.typed == []
+
+
+def test_type_on_an_unknown_secret_never_touches_the_device(running: Running, fake_device: FakeDevice) -> None:
+    reply = running.ask("type", name="ghost", field="password")
+    assert not reply.ok and "no such secret" in str(reply.error)
+    assert fake_device.screens == 0

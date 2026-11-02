@@ -8,13 +8,14 @@ from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import quoteattr
 
 import keyring.errors
 import pytest
 from keyring.backend import KeyringBackend
 from keyring.compat import properties
 
-from saddlebag import browser, cli, daemon, protocol
+from saddlebag import browser, cli, daemon, device, protocol
 from saddlebag.catalogue import Catalogue
 from saddlebag.keyring_store import SERVICE
 from saddlebag.models import Secret, Tag
@@ -209,3 +210,42 @@ def fake_browser(monkeypatch: pytest.MonkeyPatch) -> tuple[browser.Target, ...]:
     monkeypatch.setattr(browser, "WebSocketSession", RecordingSession)
     RecordingSession.last = None
     return pages
+
+
+class FakeDevice:
+    """Stands in for adb: one screen in the shape uiautomator dumps, with a field that takes typing."""
+
+    last: FakeDevice | None = None
+
+    def __init__(self, *, password: bool = True, focused: bool = True, widget: str = "android.widget.EditText", text: str = "") -> None:
+        self.serial = "emulator-5554"
+        self.password = password
+        self.focused = focused
+        self.widget = widget
+        self.text = text
+        self.typed: list[str] = []
+        self.screens = 0
+        FakeDevice.last = self
+
+    def screen(self) -> str:
+        self.screens += 1
+        shown = "\u2022" * len(self.text) if self.password else self.text
+        return (
+            "<hierarchy rotation=\"0\">"
+            '<node index="0" text="Choose a password" class="android.widget.TextView" package="com.acme.app" focused="false" password="false" />'
+            f'<node index="1" text={quoteattr(shown)} resource-id="com.acme.app:id/entry" class={quoteattr(self.widget)} '
+            f'package="com.acme.app" focused="{str(self.focused).lower()}" password="{str(self.password).lower()}" />'
+            "</hierarchy>"
+        )
+
+    def type_text(self, value: str) -> None:
+        self.typed.append(value)
+        self.text += value
+
+
+@pytest.fixture
+def fake_device(monkeypatch: pytest.MonkeyPatch) -> FakeDevice:
+    """One attached device with a focused password field."""
+    attached = FakeDevice()
+    monkeypatch.setattr(device, "connect", lambda serial: attached)
+    return attached

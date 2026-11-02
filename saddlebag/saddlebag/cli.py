@@ -225,6 +225,19 @@ def cmd_fill(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_type(args: argparse.Namespace) -> int:
+    reply = _ask("type", {"name": args.name, "field": args.field, "device": args.device, "min_seconds": args.min_seconds})
+    if isinstance(reply, int):
+        return reply
+    if args.json:
+        _emit(reply.result)
+        return 0
+    extra = f", valid for {reply.result['valid_for_seconds']}s" if "valid_for_seconds" in reply.result else ""
+    target = reply.result["resource_id"] or reply.result["package"]
+    print(f"typed {reply.result['characters']} characters into {target} on {reply.result['device']}{extra}")
+    return 0
+
+
 def _binding(text: str) -> dict[str, object]:
     var, sep, source = text.partition("=")
     name, _, field = source.partition(".")
@@ -503,6 +516,14 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("--min-seconds", type=int, default=5, metavar="N")
     f.add_argument("--json", action="store_true")
     f.set_defaults(func=cmd_fill)
+
+    y = sub.add_parser("type", help="type a value into the focused field of an Android device over adb")
+    y.add_argument("name")
+    y.add_argument("--field", default="password", metavar="FIELD", help=f"{', '.join(FIELDS)} or meta.KEY")
+    y.add_argument("--device", metavar="SERIAL", help="adb serial; required when more than one device is ready")
+    y.add_argument("--min-seconds", type=int, default=5, metavar="N")
+    y.add_argument("--json", action="store_true")
+    y.set_defaults(func=cmd_type)
 
     e = sub.add_parser("exec", help="run a command with secrets in its environment")
     _tag_option(e)
