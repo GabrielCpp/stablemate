@@ -56,6 +56,19 @@ class ProseName:
 
 
 @dataclass(frozen=True, slots=True)
+class UnidentifiedControl:
+    """An operable node whose name is only holes, with no named container to say which control it is."""
+
+    screen: str
+    node: str
+    role: str
+    template: str
+
+    def row(self) -> dict[str, JsonValue]:
+        return {"screen": self.screen, "node": self.node, "role": self.role, "template": self.template}
+
+
+@dataclass(frozen=True, slots=True)
 class StaticTemplate:
     """A repeated node whose name carries no datum of the collection it iterates."""
 

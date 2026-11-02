@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from ostler import markdown, registry
+from ostler import accessible_names, markdown, registry
 from ostler.checks import CheckCall, parse_intercept
 from ostler.qa.journey_steps import JourneyStep, journey_steps
 from ostler.untyped import JsonValue
@@ -314,6 +314,19 @@ def declared_locators(node: BookNode) -> dict[str, list[str]]:
     }
 
 
+def control_locators(node: BookNode, book: Mapping[str, BookNode]) -> dict[str, list[str]]:
+    """*node*'s declared locators, plus the role and name of its `parent:` when its own name is only holes, since the container then says which control it is."""
+    located = declared_locators(node)
+    names = located.get("name", [])
+    if not names or not accessible_names.only_holes(names[0]):
+        return located
+    for parent in node.targets("parent", book):
+        container = declared_locators(parent)
+        if container.get("role") and container.get("name"):
+            return {**located, "within": [container["role"][0], container["name"][0]]}
+    return located
+
+
 @dataclass(frozen=True, slots=True)
 class ExtendsResolution:
     """Where a node's `extends:` arm lands: the base node it inherits its control identity from, or None, and whether the arm names a base that is missing from the book or of another type."""
@@ -366,12 +379,12 @@ def obligation_frame(
         steps = journey_steps(node, book)
         parsed = (parse_intercept(value) for value in node.bullets.get("intercept", ()))
         intercepts = tuple(call for call in parsed if isinstance(call, CheckCall))
-    locators = declared_locators(node)
+    locators = control_locators(node, book)
     extends_unresolved = False
     if node.type in ("interaction", "invocation"):
         extends = resolve_extends(node, book)
         if extends.target is not None:
-            locators = {**declared_locators(extends.target), **locators}
+            locators = {**control_locators(extends.target, book), **locators}
         extends_unresolved = extends.unresolved
     if node.type == "invocation":
         locators = {**_endpoint_address(node, book), **locators}

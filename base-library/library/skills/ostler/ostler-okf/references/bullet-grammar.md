@@ -349,6 +349,10 @@ The grammar is strict so fixtures and tests can be compiled from it:
   rooted at an in-scope iteration variable is *bindable*; anything else is *opaque* — kept
   verbatim, matched as a wildcard, **never evaluated**. Classification cannot fail; the only
   hard error is an unbalanced brace (`malformed-template`).
+- A `name:` of only holes identifies no control, because any text fills it. An operable node
+  named that way states a `parent:` whose name has constant text or whose role is `tabpanel`,
+  which the page shows one at a time. The compiler then looks for the control inside that
+  container (`unidentified-control`).
 - Scope flows through markdown containment and `parent:` only. An `on:` edge is a reference,
   not membership — an interaction `on:` a repeated component does not inherit its family.
 - The data-only segments compiled from the template (never code) travel with every obligation

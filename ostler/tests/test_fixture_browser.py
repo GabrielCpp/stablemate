@@ -92,13 +92,13 @@ def test_a_component_named_after_its_row_is_located_by_its_template(repo: Path) 
 
 - role: button
 - one-per: document
-- name: {document.title}
+- name: Open {document.title}
 """))
     write(repo / FIXTURE_PATH, _fixture('click("../login.md#open-document")'))
 
     [step] = book_fixtures.resolved(load(repo))["signed-in-editor"]["steps"]
 
-    assert step["browser"][1] == {"act": "click", "locator": {"role": "button", "template": "{document.title}"}}
+    assert step["browser"][1] == {"act": "click", "locator": {"role": "button", "template": "Open {document.title}"}}
 
 
 def test_a_browser_step_uploads_a_file_named_from_the_repository_root(repo: Path) -> None:
@@ -126,7 +126,7 @@ def test_a_browser_step_the_book_cannot_state_reaches_the_harness_as_unperformab
     [step] = book_fixtures.resolved(load(repo))["signed-in-editor"]["steps"]
 
     assert "browser" not in step
-    assert "declares neither a `role:` and `name:` nor a CSS `selector:`" in step["unperformable"]
+    assert "declares neither a `role:` and a `name:` with constant text nor a CSS `selector:`" in step["unperformable"]
 
 
 def test_doctor_holds_a_browser_step_to_its_grammar(repo: Path) -> None:

@@ -328,7 +328,7 @@ def name_refusal(locators: Locators) -> str:
             "instead of stating the one string a browser computes, and `getByRole` would wait "
             "for that description and time out. State the literal name, one value per node. "
             "A control rendered once per item declares `one-per:` and names itself with a "
-            "template over the item, such as `{tab.label}`")
+            "template over the item, such as `Edit {row.label}`")
 
 
 def expand_passages(

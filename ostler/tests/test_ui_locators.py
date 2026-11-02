@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from ostler import accessible_names, doctor, graph, locators
+from ostler.qa.compile_playwright import page_locator_expr
+from ostler.qa.obligation import Locators
 from ostler.model import load
 from ostler.qa.obligation_frame import Variants
 
@@ -685,3 +687,35 @@ def test_a_label_a_browser_could_compute_is_not_prose(value: str):
 def test_doctor_errors_on_a_name_written_as_a_translation_key(repo: Path):
     data = _build(repo, _screen("### merge\n- role: button\n- name: `project_datasheet_merge`\n"))
     assert [p.mark for p in locators.prose_names(data)] == ["a translation key"]
+
+
+def test_an_operable_name_of_only_holes_identifies_no_control(repo: Path):
+    """Every combobox on the page fills `{group.name}`, so a scenario would operate whichever comes first."""
+    data = _build(repo, _screen("### picker\n- role: combobox\n- one-per: `group`\n- name: `{group.name}`\n"))
+    assert [item.node.split("#")[-1] for item in locators.unidentified_controls(data)] == ["picker"]
+    assert "unidentified-control" in _codes(repo)
+
+
+def test_a_named_container_says_which_control_a_name_of_only_holes_is(repo: Path):
+    _build(repo, _screen("### panel\n- role: region\n- name: Choices\n\n"
+                         "### picker\n- role: combobox\n- one-per: `group`\n- name: `{group.name}`\n"
+                         "- parent: [panel](#panel)\n"))
+    assert "unidentified-control" not in _codes(repo)
+
+
+def test_a_tabpanel_is_a_container_even_when_its_name_is_only_holes(repo: Path):
+    """The page shows one tabpanel at a time, so the role alone says which."""
+    _build(repo, _screen("### panel\n- role: tabpanel\n- one-per: `tab`\n- name: `{tab.name}`\n\n"
+                         "### picker\n- role: combobox\n- one-per: `group`\n- name: `{group.name}`\n"
+                         "- parent: [panel](#panel)\n"))
+    assert "unidentified-control" not in _codes(repo)
+
+
+def test_a_constant_in_the_name_identifies_the_control(repo: Path):
+    _build(repo, _screen("### row\n- role: button\n- one-per: `row`\n- name: `Edit {row.name}`\n"))
+    assert "unidentified-control" not in _codes(repo)
+
+
+def test_a_name_of_only_holes_compiles_inside_its_container():
+    expr = page_locator_expr(Locators(role=("combobox",), name=("`{group.name}`",), within=("tabpanel", "`{tab.name}`")))
+    assert expr == 'qa.by_role("combobox", template="{group.name}", within=qa.by_role("tabpanel", template="{tab.name}"))'

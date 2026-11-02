@@ -198,7 +198,7 @@ environment, and no plan, transcript or event carries it. See
 - verify: contents(subject="qa-web-scratch/art/specs/s1/qa_plan_compiled.py", matches="qa\\.settle\\(")
 - fixture: [qa web journey repo](fixtures/qa-web-journey-repo.md)
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@40e28af83b41
-- code: ostler/ostler/qa/compile_playwright.py::page_locator_expr@0905f9bd057a
+- code: ostler/ostler/qa/compile_playwright.py::page_locator_expr@4c0ccf24b4c5
 - code: ostler/ostler/qa/compile_stops.py::resolve_state@0cd0a5f9d41c
 - code: ostler/ostler/qa/compile_stops.py::perceivable@f6ae21c4fb9c
 
@@ -257,7 +257,7 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/drivers.py::create_driver@7652064de163
 - code: ostler/ostler/qa/evidence_map.py::build_evidence_map@5273008138a7
 - code: ostler/ostler/qa/fixtures.py::declared@218d9dd9d05a
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@e8e9e751fd27
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@1196c3ee5064
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::UrlReading@585f67d0e3dd
 - code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk@953f0758c607
 - code: ostler/ostler/qa/harness/ostler_qa.py::Qa._owe_releases@fd9f865aeb69
@@ -308,7 +308,7 @@ environment, and no plan, transcript or event carries it. See
   source file and a plan under spec s1
 - fixture: [qa browser scratch plan](fixtures/qa-browser-scratch-plan.md)
 - code: ostler/ostler/qa/harness/ostler_qa.py::_open_browser@a5ccf0c48a8e
-- code: ostler/ostler/qa/harness/ostler_qa_browser.py::Browser@abc312bd9a1c
+- code: ostler/ostler/qa/harness/ostler_qa_browser.py::Browser@3bf83bae53f9
 - detail: [Running and reporting a QA run](concepts/running-and-reporting-a-qa-run.md)
 
 ### ostler-qa-run-maestro-target

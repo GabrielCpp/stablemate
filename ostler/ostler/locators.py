@@ -18,6 +18,7 @@ from ostler.locator_findings import (
     ProseName,
     StaticTemplate,
     TemplateOutsideRepeat,
+    UnidentifiedControl,
     UnnamedInteractive,
     UnprovenUniqueName,
 )
@@ -26,6 +27,8 @@ from ostler.qa.obligation_frame import BookNode, RepeatContract, RepeatTemplate,
 from ostler.reach import NONE_TOKENS
 from ostler.untyped import JsonValue
 from ostler import selector_forms
+
+ONE_SHOWN_ROLES = frozenset({"tabpanel"})
 
 INTERACTIVE_ROLES = frozenset({
     "button", "link", "checkbox", "radio", "textbox", "searchbox", "combobox", "listbox",
@@ -173,6 +176,7 @@ class LocatorBook:
     scopes: Mapping[str, tuple[str, ...]]
     exclusive: frozenset[frozenset[str]]
     bases: frozenset[str]
+    nodes: Mapping[str, BookNode]
 
     @classmethod
     def parse(cls, data: dict, nodes: Mapping[str, BookNode] | None = None) -> LocatorBook:
@@ -191,6 +195,7 @@ class LocatorBook:
             locatables=tuple(
                 (node.id.split("#", 1)[0], node) for node in nodes.values() if node.type in LOCATABLE_TYPES
             ),
+            nodes=nodes,
             scopes=_scopes(nodes, {node_id: tuple(ids) for node_id, ids in parents.items()}),
             exclusive=frozenset(
                 frozenset((edge["from"], edge["to"])) for edge in data["edges"] if edge.get("via") == "exclusive-with"
@@ -504,6 +509,24 @@ def invalid_variants(book: LocatorBook) -> list[InvalidVariants]:
     return out
 
 
+def _identifies(container: BookNode) -> bool:
+    """Whether a `parent:` says which control sits inside it: a role the page shows once at a time, or a name with constant text."""
+    role, name = _bullet(container, "role").lower(), _bullet(container, "name")
+    return bool(name) and (role in ONE_SHOWN_ROLES or not accessible_names.only_holes(name))
+
+
+def unidentified_controls(book: LocatorBook) -> list[UnidentifiedControl]:
+    """Operable controls whose name is only holes and whose `parent:` names no container, so every control of that role on the page matches."""
+    out = []
+    for screen, node in book.locatables:
+        role, name = _bullet(node, "role"), _bullet(node, "name")
+        if role.lower() not in INTERACTIVE_ROLES or not accessible_names.only_holes(name):
+            continue
+        if not any(_identifies(parent) for parent in node.targets("parent", book.nodes)):
+            out.append(UnidentifiedControl(screen, node.id, role, name))
+    return out
+
+
 def unnamed_interactives(book: LocatorBook) -> list[UnnamedInteractive]:
     """Operable controls with no accessible name — unannounceable and unaddressable alike."""
     bases = book.bases
@@ -566,6 +589,7 @@ def build(graph: Graph, *, surface: str | None = None, screen: str | None = None
         "screens": [entry.row() for entry in screens],
         "collisions": [item.row() for item in collisions(book)],
         "unnamed": [item.row() for item in unnamed_interactives(book)],
+        "unidentified": [item.row() for item in unidentified_controls(book)],
         "invalid_roles": [item.row() for item in invalid_roles(book)],
         "static_templates": [item.row() for item in static_templates(book)],
         "unproven_unique": [item.row() for item in unproven_unique_names(book)],

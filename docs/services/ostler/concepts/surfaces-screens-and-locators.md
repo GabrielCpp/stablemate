@@ -49,12 +49,12 @@ name into a matcher; `RepeatContract`/`repeat_contract`/`repeat_of`/`unique_by_o
 read a repeated component's uniqueness contract off its bullets. The rest of the file is the
 checks `LocatorBook` enables: `collisions`/`collision_remedy` finds two locators that could match
 the same element; `invalid_roles`, `malformed_identity`/`malformed_templates`, `prose_names`,
-`static_templates`, `unproven_unique_names`, `templates_outside_repeat`, `invalid_variants` and
+`static_templates`, `unidentified_controls`, `unproven_unique_names`, `templates_outside_repeat`, `invalid_variants` and
 `unnamed_interactives` each flag one specific way a locator can be malformed; `build`/`render`/
 `render_json` assemble and print the full locator report for a surface or screen.
 `locator_findings.py` is the sibling module declaring the dataclass each of those checks returns
 — `LocatorCollision`, `InvalidRole`, `ProseName`, `StaticTemplate`, `UnprovenUniqueName`,
-`MalformedTemplate`, `TemplateOutsideRepeat`, `InvalidVariants` and `UnnamedInteractive` — kept
+`MalformedTemplate`, `TemplateOutsideRepeat`, `InvalidVariants`, `UnidentifiedControl` and `UnnamedInteractive` — kept
 apart from `locators.py` itself so the shape of a locator finding carries no dependency on the
 `LocatorBook` machinery that produces one.
 
@@ -112,22 +112,24 @@ satisfy.
 - code: ostler/ostler/passages.py::passage_of@7b055a542ea9
 - code: ostler/ostler/passages.py::passages_of@7b055a542ea9
 - code: ostler/ostler/passages.py::check_passages@7b055a542ea9
-- code: ostler/ostler/locators.py::Locator@4e770b42dfdc
-- code: ostler/ostler/locators.py::locator_for@4e770b42dfdc
-- code: ostler/ostler/locators.py::LocatorBook@4e770b42dfdc
-- code: ostler/ostler/locators.py::repeat_contract@4e770b42dfdc
-- code: ostler/ostler/locators.py::collisions@4e770b42dfdc
-- code: ostler/ostler/locators.py::invalid_roles@4e770b42dfdc
-- code: ostler/ostler/locators.py::build@4e770b42dfdc
-- code: ostler/ostler/locators.py::render@4e770b42dfdc
-- code: ostler/ostler/locator_findings.py::LocatorCollision@7318d29e242e
-- code: ostler/ostler/locator_findings.py::InvalidRole@7318d29e242e
-- code: ostler/ostler/locator_findings.py::UnnamedInteractive@7318d29e242e
+- code: ostler/ostler/locators.py::Locator@92204a71371f
+- code: ostler/ostler/locators.py::locator_for@33e0243c6176
+- code: ostler/ostler/locators.py::LocatorBook@9d417fa0ab3b
+- code: ostler/ostler/locators.py::repeat_contract@ae7258e0685d
+- code: ostler/ostler/locators.py::collisions@0885bd23cdd8
+- code: ostler/ostler/locators.py::invalid_roles@fcf1a333087c
+- code: ostler/ostler/locators.py::build@61ab8c8004a4
+- code: ostler/ostler/locators.py::render@0d7b40d283db
+- code: ostler/ostler/locator_findings.py::LocatorCollision@feeec9ec6c0a
+- code: ostler/ostler/locator_findings.py::InvalidRole@91bcc5906920
+- code: ostler/ostler/locator_findings.py::UnnamedInteractive@3fec7d363297
+- code: ostler/ostler/locator_findings.py::UnidentifiedControl@29129f8a06bb
+- code: ostler/ostler/locators.py::unidentified_controls@bb5abfe93b39
 - code: ostler/ostler/selector_forms.py::parse_scheme_selector@6fed8c2e3b42
 - code: ostler/ostler/selector_forms.py::selector_grammar@6fed8c2e3b42
 - code: ostler/ostler/selector_forms.py::is_web_representable@6fed8c2e3b42
-- code: ostler/ostler/accessible_names.py::literal_name@e34b952636fb
-- code: ostler/ostler/accessible_names.py::prose_mark@e34b952636fb
+- code: ostler/ostler/accessible_names.py::literal_name@c5e91020c76a
+- code: ostler/ostler/accessible_names.py::prose_mark@480d1b3666a0
 - code: ostler/ostler/acts.py::ActSpec@c6e469b316ce
 - code: ostler/ostler/acts.py::ActCall@c6e469b316ce
 - code: ostler/ostler/acts.py::parse_act@c6e469b316ce
@@ -168,6 +170,13 @@ satisfy.
 - a fragment host check is a link check, not a nesting check: `check_fragment_hosts` validates
   that every page claiming to host a fragment actually links to it; `check_section_hosts` is the
   separate check for a heading a component type may nest under.
+- rule: a `name:` of only holes identifies no control, because any text fills it. Constant text
+  in the name or in its `parent:` says which control it is, and `tabpanel` counts as constant
+  because the page shows one at a time. Doctor refuses an operable control with neither.
+- rule: the container comes from the existing `parent:` bullet, one level up, so the book gains
+  no key for it. Roles a scenario only reads keep their page-wide match.
+- rule: a fixture step refuses a control named only by holes, because a fixture runs before any
+  scenario has opened the container and has no instance to sample.
 - rule: `select` means a chooser holds an option, whatever the page renders. The harness reads the
   element's tag: a native `<select>` takes the option directly, and any other chooser opens a list
   whose option the user presses.

@@ -2634,6 +2634,15 @@ def _check_locators(data: dict, f: list[Finding]) -> None:
             suggestion="- name: <the control's visible label or aria-label>",
             **_at(unnamed.node)))
 
+    for item in loc_mod.unidentified_controls(book):
+        f.append(Finding(
+            "error", "unidentified-control",
+            f"{item.node}: role={item.role} is named only by {item.template!r}, which every "
+            f"{item.role} on the page matches, so a scenario would operate whichever comes first",
+            ref=item.node,
+            suggestion="- parent: <the named region that holds it>",
+            **_at(item.node)))
+
     for item in loc_mod.static_templates(book):
         var = item.iterates
         f.append(Finding(

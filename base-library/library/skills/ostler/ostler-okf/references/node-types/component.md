@@ -228,7 +228,7 @@ Claim it there, and leave the component the states a fixture alone arranges.
 `weak-check`, `stale-defect`, `malformed-defect`, `unaddressable-selector`,
 `conflicting-selector-driver`, `unresolved-relation` on any of its link keys,
 `one-way-same-as` if `same-as:` is used, `same-as-disagreement` if a `same-as:` family
-disagrees about a shared normative key; with the repeat keys also `static-template`, `unproven-unique-name`, `malformed-template`,
+disagrees about a shared normative key; with the repeat keys also `static-template`, `unidentified-control`, `unproven-unique-name`, `malformed-template`,
 `malformed-variants`. See [../doctor-codes.md](../doctor-codes.md).
 
 ## When bullets are not enough

@@ -34,6 +34,7 @@ class Locators:
     shows: tuple[str, ...] = ()
     requests: tuple[str, ...] = ()
     busy: tuple[str, ...] = ()
+    within: tuple[str, ...] = ()
 
 
 NO_LOCATORS = Locators()

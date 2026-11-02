@@ -56,6 +56,16 @@ from ostler import selector_forms
 
 
 
+def _within(locators: Locators) -> str:
+    """The argument that looks for a control inside the container its `parent:` names, empty when its own name says which control it is."""
+    if not locators.within:
+        return ""
+    role, name = locators.within
+    literal = accessible_names.literal_name(bullet_value(name) or name)
+    keyword = "template" if _TEMPLATE_HOLE.search(literal) else "name"
+    return f", within=qa.by_role({python_literal(role)}, {keyword}={python_literal(literal)})"
+
+
 def page_locator_expr(locators: Locators) -> str | None:
     """A concrete Playwright locator expression built from a node's own book-declared locators."""
     role = bullet_value(next(iter(locators.role), None))
@@ -67,7 +77,7 @@ def page_locator_expr(locators: Locators) -> str | None:
     if role and name and raw_name and not accessible_names.prose_mark(raw_name):
         literal = accessible_names.literal_name(name)
         keyword = "template" if _TEMPLATE_HOLE.search(literal) else "name"
-        return f"qa.by_role({python_literal(role)}, {keyword}={python_literal(literal)})"
+        return f"qa.by_role({python_literal(role)}, {keyword}={python_literal(literal)}{_within(locators)})"
     if selector:
         if selector_forms.parse_scheme_selector(selector) is not None:
             return None

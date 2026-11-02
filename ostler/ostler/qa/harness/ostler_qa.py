@@ -1972,12 +1972,13 @@ class Qa:
         return self.offset_base_ms + round((time.monotonic() - _PROCESS_START) * 1000)
 
 
-    def by_role(self, role: str, *, name: str | None = None, template: str | None = None, **kwargs: Any) -> Any:
+    def by_role(self, role: str, *, name: str | None = None, template: str | None = None, within: Any = None, **kwargs: Any) -> Any:
         """The element with this role and name. A name addresses an element that carries it whole, never one whose longer name merely contains it.
 
         A page that shows no such element yet is waited on until one appears, so the choice is made against what it renders.
         A page that streams data never goes idle, so the element itself is the signal, not the network.
         A *template* names a control rendered once per item, so each hole matches any text and the first instance answers.
+        A *within* container holds the search when the template is only holes, since its name then matches every control of that role on the page.
         A live region answers to the label it carries, or else to the text it announces, since a browser computes no name from an alert's or a status's content.
         """
         if role in ANNOUNCED_ROLES and isinstance(name, str) and not kwargs:
@@ -1989,7 +1990,7 @@ class Qa:
                     return found
             return found
         if template is not None:
-            found = self.browser_page.get_by_role(role, name=template_pattern(template), **kwargs)
+            found = (within or self.browser_page).get_by_role(role, name=template_pattern(template), **kwargs)
             try:
                 found.first.wait_for(state="attached", timeout=SETTLE_WAIT_MS)
             except Exception:

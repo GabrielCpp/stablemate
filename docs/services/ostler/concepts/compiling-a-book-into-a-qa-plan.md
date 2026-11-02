@@ -101,7 +101,7 @@ its first hop.
 - code: ostler/ostler/qa/compile_cli.py::invoke_env_names@cab445496b1b
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
 - code: ostler/ostler/qa/compile_page.py::web_state_walks@8e3a88f1d3a8
-- code: ostler/ostler/qa/compile_playwright.py::perform_acts@b1e0dd466b28
+- code: ostler/ostler/qa/compile_playwright.py::perform_acts@f2d8ab58f2a3
 - code: ostler/ostler/qa/compile_playwright.py::page_observations@e610be86684b
 - code: ostler/ostler/qa/compile_playwright.py::web_walk@40e28af83b41
 - code: ostler/ostler/qa/compile_maestro.py::mobile_scenarios@3f09b3d2d52d
@@ -131,7 +131,7 @@ its first hop.
 - code: ostler/ostler/qa/obligation.py::obligation_of@b558662c2212
 - code: ostler/ostler/qa/obligation.py::obligations_of@103f496c84c3
 - code: ostler/ostler/qa/obligation_frame.py::book_nodes@1d8c8dad0e49
-- code: ostler/ostler/qa/obligation_frame.py::obligation_frame@32a66096777d
+- code: ostler/ostler/qa/obligation_frame.py::obligation_frame@349f70a0df11
 - code: ostler/ostler/qa/obligation_frame.py::BookNode@89d602494fca
 - code: ostler/ostler/qa/book_index.py::BookIndex@eea59e696855
 - code: ostler/ostler/qa/book_index.py::node_acts@734a965ada9c

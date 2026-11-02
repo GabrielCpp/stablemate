@@ -36,7 +36,7 @@ from ostler.qa.obligation_frame import (
     BookNode,
     RepeatContract,
     book_nodes,
-    declared_locators,
+    control_locators,
     linked_surface,
     obligation_frame,
     resolve_extends,
@@ -1993,7 +1993,7 @@ def _locator_resolver(
         serialized = book.get(located.id)
         return {
             "node": located.id,
-            "locators": declared_locators(serialized) if serialized is not None else {},
+            "locators": control_locators(serialized, book) if serialized is not None else {},
         }
 
     return resolve

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+_HOLE = re.compile(r"\$?\{[^{}]*\}")
 _QUOTES = (('"', '"'), ("“", "”"), ("«", "»"))
 _MARKS = (
     ("](", "a markdown link"),
@@ -15,6 +16,12 @@ _MARKS = (
 _TRANSLATION_KEY = re.compile(r"[a-z0-9]+(?:_[a-z0-9]+)+")
 _CALL = re.compile(r"[A-Za-z_$][\w$.]*\(.*\)")
 _CODE_EXPRESSION = re.compile(r"[a-z_$][\w$]*(?:\.[\w$]+)+|[a-z_$][a-z0-9_$]*[A-Z][\w$]*")
+
+
+def only_holes(value: str) -> bool:
+    """Whether *value* is a template with no constant text, so any name at all fills it."""
+    literal = literal_name(value)
+    return bool(_HOLE.search(literal)) and not _HOLE.sub("", literal).strip(" `")
 
 
 def literal_name(value: str) -> str:

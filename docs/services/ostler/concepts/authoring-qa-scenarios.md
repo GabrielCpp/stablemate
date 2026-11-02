@@ -88,7 +88,7 @@ harness as book content.
 - code: ostler/ostler/qa/harness/ostler_qa.py::secret@03ec751a0a19
 - code: ostler/ostler/qa/harness/ostler_qa.py::background@ff9310569202
 - code: ostler/ostler/qa/harness/ostler_qa.py::scenario@4627c6acef7d
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@e8e9e751fd27
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@1196c3ee5064
 - code: ostler/ostler/qa/harness/ostler_qa.py::Http@55912ec4cef1
 - code: ostler/ostler/qa/harness/ostler_qa.py::scenario_env@69e209e9bd38
 - code: ostler/ostler/qa/harness/ostler_qa.py::CheckFailed@2d91bd45de1f
@@ -133,7 +133,7 @@ harness as book content.
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::verify_url@9f4169bd4980
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::verify_stored@8933e9ac86d0
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::verify_clipboard@4cede15e0764
-- code: ostler/ostler/qa/harness/ostler_qa_browser.py::Browser@abc312bd9a1c
+- code: ostler/ostler/qa/harness/ostler_qa_browser.py::Browser@3bf83bae53f9
 - code: ostler/ostler/qa/harness/ostler_qa_browser.py::RecordedResponse@430439281b7b
 - code: ostler/ostler/qa/harness/ostler_qa_browser.py::ResponseWindow@eb4c293213b1
 - code: ostler/ostler/qa/harness/ostler_qa_settle.py::settle_screen@788ae59ee56f

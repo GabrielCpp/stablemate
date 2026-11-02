@@ -11,6 +11,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from ostler import accessible_names
 from ostler import acts as acts_mod
 from ostler import checks as checks_mod
 from ostler import locators as loc_mod
@@ -65,6 +66,8 @@ def _component_locator(node: UINode) -> dict[str, str] | None:
     name = bullet_text(next(iter(_values(node.meta, "name")), ""))
     if role and name:
         literal = name.strip('"')
+        if accessible_names.only_holes(literal):
+            return None
         if loc_mod.compile_template(literal, ()) is not None:
             return {"role": role, "template": literal}
         return {"role": role, "name": literal}
@@ -79,8 +82,8 @@ def _locate(graph: Graph, step: UINode, value: str) -> dict[str, str] | str:
     if node is not None:
         found = _component_locator(node)
         return found if found is not None else (
-            f"`{value}` names {node.id}, which declares neither a `role:` and `name:` nor a CSS "
-            f"`selector:` to find it by")
+            f"`{value}` names {node.id}, which declares neither a `role:` and a `name:` with "
+            f"constant text nor a CSS `selector:` to find it by")
     if loc_mod.locator_target(graph, value, step.path):
         return f"`{value}` names no component or interaction this book declares"
     found = off_book_locator(value)

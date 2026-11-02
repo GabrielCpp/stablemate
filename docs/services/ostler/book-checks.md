@@ -344,7 +344,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: exit_status(code=0)
 - verify: json_path(path="counts.unlocatable", equals=0)
 - fixture: none, because the groom book is tracked in the repo and its controls all locate
-- code: ostler/ostler/locators.py::build@ad7a2d40dc98
+- code: ostler/ostler/locators.py::build@61ab8c8004a4
 - code: ostler/ostler/selector_forms.py::parse_scheme_selector@03b1a7ae9044
 
 ### ostler-coverage

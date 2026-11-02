@@ -104,6 +104,14 @@ def test_a_name_with_a_slash_leaves_no_bare_slash_to_end_playwrights_selector_pa
         assert pattern.match("Wood / Framing")
 
 
+def test_a_name_of_only_holes_looks_inside_its_container() -> None:
+    """A page-wide search would open the first combobox on the page, whichever control that is."""
+    page = _Page(("Project switcher",))
+    panel = _Page(("Exterior siding",))
+    found = harness.Qa.by_role(_Qa(page), "combobox", template="{group.name}", within=panel)
+    assert found.names == ("Exterior siding",)
+
+
 class _Chooser:
     """A chooser that records what a person did to it, rendered as *tag*."""
 
