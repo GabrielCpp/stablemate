@@ -4704,7 +4704,31 @@ def test_a_journey_whose_endpoints_name_their_own_server_walks_at_that_server() 
     assert _gap_kinds(result.gaps, oid) == []
 
 
-def test_a_journey_across_two_servers_is_refused_for_the_one_base_url_a_scenario_has() -> None:
+def test_a_journey_across_two_servers_executes_both_targets_and_retains_the_capture() -> None:
+    """Every step's request names the server its endpoint answers at, and the id the first server
+    returned binds the read against the second."""
+    oid = f"okf:{_FLOW}:end-state"
+    context = _follow_journey(oid, captures=[{"name": "thing_id", "from": "$.thing.id"}], fixtures=[
+        {"name": "mock-server", "args": [], "provides": "the mock server answers"},
+    ])
+    other = "docs/services/demo/http/other.md"
+    context["obligations"][0]["steps"][1]["ref"] = f"{other}#get-thing"
+    context["serverOrigins"] = {_API: "http://127.0.0.1:8099", other: "http://127.0.0.1:8100"}
+    context["obligations"].append(_step_node(f"{other}#get-thing", {"route": ["GET /api/things/{thing_id}"]}))
+    result = _compile_plan_gaps(context, story="demo-story")
+    assert isinstance(result, Plan)
+    ast.parse(result.source)
+    assert 'target("api_api_127_0_0_1_8099", driver="python", base_url="http://127.0.0.1:8099")' in result.source
+    assert 'target("api_api_127_0_0_1_8100", driver="python", base_url="http://127.0.0.1:8100")' in result.source
+    assert 'observed_1 = qa.http.post(' in result.source
+    assert 'observed_2 = qa.http_for("api_api_127_0_0_1_8100").get(' in result.source
+    assert 'qa.resolve("/api/things/$thing_id")' in result.source
+    assert oid in _covers(result.source)
+    assert _gap_kinds(result.gaps, oid) == []
+
+
+def test_a_journey_whose_second_server_is_undeclared_gaps_the_missing_destination() -> None:
+    """A second server the book names no origin for is a book gap, not a silently re-routed request."""
     oid = f"okf:{_FLOW}:end-state"
     context = _follow_journey(oid, captures=[{"name": "thing_id", "from": "$.thing.id"}], fixtures=[
         {"name": "mock-server", "args": [], "provides": "the mock server answers"},
@@ -4712,8 +4736,9 @@ def test_a_journey_across_two_servers_is_refused_for_the_one_base_url_a_scenario
     other = "docs/services/demo/http/other.md"
     context["obligations"][0]["steps"][1]["ref"] = f"{other}#get-thing"
     context["serverOrigins"] = {_API: "http://127.0.0.1:8099"}
+    context["obligations"].append(_step_node(f"{other}#get-thing", {"route": ["GET /api/things/{thing_id}"]}))
     result = _compile_plan_gaps(context, story="demo-story")
-    assert _gap_kinds(result.gaps, oid) == ["needs-multi-target-runtime"]
+    assert _gap_kinds(result.gaps, oid) == ["undeclared-entry-url"]
 
 
 def test_a_journey_step_path_binds_the_fixture_its_own_request_names() -> None:

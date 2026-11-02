@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import replace
 from urllib.parse import urlparse
 
 from ostler import reach
@@ -46,6 +47,7 @@ class JourneyWalk:
     ids: list[str]
     nav: SurfaceNavigation
     left_on: str | None = None
+    target_var: str = ""
 
 
 @dataclass(frozen=True)
@@ -62,6 +64,7 @@ class BoundJourney:
     target_var: str
     target_kwargs: str
     walk: Callable[[PlanSinks], WalkedJourney]
+    aux_targets: tuple[tuple[str, str], ...] = ()
 
 
 Walker = Callable[[JourneyWalk, PlanSinks], WalkedJourney]
@@ -118,20 +121,38 @@ def _bind_at_base_url(
     return BoundJourney(target_var, f", base_url={python_literal(url)}", lambda sinks: walker(walk, sinks))
 
 
+def _bind_http_across_servers(
+    walk: JourneyWalk, by_step: list[tuple[str, str | None]], walker: Walker,
+) -> BoundJourney | ScenarioRefusal:
+    """Bind an HTTP journey whose steps answer at more than one base URL: every destination is
+    declared as a target, each step's request names the target it reaches, and a capture one
+    server produced binds a request to the other."""
+    ordered: list[tuple[str, str]] = []
+    for var, url in by_step:
+        if url is None:
+            return entry_url_refusal(walk.nav.surface)
+        if (var, url) not in ordered:
+            ordered.append((var, url))
+    (target_var, url), *aux = ordered
+    rebound = replace(walk, target_var=target_var)
+    return BoundJourney(
+        target_var,
+        f", base_url={python_literal(url)}",
+        lambda sinks: walker(rebound, sinks),
+        aux_targets=tuple(aux),
+    )
+
+
 def _journey_backends(walkers: JourneyWalkers) -> dict[str, JourneyBackend]:
     """Each built journey target, keyed by the name D1's table gives it."""
 
     def bind_http(walk: JourneyWalk) -> BoundJourney | ScenarioRefusal:
         surface = walk.nav.surface
-        targets = {api_target(surface, step.ref.split("#", 1)[0], walk.book) for step in walk.steps}
-        if len(targets) > 1:
-            return ScenarioRefusal(
-                "needs-multi-target-runtime",
-                "this journey's endpoints answer at "
-                + ", ".join(sorted(url or "the surface's own address" for _var, url in targets))
-                + " — `@scenario(target=...)` sends every request to one base URL, so a walk "
-                  "across two servers fits no scenario. Split the flow at the server it changes to")
-        target_var, url = targets.pop() if targets else (target_variable(surface, "api"), None)
+        by_step = [api_target(surface, step.ref.split("#", 1)[0], walk.book) for step in walk.steps]
+        urls = {url for _var, url in by_step}
+        if len(urls) > 1:
+            return _bind_http_across_servers(walk, by_step, walkers.http)
+        target_var, url = by_step[0] if by_step else (target_variable(surface, "api"), None)
         return _bind_at_base_url(target_var, url or walk.nav.entry_url, walk, walkers.http)
 
     def bind_web(walk: JourneyWalk) -> BoundJourney | ScenarioRefusal:
@@ -290,6 +311,9 @@ def journey_scenarios(
             continue
         emitted.covered.update(walked.covered)
         lines.extend(target_lines(bound.target_var, backend.driver, bound.target_kwargs, emitted))
+        for aux_var, aux_url in bound.aux_targets:
+            lines.extend(target_lines(aux_var, backend.driver,
+                                      f", base_url={python_literal(aux_url)}", emitted))
         arranged = [*arrangement.rows, *walk_fixtures(walked.lines, arrangement.rows, plan.book)]
         lines.extend(journey_scenario(source, bound.target_var, ids, walked, arranged, obligations[0].intercepts))
     return lines

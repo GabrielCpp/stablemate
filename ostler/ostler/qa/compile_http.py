@@ -1086,6 +1086,18 @@ def _expanded_steps(walk: JourneyWalk, gaps: list[Gap]) -> tuple[FlowStep, ...] 
                            walk.ids, gaps)
 
 
+def _step_client(walk: JourneyWalk, step: FlowStep) -> str:
+    """The HTTP client expression one step's request is sent through: the scenario's own client
+    when the step answers at the bound target, `qa.http_for(...)` naming the declared destination
+    when the journey crossed to another server."""
+    if not walk.target_var:
+        return "qa.http"
+    step_var, _url = api_target(walk.nav.surface, step.ref.split("#", 1)[0], walk.book)
+    if step_var == walk.target_var:
+        return "qa.http"
+    return f"qa.http_for({python_literal(step_var)})"
+
+
 def _http_steps(
     walk: JourneyWalk, sinks: PlanSinks, record_fixtures: frozenset[str] = frozenset(),
 ) -> _HttpSteps | None:
@@ -1152,7 +1164,8 @@ def _http_steps(
         else:
             expect = ""
         lines.append(f"    # okf:{step.ref}")
-        call = f"{observed} = qa.http.{request.method.lower()}({target}{expect}{request.kwargs_source})"
+        client = _step_client(walk, step)
+        call = f"{observed} = {client}.{request.method.lower()}({target}{expect}{request.kwargs_source})"
         if outcome is not None and outcome.status is not None:
             lines.extend([f"    with qa.at_node({python_literal(step.ref)}):", f"        {call}"])
         else:
@@ -1183,7 +1196,9 @@ def _journey_assertion(
 ) -> str | ScenarioRefusal | None:
     """One flow check asserted on the journey's last response, or why not; `None` once its gaps are filed."""
     named = row.args.get("path")
-    if isinstance(named, str) and named.partition("?")[0] != steps.last_path and check_observes(row.name) == "response":
+    bound_last = _bound_path(steps.last_path, steps.produced, {}, set())
+    if (isinstance(named, str) and named.partition("?")[0] not in (steps.last_path, bound_last)
+            and check_observes(row.name) == "response"):
         return ScenarioRefusal(
             "uncompilable-claim",
             f"`{row.name}` names `path={named}`, and this journey ended on `{steps.last_path}` — a "

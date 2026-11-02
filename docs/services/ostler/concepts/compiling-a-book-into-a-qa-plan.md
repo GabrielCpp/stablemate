@@ -23,7 +23,13 @@ variable, not only when a check needs one.
 Each backend owns one driver. `compile_http.py`'s `api_scenarios` builds a check function around
 an `Http` call for an HTTP-observed obligation, assembling a request body from a `CheckValue`
 tree (`_tree_literal`) and threading a captured field from an earlier step into a later one's
-assertion (`read_back`); `http_walk` compiles an HTTP-only journey the same way. A claim that states no status expects the one its siblings on the same request state, whether or not the request carries an act, so a body check on a refusal reads the refusal. `compile_cli.py`'s
+assertion (`read_back`); `http_walk` compiles an HTTP-only journey the same way. When a
+journey's steps answer at more than one base URL, every destination is declared as its own
+target and each step's request names the target it reaches (`_bind_http_across_servers`,
+`qa.http_for`), so a capture one server produced binds a request to another; a second
+server the book names no origin for gaps `undeclared-entry-url` rather than re-routing
+the request, and journeys across drivers other than HTTP remain refused as
+`needs-multi-target-runtime`. A claim that states no status expects the one its siblings on the same request state, whether or not the request carries an act, so a body check on a refusal reads the refusal. `compile_cli.py`'s
 `cli_scenario_body` runs the book's CLI binary as a subprocess and asserts on its exit status or
 captured stdout, deciding first whether a check is about the file tree before or after
 (`reads_the_tree`, `compares_the_tree`); `cli_journey` and `cli_move_walk` compile a CLI-driven
@@ -105,6 +111,9 @@ its first hop.
 - code: ostler/ostler/qa/compile_moves.py::move_walks@c8463448d0ef
 - code: ostler/ostler/qa/compile_moves.py::state_walks@5e62aca2c37f
 - code: ostler/ostler/qa/compile_journey.py::journey_target@bab75359ba6d
+- code: ostler/ostler/qa/compile_journey.py::_bind_http_across_servers@5214707cf51c
+- code: ostler/ostler/qa/compile_http.py::_step_client@b869f9fe85ec
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa.http_for@26273c2e634d
 - code: ostler/ostler/qa/compile_journey.py::api_target@20652e710dad
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@89108ef98180
 - code: ostler/ostler/qa/compile_journey.py::journey_scenario@08d7dd7c2661
