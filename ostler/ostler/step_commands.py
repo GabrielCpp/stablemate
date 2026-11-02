@@ -21,7 +21,7 @@ _ID_LITERAL = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
     r"|\b[0-9a-fA-F]{32}\b"
     r"|\bUNHEX\(\s*'[0-9a-fA-F]+'"
-    r"|\bCAST\(\s*'[^']*'\s+AS\s+BINARY\b",
+    r"|\bCAST\(\s*'[^'$]*'\s+AS\s+BINARY\b",
     re.IGNORECASE)
 
 _INSERT = re.compile(r"\bINSERT\b[^()]*\(([^()]*)\)\s*VALUES\s*\(", re.IGNORECASE)

@@ -519,6 +519,7 @@ def test_fixture_fixed_id_when_a_step_writes_a_literal_id(repo: Path, run: str) 
 
 
 @pytest.mark.parametrize("run", [
+    "mysql -e \"INSERT INTO entry (id) VALUES (CAST('$id' AS BINARY(16)))\"",
     "id=$(uuidgen) && mysql -e \"INSERT INTO account (id, name) VALUES ('$id', 'acme')\" && printf '{\"id\":\"%s\"}' \"$id\"",
     "mysql -e \"INSERT INTO account (name, qty) VALUES ('acme', 950001)\"",
     "mysql -e \"INSERT INTO row (project_id, qty) VALUES (@project.id, 2)\"",
