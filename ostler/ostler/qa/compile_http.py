@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from typing import Any
 
 from ostler import acts as acts_mod
@@ -107,6 +107,11 @@ def _request_path(template: str, rows: tuple[CallRow, ...]) -> str:
     if routed - checked and not checked - routed:
         return template
     return concrete
+
+
+def _claim_path(obligation: Obligation, template: str, captured: Collection[str] = frozenset()) -> str:
+    """The path *obligation* requests, with each route variable the claim's own fixtures or an earlier capture provide spelled as that reference."""
+    return _bound_path(_request_path(template, obligation.checks), captured, _fixture_owners([obligation]), set())
 
 
 def expect_status(rows: tuple[CallRow, ...]) -> int | None:
@@ -218,7 +223,7 @@ def _probe(obligation: Obligation, credentials: tuple[CallRow, ...], caller: fro
     request = _claim_request(obligation, "observed", produced, gaps, credentials, caller)
     if not isinstance(request, _ClaimRequest) or request.templated or gaps:
         return None
-    return _Probe(fixture, f"{route[0]} {_request_path(route[1], obligation.checks)}", request)
+    return _Probe(fixture, f"{route[0]} {_claim_path(obligation, route[1])}", request)
 
 
 _BODILESS_METHODS = frozenset({"GET", "DELETE", "HEAD", "OPTIONS"})
@@ -431,12 +436,11 @@ def _claim_request(
         why = "the book gives this node no `route:` to act on"
         return _UnbuiltClaimRequest(why, ScenarioRefusal("uncompilable-claim", why))
     method, template = route
-    rows = obligation.checks
     status = _claim_status(obligation, stated)
     if status is not None and status >= _SERVER_FAULT:
         why = f"no request a caller sends makes a healthy app answer {status}"
         return _UnbuiltClaimRequest(why, ScenarioRefusal("unarrangeable-server-fault", why))
-    path = _request_path(template, rows)
+    path = _claim_path(obligation, template, produced.captures)
     path_refs = references.find_references(path)
     gaps.extend(Gap(obligation.id, "unresolved-precondition",
                     f"the path references {ref!r}, not resolvable without running the plan")
@@ -463,7 +467,7 @@ def _deletes_shared_fixture(obligation: Obligation, fixture_pages: dict[str, fro
     status = expect_status(obligation.checks)
     if route is None or route[0] != "DELETE" or (status is not None and status >= 400):
         return None
-    for ref in references.find_references(_request_path(route[1], obligation.checks)):
+    for ref in references.find_references(_claim_path(obligation, route[1])):
         if not isinstance(ref, references.NodeRef):
             continue
         others = sorted(fixture_pages.get(ref.node, frozenset()) - {obligation.source})
@@ -801,7 +805,7 @@ def _fixture_owners(obligations: list[Obligation]) -> dict[str, set[str]]:
     return owners
 
 
-def _bound_path(path: str, produced: set[str], owners: dict[str, set[str]], named: set[str]) -> str:
+def _bound_path(path: str, produced: Collection[str], owners: dict[str, set[str]], named: set[str]) -> str:
     """*path* with each `{name}` an earlier step captured or one fixture provides spelled as that reference.
 
     Where several of the journey's fixtures provide the key, the one the step's own request names is the one meant.

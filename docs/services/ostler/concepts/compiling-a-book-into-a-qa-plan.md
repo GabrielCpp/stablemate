@@ -106,7 +106,7 @@ its first hop.
 - code: ostler/ostler/qa/compile_moves.py::state_walks@5e62aca2c37f
 - code: ostler/ostler/qa/compile_journey.py::journey_target@bab75359ba6d
 - code: ostler/ostler/qa/compile_journey.py::api_target@20652e710dad
-- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@a83239a8b983
+- code: ostler/ostler/qa/compile_journey.py::journey_scenarios@89108ef98180
 - code: ostler/ostler/qa/compile_journey.py::journey_scenario@08d7dd7c2661
 - code: ostler/ostler/qa/compile_stops.py::resolve_stop@d296755be9b1
 - code: ostler/ostler/qa/compile_stops.py::resolve_state@0cd0a5f9d41c
@@ -208,6 +208,13 @@ its first hop.
   that write the same literal id rewrite each other's rows, so a scenario passes or fails by
   build order. Doctor refuses a step whose `run:` or `body:` writes a literal id, and a
   `provides:` id asserted with a literal `is:`, as `fixture-fixed-id`.
+- rule: a route's `{name}` variable binds to the fact that names it. An earlier capture in the
+  scenario wins, then the one fixture the claim declares that provides `name`. A generated id has
+  no spelling to copy into a check's `path=`, so the variable is how a claim requests it. Two
+  fixtures providing `name` leave the variable unbound, and the claim is an
+  `unresolved-precondition` until a check's `path=` names the fixture meant. A bound variable
+  counts as a reference to that fixture, so a `DELETE` through it is `deletes-shared-fixture` when
+  other pages share the fixture.
 - generated names are unique: every `*_function_name` helper in `plan_source.py` is given the
   full set of already-emitted names (`EmittedScenarios`) and never returns one already used in
   the same plan. A page with several scenarios on one target numbers the names after the first.

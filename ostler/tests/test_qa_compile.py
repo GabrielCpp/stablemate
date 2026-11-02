@@ -898,6 +898,45 @@ def test_a_delete_of_a_fixture_other_pages_share_sends_no_request() -> None:
     assert "qa.http.delete(" not in source
 
 
+def test_a_route_variable_a_fixture_provides_is_sent_as_that_fact() -> None:
+    """An id generated as the fixture builds has no spelling to copy into the route, so the variable alone names it."""
+    claim = "okf:docs/services/demo/read-ledger.md#read-ledger:does:1"
+    source, gaps = compile_plan_gaps(_context(_obligation(
+        claim, source="docs/services/demo/read-ledger.md", node="read-ledger",
+        locators={"route": ["GET /api/ledgers/{id}"]},
+        checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+        fixturesDeclared=[_ledger_fixture("seeded-ledger")])), story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, claim) == []
+    assert 'qa.resolve("/api/ledgers/@seeded-ledger.id")' in source
+
+
+def test_a_route_variable_two_fixtures_provide_stays_a_gap() -> None:
+    """Two fixtures provide the fact and neither says it is the one meant, so the compiler picks no id for the book."""
+    claim = "okf:docs/services/demo/read-ledger.md#read-ledger:does:1"
+    source, gaps = compile_plan_gaps(_context(_obligation(
+        claim, source="docs/services/demo/read-ledger.md", node="read-ledger",
+        locators={"route": ["GET /api/ledgers/{id}"]},
+        checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 200}}],
+        fixturesDeclared=[_ledger_fixture("seeded-ledger"), _ledger_fixture("other-ledger")])), story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, claim) == ["unresolved-precondition"]
+
+
+def test_a_delete_through_a_route_variable_of_a_shared_fixture_sends_no_request() -> None:
+    """The variable names the shared fixture's fact as surely as a spelled reference, so the delete still breaks every later page."""
+    deleting = "okf:docs/services/demo/delete-ledger.md#delete-ledger:does:1"
+    reading = "okf:docs/services/demo/read-ledger.md#read-ledger:does:1"
+    delete = _obligation(deleting, source="docs/services/demo/delete-ledger.md", node="delete-ledger",
+                         locators={"route": ["DELETE /api/ledgers/{id}"]},
+                         checksDeclared=[{"call": "ok", "name": "http_status", "args": {"code": 204}}],
+                         fixturesDeclared=[_ledger_fixture("seeded-ledger")])
+    source, gaps = compile_plan_gaps(_context(delete, _ledger_read(reading)), story="demo-story")
+    assert source is not None
+    assert _gap_kinds(gaps, deleting) == ["deletes-shared-fixture"]
+    assert "qa.http.delete(" not in source
+
+
 def test_a_delete_of_a_fixture_only_its_page_names_is_sent() -> None:
     """A fixture one page names is that page's own, and deleting its resource leaves no other page without it."""
     deleting = "okf:docs/services/demo/delete-ledger.md#delete-ledger:does:1"
