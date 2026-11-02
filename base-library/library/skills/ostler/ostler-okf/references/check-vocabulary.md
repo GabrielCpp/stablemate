@@ -453,7 +453,7 @@ call grammar as a check and refused against its own names:
 | `fill(locator*, value*)` | a text control holds a stated value | web, mobile |
 | `click(locator*)` | a control has been operated once — an expander opened, a row selected | web, mobile |
 | `press(locator*, key*)` | a real keypress has reached a control (focus order, a key-handled shortcut) | web, mobile |
-| `select(locator*, option*)` | a chooser holds a stated option | web |
+| `select(locator*, option*)` | a chooser holds a stated option, whether the page renders a native `<select>` or a list that opens | web |
 | `upload(locator*, file*)` | a file control holds a stated file, named by its path from the repository root | web |
 | `visit(path*)` | the browser is at an address the reader typed or followed: an unknown route segment, a deep link, a query no link builds | web |
 | `body(field*, value*)` | a member of the request this step sends carries a stated value. A dotted `field` such as `locales.fr` is a member of a nested object. `field="$"` is the whole body. A `value` that is one `@node.key` naming an object or a list is sent whole | http |
@@ -494,7 +494,7 @@ the user typed is true only once someone has typed. A bare name under `arrange:`
 written under the wrong key, and `unparsed-act` relocates it rather than asking for a
 performance that does not exist.
 
-**`select` is web-only on purpose.** A `<select>` is a control the platform renders; a mobile
+**`select` is web-only on purpose.** A web chooser is one control, native or not; a mobile
 chooser is a screen of its own, and arranging one there is the steps that reach it, not one act.
 A `mobile` target facing `arrange: select(…)` gaps rather than emitting — which is the driver
 list doing its job, not a hole in the vocabulary.

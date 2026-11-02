@@ -11,7 +11,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from ostler_qa_browser_state import CLIPBOARD_JS
-from ostler_qa_elements import template_pattern
+from ostler_qa_elements import choose, template_pattern
 from ostler_qa_scan import FRAME_JS, SCAN_JS, merge_rects, summarize
 from ostler_qa_transfer import upload
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
@@ -69,7 +69,7 @@ QUIET_STEP_MS = 100
 QUIET_TIMEOUT_MS = 5000
 READ_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
-ARRANGE_METHODS = {"fill": "fill", "click": "click", "press": "press", "select": "select_option"}
+ARRANGE_METHODS = {"fill": "fill", "click": "click", "press": "press"}
 
 
 def _locate(page: Any, locator: Mapping[str, str]) -> Any:
@@ -380,6 +380,9 @@ class Browser:
                 found = _locate(self._arranging, action["locator"])
                 if action["act"] == "upload":
                     upload(self._arranging, found, Path(str(action["value"])))
+                    continue
+                if action["act"] == "select":
+                    choose(self._arranging, found, str(action["value"]), timeout=timeout_ms)
                     continue
                 method = ARRANGE_METHODS[str(action["act"])]
                 values = [str(action["value"])] if "value" in action else []

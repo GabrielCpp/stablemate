@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ostler_qa_transfer
 from ostler_qa_checkout import copy_checkout
-from ostler_qa_elements import maestro_pattern, name_pattern, template_pattern
+from ostler_qa_elements import choose, maestro_pattern, name_pattern, template_pattern
 from ostler_qa_grpc import Caller, Grpc, GrpcError, GrpcurlCaller
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
@@ -2031,6 +2031,10 @@ class Qa:
     def drop(self, locator: Any, file: str) -> None:
         """Drop the checkout's *file* on *locator*, as a file manager's drag would."""
         ostler_qa_transfer.drop(locator, self.root / file)
+
+    def select(self, locator: Any, option: str) -> None:
+        """Make the chooser *locator* hold *option*, as the user picking it would."""
+        choose(self.browser_page, locator, option)
 
     def upload(self, locator: Any, file: str) -> None:
         """Hand *locator* the checkout's *file*, as the user picking it in the file picker would."""

@@ -168,3 +168,6 @@ satisfy.
 - a fragment host check is a link check, not a nesting check: `check_fragment_hosts` validates
   that every page claiming to host a fragment actually links to it; `check_section_hosts` is the
   separate check for a heading a component type may nest under.
+- rule: `select` means a chooser holds an option, whatever the page renders. The harness reads the
+  element's tag: a native `<select>` takes the option directly, and any other chooser opens a list
+  whose option the user presses.

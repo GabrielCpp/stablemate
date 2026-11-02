@@ -6,6 +6,7 @@ import re
 import time
 from collections.abc import Callable, Sized
 from dataclasses import dataclass
+from typing import Any
 from urllib.parse import urlsplit
 
 from ostler_qa_verdicts import Args, Verdict, str_arg, verdict
@@ -434,3 +435,12 @@ def verify_download(reading: DownloadReading, args: Args) -> Verdict:
     if "count" in args:
         return verdict(found == args["count"], list(reading.names), {"count": args["count"]})
     return verdict(found > 0, list(reading.names), "at least one")
+
+
+def choose(page: Any, chooser: Any, option: str, **kwargs: Any) -> None:
+    """Make *chooser* hold *option*: a native `<select>` takes it directly, and any other chooser opens a list whose option the user presses."""
+    if chooser.evaluate("element => element.tagName") == "SELECT":
+        chooser.select_option(option, **kwargs)
+        return
+    chooser.click(**kwargs)
+    page.get_by_role("option", name=name_pattern(option)).first.click(**kwargs)

@@ -79,7 +79,6 @@ _ACT_METHODS: dict[str, tuple[str, str | None]] = {
     "fill": ("fill", "value"),
     "click": ("click", None),
     "press": ("press", "key"),
-    "select": ("select_option", "option"),
 }
 
 
@@ -129,6 +128,9 @@ def perform_acts(
                 return PerformedActs(None, gap_filed=True)
         if spec.name == "upload":
             lines.append(f"    qa.upload({expr}, file={python_literal(row.text_arg('file'))})  # arrange: {row.call}")
+            continue
+        if spec.name == "select":
+            lines.append(f"    qa.select({expr}, option={typed_literal(row.args.get('option', ''))})  # arrange: {row.call}")
             continue
         method, value_param = _ACT_METHODS[spec.name]
         argument = "" if value_param is None else typed_literal(row.args.get(value_param, ""))

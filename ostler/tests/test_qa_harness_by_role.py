@@ -54,7 +54,7 @@ class _Page:
 
 @dataclass(frozen=True)
 class _Qa:
-    browser_page: _Page
+    browser_page: _Page | _Options
 
 
 def _by_role(names: tuple[str, ...], name: str, loading: tuple[str, ...] = ()) -> tuple[str, ...]:
@@ -102,3 +102,53 @@ def test_a_name_with_a_slash_leaves_no_bare_slash_to_end_playwrights_selector_pa
     for pattern in (harness.name_pattern("Wood / Framing"), harness.template_pattern("Wood / {category.name}")):
         assert "/" not in pattern.pattern.replace("\\/", "")
         assert pattern.match("Wood / Framing")
+
+
+class _Chooser:
+    """A chooser that records what a person did to it, rendered as *tag*."""
+
+    def __init__(self, tag: str) -> None:
+        self.tag = tag
+        self.acts: list[str] = []
+
+    def evaluate(self, _script: str) -> str:
+        return self.tag
+
+    def select_option(self, option: str) -> None:
+        self.acts.append(f"select {option}")
+
+    def click(self) -> None:
+        self.acts.append("open")
+
+
+class _Options:
+    """A page whose opened list records the option pressed."""
+
+    def __init__(self, chooser: _Chooser) -> None:
+        self.chooser = chooser
+        self.pressed: str | re.Pattern[str] = ""
+
+    def get_by_role(self, role: str, *, name: re.Pattern[str]) -> _Options:
+        assert role == "option"
+        self.pressed = name
+        return self
+
+    @property
+    def first(self) -> _Options:
+        return self
+
+    def click(self) -> None:
+        assert isinstance(self.pressed, re.Pattern)
+        self.chooser.acts.append("press " + ("Vinyl siding" if self.pressed.match("Vinyl siding") else "other"))
+
+
+def test_a_native_select_takes_the_option_directly() -> None:
+    chooser = _Chooser("SELECT")
+    harness.Qa.select(_Qa(_Options(chooser)), chooser, option="Vinyl siding")
+    assert chooser.acts == ["select Vinyl siding"]
+
+
+def test_any_other_chooser_opens_and_presses_the_option() -> None:
+    chooser = _Chooser("DIV")
+    harness.Qa.select(_Qa(_Options(chooser)), chooser, option="Vinyl siding")
+    assert chooser.acts == ["open", "press Vinyl siding"]
