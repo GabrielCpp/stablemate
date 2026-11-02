@@ -55,13 +55,6 @@ Three scoping rules explain findings that otherwise read as false positives or a
   grounded at a **later QA gate** rather than at author time, so doctor deliberately does not flag
   them as dangling links. `missing-code-symbol` is where that grounding surfaces.
 
-## Freeze
-
-| Code | Sev | Trigger and remedy |
-| --- | --- | --- |
-| `frozen-removed` | error | An approved frozen entity no longer exists. Restore it, or `ostler unfreeze <id>` if the removal is intended. |
-| `frozen-mutated` | error | A frozen entity changed since approval. Revert it, or `ostler unfreeze <id>` to let it evolve. |
-
 ## Epic and story graph
 
 | Code | Sev | Trigger and remedy |
@@ -187,7 +180,7 @@ Three scoping rules explain findings that otherwise read as false positives or a
 | `decision-evidence-unresolved` | error | A decision file in `adr/` (the artifacts dir) lists an `evidence` id that resolves to no record on the Register's shelf. Restore the record, or remove the id from the decision's `evidence`. |
 | `decision-back-link-missing` | error | A decision and its evidence disagree. Either a record's `decision` names an id that no file in `adr/` carries, or a decision lists a record whose `decision` names something else. Set `decision: <id>` on the record, clear it, or remove the record from the decision's `evidence`. |
 | `unknown-type` | error | The declared `type:` is not a recognized OKF type. |
-| `schema` | warn | A per-type frontmatter schema violation (also raised against `ids.json`). |
+| `schema` | warn | A per-type frontmatter schema violation. |
 | `bad-heading-type` | error | A case or spelling variant of a known UI heading, whose `### id` children would otherwise go unrecognized. `ostler fmt` canonicalizes it. |
 | `duplicate-container-heading` | error | Two `## <Title>` sections in one file — the second block's nodes belong to whatever heading precedes them. |
 | `misplaced-section` | error | An `## Endpoints` section outside a `server` page, or a `## Commands` section outside a `cli` page. Move each copy's claims onto the matching node of the host page, delete the section, and link that node instead. |

@@ -14,8 +14,7 @@ markdown in place.
 `<PREFIX>-<6+ chars>` — the shortest slice unambiguous in this repo. Human output prints handles by
 default, `--json` prints full ids (a program wants the identity that never changes); `--handles` /
 `--full-ids` override either. A handle is accepted **wherever a command takes an id**, in either
-mode — `trace`, `query`, `create story --covers`, `seed add/remove`, `backlog prune`,
-`freeze`/`unfreeze` — so a token copied out of one command goes into the next. Never write a handle
+mode — `trace`, `query`, `create story --covers`, `seed add/remove`, `backlog prune` — so a token copied out of one command goes into the next. Never write a handle
 into a document: it lengthens as soon as a colliding id is minted. From Python, `okf.handle(id)` /
 `okf.handles()` render and `okf.expand(token)` resolves.
 
@@ -66,10 +65,10 @@ A story is addressed by its id. The slug names the story's folder and its `### <
 
 **Mutate** (allocates ids, writes markdown)
 ```bash
-ostler create epic    <name>  --title T [--prefix P] [--json]
-ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--prefix P] [--json]
+ostler create epic    <name>  --title T [--json]
+ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--json]
 ostler update story   <story-id> --title T --covers a,b --depends a,b
-ostler create feature <slug>  --title T [--area A] [--route R] [--prefix P] [--json]
+ostler create feature <slug>  --title T [--area A] [--route R] [--json]
 ostler delete epic <name> | story <story-id> | feature <slug>
 
 ostler seed add    <epic> <id> [--status S] [--summary …] [--surface …] \
@@ -78,8 +77,8 @@ ostler seed remove <epic> <id>
 ostler set-status  <story-id> <status>
 ostler conflict    <story-id> <text> | ostler conflict <story-id> --clear
 
-ostler backlog add <summary> --repo R --area A [--pattern P] [--symbol S ...] [--id ID] [--body T] [--prefix X] [--json]
-ostler backlog adopt --repo R <file> [--prefix X] [--json]
+ostler backlog add <summary> --repo R --area A [--pattern P] [--symbol S ...] [--id ID] [--body T] [--json]
+ostler backlog adopt --repo R <file> [--json]
 ostler backlog prune <id> [--as done|dropped|promoted] [--reason T] [--json]   # closes a record; --as defaults to done, the other two need --reason
 ostler backlog list [--repo R] [--status S] [--json]
 ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorder <e…> | ostler todo list [--json]
@@ -97,8 +96,6 @@ rewrites that section wholesale, so pass every blocker each time, or `(none)` to
 ostler edit relink    <old-path> <new-path> [--write]
 ostler edit rename    <old-slug> <new-slug> [--write]
 ostler edit settle-review <story-id> [--write]
-ostler freeze   <ident> [--by WHO] [--note …]   # pin an approved story/seed as immutable ground truth
-ostler unfreeze <ident>
 ```
 
 **OKF UI profile** (surfaces / elements / behaviors — see "The OKF UI profile" below)

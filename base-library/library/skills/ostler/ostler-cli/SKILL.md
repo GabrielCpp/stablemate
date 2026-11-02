@@ -89,7 +89,7 @@ Both faces drive the same functional core, and neither is a wrapper over the oth
 - **[references/command-interface.md](references/command-interface.md)** — the CLI. Every
   command with its flags and JSON shape: `doctor`, `trace`, `list`/`search`/`query`,
   `graph`, `next-epic`/`next-story`, `path`, the `create`/`update`/`seed`/`backlog`/`todo`
-  mutators, `edit`/`freeze` repair, `scaffold`/`fmt`, `vet`, the `qa` control plane and its
+  mutators, `edit` repair, `scaffold`/`fmt`, `vet`, the `qa` control plane and its
   browser-diagnostics manifest, and `artifact`. Read it when you are writing a shell step,
   a gate, or a prompt that runs ostler from a terminal.
 - **[references/stack.md](references/stack.md)** — the book's `stack.yml`: every key, the
@@ -152,7 +152,6 @@ referential-integrity contract:
 - **cross-epic references** — an id/slug used inside epic E that only resolves in another epic
 - **orphan seeds** — an active seed no story covers
 - **dangling references** — a seed id or sibling slug that resolves to nothing
-- **frozen drift** — an approved (frozen) story/seed that changed or vanished
 
 It exits non-zero when any error-level finding is present (safe to gate a workflow node on).
 Warning-level findings (`story-covers-no-seed`, `ungrounded-surface`) are reported but don't fail
@@ -160,9 +159,10 @@ the check.
 
 ## Id allocation, profiles, templates
 
-- Ostler owns `.agents/ids.json` (`{prefix, frozen}`) — `create epic|story|feature` allocates an id,
+- `create epic|story|feature` allocates an id,
   scaffolds the markdown, and (for stories) inserts the `### <slug>` block into the epic's
   `## Stories`. There is no external id allocator.
+  The prefix is `repo.id_prefix` in the `agents.yml` at the graph root; a mint refuses while it is unset.
 - An id is `<PREFIX>-<ULID>`: the repo prefix plus 26 Crockford-Base32 chars (ms timestamp + 80 bits
   of randomness). It sorts by mint time and needs no coordination, so parallel worktrees can't
   collide. Older `<prefix>-<n>` counter ids keep resolving — an id is an opaque string.
