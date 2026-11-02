@@ -411,6 +411,85 @@ This series is done only when slices 1–6 have their acceptance evidence and ev
 the series remains incomplete until its added end-to-end slice is delivered. Broad driver
 coverage beyond the bounded pilot is separate future work, not hidden acceptance debt.
 
+#### Slice 6 acceptance record (implementation session, updated as facts change)
+
+Selected surface: the `ostler artifact` command family
+(`docs/services/ostler/cli.md#ostler-artifact-list|scaffold|scaffold-unknown-kind|vet`),
+a bounded real CLI family whose fixtures run locally (`fixture: none` for three commands,
+the `cli-scenario-arrangement` fixture page for `scaffold`).
+
+Measured on the real repository (2026-11-02, commits around `79fe5e63`):
+
+- Whole-book assessment of `docs/services/ostler`: 624 required obligations;
+  `capabilities_complete`, `sensitivity_complete` and `structure_complete` all true after
+  eighteen drifted ostler citations were regrounded (`815f69949`); `evidence_complete`
+  false (no run recorded); overall incomplete. Assessment cost 61.8 s, 1.13 GB peak.
+- The artifact family's 8 obligations are capability-complete and sensitive
+  (`:exits:1` rows sensitive; `:contract` rows discharged, not counted as passed).
+  Their ids: `okf:docs/services/ostler/cli.md#ostler-artifact-list:exits:1`,
+  `#ostler-artifact-scaffold:exits:1`, `#ostler-artifact-scaffold-unknown-kind:exits:1`,
+  `#ostler-artifact-vet:exits:1` and the four matching `:contract` rows.
+- Compilation of the family (`compile_plan_gaps(select=artifact ids)`) succeeds: one CLI
+  scenario, no compile gaps.
+
+Validation attempt (not executed acceptance): `qa run` refused the plan at the
+validation gate. Two distinct failure classes were observed across attempts:
+
+1. Coverage: a whole-book packet whose plan selects only the family leaves every other
+   required obligation uncovered. A scratch loop answered this by stamping hand-written
+   `deferred: {kind: out-of-pilot-scope}` fields onto non-selected packet rows; that
+   scaffolding is not a supported producer (`annotate_deferred_obligations` derives
+   `deferred` from compile gaps only) and is discarded — it must not ship as acceptance
+   evidence.
+2. Health: six packet-wide `dangling-grounding` errors from books outside the assessed
+   scope block execution. Named blockers, all owned by the book pages that cite moved or
+   malformed declarations (pages under active concurrent milestone work):
+
+   - `docs/services/groom/concepts/workflow-state.md#transition-sidecar-query-or-discovery-snapshot`
+     cites `groom/groom/discovery.py::_apply_snapshot`; the `code:` bullet is immediately
+     followed by a prose paragraph the markdown parser folds into the bullet value, and
+     the QA citation split then yields an unresolvable chunk. The symbol exists at HEAD.
+   - `docs/services/groom/concepts/workflow-state.md#transition-volume-reconstruction`
+     cites `groom/groom/discovery.py::_resolve_via_volumes`; same shape.
+   - `docs/services/workflows/flows/check-okf-book.md#copy-source` cites
+     `workflows/src/workhorse_workflows/okf_book/main/nodes/source_view.py::build_source_view@4b30f3b91943`;
+     the module no longer declares the symbol (concurrent rename).
+   - `docs/services/workflows/flows/okf-book-reground.md#read` cites the same
+     `build_source_view@303f3884bd37`; same cause.
+   - `docs/services/workhorse/workhorse.md#refuse-unknown-profile` cites
+     `workhorse/workhorse/runner/backends/codex_guard.py::Policy@736e50949720`; moved.
+   - `docs/services/workhorse/workhorse.md#refuse-unknown-profile` cites
+     `workhorse/workhorse/runner/backends/codex_shell.py::shell_denial@3366bb96722b`; moved.
+
+Investigated and rejected paths (no gates weakened, no findings hand-filtered, no
+evidence manufactured): an isolated checkout cannot help — the debt is committed at
+HEAD, so a clean worktree still carries it; there is no supported book-scoped health
+context (`build_context` health spans the loaded graph, validation gates on all packet
+health rows). The documented story flow is structurally incapable of serving this
+pilot: it owes obligations only to a diff, the family's cited symbols
+(`list_kinds`/`scaffold`/`vet`/`ArtifactKind`/`_backlog_items_vet`) have been stable
+since 2026-07-07 — before the book claims existed (2026-10-17) — so no real commit
+reaches the family, and two confirmation probes over the nearest candidate commits
+minted zero obligations with unmapped side files. A selection-scoped packet would also
+be a subset contract that section 5's invariant forbids equating with the book surface.
+
+Open decision needed before slice 6 can produce executed acceptance. Completing the
+pilot requires one of:
+
+- A (smallest): scope the run-validation health gate to findings whose nodes sit under
+  the packet's assessed services root, so a book-scoped run is not blocked by another
+  book's citation debt. Gate-semantics change with real blast radius: foreign debt can
+  also indict a stale contract, and the assessment already reports structure per scope.
+- B (larger): add a supported family/page scope to accounting, compile and assessment
+  (a page-prefix scope beside `--book`), so the pilot's contract is the family itself
+  and the loop closes without touching run-validation semantics.
+
+Recommendation: A, decided by the owner, implemented as its own slice with regression
+evidence that foreign debt still blocks a run whose own scope carries it. Until either
+the concurrent milestone lands its six citation repairs or A/B is decided and
+implemented, the series remains open: the pilot has a measured assessment, successful
+family compilation, a validation attempt and named blockers — not executed acceptance.
+
 ## 7. Assumptions
 
 Ordered by cost of being wrong:
