@@ -180,12 +180,17 @@ class _Live:
         store.reset()
         workspace = _workspace(base / "ws")
 
+        async def _no_archive() -> None:
+            return None
+
         async def _no_reconcile() -> int:
             return 0
 
         self._app_module = app_module
         self._reconcile_patch = patch.object(app_module, "_reconcile", _no_reconcile)
         self._reconcile_patch.start()
+        self._archive_patch = patch.object(app_module, "_spawn_archive", _no_archive)
+        self._archive_patch.start()
         _seed(workspace)
 
         import uvicorn
@@ -223,6 +228,7 @@ class _Live:
             self.pw.stop()
         finally:
             self._reconcile_patch.stop()
+            self._archive_patch.stop()
             self.server.should_exit = True
             self.thread.join(timeout=10)
             self.tmp.cleanup()
