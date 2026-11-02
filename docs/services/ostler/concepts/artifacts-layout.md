@@ -47,7 +47,7 @@ commits that one file as `docs: propose <slug> from <n> records`. Under any othe
 file stays in the working tree for the repository's own change to carry.
 
 An artifacts dir or a docs home that still holds a folder of the old layout is refused when a
-book loads: `backlog/` or `adr/` in the artifacts dir, or `docs/epics/` in the docs home. The
+book loads: `backlog/` or `adr/` in the artifacts dir, or an epic under `docs/epics/` in the docs home. The
 refusal prints the commands that move each folder to its new place, with real paths, and
 `ostler` runs again after them. The check costs a few `stat` calls and runs no `git` command.
 
@@ -75,8 +75,8 @@ because the home config refuses a member name bound to two folders.
 - code: `ostler/ostler/provenance.py::effective_checkouts` @9790251997db
 - code: `core/stablemate_core/config.py::ARTIFACTS_IGNORED` @9a75fa977d4a
 - code: `core/stablemate_core/config.py::ensure_artifacts_repo` @a467d2296af9
-- code: `ostler/ostler/layout.py::check` @35618cc53689
-- code: `ostler/ostler/layout.py::moves` @996f24fd7d70
+- code: `ostler/ostler/layout.py::check` @7a5cee62dd8e
+- code: `ostler/ostler/layout.py::moves` @a11bfbdf7ed3
 - code: `ostler/ostler/adr.py::propose` @61fef669e739
 - code: `ostler/ostler/model.py::doc_roots` @cc98ffe30811
 - code: `ostler/ostler/doctor.py::_check_service_repository` @2122aafa61b2
@@ -96,7 +96,8 @@ because the home config refuses a member name bound to two folders.
 - rule: epics live at `epics/` in the artifacts dir, for a monorepo as much as a workspace, and never under the repository's `docs/`
 - rule: the artifacts repo ignores `backlogs/ epics/ specs/ researches/ benchmarks/ scratch/`, and an existing artifacts repo gains the lines it lacks without repeating one
 - rule: an artifacts dir inside another repository's work tree is that repository's to track, so it gets no nested git repository and no ignore file
-- rule: loading a book refuses an artifacts dir holding `backlog/` or `adr/` and a docs home holding `docs/epics/`, prints the exact moves, and uses `stat` calls only
+- rule: loading a book refuses an artifacts dir holding `backlog/` or `adr/` and a docs home holding an epic under `docs/epics/`, prints the exact moves, and uses `stat` calls only
+- rule: a folder under `docs/epics/` with no `epic.md` is not an epic, so screenshots a test run saves there never stop a load
 - rule: a service's `code:` bullets cite files of one repository, and a service citing two is a `service-spans-repositories` error
 - tests: `core/tests/test_workspaces.py::test_docs_home_is_the_artifacts_dir_from_a_member_folder`
 - tests: `core/tests/test_workspaces.py::test_docs_home_is_the_artifacts_dir_from_a_worktree_of_a_member`
@@ -112,3 +113,4 @@ because the home config refuses a member name bound to two folders.
 - tests: `ostler/tests/test_layout_move.py`
 - tests: `ostler/tests/test_service_repository.py`
 - tests: `ostler/tests/test_adr.py::test_in_the_artifacts_repo_only_the_adr_is_committed`
+- tests: `ostler/tests/test_layout_move.py::test_a_docs_epics_folder_holding_only_test_screenshots_loads`

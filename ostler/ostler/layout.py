@@ -39,11 +39,11 @@ def moves(artifacts: Path, home: Path) -> list[str]:
     if (artifacts / "backlog").is_dir():
         lines += [f"git -C {artifacts} mv backlog backlogs", f"git -C {artifacts} rm -r --cached backlogs"]
     old_epics = home / "docs" / "epics"
-    if old_epics.is_dir():
-        for epic in sorted(old_epics.iterdir()):
-            lines += _move(epic, artifacts / "epics" / epic.name, artifacts if same else None)
-        if same:
-            lines.append(f"git -C {artifacts} rm -r --cached epics")
+    epics = sorted(folder.parent for folder in old_epics.glob("*/epic.md"))
+    for epic in epics:
+        lines += _move(epic, artifacts / "epics" / epic.name, artifacts if same else None)
+    if epics and same:
+        lines.append(f"git -C {artifacts} rm -r --cached epics")
     old_adr = artifacts / "adr"
     if old_adr.is_dir():
         for file in sorted(old_adr.glob("*.md")):
@@ -52,7 +52,7 @@ def moves(artifacts: Path, home: Path) -> list[str]:
 
 
 def check(artifacts: Path, home: Path) -> None:
-    """Raise :class:`LayoutMoveRequired` when *artifacts* holds ``backlog/`` or ``adr/``, or *home* holds ``docs/epics/``; three ``stat`` calls when it holds none; an emptied folder the moves left behind is not a reason to refuse."""
+    """Raise :class:`LayoutMoveRequired` when *artifacts* holds ``backlog/`` or ``adr/``, or *home* holds ``docs/epics/``; three ``stat`` calls when it holds none; an emptied folder the moves left behind, or one holding no ``epic.md``, is not a reason to refuse."""
     if not (
         (artifacts / "backlog").is_dir()
         or (artifacts / "adr").is_dir()

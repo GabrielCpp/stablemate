@@ -98,6 +98,12 @@ def test_a_docs_epics_folder_prints_a_move_to_the_artifacts_epics(tmp_path: Path
     assert (artifacts() / "epics/0001-billing/epic.md").is_file()
 
 
+def test_a_docs_epics_folder_holding_only_test_screenshots_loads(tmp_path: Path) -> None:
+    write(tmp_path / "docs/epics/0001-billing/stories/01-pay/qa/shot.png", "x")
+
+    load(tmp_path)
+
+
 def test_the_current_layout_loads(tmp_path: Path) -> None:
     write(artifacts() / "backlogs/web-app/book/acme-1/record.md", "x")
     write(artifacts() / "epics/0001-billing/epic.md", "# Epic\n")
