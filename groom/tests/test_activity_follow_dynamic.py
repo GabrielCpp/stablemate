@@ -258,7 +258,7 @@ def test_while_paused_a_group_that_finishes_stays_open_under_the_operators_eyes(
         opened = heads.count()
         assert opened > 0
         _end(live, name)
-        expect(page.locator(".feedbar")).to_have_count(0, timeout=10000)
+        expect(page.locator(CONTROL)).to_have_count(0, timeout=10000)
         page.wait_for_timeout(500)
         assert heads.count() == opened
 
@@ -403,7 +403,7 @@ def test_an_ended_run_opens_with_no_follow_control(tmp_path):
 
     with _following(tmp_path, "fol-old", filler=3, ended=True) as (_live_, page, _name):
         expect(_rows(page)).to_have_count(3)
-        expect(page.locator(".feedbar")).to_have_count(0)
+        expect(page.locator(CONTROL)).to_have_count(0)
         expect(page.locator(CONTROL)).to_have_count(0)
         expect(page.locator(".newpill")).to_have_count(0)
 

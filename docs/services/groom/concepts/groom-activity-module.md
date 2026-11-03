@@ -9,7 +9,7 @@ The activity module builds what the [Activity tab](run-activity-tab.md) shows: t
 
 The module reads and returns plain data. It writes nothing, holds no state between calls and raises two errors the server maps to statuses: `TurnNotFound` for a slug the run has no turn under, and `TurnUnreadable` for a turn that exists whose record is not on this machine.
 
-- code: groom/groom/activity.py@34d85920b953
+- code: groom/groom/activity.py@a8b11f28556e
 - tests: groom/tests/test_activity.py
 - tests: groom/tests/test_activity_groups.py
 - refs: [groom transcript parse module](groom-transcript-parse-module.md), [groom store](groom-store.md), [groom turns module](groom-turns-module.md), [run flow tree](run-flow-tree.md)
@@ -39,7 +39,7 @@ The module reads and returns plain data. It writes nothing, holds no state betwe
 - returns: `{"run_id", "head", "entries", "prompt", "thinking", "cut"}`, with `cut` true when the first live update of the turn is gone
 - returns: `prompt` and `thinking`, each a string or null
 - returns: a `final` flag on the last assistant message of a finished turn
-- code: groom/groom/activity.py::turn@5b3443f1a116
+- code: groom/groom/activity.py::turn@98eb76416148
 - tests: groom/tests/test_activity.py::test_a_finished_turn_reads_only_its_own_window_and_drops_the_rest
 - tests: groom/tests/test_activity.py::test_an_unknown_turn_is_not_found_and_a_container_turn_with_no_transcript_is_unreadable
 - tests: groom/tests/test_activity.py::test_a_live_turn_whose_start_the_history_dropped_is_marked_cut
@@ -60,6 +60,24 @@ The module reads and returns plain data. It writes nothing, holds no state betwe
 - tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_its_full_error_text
 - tests: groom/tests/test_activity_entries.py::test_an_answered_gate_reads_its_question_answer_and_how_long_it_waited
 - endpoint: [get-run-entry](../http/get-run-entry.md)
+
+### search
+
+- sig: `search(run_id: str, query: str, live: LiveRows | None = None, pending: bool = False) -> dict[str, Any]`
+- abstract: false
+- does: reads the transcript of every turn of this one run and gives, for each turn whose messages, tool summaries or failed tool output say the query, the first matching line cut to 160 characters
+- does: matches case-insensitively after collapsing the whitespace of the query
+- does: cuts the query to 200 characters
+- does: reads nothing for an empty query
+- verify: json_path(path="$.matches", matches="^\\[")
+- raises: `SearchFailed` when the transcript of any turn exists but cannot be read, so a search answers whole or not at all
+- returns: `{"run_id", "query", "matches": [{"key", "line"}]}`
+- code: groom/groom/activity.py::search@addb2fe1fa01
+- tests: groom/tests/test_activity.py::test_a_search_finds_the_turn_whose_transcript_says_the_query_with_its_line
+- tests: groom/tests/test_activity.py::test_a_search_never_reads_a_turn_outside_its_run_and_an_empty_query_reads_nothing
+- tests: groom/tests/test_activity.py::test_a_search_line_is_cut_and_keeps_markup_as_plain_text
+- tests: groom/tests/test_activity.py::test_an_unreadable_transcript_fails_the_search_and_the_endpoint_answers_503
+- endpoint: [get-run-search](../http/get-run-search.md)
 
 ## Rules
 

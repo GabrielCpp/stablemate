@@ -12,12 +12,12 @@ The tab sits between Overview and Details in the [detail tab bar](../gui/screens
 Transcript text is untrusted. A model or a tool can write any characters, so no part of a turn reaches the page as markup the server or the browser did not choose.
 
 - code: groom/groom/activity.py::timeline@e8613a504a4b
-- code: groom/groom/activity.py::turn@5b3443f1a116
+- code: groom/groom/activity.py::turn@98eb76416148
 - code: groom/groom/app.py::run_activity@7e795c810caa
 - code: groom/groom/app.py::run_turn@353c67ab773c
 - code: groom/groom/app.py::run_entry@877266517ded
 - code: groom/groom/activity.py::entry@5a64cec9f144
-- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
 - code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
 - code: groom/groom/assets/dashboard.js::arrivals@97f8a48533ed
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
@@ -27,6 +27,14 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/transcript_parse.py::from_updates@1ccc9263ddd8
 - code: groom/groom/churn.py::alerts@641e36a47ca5
 - code: groom/groom/flows.py::span_passes@55f223c1146d
+- code: groom/groom/activity.py::search@addb2fe1fa01
+- code: groom/groom/app.py::run_search@60270d508d18
+- code: groom/groom/assets/dashboard.js::timelineView@4f1988bd15e3
+- code: groom/groom/assets/dashboard.js::setQuery@8a88835d1d66
+- code: groom/groom/assets/dashboard.js::searchTranscripts@d1a20e37c796
+- code: groom/groom/assets/dashboard.js::goToRow@7bdd4787c85b
+- code: groom/groom/assets/dashboard.js::moveTimeline@f0d369c1a4a4
+- code: groom/groom/assets/dashboard.js::nextProblem@b7db5ac0a3e5
 - extends: [run flow tree](run-flow-tree.md)
 - rule: the list groups its rows under a work item heading, then a flow pass heading, and one row is one visit. A node that runs twice has two rows. A run with no work item reads as one unnamed item whose heading is left out, so the flow pass headings stand directly in the list. Work done outside any work item is the first group, headed `Outside any work item`, and work outside any flow is a pass headed `outside any flow`.
 - rule: one row is one visit, the turns of one slug under one parent span, so a retry inside a visit stays one row. A slug that a resumed pass repeats gives one row per visit, each under its own heading and each with its own start, time, cost and pass, so the rows of a pass add up to its heading. The first visit keeps the plain slug as its key. A later visit's key adds `~` and the millisecond its own turns began, which does not change when the list is read again. A row reads only the records of its own visit. When the archive kept none for it, the pane says no record of the turn could be found and offers no retry.
@@ -64,7 +72,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: pressing the pill selects the newest row and opens it in the pane, scrolls it into view, clears the pill, follows again and moves focus to the control. The newest row is the one with the latest time among the turns, steps, gates, retries and churn alerts, and a fold that holds it opens. Scrolling back to the end and pressing the follow control follow again and leave the selected row and the pane as the operator left them. While the list follows, a row that arrives never moves the selection.
 - rule: a row that arrives never selects itself, never takes focus from what the operator has focused, and never rebuilds an open pane. The pane of the selected turn changes only when the turn it shows is itself still running and its own record moves.
 - rule: the follow control says `Not connected`, disabled, while the dashboard's connection is `reconnecting` or `offline`, and says what it did before when the connection returns. A `stale` connection does not change it, because the page still receives frames. The list reads again when the connection returns, so the rows that arrived during the loss appear, and a following list moves to its newest.
-- rule: when the run ends while the tab is open, the bar and the pill go and the list stops following. The running row reads as the turn ended, with the figures and the result of the turn's stored span, and the headings and the run's row take that turn's cost. A running turn that ends with the run and leaves no span of its own follows the no-record rule.
+- rule: when the run ends while the tab is open, the follow control and the pill go, the search field and the selector stay, and the list stops following. The running row reads as the turn ended, with the figures and the result of the turn's stored span, and the headings and the run's row take that turn's cost. A running turn that ends with the run and leaves no span of its own follows the no-record rule.
 - rule: a run that has ended while a turn still has no span of its own marks that turn as ended with no record. Its row reads `ended with no record`, with no running dot and no ticking time. The pane badge reads `NO RECORD` in place of `RUNNING`, the head drops `cost lands at turn end`, and the pane says `This turn ended with no record, so its cost was not reported.` above the transcript already shown. The pass and group headings drop `running`. The headings and the run's row keep the cost they had, and the turn never gets a guessed cost or a cost of 0.
 - rule: the flow heading sticks directly under the group heading it belongs to. The list measures the group heading's rendered height and gives the flow heading that value as its sticky offset, so no row shows between the two headings at any scroll position.
 - rule: the control, the pill and the arrival count are named for assistive technology. The control is a button whose `aria-pressed` says whether it follows. The pill is a button inside a polite live region that is present while the run is live and empty while no count shows, so the count is announced when it appears and as it changes. Neither relies on color alone.
@@ -79,6 +87,13 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: a part's open state belongs to the turn on screen. Selecting another turn, or reading the same one again after another, shows every part collapsed. A read that only refreshes the open turn keeps the parts the operator opened.
 - rule: a finished turn of a native run whose record is not on this machine, because no record was archived for it or the record holds no transcript, reads as a turn with no messages, for a plain slug and for a suffixed key alike. The server answers `200`, the pane says no record of the turn could be found, and it offers no retry. Only a turn of a container run whose records are not pulled yet answers `503` with a retry, and a still-running turn with no rows yet is unchanged.
 - rule: the tab shows no archived run's turns.
+- rule: on the Activity tab, `j` selects the next row and `k` the previous one in the order the rows are on screen, the selected row stays in view, and the pane opens it. On every other tab `j` and `k` keep moving the run list. A key never acts while the operator types in the search field, the gate answer box or any field, and never while the work item selector is focused.
+- rule: `e` selects the next problem after the selection and wraps to the first. A problem is a failed step, a failed gate check, a backend retry, a churn alert or a failed turn. A heading that folds the problem opens so the row can be reached. With no problem in the run, `e` says `This run has no problems.` and the selection stays.
+- rule: after `j`, `k` or `e` moves the selection, focus sits on the selected row when focus was on the page or on another row of the list, so Enter and Space act on the row the operator just moved to and no focus ring shows on another row. A key never takes focus from another control.
+- rule: a key that moves to a row outside the list box pauses the follow of a live run before it scrolls, and a key that moves to a row already in view keeps following. A key never turns the follow on, so the control, the pill and the arrival count keep their meaning. The bar labels `j k` as `move` and `e` as `next problem`, for every run.
+- rule: the search field narrows the rows at once by the text of the row, and marks the match as text, never as markup. A search opens every heading and unfolds every run of passed steps so a match inside one shows. The work item selector limits the list to one item, its first option shows every item, and it opens no heading. The search and the selector apply together, and clearing both restores the list.
+- rule: a search also reads the transcripts of this one run, after a quarter second without typing, and never another run. It matches the messages, the tool summaries and the output of failed tool calls, never the prompt or the thinking, and a turn gives its first matching line, cut to 160 characters. The query is cut to 200 characters. A row found there says `in transcript` with the line.
+- rule: while the transcripts are read, a status says `Searching the transcripts of this run…`, and it clears when the search ends. A search with no match says what was searched and offers to clear it. A transcript search that fails reads whole or not at all, says the transcripts could not be searched, keeps the matches of the row text and offers a retry, and a successful retry adds the transcript matches and clears the message.
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_sits_between_overview_and_details
 - tests: groom/tests/test_activity_follow_dynamic.py::test_a_live_runs_timeline_shows_a_control_that_says_it_is_following
 - tests: groom/tests/test_activity_follow_dynamic.py::test_new_rows_appear_at_the_end_while_following_and_the_newest_stays_in_view
@@ -200,4 +215,31 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - tests: groom/tests/test_activity_step_gate_dynamic.py::test_html_in_a_log_line_or_an_answer_renders_as_text_and_no_script_runs
 - tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_hostile_gate_answer_renders_without_markup_or_script
 - tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_controls_of_the_new_panes_have_a_role_a_name_keyboard_operation_and_axe_is_clean
+- tests: groom/tests/test_activity_keys_dynamic.py::test_the_bar_labels_j_and_k_as_move_and_e_as_next_problem
+- tests: groom/tests/test_activity_keys_dynamic.py::test_j_selects_the_next_row_and_k_the_previous_one_and_the_pane_follows
+- tests: groom/tests/test_activity_keys_dynamic.py::test_the_selected_row_stays_in_view_as_j_walks_down_a_long_timeline
+- tests: groom/tests/test_activity_keys_dynamic.py::test_on_another_tab_j_and_k_keep_moving_the_run_list
+- tests: groom/tests/test_activity_keys_dynamic.py::test_e_selects_the_next_problem_after_the_selection_and_wraps_to_the_first
+- tests: groom/tests/test_activity_keys_dynamic.py::test_after_a_key_moves_the_selection_focus_sits_on_the_selected_row_and_enter_and_space_act_on_it
+- tests: groom/tests/test_activity_keys_dynamic.py::test_the_work_item_selector_keeps_one_width_whatever_its_options
+- tests: groom/tests/test_activity_keys_dynamic.py::test_with_no_problems_e_says_so_and_the_selection_stays
+- tests: groom/tests/test_activity_keys_dynamic.py::test_e_opens_a_folded_heading_to_reach_a_problem_inside_it
+- tests: groom/tests/test_activity_keys_dynamic.py::test_typing_in_the_search_field_narrows_the_timeline_at_once_and_highlights_the_match
+- tests: groom/tests/test_activity_keys_dynamic.py::test_search_reads_the_transcripts_of_this_run_and_a_found_row_says_in_transcript_with_the_line
+- tests: groom/tests/test_activity_keys_dynamic.py::test_while_transcripts_are_searched_a_status_says_so_and_it_clears_when_the_search_ends
+- tests: groom/tests/test_activity_keys_dynamic.py::test_a_search_with_nothing_found_says_what_was_searched_and_offers_to_clear_it
+- tests: groom/tests/test_activity_keys_dynamic.py::test_a_failed_transcript_search_says_so_and_offers_a_retry_and_the_row_matches_stay
+- tests: groom/tests/test_activity_keys_dynamic.py::test_a_successful_retry_adds_the_transcript_matches
+- tests: groom/tests/test_activity_keys_dynamic.py::test_search_matches_rows_inside_folded_headings_and_shows_them
+- tests: groom/tests/test_activity_keys_dynamic.py::test_the_work_item_selector_limits_the_timeline_to_one_item_and_its_first_option_shows_every_item
+- tests: groom/tests/test_activity_keys_dynamic.py::test_search_and_the_selector_apply_together_and_clearing_them_restores_the_timeline
+- tests: groom/tests/test_activity_keys_dynamic.py::test_j_k_and_e_typed_in_the_search_field_or_the_gate_answer_box_are_typed_as_text_and_move_nothing
+- tests: groom/tests/test_activity_keys_dynamic.py::test_with_the_work_item_selector_focused_j_k_and_e_move_nothing_in_the_timeline
+- tests: groom/tests/test_activity_keys_dynamic.py::test_search_text_renders_as_harmless_text
+- tests: groom/tests/test_activity_keys_dynamic.py::test_the_search_field_and_selector_have_accessible_names_and_the_new_surface_has_no_axe_violations
+- tests: groom/tests/test_activity_keys_dynamic.py::test_a_key_that_moves_to_a_row_out_of_view_pauses_following_and_a_key_in_view_keeps_it
+- tests: groom/tests/test_activity.py::test_a_search_finds_the_turn_whose_transcript_says_the_query_with_its_line
+- tests: groom/tests/test_activity.py::test_a_search_never_reads_a_turn_outside_its_run_and_an_empty_query_reads_nothing
+- tests: groom/tests/test_activity.py::test_a_search_line_is_cut_and_keeps_markup_as_plain_text
+- tests: groom/tests/test_activity.py::test_an_unreadable_transcript_fails_the_search_and_the_endpoint_answers_503
 - refs: [operator reads an agent turn](../flows/operator-reads-an-agent-turn.md), [groom activity module](groom-activity-module.md), [groom transcript parse module](groom-transcript-parse-module.md), [the groom dashboard detail pane](../gui/screens/groom-dashboard.md#detail-pane)

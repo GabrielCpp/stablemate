@@ -176,7 +176,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#runs-list", text="author-002")
 - states: haystack matching is case-insensitive.
 - verify: visible(locator="#runs-list", text="author-002")
-- code: groom/groom/assets/dashboard.js::wireEvents@99f073783401
+- code: groom/groom/assets/dashboard.js::wireEvents@f16e2d670990
 - code: groom/groom/assets/dashboard.js::rowHaystack@484f5d24f89a
 - props:
   - `type`: literal `search`; required; supplies the searchbox role.
@@ -617,7 +617,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="#btn-notify in the accessibility tree when `data-mode` is not `settings`")
 - states: it can never co-render with the run Files tab's [detail-files-file-row](#detail-files-file-row) or the run Diff tab's [detail-diff-file-row](#detail-diff-file-row) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Enable notifications'})` can rely on.
 - verify: count(subject="elements matching role=button name='Enable notifications' in the rendered DOM", equals=1)
-- code: groom/groom/assets/dashboard.js::wireEvents@99f073783401
+- code: groom/groom/assets/dashboard.js::wireEvents@f16e2d670990
 - dom: a ghost button in the settings pane, beside `Browser alerts when a worker blocks.`
 - leads-to: [enable browser notifications from settings](#enable-browser-notifications-from-settings), which asks for [browser notification permission](../../concepts/browser-notification-permission.md).
 - screenshot: docs/specs/groom-dashboard/vet/settings-settings-enable-notifications-button.png
@@ -1307,11 +1307,12 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: it carries no count and no chip.
 - states: its accessible name is `Activity`.
 - states: it lists the run's rows under work item and flow pass headings, each a button that opens and closes its rows, with folded runs of passed steps and separate rows for failed steps, gates, retries and churn alerts.
+- states: the [search field](#detail-activity-search) and the [work item selector](#detail-activity-item) sit above the list for every run, with the hints `j k move` and `e next problem`.
 - states: a live run shows a [follow control](#detail-activity-follow) above the list.
 - states: the list of a live run follows the run as rows arrive.
 - states: the selected tab controls the single tabpanel `#detail-panel`, as the other tabs do.
 - code: groom/groom/assets/dashboard.js::DetailTabs@c23c8518540f
-- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_sits_between_overview_and_details
 - tests: groom/tests/test_activity_groups_dynamic.py::test_selecting_a_heading_opens_or_closes_it_by_pointer_and_by_keyboard
@@ -1345,7 +1346,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: when the run ends, the headings take the cost of the last turn.
 - states: a list with no turn is replaced by `No activity yet. The first agent turn appears here when it starts.` and says whether the run is alive or has finished.
 - states: while the list reads, a status named `Reading this run's activity…` shows and clears when the list arrives.
-- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_run_with_no_turn_says_it_has_no_activity_and_that_it_is_alive
@@ -1368,7 +1369,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a running turn reads `running` with the time it has run and no cost.
 - states: a failed turn reads `failed`.
 - states: the result line cuts at the row's width and carries its whole text in the accessible name.
-- code: groom/groom/assets/dashboard.js::TurnRow@6440ca77c295
+- code: groom/groom/assets/dashboard.js::TurnRow@95d0e65b0074
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_selecting_a_row_opens_the_turn_beside_the_list_and_marks_it_selected
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_running_turn_reads_running_in_its_row_and_pane_with_elapsed_time_and_no_cost_yet
@@ -1472,7 +1473,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: shown in place of the list when the run's turns could not be read, as `This run's activity could not be read`, with `The Details tab still works.`
 - verify: visible(locator="#detail-activity-state", text="could not be read")
 - states: a failed list never reads as `No activity yet`.
-- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it
 
@@ -1576,9 +1577,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: inert(locator="#detail-activity-follow")
 - states: returns to its earlier reading when the connection returns.
 - states: the list reads again when the connection returns.
-- states: goes, with its bar, when the run ends while the tab is open.
+- states: goes, with the pill, when the run ends while the tab is open.
 - code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
-- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_follow_dynamic.py::test_a_live_runs_timeline_shows_a_control_that_says_it_is_following
 - tests: groom/tests/test_activity_follow_dynamic.py::test_scrolling_up_pauses_the_follow_and_the_control_says_paused
@@ -1613,7 +1614,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: pressing it moves focus to the [follow control](#detail-activity-follow).
 - states: its container is a polite live region, present while the run is live.
 - states: the container is empty until a count shows.
-- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
 - code: groom/groom/assets/dashboard.js::arrivals@97f8a48533ed
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_follow_dynamic.py::test_while_paused_a_pill_counts_what_has_arrived
@@ -1621,6 +1622,56 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - tests: groom/tests/test_activity_follow_dynamic.py::test_the_follow_control_and_the_pill_have_a_role_a_name_keyboard_operation_and_the_count_is_announced_politely
 - tests: groom/tests/test_activity_follow_dynamic.py::test_the_pill_selects_the_newest_row_and_opens_it_in_the_pane
 - tests: groom/tests/test_activity_follow_dynamic.py::test_the_pill_brings_the_newest_row_into_view_when_a_later_group_sits_below_it
+
+### detail-activity-search
+
+- selector: `input.act-search`
+- role: searchbox
+- name: Search activity
+- keyboard: it is in the tab order.
+- keyboard: `j`, `k` and `e` typed in it are text and move nothing in the timeline.
+- parent: [detail-activity-tab](#detail-activity-tab)
+- states: shown above the list for every run, live or ended.
+- verify: visible(locator="#detail-activity-search")
+- states: typing narrows the rows at once to those whose text matches.
+- states: the match is marked in the rows.
+- states: every heading and folded run of steps opens.
+- states: after a pause in typing it also searches the transcripts of this run, and a row found there says `in transcript` with the matching line.
+- states: while the transcripts are read, a status in the list says `Searching the transcripts of this run…`, and it clears when the search ends.
+- states: a search with no match says what was searched and offers `Clear the search`.
+- states: a failed transcript search says so beside the rows that match by their text, and offers `Retry now`.
+- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
+- code: groom/groom/assets/dashboard.js::setQuery@8a88835d1d66
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_keys_dynamic.py::test_typing_in_the_search_field_narrows_the_timeline_at_once_and_highlights_the_match
+- tests: groom/tests/test_activity_keys_dynamic.py::test_search_reads_the_transcripts_of_this_run_and_a_found_row_says_in_transcript_with_the_line
+- tests: groom/tests/test_activity_keys_dynamic.py::test_while_transcripts_are_searched_a_status_says_so_and_it_clears_when_the_search_ends
+- tests: groom/tests/test_activity_keys_dynamic.py::test_a_search_with_nothing_found_says_what_was_searched_and_offers_to_clear_it
+- tests: groom/tests/test_activity_keys_dynamic.py::test_a_failed_transcript_search_says_so_and_offers_a_retry_and_the_row_matches_stay
+- tests: groom/tests/test_activity_keys_dynamic.py::test_a_successful_retry_adds_the_transcript_matches
+- tests: groom/tests/test_activity_keys_dynamic.py::test_j_k_and_e_typed_in_the_search_field_or_the_gate_answer_box_are_typed_as_text_and_move_nothing
+- tests: groom/tests/test_activity_keys_dynamic.py::test_search_text_renders_as_harmless_text
+- tests: groom/tests/test_activity_keys_dynamic.py::test_the_search_field_and_selector_have_accessible_names_and_the_new_surface_has_no_axe_violations
+
+### detail-activity-item
+
+- selector: `select.h-sel`
+- role: combobox
+- name: Work item
+- keyboard: it is in the tab order.
+- keyboard: `j`, `k` and `e` pressed on it move nothing in the timeline.
+- parent: [detail-activity-tab](#detail-activity-tab)
+- states: its first option, `All work items`, shows every item.
+- verify: visible(locator="#detail-activity-item", text="All work items")
+- states: choosing an item limits the list to that item and opens no heading.
+- states: it keeps one width of 155 pixels whatever its options, and a long item name is clipped.
+- states: it applies together with the search, and clearing both restores the list.
+- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_keys_dynamic.py::test_the_work_item_selector_keeps_one_width_whatever_its_options
+- tests: groom/tests/test_activity_keys_dynamic.py::test_the_work_item_selector_limits_the_timeline_to_one_item_and_its_first_option_shows_every_item
+- tests: groom/tests/test_activity_keys_dynamic.py::test_search_and_the_selector_apply_together_and_clearing_them_restores_the_timeline
+- tests: groom/tests/test_activity_keys_dynamic.py::test_with_the_work_item_selector_focused_j_k_and_e_move_nothing_in_the_timeline
 
 ## Interactions
 
@@ -1792,7 +1843,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Performs no websocket send.
 - verify: count(subject="outbound websocket sends after filter input", equals=0)
-- code: groom/groom/assets/dashboard.js::wireEvents@99f073783401
+- code: groom/groom/assets/dashboard.js::wireEvents@f16e2d670990
 - code: groom/groom/assets/dashboard.js::Fleet@b1dc450f276a
 - code: groom/groom/assets/dashboard.js::rowHaystack@484f5d24f89a
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
@@ -1858,7 +1909,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 ### keyboard-select-run-row
 
 - on: [run-row](#run-row)
-- trigger: pressing `j` or `k` anywhere on the page while focus is not in a text field, textarea, select or editable region.
+- trigger: pressing `j` or `k` anywhere on the page while focus is not in a text field, textarea, select or editable region, except on a run's Activity tab, where the same keys move the timeline rows instead.
 - role: button
 - one-per: `run` — one keyboard-selectable row per run in the store-backed fleet after the active filter is applied.
 - name: `{run.repo} #{run.row_id} {run.live_label} {run.doing}`
@@ -1891,7 +1942,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Does nothing when the list is empty.
 - verify: json_path(path="selection.empty_list_does_nothing", equals=true)
-- code: groom/groom/assets/dashboard.js::wireEvents@99f073783401
+- code: groom/groom/assets/dashboard.js::wireEvents@f16e2d670990
 - code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
 - code: groom/groom/assets/dashboard.js::setMode@d01c7d7c3d9c
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
@@ -2162,7 +2213,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - The first-click path requires a user gesture because browsers ignore an unprompted permission dialog.
 - verify: emitted(event="browser notification permission request", count=0)
-- code: groom/groom/assets/dashboard.js::wireEvents@99f073783401
+- code: groom/groom/assets/dashboard.js::wireEvents@f16e2d670990
 - code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
@@ -2252,7 +2303,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: unchanged(subject="server state")
 - code: groom/groom/assets/dashboard.js::openPalette@ab1a5517a248
 - code: groom/groom/assets/dashboard.js::closePalette@039308c89fc9
-- code: groom/groom/assets/dashboard.js::wireEvents@99f073783401
+- code: groom/groom/assets/dashboard.js::wireEvents@f16e2d670990
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### filter-command-palette-results
@@ -2488,7 +2539,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Opens the newest turn and requests `GET /api/run/{run_id}/activity/{slug}` for it.
   - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
   - Reads the list again when the run's figures revision moves, every 3 seconds while a turn runs, and when the connection returns.
-- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
 - code: groom/groom/assets/dashboard.js::loadActivity@5b6817a895cb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result

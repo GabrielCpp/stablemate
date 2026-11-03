@@ -1407,7 +1407,11 @@ function Overview({ detail }) {
 }
 
 function idleActivity() {
-  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null };
+  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null, query: "", item: "", search: idleSearch(), note: "" };
+}
+
+function idleSearch() {
+  return { status: "idle", query: "", matches: {} };
 }
 
 let activitySeq = 0;
@@ -1586,6 +1590,163 @@ function heldOpen(activity, alive) {
   return hold;
 }
 
+const NO_ITEM = "\u0000none";
+const SEARCH_WAIT_MS = 250;
+let searchSeq = 0;
+let searchTimer = 0;
+
+const normalQuery = (text) => text.split(/\s+/).filter(Boolean).join(" ").toLowerCase();
+
+function textMatches(text, query) {
+  return !!query && String(text || "").toLowerCase().includes(query);
+}
+
+function Marked({ text, query }) {
+  const source = String(text || "");
+  const at = query ? source.toLowerCase().indexOf(query) : -1;
+  if (at < 0) return source;
+  return html`${source.slice(0, at)}<mark>${source.slice(at, at + query.length)}</mark>${source.slice(at + query.length)}`;
+}
+
+function transcriptHit(activity, key) {
+  const search = activity.search;
+  return search.status === "ready" && search.query === normalQuery(activity.query) ? search.matches[key] || "" : "";
+}
+
+function timelineView(activity) {
+  const query = normalQuery(activity.query);
+  if (!query && !activity.item) return { items: activity.items, filtering: false, forced: false, query, empty: false };
+  const rowOf = (key) => activity.rows.find((one) => one.slug === key);
+  const keeps = (entry) => {
+    if (!query) return true;
+    if (entry.kind === "turn" || entry.kind === "running") {
+      const row = rowOf(entry.slug);
+      return !!row && (textMatches(row.node + " " + row.result, query) || !!transcriptHit(activity, row.slug));
+    }
+    return textMatches((entry.name || "") + " " + (entry.result || ""), query);
+  };
+  const items = [];
+  for (const item of activity.items) {
+    if (activity.item && (item.work_id || NO_ITEM) !== activity.item) continue;
+    const passes = [];
+    for (const pass of item.passes) {
+      const entries = [];
+      for (const entry of pass.entries) {
+        if (entry.kind === "steps" && query) entry.steps.forEach((step) => keeps({ ...step, kind: "step" }) && entries.push({ ...step, kind: "step" }));
+        else if (entry.kind === "steps" || entry.kind === "doing") {
+          if (!query) entries.push(entry);
+        } else if (keeps(entry)) entries.push(entry);
+      }
+      if (entries.length || !query) passes.push({ ...pass, entries });
+    }
+    if (passes.length) items.push({ ...item, passes });
+  }
+  const shown = items.some((item) => item.passes.some((pass) => pass.entries.length));
+  return { items, filtering: true, forced: !!query, query, empty: !!query && !shown };
+}
+
+function orderedKeys(view, rows) {
+  const out = [];
+  for (const item of view.items) {
+    for (const pass of item.passes) {
+      for (const entry of pass.entries) {
+        if (entry.kind === "steps") entry.steps.forEach((step) => out.push({ key: step.key, problem: false }));
+        else if (entry.kind === "turn" || entry.kind === "running") {
+          const row = rows.find((one) => one.slug === entry.slug);
+          out.push({ key: entry.slug, problem: !!row && row.status === "failed" });
+        } else if (entry.kind !== "doing") out.push({ key: entry.key, problem: ["failed", "retry", "churn"].includes(entry.kind) });
+      }
+    }
+  }
+  return out;
+}
+
+function setQuery(runId, text) {
+  const held = store.get().activity;
+  const query = normalQuery(text);
+  clearTimeout(searchTimer);
+  searchSeq++;
+  store.set({ activity: { ...held, query: text, note: "", search: query ? { status: "waiting", query, matches: {} } : idleSearch() } });
+  if (query) searchTimer = setTimeout(() => searchTranscripts(runId, query), SEARCH_WAIT_MS);
+}
+
+function setItem(value) {
+  store.set({ activity: { ...store.get().activity, item: value, note: "" } });
+}
+
+function clearFilters() {
+  clearTimeout(searchTimer);
+  searchSeq++;
+  store.set({ activity: { ...store.get().activity, query: "", item: "", note: "", search: idleSearch() } });
+}
+
+async function searchTranscripts(runId, query) {
+  const seq = ++searchSeq;
+  store.set({ activity: { ...store.get().activity, search: { status: "loading", query, matches: {} } } });
+  try {
+    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/search?q=" + encodeURIComponent(query));
+    if (!response.ok) throw new Error("search " + response.status);
+    const data = await response.json();
+    if (seq !== searchSeq) return;
+    const matches = {};
+    for (const one of data.matches) matches[one.key] = one.line;
+    store.set({ activity: { ...store.get().activity, search: { status: "ready", query, matches } } });
+  } catch (err) {
+    if (seq !== searchSeq) return;
+    store.set({ activity: { ...store.get().activity, search: { status: "failed", query, matches: {} } } });
+  }
+}
+
+function rowShown(list, key) {
+  const row = list && list.querySelector('[data-slug="' + CSS.escape(key) + '"], [data-entry="' + CSS.escape(key) + '"]');
+  if (!row) return false;
+  const box = list.getBoundingClientRect();
+  const at = row.getBoundingClientRect();
+  return at.top >= box.top && at.bottom <= box.bottom;
+}
+
+function goToRow(key) {
+  const held = store.get().activity;
+  const alive = !store.get().detail || store.get().detail.state !== "finished";
+  const list = document.querySelector(".tl");
+  const view = timelineView(held);
+  const order = orderedKeys(view, held.rows);
+  const newest = order.length ? order[order.length - 1].key : "";
+  if (alive && held.follow && key !== newest && !rowShown(list, key)) pauseFollow(alive);
+  const active = document.activeElement;
+  const takeFocus = !active || active === document.body || !!active.closest(".tl");
+  store.set({ activity: { ...store.get().activity, note: "" } });
+  openRow(key);
+  if (takeFocus) {
+    setTimeout(() => {
+      const row = document.querySelector('.tl [data-slug="' + CSS.escape(key) + '"], .tl [data-entry="' + CSS.escape(key) + '"]');
+      if (row) row.focus({ preventScroll: true });
+    }, 0);
+  }
+}
+
+function moveTimeline(step) {
+  const held = store.get().activity;
+  const order = orderedKeys(timelineView(held), held.rows);
+  if (!order.length) return;
+  const at = order.findIndex((one) => one.key === held.selected);
+  const next = at < 0 ? (step > 0 ? 0 : order.length - 1) : Math.max(0, Math.min(order.length - 1, at + step));
+  if (at >= 0 && next === at) return;
+  goToRow(order[next].key);
+}
+
+function nextProblem() {
+  const held = store.get().activity;
+  const order = orderedKeys(timelineView(held), held.rows);
+  const at = order.findIndex((one) => one.key === held.selected);
+  const after = order.slice(at + 1).concat(order.slice(0, at + 1)).find((one) => one.problem);
+  if (!after) {
+    store.set({ activity: { ...held, note: "This run has no problems." } });
+    return;
+  }
+  goToRow(after.key);
+}
+
 function pauseFollow(alive) {
   const held = store.get().activity;
   if (!held.follow) return;
@@ -1627,7 +1788,7 @@ function turnLabel(row) {
   return row.node + ", " + state + ", started " + turnWhen(row) + (meta ? ", " + meta : "") + (row.result && row.status !== "unrecorded" ? ", " + row.result : "");
 }
 
-function TurnRow({ row, selected, pick }) {
+function TurnRow({ row, selected, pick, query, hit }) {
   const running = row.status === "running";
   return html`<button
     type="button"
@@ -1639,7 +1800,7 @@ function TurnRow({ row, selected, pick }) {
   >
     <span class="t">${turnWhen(row)}</span>
     <span class="i" aria-hidden="true">${running ? "●" : "◆"}</span>
-    <span class="main"><span class="n">${row.node}</span><span class="w">${row.status === "unrecorded" ? "ended with no record" : row.result}</span></span>
+    <span class="main"><span class="n"><${Marked} text=${row.node} query=${query} /></span>${hit && !textMatches(row.result, query) ? html`<span class="w hit">in transcript: <${Marked} text=${hit} query=${query} /></span>` : html`<span class="w">${row.status === "unrecorded" ? "ended with no record" : html`<${Marked} text=${row.result} query=${query} />`}</span>`}</span>
     <span class="m">${turnMeta(row)}</span>
   </button>`;
 }
@@ -1662,7 +1823,7 @@ function entryMeta(entry) {
   return entry.duration_s > 0 ? entrySpan(entry.duration_s) : "";
 }
 
-function EntryRow({ entry, selected, pick }) {
+function EntryRow({ entry, selected, pick, query }) {
   const meta = entryMeta(entry);
   const label = entry.name + ", " + ENTRY_WORDS[entry.kind] + ", " + entryWhen(entry) + (meta ? ", " + meta : "") + (entry.result ? ", " + entry.result : "");
   return html`<button
@@ -1676,7 +1837,7 @@ function EntryRow({ entry, selected, pick }) {
   >
     <span class="t">${entryWhen(entry)}</span>
     <span class="i" aria-hidden="true">${ENTRY_MARKS[entry.kind]}</span>
-    <span class="main"><span class="n">${entry.name}</span><span class="w">${entry.kind === "step" ? "passed" : entry.kind === "doing" ? "running" : entry.result}</span></span>
+    <span class="main"><span class="n"><${Marked} text=${entry.name} query=${query} /></span><span class="w">${entry.kind === "step" ? "passed" : entry.kind === "doing" ? "running" : html`<${Marked} text=${entry.result} query=${query} />`}</span></span>
     <span class="m">${meta}</span>
   </button>`;
 }
@@ -1756,9 +1917,9 @@ function GroupHead({ cls, open, title, aside, label, toggle }) {
   </button>`;
 }
 
-function PassSection({ item, pass, rows, selected, pick, folds, alive }) {
+function PassSection({ item, pass, rows, selected, pick, folds, alive, view, hits }) {
   const key = passKey(item, pass);
-  const open = passIsOpen(item, pass, selected, folds);
+  const open = view.forced || passIsOpen(item, pass, selected, folds);
   const state = pass.state === "running" && !alive ? "" : pass.state;
   const stateWord = state === "running" ? "running" : state === "open" ? "in progress" : state;
   const aside = (state === "running" || state === "open" || state === "failed" ? stateWord + " · " : "") + groupFigures(pass);
@@ -1772,23 +1933,23 @@ function PassSection({ item, pass, rows, selected, pick, folds, alive }) {
       }
       if (entry.kind === "turn" || entry.kind === "running") {
         const row = rows.find((one) => one.slug === entry.slug);
-        return row ? html`<${TurnRow} key=${entry.key} row=${row} selected=${entry.slug === selected} pick=${pick} />` : null;
+        return row ? html`<${TurnRow} key=${entry.key} row=${row} selected=${entry.slug === selected} pick=${pick} query=${view.query} hit=${view.query ? hits[row.slug] : ""} />` : null;
       }
-      return html`<${EntryRow} key=${entry.key} entry=${entry} selected=${entry.key === selected} pick=${pick} />`;
+      return html`<${EntryRow} key=${entry.key} entry=${entry} selected=${entry.key === selected} pick=${pick} query=${view.query} />`;
     }) : null}
   </div>`;
 }
 
-function ItemSection({ item, alive, rows, selected, pick, folds, headed }) {
+function ItemSection({ item, alive, rows, selected, pick, folds, headed, view, hits }) {
   const key = "item:" + item.work_id;
-  const open = itemIsOpen(item, alive, selected, folds, headed);
+  const open = view.forced || itemIsOpen(item, alive, selected, folds, headed);
   const title = item.work_id || "outside any work item";
   const state = item.work_id ? itemState(item, alive) : "";
   const aside = (state ? state + " · " : "") + groupFigures(item);
   const label = (item.work_id ? "Work item " + item.work_id : "Outside any work item") + ", " + (state ? state + ", " : "") + groupFigures(item).replace(" · ", ", ");
   return html`<div class="tl-sec" data-item=${item.work_id}>
     ${headed ? html`<${GroupHead} cls="tl-group" open=${open} title=${title} aside=${aside} label=${label} toggle=${() => setFold(key, !open)} />` : null}
-    ${open ? item.passes.map((pass) => html`<${PassSection} key=${pass.flow + pass.pass} item=${item} pass=${pass} rows=${rows} selected=${selected} pick=${pick} folds=${folds} alive=${alive} />`) : null}
+    ${open ? item.passes.map((pass) => html`<${PassSection} key=${pass.flow + pass.pass} item=${item} pass=${pass} rows=${rows} selected=${selected} pick=${pick} folds=${folds} alive=${alive} view=${view} hits=${hits} />`) : null}
   </div>`;
 }
 
@@ -2029,8 +2190,8 @@ function openRow(key) {
   store.set({ activity: { ...held, folds } });
   pickRow(held.runId, key, row);
   setTimeout(() => {
-    const target = document.querySelector('[data-entry="' + CSS.escape(key) + '"], [data-slug="' + CSS.escape(key) + '"]');
-    if (target) target.scrollIntoView({ block: "nearest" });
+    const list = document.querySelector(".tl");
+    if (list) keepInView(list, key);
   }, 0);
 }
 
@@ -2145,15 +2306,35 @@ function ActivityTab({ detail }) {
     if (controlRef.current) controlRef.current.focus();
   };
   const arrived = alive && !activity.follow ? arrivals(activity) : 0;
+  const view = timelineView(activity);
+  const hits = {};
+  for (const row of activity.rows) hits[row.slug] = transcriptHit(activity, row.slug);
+  const searching = view.query && ["waiting", "loading"].includes(activity.search.status);
+  const searchFailed = view.query && activity.search.status === "failed";
   const rows = alive ? activity.rows : activity.rows.map((row) => (row.status === "running" ? { ...row, status: "unrecorded" } : row));
   return html`
-    ${alive ? html`<div class="feedbar"><span class="r"><${FollowControl} follow=${activity.follow} lost=${lost} toggle=${toggle} innerRef=${controlRef} /></span></div>` : null}
+    <div class="feedbar">
+      <input class="filter act-search" type="search" placeholder="Search rows and transcripts…" aria-label="Search activity" value=${activity.query} onInput=${(event) => setQuery(runId, event.currentTarget.value)} />
+      <select class="h-sel" aria-label="Work item" value=${activity.item} onChange=${(event) => setItem(event.currentTarget.value)}>
+        <option value="">All work items</option>
+        ${activity.items.map((item) => html`<option key=${item.work_id} value=${item.work_id || NO_ITEM}>${item.work_id || "outside any work item"}</option>`)}
+      </select>
+      <span class="r">
+        <span class="hint"><span class="kbd">j k</span> move</span>
+        <span class="hint"><span class="kbd">e</span> next problem</span>
+        ${alive ? html`<${FollowControl} follow=${activity.follow} lost=${lost} toggle=${toggle} innerRef=${controlRef} />` : null}
+      </span>
+    </div>
     <div class="feed">
       <div class=${"tl" + (headed ? "" : " flat")} role="log" aria-label="Run activity" ref=${listRef} onScroll=${scrolled}>
-        ${activity.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${rows} selected=${activity.selected} pick=${pick} folds=${folds} headed=${headed} />`)}
+        ${view.empty && activity.search.status === "ready" ? html`<div class="detail-empty" role="status">Nothing in this run matches “${view.query}”. <button type="button" class="btn ghost clear-search" onClick=${clearFilters}>Clear the search</button></div>` : null}
+        ${view.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${rows} selected=${activity.selected} pick=${pick} folds=${folds} headed=${headed} view=${view} hits=${hits} />`)}
+        ${searching ? html`<div role="status" class="dim search-note"><span class="spin" aria-hidden="true"></span>Searching the transcripts of this run…</div>` : null}
+        ${searchFailed ? html`<div role="status" class="dim search-note">The transcripts of this run could not be searched. These rows match the row text only. <button type="button" class="btn ghost retry-search" onClick=${() => searchTranscripts(runId, view.query)}>Retry now</button></div>` : null}
+        ${activity.note ? html`<div role="status" class="dim search-note">${activity.note}</div>` : null}
         ${alive ? html`<div class="newpill" aria-live="polite">${arrived ? html`<button type="button" class="newpill-go" onClick=${back}>${arrived} new · back to live <span aria-hidden="true">↓</span></button>` : null}</div>` : null}
       </div>
-      <${TurnPane} runId=${runId} rows=${rows} turn=${activity.turn} items=${activity.items} selected=${activity.selected} entry=${activity.entry} />
+      ${view.empty && activity.search.status === "ready" ? html`<div class="rd"><div class="detail-empty">Select a row to read it.</div></div>` : html`<${TurnPane} runId=${runId} rows=${rows} turn=${activity.turn} items=${activity.items} selected=${activity.selected} entry=${activity.entry} />`}
     </div>`;
 }
 
@@ -3352,6 +3533,14 @@ function wireEvents() {
       return;
     }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
+    const mine = store.get();
+    const onTimeline = mine.tab === "activity" && mine.activity.status === "ready" && !e.metaKey && !e.ctrlKey && !e.altKey;
+    if (!typing && onTimeline && (e.key === "j" || e.key === "k" || e.key === "e")) {
+      e.preventDefault();
+      if (e.key === "e") nextProblem();
+      else moveTimeline(e.key === "j" ? 1 : -1);
+      return;
+    }
     if (!typing && (e.key === "j" || e.key === "k")) {
       const rows = [].slice.call(document.querySelectorAll("#runs-list .row"));
       const idx = rows.findIndex((r) => r.dataset.workerId === store.get().selected);

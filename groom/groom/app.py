@@ -677,6 +677,17 @@ async def run_activity(run_id: Annotated[str, PathParameter()]) -> dict:
     return await pools.QUERY.run(activity.timeline, run_id, await _live_turns(run_id), _standing(run_id))
 
 
+@get("/api/run/{run_id:str}/search", include_in_schema=False)
+async def run_search(run_id: Annotated[str, PathParameter()], q: Annotated[str, QueryParameter()] = "") -> dict:
+    """The turns of this one run whose transcript says the query, each with its first matching line."""
+    wf = state.WORKFLOWS.get(run_id)
+    pending = wf is not None and not wf.native
+    try:
+        return await pools.QUERY.run(activity.search, run_id, q, await _live_turns(run_id), pending)
+    except activity.SearchFailed as exc:
+        raise ServiceUnavailableException(detail="the transcripts could not be searched") from exc
+
+
 @get("/api/run/{run_id:str}/entry/{key:str}", include_in_schema=False)
 async def run_entry(
     run_id: Annotated[str, PathParameter()], key: Annotated[str, PathParameter()]
@@ -1688,6 +1699,7 @@ def create_app() -> Litestar:
             run_overview,
             run_activity,
             run_turn,
+            run_search,
             run_entry,
             outbox_post,
             inbox_get,
