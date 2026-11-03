@@ -22,6 +22,7 @@ title: ostler
 - [Auditing a book's claims against source](concepts/auditing-a-books-claims-against-source.md)
 - [Surfaces, screens and locators](concepts/surfaces-screens-and-locators.md)
 - [Book health: coverage, reach and census](concepts/book-health-coverage-reach-and-census.md)
+- [Skill examples compile](concepts/skill-examples-compile.md)
 - [The Ostler facade and book utilities](concepts/the-ostler-facade-and-book-utilities.md)
 - [The text index](concepts/the-text-index.md)
 - [ostler](cli.md)
