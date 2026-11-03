@@ -33,9 +33,9 @@ The catalogue holds names, usernames, descriptions, vars, tags and which fields 
 value. It never holds a value, so `list` and `tags` cannot emit one. `fill`, `type` and `exec`
 are the three readers that use a value, and each hands it to a consumer rather than to
 the caller. `doctor` reads values without delivering them, to tell a catalogue entry
-from a keyring item deleted behind it, and discards each one at once. The `classify` and
-`holds` requests behind `env` and the guard read values the same way, to compare them
-against text, and answer with a verdict or a name.
+from a keyring item deleted behind it, and discards each one at once. The `classify`
+request behind `env` reads values the same way, to compare them against text, and
+answers with a verdict.
 
 A repository's non-secret configuration is not saddlebag's to hold. It lives on the
 ostler `environment` page under `variables:`, where `NAME: secret` marks the one kind of
@@ -156,15 +156,9 @@ everything a same-user process can read without a debugger.
 - **`env import` reads values from a file and writes them to the store.** It prints the
   record names it created and never a value, and it stops before any write when a
   requested key is absent or empty.
-- **The guard refuses before a value is read.** `guard --hook` sees a tool call's
-  arguments, not its output, and denies the ones whose output would be a secret: a read
-  of a secret-bearing file, a dump of the environment, a secret manager's read, or a
-  command whose text already carries a value the store holds. For the last it sends the
-  command text to the store's `holds` request and gets back the record names, never a
-  value. The daemon compares against every stored value's forms in memory and answers
-  with names only. A denial carries the saddlebag line that gets the same job done. On a
-  machine with no daemon, that one check is skipped with a note on stderr, because a
-  keyring read for every tool call would prompt the operator.
+- **The guard refuses a secret file's read before a value is read.** `guard --hook` sees
+  a tool call's arguments, not its output, and denies the ones that would read a dotenv,
+  key or credentials file. A denial carries the saddlebag line that gets the same job done.
 - **The daemon logs no value.** Its log carries verbs, names, selectors and counts.
 - **There is no plaintext path.** If Vault is unreachable or the token is not
   authenticated, the daemon does not start. A locked or absent keyring stops the
@@ -185,12 +179,11 @@ the Secret Service for any item under the service name, and on macOS an interpre
 the Keychain trusts reads them without a prompt. The tool that does so by design is
 `saddlebag`, invoked with a command line the permission layer sees.
 
-The guard is a redirect for the accidental read, not an access control. It knows the
-file names, the readers, the environment dumpers and the manager reads listed in the
-README, and a command it cannot parse, a reader it does not know, an interpreter given a
-script file, or a tool outside Read, Grep, Write, Edit and Bash goes through. A pasted
-value is caught only when a daemon answers and the value is at least 8 characters, the
-same floor `exec` masks at. Nothing it denies was ever a boundary: the agent that wants
-the value can rename the file or write a loop. What the guard changes is the default,
+The guard is a redirect for the accidental read of a secret file, not an access control.
+It knows the file names and the readers listed in the README. A dump of the environment,
+`/proc/<pid>/environ`, a secret manager's read and a pasted value all go through, and their output reaches the transcript. So do a command it cannot
+parse, a reader it does not know, an interpreter given a script file, and a tool outside
+Read, Grep, Write, Edit and Bash. Nothing it denies was ever a boundary: the agent that
+wants the value can rename the file or write a loop. What the guard changes is the default,
 so that the ordinary move of reading `.env` to see a port lands on `saddlebag env show`
 and leaves the password out of the transcript.

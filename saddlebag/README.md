@@ -9,7 +9,8 @@ over the Chrome DevTools Protocol. `type` types it into the focused field of an 
 device over adb. `exec` runs a command with it set in that command's process
 environment. None of them hands the value back to whoever ran it. Around the
 store, `env` reads a dotenv file with its secret lines masked, and `guard` is the
-Claude Code hook that refuses the tool call which would have printed a secret.
+Claude Code hook that refuses the tool call which would have read a dotenv, key or
+credentials file.
 
 One daemon holds the HashiCorp Vault token, and every other command is a thin client
 over a unix socket. That is what lets the same tool serve a run on the host and a run
@@ -167,7 +168,7 @@ carries `environment=<slug of the ostler environment page>`.
 | `exec` | run a command with matching secrets in its environment |
 | `env show` `keys` `classify` | read a dotenv file with its secret values masked, list its keys with the rule that marks each secret one, or print the verdicts as JSON |
 | `env import` | store a dotenv's chosen keys as secrets, one record per key, without printing a value |
-| `guard --hook` `guard install` | the Claude Code PreToolUse hook that denies a secret-printing tool call, and its installer |
+| `guard --hook` `guard install` | the Claude Code PreToolUse hook that denies a read of a dotenv, key or credentials file, and its installer |
 | `doctor` | backend and route in use, store reachable, secrets with no value, orphan keyring items, stray token file, and on the daemon route where its token came from |
 
 ```bash
@@ -235,36 +236,25 @@ keys before it stay stored.
 ## The guard
 
 `saddlebag guard --hook` reads a Claude Code PreToolUse payload on stdin and prints a
-deny decision when the tool call would put a secret in front of the agent. The denial's
-reason is the saddlebag line that gets the same thing done, so the agent is redirected
-rather than stopped. It covers the Read, Grep, Write, Edit and Bash tools and refuses:
+deny decision when the tool call would read a dotenv, key or credentials file. The
+denial's reason is the saddlebag line that gets the same thing done, so the agent is
+redirected rather than stopped. It covers the Read, Grep, Write, Edit and Bash tools.
 
-- a read of a file whose contents are secret: `.env` and its variants other than
-  `.env.example`, `.env.sample`, `.env.template` and `.env.dist`; `.pem`, `.key`, `.p12`
-  and `.pfx` files and `id_rsa` and its siblings; `.netrc`, `.npmrc`, `.pypirc`,
-  `.git-credentials`, `.vault-token`, `~/.aws/credentials`, `~/.docker/config.json`;
-  `/proc/<pid>/environ`. In a shell command the readers it knows are `cat`, `grep`, `sed`,
-  `head`, `source`, `python`, `jq` and the rest of that family, behind wrappers such as
-  `sudo`, `env`, `timeout` and `xargs`;
-- a dump of the whole environment: `env` with no command, `printenv` with no name,
-  `export -p`, `set`, `declare -x`;
-- a secret manager's read whose output is the value: `vault kv get`, `vault read`,
-  `aws secretsmanager get-secret-value`, `aws ssm get-parameter --with-decryption`,
-  `gcloud secrets versions access`, `az keyvault secret show`, `kubectl get secret`,
-  `op read`, `op item get`, `gh auth token`, `security find-generic-password -w`,
-  `secret-tool lookup`, `pass show`, `docker inspect`, `docker compose config`. The read
-  passes when the same stage pipes into `saddlebag secret set`, which is how a fetched
-  secret enters the store;
-- a command whose text carries a value the store holds, found by asking the daemon
-  `holds` with the command text. The daemon answers with the record names and never a
-  value. The check runs only when a daemon answers; on the keyring route the guard
-  writes one note on stderr and lets the command through.
+It refuses `.env` and its variants other than `.env.example`, `.env.sample`,
+`.env.template` and `.env.dist`. It refuses `.pem`, `.key`, `.p12` and `.pfx` files and
+`id_rsa` and its siblings. It refuses `.netrc`, `.npmrc`, `.pypirc`, `.git-credentials`,
+`.vault-token`, `~/.aws/credentials` and `~/.docker/config.json`. In a shell command the
+readers it knows are `cat`, `grep`, `sed`, `head`, `source`, `python`, `jq` and the rest of
+that family, behind wrappers such as `sudo`, `env`, `timeout` and `xargs`.
 
-A command that starts with `saddlebag exec` passes whole, and any `saddlebag` stage is
-skipped. Anything the guard cannot parse is allowed: it is a guard against the
-accidental read, not an access control. `saddlebag guard install --user` registers it in
-`~/.claude/settings.json`, `--project` in `./.claude/settings.json`, replacing an entry
-it installed before.
+It refuses nothing else. A dump of the environment, `/proc/<pid>/environ` and a secret
+manager's read such as `aws secretsmanager get-secret-value` all pass, and their output
+reaches the agent's transcript.
+
+A command that starts with `saddlebag exec` passes whole. Anything the guard cannot parse
+is allowed: it is a guard against the accidental read, not an access control.
+`saddlebag guard install --user` registers it in `~/.claude/settings.json`, `--project` in
+`./.claude/settings.json`, replacing an entry it installed before.
 
 ---
 
@@ -343,7 +333,7 @@ in place and orphaned; the keyring store of 2.x reads only items under
 saddlebag/
 ├── __init__.py
 ├── cli.py        # argparse front end: build a request, route it, print the reply; `exec`
-├── guard.py      # the PreToolUse hook: the verdict on a tool call, its redirect, and the installer
+├── guard.py      # the PreToolUse hook: the verdict on a secret file's read, its redirect, and the installer
 ├── dotenv.py     # a dotenv file's lines, and the masked form of a secret one
 ├── shapes.py     # the secret rules a classified line can match: key-name, token-shape, url-userinfo
 ├── route.py      # how a command reaches the counter: the daemon's socket, or in-process over the keyring

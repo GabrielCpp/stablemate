@@ -294,15 +294,6 @@ class Verbs:
                     forms |= redact.forms(stored)
         return held
 
-    def verb_holds(self, args: dict[str, Any]) -> dict[str, Any]:
-        text = _required(args, "text")
-        names = sorted(
-            name
-            for name, forms in self._held_forms().items()
-            if any(len(form) >= redact.MIN_LENGTH and form in text for form in forms)
-        )
-        return {"held": bool(names), "names": names}
-
     def verb_classify(self, args: dict[str, Any]) -> dict[str, Any]:
         entries = args.get("entries")
         if not isinstance(entries, list):
