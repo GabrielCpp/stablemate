@@ -154,7 +154,7 @@ def test_a_run_that_shows_a_diff_tab_shows_a_files_tab_before_it_and_other_runs_
         try:
             _pick(page)
             tabs = page.get_by_role("tablist", name="Run detail").get_by_role("tab")
-            expect(tabs).to_have_text([re.compile("^Overview$"), re.compile("^Activity$"), re.compile("^Details$"), re.compile("^Files$"), re.compile(r"^Diff")])
+            expect(tabs).to_have_text([re.compile("^Overview$"), re.compile("^Activity$"), re.compile("^Files$"), re.compile(r"^Diff")])
             for container in ("nativebox456", OTHER, "quietbox5678"):
                 _pick(page, container)
                 expect(page.get_by_role("tab", name="Overview")).to_be_visible()
@@ -312,7 +312,7 @@ def test_files_keeps_its_tree_and_selected_file_across_tabs_of_the_same_run_with
             _open_files(page)
             _open_file(page, "sign_in.py")
             expect(page.locator("#detail-files-file-head")).to_be_visible()
-            for other in ("Diff", "Details", "Overview"):
+            for other in ("Diff", "Activity", "Overview"):
                 page.get_by_role("tab", name=re.compile(f"^{other}")).click()
             _tab(page, "Files").click()
             expect(page.locator("#detail-files-file-head")).to_contain_text("services/api/sign_in.py")
@@ -343,7 +343,7 @@ def test_folders_the_operator_collapsed_stay_collapsed_across_tabs_of_the_same_r
             api = page.get_by_role("button", name="services/api")
             api.click()
             expect(api).to_have_attribute("aria-expanded", "false")
-            for away in ("Diff", "Details", "Overview"):
+            for away in ("Diff", "Activity", "Overview"):
                 page.get_by_role("tab", name=re.compile(f"^{away}")).click()
             _tab(page, "Files").click()
             expect(page.get_by_role("button", name="services/api")).to_have_attribute("aria-expanded", "false")
@@ -711,7 +711,7 @@ def test_files_tab_controls_have_roles_names_and_keyboard_operation_and_pass_axe
         page = _open(live)
         try:
             _pick(page)
-            page.get_by_role("tab", name="Details").click()
+            page.get_by_role("tab", name="Activity").click()
             page.keyboard.press("ArrowRight")
             expect(_tab(page, "Files")).to_be_focused()
             expect(_tab(page, "Files")).to_have_attribute("aria-selected", "true")

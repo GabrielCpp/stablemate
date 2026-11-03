@@ -337,7 +337,7 @@ def test_sending_an_answer_removes_that_gate_and_the_last_one_clears_the_strip_w
             page.close()
 
 
-def test_sending_an_answer_keeps_the_details_tab_open():
+def test_sending_an_answer_keeps_the_activity_tab_open():
     from playwright.sync_api import expect
 
     live = _live()
@@ -347,13 +347,13 @@ def test_sending_an_answer_keeps_the_details_tab_open():
         page = _open(live)
         try:
             _pick_run(page, RUN)
-            page.get_by_role("tab", name="Details").click()
+            page.get_by_role("tab", name="Activity").click()
             strip = _strip(page)
             strip.get_by_role("textbox").fill("go")
             strip.get_by_role("button", name="Send answer").click()
             expect(_strip(page)).to_have_count(0)
-            expect(page.get_by_role("tab", name="Details")).to_have_attribute("aria-selected", "true")
-            expect(page.get_by_role("tabpanel")).to_contain_text("Metrics")
+            expect(page.get_by_role("tab", name="Activity")).to_have_attribute("aria-selected", "true")
+            expect(page.get_by_role("tabpanel")).to_be_visible()
         finally:
             page.close()
 

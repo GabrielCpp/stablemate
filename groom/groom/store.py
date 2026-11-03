@@ -1339,7 +1339,7 @@ def _run_spans(run: str) -> list[dict[str, Any]]:
             f" {_charge} AS profile_cost_usd, {_output} AS profile_output_tokens,"
             f" {_input} AS profile_input_tokens, {_cache_read} AS profile_cache_read_tokens,"
             f" {_cache_write} AS profile_cache_write_tokens,"
-            " resume_generation FROM spans LEFT JOIN charges USING (span_id)"
+            " spans.rowid AS row_id, resume_generation FROM spans LEFT JOIN charges USING (span_id)"
             " WHERE run_id = ? ORDER BY start_ts",
             (run, run),
         )
@@ -1651,19 +1651,70 @@ def query_spans(
     return [dict(row) for row in rows]
 
 
+def older_than(rank: int, before: tuple[float, int, int] | None, ts: str, row: str) -> tuple[str, list[Any]]:
+    """The SQL condition keeping the rows of one record kind that sort after a cursor of time, kind rank and row id in the newest-first order."""
+    if before is None:
+        return "1=1", []
+    when, ranked, ident = before
+    if rank < ranked:
+        return f"{ts} <= ?", [when]
+    if rank > ranked:
+        return f"{ts} < ?", [when]
+    return f"({ts} < ? OR ({ts} = ? AND {row} < ?))", [when, when, ident]
+
+
 @reading
-def detail_metrics(run: str, limit: int = 60) -> list[dict[str, Any]]:
-    """Recent persisted metrics for a pane's initial history snapshot."""
+def detail_metrics(
+    run: str, limit: int = 60, before: tuple[float, int, int] | None = None, rank: int = 1
+) -> list[dict[str, Any]]:
+    """Persisted metrics of one run, newest first, from a cursor of time, kind rank and row id."""
+    clause, bound = older_than(rank, before, "ts", "rowid")
     rows = read_connection().execute(
-        "SELECT name, ts, value, attrs_json FROM metrics"
-        " WHERE run_id = ? ORDER BY ts DESC, rowid DESC LIMIT ?",
-        (run, limit),
+        f"SELECT rowid AS id, name, ts, value, attrs_json FROM metrics"  # noqa: S608 - literals
+        f" WHERE run_id = ? AND {clause} ORDER BY ts DESC, rowid DESC LIMIT ?",
+        (run, *bound, limit),
     ).fetchall()
     return [
-        {"name": row["name"], "ts": row["ts"], "value": row["value"],
+        {"id": row["id"], "name": row["name"], "ts": row["ts"], "value": row["value"],
          "attrs": json.loads(row["attrs_json"])}
         for row in rows
     ]
+
+
+@reading
+def count_metrics(run: str) -> int:
+    """How many metric samples one run stored."""
+    return int(read_connection().execute("SELECT COUNT(*) FROM metrics WHERE run_id = ?", (run,)).fetchone()[0])
+
+
+_TIMELINE_LEVELS = ("FATAL", "ERROR", "WARNING", "INFO")
+
+
+@reading
+def run_log_rows(
+    run: str, limit: int = 200, before: tuple[float, int, int] | None = None, rank: int = 2, everything: bool = False
+) -> list[dict[str, Any]]:
+    """One run's logs newest first, from a cursor of time, kind rank and row id. Without `everything` only INFO and above."""
+    clause, bound = older_than(rank, before, "ts", "rowid")
+    keep = "" if everything else f" AND severity IN ({','.join('?' * len(_TIMELINE_LEVELS))})"
+    rows = read_connection().execute(
+        f"SELECT rowid AS id, ts, severity, node, body FROM logs"  # noqa: S608 - literals
+        f" WHERE run_id = ? AND {clause}{keep} ORDER BY ts DESC, rowid DESC LIMIT ?",
+        (run, *bound, *([] if everything else _TIMELINE_LEVELS), limit),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+@reading
+def count_logs(run: str, everything: bool = False) -> int:
+    """How many logs one run stored, at INFO and above unless `everything`."""
+    keep = "" if everything else f" AND severity IN ({','.join('?' * len(_TIMELINE_LEVELS))})"
+    return int(
+        read_connection().execute(
+            f"SELECT COUNT(*) FROM logs WHERE run_id = ?{keep}",  # noqa: S608 - literals
+            (run, *([] if everything else _TIMELINE_LEVELS)),
+        ).fetchone()[0]
+    )
 
 
 @reading

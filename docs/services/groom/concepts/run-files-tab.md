@@ -5,7 +5,7 @@ title: Run Files tab
 ---
 # Run Files tab
 
-The run Files tab shows the checkout of one live container run, read-only, beside the Overview, Details and Diff tabs in the [groom dashboard](../gui/screens/groom-dashboard.md). The [detail Files tab](../gui/screens/groom-dashboard.md#detail-files-tab) holds the screen contract. This page holds the decisions behind it, so a later change to the tab, to the `/files/` and `/file/` replies or to the sidecar `getTree` and `getFile` replies can check them in one place. The data shapes are [workspace file list data](../formats/workspace-file-list-data.md) and [workspace file content data](../formats/workspace-file-content-data.md), and the sibling tab is the [run Diff tab](run-diff-tab.md).
+The run Files tab shows the checkout of one live container run, read-only, beside the Overview, Activity and Diff tabs in the [groom dashboard](../gui/screens/groom-dashboard.md). The [detail Files tab](../gui/screens/groom-dashboard.md#detail-files-tab) holds the screen contract. This page holds the decisions behind it, so a later change to the tab, to the `/files/` and `/file/` replies or to the sidecar `getTree` and `getFile` replies can check them in one place. The data shapes are [workspace file list data](../formats/workspace-file-list-data.md) and [workspace file content data](../formats/workspace-file-content-data.md), and the sibling tab is the [run Diff tab](run-diff-tab.md).
 
 - code: groom/groom/assets/dashboard.js::FilesTab@44ffdf1c1d9a
 - code: groom/groom/assets/dashboard.js::RunFileView@91777ea958ea
@@ -17,7 +17,7 @@ The run Files tab shows the checkout of one live container run, read-only, besid
 - code: groom/groom/app.py::file_content@6a4a53a92140
 - code: groom/groom/sidecar.py::_list_tree@f932858439aa
 - code: groom/groom/sidecar.py::_rpc_get_file@b1b877af732b
-- rule: the Files tab exists under the same condition as the Diff tab, a run whose row says `sidecar` is true, and it sits directly before Diff, so the tabs read Overview, Details, Files, Diff.
+- rule: the Files tab exists under the same condition as the Diff tab, a run whose row says `sidecar` is true, and it sits directly before Diff, so the tabs read Overview, Activity, Files, Diff.
 - rule: a native run, a finished run, and a container run without a connected sidecar have no Files tab.
 - rule: the dashboard reads the tree on the first open of Files for a run selection, never on selecting a run, so a run nobody opens Files on costs no tree read.
 - rule: moving between tabs of the same run keeps the tree and the selected file and reads nothing new, and selecting another run resets both.

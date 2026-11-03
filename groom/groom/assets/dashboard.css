@@ -153,40 +153,11 @@ body {
 .btn.ghost { background:transparent; color:var(--text-1); border:1px solid var(--border-2); }
 .detail-empty { color:var(--text-2); padding:24px 12px; text-align:center; }
 
-/* ---- run detail: live sections (metrics + log trail), refreshed on a timer ---- */
-.live-sec { margin-top:16px; }
-.live-sec-head { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-2);
-  border-bottom:1px solid var(--border); padding-bottom:4px; margin-bottom:8px; }
-.metrics-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:6px; }
-.metric { background:var(--bg-2); border:1px solid var(--border); border-radius:5px; padding:5px 9px;
-  display:flex; flex-direction:column; gap:2px; min-width:0; }
-.metric .m-k { font-size:10px; letter-spacing:.04em; text-transform:uppercase; color:var(--text-2); }
-.metric .m-v { font-family:var(--mono); font-size:12.5px; color:var(--text-0);
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.metric.bad .m-v { color:var(--blocked); }
-.metrics-foot { margin-top:8px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-  font-family:var(--mono); font-size:10.5px; color:var(--text-2); }
-.metrics-foot code { font-family:var(--mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.history-filter { display:flex; align-items:center; gap:8px; margin-bottom:8px; }
-.history-filter select { width:auto; margin:0; padding:4px 8px; }
-.history-filter { flex-wrap:wrap; }
-.history-filter label { display:flex; align-items:center; gap:8px; }
-.trail-views { display:inline-flex; gap:4px; }
-.trail-views .btn { padding:3px 10px; }
-.trail-views .btn[aria-pressed="true"] { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
-.log-line.turn { display:block; font-family:var(--sans); }
-.lt-turn-head { display:grid; grid-template-columns:112px 130px minmax(0, 1fr) auto auto; gap:8px; cursor:pointer; }
-.lt-turn-head .lt-slug, .lt-turn-head .lt-status, .lt-turn-head .lt-dur { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.lt-status.running { color:var(--accent); }
-.log-line.bad .lt-status { color:var(--blocked); }
-.lt-turn-body { display:flex; flex-direction:column; gap:8px; padding:8px 0 6px 12px; min-width:0; }
-.lt-turn-body .at-tool-name { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .at-msg.thought { border-left-style:dashed; }
 .at-msg.thought .at-text { color:var(--text-1); font-style:italic; }
 .at-msg.plan { border-left-color:var(--idle); }
 details.at-msg summary { cursor:pointer; }
-.log-trail { background:var(--bg-0); border:1px solid var(--border); border-radius:5px;
-  max-height:340px; overflow:auto; font-family:var(--mono); font-size:11.5px; }
+/* ---- raw records ---- */
 .log-line { display:grid; grid-template-columns:112px 52px 130px minmax(0, 1fr); gap:8px; padding:2px 8px;
   border-bottom:1px solid var(--bg-2); color:var(--text-1); }
 .log-line:last-child { border-bottom:0; }
@@ -194,6 +165,10 @@ details.at-msg summary { cursor:pointer; }
 .log-line .lt-body { white-space:pre-wrap; overflow-wrap:anywhere; }
 .log-line.warn .lt-lvl { color:var(--idle); }
 .log-line.bad .lt-lvl, .log-line.bad .lt-body { color:var(--blocked); }
+.raw { flex:1; min-height:0; overflow:auto; background:var(--bg-0); font-family:var(--mono); font-size:11.5px; }
+.rawnote { flex:none; padding:5px 10px; font-size:11.5px; color:var(--text-1); border-bottom:1px solid var(--border); background:var(--bg-2); }
+.raw-more { padding:8px 12px; display:flex; align-items:center; gap:10px; font-family:var(--sans); }
+.flabel { font-size:10.5px; color:var(--text-2); text-transform:uppercase; letter-spacing:.04em; margin-left:8px; }
 /* ---- attendant pane (the log of claudes groom sent at a stopped run) ---- */
 #attend-list-panel { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
 .attend-list { overflow-y:auto; flex:1; }
@@ -253,11 +228,9 @@ details.at-msg summary { cursor:pointer; }
   white-space:pre-wrap; overflow-wrap:anywhere; max-height:320px; overflow:auto; }
 .at-divider { font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-2);
   border-top:1px solid var(--border); padding-top:8px; }
-/* the link a blocked or dead run draws to whoever is working it */
-.attend-link { display:flex; align-items:center; gap:7px; width:100%; margin-bottom:10px;
-  background:var(--bg-2); border:1px solid var(--border-2); border-radius:5px; padding:6px 10px;
-  color:var(--text-1); font-family:var(--sans); font-size:12px; text-align:left; cursor:pointer; }
-.attend-link:hover { border-color:var(--accent); color:var(--text-0); }
+/* the link a blocked or dead run draws to whoever is working it, in the run head */
+.detail-head .attend-link { margin-left:auto; }
+.detail-head .attend-link + .close-detail { margin-left:0; }
 
 /* ---- dispatch pane (config-declared work queues) ---- */
 #dispatch-list-panel { border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
@@ -376,9 +349,6 @@ details.at-msg summary { cursor:pointer; }
 .app[data-mode="settings"]  #settings-pane  { display:block; overflow:auto; }
 .app[data-mode="attend"]    #attend-pane    { display:grid; grid-template-columns:1.1fr 1.4fr; }
 .app[data-mode="dispatch"]  #dispatch-pane  { display:grid; grid-template-columns:1.1fr 1.4fr; }
-
-.alert-chip { font-family:var(--mono); font-size:9.5px; text-transform:uppercase; letter-spacing:.05em;
-  padding:0 5px; border-radius:3px; border:1px solid var(--blocked); color:var(--blocked); }
 
 /* ---- status bar ---- */
 #statusbar { grid-area:status; background:var(--bg-1); border-top:1px solid var(--border);

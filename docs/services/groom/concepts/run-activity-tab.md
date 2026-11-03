@@ -5,19 +5,19 @@ title: Run Activity tab
 ---
 # Run Activity tab
 
-The Activity tab answers one question about a run: what did each agent turn say and do. The Overview shows where the time and money went, and the Details tab shows the run's live metrics and telemetry trail. Neither shows the words of a turn. The Activity tab lists the run's agent turns, and the steps, gates, retries and churn alerts around them, under the work item and flow pass they happened in. The operator opens a turn to read its prompt, its thinking, its messages and its tool calls, with the long parts folded away until asked for, or a step or a gate to read its error, its logs, its question and answer and what came next, or a retry or a churn alert to read its name, time and one-line result, beside the list.
+The Activity tab answers one question about a run: what did each agent turn say and do. The Overview shows where the time and money went. It does not show the words of a turn. The Activity tab lists the run's agent turns, and the steps, gates, retries and churn alerts around them, under the work item and flow pass they happened in. The operator can also put the run's INFO logs among the rows, open every fold of passed steps, or switch to the Raw view, which lists every stored record of the run newest first. The operator opens a turn to read its prompt, its thinking, its messages and its tool calls, with the long parts folded away until asked for, or a step or a gate to read its error, its logs, its question and answer and what came next, or a retry or a churn alert to read its name, time and one-line result, beside the list.
 
-The tab sits between Overview and Details in the [detail tab bar](../gui/screens/groom-dashboard.md#detail-tabs) and is there for every run, native or container, with or without a sidecar. A turn's figures come from the run's stored spans through [get-run-activity](../http/get-run-activity.md), and a turn's words come from its stored record or, while it runs, from the run's live transcript, through [get-run-turn](../http/get-run-turn.md). A step's or a gate's details come from the run's stored spans and logs, its live telemetry and its gate file, through [get-run-entry](../http/get-run-entry.md). The browser holds one list, the fold state of its headings and one open row.
+The tab follows Overview in the [detail tab bar](../gui/screens/groom-dashboard.md#detail-tabs) and is there for every run, native or container, with or without a sidecar. A turn's figures come from the run's stored spans through [get-run-activity](../http/get-run-activity.md), and a turn's words come from its stored record or, while it runs, from the run's live transcript, through [get-run-turn](../http/get-run-turn.md). A step's or a gate's details come from the run's stored spans and logs, its live telemetry and its gate file, through [get-run-entry](../http/get-run-entry.md). The Raw view pages through the run's stored records through [get-run-records](../http/get-run-records.md). The browser holds one list, the fold state of its headings, one open row and, in Raw, one list of records.
 
 Transcript text is untrusted. A model or a tool can write any characters, so no part of a turn reaches the page as markup the server or the browser did not choose.
 
-- code: groom/groom/activity.py::timeline@f29f5ec4a999
+- code: groom/groom/activity.py::timeline@29dffacc393b
 - code: groom/groom/activity.py::turn@98eb76416148
-- code: groom/groom/app.py::run_activity@7e795c810caa
+- code: groom/groom/app.py::run_activity@a7f0fcdaf20d
 - code: groom/groom/app.py::run_turn@353c67ab773c
 - code: groom/groom/app.py::run_entry@54b739415692
 - code: groom/groom/activity.py::entry@f35af47c47a7
-- code: groom/groom/assets/dashboard.js::ActivityTab@778cef2ebcd9
+- code: groom/groom/assets/dashboard.js::ActivityTab@03a33ed62c3f
 - code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
 - code: groom/groom/assets/dashboard.js::arrivals@7a0483d82c3a
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
@@ -39,6 +39,15 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/assets/dashboard.js::setProblems@a49e35ca488b
 - code: groom/groom/assets/dashboard.js::openProblems@edcbcb9b11f0
 - code: groom/groom/assets/dashboard.js::ProblemReading@57c7ab082da3
+- code: groom/groom/records.py::page@f5876216d8e3
+- code: groom/groom/app.py::run_records@f4d1ddb739b6
+- code: groom/groom/assets/dashboard.js::RawView@486c0e271fee
+- code: groom/groom/assets/dashboard.js::toggleRaw@48da790711fb
+- code: groom/groom/assets/dashboard.js::loadOlder@572ae75051be
+- code: groom/groom/assets/dashboard.js::toggleSteps@5673f32caefa
+- code: groom/groom/assets/dashboard.js::toggleLogs@156d9ce0a004
+- code: groom/groom/store.py::run_log_rows@a47274a178cb
+- code: groom/groom/store.py::older_than@7e735a8b2dbb
 - extends: [run flow tree](run-flow-tree.md)
 - rule: the list groups its rows under a work item heading, then a flow pass heading, and one row is one visit. A node that runs twice has two rows. A run with no work item reads as one unnamed item whose heading is left out, so the flow pass headings stand directly in the list. Work done outside any work item is the first group, headed `Outside any work item`, and work outside any flow is a pass headed `outside any flow`.
 - rule: one row is one visit, the turns of one slug under one parent span, so a retry inside a visit stays one row. A slug that a resumed pass repeats gives one row per visit, each under its own heading and each with its own start, time, cost and pass, so the rows of a pass add up to its heading. The first visit keeps the plain slug as its key. A later visit's key adds `~` and the millisecond its own turns began, which does not change when the list is read again. A row reads only the records of its own visit. When the archive kept none for it, the pane says no record of the turn could be found and offers no retry.
@@ -106,7 +115,22 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: the search field narrows the rows at once by the text of the row, and marks the match as text, never as markup. A search opens every heading and unfolds every run of passed steps so a match inside one shows. The work item selector limits the list to one item, its first option shows every item, and it opens no heading. The search and the selector apply together, and clearing both restores the list.
 - rule: a search also reads the transcripts of this one run, after a quarter second without typing, and never another run. It matches the messages, the tool summaries and the output of failed tool calls, never the prompt or the thinking, and a turn gives its first matching line, cut to 160 characters. The query is cut to 200 characters. A row found there says `in transcript` with the line.
 - rule: while the transcripts are read, a status says `Searching the transcripts of this run…`, and it clears when the search ends. A search with no match says what was searched and offers to clear it. A transcript search that fails reads whole or not at all, says the transcripts could not be searched, keeps the matches of the row text and offers a retry, and a successful retry adds the transcript matches and clears the message.
-- tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_sits_between_overview_and_details
+- rule: the bar has a `Steps` control and an `Info logs` control after the words `Also show`, each with a count and each exposing whether it is pressed. `Steps` counts the passed steps the folds hold, and pressing it opens every fold of passed steps into one row per step. Pressing it again closes them, including a fold the operator opened by hand. It opens step folds only and leaves the work item and flow pass headings as they were.
+- rule: `Info logs` counts the log lines at INFO level and above, so a debug line is not a row and the Raw view lists it. Pressing it puts one row per line into the timeline at the place its time falls, and pressing it again takes the rows out. The server places a line in the flow pass whose first turn started latest at or before the line, ordered by time among that pass's entries, so a line before every pass sits in the first pass. A log row never splits a fold of passed steps, because the folds are made before the lines are placed.
+- rule: a log row selected reads its level, node, time and message in the pane, as text. The count of the control is the run's count whether the lines are placed or not.
+- rule: the `Raw` control replaces the timeline and the pane with a list of the run's stored records, newest first. The records are the spans, one per span written when it ends with its duration and, when priced, its cost, the logs of every level, the turn events and the churn alerts. Each shows its time, its kind, its node and its text, and a failed span and a churn alert read in the failure colour.
+- rule: the Raw list has one total order, time then kind then id, and a page continues from a cursor that holds those three. Two records with the same time keep one place across pages, so no record is lost or shown twice. The kinds rank churn alert, span, event, log and metric sample, highest first.
+- rule: metric samples stay out of the Raw view until the `Metric samples` control asks for them. The control shows the run's count of samples either way, and the note above the list says how many records the run has, how many metric samples are hidden or included, and how many records are shown.
+- rule: the Raw view shows the newest 60 records, and `Load older records` adds the next page below the list without moving the reader. The last page removes the control, and a page that is full with nothing older has no cursor and no control. A page the server returns holds at most 200 records.
+- rule: in the Raw view a live run that follows reads again every 3 seconds and puts new records at the top. A paused list holds them, and a run that has ended is read once. Following is the Activity tab's own follow state, so the control keeps its reading across Raw and the timeline.
+- rule: in the Raw view the bar holds only the follow control of a live run, `Metric samples` and `Raw`, and `j`, `k` and `e` do nothing. Pressing `Raw` again returns to the timeline with the selection and the folds as they were.
+- rule: the records are read with a reading state that clears. A failed read says `The records of this run could not be read` with `The timeline still works.` and `Retry now`, and the timeline is still reachable. A successful retry replaces the message. A failed older page says so beside the control and keeps it.
+- rule: `Steps`, `Info logs`, `Raw` and `Metric samples` are buttons with an accessible name, `aria-pressed` and keyboard operation by Enter and Space.
+- rule: a run with no telemetry says `No telemetry for this run. It was recorded before telemetry, or it exports to another collector.` in its Activity tab, in place of the bar and the list. The dashboard has no telemetry feed and no Details tab, and the retired `groom.trailView` setting is ignored.
+- rule: the terminal client keeps its payload. `GET /worker/{id}` still answers with `history` and `metrics`, because the terminal reads them, and no tab of the dashboard shows that trail.
+- tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_follows_overview_and_ends_the_tabs_of_a_run_without_a_checkout
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_run_with_telemetry_and_no_turn_says_it_has_no_activity_yet_and_that_it_is_alive
+- tests: groom/tests/test_activity_tab_dynamic.py::test_a_run_with_no_telemetry_says_so_in_its_activity_tab
 - tests: groom/tests/test_activity_follow_dynamic.py::test_a_live_runs_timeline_shows_a_control_that_says_it_is_following
 - tests: groom/tests/test_activity_follow_dynamic.py::test_new_rows_appear_at_the_end_while_following_and_the_newest_stays_in_view
 - tests: groom/tests/test_activity_follow_dynamic.py::test_a_running_turns_row_and_pane_show_new_messages_and_tool_calls_as_they_arrive
@@ -274,4 +298,39 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - tests: groom/tests/test_activity.py::test_a_search_never_reads_a_turn_outside_its_run_and_an_empty_query_reads_nothing
 - tests: groom/tests/test_activity.py::test_a_search_line_is_cut_and_keeps_markup_as_plain_text
 - tests: groom/tests/test_activity.py::test_an_unreadable_transcript_fails_the_search_and_the_endpoint_answers_503
+- tests: groom/tests/test_activity_raw_dynamic.py::test_the_steps_control_opens_every_fold_shows_a_count_and_closes_them_again
+- tests: groom/tests/test_activity_raw_dynamic.py::test_the_info_logs_control_adds_log_rows_with_a_count_and_removes_them_again
+- tests: groom/tests/test_activity_raw_dynamic.py::test_an_info_log_row_does_not_split_a_fold_and_reads_in_the_pane
+- tests: groom/tests/test_activity_raw_dynamic.py::test_raw_lists_every_record_newest_first_with_time_kind_node_and_text
+- tests: groom/tests/test_activity_raw_dynamic.py::test_a_span_record_names_its_duration_and_a_failed_one_says_failed
+- tests: groom/tests/test_activity_raw_dynamic.py::test_raw_hides_metric_samples_until_the_control_asks_and_shows_how_many
+- tests: groom/tests/test_activity_raw_dynamic.py::test_raw_says_how_many_records_the_run_has_and_how_many_are_shown
+- tests: groom/tests/test_activity_raw_dynamic.py::test_load_older_pages_past_the_first_page_keeps_the_place_and_the_last_page_removes_the_control
+- tests: groom/tests/test_activity_raw_dynamic.py::test_while_following_new_records_appear_at_the_top_and_paused_holds_them
+- tests: groom/tests/test_activity_raw_dynamic.py::test_in_raw_the_bar_holds_only_follow_metric_samples_and_raw_and_j_k_e_do_nothing
+- tests: groom/tests/test_activity_raw_dynamic.py::test_raw_shows_a_reading_state_while_the_records_load
+- tests: groom/tests/test_activity_raw_dynamic.py::test_a_failed_read_says_so_keeps_the_timeline_and_a_retry_replaces_the_message
+- tests: groom/tests/test_activity_raw_dynamic.py::test_pressing_raw_again_returns_to_the_timeline_with_the_selection_as_it_was
+- tests: groom/tests/test_activity_raw_dynamic.py::test_the_tabs_are_overview_activity_files_diff_and_a_stale_saved_trail_view_is_ignored
+- tests: groom/tests/test_activity_raw_dynamic.py::test_the_overview_strip_shows_time_in_the_node_and_a_wait_shows_its_kind_and_time
+- tests: groom/tests/test_activity_raw_dynamic.py::test_gas_and_pid_join_the_run_facts_each_with_a_copy_button
+- tests: groom/tests/test_activity_raw_dynamic.py::test_the_attend_link_sits_in_the_run_head_and_opens_the_attendant_pane_on_that_session
+- tests: groom/tests/test_activity_raw_dynamic.py::test_steps_info_logs_raw_and_metric_samples_are_named_pressed_and_work_from_the_keyboard
+- tests: groom/tests/test_activity_raw_dynamic.py::test_the_raw_view_and_the_bar_have_no_accessibility_violations
+- tests: groom/tests/test_records.py::test_a_page_lists_spans_logs_events_and_alerts_newest_first_with_time_kind_node_and_text
+- tests: groom/tests/test_records.py::test_a_span_record_is_written_when_the_span_ends_with_its_duration_and_cost
+- tests: groom/tests/test_records.py::test_a_retry_event_and_a_churn_alert_are_records_of_their_own
+- tests: groom/tests/test_records.py::test_a_warning_log_reads_warn_and_an_error_log_is_marked_bad
+- tests: groom/tests/test_records.py::test_metric_samples_stay_out_until_asked_and_are_counted_either_way
+- tests: groom/tests/test_records.py::test_the_total_counts_every_record_of_the_run_not_the_page
+- tests: groom/tests/test_records.py::test_paging_by_the_cursor_loses_and_repeats_no_record
+- tests: groom/tests/test_records.py::test_the_last_page_has_no_cursor_and_a_full_page_with_nothing_older_has_none_either
+- tests: groom/tests/test_records.py::test_records_with_the_same_time_keep_one_total_order_across_pages
+- tests: groom/tests/test_records.py::test_a_page_is_capped_and_a_cursor_that_does_not_parse_is_refused
+- tests: groom/tests/test_records.py::test_the_store_pages_metric_samples_by_a_cursor_and_counts_them
+- tests: groom/tests/test_records.py::test_the_records_endpoint_serves_a_page_and_refuses_a_bad_cursor
+- tests: groom/tests/test_records.py::test_the_activity_timeline_adds_info_logs_inside_the_pass_they_belong_to_without_splitting_a_fold
+- tests: groom/tests/test_records.py::test_a_debug_log_is_not_a_timeline_row_but_raw_lists_it
+- tests: groom/tests/test_records.py::test_the_running_strip_carries_the_time_the_node_began
+- tests: groom/tests/test_records.py::test_the_worker_endpoint_still_answers_with_history_and_metrics_for_the_terminal_client
 - refs: [operator reads an agent turn](../flows/operator-reads-an-agent-turn.md), [groom activity module](groom-activity-module.md), [groom transcript parse module](groom-transcript-parse-module.md), [the groom dashboard detail pane](../gui/screens/groom-dashboard.md#detail-pane)

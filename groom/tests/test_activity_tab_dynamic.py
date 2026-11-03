@@ -127,7 +127,7 @@ def _rows(page):
     return page.locator("#detail-panel .tl button.ev")
 
 
-def test_the_activity_tab_sits_between_overview_and_details(tmp_path):
+def test_the_activity_tab_follows_overview_and_ends_the_tabs_of_a_run_without_a_checkout(tmp_path):
     live = _live()
     assert live is not None, _UNAVAILABLE
     with _run("act-tabs", tmp_path) as run:
@@ -135,7 +135,7 @@ def test_the_activity_tab_sits_between_overview_and_details(tmp_path):
         try:
             _pick(page, run)
             names = [name.strip() for name in page.get_by_role("tab").all_inner_texts()]
-            assert names[:3] == ["Overview", "Activity", "Details"], names
+            assert names == ["Overview", "Activity"], names
         finally:
             page.close()
 
@@ -259,7 +259,7 @@ def test_a_container_runs_activity_tab_works_as_a_native_runs_does(tmp_path):
             page.close()
 
 
-def test_a_run_with_no_turn_says_it_has_no_activity_and_that_it_is_alive(tmp_path):
+def test_a_run_with_no_telemetry_says_so_in_its_activity_tab(tmp_path):
     live = _live()
     assert live is not None, _UNAVAILABLE
     with _run("act-empty", tmp_path, turns=False) as run:
@@ -268,10 +268,35 @@ def test_a_run_with_no_turn_says_it_has_no_activity_and_that_it_is_alive(tmp_pat
             _pick(page, run)
             _open_activity(page)
             text = page.locator("#detail-panel .empty-big").inner_text()
+            assert text == "No telemetry for this run. It was recorded before telemetry, or it exports to another collector."
+            assert page.locator("#detail-panel .tl").count() == 0
+            assert page.locator("#detail-panel .feedbar").count() == 0
+        finally:
+            page.close()
+
+
+def test_a_run_with_telemetry_and_no_turn_says_it_has_no_activity_yet_and_that_it_is_alive(tmp_path):
+    from groom import state
+    from groom.models import RunTelemetry
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _run("act-quiet", tmp_path, turns=False) as run:
+        now = time.time()
+        state.RUNS[run] = RunTelemetry(
+            run_id=run, workflow="coder", current_node="", node_elapsed_s=0.0, turn_active=False,
+            last_heartbeat_ts=now, last_span_ts=now, first_seen_ts=now - 60, last_telemetry_ts=now,
+        )
+        page = _open(live)
+        try:
+            _pick(page, run)
+            _open_activity(page)
+            text = page.locator("#detail-panel").inner_text()
             assert "No activity yet" in text and "The run is alive" in text
             assert page.locator("#detail-panel .tl").count() == 0
         finally:
             page.close()
+            state.RUNS.pop(run, None)
 
 
 def test_a_turn_being_read_shows_a_reading_state_that_clears_when_it_appears(tmp_path):
@@ -392,8 +417,6 @@ def test_the_other_tabs_behave_as_they_did(tmp_path):
         try:
             _pick(page, run)
             _open_activity(page)
-            page.get_by_role("tab", name="Details").click()
-            expect(page.locator("#detail-panel")).to_contain_text("Metrics")
             page.get_by_role("tab", name="Overview").click()
             expect(page.locator("#detail-panel .ov")).to_be_visible()
             assert page.get_by_role("tab", name="Overview").get_attribute("aria-selected") == "true"

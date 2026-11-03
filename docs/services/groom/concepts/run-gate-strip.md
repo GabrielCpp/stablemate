@@ -5,7 +5,7 @@ title: Run gate strip
 ---
 # Run gate strip
 
-A run waiting on the operator shows its open gates in a strip above the Overview and Details tabs. The operator reads the question and answers it from whichever tab they are on, and the text they were reading stays where it was. A badge on the Runs button counts the blocked runs while another pane is open, so a gate on a run the operator is not looking at is not missed.
+A run waiting on the operator shows its open gates in a strip above the Overview and Activity tabs. The operator reads the question and answers it from whichever tab they are on, and the text they were reading stays where it was. A badge on the Runs button counts the blocked runs while another pane is open, so a gate on a run the operator is not looking at is not missed.
 
 - code: groom/groom/assets/dashboard.js::GateStrip@5921a2b7243b
 - code: groom/groom/assets/dashboard.js::GateBlock@0b60fdd379ab
@@ -31,7 +31,7 @@ A run waiting on the operator shows its open gates in a strip above the Overview
 
 - rule: the strip belongs to the selected run's detail pane. It sits above the tabs and outside the scrolling region of the tab, so it stays in view while either tab scrolls.
 - rule: the strip lists that run's open gates and nothing else. A gate renders in the strip only, so a tab does not repeat it and one gate shows once.
-- rule: a run with no open gate has no strip, and the Details tab says there is nothing to answer.
+- rule: a run with no open gate has no strip, and no tab carries a note in its place.
 - rule: each gate is one block with its question, its answer box and its send button. Two open gates show two blocks, in the order of their gate file paths. The strip has one `Collapse` button, in the first block's header row, because collapse belongs to the whole strip.
 - rule: a gate's question is markdown that travels as data. The client renders it and sanitizes the result before it reaches the page, so a script, a frame or an event handler in a question does not run.
 

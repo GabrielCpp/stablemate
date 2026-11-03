@@ -5,7 +5,7 @@ title: Run Diff tab
 ---
 # Run Diff tab
 
-The run Diff tab shows the uncommitted change of one live container run, or the change since its branch started, beside the Overview and Details tabs in the [groom dashboard](../gui/screens/groom-dashboard.md). The [detail Diff tab](../gui/screens/groom-dashboard.md#detail-diff-tab) holds the screen contract. This page holds the decisions behind it, so a later change to the tab, to the `/diff/` reply or to the sidecar `getDiff` reply can check them in one place. The change since the branch started is computed as [branch start diff](branch-start-diff.md) describes. The data shape is [workspace diff data](../formats/workspace-diff-data.md), and the operator path is [operator inspects working-tree diff](../flows/operator-inspects-working-tree-diff.md).
+The run Diff tab shows the uncommitted change of one live container run, or the change since its branch started, beside the Overview and Activity tabs in the [groom dashboard](../gui/screens/groom-dashboard.md). The [detail Diff tab](../gui/screens/groom-dashboard.md#detail-diff-tab) holds the screen contract. This page holds the decisions behind it, so a later change to the tab, to the `/diff/` reply or to the sidecar `getDiff` reply can check them in one place. The change since the branch started is computed as [branch start diff](branch-start-diff.md) describes. The data shape is [workspace diff data](../formats/workspace-diff-data.md), and the operator path is [operator inspects working-tree diff](../flows/operator-inspects-working-tree-diff.md).
 
 - code: groom/groom/assets/dashboard.js::DiffTab@8ed2100fd582
 - code: groom/groom/assets/dashboard.js::useRunDiff@42e89852f3e2

@@ -39,16 +39,17 @@ spans, per-node timings and error status, filterable without leaving the browser
   The `/feed` socket is the one socket meant for a program rather than a tab: it
   carries one run's events and a periodic digest, and `groom wait` and
   `groom feed` read it.
-  A selected run loads its span summary, recent logs, and metrics from SQLite
-  once when its watch subscription opens. A loading indicator covers that initial
-  read. The history lists timestamped log records, completed spans, and metric
-  observations, including runs with no script logs. The type filter shows up to
-  60 recent records per type; an explicit run selection includes older spans beyond
-  the fleet’s activity window. Committed OTLP batches update the history in
-  memory and push it immediately to the watching tabs; the clock tick only
-  refreshes elapsed labels, with no database reads. Tabs share the watched history,
-  which is released when the last tab leaves. Reopening the run loads a fresh
-  snapshot, and reconnecting restores the subscription automatically.
+  A selected run loads its head, gates and metrics from SQLite once when its
+  watch subscription opens. A loading indicator covers that initial read.
+  Committed OTLP batches update the detail in memory and push it immediately to
+  the watching tabs; the clock tick only refreshes elapsed labels, with no
+  database reads. Tabs share the watched detail, which is released when the last
+  tab leaves. Reopening the run loads a fresh snapshot, and reconnecting restores
+  the subscription automatically.
+  The Activity tab reads every stored record of the run on demand. Its *Raw* view
+  lists spans, logs, turn events and churn alerts newest first, 60 at a time
+  with *Load older records*, and hides metric samples until *Metric samples*
+  asks for them. `GET /api/run/{run_id}/records` serves the pages.
 - Fleet rows and the detail pane project the same received telemetry. Operator and
   machine wait gauges carry their gate path and question; node, activity, elapsed
   time and terminal state come from the run's exports. The freshness label shows
@@ -123,7 +124,7 @@ engine and every node it runs in-process into `groom`. Because a
 pushed span carries its own identity, **every run appears with no discovery
 step**. Spans and metrics persist in an embedded SQLite file
 (`groom.db` in the platform data dir; override with `GROOM_DB`), searchable
-from the dashboard's *Telemetry* pane, via `GET /traces?run=…&node=…&status=…&
+from the Activity tab's *Raw* view, via `GET /traces?run=…&node=…&status=…&
 slower_than=…`, or with raw `sqlite3` queries. Rows older than
 `GROOM_RETENTION_DAYS` (30) are pruned at startup and on a periodic tick — but
 only for a run whose telemetry is already **archived** to disk (below), so the

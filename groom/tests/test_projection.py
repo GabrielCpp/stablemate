@@ -587,7 +587,7 @@ def test_running_node_names_the_node_and_its_wait():
     tel = _tel(current_node="await_operator", node_elapsed_s=30.0, wait_kind="operator", wait_elapsed_s=125.0)
     assert projection.running_node(wf, tel, now=1000.0) == {
         "node": "await_operator", "elapsed_s": 30.0, "wait_kind": "operator", "wait_elapsed_s": 125.0,
-        "since_ts": 875.0,
+        "since_ts": 875.0, "node_since_ts": 970.0,
     }
 
 

@@ -162,7 +162,7 @@ def test_the_view_and_sort_survive_a_tab_round_trip_and_a_live_refresh_and_reset
             expect(_sort(page, "Time")).to_have_attribute("aria-pressed", "true")
             _view(page, "By node").click()
             _sort(page, "Cost").click()
-            page.get_by_role("tab", name="Details").click()
+            page.get_by_role("tab", name="Activity").click()
             page.get_by_role("tab", name="Overview").click()
             expect(_view(page, "By node")).to_have_attribute("aria-pressed", "true")
             expect(_sort(page, "Cost")).to_have_attribute("aria-pressed", "true")

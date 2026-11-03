@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 import json
 import re
 import time
@@ -460,7 +461,29 @@ def _standing_entry(spans: list[dict[str, Any]], standing: dict[str, Any], held:
     return _doing_entry(standing)
 
 
-def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None) -> dict[str, Any]:
+def _log_entry(row: dict[str, Any]) -> dict[str, Any]:
+    level = str(row["severity"])
+    node = str(row["node"])
+    return {
+        "kind": "log", "key": f"log:{row['id']}", "name": f"{level} {node}".strip(), "node": node, "level": level,
+        "ts": float(row["ts"]), "duration_s": 0.0, "result": str(row["body"]),
+    }
+
+
+def _with_logs(items: list[dict[str, Any]], rows: list[dict[str, Any]]) -> None:
+    """Put each log into the pass that was open at its time, after the folds are made so no log splits a fold."""
+    passes = sorted(((pas["first_ts"], pas) for item in items for pas in item["passes"]), key=lambda pair: pair[0])
+    if not passes:
+        return
+    starts = [first for first, _ in passes]
+    for row in sorted(rows, key=lambda one: (one["ts"], one["id"])):
+        entry = _log_entry(row)
+        at = max(0, bisect.bisect_right(starts, entry["ts"]) - 1)
+        entries = passes[at][1]["entries"]
+        entries.insert(bisect.bisect_right([one["ts"] for one in entries], entry["ts"]), entry)
+
+
+def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None, logs: bool = False) -> dict[str, Any]:
     """The run's agent turns oldest first, and the same turns grouped by work item and flow pass with the steps, gates, retries and churn alerts around them. `standing` is where the run is now: the step it is in, or the operator gate it waits at, which no stored span shows yet."""
     spans = store.run_turn_spans(run_id)
     placed = flows.span_passes(spans)
@@ -495,7 +518,10 @@ def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any]
         here["place"] = list(target)
         group.entries.append(here)
         group.see(here["ts"])
-    return {"run_id": run_id, "rows": rows, "items": _items(run_id, groups, flows.pass_status(spans)), "problems": len(problems.found(spans)), "as_of": time.time()}
+    items = _items(run_id, groups, flows.pass_status(spans))
+    if logs:
+        _with_logs(items, store.run_log_rows(run_id, 1_000_000))
+    return {"run_id": run_id, "rows": rows, "items": items, "problems": len(problems.found(spans)), "log_count": store.count_logs(run_id), "as_of": time.time()}
 
 
 def _record_files(run_id: str, head: dict[str, Any], archived: list[dict[str, Any]], strict: bool) -> dict[str, Path] | None:

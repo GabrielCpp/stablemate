@@ -11,9 +11,9 @@ The norm is the median length of the same kind of work at the same node across t
 
 - code: groom/groom/norms.py::reading@64f453af5698
 - code: groom/groom/store.py::node_norms@7e1e2a873f2a
-- code: groom/groom/projection.py::running_strip@f339020e4f63
+- code: groom/groom/projection.py::running_strip@b7966acd8349
 - code: groom/groom/app.py::_queue_norms@2945bc419aa4
-- code: groom/groom/assets/dashboard.js::NowStrip@5e02e693e272
+- code: groom/groom/assets/dashboard.js::NowStrip@5f2f92bc15d9
 - tests: groom/tests/test_norms.py::test_the_norm_is_the_median_over_successful_runs_of_the_same_workflow
 - tests: groom/tests/test_norms.py::test_a_failed_interrupted_or_other_workflow_run_does_not_move_the_norm
 - tests: groom/tests/test_norms.py::test_an_agent_node_between_turns_is_not_called_a_step_and_keeps_the_turn_norm
@@ -25,6 +25,7 @@ The norm is the median length of the same kind of work at the same node across t
 ## What it shows
 
 - rule: the strip shows the node, the length of the current turn, step or wait, the agent's idle time and the age of the last beat, and a run with no running node shows no strip.
+- rule: a run in a turn, a step, between turns or at a wait also shows `In node`, the time since the node began, beside the length of the turn, step or wait. A run in a node with no finer reading shows the one length and no `In node` cell. The time in the node counts up every second from a start timestamp the server derives from the node's elapsed gauge, as the turn length does.
 - rule: a turn is the agent working at the node, a step is deterministic work at the node, and a wait is the run held at a gate or other wait. The strip says which in words: `In turn`, `In step`, `Between turns`, `In node`, `Waiting on you` for an operator gate and `Waiting on <kind>` for any other wait.
 - rule: a turn or step longer than its norm says `longer than usual` and names the usual length, so the comparison is in words and not in colour alone.
 - rule: a turn or step within its norm shows the usual length without the warning.

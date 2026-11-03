@@ -12,7 +12,7 @@ Spans export when they end. A flow or state that is still open, and the run's ow
 - code: groom/groom/flows.py::build_flows@b35641607d03
 - code: groom/groom/overview.py::run_overview@d4e666f27ee7
 - code: groom/groom/live_history.py::LiveHistory@3671ced6241f
-- code: groom/groom/assets/dashboard.js::Overview@f656729cd4fc
+- code: groom/groom/assets/dashboard.js::Overview@9dedd670516f
 - code: groom/groom/flows.py::turn_passes@74192984c983
 - code: groom/groom/flows.py::span_passes@55f223c1146d
 - tests: groom/tests/test_flows.py::test_an_ended_flow_is_named_from_its_own_span
@@ -89,4 +89,4 @@ Spans export when they end. A flow or state that is still open, and the run's ow
 ## Reads
 
 - rule: selecting a run reads that run's spans only, through one indexed query, not the whole telemetry store.
-- rule: the Overview loads on its own, shows a loading state that clears, and on a failed read shows a message with a retry; the Details tab keeps working while it is failed, and the message clears on the next successful read.
+- rule: the Overview loads on its own, shows a loading state that clears, and on a failed read shows a message with a retry; the Activity tab keeps working while it is failed, and the message clears on the next successful read.

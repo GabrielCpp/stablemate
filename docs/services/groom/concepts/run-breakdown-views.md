@@ -43,7 +43,7 @@ The Overview breaks a run's time and cost down in up to three views: by flow, by
 
 ## View and sort state
 
-- rule: the chosen view and sort live in client state on the detail pane. They survive a switch to the Details tab and back and every live refresh, and reset when the operator opens another run. A page reload may reset them.
+- rule: the chosen view and sort live in client state on the detail pane. They survive a switch to the Activity tab and back and every live refresh, and reset when the operator opens another run. A page reload may reset them.
 - rule: both groups expose their pressed state with `aria-pressed` and work from the keyboard.
 - rule: By flow and By node sort by time or by cost, and By work item keeps its order of first start and offers no sort.
 - rule: the breakdown is fetched with the Overview through the query pool and its coalesced refresh. Sorting happens in the browser and fetches nothing.

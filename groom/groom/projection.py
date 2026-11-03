@@ -606,6 +606,17 @@ def _turn_line(
     return ts, line
 
 
+def metric_text(row: dict[str, Any]) -> str:
+    name = str(row["name"]).removeprefix("workhorse.")
+    value = float(row["value"])
+    label = name.replace("_s", "").replace("_", " ").replace(".", " ")
+    wait = str((row.get("attrs") or {}).get("wait_kind") or "")
+    if wait and name.startswith("wait."):
+        label = f"{wait} {label}"
+    amount = fmt_duration(value) if name.endswith("_s") else f"{value:g}"
+    return f"{label}: {amount}"
+
+
 def history_lines(rows: list[dict[str, Any]], now: float | None = None) -> list[dict[str, Any]]:
     """History describes timestamped observations, never the run's current state."""
     now = now if now is not None else time.time()
@@ -626,16 +637,8 @@ def history_lines(rows: list[dict[str, Any]], now: float | None = None) -> list[
         if kind == "transcript":
             continue
         if kind == "metric":
-            attrs = row.get("attrs") or {}
-            node = str(attrs.get("node") or "")
-            name = str(row["name"]).removeprefix("workhorse.")
-            value = float(row["value"])
-            label = name.replace("_s", "").replace("_", " ").replace(".", " ")
-            wait = str(attrs.get("wait_kind") or "")
-            if wait and name.startswith("wait."):
-                label = f"{wait} {label}"
-            amount = fmt_duration(value) if name.endswith("_s") else f"{value:g}"
-            body = f"{label}: {amount}"
+            node = str((row.get("attrs") or {}).get("node") or "")
+            body = metric_text(row)
         elif kind == "span":
             duration = fmt_duration(float(row["end_ts"]) - float(row["start_ts"]))
             body = f"{row['name']} · {row['status']} · {duration}"
@@ -694,6 +697,7 @@ def running_node(
         "wait_kind": wait_kind,
         "wait_elapsed_s": wait_elapsed,
         "since_ts": started_at(tel, "workhorse.wait.elapsed_s" if wait_kind else "workhorse.node.elapsed_s", wait_elapsed if wait_kind else elapsed, now),
+        "node_since_ts": started_at(tel, "workhorse.node.elapsed_s", elapsed, now),
     }
 
 
@@ -753,6 +757,7 @@ def running_strip(
         "kind": kind,
         "wait_kind": running["wait_kind"],
         "started_ts": started,
+        "node_since_ts": running["node_since_ts"],
         "idle_since_ts": idle_since,
         "beat_ts": beat or None,
         "norm": norm,

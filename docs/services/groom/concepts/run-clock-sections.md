@@ -18,7 +18,7 @@ The sections are not a second set of numbers. They come from the same profile th
 - code: groom/groom/assets/dashboard.js::WallClock@45bcd1849e1e
 - code: groom/groom/assets/dashboard.js::Models@dfdce71eb006
 - code: groom/groom/assets/dashboard.js::CopyButton@075340c266d2
-- code: groom/groom/assets/dashboard.js::RunFacts@2c1ccfd66b45
+- code: groom/groom/assets/dashboard.js::RunFacts@8b71355f91e7
 - code: groom/groom/assets/dashboard.js::Sessions@60d00a14245d
 - tests: groom/tests/test_run_clock.py::test_the_wall_clock_segments_sum_to_the_wall_time_and_the_active_ones_to_the_active_tile
 - tests: groom/tests/test_run_clock.py::test_the_model_totals_equal_the_cost_report_and_an_unpriced_model_has_no_cost
@@ -56,10 +56,10 @@ The sections are not a second set of numbers. They come from the same profile th
 
 ## Run facts
 
-- rule: the Run list shows when the run started, its branch, its run directory, its checkout path and its run id. A fact with no value is left out, except the run id.
+- rule: the Run list shows when the run started, its branch, its run id, its pid, its gas, its run directory and its checkout path, in that order. A fact with no value is left out, except the run id. The pid is the head's pid and shows for a run that has one. The gas is the Gas figure of the run's live metrics and shows for a run that reports one.
 - rule: the checkout path shows only for a native run, whose checkout is a directory on this machine. A container run has no checkout path.
 - rule: a long value wraps inside the pane and does not widen the layout.
-- rule: every fact has a copy button named for it, such as `Copy run id`. The button works from the keyboard.
+- rule: every fact has a copy button named for it, such as `Copy run id`, `Copy pid` or `Copy gas`. The button works from the keyboard.
 - rule: a copy answers in visible text that a status region announces, `Copied run id`. A write the browser refuses answers `Could not copy run id`. The note clears after a few seconds.
 
 ## Sessions

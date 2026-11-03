@@ -18,7 +18,7 @@ from typing import Annotated, Literal
 from litestar import Litestar, Request, Response, delete, get, post, websocket
 from litestar.connection import WebSocket
 from litestar.enums import MediaType
-from litestar.exceptions import NotFoundException, ServiceUnavailableException, WebSocketDisconnect
+from litestar.exceptions import ClientException, NotFoundException, ServiceUnavailableException, WebSocketDisconnect
 from litestar.params import PathParameter, QueryParameter
 from litestar.static_files import create_static_files_router
 
@@ -44,6 +44,7 @@ from groom import (
     overview,
     pools,
     projection,
+    records,
     run_inbox,
     sidecar_hub,
     sidecar_turns,
@@ -672,9 +673,23 @@ def _gate_reader(run_id: str):
 
 
 @get("/api/run/{run_id:str}/activity", include_in_schema=False)
-async def run_activity(run_id: Annotated[str, PathParameter()]) -> dict:
-    """One run's agent turns, oldest first, with the one still running read from its live transcript."""
-    return await pools.QUERY.run(activity.timeline, run_id, await _live_turns(run_id), _standing(run_id))
+async def run_activity(run_id: Annotated[str, PathParameter()], logs: Annotated[int, QueryParameter()] = 0) -> dict:
+    """One run's agent turns, oldest first, with the one still running read from its live transcript. `logs=1` adds the run's info logs at their place in the timeline."""
+    return await pools.QUERY.run(activity.timeline, run_id, await _live_turns(run_id), _standing(run_id), bool(logs))
+
+
+@get("/api/run/{run_id:str}/records", include_in_schema=False)
+async def run_records(
+    run_id: Annotated[str, PathParameter()],
+    before: Annotated[str, QueryParameter()] = "",
+    limit: Annotated[int, QueryParameter()] = records.PAGE,
+    metrics: Annotated[int, QueryParameter()] = 0,
+) -> dict:
+    """One page of the run's stored records, newest first, from the cursor a previous page returned."""
+    try:
+        return await pools.QUERY.run(records.page, run_id, before, limit, bool(metrics))
+    except records.BadCursor as exc:
+        raise ClientException(detail="not a cursor of this run's records") from exc
 
 
 @get("/api/run/{run_id:str}/search", include_in_schema=False)
@@ -1698,6 +1713,7 @@ def create_app() -> Litestar:
             outbox_get,
             run_overview,
             run_activity,
+            run_records,
             run_turn,
             run_search,
             run_entry,

@@ -161,7 +161,7 @@ def test_a_run_with_several_checkouts_shows_a_selector_on_files_and_diff_only():
         page = _open(live)
         try:
             _pick(page, CONTAINER)
-            for tab in ("Overview", "Details"):
+            for tab in ("Overview", "Activity"):
                 _tab(page, tab).click()
                 expect(_select(page)).to_have_count(0)
             for tab in ("Files", "Diff"):

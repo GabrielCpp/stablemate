@@ -179,7 +179,7 @@ def test_a_container_run_with_a_connected_sidecar_has_a_diff_tab_beside_overview
         try:
             _pick(page)
             tabs = page.get_by_role("tablist", name="Run detail").get_by_role("tab")
-            expect(tabs).to_have_text([re.compile("^Overview$"), re.compile("^Activity$"), re.compile("^Details$"), re.compile("^Files$"), re.compile(r"^Diff")])
+            expect(tabs).to_have_text([re.compile("^Overview$"), re.compile("^Activity$"), re.compile("^Files$"), re.compile(r"^Diff")])
         finally:
             page.close()
             sidecar.drop()
@@ -643,7 +643,7 @@ def test_an_empty_diff_from_a_sidecar_too_old_to_report_failure_cannot_be_confir
             sidecar.drop()
 
 
-def test_the_details_tab_no_longer_shows_the_working_tree_diff_and_reads_as_before():
+def test_the_overview_tab_does_not_show_the_working_tree_diff_and_reads_as_before():
     from playwright.sync_api import expect
 
     live = _live()
@@ -654,9 +654,8 @@ def test_the_details_tab_no_longer_shows_the_working_tree_diff_and_reads_as_befo
         seen = _requests(page)
         try:
             _pick(page)
-            page.get_by_role("tab", name="Details").click()
-            expect(page.locator("#detail-panel")).to_contain_text("Recent telemetry history")
-            expect(page.locator("#detail-panel")).to_contain_text("Metrics")
+            page.get_by_role("tab", name="Overview").click()
+            expect(page.locator("#detail-panel .ov")).to_be_visible()
             expect(page.locator("#detail-panel details.disclosure")).to_have_count(0)
             expect(page.locator("#detail-panel")).not_to_contain_text("Working-tree diff")
             _settle(page)
@@ -697,7 +696,7 @@ def test_diff_tab_controls_have_roles_names_and_keyboard_operation_and_pass_axe(
         page = _open(live)
         try:
             _pick(page)
-            page.get_by_role("tab", name="Details").click()
+            page.get_by_role("tab", name="Activity").click()
             page.keyboard.press("ArrowRight")
             expect(_tab(page, "Files")).to_be_focused()
             page.keyboard.press("ArrowRight")

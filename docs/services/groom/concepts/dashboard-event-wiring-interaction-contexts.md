@@ -22,7 +22,7 @@ requests, operates on their own control or global shortcut. The source
 records no preferred or deprecated handler because every context is current
 and independently reachable.
 
-- code: `groom/groom/assets/dashboard.js::wireEvents` @f16e2d670990
+- code: `groom/groom/assets/dashboard.js::wireEvents` @c2f8997e9c43
 - rule: use the interaction for the operator's event target or keyboard shortcut; the shared wiring function does not rank its independently current handlers
 - detail: [browser notification permission](browser-notification-permission.md)
 - detail: [dashboard wire events scope](dashboard-wire-events-scope.md)

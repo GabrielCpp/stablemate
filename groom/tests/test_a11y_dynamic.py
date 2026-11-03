@@ -324,7 +324,7 @@ def test_runs_pane_with_an_open_gate_is_accessible():
     _check_mode("runs")
 
 
-def test_history_shows_loading_then_stored_spans_without_script_logs():
+def test_the_run_shows_loading_then_its_tabs_without_a_telemetry_feed():
     from playwright.sync_api import expect
 
     from groom import store
@@ -342,21 +342,15 @@ def test_history_shows_loading_then_stored_spans_without_script_logs():
     try:
         with patch.object(store, "detail_metrics", held):
             page.get_by_role("button", name=re.compile("author")).click()
-            expect(page.get_by_role("status", name="Loading telemetry history")).to_be_visible()
-            expect(page.get_by_text("No telemetry history", exact=False)).to_have_count(0)
+            expect(page.get_by_role("status", name="Loading the run")).to_be_visible()
             release.set()
-            page.get_by_role("tab", name="Details").click()
-            history = page.get_by_role("log", name="Telemetry history")
-            expect(history).to_contain_text("SPAN")
-            expect(history).not_to_contain_text("No telemetry history")
-            page.get_by_role("combobox", name="Telemetry history type").select_option("span")
-            expect(history).to_contain_text("SPAN")
-            expect(history).not_to_contain_text("METRIC")
+            expect(page.get_by_role("tab", name="Overview")).to_have_attribute("aria-selected", "true")
+            expect(page.get_by_role("tab")).to_have_text([re.compile("^Overview$"), re.compile("^Activity")])
+            expect(page.get_by_role("log", name="Telemetry history")).to_have_count(0)
             assert not _scan(page)
     finally:
         release.set()
         page.close()
-
 
 def _box(locator) -> dict:
     box = locator.bounding_box()
@@ -380,7 +374,7 @@ def test_selecting_a_run_narrows_the_list_and_close_restores_it_with_its_filter(
         expect(page.locator("#runs-list .row")).to_have_count(1)
         _pick(page, "acme")
         expect(page.get_by_role("tab", name="Overview")).to_have_attribute("aria-selected", "true")
-        expect(page.get_by_role("tab", name="Details")).to_have_attribute("aria-selected", "false")
+        expect(page.get_by_role("tab", name="Activity")).to_have_attribute("aria-selected", "false")
         assert _box(page.locator("#runs"))["width"] < full / 2
         page.get_by_role("button", name="Close run detail").click()
         expect(page.locator("#detail")).to_be_hidden()
@@ -420,18 +414,9 @@ def test_tabs_switch_with_the_arrow_keys_and_details_keeps_todays_content():
         overview = page.get_by_role("tab", name="Overview")
         overview.focus()
         page.keyboard.press("ArrowRight")
-        expect(page.get_by_role("tab", name="Activity")).to_be_focused()
-        page.keyboard.press("ArrowRight")
-        details = page.get_by_role("tab", name="Details")
-        expect(details).to_have_attribute("aria-selected", "true")
-        expect(details).to_be_focused()
-        panel = page.get_by_role("tabpanel")
-        expect(panel).to_contain_text("Metrics")
-        expect(panel).to_contain_text("Recent telemetry history")
-        expect(panel).not_to_contain_text("Working-tree diff")
-        expect(panel).to_contain_text("Nothing to answer")
-        page.keyboard.press("ArrowLeft")
-        expect(page.get_by_role("tab", name="Activity")).to_have_attribute("aria-selected", "true")
+        activity = page.get_by_role("tab", name="Activity")
+        expect(activity).to_be_focused()
+        expect(activity).to_have_attribute("aria-selected", "true")
         page.keyboard.press("ArrowLeft")
         expect(overview).to_have_attribute("aria-selected", "true")
     finally:
@@ -570,8 +555,7 @@ def test_overview_says_it_is_reading_then_offers_a_retry_when_the_read_fails():
         release.set()
         alert = page.get_by_role("tabpanel").get_by_role("alert")
         expect(alert).to_contain_text("could not be read")
-        page.get_by_role("tab", name="Details").click()
-        expect(page.get_by_role("tabpanel")).to_contain_text("Metrics")
+        page.get_by_role("tab", name="Activity").click()
         page.get_by_role("tab", name="Overview").click()
         expect(page.get_by_role("tabpanel").get_by_role("alert")).to_contain_text("could not be read")
         page.get_by_role("button", name="Retry now").click()
@@ -893,95 +877,6 @@ def test_the_row_the_strip_and_the_tree_count_one_clock_for_a_gate_wait():
         page.click("#runs-list .row.blocked")
         page.get_by_role("group", name="Where the run is now").wait_for()
         _assert_one_clock(page, None)
-    finally:
-        page.close()
-
-
-def _write_transcript(run_dir: str) -> None:
-    import json
-
-    live = Path(run_dir) / "transcripts" / "live"
-    live.mkdir(parents=True, exist_ok=True)
-    now = time.time()
-    updates = [
-        {"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "PROMPTTEXT"}},
-        {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "THOUGHTTEXT"}},
-        {"sessionUpdate": "tool_call", "toolCallId": "t1", "title": "TOOLTITLE", "kind": "read",
-         "status": "completed",
-         "content": [{"type": "content", "content": {"type": "text", "text": "TOOLRESULT"}}]},
-        {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "MESSAGETEXT"}},
-    ]
-    lines = [
-        json.dumps({"sessionId": "s", "update": update, "_meta": {"ts": now - 10 + n, "node": "implement"}})
-        for n, update in enumerate(updates)
-    ]
-    (live / "001-00001-implement.jsonl").write_text("\n".join(lines) + "\n")
-
-
-def test_the_transcript_filter_is_pressable_by_keyboard_and_remembered():
-    from playwright.sync_api import expect
-
-    from groom import state
-
-    live = _live()
-    assert live is not None, _UNAVAILABLE
-    _write_transcript(state.WORKFLOWS["acme12345678"].runs_volume)
-    page = _open(live)
-    try:
-        page.click("#runs-list .row.blocked")
-        page.get_by_role("tab", name="Details").click()
-        history = page.get_by_role("log", name="Telemetry history")
-        expect(history).to_contain_text("MESSAGETEXT")
-        expect(history).to_contain_text("TOOLTITLE")
-        expect(history.get_by_text("PROMPTTEXT")).not_to_be_visible()
-        history.get_by_text("user", exact=True).click()
-        expect(history.get_by_text("PROMPTTEXT")).to_be_visible()
-        telemetry = page.get_by_role("button", name="Telemetry", exact=True)
-        telemetry.focus()
-        page.keyboard.press("Enter")
-        expect(telemetry).to_have_attribute("aria-pressed", "true")
-        expect(history).not_to_contain_text("MESSAGETEXT")
-        page.get_by_role("button", name="Transcript", exact=True).click()
-        expect(history).to_contain_text("MESSAGETEXT")
-        expect(history).not_to_contain_text("SPAN")
-        assert page.evaluate("() => localStorage.getItem('groom.trailView')") == "transcript"
-        assert not _scan(page)
-    finally:
-        page.close()
-
-
-def test_a_turn_group_is_open_while_running_and_remembers_the_operators_toggle():
-    from playwright.sync_api import expect
-
-    from groom import state
-
-    live = _live()
-    assert live is not None, _UNAVAILABLE
-    _write_transcript(state.WORKFLOWS["acme12345678"].runs_volume)
-    page = _open(live)
-    try:
-        page.click("#runs-list .row.blocked")
-        page.get_by_role("tab", name="Details").click()
-        history = page.get_by_role("log", name="Telemetry history")
-        group = history.locator("details.turn")
-        expect(group).to_have_count(1)
-        expect(group).to_have_attribute("open", "")
-        summary = group.locator("summary.lt-turn-head")
-        expect(summary).to_contain_text("001-00001-implement")
-        expect(summary).to_contain_text("running")
-        expect(history).to_contain_text("MESSAGETEXT")
-        summary.focus()
-        page.keyboard.press("Enter")
-        expect(group).not_to_have_attribute("open", "")
-        expect(history.get_by_text("MESSAGETEXT")).not_to_be_visible()
-        page.get_by_role("button", name="Telemetry", exact=True).click()
-        expect(history.locator("details.turn")).to_have_count(0)
-        page.get_by_role("button", name="Transcript", exact=True).click()
-        expect(history.locator("details.turn")).not_to_have_attribute("open", "")
-        assert page.evaluate(
-            "() => document.querySelector('.log-trail').scrollWidth <= document.querySelector('.log-trail').clientWidth"
-        )
-        assert not _scan(page)
     finally:
         page.close()
 

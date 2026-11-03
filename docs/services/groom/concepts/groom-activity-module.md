@@ -9,7 +9,7 @@ The activity module builds what the [Activity tab](run-activity-tab.md) shows: t
 
 The module reads and returns plain data. It writes nothing, holds no state between calls and raises two errors the server maps to statuses: `TurnNotFound` for a slug the run has no turn under, and `TurnUnreadable` for a turn that exists whose record is not on this machine.
 
-- code: groom/groom/activity.py@4029fdf245ec
+- code: groom/groom/activity.py@047adabd5814
 - tests: groom/tests/test_activity.py
 - tests: groom/tests/test_activity_groups.py
 - refs: [groom transcript parse module](groom-transcript-parse-module.md), [groom store](groom-store.md), [groom turns module](groom-turns-module.md), [run flow tree](run-flow-tree.md)
@@ -18,14 +18,16 @@ The module reads and returns plain data. It writes nothing, holds no state betwe
 
 ### timeline
 
-- sig: `timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None) -> dict[str, Any]`
+- sig: `timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None, logs: bool = False) -> dict[str, Any]`
 - abstract: false
 - does: lists the run's agent turns oldest first, a finished turn from its spans and a turn with live rows and no span from its first live row
 - does: lists the run's running step and open operator gate, taken from the live telemetry in `standing`, among its rows in the group last worked in
 - verify: json_path(path="$.rows[0].status", matches="^(done|failed)$")
-- returns: `{"run_id", "rows", "items", "problems", "as_of"}`, with `problems` the count of the problem entries
-- code: groom/groom/activity.py::timeline@f29f5ec4a999
+- does: with `logs` true, places each log line of INFO level and above in the flow pass whose first turn started latest at or before the line, ordered by time among that pass's entries, so a log never splits a fold of passed steps
+- returns: `{"run_id", "rows", "items", "problems", "log_count", "as_of"}`, with `problems` the count of the problem entries and `log_count` the count of INFO and above log lines whether placed or not
+- code: groom/groom/activity.py::timeline@29dffacc393b
 - tests: groom/tests/test_activity.py::test_the_timeline_lists_a_finished_turn_with_its_figures_and_pass
+- tests: groom/tests/test_records.py::test_the_activity_timeline_adds_info_logs_inside_the_pass_they_belong_to_without_splitting_a_fold
 - endpoint: [get-run-activity](../http/get-run-activity.md)
 
 ### turn

@@ -13,7 +13,7 @@ Nothing here emits markup, reads a request, opens a socket, or touches Docker. I
 
 Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sort rank, an exit hint — are computed here rather than in the browser. They are policy, they are thresholded against server-side constants, and two implementations of them would disagree. Raw numbers ride along beside every label so the client can re-format without re-deciding.
 
-- code: groom/groom/projection.py@8ac5fcf9bebf
+- code: groom/groom/projection.py@67751f7c27c4
 - refs: [workflow container](workflow-container.md), [gate info](gate-info.md), [dashboard state payload](../formats/dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [dashboard client store](dashboard-client-store.md), [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [run watch registry](run-watch-registry.md)
 
 The projection tests cover JSON serializability, consistency between a run message and its
@@ -50,7 +50,7 @@ questions travel as data rather than markup.
 - type: `dict[WorkflowState, int]`
 - default: blocked 0, running 1, idle 2, finished 3
 - required: true
-- code: groom/groom/projection.py::STATE_ORDER@8ac5fcf9bebf
+- code: groom/groom/projection.py::STATE_ORDER@67751f7c27c4
 - meaning: the primary sort key behind fleet order — work that needs an operator sorts above work that does not.
 
 ### field-log-trail-limit
@@ -58,15 +58,15 @@ questions travel as data rather than markup.
 - type: `int`
 - default: 60
 - required: true
-- code: groom/groom/projection.py::LOG_TRAIL_LIMIT@8ac5fcf9bebf
-- meaning: how many log lines a detail pane's trail carries, newest first. The same constant bounds the durable query, so the payload size is decided once.
+- code: groom/groom/projection.py::LOG_TRAIL_LIMIT@67751f7c27c4
+- meaning: how many log lines the `/worker/{id}` payload carries, newest first, for the terminal client. The dashboard no longer shows this trail. The same constant bounds the durable query, so the payload size is decided once.
 
 ### field-severity-class
 
 - type: `dict[str, str]`
 - default: `FATAL`/`ERROR` → `bad`, `WARNING` → `warn`
 - required: true
-- code: groom/groom/projection.py::SEVERITY_CLASS@8ac5fcf9bebf
+- code: groom/groom/projection.py::SEVERITY_CLASS@67751f7c27c4
 - meaning: which log severities earn a color class in the trail; everything else reads plain.
 
 ### field-ext-lang
@@ -74,7 +74,7 @@ questions travel as data rather than markup.
 - type: `dict[str, str]`
 - default: a fixed extension → highlight.js language table
 - required: true
-- code: groom/groom/projection.py::EXT_LANG@8ac5fcf9bebf
+- code: groom/groom/projection.py::EXT_LANG@67751f7c27c4
 - meaning: the language hint the file viewer passes to highlight.js. An unmapped extension projects `""`, which the viewer reads as "auto-detect".
 
 ## Methods
@@ -122,8 +122,8 @@ questions travel as data rather than markup.
 - code: groom/groom/projection.py::run_detail@3752b117b430
 - tests: groom/tests/test_projection.py::test_run_detail_carries_the_running_node
 - step: Project identity (`id`, `run_id`, `state`, `node`), every open gate through `gate_dict`, the node the run is in through `running_node` as `running`, the [run now strip](run-now-strip.md) through `running_strip` as `strip`, and the live slice (`head`, `metrics`, `logs`).
-- step: Set `running` to `{node, elapsed_s, wait_kind, wait_elapsed_s}` while the run is unfinished and names a node, and to `null` once it finished or names none. A node held at an operator wait carries `wait_kind` `operator` and the time waited, so the Overview marks it as waiting on the operator rather than running.
-- step: Set `strip` to `{node, kind, wait_kind, started_ts, idle_since_ts, beat_ts, norm}` while `running` is set, and to `null` otherwise. Every time in it is a server timestamp derived from the arrival time of the elapsed gauge, so the browser counts up from it. The norm comes from the cache only.
+- step: Set `running` to `{node, elapsed_s, wait_kind, wait_elapsed_s, node_since_ts}` while the run is unfinished and names a node, and to `null` once it finished or names none. A node held at an operator wait carries `wait_kind` `operator` and the time waited, so the Overview marks it as waiting on the operator rather than running.
+- step: Set `strip` to `{node, kind, wait_kind, started_ts, node_since_ts, idle_since_ts, beat_ts, norm}` while `running` is set, and to `null` otherwise. `node_since_ts` is when the node began. Every time in it is a server timestamp derived from the arrival time of the elapsed gauge, so the browser counts up from it. The norm comes from the cache only.
 - step: Return the same body both the pushed `detail` message and the detail fetch carry, so a subscription and a fetch cannot disagree.
 
 ### method-fleet-rows

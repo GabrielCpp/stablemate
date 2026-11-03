@@ -491,7 +491,7 @@ def test_the_switch_keeps_its_position_across_tabs_and_the_view_is_not_read_agai
             _open_diff(page)
             _since_view(page)
             expect(_tab(page, "Diff")).to_contain_text(WHOLE_SIZE)
-            for name in ("Files", "Details", "Overview"):
+            for name in ("Files", "Activity", "Overview"):
                 page.get_by_role("tab", name=name).click()
             _tab(page, "Diff").click()
             expect(_view(page, "Since branch start")).to_have_attribute("aria-pressed", "true")

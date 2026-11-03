@@ -555,7 +555,7 @@ function StatusBar() {
 // --------------------------------------------------------------------------- //
 // Detail pane — the open run (`GET /worker/{id}` + the pushed `detail` frame)
 // --------------------------------------------------------------------------- //
-function RunHead({ head, onClose, sidecar }) {
+function RunHead({ head, runId, onClose, sidecar }) {
   const meta =
     head.state + (head.node ? " · node " + head.node : "") +
     (head.cli ? " · " + head.cli : "") + (head.pid ? " · pid " + head.pid : "");
@@ -578,128 +578,10 @@ function RunHead({ head, onClose, sidecar }) {
       : null}
     ${head.activity ? html`<span class="doing-line">${head.activity}</span>` : null}
     ${head.worktree ? html`<span class="doing-line">${head.worktree}</span>` : null}
+    <${AttendLink} runId=${runId} />
     ${onClose
       ? html`<button type="button" class="btn ghost close-detail" aria-label="Close run detail" title="Close run detail" onClick=${onClose}>Close</button>`
       : null}
-  </div>`;
-}
-
-function Metrics({ metrics }) {
-  if (metrics.empty) {
-    return html`<div class="metrics">
-      <div class="fd-empty">
-        No telemetry for this run — it is either pre-OTel or exporting to another collector.
-      </div>
-    </div>`;
-  }
-  const foot = metrics.alerts.length || metrics.run_dir;
-  return html`<div class="metrics">
-    <div class="metrics-grid">
-      ${metrics.cells.map(
-        (cell) => html`<div class=${"metric" + (cell.cls ? " " + cell.cls : "")} key=${cell.key}>
-          <span class="m-k">${cell.key}</span><span class="m-v">${cell.value}</span>
-        </div>`
-      )}
-    </div>
-    ${foot
-      ? html`<div class="metrics-foot">
-          ${metrics.alerts.map((rule) => html`<span class="alert-chip" key=${rule}>${rule}</span>`)}
-          ${metrics.run_dir ? html`<code>${metrics.run_dir}</code>` : null}
-        </div>`
-      : null}
-  </div>`;
-}
-
-const TRAIL_VIEWS = [
-  ["all", "All"],
-  ["transcript", "Transcript"],
-  ["telemetry", "Telemetry"],
-];
-
-function storedTrailView() {
-  try {
-    const saved = localStorage.getItem("groom.trailView");
-    return TRAIL_VIEWS.some(([id]) => id === saved) ? saved : "all";
-  } catch (e) {
-    return "all";
-  }
-}
-
-function rememberTrailView(view) {
-  try {
-    localStorage.setItem("groom.trailView", view);
-  } catch (e) {}
-}
-
-function TurnGroup({ line, opened }) {
-  const open = line.slug in opened ? opened[line.slug] : line.status === "running";
-  const toggled = (event) => {
-    const now = event.currentTarget.open;
-    if (now !== open) opened[line.slug] = now;
-  };
-  return html`<details class=${"log-line turn" + (line.cls ? " " + line.cls : "")}
-    open=${open} onToggle=${toggled}>
-    <summary class="lt-turn-head">
-      <span class="lt-ts" title=${line.ts}>${line.ts}</span>
-      <span class="lt-node">${line.node}</span>
-      <span class="lt-slug">${line.slug}</span>
-      <span class=${"lt-status " + line.status}>${line.status}</span>
-      <span class="lt-dur">${line.duration}</span>
-    </summary>
-    <div class="lt-turn-body">
-      ${line.entries.map((entry) => html`<${AttendEntry} key=${entry.key} entry=${entry} />`)}
-    </div>
-  </details>`;
-}
-
-function TrailLine({ line, opened }) {
-  if (line.kind === "turn") return html`<${TurnGroup} line=${line} opened=${opened} />`;
-  return html`<div class=${"log-line" + (line.cls ? " " + line.cls : "")}>
-    <span class="lt-ts" title=${line.ts}>${line.ts}</span>
-    <span class="lt-lvl">${line.level}</span>
-    <span class="lt-node">${line.node}</span>
-    <span class="lt-body">${line.body}</span>
-  </div>`;
-}
-
-function LogTrail({ lines }) {
-  const [kind, setKind] = useState("");
-  const [view, setView] = useState(storedTrailView);
-  const pick = (id) => {
-    setView(id);
-    rememberTrailView(id);
-  };
-  const opened = useRef({}).current;
-  const byView = lines.filter((line) =>
-    view === "all" ? !line.absorbed : (line.kind === "turn") === (view === "transcript")
-  );
-  const shown = kind && view !== "transcript" ? byView.filter((line) => line.kind === kind) : byView;
-  return html`<div>
-    <div class="history-filter">
-      <span class="trail-views" role="group" aria-label="History view">
-        ${TRAIL_VIEWS.map(
-          ([id, label]) => html`<button type="button" class="btn ghost" key=${id}
-            aria-pressed=${String(view === id)} onClick=${() => pick(id)}>${label}</button>`
-        )}
-      </span>
-      ${view === "transcript"
-        ? null
-        : html`<label>Show
-            <select aria-label="Telemetry history type" value=${kind}
-              onChange=${(event) => setKind(event.currentTarget.value)}>
-              <option value="">All telemetry</option>
-              <option value="log">Log records</option>
-              <option value="span">Completed spans</option>
-              <option value="metric">Metric samples</option>
-            </select>
-          </label>`}
-    </div>
-    <div class="log-trail" role="log" aria-label="Telemetry history" aria-live="polite">
-      ${shown.length ? shown.map((line, i) => html`<${TrailLine} key=${line.key ?? i} line=${line} opened=${opened} />`)
-        : html`<div class="fd-empty">${lines.length
-        ? "No records of this type in the recent history."
-        : "No telemetry history has been received for this run yet."}</div>`}
-    </div>
   </div>`;
 }
 
@@ -948,6 +830,7 @@ function NowStrip({ strip }) {
   if (strip.idle_since_ts !== null) idle = fmtSpan(now - strip.idle_since_ts);
   return html`<div class="now" role="group" aria-label="Where the run is now">
     <div><span class="k2">Node</span><span class="v2"><span class=${"dot " + (operator ? "blocked" : "running")} aria-hidden="true"></span>${strip.node}</span></div>
+    ${strip.kind === "node" ? null : html`<div><span class="k2">In node</span><span class="v2">${fmtSpan(now - strip.node_since_ts)}</span></div>`}
     <div><span class="k2">${lead}</span><span class="v2">${fmtSpan(lasted)} ${waiting ? html`<span class="dim">no norm while waiting</span>` : normNote(strip, lasted)}</span></div>
     <div><span class="k2">Agent idle</span><span class="v2">${idle}</span></div>
     <div><span class="k2">Last beat</span><span class="v2">${strip.beat_ts ? fmtSpan(now - strip.beat_ts) + " ago" : "—"}</span></div>
@@ -1288,13 +1171,20 @@ function fmtWhen(ts) {
   return new Date(ts * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-function RunFacts({ facts, runId, checkout }) {
+function gasOf(detail) {
+  const cell = ((detail.metrics && detail.metrics.cells) || []).find((one) => one.key === "gas");
+  return cell ? cell.value : "";
+}
+
+function RunFacts({ facts, runId, checkout, pid, gas }) {
   const rows = [
     facts.started_ts ? ["Started", fmtWhen(facts.started_ts), "start time"] : null,
     facts.branch ? ["Branch", facts.branch, "branch"] : null,
-    facts.run_dir ? ["Run dir", facts.run_dir, "run directory"] : null,
-    checkout ? ["Checkout", checkout, "checkout path"] : null,
     ["Run id", runId, "run id"],
+    pid ? ["pid", String(pid), "pid"] : null,
+    gas ? ["Gas", gas, "gas"] : null,
+    facts.run_dir ? ["Run directory", facts.run_dir, "run directory"] : null,
+    checkout ? ["Checkout", checkout, "checkout path"] : null,
   ].filter(Boolean);
   return html`<section id="detail-facts">
     <div class="sec-h"><span>Run</span></div>
@@ -1373,7 +1263,7 @@ function Overview({ detail }) {
   if (overview.runId === runId && overview.status === "failed") {
     return html`<div class="side-state" role="alert">
       <h3>These figures could not be read</h3>
-      The Details tab still works.
+      The Activity tab still works.
       <div class="acts"><button type="button" class="btn ghost retry-overview" onClick=${() => loadOverview(runId, rev)}>Retry now</button></div>
     </div>`;
   }
@@ -1391,7 +1281,7 @@ function Overview({ detail }) {
         <h3>No finished work yet</h3>
         Figures appear when the first node finishes.
       </div>
-      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} />
+      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} />
       ${detail.running ? html`<${Breakdown} data=${Object.assign({}, data, { flows: [], items: null })} running=${detail.running} finished=${false} />` : null}
     </div>`;
   }
@@ -1402,14 +1292,18 @@ function Overview({ detail }) {
     <${Breakdown} key=${runId} data=${data} running=${detail.running} finished=${true} />
     <div class="pair">
       <${Models} models=${data.models} />
-      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} />
+      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} />
     </div>
     <${Sessions} sessions=${data.sessions} live=${detail.head.state === "running" || detail.head.state === "blocked"} />
   </div>`;
 }
 
 function idleActivity() {
-  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null, query: "", item: "", search: idleSearch(), note: "", problems: false, problemCount: null };
+  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null, query: "", item: "", search: idleSearch(), note: "", problems: false, problemCount: null, steps: false, logs: false, logCount: null, raw: idleRaw() };
+}
+
+function idleRaw() {
+  return { open: false, status: "idle", records: [], total: 0, samples: 0, metrics: false, next: "", older: "idle" };
 }
 
 function idleSearch() {
@@ -1468,9 +1362,10 @@ async function loadTurn(runId, slug, refresh = false) {
 
 async function loadActivity(runId, rev = 0, refresh = false) {
   const seq = ++activitySeq;
-  if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev, problems: store.get().activity.problems } });
+  const kept = store.get().activity;
+  if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev, problems: kept.problems, steps: kept.steps, logs: kept.logs } });
   try {
-    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/activity");
+    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/activity" + (kept.logs ? "?logs=1" : ""));
     if (!response.ok) throw new Error("activity " + response.status);
     const data = await response.json();
     if (seq !== activitySeq) return;
@@ -1478,7 +1373,7 @@ async function loadActivity(runId, rev = 0, refresh = false) {
     const rows = data.rows;
     const items = data.items || [];
     const chosen = rows.some((row) => row.slug === held.selected) || findEntry(items, held.selected) || held.selected.startsWith(RUNNING_STEP) ? held.selected : "";
-    store.set({ activity: { ...held, runId, status: "ready", rows, items, problemCount: data.problems || 0, selected: chosen, rev } });
+    store.set({ activity: { ...held, runId, status: "ready", rows, items, problemCount: data.problems || 0, logCount: data.log_count || 0, selected: chosen, rev } });
     const wasRunning = held.rows.some((row) => row.slug === chosen && row.status === "running");
     if (!refresh && held.problems && showNewestProblem()) return;
     if (!chosen && rows.length) loadTurn(runId, rows[rows.length - 1].slug);
@@ -1491,8 +1386,97 @@ async function loadActivity(runId, rev = 0, refresh = false) {
   } catch (err) {
     if (seq !== activitySeq) return;
     if (refresh) store.set({ activity: { ...store.get().activity, rev } });
-    else store.set({ activity: { ...idleActivity(), runId, status: "failed", rev, problems: store.get().activity.problems } });
+    else store.set({ activity: { ...idleActivity(), runId, status: "failed", rev, problems: kept.problems, steps: kept.steps, logs: kept.logs } });
   }
+}
+
+const RAW_POLL_MS = 3000;
+let rawSeq = 0;
+
+function setRaw(patch) {
+  const held = store.get().activity;
+  store.set({ activity: { ...held, raw: { ...held.raw, ...patch } } });
+}
+
+async function fetchRecords(runId, before, metrics) {
+  const query = "?metrics=" + (metrics ? 1 : 0) + (before ? "&before=" + encodeURIComponent(before) : "");
+  const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/records" + query);
+  if (!response.ok) throw new Error("records " + response.status);
+  return response.json();
+}
+
+async function loadRaw(runId, metrics) {
+  const seq = ++rawSeq;
+  setRaw({ open: true, status: "loading", records: [], next: "", older: "idle", metrics });
+  try {
+    const data = await fetchRecords(runId, "", metrics);
+    if (seq !== rawSeq) return;
+    setRaw({ status: "ready", records: data.records, total: data.total, samples: data.metric_samples, next: data.next });
+  } catch (err) {
+    if (seq !== rawSeq) return;
+    setRaw({ status: "failed" });
+  }
+}
+
+async function loadOlder(runId) {
+  const raw = store.get().activity.raw;
+  if (raw.older === "loading" || !raw.next) return;
+  const seq = rawSeq;
+  setRaw({ older: "loading" });
+  try {
+    const data = await fetchRecords(runId, raw.next, raw.metrics);
+    if (seq !== rawSeq) return;
+    const now = store.get().activity.raw;
+    const have = new Set(now.records.map((one) => one.key));
+    setRaw({ records: now.records.concat(data.records.filter((one) => !have.has(one.key))), next: data.next, older: "idle" });
+  } catch (err) {
+    if (seq !== rawSeq) return;
+    setRaw({ older: "failed" });
+  }
+}
+
+async function refreshRaw(runId) {
+  const seq = rawSeq;
+  const raw = store.get().activity.raw;
+  if (raw.status !== "ready" || raw.older === "loading") return;
+  try {
+    const data = await fetchRecords(runId, "", raw.metrics);
+    if (seq !== rawSeq) return;
+    const now = store.get().activity.raw;
+    if (now.status !== "ready" || now.metrics !== raw.metrics) return;
+    const have = new Set(now.records.map((one) => one.key));
+    const fresh = data.records.filter((one) => !have.has(one.key));
+    const gap = now.records.length > 0 && fresh.length === data.records.length;
+    setRaw(gap ? { records: data.records, next: data.next, total: data.total, samples: data.metric_samples } : { records: fresh.concat(now.records), total: data.total, samples: data.metric_samples });
+  } catch (err) {
+    return;
+  }
+}
+
+function toggleRaw(runId) {
+  const held = store.get().activity;
+  if (held.raw.open) {
+    rawSeq++;
+    store.set({ activity: { ...held, raw: idleRaw() } });
+  } else loadRaw(runId, false);
+}
+
+function toggleSteps() {
+  const held = store.get().activity;
+  const folds = Object.fromEntries(Object.entries(held.folds).filter(([key]) => !key.startsWith("steps:")));
+  store.set({ activity: { ...held, steps: !held.steps, folds } });
+}
+
+function toggleLogs(runId) {
+  const held = store.get().activity;
+  store.set({ activity: { ...held, logs: !held.logs } });
+  loadActivity(runId, store.get().activity.rev, true);
+}
+
+function stepCount(items) {
+  let count = 0;
+  for (const item of items) for (const pass of item.passes) for (const entry of pass.entries) if (entry.kind === "steps") count += entry.count;
+  return count;
 }
 
 function findEntry(items, key) {
@@ -1864,9 +1848,10 @@ function TurnRow({ row, selected, pick, query, hit, broke }) {
   </button>`;
 }
 
-const ENTRY_MARKS = { failed: "✕", gate: "?", retry: "!", churn: "!", step: "✓", doing: "●" };
-const ENTRY_CLASS = { failed: "bad", gate: "gate", retry: "warn", churn: "warn", step: "step", doing: "step" };
-const ENTRY_WORDS = { failed: "failed step", gate: "operator gate", retry: "backend retry", churn: "churn alert", step: "step passed", doing: "step running" };
+const ENTRY_MARKS = { failed: "✕", gate: "?", retry: "!", churn: "!", step: "✓", doing: "●", log: "·" };
+const ENTRY_CLASS = { failed: "bad", gate: "gate", retry: "warn", churn: "warn", step: "step", doing: "step", log: "log" };
+const LOG_TONE = { ERROR: " bad", FATAL: " bad", WARNING: " warn" };
+const ENTRY_WORDS = { failed: "failed step", gate: "operator gate", retry: "backend retry", churn: "churn alert", step: "step passed", doing: "step running", log: "log line" };
 
 function entrySpan(seconds) {
   if (seconds > 0 && seconds < 1) return "<1s";
@@ -1887,7 +1872,7 @@ function EntryRow({ entry, selected, pick, query }) {
   const label = entry.name + ", " + ENTRY_WORDS[entry.kind] + ", " + entryWhen(entry) + (meta ? ", " + meta : "") + (entry.result ? ", " + entry.result : "");
   return html`<button
     type="button"
-    class=${"ev " + ENTRY_CLASS[entry.kind] + (selected ? " sel" : "")}
+    class=${"ev " + ENTRY_CLASS[entry.kind] + (entry.kind === "log" ? LOG_TONE[entry.level] || "" : "") + (selected ? " sel" : "")}
     data-entry=${entry.key}
     data-kind=${entry.kind}
     aria-current=${selected ? "true" : null}
@@ -1976,7 +1961,7 @@ function GroupHead({ cls, open, title, aside, label, toggle }) {
   </button>`;
 }
 
-function PassSection({ item, pass, rows, selected, pick, folds, alive, view, hits }) {
+function PassSection({ item, pass, rows, selected, pick, folds, alive, view, hits, steps }) {
   const key = passKey(item, pass);
   const open = view.forced || passIsOpen(item, pass, selected, folds);
   const state = pass.state === "running" && !alive ? "" : pass.state;
@@ -1987,7 +1972,7 @@ function PassSection({ item, pass, rows, selected, pick, folds, alive, view, hit
     <${GroupHead} cls="tl-flow" open=${open} title=${passTitle(pass)} aside=${aside} label=${label} toggle=${() => setFold(key, !open)} />
     ${open ? pass.entries.map((entry) => {
       if (entry.kind === "steps") {
-        const foldOpen = folds[entry.key] !== undefined ? folds[entry.key] : groupHasKey([entry], selected);
+        const foldOpen = folds[entry.key] !== undefined ? folds[entry.key] : steps || groupHasKey([entry], selected);
         return html`<${FoldRow} key=${entry.key} entry=${entry} open=${foldOpen} selected=${selected} pick=${pick} />`;
       }
       if (entry.kind === "turn" || entry.kind === "running") {
@@ -1999,7 +1984,7 @@ function PassSection({ item, pass, rows, selected, pick, folds, alive, view, hit
   </div>`;
 }
 
-function ItemSection({ item, alive, rows, selected, pick, folds, headed, view, hits }) {
+function ItemSection({ item, alive, rows, selected, pick, folds, headed, view, hits, steps }) {
   const key = "item:" + item.work_id;
   const open = view.forced || itemIsOpen(item, alive, selected, folds, headed);
   const title = item.work_id || "outside any work item";
@@ -2008,7 +1993,7 @@ function ItemSection({ item, alive, rows, selected, pick, folds, headed, view, h
   const label = (item.work_id ? "Work item " + item.work_id : "Outside any work item") + ", " + (state ? state + ", " : "") + groupFigures(item).replace(" · ", ", ");
   return html`<div class="tl-sec" data-item=${item.work_id}>
     ${headed ? html`<${GroupHead} cls="tl-group" open=${open} title=${title} aside=${aside} label=${label} toggle=${() => setFold(key, !open)} />` : null}
-    ${open ? item.passes.map((pass) => html`<${PassSection} key=${pass.flow + pass.pass} item=${item} pass=${pass} rows=${rows} selected=${selected} pick=${pick} folds=${folds} alive=${alive} view=${view} hits=${hits} />`) : null}
+    ${open ? item.passes.map((pass) => html`<${PassSection} key=${pass.flow + pass.pass} item=${item} pass=${pass} rows=${rows} selected=${selected} pick=${pick} folds=${folds} alive=${alive} view=${view} hits=${hits} steps=${steps} />`) : null}
   </div>`;
 }
 
@@ -2134,6 +2119,7 @@ function StubPane({ found }) {
   const chip = failed ? html`<span class="chip bad" style="margin-left:auto">failed</span>`
     : kind === "step" ? html`<span class="chip ok" style="margin-left:auto">passed</span>`
     : kind === "gate" ? html`<span class="chip" style="margin-left:auto">operator gate</span>`
+    : kind === "log" ? html`<span class="chip" style="margin-left:auto">${entry.level.toLowerCase()}</span>`
     : html`<span class="chip warn" style="margin-left:auto">problem</span>`;
   const dot = failed ? "blocked" : kind === "step" || kind === "gate" ? "finished" : "idle";
   return html`<div class="rd" data-stub=${kind}>
@@ -2306,6 +2292,48 @@ function FollowControl({ follow, lost, toggle, innerRef }) {
   </button>`;
 }
 
+const NO_TELEMETRY = "No telemetry for this run. It was recorded before telemetry, or it exports to another collector.";
+
+function count(n) {
+  return Number(n).toLocaleString("en-US");
+}
+
+function RawView({ runId, raw, alive, follow, listRef }) {
+  if (raw.status === "failed") {
+    return html`<div class="fill"><div class="side-state act-state" role="alert">
+      <h3>The records of this run could not be read</h3>
+      The timeline still works.
+      <button type="button" class="btn ghost retry-raw" onClick=${() => loadRaw(runId, raw.metrics)}>Retry now</button>
+    </div></div>`;
+  }
+  if (raw.status !== "ready") {
+    return html`<div class="fill"><div class="detail-empty loading" role="status" aria-busy="true">
+      <span class="spin" aria-hidden="true"></span>Reading this run's records…
+    </div></div>`;
+  }
+  const shown = raw.records.length;
+  const hidden = raw.metrics ? "" : ", with " + count(raw.samples) + " metric samples hidden";
+  const within = raw.metrics ? ", " + count(raw.samples) + " of them metric samples" : "";
+  const scrolled = (event) => {
+    if (!alive) return;
+    const list = event.currentTarget;
+    if (follow && list.scrollTop > FOLLOW_EDGE) pauseFollow(alive);
+    else if (!follow && list.scrollTop <= FOLLOW_EDGE) resumeFollow();
+  };
+  return html`<div class="fill">
+    <div class="rawnote" role="status">Every stored record, newest first. This run has ${count(raw.total)} ${raw.total === 1 ? "record" : "records"}${raw.metrics ? within : hidden}. ${shown < raw.total ? "Showing the newest " + count(shown) + "." : "Showing all of them."}</div>
+    <div class="raw" role="log" aria-label="Raw records" tabindex="0" ref=${listRef} onScroll=${scrolled}>
+      ${raw.records.map((one) => html`<div class=${"log-line" + (one.tone ? " " + one.tone : "")} key=${one.key}>
+        <span class="lt-ts">${one.time}</span><span class="lt-lvl">${one.kind}</span><span class="lt-node">${one.node}</span><span class="lt-body">${one.text}</span>
+      </div>`)}
+      ${raw.next ? html`<div class="raw-more">
+        <button type="button" class="btn ghost load-older" disabled=${raw.older === "loading"} onClick=${() => loadOlder(runId)}>${raw.older === "loading" ? "Reading older records…" : "Load older records"}</button>
+        ${raw.older === "failed" ? html`<span class="dim" role="alert">Older records could not be read.</span>` : null}
+      </div>` : null}
+    </div>
+  </div>`;
+}
+
 function ActivityTab({ detail }) {
   const { activity, conn: link } = useStore();
   useSecondTick();
@@ -2319,6 +2347,9 @@ function ActivityTab({ detail }) {
   const lastTop = useRef(0);
   const wasLost = useRef(lost);
   const shownProblems = useRef(false);
+  const wasRaw = useRef(false);
+  const rawRef = useRef(null);
+  const rawOpen = activity.raw.open;
   useEffect(() => {
     if (!runId) return;
     const current = store.get().activity;
@@ -2331,6 +2362,20 @@ function ActivityTab({ detail }) {
     const timer = setInterval(() => loadActivity(runId, store.get().activity.rev, true), 3000);
     return () => clearInterval(timer);
   }, [runId, running]);
+  useEffect(() => {
+    if (!runId || !rawOpen || activity.raw.status !== "ready" || !alive || !activity.follow) return undefined;
+    refreshRaw(runId);
+    const timer = setInterval(() => refreshRaw(runId), RAW_POLL_MS);
+    return () => clearInterval(timer);
+  }, [runId, rawOpen, activity.raw.status, activity.raw.metrics, alive, activity.follow]);
+  useLayoutEffect(() => {
+    const raw = rawRef.current;
+    if (raw && activity.follow && alive) raw.scrollTop = 0;
+  });
+  useLayoutEffect(() => {
+    if (wasRaw.current && !rawOpen && listRef.current) keepInView(listRef.current, store.get().activity.selected);
+    wasRaw.current = rawOpen;
+  }, [rawOpen]);
   useEffect(() => {
     const back = wasLost.current && !lost;
     wasLost.current = lost;
@@ -2350,13 +2395,15 @@ function ActivityTab({ detail }) {
     }
     if (list) lastTop.current = list.scrollTop;
   });
+  const silent = !!(detail.metrics && detail.metrics.empty);
+  if (!runId && silent) return html`<div class="empty-big" role="status">${NO_TELEMETRY}</div>`;
   if (!runId) {
     return html`<div class="side-state"><h3>No activity for this run</h3>It has not reported a telemetry run id.</div>`;
   }
   if (activity.runId === runId && activity.status === "failed") {
     return html`<div class="side-state act-state" role="alert">
       <h3>This run's activity could not be read</h3>
-      The Details tab still works.
+      The Overview tab still works.
       <button type="button" class="btn ghost retry-activity" onClick=${() => loadActivity(runId, rev)}>Retry now</button>
     </div>`;
   }
@@ -2365,6 +2412,7 @@ function ActivityTab({ detail }) {
       <span class="spin" aria-hidden="true"></span>Reading this run's activity…
     </div>`;
   }
+  if (!activity.rows.length && !activity.items.length && silent) return html`<div class="empty-big" role="status">${NO_TELEMETRY}</div>`;
   if (!activity.rows.length && !activity.items.length) {
     const beat = detail.strip && detail.strip.beat_ts ? ": last beat " + fmtSpan(Date.now() / 1000 - detail.strip.beat_ts) + " ago." : ".";
     return html`<div class="empty-big" role="status">No activity yet. The first agent turn appears here when it starts.<br />${alive ? "The run is alive" + beat : "The run has finished."}</div>`;
@@ -2396,6 +2444,20 @@ function ActivityTab({ detail }) {
   const searching = view.query && ["waiting", "loading"].includes(activity.search.status);
   const searchFailed = view.query && activity.search.status === "failed";
   const rows = alive ? activity.rows : activity.rows.map((row) => (row.status === "running" ? { ...row, status: "unrecorded" } : row));
+  const raw = activity.raw;
+  const follower = alive ? html`<${FollowControl} follow=${activity.follow} lost=${lost} toggle=${toggle} innerRef=${controlRef} />` : null;
+  const rawChip = html`<button type="button" class="fchip raw-toggle" aria-pressed=${raw.open ? "true" : "false"} data-filter="raw" onClick=${() => toggleRaw(runId)}>Raw</button>`;
+  if (raw.open) {
+    return html`
+      <div class="feedbar">
+        <span class="r">
+          ${follower}
+          <button type="button" class="fchip metrics-toggle" aria-pressed=${raw.metrics ? "true" : "false"} data-filter="metrics" onClick=${() => loadRaw(runId, !raw.metrics)}>Metric samples${raw.status === "ready" ? html` <b>${count(raw.samples)}</b>` : null}</button>
+          ${rawChip}
+        </span>
+      </div>
+      <${RawView} runId=${runId} raw=${raw} alive=${alive} follow=${activity.follow} listRef=${rawRef} />`;
+  }
   return html`
     <div class="feedbar">
       <input class="filter act-search" type="search" placeholder="Search rows and transcripts…" aria-label="Search activity" value=${activity.query} onInput=${(event) => setQuery(runId, event.currentTarget.value)} />
@@ -2404,10 +2466,14 @@ function ActivityTab({ detail }) {
         ${activity.items.map((item) => html`<option key=${item.work_id} value=${item.work_id || NO_ITEM}>${item.work_id || "outside any work item"}</option>`)}
       </select>
       <button type="button" class="fchip prob" aria-pressed=${activity.problems ? "true" : "false"} data-filter="problems" onClick=${() => setProblems(!activity.problems)}>Problems <b>${activity.problemCount || 0}</b></button>
+      <span class="flabel">Also show</span>
+      <button type="button" class="fchip steps-toggle" aria-pressed=${activity.steps ? "true" : "false"} data-filter="steps" onClick=${toggleSteps}>Steps <b>${count(stepCount(activity.items))}</b></button>
+      <button type="button" class="fchip logs-toggle" aria-pressed=${activity.logs ? "true" : "false"} data-filter="logs" onClick=${() => toggleLogs(runId)}>Info logs <b>${count(activity.logCount || 0)}</b></button>
       <span class="r">
         <span class="hint"><span class="kbd">j k</span> move</span>
         <span class="hint"><span class="kbd">e</span> next problem</span>
-        ${alive ? html`<${FollowControl} follow=${activity.follow} lost=${lost} toggle=${toggle} innerRef=${controlRef} />` : null}
+        ${follower}
+        ${rawChip}
       </span>
     </div>
     <div class="feed">
@@ -2415,7 +2481,7 @@ function ActivityTab({ detail }) {
         ${view.none ? html`<div class="detail-empty" role="status">This run has no problems. <button type="button" class="btn ghost show-all" data-filter="problems" onClick=${() => setProblems(false)}>Show the whole timeline</button></div>` : null}
         ${view.empty && !view.none && view.problems && !view.query ? html`<div class="detail-empty" role="status">No problems in this work item. <button type="button" class="btn ghost clear-search" onClick=${clearFilters}>Clear the filters</button></div>` : null}
         ${view.empty && !view.none && view.query && (view.problems || activity.search.status === "ready") ? html`<div class="detail-empty" role="status">${view.problems ? "No problems match" : "Nothing in this run matches"} “${view.query}”. <button type="button" class="btn ghost clear-search" onClick=${clearFilters}>Clear the search</button></div>` : null}
-        ${view.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${rows} selected=${activity.selected} pick=${pick} folds=${folds} headed=${headed} view=${view} hits=${hits} />`)}
+        ${view.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${rows} selected=${activity.selected} pick=${pick} folds=${folds} headed=${headed} view=${view} hits=${hits} steps=${activity.steps} />`)}
         ${searching ? html`<div role="status" class="dim search-note"><span class="spin" aria-hidden="true"></span>Searching the transcripts of this run…</div>` : null}
         ${searchFailed ? html`<div role="status" class="dim search-note">The transcripts of this run could not be searched. These rows match the row text only. <button type="button" class="btn ghost retry-search" onClick=${() => searchTranscripts(runId, view.query)}>Retry now</button></div>` : null}
         ${activity.note ? html`<div role="status" class="dim search-note">${activity.note}</div>` : null}
@@ -2425,31 +2491,9 @@ function ActivityTab({ detail }) {
     </div>`;
 }
 
-function DetailsTab({ detail }) {
-  return html`<div class="ov">
-    <${AttendLink} runId=${detail.run_id} />
-    ${detail.gates.length
-      ? null
-      : html`<div class="no-gate">
-          Nothing to answer — this run is <b>${detail.state}</b>${detail.node
-            ? html` at node <code>${detail.node}</code>`
-            : null}.
-        </div>`}
-    <div class="live-sec">
-      <div class="live-sec-head">Metrics</div>
-      <${Metrics} metrics=${detail.metrics} />
-    </div>
-    <div class="live-sec">
-      <div class="live-sec-head">Recent telemetry history</div>
-      <${LogTrail} key=${detail.id} lines=${detail.history || []} />
-    </div>
-  </div>`;
-}
-
 const BASE_TABS = [
   ["overview", "Overview"],
   ["activity", "Activity"],
-  ["details", "Details"],
 ];
 
 function runDiffSize(runDiff) {
@@ -2651,7 +2695,8 @@ function Detail() {
     : null;
   useRunDiff(selected, live, stale, runDiff.id, runDiff.shownKept);
   useRunFiles(selected, live, chosen === "files", runFiles.id);
-  const tab = (chosen === "diff" || chosen === "files") && !hasDiff ? "overview" : chosen;
+  const known = chosen === "activity" || ((chosen === "diff" || chosen === "files") && hasDiff);
+  const tab = known ? chosen : "overview";
   const fromActivity = detail && snap.activity.runId === detail.run_id && snap.activity.status === "ready" ? snap.activity.problemCount : null;
   const fromOverview = detail && snap.overview.runId === detail.run_id && snap.overview.status === "ready" && snap.overview.data.standing ? snap.overview.data.standing.problems : null;
   const problems = (tab === "activity" ? fromActivity ?? fromOverview : fromOverview ?? fromActivity) ?? 0;
@@ -2659,12 +2704,12 @@ function Detail() {
     if (chosen !== tab) store.set({ tab });
   }, [chosen, tab]);
   if (!selected) return null;
-  if (!detail) return html`<div class="detail-empty loading" role="status" aria-label="Loading telemetry history" aria-busy="true">
-    <span class="spin" aria-hidden="true"></span>Loading telemetry history…
+  if (!detail) return html`<div class="detail-empty loading" role="status" aria-label="Loading the run" aria-busy="true">
+    <span class="spin" aria-hidden="true"></span>Loading the run…
   </div>`;
   if (!detail.found) return html`<div class="detail-empty">Run not found.</div>`;
   return html`
-    <${RunHead} head=${detail.head} onClose=${closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
+    <${RunHead} head=${detail.head} runId=${detail.run_id} onClose=${closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
     ${detail.gates.length ? html`<${GateStrip} detail=${detail} collapsed=${gatesCollapsed} />` : null}
     <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} problems=${problems} />
     <div class="fill" id="detail-panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
@@ -2672,10 +2717,8 @@ function Detail() {
         ? html`<${DiffTab} runDiff=${runDiff} mark=${mark} />`
         : tab === "files"
           ? (mark ? html`<${StaleFiles} id=${selected} lostAt=${mark.lostAt} still=${mark.still} />` : html`<${FilesTab} runFiles=${runFiles} />`)
-          : tab === "details"
-            ? html`<${DetailsTab} detail=${detail} />`
-            : tab === "activity"
-              ? html`<${ActivityTab} detail=${detail} />`
+          : tab === "activity"
+            ? html`<${ActivityTab} detail=${detail} />`
             : html`<${Overview} detail=${detail} />`}
     </div>
   `;
@@ -3018,13 +3061,12 @@ function AttendLink({ runId }) {
   const label = entry.status === "running" ? "an attendant is on this run" : "last attendant";
   return html`<button
     type="button"
-    class="attend-link"
+    class="btn ghost attend-link"
     onClick=${() => {
       setMode("attend");
       openAttendSession(entry.session_id || "", null);
     }}
   >
-    <${StateDot} state=${entry.status === "running" ? "running" : "finished"} />
     ${label}${entry.reason ? " · " + entry.reason : ""}
   </button>`;
 }
@@ -3624,7 +3666,11 @@ function wireEvents() {
     }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
     const mine = store.get();
-    const onTimeline = mine.tab === "activity" && mine.activity.status === "ready" && !e.metaKey && !e.ctrlKey && !e.altKey;
+    const onTimeline = mine.tab === "activity" && mine.activity.status === "ready" && !mine.activity.raw.open && !e.metaKey && !e.ctrlKey && !e.altKey;
+    if (!typing && mine.tab === "activity" && mine.activity.raw.open && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "j" || e.key === "k" || e.key === "e")) {
+      e.preventDefault();
+      return;
+    }
     if (!typing && onTimeline && (e.key === "j" || e.key === "k" || e.key === "e")) {
       e.preventDefault();
       if (e.key === "e") nextProblem();

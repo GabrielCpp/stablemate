@@ -119,7 +119,7 @@ def test_on_another_tab_j_and_k_keep_moving_the_run_list(tmp_path):
             after = page.locator("#runs-list .row.selected").get_attribute("data-worker-id")
             expect(page.locator("#runs-list .row.selected")).to_have_count(1)
             assert before != after
-            page.get_by_role("tab", name="Details").click()
+            page.get_by_role("tab", name="Overview").click()
             page.keyboard.press("k")
             assert page.locator("#runs-list .row.selected").get_attribute("data-worker-id") != after
             assert second
