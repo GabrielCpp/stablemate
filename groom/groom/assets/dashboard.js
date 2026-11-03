@@ -255,8 +255,9 @@ function connect() {
   });
   const down = () => {
     if (!conn.open && conn.socket !== socket) return;
+    const wasOpen = conn.open;
     conn.open = false;
-    if (conn.socket === socket) conn.closedSince = Date.now();
+    if (conn.socket === socket && wasOpen) conn.closedSince = Date.now();
     const delay = backoffDelay(conn.attempt++);
     setTimeout(connect, delay);
   };
@@ -503,6 +504,8 @@ const CONN_TITLE = {
   offline: "No socket. Polling for updates.",
 };
 
+const CONN_WORD = (phase) => (phase === "offline" ? "not connected" : phase);
+
 function ConnectionChip() {
   const { conn: c } = useStore();
   // Its own live region: the phase changing is exactly the kind of thing that
@@ -513,9 +516,9 @@ function ConnectionChip() {
     class="stat conn"
     data-conn=${c.phase}
     role="status"
-    aria-label=${"Connection: " + c.phase}
+    aria-label=${"Connection: " + CONN_WORD(c.phase)}
     title=${CONN_TITLE[c.phase] || ""}
-    ><span class="ws-dot" aria-hidden="true"></span>${c.phase}</span
+    ><span class="ws-dot" aria-hidden="true"></span>${CONN_WORD(c.phase)}</span
   >`;
 }
 
@@ -1404,7 +1407,7 @@ function Overview({ detail }) {
 }
 
 function idleActivity() {
-  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0 };
+  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null };
 }
 
 let activitySeq = 0;
@@ -1470,8 +1473,9 @@ async function loadActivity(runId, rev = 0, refresh = false) {
     const items = data.items || [];
     const chosen = rows.some((row) => row.slug === held.selected) || findEntry(items, held.selected) || held.selected.startsWith(RUNNING_STEP) ? held.selected : "";
     store.set({ activity: { ...held, runId, status: "ready", rows, items, selected: chosen, rev } });
+    const wasRunning = held.rows.some((row) => row.slug === chosen && row.status === "running");
     if (!chosen && rows.length) loadTurn(runId, rows[rows.length - 1].slug);
-    else if (chosen && rows.some((row) => row.slug === chosen && row.status === "running")) loadTurn(runId, chosen, true);
+    else if (chosen && rows.some((row) => row.slug === chosen && (row.status === "running" || wasRunning))) loadTurn(runId, chosen, true);
     else if (READABLE_ENTRY.test(chosen)) {
       const found = findEntry(items, chosen);
       const unfinished = held.entry.key === chosen && ["open", "running"].includes(held.entry.data && held.entry.data.head.state);
@@ -1510,6 +1514,90 @@ function setFold(key, open) {
   store.set({ activity: { ...held, folds: { ...held.folds, [key]: open } } });
 }
 
+const FOLLOW_EDGE = 4;
+
+function timelineKeys(rows, items) {
+  const keys = new Set(rows.map((row) => row.slug));
+  for (const item of items) {
+    for (const pass of item.passes) {
+      for (const entry of pass.entries) {
+        if (entry.kind === "steps") entry.steps.forEach((step) => keys.add(step.key));
+        else if (entry.kind !== "doing") keys.add(entry.key);
+      }
+    }
+  }
+  return keys;
+}
+
+function arrivals(activity) {
+  if (!activity.seen) return 0;
+  let count = 0;
+  for (const key of timelineKeys(activity.rows, activity.items)) if (!activity.seen.has(key)) count++;
+  return count;
+}
+
+function newestKey(rows, items) {
+  let best = "";
+  let at = -Infinity;
+  const see = (key, ts) => {
+    if (ts >= at) {
+      best = key;
+      at = ts;
+    }
+  };
+  for (const row of rows) see(row.slug, row.started_ts);
+  for (const item of items) {
+    for (const pass of item.passes) {
+      for (const entry of pass.entries) {
+        if (entry.kind === "steps") entry.steps.forEach((step) => see(step.key, step.ts));
+        else if (entry.kind !== "doing") see(entry.key, entry.ts);
+      }
+    }
+  }
+  return best;
+}
+
+const headHeight = (node) => (node ? node.getBoundingClientRect().height : 0);
+
+function placeHeadings(list) {
+  for (const section of list.querySelectorAll(".tl-sec")) {
+    const group = section.querySelector(":scope > .tl-group");
+    if (group) section.style.setProperty("--tl-group-h", headHeight(group) + "px");
+  }
+}
+
+function keepInView(list, key) {
+  const row = key && list.querySelector('[data-slug="' + CSS.escape(key) + '"], [data-entry="' + CSS.escape(key) + '"]');
+  if (!row) return;
+  const box = list.getBoundingClientRect();
+  const at = row.getBoundingClientRect();
+  const stuck = headHeight(row.closest(".tl-sec")?.querySelector(":scope > .tl-group")) + headHeight(row.closest(".tl-sub")?.querySelector(":scope > .tl-flow"));
+  const foot = parseFloat(getComputedStyle(list).paddingBottom) || 0;
+  if (at.top < box.top + stuck - 1 || at.bottom > box.bottom - foot + 1) list.scrollTop += at.top + at.height / 2 - (box.top + box.height / 2);
+}
+
+function heldOpen(activity, alive) {
+  const headed = !(activity.items.length === 1 && activity.items[0].work_id === "");
+  const hold = {};
+  for (const item of activity.items) {
+    hold["item:" + item.work_id] = itemIsOpen(item, alive, activity.selected, activity.folds, headed);
+    for (const pass of item.passes) hold[passKey(item, pass)] = passIsOpen(item, pass, activity.selected, activity.folds);
+  }
+  return hold;
+}
+
+function pauseFollow(alive) {
+  const held = store.get().activity;
+  if (!held.follow) return;
+  store.set({ activity: { ...held, follow: false, seen: timelineKeys(held.rows, held.items), hold: heldOpen(held, alive) } });
+}
+
+function resumeFollow() {
+  const held = store.get().activity;
+  if (held.follow) return;
+  store.set({ activity: { ...held, follow: true, seen: null, hold: null } });
+}
+
 function resetActivity() {
   activitySeq++;
   turnSeq++;
@@ -1528,13 +1616,15 @@ function turnSpan(row) {
 }
 
 function turnMeta(row) {
+  if (row.status === "unrecorded") return "";
   if (row.status === "running") return turnSpan(row);
   return turnSpan(row) + (row.cost_usd === null ? "" : " · " + fmtUsd(row.cost_usd));
 }
 
 function turnLabel(row) {
-  const state = row.status === "running" ? "running" : row.status === "failed" ? "failed" : "finished";
-  return row.node + ", " + state + ", started " + turnWhen(row) + ", " + turnMeta(row) + (row.result ? ", " + row.result : "");
+  const state = row.status === "running" ? "running" : row.status === "unrecorded" ? "ended with no record" : row.status === "failed" ? "failed" : "finished";
+  const meta = turnMeta(row);
+  return row.node + ", " + state + ", started " + turnWhen(row) + (meta ? ", " + meta : "") + (row.result && row.status !== "unrecorded" ? ", " + row.result : "");
 }
 
 function TurnRow({ row, selected, pick }) {
@@ -1549,7 +1639,7 @@ function TurnRow({ row, selected, pick }) {
   >
     <span class="t">${turnWhen(row)}</span>
     <span class="i" aria-hidden="true">${running ? "●" : "◆"}</span>
-    <span class="main"><span class="n">${row.node}</span><span class="w">${row.result}</span></span>
+    <span class="main"><span class="n">${row.node}</span><span class="w">${row.status === "unrecorded" ? "ended with no record" : row.result}</span></span>
     <span class="m">${turnMeta(row)}</span>
   </button>`;
 }
@@ -1622,7 +1712,7 @@ function groupFigures(group) {
 }
 
 function itemState(item, alive) {
-  if (item.running) return "running";
+  if (item.running && alive) return "running";
   if (item.latest && alive) return "in progress";
   if (item.outcome === "done") return "done";
   if (item.outcome === "uncounted") return "not counted";
@@ -1646,17 +1736,32 @@ function groupHasKey(entries, key) {
   return entries.some((entry) => entry.key === key || (entry.steps || []).some((step) => step.key === key));
 }
 
+function itemIsOpen(item, alive, selected, folds, headed) {
+  const key = "item:" + item.work_id;
+  return !headed || (folds[key] !== undefined ? folds[key] : itemOpenByDefault(item, alive) || item.passes.some((pass) => groupHasKey(pass.entries, selected)));
+}
+
+function passKey(item, pass) {
+  return "pass:" + item.work_id + "|" + pass.flow + "|" + pass.pass;
+}
+
+function passIsOpen(item, pass, selected, folds) {
+  const key = passKey(item, pass);
+  return folds[key] !== undefined ? folds[key] : passOpenByDefault(pass) || groupHasKey(pass.entries, selected);
+}
+
 function GroupHead({ cls, open, title, aside, label, toggle }) {
   return html`<button type="button" class=${cls} aria-expanded=${open ? "true" : "false"} aria-label=${label} onClick=${toggle}>
     <span><span aria-hidden="true">${open ? "▾" : "▸"} </span>${title}</span><span class="aside">${aside}</span>
   </button>`;
 }
 
-function PassSection({ item, pass, rows, selected, pick, folds }) {
-  const key = "pass:" + item.work_id + "|" + pass.flow + "|" + pass.pass;
-  const open = folds[key] !== undefined ? folds[key] : passOpenByDefault(pass) || groupHasKey(pass.entries, selected);
-  const stateWord = pass.state === "running" ? "running" : pass.state === "open" ? "in progress" : pass.state;
-  const aside = (pass.state === "running" || pass.state === "open" || pass.state === "failed" ? stateWord + " · " : "") + groupFigures(pass);
+function PassSection({ item, pass, rows, selected, pick, folds, alive }) {
+  const key = passKey(item, pass);
+  const open = passIsOpen(item, pass, selected, folds);
+  const state = pass.state === "running" && !alive ? "" : pass.state;
+  const stateWord = state === "running" ? "running" : state === "open" ? "in progress" : state;
+  const aside = (state === "running" || state === "open" || state === "failed" ? stateWord + " · " : "") + groupFigures(pass);
   const label = passTitle(pass) + ", " + (stateWord ? stateWord + ", " : "") + groupFigures(pass).replace(" · ", ", ");
   return html`<div class="tl-sub" data-pass=${key}>
     <${GroupHead} cls="tl-flow" open=${open} title=${passTitle(pass)} aside=${aside} label=${label} toggle=${() => setFold(key, !open)} />
@@ -1676,33 +1781,35 @@ function PassSection({ item, pass, rows, selected, pick, folds }) {
 
 function ItemSection({ item, alive, rows, selected, pick, folds, headed }) {
   const key = "item:" + item.work_id;
-  const open = !headed || (folds[key] !== undefined ? folds[key] : itemOpenByDefault(item, alive) || item.passes.some((pass) => groupHasKey(pass.entries, selected)));
+  const open = itemIsOpen(item, alive, selected, folds, headed);
   const title = item.work_id || "outside any work item";
   const state = item.work_id ? itemState(item, alive) : "";
   const aside = (state ? state + " · " : "") + groupFigures(item);
   const label = (item.work_id ? "Work item " + item.work_id : "Outside any work item") + ", " + (state ? state + ", " : "") + groupFigures(item).replace(" · ", ", ");
   return html`<div class="tl-sec" data-item=${item.work_id}>
     ${headed ? html`<${GroupHead} cls="tl-group" open=${open} title=${title} aside=${aside} label=${label} toggle=${() => setFold(key, !open)} />` : null}
-    ${open ? item.passes.map((pass) => html`<${PassSection} key=${pass.flow + pass.pass} item=${item} pass=${pass} rows=${rows} selected=${selected} pick=${pick} folds=${folds} />`) : null}
+    ${open ? item.passes.map((pass) => html`<${PassSection} key=${pass.flow + pass.pass} item=${item} pass=${pass} rows=${rows} selected=${selected} pick=${pick} folds=${folds} alive=${alive} />`) : null}
   </div>`;
 }
 
 function TurnHead({ row }) {
   const running = row.status === "running";
+  const unrecorded = row.status === "unrecorded";
   const flowText = row.flow ? row.flow + (row.pass ? " · " + ordinal(row.pass) + " pass" : "") : "";
   const chip = running ? html`<span class="chip ok" style="margin-left:auto">running</span>`
+    : unrecorded ? html`<span class="chip warn" style="margin-left:auto">no record</span>`
     : row.status === "failed" ? html`<span class="chip bad" style="margin-left:auto">failed</span>`
     : html`<span class="chip ok" style="margin-left:auto">finished</span>`;
   return html`<div class="rd-head">
     <div class="l1">
-      <span class=${"dot " + (running ? "running" : row.status === "failed" ? "blocked" : "finished")} style=${row.status === "failed" ? "animation:none" : null} aria-hidden="true"></span>${row.node}${row.work_id ? html`<span class="dim">·</span><span class="dim">${row.work_id}</span>` : null}${chip}
+      <span class=${"dot " + (running ? "running" : unrecorded ? "idle" : row.status === "failed" ? "blocked" : "finished")} style=${row.status === "failed" ? "animation:none" : null} aria-hidden="true"></span>${row.node}${row.work_id ? html`<span class="dim">·</span><span class="dim">${row.work_id}</span>` : null}${chip}
     </div>
     <div class="l2">
       ${flowText || row.visit ? html`<span>${flowText}${flowText && row.visit ? " · " : ""}${row.visit ? html`visit <b>${row.visit}</b>` : null}</span>` : null}
       ${row.model ? html`<span>model <b>${row.model}</b></span>` : null}
-      <span>${turnSpan(row)}</span>
-      ${running ? html`<span>cost <b>lands at turn end</b></span>` : row.cost_usd === null ? null : html`<span>cost <b>${fmtUsd(row.cost_usd)}</b></span>`}
-      ${running ? null : html`<span>out <b>${fmtTokens(row.output_tokens)}</b>${row.cache_read_tokens ? html` · cache read <b>${fmtTokens(row.cache_read_tokens)}</b>` : null}</span>`}
+      ${unrecorded ? null : html`<span>${turnSpan(row)}</span>`}
+      ${running ? html`<span>cost <b>lands at turn end</b></span>` : unrecorded || row.cost_usd === null ? null : html`<span>cost <b>${fmtUsd(row.cost_usd)}</b></span>`}
+      ${running || unrecorded ? null : html`<span>out <b>${fmtTokens(row.output_tokens)}</b>${row.cache_read_tokens ? html` · cache read <b>${fmtTokens(row.cache_read_tokens)}</b>` : null}</span>`}
     </div>
   </div>`;
 }
@@ -1781,8 +1888,9 @@ function missingParts(prompt, thinking) {
 function TurnReading({ row, entries, cut, prompt, thinking }) {
   const [opened, setOpened] = useState({});
   const flip = (key) => (open) => setOpened((held) => (held[key] === open ? held : { ...held, [key]: open }));
-  const missing = cut || row.status === "running" ? "" : missingParts(prompt, thinking);
+  const missing = cut || row.status === "running" || row.status === "unrecorded" ? "" : missingParts(prompt, thinking);
   return html`<div class="rd-body" tabindex="0" aria-label=${"Turn " + row.node}>
+    ${row.status === "unrecorded" ? html`<div class="dim at-note" style="font-size:11.5px">This turn ended with no record, so its cost was not reported.</div>` : null}
     ${!row.matched ? html`<div class="dim at-note" style="font-size:11.5px">No record of this turn could be found, so its messages and tool calls are not shown.</div>`
       : entries.length ? null : html`<div class="dim" style="font-size:11.5px">This turn recorded no messages or tool calls.</div>`}
     ${cut ? html`<div class="dim at-note" style="font-size:11.5px">Earlier output of this turn is not shown.</div>` : null}
@@ -1953,13 +2061,25 @@ function TurnPane({ runId, rows, turn, items, selected, entry }) {
   return html`<div class="rd"><${TurnHead} row=${row} /><${TurnReading} key=${turn.slug} row=${row} entries=${turn.data.entries} cut=${turn.data.cut} prompt=${turn.data.prompt} thinking=${turn.data.thinking} /></div>`;
 }
 
+function FollowControl({ follow, lost, toggle, innerRef }) {
+  if (lost) return html`<button type="button" class="follow" disabled ref=${innerRef}>Not connected</button>`;
+  return html`<button type="button" class=${"follow" + (follow ? " on" : "")} aria-pressed=${follow ? "true" : "false"} ref=${innerRef} onClick=${toggle}>
+    ${follow ? html`<span class="d" aria-hidden="true"></span>` : null}${follow ? "Following" : "Paused"}
+  </button>`;
+}
+
 function ActivityTab({ detail }) {
-  const { activity } = useStore();
+  const { activity, conn: link } = useStore();
   useSecondTick();
   const runId = detail.run_id;
   const rev = detail.figures_rev || 0;
   const alive = detail.state !== "finished";
-  const running = activity.rows.some((row) => row.status === "running") || activity.items.some((item) => item.passes.some((pass) => pass.entries.some((entry) => entry.open)));
+  const running = alive && activity.rows.some((row) => row.status === "running") || activity.items.some((item) => item.passes.some((pass) => pass.entries.some((entry) => entry.open)));
+  const lost = link.phase === "reconnecting" || link.phase === "offline";
+  const listRef = useRef(null);
+  const controlRef = useRef(null);
+  const lastTop = useRef(0);
+  const wasLost = useRef(lost);
   useEffect(() => {
     if (!runId) return;
     const current = store.get().activity;
@@ -1972,6 +2092,20 @@ function ActivityTab({ detail }) {
     const timer = setInterval(() => loadActivity(runId, store.get().activity.rev, true), 3000);
     return () => clearInterval(timer);
   }, [runId, running]);
+  useEffect(() => {
+    const back = wasLost.current && !lost;
+    wasLost.current = lost;
+    if (back && runId && store.get().activity.status === "ready") loadActivity(runId, store.get().activity.rev, true);
+  }, [lost]);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (list) placeHeadings(list);
+    if (list && alive && activity.follow) {
+      list.scrollTop = list.scrollHeight;
+      keepInView(list, newestKey(activity.rows, activity.items));
+    }
+    if (list) lastTop.current = list.scrollTop;
+  });
   if (!runId) {
     return html`<div class="side-state"><h3>No activity for this run</h3>It has not reported a telemetry run id.</div>`;
   }
@@ -1993,12 +2127,34 @@ function ActivityTab({ detail }) {
   }
   const pick = (key) => pickRow(runId, key, activity.rows.find((row) => row.slug === key));
   const headed = !(activity.items.length === 1 && activity.items[0].work_id === "");
-  return html`<div class="feed">
-    <div class=${"tl" + (headed ? "" : " flat")} role="log" aria-label="Run activity">
-      ${activity.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${activity.rows} selected=${activity.selected} pick=${pick} folds=${activity.folds} headed=${headed} />`)}
-    </div>
-    <${TurnPane} runId=${runId} rows=${activity.rows} turn=${activity.turn} items=${activity.items} selected=${activity.selected} entry=${activity.entry} />
-  </div>`;
+  const folds = activity.hold ? { ...activity.hold, ...activity.folds } : activity.folds;
+  const scrolled = (event) => {
+    const list = event.currentTarget;
+    const away = list.scrollHeight - list.clientHeight - list.scrollTop;
+    const up = list.scrollTop < lastTop.current;
+    lastTop.current = list.scrollTop;
+    if (!alive) return;
+    if (activity.follow && up && away > FOLLOW_EDGE) pauseFollow(alive);
+    else if (!activity.follow && away <= FOLLOW_EDGE) resumeFollow();
+  };
+  const toggle = () => (activity.follow ? pauseFollow(alive) : resumeFollow());
+  const back = () => {
+    const newest = newestKey(activity.rows, activity.items);
+    if (newest && newest !== activity.selected) openRow(newest);
+    resumeFollow();
+    if (controlRef.current) controlRef.current.focus();
+  };
+  const arrived = alive && !activity.follow ? arrivals(activity) : 0;
+  const rows = alive ? activity.rows : activity.rows.map((row) => (row.status === "running" ? { ...row, status: "unrecorded" } : row));
+  return html`
+    ${alive ? html`<div class="feedbar"><span class="r"><${FollowControl} follow=${activity.follow} lost=${lost} toggle=${toggle} innerRef=${controlRef} /></span></div>` : null}
+    <div class="feed">
+      <div class=${"tl" + (headed ? "" : " flat")} role="log" aria-label="Run activity" ref=${listRef} onScroll=${scrolled}>
+        ${activity.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${rows} selected=${activity.selected} pick=${pick} folds=${folds} headed=${headed} />`)}
+        ${alive ? html`<div class="newpill" aria-live="polite">${arrived ? html`<button type="button" class="newpill-go" onClick=${back}>${arrived} new · back to live <span aria-hidden="true">↓</span></button>` : null}</div>` : null}
+      </div>
+      <${TurnPane} runId=${runId} rows=${rows} turn=${activity.turn} items=${activity.items} selected=${activity.selected} entry=${activity.entry} />
+    </div>`;
 }
 
 function DetailsTab({ detail }) {

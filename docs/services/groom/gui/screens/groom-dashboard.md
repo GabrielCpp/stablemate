@@ -20,7 +20,7 @@ Nothing on either side of the wire is HTML. The endpoint ships a static shell �
 
 The visible shell has four activity modes selected by the left activity rail: runs, attendant, dispatch, and settings. A run's files and diff are not rail modes: they are tabs inside the open run, so the rail carries no Files or Diff control and no repository picker. The app starts in **runs** mode. It holds the selected run id, the checkout chosen for each run, per-tab loading state, and transient overlay state for the command palette in the [dashboard client store](../../concepts/dashboard-client-store.md), and keeps the source of truth for run rows and counts on the server. Selecting a row follows [select run row](#select-run-row), which marks one [run row](#run-row) current and fills `#detail` from [get run detail](../../http/groom.md#get-run-detail) and the tab's own watch subscription — without changing the active mode.
 
-Connection state is its own visible fact. The [connection chip](#connection-chip) reports `live`, `stale`, `reconnecting`, or `offline`, derived by the [dashboard connection state machine](../../concepts/dashboard-connection-state-machine.md) from **message recency, not `readyState`** — a half-open socket reads OPEN forever and would otherwise show a green dot over a frozen fleet. Anything but `live` starts the [dashboard resync poller](../../concepts/dashboard-resync-poller.md) against `GET /api/state`.
+Connection state is its own visible fact. The [connection chip](#connection-chip) reports `live`, `stale`, `reconnecting`, or `not connected`, derived by the [dashboard connection state machine](../../concepts/dashboard-connection-state-machine.md) from **message recency, not `readyState`** — a half-open socket reads OPEN forever and would otherwise show a green dot over a frozen fleet. Anything but `live` starts the [dashboard resync poller](../../concepts/dashboard-resync-poller.md) against `GET /api/state`.
 
 ## Layout
 
@@ -651,7 +651,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 
 - selector: `#statusbar .stat.conn`
 - role: status
-- name: `Connection: ` followed by the current phase word — `live`, `stale`, `reconnecting`, or `offline`.
+- name: `Connection: ` followed by the current phase word — `live`, `stale`, `reconnecting`, or `not connected` for the `offline` phase.
 - keyboard: not focusable.
 - verify: visible(locator="#statusbar .stat.conn", text="live")
 - keyboard: it is a report, not a control.
@@ -663,14 +663,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#statusbar .stat.conn", text="stale")
 - states: `reconnecting` for the first 60 seconds after the socket closes, while backoff is in flight.
 - verify: visible(locator="#statusbar .stat.conn", text="reconnecting")
-- states: `offline` beyond that.
-- verify: visible(locator="#statusbar .stat.conn", text="offline")
+- states: `not connected` beyond that, for the `offline` phase, with a red dot.
+- verify: visible(locator="#statusbar .stat.conn", text="not connected")
 - states: `connecting` is the value the store starts with, before the first evaluation.
 - verify: visible(locator="#statusbar .stat.conn", text="connecting")
-- code: groom/groom/assets/dashboard.js::ConnectionChip@757d408bd3e5
+- code: groom/groom/assets/dashboard.js::ConnectionChip@4e61febcf488
 - code: groom/groom/assets/dashboard.js::deriveConnection@691102b69424
 - tests: groom/tests/test_connection_state.py::test_the_full_live_to_stale_to_offline_progression
 - tests: groom/tests/test_connection_state.py::test_open_but_silent_socket_goes_stale_and_starts_resyncing
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_connection_chip_says_not_connected_once_the_connection_is_offline
 - props:
   - `data-conn`: the phase word; required; the only styling hook, so the four states differ visually as well as in their name.
   - `role`: literal `status`; required; the phase changing is exactly the kind of thing that should be announced, and it changes independently of the counts beside it.
@@ -1306,9 +1307,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: it carries no count and no chip.
 - states: its accessible name is `Activity`.
 - states: it lists the run's rows under work item and flow pass headings, each a button that opens and closes its rows, with folded runs of passed steps and separate rows for failed steps, gates, retries and churn alerts.
+- states: a live run shows a [follow control](#detail-activity-follow) above the list.
+- states: the list of a live run follows the run as rows arrive.
 - states: the selected tab controls the single tabpanel `#detail-panel`, as the other tabs do.
 - code: groom/groom/assets/dashboard.js::DetailTabs@c23c8518540f
-- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
+- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_sits_between_overview_and_details
 - tests: groom/tests/test_activity_groups_dynamic.py::test_selecting_a_heading_opens_or_closes_it_by_pointer_and_by_keyboard
@@ -1326,14 +1329,30 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - parent: [detail-activity-tab](#detail-activity-tab)
 - states: lists the run's agent turns oldest first within their work item and flow pass headings, one [turn row](#detail-activity-row) each, with folded runs of passed steps and a row of its own for a failed step, a gate, a backend retry and a churn alert, at the left of the tab beside the [turn pane](#detail-activity-pane).
 - verify: visible(locator="#detail-activity-list", text="Run activity")
-- states: a turn that starts while the tab is open appears at the end of the list without a reload and without moving the operator's scroll.
+- states: while the run is live, a row that arrives appears in the list without a reload.
+- states: a following list keeps its newest row in view.
+- states: a paused list keeps its scroll and the rows in view where they are.
+- states: a paused list shows the [pill](#detail-activity-newpill) with the count of what arrived.
+- states: a heading open at the pause stays open while paused, even if its group finishes.
+- states: a row that arrives does not take focus from the control the operator has focused.
+- states: a row that arrives does not rebuild the open reading pane.
+- states: when the run ends while the tab is open, the running row reads as the turn ended.
+- states: a running row of a run that ended with no record of its turn reads `ended with no record`.
+- states: that row has no running dot and no ticking time.
+- states: the pass and group headings of an ended run drop `running`.
+- states: a following list scrolls to its newest row when a later group sits below it.
+- states: a flow heading sticks directly under its group heading with no row between them.
+- states: when the run ends, the headings take the cost of the last turn.
 - states: a list with no turn is replaced by `No activity yet. The first agent turn appears here when it starts.` and says whether the run is alive or has finished.
 - states: while the list reads, a status named `Reading this run's activity…` shows and clears when the list arrives.
-- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
+- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_run_with_no_turn_says_it_has_no_activity_and_that_it_is_alive
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_container_runs_activity_tab_works_as_a_native_runs_does
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_pill_brings_the_newest_row_into_view_when_a_later_group_sits_below_it
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_flow_heading_sticks_exactly_under_the_group_heading_so_no_row_shows_between
+- tests: groom/tests/test_activity_follow_dynamic.py::test_a_run_that_ends_with_no_turn_span_stops_saying_running
 
 ### detail-activity-row
 
@@ -1349,7 +1368,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a running turn reads `running` with the time it has run and no cost.
 - states: a failed turn reads `failed`.
 - states: the result line cuts at the row's width and carries its whole text in the accessible name.
-- code: groom/groom/assets/dashboard.js::TurnRow@1c4a1b3d9bbd
+- code: groom/groom/assets/dashboard.js::TurnRow@6440ca77c295
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_selecting_a_row_opens_the_turn_beside_the_list_and_marks_it_selected
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_running_turn_reads_running_in_its_row_and_pane_with_elapsed_time_and_no_cost_yet
@@ -1367,12 +1386,15 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: while the turn reads, a status named `Reading this turn…` shows in its place and clears when the turn arrives.
 - states: while a step or a gate reads, a status named `Reading this step…` shows in its place and clears when it arrives.
 - states: when the turn cannot be read, an alert `This turn could not be read` shows with `Retry now`, and the list stays.
+- states: the pane of a turn that ended with no record shows a badge `NO RECORD` in place of `RUNNING`.
+- states: that pane says `This turn ended with no record, so its cost was not reported.` above the transcript.
 - states: when a step or a gate cannot be read, an alert `The details of this step could not be read` shows with `Retry now`, the row in the list stays with its one line, and a retry that succeeds replaces the alert with the details.
 - verify: visible(locator="#detail-activity-pane", text="Reading this turn")
 - code: groom/groom/assets/dashboard.js::TurnPane@6656ea3ec53f
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_being_read_shows_a_reading_state_that_clears_when_it_appears
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
+- tests: groom/tests/test_activity_follow_dynamic.py::test_a_run_that_ends_with_no_turn_span_stops_saying_running
 
 ### detail-activity-head
 
@@ -1388,7 +1410,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a running turn omits the model, the pass and the output tokens.
 - states: a running turn reads its cost as `lands at turn end`.
 - states: a finished turn with no priced span omits the cost and never shows `$0`.
-- code: groom/groom/assets/dashboard.js::TurnHead@11e7e5459438
+- code: groom/groom/assets/dashboard.js::TurnHead@b7d25bb8d193
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_pane_head_names_node_work_item_pass_visit_model_duration_cost_and_output
 
@@ -1416,7 +1438,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a turn with nothing recorded says `This turn recorded no messages or tool calls.`
 - states: a turn with no record on this machine says `No record of this turn could be found, so its messages and tool calls are not shown.`
 - states: a turn read from the live history that lost its start says `Earlier output of this turn is not shown.`
-- code: groom/groom/assets/dashboard.js::TurnReading@89ba73f95707
+- code: groom/groom/assets/dashboard.js::TurnReading@ff501915dc0a
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_pane_shows_messages_as_prose_and_each_tool_call_as_one_line
@@ -1450,7 +1472,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: shown in place of the list when the run's turns could not be read, as `This run's activity could not be read`, with `The Details tab still works.`
 - verify: visible(locator="#detail-activity-state", text="could not be read")
 - states: a failed list never reads as `No activity yet`.
-- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
+- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it
 
@@ -1528,6 +1550,77 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - tests: groom/tests/test_activity_step_gate_dynamic.py::test_an_open_gate_says_it_is_not_answered_and_points_to_the_box_above_the_tabs
 - tests: groom/tests/test_activity_step_gate_dynamic.py::test_answering_in_the_box_above_the_tabs_turns_the_pane_answered_and_keeps_the_selection
 - tests: groom/tests/test_activity_step_gate_dynamic.py::test_the_hostile_gate_answer_renders_without_markup_or_script
+
+### detail-activity-follow
+
+- selector: `button.follow`
+- role: button
+- name: Following
+- keyboard: it is in the tab order.
+- keyboard: Enter or Space presses it.
+- parent: [detail-activity-tab](#detail-activity-tab)
+- states: shown for a live run only.
+- states: an ended run has no control, whether it ended while the tab was open or before.
+- states: reads `Following` while the list keeps its newest row in view.
+- verify: visible(locator="#detail-activity-follow", text="Following")
+- states: carries `aria-pressed="true"` while it follows.
+- states: reads `Paused` once the operator scrolls the list up away from its end.
+- verify: visible(locator="#detail-activity-follow", text="Paused")
+- states: carries `aria-pressed="false"` while paused.
+- states: pressing it while following pauses the list where it stands.
+- states: pressing it while paused scrolls to the newest row, then follows again.
+- states: scrolling the list back to its end follows again without a press.
+- states: reads `Not connected` while the dashboard's connection is `reconnecting` or `offline`.
+- verify: visible(locator="#detail-activity-follow", text="Not connected")
+- states: it cannot be pressed then.
+- verify: inert(locator="#detail-activity-follow")
+- states: returns to its earlier reading when the connection returns.
+- states: the list reads again when the connection returns.
+- states: goes, with its bar, when the run ends while the tab is open.
+- code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
+- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_follow_dynamic.py::test_a_live_runs_timeline_shows_a_control_that_says_it_is_following
+- tests: groom/tests/test_activity_follow_dynamic.py::test_scrolling_up_pauses_the_follow_and_the_control_says_paused
+- tests: groom/tests/test_activity_follow_dynamic.py::test_scrolling_back_to_the_end_resumes_following
+- tests: groom/tests/test_activity_follow_dynamic.py::test_pressing_the_control_switches_between_following_and_paused
+- tests: groom/tests/test_activity_follow_dynamic.py::test_a_lost_connection_says_the_timeline_is_not_connected
+- tests: groom/tests/test_activity_follow_dynamic.py::test_on_reconnect_the_timeline_fills_the_gap_and_the_mark_clears
+- tests: groom/tests/test_activity_follow_dynamic.py::test_when_the_run_ends_the_follow_control_and_the_pill_go_and_the_running_row_shows_how_the_turn_ended
+- tests: groom/tests/test_activity_follow_dynamic.py::test_an_ended_run_opens_with_no_follow_control
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_follow_control_and_the_pill_have_a_role_a_name_keyboard_operation_and_the_count_is_announced_politely
+
+### detail-activity-newpill
+
+- selector: `button.newpill-go`
+- role: button
+- name: 1 new · back to live
+- keyboard: it is in the tab order.
+- keyboard: Enter or Space presses it.
+- parent: [detail-activity-list](#detail-activity-list)
+- states: shown only while the list is paused and rows have arrived.
+- states: absent while the list follows.
+- states: absent for an ended run.
+- states: counts each new turn, step, gate, retry or churn alert since the pause.
+- states: counts each step a fold gained since the pause.
+- states: does not count the row of a step still running.
+- states: does not count a row that was there at the pause.
+- verify: visible(locator="#detail-activity-newpill", text="new")
+- states: pressing it scrolls the list to its newest row.
+- states: pressing it clears the pill, then follows again.
+- states: pressing it selects the newest row.
+- states: pressing it opens the newest row in the pane.
+- states: pressing it moves focus to the [follow control](#detail-activity-follow).
+- states: its container is a polite live region, present while the run is live.
+- states: the container is empty until a count shows.
+- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::arrivals@97f8a48533ed
+- detail: [run Activity tab](../../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_follow_dynamic.py::test_while_paused_a_pill_counts_what_has_arrived
+- tests: groom/tests/test_activity_follow_dynamic.py::test_pressing_the_pill_scrolls_to_the_newest_row_clears_it_and_resumes_following
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_follow_control_and_the_pill_have_a_role_a_name_keyboard_operation_and_the_count_is_announced_politely
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_pill_selects_the_newest_row_and_opens_it_in_the_pane
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_pill_brings_the_newest_row_into_view_when_a_later_group_sits_below_it
 
 ## Interactions
 
@@ -2394,9 +2487,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: http_status(code=200, path="/api/run/{run_id}/activity")
   - Opens the newest turn and requests `GET /api/run/{run_id}/activity/{slug}` for it.
   - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
-  - Reads the list again when the run's figures revision moves, and every 3 seconds while a turn runs.
-- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
-- code: groom/groom/assets/dashboard.js::loadActivity@eac259719e20
+  - Reads the list again when the run's figures revision moves, every 3 seconds while a turn runs, and when the connection returns.
+- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::loadActivity@5b6817a895cb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 
@@ -2432,7 +2525,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Reads the list again, or the open turn again, whichever failed, and clears the alert when the read succeeds.
   - verify: absent(subject=".act-state after a successful retry")
   - Keeps the list on screen while a turn is read again.
-- code: groom/groom/assets/dashboard.js::loadActivity@eac259719e20
+- code: groom/groom/assets/dashboard.js::loadActivity@5b6817a895cb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it

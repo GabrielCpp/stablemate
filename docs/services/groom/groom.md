@@ -238,7 +238,7 @@ an expandable question banner (rendered client-side from markdown, sanitized wit
 an answer textarea + submit (a JSON frame up the websocket). Search filters the run list the
 browser already holds, so it costs no request. A live container run with a connected sidecar has a Diff tab,
 read from `/diff/{container_id}` and rendered with the vendored `diff2html`. A
-connection chip reports whether the socket is live, stale, reconnecting, or offline — derived
+connection chip reports whether the socket is live, stale, reconnecting, or not connected — derived
 from how recently a *frame* arrived, not from `readyState`, because a half-open socket reads
 open forever.
 

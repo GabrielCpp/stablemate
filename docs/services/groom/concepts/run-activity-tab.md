@@ -17,9 +17,11 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/app.py::run_turn@353c67ab773c
 - code: groom/groom/app.py::run_entry@877266517ded
 - code: groom/groom/activity.py::entry@5a64cec9f144
-- code: groom/groom/assets/dashboard.js::ActivityTab@228336c22ccf
+- code: groom/groom/assets/dashboard.js::ActivityTab@ab99b9968284
+- code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
+- code: groom/groom/assets/dashboard.js::arrivals@97f8a48533ed
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
-- code: groom/groom/assets/dashboard.js::TurnReading@89ba73f95707
+- code: groom/groom/assets/dashboard.js::TurnReading@ff501915dc0a
 - code: groom/groom/assets/dashboard.js::StepReading@b14789843b86
 - code: groom/groom/assets/dashboard.js::GateReading@693ed5f15c67
 - code: groom/groom/transcript_parse.py::from_updates@1ccc9263ddd8
@@ -54,7 +56,18 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: a running turn shows only the figures it has. Its head omits the model, the cost, the pass and the output tokens, because none is known before the turn ends. The cost reads `lands at turn end`.
 - rule: the live history holds the last 200 updates, so a long running turn can lose its start. A turn read from it whose first update is gone says `Earlier output of this turn is not shown`.
 - rule: a turn outside any flow node shows no pass. The head never reads `pass 0` or `0th pass`.
-- rule: the tab reads the list once when it opens and again when the run's figures revision moves, and while a turn runs it reads the list and the open turn every 3 seconds. Both reads keep the operator's scroll and selection.
+- rule: the tab reads the list once when it opens and again when the run's figures revision moves, again when the dashboard's connection returns after a loss, and while a turn runs it reads the list and the open turn every 3 seconds. A read of a turn that was running when the previous read happened reads the turn again, so the pane shows how it ended. All of them keep the operator's scroll and selection.
+- rule: the timeline of a live run follows it. The list keeps its newest row in view as rows arrive, and the tab opens following. When a later group sits below the newest row, the list scrolls to the newest row and not to its foot, so the row is neither past the edge nor under a sticky heading. A run that has ended, or that was over when the tab opened, has no follow control, no pill and no scrolling to the end.
+- rule: scrolling the list up by any amount that leaves it more than 4 pixels from its end pauses the follow, and the control then says `Paused`. A scroll that does not move the list up, such as one caused by a row arriving, never pauses it. Scrolling back to within 4 pixels of the end follows again. Pressing the control pauses a following list where it stands and follows a paused one from its newest row.
+- rule: a paused list changes nothing under the operator's eyes. The rows in view stay where they are, the scroll position holds, and a heading that was open at the pause stays open until the list follows again, even when the work item or the pass it heads finishes.
+- rule: the pill counts the rows that arrived since the pause. A turn, a step, a gate, a retry and a churn alert are each one, and a step that folds into a run of passed steps counts as its own row. The row that shows the step a run is in, and a row that was there at the pause, are not counted. The count is the number of keys now in the timeline that were not in it at the pause, so a row that arrives and goes again leaves no count.
+- rule: pressing the pill selects the newest row and opens it in the pane, scrolls it into view, clears the pill, follows again and moves focus to the control. The newest row is the one with the latest time among the turns, steps, gates, retries and churn alerts, and a fold that holds it opens. Scrolling back to the end and pressing the follow control follow again and leave the selected row and the pane as the operator left them. While the list follows, a row that arrives never moves the selection.
+- rule: a row that arrives never selects itself, never takes focus from what the operator has focused, and never rebuilds an open pane. The pane of the selected turn changes only when the turn it shows is itself still running and its own record moves.
+- rule: the follow control says `Not connected`, disabled, while the dashboard's connection is `reconnecting` or `offline`, and says what it did before when the connection returns. A `stale` connection does not change it, because the page still receives frames. The list reads again when the connection returns, so the rows that arrived during the loss appear, and a following list moves to its newest.
+- rule: when the run ends while the tab is open, the bar and the pill go and the list stops following. The running row reads as the turn ended, with the figures and the result of the turn's stored span, and the headings and the run's row take that turn's cost. A running turn that ends with the run and leaves no span of its own follows the no-record rule.
+- rule: a run that has ended while a turn still has no span of its own marks that turn as ended with no record. Its row reads `ended with no record`, with no running dot and no ticking time. The pane badge reads `NO RECORD` in place of `RUNNING`, the head drops `cost lands at turn end`, and the pane says `This turn ended with no record, so its cost was not reported.` above the transcript already shown. The pass and group headings drop `running`. The headings and the run's row keep the cost they had, and the turn never gets a guessed cost or a cost of 0.
+- rule: the flow heading sticks directly under the group heading it belongs to. The list measures the group heading's rendered height and gives the flow heading that value as its sticky offset, so no row shows between the two headings at any scroll position.
+- rule: the control, the pill and the arrival count are named for assistive technology. The control is a button whose `aria-pressed` says whether it follows. The pill is a button inside a polite live region that is present while the run is live and empty while no count shows, so the count is announced when it appears and as it changes. Neither relies on color alone.
 - rule: a list that fails to read says so with a retry and never reads as empty. A turn that fails to read says so with a retry and keeps the list. A run with no turn says it has no activity yet and whether the run is alive.
 - rule: a turn's pane reads, from the top, the prompt, the thinking, then the messages and tool calls in the order they happened. The prompt and the thinking each start collapsed, and the prompt's label carries its size in words, as `Prompt · 3,412 words`. Opening one shows its text and closing it removes the text again.
 - rule: the prompt is the turn's recorded `prompt.md`, else the text of the transcript's user messages in the turn's window. The thinking is the turn's thinking blocks joined in order into one part. A turn that has neither says `This backend did not record the prompt or the thinking for this turn.` where they would sit, and names only the missing one when the other exists. A running turn shows no such note, because its prompt and thinking land at turn end, and neither does a turn read from the live history that lost its start.
@@ -67,6 +80,31 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: a finished turn of a native run whose record is not on this machine, because no record was archived for it or the record holds no transcript, reads as a turn with no messages, for a plain slug and for a suffixed key alike. The server answers `200`, the pane says no record of the turn could be found, and it offers no retry. Only a turn of a container run whose records are not pulled yet answers `503` with a retry, and a still-running turn with no rows yet is unchanged.
 - rule: the tab shows no archived run's turns.
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_sits_between_overview_and_details
+- tests: groom/tests/test_activity_follow_dynamic.py::test_a_live_runs_timeline_shows_a_control_that_says_it_is_following
+- tests: groom/tests/test_activity_follow_dynamic.py::test_new_rows_appear_at_the_end_while_following_and_the_newest_stays_in_view
+- tests: groom/tests/test_activity_follow_dynamic.py::test_a_running_turns_row_and_pane_show_new_messages_and_tool_calls_as_they_arrive
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_selected_row_stays_selected_while_new_rows_arrive_and_the_pane_does_not_change
+- tests: groom/tests/test_activity_follow_dynamic.py::test_scrolling_up_pauses_the_follow_and_the_control_says_paused
+- tests: groom/tests/test_activity_follow_dynamic.py::test_while_paused_rows_already_in_view_stay_where_they_are
+- tests: groom/tests/test_activity_follow_dynamic.py::test_while_paused_a_group_that_finishes_stays_open_under_the_operators_eyes
+- tests: groom/tests/test_activity_follow_dynamic.py::test_while_paused_a_pill_counts_what_has_arrived
+- tests: groom/tests/test_activity_follow_dynamic.py::test_pressing_the_pill_scrolls_to_the_newest_row_clears_it_and_resumes_following
+- tests: groom/tests/test_activity_follow_dynamic.py::test_scrolling_back_to_the_end_resumes_following
+- tests: groom/tests/test_activity_follow_dynamic.py::test_pressing_the_control_switches_between_following_and_paused
+- tests: groom/tests/test_activity_follow_dynamic.py::test_a_lost_connection_says_the_timeline_is_not_connected
+- tests: groom/tests/test_activity_follow_dynamic.py::test_on_reconnect_the_timeline_fills_the_gap_and_the_mark_clears
+- tests: groom/tests/test_activity_follow_dynamic.py::test_when_the_run_ends_the_follow_control_and_the_pill_go_and_the_running_row_shows_how_the_turn_ended
+- tests: groom/tests/test_activity_follow_dynamic.py::test_when_the_run_ends_the_headings_and_the_run_row_take_the_cost_of_that_last_turn
+- tests: groom/tests/test_activity_follow_dynamic.py::test_an_ended_run_opens_with_no_follow_control
+- tests: groom/tests/test_activity_follow_dynamic.py::test_a_new_row_does_not_interrupt_a_focused_control_or_remount_an_open_reading_pane
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_follow_control_and_the_pill_have_a_role_a_name_keyboard_operation_and_the_count_is_announced_politely
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_pill_selects_the_newest_row_and_opens_it_in_the_pane
+- tests: groom/tests/test_activity_follow_dynamic.py::test_scrolling_back_to_the_end_leaves_the_selection_alone
+- tests: groom/tests/test_activity_follow_dynamic.py::test_pressing_the_control_to_resume_leaves_the_selection_alone
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_pill_brings_the_newest_row_into_view_when_a_later_group_sits_below_it
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_flow_heading_sticks_exactly_under_the_group_heading_so_no_row_shows_between
+- tests: groom/tests/test_activity_follow_dynamic.py::test_a_run_that_ends_with_no_turn_span_stops_saying_running
+- tests: groom/tests/test_activity_follow_dynamic.py::test_the_connection_chip_says_not_connected_once_the_connection_is_offline
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 - tests: groom/tests/test_activity_tab_dynamic.py::test_html_in_a_message_or_a_tool_line_renders_as_text_and_no_script_runs
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_message_written_in_markdown_reads_as_formatted_prose

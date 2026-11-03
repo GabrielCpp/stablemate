@@ -15,6 +15,8 @@ The rule is a pure function of observations, so it can be asserted against synth
 - code: groom/groom/assets/dashboard.js::backoffDelay
 - code: groom/groom/assets/dashboard.js::evaluateConnection
 - code: groom/groom/assets/dashboard.js::ConnectionChip
+- rule: the chip and the activity follow control say `not connected` for the `offline` phase and keep the word `reconnecting` for the first 60 seconds after a close. The data attribute and the phase stay `offline`.
+- rule: the time a socket has been closed counts from the close of an open socket, not from each failed reconnect attempt, so a server that stays gone moves the phase from `reconnecting` to `offline` after 60 seconds.
 - refs: [dashboard resync poller](dashboard-resync-poller.md), [dashboard client store](dashboard-client-store.md), [groom dashboard](../gui/screens/groom-dashboard.md)
 
 The connection-state behavior is exercised by `groom/tests/test_connection_state.py::test_open_socket_receiving_frames_is_live`,
