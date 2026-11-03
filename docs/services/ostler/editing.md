@@ -99,7 +99,8 @@ last.
   - --title (the title of the node)
   - --json (print the outcome as JSON)
 - args: TYPE (a node type of the book), NAME (the new node's name)
-- exits: 0 when the node is created, 1 when the type, the name or the place is refused
+- exits: 0 when the node is created, 1 when the name or the place is refused, 2 when TYPE is not a
+  node type of the book
 - run: invoke(argv=["-C", "edit-scratch", "scaffold", "concept", "widgets", "--service", "demo", "--json"], env={"STABLEMATE_ARTIFACTS_DIR": "edit-scratch/art"})
 - verify: exit_status(code=0)
 - verify: json_path(path="ok", equals=true)

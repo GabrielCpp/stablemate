@@ -572,7 +572,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sc = sub.add_parser(
         "scaffold", help="create a UI-profile node in the right place (§9)"
     )
-    sc.add_argument("type", help=f"one of {', '.join(registry.UI_TYPES_BY_NAME)}")
+    sc.add_argument("type", choices=registry.UI_TYPES_BY_NAME, help=f"one of {', '.join(registry.UI_TYPES_BY_NAME)}")
     sc.add_argument("name")
     sc.add_argument(
         "--service", help="file-level types: the service subtree (docs/services/<svc>/)"
