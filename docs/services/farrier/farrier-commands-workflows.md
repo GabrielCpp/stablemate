@@ -165,16 +165,22 @@ adopted a workflow gate. Its only nonzero result is an unreadable or invalid `ag
 
 ### hooks
 
-The hook-wiring behaviour is implemented by `_run_hooks_install` and `_run_hooks_list`, the two
-actions of the `hooks` command group.
+The hook-wiring behaviour is implemented by `_run_hooks_install`, `_run_hooks_list` and
+`_run_hooks_run_user`, the three actions of the `hooks` command group. The generated runner calls
+`run-user` at every commit, so a person rarely types it.
 
-- usage: `farrier hooks install [--repo DIR] [--dry-run]` and `farrier hooks list [--repo DIR]`
+- usage: `farrier hooks install [--repo DIR] [--dry-run]`, `farrier hooks list [--repo DIR]` and
+  `farrier hooks run-user [--repo DIR]`
 - flags:
-  - `--repo <dir>` — repository root whose hook manager is wired or listed. Default: current working
-    directory.
+  - `--repo <dir>` — repository root whose hook manager is wired or listed, or the repository the
+    commit lands in for `run-user`. Default: current working directory.
   - `--dry-run` — `install` only. Print every action the verb would take, each line prefixed
     `[dry-run] `, and write nothing.
 - does:
+  - run nothing from `run-user` on a machine with no user library
+    - run: invoke(argv=["hooks", "run-user", "--repo", "c923"], env={"HOME": "c923/home", "STABLEMATE_CONFIG": "c923/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c923/pipx-stub-bin:$PATH"})
+    - verify: omits(subject="stderr", text="Skipped the user library's hooks")
+    - fixture: empty-dir dir=c923
   - read `<repo>/agents.yml` when it exists, otherwise use an empty configuration
     - run: invoke(argv=["hooks", "install", "--repo", "c181"], env={"HOME": "c181/home", "STABLEMATE_CONFIG": "c181/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c181/pipx-stub-bin:$PATH"})
     - verify: omits(subject="stderr", text="no agents.yml in")
@@ -259,6 +265,9 @@ actions of the `hooks` command group.
     - fixture: bad-manager-repo dir=c198
 - code: `farrier/farrier/cli.py::_run_hooks_install` @4a070cb3a89d
 - code: `farrier/farrier/cli.py::_run_hooks_list` @8f8e0c831a96
+- code: `farrier/farrier/cli.py::_run_hooks_run_user` @9ea0a08bcdee
+- code: `farrier/farrier/hook_managers.py::run_user_hooks` @9174f5c22105
+- code: `farrier/farrier/outputs.py::user_gates` @99cdc8ab244a
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve`
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_falls_back_to_detection_with_no_agents_yml`

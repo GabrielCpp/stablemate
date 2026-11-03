@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -243,7 +244,31 @@ def test_a_repo_whose_skills_declare_nothing_still_gets_a_runner():
     text = runner_text([])
 
     assert text.startswith("#!/bin/sh")
-    assert "exit 0" in text
+    assert 'farrier hooks run-user --repo "$root"' in text
+
+
+def test_the_runner_calls_the_user_library_after_the_declared_hooks():
+    text = runner_text([SkillHook(skill="acme-ostler", stage="pre-commit", run="scripts/g.py")])
+
+    assert text.index("acme-ostler") < text.index("farrier hooks run-user")
+
+
+def test_the_runner_passes_where_farrier_is_not_installed(tmp_path: Path):
+    """A clone on a machine with no farrier has no user library, so a commit there is not refused."""
+    runner = tmp_path / "pre-commit"
+    runner.write_text(runner_text([]), encoding="utf-8")
+    subprocess.run(("git", "init", "-q"), cwd=tmp_path, check=True)
+    git = shutil.which("git")
+    assert git
+    only_git = tmp_path / "bin"
+    only_git.mkdir()
+    (only_git / "git").symlink_to(git)
+
+    result = subprocess.run(
+        ("/bin/sh", str(runner)), cwd=tmp_path, env={"PATH": str(only_git)}, check=False
+    )
+
+    assert result.returncode == 0
 
 
 

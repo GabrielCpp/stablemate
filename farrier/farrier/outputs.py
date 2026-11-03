@@ -54,6 +54,7 @@ from farrier.sources import (
     collect_selection,
     library_name,
     load_layered_sources,
+    matches,
     public_name,
     selected_sources,
     unmatched_patterns,
@@ -538,6 +539,30 @@ def selected_hooks(prefix: str, skills) -> list[SkillHook]:
         data = frontmatter_mapping(source.path.read_text(encoding="utf-8"))
         hooks.extend(hooks_for(public_name(prefix, source), data))
     return hooks
+
+
+def user_gates(config: ConfigLike, home_config: HomeConfig, home: Path) -> list[Path]:
+    """The installed script of each hook the user library adds to this repo.
+
+    A skill the repo selects already runs from the repo's own runner, and one it
+    excludes stays off. A hook whose script is not installed yet is left out.
+    """
+    all_skills = load_layered_sources("skill", "library", "skills")
+    all_prompts = load_layered_sources("prompt", "library", "prompts")
+    include, _, _, _ = collect_selection(config)
+    exclude = excluded(config, "skills")
+    repo_skills = selected_sources(all_skills, include, exclude)
+    gates: dict[tuple[str, str], Path] = {}
+    for harness, (skills, _) in user_selections(home_config, all_skills, all_prompts).items():
+        folder = home / user_harness_dir(harness) / "skills"
+        for source in skills:
+            if source in repo_skills or matches(source, exclude):
+                continue
+            for hook in selected_hooks("", [source]):
+                gate = folder / hook.skill / hook.run
+                if gate.is_file():
+                    gates.setdefault((hook.skill, hook.run), gate)
+    return list(gates.values())
 
 
 def link_drift(path: Path, rel: str, link: Symlink) -> Drifted | None:

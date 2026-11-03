@@ -20,9 +20,21 @@ cannot import the stablemate core to find the shared cache. The runner hands it 
 instead. A hook that needs a tool, such as a clone detector, fetches it once into that cache and
 reuses it across repositories.
 
-- code: `farrier/farrier/hook_managers.py` @1caca9a5620d
+The runner also calls `farrier hooks run-user` after the repository's own gates, so a skill the
+machine's user library installs guards a commit in a repository that never selected it. Render
+drops `hooks:` from an installed skill, so the command reads the declarations from the library
+sources and runs the scripts from the installed copies. A person commits in many repositories
+under one user library, which is why the gate follows the machine and not `agents.yml`.
+
+- code: `farrier/farrier/hook_managers.py` @3adc46aa45b7
+- code: `farrier/farrier/outputs.py::user_gates` @99cdc8ab244a
 - rule: a skill hook script reads the shared cache location from `STABLEMATE_CACHE_DIR`, which the generated runner exports; it never derives the path itself
+- rule: a repository opts out of a user-library hook by listing the skill under `exclude: skills` in `agents.yml`
+- rule: a skill the repository selects runs from the repository's own gates only, so one commit never runs its hook twice
+- rule: a user library that cannot be resolved skips its hooks with a note on stderr, because a broken machine setting must not block a commit in an unrelated repository
+- rule: a machine without `farrier` on its `PATH` passes the runner, because a generated runner may reach a clone on a machine that has no farrier
 - tests: `farrier/tests/test_hook_managers.py`
+- tests: `farrier/tests/test_user_hooks.py`
 - detail: [skill hook declarations](skill-hook-declarations.md)
 
 ## Fields
@@ -33,7 +45,7 @@ reuses it across repositories.
 - required: true
 - semantics: the sole command delegated by every generated manager entry and runner
 - verify: count(subject="hook-manager generated command", equals=1)
-- code: `farrier/farrier/hook_managers.py::HOOK_COMMAND` @1caca9a5620d
+- code: `farrier/farrier/hook_managers.py::HOOK_COMMAND` @3adc46aa45b7
 
 ### FENCE_START
 - type: `str`
@@ -41,7 +53,7 @@ reuses it across repositories.
 - required: true
 - semantics: the line beginning Farrier's replaceable ownership region
 - verify: count(subject="hook fence start marker", equals=1)
-- code: `farrier/farrier/hook_managers.py::FENCE_START` @1caca9a5620d
+- code: `farrier/farrier/hook_managers.py::FENCE_START` @3adc46aa45b7
 
 ### FENCE_END
 - type: `str`
@@ -49,7 +61,7 @@ reuses it across repositories.
 - required: true
 - semantics: the line ending Farrier's replaceable ownership region
 - verify: count(subject="hook fence end marker", equals=1)
-- code: `farrier/farrier/hook_managers.py::FENCE_END` @1caca9a5620d
+- code: `farrier/farrier/hook_managers.py::FENCE_END` @3adc46aa45b7
 
 ### HOOK_RUNNER
 - type: `str`
@@ -57,7 +69,7 @@ reuses it across repositories.
 - required: true
 - semantics: the generated per-repository script that runs selected skill hooks
 - verify: count(subject="generated hook runner path", equals=1)
-- code: `farrier/farrier/hook_managers.py::HOOK_RUNNER` @1caca9a5620d
+- code: `farrier/farrier/hook_managers.py::HOOK_RUNNER` @3adc46aa45b7
 
 ### LEFTHOOK_INCLUDE
 - type: `str`
@@ -65,7 +77,7 @@ reuses it across repositories.
 - required: true
 - semantics: the Farrier-owned lefthook file referenced by the user's lefthook configuration
 - verify: count(subject="lefthook Farrier include path", equals=1)
-- code: `farrier/farrier/hook_managers.py::LEFTHOOK_INCLUDE` @1caca9a5620d
+- code: `farrier/farrier/hook_managers.py::LEFTHOOK_INCLUDE` @3adc46aa45b7
 
 ### MANAGERS
 - type: `tuple[str, ...]`
@@ -73,7 +85,7 @@ reuses it across repositories.
 - required: true
 - semantics: the complete accepted hook-manager vocabulary
 - verify: count(subject="accepted hook managers", equals=5)
-- code: `farrier/farrier/hook_managers.py::MANAGERS` @1caca9a5620d
+- code: `farrier/farrier/hook_managers.py::MANAGERS` @3adc46aa45b7
 
 ### LEGACY_HOOK_MARKER
 - type: `str`
@@ -81,7 +93,7 @@ reuses it across repositories.
 - required: true
 - semantics: the marker identifying a pre-fence whole-file hook that must be migrated
 - verify: count(subject="legacy hook migration marker", equals=1)
-- code: `farrier/farrier/hook_managers.py::LEGACY_HOOK_MARKER` @1caca9a5620d
+- code: `farrier/farrier/hook_managers.py::LEGACY_HOOK_MARKER` @3adc46aa45b7
 
 ## Methods
 
@@ -171,7 +183,7 @@ reuses it across repositories.
 - does: stops searching that hook's three adapter paths after the first found file
 - returns: generated `.agents/hooks/pre-commit` text
 - verify: json_path(path="return value", matches="git rev-parse --show-toplevel")
-- code: `farrier/farrier/hook_managers.py::runner_text` @91e506ffdb89
+- code: `farrier/farrier/hook_managers.py::runner_text` @6a8870ec45a8
 - tests: `farrier/tests/test_hook_managers.py::test_the_runner_tries_every_adapter_path_for_a_declared_hook`
 - tests: `farrier/tests/test_hook_managers.py::test_a_repo_whose_skills_declare_nothing_still_gets_a_runner`
 - tests: `farrier/tests/test_hook_managers.py::test_the_runner_exports_the_cache_dir_before_the_first_gate`

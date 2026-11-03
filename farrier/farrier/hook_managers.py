@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -21,6 +22,14 @@ HOOK_RUNNER = ".agents/hooks/pre-commit"
 LEFTHOOK_INCLUDE = ".agents/lefthook.farrier.yml"
 
 MANAGERS = HOOK_MANAGERS
+
+_USER_HOOKS = [
+    "# The hooks of the skills in this machine's user library.",
+    "if command -v farrier >/dev/null 2>&1; then",
+    '  farrier hooks run-user --repo "$root"',
+    "fi",
+    "",
+]
 
 _FENCE_FILES = {
     "pre-commit": ".pre-commit-config.yaml",
@@ -154,7 +163,7 @@ def runner_text(hooks: list[SkillHook]) -> str:
         "",
     ]
     if not hooks:
-        lines += ["# No installed skill declares a pre-commit hook.", "exit 0", ""]
+        lines += ["# No installed skill declares a pre-commit hook.", "", *_USER_HOOKS]
         return "\n".join(lines)
     lines += [
         'if [ -z "${STABLEMATE_CACHE_DIR:-}" ]; then',
@@ -177,7 +186,21 @@ def runner_text(hooks: list[SkillHook]) -> str:
             "done",
             "",
         ]
+    lines += _USER_HOOKS
     return "\n".join(lines)
+
+
+def run_user_hooks(repo: Path, gates: list[Path]) -> int:
+    """Run each user-library gate from *repo*, stopping at the first that refuses the commit."""
+    env = {
+        **os.environ,
+        "STABLEMATE_CACHE_DIR": os.environ.get("STABLEMATE_CACHE_DIR") or str(cache_root()),
+    }
+    for gate in gates:
+        status = subprocess.run(("python3", str(gate)), cwd=repo, env=env, check=False).returncode
+        if status:
+            return status
+    return 0
 
 
 

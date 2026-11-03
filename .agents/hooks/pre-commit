@@ -7,4 +7,8 @@ set -eu
 root=$(git rev-parse --show-toplevel)
 
 # No installed skill declares a pre-commit hook.
-exit 0
+
+# The hooks of the skills in this machine's user library.
+if command -v farrier >/dev/null 2>&1; then
+  farrier hooks run-user --repo "$root"
+fi

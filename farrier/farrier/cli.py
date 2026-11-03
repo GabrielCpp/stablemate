@@ -46,6 +46,7 @@ from farrier.hook_managers import (
     configured_manager,
     install_manager,
     install_runner,
+    run_user_hooks,
 )
 from farrier.skill_hooks import STAGES, SkillHook
 from farrier.init import (
@@ -77,6 +78,7 @@ from farrier.outputs import (
     render_user_expected,
     repo_managed_with_claude_pointers,
     selected_hooks,
+    user_gates,
     write_text,
 )
 from farrier.renderer import LOCAL_TEXT_SOURCE, Renderer
@@ -893,6 +895,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repository root to list hooks for (default: cwd)",
     )
 
+    run_user_p = hooks_sub.add_parser(
+        "run-user",
+        help="Run the hooks of the skills in your user library against this repo",
+    )
+    run_user_p.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root the commit lands in (default: cwd)",
+    )
+
     sub.add_parser("version", help="Print the installed farrier version")
 
     return parser
@@ -932,6 +945,27 @@ def _run_hooks_install(args: argparse.Namespace) -> int:
         print(line)
     print(f"hooks wired through: {manager}")
     return 0
+
+
+def _run_hooks_run_user(args: argparse.Namespace) -> int:
+    """`farrier hooks run-user` — the generated runner's call into the user library's hooks.
+
+    A library or config that cannot be resolved skips the gates with a note, so a
+    broken home config does not block a commit in every repository.
+    """
+    repo = args.repo.resolve()
+    home_config = load_home_config()
+    if not user_library_tables(home_config):
+        return 0
+    try:
+        set_layers(resolve_library_dir(None))
+        config_file = locate_manifest(repo)
+        config = read_manifest(config_file) if config_file else Manifest()
+        gates = user_gates(config, home_config, Path.home())
+    except SystemExit as exc:
+        print(f"Skipped the user library's hooks: {exc}", file=sys.stderr)
+        return 0
+    return run_user_hooks(repo, gates)
 
 
 def _run_hooks_list(args: argparse.Namespace) -> int:
@@ -1156,6 +1190,8 @@ def _main(argv: list[str] | None) -> int:
             return _run_hooks_install(args)
         if args.hooks_action == "list":
             return _run_hooks_list(args)
+        if args.hooks_action == "run-user":
+            return _run_hooks_run_user(args)
         return 2
 
     if args.command == "doctor":
