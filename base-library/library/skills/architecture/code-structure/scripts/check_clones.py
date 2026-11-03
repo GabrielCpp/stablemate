@@ -36,9 +36,11 @@ MIN_LINES = 5
 DEFAULT_IGNORE = (
     "**/node_modules/**", "**/vendor/**", "**/dist/**", "**/build/**", "**/.venv/**",
     "**/__pycache__/**", "**/mocks/**", "**/mock/**", "**/fixtures/**", "**/testdata/**",
-    "**/migrations/**", "**/tests/**", "**/test/**", "**/*_test.go", "**/test_*.py",
-    "**/*_test.py", "**/*.test.ts", "**/*.spec.ts", "**/*.test.tsx", "**/*.spec.tsx",
-    "**/*_test.dart",
+    "**/migrations/**",
+)
+TEST_PATHS = (
+    "**/tests/**", "**/test/**", "**/__tests__/**", "**/*_test.go", "**/test_*.py",
+    "**/*_test.py", "**/*_test.dart", "**/*.test.*", "**/*.spec.*",
 )
 ALWAYS_IGNORE = (
     ".git/**", ".agents/**", ".claude/**", ".github/**", "**/*.md",
@@ -342,13 +344,21 @@ def _covered(pair: CopyPair, entry: Coincidence) -> bool:
     return matches(pair.first.path) and matches(pair.second.path)
 
 
+def is_test(path: str) -> bool:
+    return any(fnmatch(path, glob) or fnmatch(path, glob.removeprefix("**/")) for glob in TEST_PATHS)
+
+
+def between_tests(pair: CopyPair) -> bool:
+    return is_test(pair.first.path) and is_test(pair.second.path)
+
+
 def copy_pairs(
     pairs: Sequence[CopyPair],
     span: Span,
     coincidences: Sequence[Coincidence] = (),
     min_added: int = MIN_LINES,
 ) -> list[CopyPair]:
-    """Pairs of a clone that gained a copy, with at least `min_added` added lines on one side, that side first, less the declared coincidences.
+    """Pairs of a clone that gained a copy, with at least `min_added` added lines on one side, that side first, less the declared coincidences and the repeats inside one test file.
 
     The detector counts a clone's pairs against the base and flags the surplus by position, so
     the flag can land on an old pair of the clone while the added copy's own pair reads old.
@@ -358,6 +368,8 @@ def copy_pairs(
     kept = []
     for pair in pairs:
         if pair.first not in grown:
+            continue
+        if pair.first.path == pair.second.path and is_test(pair.first.path):
             continue
         first_added = _added(pair.first, span.get(pair.first.path, [])) >= min_added
         if not first_added and _added(pair.second, span.get(pair.second.path, [])) < min_added:
@@ -509,6 +521,7 @@ def _json_report(root: Path, problems: Sequence[str], pairs: Sequence[CopyPair])
                     "added": _side_json(root, pair.first),
                     "existing": _side_json(root, pair.second),
                     "lines": pair.lines,
+                    "tests": between_tests(pair),
                 }
                 for pair in pairs
             ],
@@ -551,6 +564,12 @@ def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> in
             "  share it as a library rule 2.13: copies in two builds move to a library the\n"
             "                        workspace lists; ask first when a build or deploy changes\n"
         )
+    test_helper = ""
+    if any(between_tests(pair) for pair in pairs):
+        test_helper = (
+            "  share a test helper   rule 14 of the testing-design skill: move the setup to the\n"
+            "                        nearest directory above both test files\n"
+        )
     print(
         "\nA second copy changes for the same reason as the first and gets fixed in one\n"
         "place only. Pick one:\n"
@@ -558,6 +577,7 @@ def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> in
         "  extract it            rule 2.12 of the code-structure skill: move one copy to the\n"
         "                        owner rules 2.5 to 2.9 pick and point both callers at it\n"
         f"{library}"
+        f"{test_helper}"
         "  it must stay          the two change for different reasons: add a\n"
         f"                        [[{TABLE}.coincidence]] entry to {CONFIG} naming both files\n"
         "                        and two reasons, one per file\n"

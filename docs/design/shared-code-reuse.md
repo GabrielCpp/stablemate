@@ -57,9 +57,10 @@ workflow alike.
 - A copy with renamed identifiers. The gate matches tokens verbatim (A1).
 - A cross-repository shared library, and a copy between two repositories of one workspace.
   Reach and the comparison both stop at the repository's edge (A6).
-- Generated code, vendored code, mocks, fixtures, migrations and tests. The default
-  ignore list and the generated-file markers exclude them, and a repo may opt its tests
-  back in (A4, A7).
+- Generated code, vendored code, mocks, fixtures and migrations. The default ignore list
+  and the generated-file markers exclude them (A4, A7).
+- A repeat inside one test file. It is a parametrize question for review, not an extraction
+  (A7, A10).
 
 ## 1b. Claims
 
@@ -349,7 +350,7 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
    reference repo took 37.0 s with tests and mocks, and 11.3 s without. **Revised by 7.**
 5. Section 1, out of scope: tests, mocks and generated files leave the default scan.
    Finding: with jscpd 4.0.5, 7 of the 10 largest pairs were test setup or generated
-   mocks. **Revised by 11.**
+   mocks. **Revised by 11 and 21.**
 6. Section 1, out of scope, and assumption 1: renamed copies are out of reach. Finding:
    jscpd 4.0.5 reports exact clones only. **Revised by 12.**
 7. Section 2, Clone report, and section 4, its pattern: the scan covers the whole tree
@@ -419,6 +420,14 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
     it was needs no approval (A18). Any other extraction is proposed first. The coder
     blocks with one concrete library, a session asks in chat, and the answer is recorded
     as a home decision the next extraction reads.
+21. Section 1, out of scope, Clone threshold and A7: test files enter the default scan, and
+    Copy pair drops a repeat inside one test file. Mocks and fixtures stay out. Finding: a
+    replay of the last 40 commits touching tests in each of two repos. The gate would newly
+    refuse 30% and 28% of them with every pair, and 15% of each counting copies across files
+    only. No refused pair joined a test to production code. The median scan rose from 2.7 s
+    to 3.9 s and from 1.7 s to 3.2 s, inside the 5b budget of 4 s. Rule 14 of the
+    testing-design skill now says where shared test setup lives, which removes A7's
+    objection that the gate could not name a home.
 
 ### Parts
 
@@ -485,9 +494,9 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
 - Clone threshold: **New**, table `check-clones` in `.agent-checks.toml`. The ostler-cli
   skill's staged-files check already reads its table from that file. Keys: `min-tokens`,
   `min-lines`, `ignore`, `generated-markers`. The default `ignore` covers dependency and
-  build directories, `mocks/`, `fixtures/`, `testdata/`, `migrations/`, and the test file
-  patterns of each language. The default markers are "Code generated", "DO NOT EDIT",
-  "DO NOT MODIFY" and "@generated".
+  build directories, `mocks/`, `fixtures/`, `testdata/` and `migrations/`. Test files stay
+  in the scan, and Copy pair drops a repeat inside one of them. The default markers are
+  "Code generated", "DO NOT EDIT", "DO NOT MODIFY" and "@generated".
 
 **Sharing**
 
@@ -703,16 +712,14 @@ at review, Finding what exists in the plan, Sharing in scope.
    - Decided: the comparison scans one repository. The lap runs it once per repository.
    - Basis: the reference repo is a monorepo. Multi-repo workspaces are unverified.
    - If wrong: Clone report needs a cross-repository scan. Section 1 out of scope.
-7. **Test duplication is a separate problem.** Repeated test setup is rarely the shared
-   logic the operator means, and forcing extraction there costs laps for little gain.
-   - Decided: tests, mocks and fixtures leave the default scan, and a repo opts them back
-     in.
-   - Basis: including tests, fixtures and mocks raises the reference repo's pairs from 636
-     to 2,993. No fixture-sharing rule reaches every service: the reference repo's Go
-     fixture guidance applies to one service, and its reporting service carries copies of
-     the API service's mocks. A gate on tests would refuse a copy without saying where the
-     shared version belongs.
-   - If wrong: the default ignore list, the 5b latency row.
+7. **Setup copied between test files is the same problem as production copies.** It drifts
+   the same way: a contract change gets fixed in some test files, and the others stay green
+   on the old shape.
+   - Decided: copies between test files are in scope, at the same size limits. A repeat
+     inside one test file passes. Mocks and fixtures stay out of the default scan.
+   - Basis: the replay in log 21. Rule 14 of the testing-design skill gives every stack a
+     home for shared setup, so the refusal can say where the shared version belongs.
+   - If wrong: `TEST_PATHS` returns to the default ignore list, the 5b latency row.
 8. **Extraction costs at most one lap.** An owner moving a 20 to 80 line fragment finishes in
    the lap that found it.
    - Decided: no lap budget for extraction.
@@ -726,7 +733,7 @@ at review, Finding what exists in the plan, Sharing in scope.
    - If wrong: Clone threshold's defaults.
 10. **Copies inside one file are in scope.** They are half the reference repo's pairs:
     201 of 398.
-    - Decided: Copy pair treats them like any other pair.
+    - Decided: Copy pair treats them like any other pair, except inside a test file (A7).
     - Basis: rule 2.12 has no file boundary, and an extraction inside one file is the
       cheapest kind.
     - If wrong: Copy pair gains a same-file exemption. The 5b cost row.

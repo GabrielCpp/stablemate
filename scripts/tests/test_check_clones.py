@@ -174,6 +174,51 @@ def test_a_moved_copy_stays_dropped_when_its_clone_gained_no_copy():
     assert gate.copy_pairs([_pair(original, moved, is_new=False)], {"b.go": [(1, 10)]}) == []
 
 
+@pytest.mark.parametrize(
+    "path",
+    ["tests/test_a.py", "pkg/tests/helpers.py", "web/a.test.tsx", "web/a.spec.ts", "api/a_test.go", "web/__tests__/a.ts"],
+)
+def test_a_copy_inside_one_test_file_is_dropped(path: str):
+    pair = _pair(_side(path, 5, 14), _side(path, 25, 34))
+
+    assert gate.copy_pairs([pair], {path: [(25, 34)]}) == []
+
+
+def test_a_copy_inside_one_production_file_is_kept():
+    added, old = _side("a.go", 25, 34), _side("a.go", 5, 14)
+
+    assert gate.copy_pairs([_pair(added, old)], {"a.go": [(25, 34)]}) == [_pair(added, old)]
+
+
+def test_a_copy_across_two_test_files_is_kept():
+    added, old = _side("tests/test_a.py", 5, 14), _side("tests/test_b.py", 5, 14)
+
+    assert gate.copy_pairs([_pair(added, old)], {"tests/test_a.py": [(5, 14)]}) == [_pair(added, old)]
+
+
+def test_a_test_file_copying_production_code_is_kept():
+    added, old = _side("tests/test_a.py", 5, 14), _side("pkg/a.py", 5, 14)
+
+    assert gate.copy_pairs([_pair(added, old)], {"tests/test_a.py": [(5, 14)]}) == [_pair(added, old)]
+
+
+def test_a_same_file_copy_still_refuses_through_its_pair_in_another_test_file():
+    added = _side("tests/test_a.py", 25, 34)
+    here, there = _side("tests/test_a.py", 5, 14), _side("tests/test_b.py", 5, 14)
+    pairs = [_pair(added, here), _pair(added, there)]
+
+    assert gate.copy_pairs(pairs, {"tests/test_a.py": [(25, 34)]}) == [_pair(added, there)]
+
+
+def test_the_default_scan_covers_tests_and_leaves_mocks_and_fixtures_out(tmp_path: Path):
+    globs = gate.threshold(tmp_path).ignore_globs
+
+    assert "**/tests/**" not in globs
+    assert "**/*.test.tsx" not in globs
+    assert "**/mocks/**" in globs
+    assert "**/fixtures/**" in globs
+
+
 def test_the_recorded_report_yields_the_new_copy_and_nothing_else(repo: Path):
     _stage_copy(repo)
     limits = gate.threshold(repo)
@@ -440,6 +485,48 @@ def test_main_names_both_builds_and_rule_2_13_when_the_copies_sit_in_two_builds(
     assert "share it as a library" in err
 
 
+def _test_copy_report() -> dict:
+    side = {"name": "api-service/tests/test_extra.py", "start": 1, "end": 13}
+    other = {"name": "api-service/tests/test_sheet.py", "start": 1, "end": 13}
+    return {"duplicates": [{"firstFile": side, "secondFile": other, "lines": 13, "isNew": True}]}
+
+
+def _stage_test_copy(repo: Path) -> None:
+    tests = repo / "api-service/tests"
+    tests.mkdir()
+    (tests / "test_sheet.py").write_text("x = 1\n" * 13, encoding="utf-8")
+    _git(repo, "add", "api-service/tests/test_sheet.py")
+    _git(repo, "commit", "-qm", "sheet tests")
+    (tests / "test_extra.py").write_text("x = 1\n" * 13, encoding="utf-8")
+    _git(repo, "add", "api-service/tests/test_extra.py")
+
+
+def test_main_points_a_copy_between_test_files_at_the_shared_helper_rule(repo: Path, capsys):
+    _stage_test_copy(repo)
+
+    code = gate.main(["--root", str(repo)], lambda root, limits, base: _test_copy_report())
+
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "rule 14 of the testing-design skill" in err
+
+
+def test_main_leaves_the_shared_helper_rule_out_of_a_production_copy(repo: Path, capsys):
+    _stage_copy(repo)
+
+    gate.main(["--root", str(repo)], lambda root, limits, base: _report())
+
+    assert "testing-design" not in capsys.readouterr().err
+
+
+def test_json_marks_a_copy_between_test_files(repo: Path, capsys):
+    _stage_test_copy(repo)
+
+    gate.main(["--root", str(repo), "--json"], lambda root, limits, base: _test_copy_report())
+
+    assert json.loads(capsys.readouterr().out)["pairs"][0]["tests"] is True
+
+
 def test_json_names_the_build_of_each_side(repo: Path, capsys):
     _two_builds(repo)
     _stage_copy(repo)
@@ -553,6 +640,7 @@ def test_json_prints_the_pair_with_both_sides_units_and_lines(repo: Path, capsys
                     "build": ".",
                 },
                 "lines": 13,
+                "tests": False,
             }
         ],
         "problems": [],

@@ -1,6 +1,6 @@
 ---
 name: testing-design
-description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, and cover the composition and not only the units. Load whenever writing or reviewing tests; a stack skill (go-testing, python-testing, flutter-testing, react-router-testing, pulumi-qa) supplies the concrete mechanics, the testing-component skill layers the UI state and async-ordering contract on top, and the testing-e2e skill layers the end-to-end-specific contract (locators, waits, flake diagnosis) on top. Applies to test files in any language."
+description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, cover the composition and not only the units, and give setup two test files share one home built from small builders. Load whenever writing or reviewing tests, or when the clone check refuses a copy between test files; a stack skill (go-testing, python-testing, flutter-testing, react-router-testing, pulumi-qa) supplies the concrete mechanics, the testing-component skill layers the UI state and async-ordering contract on top, and the testing-e2e skill layers the end-to-end-specific contract (locators, waits, flake diagnosis) on top. Applies to test files in any language."
 applyTo: "**/*_test.go,**/test_*.py,**/*_test.py,**/*_test.dart,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**,**/__tests__/**"
 tags: [standards, tests]
 ---
@@ -202,6 +202,29 @@ bisecting a problem that has nothing to do with the package they were working
 on. Reach only into the unit under test; let the gates that own the cross-
 package contract run elsewhere.
 
+## 14. Shared test setup has one home, built from small pieces
+
+The same arrange block, fake or builder in a second test file is a second copy of the setup, and
+the next contract change gets fixed in one of them. The code-structure skill's clone check refuses
+that copy at commit. Move it to one home in the same change:
+
+- **Where it lives.** The nearest directory above both test files that the test runner or the test
+  code can load. A stack skill that names a place wins (`conftest.py`, Go's `testenv` package).
+  Test support stays on test-only paths, so production code cannot import it.
+- **A fake of a port** sits with that port's test support, so every consumer of the port tests
+  against one fake.
+- **Two separately built services.** A helper both need is a library, as code-structure rule 2.13
+  says. When each build fakes its own port, the two change for different reasons, and a coincidence
+  entry records that.
+
+Compose the setup from small builders with defaults and named overrides. One fixture that seeds
+everything ties each test to rows it never names, and a change for one test breaks the others. The
+values a test's assertion depends on stay visible in that test, and the assertions stay there too.
+A builder for a generated value derives from the producer (§3).
+
+Repeats inside one file are a design question the clone check leaves to review. Cases that differ
+only in values become a table or a parametrized test. Other repeats become a local helper.
+
 ## Review checklist
 
 Before approving a test — yours or someone else's:
@@ -216,6 +239,7 @@ Before approving a test — yours or someone else's:
 - [ ] It cleans up after itself — files, subprocesses, env, network state (§11)
 - [ ] It does not emit a warning the package's pytest config would convert to an error (§12)
 - [ ] It does not assert a contract a sibling package owns (§13)
+- [ ] Setup a second test file needs has one home, built from small builders (§14)
 
 ## Smells
 
@@ -230,3 +254,5 @@ Before approving a test — yours or someone else's:
 | A test passes alone, fails after another test | Leaked state across tests (§11) |
 | The warning pile grows by 5 per commit | A real warning is being lost in the noise (§12) |
 | A test in package A fails because package B changed | Test reached outside its module (§13) |
+| A contract change is fixed in three test files, and a fourth stays green on the old shape | Setup copied between test files (§14) |
+| Changing one fixture value breaks tests that never mention it | One fixture seeds everything (§14) |
