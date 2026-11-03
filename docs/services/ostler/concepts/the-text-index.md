@@ -8,7 +8,8 @@ title: The text index
 `ostler search` ranks sections, not files. The index holds one row per markdown section of every page
 under every document root the graph loads: the book, epics, milestones, template kinds, and the
 artifacts roots for specs, the register and the architecture decision records, and the docs home's
-`docs/decisions` folder. A decision's slug is its folder name, its title is its `summary` and its
+`docs/decisions` folder. The specs root contributes only the files directly in a story's spec folder,
+where the format places a spec. A QA scenario's checkout sits below that folder and is not searched. A decision's slug is its folder name, its title is its `summary` and its
 `summary` is a row of its own, so a word of the slug finds a decision that has no text yet. The text before a page's first heading is a row
 of its own. A section with no text of its own has no row.
 
@@ -23,16 +24,20 @@ pages that are gone. A change of the index epoch drops every row. With the parse
 store lives in memory for the one command and no file is written. `ostler index build` refreshes the
 store and prints its counts.
 
-- code: ostler/ostler/textindex.py::rows_for@6e7935aa7652
-- code: ostler/ostler/textindex.py::TextIndex.refresh@6e7935aa7652
-- code: ostler/ostler/textindex.py::TextIndex.search@6e7935aa7652
+- code: ostler/ostler/textindex.py::rows_for@8cef87954c77
+- code: ostler/ostler/textindex.py::documents@5db0a195489b
+- code: ostler/ostler/textindex.py::TextIndex.refresh@09cc8903f3a2
+- code: ostler/ostler/textindex.py::TextIndex.search@6845fdf66e03
 - rule: search joins the question's terms with OR so an agent sends every spelling of a term in one call and ranking sorts them
 - rule: a `decision.md` is indexed under the root `decisions` with the folder name as its slug and its `summary` as its title, so `ostler search` finds it by a word of its slug
+- rule: the specs root indexes only the path the format declares for a spec, because a QA scenario keeps a whole copy of its repository below the spec folder and each copy would rank as many identical hits
 - rule: a hit is a section, so the caller reads the paragraph and then walks the node's edges with ostler trace
 - tests: ostler/tests/test_textindex.py::test_rows_for_gives_preamble_and_section_rows
 - tests: ostler/tests/test_textindex.py::test_title_match_outranks_body_match
 - tests: ostler/tests/test_textindex.py::test_porter_stemming_finds_parallel
 - tests: ostler/tests/test_textindex.py::test_refresh_is_incremental
+- tests: ostler/tests/test_textindex.py::test_a_scenario_checkout_under_a_spec_is_not_searched
+- tests: ostler/tests/test_textindex.py::test_a_refresh_drops_the_rows_of_a_copy_below_a_spec
 - tests: ostler/tests/test_textindex.py::test_type_and_root_filters
 - tests: ostler/tests/test_textindex.py::test_disabled_index_searches_without_a_file
 - tests: ostler/tests/test_textindex.py::test_cli_index_build_json

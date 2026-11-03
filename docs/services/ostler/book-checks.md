@@ -241,8 +241,8 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 
 ### ostler-search
 - usage: ostler search QUERY [--type TYPE] [--root ROOT] [--limit N] [--match] [--json] — ranked
-  full-text search over every section of every document root, printing one hit per two lines (or
-  the hits as one indented array with --json)
+  full-text search over every section of every document root, QA checkouts under a spec excepted,
+  printing one hit per two lines (or the hits as one indented array with --json)
 - flags:
   - --type (keep the sections of pages with this frontmatter type), --root (keep one document root:
     services, epics, milestones, specs, register or adr), --limit (the most hits to return, 10 by
@@ -268,7 +268,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: exit_status(code=0)
 - verify: json_path(path="files", matches="^[1-9][0-9]*$")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a flow titled "Say hello"
-- code: ostler/ostler/textindex.py::TextIndex.refresh@f7d9eee29be9
+- code: ostler/ostler/textindex.py::TextIndex.refresh@09cc8903f3a2
 - detail: [The text index](concepts/the-text-index.md)
 
 ### ostler-list

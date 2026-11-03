@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ostler import index, markdown, model
 from ostler.model import Graph
+from ostler.registry import REGISTRY_BY_NAME
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
@@ -64,13 +66,19 @@ class RefreshReport:
         }
 
 
+def _markdown_under(key: str, base: Path) -> Iterable[Path]:
+    """A root's markdown files: the specs root holds its documents where the format puts a spec, and run products below them."""
+    spec = REGISTRY_BY_NAME["spec"]
+    return base.glob(spec.location) if key == spec.doc_root else base.rglob("*.md")
+
+
 def documents(graph: Graph) -> list[tuple[str, Path]]:
     seen: set[Path] = set()
     found: list[tuple[str, Path]] = []
     for key, base in graph.doc_roots.items():
         if not base.is_dir():
             continue
-        for path in sorted(base.rglob("*.md")):
+        for path in sorted(_markdown_under(key, base)):
             real = path.resolve()
             if real in seen or not path.is_file():
                 continue
@@ -211,9 +219,11 @@ class TextIndex:
                 )
                 indexed += 1
             gone = [p for p in known if p not in present]
-            for rel in gone:
-                self._conn.execute("DELETE FROM sections WHERE path = ?", (rel,))
-                self._conn.execute("DELETE FROM files WHERE path = ?", (rel,))
+            self._conn.execute("CREATE TEMP TABLE IF NOT EXISTS gone(path TEXT PRIMARY KEY)")
+            self._conn.execute("DELETE FROM gone")
+            self._conn.executemany("INSERT INTO gone(path) VALUES (?)", ((rel,) for rel in gone))
+            self._conn.execute("DELETE FROM sections WHERE path IN (SELECT path FROM gone)")
+            self._conn.execute("DELETE FROM files WHERE path IN (SELECT path FROM gone)")
         total = self._conn.execute("SELECT count(*) FROM sections").fetchone()[0]
         return RefreshReport(
             files=len(docs), sections=total, indexed=indexed, removed=len(gone), dir=self._dir

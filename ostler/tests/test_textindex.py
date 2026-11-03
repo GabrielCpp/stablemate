@@ -127,6 +127,33 @@ def test_epoch_change_drops_rows(repo: Path, index_home: Path):
     assert _refresh(repo, store).indexed == first.files
 
 
+def test_a_scenario_checkout_under_a_spec_is_not_searched(repo: Path):
+    specs = load(repo).doc_roots["specs"]
+    write(specs / "STORY-1/plan.md", "---\ntype: spec.plan\n---\n\n# Plan\n\nThe zebra ledger plan.\n")
+    write(specs / "STORY-1/qa/scenario/AGENTS.md", "# Agents\n\nThe zebra ledger rules.\n")
+    write(specs / "STORY-1/qa/scenario/docs/services/copy.md", _concept("copy", "Copy", "A zebra ledger page."))
+    paths = [hit["path"] for hit in _search(repo, "zebra ledger")]
+    assert len(paths) == 1
+    assert paths[0].endswith("STORY-1/plan.md")
+
+
+def test_a_refresh_drops_the_rows_of_a_copy_below_a_spec(repo: Path, index_home: Path):
+    specs = load(repo).doc_roots["specs"]
+    plan = specs / "STORY-1/plan.md"
+    write(plan, "---\ntype: spec.plan\n---\n\n# Plan\n\nThe zebra ledger plan.\n")
+    store = index.IndexStore(repo, directory=index_home)
+    _refresh(repo, store)
+    moved = specs / "STORY-1/qa/scenario/plan.md"
+    moved.parent.mkdir(parents=True)
+    plan.rename(moved)
+    assert _refresh(repo, store).removed == 1
+    ti = textindex.TextIndex.open(store, load(repo))
+    try:
+        assert not ti.search("zebra")
+    finally:
+        ti.close()
+
+
 def test_type_and_root_filters(repo: Path):
     write(repo / "docs/services/area/c.md", _concept("c", "Gizmo", "gizmo concept"))
     write(repo / "docs/services/area/f.md",
