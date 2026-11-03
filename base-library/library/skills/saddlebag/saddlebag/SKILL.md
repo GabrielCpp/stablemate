@@ -1,6 +1,6 @@
 ---
 name: saddlebag
-description: "saddlebag: the secret store (the OS keyring on this machine, or a Vault behind a daemon) that hands a secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers which store a command uses, finding a secret by tag, signing in with `fill` (username, password, TOTP), typing into a native Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, the ostler environment page that holds a repo's literal variables and `ostler env exec|dotenv|import-dotenv`, the `secrets: saddlebag:` source in an ostler stack.yml, the PreToolUse guard that refuses a secret-printing tool call and what to do when it does, a workflow node that wraps a command, a run in a container, registering a secret, and reading its errors. Load when a QA run or an agent turn must sign in to a page or an Android app, when a command needs a password or token in its environment, when a `.env` or a credentials file is in your way, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
+description: "saddlebag: the secret store (the OS keyring on this machine, or a Vault behind a daemon) that hands a secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers which store a command uses, finding a secret by tag, signing in with `fill` (username, password, TOTP), typing into a native Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, the ostler environment page that holds a repo's literal variables and `ostler env exec|dotenv|import-dotenv`, the `secrets: saddlebag:` source in an ostler stack.yml, the PreToolUse guard that refuses a read of a dotenv, key or credentials file and what to do when it does, a workflow node that wraps a command, a run in a container, registering a secret, and reading its errors. Load when a QA run or an agent turn must sign in to a page or an Android app, when a command needs a password or token in its environment, when a `.env` or a credentials file is in your way, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
 tags: [cli, tests, qa]
 ---
 
@@ -247,24 +247,17 @@ variable's name. The fix is a secret with that `var` and that tag, registered as
 
 ## The guard
 
-`saddlebag guard --hook` is a Claude Code PreToolUse hook. It denies a tool call that
-would put a secret value in front of you, and its denial names the saddlebag line that
-gets the same job done. It covers Read, Grep, Write, Edit and Bash:
+`saddlebag guard --hook` is a Claude Code PreToolUse hook. It denies a read of `.env` and
+its variants (`.env.example` and the like excepted), private keys and `id_*` files,
+`.netrc`, `.npmrc`, `.pypirc`, `.git-credentials`, `.vault-token`, `~/.aws/credentials`
+and `~/.docker/config.json`, through the file tools or a shell
+reader such as `cat`, `grep`, `sed`, `source` or `python`. Its denial names the saddlebag
+line that gets the same job done. It covers Read, Grep, Write, Edit and Bash.
 
-- reading a file whose contents are secret: `.env` and its variants (`.env.example`
-  and the like excepted), private keys and `id_*` files, `.netrc`, `.npmrc`,
-  `.pypirc`, `.git-credentials`, `~/.aws/credentials`, `~/.docker/config.json`,
-  `/proc/<pid>/environ`, through the file tools or a shell reader such as `cat`,
-  `grep`, `sed`, `source` or `python`;
-- dumping the whole environment: bare `env`, `printenv`, `export -p`, `set`,
-  `declare -x`;
-- a secret manager's read: `vault kv get`, `vault read`, `aws secretsmanager
-  get-secret-value`, `aws ssm get-parameter --with-decryption`, `gcloud secrets versions
-  access`, `az keyvault secret show`, `kubectl get secret`, `op read`, `gh auth token`,
-  `pass show`, `secret-tool lookup`, `docker inspect`, `docker compose config`, unless the
-  stage pipes straight into `saddlebag secret set`;
-- a command whose text carries a value the store holds, when a daemon answers. Without
-  one the guard says so on stderr and lets the command through unchecked.
+The guard refuses nothing else. A dump of the environment, `/proc/<pid>/environ` or a
+secret manager's read passes, and its output lands in your transcript. Keep those
+out yourself: pipe a manager's read into `saddlebag secret set NAME`, and print one
+variable by name with `printenv NAME`.
 
 A command that starts with `saddlebag exec` passes whole. The operator installs it once:
 
@@ -274,9 +267,7 @@ saddlebag guard install --project   # ./.claude/settings.json
 ```
 
 A denial is not a wall. Run the line it names: `saddlebag env show` or `env keys` for a
-dotenv, `secret set NAME < FILE` then `exec --env` for a key file, `printenv NAME` for
-one variable, `<manager read> | saddlebag secret set NAME` for a fetched secret, and
-`exec --env VAR=<name>` with `$VAR` in place of a pasted value.
+dotenv, `secret set NAME < FILE` then `exec --env` for a key file.
 
 ## A workflow node
 
@@ -374,10 +365,6 @@ permanent, so ask the operator before you run it.
 | `<selector> is still empty after the insert` | The field is read-only or the page re-rendered it. Wait for the form to settle, then fill again. |
 | `<path> holds secrets. Read it masked: ...` (guard) | A dotenv. Run the `saddlebag env show` or `env keys` line it names. |
 | `<path> holds secrets. Store it: ...` (guard) | A key or credentials file. Hand the operator the `secret set NAME < <path>` line, then run the consumer under `exec --env`. |
-| `<word> would print every secret in the environment. ...` (guard) | Name the one variable you need: `printenv NAME`. |
-| `<stage> prints a secret. Store it instead: ...` (guard) | Pipe the manager's read into `saddlebag secret set NAME` in one command, then use `exec --env`. |
-| `the command carries the value of secret <names>. ...` (guard) | A stored value is pasted in your command. Replace it with `$VAR` under `exec --env VAR=<name>`. |
-| `saddlebag guard: no daemon answers, so the command was not checked for pasted secret values` | A note on stderr, not a denial. The pasted-value check needs a daemon; the keyring route has none. |
 | `<file> has no <KEY>` / `<KEY> has an empty value in <file>` | `env import` stopped before any write. Fix `--keys` or the file. |
 | `the held mark <NAME> on <page> has no saddlebag record tagged environment=<slug> ...` | `ostler env exec` found a `NAME: secret` with no record. Create one with the `secret create` line in the message, then hand the operator its `secret set`. |
 | `<NAME> on <page> is held by N saddlebag records tagged environment=<slug>: ...` | Two records carry the same `var` and tag. Ask the operator which to keep, then `secret untag` or `secret remove` the other. |
