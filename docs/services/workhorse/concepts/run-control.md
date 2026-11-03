@@ -21,8 +21,10 @@ The verbs split by whether the run must be live:
   gates it is parked on. `answer` writes an answer into the gate, as in the
   [operator inbox](operator-inbox.md). `stop` interrupts the run and keeps its checkpoint. `reload`
   re-imports the workflow package and re-enters the checkpoint, and `--core` reloads workhorse
-  too. `switch-cli` is a reload onto another agent CLI. `switch-profile` changes the models the
-  next turn resolves, as in [profiles and config](profiles-and-config.md).
+  too. `switch-cli` is a reload onto another agent CLI, and the run comes back on the profile named
+  after that CLI. `switch-profile` queues a move to another profile on the same CLI, as in
+  [profiles and config](profiles-and-config.md). The run takes it at the next state entry, and
+  refuses it there when the profile declares another CLI.
 - **Offline verbs** read the run directory. `rewind` moves a stopped run's checkpoint to the state
   `--to` names. `resume` relaunches a stopped run detached from its recorded command line, in its own
   systemd user scope where one is available so it survives the caller exiting, and waits until it
@@ -32,8 +34,9 @@ The verbs split by whether the run must be live:
   while the run has not ended. A reload or a rewind on such a run does not end it, so the run stays
   in that worktree until it reaches a terminal state.
 
-A reload or a switch cuts the streaming turn by default. `--at-boundary` lets the turn finish and
-acts at the next state entry. When a live verb finds no listener, the command says whether the
+A reload or a `switch-cli` cuts the streaming turn by default, and a wait behind a usage limit with
+it. `--at-boundary` lets the turn finish and acts at the next state entry. `switch-profile` never
+cuts: the turn in flight and a retry behind a usage limit stay on the old models. When a live verb finds no listener, the command says whether the
 recorded process is still alive.
 
 A rewind validates before it writes. The target state must exist in the flow the checkpoint

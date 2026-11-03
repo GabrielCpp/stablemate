@@ -106,8 +106,8 @@ paste. `groom status --run <run_id> --json` narrows to one run when the id is kn
 | `reload --core` | re-execs the process image so `workhorse` itself is replaced | the fix is in `workhorse/`, not a workflow | — |
 | `questions` | lists the gates the run is parked on | the run shows an operator wait | `GET /api/run/{run_id}/outbox` |
 | `answer` | posts the answer to the open gate (`--gate` picks one, `--text` inlines it) | the cause is fixed **and verified**, never to make it move | `POST /api/run/{run_id}/outbox` |
-| `switch-cli NAME` | moves later turns to another agent backend | the current CLI is wedged or rate-limited | — |
-| `switch-profile NAME` | moves later turns to another model profile | cost or capability needs a different model | — |
+| `switch-cli NAME` | cuts the current turn or usage-limit wait and re-enters the checkpoint on another agent CLI | the current CLI is wedged or at its usage limit | — |
+| `switch-profile NAME` | queues a move to another model profile on the same CLI, taken at the next state entry | cost or capability needs a different model on this CLI | — |
 | `stop [--wait [--timeout S]]` | interrupts the run at its checkpoint; `--wait` blocks until the pid is gone | before a `rewind`, or to end a run for good | — |
 | `status --params` | prints `{state, flow, waiting_on, params}` from `checkpoint.json` | before a `rewind`, or when the socket does not answer | — |
 | `rewind --to STATE` | rewrites a **stopped** run's checkpoint to enter `STATE`, validated like a resume | the run is parked or looping in the wrong state, or its params carry a stale verdict | — |
@@ -117,6 +117,26 @@ paste. `groom status --run <run_id> --json` narrows to one run when the id is kn
 
 groom's own `POST /reload` is a different thing: it reloads the *container sidecar* in
 the dev loop. It never reaches a run's control socket.
+
+## Moving a run to another CLI or profile
+
+The two switches differ in when they act and in what they can reach.
+
+- **`switch-cli` acts now and changes the CLI.** It cuts the turn, re-executes the process from
+  its checkpoint and keeps the pid. The run comes back on the profile named after the new CLI.
+  groom logs an `ended` event with terminal `reload` for the old generation, and the run is
+  still going.
+- **`switch-profile` waits for a state entry and keeps the CLI.** The reply `queued: True, cut: False`
+  says the switch has not happened. The turn in flight stays on the old models, and so does a
+  node retrying behind a usage limit, because that wait never reaches a state entry.
+- **A profile on another CLI is refused late.** The socket accepts the request, and the refusal
+  comes at the state entry, as `profile → refused` in the run's log. Reaching such a profile takes
+  both verbs: `switch-cli <its cli>`, then `switch-profile <name>`.
+- **A run at a usage limit leaves with `switch-cli`.** With only one CLI to use, it waits out the
+  window on its own.
+
+Prove the move from the next turn's model. A reply proves only that the socket took the request.
+The switch is recorded, so a resume comes back on the same profile.
 
 ## Repairing a run in the wrong state
 
