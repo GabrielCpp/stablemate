@@ -69,7 +69,7 @@ title: get-run-entry
   - `404` with detail `no such step or gate` when the run's timeline has no row under the key.
 - verify: json_path(path="$.detail", equals="no such step or gate")
 - code: groom/groom/app.py::run_entry@54b739415692
-- code: groom/groom/activity.py::entry@f35af47c47a7
+- code: groom/groom/activity.py::entry@0f2f5d6b3ac6
 - detail: [groom activity module](../concepts/groom-activity-module.md)
 - detail: [run Activity tab](../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_problems.py::test_a_retry_reading_says_what_happened_and_links_to_its_turn

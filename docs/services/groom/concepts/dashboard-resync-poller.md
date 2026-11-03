@@ -9,8 +9,8 @@ Dashboard resync poller is the [groom dashboard](../gui/screens/groom-dashboard.
 
 The design constraint that makes it worth a document is that the resync must not be a *second* rendering path. A fallback path only runs when something has already gone wrong, which is exactly when nobody is watching it — so a fallback that rendered differently would rot unobserved and be discovered by an operator during an incident. `GET /api/state` therefore returns the identical payload the socket pushes, built by the same [groom projection module](groom-projection-module.md) function, and lands in the identical store entry point. The resync is not a parallel path; it is the only path, reached a different way.
 
-- code: groom/groom/assets/dashboard.js::resync
-- code: groom/groom/assets/dashboard.js::startConnection
+- code: groom/groom/assets/dashboard.js::resync@d1a40f99bedd
+- code: groom/groom/assets/dashboard.js::startConnection@06db11a51eb5
 - refs: [dashboard connection state machine](dashboard-connection-state-machine.md), [dashboard client store](dashboard-client-store.md), [groom projection module](groom-projection-module.md), [dashboard state payload](../formats/dashboard-state-payload.md)
 
 The behavior is covered by `groom/tests/test_dashboard_client.py::test_every_endpoint_is_read_as_json`,

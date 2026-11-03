@@ -1955,9 +1955,11 @@ function passIsOpen(item, pass, selected, folds) {
   return folds[key] !== undefined ? folds[key] : passOpenByDefault(pass) || groupHasKey(pass.entries, selected);
 }
 
-function GroupHead({ cls, open, title, aside, label, toggle }) {
+const ITEM_TIME_HINT = "Agent turns only. The passes below also count steps that ran no agent, so they can add up to more.";
+
+function GroupHead({ cls, open, title, aside, label, toggle, hint }) {
   return html`<button type="button" class=${cls} aria-expanded=${open ? "true" : "false"} aria-label=${label} onClick=${toggle}>
-    <span><span aria-hidden="true">${open ? "▾" : "▸"} </span>${title}</span><span class="aside">${aside}</span>
+    <span><span aria-hidden="true">${open ? "▾" : "▸"} </span>${title}</span><span class="aside" title=${hint}>${aside}</span>
   </button>`;
 }
 
@@ -1992,7 +1994,7 @@ function ItemSection({ item, alive, rows, selected, pick, folds, headed, view, h
   const aside = (state ? state + " · " : "") + groupFigures(item);
   const label = (item.work_id ? "Work item " + item.work_id : "Outside any work item") + ", " + (state ? state + ", " : "") + groupFigures(item).replace(" · ", ", ");
   return html`<div class="tl-sec" data-item=${item.work_id}>
-    ${headed ? html`<${GroupHead} cls="tl-group" open=${open} title=${title} aside=${aside} label=${label} toggle=${() => setFold(key, !open)} />` : null}
+    ${headed ? html`<${GroupHead} cls="tl-group" open=${open} title=${title} aside=${aside} label=${label} hint=${ITEM_TIME_HINT} toggle=${() => setFold(key, !open)} />` : null}
     ${open ? item.passes.map((pass) => html`<${PassSection} key=${pass.flow + pass.pass} item=${item} pass=${pass} rows=${rows} selected=${selected} pick=${pick} folds=${folds} alive=${alive} view=${view} hits=${hits} steps=${steps} />`) : null}
   </div>`;
 }

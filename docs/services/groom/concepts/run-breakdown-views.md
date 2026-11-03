@@ -24,6 +24,7 @@ The Overview breaks a run's time and cost down in up to three views: by flow, by
 ## Views
 
 - rule: the views are By flow, By node and By work item, switched by a button group named `Breakdown view`. By flow is the default.
+- rule: By node and By flow count the time of state steps, the states whose body ran no agent, so a step such as a scenario run shows as a step node and its flow shows its time. The By work item column does not, and its label says `Agent time`.
 - rule: By node lists each node once, merged across the flows and states it ran in, with its kind (agent or step), visits, time, mean per visit, longest visit, cost, cost share and retries.
 - rule: By node time, cost and visits equal the flow tree's totals and `groom profile`, and a running node's row counts up on the same clock as the tree.
 - rule: By work item lists each work item with its passes, agent time, cost and outcome, then a row `outside any work item` and a Total row.

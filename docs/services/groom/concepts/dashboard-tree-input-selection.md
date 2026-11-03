@@ -20,6 +20,6 @@ segments. The shared renderer consumes this nested shape and receives a
 pane-specific leaf renderer, so the tree does not select or describe either
 pane's source data.
 
-- code: groom/groom/assets/dashboard.js::buildTree
+- code: groom/groom/assets/dashboard.js::buildTree@1b4860076f0b
 - rule: select workspace file list data as the Files pane's flat path input; select dashboard path tree only as the nested render-time result of `buildTree`; neither format is a replacement for the other.
 - detail: [dashboard tree selection](dashboard-tree-selection.md)

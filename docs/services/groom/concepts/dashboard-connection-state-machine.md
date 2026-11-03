@@ -11,10 +11,10 @@ That distinction is the whole reason the unit exists. A half-open TCP socket rea
 
 The rule is a pure function of observations, so it can be asserted against synthetic timestamps rather than against a real socket. The phase it returns drives two things: the connection chip the operator can see, and the `resyncing` flag the [dashboard resync poller](dashboard-resync-poller.md) acts on.
 
-- code: groom/groom/assets/dashboard.js::deriveConnection
-- code: groom/groom/assets/dashboard.js::backoffDelay
-- code: groom/groom/assets/dashboard.js::evaluateConnection
-- code: groom/groom/assets/dashboard.js::ConnectionChip
+- code: groom/groom/assets/dashboard.js::deriveConnection@691102b69424
+- code: groom/groom/assets/dashboard.js::backoffDelay@75f52f869032
+- code: groom/groom/assets/dashboard.js::evaluateConnection@30256e065f4f
+- code: groom/groom/assets/dashboard.js::ConnectionChip@4e61febcf488
 - rule: the chip and the activity follow control say `not connected` for the `offline` phase and keep the word `reconnecting` for the first 60 seconds after a close. The data attribute and the phase stay `offline`.
 - rule: the time a socket has been closed counts from the close of an open socket, not from each failed reconnect attempt, so a server that stays gone moves the phase from `reconnecting` to `offline` after 60 seconds.
 - refs: [dashboard resync poller](dashboard-resync-poller.md), [dashboard client store](dashboard-client-store.md), [groom dashboard](../gui/screens/groom-dashboard.md)

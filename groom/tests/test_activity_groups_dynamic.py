@@ -1,12 +1,13 @@
 """The Activity timeline grouped by work item and flow pass, measured on the page the operator gets."""
 from __future__ import annotations
 
+import re
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from test_activity_groups import BASE, _pass, _polls, _seed
+from test_activity_groups import BASE, _bare_states, _pass, _polls, _seed
 from test_activity_tab_dynamic import _open_activity, _pick, _run
 from test_a11y_dynamic import (
     _UNAVAILABLE,
@@ -21,9 +22,11 @@ from groom import store
 
 
 @contextmanager
-def _grouped(run: str, tmp: Path, *, running: bool = False, polls: int = 0) -> Iterator[str]:
+def _grouped(run: str, tmp: Path, *, running: bool = False, polls: int = 0, states: bool = False) -> Iterator[str]:
     with _run(run, tmp, turns=False, running=running) as name:
         _seed(name)
+        if states:
+            _bare_states(name)
         if polls:
             _polls(polls, name)
         yield name
@@ -316,6 +319,28 @@ def test_headings_and_rows_keep_a_role_a_name_and_state_in_words_and_pass_an_axe
             assert any(word in label for word in ("finished", "running", "failed step", "operator gate", "backend retry", "churn alert", "step passed", "all passed")), label
         violations = _scan(page)
         assert violations == [], violations
+    finally:
+        page.close()
+        context.__exit__(None, None, None)
+
+
+def test_a_state_with_no_node_folds_opens_with_steps_and_reads_in_the_pane() -> None:
+    from playwright.sync_api import expect
+
+    page, context = _opened(Path(tempfile.mkdtemp()), "grp-states", states=True)
+    try:
+        _open_all(page)
+        row = page.locator('#detail-panel .tl button[data-entry="step:bs"]')
+        expect(row).to_have_count(0)
+        page.locator('#detail-panel .feedbar .fchip[data-filter="steps"]').click()
+        expect(row).to_have_count(1)
+        assert "bring_up_stack" in row.inner_text() and "state:" not in row.inner_text()
+        row.click()
+        pane = page.locator("#detail-panel .rd-step")
+        expect(pane.locator(".rd-head")).to_contain_text("bring_up_stack")
+        expect(pane).to_contain_text("route ran next and passed.")
+        expect(page.locator('#detail-panel .tl button[data-entry="failed:vf"]')).to_have_count(1)
+        expect(page.locator("#detail-panel .tl-group .aside").first).to_have_attribute("title", re.compile("^Agent turns only"))
     finally:
         page.close()
         context.__exit__(None, None, None)

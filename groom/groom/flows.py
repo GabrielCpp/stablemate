@@ -22,6 +22,10 @@ def _is_node(span: dict[str, Any]) -> bool:
     )
 
 
+def _is_infra(span: dict[str, Any]) -> bool:
+    return span["attrs"].get("workhorse.span_kind") == "infra"
+
+
 def _depth(span: dict[str, Any]) -> int | None:
     depth = span["attrs"].get("workhorse.depth")
     return depth if isinstance(depth, int) else None
@@ -126,6 +130,7 @@ def build_flows(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for span in spans
         if span["parent_id"] and (_is_state(span) or _is_node(span))
     }
+    bare = {span["span_id"] for span in state_steps(spans)}
     workflow = next((span["workflow"] for span in spans if span["workflow"]), "") or "run"
     flows: dict[tuple[str, str], _Flow] = {}
 
@@ -178,7 +183,7 @@ def build_flows(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
             flow, state = place(span)
             target = (state.nodes if state is not None else flow.direct)[span["node"]]
             target.turns.append(span)
-        elif _is_node(span) and span["span_id"] not in containers:
+        elif (_is_node(span) and span["span_id"] not in containers) or span["span_id"] in bare:
             flow, state = place(span)
             target = (state.nodes if state is not None else flow.direct)[span["node"]]
             target.span_ids.add(span["span_id"])
@@ -285,6 +290,7 @@ def _numbered(spans: list[dict[str, Any]]) -> tuple[dict[str, tuple[str, int, bo
         for span in spans
         if span["parent_id"] and (_is_state(span) or _is_node(span))
     }
+    bare = {span["span_id"] for span in state_steps(spans)}
     started = sorted(
         (span for span in spans if _is_node(span) and span["span_id"] in containers),
         key=lambda span: (span["start_ts"], span["end_ts"], span["span_id"]),
@@ -298,7 +304,7 @@ def _numbered(spans: list[dict[str, Any]]) -> tuple[dict[str, tuple[str, int, bo
             parent = by_id.get(item["parent_id"])
             if parent is not None and _is_node(parent) and parent["span_id"] not in containers:
                 item = parent
-        elif not (_is_node(item) and item["span_id"] not in containers) and item["attrs"].get("workhorse.span_kind") != "wait":
+        elif not ((_is_node(item) and item["span_id"] not in containers) or item["span_id"] in bare) and item["attrs"].get("workhorse.span_kind") != "wait":
             continue
         chain = [item]
         visited = {item["span_id"]}
@@ -335,7 +341,7 @@ def _numbered(spans: list[dict[str, Any]]) -> tuple[dict[str, tuple[str, int, bo
             parent = by_id.get(item["parent_id"])
             if parent is not None and _is_node(parent) and parent["span_id"] not in containers:
                 item = parent
-        elif not (_is_node(item) and item["span_id"] not in containers) and item["attrs"].get("workhorse.span_kind") != "wait":
+        elif not ((_is_node(item) and item["span_id"] not in containers) or item["span_id"] in bare) and item["attrs"].get("workhorse.span_kind") != "wait":
             continue
         chain = [item]
         visited = {item["span_id"]}
@@ -376,3 +382,9 @@ def leaf_steps(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if span["parent_id"] and (_is_state(span) or _is_node(span))
     }
     return [span for span in spans if _is_node(span) and span["span_id"] not in containers]
+
+
+def state_steps(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The state spans that hold no child span but infra ones, in the order given. Their body did its own work, so the state span is the only record of the step."""
+    busy = {span["parent_id"] for span in spans if span["parent_id"] and not _is_infra(span)}
+    return [span for span in spans if _is_state(span) and span["span_id"] not in busy]

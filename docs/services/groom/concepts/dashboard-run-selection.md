@@ -14,6 +14,6 @@ Choose the row for a run already visible in the fleet and the command palette fo
 from another dashboard pane. This is an input-context choice, not a choice between selection
 implementations: both routes use the same selection, subscription, and detail-loading behavior.
 
-- code: groom/groom/assets/dashboard.js::select
+- code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
 - rule: call `select(id)` for every dashboard run selection; choose the row or command-palette entry path by the operator's current context
 - detail: [dashboard run select authority](dashboard-run-select-authority.md)

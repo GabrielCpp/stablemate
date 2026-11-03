@@ -16,5 +16,5 @@ changed-file tree and let selecting a row render one already-parsed file without
 Keeping the payload raw avoids duplicating the browser parser on the producer, and keeping the
 tab cache parsed avoids reparsing or fetching when an operator selects a changed file.
 
-- code: groom/groom/assets/dashboard.js::loadRunDiff@a79bfdf4c0b1
+- code: groom/groom/assets/dashboard.js::loadRunDiff@6b1e2d0423d6
 - rule: use raw workspace diff data at the sidecar and HTTP boundary; use the parsed file cache only for the Diff tab's changed-file selection and rendering

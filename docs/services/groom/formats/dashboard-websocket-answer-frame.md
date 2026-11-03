@@ -10,10 +10,10 @@ Dashboard websocket answer frame is the JSON object the [groom dashboard](../gui
 The socket is the only path for this. Answering is the one browser-to-server write the dashboard performs, and it is deliberately not an HTTP `POST`: the same socket the answer goes up carries the refreshed [run detail](../http/groom.md#get-run-detail) back down, so the pane the operator is looking at updates from the write itself rather than from a follow-up fetch the tab has to remember to issue.
 
 - file: not an on-disk artifact; this is one browser-to-server websocket JSON message, serialized by the dashboard module.
-- code: groom/groom/app.py::_handle_command
-- code: groom/groom/assets/dashboard.js::AnswerForm
-- code: groom/groom/assets/dashboard.js::wireAnswerForm
-- code: groom/groom/assets/dashboard.js::sendCommand
+- code: groom/groom/app.py::_handle_command@593ac30728de
+- code: groom/groom/assets/dashboard.js::AnswerForm@8a9e54c1b5c4
+- code: groom/groom/assets/dashboard.js::wireAnswerForm@37509043cbdd
+- code: groom/groom/assets/dashboard.js::sendCommand@37a75c09204d
 - detail: [dashboard answer command artifacts](../concepts/dashboard-answer-command-artifacts.md)
 - refs: [dashboard websocket receive loop](../concepts/dashboard-websocket-receive-loop.md), [gate-answering layer](../concepts/gate-answering-layer.md), [dashboard client store](../concepts/dashboard-client-store.md), [run watch registry](../concepts/run-watch-registry.md)
 

@@ -34,6 +34,8 @@ title: get-run-activity
 - does:
   - Gives each item its `work_id`, `outcome`, `latest`, `running`, `time_s` and `cost_usd` from the Overview's work item figures.
 - does:
+  - Returns a state span that holds no child span except infra spans as a step entry named by its node without the `state:` prefix, under the pass of its flow. Its seconds are added to the pass `time_s`, not to the item `time_s`, with no cost.
+- does:
   - Gives each pass its `flow`, `pass`, `state`, `time_s` and `cost_usd` from the flow tree's leaf rule.
 - does:
   - Derives a `retry` entry for each agent turn that follows an earlier attempt under the same parent, with the wait from the `retry` event the earlier attempt recorded, and `churn` entries from the churn rule replayed over the stored spans, so a restart loses neither.

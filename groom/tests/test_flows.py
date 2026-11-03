@@ -510,3 +510,72 @@ def test_the_profile_carries_the_flow_tree_and_the_cli_prints_it() -> None:
     text = cli._format_profile(result)
     assert "flows (flow > state > node)" in text
     assert UNFINISHED in text
+
+
+def test_a_state_is_a_step_when_nothing_but_infra_sits_under_it() -> None:
+    from groom.flows import state_steps
+
+    infra = {"workhorse.span_kind": "infra"}
+    spans = [
+        _state("bare", "bring_up"),
+        _state("infra-only", "route"),
+        _span("i1", "infra:compose", parent="infra-only", attrs=infra),
+        _state("with-node", "work"),
+        _span("n1", "lint", parent="with-node"),
+        _state("outer", "wrap"),
+        _state("inner", "inner", parent="outer"),
+        _state("with-turn", "agent"),
+        _turn("t1", "with-turn", "qa-story"),
+        _state("with-wait", "gate"),
+        _span("w1", "wait:operator", parent="with-wait", attrs={"workhorse.span_kind": "wait"}),
+    ]
+    assert [one["span_id"] for one in state_steps(spans)] == ["bare", "infra-only", "inner"]
+
+
+def _flow_with_steps() -> list[dict]:
+    return [
+        _span("f1", "qa", attrs={"workhorse.depth": 0}, seconds=100),
+        _state("s1", "bring_up", parent="f1", depth=1),
+        _span("i1", "infra:compose", parent="s1", attrs={"workhorse.span_kind": "infra"}, seconds=4),
+        _state("s2", "review", parent="f1", depth=1),
+        _span("n1", "check", parent="s2", seconds=30),
+        _turn("t1", "n1", "check", duration_ms=25000, cost=1.5),
+    ]
+
+
+def test_a_state_step_adds_its_time_to_its_flow_and_node_rows_with_no_cost() -> None:
+    from groom.flows import node_breakdown
+
+    rows = build_flows(_flow_with_steps())
+    assert rows[0]["time_s"] == 35
+    assert rows[0]["cost_usd"] == 1.5
+    nodes = {row["node"]: row for row in node_breakdown(rows)}
+    assert nodes["bring_up"]["time_s"] == 10
+    assert nodes["bring_up"]["cost_usd"] is None
+    assert nodes["bring_up"]["visits"] == 1
+    assert nodes["check"]["time_s"] == 25
+
+
+def test_a_state_step_inside_a_container_node_is_counted_once() -> None:
+    from groom.flows import node_breakdown
+
+    spans = [
+        _span("f1", "qa", attrs={"workhorse.depth": 0}, seconds=100),
+        _state("s1", "review", parent="f1", depth=1),
+        _span("n1", "wrapper", parent="s1", seconds=50),
+        _state("s2", "inner", parent="n1", depth=2),
+        _span("n2", "leaf", parent="n1", seconds=20),
+    ]
+    rows = build_flows(spans)
+    assert {row["name"]: row["time_s"] for row in rows} == {"qa": 20, "wrapper": 10}
+    assert sum(row["time_s"] for row in node_breakdown(rows)) == 30
+
+
+def test_an_open_state_step_is_counted_once_beside_the_unfinished_rows() -> None:
+    spans = [
+        _placed("n1", "check", "qa", "review", parent="open-state", depth=2),
+        _span("orphan", "alpha", parent="gone", attrs={"workhorse.depth": 2}),
+        _state("s9", "bring_up", parent="open-state", depth=2),
+    ]
+    rows = build_flows(spans)
+    assert sum(row["time_s"] for row in rows) == 30

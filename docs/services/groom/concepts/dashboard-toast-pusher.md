@@ -12,8 +12,8 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - code: groom/groom/assets/dashboard.js::pushToast@f1678abc58fe
 - code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
 - code: groom/groom/assets/dashboard.js::onAnswered@054f98f0ef29
-- code: groom/groom/assets/dashboard.css::#toasts@8403af13e351
-- code: groom/groom/assets/dashboard.css::.toast@8403af13e351
+- code: groom/groom/assets/dashboard.css::#toasts@07f1cb1e6c6f
+- code: groom/groom/assets/dashboard.css::.toast@07f1cb1e6c6f
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
 
 ## Contract

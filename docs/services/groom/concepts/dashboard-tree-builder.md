@@ -28,7 +28,7 @@ should have to agree on a node shape for the other's sake; a tree is also a disp
 decision, since which directories start open and how siblings sort are questions the
 renderer answers. Flat paths are the narrow contract between them.
 
-- code: groom/groom/assets/dashboard.js::buildTree
+- code: groom/groom/assets/dashboard.js::buildTree@1b4860076f0b
 - rule: this concept is the one implementation of `buildTree`; [dashboard tree flow selection](dashboard-tree-flow-selection.md) and [dashboard tree input selection](dashboard-tree-input-selection.md) name two orthogonal choices a caller makes before reaching it — which journey (Files vs Diff) and which input shape — not a second implementation of it. No ranking applies among the three; each documents a different question about the same single builder.
 - tests: groom/tests/test_tree_builder.py::test_flat_paths_become_directory_nodes_and_file_leaves
 - tests: groom/tests/test_tree_builder.py::test_paths_sharing_a_prefix_reuse_one_directory_node

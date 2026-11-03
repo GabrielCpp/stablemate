@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from test_activity_groups import BASE, RETRIED, _attrs, _seed
+from test_activity_groups import BASE, RETRIED, _attrs, _bare_states, _seed
 from test_run_clock import RUN, _DB, span
 
 from groom import activity, store
@@ -222,3 +222,23 @@ def test_an_unknown_key_is_not_found(key: str) -> None:
         _seed()
         with pytest.raises(activity.EntryNotFound):
             _read(key)
+
+
+def test_a_state_step_reads_with_its_head_its_logs_and_what_came_next() -> None:
+    with _DB():
+        _seed()
+        _bare_states()
+        _logs("bring_up_stack", BASE + 51, [("INFO", "compose up")])
+        reading = _read("step:bs")
+    head = reading["head"]
+    assert (head["name"], head["work_id"], head["flow"], head["pass"], head["state"], head["duration_s"]) == ("bring_up_stack", "sign-in", "qa", 1, "passed", 78)
+    assert [line["body"] for line in reading["logs"]] == ["compose up"]
+    assert reading["next"]["key"] == "step:rt" and reading["next"]["text"] == "route ran next and passed."
+
+
+def test_a_failed_state_step_reads_its_error() -> None:
+    with _DB():
+        _seed()
+        _bare_states()
+        reading = _read("failed:vf")
+    assert reading["error"] == "stack unreachable" and reading["head"]["state"] == "failed"

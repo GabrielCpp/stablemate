@@ -16,7 +16,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/app.py::run_activity@a7f0fcdaf20d
 - code: groom/groom/app.py::run_turn@353c67ab773c
 - code: groom/groom/app.py::run_entry@54b739415692
-- code: groom/groom/activity.py::entry@f35af47c47a7
+- code: groom/groom/activity.py::entry@0f2f5d6b3ac6
 - code: groom/groom/assets/dashboard.js::ActivityTab@03a33ed62c3f
 - code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
 - code: groom/groom/assets/dashboard.js::arrivals@7a0483d82c3a
@@ -27,6 +27,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/transcript_parse.py::from_updates@1ccc9263ddd8
 - code: groom/groom/churn.py::alerts@641e36a47ca5
 - code: groom/groom/flows.py::span_passes@55f223c1146d
+- code: groom/groom/flows.py::state_steps@5e91dc845e5e
 - code: groom/groom/activity.py::search@addb2fe1fa01
 - code: groom/groom/app.py::run_search@60270d508d18
 - code: groom/groom/assets/dashboard.js::timelineView@95096bdd9294
@@ -39,7 +40,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/assets/dashboard.js::setProblems@a49e35ca488b
 - code: groom/groom/assets/dashboard.js::openProblems@edcbcb9b11f0
 - code: groom/groom/assets/dashboard.js::ProblemReading@57c7ab082da3
-- code: groom/groom/records.py::page@f5876216d8e3
+- code: groom/groom/records.py::page@09731cb4c8bf
 - code: groom/groom/app.py::run_records@f4d1ddb739b6
 - code: groom/groom/assets/dashboard.js::RawView@486c0e271fee
 - code: groom/groom/assets/dashboard.js::toggleRaw@48da790711fb
@@ -52,9 +53,10 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: the list groups its rows under a work item heading, then a flow pass heading, and one row is one visit. A node that runs twice has two rows. A run with no work item reads as one unnamed item whose heading is left out, so the flow pass headings stand directly in the list. Work done outside any work item is the first group, headed `Outside any work item`, and work outside any flow is a pass headed `outside any flow`.
 - rule: one row is one visit, the turns of one slug under one parent span, so a retry inside a visit stays one row. A slug that a resumed pass repeats gives one row per visit, each under its own heading and each with its own start, time, cost and pass, so the rows of a pass add up to its heading. The first visit keeps the plain slug as its key. A later visit's key adds `~` and the millisecond its own turns began, which does not change when the list is read again. A row reads only the records of its own visit. When the archive kept none for it, the pane says no record of the turn could be found and offers no retry.
 - rule: a pass number counts from one within one work item and one flow, in the order the pass headings are shown, so the headings of a work item read `dev · 1st pass`, `dev · 2nd pass`, `dev · 3rd pass` with no gap and none out of order. A run with no work item counts within the flow across the run. The pane head of a turn shows the number of the heading the turn sits under.
-- rule: a work item heading carries its state, active time and cost from the same figures as the Overview's work item table, so the two agree. A flow pass heading carries its state, time and cost from the flow tree's leaf rule, so the passes of one flow add up to that flow's row in the Overview.
+- rule: a work item heading carries its state, active time and cost from the same figures as the Overview's work item table, so the two agree. A flow pass heading carries its state, time and cost from the flow tree's leaf rule, with the time of its state steps added, so the passes of one flow add up to that flow's row in the Overview.
 - rule: a work item's state reads `running` while its turn runs, `in progress` for the newest item of a live run, then `done`, `not counted` or `count unknown` from the Overview's outcome. A flow pass reads `running`, `open`, `failed` or `passed`.
 - rule: a heading is a button that opens and closes its rows, with `aria-expanded` and an accessible name that says its state, time and cost in words. A finished work item or flow pass starts folded. The item and the pass in progress start open. The group holding the selected row is open whatever the fold state. A choice the operator made on a heading holds across reads.
+- rule: a step is a node span that holds no node or state, or a state span that holds no child span except infra spans. A state whose body does its own work records only its state span, so that span is the step. A state that holds a node, a nested state, an agent turn or a wait is not a step, because those children already show. Start, route and finish states count like any other, with no list of names. The row shows the node name without the `state:` prefix. It folds with its neighbours, opens under `Steps`, reads like any other step, sits in the work item and flow pass of its flow, and is reached by search, `j` and `k`. A state that failed stands alone as a failed row and is counted once with the other problems. The time of a state step counts in its flow pass heading, failed ones included, so the passes of one flow add up to that flow's row in the Overview. The work item heading stays the agent turns only, as the Overview's work item column does, and its tooltip says so. A state step carries no cost.
 - rule: a run of successful steps folds to one row that says the count, the time and `all passed`. Selecting the row opens it into one row per step, and selecting it again closes it. A failed step, a gate, a backend retry and a churn alert each stand as their own row between the folds, and each has a mark of its own, a cross, a question mark or an exclamation mark, so the kind never rests on color alone.
 - rule: the bar has a `Problems` control that shows the count of problems and exposes whether it is pressed. Pressing it narrows the timeline to the problems, under their work item and flow pass headings, with every heading open and every heading that holds no problem left out. Pressing it again restores the whole timeline. The control is a button with a name, and the keyboard operates it like any button.
 - rule: every count of problems reads one definition: the failed steps, the backend retries, the failed gate checks and the churn alerts of the run's stored spans. The Problems control, the tab badge, the Overview attention tile and the rows of the Problems view all come from it, so the number of rows in the view equals the count. A failed turn and a failed container step are failed steps. A gate check that is dirty and errored counts once. An answered gate is not a problem, is not in the view and adds nothing to the count.

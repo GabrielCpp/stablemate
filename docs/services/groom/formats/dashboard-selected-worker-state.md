@@ -10,9 +10,9 @@ Dashboard selected worker state is the browser-local id of the open run on the [
 The id is the only selection state stored. Everything visible about selection — the row's class, its `aria-current`, the pane's contents, which run this tab watches — is derived from it at render time or requested from it, so there is no second copy to keep in step. That is what removed the reconciler the fragment era needed: a re-rendered row cannot disagree with the selection, because it is rendered *from* it.
 
 - file: not an on-disk artifact; this is one field of the browser-local store, retained for the lifetime of the loaded dashboard page.
-- code: groom/groom/assets/dashboard.js::select
-- code: groom/groom/assets/dashboard.js::Fleet
-- code: groom/groom/assets/dashboard.js::onDetail
+- code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
+- code: groom/groom/assets/dashboard.js::Fleet@b1dc450f276a
+- code: groom/groom/assets/dashboard.js::onDetail@f9e46aa48020
 - refs: [dashboard client store](../concepts/dashboard-client-store.md), [dashboard run selector](../concepts/dashboard-run-selector.md), [run watch registry](../concepts/run-watch-registry.md)
 
 ## Contract

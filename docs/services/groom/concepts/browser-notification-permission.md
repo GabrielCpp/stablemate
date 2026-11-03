@@ -7,8 +7,8 @@ title: Browser notification permission
 
 Browser notification permission is browser-owned state requested by the dashboard's [enable browser notifications from settings](../gui/screens/groom-dashboard.md#enable-browser-notifications-from-settings) interaction and the dashboard's one-time first-click bootstrap, then consumed when a [dashboard notify message](../formats/dashboard-notify-message.md) arrives on the socket after a [blocked push payload](../formats/blocked-push-payload.md), a [sidecar blocked applier](sidecar-blocked-applier.md) delta, or a fired alert rule records the event. The browser owns the permission prompt, stored permission value, repeat-request behavior, denied-state recovery, and persistence; the dashboard only calls the Notification API during click handling and reads its exposed permission value before creating a system notification. It gates only system-level browser notifications for the [groom dashboard](../gui/screens/groom-dashboard.md); the in-page [dashboard toast pusher](dashboard-toast-pusher.md) remains available without this permission.
 
-- code: groom/groom/assets/dashboard.js::wireEvents
-- code: groom/groom/assets/dashboard.js::onNotify
+- code: groom/groom/assets/dashboard.js::wireEvents@c2f8997e9c43
+- code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
 - rule: Use the first-body-click request only as the one-time bootstrap registered at dashboard initialization when the Notification API is available and permission is `default`; use the settings request for an explicit activation of `#btn-notify` whenever the API is available. The paths are context-specific rather than replacements, and the same settings activation can invoke both while the bootstrap listener remains registered.
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
 - detail: [dashboard event wiring interaction contexts](dashboard-event-wiring-interaction-contexts.md)

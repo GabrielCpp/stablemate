@@ -9,7 +9,7 @@ A container run can hold more than one git checkout in its workspace. The run's 
 
 - code: groom/groom/assets/dashboard.js::CheckoutSelect@1dec79549bbb
 - code: groom/groom/assets/dashboard.js::checkoutFor@4efc2c003f44
-- code: groom/groom/assets/dashboard.js::selectCheckout@fe08d1478779
+- code: groom/groom/assets/dashboard.js::selectCheckout@dfd6eb4f7100
 - code: groom/groom/sidecar.py::_repo_names@6414bfcac07e
 - code: groom/groom/app.py::_checkout_names@534a9939c8cb
 - rule: the sidecar adds a `repos` list, the names of the workspace's checkouts, to its `getDiff` and `getTree` replies, and `/diff/` and `/files/` pass it through. `/repos/{id}` stays unchanged for the terminal client.

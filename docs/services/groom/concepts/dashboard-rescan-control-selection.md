@@ -15,5 +15,5 @@ Both ids are delegated to `doRefresh`, which posts the rescan request and marks 
 control busy until that request settles. The distinct accessible names let both controls remain
 distinguishable if Settings is open while the status bar is visible.
 
-- code: groom/groom/assets/dashboard.js::doRefresh
+- code: groom/groom/assets/dashboard.js::doRefresh@622b51370ad0
 - rule: use the Settings control for the settings-pane discovery context and the status-bar control for a quick fleet-view rescan; neither is preferred globally.

@@ -14,12 +14,12 @@ The frame is deliberately kept **off** the [dashboard state payload](dashboard-s
 `_dispatch_alerts` sends this frame to every open browser tab and, in the same call, delivers the same alert through [outbound notification push](../concepts/outbound-notification-push.md) to any configured ntfy/webhook channel — the browser toast and the external push are two independent deliveries of one alert, not a fallback chain.
 
 - file: not an on-disk artifact; this is one transient server-to-browser websocket JSON message.
-- code: groom/groom/app.py::_broadcast_notify
-- code: groom/groom/app.py::push_blocked
-- code: groom/groom/app.py::_apply_socket_blocked
-- code: groom/groom/app.py::_dispatch_alerts
-- code: groom/groom/assets/dashboard.js::onFrame
-- code: groom/groom/assets/dashboard.js::onNotify
+- code: groom/groom/app.py::_broadcast_notify@5a8abf2cd7e5
+- code: groom/groom/app.py::push_blocked@077514cee86e
+- code: groom/groom/app.py::_apply_socket_blocked@17ce49ea9092
+- code: groom/groom/app.py::_dispatch_alerts@e9fa720c8145
+- code: groom/groom/assets/dashboard.js::onFrame@561cd42ccdab
+- code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
 - detail: [blocked push flow contexts](../concepts/blocked-push-flow-contexts.md)
 - detail: [dashboard frame dispatch](../concepts/dashboard-frame-dispatch.md)
 - refs: [blocked push payload](blocked-push-payload.md), [dashboard state payload](dashboard-state-payload.md), [dashboard answered message](dashboard-answered-message.md), [browser notification permission](../concepts/browser-notification-permission.md)

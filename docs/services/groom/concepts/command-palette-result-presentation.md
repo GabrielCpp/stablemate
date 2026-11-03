@@ -15,5 +15,5 @@ than alternative implementations.
 with the active option, and renders each result option. The static dashboard shell supplies the
 input and listbox elements that this function connects to those options.
 
-- code: groom/groom/assets/dashboard.js::PaletteResults
+- code: groom/groom/assets/dashboard.js::PaletteResults@fb2140639a3c
 - rule: document the command-palette surface by its responsibility: focused combobox input, results container, or individual result option

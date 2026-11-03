@@ -1280,6 +1280,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the badge shows the same number as the problem count on the [attention tile](#detail-attention-tile) and on the [Problems control](#detail-activity-problems).
 - states: a run with no telemetry shows `No telemetry for this run. It was recorded before telemetry, or it exports to another collector.` in place of the bar and the list.
 - states: it lists the run's rows under work item and flow pass headings, each a button that opens and closes its rows, with folded runs of passed steps and separate rows for failed steps, gates, retries and churn alerts.
+- states: a work item heading shows agent time only, with a tooltip that says so.
+- states: a flow pass heading shows the time of its agent turns plus the time of its steps that ran no agent.
 - states: the [search field](#detail-activity-search), the [work item selector](#detail-activity-item) and the [Problems control](#detail-activity-problems) sit above the list for every run, followed by `Also show`, the [Steps control](#detail-activity-steps) and the [Info logs control](#detail-activity-logs), with the hints `j k move` and `e next problem` and the [Raw control](#detail-activity-raw) at the right.
 - states: a live run shows a [follow control](#detail-activity-follow) above the list.
 - states: pressing the [Raw control](#detail-activity-raw) replaces the bar and the list with the [Raw view](#detail-activity-raw-list).

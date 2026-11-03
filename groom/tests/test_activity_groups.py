@@ -7,7 +7,7 @@ import pytest
 from test_activity import _claude, _write
 from test_run_clock import RUN, STATE, _DB, span
 
-from groom import activity, store, turns
+from groom import activity, problems, store, turns
 
 BASE = 1_700_000_000.0
 
@@ -57,6 +57,21 @@ def _seed(run: str = RUN) -> None:
 
 def _polls(count: int = 3, run: str = RUN) -> None:
     store.insert_spans([span(f"p{number}", "t1", "sc", "poll", "poll", BASE + 1500 + number * 3, 2, {"workhorse.depth": 2} | _attrs("reset"), 1, run) for number in range(count)])
+
+
+def _bare_states(run: str = RUN) -> None:
+    def state(span_id: str, parent: str, node: str, at: float, seconds: float, status: str = "OK") -> dict:
+        one = span(span_id, "t1", parent, node, f"state:{node}", at, seconds, STATE | _attrs("sign-in", **{"workhorse.depth": 1}), 1, run)
+        one["status"] = status
+        return one
+
+    infra = span("bi", "t1", "bs", "compose", "infra:compose", BASE + 51, 70, {"workhorse.span_kind": "infra"} | _attrs("sign-in"), 1, run)
+    failed = state("vf", "fa", "verify", BASE + 131, 3, "ERROR")
+    failed["attrs"]["status_message"] = "stack unreachable"
+    store.insert_spans([
+        state("bs", "fa", "bring_up_stack", BASE + 50, 78), infra, state("rt", "fa", "route", BASE + 130, 0.1), failed,
+        state("wr", "fa", "wrap", BASE + 140, 20), state("in", "wr", "inner", BASE + 141, 5),
+    ])
 
 
 def _items() -> dict[str, dict]:
@@ -327,3 +342,65 @@ def test_a_suffixed_key_with_no_archive_rows_and_no_files_reads_as_unmatched() -
         bodies = [activity.turn(RUN, key) for key in (first, second)]
     assert second.startswith(SHARED + "~")
     assert [(body["entries"], body["head"]["matched"]) for body in bodies] == [([], False), ([], False)]
+
+
+def test_a_state_that_holds_no_node_is_a_step_and_folds_with_its_neighbours() -> None:
+    with _DB():
+        _seed()
+        _bare_states()
+        entries = _items()["sign-in"]["passes"][0]["entries"]
+    folds = [entry for entry in entries if entry["kind"] == "steps"]
+    assert [step["name"] for fold in folds for step in fold["steps"]] == ["lint", "build", "pack", "bring_up_stack", "route", "inner"]
+    last = folds[-2]
+    assert [(step["name"], step["duration_s"]) for step in last["steps"]] == [("bring_up_stack", 78), ("route", pytest.approx(0.1))]
+    assert last["count"] == 2 and last["time_s"] == pytest.approx(78.1)
+
+
+def test_a_state_holding_a_node_or_another_state_is_not_a_step() -> None:
+    with _DB():
+        _seed()
+        _bare_states()
+        entries = _items()["sign-in"]["passes"][0]["entries"]
+    names = {step["name"] for entry in entries if entry["kind"] == "steps" for step in entry["steps"]}
+    assert not names & {"work", "wrap"}
+
+
+def test_a_failed_state_stands_alone_and_counts_once_on_every_surface() -> None:
+    with _DB():
+        _seed()
+        _bare_states()
+        timeline = activity.timeline(RUN)
+        spans = store.run_turn_spans(RUN)
+    entries = [entry for item in timeline["items"] for one in item["passes"] for entry in one["entries"]]
+    failed = [entry for entry in entries if entry["kind"] == "failed"]
+    assert [(entry["name"], entry["result"]) for entry in failed] == [("test", "2 tests failed"), ("verify", "stack unreachable")]
+    assert all("verify" not in {step["name"] for step in entry.get("steps", [])} for entry in entries)
+    rows = [entry for entry in entries if entry.get("problem")]
+    assert len(rows) == timeline["problems"] == problems.standing(spans)["problems"] == len(problems.found(spans))
+    assert problems.standing(spans)["failed_steps"] == 2
+
+
+def test_a_state_step_sits_in_its_flow_pass_and_its_time_counts_in_the_heading() -> None:
+    from groom import overview
+
+    with _DB():
+        _seed()
+        before = timeline_item_seconds()
+        _bare_states()
+        timeline = activity.timeline(RUN)
+        shown = overview.run_overview(RUN)
+    rows = {row["work_id"]: row for row in shown["items"]["rows"]}
+    flow = next(row for row in shown["flows"] if row["name"] == "qa")
+    for item in timeline["items"]:
+        assert item["time_s"] == rows[item["work_id"]]["seconds"]
+    assert {key: before[key] for key in before} == {item["work_id"]: item["time_s"] for item in timeline["items"]}
+    mine = timeline["items"][0]["passes"][0]
+    assert mine["time_s"] == pytest.approx(126 + 78 + 0.1 + 3 + 5)
+    assert sum(one["time_s"] for item in timeline["items"] for one in item["passes"] if one["flow"] == "qa") == pytest.approx(flow["time_s"])
+    assert "bring_up_stack" in {step["name"] for entry in mine["entries"] if entry["kind"] == "steps" for step in entry["steps"]}
+    assert {row["node"] for row in shown["nodes"]} >= {"bring_up_stack", "verify", "inner"}
+    assert next(row for row in shown["nodes"] if row["node"] == "bring_up_stack")["cost_usd"] is None
+
+
+def timeline_item_seconds() -> dict[str, float]:
+    return {item["work_id"]: item["time_s"] for item in activity.timeline(RUN)["items"]}

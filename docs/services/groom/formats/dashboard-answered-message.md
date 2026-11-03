@@ -12,9 +12,9 @@ It exists to confirm, and only to confirm. The pane the answer came from is refr
 The frame is broadcast fleet-wide rather than returned to the submitting socket. Groom is a shared console — two operators watching the same blocked run should both see that it was answered, and the tab that did not submit learns it from the same frame as the one that did.
 
 - file: not an on-disk artifact; this is one transient server-to-browser websocket JSON message.
-- code: groom/groom/app.py::_handle_command
-- code: groom/groom/assets/dashboard.js::onFrame
-- code: groom/groom/assets/dashboard.js::onAnswered
+- code: groom/groom/app.py::_handle_command@593ac30728de
+- code: groom/groom/assets/dashboard.js::onFrame@561cd42ccdab
+- code: groom/groom/assets/dashboard.js::onAnswered@054f98f0ef29
 - detail: [dashboard answer command artifacts](../concepts/dashboard-answer-command-artifacts.md)
 - detail: [dashboard frame dispatch](../concepts/dashboard-frame-dispatch.md)
 - refs: [dashboard websocket answer frame](dashboard-websocket-answer-frame.md), [answer result](answer-result.md), [dashboard toast pusher](../concepts/dashboard-toast-pusher.md)

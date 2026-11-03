@@ -20,7 +20,7 @@ directory node is rendered by `TreeDir`, whose button flips only that node's
 component-local open state; the Files and Diff tabs pass it different leaf
 renderers, not different directory-toggle implementations.
 
-- code: groom/groom/assets/dashboard.js::buildTree
-- code: groom/groom/assets/dashboard.js::TreeDir
+- code: groom/groom/assets/dashboard.js::buildTree@1b4860076f0b
+- code: groom/groom/assets/dashboard.js::TreeDir@2604c6a6d632
 - rule: use the Files tab while browsing workspace files and the Diff tab while inspecting working-tree changes; neither is preferred because `TreeDir` implements the same local directory expansion for both tabs.
 - detail: [dashboard tree selection](dashboard-tree-selection.md)

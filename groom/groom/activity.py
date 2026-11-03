@@ -360,7 +360,8 @@ def _groups(spans: list[dict[str, Any]], rows: list[dict[str, Any]], placed: dic
         one.entries.append({"kind": "running" if row["status"] == "running" else "turn", "key": row["slug"], "slug": row["slug"], "ts": row["started_ts"]})
         one.see(row["started_ts"])
     leaves = flows.leaf_steps(spans)
-    for span in leaves:
+    states = flows.state_steps(spans)
+    for span in leaves + states:
         flow, number, opened = placed.get(span["span_id"], nowhere)
         one = group(_work_id(span), flow, number, opened)
         if (flow, span["node"]) not in bucketed:
@@ -368,7 +369,7 @@ def _groups(spans: list[dict[str, Any]], rows: list[dict[str, Any]], placed: dic
     found = problems.found(spans)
     broken = {item["span"]["span_id"] for item in found if item["kind"] == "failed"}
     parents = {span["parent_id"] for span in turn_spans}
-    for span in leaves:
+    for span in leaves + [one for one in states if one["status"] != "ERROR"]:
         if span["span_id"] in parents or span["span_id"] in broken:
             continue
         flow, number, _ = placed.get(span["span_id"], nowhere)
@@ -849,7 +850,7 @@ def entry(
         node = key[len(RUNNING_STEP):]
         if standing and standing.get("node") == node and not standing.get("wait_kind"):
             return _step_reading(run_id, key, None, standing, context)
-        done = [span for span in flows.leaf_steps(spans) if _name(span) == node]
+        done = [span for span in flows.leaf_steps(spans) + flows.state_steps(spans) if _name(span) == node]
         if not done:
             raise EntryNotFound(key)
         last = max(done, key=lambda span: float(span["end_ts"]))

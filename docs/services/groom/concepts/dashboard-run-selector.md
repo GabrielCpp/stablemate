@@ -13,8 +13,8 @@ Selection styling is not its job. The fleet list renders `selected` and `aria-cu
 
 The fetch and the subscription are both issued because they answer different questions. The fetch fills the pane *now*; the subscription keeps it filled. Issuing only the subscription would leave the pane blank until the run next changed — which, for an idle run, could be never.
 
-- code: groom/groom/assets/dashboard.js::select
-- code: groom/groom/assets/dashboard.js::RunRow
+- code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
+- code: groom/groom/assets/dashboard.js::RunRow@703c0edbc1b1
 - rule: choose the direct row, keyboard traversal, or command palette for its input context; all three select through the same run selector, and no ranking exists among them
 - detail: [dashboard run select authority](dashboard-run-select-authority.md)
 - refs: [dashboard selected worker state](../formats/dashboard-selected-worker-state.md), [run watch registry](run-watch-registry.md), [dashboard client store](dashboard-client-store.md)

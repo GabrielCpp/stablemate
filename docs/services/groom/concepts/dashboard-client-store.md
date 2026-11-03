@@ -11,11 +11,11 @@ It is deliberately not a per-component `useState`. The socket is a singleton and
 
 The store is also the boundary that decides what is fleet-wide and what is per-tab. `runs`, `status`, `scanning`, and `conn` come from the server. `mode`, `query`, `checkouts`, `runFiles`, `runDiff`, `traces`, and `palette` never leave the browser — the server has no idea which pane a tab is looking at, and does not need one. The single exception is `selected`, which is echoed to the server as a subscription in the [run watch registry](run-watch-registry.md) because a pushed detail has to be addressed somewhere.
 
-- code: groom/groom/assets/dashboard.js::store
-- code: groom/groom/assets/dashboard.js::applyState
-- code: groom/groom/assets/dashboard.js::applyRun
-- code: groom/groom/assets/dashboard.js::setIn
-- code: groom/groom/assets/dashboard.js::useStore
+- code: groom/groom/assets/dashboard.js::store@eba3cae27fd1
+- code: groom/groom/assets/dashboard.js::applyState@34fd44793f17
+- code: groom/groom/assets/dashboard.js::applyRun@5481efe52045
+- code: groom/groom/assets/dashboard.js::setIn@11c3fd1236a6
+- code: groom/groom/assets/dashboard.js::useStore@372bdfb506de
 - refs: [dashboard state payload](../formats/dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [groom projection module](groom-projection-module.md), [dashboard connection state machine](dashboard-connection-state-machine.md), [dashboard resync poller](dashboard-resync-poller.md), [run watch registry](run-watch-registry.md)
 
 The client module's parsing, JSON endpoint handling, resistance to fragment swapping, and markup

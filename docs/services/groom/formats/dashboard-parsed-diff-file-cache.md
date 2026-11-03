@@ -22,8 +22,8 @@ it. The rows on screen and the array they address always come from one render of
 one read.
 
 - file: not an on-disk artifact; this is a transient in-memory slice of one tab's client store.
-- code: groom/groom/assets/dashboard.js::loadRunDiff@a79bfdf4c0b1
-- code: groom/groom/assets/dashboard.js::DiffTab@ed8babf5c628
+- code: groom/groom/assets/dashboard.js::loadRunDiff@6b1e2d0423d6
+- code: groom/groom/assets/dashboard.js::DiffTab@8ed2100fd582
 - code: groom/groom/assets/dashboard.js::RunFileDiff@139e9580d270
 - detail: [dashboard diff representation selection](../concepts/dashboard-diff-representation-selection.md)
 - refs: [workspace diff data](workspace-diff-data.md), [dashboard path tree](dashboard-path-tree.md)

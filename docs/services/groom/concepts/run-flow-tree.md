@@ -9,7 +9,7 @@ The run flow tree is the Overview tab's account of where a run's time and money 
 
 Spans export when they end. A flow or state that is still open, and the run's own root span, are absent from the store. The tree places finished work by walking the parents that did end. Where the walk meets a parent that is missing, it reads the flow and state names the work's own span carries, which workhorse stamps on every step of a new run. A new run therefore names its open flow while it runs. A run recorded without those names shows the work as unfinished. The tree never names a parent it cannot read from a span.
 
-- code: groom/groom/flows.py::build_flows@b35641607d03
+- code: groom/groom/flows.py::build_flows@3c6e64500c11
 - code: groom/groom/overview.py::run_overview@d4e666f27ee7
 - code: groom/groom/live_history.py::LiveHistory@3671ced6241f
 - code: groom/groom/assets/dashboard.js::Overview@9dedd670516f
@@ -33,6 +33,7 @@ Spans export when they end. A flow or state that is still open, and the run's ow
 - rule: a node row's time is the sum of its agent turns' profile durations, and the span's own duration only when it has no turns, so the figure matches `groom cost` and `groom profile` minute for minute.
 - rule: a node row's visits are its node spans plus the turn groups whose node span did not end; a flow row's visits are its distinct ended flow spans, blank when none has ended; the `workflow` and `unfinished` rows carry no visit count.
 - rule: a node row's retries are its agent turns minus its distinct turn groups, one group per node-span visit, so a node that ran once and was retried twice shows 2.
+- rule: a state span that holds no child span except infra spans is a step of its own. Its seconds count as time in its flow, its state and its node, whether it passed or failed, and the Overview's By flow and By node tables show it. It has no agent turn, so its cost stays empty and is not shown as `$0`. Its visits count as for any node, and a state that holds a node or another state adds nothing, because that work already counts once.
 - rule: a state with exactly one node renders as one row, labelled with the state name when the node has the same name and otherwise `state › node`.
 - rule: the Time column sums each row's own time and is not reconciled with a run's active time. Work that overlaps in time can make the tree's total differ from the active figure that [run row figures](run-row-figures.md) and `groom profile` print.
 - rule: rows sort by time descending, then by name, or by cost when the operator picks that sort, at every depth; a parent's figures are the sums of its children.
