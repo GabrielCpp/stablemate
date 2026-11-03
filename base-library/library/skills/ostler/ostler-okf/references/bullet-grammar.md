@@ -312,8 +312,8 @@ The `verify:` rows after an `observe:` bullet read that observation's JSON, up t
 ### POST /play
 
 - fixture: camera-booked — the camera is leased to this run
-- body: {"video": "calibration"}
-- verify: status(equals=202)
+- arrange: body(field="video", value="calibration")
+- verify: http_status(code=202, path="/play")
 - observe: @camera.recordings
 - verify: count(subject="items", equals=1, within=30)
 ```

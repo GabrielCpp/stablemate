@@ -67,7 +67,7 @@ than 5" is two rows:
 ### None low
 
 - of: stock
-- observe: [list widgets](#get-widgets)
+- observe: [list widgets](list-widgets.md)
 - verify: json_path(path="$.widgets[0].name", matches=".")
 - verify: count(subject="$.widgets[?(@.quantity<5)]", equals=0)
 ```
@@ -80,13 +80,13 @@ than 5" is two rows:
 ### Bill issued
 
 - of: bill
-- observe: [read the bill](#get-bill)
+- observe: [read the bill](get-bill.md)
 - verify: json_path(path="$.status", equals="issued")
 
 ### Bill paid
 
 - of: bill
-- observe: [read the bill](#get-bill)
+- observe: [read the bill](get-bill.md)
 - verify: json_path(path="$.status", equals="paid")
 ```
 

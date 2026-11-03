@@ -262,9 +262,12 @@ title: create-link
 - errors: 400 when the submitted URL is not absolute
 - arrange: body(field="url", value="not-a-url")
 - verify: http_status(code=400, path="/links")
+- verify: json_path(path="$.error", equals="the URL must be absolute")
 - auth: any signed-in editor
 - arrange: body(field="url", value="https://example.com/docs")
 - verify: http_status(code=401, path="/links")
+- verify: json_path(path="$.error", equals="sign in first")
+- moves: none, because this book names no data state for a link
 - code: internal/api/links.go::CreateLink
 ```
 

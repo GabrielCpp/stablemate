@@ -65,14 +65,7 @@ type: server
 
 ## Endpoints
 
-### create-link
-
-- method: POST
-- path: /links
-- does: stores the URL under a generated slug
-- status: 201 with the slug in the body
-- code: internal/api/links.go::CreateLink
-- verify: http_status(code=201)
+- [create-link](http/create-link.md)
 ```
 
 A surface's address can be stated in two places — the `entry-url:` of any `runbook` whose

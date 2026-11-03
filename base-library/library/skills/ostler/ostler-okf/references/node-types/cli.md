@@ -60,9 +60,11 @@ type: cli
 ### create
 
 - usage: shortener create <url> [--slug SLUG]
-- does: mints a short link for the given URL
-- code: cmd/shortener/create.go::runCreate
+- fixture: none, because minting a link needs no earlier link
+- does: exits 0 once it has minted a short link for the given URL
+- run: invoke(argv=["create", "https://example.com"])
 - verify: exit_status(code=0)
+- code: cmd/shortener/create.go::runCreate
 ```
 
 ## Doctor codes it can trip

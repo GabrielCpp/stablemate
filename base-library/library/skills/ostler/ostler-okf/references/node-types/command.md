@@ -65,9 +65,13 @@ timeout 30 ostler scaffold command create --in docs/services/acme/shortener-cli.
 - usage: shortener create <url> [--slug SLUG]
 - flags: --slug — request a specific slug
 - args: url — the URL to shorten
-- does: mints a short link for the given URL
-- does: prints the resulting short URL on stdout
+- fixture: slug-taken
+- does: prints the short URL it mints on stdout
+- run: invoke(argv=["create", "https://example.com"])
+- verify: stdout(matches="^https?://")
 - errors: prints "slug already in use" when --slug is taken
+- run: invoke(argv=["create", "https://example.com", "--slug", "taken"])
+- verify: stderr(text="slug already in use")
 - exits: 0 on success
 - run: invoke(argv=["create", "https://example.com"])
 - verify: exit_status(code=0)
