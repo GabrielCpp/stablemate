@@ -492,6 +492,29 @@ def test_a_turn_of_an_old_run_matches_its_one_archived_record_and_a_turn_with_no
             page.close()
 
 
+def test_a_finished_turn_whose_record_files_are_gone_says_no_record_not_an_empty_turn(tmp_path):
+    import shutil
+
+    from groom import turns as turn_archive
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _run("act-gone", tmp_path) as run:
+        for root in (turn_archive.transcripts_root() / run).glob(f"{SECOND}__*"):
+            shutil.rmtree(root)
+        page = _open(live)
+        try:
+            _pick(page, run)
+            _open_activity(page)
+            expect(_rows(page)).to_have_count(2)
+            expect(page.locator(".rd .at-note")).to_contain_text("No record of this turn")
+            body = page.locator(".rd .rd-body").inner_text()
+            assert "recorded no messages" not in body and "did not record the prompt" not in body, body
+        finally:
+            page.close()
+
+
 def test_a_running_turn_whose_start_the_live_history_dropped_says_earlier_output_is_not_shown(tmp_path):
     from playwright.sync_api import expect
 

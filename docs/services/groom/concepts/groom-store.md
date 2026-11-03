@@ -9,7 +9,7 @@ The persistent, queryable half of groom's telemetry collection: a SQLite databas
 
 Connection discipline is load-bearing: one process-wide writer with an `RLock`, many readers with per-thread read-only connections, both autocommit and explicit `BEGIN IMMEDIATE`, and resilience that retries once on failure. The design separates read and write contention so a cold dashboard query does not stall OTLP ingest, which used to cause collector 500s under load. Query methods use keyset pagination (cursor-based) rather than OFFSET, which remains stable when new rows are inserted by concurrent writers — essential for live telemetry queries where OFFSET would drift across page boundaries.
 
-- code: `groom/groom/store.py` @1bbd123e965d
+- code: `groom/groom/store.py` @4e2112d62f41
 - extends: [run-telemetry](run-telemetry.md)
 - rule: a turn on a backend that reports the session's running total (`claude`, whose `--resume` result carries the conversation's cumulative `total_cost_usd`) is charged its reported cost minus the previous report on the same run and session, ordered by start, end and span id. A report below the previous one starts a new count and is charged whole. A turn with no session id, no reported cost, or another backend is charged its reported cost. The stored attribute keeps the raw report, so the charge is computed when a cost is read and corrects rows already ingested.
 - tests: `groom/tests/test_store.py`
@@ -69,7 +69,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$[0].start_ts", matches="^[0-9.]+$")
 - returns: newest spans first, each with raw attributes and promoted columns like cost and token counts
 - verify: json_path(path="$[0].attrs_json", matches="^\\{")
-- code: `groom/groom/store.py::query_spans` @7b214575f09f
+- code: `groom/groom/store.py::query_spans` @205e987e6b93
 - tests: `groom/tests/test_store.py::test_query_spans_pages_with_keyset_cursor`
 - limit: clamped to max 1000 rows
 
@@ -391,12 +391,12 @@ One turn of a loop, held as three independent readings rather than one resolved 
 
 ### run_directories
 
-- sig: `run_directories() -> list[dict[str, Any]]`
-- does: return distinct (run_id, run_dir, workflow) tuples — every run telemetry has seen a directory for
+- sig: `run_directories(run_id: str = "") -> list[dict[str, Any]]`
+- does: return distinct (run_id, run_dir, workflow) tuples — every run telemetry has seen a directory for, or only the given run's when `run_id` is not empty
 - verify: persists(subject="run telemetry directory inventory")
 - does: feed the archive harvester inventory: a run that moved between directories is two rows and both may hold records
 - returns: rows ordered by uniqueness, not chronologically
-- code: `groom/groom/store.py::run_directories` @4d41795d1163
+- code: `groom/groom/store.py::run_directories` @486ad0baa31a
 - tests: `groom/tests/test_store.py::test_run_directories_lists_inventory_for_archive`
 
 ### is_test_run_dir

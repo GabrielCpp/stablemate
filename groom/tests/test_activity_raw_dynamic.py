@@ -104,6 +104,23 @@ def test_the_info_logs_control_adds_log_rows_with_a_count_and_removes_them_again
     _drive(tmp_path, "raw-logs", check)
 
 
+def test_turning_info_logs_on_while_paused_does_not_count_them_as_arrivals(tmp_path):
+    from playwright.sync_api import expect
+
+    def check(page, name):
+        _open_items(page)
+        follow = page.locator("#detail-panel .feedbar .follow")
+        follow.click()
+        expect(follow).to_have_attribute("aria-pressed", "false")
+        expect(page.locator("#detail-panel .newpill button")).to_have_count(0)
+        _chip(page, "logs").click()
+        expect(page.locator('#detail-panel .tl button[data-entry^="log:"]').first).to_be_visible()
+        page.wait_for_timeout(500)
+        expect(page.locator("#detail-panel .newpill button")).to_have_count(0)
+
+    _drive(tmp_path, "raw-logs-paused", check, running=True)
+
+
 def test_an_info_log_row_does_not_split_a_fold_and_reads_in_the_pane(tmp_path):
     from playwright.sync_api import expect
 

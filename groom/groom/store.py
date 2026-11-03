@@ -1618,7 +1618,7 @@ def query_spans(
     before_ts: float | None = None,
     since_ts: float | None = None,
 ) -> list[dict[str, Any]]:
-    """The /traces search: filter the spans table, newest first."""
+    """Filter the spans table, newest first."""
     clauses, params = ["1=1"], []
     if run:
         clauses.append("run_id = ?")
@@ -1905,13 +1905,14 @@ def query_turns(
 
 
 @reading
-def run_directories() -> list[dict[str, Any]]:
-    """Every run telemetry has seen a directory for: run_id, run_dir, workflow."""
+def run_directories(run_id: str = "") -> list[dict[str, Any]]:
+    """Every run telemetry has seen a directory for, or only `run_id`'s: run_id, run_dir, workflow."""
     return [
         dict(row)
         for row in read_connection().execute(
             "SELECT DISTINCT run_id, run_dir, workflow FROM spans"
-            " WHERE run_dir != '' AND run_id != ''"
+            " WHERE run_dir != '' AND run_id != '' AND (? = '' OR run_id = ?)",
+            (run_id, run_id),
         )
     ]
 

@@ -9,7 +9,7 @@ The activity module builds what the [Activity tab](run-activity-tab.md) shows: t
 
 The module reads and returns plain data. It writes nothing, holds no state between calls and raises two errors the server maps to statuses: `TurnNotFound` for a slug the run has no turn under, and `TurnUnreadable` for a turn that exists whose record is not on this machine.
 
-- code: groom/groom/activity.py@5ad550c5b861
+- code: groom/groom/activity.py@1e3cd24d5cfd
 - tests: groom/tests/test_activity.py
 - tests: groom/tests/test_activity_groups.py
 - refs: [groom transcript parse module](groom-transcript-parse-module.md), [groom store](groom-store.md), [groom turns module](groom-turns-module.md), [run flow tree](run-flow-tree.md)
@@ -59,7 +59,7 @@ The module reads and returns plain data. It writes nothing, holds no state betwe
 - returns: for a step, `{"run_id", "kind", "key", "head", "error", "logs", "cut", "next"}`
 - returns: for a gate, `{"run_id", "kind", "key", "head", "question", "answer", "taken", "readable", "next"}`
 - returns: for a retry or a churn alert, `{"run_id", "kind", "key", "head", "happened", "next"}`
-- code: groom/groom/activity.py::entry@f35af47c47a7
+- code: groom/groom/activity.py::entry@0f2f5d6b3ac6
 - tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_its_full_error_text
 - tests: groom/tests/test_activity_entries.py::test_an_answered_gate_reads_its_question_answer_and_how_long_it_waited
 - endpoint: [get-run-entry](../http/get-run-entry.md)

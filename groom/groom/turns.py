@@ -220,10 +220,10 @@ def harvest_run(run_dir: Path, run_id: str = "", workflow: str = "") -> int:
     return store.insert_turns(archived)
 
 
-def known_runs() -> list[tuple[str, Path, str]]:
-    """Every run telemetry has seen a directory for: (run_id, run_dir, workflow)."""
+def known_runs(run_id: str = "") -> list[tuple[str, Path, str]]:
+    """Every run telemetry has seen a directory for, or only `run_id`'s: (run_id, run_dir, workflow)."""
     found: list[tuple[str, Path, str]] = []
-    for row in store.run_directories():
+    for row in store.run_directories(run_id):
         run_dir = str(row["run_dir"])
         if store.is_scratch_run_dir(run_dir):
             continue

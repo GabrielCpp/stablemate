@@ -184,6 +184,19 @@ def test_scratch_runs_are_never_archived():
         assert store.query_turns(run="R1") == []
 
 
+def test_known_runs_can_be_asked_for_one_run():
+    """Reading one turn must not scan every run's directories."""
+    with _DB(), _workspace() as tmp:
+        _span(tmp / "one", "R1")
+        store.insert_spans([{
+            "span_id": "sp2", "trace_id": "tr2", "run_id": "R2", "workflow": "coder",
+            "run_dir": str(tmp / "two"), "start_ts": 1.0, "end_ts": 2.0,
+        }])
+
+        assert {run_id for run_id, _, _ in turns.known_runs()} == {"R1", "R2"}
+        assert [(run_id, run_dir) for run_id, run_dir, _ in turns.known_runs("R2")] == [("R2", tmp / "two")]
+
+
 def test_a_run_dir_that_is_gone_is_not_an_error():
     """Most rows in `spans` name a directory this host no longer has."""
     with _DB():

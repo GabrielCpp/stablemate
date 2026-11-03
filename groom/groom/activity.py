@@ -531,8 +531,8 @@ def _record_files(run_id: str, head: dict[str, Any], archived: list[dict[str, An
         return {path.name: path for path in directory.iterdir() if path.is_file()}
     if strict and not head["session_id"]:
         return None
-    for known, run_dir, _ in turns.known_runs():
-        if known == run_id and localfs.is_local_dir(str(run_dir)):
+    for _, run_dir, _ in turns.known_runs(run_id):
+        if localfs.is_local_dir(str(run_dir)):
             found = turns.run_dir_files(run_dir, _base(head["slug"]), head["session_id"])
             if found:
                 return found

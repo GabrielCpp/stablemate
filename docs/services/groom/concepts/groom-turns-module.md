@@ -13,7 +13,7 @@ Records are indexed by `(generation, seq, session_id)` — the visit key — whi
 
 Nothing here may raise into groom's tick. A record that cannot be copied is a record that is not archived — a poorer archive, not a broken groom.
 
-- code: groom/groom/turns.py
+- code: groom/groom/turns.py@7bd473f0b0cf
 - refs: [groom archive module](groom-archive-module.md), [groom store](groom-store.md)
 
 The harvesting and backfill flows are covered by `groom/tests/test_turns.py`.
@@ -202,11 +202,12 @@ These functions copy turn records from live run directories into the archive.
 
 ### known-runs
 
-- sig: `known_runs() -> list[tuple[str, Path, str]]`
+- sig: `known_runs(run_id: str = "") -> list[tuple[str, Path, str]]`
 - abstract: false
-- does: enumerate every run the telemetry store has seen a directory for, excluding scratch and test runs
+- does: enumerate every run the telemetry store has seen a directory for, or only the given run's when `run_id` is not empty, excluding scratch and test runs
 - returns: `list` of `(run_id str, run_dir Path, workflow str)` tuples
-- code: groom/groom/turns.py::known_runs
+- code: groom/groom/turns.py::known_runs@7b4f70e2a473
+- tests: `groom/tests/test_turns.py::test_known_runs_can_be_asked_for_one_run`
 - semantics: scratch and test run directories are excluded because a suite that runs workflows under `tempfile.mkdtemp` produces real turn records that would fill the archive durably if included.
 
 ### harvest

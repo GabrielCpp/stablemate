@@ -47,7 +47,7 @@ spans, per-node timings and error status, filterable without leaving the browser
   tab leaves. Reopening the run loads a fresh snapshot, and reconnecting restores
   the subscription automatically.
   The Activity tab reads every stored record of the run on demand. Its *Raw* view
-  lists spans, logs, turn events and churn alerts newest first, 60 at a time
+  lists spans, logs, turn events and churn alerts newest first, 200 at a time
   with *Load older records*, and hides metric samples until *Metric samples*
   asks for them. `GET /api/run/{run_id}/records` serves the pages.
 - Fleet rows and the detail pane project the same received telemetry. Operator and
@@ -124,8 +124,7 @@ engine and every node it runs in-process into `groom`. Because a
 pushed span carries its own identity, **every run appears with no discovery
 step**. Spans and metrics persist in an embedded SQLite file
 (`groom.db` in the platform data dir; override with `GROOM_DB`), searchable
-from the Activity tab's *Raw* view, via `GET /traces?run=…&node=…&status=…&
-slower_than=…`, or with raw `sqlite3` queries. Rows older than
+from the Activity tab's *Raw* view or with raw `sqlite3` queries. Rows older than
 `GROOM_RETENTION_DAYS` (30) are pruned at startup and on a periodic tick — but
 only for a run whose telemetry is already **archived** to disk (below), so the
 window bounds the *database*, not the evidence.
@@ -206,14 +205,6 @@ The pass runs in its own task at `groom serve` launch, seeded already-expired so
 a restart archives immediately, then every `GROOM_ARCHIVE_EVERY_S` (6h) for at
 most `GROOM_ARCHIVE_RUNS_PER_PASS` (25) runs — oldest first, the rest reported as
 pending. Nothing in it may raise into groom's tick.
-
-**The pane shows the runs connected right now.** A month of retention means the
-unfiltered strip is mostly runs that ended days ago, and a dashboard is for
-watching, so a run card (and its spans — a span table listing a hidden run's nodes
-is telemetry from nowhere) appears only while the run is `live` by the same
-heartbeat predicate the fleet rows use. History is one tick of *show ended* away
-(`GET /traces?show_ended=1`), and searching an explicit `run=` always finds it:
-naming a run is asking for that run, finished or not.
 
 **Native runs are first-class dashboard rows, not just telemetry.** A run on
 groom's own host advertises its `run_dir`, workspace path, pid, and per-node

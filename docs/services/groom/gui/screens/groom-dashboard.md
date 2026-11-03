@@ -1370,7 +1370,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: that pane says `This turn ended with no record, so its cost was not reported.` above the transcript.
 - states: when a step or a gate cannot be read, an alert `The details of this step could not be read` shows with `Retry now`, the row in the list stays with its one line, and a retry that succeeds replaces the alert with the details.
 - verify: visible(locator="#detail-activity-pane", text="Reading this turn")
-- code: groom/groom/assets/dashboard.js::TurnPane@6656ea3ec53f
+- code: groom/groom/assets/dashboard.js::TurnPane@e7b5300db574
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_being_read_shows_a_reading_state_that_clears_when_it_appears
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
@@ -1418,7 +1418,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a turn with nothing recorded says `This turn recorded no messages or tool calls.`
 - states: a turn with no record on this machine says `No record of this turn could be found, so its messages and tool calls are not shown.`
 - states: a turn read from the live history that lost its start says `Earlier output of this turn is not shown.`
-- code: groom/groom/assets/dashboard.js::TurnReading@ff501915dc0a
+- code: groom/groom/assets/dashboard.js::TurnReading@5f85da59187b
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_pane_shows_messages_as_prose_and_each_tool_call_as_one_line
@@ -1726,11 +1726,12 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: it exposes its pressed state as `aria-pressed` and starts released.
 - states: pressed, the list gains one row per log line at the place its time falls in the timeline, inside the flow pass whose first turn started latest at or before the line.
 - states: pressed again, the rows go.
+- states: pressed while the list is paused, the added rows do not raise the new-rows pill.
 - states: a log row never splits a run of passed steps.
 - states: selecting a log row reads its level, node, time and message in the pane.
 - states: a log line below INFO level is not a row, and the [Raw view](#detail-activity-raw-list) lists it.
 - code: groom/groom/assets/dashboard.js::ActivityTab@03a33ed62c3f
-- code: groom/groom/assets/dashboard.js::toggleLogs@156d9ce0a004
+- code: groom/groom/assets/dashboard.js::toggleLogs@ccb7b918e30f
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_raw_dynamic.py::test_the_info_logs_control_adds_log_rows_with_a_count_and_removes_them_again
 - tests: groom/tests/test_activity_raw_dynamic.py::test_an_info_log_row_does_not_split_a_fold_and_reads_in_the_pane
@@ -1784,8 +1785,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: metric samples join them only when asked.
 - states: a span is one record written when it ends, with its duration and, when priced, its cost.
 - states: a failed span and a churn alert read in the failure colour.
-- states: a note above the list says how many records the run has and how many are shown, as `This run has 482 records, with 1,204 metric samples hidden. Showing the newest 60.`
-- states: a `Load older records` button follows the 60th record.
+- states: a note above the list says how many records the run has and how many are shown, as `This run has 482 records, with 1,204 metric samples hidden. Showing the newest 200.`
+- states: a `Load older records` button follows the 200th record.
 - states: pressing it adds the next page below and keeps the reader's place.
 - states: it reads `Reading older records…` while it works.
 - states: the last page removes the button.
@@ -2174,7 +2175,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: persists(subject="sent answer in its gate textarea after an answer_rejected frame for that gate")
 - does:
   - Refreshes the pane from the `detail` push triggered by the answer command.
-- verify: visible(locator=".detail-body", text="fixture refreshed gate detail")
+- verify: visible(locator="#detail-panel", text="fixture refreshed gate detail")
 - does:
   - Leaves a half-typed answer for a different run untouched when the answered pane refreshes.
 - verify: json_path(path="other_run.answer_textarea.value", equals="fixture answer")
@@ -2673,7 +2674,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
   - Reads the list again when the run's figures revision moves, every 3 seconds while a turn runs, and when the connection returns.
 - code: groom/groom/assets/dashboard.js::ActivityTab@03a33ed62c3f
-- code: groom/groom/assets/dashboard.js::loadActivity@79a072885c69
+- code: groom/groom/assets/dashboard.js::loadActivity@32c314e1c997
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 
@@ -2709,7 +2710,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Reads the list again, or the open turn again, whichever failed, and clears the alert when the read succeeds.
   - verify: absent(subject=".act-state after a successful retry")
   - Keeps the list on screen while a turn is read again.
-- code: groom/groom/assets/dashboard.js::loadActivity@79a072885c69
+- code: groom/groom/assets/dashboard.js::loadActivity@32c314e1c997
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it

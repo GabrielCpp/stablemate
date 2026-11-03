@@ -133,7 +133,6 @@ body {
 /* the activity line owns the full width under the head's chips */
 .detail-head .doing-line { order:1; flex-basis:100%; font-family:var(--mono); font-size:11.5px; color:var(--text-1);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.detail-body { overflow-y:auto; padding:12px; flex:1; }
 .no-gate { color:var(--text-2); font-size:12px; background:var(--bg-2); border:1px solid var(--border);
   border-radius:5px; padding:8px 12px; }
 .no-gate code { font-family:var(--mono); color:var(--text-1); }
@@ -291,7 +290,6 @@ details.at-msg summary { cursor:pointer; }
 .fd-tree { border-right:1px solid var(--border); overflow:auto; padding:6px 4px;
   font-family:var(--mono); font-size:12px; }
 .fd-view { overflow:auto; min-width:0; background:var(--bg-1); display:flex; flex-direction:column; }
-.fd-empty { color:var(--text-2); font-size:12px; padding:16px 12px; }
 .diff-head { padding:6px 12px; border-bottom:1px solid var(--border); display:flex; gap:10px; align-items:center; color:var(--text-1); font-family:var(--mono); font-size:11.5px; position:sticky; top:0; z-index:1; background:var(--bg-1); }
 .diff-head .diff-path { color:var(--text-0); }
 .diff-head .diff-scope { margin-left:auto; }
@@ -532,8 +530,6 @@ table.tt { width:100%; border-collapse:collapse; font-size:12px; }
 .at-tool-time { color:var(--text-2); margin-left:auto; }
 .rd-body .at-tool-body { max-height:220px; }
 .at-msg.output { border-left-color:var(--running); }
-.stream { display:inline-flex; gap:6px; align-items:center; font-family:var(--mono); font-size:11px; color:var(--running); }
-.stream i { width:7px; height:7px; border-radius:50%; background:var(--running); animation:conn-pulse 1.4s ease-in-out infinite; }
 .empty-big { padding:40px 20px; text-align:center; color:var(--text-2); font-size:12.5px; }
 .act-state { margin:16px; max-width:none; }
 .act-state .btn { margin-left:4px; }

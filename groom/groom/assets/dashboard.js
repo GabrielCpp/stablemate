@@ -1360,7 +1360,7 @@ async function loadTurn(runId, slug, refresh = false) {
   }
 }
 
-async function loadActivity(runId, rev = 0, refresh = false) {
+async function loadActivity(runId, rev = 0, refresh = false, absorbLogs = false) {
   const seq = ++activitySeq;
   const kept = store.get().activity;
   if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev, problems: kept.problems, steps: kept.steps, logs: kept.logs } });
@@ -1373,7 +1373,8 @@ async function loadActivity(runId, rev = 0, refresh = false) {
     const rows = data.rows;
     const items = data.items || [];
     const chosen = rows.some((row) => row.slug === held.selected) || findEntry(items, held.selected) || held.selected.startsWith(RUNNING_STEP) ? held.selected : "";
-    store.set({ activity: { ...held, runId, status: "ready", rows, items, problemCount: data.problems || 0, logCount: data.log_count || 0, selected: chosen, rev } });
+    const seen = absorbLogs && held.seen ? new Set([...held.seen, ...timelineKeys(rows, items)].filter((key) => key.startsWith("log:") || held.seen.has(key))) : held.seen;
+    store.set({ activity: { ...held, runId, status: "ready", rows, items, problemCount: data.problems || 0, logCount: data.log_count || 0, selected: chosen, rev, seen } });
     const wasRunning = held.rows.some((row) => row.slug === chosen && row.status === "running");
     if (!refresh && held.problems && showNewestProblem()) return;
     if (!chosen && rows.length) loadTurn(runId, rows[rows.length - 1].slug);
@@ -1470,7 +1471,7 @@ function toggleSteps() {
 function toggleLogs(runId) {
   const held = store.get().activity;
   store.set({ activity: { ...held, logs: !held.logs } });
-  loadActivity(runId, store.get().activity.rev, true);
+  loadActivity(runId, store.get().activity.rev, true, true);
 }
 
 function stepCount(items) {
@@ -2092,18 +2093,18 @@ function missingParts(prompt, thinking) {
   return gone.length ? "This backend did not record " + gone.join(" or ") + " for this turn." : "";
 }
 
-function TurnReading({ row, entries, cut, prompt, thinking }) {
+function TurnReading({ row, matched, entries, cut, prompt, thinking }) {
   const [opened, setOpened] = useState({});
   const flip = (key) => (open) => setOpened((held) => (held[key] === open ? held : { ...held, [key]: open }));
   const missing = cut || row.status === "running" || row.status === "unrecorded" ? "" : missingParts(prompt, thinking);
   return html`<div class="rd-body" tabindex="0" aria-label=${"Turn " + row.node}>
     ${row.status === "unrecorded" ? html`<div class="dim at-note" style="font-size:11.5px">This turn ended with no record, so its cost was not reported.</div>` : null}
-    ${!row.matched ? html`<div class="dim at-note" style="font-size:11.5px">No record of this turn could be found, so its messages and tool calls are not shown.</div>`
+    ${!matched ? html`<div class="dim at-note" style="font-size:11.5px">No record of this turn could be found, so its messages and tool calls are not shown.</div>`
       : entries.length ? null : html`<div class="dim" style="font-size:11.5px">This turn recorded no messages or tool calls.</div>`}
     ${cut ? html`<div class="dim at-note" style="font-size:11.5px">Earlier output of this turn is not shown.</div>` : null}
-    ${row.matched && prompt ? html`<${PartFold} cls="prompt" label=${"Prompt · " + wordCount(prompt)} open=${!!opened.prompt} toggle=${flip("prompt")} source=${prompt} />` : null}
-    ${row.matched && thinking ? html`<${PartFold} cls="thought" label="Thinking" open=${!!opened.thinking} toggle=${flip("thinking")} source=${thinking} />` : null}
-    ${row.matched && missing ? html`<div class="dim at-note" style="font-size:11.5px">${missing}</div>` : null}
+    ${matched && prompt ? html`<${PartFold} cls="prompt" label=${"Prompt · " + wordCount(prompt)} open=${!!opened.prompt} toggle=${flip("prompt")} source=${prompt} />` : null}
+    ${matched && thinking ? html`<${PartFold} cls="thought" label="Thinking" open=${!!opened.thinking} toggle=${flip("thinking")} source=${thinking} />` : null}
+    ${matched && missing ? html`<div class="dim at-note" style="font-size:11.5px">${missing}</div>` : null}
     ${toolRuns(entries).map((entry) => entry.kind === "run"
       ? html`<${ToolRun} key=${entry.key} run=${entry} open=${!!opened[entry.key]} toggle=${() => flip(entry.key)(!opened[entry.key])} />`
       : entry.kind === "tool"
@@ -2284,7 +2285,7 @@ function TurnPane({ runId, rows, turn, items, selected, entry }) {
       <span class="spin" aria-hidden="true"></span>Reading this turn…
     </div></div>`;
   }
-  return html`<div class="rd"><${TurnHead} row=${row} /><${TurnReading} key=${turn.slug} row=${row} entries=${turn.data.entries} cut=${turn.data.cut} prompt=${turn.data.prompt} thinking=${turn.data.thinking} /></div>`;
+  return html`<div class="rd"><${TurnHead} row=${row} /><${TurnReading} key=${turn.slug} row=${row} matched=${turn.data.head?.matched ?? row.matched} entries=${turn.data.entries} cut=${turn.data.cut} prompt=${turn.data.prompt} thinking=${turn.data.thinking} /></div>`;
 }
 
 function FollowControl({ follow, lost, toggle, innerRef }) {
