@@ -5,7 +5,7 @@ metadata:
   name: python-dead-code
   generated_by: farrier
   source: library/skills/stacks/python/python-dead-code/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-python-dead-code/SKILL.md"
+  resolve: "farrier source .agents/skills/stablemate-python-dead-code/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [architecture, standards, refactoring]
 ---

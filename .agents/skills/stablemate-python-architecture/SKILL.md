@@ -5,7 +5,7 @@ metadata:
   name: python-architecture
   generated_by: farrier
   source: library/skills/stacks/python/python-architecture/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-python-architecture/SKILL.md"
+  resolve: "farrier source .agents/skills/stablemate-python-architecture/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [python, backend, standards]
 ---
@@ -15,9 +15,9 @@ metadata:
 This skill is the **Python spelling** of two language-neutral contracts. Read them first; the *why*
 lives there and is not repeated here:
 
-- [hexagonal-architecture](~/.claude/skills/hexagonal-architecture/SKILL.md)
+- [hexagonal-architecture](~/.agents/skills/hexagonal-architecture/SKILL.md)
   — dependency direction, domain purity, port purity, generic-engine-vs-port, testability.
-- [code-structure](~/.claude/skills/code-structure/SKILL.md)
+- [code-structure](~/.agents/skills/code-structure/SKILL.md)
   — when functions become an object, when a module becomes two, data at boundaries, configuration
   and effects.
 

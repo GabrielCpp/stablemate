@@ -1,5 +1,6 @@
 agents:
-  claude: true
+  claude:
+    skills_from: codex
   codex: true
   copilot: false
 
@@ -84,10 +85,6 @@ template:
   private_names_install: "make install"
   check_public_command: "make check-public    # from the repo root, on its own"
 
-  # no-shell-scripts: the guard that is both the sweep and the PreToolUse hook.
-  check_no_shell_command: "make check-no-shell   # from the repo root, on its own"
-  check_no_shell_script: "scripts/check_no_shell.py"
-
   # python-lint-clean / commit-and-push: the one gate command.
   lint_command: "make lint"
   commit_gate: "make lint          # ruff + ty + basedpyright, every subproject in one pass, from the root"
@@ -139,7 +136,6 @@ localInstructions:
   - policies:
       - uv-workspace
       - public-repo
-      - no-shell-scripts
       - python-lint-clean
       - commit-and-push
       - okf-book

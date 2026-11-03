@@ -5,7 +5,7 @@ metadata:
   name: python-htmx-accessibility
   generated_by: farrier
   source: library/skills/stacks/python/python-htmx-accessibility/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-python-htmx-accessibility/SKILL.md"
+  resolve: "farrier source .agents/skills/stablemate-python-htmx-accessibility/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [python, web, standards]
 ---
@@ -13,7 +13,7 @@ metadata:
 # Accessibility in an HTMX + Server-Rendered HTML App
 
 The universal obligations — role, name, keyboard, focus, perceivable state — are defined once in
-[ui-accessibility](~/.claude/skills/ui-accessibility/SKILL.md). **Read that
+[ui-accessibility](~/.agents/skills/ui-accessibility/SKILL.md). **Read that
 first.** This skill is the concrete *how* for a stack that is hand-authored HTML templates + HTMX
 (`hx-*` attributes, `hx-swap`, `hx-ext="ws"`) + vanilla JS, with **no JSX, no component framework,
 and no build step** — so there is no `eslint-plugin-jsx-a11y` to catch anything; the roles and

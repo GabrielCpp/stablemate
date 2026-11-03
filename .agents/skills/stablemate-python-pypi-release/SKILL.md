@@ -5,7 +5,7 @@ metadata:
   name: python-pypi-release
   generated_by: farrier
   source: library/skills/stacks/python/python-pypi-release/SKILL.md
-  resolve: "farrier source .claude/skills/stablemate-python-pypi-release/SKILL.md"
+  resolve: "farrier source .agents/skills/stablemate-python-pypi-release/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [release, ci]
 ---
