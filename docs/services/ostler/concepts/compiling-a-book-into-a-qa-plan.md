@@ -34,7 +34,7 @@ the request, and journeys across drivers other than HTTP remain refused as
 captured stdout, deciding first whether a check is about the file tree before or after
 (`reads_the_tree`, `compares_the_tree`); `cli_journey` and `cli_move_walk` compile a CLI-driven
 journey or state walk. `_run_arguments` assembles every emitted `.run(...)` call's keyword
-arguments — `argv`, `cwd=qa.scenario_checkout_copy()`, and, when the act declares `env:`,
+arguments — `argv` and, when the act declares `env:`,
 `env=qa.scenario_env(...)` — so a step's or scenario's subprocess call carries whatever
 environment the book's `invoke` act names, in both `cli_scenario_body` and `cli_journey`. `compile_page.py`'s `page_scenarios` builds a web-UI check, holding a
 conditional or mutually-exclusive component's obligations together (`_node_claims`,
@@ -95,9 +95,9 @@ its first hop.
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@4dc4547ef07a
 - code: ostler/ostler/qa/compile_http.py::http_walk@62469eaf0f71
 - code: ostler/ostler/qa/compile_http.py::read_back@2eba39db5fe6
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@b17165cba10a
-- code: ostler/ostler/qa/compile_cli.py::cli_journey@afb3667f295c
-- code: ostler/ostler/qa/compile_cli.py::_run_arguments@51585c8ef3f6
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@cf06f3c86495
+- code: ostler/ostler/qa/compile_cli.py::cli_journey@e73ecb534125
+- code: ostler/ostler/qa/compile_cli.py::_run_arguments@f4d1cc0ce021
 - code: ostler/ostler/qa/compile_cli.py::invoke_env_names@cab445496b1b
 - code: ostler/ostler/qa/compile_page.py::page_scenarios@fba8efba86f1
 - code: ostler/ostler/qa/compile_page.py::web_state_walks@8e3a88f1d3a8

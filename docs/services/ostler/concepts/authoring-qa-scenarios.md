@@ -17,9 +17,9 @@ object a check calls to make an HTTP request (`Http`), run a step of the book un
 a browser, read a fixture, or build the environment a tool run needs (`scenario_env`) — and
 raises `CheckFailed` or lets a `ClaimFault`/`FixtureFault` propagate when the book's claim does
 not hold. `scenario_env` expands a `$NAME` reference in a declared value against the process
-environment, then resolves any value shaped like a relative path against
-`scenario_checkout_copy()`, so a compiled CLI run whose `invoke` act declares `env:` gets a
-variable pointing at a file inside the scenario's own checkout rather than the harness's.
+environment, then resolves any value shaped like a relative path against the checkout root, so
+a compiled CLI run whose `invoke` act declares `env:` gets a variable pointing at a file in the
+checkout it runs in.
 
 Outside a single check, `ostler_qa.py` also carries the pieces a scenario rarely touches
 directly: `Target`/`Secret`/`ScenarioDecl` are the frozen records a `plan()` call accumulates;
@@ -77,20 +77,18 @@ is the browser-side counterpart: it merges overlapping element rectangles into t
 documented components.
 
 `ostler_qa_lap.py`'s `Arranged` and `LapRecord` carry what one scenario step produced forward to
-the step that reads it, the "lap" a multi-step scenario runs. `ostler_qa_checkout.py`'s
-`copy_checkout` is unrelated to any of the above: it is how the sandbox gets the book's own git
-checkout in the first place, copying a working tree into the sandbox while sharing `.git`
-history and skipping the checkout's own `qa/` directory so a scenario cannot read its own
-harness as book content.
+the step that reads it, the "lap" a multi-step scenario runs. `checkout_tree` reads every file the
+checkout holds into one `Tree`, leaving out wholly ignored directories, `.git` and the run's `qa/`
+directory, so a differential check compares the reads either side of an action.
 
 - code: ostler/ostler/qa/harness/ostler_qa.py::plan@8d4a996f573f
 - code: ostler/ostler/qa/harness/ostler_qa.py::target@004738c14823
 - code: ostler/ostler/qa/harness/ostler_qa.py::secret@03ec751a0a19
 - code: ostler/ostler/qa/harness/ostler_qa.py::background@ff9310569202
 - code: ostler/ostler/qa/harness/ostler_qa.py::scenario@4627c6acef7d
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@62ada1f8f7a7
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@10638713e0d1
 - code: ostler/ostler/qa/harness/ostler_qa.py::Http@55912ec4cef1
-- code: ostler/ostler/qa/harness/ostler_qa.py::scenario_env@69e209e9bd38
+- code: ostler/ostler/qa/harness/ostler_qa.py::scenario_env@8aaa84a452d8
 - code: ostler/ostler/qa/harness/ostler_qa.py::CheckFailed@2d91bd45de1f
 - code: ostler/ostler/qa/harness/ostler_qa.py::ClaimFault@5b5fba27b76a
 - code: ostler/ostler/qa/harness/ostler_qa.py::FixtureFault@fb62eecb6b50
@@ -148,7 +146,7 @@ harness as book content.
 - code: ostler/ostler/qa/harness/ostler_qa_hierarchy.py::parse_uiautomator@3e8eb8fde32d
 - code: ostler/ostler/qa/harness/ostler_qa_lap.py::Arranged@d2300a54c1e9
 - code: ostler/ostler/qa/harness/ostler_qa_lap.py::LapRecord@4ff057faf213
-- code: ostler/ostler/qa/harness/ostler_qa_checkout.py::copy_checkout@7d9282dec218
+- code: ostler/ostler/qa/harness/ostler_qa_files.py::checkout_files@5623e81e6b53
 - code: ostler/ostler/qa/harness/ostler_qa_scan.py::merge_rects@e12c3290326a
 - code: ostler/ostler/qa/harness/ostler_qa_scan.py::summarize@c8a9e958b44a
 - detail: [ostler](../cli.md)
@@ -168,9 +166,8 @@ harness as book content.
 - path grammar: `resolve_path` walks `$`, `.key`, `[index]`, `[*]` and `[?(@.key==value)]` steps
   against a parsed document; an index or key absent from the document resolves to nothing rather
   than raising, so a verifier reports "not found" as a normal failed reading.
-- checkout isolation: `copy_checkout` always excludes the checkout's own `qa/` directory from the
-  copy it makes, so a scenario reading the book's working tree can never read the harness that is
-  running it.
+- checkout read: `checkout_tree` always leaves out the run's `qa/` directory, so a differential
+  check over the checkout never reads the evidence the run is writing.
 - whole-screen settle: a phone settle judges a perceivable over the screen's whole scrollable
   content, as a browser counts an element below the fold as visible. On a miss in the viewport the
   reading drags the largest scrollable area forward, reads after each drag, and drags back by the

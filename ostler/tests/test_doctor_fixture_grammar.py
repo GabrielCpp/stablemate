@@ -342,7 +342,7 @@ def test_fixture_step_run_is_check_expression_as_command(repo: Path) -> None:
 
 
 def test_fixture_step_scenario_frame_token_is_not_a_doctor_finding(repo: Path) -> None:
-    """A fixture step runs inside a scenario, so `scenario:` names something real — `runbook-scenario-frame` fires only on a runbook step, where no scenario exists."""
+    """The old token reads as the checkout root on a fixture step; `runbook-scenario-frame` fires only on a runbook step."""
     _stack(repo)
     write(repo / "docs/services/acme/fixtures/seeded-acme.md",
           "---\ntype: fixture\ntitle: Seeded acme\n---\n# Seeded acme\n\n"
@@ -546,19 +546,19 @@ def _fixture_in(directory: str) -> str:
         "- run: ./scripts/seed-acme.sh", f"- run: ./scripts/seed-acme.sh\n- working-directory: {directory}")
 
 
-def test_fixture_step_directory_refuses_a_path_the_checkout_lacks_and_names_the_scenario_token(repo: Path) -> None:
+def test_fixture_step_directory_refuses_a_path_the_checkout_lacks(repo: Path) -> None:
     _stack(repo)
     write(repo / "docs/services/acme/fixtures/seeded-acme.md", _fixture_in("services/missing"))
     found = _findings(repo, "fixture-step-directory")
-    assert [(f.severity, f.suggestion) for f in found] == [("error", "- working-directory: scenario:")]
+    assert [(f.severity, f.suggestion) for f in found] == [("error", "- working-directory: <path>")]
 
 
-def test_a_bare_scenario_names_the_scenario_frame_when_the_checkout_has_no_such_directory(repo: Path) -> None:
+def test_a_bare_scenario_reads_as_the_checkout_root_when_the_checkout_has_no_such_directory(repo: Path) -> None:
     _stack(repo)
     write(repo / "docs/services/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
     assert _findings(repo, "fixture-step-directory") == []
     [step] = book_fixtures.resolved(load(repo))["seeded-acme"]["steps"]
-    assert step["cwd-frame"] == "scenario"
+    assert step["cwd"] == str(repo.resolve())
 
 
 def test_a_bare_scenario_is_a_path_when_the_checkout_holds_that_directory(repo: Path) -> None:
@@ -566,7 +566,7 @@ def test_a_bare_scenario_is_a_path_when_the_checkout_holds_that_directory(repo: 
     (repo / "scenario").mkdir()
     write(repo / "docs/services/acme/fixtures/seeded-acme.md", _fixture_in("scenario"))
     [step] = book_fixtures.resolved(load(repo))["seeded-acme"]["steps"]
-    assert "cwd-frame" not in step and step["cwd"] == str((repo / "scenario").resolve())
+    assert step["cwd"] == str((repo / "scenario").resolve())
 
 
 def test_fixture_step_directory_is_clean_for_the_scenario_token_and_a_real_directory(repo: Path) -> None:

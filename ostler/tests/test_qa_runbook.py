@@ -148,16 +148,15 @@ type: runbook
     assert manifest["health"][0]["working-directory"] == str((tmp_path / "report").resolve())
 
 
-def test_scenario_frame_token_is_carried_as_a_marker_not_a_resolved_path(tmp_path: Path) -> None:
-    """No scenario directory exists at manifest-build time, so `_step_command` must not invent a fake absolute path for the token — it hands the frame on as a marker for the harness to resolve at run time."""
+def test_the_old_scenario_token_reads_as_the_checkout_root(tmp_path: Path) -> None:
+    """A scenario's commands run in the checkout, so the token and a dropped bullet name one directory."""
     node = model.UINode(
         type="step", kind="section", id="fixtures/f.md#seed-it", path=tmp_path / "f.md",
         meta={"run": "./seed.sh", "working-directory": "scenario:"},
     )
     step = rb.step_command(node, tmp_path, ".")
     assert step is not None
-    assert step["cwd-frame"] == "scenario"
-    assert "working-directory" not in step
+    assert step["working-directory"] == str(tmp_path.resolve())
 
 
 def test_a_stated_path_still_resolves_checkout_relative(tmp_path: Path) -> None:
@@ -168,7 +167,6 @@ def test_a_stated_path_still_resolves_checkout_relative(tmp_path: Path) -> None:
     step = rb.step_command(node, tmp_path, ".")
     assert step is not None
     assert step["working-directory"] == str((tmp_path / "services" / "api").resolve())
-    assert "cwd-frame" not in step
 
 
 def test_an_absent_working_directory_still_resolves_to_the_default_cwd(tmp_path: Path) -> None:
@@ -179,7 +177,6 @@ def test_an_absent_working_directory_still_resolves_to_the_default_cwd(tmp_path:
     step = rb.step_command(node, tmp_path, "app")
     assert step is not None
     assert step["working-directory"] == str((tmp_path / "app").resolve())
-    assert "cwd-frame" not in step
 
 
 def test_every_step_is_the_mapping_form(repo: Path) -> None:

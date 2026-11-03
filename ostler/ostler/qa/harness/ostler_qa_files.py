@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections.abc import Callable, Mapping, Sized
+import shutil
+import subprocess
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sized
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,14 +29,45 @@ class Tree(dict[str, JsonValue]):
     checkout once rather than twice per action.
     """
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, files: Iterable[Path] | None = None) -> None:
         super().__init__()
         self.texts: dict[str, str] = {}
         if root.is_dir():
-            for path in sorted(root.rglob("*")):
+            for path in sorted(root.rglob("*") if files is None else files):
                 if path.is_file():
                     name = path.relative_to(root).as_posix()
                     self.texts[name], self[name] = _read_tree_file(path)
+
+
+def _git_listing(root: Path, *flags: str) -> list[str] | None:
+    """The paths `git ls-files` lists under *root* with *flags*, or None when *root* is no checkout."""
+    git = shutil.which("git")
+    if git is None:
+        return None
+    done = subprocess.run(
+        [git, "-C", str(root), "ls-files", "-z", "--exclude-standard", *flags],
+        capture_output=True, check=False,
+    )
+    if done.returncode != 0:
+        return None
+    return [name for name in done.stdout.decode("utf-8", errors="surrogateescape").split("\0") if name]
+
+
+def _walked(root: Path) -> Iterator[Path]:
+    """Every path below *root*, less the `.git` of a checkout."""
+    return (path for path in root.rglob("*") if ".git" not in path.relative_to(root).parts)
+
+
+def checkout_files(root: Path, skip: Path) -> list[Path]:
+    """The files of the checkout at *root* that a change could touch: kept, untracked and loose ignored ones, never a wholly ignored directory, and nothing below *skip*."""
+    kept = _git_listing(root, "--cached", "--others")
+    ignored = _git_listing(root, "--others", "--ignored", "--directory")
+    if kept is None or ignored is None:
+        found = list(_walked(root))
+    else:
+        found = [root / name for name in kept + [entry for entry in ignored if not entry.endswith("/")]]
+        found += [path for name in kept if name.endswith("/") for path in _walked(root / name)]
+    return [path for path in found if path.is_file() and not path.is_relative_to(skip)]
 
 
 def _read_tree_file(path: Path) -> tuple[str, JsonValue]:

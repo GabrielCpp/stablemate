@@ -837,8 +837,8 @@ tool_env("HOME", "PATH", "FLAG", "ABSOLUTE")
 
 @scenario(target=api, mechanism="live", covers=["ac:1"])
 def the_command_sees_the_environment_the_scenario_names(qa: Qa) -> None:
-    """A relative path resolves against the scenario directory, and `$NAME` expands from the process."""
-    here = qa.scenario_checkout_copy()
+    """A relative path resolves against the checkout, and `$NAME` expands from the process."""
+    here = qa.root.resolve()
     env = qa.scenario_env({
         "HOME": "case/home",
         "PATH": "stubs:$PATH",
@@ -846,7 +846,7 @@ def the_command_sees_the_environment_the_scenario_names(qa: Qa) -> None:
         "ABSOLUTE": "/etc",
     })
     done = qa.tool("sh").run(
-        "-c", 'printf "%s\\n" "$HOME" "$PATH" "$FLAG" "$ABSOLUTE"', cwd=here, env=env)
+        "-c", 'printf "%s\\n" "$HOME" "$PATH" "$FLAG" "$ABSOLUTE"', env=env)
     home, path, flag, absolute = done.stdout.splitlines()
     qa.check("a relative path is absolute", home == str(here / "case/home"), actual=home)
     qa.check("a relative entry of a list is absolute", path.startswith(str(here / "stubs") + ":"), actual=path)
@@ -856,7 +856,7 @@ def the_command_sees_the_environment_the_scenario_names(qa: Qa) -> None:
 '''
 
 
-def test_a_scenario_env_resolves_paths_against_the_scenario_and_expands_names(tmp_path: Path) -> None:
+def test_a_scenario_env_resolves_paths_against_the_checkout_and_expands_names(tmp_path: Path) -> None:
     """A command that needs its own HOME and PATH per claim gets absolute paths, since it runs from a directory the book names relatively."""
     module = _write(tmp_path, SCENARIO_ENV_PLAN)
     (tmp_path / "stubs").mkdir()

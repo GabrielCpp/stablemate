@@ -9,7 +9,7 @@ Seeds `book-scratch/`, a small repo of its own under the checkout: one source fi
 functions, a Go and a TypeScript source file with one function each, a `demo` book that cites one of
 them (a cli page, a flow and an entries page), and a source inventory that lists both functions. It
 also seeds `book-scratch-broken/`, a repo whose entries page links to a page that does not exist.
-Commands run there with `-C book-scratch`, so no other scenario reads these files.
+Commands run there with `-C book-scratch`.
 
 ## Steps
 

@@ -79,7 +79,7 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/book_index.py::captures_by_node@3461b43ebf37
 - code: ostler/ostler/qa/captures.py::CaptureDecl/parse_bullet@248120ebb77f
 - code: ostler/ostler/qa/compile.py::annotate_deferred_obligations@3cf23080c032
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@b17165cba10a
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@cf06f3c86495
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@4dc4547ef07a
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@89108ef98180
 - code: ostler/ostler/qa/compile_maestro.py::device_state_walks@f685bb9e79dc
@@ -159,7 +159,7 @@ environment, and no plan, transcript or event carries it. See
   source file and a plan under spec s1
 - code: ostler/ostler/qa/book_index.py::captures_by_node@3461b43ebf37
 - code: ostler/ostler/qa/compile.py::cmd_compile_plan@a0f77ff012ce
-- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@b17165cba10a
+- code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@cf06f3c86495
 - code: ostler/ostler/qa/compile_grpc.py::grpc_scenarios@af1d3303dcf6
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@4dc4547ef07a
 - code: ostler/ostler/qa/compile_journey.py::journey_scenarios@89108ef98180
@@ -257,17 +257,17 @@ environment, and no plan, transcript or event carries it. See
 - code: ostler/ostler/qa/drivers.py::create_driver@7652064de163
 - code: ostler/ostler/qa/evidence_map.py::build_evidence_map@5273008138a7
 - code: ostler/ostler/qa/fixtures.py::declared@218d9dd9d05a
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@1196c3ee5064
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@10638713e0d1
 - code: ostler/ostler/qa/harness/ostler_qa_browser_state.py::UrlReading@585f67d0e3dd
 - code: ostler/ostler/qa/harness/ostler_qa_resources.py::ResourceDesk@953f0758c607
 - code: ostler/ostler/qa/harness/ostler_qa.py::Qa._owe_releases@fd9f865aeb69
 - code: ostler/ostler/qa/drivers.py::run_pending_releases@cb8a7479c6bb
 - code: ostler/ostler/qa/compile_observe.py::observation_lines@8db0acb37755
-- code: ostler/ostler/qa/harness/ostler_qa_checkout.py::copy_checkout@7d9282dec218
+- code: ostler/ostler/qa/harness/ostler_qa_files.py::checkout_files@5623e81e6b53
 - code: ostler/ostler/qa/harness/ostler_qa_documents.py::DocumentReading@ce936961df83
 - code: ostler/ostler/qa/harness/ostler_qa_dom.py::AttributeReading@6e8baa69531a
 - code: ostler/ostler/qa/harness/ostler_qa_elements.py::template_pattern@4db02c4ffde6
-- code: ostler/ostler/qa/harness/ostler_qa_files.py::Tree@ede54670f377
+- code: ostler/ostler/qa/harness/ostler_qa_files.py::Tree@efc09001704c
 - code: ostler/ostler/qa/harness/ostler_qa_lap.py::LapRecord@4ff057faf213
 - code: ostler/ostler/qa/harness/ostler_qa_paths.py::Wild@e6ee42610d2f
 - code: ostler/ostler/qa/harness/ostler_qa_responses.py::read_exit@de55f6adfd9d

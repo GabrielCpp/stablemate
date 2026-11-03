@@ -241,7 +241,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 
 ### ostler-search
 - usage: ostler search QUERY [--type TYPE] [--root ROOT] [--limit N] [--match] [--json] — ranked
-  full-text search over every section of every document root, QA checkouts under a spec excepted,
+  full-text search over every section of every document root, QA results under a spec excepted,
   printing one hit per two lines (or the hits as one indented array with --json)
 - flags:
   - --type (keep the sections of pages with this frontmatter type), --root (keep one document root:

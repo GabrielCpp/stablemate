@@ -5,7 +5,7 @@ title: qa scratch repo
 ---
 # qa scratch repo
 
-Seeds `qa-scratch/`, a small git repository of its own under the checkout. Its git directory is `repo.git`, because a scenario's copy of the checkout leaves out every directory named `.git`, and commands reach it with `GIT_DIR=repo.git`. It holds a one-command book for a `demo` program, a QA plan for it under `art/specs/s1/`, and a `qa.toml` that maps the `demo` tool to `echo`. One commit holds the book, then the source file `src/demo.py` changes without a commit, so the repository carries one changed production unit. Commands run there with `-C qa-scratch` and with `STABLEMATE_ARTIFACTS_DIR` and `STABLEMATE_CONFIG` pointed at the scratch tree, so no spec reaches the artifacts directory of the person who runs the book.
+Seeds `qa-scratch/`, a small git repository of its own under the checkout. Its git directory is `repo.git`, and commands reach it with `GIT_DIR=repo.git`. It holds a one-command book for a `demo` program, a QA plan for it under `art/specs/s1/`, and a `qa.toml` that maps the `demo` tool to `echo`. One commit holds the book, then the source file `src/demo.py` changes without a commit, so the repository carries one changed production unit. Commands run there with `-C qa-scratch` and with `STABLEMATE_ARTIFACTS_DIR` and `STABLEMATE_CONFIG` pointed at the scratch tree, so no spec reaches the artifacts directory of the person who runs the book.
 
 ## Steps
 

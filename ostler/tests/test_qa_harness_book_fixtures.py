@@ -730,30 +730,24 @@ def test_node_provides_and_dollar_captures_are_namespaced_apart(tmp_path: Path) 
     assert code == 0, stdout
 
 
-SCENARIO_FRAME_SCENARIO = '''\
+TOKEN_AT_ROOT_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
-def the_fixture_frame_and_the_tool_call_land_in_one_place(qa: Qa) -> None:
-    """`working-directory: scenario:` and `qa.tool(...).run(..., cwd=qa.scenario_checkout_copy())` must
-    resolve to the exact same directory, not merely two directories under `qa.dir`."""
+def a_fixture_step_and_a_tool_run_share_the_checkout(qa: Qa) -> None:
+    \"\"\"A `working-directory: scenario:` step and a tool run with no `cwd` both run at the checkout root.\"\"\"
     qa.fixture("seeded-acme")
     fixture_cwd = qa.resolve("@seeded-acme.fixture_cwd")
-    tool = qa.tool("sh")
-    done = tool.run("-c", "pwd", cwd=qa.scenario_checkout_copy())
-    qa.check(
-        "fixture cwd-frame and qa.tool cwd=qa.scenario_checkout_copy() are the same directory",
-        fixture_cwd == done.stdout.strip(),
-        actual=(fixture_cwd, done.stdout.strip()),
-    )
+    done = qa.tool("sh").run("-c", "pwd")
+    qa.check("both ran in one directory", fixture_cwd == done.stdout.strip(), actual=(fixture_cwd, done.stdout.strip()))
 '''
 
 
-def test_the_scenario_frame_and_a_tool_run_land_in_the_same_directory(tmp_path: Path) -> None:
+def test_the_old_scenario_token_runs_a_fixture_step_at_the_checkout_root(tmp_path: Path) -> None:
     script = tmp_path / "seed.sh"
     _seed_step(script, '#!/bin/sh\nprintf \'{"cwd": "%s"}\' "$(pwd)"\n')
-    module = _write(tmp_path, SCENARIO_FRAME_SCENARIO)
+    module = _write(tmp_path, TOKEN_AT_ROOT_SCENARIO)
     book_fixtures = {
         "seeded-acme": {
-            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd-frame": "scenario"}],
+            "steps": [{"kind": "seed", "id": "seed-it", "command": str(script), "cwd": str(tmp_path)}],
             "args": [], "provides": [{"key": "fixture_cwd", "from": "seed-it", "read": "cwd"}],
             "needs": [], "secrets": [],
         }
@@ -768,7 +762,7 @@ def test_the_scenario_frame_and_a_tool_run_land_in_the_same_directory(tmp_path: 
         }
     )
     code, stdout, records = _harness(
-        "run", str(module), "the-fixture-frame-and-the-tool-call-land-in-one-place", context,
+        "run", str(module), "a-fixture-step-and-a-tool-run-share-the-checkout", context,
         env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
     )
     checks = [r for r in records if r.get("type") == "assert"]
@@ -778,193 +772,76 @@ def test_the_scenario_frame_and_a_tool_run_land_in_the_same_directory(tmp_path: 
 
 CHECKOUT_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
-def a_command_runs_in_its_own_copy_of_the_checkout(qa: Qa) -> None:
-    """A command reaches the checkout's files, and what it writes lands in this scenario alone."""
-    done = qa.tool("sh").run("-c", "test ! -e out.txt && test ! -e qa && cat app.txt && echo made > out.txt", cwd=qa.scenario_checkout_copy())
-    qa.check("the command read the checkout from a world of its own", done.stdout == "the app\\n", actual=done.stdout)
+def a_command_runs_in_the_checkout(qa: Qa) -> None:
+    \"\"\"A command reads the checkout's own files and what it writes lands there.\"\"\"
+    done = qa.tool("sh").run("-c", "cat app.txt && echo made > out.txt")
+    qa.check("the command read the checkout", done.stdout == "the app\\n", actual=done.stdout)
 '''
 
 
-def test_each_run_of_a_scenario_starts_from_a_fresh_copy_of_the_checkout(tmp_path: Path) -> None:
+def test_a_command_runs_in_the_checkout_and_copies_nothing_under_the_qa_folder(tmp_path: Path) -> None:
     (tmp_path / "app.txt").write_text("the app\n", encoding="utf-8")
     module = _write(tmp_path, CHECKOUT_SCENARIO)
     context = json.dumps(
         {"root": str(tmp_path), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa"), "tools": {"sh": "sh"}}
     )
 
-    for _ in range(2):
-        code, stdout, records = _harness(
-            "run", str(module), "a-command-runs-in-its-own-copy-of-the-checkout", context,
-            env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
-        )
-        checks = [r for r in records if r.get("type") == "assert"]
-        assert code == 0, (stdout, records)
-        assert checks and all(c["passed"] for c in checks), (stdout, checks)
+    code, stdout, records = _harness(
+        "run", str(module), "a-command-runs-in-the-checkout", context,
+        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
+    )
 
-    assert not (tmp_path / "out.txt").exists()
-    assert (tmp_path / "qa" / "a-command-runs-in-its-own-copy-of-the-checkout" / "out.txt").is_file()
+    checks = [r for r in records if r.get("type") == "assert"]
+    assert code == 0, (stdout, records)
+    assert checks and all(c["passed"] for c in checks), (stdout, checks)
+    assert (tmp_path / "out.txt").read_text(encoding="utf-8") == "made\n"
+    assert not (tmp_path / "qa" / "a-command-runs-in-the-checkout").exists()
 
 
-IGNORED_SCENARIO = '''\
+TREE_SCENARIO = '''\
 @scenario(target=api, mechanism="live", covers=["ac:1"])
-def a_command_reads_what_the_checkout_ignores(qa: Qa) -> None:
-    """A command reaches the checkout's ignored build output, and what it writes lands in this scenario alone."""
-    done = qa.tool("sh").run("-c", "cat app.txt deps/lib.txt && echo made > out.txt", cwd=qa.scenario_checkout_copy())
-    qa.check("the command read the app and its ignored deps", done.stdout == "the app\\nthe lib\\n", actual=done.stdout)
+def a_tree_reads_the_checkout(qa: Qa) -> None:
+    \"\"\"A differential read of the checkout holds what a change could touch, and leaves out what it could not.\"\"\"
+    names = sorted(qa.checkout_tree())
+    qa.check("the read holds the files", names == sorted(EXPECTED), actual=names)
 '''
 
 
-def test_a_copy_links_what_the_checkout_ignores_instead_of_copying_it(tmp_path: Path) -> None:
+def _tree_names_hold(tmp_path: Path, root: Path, expected: list[str]) -> None:
+    module = _write(tmp_path, f"EXPECTED = {expected!r}\n" + TREE_SCENARIO)
+    context = json.dumps({"root": str(root), "spec_dir": str(tmp_path), "qa_dir": str(root / "qa")})
+    code, stdout, records = _harness(
+        "run", str(module), "a-tree-reads-the-checkout", context,
+        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
+    )
+    checks = [r for r in records if r.get("type") == "assert"]
+    assert code == 0, (stdout, records)
+    assert checks and all(c["passed"] for c in checks), (stdout, checks)
+
+
+def test_a_checkout_tree_leaves_out_ignored_directories_git_and_the_qa_folder(tmp_path: Path) -> None:
     root = tmp_path / "checkout"
     (root / "deps").mkdir(parents=True)
+    (root / "qa").mkdir()
     (root / "app.txt").write_text("the app\n", encoding="utf-8")
-    (root / "deps" / "lib.txt").write_text("the lib\n", encoding="utf-8")
+    (root / "new.txt").write_text("not added yet\n", encoding="utf-8")
     (root / "dump.sql").write_text("rows\n", encoding="utf-8")
-    (root / ".gitignore").write_text("deps/\ndump.sql\n", encoding="utf-8")
-    (root / "tool" / "node_modules").mkdir(parents=True)
-    (root / "tool" / "node_modules" / "mod.js").write_text("mod\n", encoding="utf-8")
-    (root / "tool" / ".gitignore").write_text("node_modules\n.gitignore\n", encoding="utf-8")
+    (root / "deps" / "lib.txt").write_text("the lib\n", encoding="utf-8")
+    (root / "qa" / "evidence.txt").write_text("evidence\n", encoding="utf-8")
+    (root / ".gitignore").write_text("deps/\ndump.sql\nqa/\n", encoding="utf-8")
     subprocess.run(["git", "init", "-q", str(root)], check=True)
     subprocess.run(["git", "-C", str(root), "add", "app.txt", ".gitignore"], check=True)
-    module = _write(tmp_path, IGNORED_SCENARIO)
-    context = json.dumps(
-        {"root": str(root), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa"), "tools": {"sh": "sh"}}
-    )
 
-    code, stdout, records = _harness(
-        "run", str(module), "a-command-reads-what-the-checkout-ignores", context,
-        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
-    )
-
-    world = tmp_path / "qa" / "a-command-reads-what-the-checkout-ignores"
-    checks = [r for r in records if r.get("type") == "assert"]
-    assert code == 0, (stdout, records)
-    assert checks and all(c["passed"] for c in checks), (stdout, checks)
-    assert (world / "app.txt").is_file() and not (world / "app.txt").is_symlink()
-    assert (world / "deps").is_symlink() and (world / "dump.sql").is_symlink()
-    assert (world / "tool").is_symlink() and (world / "tool" / "node_modules" / "mod.js").is_file()
-    assert (world / "out.txt").is_file() and not (root / "out.txt").exists()
+    _tree_names_hold(tmp_path, root, [".gitignore", "app.txt", "dump.sql", "new.txt"])
 
 
-GIT_SCENARIO = '''\
-@scenario(target=api, mechanism="live", covers=["ac:1"])
-def a_command_asks_git_about_its_copy(qa: Qa) -> None:
-    """The copy answers git as a work tree of its own."""
-    copy = qa.scenario_checkout_copy()
-    top = qa.tool("git").run("rev-parse", "--show-toplevel", cwd=copy)
-    qa.check("git names the copy as its own top level", top.stdout.strip() == str(copy), actual=top.stdout)
-'''
-
-IGNORED_FREE_SCENARIO = '''\
-@scenario(target=api, mechanism="live", covers=["ac:1"])
-def a_command_reads_a_plain_copy(qa: Qa) -> None:
-    """A command reads the copy of a tree that is no checkout."""
-    done = qa.tool("sh").run("-c", "cat app.txt", cwd=qa.scenario_checkout_copy())
-    qa.check("the command read the app", done.stdout == "the app\\n", actual=done.stdout)
-'''
-
-GIT_IDENTITY = {
-    "GIT_AUTHOR_NAME": "Tester", "GIT_AUTHOR_EMAIL": "tester@example.com",
-    "GIT_COMMITTER_NAME": "Tester", "GIT_COMMITTER_EMAIL": "tester@example.com",
-}
-
-
-def _git(where: Path, *args: str) -> str:
-    done = subprocess.run(
-        ["git", "-C", str(where), *args], capture_output=True, text=True, check=True,
-        env={**os.environ, **GIT_IDENTITY},
-    )
-    return done.stdout.strip()
-
-
-def _committed_root(tmp_path: Path) -> Path:
-    root = tmp_path / "checkout"
-    root.mkdir()
-    (root / "app.txt").write_text("the app\n", encoding="utf-8")
-    (root / "other.txt").write_text("other\n", encoding="utf-8")
-    subprocess.run(["git", "init", "-q", str(root)], check=True)
-    _git(root, "add", "app.txt", "other.txt")
-    _git(root, "commit", "-q", "-m", "first")
-    return root
-
-
-def _scenario_copy(tmp_path: Path, root: Path, scenario: str = "a-command-asks-git-about-its-copy") -> Path:
-    module = _write(tmp_path, GIT_SCENARIO)
-    context = json.dumps(
-        {"root": str(root), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa"), "tools": {"git": "git"}}
-    )
-    code, stdout, records = _harness(
-        "run", str(module), scenario, context,
-        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
-    )
-    checks = [r for r in records if r.get("type") == "assert"]
-    assert code == 0, (stdout, records)
-    assert checks and all(c["passed"] for c in checks), (stdout, checks)
-    return tmp_path / "qa" / scenario
-
-
-def test_a_copy_of_a_git_checkout_is_a_work_tree_on_the_checkouts_commit(tmp_path: Path) -> None:
-    root = _committed_root(tmp_path)
-    copy = _scenario_copy(tmp_path, root)
-    assert _git(copy, "rev-parse", "--show-toplevel") == str(copy.resolve())
-    assert _git(copy, "rev-parse", "HEAD") == _git(root, "rev-parse", "HEAD")
-
-
-def test_a_copy_shows_the_checkouts_uncommitted_state(tmp_path: Path) -> None:
-    root = _committed_root(tmp_path)
-    (root / "app.txt").write_text("changed\n", encoding="utf-8")
-    copy = _scenario_copy(tmp_path, root)
-    assert _git(copy, "status", "--porcelain").splitlines() == ["M app.txt"]
-
-
-def test_a_commit_in_the_copy_leaves_the_checkout_alone(tmp_path: Path) -> None:
-    root = _committed_root(tmp_path)
-    head, status = _git(root, "rev-parse", "HEAD"), _git(root, "status", "--porcelain")
-    copy = _scenario_copy(tmp_path, root)
-    (copy / "app.txt").write_text("made in the copy\n", encoding="utf-8")
-    _git(copy, "commit", "-q", "-am", "in the copy")
-    assert _git(copy, "rev-parse", "HEAD") != head
-    assert _git(root, "rev-parse", "HEAD") == head
-    assert _git(root, "status", "--porcelain") == status
-
-
-def test_a_copy_of_a_tree_that_is_no_git_checkout_has_no_git_dir(tmp_path: Path) -> None:
+def test_a_checkout_tree_reads_a_tree_that_is_no_git_checkout(tmp_path: Path) -> None:
     root = tmp_path / "plain"
-    root.mkdir()
+    (root / "qa").mkdir(parents=True)
     (root / "app.txt").write_text("the app\n", encoding="utf-8")
-    module = _write(tmp_path, IGNORED_FREE_SCENARIO)
-    context = json.dumps(
-        {"root": str(root), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa"), "tools": {"sh": "sh"}}
-    )
-    code, stdout, records = _harness(
-        "run", str(module), "a-command-reads-a-plain-copy", context,
-        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
-    )
-    assert code == 0, (stdout, records)
-    world = tmp_path / "qa" / "a-command-reads-a-plain-copy"
-    assert (world / "app.txt").is_file() and not (world / ".git").exists()
+    (root / "qa" / "evidence.txt").write_text("evidence\n", encoding="utf-8")
 
-
-NO_COMMAND_SCENARIO = '''\
-@scenario(target=api, mechanism="live", covers=["ac:1"])
-def a_scenario_that_runs_no_command(qa: Qa) -> None:
-    """A scenario that never reads its directory leaves the checkout uncopied."""
-    qa.check("the scenario ran", True)
-'''
-
-
-def test_a_scenario_that_runs_no_command_copies_no_checkout(tmp_path: Path) -> None:
-    (tmp_path / "app.txt").write_text("the app\n", encoding="utf-8")
-    module = _write(tmp_path, NO_COMMAND_SCENARIO)
-    context = json.dumps({"root": str(tmp_path), "spec_dir": str(tmp_path), "qa_dir": str(tmp_path / "qa")})
-
-    code, stdout, records = _harness(
-        "run", str(module), "a-scenario-that-runs-no-command", context,
-        env={"PATH": "/usr/bin:/bin"}, records_to=tmp_path / "records.jsonl",
-    )
-
-    assert code == 0, (stdout, records)
-    assert not (tmp_path / "qa" / "a-scenario-that-runs-no-command").exists()
+    _tree_names_hold(tmp_path, root, ["app.txt"])
 
 
 CREDENTIAL_SCENARIO = '''\

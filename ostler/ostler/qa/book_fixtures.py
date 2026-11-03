@@ -129,10 +129,7 @@ def step_entry(graph: Graph, step: UINode) -> dict[str, Any]:
     }
     if on:
         entry["on"] = on_stem(on)
-    if "cwd-frame" in command:
-        entry["cwd-frame"] = command["cwd-frame"]
-    else:
-        entry["cwd"] = command["working-directory"]
+    entry["cwd"] = command["working-directory"]
     return entry
 
 

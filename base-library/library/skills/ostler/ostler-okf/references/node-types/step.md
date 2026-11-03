@@ -85,16 +85,12 @@ not a command, and bash refuses it or runs its first word as a program. Describe
 step proves in the step's body, and keep the bullet to the command itself. The doctor's
 `unparsable-command` refuses a `run:`/`health:` value bash cannot parse.
 
-**`working-directory: scenario:` is a fixture-only frame, not a path.** A `fixture` step
-runs inside a scenario, so the token stands for that scenario's own directory — the same
-directory `qa.tool(...).run(..., cwd=qa.scenario_checkout_copy())` runs a compiled CLI call in, so a
-fixture and the command it arranges for land in one place instead of racing over the
-checkout root. That directory starts as a fresh copy of the checkout as the runbook left
-it. A command that only works from the checkout finds its code there, and the files it
-writes stay apart from every other scenario's. A **runbook** step has no such frame: it runs at bring-up, before any
-scenario exists, so the same token there names nothing and trips the doctor's
-`runbook-scenario-frame`. Every other `working-directory:` value, on either kind of step,
-keeps its ordinary checkout-relative meaning.
+**A `fixture` step and the command it arranges for run in the checkout.** Leave out
+`working-directory:` to run at the checkout root, the same directory a compiled CLI call runs
+in. Scenarios run one at a time in the checkout, so a fixture that seeds a folder clears what
+an earlier scenario left there. The old token `working-directory: scenario:` reads as the
+checkout root on a fixture step. On a **runbook** step it trips the doctor's
+`runbook-scenario-frame`. Every other value keeps its checkout-relative meaning.
 
 A `step` declares **no normative keys of its own**. It mints nothing; the runbook it belongs
 to carries the contract. The

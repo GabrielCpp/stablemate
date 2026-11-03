@@ -4348,7 +4348,7 @@ def test_a_cli_step_that_sets_an_environment_declares_its_names_and_resolves_the
     ast.parse(source)
     assert 'tool_env("HOME", "PATH")' in source
     assert "from ostler_qa import Qa, plan, scenario, target, tool_env" in source
-    assert ('qa.tool("tally").run("init", cwd=qa.scenario_checkout_copy(), '
+    assert ('qa.tool("tally").run("init", '
             'env=qa.scenario_env({"HOME": "c1/home", "PATH": "stubs:$PATH"}))') in source
     assert _gap_kinds(result.gaps, oid) == []
 
@@ -4375,10 +4375,10 @@ def test_a_cli_journey_runs_each_step_in_one_directory_and_compares_it_either_si
     ast.parse(source)
     assert oid in _covers(source)
     assert _gap_kinds(result.gaps, oid) == []
-    before = source.index("before = qa.tree(qa.scenario_checkout_copy())")
-    init = source.index('observed_1 = qa.tool("tally").run("init", cwd=qa.scenario_checkout_copy())')
-    add = source.index('observed_2 = qa.tool("tally").run("add", "12.50", cwd=qa.scenario_checkout_copy())')
-    after = source.index("after = qa.tree(qa.scenario_checkout_copy())")
+    before = source.index("before = qa.checkout_tree()")
+    init = source.index('observed_1 = qa.tool("tally").run("init")')
+    add = source.index('observed_2 = qa.tool("tally").run("add", "12.50")')
+    after = source.index("after = qa.checkout_tree()")
     assert before < init < add < after
     assert 'qa.verify("exit_status", observed_2, code=0' in source
     assert 'qa.verify("created", (before, after), subject="tally.json"' in source
@@ -4515,8 +4515,8 @@ def test_a_cli_command_asserts_absent_on_the_working_directory_the_run_left() ->
     assert isinstance(result, Plan)
     assert _gap_kinds(result.gaps, oid) == []
     source = result.source
-    run = source.index('observed_1 = qa.tool("tally").run("import", cwd=qa.scenario_checkout_copy())')
-    assert run < source.index("after_1 = qa.tree(qa.scenario_checkout_copy())")
+    run = source.index('observed_1 = qa.tool("tally").run("import")')
+    assert run < source.index("after_1 = qa.checkout_tree()")
     assert 'qa.verify("absent", after_1, subject="tally.json"' in source
 
 
@@ -4547,9 +4547,9 @@ def test_a_cli_journeys_start_is_observed_on_the_directory_before_its_first_step
     source = result.source
     ast.parse(source)
     assert {start_oid, end_oid} <= set(_covers(source))
-    before = source.index("before = qa.tree(qa.scenario_checkout_copy())")
+    before = source.index("before = qa.checkout_tree()")
     start = source.index('qa.verify("absent", before, subject="tally.json"')
-    init = source.index('observed_1 = qa.tool("tally").run("init", cwd=qa.scenario_checkout_copy())')
+    init = source.index('observed_1 = qa.tool("tally").run("init")')
     assert before < start < init
     assert 'qa.verify("created", (before, after), subject="tally.json"' in source
 
@@ -4582,9 +4582,9 @@ def test_a_cli_command_reads_a_json_file_the_run_left_through_file() -> None:
     assert isinstance(result, Plan)
     assert _gap_kinds(result.gaps, oid) == []
     source = result.source
-    before = source.index("before_1 = qa.tree(qa.scenario_checkout_copy())")
-    run = source.index('observed_1 = qa.tool("tally").run("import", cwd=qa.scenario_checkout_copy())')
-    after = source.index("after_1 = qa.tree(qa.scenario_checkout_copy())")
+    before = source.index("before_1 = qa.checkout_tree()")
+    run = source.index('observed_1 = qa.tool("tally").run("import")')
+    after = source.index("after_1 = qa.checkout_tree()")
     assert before < run < after
     assert 'qa.verify("json_path", after_1, path="entries[0].amount", equals=12.5, file="tally.json"' in source
 
@@ -4611,7 +4611,7 @@ def test_a_cli_journeys_start_reads_a_files_text_before_its_first_step() -> None
     source = result.source
     assert {start_oid, end_oid} <= set(_covers(source))
     start = source.index('qa.verify("contents", before, subject="tally.json", matches="entries"')
-    init = source.index('observed_1 = qa.tool("tally").run("init", cwd=qa.scenario_checkout_copy())')
+    init = source.index('observed_1 = qa.tool("tally").run("init")')
     assert start < init
     assert 'qa.verify("count", after, subject="entries", equals=2, file="tally.json"' in source
 
@@ -5975,7 +5975,7 @@ def test_an_empty_argv_is_a_legal_bare_invocation() -> None:
     assert source is not None
 
     assert _gap_kinds(gaps, oid) == []
-    assert 'qa.tool("tally").run(cwd=qa.scenario_checkout_copy())' in source
+    assert 'qa.tool("tally").run()' in source
 
 
 def test_an_invocation_on_a_cli_driven_surface_compiles_to_a_real_scenario() -> None:
@@ -6005,7 +6005,7 @@ def test_an_invocation_on_a_cli_driven_surface_compiles_to_a_real_scenario() -> 
     assert "needs-target-backend" not in {g.kind for g in gaps}
     assert "uncompilable-claim" not in {g.kind for g in gaps}
     assert oid in _covers(source)
-    assert 'qa.tool("tally").run("import", cwd=qa.scenario_checkout_copy())' in source
+    assert 'qa.tool("tally").run("import")' in source
 
 
 def test_a_cli_claim_about_what_the_run_changed_compares_the_directory_either_side() -> None:
@@ -6036,9 +6036,9 @@ def test_a_cli_claim_about_what_the_run_changed_compares_the_directory_either_si
 
     assert _gap_kinds(gaps, oid) == []
     assert oid in _covers(source)
-    before = source.index("before_1 = qa.tree(qa.scenario_checkout_copy())")
-    run = source.index('observed_1 = qa.tool("tally").run("init", cwd=qa.scenario_checkout_copy())')
-    after = source.index("after_1 = qa.tree(qa.scenario_checkout_copy())")
+    before = source.index("before_1 = qa.checkout_tree()")
+    run = source.index('observed_1 = qa.tool("tally").run("init")')
+    after = source.index("after_1 = qa.checkout_tree()")
     assert before < run < after
     assert 'qa.verify("created", (before_1, after_1), subject="tally.json"' in source
 
@@ -6072,9 +6072,9 @@ def test_a_cli_claim_runs_every_run_in_order_and_observes_the_last() -> None:
     ast.parse(source)
 
     assert _gap_kinds(gaps, oid) == []
-    setup = source.index('_ = qa.tool("tally").run("init", cwd=qa.scenario_checkout_copy())')
-    before = source.index("before_1 = qa.tree(qa.scenario_checkout_copy())")
-    run = source.index('observed_1 = qa.tool("tally").run("add", "350", cwd=qa.scenario_checkout_copy())')
+    setup = source.index('_ = qa.tool("tally").run("init")')
+    before = source.index("before_1 = qa.checkout_tree()")
+    run = source.index('observed_1 = qa.tool("tally").run("add", "350")')
     assert setup < before < run
 
 

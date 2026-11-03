@@ -109,11 +109,9 @@ def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] 
     if exports:
         command = f"{exports} {command}"
     cwd = bullet_value(node.meta, "working-directory")
-    step: dict[str, str] = {"run": command}
     if is_scenario_frame(cwd, root):
-        step["cwd-frame"] = "scenario"
-    else:
-        step["working-directory"] = str(resolve_directory(root, cwd or default_cwd or "."))
+        cwd = ""
+    step: dict[str, str] = {"run": command, "working-directory": str(resolve_directory(root, cwd or default_cwd or "."))}
     timeout = bullet_value(node.meta, "timeout")
     if timeout:
         step["timeout"] = timeout

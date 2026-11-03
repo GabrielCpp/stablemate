@@ -112,9 +112,9 @@ flags a step command that duplicates what a scenario's own frame already provide
 - code: ostler/ostler/hidden_claims.py::check_hidden_claims@fbb124432063
 - code: ostler/ostler/step_commands.py::check_step_command_bullets@a2badcc7a86b
 - code: ostler/ostler/step_commands.py::check_step_command_syntax@b4b90aa624e0
-- code: ostler/ostler/step_commands.py::check_fixture_step_directory@7b9bb7884e9c
+- code: ostler/ostler/step_commands.py::check_fixture_step_directory@19380530cc3d
 - code: ostler/ostler/step_commands.py::check_fixture_step_serves@cbb5d0c11cd7
-- code: ostler/ostler/step_commands.py::check_step_not_scenario_frame@53b418ec52fb
+- code: ostler/ostler/step_commands.py::check_step_not_scenario_frame@9711d59a4f07
 - code: ostler/ostler/step_commands.py::check_fixture_probe_remote@98909c58483d
 - detail: [The book's markdown model](the-books-markdown-model.md)
 - detail: [ostler](../cli.md)

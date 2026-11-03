@@ -116,9 +116,9 @@ def _cli_actions(obligation: Obligation) -> list[CallRow]:
 
 
 def _run_arguments(row: CallRow) -> str:
-    """The arguments of the `.run(...)` call that performs *row*: its argv, the scenario's checkout copy and its environment."""
+    """The arguments of the `.run(...)` call that performs *row*: its argv and its environment; it runs at the checkout root."""
     env = row.map_arg("env")
-    parts = [*map(python_literal, row.list_arg("argv")), "cwd=qa.scenario_checkout_copy()"]
+    parts = list(map(python_literal, row.list_arg("argv")))
     if env:
         parts.append(f"env=qa.scenario_env({python_literal(env)})")
     return ", ".join(parts)
@@ -178,10 +178,10 @@ def cli_scenario_body(
         lines.extend(f"    _ = {tool}.run({call_args})" for call_args in setup)
         reads_tree_either_side = any(_touches_the_tree(row) for row in rows)
         if reads_tree_either_side:
-            lines.append(f"    before_{index} = qa.tree(qa.scenario_checkout_copy())")
+            lines.append(f"    before_{index} = qa.checkout_tree()")
         lines.append(f"    {name} = {tool}.run({observed_args})")
         if reads_tree_either_side:
-            lines.append(f"    after_{index} = qa.tree(qa.scenario_checkout_copy())")
+            lines.append(f"    after_{index} = qa.checkout_tree()")
 
         assertions: list[str] = []
         whole = True
@@ -289,7 +289,7 @@ def cli_read_back(where: str, observed: str, target: DataState, book: BookIndex)
                      for call in map(parse_check, state.verify) if isinstance(call, CheckCall))
     return [
         f"    {observed} = {call}",
-        *([f"    {observed}_tree = qa.tree(qa.scenario_checkout_copy())"] if taken_tree else []),
+        *([f"    {observed}_tree = qa.checkout_tree()"] if taken_tree else []),
         f"    qa.holds({python_literal(anchor_of(target.node))}, {{{held}}})",
     ]
 
@@ -309,10 +309,10 @@ def _step_lines(
     rows = [(claim, row) for claim in claims for row in claim.checks]
     taped = any(_touches_the_tree(row) for _claim, row in rows)
     observed, before, after = f"observed_{index}", f"before_{index}", f"after_{index}"
-    lines = [f"    {before} = qa.tree(qa.scenario_checkout_copy())"] if taped else []
+    lines = [f"    {before} = qa.checkout_tree()"] if taped else []
     lines.append(f"    {observed} = {call}")
     if taped:
-        lines.append(f"    {after} = qa.tree(qa.scenario_checkout_copy())")
+        lines.append(f"    {after} = qa.checkout_tree()")
     inside: list[str] = []
     for claim, row in rows:
         operand = _operand(row, observed, before, after)
@@ -380,13 +380,13 @@ def cli_journey(
         stepped.extend(found)
     reads_tree_either_side = any(_touches_the_tree(row)
                                  for obligation in obligations for row in obligation.checks)
-    lines = ["    before = qa.tree(qa.scenario_checkout_copy())"] if reads_tree_either_side else []
+    lines = ["    before = qa.checkout_tree()"] if reads_tree_either_side else []
     starts = [obligation for obligation in obligations if obligation.kind == "start"]
     for obligation in starts:
         _append_journey_verifies(obligation, _start_operand, lines, gaps, covered)
     lines.extend(stepped)
     if reads_tree_either_side:
-        lines.append("    after = qa.tree(qa.scenario_checkout_copy())")
+        lines.append("    after = qa.checkout_tree()")
     observed = f"observed_{len(calls)}"
     for obligation in obligations:
         if obligation.kind != "start":

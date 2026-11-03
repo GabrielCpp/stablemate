@@ -98,22 +98,20 @@ def check_fixture_step_directory(graph: Graph, step: UINode, rel: str, f: list[F
     f.append(Finding(
         "error", "fixture-step-directory",
         f"{step.id}: `working-directory: {value}` names no directory in the checkout, so the step "
-        f"cannot run there. A path is read from the checkout root; for the scenario's own "
-        f"directory, write the token `{registry.SCENARIO_FRAME_TOKEN}` with its colon",
+        f"cannot run there. A path is read from the checkout root; drop the bullet to run at the root",
         path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "working-directory"),
-        suggestion=f"- working-directory: {registry.SCENARIO_FRAME_TOKEN}"))
+        suggestion="- working-directory: <path>"))
 
 
 def check_step_not_scenario_frame(graph: Graph, step: UINode, rel: str, f: list[Finding]) -> None:
-    """A runbook step's `working-directory: scenario:` names a frame that does not exist yet."""
+    """A runbook step's `working-directory: scenario:` names no directory."""
     value = runbook_mod.bullet_value(step.meta, "working-directory")
     if not runbook_mod.is_scenario_frame(value, graph.root):
         return
     f.append(Finding(
         "error", "runbook-scenario-frame",
-        f"{step.id}: `working-directory: {registry.SCENARIO_FRAME_TOKEN}` names a "
-        f"scenario's own directory, but this step runs at bring-up, before any scenario "
-        f"exists to name — state a path, or drop the bullet to run at the checkout root",
+        f"{step.id}: `working-directory: {registry.SCENARIO_FRAME_TOKEN}` names no directory "
+        f"at bring-up — state a path, or drop the bullet to run at the checkout root",
         path=rel, line=step.line, ref=refs_mod.bullet_ref(step.id, "working-directory"),
         suggestion="- working-directory: <path>"))
 

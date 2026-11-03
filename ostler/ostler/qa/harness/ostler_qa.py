@@ -31,8 +31,8 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ostler_qa_transfer
-from ostler_qa_checkout import copy_checkout
 from ostler_qa_elements import choose, maestro_pattern, name_pattern, template_pattern
+from ostler_qa_files import checkout_files
 from ostler_qa_grpc import Caller, Grpc, GrpcError, GrpcurlCaller
 from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
@@ -897,7 +897,6 @@ class Qa:
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
-        self._checkout_copy: Path | None = None
         self._exchange: ExchangeEvidence | None = None
         self._claim_fault: ClaimFault | None = None
         self._held: list[str] = []
@@ -977,6 +976,11 @@ class Qa:
                 f"qa.tree: {str(where)!r} must stay inside the run's qa directory ({base})"
             )
         return Tree(root)
+
+    def checkout_tree(self) -> Tree:
+        """Every file the checkout holds, less its ignored directories and the run's qa directory, read once, so a differential check can compare the reads either side of an action."""
+        root = self.root.resolve()
+        return Tree(root, checkout_files(root, self.dir.resolve()))
 
     def fixture(self, name: str, *args: str) -> "ToolResult":
         """Put the product into a state this repo declared, and write down that it happened."""
@@ -1099,31 +1103,14 @@ class Qa:
         self._last_fault = fault
         self._claim_fault = ClaimFault(fault_class, fixture, self._fixture_pages.get(fixture, ""))
 
-    def scenario_checkout_copy(self) -> Path:
-        """This scenario's own directory under `self.dir`: a fresh copy of the checkout as the runbook left it, made on the first call.
-
-        A command finds the code it runs there, and its files land apart from every other
-        scenario's. A scenario that runs no command never pays for a copy of the checkout.
-        """
-        if self._checkout_copy is None:
-            into = (self.dir.resolve() / self.scenario_id).resolve()
-            try:
-                copy_checkout(self.root.resolve(), self.dir.resolve(), into)
-            except OSError as exc:
-                detail = f"could not copy the checkout into {into}: {exc}"
-                self._fault(self.scenario_id, -1, "checkout", "environment", detail)
-                raise RuntimeError(f"qa {self.scenario_id!r}: {detail}") from exc
-            self._checkout_copy = into
-        return self._checkout_copy
-
     def scenario_env(self, env: Mapping[str, str]) -> dict[str, str]:
-        """*env* with each `$NAME` expanded from this process and each relative path resolved against the scenario directory.
+        """*env* with each `$NAME` expanded from this process and each relative path resolved against the checkout.
 
         An entry of a value split on the path separator is a path when it is relative and either
-        holds a slash or names something that exists in the scenario directory. A value such as
+        holds a slash or names something that exists in the checkout. A value such as
         `0` or `claude` stays as written.
         """
-        base = self.scenario_checkout_copy()
+        base = self.root.resolve()
         return {name: self._resolved_env_value(os.path.expandvars(value), base) for name, value in env.items()}
 
     @staticmethod
@@ -1252,7 +1239,7 @@ class Qa:
 
     def _step_cwd(self, fixture: str, index: int, step: Mapping[str, Any]) -> str:
         kind = str(step.get("kind", ""))
-        cwd = str(self.scenario_checkout_copy()) if step.get("cwd-frame") == "scenario" else str(step.get("cwd") or self.root)
+        cwd = str(step.get("cwd") or self.root)
         if not Path(cwd).is_dir():
             self._fault(fixture, index, kind, "environment", f"cwd {cwd!r} does not exist")
             raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}): cwd {cwd!r} does not exist")
