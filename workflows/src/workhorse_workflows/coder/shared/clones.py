@@ -35,6 +35,12 @@ CROSS_BUILD_REPAIR = (
     f"different reasons, add a [[check-clones.coincidence]] entry to {COINCIDENCE_CONFIG} naming "
     "both files and two different reasons instead."
 )
+TEST_REPAIR = (
+    "move the repeated setup to one shared test helper both test files use, in this change "
+    "(testing-design rule 14). When the two change for different reasons, add a "
+    f"[[check-clones.coincidence]] entry to {COINCIDENCE_CONFIG} naming both files and two "
+    "different reasons instead."
+)
 PROBLEM_REPAIR = "give the entry two different reasons, one per file, or remove it"
 
 
@@ -111,7 +117,7 @@ def _pair_finding(repo: Path, pair: dict) -> Finding:
             f"this story added a copy of {_named(existing)}{unit}, {pair['lines']} lines.{sits}{split} "
             "The two will change for the same reason and get fixed in one place only."
         ),
-        repair=CROSS_BUILD_REPAIR if across else REPAIR,
+        repair=CROSS_BUILD_REPAIR if across else TEST_REPAIR if pair.get("tests") else REPAIR,
     )
 
 

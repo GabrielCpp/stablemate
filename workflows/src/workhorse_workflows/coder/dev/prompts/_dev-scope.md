@@ -12,7 +12,8 @@ A copy this story adds of code the tree already has is in scope too. The lap's c
 reports it as a failure, and the fix extracts the repeated code to one owner both callers
 use, in this story. When the two copies change for different reasons, a
 `[[check-clones.coincidence]]` entry in `.agent-checks.toml` names both files and one reason
-per file instead.
+per file instead. A copy between two test files moves to one shared test helper, as
+testing-design rule 14 says.
 
 When the clone check says the two copies sit in separate builds, the owner is a library the
 repository's workspace lists and each build declares, as code-structure rule 2.13 says. The

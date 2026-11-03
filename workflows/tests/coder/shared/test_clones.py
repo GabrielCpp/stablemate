@@ -115,6 +115,39 @@ def test_a_pair_in_one_build_keeps_the_single_owner_repair(
     assert "code-structure rule 2.12" in finding.repair
 
 
+def test_a_pair_between_test_files_asks_for_a_shared_test_helper(
+    tmp_path: Path, code_repo: Path, logger: logging.Logger
+) -> None:
+    pair = {
+        "added": {**ADDED, "build": "."},
+        "existing": {**EXISTING, "build": "."},
+        "lines": 13,
+        "tests": True,
+    }
+    library = layer(tmp_path, "base", {"pairs": [pair], "problems": []}, code=1)
+
+    (finding,) = check_copies(logger, [str(code_repo)], library_dirs=(str(library),)).findings
+
+    assert "testing-design rule 14" in finding.repair
+    assert "code-structure rule 2.12" not in finding.repair
+
+
+def test_a_pair_between_test_files_in_two_builds_still_asks_for_a_library(
+    tmp_path: Path, code_repo: Path, logger: logging.Logger
+) -> None:
+    pair = {
+        "added": {**ADDED, "build": "api-service"},
+        "existing": {**EXISTING, "build": "reporting-service"},
+        "lines": 13,
+        "tests": True,
+    }
+    library = layer(tmp_path, "base", {"pairs": [pair], "problems": []}, code=1)
+
+    (finding,) = check_copies(logger, [str(code_repo)], library_dirs=(str(library),)).findings
+
+    assert "code-structure rule 2.13" in finding.repair
+
+
 def test_a_pair_without_units_names_only_the_ranges(
     tmp_path: Path, code_repo: Path, logger: logging.Logger
 ) -> None:
