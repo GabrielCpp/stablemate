@@ -348,10 +348,16 @@ def copy_pairs(
     coincidences: Sequence[Coincidence] = (),
     min_added: int = MIN_LINES,
 ) -> list[CopyPair]:
-    """New pairs with at least `min_added` added lines on one side, that side first, less the declared coincidences."""
+    """Pairs of a clone that gained a copy, with at least `min_added` added lines on one side, that side first, less the declared coincidences.
+
+    The detector counts a clone's pairs against the base and flags the surplus by position, so
+    the flag can land on an old pair of the clone while the added copy's own pair reads old.
+    All pairs of one clone share their first side.
+    """
+    grown = {pair.first for pair in pairs if pair.is_new}
     kept = []
     for pair in pairs:
-        if not pair.is_new:
+        if pair.first not in grown:
             continue
         first_added = _added(pair.first, span.get(pair.first.path, [])) >= min_added
         if not first_added and _added(pair.second, span.get(pair.second.path, [])) < min_added:

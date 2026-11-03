@@ -160,6 +160,20 @@ def test_a_new_pair_outside_the_added_lines_is_dropped():
     assert gate.copy_pairs([pair], {"a.go": [(20, 30)], "b.go": []}) == []
 
 
+def test_a_third_copy_is_kept_when_the_new_flag_lands_on_its_older_sibling():
+    original = _side("a.go", 5, 14)
+    added, older = _side("b.go", 1, 10), _side("c.go", 1, 10)
+    pairs = [_pair(original, added, is_new=False), _pair(original, older)]
+
+    assert gate.copy_pairs(pairs, {"b.go": [(1, 10)]}) == [_pair(added, original, is_new=False)]
+
+
+def test_a_moved_copy_stays_dropped_when_its_clone_gained_no_copy():
+    original, moved = _side("a.go", 5, 14), _side("b.go", 1, 10)
+
+    assert gate.copy_pairs([_pair(original, moved, is_new=False)], {"b.go": [(1, 10)]}) == []
+
+
 def test_the_recorded_report_yields_the_new_copy_and_nothing_else(repo: Path):
     _stage_copy(repo)
     limits = gate.threshold(repo)

@@ -182,11 +182,13 @@ outcome.
    covered by a coincidence claim. Owner: Copy verdict. Upheld by Change span, Clone
    report and Extraction.
 2. **Old copies are not the change's fault.** A pair is a copy pair only when the detector
-   marks it new against the base ref and the change span holds at least the threshold's
-   minimum lines of one side (revised, log 15). Either condition alone blames old code. An
-   edit inside an old copy shifts its fragment, and the detector then marks the shifted pair
-   new. Owner: Copy pair, which applies both. Upheld by Base ref, Change span and Clone
-   threshold.
+   marks a pair of its clone new against the base ref and the change span holds at least the
+   threshold's minimum lines of one side (revised, log 15). Either condition alone blames old
+   code. An edit inside an old copy shifts its fragment, and the detector then marks the
+   shifted pair new. The flag belongs to the clone and not to the pair: the detector counts a
+   clone's pairs and flags the surplus by position, so a third copy's own pair can read old
+   while an old sibling reads new. Owner: Copy pair, which applies both. Upheld by Base ref,
+   Change span and Clone threshold.
 3. **Every dependent is checked.** A change that edits a unit runs the checks of each
    service in its check set before acceptance. Owner: Check set. Upheld by Dependent and
    Unit identity.
