@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -135,3 +137,44 @@ def test_a_label_reaches_the_ostler_run(repo: Path, monkeypatch: pytest.MonkeyPa
     runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), lease="story-1",
                        label="docs-exercise")
     assert seen == [None, "docs-exercise"]
+
+
+def _git(root: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+
+def test_a_plan_run_removes_the_files_it_left_and_keeps_the_rest(
+    tmp_path: Path, repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shutil.rmtree(repo / ".git")
+    _git(repo, "init", "-q")
+    (repo / ".gitignore").write_text("build/\n", encoding="utf-8")
+    (repo / "agent-wrote.txt").write_text("the story's work\n", encoding="utf-8")
+    spec = repo / "specs" / "story-1"
+    spec.mkdir(parents=True)
+
+    class _Ostler:
+        def __init__(self, _root: Path) -> None:
+            pass
+
+        def qa_run(self, *_args: object, **_kw: object) -> QaOutcome:
+            (repo / "book-scratch" / "seed").mkdir(parents=True)
+            (repo / "book-scratch" / "seed" / "input.json").write_text("{}", encoding="utf-8")
+            (repo / "inputs.json").write_text("{}", encoding="utf-8")
+            (repo / "nested").mkdir()
+            _git(repo / "nested", "init", "-q")
+            (repo / "nested" / "seed.txt").write_text("seed\n", encoding="utf-8")
+            (repo / "build").mkdir()
+            (repo / "build" / "out.txt").write_text("ignored\n", encoding="utf-8")
+            (spec / "qa").mkdir()
+            (spec / "qa" / "qa-run.ndjson").write_text("{}\n", encoding="utf-8")
+            return QaOutcome(True, "passed", {"status": "passed"})
+
+    monkeypatch.setattr(runner, "Ostler", _Ostler)
+    runner.run_qa_plan(LOG, spec_dir=str(spec), repo_dir=str(repo), lease="story-1")
+    assert not (repo / "inputs.json").exists()
+    assert not (repo / "book-scratch").exists()
+    assert not (repo / "nested").exists()
+    assert (repo / "agent-wrote.txt").is_file()
+    assert (repo / "build" / "out.txt").is_file()
+    assert (spec / "qa" / "qa-run.ndjson").is_file()

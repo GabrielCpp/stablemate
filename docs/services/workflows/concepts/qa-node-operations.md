@@ -27,7 +27,7 @@ credential boundary.
 - verify: count(subject="accepted QA runner statuses", equals=4)
 - semantics: any other runner status text becomes `invalid`
 - verify: json_path(path="$.status", equals="invalid")
-- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::RUN_STATUSES` @c584246e288c
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::RUN_STATUSES` @d3e5d78e6ac8
 
 ### TEARDOWN_STATES
 - type: `dict[str, Literal["yes", "no", "skipped"]]`
@@ -43,7 +43,7 @@ credential boundary.
 - required: true
 - semantics: maximum time allowed for one runbook secret-mint recipe before the QA run is blocked
 - verify: json_path(path="$.SECRET_MINT_TIMEOUT_S", equals=60.0)
-- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::SECRET_MINT_TIMEOUT_S` @c584246e288c
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::SECRET_MINT_TIMEOUT_S` @d3e5d78e6ac8
 
 ### QA_SCRATCH_DIRNAME
 - type: `str`
@@ -220,4 +220,10 @@ credential boundary.
 - verify: json_path(path="$.ostler.runId", equals="example runId")
 - returns: a blocked `QaPlanRun` with secret-refresh notes when minting fails before runner execution
 - verify: json_path(path="$.status", equals="blocked")
+- does: removes the untracked files the plan's commands left in the checkout once the run exits
+- verify: removed(subject="untracked files a QA plan left in the checkout")
+- does: keeps the run's evidence under the spec directory and every untracked file that was there before the run
+- verify: count(subject="kept files after a QA plan run", equals=1)
 - code: `workflows/src/workhorse_workflows/coder/shared/stack.py::run_qa_plan` @7f0939eeb121
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::_remove_files_left_since` @0a4fda931421
+- tests: `workflows/tests/test_kit_qa_stack_copy.py::test_a_plan_run_removes_the_files_it_left_and_keeps_the_rest`

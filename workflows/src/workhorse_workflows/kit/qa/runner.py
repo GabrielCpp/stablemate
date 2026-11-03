@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -320,6 +321,32 @@ def _mint_qa_secrets(
     return minted, ""
 
 
+def _untracked(root: Path) -> set[str]:
+    """The untracked files git would offer to commit in *root*, none when it is no checkout."""
+    done = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--others", "--exclude-standard"],
+        capture_output=True, text=True, check=False,
+    )
+    return {name for name in done.stdout.split("\0") if name} if done.returncode == 0 else set()
+
+
+def _remove_files_left_since(root: Path, before: set[str], evidence: Path, logger: logging.Logger) -> None:
+    """Remove the untracked files a plan's commands left in the checkout, so none reaches the story's commit; the run's evidence stays."""
+    for name in sorted(_untracked(root) - before):
+        path = root / name
+        if path.resolve().is_relative_to(evidence):
+            continue
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        else:
+            path.unlink(missing_ok=True)
+        logger.info("removed %s, left by the QA plan", name)
+        parent = path.parent
+        while parent != root and not any(parent.iterdir()):
+            parent.rmdir()
+            parent = parent.parent
+
+
 def run_qa_plan(
     logger: logging.Logger,
     spec_dir: str = "",
@@ -344,8 +371,11 @@ def run_qa_plan(
     if error:
         logger.warning("QA secret refresh failed: %s", error)
         return QaPlanRun(status="blocked", notes=f"QA secret refresh failed: {error}")
+    root = Path(docs_graph.root)
+    before = _untracked(root)
     with scoped_envs(leased | minted):
         outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir, only=only, label=label)
+    _remove_files_left_since(root, before, (root / spec_dir).resolve(), logger)
     status = RUN_STATUSES.get(outcome.status.lower(), "invalid")
     notes = notes_for(outcome, f"Ostler QA run returned {status}.")
     logger.info("ostler qa run for %s returned status=%s", spec_dir, status)
