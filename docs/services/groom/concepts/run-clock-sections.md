@@ -15,10 +15,10 @@ The sections are not a second set of numbers. They come from the same profile th
 - code: groom/groom/overview.py::run_overview@d4e666f27ee7
 - code: groom/groom/projection.py::head@c6501d02c398
 - code: groom/groom/cli.py::_format_profile@db621328f245
-- code: groom/groom/assets/dashboard.js::WallClock@45bcd1849e1e
+- code: groom/groom/assets/dashboard.js::WallClock@9dbf41855332
 - code: groom/groom/assets/dashboard.js::Models@dfdce71eb006
 - code: groom/groom/assets/dashboard.js::CopyButton@075340c266d2
-- code: groom/groom/assets/dashboard.js::RunFacts@8b71355f91e7
+- code: groom/groom/assets/dashboard.js::RunFacts@af965a58ed8b
 - code: groom/groom/assets/dashboard.js::Sessions@60d00a14245d
 - tests: groom/tests/test_run_clock.py::test_the_wall_clock_segments_sum_to_the_wall_time_and_the_active_ones_to_the_active_tile
 - tests: groom/tests/test_run_clock.py::test_the_model_totals_equal_the_cost_report_and_an_unpriced_model_has_no_cost
@@ -42,9 +42,9 @@ The sections are not a second set of numbers. They come from the same profile th
 
 ## Wall clock
 
-- rule: the wall clock bar splits the run's wall time into six segments: agent turns, deterministic, infrastructure, waits, unclassified and stopped between sessions. They sum to the wall time.
+- rule: the wall clock bar splits the run's wall time into six segments: agent turns, deterministic, infra, waits, unclassified and stopped between sessions. They sum to the wall time.
 - rule: the legend names every segment with its duration as text, so the split does not depend on colour. The bar itself is one image with a label that names the split.
-- rule: agent turns, deterministic and infrastructure together equal the Active time tile's active time. Wall time sits beside active time.
+- rule: agent turns, deterministic and infra together equal the Active time tile's active time. Wall time sits beside active time.
 - rule: the segments are the time partition of the run profile, so each equals the figure `groom profile` prints.
 
 ## Models
@@ -59,6 +59,8 @@ The sections are not a second set of numbers. They come from the same profile th
 - rule: the Run list shows when the run started, its branch, its run id, its pid, its gas, its run directory and its checkout path, in that order. A fact with no value is left out, except the run id. The pid is the head's pid and shows for a run that has one. The gas is the Gas figure of the run's live metrics and shows for a run that reports one.
 - rule: the checkout path shows only for a native run, whose checkout is a directory on this machine. A container run has no checkout path.
 - rule: a long value wraps inside the pane and does not widen the layout.
+- rule: the section reads `from first span to last span` beside the wall time, and a time in the facts and in the sessions is written as `Oct 29 11:24`, without a comma.
+- rule: the copy button sits one space after its fact's value.
 - rule: every fact has a copy button named for it, such as `Copy run id`, `Copy pid` or `Copy gas`. The button works from the keyboard.
 - rule: a copy answers in visible text that a status region announces, `Copied run id`. A write the browser refuses answers `Could not copy run id`. The note clears after a few seconds.
 

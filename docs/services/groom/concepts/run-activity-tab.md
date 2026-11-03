@@ -17,7 +17,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/app.py::run_turn@353c67ab773c
 - code: groom/groom/app.py::run_entry@54b739415692
 - code: groom/groom/activity.py::entry@0f2f5d6b3ac6
-- code: groom/groom/assets/dashboard.js::ActivityTab@03a33ed62c3f
+- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
 - code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
 - code: groom/groom/assets/dashboard.js::arrivals@7a0483d82c3a
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
@@ -33,7 +33,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/assets/dashboard.js::timelineView@95096bdd9294
 - code: groom/groom/assets/dashboard.js::setQuery@8a88835d1d66
 - code: groom/groom/assets/dashboard.js::searchTranscripts@d1a20e37c796
-- code: groom/groom/assets/dashboard.js::goToRow@7bdd4787c85b
+- code: groom/groom/assets/dashboard.js::goToRow@353fee539d28
 - code: groom/groom/assets/dashboard.js::moveTimeline@f0d369c1a4a4
 - code: groom/groom/assets/dashboard.js::nextProblem@b7db5ac0a3e5
 - code: groom/groom/problems.py::found@a0059fcef241
@@ -117,6 +117,8 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: the search field narrows the rows at once by the text of the row, and marks the match as text, never as markup. A search opens every heading and unfolds every run of passed steps so a match inside one shows. The work item selector limits the list to one item, its first option shows every item, and it opens no heading. The search and the selector apply together, and clearing both restores the list.
 - rule: a search also reads the transcripts of this one run, after a quarter second without typing, and never another run. It matches the messages, the tool summaries and the output of failed tool calls, never the prompt or the thinking, and a turn gives its first matching line, cut to 160 characters. The query is cut to 200 characters. A row found there says `in transcript` with the line.
 - rule: while the transcripts are read, a status says `Searching the transcripts of this run…`, and it clears when the search ends. A search with no match says what was searched and offers to clear it. A transcript search that fails reads whole or not at all, says the transcripts could not be searched, keeps the matches of the row text and offers a retry, and a successful retry adds the transcript matches and clears the message.
+- rule: the node name in the head of a turn stays on one line, and a long work item name beside it wraps
+- rule: the word `Only` labels the `Problems` control in the bar, in the same style as `Also show`.
 - rule: the bar has a `Steps` control and an `Info logs` control after the words `Also show`, each with a count and each exposing whether it is pressed. `Steps` counts the passed steps the folds hold, and pressing it opens every fold of passed steps into one row per step. Pressing it again closes them, including a fold the operator opened by hand. It opens step folds only and leaves the work item and flow pass headings as they were.
 - rule: `Info logs` counts the log lines at INFO level and above, so a debug line is not a row and the Raw view lists it. Pressing it puts one row per line into the timeline at the place its time falls, and pressing it again takes the rows out. The server places a line in the flow pass whose first turn started latest at or before the line, ordered by time among that pass's entries, so a line before every pass sits in the first pass. A log row never splits a fold of passed steps, because the folds are made before the lines are placed.
 - rule: a log row selected reads its level, node, time and message in the pane, as text. The count of the control is the run's count whether the lines are placed or not.
@@ -336,4 +338,6 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - tests: groom/tests/test_records.py::test_a_debug_log_is_not_a_timeline_row_but_raw_lists_it
 - tests: groom/tests/test_records.py::test_the_running_strip_carries_the_time_the_node_began
 - tests: groom/tests/test_records.py::test_the_worker_endpoint_still_answers_with_history_and_metrics_for_the_terminal_client
+- tests: groom/tests/test_history_open_dynamic.py::test_the_activity_filter_bar_labels_the_problems_pill_only_and_the_others_also_show
+- tests: groom/tests/test_history_open_dynamic.py::test_the_node_name_in_the_turn_head_stays_on_one_line_and_the_work_item_name_wraps
 - refs: [operator reads an agent turn](../flows/operator-reads-an-agent-turn.md), [groom activity module](groom-activity-module.md), [groom transcript parse module](groom-transcript-parse-module.md), [the groom dashboard detail pane](../gui/screens/groom-dashboard.md#detail-pane)

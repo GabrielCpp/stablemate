@@ -84,7 +84,7 @@ def test_the_legend_names_six_segments_in_words_and_the_active_ones_equal_the_ac
             }
             assert set(seconds) == {"agent", "deterministic", "infra", "wait", "unclassified", "resume_gap"}
             text = page.locator("#detail-wall-clock").inner_text()
-            for name in ("Agent turns", "Deterministic", "Infrastructure", "Waits", "Unclassified", "Stopped between sessions"):
+            for name in ("Agent turns", "Deterministic", "Infra", "Waits", "Unclassified", "Stopped between sessions"):
                 assert name in text, text
             assert seconds["agent"] == 360 and seconds["resume_gap"] == 800
             active = _seconds_in(page.locator("#detail-active-tile .vv").inner_text())

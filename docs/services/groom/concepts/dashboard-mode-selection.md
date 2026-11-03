@@ -20,6 +20,6 @@ run they select must be visible in that pane. That forced choice is contextual, 
 over the other modes: an operator chooses the activity mode that matches the information or
 control they need.
 
-- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
-- rule: use Runs for fleet and selected-run activity including its files and diff, History for the runs that ended, Attend for the attendant's jobs, Dispatch for queued work, and Settings for dashboard controls; keyboard or palette run selection switches to Runs only to reveal the selected row, and no mode supersedes another
+- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
+- rule: use Runs for fleet and selected-run activity including its files and diff, History for the runs that ended, Attend for the attendant's jobs, Dispatch for queued work, and Settings for dashboard controls; keyboard or palette run selection switches to Runs only to reveal the selected row, `j` and `k` in History open the next and previous ended run without leaving History, and no mode supersedes another
 - detail: [dashboard activity mode selection](dashboard-activity-mode-selection.md)

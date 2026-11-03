@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from pathlib import Path
 from unittest.mock import patch
@@ -9,7 +10,7 @@ import pytest
 from litestar.testing import TestClient
 from test_run_clock import _DB, SONNET, STATE, span, turn
 
-from groom import alerts, figures, history, pools, projection, state, store
+from groom import activity, alerts, archive, cli, figures, history, overview, pools, projection, state, store
 from groom import app as groom_app
 from groom.models import RunTelemetry, WorkflowContainer
 
@@ -376,3 +377,48 @@ def test_a_span_ending_past_sixty_seconds_after_the_root_means_the_run_went_on()
         row = listed()["run-far"]
     assert early == []
     assert row["ending_label"] == "no ending recorded"
+
+
+def _cli_json(capsys: pytest.CaptureFixture[str], command, run: str):
+    capsys.readouterr()
+    command(run, as_json=True)
+    return json.loads(capsys.readouterr().out)
+
+
+def test_one_ended_runs_cost_and_times_per_node_and_per_flow_equal_groom_cost_and_groom_profile(capsys: pytest.CaptureFixture[str]) -> None:
+    now = time.time()
+    with _DB():
+        seed("run-parity", now - 3600, costs=(4.0, 1.5, None))
+        refresh(now)
+        costs = _cli_json(capsys, cli.cost, "run-parity")
+        profiled = _cli_json(capsys, cli.profile, "run-parity")
+        found = overview.run_overview("run-parity")
+    assert found["figures"]["cost_usd"] == sum(row["cost_usd"] for row in costs if row["cost_usd"] is not None)
+    assert {row["node"]: row["time_s"] for row in found["nodes"]} == {
+        child["node"]: child["time_s"] for flow in profiled["flows"] for child in flow["children"] if child["kind"] == "state"
+    }
+    assert found["flows"] == profiled["flows"]
+
+
+def test_a_run_recorded_before_the_flow_attributes_still_shows_its_flow_times() -> None:
+    now = time.time()
+    with _DB():
+        seed("run-before", now - 3600, costs=(4.0, 1.0))
+        refresh(now)
+        found = overview.run_overview("run-before")
+    assert [flow["name"] for flow in found["flows"]] == ["coder"]
+    assert found["flows"][0]["time_s"] == 120.0
+    assert found["nodes"][0]["time_s"] == 120.0
+
+
+def test_the_summary_the_overview_and_the_activity_count_report_one_problem_number() -> None:
+    now = time.time()
+    with _DB():
+        seed("run-one", now - 3600, costs=(4.0, 1.0))
+        refresh(now)
+        listed_problems = listed()["run-one"]["problems"]
+        standing = overview.run_overview("run-one")["standing"]["problems"]
+        with archive.run_source("run-one"):
+            counted = activity.timeline("run-one")["problems"]
+    assert listed_problems == standing == counted
+    assert counted >= 1

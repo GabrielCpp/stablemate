@@ -61,9 +61,10 @@
 
       <div id="history-pane" class="pane">
         <div class="h-col">
-          <div class="pane-head"><span>History: runs that ended</span></div>
+          <div class="pane-head"><span id="history-title">History: runs that ended</span><button type="button" id="history-close" class="copy" hidden style="margin-left:auto" title="Close the run, back to the full table" aria-label="Close run">✕</button></div>
           <div id="history" class="h-body"></div>
         </div>
+        <div id="history-detail"></div>
       </div>
 
       <!-- 2) ATTENDANT: every claude groom dispatched at a run that stopped.

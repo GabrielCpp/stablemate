@@ -247,9 +247,7 @@ def test_the_pane_shows_a_reading_state_that_clears_when_the_table_appears():
     assert remaining == 0
 
 
-def test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table():
-    live = _live()
-    assert live is not None, _UNAVAILABLE
+def _failing_until_cleared():
     answers = {"fail": True}
 
     def answer(route) -> None:
@@ -257,6 +255,14 @@ def test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry
             route.fulfill(status=500, body="no")
         else:
             route.continue_()
+
+    return answers, answer
+
+
+def test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table():
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    answers, answer = _failing_until_cleared()
 
     with _history(_row("hist-a", 1)):
         page = _open_history(live, answer)

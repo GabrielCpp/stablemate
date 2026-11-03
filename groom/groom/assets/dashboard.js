@@ -74,7 +74,7 @@ const store = {
     // that only the server's own threads see — so this pane polls while open.
     dispatch: { status: "idle", queues: [], selectedQueue: null, items: [], selectedItem: null },
     settings: { status: "idle", attend: null, saving: false },
-    history: { status: "idle", runs: [], totals: null },
+    history: { status: "idle", runs: [], totals: null, selected: null, detail: null },
     palette: { open: false, query: "", active: 0 },
   },
   listeners: new Set(),
@@ -572,8 +572,9 @@ function RunHead({ head, runId, onClose, sidecar }) {
     <span class="repo-branch">${head.repo}</span>
     ${head.live_label ? html`<span class="pulse ${head.live}">${head.live_label}</span>` : null}
     <span class="run-id" title="Run id — click to select">${head.handle}</span>
+    ${head.ended ? html`<${CopyButton} what="run id" text=${head.handle} />` : null}
     ${sidecar ? html`<span id="run-sidecar-chip" class="chip">${sidecar === "live" ? "docker · sidecar" : "docker"}</span>` : null}
-    <span class="meta">${meta}</span>
+    ${head.ended ? null : html`<span class="meta">${meta}</span>`}
     ${head.exit_hint
       ? html`<span class=${"exit-hint " + (head.exit_ok ? "exit-ok" : "exit-err")}>${head.exit_hint}</span>`
       : null}
@@ -746,13 +747,26 @@ function Tile({ label, value, children, id }) {
   </div>`;
 }
 
-function CostTile({ figures, asOf }) {
+function CostTile({ figures, asOf, ended }) {
   useSecondTick();
   if (!figures.reports_cost) {
     const who = figures.backends.length ? figures.backends.join(", ") : "This backend";
+    if (ended) {
+      const value = figures.est_usd !== null ? "est " + fmtUsd(figures.est_usd) : html`<span class="dim">—</span>`;
+      return html`<${Tile} label="Cost" id="detail-cost-tile" value=${value}>
+        <span class="warn">${figures.est_usd !== null ? "estimate: this backend reports no cost" : who + " reports no cost"}</span>
+      <//>`;
+    }
     return html`<${Tile} label="Cost" id="detail-cost-tile" value=${html`<span class="dim">—</span>`}>
       <span class="warn">${who} reports no cost</span>
       ${figures.est_usd !== null ? html` · est ${fmtUsd(figures.est_usd)} at list price` : null}
+    <//>`;
+  }
+  if (ended) {
+    const partial = figures.priced_turns < figures.turns;
+    const priced = figures.priced_turns + " of " + figures.turns + " turns priced";
+    return html`<${Tile} label="Cost" id="detail-cost-tile" value=${fmtUsd(figures.cost_usd)}>
+      ${partial ? html`<span class="warn">${priced}</span>` : priced}
     <//>`;
   }
   const ago = asOf ? ", " + fmtSpan(Date.now() / 1000 - asOf) + " ago" : "";
@@ -793,10 +807,10 @@ function AttentionTile({ standing, running }) {
   <//>`;
 }
 
-function OverviewTiles({ data, running }) {
+function OverviewTiles({ data, running, ended }) {
   const figures = data.figures;
   return html`<div class="kpis">
-    <${CostTile} figures=${figures} asOf=${data.as_of_ts} />
+    <${CostTile} figures=${figures} asOf=${data.as_of_ts} ended=${ended} />
     <${Tile} label="Active time" id="detail-active-tile" value=${fmtSpan(figures.active_s)}>${fmtSpan(figures.wall_s)} wall, ${plural(figures.sessions, "session", "sessions")}<//>
     <${ItemsTile} figures=${figures} />
     <${Tile} label="Agent turns" id="detail-turns-tile" value=${String(figures.turns)}>${plural(data.standing.retries, "backend retry", "backend retries")}<//>
@@ -901,7 +915,7 @@ function RunningRow({ running, before, after }) {
   </tr>`;
 }
 
-const BREAKDOWN_TITLES = { flow: "Time and cost per flow", node: "Time and cost per node", item: "Time and cost per work item" };
+const BREAKDOWN_TITLES = { flow: "Where the time and money went", node: "Where the time and money went", item: "Where the time and money went" };
 
 function Segment({ id, label, value, options, onPick, marked }) {
   return html`<span id=${id} class=${"seg" + (marked ? " marked" : "")} role="group" aria-label=${label}>
@@ -934,7 +948,7 @@ function FlowTree({ data, running, finished, sort, open, toggle, head }) {
         <th scope="col">Time</th>
         ${finished
           ? html`<th scope="col">Time %</th>
-              <th scope="col">${reports ? "Cost" : "Output tokens"}</th>
+              <th scope="col">${reports ? "Cost" : "Output"}</th>
               <th scope="col">Cost %</th>
               <th scope="col">Retries</th>`
           : null}
@@ -980,7 +994,7 @@ function NodeTable({ data, running, sort }) {
       <th scope="col">Mean</th>
       <th scope="col">${medianHeading(data.norm_runs)}</th>
       <th scope="col">Longest</th>
-      <th scope="col">${reports ? "Cost" : "Output tokens"}</th>
+      <th scope="col">${reports ? "Cost" : "Output"}</th>
       <th scope="col">Cost %</th>
       <th scope="col">Retries</th>
     </tr></thead>
@@ -1025,7 +1039,7 @@ function ItemTable({ data, running }) {
       <th scope="col">Work item</th>
       <th scope="col">Passes</th>
       <th scope="col">Agent time</th>
-      <th scope="col">${reports ? "Cost" : "Output tokens"}</th>
+      <th scope="col">${reports ? "Cost" : "Output"}</th>
       <th scope="col">Outcome</th>
     </tr></thead>
     <tbody>
@@ -1095,7 +1109,7 @@ async function loadOverview(runId, rev = 0, refresh = false) {
 const CLOCK_SEGMENTS = [
   ["agent", "Agent turns", "seg-agent"],
   ["deterministic", "Deterministic", "seg-det"],
-  ["infra", "Infrastructure", "seg-infra"],
+  ["infra", "Infra", "seg-infra"],
   ["wait", "Waits", "seg-wait"],
   ["unclassified", "Unclassified", "seg-unc"],
   ["resume_gap", "Stopped between sessions", "seg-gap"],
@@ -1105,7 +1119,7 @@ function WallClock({ clock }) {
   const wall = clock.wall;
   const named = CLOCK_SEGMENTS.map(([key, label]) => label + " " + fmtSpan(clock[key])).join(", ");
   return html`<section id="detail-wall-clock" aria-label="Where the wall clock went">
-    <div class="sec-h"><span>Where the wall clock went</span><span class="aside">${fmtSpan(wall)} from first to last record</span></div>
+    <div class="sec-h"><span>Where the wall clock went</span><span class="aside">${fmtSpan(wall)} from first span to last span</span></div>
     <div class="tbar" role="img" aria-label=${"Wall clock split: " + named}>
       ${CLOCK_SEGMENTS.map(([key, , cls]) => html`<i class=${cls} style=${"width:" + (wall > 0 ? (clock[key] / wall) * 100 : 0) + "%"}></i>`)}
     </div>
@@ -1169,7 +1183,7 @@ function CopyButton({ what, text }) {
 }
 
 function fmtWhen(ts) {
-  return new Date(ts * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
+  return new Date(ts * 1000).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).replace(",", "");
 }
 
 function gasOf(detail) {
@@ -1177,9 +1191,11 @@ function gasOf(detail) {
   return cell ? cell.value : "";
 }
 
-function RunFacts({ facts, runId, checkout, pid, gas }) {
+function RunFacts({ facts, runId, checkout, pid, gas, ended }) {
   const rows = [
+    ended ? ["Ending", ended.ending_label, "ending"] : null,
     facts.started_ts ? ["Started", fmtWhen(facts.started_ts), "start time"] : null,
+    ended && ended.ended_ts ? [ended.ending ? "Ended" : "Last record", fmtWhen(ended.ended_ts), "end time"] : null,
     facts.branch ? ["Branch", facts.branch, "branch"] : null,
     ["Run id", runId, "run id"],
     pid ? ["pid", String(pid), "pid"] : null,
@@ -1190,7 +1206,7 @@ function RunFacts({ facts, runId, checkout, pid, gas }) {
   return html`<section id="detail-facts">
     <div class="sec-h"><span>Run</span></div>
     <dl class="facts">
-      ${rows.map(([label, value, what]) => html`<dt>${label}</dt><dd><span class="fv">${value}</span><${CopyButton} what=${what} text=${value} /></dd>`)}
+      ${rows.map(([label, value, what]) => html`<dt>${label}</dt><dd><span class="fv">${value}</span>${" "}<${CopyButton} what=${what} text=${value} /></dd>`)}
     </dl>
   </section>`;
 }
@@ -1244,6 +1260,7 @@ function Sessions({ sessions, live }) {
 function Overview({ detail }) {
   const { overview } = useStore();
   const runId = detail.run_id;
+  const ended = detail.ended || null;
   const rev = detail.figures_rev || 0;
   const mounted = useRef(false);
   useEffect(() => {
@@ -1263,14 +1280,14 @@ function Overview({ detail }) {
   }
   if (overview.runId === runId && overview.status === "failed") {
     return html`<div class="side-state" role="alert">
-      <h3>These figures could not be read</h3>
-      The Activity tab still works.
+      <h3>${ended ? "This run's figures could not be read" : "These figures could not be read"}</h3>
+      ${ended ? "The list still works." : "The Activity tab still works."}
       <div class="acts"><button type="button" class="btn ghost retry-overview" onClick=${() => loadOverview(runId, rev)}>Retry now</button></div>
     </div>`;
   }
   if (overview.runId !== runId || overview.status !== "ready") {
     return html`<div class="detail-empty loading" role="status" aria-busy="true">
-      <span class="spin" aria-hidden="true"></span>Reading this run's figures…
+      <span class="spin" aria-hidden="true"></span>${ended ? "Reading this run…" : "Reading this run's figures…"}
     </div>`;
   }
   const data = overview.data;
@@ -1282,18 +1299,18 @@ function Overview({ detail }) {
         <h3>No finished work yet</h3>
         Figures appear when the first node finishes.
       </div>
-      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} />
+      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} ended=${ended} />
       ${detail.running ? html`<${Breakdown} data=${Object.assign({}, data, { flows: [], items: null })} running=${detail.running} finished=${false} />` : null}
     </div>`;
   }
   return html`<div class="ov">
     ${strip}
-    <${OverviewTiles} data=${data} running=${detail.running} />
+    <${OverviewTiles} data=${data} running=${detail.running} ended=${ended} />
     <${WallClock} clock=${data.clock} />
     <${Breakdown} key=${runId} data=${data} running=${detail.running} finished=${true} />
     <div class="pair">
       <${Models} models=${data.models} />
-      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} />
+      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} ended=${ended} />
     </div>
     <${Sessions} sessions=${data.sessions} live=${detail.head.state === "running" || detail.head.state === "blocked"} />
   </div>`;
@@ -1750,9 +1767,14 @@ function rowShown(list, key) {
   return at.top >= box.top && at.bottom <= box.bottom;
 }
 
+function shownDetail(snap) {
+  return snap.mode === "history" ? snap.history.detail : snap.detail;
+}
+
 function goToRow(key) {
   const held = store.get().activity;
-  const alive = !store.get().detail || store.get().detail.state !== "finished";
+  const open = shownDetail(store.get());
+  const alive = !open || open.state !== "finished";
   const list = document.querySelector(".tl");
   const view = timelineView(held);
   const order = orderedKeys(view, held.rows);
@@ -2011,7 +2033,7 @@ function TurnHead({ row }) {
     : html`<span class="chip ok" style="margin-left:auto">finished</span>`;
   return html`<div class="rd-head">
     <div class="l1">
-      <span class=${"dot " + (running ? "running" : unrecorded ? "idle" : row.status === "failed" ? "blocked" : "finished")} style=${row.status === "failed" ? "animation:none" : null} aria-hidden="true"></span>${row.node}${row.work_id ? html`<span class="dim">·</span><span class="dim">${row.work_id}</span>` : null}${chip}
+      <span class=${"dot " + (running ? "running" : unrecorded ? "idle" : row.status === "failed" ? "blocked" : "finished")} style=${row.status === "failed" ? "animation:none" : null} aria-hidden="true"></span><span class="rd-node">${row.node}</span>${row.work_id ? html`<span class="dim">·</span><span class="dim">${row.work_id}</span>` : null}${chip}
     </div>
     <div class="l2">
       ${flowText || row.visit ? html`<span>${flowText}${flowText && row.visit ? " · " : ""}${row.visit ? html`visit <b>${row.visit}</b>` : null}</span>` : null}
@@ -2128,7 +2150,7 @@ function StubPane({ found }) {
   const dot = failed ? "blocked" : kind === "step" || kind === "gate" ? "finished" : "idle";
   return html`<div class="rd" data-stub=${kind}>
     <div class="rd-head">
-      <div class="l1"><span class=${"dot " + dot} style=${failed ? "animation:none" : null} aria-hidden="true"></span>${entry.name}${item.work_id ? html`<span class="dim">·</span><span class="dim">${item.work_id}</span>` : null}${chip}</div>
+      <div class="l1"><span class=${"dot " + dot} style=${failed ? "animation:none" : null} aria-hidden="true"></span><span class="rd-node">${entry.name}</span>${item.work_id ? html`<span class="dim">·</span><span class="dim">${item.work_id}</span>` : null}${chip}</div>
       <div class="l2"><span>${flowText}</span><span>${entryWhen(entry)}</span>${meta ? html`<span>${meta}</span>` : null}</div>
     </div>
     <div class="rd-body" tabindex="0" aria-label=${entry.name}>
@@ -2469,6 +2491,7 @@ function ActivityTab({ detail }) {
         <option value="">All work items</option>
         ${activity.items.map((item) => html`<option key=${item.work_id} value=${item.work_id || NO_ITEM}>${item.work_id || "outside any work item"}</option>`)}
       </select>
+      <span class="flabel">Only</span>
       <button type="button" class="fchip prob" aria-pressed=${activity.problems ? "true" : "false"} data-filter="problems" onClick=${() => setProblems(!activity.problems)}>Problems <b>${activity.problemCount || 0}</b></button>
       <span class="flabel">Also show</span>
       <button type="button" class="fchip steps-toggle" aria-pressed=${activity.steps ? "true" : "false"} data-filter="steps" onClick=${toggleSteps}>Steps <b>${count(stepCount(activity.items))}</b></button>
@@ -2685,11 +2708,19 @@ function useHoldPlace() {
   }, []);
 }
 
-function Detail() {
+function Detail({ ended }) {
+  const { mode } = useStore();
+  if (ended ? mode !== "history" : mode === "history") return null;
+  return html`<${DetailBody} ended=${ended} />`;
+}
+
+function DetailBody({ ended }) {
   const snap = useStore();
-  const { selected, detail, tab: chosen, gatesCollapsed, runs, runDiff, runFiles } = snap;
+  const { tab: chosen, gatesCollapsed, runs, runDiff, runFiles } = snap;
+  const selected = ended ? snap.history.selected : snap.selected;
+  const detail = ended ? snap.history.detail : snap.detail;
   useHoldPlace();
-  const row = runs.find((run) => run.id === selected);
+  const row = ended ? null : runs.find((run) => run.id === selected);
   const container = !!row && !row.native && row.state !== "finished";
   const live = container && row.sidecar;
   const stale = container && !row.sidecar && !!snap.diffKept[selected];
@@ -2697,8 +2728,8 @@ function Detail() {
   const mark = stale
     ? { lostAt: snap.sidecarLost[selected] || Date.now(), still: !!snap.stillDown[selected], anyRead: Object.keys(snap.diffKept[selected].entries).length > 0 }
     : null;
-  useRunDiff(selected, live, stale, runDiff.id, runDiff.shownKept);
-  useRunFiles(selected, live, chosen === "files", runFiles.id);
+  useRunDiff(ended ? null : selected, live, stale, runDiff.id, runDiff.shownKept);
+  useRunFiles(ended ? null : selected, live, chosen === "files", runFiles.id);
   const known = chosen === "activity" || ((chosen === "diff" || chosen === "files") && hasDiff);
   const tab = known ? chosen : "overview";
   const fromActivity = detail && snap.activity.runId === detail.run_id && snap.activity.status === "ready" ? snap.activity.problemCount : null;
@@ -2713,7 +2744,7 @@ function Detail() {
   </div>`;
   if (!detail.found) return html`<div class="detail-empty">Run not found.</div>`;
   return html`
-    <${RunHead} head=${detail.head} runId=${detail.run_id} onClose=${closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
+    <${RunHead} head=${detail.head} runId=${detail.run_id} onClose=${ended ? null : closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
     ${detail.gates.length ? html`<${GateStrip} detail=${detail} collapsed=${gatesCollapsed} />` : null}
     <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} problems=${problems} />
     <div class="fill" id="detail-panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
@@ -2754,6 +2785,57 @@ async function select(id) {
   } catch (err) {
     // Reconnecting re-declares the watch and seeds the pane.
   }
+}
+
+function resetSlots() {
+  overviewSeq++;
+  return { tab: "overview", overview: { runId: "", status: "idle", data: null, rev: 0 }, activity: resetActivity(), breakdown: { view: "flow", sort: "time" } };
+}
+
+function endedDetail(run) {
+  const label = run.ready ? run.ending_label : "no ending recorded";
+  const when = run.ended_ts ? fmtWhen(run.ended_ts) : "";
+  return {
+    found: true,
+    id: run.run_id,
+    run_id: run.run_id,
+    state: "finished",
+    ended: { ending: run.ready ? run.ending : null, ending_label: label, ended_ts: run.ended_ts },
+    node: null,
+    gates: [],
+    running: null,
+    strip: null,
+    figures_rev: 0,
+    metrics: { cells: [] },
+    head: {
+      ended: true,
+      handle: run.run_id,
+      state: "finished",
+      type: run.workflow,
+      type_hue: run.type_hue,
+      repo: run.repo ? run.repo + (run.branch ? "@" + run.branch : "") : "",
+      live: "done",
+      live_label: "ended",
+      activity: "ended " + (when ? when + " · " : "") + label,
+    },
+  };
+}
+
+function openHistoryRun(id) {
+  const run = store.get().history.runs.find((one) => one.run_id === id);
+  if (!run) return;
+  const same = store.get().history.selected === id;
+  const slots = same ? {} : resetSlots();
+  store.set({ ...slots, history: { ...store.get().history, selected: id, detail: endedDetail(run) } });
+}
+
+function closeHistoryRun() {
+  const id = store.get().history.selected;
+  store.set({ ...resetSlots(), history: { ...store.get().history, selected: null, detail: null } });
+  setTimeout(() => {
+    const row = Array.from(document.querySelectorAll("#history tr.hrow")).find((one) => one.dataset.run === id);
+    if (row) row.focus();
+  }, 0);
 }
 
 function closeDetail() {
@@ -3404,7 +3486,9 @@ function loadHistory() {
       return r.json();
     })
     .then((body) => {
-      setIn("history", { status: "ready", runs: body.runs || [], totals: body.totals });
+      const runs = body.runs || [];
+      const open = runs.find((one) => one.run_id === store.get().history.selected);
+      setIn("history", { status: "ready", runs, totals: body.totals, ...(open ? { detail: endedDetail(open) } : {}) });
       if (store.get().mode === "history" && body.totals && body.totals.reading > 0) {
         _historyPoll = setTimeout(loadHistory, HISTORY_POLL_MS);
       }
@@ -3462,20 +3546,26 @@ function HistoryItems({ run }) {
   return html`<td>${all ? run.items_total : run.items_done + " of " + run.items_total}</td>`;
 }
 
+function historyOpenKey(event, id) {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  openHistoryRun(id);
+}
+
 function HistoryRow({ run, tabIndex }) {
   const repoText = run.repo ? run.repo + (run.branch ? "@" + run.branch : "") : "";
   const repo = run.repo ? html`${run.repo}<span class="dim">${run.branch ? "@" + run.branch : ""}</span>` : html`<span class="dim">—</span>`;
   const who = html`<td class="l clip" title=${run.run_id}><span class="who"><${TypeBadge} type=${run.workflow} hue=${run.type_hue} /><span class="id">${run.run_id}</span></span></td>`;
-  const when = html`<td class="l">${fmtWhen(run.ended_ts).replace(",", "")}</td>`;
+  const when = html`<td class="l">${fmtWhen(run.ended_ts)}</td>`;
   if (!run.ready) {
-    return html`<tr class="hrow" data-run=${run.run_id} tabindex=${tabIndex}>
+    return html`<tr class="hrow" data-run=${run.run_id} tabindex=${tabIndex} onClick=${() => openHistoryRun(run.run_id)} onKeyDown=${(e) => historyOpenKey(e, run.run_id)}>
       ${who}<td class="l clip" title=${repoText}>${repo}</td>
       <td class="l"><span class="spin" aria-hidden="true"></span><span class="dim">reading its summary</span></td>
       ${when}
       ${[0, 1, 2, 3, 4, 5, 6].map(() => html`<td class="dim">—</td>`)}
     </tr>`;
   }
-  return html`<tr class="hrow" data-run=${run.run_id} tabindex=${tabIndex}>
+  return html`<tr class="hrow" data-run=${run.run_id} tabindex=${tabIndex} onClick=${() => openHistoryRun(run.run_id)} onKeyDown=${(e) => historyOpenKey(e, run.run_id)}>
     ${who}<td class="l clip" title=${repoText}>${repo}</td>
     <td class="l"><span class=${"chip " + historyEndingClass(run.ending)}>${run.ending_label}</span></td>
     ${when}
@@ -3499,8 +3589,33 @@ function historyKey(event) {
   if (rows[to]) rows[to].focus();
 }
 
+function HistoryNarrowRow({ run, selected }) {
+  const repoText = run.repo ? run.repo + (run.branch ? "@" + run.branch : "") : "";
+  const cost = run.cost_usd != null
+    ? html`${fmtUsdLong(run.cost_usd)}${run.priced_turns < run.turns ? html` <span class="dim">${run.priced_turns}/${run.turns}</span>` : null}`
+    : run.est_usd != null ? html`<span class="dim">est ${fmtUsdLong(run.est_usd)}</span>` : html`<span class="dim">—</span>`;
+  return html`<button type="button" class=${"row" + (selected ? " selected" : "")} data-run=${run.run_id} aria-current=${selected ? "true" : null} onClick=${() => openHistoryRun(run.run_id)}>
+    <span class="line1"><${TypeBadge} type=${run.workflow} hue=${run.type_hue} /><span class="repo-branch" title=${repoText}>${repoText || "—"}</span><span class="wid" title=${run.run_id}>#${run.run_id}</span></span>
+    ${run.ready
+      ? html`<span class="line3"><span class="nw">${cost}</span><span class="nw">${fmtLong(run.active_s)}</span><span class="nw dim">${run.ended_ts ? fmtWhen(run.ended_ts) : "—"}</span><span class=${"chip " + historyEndingClass(run.ending)} style="margin-left:auto">${run.ending_label}</span></span>`
+      : html`<span class="line3"><span class="spin" aria-hidden="true"></span><span class="dim">reading its summary</span></span>`}
+  </button>`;
+}
+
+function HistoryNarrow({ history }) {
+  const list = useRef(null);
+  useEffect(() => {
+    const on = list.current && list.current.querySelector(".row.selected");
+    if (on && document.activeElement === document.body) on.focus();
+  }, [history.selected]);
+  return html`<div class="h-list" ref=${list} role="list" aria-label="Runs that ended, newest first">
+    ${history.runs.map((run) => html`<div role="listitem" key=${run.run_id}><${HistoryNarrowRow} run=${run} selected=${run.run_id === history.selected} /></div>`)}
+  </div>`;
+}
+
 function HistoryPane() {
   const { history } = useStore();
+  if (history.selected && history.status === "ready") return html`<${HistoryNarrow} history=${history} />`;
   if (history.status === "failed") {
     return html`<div class="side-state" role="alert" style="margin:16px;max-width:none">
       <h3>History could not be read</h3>
@@ -3537,7 +3652,8 @@ function setMode(mode) {
     b.classList.toggle("active", on);
     b.setAttribute("aria-pressed", String(on));
   });
-  store.set({ mode: mode });
+  const leaving = store.get().mode;
+  store.set(leaving !== mode && (leaving === "history" || mode === "history") ? { ...resetSlots(), mode: mode } : { mode: mode });
   if (mode !== "dispatch") stopDispatchPoll();
   if (mode !== "history") stopHistoryPoll();
   if (mode === "history") loadHistory();
@@ -3824,6 +3940,17 @@ function wireEvents() {
       else moveTimeline(e.key === "j" ? 1 : -1);
       return;
     }
+    if (!typing && (e.key === "j" || e.key === "k") && mine.mode === "history") {
+      const rows = [].slice.call(document.querySelectorAll("#history .row, #history tr.hrow"));
+      const idx = rows.findIndex((r) => r.dataset.run === mine.history.selected);
+      const next = rows[Math.max(0, Math.min(rows.length - 1, idx + (e.key === "j" ? 1 : -1)))];
+      if (next) {
+        e.preventDefault();
+        openHistoryRun(next.dataset.run);
+        next.focus();
+      }
+      return;
+    }
     if (!typing && (e.key === "j" || e.key === "k")) {
       const rows = [].slice.call(document.querySelectorAll("#runs-list .row"));
       const idx = rows.findIndex((r) => r.dataset.workerId === store.get().selected);
@@ -3856,11 +3983,16 @@ function wireEvents() {
 // One island per region of the shell. Each is mounted *into* an element the
 // static HTML already carries its role and live-region attributes on, so those
 // never re-render and a screen reader keeps tracking the same region.
+function HistoryDetail() {
+  return html`<${Detail} ended=${true} />`;
+}
+
 const ISLANDS = [
   ["runs-list", Fleet],
   ["statusbar", StatusBar],
   ["detail", Detail],
   ["history", HistoryPane],
+  ["history-detail", HistoryDetail],
   ["attend-list", AttendList],
   ["attend-detail", AttendDetail],
   ["dispatch-queues", DispatchQueues],
@@ -3874,6 +4006,17 @@ ISLANDS.forEach(([id, Component]) => render(html`<${Component} />`, document.get
 
 const runsPane = document.getElementById("runs-pane");
 store.subscribe((snap) => runsPane.classList.toggle("has-detail", !!snap.selected));
+
+const historyPane = document.getElementById("history-pane");
+const historyTitle = document.getElementById("history-title");
+const historyClose = document.getElementById("history-close");
+historyClose.addEventListener("click", closeHistoryRun);
+store.subscribe((snap) => {
+  const open = !!snap.history.selected && snap.history.status === "ready";
+  historyPane.classList.toggle("has-sel", open);
+  historyTitle.textContent = open ? "History" : "History: runs that ended";
+  historyClose.hidden = !open;
+});
 
 const runsButton = document.querySelector('.act-btn[data-mode="runs"]');
 const runsBadge = document.getElementById("runs-badge");

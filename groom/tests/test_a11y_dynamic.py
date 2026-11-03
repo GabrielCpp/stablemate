@@ -511,7 +511,7 @@ def test_a_backend_that_reports_no_cost_says_so_and_the_tree_shows_output_tokens
         panel = page.get_by_role("tabpanel")
         expect(panel).to_contain_text("reports no cost")
         expect(panel).not_to_contain_text("$0")
-        expect(page.get_by_role("columnheader", name="Output tokens")).to_be_visible()
+        expect(page.get_by_role("table", name="Time and cost per flow").get_by_role("columnheader", name="Output")).to_be_visible()
     finally:
         page.close()
 

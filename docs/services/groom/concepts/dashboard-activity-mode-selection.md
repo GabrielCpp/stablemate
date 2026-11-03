@@ -16,5 +16,5 @@ another.
 [Dashboard mode selection](dashboard-mode-selection.md) documents the operator-facing contract:
 when an operator or the keyboard and palette flow reaches for each of the five modes.
 
-- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
+- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
 - rule: no ranking exists between the five dashboard modes; `setMode` treats every mode as a parallel, current alternative and dispatches to it unconditionally, and a mode with no pane lands on Runs
