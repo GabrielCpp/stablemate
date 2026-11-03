@@ -8,7 +8,8 @@ tags: [standards, tests]
 # The Component Test Contract
 
 This contract extends {{ skill_link("testing-design") }}, and every rule there applies here. The
-runner, the render call and the fake are stack-specific.
+runner, the render call and the fake are stack-specific, so pair this skill with the stack skill
+(`react-router-testing`, `flutter-testing`) where one exists.
 
 **A component test proves a screen behaves in every state. An end-to-end spec proves the parts are
 connected.** Most UI defects live in the first claim, so most UI tests belong at this layer. A
@@ -99,6 +100,7 @@ seam. These are design rules, and they belong in the first version of the compon
 3. **Concurrency is a written rule.** Each request carries an identity, and the component names what
    happens to an older one: the latest wins, the older is aborted, or the newer queues behind it. A
    rule in code has a cell in the matrix. An order left to the network has none.
+   {{ skill_link("ui-context-ownership") }} names the rule for each kind of request.
 4. **Work starts from a named event.** A user action or a mount starts a request. A chain of effects
    watching state makes the order depend on render timing, so collapse it into one transition.
    First-mount effects stay idempotent, because some frameworks run them twice in development.
