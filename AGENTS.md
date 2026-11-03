@@ -30,49 +30,6 @@ Python ≥ 3.12.
 
 ---
 
-## This repo is public
-
-This repository ships publicly. **No private project's name may appear in it** —
-not in prose, not in a fixture, not in a code comment, not in a path. Examples
-use neutral placeholders:
-
-| Placeholder                            | Stands for                       |
-| -------------------------------------- | -------------------------------- |
-| `acme`, `globex`                       | a client repo / brand            |
-| `api-service`, `web-app`, `mobile-app` | repos in a multi-repo workspace   |
-| `example.com`, `example-org`           | hostnames, GitHub orgs           |
-
-The banned names are deliberately **not written down anywhere in the tree** — a
-denylist publishes the words it bans, and so does a hash of one.
-The resolver reads them from an untracked source instead — the environment variable
-`$STABLEMATE_PRIVATE_NAMES`, or `$GIT_DIR/private-names`,
-one name per line (`.git/` is never committed). It lives in
-`scripts/private_names.py`.
-
-```bash
-make install  # once per clone: the hooks that enforce this
-```
-
-The hook blocks any commit whose staged paths or added lines carry a configured
-name. With no list configured — a public contributor — it is a no-op.
-
-The same resolver backs the whole-tree sweep the hook cannot be, since the hook
-only ever sees staged changes. It scans every **tracked** file (path and
-content), walks the **reachable git history** (a name committed and later
-removed still ships in every clone, and only a rewrite fixes it), and asserts
-that what this repo publishes stands alone — that nothing tracked here depends
-on the private overlay to work.
-
-```bash
-make check-public    # from the repo root, on its own
-```
-
-Both failure modes are invisible on the one machine where the private overlay is
-configured and shadows everything, which is why they need a check rather than
-attention.
-
----
-
 ## Python linting (load-bearing)
 
 This repo is linted with **ruff** and type-checked with **ty** *and*
@@ -265,18 +222,3 @@ delta is merged into the book in the same change as the code, which means all of
 Author through `ostler scaffold`, `ostler fmt` and `ostler doctor`, never by
 hand-writing frontmatter or a `docs/services/` path. The `ostler-okf` skill
 carries the per-type bar and the merge procedure.
-
----
-
-## Map
-
-- `base-library/`: the skills and packs farrier renders into a repository. Data, with nothing to import.
-- `core/`: the runtime state the tools must agree on: the home config, base-library discovery and its cache. `make vendor` copies it into each tool.
-- `farrier/`: rendering the prompt library into a repository's agent adapters, hooks and launcher.
-- `groom/`: the local dashboard and OTLP collector that shows running workflows and answers their operator gates.
-- `ostler/`: a repository's `docs/` knowledge graph: its schema, validation, search, edits and the book's QA.
-- `paddock/`: the benchmark harness: seeds, tasks, trial runs and their scores.
-- `saddlebag/`: the credentials and environments a run needs, kept out of the repository.
-- `scripts/`: the repo-level guards and the Stop review gate. No package ships this code.
-- `workflows/`: the state machines workhorse drives, each with its own `workhorse-<name>` command.
-- `workhorse/`: the engine that drives an agent CLI through a checkpointed state machine.
