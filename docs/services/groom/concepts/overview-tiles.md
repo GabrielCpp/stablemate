@@ -10,7 +10,8 @@ Five tiles sit at the top of a run's Overview: Cost, Active time, Work items, Ag
 The tiles are not a second set of numbers. Cost, coverage, active time and items come from the figures module that feeds the [run row figures](run-row-figures.md), so a tile and its run row read the same at the same moment. The retries and the problem count come from the one store read that builds the [run flow tree](run-flow-tree.md), so the tile's retries are the sum of the tree's Retries column.
 
 - code: groom/groom/figures.py::tile_figures@56086656f4a0
-- code: groom/groom/problems.py::standing@2c9cd56a1366
+- code: groom/groom/problems.py::standing@f89e1e45bc40
+- code: groom/groom/problems.py::found@a0059fcef241
 - code: groom/groom/churn.py::count_alerts@156655db35bb
 - code: groom/groom/overview.py::run_overview@d4e666f27ee7
 - code: groom/groom/assets/dashboard.js::OverviewTiles@1e3959a72410
@@ -20,6 +21,10 @@ The tiles are not a second set of numbers. Cost, coverage, active time and items
 - tests: groom/tests/test_overview_tiles.py::test_churn_is_derived_from_stored_spans_and_holds_with_no_hot_cache
 - tests: groom/tests/test_overview_tiles.py::test_the_derived_churn_count_matches_the_alert_rule_over_the_same_spans
 - tests: groom/tests/test_overview_tiles.py::test_the_tile_figures_are_the_run_rows_figures
+- tests: groom/tests/test_activity_problems.py::test_every_count_of_problems_reads_one_definition
+- tests: groom/tests/test_activity_problems.py::test_a_gate_check_that_also_ended_in_error_counts_once
+- tests: groom/tests/test_activity_problems.py::test_a_failed_agent_turn_and_a_failed_container_step_each_get_a_failed_row
+- tests: groom/tests/test_activity_problems_dynamic.py::test_the_problem_count_on_the_attention_tile_opens_the_activity_tab_with_problems_on
 - tests: groom/tests/test_a11y_dynamic.py::test_the_five_tiles_read_the_runs_standing
 - tests: groom/tests/test_a11y_dynamic.py::test_the_attention_tile_waits_as_long_as_the_tree_says
 - tests: groom/tests/test_a11y_dynamic.py::test_a_run_with_no_finished_node_shows_no_tiles_and_no_problem_count
@@ -42,9 +47,10 @@ The tiles are not a second set of numbers. Cost, coverage, active time and items
 - rule: the Attention tile shows the gates, the time spent waiting on them and the problem count.
 - rule: a gate is an operator wait span. An answered gate counts as a gate and contributes its waited time. It does not count as a problem.
 - rule: the gate still open counts as one gate, and its wait counts up every second in the browser from the same start time as the tree's waiting mark and the run now strip, so the three read the same at the same moment.
-- rule: problems are the sum of four counts: failed steps, backend retries, failed gate checks and churn alerts. The count is at least the retries.
-- rule: a failed step is an errored span that is not a run's root span and does not parent another errored span, so one failure counts once however deep it sits.
-- rule: a failed gate check is a span that carries a gate outcome whose status is dirty.
+- rule: problems are the sum of four counts: failed steps, backend retries, failed gate checks and churn alerts, and the Activity tab's Problems view, its tab badge and this tile read the same definition, so they show the same number. The count is at least the retries. The problem count is a link that opens the Activity tab with the Problems view on, and it is plain text while the count is zero.
+- rule: a failed step is an errored span that is not a run's root span and does not parent another errored span, so one failure counts once however deep it sits. A failed agent turn and a failed container are failed steps.
+- rule: a failed gate check is a span that carries a gate outcome whose status is dirty. A span that is both errored and dirty counts once.
+- rule: a backend retry is an agent turn that follows an earlier attempt under the same parent.
 - rule: a churn alert is the same node completing again under an unchanged label signature, repeated `GROOM_CHURN_REPEATS` times, the rule the live churn alert uses. A changed label is progress and ends the run of repeats. A new resume generation starts the count again.
 - rule: the problem count is derived from the run's stored spans, so it holds after groom restarts and for a run no browser has opened.
 - rule: the tile's hover text lists the four counts that make the problem count.

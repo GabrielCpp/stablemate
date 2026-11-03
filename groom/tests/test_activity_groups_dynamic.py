@@ -188,7 +188,7 @@ def test_a_failed_step_a_gate_a_retry_and_a_churn_alert_each_get_a_row_with_a_di
         assert marks["failed"] == "✕" and marks["gate"] == "?" and marks["retry"] == "!" and marks["churn"] == "!"
         assert len({marks["failed"], marks["gate"], marks["retry"], turn_mark}) == 4
         names = {kind: page.locator(f"#detail-panel .tl button.ev[data-kind='{kind}'] .n").inner_text() for kind in marks}
-        assert names == {"failed": "test", "gate": "operator gate", "retry": "backend retry", "churn": "churn alert"}
+        assert names == {"failed": "test", "gate": "operator gate", "retry": "backend retry", "churn": "CHURN"}
     finally:
         page.close()
         context.__exit__(None, None, None)
@@ -203,8 +203,8 @@ def test_selecting_a_problem_row_shows_its_name_its_time_and_its_one_line_result
         wanted = {
             "failed": ("test", "2 tests failed"),
             "gate": ("operator gate", "escalation #1: docs block · answered"),
-            "retry": ("backend retry", "qa-story turn retried after 30s, attempt 2"),
-            "churn": ("churn alert", "poll repeated 5 times with the same labels"),
+            "retry": ("backend retry", "The backend started the qa-story turn again after the attempt before it ended. It waited 30s first."),
+            "churn": ("CHURN", "poll has run 5 times in a row on reset with the same labels."),
         }
         for kind, (name, result) in wanted.items():
             _open_all(page)

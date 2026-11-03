@@ -692,7 +692,7 @@ async def run_search(run_id: Annotated[str, PathParameter()], q: Annotated[str, 
 async def run_entry(
     run_id: Annotated[str, PathParameter()], key: Annotated[str, PathParameter()]
 ) -> dict:
-    """One step or operator gate of the run, read in full."""
+    """One step, operator gate, backend retry or churn alert of the run, read in full."""
     try:
         return await pools.QUERY.run(activity.entry, run_id, key, await _live_turns(run_id), _standing(run_id), _gate_reader(run_id))
     except activity.EntryNotFound as exc:

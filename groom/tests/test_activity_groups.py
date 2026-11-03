@@ -11,6 +11,8 @@ from groom import activity, store, turns
 
 BASE = 1_700_000_000.0
 
+RETRIED = "001-00002-qa-story"
+
 
 def _attrs(work_id: str, **extra: Any) -> dict:
     return ({"work_id": work_id} if work_id else {}) | extra
@@ -40,7 +42,10 @@ def _pass(tag: str, flow: str, at: float, work_id: str, steps: list[tuple[str, f
 
 def _seed(run: str = RUN) -> None:
     spans = [span("r1", "t1", "", "coder", "run:coder", BASE, 5000, {}, 1)]
-    spans += _pass("a", "qa", BASE + 10, "sign-in", [("lint", 5, "UNSET"), ("build", 6, "UNSET"), ("test", 7, "ERROR"), ("pack", 8, "UNSET")], turn=(100, 2.0), events=[{"name": "retry", "ts": BASE + 40, "attrs": {"node": "qa-story", "attempt": "2", "delay_s": "30"}}])
+    spans += _pass("a", "qa", BASE + 10, "sign-in", [("lint", 5, "UNSET"), ("build", 6, "UNSET"), ("test", 7, "ERROR"), ("pack", 8, "UNSET")], turn=(100, 2.0), slug=RETRIED, events=[{"name": "retry", "ts": BASE + 144, "attrs": {"node": "qa-story", "attempt": "2", "delay_s": "30"}}])
+    retry = span("a-retry", "t1", "a-agent", "qa-story", "agent_turn", BASE + 145, 0, _attrs("sign-in", model="m", total_cost_usd=0.0, duration_ms=0, **{"workhorse.visit.slug": RETRIED}), 1)
+    retry["profile_cost_usd"] = 0.0
+    spans.append(retry)
     spans += _pass("b", "qa", BASE + 700, "sign-in", [("lint", 5, "UNSET")], turn=(50, 1.0))
     spans += _pass("c", "qa", BASE + 1400, "reset", [("lint", 5, "UNSET")], turn=(70, 3.0))
     gate = span("g1", "t1", "sa", "resolve", "wait:operator", BASE + 50, 30, {"workhorse.span_kind": "wait", "workhorse.wait_kind": "operator", "workhorse.wait_outcome": "completed", "activity": "escalation #1: docs block"} | _attrs("sign-in"), 1)
@@ -116,8 +121,8 @@ def test_a_gate_a_retry_and_a_failed_step_each_have_their_own_entry_with_name_ti
     assert set(by_kind) == {"gate", "retry", "failed"}
     assert (by_kind["gate"]["name"], by_kind["gate"]["node"], by_kind["gate"]["duration_s"]) == ("operator gate", "resolve", 30)
     assert by_kind["gate"]["result"] == "escalation #1: docs block · answered"
-    assert (by_kind["retry"]["name"], by_kind["retry"]["ts"]) == ("backend retry", BASE + 40)
-    assert by_kind["retry"]["result"] == "qa-story turn retried after 30s, attempt 2"
+    assert (by_kind["retry"]["name"], by_kind["retry"]["ts"]) == ("backend retry", BASE + 145)
+    assert by_kind["retry"]["result"] == "qa-story turn started again after 30s, attempt 2"
     assert len({entry["key"] for entry in by_kind.values()}) == 3
 
 
@@ -128,7 +133,7 @@ def test_a_churn_alert_has_its_own_entry_derived_from_the_stored_spans(monkeypat
         _polls()
         entries = _items()["reset"]["passes"][0]["entries"]
     churn = [entry for entry in entries if entry["kind"] == "churn"]
-    assert [(entry["name"], entry["result"]) for entry in churn] == [("churn alert", "poll repeated 3 times with the same labels")]
+    assert [(entry["name"], entry["result"]) for entry in churn] == [("CHURN", "poll repeated 3 times with the same labels")]
 
 
 def test_retries_and_churn_alerts_come_back_from_the_stored_spans_after_a_restart(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1373,7 +1373,7 @@ def run_flows(run: str) -> dict[str, Any]:
     )
     return {
         "flows": rows,
-        "standing": problems.standing(spans, sum(row["retries"] for row in rows)),
+        "standing": problems.standing(spans),
         "finished_spans": finished,
         "time_s": sum(row["time_s"] for row in rows),
         "last_turn_end_ts": max((turn["end_ts"] for turn in turns), default=None),

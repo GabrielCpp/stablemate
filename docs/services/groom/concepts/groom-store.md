@@ -9,7 +9,7 @@ The persistent, queryable half of groom's telemetry collection: a SQLite databas
 
 Connection discipline is load-bearing: one process-wide writer with an `RLock`, many readers with per-thread read-only connections, both autocommit and explicit `BEGIN IMMEDIATE`, and resilience that retries once on failure. The design separates read and write contention so a cold dashboard query does not stall OTLP ingest, which used to cause collector 500s under load. Query methods use keyset pagination (cursor-based) rather than OFFSET, which remains stable when new rows are inserted by concurrent writers — essential for live telemetry queries where OFFSET would drift across page boundaries.
 
-- code: `groom/groom/store.py` @45c74ebc82b3
+- code: `groom/groom/store.py` @c64fd848edab
 - extends: [run-telemetry](run-telemetry.md)
 - rule: a turn on a backend that reports the session's running total (`claude`, whose `--resume` result carries the conversation's cumulative `total_cost_usd`) is charged its reported cost minus the previous report on the same run and session, ordered by start, end and span id. A report below the previous one starts a new count and is charged whole. A turn with no session id, no reported cost, or another backend is charged its reported cost. The stored attribute keeps the raw report, so the charge is computed when a cost is read and corrects rows already ingested.
 - tests: `groom/tests/test_store.py`
@@ -150,7 +150,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - verify: json_path(path="$.last_turn_end_ts", matches="^(null|\\d+(\\.\\d+)?)$")
 - does: return `finished_spans` of 0 for a run with no spans, so a caller can tell a run that has not finished a node from an unknown one
 - returns: the flow tree and the figures the Overview shows beside it
-- code: `groom/groom/store.py::run_flows` @c583ed3689a9
+- code: `groom/groom/store.py::run_flows` @1d5cd0d07562
 - tests: `groom/tests/test_flows.py::test_overview_without_spans_is_not_finished`
 
 ### run_work_items

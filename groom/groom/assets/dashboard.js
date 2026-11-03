@@ -904,7 +904,9 @@ function AttentionTile({ standing, running }) {
     plural(standing.churn_alerts, "churn alert", "churn alerts"),
   ];
   return html`<${Tile} label="Attention" id="detail-attention-tile" value=${plural(gates, "gate", "gates")}>
-    ${fmtSpan(waited)} waiting · <span title=${parts.join(", ")}>${plural(standing.problems, "problem", "problems")}</span>
+    ${fmtSpan(waited)} waiting · ${standing.problems > 0
+      ? html`<button type="button" class="linkish" id="detail-problems-link" title=${parts.join(", ")} aria-label=${plural(standing.problems, "problem", "problems") + ", open them in the Activity tab"} onClick=${openProblems}>${plural(standing.problems, "problem", "problems")}</button>`
+      : html`<span title=${parts.join(", ")}>${plural(standing.problems, "problem", "problems")}</span>`}
   <//>`;
 }
 
@@ -1407,7 +1409,7 @@ function Overview({ detail }) {
 }
 
 function idleActivity() {
-  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null, query: "", item: "", search: idleSearch(), note: "" };
+  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null, query: "", item: "", search: idleSearch(), note: "", problems: false, problemCount: null };
 }
 
 function idleSearch() {
@@ -1418,7 +1420,7 @@ let activitySeq = 0;
 let turnSeq = 0;
 let entrySeq = 0;
 
-const READABLE_ENTRY = /^(step|failed|gate):/;
+const READABLE_ENTRY = /^(step|failed|gate|retry|churn):/;
 const RUNNING_STEP = "step:running:";
 
 function ordinal(n) {
@@ -1466,7 +1468,7 @@ async function loadTurn(runId, slug, refresh = false) {
 
 async function loadActivity(runId, rev = 0, refresh = false) {
   const seq = ++activitySeq;
-  if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev } });
+  if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev, problems: store.get().activity.problems } });
   try {
     const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/activity");
     if (!response.ok) throw new Error("activity " + response.status);
@@ -1476,8 +1478,9 @@ async function loadActivity(runId, rev = 0, refresh = false) {
     const rows = data.rows;
     const items = data.items || [];
     const chosen = rows.some((row) => row.slug === held.selected) || findEntry(items, held.selected) || held.selected.startsWith(RUNNING_STEP) ? held.selected : "";
-    store.set({ activity: { ...held, runId, status: "ready", rows, items, selected: chosen, rev } });
+    store.set({ activity: { ...held, runId, status: "ready", rows, items, problemCount: data.problems || 0, selected: chosen, rev } });
     const wasRunning = held.rows.some((row) => row.slug === chosen && row.status === "running");
+    if (!refresh && held.problems && showNewestProblem()) return;
     if (!chosen && rows.length) loadTurn(runId, rows[rows.length - 1].slug);
     else if (chosen && rows.some((row) => row.slug === chosen && (row.status === "running" || wasRunning))) loadTurn(runId, chosen, true);
     else if (READABLE_ENTRY.test(chosen)) {
@@ -1488,7 +1491,7 @@ async function loadActivity(runId, rev = 0, refresh = false) {
   } catch (err) {
     if (seq !== activitySeq) return;
     if (refresh) store.set({ activity: { ...store.get().activity, rev } });
-    else store.set({ activity: { ...idleActivity(), runId, status: "failed", rev } });
+    else store.set({ activity: { ...idleActivity(), runId, status: "failed", rev, problems: store.get().activity.problems } });
   }
 }
 
@@ -1526,21 +1529,36 @@ function timelineKeys(rows, items) {
     for (const pass of item.passes) {
       for (const entry of pass.entries) {
         if (entry.kind === "steps") entry.steps.forEach((step) => keys.add(step.key));
-        else if (entry.kind !== "doing") keys.add(entry.key);
+        else if (entry.kind !== "doing" && !failedTurn(entry)) keys.add(entry.key);
       }
     }
   }
   return keys;
 }
 
+const failedTurn = (entry) => entry.kind === "failed" && !!entry.turn;
+
+function failedTurns(items) {
+  const slugs = new Set();
+  for (const item of items) for (const pass of item.passes) for (const entry of pass.entries) if (failedTurn(entry)) slugs.add(entry.turn);
+  return slugs;
+}
+
+function problemKeys(items) {
+  const keys = new Set();
+  for (const item of items) for (const pass of item.passes) for (const entry of pass.entries) if (entry.problem) keys.add(entry.key);
+  return keys;
+}
+
 function arrivals(activity) {
   if (!activity.seen) return 0;
   let count = 0;
-  for (const key of timelineKeys(activity.rows, activity.items)) if (!activity.seen.has(key)) count++;
+  const keys = activity.problems ? problemKeys(activity.items) : timelineKeys(activity.rows, activity.items);
+  for (const key of keys) if (!activity.seen.has(key)) count++;
   return count;
 }
 
-function newestKey(rows, items) {
+function newestKey(rows, items, problemsOnly = false) {
   let best = "";
   let at = -Infinity;
   const see = (key, ts) => {
@@ -1549,12 +1567,14 @@ function newestKey(rows, items) {
       at = ts;
     }
   };
-  for (const row of rows) see(row.slug, row.started_ts);
+  if (!problemsOnly) for (const row of rows) see(row.slug, row.started_ts);
   for (const item of items) {
     for (const pass of item.passes) {
       for (const entry of pass.entries) {
-        if (entry.kind === "steps") entry.steps.forEach((step) => see(step.key, step.ts));
-        else if (entry.kind !== "doing") see(entry.key, entry.ts);
+        if (problemsOnly) {
+          if (entry.problem) see(entry.key, entry.ts);
+        } else if (entry.kind === "steps") entry.steps.forEach((step) => see(step.key, step.ts));
+        else if (entry.kind !== "doing" && !failedTurn(entry)) see(entry.key, entry.ts);
       }
     }
   }
@@ -1615,7 +1635,12 @@ function transcriptHit(activity, key) {
 
 function timelineView(activity) {
   const query = normalQuery(activity.query);
-  if (!query && !activity.item) return { items: activity.items, filtering: false, forced: false, query, empty: false };
+  const problems = activity.problems;
+  const failed = failedTurns(activity.items);
+  if (!query && !activity.item && !problems) {
+    const items = failed.size ? activity.items.map((item) => ({ ...item, passes: item.passes.map((pass) => ({ ...pass, entries: pass.entries.filter((entry) => !failedTurn(entry)) })) })) : activity.items;
+    return { items, filtering: false, forced: false, query, empty: false, problems: false, none: false, failed };
+  }
   const rowOf = (key) => activity.rows.find((one) => one.slug === key);
   const keeps = (entry) => {
     if (!query) return true;
@@ -1632,17 +1657,21 @@ function timelineView(activity) {
     for (const pass of item.passes) {
       const entries = [];
       for (const entry of pass.entries) {
-        if (entry.kind === "steps" && query) entry.steps.forEach((step) => keeps({ ...step, kind: "step" }) && entries.push({ ...step, kind: "step" }));
+        if (problems) {
+          if (entry.problem && keeps(entry)) entries.push(entry);
+        } else if (failedTurn(entry)) continue;
+        else if (entry.kind === "steps" && query) entry.steps.forEach((step) => keeps({ ...step, kind: "step" }) && entries.push({ ...step, kind: "step" }));
         else if (entry.kind === "steps" || entry.kind === "doing") {
           if (!query) entries.push(entry);
         } else if (keeps(entry)) entries.push(entry);
       }
-      if (entries.length || !query) passes.push({ ...pass, entries });
+      if (entries.length || (!query && !problems)) passes.push({ ...pass, entries });
     }
     if (passes.length) items.push({ ...item, passes });
   }
   const shown = items.some((item) => item.passes.some((pass) => pass.entries.length));
-  return { items, filtering: true, forced: !!query, query, empty: !!query && !shown };
+  const none = problems && activity.problemCount === 0;
+  return { items, filtering: true, forced: !!query || problems, query, empty: (!!query || problems) && !shown, problems, none, failed };
 }
 
 function orderedKeys(view, rows) {
@@ -1652,9 +1681,8 @@ function orderedKeys(view, rows) {
       for (const entry of pass.entries) {
         if (entry.kind === "steps") entry.steps.forEach((step) => out.push({ key: step.key, problem: false }));
         else if (entry.kind === "turn" || entry.kind === "running") {
-          const row = rows.find((one) => one.slug === entry.slug);
-          out.push({ key: entry.slug, problem: !!row && row.status === "failed" });
-        } else if (entry.kind !== "doing") out.push({ key: entry.key, problem: ["failed", "retry", "churn"].includes(entry.kind) });
+          out.push({ key: entry.slug, problem: view.failed.has(entry.slug) });
+        } else if (entry.kind !== "doing") out.push({ key: entry.key, problem: !!entry.problem });
       }
     }
   }
@@ -1672,6 +1700,37 @@ function setQuery(runId, text) {
 
 function setItem(value) {
   store.set({ activity: { ...store.get().activity, item: value, note: "" } });
+}
+
+function showNewestProblem() {
+  const held = store.get().activity;
+  const view = timelineView(held);
+  if (orderedKeys(view, held.rows).some((one) => one.key === held.selected)) return true;
+  let best = "";
+  let at = -Infinity;
+  for (const item of view.items) {
+    for (const pass of item.passes) {
+      for (const entry of pass.entries) {
+        if (entry.ts >= at) {
+          best = entry.key;
+          at = entry.ts;
+        }
+      }
+    }
+  }
+  if (!best) return false;
+  openRow(best);
+  return true;
+}
+
+function setProblems(on) {
+  store.set({ activity: { ...store.get().activity, problems: on, note: "" } });
+  if (on) showNewestProblem();
+}
+
+function openProblems() {
+  store.set({ tab: "activity", activity: { ...store.get().activity, problems: true, note: "" } });
+  showNewestProblem();
 }
 
 function clearFilters() {
@@ -1782,20 +1841,20 @@ function turnMeta(row) {
   return turnSpan(row) + (row.cost_usd === null ? "" : " · " + fmtUsd(row.cost_usd));
 }
 
-function turnLabel(row) {
-  const state = row.status === "running" ? "running" : row.status === "unrecorded" ? "ended with no record" : row.status === "failed" ? "failed" : "finished";
+function turnLabel(row, broke = false) {
+  const state = row.status === "running" ? "running" : row.status === "unrecorded" ? "ended with no record" : row.status === "failed" || broke ? "failed" : "finished";
   const meta = turnMeta(row);
   return row.node + ", " + state + ", started " + turnWhen(row) + (meta ? ", " + meta : "") + (row.result && row.status !== "unrecorded" ? ", " + row.result : "");
 }
 
-function TurnRow({ row, selected, pick, query, hit }) {
+function TurnRow({ row, selected, pick, query, hit, broke }) {
   const running = row.status === "running";
   return html`<button
     type="button"
-    class=${"ev " + (running ? "live" : row.status === "failed" ? "bad" : "turn") + (selected ? " sel" : "")}
+    class=${"ev " + (running ? "live" : row.status === "failed" || broke ? "bad" : "turn") + (selected ? " sel" : "")}
     data-slug=${row.slug}
     aria-current=${selected ? "true" : null}
-    aria-label=${turnLabel(row)}
+    aria-label=${turnLabel(row, broke)}
     onClick=${() => pick(row.slug)}
   >
     <span class="t">${turnWhen(row)}</span>
@@ -1933,7 +1992,7 @@ function PassSection({ item, pass, rows, selected, pick, folds, alive, view, hit
       }
       if (entry.kind === "turn" || entry.kind === "running") {
         const row = rows.find((one) => one.slug === entry.slug);
-        return row ? html`<${TurnRow} key=${entry.key} row=${row} selected=${entry.slug === selected} pick=${pick} query=${view.query} hit=${view.query ? hits[row.slug] : ""} />` : null;
+        return row ? html`<${TurnRow} key=${entry.key} row=${row} selected=${entry.slug === selected} pick=${pick} query=${view.query} hit=${view.query ? hits[row.slug] : ""} broke=${view.failed.has(row.slug)} />` : null;
       }
       return html`<${EntryRow} key=${entry.key} entry=${entry} selected=${entry.key === selected} pick=${pick} query=${view.query} />`;
     }) : null}
@@ -2159,6 +2218,23 @@ function GateReading({ data }) {
   </div>`;
 }
 
+function ProblemReading({ data }) {
+  const head = data.head;
+  const retry = data.kind === "retry";
+  const flowText = ordinalPass(head);
+  const name = retry ? "backend retry" : "CHURN";
+  return html`<div class=${"rd rd-" + data.kind} data-reading=${data.kind} data-state=${head.state}>
+    <div class="rd-head">
+      <div class="l1"><span class="dot idle" aria-hidden="true"></span>${name}${head.work_id ? html`<span class="dim">·</span><span class="dim">${head.work_id}</span>` : null}<span class="chip warn" style="margin-left:auto">problem</span></div>
+      <div class="l2">${flowText ? html`<span>${flowText}</span>` : null}<span>${clockTime(head.started_ts * 1000).slice(0, 5)}</span></div>
+    </div>
+    <div class="rd-body" tabindex="0" aria-label=${retry ? "backend retry" : "churn alert"}>
+      <div class="at-msg"><div class="at-role">What happened</div><div class="at-text">${data.happened}</div></div>
+      <${StepNext} next=${data.next} />
+    </div>
+  </div>`;
+}
+
 function EntryPane({ runId, entry }) {
   if (entry.status === "failed") {
     return html`<div class="rd"><div class="side-state act-state" role="alert">
@@ -2172,6 +2248,7 @@ function EntryPane({ runId, entry }) {
       <span class="spin" aria-hidden="true"></span>Reading this step…
     </div></div>`;
   }
+  if (entry.data.kind === "retry" || entry.data.kind === "churn") return html`<${ProblemReading} key=${entry.key} data=${entry.data} />`;
   return entry.data.kind === "gate"
     ? html`<${GateReading} key=${entry.key} data=${entry.data} />`
     : html`<${StepReading} key=${entry.key} data=${entry.data} runId=${runId} />`;
@@ -2241,6 +2318,7 @@ function ActivityTab({ detail }) {
   const controlRef = useRef(null);
   const lastTop = useRef(0);
   const wasLost = useRef(lost);
+  const shownProblems = useRef(false);
   useEffect(() => {
     if (!runId) return;
     const current = store.get().activity;
@@ -2261,9 +2339,14 @@ function ActivityTab({ detail }) {
   useLayoutEffect(() => {
     const list = listRef.current;
     if (list) placeHeadings(list);
+    if (list && shownProblems.current !== activity.problems) {
+      shownProblems.current = activity.problems;
+      if (activity.problems) list.scrollTop = list.scrollHeight;
+      else keepInView(list, activity.selected);
+    }
     if (list && alive && activity.follow) {
       list.scrollTop = list.scrollHeight;
-      keepInView(list, newestKey(activity.rows, activity.items));
+      keepInView(list, newestKey(activity.rows, activity.items, activity.problems));
     }
     if (list) lastTop.current = list.scrollTop;
   });
@@ -2300,13 +2383,14 @@ function ActivityTab({ detail }) {
   };
   const toggle = () => (activity.follow ? pauseFollow(alive) : resumeFollow());
   const back = () => {
-    const newest = newestKey(activity.rows, activity.items);
+    const newest = newestKey(activity.rows, activity.items, activity.problems);
     if (newest && newest !== activity.selected) openRow(newest);
     resumeFollow();
     if (controlRef.current) controlRef.current.focus();
   };
   const arrived = alive && !activity.follow ? arrivals(activity) : 0;
   const view = timelineView(activity);
+  const gone = view.empty && (view.problems || activity.search.status === "ready");
   const hits = {};
   for (const row of activity.rows) hits[row.slug] = transcriptHit(activity, row.slug);
   const searching = view.query && ["waiting", "loading"].includes(activity.search.status);
@@ -2319,6 +2403,7 @@ function ActivityTab({ detail }) {
         <option value="">All work items</option>
         ${activity.items.map((item) => html`<option key=${item.work_id} value=${item.work_id || NO_ITEM}>${item.work_id || "outside any work item"}</option>`)}
       </select>
+      <button type="button" class="fchip prob" aria-pressed=${activity.problems ? "true" : "false"} data-filter="problems" onClick=${() => setProblems(!activity.problems)}>Problems <b>${activity.problemCount || 0}</b></button>
       <span class="r">
         <span class="hint"><span class="kbd">j k</span> move</span>
         <span class="hint"><span class="kbd">e</span> next problem</span>
@@ -2327,14 +2412,16 @@ function ActivityTab({ detail }) {
     </div>
     <div class="feed">
       <div class=${"tl" + (headed ? "" : " flat")} role="log" aria-label="Run activity" ref=${listRef} onScroll=${scrolled}>
-        ${view.empty && activity.search.status === "ready" ? html`<div class="detail-empty" role="status">Nothing in this run matches “${view.query}”. <button type="button" class="btn ghost clear-search" onClick=${clearFilters}>Clear the search</button></div>` : null}
+        ${view.none ? html`<div class="detail-empty" role="status">This run has no problems. <button type="button" class="btn ghost show-all" data-filter="problems" onClick=${() => setProblems(false)}>Show the whole timeline</button></div>` : null}
+        ${view.empty && !view.none && view.problems && !view.query ? html`<div class="detail-empty" role="status">No problems in this work item. <button type="button" class="btn ghost clear-search" onClick=${clearFilters}>Clear the filters</button></div>` : null}
+        ${view.empty && !view.none && view.query && (view.problems || activity.search.status === "ready") ? html`<div class="detail-empty" role="status">${view.problems ? "No problems match" : "Nothing in this run matches"} “${view.query}”. <button type="button" class="btn ghost clear-search" onClick=${clearFilters}>Clear the search</button></div>` : null}
         ${view.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${rows} selected=${activity.selected} pick=${pick} folds=${folds} headed=${headed} view=${view} hits=${hits} />`)}
         ${searching ? html`<div role="status" class="dim search-note"><span class="spin" aria-hidden="true"></span>Searching the transcripts of this run…</div>` : null}
         ${searchFailed ? html`<div role="status" class="dim search-note">The transcripts of this run could not be searched. These rows match the row text only. <button type="button" class="btn ghost retry-search" onClick=${() => searchTranscripts(runId, view.query)}>Retry now</button></div>` : null}
         ${activity.note ? html`<div role="status" class="dim search-note">${activity.note}</div>` : null}
-        ${alive ? html`<div class="newpill" aria-live="polite">${arrived ? html`<button type="button" class="newpill-go" onClick=${back}>${arrived} new · back to live <span aria-hidden="true">↓</span></button>` : null}</div>` : null}
+        ${alive ? html`<div class="newpill" aria-live="polite">${arrived ? html`<button type="button" class="newpill-go" onClick=${back}>${view.problems ? plural(arrived, "new problem", "new problems") : arrived + " new"} · back to live <span aria-hidden="true">↓</span></button>` : null}</div>` : null}
       </div>
-      ${view.empty && activity.search.status === "ready" ? html`<div class="rd"><div class="detail-empty">Select a row to read it.</div></div>` : html`<${TurnPane} runId=${runId} rows=${rows} turn=${activity.turn} items=${activity.items} selected=${activity.selected} entry=${activity.entry} />`}
+      ${view.none ? html`<div class="rd"><div class="detail-empty">No failed steps, backend retries, failed gate checks or churn alerts.</div></div>` : gone ? html`<div class="rd"><div class="detail-empty">Select a row to read it.</div></div>` : html`<${TurnPane} runId=${runId} rows=${rows} turn=${activity.turn} items=${activity.items} selected=${activity.selected} entry=${activity.entry} />`}
     </div>`;
 }
 
@@ -2469,7 +2556,7 @@ function DiffViewSwitch({ id, value }) {
   />`;
 }
 
-function DetailTabs({ id, tab, hasDiff, stale, runDiff, repos, checkout, view }) {
+function DetailTabs({ id, tab, hasDiff, stale, runDiff, repos, checkout, view, problems }) {
   const tabs = hasDiff ? BASE_TABS.concat([["files", "Files"], ["diff", "Diff"]]) : BASE_TABS;
   const size = hasDiff && !stale ? runDiffSize(runDiff) : null;
   const switcher = hasDiff && tab === "diff" ? html`<${DiffViewSwitch} id=${id} value=${view} />` : null;
@@ -2502,10 +2589,10 @@ function DetailTabs({ id, tab, hasDiff, stale, runDiff, repos, checkout, view })
         id=${"tab-" + id}
         aria-selected=${id === tab ? "true" : "false"}
         aria-controls="detail-panel"
-        aria-label=${marked ? "Diff, stale" : counted ? "Diff, " + plural(size.add, "line", "lines") + " added, " + plural(size.del, "line", "lines") + " removed" : null}
+        aria-label=${id === "activity" && problems > 0 ? "Activity, " + plural(problems, "problem", "problems") : marked ? "Diff, stale" : counted ? "Diff, " + plural(size.add, "line", "lines") + " added, " + plural(size.del, "line", "lines") + " removed" : null}
         tabindex=${id === tab ? "0" : "-1"}
         onClick=${() => store.set({ tab: id })}
-      >${label}${marked ? html`<span id="detail-diff-stale" class="cnt"><span class="chip warn">stale</span></span>` : counted ? html`<span id="detail-diff-count" class="cnt"><span class="add">+${size.add}</span> <span class="del">−${size.del}</span></span>` : null}</button>`;
+      >${label}${id === "activity" && problems > 0 ? html`<span id="detail-activity-count" class="cnt"><span class="prob">${plural(problems, "problem", "problems")}</span></span>` : null}${marked ? html`<span id="detail-diff-stale" class="cnt"><span class="chip warn">stale</span></span>` : counted ? html`<span id="detail-diff-count" class="cnt"><span class="add">+${size.add}</span> <span class="del">−${size.del}</span></span>` : null}</button>`;
     })}
     </div>
     ${switcher || picker || read ? html`<span class="right">${switcher}${picker}${read}</span>` : null}
@@ -2565,6 +2652,9 @@ function Detail() {
   useRunDiff(selected, live, stale, runDiff.id, runDiff.shownKept);
   useRunFiles(selected, live, chosen === "files", runFiles.id);
   const tab = (chosen === "diff" || chosen === "files") && !hasDiff ? "overview" : chosen;
+  const fromActivity = detail && snap.activity.runId === detail.run_id && snap.activity.status === "ready" ? snap.activity.problemCount : null;
+  const fromOverview = detail && snap.overview.runId === detail.run_id && snap.overview.status === "ready" && snap.overview.data.standing ? snap.overview.data.standing.problems : null;
+  const problems = (tab === "activity" ? fromActivity ?? fromOverview : fromOverview ?? fromActivity) ?? 0;
   useEffect(() => {
     if (chosen !== tab) store.set({ tab });
   }, [chosen, tab]);
@@ -2576,7 +2666,7 @@ function Detail() {
   return html`
     <${RunHead} head=${detail.head} onClose=${closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
     ${detail.gates.length ? html`<${GateStrip} detail=${detail} collapsed=${gatesCollapsed} />` : null}
-    <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} />
+    <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} problems=${problems} />
     <div class="fill" id="detail-panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
       ${tab === "diff"
         ? html`<${DiffTab} runDiff=${runDiff} mark=${mark} />`

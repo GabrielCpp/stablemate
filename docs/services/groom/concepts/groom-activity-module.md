@@ -9,7 +9,7 @@ The activity module builds what the [Activity tab](run-activity-tab.md) shows: t
 
 The module reads and returns plain data. It writes nothing, holds no state between calls and raises two errors the server maps to statuses: `TurnNotFound` for a slug the run has no turn under, and `TurnUnreadable` for a turn that exists whose record is not on this machine.
 
-- code: groom/groom/activity.py@a8b11f28556e
+- code: groom/groom/activity.py@4029fdf245ec
 - tests: groom/tests/test_activity.py
 - tests: groom/tests/test_activity_groups.py
 - refs: [groom transcript parse module](groom-transcript-parse-module.md), [groom store](groom-store.md), [groom turns module](groom-turns-module.md), [run flow tree](run-flow-tree.md)
@@ -23,8 +23,8 @@ The module reads and returns plain data. It writes nothing, holds no state betwe
 - does: lists the run's agent turns oldest first, a finished turn from its spans and a turn with live rows and no span from its first live row
 - does: lists the run's running step and open operator gate, taken from the live telemetry in `standing`, among its rows in the group last worked in
 - verify: json_path(path="$.rows[0].status", matches="^(done|failed)$")
-- returns: `{"run_id", "rows", "items", "as_of"}`
-- code: groom/groom/activity.py::timeline@e8613a504a4b
+- returns: `{"run_id", "rows", "items", "problems", "as_of"}`, with `problems` the count of the problem entries
+- code: groom/groom/activity.py::timeline@f29f5ec4a999
 - tests: groom/tests/test_activity.py::test_the_timeline_lists_a_finished_turn_with_its_figures_and_pass
 - endpoint: [get-run-activity](../http/get-run-activity.md)
 
@@ -51,12 +51,13 @@ The module reads and returns plain data. It writes nothing, holds no state betwe
 
 - sig: `entry(run_id: str, key: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None, read: Callable[[str], str | None] = ...) -> dict[str, Any]`
 - abstract: false
-- does: reads one step, failed step or operator gate of the run in full, from its stored span and logs, or from the live telemetry in `standing` while it runs or is open
-- verify: json_path(path="$.kind", matches="^(step|gate)$")
+- does: reads one step, failed step, operator gate, backend retry or churn alert of the run in full, from its stored span and logs, or from the live telemetry in `standing` while it runs or is open
+- verify: json_path(path="$.kind", matches="^(step|gate|retry|churn)$")
 - raises: `EntryNotFound` when the run's timeline has no row under the key
 - returns: for a step, `{"run_id", "kind", "key", "head", "error", "logs", "cut", "next"}`
 - returns: for a gate, `{"run_id", "kind", "key", "head", "question", "answer", "taken", "readable", "next"}`
-- code: groom/groom/activity.py::entry@5a64cec9f144
+- returns: for a retry or a churn alert, `{"run_id", "kind", "key", "head", "happened", "next"}`
+- code: groom/groom/activity.py::entry@f35af47c47a7
 - tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_its_full_error_text
 - tests: groom/tests/test_activity_entries.py::test_an_answered_gate_reads_its_question_answer_and_how_long_it_waited
 - endpoint: [get-run-entry](../http/get-run-entry.md)
@@ -86,4 +87,5 @@ The module reads and returns plain data. It writes nothing, holds no state betwe
 - rule: the spans of one slug that sit under one parent span are one visit, as a retried turn is, and are one row. Its start is the earliest start, its end the latest end, its time the sum of its spans' own seconds, its cost the sum of its priced spans and its status the last span's. A slug that a resumed pass repeats gives one row per parent span. The first keeps the slug as its key, and each later one is keyed `<slug>~<milliseconds of its first start>`, so a read after a refresh gives it the same key. A row reads the record of its own session, or when it names no session the record stamped inside its own window, and it does not read the record of another visit of the slug. A row with no such record is marked not matched, and its turn answers an empty list.
 - rule: a pass is numbered within its work item and flow by the start order of the flow's node spans, and one function numbers the rows, the pass headings and the head of one turn. A row whose visit slug is shared by turns of several passes takes the pass of its earliest turn, the one its start time belongs to.
 - rule: a work item's figures come from the Overview's work item rows and a flow pass's from the flow tree's leaf rule, so a heading reads the same figures as the Overview. A gate, a retry or a churn alert that names no work item or pass goes to the nearest group of the same work item by time.
+- rule: the failed entry of an agent turn names its turn row, so the whole timeline can show that turn once and the Problems view can offer it. A failed step that is not an agent turn names no turn.
 - rule: only `assistant` and `plan` messages with text, and tool calls, are kept as entries. The prompt and the thinking travel beside the entries as `prompt` and `thinking`, the prompt from the record's `prompt.md` else the transcript's user messages, and a failed tool call carries its whole output while a passed one carries none.

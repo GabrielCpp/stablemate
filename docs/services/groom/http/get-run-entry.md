@@ -9,8 +9,19 @@ title: get-run-entry
 - method: `GET`
 - path: `/api/run/{run_id}/entry/{key}`
 - does:
-  - Returns `kind` as `step` for a step row or `gate` for an operator gate row, with the row's `key` and the run's `run_id`.
-- verify: json_path(path="$.kind", matches="^(step|gate)$")
+  - Returns `kind` as `step` for a step row, `gate` for an operator gate row, `retry` for a backend retry or `churn` for a churn alert, with the row's `key` and the run's `run_id`.
+- verify: json_path(path="$.kind", matches="^(step|gate|retry|churn)$")
+- does:
+  - Returns a retry's or a churn alert's `head` with its `name`, `work_id`, `flow`, `pass` and `started_ts`.
+  - Returns a retry's or a churn alert's `happened` as one text saying what happened.
+  - Returns a retry's or a churn alert's `next` as `{"key", "noun", "text"}`.
+  - Says in a retry's `happened` that the backend started the turn again after the attempt before it ended.
+  - Adds the earlier attempt's failure and the seconds waited to a retry's `happened` only when the spans record them.
+  - Gives a retry's `next` the key of the retried turn with `noun` `turn`.
+  - Says in a retry's `next` whether the attempt failed, finished and the turn went on, or was started again.
+  - Gives a failed agent turn's `next` the key of its turn with `noun` `turn`.
+  - Says in a churn alert's `happened` which node ran how many times in a row with the same labels.
+  - Gives a churn alert's `next` the row that followed.
 - does: all
   - Returns a step's `head` with its `name`, `work_id`, `flow`, `pass`, `started_ts`, `duration_s` and `error_class`.
   - Gives the head `state` as `running`, `passed` or `failed`.
@@ -51,16 +62,20 @@ title: get-run-entry
   - Sends every text as it was recorded and applies no markup of its own.
 - response:
   - media: `application/json`
-  - body: `{"run_id": str, "kind": "step" | "gate", "key": str, "head": {...}, "next": {...}, ...}`
+  - body: `{"run_id": str, "kind": "step" | "gate" | "retry" | "churn", "key": str, "head": {...}, "next": {...}, ...}`
 - status: `200`
 - verify: http_status(code=200, path="/api/run/{run_id}/entry/{key}")
 - errors:
   - `404` with detail `no such step or gate` when the run's timeline has no row under the key.
 - verify: json_path(path="$.detail", equals="no such step or gate")
-- code: groom/groom/app.py::run_entry@877266517ded
-- code: groom/groom/activity.py::entry@5a64cec9f144
+- code: groom/groom/app.py::run_entry@54b739415692
+- code: groom/groom/activity.py::entry@f35af47c47a7
 - detail: [groom activity module](../concepts/groom-activity-module.md)
 - detail: [run Activity tab](../concepts/run-activity-tab.md)
+- tests: groom/tests/test_activity_problems.py::test_a_retry_reading_says_what_happened_and_links_to_its_turn
+- tests: groom/tests/test_activity_problems.py::test_a_retry_that_failed_as_well_says_so
+- tests: groom/tests/test_activity_problems.py::test_a_churn_reading_says_what_repeated_and_what_came_next
+- tests: groom/tests/test_activity_problems.py::test_a_retry_or_churn_key_the_run_does_not_hold_is_not_found
 - tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_with_its_head_and_error_class
 - tests: groom/tests/test_activity_entries.py::test_a_failed_step_reads_its_full_error_text
 - tests: groom/tests/test_activity_entries.py::test_a_step_reads_its_logs_with_time_level_node_and_message
@@ -78,4 +93,4 @@ title: get-run-entry
 - tests: groom/tests/test_activity_entries.py::test_the_timeline_lists_the_running_step_and_the_open_gate_as_rows
 - tests: groom/tests/test_activity_entries.py::test_an_unknown_key_is_not_found
 
-The route is `GET /api/run/{run_id}/entry/{key}`, registered by the [groom server](groom.md) and requested through the [serve-run-entry](groom.md#serve-run-entry) invocation. The `key` is the `key` of a step, failed step or gate entry of [get-run-activity](get-run-activity.md). The request has no query, no required headers and no body. The dashboard reads one entry at a time, when the operator selects its row.
+The route is `GET /api/run/{run_id}/entry/{key}`, registered by the [groom server](groom.md) and requested through the [serve-run-entry](groom.md#serve-run-entry) invocation. The `key` is the `key` of a step, failed step, gate, retry or churn entry of [get-run-activity](get-run-activity.md). The request has no query, no required headers and no body. The dashboard reads one entry at a time, when the operator selects its row.

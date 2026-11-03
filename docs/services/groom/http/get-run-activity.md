@@ -36,19 +36,22 @@ title: get-run-activity
 - does:
   - Gives each pass its `flow`, `pass`, `state`, `time_s` and `cost_usd` from the flow tree's leaf rule.
 - does:
-  - Derives `retry` entries from the `retry` events of turn spans and `churn` entries from the churn rule replayed over the stored spans, so a restart loses neither.
+  - Derives a `retry` entry for each agent turn that follows an earlier attempt under the same parent, with the wait from the `retry` event the earlier attempt recorded, and `churn` entries from the churn rule replayed over the stored spans, so a restart loses neither.
+  - Gives the `failed` entry of an agent turn a `turn` key naming its turn row.
+  - Marks each `failed`, `retry` and `churn` entry `problem` true and returns `problems`, the count of those entries, which the Overview's problem count equals.
 - does:
   - Returns `as_of`, the time the server built the list.
 - does:
   - Reads the live transcript of a running turn from the run's capped live history, and does not mutate workflow state, the telemetry store or any websocket client.
 - response:
   - media: `application/json`
-  - body: `{"run_id": str, "rows": [{"slug": str, "node": str, "visit": str, "work_id": str, "flow": str, "pass": int, "model": str, "started_ts": float, "ended_ts": float | null, "duration_s": float | null, "cost_usd": float | null, "output_tokens": int, "cache_read_tokens": int, "status": str, "result": str, "session_id": str, "matched": bool}, ...], "items": [{"work_id": str, "outcome": str, "latest": bool, "running": bool, "time_s": float, "cost_usd": float | null, "passes": [{"flow": str, "pass": int, "state": str, "time_s": float, "cost_usd": float | null, "first_ts": float, "entries": [{"kind": str, "key": str, "ts": float, ...}, ...]}, ...]}, ...], "as_of": float}`. An unknown run id returns an empty `rows`.
+  - body: `{"run_id": str, "rows": [{"slug": str, "node": str, "visit": str, "work_id": str, "flow": str, "pass": int, "model": str, "started_ts": float, "ended_ts": float | null, "duration_s": float | null, "cost_usd": float | null, "output_tokens": int, "cache_read_tokens": int, "status": str, "result": str, "session_id": str, "matched": bool}, ...], "items": [{"work_id": str, "outcome": str, "latest": bool, "running": bool, "time_s": float, "cost_usd": float | null, "passes": [{"flow": str, "pass": int, "state": str, "time_s": float, "cost_usd": float | null, "first_ts": float, "entries": [{"kind": str, "key": str, "ts": float, ...}, ...]}, ...]}, ...], "problems": int, "as_of": float}`. An unknown run id returns an empty `rows`.
 - status: `200`
 - verify: http_status(code=200, path="/api/run/{run_id}/activity")
 - code: groom/groom/app.py::run_activity@7e795c810caa
-- code: groom/groom/activity.py::timeline@e8613a504a4b
+- code: groom/groom/activity.py::timeline@f29f5ec4a999
 - detail: [groom activity module](../concepts/groom-activity-module.md)
+- tests: groom/tests/test_activity_problems.py::test_every_count_of_problems_reads_one_definition
 - tests: groom/tests/test_activity.py::test_the_timeline_lists_a_finished_turn_with_its_figures_and_pass
 - tests: groom/tests/test_activity.py::test_a_turn_with_no_span_yet_is_running_and_reads_from_the_live_rows
 - tests: groom/tests/test_activity.py::test_a_turns_result_is_its_recorded_summary_before_the_spans_activity_label

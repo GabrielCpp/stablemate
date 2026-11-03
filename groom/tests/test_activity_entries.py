@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-from test_activity_groups import BASE, _attrs, _seed
+from test_activity_groups import BASE, RETRIED, _attrs, _seed
 from test_run_clock import RUN, _DB, span
 
 from groom import activity, store
@@ -76,7 +76,7 @@ def test_a_step_says_what_came_next_and_the_key_of_that_row() -> None:
         after = _read("failed:a-test")["next"]
         last = _read("step:a-pack")["next"]
     assert after["key"] == "step:a-pack" and after["noun"] == "step" and "pack ran next and passed" in after["text"]
-    assert last["key"] == "retry:a-turn:0" and last["noun"] == "row" and "backend retry followed" in last["text"]
+    assert last["key"] == RETRIED and last["noun"] == "turn" and "qa-story ran next, an agent turn" in last["text"]
 
 
 def test_a_step_with_nothing_after_it_says_nothing_came_after() -> None:

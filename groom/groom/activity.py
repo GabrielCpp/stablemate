@@ -239,23 +239,32 @@ def _span_entry(kind: str, span: dict[str, Any], result: str) -> dict[str, Any]:
         "ts": float(span["start_ts"]),
         "duration_s": _seconds_of(span),
         "result": result,
+        **({"problem": True} if kind == "failed" else {}),
     }
 
 
-def _event_entries(span: dict[str, Any]) -> list[dict[str, Any]]:
-    found = []
-    for number, event in enumerate(span["attrs"].get("events") or []):
-        if not isinstance(event, dict) or event.get("name") != "retry":
-            continue
-        given = event.get("attrs") or {}
-        attempt, delay = str(given.get("attempt") or ""), str(given.get("delay_s") or "")
-        node = str(given.get("node") or _name(span))
-        result = f"{node} turn retried" + (f" after {delay}s" if delay else "") + (f", attempt {attempt}" if attempt else "")
-        found.append({
-            "kind": "retry", "key": f"retry:{span['span_id']}:{number}", "name": "backend retry", "node": node,
-            "ts": float(event.get("ts") or span["start_ts"]), "duration_s": 0.0, "result": result,
-        })
-    return found
+def _retry_note(span: dict[str, Any], earlier: dict[str, Any], spans: list[dict[str, Any]]) -> dict[str, str]:
+    """The backend's own account of a retry: the last retry event stamped between the failed attempt's end and this attempt's start."""
+    low, high = float(earlier["end_ts"]) - WINDOW_SLACK_S, float(span["start_ts"]) + WINDOW_SLACK_S
+    noted: list[tuple[float, dict[str, Any]]] = []
+    for one in spans:
+        for event in one["attrs"].get("events") or []:
+            if isinstance(event, dict) and event.get("name") == "retry" and low <= float(event.get("ts") or 0) <= high:
+                noted.append((float(event["ts"]), event.get("attrs") or {}))
+    if not noted:
+        return {}
+    given = max(noted, key=lambda pair: pair[0])[1]
+    return {"attempt": str(given.get("attempt") or ""), "delay": str(given.get("delay_s") or "")}
+
+
+def _retry_entry(span: dict[str, Any], earlier: dict[str, Any], spans: list[dict[str, Any]], visit: str) -> dict[str, Any]:
+    note = _retry_note(span, earlier, spans)
+    node = _name(span)
+    result = f"{node} turn started again" + (f" after {note['delay']}s" if note.get("delay") else "") + (f", attempt {note['attempt']}" if note.get("attempt") else "")
+    return {
+        "kind": "retry", "key": f"retry:{span['span_id']}", "name": "backend retry", "node": node,
+        "ts": float(span["start_ts"]), "duration_s": 0.0, "result": result, "problem": True, "turn": visit,
+    }
 
 
 def _gate_key(node: str, ordinal: int) -> str:
@@ -320,7 +329,7 @@ def _fold(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return folded
 
 
-def _groups(spans: list[dict[str, Any]], rows: list[dict[str, Any]], placed: dict[str, tuple[str, int, bool]]) -> dict[tuple[str, str, int], _Group]:
+def _groups(spans: list[dict[str, Any]], rows: list[dict[str, Any]], placed: dict[str, tuple[str, int, bool]], visits: dict[str, str]) -> dict[tuple[str, str, int], _Group]:
     groups: dict[tuple[str, str, int], _Group] = {}
     nowhere = ("", 0, False)
 
@@ -355,15 +364,35 @@ def _groups(spans: list[dict[str, Any]], rows: list[dict[str, Any]], placed: dic
         one = group(_work_id(span), flow, number, opened)
         if (flow, span["node"]) not in bucketed:
             one.seconds += flows.span_seconds(span)
+    found = problems.found(spans)
+    broken = {item["span"]["span_id"] for item in found if item["kind"] == "failed"}
     parents = {span["parent_id"] for span in turn_spans}
     for span in leaves:
-        if span["span_id"] in parents:
+        if span["span_id"] in parents or span["span_id"] in broken:
             continue
         flow, number, _ = placed.get(span["span_id"], nowhere)
         one = group(_work_id(span), flow, number)
-        failed = span["status"] == "ERROR" or problems.gate_check_failed(span)
-        one.entries.append(_span_entry("failed" if failed else "step", span, _failure(span) if failed else _plain(str(span["attrs"].get("workhorse.out.reason") or ""))))
+        one.entries.append(_span_entry("step", span, _plain(str(span["attrs"].get("workhorse.out.reason") or ""))))
         one.see(float(span["start_ts"]))
+
+    def home(span: dict[str, Any], ts: float) -> _Group:
+        if span["span_id"] in placed:
+            return group(_work_id(span), *placed[span["span_id"]][:2])
+        return group(*near(_work_id(span), ts))
+
+    for item in found:
+        span = item["span"]
+        if item["kind"] == "failed":
+            entry = _span_entry("failed", span, _failure(span))
+            if span["name"] == TURN_SPAN:
+                entry["turn"] = visits.get(span["span_id"], "")
+        elif item["kind"] == "retry":
+            entry = _retry_entry(span, item["after"], spans, visits.get(span["span_id"], ""))
+        else:
+            continue
+        one = home(span, entry["ts"])
+        one.entries.append(entry)
+        one.see(entry["ts"])
     asked_at: dict[str, int] = {}
     for span in spans:
         if span["attrs"].get("workhorse.span_kind") == "wait" and span["attrs"].get("workhorse.wait_kind") == "operator":
@@ -372,18 +401,13 @@ def _groups(spans: list[dict[str, Any]], rows: list[dict[str, Any]], placed: dic
             one = group(*key)
             one.entries.append(_gate_entry(span, ordinal))
             one.see(float(span["start_ts"]))
-        for entry in _event_entries(span):
-            key = (_work_id(span), *placed[span["span_id"]][:2]) if span["span_id"] in placed else near(_work_id(span), entry["ts"])
-            one = group(*key)
-            one.entries.append(entry)
-            one.see(entry["ts"])
     for span, count in churn.alerts(spans):
         key = (_work_id(span), *placed[span["span_id"]][:2]) if span["span_id"] in placed else near(_work_id(span), float(span["end_ts"]))
         one = group(*key)
         one.entries.append({
-            "kind": "churn", "key": f"churn:{span['span_id']}", "name": "churn alert", "node": _name(span),
+            "kind": "churn", "key": f"churn:{span['span_id']}", "name": "CHURN", "node": _name(span),
             "ts": float(span["end_ts"]), "duration_s": 0.0,
-            "result": f"{_name(span)} repeated {count} times with the same labels",
+            "result": f"{_name(span)} repeated {count} times with the same labels", "problem": True,
         })
         one.see(float(span["end_ts"]))
     return groups
@@ -456,7 +480,8 @@ def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any]
         if slug not in attempts and entries:
             running.append(_running_row(slug, entries))
     rows.sort(key=lambda row: (row["started_ts"], row["slug"]))
-    groups = _groups(spans, rows, placed)
+    visits = {span["span_id"]: key for key, found in attempts.items() for span in found}
+    groups = _groups(spans, rows, placed, visits)
     for row in sorted(running, key=lambda one: (one["started_ts"], one["slug"])):
         target = max(groups, key=lambda key: groups[key].last_ts, default=("", "", 0))
         rows.append(row)
@@ -470,7 +495,7 @@ def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any]
         here["place"] = list(target)
         group.entries.append(here)
         group.see(here["ts"])
-    return {"run_id": run_id, "rows": rows, "items": _items(run_id, groups, flows.pass_status(spans)), "as_of": time.time()}
+    return {"run_id": run_id, "rows": rows, "items": _items(run_id, groups, flows.pass_status(spans)), "problems": len(problems.found(spans)), "as_of": time.time()}
 
 
 def _record_files(run_id: str, head: dict[str, Any], archived: list[dict[str, Any]], strict: bool) -> dict[str, Path] | None:
@@ -656,9 +681,45 @@ def _step_reading(run_id: str, key: str, span: dict[str, Any] | None, standing: 
         }
         error = (str(attrs.get("status_message") or attrs.get("workhorse.out.reason") or "").strip() or "failed") if failed else None
     logs, cut = _lines(run_id, node, started, ended)
+    turn = str(next((one for one in context["flat"] if one["key"] == key), {}).get("turn") or "")
     return {
         "run_id": run_id, "kind": "step", "key": key, "head": head, "error": error, "logs": logs, "cut": cut,
-        "next": _next(key, context["flat"], context["names"], ended is None),
+        "next": {"key": turn, "noun": "turn", "text": f"{node} is an agent turn."} if turn else _next(key, context["flat"], context["names"], ended is None),
+    }
+
+
+def _problem_head(span: dict[str, Any], context: dict[str, Any], ts: float) -> dict[str, Any]:
+    flow, number, _ = context["placed"].get(span["span_id"], ("", 0, False))
+    return {"name": _name(span), "work_id": _work_id(span), "flow": flow, "pass": number, "started_ts": ts}
+
+
+def _problem_reading(run_id: str, key: str, item: dict[str, Any], spans: list[dict[str, Any]], context: dict[str, Any]) -> dict[str, Any]:
+    span = item["span"]
+    entry = next((one for one in context["flat"] if one["key"] == key), None)
+    if item["kind"] == "churn":
+        node, work_id = _name(span), _work_id(span)
+        happened = f"{node} has run {item['count']} times in a row" + (f" on {work_id}" if work_id else "") + " with the same labels. This alert means the run may be going round in circles."
+        head = _problem_head(span, context, float(span["end_ts"])) | {"state": "churn"}
+        return {"run_id": run_id, "kind": "churn", "key": key, "head": head, "happened": happened, "next": _next(key, context["flat"], context["names"], False)}
+    earlier = item["after"]
+    note = _retry_note(span, earlier, spans)
+    node = _name(span)
+    reason = _failure(earlier) if earlier["status"] == "ERROR" else ""
+    failure = (" That attempt failed" + (f": {reason}" if reason != "failed" else "") + ".") if earlier["status"] == "ERROR" else ""
+    happened = f"The backend started the {node} turn again after the attempt before it ended." + failure + (f" It waited {note['delay']}s first." if note.get("delay") else "")
+    later = sorted(
+        (one for one in spans if one["name"] == span["name"] and one["trace_id"] == span["trace_id"] and (one["parent_id"] or one["span_id"]) == (span["parent_id"] or span["span_id"]) and float(one["start_ts"]) > float(span["start_ts"])),
+        key=lambda one: float(one["start_ts"]),
+    )
+    if span["status"] == "ERROR":
+        came = "The retry failed as well." if not later else "The retry failed, and the backend tried again."
+    else:
+        came = "This attempt finished and the turn went on." if not later else "The backend started it again after this attempt."
+    visit = str((entry or {}).get("turn") or "")
+    head = _problem_head(span, context, float(span["start_ts"])) | {"state": "retry", "attempt": note.get("attempt", "")}
+    return {
+        "run_id": run_id, "kind": "retry", "key": key, "head": head, "happened": happened,
+        "next": {"key": visit, "noun": "turn" if visit else "", "text": came},
     }
 
 
@@ -777,6 +838,10 @@ def entry(
             return _gate_reading(run_id, key, waits[int(number) - 1], None, context, read)
         if standing and standing.get("wait_kind") == "operator" and standing.get("node") == node and int(number) == len(waits) + 1:
             return _gate_reading(run_id, key, None, standing, context, read)
+    if kind in ("retry", "churn"):
+        for item in problems.found(spans):
+            if item["kind"] == kind and f"{kind}:{item['span']['span_id']}" == key:
+                return _problem_reading(run_id, key, item, spans, context)
     raise EntryNotFound(key)
 
 

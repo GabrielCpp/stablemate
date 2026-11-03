@@ -11,15 +11,15 @@ The tab sits between Overview and Details in the [detail tab bar](../gui/screens
 
 Transcript text is untrusted. A model or a tool can write any characters, so no part of a turn reaches the page as markup the server or the browser did not choose.
 
-- code: groom/groom/activity.py::timeline@e8613a504a4b
+- code: groom/groom/activity.py::timeline@f29f5ec4a999
 - code: groom/groom/activity.py::turn@98eb76416148
 - code: groom/groom/app.py::run_activity@7e795c810caa
 - code: groom/groom/app.py::run_turn@353c67ab773c
-- code: groom/groom/app.py::run_entry@877266517ded
-- code: groom/groom/activity.py::entry@5a64cec9f144
-- code: groom/groom/assets/dashboard.js::ActivityTab@d946780863b7
+- code: groom/groom/app.py::run_entry@54b739415692
+- code: groom/groom/activity.py::entry@f35af47c47a7
+- code: groom/groom/assets/dashboard.js::ActivityTab@778cef2ebcd9
 - code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
-- code: groom/groom/assets/dashboard.js::arrivals@97f8a48533ed
+- code: groom/groom/assets/dashboard.js::arrivals@7a0483d82c3a
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
 - code: groom/groom/assets/dashboard.js::TurnReading@ff501915dc0a
 - code: groom/groom/assets/dashboard.js::StepReading@b14789843b86
@@ -29,12 +29,16 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/flows.py::span_passes@55f223c1146d
 - code: groom/groom/activity.py::search@addb2fe1fa01
 - code: groom/groom/app.py::run_search@60270d508d18
-- code: groom/groom/assets/dashboard.js::timelineView@4f1988bd15e3
+- code: groom/groom/assets/dashboard.js::timelineView@95096bdd9294
 - code: groom/groom/assets/dashboard.js::setQuery@8a88835d1d66
 - code: groom/groom/assets/dashboard.js::searchTranscripts@d1a20e37c796
 - code: groom/groom/assets/dashboard.js::goToRow@7bdd4787c85b
 - code: groom/groom/assets/dashboard.js::moveTimeline@f0d369c1a4a4
 - code: groom/groom/assets/dashboard.js::nextProblem@b7db5ac0a3e5
+- code: groom/groom/problems.py::found@a0059fcef241
+- code: groom/groom/assets/dashboard.js::setProblems@a49e35ca488b
+- code: groom/groom/assets/dashboard.js::openProblems@edcbcb9b11f0
+- code: groom/groom/assets/dashboard.js::ProblemReading@57c7ab082da3
 - extends: [run flow tree](run-flow-tree.md)
 - rule: the list groups its rows under a work item heading, then a flow pass heading, and one row is one visit. A node that runs twice has two rows. A run with no work item reads as one unnamed item whose heading is left out, so the flow pass headings stand directly in the list. Work done outside any work item is the first group, headed `Outside any work item`, and work outside any flow is a pass headed `outside any flow`.
 - rule: one row is one visit, the turns of one slug under one parent span, so a retry inside a visit stays one row. A slug that a resumed pass repeats gives one row per visit, each under its own heading and each with its own start, time, cost and pass, so the rows of a pass add up to its heading. The first visit keeps the plain slug as its key. A later visit's key adds `~` and the millisecond its own turns began, which does not change when the list is read again. A row reads only the records of its own visit. When the archive kept none for it, the pane says no record of the turn could be found and offers no retry.
@@ -43,7 +47,15 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: a work item's state reads `running` while its turn runs, `in progress` for the newest item of a live run, then `done`, `not counted` or `count unknown` from the Overview's outcome. A flow pass reads `running`, `open`, `failed` or `passed`.
 - rule: a heading is a button that opens and closes its rows, with `aria-expanded` and an accessible name that says its state, time and cost in words. A finished work item or flow pass starts folded. The item and the pass in progress start open. The group holding the selected row is open whatever the fold state. A choice the operator made on a heading holds across reads.
 - rule: a run of successful steps folds to one row that says the count, the time and `all passed`. Selecting the row opens it into one row per step, and selecting it again closes it. A failed step, a gate, a backend retry and a churn alert each stand as their own row between the folds, and each has a mark of its own, a cross, a question mark or an exclamation mark, so the kind never rests on color alone.
-- rule: selecting a retry or a churn alert shows its name, its time and its one-line result in the pane in place of a transcript. Selecting a step, a failed step or a gate opens its full reading instead, and a row that opens one has the same name, time and one-line result in the list as before.
+- rule: the bar has a `Problems` control that shows the count of problems and exposes whether it is pressed. Pressing it narrows the timeline to the problems, under their work item and flow pass headings, with every heading open and every heading that holds no problem left out. Pressing it again restores the whole timeline. The control is a button with a name, and the keyboard operates it like any button.
+- rule: every count of problems reads one definition: the failed steps, the backend retries, the failed gate checks and the churn alerts of the run's stored spans. The Problems control, the tab badge, the Overview attention tile and the rows of the Problems view all come from it, so the number of rows in the view equals the count. A failed turn and a failed container step are failed steps. A gate check that is dirty and errored counts once. An answered gate is not a problem, is not in the view and adds nothing to the count.
+- rule: a failed agent turn shows once in the whole timeline, as its turn row marked failed, and that row is a stop for `e`. The Problems view lists it as a failed row and selecting that row offers `Open that turn`, so the rows of the view still equal the count.
+- rule: the Problems view opens at its newest row, and leaving it brings the selected row of the whole timeline back into view. The search and the work item filter apply inside the view, and a work item or a query with no problem says so and offers to clear the filters or the search.
+- rule: pressing `Problems`, or opening the view from the attention tile, selects the newest row of the view and reads it in the pane when the selected row is not in the view. A selected row that is in the view stays selected, and turning the view off keeps the selection. A row that the search or the work item filter hides inside the view follows the same rule. `Open that turn` shows the turn with no row selected.
+- rule: a run with no problem says `This run has no problems.` in the view and offers `Show the whole timeline`, and the pane says what the view lists. The control then reads `Problems 0` and the tab shows no badge.
+- rule: the Activity tab shows a badge with the count of problems when it is above zero, and its accessible name says the count in words, as `Activity, 5 problems`. The badge and the Overview attention tile show the same number. The problem count on the tile is a link that opens the Activity tab with the Problems view on.
+- rule: selecting a retry or a churn alert opens its reading in the pane in place of a transcript, headed by its name and time. A retry says that the backend started the turn again after the attempt before it ended, adds the failure of that attempt and the seconds the backend waited only when the stored spans record them, and links to its turn with `Open that turn`. It then says that the attempt failed, that it finished and the turn went on, or that the backend started it again, and never says that the retry succeeded. A churn alert says what repeated, the node, how many times in a row and on which work item, that the labels did not change and that the run may be going round in circles, and says what came next with a link to it. Selecting a step, a failed step or a gate opens its full reading instead, and a row that opens one has the same name, time and one-line result in the list as before.
+- rule: the row of a churn alert and the head of its pane read `CHURN` in every Activity state, and its accessible name keeps the words `churn alert`.
 - rule: a step's reading is its head, its error, its logs and what came next. The head names the step, its work item, its flow pass, its duration and, when it failed, its error class. A failed step shows its whole error text under the label `Error` marked with a cross, so the error never rests on color. The error class shows as a name and the server's error kind is not shown.
 - rule: a step's logs are the log lines the run recorded for the step's node inside the step's own window, oldest first, each with its time, its level, its node and its message, up to 500 lines. A line at level `ERROR` or `FATAL` is bold, and a warning is amber. A step with no lines says it recorded none.
 - rule: what came next is the row that follows the selected one in the list's time order, and it names that row's kind. The reading offers a button that opens that row in the list, unfolds its groups and scrolls it into view. A step with no row after it says `Nothing came after this.`
@@ -53,7 +65,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: while a step runs or a gate is open, the pane reads again every 3 seconds, and answering an open gate reads it again at once, so the pane turns answered without a reload and without moving the selection.
 - rule: a step or gate that is being read shows `Reading this step…` and clears it when the details arrive. A step that cannot be read says `The details of this step could not be read` with `Retry now`, keeps its row and its one line in the list, and a successful retry replaces the message with the details.
 - rule: log lines, error text, questions and answers are untrusted. The page shows them as text, and the question and the answer as formatted prose with raw markup neutralised.
-- rule: a retry comes from the `retry` event on the turn's span and a churn alert from replaying the churn rule over the run's stored spans, so both come back unchanged after groom restarts and nothing is stored apart from the spans.
+- rule: a backend retry is a repeat turn in one visit, an agent turn that follows an earlier attempt under the same parent, and its row sits where that turn started. Its cause is shown only when recorded, so its text takes the delay the backend waited from the `retry` event the earlier attempt recorded and reads `<node> turn started again` when no event was recorded. A churn alert comes from replaying the churn rule over the run's stored spans, so both come back unchanged after groom restarts and nothing is stored apart from the spans.
 - rule: a turn that is running has its own mark and is the last row of its flow pass. Its figures come from the live rows until it ends, and it is placed in the group last worked in.
 - rule: a heading stays in view while its rows scroll, the flow pass heading under the work item heading it sits in.
 - rule: the tab opens on the newest turn, the last row of the list, and selecting another row opens that one. A list that is read again keeps the open turn when its row is still there, and otherwise opens the newest.
@@ -68,7 +80,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: the timeline of a live run follows it. The list keeps its newest row in view as rows arrive, and the tab opens following. When a later group sits below the newest row, the list scrolls to the newest row and not to its foot, so the row is neither past the edge nor under a sticky heading. A run that has ended, or that was over when the tab opened, has no follow control, no pill and no scrolling to the end.
 - rule: scrolling the list up by any amount that leaves it more than 4 pixels from its end pauses the follow, and the control then says `Paused`. A scroll that does not move the list up, such as one caused by a row arriving, never pauses it. Scrolling back to within 4 pixels of the end follows again. Pressing the control pauses a following list where it stands and follows a paused one from its newest row.
 - rule: a paused list changes nothing under the operator's eyes. The rows in view stay where they are, the scroll position holds, and a heading that was open at the pause stays open until the list follows again, even when the work item or the pass it heads finishes.
-- rule: the pill counts the rows that arrived since the pause. A turn, a step, a gate, a retry and a churn alert are each one, and a step that folds into a run of passed steps counts as its own row. The row that shows the step a run is in, and a row that was there at the pause, are not counted. The count is the number of keys now in the timeline that were not in it at the pause, so a row that arrives and goes again leaves no count.
+- rule: the pill counts the rows that arrived since the pause. In the Problems view it counts only the problems that arrived and reads `N new problems` or `1 new problem`. A turn, a step, a gate, a retry and a churn alert are each one, and a step that folds into a run of passed steps counts as its own row. The row that shows the step a run is in, and a row that was there at the pause, are not counted. The count is the number of keys now in the timeline that were not in it at the pause, so a row that arrives and goes again leaves no count.
 - rule: pressing the pill selects the newest row and opens it in the pane, scrolls it into view, clears the pill, follows again and moves focus to the control. The newest row is the one with the latest time among the turns, steps, gates, retries and churn alerts, and a fold that holds it opens. Scrolling back to the end and pressing the follow control follow again and leave the selected row and the pane as the operator left them. While the list follows, a row that arrives never moves the selection.
 - rule: a row that arrives never selects itself, never takes focus from what the operator has focused, and never rebuilds an open pane. The pane of the selected turn changes only when the turn it shows is itself still running and its own record moves.
 - rule: the follow control says `Not connected`, disabled, while the dashboard's connection is `reconnecting` or `offline`, and says what it did before when the connection returns. A `stale` connection does not change it, because the page still receives frames. The list reads again when the connection returns, so the rows that arrived during the loss appear, and a following list moves to its newest.
@@ -88,7 +100,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: a finished turn of a native run whose record is not on this machine, because no record was archived for it or the record holds no transcript, reads as a turn with no messages, for a plain slug and for a suffixed key alike. The server answers `200`, the pane says no record of the turn could be found, and it offers no retry. Only a turn of a container run whose records are not pulled yet answers `503` with a retry, and a still-running turn with no rows yet is unchanged.
 - rule: the tab shows no archived run's turns.
 - rule: on the Activity tab, `j` selects the next row and `k` the previous one in the order the rows are on screen, the selected row stays in view, and the pane opens it. On every other tab `j` and `k` keep moving the run list. A key never acts while the operator types in the search field, the gate answer box or any field, and never while the work item selector is focused.
-- rule: `e` selects the next problem after the selection and wraps to the first. A problem is a failed step, a failed gate check, a backend retry, a churn alert or a failed turn. A heading that folds the problem opens so the row can be reached. With no problem in the run, `e` says `This run has no problems.` and the selection stays.
+- rule: `e` selects the next problem after the selection and wraps to the first, and it steps through the same rows the Problems view lists. A problem is a failed step, a failed gate check, a backend retry or a churn alert, and a failed turn is a failed step. In the whole timeline a failed turn is a stop once, at its turn row. A heading that folds the problem opens so the row can be reached. With no problem in the run, `e` says `This run has no problems.` and the selection stays.
 - rule: after `j`, `k` or `e` moves the selection, focus sits on the selected row when focus was on the page or on another row of the list, so Enter and Space act on the row the operator just moved to and no focus ring shows on another row. A key never takes focus from another control.
 - rule: a key that moves to a row outside the list box pauses the follow of a live run before it scrolls, and a key that moves to a row already in view keeps following. A key never turns the follow on, so the control, the pill and the arrival count keep their meaning. The bar labels `j k` as `move` and `e` as `next problem`, for every run.
 - rule: the search field narrows the rows at once by the text of the row, and marks the match as text, never as markup. A search opens every heading and unfolds every run of passed steps so a match inside one shows. The work item selector limits the list to one item, its first option shows every item, and it opens no heading. The search and the selector apply together, and clearing both restores the list.
@@ -153,6 +165,26 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - tests: groom/tests/test_activity_groups.py::test_a_node_that_runs_twice_has_two_rows
 - tests: groom/tests/test_activity_groups.py::test_a_run_of_successful_steps_folds_to_one_entry_with_the_count_and_the_time
 - tests: groom/tests/test_activity_groups.py::test_a_failed_step_stands_as_its_own_entry_between_the_folds
+- tests: groom/tests/test_activity_problems_dynamic.py::test_the_bar_has_a_problems_control_with_the_count
+- tests: groom/tests/test_activity_problems_dynamic.py::test_pressing_problems_narrows_the_timeline_to_its_problem_rows_under_their_headings_and_pressing_again_restores_it
+- tests: groom/tests/test_activity_problems_dynamic.py::test_the_problems_view_opens_at_its_newest_row
+- tests: groom/tests/test_activity_problems_dynamic.py::test_the_number_of_rows_in_the_problems_view_equals_its_count
+- tests: groom/tests/test_activity_problems_dynamic.py::test_an_answered_gate_is_not_in_the_problems_view_and_adds_nothing_to_the_count
+- tests: groom/tests/test_activity_problems_dynamic.py::test_the_activity_tab_shows_a_badge_with_the_count_that_equals_the_overview_attention_tile_and_says_it_in_words
+- tests: groom/tests/test_activity_problems_dynamic.py::test_the_problem_count_on_the_attention_tile_opens_the_activity_tab_with_problems_on
+- tests: groom/tests/test_activity_problems_dynamic.py::test_selecting_a_backend_retry_says_what_happened_and_links_to_its_turn
+- tests: groom/tests/test_activity_problems_dynamic.py::test_selecting_a_churn_alert_says_what_repeated_and_what_came_next
+- tests: groom/tests/test_activity_problems_dynamic.py::test_a_run_with_no_problems_says_so_offers_the_whole_timeline_and_shows_no_badge
+- tests: groom/tests/test_activity_problems_dynamic.py::test_while_paused_in_the_problems_view_the_pill_counts_new_problems_and_names_them_as_problems
+- tests: groom/tests/test_activity_problems_dynamic.py::test_e_steps_through_the_same_rows_the_problems_view_lists
+- tests: groom/tests/test_activity_problems_dynamic.py::test_search_and_the_work_item_filter_also_apply_inside_the_problems_view
+- tests: groom/tests/test_activity_problems_dynamic.py::test_the_control_exposes_its_pressed_state_an_accessible_name_and_keyboard_operation_and_the_view_passes_an_axe_scan
+- tests: groom/tests/test_activity_problems_dynamic.py::test_the_list_keeps_its_width_between_the_whole_timeline_and_the_problems_view
+- tests: groom/tests/test_activity_problems.py::test_every_count_of_problems_reads_one_definition
+- tests: groom/tests/test_activity_problems.py::test_the_rows_the_problems_view_lists_are_as_many_as_the_count
+- tests: groom/tests/test_activity_problems.py::test_each_turn_after_the_first_of_a_visit_is_one_retry_row_that_names_its_turn
+- tests: groom/tests/test_activity_problems.py::test_a_retry_reading_says_what_happened_and_links_to_its_turn
+- tests: groom/tests/test_activity_problems.py::test_a_churn_reading_says_what_repeated_and_what_came_next
 - tests: groom/tests/test_activity_groups.py::test_a_gate_a_retry_and_a_failed_step_each_have_their_own_entry_with_name_time_and_result
 - tests: groom/tests/test_activity_groups.py::test_a_churn_alert_has_its_own_entry_derived_from_the_stored_spans
 - tests: groom/tests/test_activity_groups.py::test_retries_and_churn_alerts_come_back_from_the_stored_spans_after_a_restart
