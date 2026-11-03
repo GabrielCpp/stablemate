@@ -19,6 +19,11 @@ React Router web app).
 until proven otherwise — in that order, with evidence for both.** A spec that fails for spec
 reasons trains people to re-run and ignore it; a spec nobody trusts catches nothing.
 
+**An end-to-end spec exists to prove the parts are connected, so the suite stays small.** Keep one
+spec per user goal, and give each one a connection no other spec crosses. A defect that would still
+show with the backend faked belongs in a component test: {{ skill_link("testing-component") }} draws
+this line and owns the state matrix, every error message and every race.
+
 ## 1. Locate by role and a stable, minimal accessible name
 
 The accessibility tree is the one queryable surface the product is *contractually obliged* to keep
@@ -113,6 +118,7 @@ differently under parallelism.
 
 | Symptom | What it usually means |
 | --- | --- |
+| A spec walks through one screen's error states | A state matrix in the wrong layer, so it moves to component tests |
 | Assertion targets a full literal sentence | Brittle to copy/localization edits — minimal stable token instead (§1) |
 | Locator is a CSS/XPath structure path | Pins DOM shape, not behaviour; also hides missing roles/names (§1) |
 | A sleep with a magic number | A guess about "how long", not a statement of "what's true" (§2) |
