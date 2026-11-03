@@ -307,4 +307,4 @@ def listing(alive: set[str], now: float | None = None) -> dict[str, Any]:
         (cutoff,),
     )
     items = [_item(row) for row in rows if row["run_id"] not in alive]
-    return {"runs": items, "totals": totals(items)}
+    return {"runs": items, "totals": totals(items), "endings": [[key, label] for key, label in LABELS.items()]}

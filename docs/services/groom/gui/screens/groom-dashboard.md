@@ -28,7 +28,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - activity rail: a left `<nav aria-label="Panels">` landmark with runs, history, attendant, dispatch, and settings mode controls; selecting the gear follows [select activity settings mode](#select-activity-settings-mode).
 - main region: a `<main id="main">` landmark holding all five panes, opened by the page's single `<h1>`, which is visually hidden but present because a screen reader has no title bar to read.
 - runs pane: filter input, the live run list in `#runs-list`, and the open run's detail in `#detail`. With no run selected the list takes the full width and `#detail` is hidden. Selecting a run narrows the list to a column and opens `#detail` beside it.
-- history pane: the totals strip and the table of runs that ended, in `#history`; see [history-table](#history-table). With no run open the table takes the full width. Selecting a row narrows the table to a column of the same runs and opens `#history-detail` beside it, the [detail pane](#detail-pane) of an ended run with its Overview and Activity tabs only. The [history close button](#history-close-button) closes the run and restores the full table.
+- history pane: the [history filters](#history-filters), the totals strip and the table of runs that ended, in `#history`; see [history-table](#history-table). The filters narrow the rows, and the totals follow the rows shown. With no run open the table takes the full width. Selecting a row narrows the table to a column of the same runs and opens `#history-detail` beside it, the [detail pane](#detail-pane) of an ended run with its Overview and Activity tabs only. The [history close button](#history-close-button) closes the run and restores the full table.
 - settings pane: manual container rescan and browser notification permission controls.
 - status bar: fleet counts, repo/worker totals, the connection chip, the refresh control, and the command-palette open button.
 - overlays: command palette in `#palette` and the toast stack in `#toasts`.
@@ -1858,11 +1858,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a run that continues after a resume leaves the table while it is alive and returns with its new figures when it ends again.
 - states: a run with no recorded ending is listed once it has been silent for 48 hours, at its last record's time, with the ending `no ending recorded`.
 - states: with no ended run the table is replaced by `No run has ended in the last 30 days.`
+- states: the table lists the runs that match the [history filters](#history-filters).
+- states: when none match, the table is replaced by the [no-match state](#history-no-match).
 - states: with a run open the table is a column of narrowed rows, each a button with the workflow, the run, the repo and branch, the cost with its priced count, the active time, the end time and the ending.
 - states: the open run's narrowed row carries `aria-current`, and selecting a row follows [open history run](#open-history-run).
-- code: groom/groom/assets/dashboard.js::HistoryPane@7a5211ac3656
+- code: groom/groom/assets/dashboard.js::HistoryPane@9c6071bcac1c
 - code: groom/groom/assets/dashboard.js::historyKey@bc95c514230a
-- code: groom/groom/history.py::listing@752e31ed89fa
+- code: groom/groom/history.py::listing@931989b4c09b
 - detail: [run history summary](../../concepts/run-history-summary.md)
 - tests: groom/tests/test_history_dynamic.py::test_selecting_history_shows_the_ended_runs_newest_end_time_first_under_every_column
 - tests: groom/tests/test_history_dynamic.py::test_a_run_that_is_alive_is_not_listed_in_the_browser
@@ -1892,6 +1894,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a run whose summary is still being read stays out of the sums and the success count.
 - states: the money cell says how many summaries are still being read.
 - states: with no ended run every cell reads zero.
+- states: the cells describe the rows shown after the [history filters](#history-filters).
 - code: groom/groom/assets/dashboard.js::historyTotals@d98d0ba7b1bd
 - code: groom/groom/history.py::totals@4a99a0e9f8a4
 - detail: [run history totals](../../concepts/run-history-totals.md)
@@ -1921,7 +1924,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a run whose summary is not written yet reads `reading its summary` in the ending cell.
 - verify: visible(locator="#history-row", text="reading its summary")
 - states: the figures of a row that is not written yet read `—`, and the row fills in without a reload.
-- code: groom/groom/assets/dashboard.js::HistoryRow@ed272bd11531
+- code: groom/groom/assets/dashboard.js::HistoryRow@f0620a455a76
 - code: groom/groom/assets/dashboard.js::HistoryCost@ffb23dc164fe
 - code: groom/groom/assets/dashboard.js::HistoryItems@73fd80c8f781
 - detail: [run ending mapping](../../concepts/run-ending-mapping.md)
@@ -1946,8 +1949,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: failed when the read fails, an alert (`role="alert"`) that says `History could not be read` and `The Runs tab still works.`, with a `Retry now` button. A retry that succeeds shows the table.
 - verify: visible(locator="#history-state", text="History could not be read")
 - states: while any listed run is still being read, the pane asks again every four seconds, and stops when no run is pending or the mode changes.
-- code: groom/groom/assets/dashboard.js::HistoryPane@7a5211ac3656
-- code: groom/groom/assets/dashboard.js::loadHistory@331587f1e55f
+- code: groom/groom/assets/dashboard.js::HistoryPane@9c6071bcac1c
+- code: groom/groom/assets/dashboard.js::loadHistory@0e24571027b3
 - tests: groom/tests/test_history_dynamic.py::test_the_pane_shows_a_reading_state_that_clears_when_the_table_appears
 - tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
 - tests: groom/tests/test_history_dynamic.py::test_with_no_ended_runs_the_pane_says_so_with_the_totals_at_zero
@@ -1983,6 +1986,66 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::HistoryDetail@3415c7123ea0
 - detail: [run history detail](../../concepts/run-history-detail.md)
 - tests: groom/tests/test_history_open_dynamic.py::test_runs_and_history_render_the_one_detail_component
+
+### history-filters
+- selector: `div.h-top`
+- role: none
+- one-per: History pane
+- name: none
+- placement: width 0-100%, y 0-10%
+- keyboard: Tab reaches the text box and then the Workflow, Repo, Ending and Range selects in that order.
+- parent: [activity-history-mode](#activity-history-mode)
+- states: a text box named `Filter history` above the totals strip and the table.
+- verify: visible(locator="#history-filters", text="Last 30 days")
+- states: a Workflow select that offers `All workflows` and then each workflow in the list.
+- states: a Repo select that offers `All repos` and then each repo in the list.
+- states: an Ending select that offers `Any ending`, then success, gave up, failed, interrupted, crashed and no ending recorded.
+- states: a Range select that offers `Last 30 days` and `Last 7 days` and starts on the last 30 days.
+- states: every control narrows the rows at once with no request.
+- states: the controls combine, so a run shows only when it matches every one that is set.
+- states: with a run open the bar sits above the narrowed column, with a line under the text box that states the filters, such as `coder, last 7 days`.
+- states: the selects keep one width whatever they hold, and a long value cuts off with an ellipsis.
+- states: `j`, `k` and `e` do nothing while a control of the bar holds focus.
+- code: groom/groom/assets/dashboard.js::HistoryFilters@669c36ca8aa4
+- code: groom/groom/assets/dashboard.js::HistoryChoice@0db9daffece8
+- code: groom/groom/assets/dashboard.js::historyShown@1f04a4430cf5
+- code: groom/groom/assets/dashboard.js::historyScope@334b5763b299
+- code: groom/groom/assets/dashboard.js::setHistoryFilters@a091b10df441
+- code: groom/groom/history.py::listing@931989b4c09b
+- detail: [run history filters](../../concepts/run-history-filters.md)
+- tests: groom/tests/test_history_filters_dynamic.py::test_the_workflow_and_repo_filters_offer_the_values_in_the_list_each_with_an_all_choice
+- tests: groom/tests/test_history_filters_dynamic.py::test_the_ending_filter_offers_every_ending_in_words_with_an_any_choice
+- tests: groom/tests/test_history_filters_dynamic.py::test_the_range_filter_offers_the_last_7_and_30_days_starts_on_30_and_narrows_to_7
+- tests: groom/tests/test_history_filters_dynamic.py::test_the_text_filter_narrows_rows_by_run_or_repo_as_the_operator_types
+- tests: groom/tests/test_history_filters_dynamic.py::test_each_filter_narrows_the_rows_at_once_and_filters_combine_without_a_request
+- tests: groom/tests/test_history_filters_dynamic.py::test_selecting_a_run_keeps_the_filters_and_states_them_above_the_narrowed_list
+- tests: groom/tests/test_history_filters_dynamic.py::test_with_no_filter_set_the_table_and_the_narrowed_list_hold_every_run
+- tests: groom/tests/test_history_filters_dynamic.py::test_every_filter_has_an_accessible_name_and_keyboard_operation
+- tests: groom/tests/test_history_filters_dynamic.py::test_j_k_and_e_stay_inert_while_a_filter_holds_focus
+- tests: groom/tests/test_history_filters_dynamic.py::test_the_filtered_history_has_no_accessibility_violations
+- tests: groom/tests/test_history_filters_dynamic.py::test_a_long_run_id_and_repo_label_keep_the_filter_bar_inside_the_pane_at_one_width
+- tests: groom/tests/test_history.py::test_the_listing_names_every_ending_once_in_the_order_the_ending_filter_offers_them
+
+### history-no-match
+- selector: `div.empty-big`
+- role: none
+- name: none
+- placement: width 0-100%, y 12-100%
+- keyboard: Tab reaches the `Clear the filters` button.
+- parent: [history-filters](#history-filters)
+- states: when rows exist and none match, the table gives way to `No runs match these filters.`
+- verify: visible(locator="#history-no-match", text="No runs match these filters.")
+- states: the filter bar and the totals strip stay above the message.
+- states: the totals strip reads zero in every cell.
+- states: a `Clear the filters` button sits under the message.
+- verify: visible(locator="#history-no-match", text="Clear the filters")
+- states: in the narrowed column the text filter can leave the column empty, and the run stays open.
+- code: groom/groom/assets/dashboard.js::HistoryNoMatch@4386c8659547
+- code: groom/groom/assets/dashboard.js::clearHistoryFilters@6e225267a691
+- detail: [run history filters](../../concepts/run-history-filters.md)
+- leads-to: [clear history filters](#clear-history-filters)
+- tests: groom/tests/test_history_filters_dynamic.py::test_when_nothing_matches_the_pane_says_so_the_totals_read_zero_and_a_control_clears_the_filters
+- tests: groom/tests/test_history_filters_dynamic.py::test_the_narrowed_list_says_so_when_the_text_filter_leaves_it_empty_and_the_run_stays_open
 
 ## Interactions
 
@@ -2929,7 +2992,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Requests [get-run-history](../../http/get-run-history.md) again.
   - Shows the table when the read succeeds.
   - Keeps the failed state when the read fails again.
-- code: groom/groom/assets/dashboard.js::loadHistory@331587f1e55f
+- code: groom/groom/assets/dashboard.js::loadHistory@0e24571027b3
 - tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
 ### open-history-run
 - on: [history-row](#history-row)
@@ -2942,7 +3005,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - when:
   - The history table is showing.
 - does:
-  - Narrows the list to a column of the same runs and marks the opened row current with `aria-current`.
+  - Narrows the list to a column of the runs that match the filters.
+  - Keeps the filters set and states them above the column.
+  - Marks the opened row current with `aria-current`.
   - Opens the run's detail beside the column, on the Overview tab, with the head saying `ended`, the end time and the ending in words.
   - Shows `Reading this run…` until the Overview arrives.
   - Says the run's figures could not be read and offers `Retry now` when the read fails.
@@ -2968,8 +3033,55 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - A run is open in History.
 - does:
   - Closes the detail and returns the full table.
+  - Keeps the filters set.
   - Returns focus to the closed run's row.
   - verify: absent(subject="#history-detail-pane in the accessibility tree after close")
 - code: groom/groom/assets/dashboard.js::closeHistoryRun@2dcc04fba758
 - detail: [run history detail](../../concepts/run-history-detail.md)
 - tests: groom/tests/test_history_open_dynamic.py::test_the_close_control_returns_to_the_full_table_and_the_detail_closes
+
+### filter-history
+- on: [history-filters](#history-filters)
+- trigger: typing in the text box, or choosing a value in the Workflow, Repo, Ending or Range select.
+- role: searchbox
+- name: `Filter history`
+- keyboard: Tab reaches each control, and the arrow keys change a select.
+- verify: visible(locator="#history-filters", text="Last 30 days")
+- when:
+  - The history list is showing.
+- does:
+  - Narrows the table or the narrowed column to the runs that match every filter that is set.
+  - verify: visible(locator="#history-row", text="success")
+  - Recomputes the totals strip from the rows shown.
+  - verify: visible(locator="#history-totals", text="runs")
+  - Sends no request.
+  - verify: count(subject="HTTP requests", equals=0)
+  - Keeps the filters when a run is selected or closed.
+  - Keeps the filters and the open run when the operator leaves History for another rail tab and comes back.
+- code: groom/groom/assets/dashboard.js::setHistoryFilters@a091b10df441
+- code: groom/groom/assets/dashboard.js::historyShown@1f04a4430cf5
+- code: groom/groom/assets/dashboard.js::historySums@d98874013e39
+- detail: [run history filters](../../concepts/run-history-filters.md)
+- tests: groom/tests/test_history_filters_dynamic.py::test_each_filter_narrows_the_rows_at_once_and_filters_combine_without_a_request
+- tests: groom/tests/test_history_filters_dynamic.py::test_the_text_filter_narrows_rows_by_run_or_repo_as_the_operator_types
+- tests: groom/tests/test_history_filters_dynamic.py::test_the_totals_describe_the_rows_shown_with_the_estimate_partly_priced_and_reading_clauses
+- tests: groom/tests/test_history_filters_dynamic.py::test_closing_the_run_returns_to_the_table_with_the_filters_still_set
+- tests: groom/tests/test_history_filters_dynamic.py::test_leaving_history_for_another_tab_and_coming_back_keeps_the_filters_and_the_open_run
+
+### clear-history-filters
+- on: [history-no-match](#history-no-match)
+- trigger: click, tap, Enter or Space on `Clear the filters`.
+- role: button
+- name: `Clear the filters`
+- keyboard: Enter or Space activates the button.
+- verify: visible(locator="#history-no-match", text="Clear the filters")
+- when:
+  - The filters leave no run showing.
+- does:
+  - Sets every filter back to its start, with the range on the last 30 days.
+  - Shows the table again.
+  - verify: visible(locator="#history-table", text="Ended")
+  - Moves focus to the text box.
+- code: groom/groom/assets/dashboard.js::clearHistoryFilters@6e225267a691
+- detail: [run history filters](../../concepts/run-history-filters.md)
+- tests: groom/tests/test_history_filters_dynamic.py::test_when_nothing_matches_the_pane_says_so_the_totals_read_zero_and_a_control_clears_the_filters

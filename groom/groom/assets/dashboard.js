@@ -36,6 +36,9 @@ import { html, render, useState, useEffect, useLayoutEffect, useRef } from "/ass
 
 const UNCOMMITTED_VIEW = "uncommitted";
 const BRANCH_VIEW = "branch";
+const RETENTION_DAYS = 30;
+const NO_HISTORY_FILTERS = { text: "", workflow: "", repo: "", ending: "", days: RETENTION_DAYS };
+const HISTORY_RANGES = [[RETENTION_DAYS, "Last 30 days"], [7, "Last 7 days"]];
 
 // --------------------------------------------------------------------------- //
 // Store — one snapshot, subscribed to by every island
@@ -74,7 +77,7 @@ const store = {
     // that only the server's own threads see — so this pane polls while open.
     dispatch: { status: "idle", queues: [], selectedQueue: null, items: [], selectedItem: null },
     settings: { status: "idle", attend: null, saving: false },
-    history: { status: "idle", runs: [], totals: null, selected: null, detail: null },
+    history: { status: "idle", runs: [], totals: null, endings: [], filters: NO_HISTORY_FILTERS, selected: null, detail: null },
     palette: { open: false, query: "", active: 0 },
   },
   listeners: new Set(),
@@ -3468,7 +3471,6 @@ function stopDispatchPoll() {
 }
 
 const HISTORY_POLL_MS = 4000;
-const RETENTION_DAYS = 30;
 let _historyPoll = null;
 
 function stopHistoryPoll() {
@@ -3488,7 +3490,7 @@ function loadHistory() {
     .then((body) => {
       const runs = body.runs || [];
       const open = runs.find((one) => one.run_id === store.get().history.selected);
-      setIn("history", { status: "ready", runs, totals: body.totals, ...(open ? { detail: endedDetail(open) } : {}) });
+      setIn("history", { status: "ready", runs, totals: body.totals, endings: body.endings || [], ...(open ? { detail: endedDetail(open) } : {}) });
       if (store.get().mode === "history" && body.totals && body.totals.reading > 0) {
         _historyPoll = setTimeout(loadHistory, HISTORY_POLL_MS);
       }
@@ -3509,6 +3511,81 @@ function fmtLong(seconds) {
 
 function fmtUsdLong(value) {
   return "$" + value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function historyRepoText(run) {
+  return run.repo ? run.repo + (run.branch ? "@" + run.branch : "") : "";
+}
+
+function historyShown(runs, filters) {
+  const text = filters.text.trim().toLowerCase();
+  const since = Date.now() / 1000 - filters.days * 86400;
+  return runs.filter((run) =>
+    (!filters.workflow || run.workflow === filters.workflow)
+    && (!filters.repo || run.repo === filters.repo)
+    && (!filters.ending || run.ending === filters.ending)
+    && (run.ended_ts || 0) >= since
+    && (!text || (run.run_id + " " + historyRepoText(run)).toLowerCase().includes(text)));
+}
+
+function historySums(runs) {
+  const ready = runs.filter((run) => run.ready);
+  const sum = (list, pick) => list.reduce((total, run) => total + (pick(run) || 0), 0);
+  const estimate = sum(ready, (run) => run.est_usd);
+  return {
+    runs: runs.length,
+    reading: runs.length - ready.length,
+    spent_usd: sum(ready, (run) => run.cost_usd) + estimate,
+    estimate_usd: estimate,
+    partly_priced: ready.filter((run) => run.cost_usd != null && run.priced_turns < run.turns).length,
+    active_s: sum(ready, (run) => run.active_s),
+    ready: ready.length,
+    success: ready.filter((run) => run.ending === "success").length,
+  };
+}
+
+function setHistoryFilters(patch) {
+  setIn("history", { filters: Object.assign({}, store.get().history.filters, patch) });
+}
+
+function clearHistoryFilters() {
+  setHistoryFilters(NO_HISTORY_FILTERS);
+  const box = document.querySelector("#history input[type=search]");
+  if (box) box.focus();
+}
+
+function historyScope(history) {
+  const { filters, endings } = history;
+  const ending = (endings.find(([key]) => key === filters.ending) || [])[1];
+  const range = (HISTORY_RANGES.find(([days]) => days === filters.days) || HISTORY_RANGES[0])[1];
+  return [filters.workflow || "all workflows", filters.repo, ending, range.toLowerCase()].filter(Boolean).join(", ");
+}
+
+function HistoryChoice({ label, all, value, values, onChange }) {
+  const listed = value && !values.some(([key]) => key === value) ? values.concat([[value, value]]) : values;
+  return html`<select class="h-sel" aria-label=${label} onChange=${(e) => onChange(e.target.value)}>
+    <option value="" selected=${!value}>${all}</option>
+    ${listed.map(([key, text]) => html`<option value=${key} selected=${key === value}>${text}</option>`)}
+  </select>`;
+}
+
+function HistoryFilters({ history, narrow }) {
+  const { filters, runs, endings } = history;
+  const distinct = (pick) => Array.from(new Set(runs.map(pick).filter(Boolean))).sort().map((one) => [one, one]);
+  const box = html`<input class="filter" type="search" placeholder="Filter by run or repo…" aria-label="Filter history" value=${filters.text} onInput=${(e) => setHistoryFilters({ text: e.target.value })} />`;
+  if (narrow) return html`<div class="h-top narrow">${box}<span class="dim scope">${historyScope(history)}</span></div>`;
+  return html`<div class="h-top">${box}
+    <${HistoryChoice} label="Workflow" all="All workflows" value=${filters.workflow} values=${distinct((run) => run.workflow)} onChange=${(workflow) => setHistoryFilters({ workflow })} />
+    <${HistoryChoice} label="Repo" all="All repos" value=${filters.repo} values=${distinct((run) => run.repo)} onChange=${(repo) => setHistoryFilters({ repo })} />
+    <${HistoryChoice} label="Ending" all="Any ending" value=${filters.ending} values=${endings} onChange=${(ending) => setHistoryFilters({ ending })} />
+    <select class="h-sel" aria-label="Range" onChange=${(e) => setHistoryFilters({ days: Number(e.target.value) })}>
+      ${HISTORY_RANGES.map(([days, text]) => html`<option value=${days} selected=${days === filters.days}>${text}</option>`)}
+    </select>
+  </div>`;
+}
+
+function HistoryNoMatch() {
+  return html`<div class="empty-big">No runs match these filters.<br /><button type="button" class="btn ghost" onClick=${clearHistoryFilters}>Clear the filters</button></div>`;
 }
 
 function historyEndingClass(ending) {
@@ -3553,7 +3630,7 @@ function historyOpenKey(event, id) {
 }
 
 function HistoryRow({ run, tabIndex }) {
-  const repoText = run.repo ? run.repo + (run.branch ? "@" + run.branch : "") : "";
+  const repoText = historyRepoText(run);
   const repo = run.repo ? html`${run.repo}<span class="dim">${run.branch ? "@" + run.branch : ""}</span>` : html`<span class="dim">—</span>`;
   const who = html`<td class="l clip" title=${run.run_id}><span class="who"><${TypeBadge} type=${run.workflow} hue=${run.type_hue} /><span class="id">${run.run_id}</span></span></td>`;
   const when = html`<td class="l">${fmtWhen(run.ended_ts)}</td>`;
@@ -3590,7 +3667,7 @@ function historyKey(event) {
 }
 
 function HistoryNarrowRow({ run, selected }) {
-  const repoText = run.repo ? run.repo + (run.branch ? "@" + run.branch : "") : "";
+  const repoText = historyRepoText(run);
   const cost = run.cost_usd != null
     ? html`${fmtUsdLong(run.cost_usd)}${run.priced_turns < run.turns ? html` <span class="dim">${run.priced_turns}/${run.turns}</span>` : null}`
     : run.est_usd != null ? html`<span class="dim">est ${fmtUsdLong(run.est_usd)}</span>` : html`<span class="dim">—</span>`;
@@ -3608,9 +3685,13 @@ function HistoryNarrow({ history }) {
     const on = list.current && list.current.querySelector(".row.selected");
     if (on && document.activeElement === document.body) on.focus();
   }, [history.selected]);
-  return html`<div class="h-list" ref=${list} role="list" aria-label="Runs that ended, newest first">
-    ${history.runs.map((run) => html`<div role="listitem" key=${run.run_id}><${HistoryNarrowRow} run=${run} selected=${run.run_id === history.selected} /></div>`)}
-  </div>`;
+  const shown = historyShown(history.runs, history.filters);
+  return html`<${HistoryFilters} history=${history} narrow=${true} />
+    <div class="h-list" ref=${list} role="list" aria-label="Runs that ended, newest first">
+      ${shown.length
+        ? shown.map((run) => html`<div role="listitem" key=${run.run_id}><${HistoryNarrowRow} run=${run} selected=${run.run_id === history.selected} /></div>`)
+        : html`<${HistoryNoMatch} />`}
+    </div>`;
 }
 
 function HistoryPane() {
@@ -3627,17 +3708,19 @@ function HistoryPane() {
       <span class="spin" aria-hidden="true"></span>Reading the runs that ended…
     </div>`;
   }
-  const cells = historyTotals(history.totals);
-  const table = history.runs.length
+  const shown = historyShown(history.runs, history.filters);
+  const cells = historyTotals(historySums(shown));
+  const table = shown.length
     ? html`<table class="ht" aria-label="Runs that ended, newest first" onKeyDown=${historyKey}>
         <thead><tr>
           <th scope="col" class="l">Run</th><th scope="col" class="l">Repo</th><th scope="col" class="l">Ending</th><th scope="col" class="l sorted" aria-sort="descending">Ended ▾</th>
           <th scope="col">Active</th><th scope="col">Wall</th><th scope="col">Cost</th><th scope="col">Items</th><th scope="col">Turns</th><th scope="col">Gates</th><th scope="col">Problems</th>
         </tr></thead>
-        <tbody>${history.runs.map((run, i) => html`<${HistoryRow} key=${run.run_id} run=${run} tabIndex=${i === 0 ? 0 : -1} />`)}</tbody>
+        <tbody>${shown.map((run, i) => html`<${HistoryRow} key=${run.run_id} run=${run} tabIndex=${i === 0 ? 0 : -1} />`)}</tbody>
       </table>`
-    : html`<div class="empty-big">No run has ended in the last ${RETENTION_DAYS} days.</div>`;
-  return html`<div class="h-sum">${cells.map(([big, text]) => html`<span><b>${big}</b>${text}</span>`)}</div>
+    : history.runs.length ? html`<${HistoryNoMatch} />` : html`<div class="empty-big">No run has ended in the last ${RETENTION_DAYS} days.</div>`;
+  return html`<${HistoryFilters} history=${history} />
+    <div class="h-sum">${cells.map(([big, text]) => html`<span><b>${big}</b>${text}</span>`)}</div>
     <div class="h-list">${table}</div>`;
 }
 

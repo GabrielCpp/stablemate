@@ -17,7 +17,7 @@ The operator-facing screen is the [history table](../gui/screens/groom-dashboard
 
 - code: groom/groom/history.py::discover@a3250acb0567
 - code: groom/groom/history.py::compute@afbde2532938
-- code: groom/groom/history.py::listing@752e31ed89fa
+- code: groom/groom/history.py::listing@931989b4c09b
 - code: groom/groom/app.py::_summary_loop@7d25526428f4
 - code: groom/groom/pools.py::SUMMARY@6ead18da664b
 - rule: the history list reads stored per-run summaries and scans no run's records

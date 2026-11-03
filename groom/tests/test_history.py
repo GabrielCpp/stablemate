@@ -265,6 +265,12 @@ def test_the_list_reads_summaries_and_opens_in_under_two_seconds_with_the_store_
     assert took < 2.0
 
 
+def test_the_listing_names_every_ending_once_in_the_order_the_ending_filter_offers_them() -> None:
+    with _DB():
+        result = history.listing(set())
+    assert result["endings"] == [["success", "success"], ["gave-up", "gave up"], ["failed", "failed"], ["interrupted", "interrupted"], ["crashed", "crashed"], ["none", "no ending recorded"]]
+
+
 def test_the_history_route_lists_the_ended_runs_and_leaves_out_a_run_that_is_alive() -> None:
     now = time.time()
     with _DB():
@@ -310,6 +316,17 @@ def test_the_book_screen_names_history_in_the_rail_and_describes_its_pane() -> N
     assert "### activity-history-mode" in book
     assert "### history-table" in book
     assert 'aria-sort="descending"' in book
+
+
+def test_the_book_screen_describes_the_history_filters_and_their_rules() -> None:
+    root = Path(__file__).resolve().parents[2] / "docs/services/groom"
+    book = (root / "gui/screens/groom-dashboard.md").read_text()
+    rules = (root / "concepts/run-history-filters.md").read_text()
+    for heading in ("### history-filters", "### history-no-match", "### filter-history", "### clear-history-filters"):
+        assert heading in book
+    assert "No runs match these filters." in book
+    assert "- rule: the filters narrow the rows in the browser from the list already loaded, with no request" in rules
+    assert "- rule: the range offers the last 7 days and the last 30 days and starts on the last 30 days" in rules
 
 
 def unnamed(run: str, base: float, terminal: str, workspace: str = "", branch: str = "", late: float | None = None) -> None:

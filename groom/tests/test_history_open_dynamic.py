@@ -394,12 +394,19 @@ def test_the_opened_history_has_no_accessibility_violations():
     assert not activity, json.dumps(activity, indent=1)
 
 
+LONG_RUN = "hist-a-" + "r" * 53
+LONG_REPO = "r" * 45
+
+
+def _long_names():
+    return _history(_row(LONG_RUN, 1, repo=LONG_REPO), _row("hist-b", 2))
+
+
 def test_a_long_run_id_and_repo_label_stay_inside_the_narrowed_list_and_the_head_wraps_the_whole_id():
     live = _live()
     assert live is not None, _UNAVAILABLE
-    run = "hist-a-" + "r" * 53
-    repo = "r" * 45
-    with _history(_row(run, 1, repo=repo), _row("hist-b", 2)):
+    run = LONG_RUN
+    with _long_names():
         page = _opened(live, run)
         try:
             page.wait_for_selector(f"{DETAIL} .detail-head")

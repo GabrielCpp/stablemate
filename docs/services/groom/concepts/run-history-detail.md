@@ -11,7 +11,7 @@ The detail is built in the browser from the run's [history row](run-history-summ
 
 - code: groom/groom/assets/dashboard.js::endedDetail@d25fd1f1412b
 - code: groom/groom/assets/dashboard.js::Detail@e1d4b94aa72a
-- code: groom/groom/assets/dashboard.js::HistoryNarrow@9bc0d27d46cd
+- code: groom/groom/assets/dashboard.js::HistoryNarrow@51b05351f8ec
 - code: groom/groom/assets/dashboard.js::HistoryDetail@3415c7123ea0
 - code: groom/groom/assets/dashboard.js::openHistoryRun@1e7244010b4a
 - code: groom/groom/assets/dashboard.js::closeHistoryRun@2dcc04fba758
@@ -24,6 +24,7 @@ The detail is built in the browser from the run's [history row](run-history-summ
 - rule: the Activity tab of an ended run opens with finished items folded and has no follow control and no live pill, and an answered gate reads in Activity only, because the detail of an ended run has no answer box
 - rule: the Activity badge, the attention tile and the problem column of the list show one number
 - rule: while the run is read the detail says `Reading this run…` and clears when the Overview appears, and a failed read says the run's figures could not be read, offers a retry and keeps the list
+- rule: selecting or closing a run keeps the [history filters](run-history-filters.md), and the narrowed column holds the runs that match them
 - rule: closing the run returns the full table and puts focus on the run's row, and `j` and `k` open the next and previous run in History and move the timeline while Activity shows
 - rule: the detail of an ended run is built in the browser from the history row and the run's own Overview and Activity reads, and groom adds no endpoint for it
 - rule: a workflow chip in a narrowed row keeps one line at its natural width, and the repo and run text take the ellipsis
