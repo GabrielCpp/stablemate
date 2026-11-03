@@ -266,7 +266,7 @@ class Ostler:
         return milestones_mod.ui_services(self.graph, names)
 
     def search(self, q: str, *, etype: str | None = None) -> builtins.list[dict]:
-        """Ranked full-text search over every document root (``ostler search``)."""
+        """Ranked full-text search over the current book and decisions (``ostler search``)."""
         return query_mod.search(self.graph, q, etype)
 
     def query(

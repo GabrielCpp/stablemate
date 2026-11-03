@@ -241,11 +241,11 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 
 ### ostler-search
 - usage: ostler search QUERY [--type TYPE] [--root ROOT] [--limit N] [--match] [--json] — ranked
-  full-text search over every section of every document root, QA results under a spec excepted,
-  printing one hit per two lines (or the hits as one indented array with --json)
+  full-text search over the current book and decisions, at most two hits per page, printing one hit per two lines (or the hits as one indented array with --json)
 - flags:
   - --type (keep the sections of pages with this frontmatter type), --root (keep one document root:
-    services, epics, milestones, specs, register or adr), --limit (the most hits to return, 10 by
+    services, decisions, adrs, epics, milestones, specs or register, or `all` for every root and
+    fixture pages), --limit (the most hits to return, 10 by
     default), --match (pass QUERY through as raw FTS5 syntax, and exit 2 when FTS5 cannot parse it), --json (print the hits as one indented
     JSON array)
 - args: query — the words to look for, joined with OR and matched as stemmed prefixes
@@ -255,7 +255,7 @@ checkout, with `-C book-scratch`, so the real books never decide the outcome.
 - verify: json_path(path="[0].type", equals="flow")
 - verify: json_path(path="[0].path", equals="docs/services/demo/flows/say-hello.md")
 - fixture: [book scratch repo](fixtures/book-scratch-repo.md) — seeds a flow titled "Say hello"
-- code: ostler/ostler/textindex.py::TextIndex.search@6845fdf66e03
+- code: ostler/ostler/textindex.py::TextIndex.search@efaf18dd94c9
 - detail: [The text index](concepts/the-text-index.md)
 
 ### ostler-index-build

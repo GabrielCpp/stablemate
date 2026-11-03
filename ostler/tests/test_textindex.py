@@ -132,7 +132,7 @@ def test_a_scenario_checkout_under_a_spec_is_not_searched(repo: Path):
     write(specs / "STORY-1/plan.md", "---\ntype: spec.plan\n---\n\n# Plan\n\nThe zebra ledger plan.\n")
     write(specs / "STORY-1/qa/scenario/AGENTS.md", "# Agents\n\nThe zebra ledger rules.\n")
     write(specs / "STORY-1/qa/scenario/docs/services/copy.md", _concept("copy", "Copy", "A zebra ledger page."))
-    paths = [hit["path"] for hit in _search(repo, "zebra ledger")]
+    paths = [hit["path"] for hit in _search(repo, "zebra ledger", root="specs")]
     assert len(paths) == 1
     assert paths[0].endswith("STORY-1/plan.md")
 
@@ -165,9 +165,54 @@ def test_type_and_root_filters(repo: Path):
     assert {h["root"] for h in _search(repo, "gizmo", root="services")} == {"services"}
 
 
+def test_default_search_leaves_out_plans_and_history(repo: Path):
+    write(repo / "docs/services/demo/concepts/okapi.md", _concept("okapi", "Okapi", "okapi today"))
+    specs = load(repo).doc_roots["specs"]
+    write(specs / "STORY-1/plan.md", "---\ntype: spec.plan\n---\n\n# Plan\n\nThe okapi plan.\n")
+    assert {h["root"] for h in _search(repo, "okapi")} == {"services"}
+    assert {h["root"] for h in _search(repo, "okapi", root="specs")} == {"specs"}
+    assert {h["root"] for h in _search(repo, "okapi", root="all")} == {"services", "specs"}
+    assert {h["root"] for h in _search(repo, "okapi", etype="spec.plan")} == {"specs"}
+
+
+def test_a_fixture_page_stays_out_until_asked_for(repo: Path):
+    write(repo / "docs/services/demo/fixtures/okapi.md",
+          "---\ntype: fixture\nslug: okapi\ntitle: Okapi repo\n---\n\n# Okapi repo\n\nokapi setup\n")
+    assert _search(repo, "okapi") == []
+    assert _search(repo, "okapi", root="services") == []
+    assert {h["type"] for h in _search(repo, "okapi", etype="fixture")} == {"fixture"}
+    assert {h["type"] for h in _search(repo, "okapi", root="all")} == {"fixture"}
+
+
+def test_one_page_cannot_fill_the_hits(repo: Path):
+    sections = "".join(f"## Part {n}\n\nokapi okapi okapi\n\n" for n in range(5))
+    write(repo / "docs/services/demo/concepts/many.md", _concept("many", "Okapi many", sections))
+    write(repo / "docs/services/demo/concepts/one.md", _concept("one", "One", "an okapi once"))
+    paths = [h["path"] for h in _search(repo, "okapi", limit=3)]
+    assert len(paths) == 3
+    assert sum(path.endswith("many.md") for path in paths) == 2
+    assert paths[-1].endswith("one.md")
+
+
+def test_check_bullets_are_not_searched(repo: Path):
+    write(repo / "docs/services/demo/hello.md", (
+        "---\ntype: cli\nslug: hello\ntitle: Hello\n---\n# Hello\n\n## Commands\n\n### greet\n"
+        "- does:\n"
+        "  - Says hello.\n"
+        "    - fixture: okapi-repo\n"
+        "    - verify: stdout(matches=\"okapi\",\n"
+        "        timeout=\"wombat\")\n"
+        "- run: invoke(argv=[\"okapi\"])\n"
+        "- code: src/quokka.py::hello@abc\n"
+    ))
+    assert _search(repo, "okapi") == []
+    assert _search(repo, "wombat") == []
+    assert [h["path"].rsplit("/", 1)[-1] for h in _search(repo, "quokka")] == ["hello.md"]
+
+
 def test_disabled_index_searches_without_a_file(repo: Path, index_home: Path):
     with index.session(repo, directory=index_home, enabled=False):
-        hits = textindex.search(load(repo), "thing works")
+        hits = textindex.search(load(repo), "thing works", root="all")
     assert hits
     assert not (index_home / "textindex").exists()
 
@@ -179,7 +224,7 @@ def test_enabled_index_writes_one_file(repo: Path, index_home: Path):
 
 
 def test_cli_search_json(repo: Path, index_home: Path, capsys):
-    assert main(["-C", str(repo), "search", "thing works", "--json"]) == 0
+    assert main(["-C", str(repo), "search", "thing works", "--root", "epics", "--json"]) == 0
     hits = json.loads(capsys.readouterr().out)
     assert hits
     assert set(hits[0]) == {
@@ -187,7 +232,7 @@ def test_cli_search_json(repo: Path, index_home: Path, capsys):
 
 
 def test_cli_search_human(repo: Path, index_home: Path, capsys):
-    assert main(["-C", str(repo), "search", "thing works"]) == 0
+    assert main(["-C", str(repo), "search", "thing works", "--root", "epics"]) == 0
     out = capsys.readouterr().out.splitlines()
     assert out[0].split()[1].startswith("epics/")
     assert out[1].startswith("        ")

@@ -64,8 +64,9 @@ ostler next-story <epic> [--json]             # next runnable story (deps satisf
 ostler path epic <epic> | path spec <story-id> | path story <story-id> | path branch <story-id> [--epic]
 ```
 
-`search` ranks sections with BM25 across every document root (the book, epics, milestones, specs,
-register and adr), OR-ing the query's terms with prefix and stemming matches. `index build` builds
+`search` ranks sections with BM25 across the current book and decisions, OR-ing the query's terms
+with prefix and stemming matches. `--root` names epics, milestones, specs or the register, and
+`--root all` reads every root. `index build` builds
 or refreshes the store that backs it and reports the counts.
 
 Epic directories are numbered in creation order (`docs/epics/0001-checkout-flow/`), so ask

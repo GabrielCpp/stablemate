@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,14 +26,21 @@ CREATE VIRTUAL TABLE IF NOT EXISTS sections USING fts5(
 _TERM_RE = re.compile(r"\w+")
 _SPACE_RE = re.compile(r"\s+")
 _H1_RE = re.compile(r"^# +(.+?)\s*$", re.MULTILINE)
+_CHECK_BULLET_RE = re.compile(r"^(\s*)- (?:verify|run|fixture):")
 
 _SEARCH_SQL = """
 SELECT root, type, node, path, anchor, heading, title,
        bm25(sections, 0, 0, 0, 0, 0, 3.0, 10.0, 5.0, 1.0) AS rank,
        snippet(sections, 8, '[', ']', '…', 24) AS snippet
 FROM sections WHERE sections MATCH ?{where}
-ORDER BY rank LIMIT ?
+ORDER BY rank
 """
+
+ALL_ROOTS = "all"
+_RECORD_ROOTS = ("epics", "milestones", "specs", "register")
+_SCAFFOLD_TYPE = "fixture"
+_HITS_PER_PAGE = 2
+_ROW_FORMAT = "without-checks"
 
 
 @dataclass(frozen=True)
@@ -94,10 +102,26 @@ def _locate(graph: Graph, path: Path) -> tuple[str, str]:
     return rel.removesuffix(".md"), rel
 
 
+def _without_checks(lines: list[str]) -> list[str]:
+    kept: list[str] = []
+    bullet_indent: int | None = None
+    for line in lines:
+        indent = len(line) - len(line.lstrip())
+        if bullet_indent is not None and line.strip() and indent > bullet_indent:
+            continue
+        bullet_indent = None
+        check = _CHECK_BULLET_RE.match(line)
+        if check:
+            bullet_indent = len(check.group(1))
+            continue
+        kept.append(line)
+    return kept
+
+
 def _text(section: markdown.Section) -> str:
     start = section.line_start + (1 if section.level else 0)
     end = section.children[0].line_start if section.children else section.line_end
-    return _SPACE_RE.sub(" ", " ".join(section.body_lines[start:end])).strip()
+    return _SPACE_RE.sub(" ", " ".join(_without_checks(section.body_lines[start:end]))).strip()
 
 
 def _walk(
@@ -169,7 +193,7 @@ class TextIndex:
         if columns and "mtime_ns" not in columns:
             conn.executescript("DROP TABLE files; DROP TABLE sections; DROP TABLE meta;")
         conn.executescript(_SCHEMA)
-        epoch = store.epoch if store is not None else ""
+        epoch = f"{_ROW_FORMAT}:{store.epoch}" if store is not None else _ROW_FORMAT
         current = conn.execute("SELECT value FROM meta WHERE key = 'epoch'").fetchone()
         if not persistent or current is None or current[0] != epoch:
             with conn:
@@ -246,21 +270,31 @@ class TextIndex:
         if etype is not None:
             where += " AND type = ?"
             params.append(etype)
-        if root is not None:
+        elif root != ALL_ROOTS:
+            where += " AND type != ?"
+            params.append(_SCAFFOLD_TYPE)
+        if root is None and etype is None:
+            where += f" AND root NOT IN ({', '.join('?' * len(_RECORD_ROOTS))})"
+            params.extend(_RECORD_ROOTS)
+        elif root is not None and root != ALL_ROOTS:
             where += " AND root = ?"
             params.append(root)
-        params.append(limit)
+        hits: list[dict] = []
+        per_page: Counter[str] = Counter()
         try:
-            found = self._conn.execute(_SEARCH_SQL.format(where=where), params).fetchall()
+            for r in self._conn.execute(_SEARCH_SQL.format(where=where), params):
+                if len(hits) == limit:
+                    break
+                if per_page[r[3]] == _HITS_PER_PAGE:
+                    continue
+                per_page[r[3]] += 1
+                hits.append({
+                    "root": r[0], "type": r[1], "node": r[2], "path": r[3], "anchor": r[4],
+                    "heading": r[5], "title": r[6], "score": round(-r[7], 3), "snippet": r[8],
+                })
         except sqlite3.OperationalError as exc:
             raise ValueError(str(exc)) from exc
-        return [
-            {
-                "root": r[0], "type": r[1], "node": r[2], "path": r[3], "anchor": r[4],
-                "heading": r[5], "title": r[6], "score": round(-r[7], 3), "snippet": r[8],
-            }
-            for r in found
-        ]
+        return hits
 
 
 def build(graph: Graph) -> RefreshReport:

@@ -200,10 +200,10 @@ def _build_parser() -> argparse.ArgumentParser:
     ls.add_argument("--status")
     ls.add_argument("--json", action="store_true")
 
-    se = sub.add_parser("search", help="ranked full-text search over every document root")
+    se = sub.add_parser("search", help="ranked full-text search over the current book and decisions")
     se.add_argument("q")
     se.add_argument("--type", dest="etype", help="a frontmatter type, such as concept or flow")
-    se.add_argument("--root", help="a document root: services, epics, milestones, specs, register, adr")
+    se.add_argument("--root", help="a document root: services, decisions, adrs, epics, milestones, specs, register, or all")
     se.add_argument("--limit", type=int, default=10, help="most hits to return")
     se.add_argument(
         "--match", action="store_true",
