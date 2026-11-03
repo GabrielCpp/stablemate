@@ -5,7 +5,7 @@ title: groom server
 ---
 # groom server
 
-- code: groom/groom/app.py::create_app@f4ea07948060
+- code: groom/groom/app.py::create_app@724bc47d35ee
 - openapi: none; every first-party handler is registered with `include_in_schema=False`.
 
 The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves one HTML document — the shell for the [groom dashboard service](../groom.md) — and then speaks JSON for everything else: the [dashboard state payload](../formats/dashboard-state-payload.md) behind the [runs fleet view](../runs-fleet-view.md), the [run detail payload](#get-run-detail), and the repository/file/diff panel data. It also receives the residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md) and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member, which registers 32 route handlers: one dashboard HTML entry point, nine JSON read endpoints, four mutation/push endpoints, four run outbox/inbox endpoints, six attendant endpoints (four reads, two writes), three OTLP ingest routes and one telemetry query route, one reload endpoint, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`, which registers five startup hooks — [schedule startup discovery scan](#schedule-startup-discovery-scan), the alert-rule ticker, the [live clock](#schedule-live-clock), the run-telemetry archive routine, and the attend-recovery routine — and cancels the three loop-driven ones (alert-rule, live clock, archive), plus shuts down the process worker pools, on shutdown.
@@ -22,6 +22,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - [get-run-entry](get-run-entry.md)
 - [get-run-search](get-run-search.md)
 - [get-run-records](get-run-records.md)
+- [get-run-history](get-run-history.md)
 
 ### get-root-dashboard-html
 
@@ -2693,3 +2694,24 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: no websocket frame is emitted.
 - code: groom/groom/app.py::run_search@60270d508d18
 - tests: groom/tests/test_activity.py::test_an_unreadable_transcript_fails_the_search_and_the_endpoint_answers_503
+
+### serve-run-history
+
+- on: [get-run-history](get-run-history.md)
+- trigger: the operator selects History on the rail, a four-second timer fires while a listed run is still being read, or the operator presses Retry now after a failed read, and the dashboard requests `GET /api/history`.
+- when:
+  - The groom process has started and the route table includes the history route.
+- does:
+  - Enters `groom/groom/app.py::api_history` and runs `groom/groom/history.py::listing` on the query pool, so a slow read never blocks the event loop.
+- does:
+  - Returns the body described by [get-run-history](get-run-history.md) under `200 OK`.
+- verify: http_status(code=200, path="/api/history")
+- does:
+  - Does not write the telemetry store, mutate `state.WORKFLOWS`, or broadcast a websocket frame.
+- emits: one `application/json` HTTP response.
+- verify: emitted(event="run-history HTTP response", count=1)
+- emits: no websocket frame is emitted.
+- verify: emitted(event="run-history websocket frame", count=0)
+- code: groom/groom/app.py::api_history@b3d9fc46ae77
+- tests: groom/tests/test_history.py::test_the_history_route_lists_the_ended_runs_and_leaves_out_a_run_that_is_alive
+

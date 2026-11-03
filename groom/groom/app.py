@@ -36,6 +36,7 @@ from groom import (
     docker_io,
     figures,
     gitdiff,
+    history,
     live_transcript,
     localfs,
     notify,
@@ -626,6 +627,12 @@ async def run_overview(run_id: Annotated[str, PathParameter()]) -> dict:
     return await pools.QUERY.run(overview.run_overview, run_id)
 
 
+@get("/api/history", include_in_schema=False)
+async def api_history() -> dict:
+    """The runs that ended in the retention window, newest first, with the totals above the table. Reads the stored summaries and nothing else."""
+    return await pools.QUERY.run(history.listing, alerts.unfinished_run_ids())
+
+
 async def _live_turns(run_id: str) -> activity.LiveRows:
     """The watched run's live transcript rows by turn slug, brought up to date first when the run is native."""
     wf = _workflow_by_run_id(run_id)
@@ -1006,6 +1013,8 @@ async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
         state.record_log(
             {"event": "alert", "rule": alert.rule, "run_id": alert.run_id, "message": alert.message}
         )
+        if alert.rule == "ENDED" and (run := state.RUNS.get(alert.run_id)) is not None and run.terminal != "reload":
+            _wake_summaries()
         if alert.rule == "DIED" or (
             alert.rule == "ENDED"
             and (run := state.RUNS.get(alert.run_id)) is not None
@@ -1641,6 +1650,54 @@ async def _archive_loop() -> None:
             logger.warning("groom: archival sweep failed", exc_info=True)
 
 
+SUMMARY_EVERY_S = float(os.environ.get("GROOM_SUMMARY_EVERY_S", "60"))
+SUMMARY_PAUSE_S = float(os.environ.get("GROOM_SUMMARY_PAUSE_S", "0.25"))
+_summary_wake: asyncio.Event | None = None
+_summary_task: asyncio.Task | None = None
+
+
+def _wake_summaries() -> None:
+    if _summary_wake is not None:
+        _summary_wake.set()
+
+
+async def _summary_pass() -> int:
+    """Find the ended runs with no current summary and write them one at a time, pausing between runs so the event loop and the store serve the dashboard first."""
+    wanted = await pools.SUMMARY.run(history.discover)
+    for run_id in wanted:
+        await pools.SUMMARY.run(history.compute, run_id)
+        await asyncio.sleep(SUMMARY_PAUSE_S)
+    return len(wanted)
+
+
+async def _summary_loop() -> None:
+    """Fill the run summaries on a slow clock, and at once when a run ends."""
+    global _summary_wake
+    wake = _summary_wake = asyncio.Event()
+    wake.set()
+    while True:
+        try:
+            await asyncio.wait_for(wake.wait(), SUMMARY_EVERY_S)
+        except TimeoutError:
+            pass
+        wake.clear()
+        try:
+            await _summary_pass()
+        except Exception:  # noqa: BLE001
+            logger.warning("groom: run summaries could not be written", exc_info=True)
+
+
+async def _spawn_summaries() -> None:
+    """on_startup hook: start the worker that writes run summaries."""
+    global _summary_task
+    _summary_task = asyncio.create_task(_summary_loop())
+
+
+async def _stop_summaries() -> None:
+    if _summary_task is not None:
+        _summary_task.cancel()
+
+
 async def _spawn_archive() -> None:
     """on_startup hook: start the archival ticker."""
     global _archive_task
@@ -1712,6 +1769,7 @@ def create_app() -> Litestar:
             diff,
             outbox_get,
             run_overview,
+            api_history,
             run_activity,
             run_records,
             run_turn,
@@ -1750,8 +1808,9 @@ def create_app() -> Litestar:
             _spawn_rules,
             _spawn_live,
             _spawn_archive,
+            _spawn_summaries,
             _recover_attend,
             _recover_dispatch,
         ],
-        on_shutdown=[_stop_rules, _stop_live, _stop_archive, pools.shutdown_all],
+        on_shutdown=[_stop_rules, _stop_live, _stop_archive, _stop_summaries, pools.shutdown_all],
     )

@@ -60,9 +60,9 @@ the diff is a pull, never a broadcast, so a 5-second fleet tick cannot
 re-render the tab out from under a reading operator.
 
 - consistency: changes-view — no diff markup reaches the DOM until one file is selected, server-side or client-side.
-- code: groom/groom/app.py::diff@3b4a38e8e9ca
-- code: groom/groom/assets/dashboard.js::DiffTab@ed8babf5c628
-- code: groom/groom/assets/dashboard.js::loadRunDiff@a79bfdf4c0b1
+- code: groom/groom/app.py::diff@09402337f758
+- code: groom/groom/assets/dashboard.js::DiffTab@8ed2100fd582
+- code: groom/groom/assets/dashboard.js::loadRunDiff@6b1e2d0423d6
 - tests: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through
 - tests: groom/tests/test_diff_tab_dynamic.py::test_diff_tab_controls_have_roles_names_and_keyboard_operation_and_pass_axe
 
@@ -84,7 +84,7 @@ which is rendered here.
 
 - consistency: changes-view — no runtime CDN: `diff2html`, `marked`, `DOMPurify`, `highlight.js`, and the Preact/htm bundle are all vendored under the static asset mount.
 - verify: count(subject="CDN hostnames in the served shell", equals=0)
-- code: groom/groom/templates/dashboard.html@65323b15e0f8
+- code: groom/groom/templates/dashboard.html@e8ebc8661e49
 - code: groom/groom/app.py::stamp_assets@daf0c62ee7d3
 - tests: groom/tests/test_app.py::test_an_asset_that_is_not_on_disk_keeps_its_url
 - tests: groom/tests/test_app.py::test_the_shell_stamps_every_asset_url_with_the_files_version
@@ -100,7 +100,7 @@ rather than being silently redirected to one.
 
 - consistency: changes-view — the diff is a pull, never a push. The websocket frames carry fleet state and detail, never unified diff text.
 - verify: count(subject="diff-bearing frames broadcast by the websocket", equals=0)
-- code: groom/groom/app.py::diff@3b4a38e8e9ca
+- code: groom/groom/app.py::diff@09402337f758
 
 `groom/groom/app.py::diff` is a `GET /diff/{container_id}` handler: the
 browser fetches the unified text on demand and the tab never re-renders on

@@ -191,6 +191,8 @@ class _Live:
         self._reconcile_patch.start()
         self._archive_patch = patch.object(app_module, "_spawn_archive", _no_archive)
         self._archive_patch.start()
+        self._summaries_patch = patch.object(app_module, "_spawn_summaries", _no_archive)
+        self._summaries_patch.start()
         _seed(workspace)
 
         import uvicorn
@@ -229,6 +231,7 @@ class _Live:
         finally:
             self._reconcile_patch.stop()
             self._archive_patch.stop()
+            self._summaries_patch.stop()
             self.server.should_exit = True
             self.thread.join(timeout=10)
             self.tmp.cleanup()

@@ -70,8 +70,16 @@ def matches(wf: WorkflowContainer, query: str) -> bool:
 
 def repo_label(wf: WorkflowContainer) -> str:
     """The repo a row names: the one its run declares, or for a run on this host the directory it runs in."""
-    name = wf.repo_name or (PurePath(wf.workspace_volume).name if wf.native and wf.workspace_volume else "")
-    return f"{name}@{wf.repo_branch}" if name and wf.repo_branch else (name or "—")
+    return repo_text(wf.repo_name or (workspace_name(wf.workspace_volume) if wf.native else ""), wf.repo_branch)
+
+
+def workspace_name(workspace: str) -> str:
+    """The directory name a run's workspace path ends in, or nothing for a run with no workspace."""
+    return PurePath(workspace).name if workspace else ""
+
+
+def repo_text(name: str, branch: str) -> str:
+    return f"{name}@{branch}" if name and branch else (name or "—")
 
 
 def row_id(wf: WorkflowContainer) -> str:

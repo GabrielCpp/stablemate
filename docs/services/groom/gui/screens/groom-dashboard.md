@@ -18,23 +18,24 @@ The dashboard's automated coverage includes the open-gate accessibility path (`g
 
 Nothing on either side of the wire is HTML. The endpoint ships a static shell — landmarks, live regions, overlays, and the ids the client mounts into — and every visible region is a Preact island rendered from JSON by `groom/groom/assets/dashboard.js`. The screen opens a browser websocket to `/ws` and receives fleet-wide [dashboard state payloads](../../formats/dashboard-state-payload.md) on the server's clock; it subscribes that tab to the one run it has open and receives that run's detail pushed back to it alone; and it fetches per-selection panel data — a run's files and diff — over HTTP, because those are one tab's choices and not fleet-wide facts. A socket `state` frame and the body of [GET /api/state](../../http/groom.md#get-dashboard-state) are the same JSON and go through the same apply function, so recovering from a dead socket is not a second rendering path that can rot unobserved.
 
-The visible shell has four activity modes selected by the left activity rail: runs, attendant, dispatch, and settings. A run's files and diff are not rail modes: they are tabs inside the open run, so the rail carries no Files or Diff control and no repository picker. The app starts in **runs** mode. It holds the selected run id, the checkout chosen for each run, per-tab loading state, and transient overlay state for the command palette in the [dashboard client store](../../concepts/dashboard-client-store.md), and keeps the source of truth for run rows and counts on the server. Selecting a row follows [select run row](#select-run-row), which marks one [run row](#run-row) current and fills `#detail` from [get run detail](../../http/groom.md#get-run-detail) and the tab's own watch subscription — without changing the active mode.
+The visible shell has five activity modes selected by the left activity rail: runs, history, attendant, dispatch, and settings. History lists the runs that ended, from the stored [run history summaries](../../concepts/run-history-summary.md), with [totals](../../concepts/run-history-totals.md) above the table and each ending written by the [run ending mapping](../../concepts/run-ending-mapping.md). A run's files and diff are not rail modes: they are tabs inside the open run, so the rail carries no Files or Diff control and no repository picker. The app starts in **runs** mode. It holds the selected run id, the checkout chosen for each run, per-tab loading state, and transient overlay state for the command palette in the [dashboard client store](../../concepts/dashboard-client-store.md), and keeps the source of truth for run rows and counts on the server. Selecting a row follows [select run row](#select-run-row), which marks one [run row](#run-row) current and fills `#detail` from [get run detail](../../http/groom.md#get-run-detail) and the tab's own watch subscription — without changing the active mode.
 
 Connection state is its own visible fact. The [connection chip](#connection-chip) reports `live`, `stale`, `reconnecting`, or `not connected`, derived by the [dashboard connection state machine](../../concepts/dashboard-connection-state-machine.md) from **message recency, not `readyState`** — a half-open socket reads OPEN forever and would otherwise show a green dot over a frozen fleet. Anything but `live` starts the [dashboard resync poller](../../concepts/dashboard-resync-poller.md) against `GET /api/state`.
 
 ## Layout
 
 - app root: `.app[data-mode]`, connected to `WS /ws`; `data-mode` selects which pane is displayed. Inactive panes are `display:none`, so they are removed from the accessibility tree rather than merely hidden visually.
-- activity rail: a left `<nav aria-label="Panels">` landmark with runs, attendant, dispatch, and settings mode controls; selecting the gear follows [select activity settings mode](#select-activity-settings-mode).
-- main region: a `<main id="main">` landmark holding all four panes, opened by the page's single `<h1>`, which is visually hidden but present because a screen reader has no title bar to read.
+- activity rail: a left `<nav aria-label="Panels">` landmark with runs, history, attendant, dispatch, and settings mode controls; selecting the gear follows [select activity settings mode](#select-activity-settings-mode).
+- main region: a `<main id="main">` landmark holding all five panes, opened by the page's single `<h1>`, which is visually hidden but present because a screen reader has no title bar to read.
 - runs pane: filter input, the live run list in `#runs-list`, and the open run's detail in `#detail`. With no run selected the list takes the full width and `#detail` is hidden. Selecting a run narrows the list to a column and opens `#detail` beside it.
+- history pane: the totals strip and the table of runs that ended, in `#history`; see [history-table](#history-table).
 - settings pane: manual container rescan and browser notification permission controls.
 - status bar: fleet counts, repo/worker totals, the connection chip, the refresh control, and the command-palette open button.
 - overlays: command palette in `#palette` and the toast stack in `#toasts`.
 
 ## States
 
-- mode: `runs` by default; `attend`, `dispatch`, and `settings` are mutually exclusive alternatives written to `.app[data-mode]` and to the store together. A mode with no pane in the page, such as the retired `files` or `diff`, lands on `runs`.
+- mode: `runs` by default; `history`, `attend`, `dispatch`, and `settings` are mutually exclusive alternatives written to `.app[data-mode]` and to the store together. A mode with no pane in the page, such as the retired `files` or `diff`, lands on `runs`.
 - selected run: absent until a run row, palette result, or `j`/`k` row movement writes [dashboard selected worker state](../../formats/dashboard-selected-worker-state.md). Selecting one clears the detail pane, opens it on the Overview tab, narrows the list, sends this tab's watch subscription, and fetches `GET /worker/{container_id}` once. [close run detail](#close-run-detail) clears the selection, widens the list to full width, and keeps the filter text.
 - selected checkout: held per run in the page's memory beside the tab state, for the life of the page. A run selected for the first time shows its first checkout, selecting another run and coming back restores the earlier choice, and a reload starts at the first checkout again. One choice governs the run's Files and Diff tabs. See [detail-checkout-select](#detail-checkout-select).
 - command palette: closed by default; `Ctrl+K` or `Meta+K` toggles it, and the status-bar button opens it. Opening clears its input, renders the current fleet from the store as results, and focuses `#palette-input`; while open, Tab is trapped on that input.
@@ -52,7 +53,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - placement: width 0-20%, x 0-20%
 - keyboard: not focusable itself.
 - verify: visible(locator="#activitybar", text="Panels")
-- keyboard: Tab moves through the four mode buttons it contains, in DOM order.
+- keyboard: Tab moves through the five mode buttons it contains, in DOM order.
 - verify: visible(locator="#activitybar .act-btn", text="Runs")
 - parent: [groom dashboard](#groom-dashboard)
 - states: static.
@@ -66,7 +67,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the button's accessible name says the count in words, such as `Runs, 2 blocked runs`.
 - verify: visible(locator="#activity-rail", text="2")
 - verify: json_path(path="activity_rail.buttons.active.aria_pressed", equals="true")
-- code: groom/groom/templates/dashboard.html@65323b15e0f8
+- code: groom/groom/templates/dashboard.html@e8ebc8661e49
 - code: groom/groom/assets/dashboard.js::paintRunsBadge@bd8cea76ff7e
 - tests: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
 - tests: groom/tests/test_gate_strip_dynamic.py::test_the_runs_button_carries_a_counted_badge_while_another_pane_is_open_and_clears_with_the_last_block
@@ -88,8 +89,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.present", equals=true)
 - states: its visible child is whichever pane `.app[data-mode]` selects.
 - verify: json_path(path="states.visible_child", equals="pane selected by .app[data-mode]")
-- code: groom/groom/templates/dashboard.html@65323b15e0f8
-- dom: holds all four panes as siblings. The three inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time. `groom/groom/assets/dashboard.css` gives `.app` a fixed 48px activity column and assigns `#main` the remaining `main` grid area.
+- code: groom/groom/templates/dashboard.html@e8ebc8661e49
+- dom: holds all five panes as siblings. The four inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time. `groom/groom/assets/dashboard.css` gives `.app` a fixed 48px activity column and assigns `#main` the remaining `main` grid area.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-main-region.png
 
 ### page-heading
@@ -124,13 +125,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in a run's Files or Diff tab whose name happens to be the literal text `Runs` — a directory or a file ([detail-files-file-row](#detail-files-file-row), [detail-diff-file-row](#detail-diff-file-row)) named `Runs` — renders with the identical `role=button name="Runs"` pair as this always-present rail button, so `getByRole('button', {name: 'Runs'})` cannot distinguish them.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because the rail button's name cannot be changed without changing the product's navigation label.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because a repository's file and directory names are arbitrary user data this doc cannot constrain.
-- code: groom/groom/assets/dashboard.js::setMode@d01c7d7c3d9c
+- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
 - props:
   - `data-mode`: literal `runs`; required; the mode value the delegated rail handler passes to the mode switch.
   - `title`: literal `Runs`; required; tooltip text only.
   - `aria-label`: literal `Runs`; required; the durable accessible name for this icon-only button.
   - `aria-pressed`: `true` or `false`; required; recomputed for every rail button on each mode switch.
-- dom: icon-only native `<button type="button">` inside the `#activitybar` nav, first of the four; contains only an inline `aria-hidden="true"` SVG and no text node.
+- dom: icon-only native `<button type="button">` inside the `#activitybar` nav, first of the five; contains only an inline `aria-hidden="true"` SVG and no text node.
 - leads-to: [select activity runs mode](#select-activity-runs-mode), which shows the runs pane containing the [runs live region](#runs-live-region) and the open run's detail.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-runs-mode.png
 - known-defect: stablemate-01M20X2HWR7MDGSZG3XJSKRYQ0 ambiguous-locator — TreeDir tree-row buttons in the run Files and Diff tabs expose only the bare file/directory name as their accessible name, with no distinguishing prefix, so a repo entry named 'Runs' collides role=button name='Runs' with the always-present activity-rail button — the same defect already seeded for the 'Files' and 'Diff' collisions on this screen (stablemate-01M20X0XEEFYDZQRAKKYET9H4Z, stablemate-01M20WYV4PDZDZQMW55XEA47X4).
@@ -150,7 +151,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="settings"`.
 - verify: visible(locator=".act-btn[data-mode='settings'].active[aria-pressed='true']", text="Settings")
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in a run's Files or Diff tab whose name happens to be the literal text `Settings` — a directory or a file ([detail-files-file-row](#detail-files-file-row), [detail-diff-file-row](#detail-diff-file-row)) named `Settings` — renders with the identical `role=button name="Settings"` pair as this always-present rail button, so `getByRole('button', {name: 'Settings'})` cannot distinguish them. The rail button's name cannot be changed without changing the product's navigation label. A repository's file and directory names are arbitrary user data this doc cannot constrain. The collision is therefore left standing rather than papered over with an invented distinguishing label.
-- code: groom/groom/assets/dashboard.js::setMode@d01c7d7c3d9c
+- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
 - dom: icon-only native `<button type="button">` after the rail spacer, at the bottom of the rail; an inline `aria-hidden` gear SVG and no text node.
 - leads-to: [select activity settings mode](#select-activity-settings-mode), which shows the settings pane containing the [settings rescan button](#settings-rescan-button) and [settings enable notifications button](#settings-enable-notifications-button).
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-settings-mode.png
@@ -372,7 +373,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - exclusive-with: [detail-files-file-row](#detail-files-file-row), [detail-diff-file-row](#detail-diff-file-row)
 - states: always enabled. The result is reported by a toast, not by a disabled state.
 - verify: json_path(path="answer_button.disabled", equals=false)
-- states: this button lives in the runs pane, one of the four `data-mode` panes described in [Layout](#layout).
+- states: this button lives in the runs pane, one of the five `data-mode` panes described in [Layout](#layout).
 - verify: visible(locator=".app[data-mode='runs'] #runs-pane #detail form[data-answer] button[type='submit']", text="Send answer")
 - states: `data-mode` selects a single active pane, and inactive panes are `display:none`, removed from the accessibility tree entirely — so this button disappears whenever `data-mode` is not `runs`.
 - verify: absent(subject="#detail form[data-answer] button[type='submit'] in the accessibility tree when `data-mode` is not `runs`")
@@ -553,7 +554,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.in_flight.spinning", equals=true)
 - states: further activations are ignored until the request settles.
 - verify: json_path(path="states.in_flight.activations_ignored", equals=true)
-- states: this control lives in the settings pane, one of the four `data-mode` panes described in [Layout](#layout).
+- states: this control lives in the settings pane, one of the five `data-mode` panes described in [Layout](#layout).
 - verify: absent(subject="#btn-refresh in the accessibility tree when `data-mode` is not `settings`")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely. So it can never co-render with the run Files tab's [detail-files-file-row](#detail-files-file-row) or the run Diff tab's [detail-diff-file-row](#detail-diff-file-row) — the mode exclusivity, not a coincidence of naming, is what `getByRole('button', {name: 'Rescan containers'})` can rely on.
 - verify: count(subject="elements matching role=button name='Rescan containers' in the rendered DOM", equals=1)
@@ -578,7 +579,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.label", equals="static across permission states")
 - states: the browser owns the permission prompt and the answer.
 - verify: json_path(path="states.permission_prompt_owner", equals="browser")
-- states: this control lives in the settings pane, one of the four `data-mode` panes described in [Layout](#layout).
+- states: this control lives in the settings pane, one of the five `data-mode` panes described in [Layout](#layout).
 - verify: visible(locator=".app[data-mode='settings'] #btn-notify", text="Enable notifications")
 - states: `data-mode` selects a single active pane and inactive panes are `display:none`, removed from the accessibility tree entirely — so this control disappears whenever `data-mode` is not `settings`.
 - verify: absent(subject="#btn-notify in the accessibility tree when `data-mode` is not `settings`")
@@ -1808,6 +1809,135 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - tests: groom/tests/test_activity_raw_dynamic.py::test_the_raw_view_and_the_bar_have_no_accessibility_violations
 - leads-to: [get run records](../../http/get-run-records.md), requested for each page.
 
+### activity-history-mode
+
+- selector: `#act-history`
+- role: button
+- name: `History`
+- placement: width 0-20%, x 0-20%
+- keyboard: natively focusable with Tab and Shift+Tab, in DOM order after the Runs button.
+- verify: visible(locator="#activity-history-mode", text="History")
+- keyboard: Enter or Space activates the mode switch.
+- verify: visible(locator="#history-totals", text="spent")
+- parent: [activity-rail](#activity-rail)
+- states: inactive with `aria-pressed="false"` in any other mode.
+- verify: visible(locator="#activity-rail", text="History")
+- states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="history"`.
+- verify: visible(locator="#history-table", text="Ended")
+- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
+- tests: groom/tests/test_history_dynamic.py::test_the_rail_shows_runs_history_attendant_dispatch_and_settings_in_that_order
+- tests: groom/tests/test_history.py::test_the_book_screen_names_history_in_the_rail_and_describes_its_pane
+- tests: groom/tests/test_history_dynamic.py::test_runs_attendant_dispatch_and_settings_open_as_they_did
+- dom: icon-only native `<button type="button">` with a clock SVG that is `aria-hidden`; its name comes from `aria-label="History"`.
+- leads-to: [select activity history mode](#select-activity-history-mode), which shows the history pane holding the [history totals](#history-totals) and the [history table](#history-table).
+
+### history-table
+
+- selector: `table.ht`
+- role: table
+- name: `Runs that ended, newest first`
+- placement: width 0-100%, y 10-100%
+- keyboard: the rows form one roving tab stop. Tab enters on the current row, ArrowDown and ArrowUp move to the next and previous row, Home moves to the first and End to the last.
+- verify: visible(locator="#history-row", text="success")
+- parent: [activity-history-mode](#activity-history-mode)
+- states: eleven column headers, each with `scope="col"`, in this order: Run, Repo, Ending, Ended, Active, Wall, Cost, Items, Turns, Gates, Problems. The Ended header carries `aria-sort="descending"`, because rows are ordered newest end time first.
+- verify: visible(locator="#history-table", text="Ended")
+- states: lists the runs that ended in the last 30 days and no run that is alive. A finished run is listed while its row is still in Runs.
+- states: a run that continues after a resume leaves the table while it is alive and returns with its new figures when it ends again.
+- states: a run with no recorded ending is listed once it has been silent for 48 hours, at its last record's time, with the ending `no ending recorded`.
+- states: with no ended run the table is replaced by `No run has ended in the last 30 days.`
+- code: groom/groom/assets/dashboard.js::HistoryPane@d5bcea578c4c
+- code: groom/groom/assets/dashboard.js::historyKey@bc95c514230a
+- code: groom/groom/history.py::listing@752e31ed89fa
+- detail: [run history summary](../../concepts/run-history-summary.md)
+- tests: groom/tests/test_history_dynamic.py::test_selecting_history_shows_the_ended_runs_newest_end_time_first_under_every_column
+- tests: groom/tests/test_history_dynamic.py::test_a_run_that_is_alive_is_not_listed_in_the_browser
+- tests: groom/tests/test_history_dynamic.py::test_the_table_and_its_rows_have_a_role_a_name_and_keyboard_operation
+- tests: groom/tests/test_history_dynamic.py::test_the_history_pane_has_no_accessibility_violations
+- tests: groom/tests/test_history.py::test_the_list_is_newest_end_time_first_and_stops_at_thirty_days
+- tests: groom/tests/test_history.py::test_a_run_still_alive_is_not_listed_and_a_finished_run_in_runs_is_listed
+- tests: groom/tests/test_history.py::test_a_run_that_continues_after_a_resume_leaves_history_and_returns_with_its_new_figures
+- tests: groom/tests/test_history.py::test_a_run_with_no_ending_is_listed_after_forty_eight_hours_of_silence_at_its_last_record
+- tests: groom/tests/test_history.py::test_a_silent_run_with_no_ending_leaves_history_when_it_comes_back_alive
+
+### history-totals
+
+- selector: `div.h-sum`
+- role: none
+- name: none
+- placement: width 0-100%, y 0-10%
+- keyboard: not focusable.
+- parent: [activity-history-mode](#activity-history-mode)
+- states: four cells in order: the number of runs, the money spent, the active time, and the runs that ended in success.
+- verify: visible(locator="#history-totals", text="spent")
+- states: the success cell reads `N of M ended in success`, and is omitted while no run has a summary yet.
+- states: the money cell names the part of the spend that is an estimate.
+- states: the money cell names the runs that are partly priced.
+- states: the money cell omits each clause that is zero.
+- states: a run whose summary is still being read counts in the number of runs.
+- states: a run whose summary is still being read stays out of the sums and the success count.
+- states: the money cell says how many summaries are still being read.
+- states: with no ended run every cell reads zero.
+- code: groom/groom/assets/dashboard.js::historyTotals@d98d0ba7b1bd
+- code: groom/groom/history.py::totals@4a99a0e9f8a4
+- detail: [run history totals](../../concepts/run-history-totals.md)
+- tests: groom/tests/test_history_dynamic.py::test_the_totals_show_runs_money_active_time_and_successes_and_omit_a_clause_that_is_zero
+- tests: groom/tests/test_history_dynamic.py::test_an_ended_run_with_no_summary_reads_reading_its_summary_stays_out_of_the_sums_and_fills_in_without_a_reload
+- tests: groom/tests/test_history.py::test_the_totals_count_runs_money_active_time_and_successes
+- tests: groom/tests/test_history.py::test_a_run_still_being_read_counts_in_runs_and_stays_out_of_the_sums_and_the_success_count
+
+### history-row
+
+- selector: `tr.hrow`
+- role: row
+- one-per: ended run
+- name: the row's cell text, which starts with the workflow and the run.
+- unique-by: the run id in `data-run`.
+- keyboard: focusable with a roving `tabindex`, where exactly one row is `0` and the rest are `-1`.
+- parent: [history-table](#history-table)
+- states: focus shows as a row background with an accent bar on its first cell, on the focused row only.
+- states: cells in order: workflow badge with the run id, repo with `@branch`, ending, end time, active time, wall time, cost, items, turns, gates, problems. A missing repo reads `—`.
+- states: the ending is written in words as a chip: `success`, `gave up`, `failed`, `interrupted`, `crashed` or `no ending recorded`.
+- verify: visible(locator="#history-row", text="success")
+- states: cost shows the reported cost, with the priced count beside it as `153/163` when some turns reported none. A backend that reports no cost shows the estimate prefixed `est`. With neither it reads `—`.
+- states: items reads `1 of 2` when some work items did not finish, and the bare count when all did. A run with no work items reads `—`.
+- states: gates and problems read `0` dimmed when there are none. Problems is the same count as the Overview tile and the Activity badge.
+- states: a run whose summary is not written yet shows its run, repo and end time.
+- states: a run whose summary is not written yet reads `reading its summary` in the ending cell.
+- verify: visible(locator="#history-row", text="reading its summary")
+- states: the figures of a row that is not written yet read `—`, and the row fills in without a reload.
+- code: groom/groom/assets/dashboard.js::HistoryRow@111f10c0a2eb
+- code: groom/groom/assets/dashboard.js::HistoryCost@ffb23dc164fe
+- code: groom/groom/assets/dashboard.js::HistoryItems@73fd80c8f781
+- detail: [run ending mapping](../../concepts/run-ending-mapping.md)
+- tests: groom/tests/test_history_dynamic.py::test_a_row_reads_the_workflow_run_repo_ending_end_time_active_wall_cost_items_turns_gates_and_problems
+- tests: groom/tests/test_history_dynamic.py::test_every_ending_is_written_in_words
+- tests: groom/tests/test_history_dynamic.py::test_a_cost_missing_some_turns_shows_the_priced_count_and_an_estimate_carries_est
+- tests: groom/tests/test_history_dynamic.py::test_items_read_n_of_m_when_some_did_not_finish_and_the_bare_count_when_all_did
+- tests: groom/tests/test_history_dynamic.py::test_an_ended_run_with_no_summary_reads_reading_its_summary_stays_out_of_the_sums_and_fills_in_without_a_reload
+- tests: groom/tests/test_history_dynamic.py::test_a_long_repo_or_run_name_cuts_off_with_its_full_text_kept_and_every_column_stays_in_view
+- tests: groom/tests/test_history.py::test_a_row_carries_the_figures_the_cost_and_profile_reports_give_for_the_run
+- tests: groom/tests/test_history.py::test_a_backend_that_reports_no_cost_shows_an_estimate_and_no_cost
+
+### history-state
+
+- selector: `#history`
+- role: none
+- name: none
+- placement: width 0-100%, y 0-100%
+- parent: [activity-history-mode](#activity-history-mode)
+- states: reading while the list is requested, a status region (`role="status"`, `aria-busy="true"`) that says `Reading the runs that ended…` with a spinner. The state clears when the table appears.
+- verify: visible(locator="#history-state", text="Reading the runs that ended")
+- states: failed when the read fails, an alert (`role="alert"`) that says `History could not be read` and `The Runs tab still works.`, with a `Retry now` button. A retry that succeeds shows the table.
+- verify: visible(locator="#history-state", text="History could not be read")
+- states: while any listed run is still being read, the pane asks again every four seconds, and stops when no run is pending or the mode changes.
+- code: groom/groom/assets/dashboard.js::HistoryPane@d5bcea578c4c
+- code: groom/groom/assets/dashboard.js::loadHistory@2c24e9471616
+- tests: groom/tests/test_history_dynamic.py::test_the_pane_shows_a_reading_state_that_clears_when_the_table_appears
+- tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
+- tests: groom/tests/test_history_dynamic.py::test_with_no_ended_runs_the_pane_says_so_with_the_totals_at_zero
+- leads-to: [retry history](#retry-history)
+
 ## Interactions
 
 ### select-activity-runs-mode
@@ -1823,7 +1953,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - when:
   - The shell is loaded and the rail contains the runs control.
   - The click target or an ancestor matches `.act-btn`, and that control's `data-mode` is `runs`.
-  - The prior mode may be any of the four.
+  - The prior mode may be any of the five.
 - does:
   - Writes `runs` to the root `.app` element's `data-mode`.
 - verify: visible(locator=".app[data-mode='runs']", text="Runs")
@@ -1890,7 +2020,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Performs no permission prompt.
 - verify: count(subject="permission prompts", equals=0)
-- code: groom/groom/assets/dashboard.js::setMode@d01c7d7c3d9c
+- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 
 ### select-activity-settings-mode
@@ -1924,7 +2054,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="loader")
 - verify: absent(subject="permission dialog")
 - verify: unchanged(subject="application state", except_fields=["mode", "active", "aria-pressed"])
-- code: groom/groom/assets/dashboard.js::setMode@d01c7d7c3d9c
+- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - screenshot: docs/services/groom/gui/screenshots/operator-refreshes-workflow-fleet-settings-idle.png
 
@@ -2079,7 +2209,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="selection.empty_list_does_nothing", equals=true)
 - code: groom/groom/assets/dashboard.js::wireEvents@c2f8997e9c43
 - code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
-- code: groom/groom/assets/dashboard.js::setMode@d01c7d7c3d9c
+- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
@@ -2497,7 +2627,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Chooses by run id rather than by rendered position, so the result list re-rendering under a concurrent push cannot open the wrong run.
 - code: groom/groom/assets/dashboard.js::choosePaletteHit@79c641f3d2fb
 - code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
-- code: groom/groom/assets/dashboard.js::setMode@d01c7d7c3d9c
+- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 
@@ -2714,4 +2844,45 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it
+
+### select-activity-history-mode
+
+- on: [activity-history-mode](#activity-history-mode)
+- trigger: pointer click, tap, Enter, or Space on the history rail button or its SVG, captured by the delegated `#activitybar` click handler.
+- role: button
+- name: `History`
+- keyboard: Tab and Shift+Tab reach the button.
+- verify: visible(locator="#activity-history-mode", text="History")
+- keyboard: Enter or Space activates the button.
+- verify: visible(locator="#history-totals", text="spent")
+- when:
+  - The click target or an ancestor matches `.act-btn` with `data-mode="history"`.
+- does:
+  - Writes `history` to `.app[data-mode]` and recomputes `active` and `aria-pressed` across the rail.
+- verify: visible(locator="#history-table", text="Ended")
+- does:
+  - Requests [get-run-history](../../http/get-run-history.md) and shows the reading state until the list arrives.
+  - Stops the four-second re-read when the mode changes away from History.
+- code: groom/groom/assets/dashboard.js::setMode@c6ea21e40b45
+- detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
+- tests: groom/tests/test_history_dynamic.py::test_selecting_history_shows_the_ended_runs_newest_end_time_first_under_every_column
+
+### retry-history
+
+- on: [history-state](#history-state)
+- trigger: pointer click, tap, Enter, or Space on `Retry now` in the failed state.
+- role: button
+- name: `Retry now`
+- keyboard: Tab reaches the button.
+- verify: visible(locator="#history-state", text="Retry now")
+- keyboard: Enter or Space activates the button.
+- verify: visible(locator="#history-state", text="History could not be read")
+- when:
+  - The history read failed and the failed state is showing.
+- does:
+  - Requests [get-run-history](../../http/get-run-history.md) again.
+  - Shows the table when the read succeeds.
+  - Keeps the failed state when the read fails again.
+- code: groom/groom/assets/dashboard.js::loadHistory@2c24e9471616
+- tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
 

@@ -39,14 +39,29 @@ def _evict_grace_s() -> float:
     return float(os.environ.get("GROOM_RUN_EVICT_MIN", "30")) * 60
 
 
-def _dead_after_s() -> float:
+def dead_after_s() -> float:
     return float(os.environ.get("GROOM_RUN_DEAD_HOURS", "48")) * 3600
+
+
+def giveup_nodes() -> set[str]:
+    return _giveup_nodes()
+
+
+def unfinished_run_ids(now: float | None = None) -> set[str]:
+    """Run ids the hot cache holds as alive: no terminal recorded, and heard from within the silence that evicts a run."""
+    now = now if now is not None else time.time()
+    dead = dead_after_s()
+    return {
+        run.run_id
+        for run in state.RUNS.values()
+        if not run.terminal and (now - max(run.last_span_ts, run.last_heartbeat_ts, run.first_seen_ts)) <= dead
+    }
 
 
 def stale_run_ids(now: float | None = None) -> list[str]:
     """Run ids whose hot-cache entry can be dropped, so :data:`groom.state.RUNS` stops growing one entry per distinct run for the life of the process (and, with it, the per-tick :func:`check_time_rules` walk over that dict):"""
     now = now if now is not None else time.time()
-    grace, dead = _evict_grace_s(), _dead_after_s()
+    grace, dead = _evict_grace_s(), dead_after_s()
     stale: list[str] = []
     for run in state.RUNS.values():
         last_alive = max(run.last_span_ts, run.last_heartbeat_ts, run.first_seen_ts)

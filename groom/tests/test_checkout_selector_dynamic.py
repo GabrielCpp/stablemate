@@ -569,7 +569,7 @@ def test_the_rail_has_no_files_diff_or_repository_picker_and_the_page_never_asks
         page.goto(live.url(), wait_until="load")
         page.wait_for_selector("#runs-list .row", timeout=15000)
         modes = page.locator("#activitybar .act-btn").evaluate_all("els => els.map((e) => e.dataset.mode)")
-        assert modes == ["runs", "attend", "dispatch", "settings"]
+        assert modes == ["runs", "history", "attend", "dispatch", "settings"]
         names = page.locator("#activitybar .act-btn").evaluate_all("els => els.map((e) => e.getAttribute('aria-label'))")
         assert not [name for name in names if re.match(r"^(Files|Diff)\b", name)]
         for gone in ("#files-pane", "#diff-pane", "#repo-menu-wrap", "#repo-menu", "#repo-search", ".repo-picker", ".picker-bar", "#files-tree", "#diff-tree"):

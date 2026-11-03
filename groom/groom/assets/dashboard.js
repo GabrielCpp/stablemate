@@ -74,6 +74,7 @@ const store = {
     // that only the server's own threads see — so this pane polls while open.
     dispatch: { status: "idle", queues: [], selectedQueue: null, items: [], selectedItem: null },
     settings: { status: "idle", attend: null, saving: false },
+    history: { status: "idle", runs: [], totals: null },
     palette: { open: false, query: "", active: 0 },
   },
   listeners: new Set(),
@@ -3384,6 +3385,147 @@ function stopDispatchPoll() {
   _dispatchPoll = null;
 }
 
+const HISTORY_POLL_MS = 4000;
+const RETENTION_DAYS = 30;
+let _historyPoll = null;
+
+function stopHistoryPoll() {
+  if (_historyPoll) clearTimeout(_historyPoll);
+  _historyPoll = null;
+}
+
+function loadHistory() {
+  stopHistoryPoll();
+  const first = store.get().history.status !== "ready";
+  if (first) setIn("history", { status: "loading" });
+  fetch("/api/history")
+    .then((r) => {
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json();
+    })
+    .then((body) => {
+      setIn("history", { status: "ready", runs: body.runs || [], totals: body.totals });
+      if (store.get().mode === "history" && body.totals && body.totals.reading > 0) {
+        _historyPoll = setTimeout(loadHistory, HISTORY_POLL_MS);
+      }
+    })
+    .catch(() => {
+      if (first) setIn("history", { status: "failed", runs: [], totals: null });
+    });
+}
+
+/** Hours and minutes with the minutes dropped when they are zero: 68h 07m, 13h, 0m. */
+function fmtLong(seconds) {
+  const mins = Math.round((seconds || 0) / 60);
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (!h) return m + "m";
+  return m ? h + "h " + String(m).padStart(2, "0") + "m" : h + "h";
+}
+
+function fmtUsdLong(value) {
+  return "$" + value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function historyEndingClass(ending) {
+  return { success: "ok", gave_up: "warn", "gave-up": "warn", failed: "bad", interrupted: "warn", crashed: "bad" }[ending] || "";
+}
+
+function historyTotals(t) {
+  const spent = [];
+  if (t.estimate_usd > 0) spent.push(fmtUsdLong(t.estimate_usd) + " of it an estimate");
+  if (t.partly_priced > 0) spent.push(plural(t.partly_priced, "run", "runs") + " partly priced");
+  if (t.reading > 0) spent.push(plural(t.reading, "summary", "summaries") + " still being read");
+  const cells = [
+    [String(t.runs), t.runs === 1 ? "run" : "runs"],
+    [fmtUsdLong(t.spent_usd), spent.length ? "spent, " + spent.join(", ") : "spent"],
+    [fmtLong(t.active_s), "active"],
+  ];
+  if (t.ready > 0) cells.push([t.success + " of " + t.ready, "ended in success"]);
+  return cells;
+}
+
+function HistoryCost({ run }) {
+  if (run.cost_usd != null) {
+    const partial = run.priced_turns < run.turns;
+    return html`<td style="color:var(--text-0)">${fmtUsdLong(run.cost_usd)}${partial
+      ? html`<span class="cov" title=${run.turns - run.priced_turns + " turns reported no cost"}>${run.priced_turns}/${run.turns}</span>`
+      : null}</td>`;
+  }
+  if (run.est_usd != null) return html`<td><span class="dim">est ${fmtUsdLong(run.est_usd)}</span></td>`;
+  return html`<td><span class="dim">—</span></td>`;
+}
+
+function HistoryItems({ run }) {
+  if (run.items_total == null) return html`<td><span class="dim">—</span></td>`;
+  const all = run.items_done === run.items_total;
+  return html`<td>${all ? run.items_total : run.items_done + " of " + run.items_total}</td>`;
+}
+
+function HistoryRow({ run, tabIndex }) {
+  const repoText = run.repo ? run.repo + (run.branch ? "@" + run.branch : "") : "";
+  const repo = run.repo ? html`${run.repo}<span class="dim">${run.branch ? "@" + run.branch : ""}</span>` : html`<span class="dim">—</span>`;
+  const who = html`<td class="l clip" title=${run.run_id}><span class="who"><${TypeBadge} type=${run.workflow} hue=${run.type_hue} /><span class="id">${run.run_id}</span></span></td>`;
+  const when = html`<td class="l">${fmtWhen(run.ended_ts).replace(",", "")}</td>`;
+  if (!run.ready) {
+    return html`<tr class="hrow" data-run=${run.run_id} tabindex=${tabIndex}>
+      ${who}<td class="l clip" title=${repoText}>${repo}</td>
+      <td class="l"><span class="spin" aria-hidden="true"></span><span class="dim">reading its summary</span></td>
+      ${when}
+      ${[0, 1, 2, 3, 4, 5, 6].map(() => html`<td class="dim">—</td>`)}
+    </tr>`;
+  }
+  return html`<tr class="hrow" data-run=${run.run_id} tabindex=${tabIndex}>
+    ${who}<td class="l clip" title=${repoText}>${repo}</td>
+    <td class="l"><span class=${"chip " + historyEndingClass(run.ending)}>${run.ending_label}</span></td>
+    ${when}
+    <td>${fmtLong(run.active_s)}</td><td class="dim">${fmtLong(run.wall_s)}</td>
+    <${HistoryCost} run=${run} /><${HistoryItems} run=${run} />
+    <td>${run.turns}</td>
+    <td>${run.gates ? run.gates : html`<span class="dim">0</span>`}</td>
+    <td>${run.problems ? html`<span style="color:var(--idle)">${run.problems}</span>` : html`<span class="dim">0</span>`}</td>
+  </tr>`;
+}
+
+function historyKey(event) {
+  const keys = { ArrowDown: 1, ArrowUp: -1, Home: "first", End: "last" };
+  if (!(event.key in keys)) return;
+  const rows = Array.from(event.currentTarget.querySelectorAll("tbody tr"));
+  const at = rows.indexOf(document.activeElement);
+  const step = keys[event.key];
+  const to = step === "first" ? 0 : step === "last" ? rows.length - 1 : Math.min(rows.length - 1, Math.max(0, at + step));
+  event.preventDefault();
+  rows.forEach((row, i) => row.setAttribute("tabindex", i === to ? "0" : "-1"));
+  if (rows[to]) rows[to].focus();
+}
+
+function HistoryPane() {
+  const { history } = useStore();
+  if (history.status === "failed") {
+    return html`<div class="side-state" role="alert" style="margin:16px;max-width:none">
+      <h3>History could not be read</h3>
+      The Runs tab still works. <button type="button" class="btn ghost retry-history" onClick=${loadHistory}>Retry now</button>
+    </div>`;
+  }
+  if (history.status !== "ready") {
+    return html`<div class="detail-empty loading" role="status" aria-busy="true">
+      <span class="spin" aria-hidden="true"></span>Reading the runs that ended…
+    </div>`;
+  }
+  const cells = historyTotals(history.totals);
+  const table = history.runs.length
+    ? html`<table class="ht" aria-label="Runs that ended, newest first" onKeyDown=${historyKey}>
+        <thead><tr>
+          <th scope="col" class="l">Run</th><th scope="col" class="l">Repo</th><th scope="col" class="l">Ending</th><th scope="col" class="l sorted" aria-sort="descending">Ended ▾</th>
+          <th scope="col">Active</th><th scope="col">Wall</th><th scope="col">Cost</th><th scope="col">Items</th><th scope="col">Turns</th><th scope="col">Gates</th><th scope="col">Problems</th>
+        </tr></thead>
+        <tbody>${history.runs.map((run, i) => html`<${HistoryRow} key=${run.run_id} run=${run} tabIndex=${i === 0 ? 0 : -1} />`)}</tbody>
+      </table>`
+    : html`<div class="empty-big">No run has ended in the last ${RETENTION_DAYS} days.</div>`;
+  return html`<div class="h-sum">${cells.map(([big, text]) => html`<span><b>${big}</b>${text}</span>`)}</div>
+    <div class="h-list">${table}</div>`;
+}
+
 // --------------------------------------------------------------------------- //
 // Activity bar (mode switch)
 // --------------------------------------------------------------------------- //
@@ -3397,7 +3539,9 @@ function setMode(mode) {
   });
   store.set({ mode: mode });
   if (mode !== "dispatch") stopDispatchPoll();
-  if (mode === "attend") loadAttend();
+  if (mode !== "history") stopHistoryPoll();
+  if (mode === "history") loadHistory();
+  else if (mode === "attend") loadAttend();
   else if (mode === "dispatch") loadDispatch();
   else if (mode === "settings") loadAttendSettings();
 }
@@ -3716,6 +3860,7 @@ const ISLANDS = [
   ["runs-list", Fleet],
   ["statusbar", StatusBar],
   ["detail", Detail],
+  ["history", HistoryPane],
   ["attend-list", AttendList],
   ["attend-detail", AttendDetail],
   ["dispatch-queues", DispatchQueues],

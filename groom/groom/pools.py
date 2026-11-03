@@ -16,6 +16,7 @@ _T = TypeVar("_T")
 
 INGEST_WORKERS_DEFAULT = 4
 QUERY_WORKERS_DEFAULT = 4
+SUMMARY_WORKERS_DEFAULT = 1
 
 
 def _workers(env: str, default: int) -> int:
@@ -68,7 +69,9 @@ class Pool:
 INGEST = Pool("ingest", "GROOM_INGEST_WORKERS", INGEST_WORKERS_DEFAULT)
 QUERY = Pool("query", "GROOM_QUERY_WORKERS", QUERY_WORKERS_DEFAULT)
 
-ALL = (INGEST, QUERY)
+SUMMARY = Pool("summary", "GROOM_SUMMARY_WORKERS", SUMMARY_WORKERS_DEFAULT)
+
+ALL = (INGEST, QUERY, SUMMARY)
 
 
 def shutdown_all() -> None:
