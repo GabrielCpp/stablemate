@@ -18,7 +18,6 @@ _BRIDGE = "gap_findings has no product caller; gaps surface via qa compile-plan 
 
 _NO_PASSAGES = "no book in the corpus declares a passage, so no passage is there to be malformed"
 
-_NO_RESOURCES = "no book in the corpus declares a resource page, so no resource is there to be malformed"
 
 _NO_DATA_STATES = "no book in the corpus declares a data state, so none is there to be malformed"
 
@@ -36,7 +35,6 @@ DORMANT_UNREACHABLE: dict[str, str] = {
     "needs-target-backend": _BRIDGE,
     "needs-trigger-action": _BRIDGE,
     "passage-shape": _NO_PASSAGES,
-    "resource-reach-shape": _NO_RESOURCES,
     "precondition-discharged-by-arrangement": _BRIDGE,
     "screen-preconditions-undeclared": _BRIDGE,
     "unarranged-interaction-precondition": _BRIDGE,
