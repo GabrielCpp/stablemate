@@ -163,11 +163,12 @@ def test_a_run_that_fails_after_a_reload_is_not_restarted_again(tmp_path: Path):
 def test_sigterm_reaches_the_run_so_docker_stop_stays_graceful(tmp_path: Path):
     """`docker stop` sends SIGTERM to PID 1; the run is two levels down and only gets it because the supervisor forwards it."""
     marker = tmp_path / "term"
+    ready = tmp_path / "ready"
     code = (
         "import signal,sys,time,pathlib; "
         f"p=pathlib.Path({str(marker)!r}); "
         "signal.signal(signal.SIGTERM, lambda *_: (p.write_text('term'), sys.exit(9))); "
-        "print('up', flush=True); time.sleep(30)"
+        f"pathlib.Path({str(ready)!r}).write_text('up'); time.sleep(30)"
     )
 
     async def scenario() -> int:
@@ -177,7 +178,8 @@ def test_sigterm_reaches_the_run_so_docker_stop_stays_graceful(tmp_path: Path):
             if run.proc is not None:
                 break
             await asyncio.sleep(0.01)
-        await asyncio.sleep(0.2)
+        while not ready.exists():
+            await asyncio.sleep(0.01)
         run.signal(signal.SIGTERM)
         return await task
 

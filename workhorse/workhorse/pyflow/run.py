@@ -161,6 +161,17 @@ def _retire_worktree(writer: ArtifactWriter) -> None:
     )
 
 
+def _stop_resumable(writer: ArtifactWriter, name: str, exc: Exception) -> int:
+    print(f"[workhorse] ERROR: {exc}")
+    writer.record_interrupt(_state_of(writer), str(exc))
+    _keep_worktree(writer, "stopped")
+    print(f"[workhorse] resume with: workhorse-{name} run "
+          f"--resume-run {writer.run_dir}")
+    otel.end_run("interrupted", error=str(exc), error_class=type(exc).__name__,
+                 error_kind="fatal")
+    return 1
+
+
 def _keep_worktree(writer: ArtifactWriter, ending: str) -> None:
     """On any ending but success, keep the run's worktree so a resume or a person can pick it up."""
     if not writer.worktree_path:
@@ -339,14 +350,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
         except PyflowError as exc:
             agent_process.terminate_active()
             if isinstance(exc, RunBudgetExceeded | AgentTurnFailed):
-                print(f"[workhorse] ERROR: {exc}")
-                writer.record_interrupt(_state_of(writer), str(exc))
-                _keep_worktree(writer, "stopped")
-                print(f"[workhorse] resume with: workhorse-{name} run "
-                      f"--resume-run {writer.run_dir}")
-                otel.end_run("interrupted", error=str(exc), error_class=type(exc).__name__,
-                             error_kind="fatal")
-                return 1
+                return _stop_resumable(writer, name, exc)
             declared = registry.declares_replies() or bool(env.declared_answers)
             parked = getattr(exc, "failure_class", "") == "dry-run-gate"
             if dry_run and isinstance(exc, WorkflowFailed) and not declared and not parked:
@@ -367,14 +371,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
             return 1
         except BackendInvocationError as exc:
             agent_process.terminate_active()
-            print(f"[workhorse] ERROR: {exc}")
-            writer.record_interrupt(_state_of(writer), str(exc))
-            _keep_worktree(writer, "stopped")
-            print(f"[workhorse] resume with: workhorse-{name} run "
-                  f"--resume-run {writer.run_dir}")
-            otel.end_run("interrupted", error=str(exc), error_class=type(exc).__name__,
-                         error_kind="fatal")
-            return 1
+            return _stop_resumable(writer, name, exc)
         except Exception as exc:  # noqa: BLE001 — a smoke test reports, it does not raise
             if not dry_run:
                 raise

@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator, ParamSpec, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Iterator, ParamSpec, Protocol, TypedDict, TypeVar, Unpack
 from urllib.parse import urlparse
 
 from workhorse import turnkey
@@ -213,61 +213,14 @@ def output_attributes(output: object) -> dict[str, str | int | float | bool]:
     return found
 
 
-class Telemetry(Protocol):
-    """What the instrumentation sites may ask of telemetry."""
-
-    def enabled(self) -> bool: ...
-    def record_event(self, event: NodeEvent) -> None: ...
-    def run_attribute(self, name: str, value: str) -> None: ...
-    def stamp_output(self, node_id: str, seq: int, output: object) -> None: ...
-    def state_start(self, state: str, seq: int) -> None: ...
-    def state_end(
-        self, state: str, seq: int, next_state: str | None = None, cut: str = ""
-    ) -> None: ...
-    def wait_start(
-        self,
-        kind: str,
-        node_id: str,
-        gate_path: str = "",
-        gate_question: str = "",
-    ) -> int: ...
-    def wait_end(self, token: int, outcome: str = "completed") -> None: ...
-    def gas_level(self, gas: int, capacity: int) -> None: ...
-    def gas_refuel(self, node_id: str) -> None: ...
-    def turn_start(
-        self,
-        node_id: str,
-        model: str | None,
-        effort: str | None,
-        timeout: float,
-        backend: str | None = None,
-        cwd: str | None = None,
-        add_dirs: tuple[str, ...] = (),
-    ) -> None: ...
-    def turn_end(
-        self, error: str | None = None, error_class: str = "", error_kind: str = ""
-    ) -> None: ...
-    def turn_result(self, usage: TurnUsage) -> None: ...
-    def set_labels(self, labels: dict[str, str]) -> None: ...
-    def turn_session(self, session_id: str) -> None: ...
-    def turn_event(self, name: str, error: bool, attrs: dict[str, Any]) -> None: ...
-    def heartbeat(self, node_id: str, remaining_s: float) -> None: ...
-    def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None: ...
-    def current_node(self) -> str: ...
-    def current_repository(self) -> dict[str, str]: ...
-    def open_depth(self) -> int: ...
-    def unwind_to(self, depth: int, error: BaseException) -> None: ...
-    def end_run(
-        self,
-        status: str,
-        error: str | None = None,
-        error_class: str = "",
-        error_kind: str = "",
-    ) -> None: ...
+class TurnWhere(TypedDict, total=False):
+    backend: str | None
+    cwd: str | None
+    add_dirs: tuple[str, ...]
 
 
-class _NullTelemetry:
-    """Telemetry that is off: every call is a near-zero-cost no-op."""
+class Telemetry:
+    """What the instrumentation sites may ask of telemetry. This base is off: every call is a near-zero-cost no-op."""
 
     def enabled(self) -> bool:
         return False
@@ -296,9 +249,7 @@ class _NullTelemetry:
         model: str | None,
         effort: str | None,
         timeout: float,
-        backend: str | None = None,
-        cwd: str | None = None,
-        add_dirs: tuple[str, ...] = (),
+        **where: Unpack[TurnWhere],
     ) -> None: ...
     def turn_end(
         self, error: str | None = None, error_class: str = "", error_kind: str = ""
@@ -330,7 +281,8 @@ class _NullTelemetry:
     ) -> None: ...
 
 
-_NULL: Telemetry = _NullTelemetry()
+_NullTelemetry = Telemetry
+_NULL: Telemetry = Telemetry()
 
 
 class UsageRecorder(_NullTelemetry):
@@ -629,11 +581,9 @@ def turn_start(
     model: str | None,
     effort: str | None,
     timeout: float,
-    backend: str | None = None,
-    cwd: str | None = None,
-    add_dirs: tuple[str, ...] = (),
+    **where: Unpack[TurnWhere],
 ) -> None:
-    _host.active.turn_start(node_id, model, effort, timeout, backend, cwd, add_dirs)
+    _host.active.turn_start(node_id, model, effort, timeout, **where)
 
 
 def turn_end(error: str | None = None, error_class: str = "", error_kind: str = "") -> None:
@@ -694,7 +644,7 @@ def current_repository() -> dict[str, str]:
     return _host.active.current_repository()
 
 
-class _Telemetry:
+class _Telemetry(Telemetry):
     """The per-run span/metric state behind the module-level facade."""
 
     def __init__(
@@ -1066,6 +1016,13 @@ class _Telemetry:
         if mark_active:
             self._set_node_active(node_id, 1)
 
+    def _stamp_span_end(self, span: Any) -> None:
+        cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
+        self._span_roles.pop(id(span), None)
+        end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
+        for name, value in _span_repository_attrs(end_snapshot, "end").items():
+            span.set_attribute(name, value)
+
     def _end_execution(
         self,
         key: tuple[str, str, int],
@@ -1078,11 +1035,7 @@ class _Telemetry:
             return
         while self._stack:
             stack_key, span, _ = self._stack.pop()
-            cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
-            self._span_roles.pop(id(span), None)
-            end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
-            for name, value in _span_repository_attrs(end_snapshot, "end").items():
-                span.set_attribute(name, value)
+            self._stamp_span_end(span)
             if cut:
                 span.set_attribute("workhorse.cut", cut)
             if stack_key == key:
@@ -1128,11 +1081,7 @@ class _Telemetry:
             innermost = True
             while len(self._stack) > depth:
                 _, span, _ = self._stack.pop()
-                cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
-                self._span_roles.pop(id(span), None)
-                end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
-                for name, value in _span_repository_attrs(end_snapshot, "end").items():
-                    span.set_attribute(name, value)
+                self._stamp_span_end(span)
                 span.set_attribute(
                     "workhorse.outcome", "control" if control else "error"
                 )
@@ -1171,11 +1120,7 @@ class _Telemetry:
             while self._stack:
                 _, span, _ = self._stack.pop()
                 span.set_attribute("workhorse.outcome", "abandoned")
-                cwd, add_dirs, _ = self._span_repositories.pop(id(span), (None, (), {}))
-                self._span_roles.pop(id(span), None)
-                end_snapshot = _repository_attrs(cwd, add_dirs, refresh=True)
-                for name, value in _span_repository_attrs(end_snapshot, "end").items():
-                    span.set_attribute(name, value)
+                self._stamp_span_end(span)
                 span.end()
             if self._root is not None:
                 self._root.set_attribute("workhorse.terminal", status)
@@ -1204,10 +1149,11 @@ class _Telemetry:
         model: str | None,
         effort: str | None,
         timeout: float,
-        backend: str | None = None,
-        cwd: str | None = None,
-        add_dirs: tuple[str, ...] = (),
+        **where: Unpack[TurnWhere],
     ) -> None:
+        backend = where.get("backend")
+        cwd = where.get("cwd")
+        add_dirs = where.get("add_dirs", ())
         with self._lock:
             if self._turn is not None:
                 self.turn_end()

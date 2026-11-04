@@ -8,7 +8,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass
 from logging import Logger
 from pathlib import Path
-from typing import Any, ClassVar, Concatenate, ParamSpec, TypeVar
+from typing import Any, ClassVar, Concatenate, Generic, ParamSpec, TypedDict, TypeVar, Unpack
 
 from jinja2 import TemplateSyntaxError
 from pydantic import BaseModel, ConfigDict, PrivateAttr
@@ -28,6 +28,22 @@ from workhorse.worklist import WORK_FILE, JsonBackend, KindFilter, WorkList
 
 P = ParamSpec("P")
 T = TypeVar("T")
+
+
+class AgentOptions(TypedDict, Generic[T], total=False):
+    power: str | None
+    timeout: float | None
+    retries: int | None
+    invoke_retries: int | None
+    cwd: str | Path | None
+    add_dirs: Sequence[str | Path] | None
+    session: str | None
+    profile: AgentProfile | None
+    label: str | None
+    accept: Callable[[T], object] | None
+    rebrief: Callable[[], str] | None
+    silence: float | None
+
 
 START_STATE = "start"
 
@@ -188,18 +204,7 @@ class Workflow(BaseModel):
         *,
         returns: type[T],
         args: dict[str, Any] | None = None,
-        power: str | None = None,
-        timeout: float | None = None,
-        retries: int | None = None,
-        invoke_retries: int | None = None,
-        cwd: str | Path | None = None,
-        add_dirs: Sequence[str | Path] | None = None,
-        session: str | None = None,
-        profile: AgentProfile | None = None,
-        label: str | None = None,
-        accept: Callable[[T], object] | None = None,
-        rebrief: Callable[[], str] | None = None,
-        silence: float | None = None,
+        **options: Unpack[AgentOptions[T]],
     ) -> T:
         """Render `prompt`, run an agent turn, and validate the reply into `returns`.
 
@@ -215,6 +220,7 @@ class Workflow(BaseModel):
         seconds the turn may stay quiet before it is cut, apart from its `timeout`.
         """
         engine = self._require_engine()
+        label = options.get("label")
         if label is not None:
             self._check_inline(label, prompt)
         guard = (
@@ -223,23 +229,7 @@ class Workflow(BaseModel):
             else nullcontext()
         )
         with guard:
-            return engine.agent(
-                prompt,
-                returns=returns,
-                args=args or {},
-                power=power,
-                timeout=timeout,
-                retries=retries,
-                invoke_retries=invoke_retries,
-                cwd=cwd,
-                add_dirs=add_dirs,
-                session=session,
-                profile=profile,
-                label=label,
-                accept=accept,
-                rebrief=rebrief,
-                silence=silence,
-            )
+            return engine.agent(prompt, returns=returns, args=args or {}, **options)
 
     @staticmethod
     def _check_inline(label: str, text: str) -> None:

@@ -10,11 +10,11 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from workhorse.config_run import AgentResilience
 from workhorse.runner import acp
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentProfile, git_worktree, operator_config_dirs
+from workhorse.runner.backends import AgentProfile, TurnRequest, git_worktree
 from workhorse.runner.backends.guard import Policy, hook_command, policy_file
+from workhorse.runner.backends.policy import confined_policy
 from workhorse.runner.backends.delegates import Delegate
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import (
@@ -39,15 +39,13 @@ def _parse_codex_model(model: str | None) -> tuple[str | None, str | None]:
 SKILL_DIRS = (".claude/skills", ".agents/skills")
 
 
+def _skill_roots(cwd: Path) -> list[Path]:
+    worktree = git_worktree(cwd)
+    return [worktree / name for name in SKILL_DIRS if (worktree / name).is_dir()] if worktree else []
+
+
 def guard_policy(agent: AgentProfile | None, cwd: str | None, add_dirs: list[str] | None) -> Policy | None:
-    """What the guard holds a confined turn to: its cwd, the dirs it reads and its commands. None for a turn that is not confined."""
-    if agent is None or not agent.confined:
-        return None
-    turn_cwd = Path(cwd or os.getcwd()).resolve()
-    worktree = git_worktree(turn_cwd)
-    skills = [worktree / name for name in SKILL_DIRS if (worktree / name).is_dir()] if worktree else []
-    roots = (turn_cwd, *(Path(directory).resolve() for directory in add_dirs or []), *skills, *operator_config_dirs("codex"))
-    return Policy(cwd=turn_cwd, read_roots=tuple(dict.fromkeys(roots)), commands=tuple(agent.commands))
+    return confined_policy(agent, cwd, add_dirs, "codex", _skill_roots)
 
 
 def guard_flags(policy_path: Path) -> list[str]:
@@ -240,25 +238,9 @@ class CodexBackend(JsonlBackend):
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return CodexTranscript()
 
-    def run_turn(
-        self,
-        prompt: str,
-        node_id: str,
-        session_id_path: Path | None,
-        model: str | None = None,
-        *,
-        prompt_path: Path | None = None,
-        timeout: float,
-        resilience: AgentResilience,
-        cwd: str | None = None,
-        add_dirs: list[str] | None = None,
-        effort: str | None = None,
-        agent: AgentProfile | None = None,
-        delegates: tuple[Delegate, ...] = (),
-        models: tuple[str, ...] = (),
-    ) -> str:
-        sid = read_session_id(session_id_path)
-        profile, model_slug = _parse_codex_model(model)
+    def execute(self, turn: TurnRequest) -> str:
+        sid = read_session_id(turn.session_id_path)
+        profile, model_slug = _parse_codex_model(turn.model)
         if not profile:
             profile = (os.environ.get("CODEX_PROFILE") or "").strip() or None
         head = ["codex", *(["--profile", profile] if profile else [])]
@@ -269,31 +251,20 @@ class CodexBackend(JsonlBackend):
         ]
         if model_slug:
             flags += ["-m", model_slug]
-        if effort:
-            flags += ["-c", f'model_reasoning_effort="{_codex_effort(effort)}"']
+        if turn.effort:
+            flags += ["-c", f'model_reasoning_effort="{_codex_effort(turn.effort)}"']
         with (
-            flags_with_policy_file(guard_policy(agent, cwd, add_dirs)) as hook_flags,
-            flags_with_role_files(delegates) as role_flags,
+            flags_with_policy_file(guard_policy(turn.agent, turn.cwd, turn.add_dirs)) as hook_flags,
+            flags_with_role_files(turn.delegates) as role_flags,
         ):
             if sid:
                 cmd = [*head, "exec", "resume", *flags, *hook_flags, *role_flags, sid, "-"]
-                print(f"[{node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
+                print(f"[{turn.node_id}] 🔄 Resuming codex session: {sid[:8]}...", flush=True)
             else:
                 cmd = [*head, "exec", *flags, *hook_flags, *role_flags, "-"]
             state = self.stream(
-                cmd, node_id, timeout, prompt, recording(_on_event, session_id_path),
-                resilience=resilience, cwd=cwd,
+                cmd, turn.node_id, turn.timeout, turn.prompt, recording(_on_event, turn.session_id_path),
+                resilience=turn.resilience, cwd=turn.cwd,
                 env_extra=self.harness_env(), non_failure_markers=NON_FAILURE_MARKERS,
             )
-        return finalize_turn("codex", node_id, state, session_id_path, timeout)
-
-    def compact(
-        self,
-        session_id_path,
-        node_id,
-        model=None,
-        *,
-        timeout: float,
-        resilience: AgentResilience,
-    ):
-        return False
+        return finalize_turn("codex", turn.node_id, state, turn.session_id_path, turn.timeout)

@@ -90,9 +90,12 @@ class ArtifactWriter:
                 + "-"
                 + uuid.uuid4().hex[:4]
             )
-        self.run_dir = runs_dir / f"{workflow_name}-{run_id}"
+        self._start_fresh(runs_dir / f"{workflow_name}-{run_id}", workflow_name, run_id)
+
+    def _start_fresh(self, run_dir: Path, workflow_name: str, run_id: str) -> None:
+        self.run_dir = run_dir
         self._turns_root = self.run_dir
-        _clear_stale_run(self.run_dir)
+        _clear_stale_run(run_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self._started_at = datetime.now(timezone.utc).isoformat()
         self._workflow_name = workflow_name
@@ -188,25 +191,7 @@ class ArtifactWriter:
     def at(cls, run_dir: Path, workflow_name: str, run_id: str) -> "ArtifactWriter":
         """Create a FRESH writer rooted directly at ``run_dir`` (no ``runs_dir/<name>-<id>`` derivation)."""
         self = cls.__new__(cls)
-        self.run_dir = run_dir
-        self._turns_root = run_dir
-        _clear_stale_run(run_dir)
-        self.run_dir.mkdir(parents=True, exist_ok=True)
-        self._started_at = datetime.now(timezone.utc).isoformat()
-        self._workflow_name = workflow_name
-        self._run_id = run_id
-        self._seq = 0
-        self._repo_start = _observe_repo()
-        self._profile = ""
-        self._profile_config = {}
-        self._worktree_path = ""
-        self._worktree_branch = ""
-        self._worktree_repo = ""
-        self._worktree_base = ""
-        self._worktree_outcome = None
-        self._previous_process_died_at = None
-        self._previous_process_pid = None
-        self._write_run_json(terminal=None)
+        self._start_fresh(run_dir, workflow_name, run_id)
         return self
 
     def subscope(

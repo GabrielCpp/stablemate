@@ -3,26 +3,13 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
-from workhorse.config_run import AgentResilience
 from workhorse.runner import acp
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import (
-    AgentProfile,
-    ensure_prompt_is_not_in_argv,
-    prepare_argv_prompt,
-    warn_unenforced_confinement,
-)
-from workhorse.runner.backends.delegates import Delegate, warn_unsupported
+from workhorse.runner.backends import TurnRequest
 from workhorse.runner.backends.jsonl import JsonlBackend
-from workhorse.runner.backends.turn import (
-    TurnState,
-    finalize_turn,
-    read_session_id,
-    recording,
-)
+from workhorse.runner.backends.turn import TurnState
 
 _EFFORTS = frozenset({"none", "low", "medium", "high", "xhigh"})
 
@@ -102,15 +89,11 @@ def _targets(tool: str, inp: dict[str, Any]) -> dict[str, Any]:
     return inp
 
 
-class ClineTranscript(acp.TranscriptMapper):
+class ClineTranscript(acp.DiffTrackingMapper):
     """Cline's ``--json`` events as ACP updates.
 
     A tool's streamed ``content_update`` events are ignored. Its ``content_end`` carries the whole result.
     """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._diffs: dict[str, list[dict[str, Any]]] = {}
 
     def updates(self, event: dict[str, Any]) -> list[acp.MappedUpdate]:
         etype = event.get("type")
@@ -185,60 +168,24 @@ class ClineBackend(JsonlBackend):
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return ClineTranscript()
 
-    def run_turn(
-        self,
-        prompt: str,
-        node_id: str,
-        session_id_path: Path | None,
-        model: str | None = None,
-        *,
-        prompt_path: Path | None = None,
-        timeout: float,
-        resilience: AgentResilience,
-        cwd: str | None = None,
-        add_dirs: list[str] | None = None,
-        effort: str | None = None,
-        agent: AgentProfile | None = None,
-        delegates: tuple[Delegate, ...] = (),
-        models: tuple[str, ...] = (),
-    ) -> str:
-        warn_unsupported(self.name, delegates)
-        warn_unenforced_confinement(self.name, node_id, agent)
-        sid = read_session_id(session_id_path)
-        argv_prompt, _attachment = prepare_argv_prompt(prompt, prompt_path)
-        cmd = [
-            "cline",
-            "--json",
-            "--auto-approve",
-            "true",
-            "--compaction",
-            "basic",
-        ]
-        if model:
-            cmd += ["--model", model]
-        if effort in _EFFORTS:
-            cmd += ["--thinking", effort]
-        if cwd:
-            cmd += ["--cwd", cwd]
-        if sid:
-            cmd += ["--id", sid]
-            print(f"[{node_id}] 🔄 Resuming cline session: {sid[:8]}...", flush=True)
-        cmd += ["--", argv_prompt]
-        ensure_prompt_is_not_in_argv(prompt, cmd)
-        state = self.stream(
-            cmd, node_id, timeout, None, recording(_on_event, session_id_path),
-            resilience=resilience, cwd=cwd,
-            env_extra=self.harness_env(),
-        )
-        return finalize_turn("cline", node_id, state, session_id_path, timeout)
+    def execute(self, turn: TurnRequest) -> str:
+        def command(argv_prompt: str, _attachment: object, sid: str | None) -> list[str]:
+            cmd = [
+                "cline",
+                "--json",
+                "--auto-approve",
+                "true",
+                "--compaction",
+                "basic",
+            ]
+            if turn.model:
+                cmd += ["--model", turn.model]
+            if turn.effort in _EFFORTS:
+                cmd += ["--thinking", turn.effort]
+            if turn.cwd:
+                cmd += ["--cwd", turn.cwd]
+            if sid:
+                cmd += ["--id", sid]
+            return [*cmd, "--", argv_prompt]
 
-    def compact(
-        self,
-        session_id_path,
-        node_id,
-        model=None,
-        *,
-        timeout: float,
-        resilience: AgentResilience,
-    ):
-        return False
+        return self.execute_argv(turn, command, _on_event)

@@ -31,6 +31,14 @@ class TranscriptMapper(ABC):
         """The updates one parsed event yields, keeping ``session_id`` current as events name it."""
 
 
+class DiffTrackingMapper(TranscriptMapper, ABC):
+    """A mapper that holds a tool call's file changes from its start until its result arrives."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._diffs: dict[str, list[dict[str, Any]]] = {}
+
+
 class NullTranscript(TranscriptMapper):
     """A CLI with nothing to show."""
 

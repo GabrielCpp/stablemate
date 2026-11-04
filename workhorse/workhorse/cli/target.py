@@ -1,6 +1,7 @@
 """Which run dir an operator command means — shared by `control` and `inbox`."""
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -95,3 +96,13 @@ def resolve_target(
         )
         sys.exit(1)
     return latest
+
+
+def resolve_args_target(args: argparse.Namespace) -> Path:
+    """The run dir named by the parsed ``--run`` / ``--runs-dir`` flags."""
+    runs_dir = (
+        Path(args.runs_dir).resolve()
+        if args.runs_dir
+        else (Path.cwd() / ".agents" / "runs").resolve()
+    )
+    return resolve_target(args.run, runs_dir, args.registry.name)

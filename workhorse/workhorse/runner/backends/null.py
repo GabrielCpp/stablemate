@@ -2,15 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import TYPE_CHECKING
-
-from workhorse.runner.backends import AgentBackend, AgentProfile
+from workhorse.runner.backends import AgentBackend, TurnRequest
 from workhorse.runner.failure import BackendInvocationError
-
-if TYPE_CHECKING:
-    from workhorse.config_run import AgentResilience
-    from workhorse.runner.backends.delegates import Delegate
 
 
 class NullBackend(AgentBackend):
@@ -21,35 +14,8 @@ class NullBackend(AgentBackend):
     supports_compaction = False
     supports_subagents = False
 
-    def run_turn(
-        self,
-        prompt: str,
-        node_id: str,
-        session_id_path: Path | None,
-        model: str | None = None,
-        *,
-        prompt_path: Path | None = None,
-        timeout: float,
-        resilience: AgentResilience,
-        cwd: str | None = None,
-        add_dirs: list[str] | None = None,
-        effort: str | None = None,
-        agent: AgentProfile | None = None,
-        delegates: tuple[Delegate, ...] = (),
-        models: tuple[str, ...] = (),
-    ) -> str:
+    def execute(self, turn: TurnRequest) -> str:
         raise BackendInvocationError(
-            f"node {node_id!r} needs an agent CLI and this run has none — "
+            f"node {turn.node_id!r} needs an agent CLI and this run has none — "
             f"pass --cli or set AGENT_CLI"
         )
-
-    def compact(
-        self,
-        session_id_path: Path | None,
-        node_id: str,
-        model: str | None = None,
-        *,
-        timeout: float,
-        resilience: AgentResilience,
-    ) -> bool:
-        return False

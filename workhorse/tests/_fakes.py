@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from workhorse import otel
-from workhorse.runner.backends import AgentBackend
+from workhorse.runner.backends import AgentBackend, TurnRequest
 
 
 def present[T](value: T | None) -> T:
@@ -45,6 +45,9 @@ class FakeBackend(AgentBackend):
         if self._turn is None:
             raise AssertionError("FakeBackend.run_turn called but no turn was supplied")
         return self._turn(prompt, node_id, session_id_path, model, **kwargs)
+
+    def execute(self, turn: TurnRequest) -> str:
+        raise AssertionError("FakeBackend answers run_turn itself")
 
     def compact(
         self,
@@ -115,16 +118,7 @@ class RecordingTelemetry(otel._NullTelemetry):
     def turn_event(self, name: str, error: bool, attrs: dict[str, Any]) -> None:
         self.events.append((name, error, dict(attrs)))
 
-    def turn_start(
-        self,
-        node_id: str,
-        model: str | None,
-        effort: str | None,
-        timeout: float,
-        backend: str | None = None,
-        cwd: str | None = None,
-        add_dirs: tuple[str, ...] = (),
-    ) -> None:
+    def turn_start(self, node_id: str, *_: Any, **__: Any) -> None:
         self.turns_opened.append(node_id)
 
     def turn_end(

@@ -12,7 +12,7 @@ import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Required, TypedDict, Unpack
 
 from workhorse import control, otel, reload
 from workhorse.config_run import AgentResilience
@@ -157,6 +157,14 @@ def _arm_watchdog(
 
 
 _EXEC_BUSY_ERRNOS = frozenset({errno.ETXTBSY, errno.ENOEXEC, errno.ESTALE})
+
+
+class StreamOptions(TypedDict, total=False):
+    resilience: Required[AgentResilience]
+    stdin_data: str | None
+    cwd: str | None
+    env_extra: dict[str, str] | None
+    secrets: Iterable[str] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -389,25 +397,10 @@ def stream_subprocess(
     node_id: str,
     timeout: float,
     on_line: "Callable[[str], object]",
-    *,
-    resilience: AgentResilience,
-    stdin_data: str | None = None,
-    cwd: str | None = None,
-    env_extra: dict[str, str] | None = None,
-    secrets: Iterable[str] | None = None,
+    **options: Unpack[StreamOptions],
 ) -> tuple[bool, int]:
     """Stream a turn on the installed supervisor — see :meth:`ProcessSupervisor.stream`."""
-    return _supervisor.stream(
-        cmd,
-        node_id,
-        timeout,
-        on_line,
-        resilience=resilience,
-        stdin_data=stdin_data,
-        cwd=cwd,
-        env_extra=env_extra,
-        secrets=secrets,
-    )
+    return _supervisor.stream(cmd, node_id, timeout, on_line, **options)
 
 
 def terminate_active() -> None:

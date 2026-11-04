@@ -4,10 +4,9 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import UTC, datetime
-from pathlib import Path
 
 from workhorse import inbox
-from workhorse.cli.target import resolve_target
+from workhorse.cli.target import resolve_args_target
 
 NAME = "inbox"
 HELP = "Read or answer the messages left for a run (read, reply)"
@@ -59,12 +58,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(args: argparse.Namespace) -> None:
-    runs_dir = (
-        Path(args.runs_dir).resolve()
-        if args.runs_dir
-        else (Path.cwd() / ".agents" / "runs").resolve()
-    )
-    run_dir = resolve_target(args.run, runs_dir, args.registry.name)
+    run_dir = resolve_args_target(args)
     path = run_dir / INBOX_FILE
 
     if args.action == READ:

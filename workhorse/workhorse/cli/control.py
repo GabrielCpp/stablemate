@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from workhorse import control, reload
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli import offline
-from workhorse.cli.target import resolve_target
+from workhorse.cli.target import resolve_args_target
 from workhorse.records import PyflowCheckpoint, parse_checkpoint, parse_run_record
 
 NAME = "control"
@@ -147,12 +147,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def run(args: argparse.Namespace) -> None:
-    runs_dir = (
-        Path(args.runs_dir).resolve()
-        if args.runs_dir
-        else (Path.cwd() / ".agents" / "runs").resolve()
-    )
-    run_dir = resolve_target(args.run, runs_dir, args.registry.name)
+    run_dir = resolve_args_target(args)
     _refuse_misplaced_flags(args)
     gate, text = _answer_payload(args)
     if args.action == REWIND:

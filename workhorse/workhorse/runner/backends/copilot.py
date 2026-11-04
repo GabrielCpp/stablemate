@@ -6,23 +6,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from workhorse.config_run import AgentResilience
 from workhorse.runner import acp
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import (
-    AgentProfile,
-    ensure_prompt_is_not_in_argv,
-    prepare_argv_prompt,
-    warn_unenforced_confinement,
-)
-from workhorse.runner.backends.delegates import Delegate, warn_unsupported
+from workhorse.runner.backends import TurnRequest
 from workhorse.runner.backends.jsonl import JsonlBackend
-from workhorse.runner.backends.turn import (
-    TurnState,
-    finalize_turn,
-    read_session_id,
-    recording,
-)
+from workhorse.runner.backends.turn import TurnState
 
 
 def _on_event(event, state: TurnState, node_id):
@@ -66,15 +54,11 @@ def _diffs(tool: str, args: dict[str, Any]) -> list[dict[str, Any]]:
     return []
 
 
-class CopilotTranscript(acp.TranscriptMapper):
+class CopilotTranscript(acp.DiffTrackingMapper):
     """Copilot's ``-p --output-format json`` events as ACP updates.
 
     The streamed deltas are ignored. The ``assistant.message`` that follows them carries the whole text.
     """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._diffs: dict[str, list[dict[str, Any]]] = {}
 
     def updates(self, event: dict[str, Any]) -> list[acp.MappedUpdate]:
         etype = event.get("type")
@@ -135,62 +119,27 @@ class CopilotBackend(JsonlBackend):
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return CopilotTranscript()
 
-    def run_turn(
-        self,
-        prompt: str,
-        node_id: str,
-        session_id_path: Path | None,
-        model: str | None = None,
-        *,
-        prompt_path: Path | None = None,
-        timeout: float,
-        resilience: AgentResilience,
-        cwd: str | None = None,
-        add_dirs: list[str] | None = None,
-        effort: str | None = None,
-        agent: AgentProfile | None = None,
-        delegates: tuple[Delegate, ...] = (),
-        models: tuple[str, ...] = (),
-    ) -> str:
-        warn_unsupported(self.name, delegates)
-        warn_unenforced_confinement(self.name, node_id, agent)
-        sid = read_session_id(session_id_path)
-        argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)
-        cmd = [
-            "copilot",
-            "-p",
-            argv_prompt,
-            "--output-format",
-            "json",
-            "--allow-all",
-            "--no-ask-user",
-        ]
-        if model:
-            cmd += ["--model", model]
-        if effort:
-            cmd += ["--effort", effort]
-        for d in add_dirs or []:
-            cmd += ["--add-dir", d]
-        if attachment is not None:
-            cmd += ["--attachment", str(attachment)]
-        if sid:
-            cmd += ["--session-id", sid]
-            print(f"[{node_id}] 🔄 Resuming copilot session: {sid[:8]}...", flush=True)
-        ensure_prompt_is_not_in_argv(prompt, cmd)
-        state = self.stream(
-            cmd, node_id, timeout, None, recording(_on_event, session_id_path),
-            resilience=resilience, cwd=cwd,
-            env_extra=self.harness_env(),
-        )
-        return finalize_turn("copilot", node_id, state, session_id_path, timeout)
+    def execute(self, turn: TurnRequest) -> str:
+        def command(argv_prompt: str, attachment: Path | None, sid: str | None) -> list[str]:
+            cmd = [
+                "copilot",
+                "-p",
+                argv_prompt,
+                "--output-format",
+                "json",
+                "--allow-all",
+                "--no-ask-user",
+            ]
+            if turn.model:
+                cmd += ["--model", turn.model]
+            if turn.effort:
+                cmd += ["--effort", turn.effort]
+            for d in turn.add_dirs or []:
+                cmd += ["--add-dir", d]
+            if attachment is not None:
+                cmd += ["--attachment", str(attachment)]
+            if sid:
+                cmd += ["--session-id", sid]
+            return cmd
 
-    def compact(
-        self,
-        session_id_path,
-        node_id,
-        model=None,
-        *,
-        timeout: float,
-        resilience: AgentResilience,
-    ):
-        return False
+        return self.execute_argv(turn, command, _on_event)

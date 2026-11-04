@@ -9,13 +9,13 @@ import os
 import select
 import socket
 import tempfile
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol
 
+from workhorse._vendor.stablemate_core import sockets as sockets_core
 from workhorse._vendor.stablemate_core.clock import Clock
 
 STATUS = "status"
@@ -32,7 +32,6 @@ POINTER_FILE = "control.sock.path"
 
 _SUN_PATH_MAX = 100
 
-_CHUNK = 64 * 1024
 
 REQUEST_LIMIT = 64 * 1024
 
@@ -396,22 +395,12 @@ def send(run_dir: str | Path, request: Request, *, timeout: float = 5.0) -> dict
 
 def _connected(path: Path, timeout: float) -> socket.socket:
     """A client connected to `path`, waiting up to `timeout` while a run between two waits has a full queue."""
-    deadline = time.monotonic() + timeout
-    while True:
-        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        client.settimeout(timeout)
-        try:
-            client.connect(str(path))
-        except (FileNotFoundError, ConnectionRefusedError) as exc:
-            client.close()
-            raise FileNotFoundError(f"no run is listening on {path}") from exc
-        except BlockingIOError as exc:
-            client.close()
-            if time.monotonic() >= deadline:
-                raise TimeoutError(f"the run on {path} took no request for {timeout:g}s: its queue stayed full") from exc
-            time.sleep(CONNECT_RETRY_S)
-        else:
-            return client
+    try:
+        return sockets_core.connected(path, timeout, retry_s=CONNECT_RETRY_S)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"no run is listening on {path}") from exc
+    except TimeoutError as exc:
+        raise TimeoutError(f"the run on {path} took no request for {timeout:g}s: its queue stayed full") from exc
 
 
 def listening(run_dir: str | Path) -> bool:
@@ -456,24 +445,7 @@ def _is_live(path: Path) -> bool:
 
 
 def _read_message(conn: socket.socket, *, limit: int) -> str:
-    """One newline-terminated message, reassembled across however many packets it arrives in."""
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        chunk = conn.recv(_CHUNK)
-        if not chunk:
-            break
-        newline = chunk.find(b"\n")
-        if newline >= 0:
-            chunks.append(chunk[:newline])
-            break
-        chunks.append(chunk)
-        total += len(chunk)
-        if total > limit:
-            raise ControlProtocolError(
-                f"control message exceeded {limit} bytes with no newline"
-            )
-    return b"".join(chunks).decode("utf-8", errors="replace")
+    return sockets_core.read_message(conn, limit=limit, error=ControlProtocolError)
 
 
 __all__ = [

@@ -10,12 +10,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from workhorse.config_run import AgentResilience
 from workhorse.runner import acp
 from workhorse.runner import failure as _failure
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import (
     AgentProfile,
+    TurnRequest,
     ensure_prompt_is_not_in_argv,
     git_worktree,
     operator_config_dirs,
@@ -427,25 +427,9 @@ class OpenCodeBackend(JsonlBackend):
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return OpenCodeTranscript()
 
-    def run_turn(
-        self,
-        prompt: str,
-        node_id: str,
-        session_id_path: Path | None,
-        model: str | None = None,
-        *,
-        prompt_path: Path | None = None,
-        timeout: float,
-        resilience: AgentResilience,
-        cwd: str | None = None,
-        add_dirs: list[str] | None = None,
-        effort: str | None = None,
-        agent: AgentProfile | None = None,
-        delegates: tuple[Delegate, ...] = (),
-        models: tuple[str, ...] = (),
-    ) -> str:
-        sid = read_session_id(session_id_path)
-        argv_prompt, attachment = prepare_argv_prompt(prompt, prompt_path)
+    def execute(self, turn: TurnRequest) -> str:
+        sid = read_session_id(turn.session_id_path)
+        argv_prompt, attachment = prepare_argv_prompt(turn.prompt, turn.prompt_path)
         cmd = [
             "opencode",
             "--print-logs",
@@ -457,23 +441,23 @@ class OpenCodeBackend(JsonlBackend):
             "--thinking",
             "--auto",
         ]
-        if model:
-            cmd += ["-m", model]
-        variant = _OPENCODE_VARIANT.get(effort, effort) if effort else ""
+        if turn.model:
+            cmd += ["-m", turn.model]
+        variant = _OPENCODE_VARIANT.get(turn.effort, turn.effort) if turn.effort else ""
         if variant:
             cmd += ["--variant", variant]
         if sid:
             cmd += ["--session", sid]
-            print(f"[{node_id}] 🔄 Resuming opencode session: {sid[:8]}...", flush=True)
-        if agent is not None:
-            cmd += ["--agent", agent.name]
+            print(f"[{turn.node_id}] 🔄 Resuming opencode session: {sid[:8]}...", flush=True)
+        if turn.agent is not None:
+            cmd += ["--agent", turn.agent.name]
         if attachment is not None:
             cmd += ["--file", str(attachment)]
         cmd += ["--", argv_prompt]
-        ensure_prompt_is_not_in_argv(prompt, cmd)
+        ensure_prompt_is_not_in_argv(turn.prompt, cmd)
         env_extra = self.harness_env()
         config = _config_content(
-            env_extra.get(_OPENCODE_CONFIG_ENV), model, agent, cwd, add_dirs, delegates
+            env_extra.get(_OPENCODE_CONFIG_ENV), turn.model, turn.agent, turn.cwd, turn.add_dirs, turn.delegates
         )
         if config is not None:
             env_extra = {**env_extra, _OPENCODE_CONFIG_ENV: config}
@@ -483,30 +467,19 @@ class OpenCodeBackend(JsonlBackend):
                 **env_extra,
             }
         state = self.stream(
-            cmd, node_id, timeout, None,
-            recording(_OpenCodeEvents().on_event, session_id_path),
-            resilience=resilience, cwd=cwd,
+            cmd, turn.node_id, turn.timeout, None,
+            recording(_OpenCodeEvents().on_event, turn.session_id_path),
+            resilience=turn.resilience, cwd=turn.cwd,
             env_extra=env_extra,
         )
         rate_reset_at = (
-            _codex_reset_at(model) if _failure.is_cap(state.diagnostics_text) else None
+            _codex_reset_at(turn.model) if _failure.is_cap(state.diagnostics_text) else None
         )
         return finalize_turn(
             "opencode",
-            node_id,
+            turn.node_id,
             state,
-            session_id_path,
-            timeout,
+            turn.session_id_path,
+            turn.timeout,
             rate_reset_at=rate_reset_at,
         )
-
-    def compact(
-        self,
-        session_id_path,
-        node_id,
-        model=None,
-        *,
-        timeout: float,
-        resilience: AgentResilience,
-    ):
-        return False

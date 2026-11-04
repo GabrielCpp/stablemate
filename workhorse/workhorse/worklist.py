@@ -5,7 +5,7 @@ import hashlib
 import json
 import os
 from collections import Counter
-from collections.abc import Collection, Iterable, Iterator, Sequence
+from collections.abc import Callable, Collection, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from itertools import islice
 from pathlib import Path
@@ -356,8 +356,7 @@ class WorkList:
         self.backend.save(items)
         return taken
 
-    def settle(self, ids: Iterable[str], status: str, kind: KindFilter = None) -> int:
-        """Set the status of every item named in ``ids``, in one write, and say how many rows it set."""
+    def _update(self, ids: Iterable[str], kind: KindFilter, apply: Callable[[WorkItem], None]) -> int:
         wanted = set(ids)
         if not wanted:
             return 0
@@ -366,11 +365,19 @@ class WorkList:
         changed = 0
         for it in items:
             if it.id in wanted and (kinds is None or it.kind in kinds):
-                it.status = status
+                apply(it)
                 changed += 1
         if changed:
             self.backend.save(items)
         return changed
+
+    def settle(self, ids: Iterable[str], status: str, kind: KindFilter = None) -> int:
+        """Set the status of every item named in ``ids``, in one write, and say how many rows it set."""
+
+        def set_status(it: WorkItem) -> None:
+            it.status = status
+
+        return self._update(ids, kind, set_status)
 
     def mark(
         self, item_id: str, status: str, kind: KindFilter = None, note: str | None = None
@@ -391,21 +398,13 @@ class WorkList:
 
     def requeue(self, ids: Iterable[str], note: str, kind: KindFilter = None) -> int:
         """Send every item named in ``ids`` back to pending with no laps spent and ``note`` attached, in one write, and say how many rows it reset."""
-        wanted = set(ids)
-        if not wanted:
-            return 0
-        kinds = _kinds(kind)
-        items = self._load()
-        changed = 0
-        for it in items:
-            if it.id in wanted and (kinds is None or it.kind in kinds):
-                it.status = ""
-                it.laps = 0
-                it.note = note
-                changed += 1
-        if changed:
-            self.backend.save(items)
-        return changed
+
+        def reset(it: WorkItem) -> None:
+            it.status = ""
+            it.laps = 0
+            it.note = note
+
+        return self._update(ids, kind, reset)
 
     def prune(self, item_id: str, kind: KindFilter = None) -> bool:
         """Drop one item entirely."""

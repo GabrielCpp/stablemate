@@ -124,6 +124,25 @@ def ensure_prompt_is_not_in_argv(prompt: str, command: list[str]) -> None:
         raise RuntimeError("oversized prompt remained in the subprocess argument vector")
 
 
+@dataclass(frozen=True, slots=True)
+class TurnRequest:
+    """One turn's inputs, as ``AgentBackend.run_turn`` received them."""
+
+    prompt: str
+    node_id: str
+    session_id_path: Path | None
+    model: str | None
+    prompt_path: Path | None
+    timeout: float
+    resilience: AgentResilience
+    cwd: str | None
+    add_dirs: list[str] | None
+    effort: str | None
+    agent: AgentProfile | None
+    delegates: tuple[Delegate, ...]
+    models: tuple[str, ...]
+
+
 class AgentBackend(ABC):
     """One agent CLI behind a uniform interface."""
 
@@ -140,7 +159,6 @@ class AgentBackend(ABC):
         """A fresh mapper from this CLI's events to ACP updates, for one turn. The default shows nothing."""
         return NullTranscript()
 
-    @abstractmethod
     def run_turn(
         self,
         prompt: str,
@@ -165,8 +183,28 @@ class AgentBackend(ABC):
         ``models`` are the models the run's profile names. A backend whose CLI lets a
         subagent pick its own model holds that pick to them.
         """
+        return self.execute(
+            TurnRequest(
+                prompt=prompt,
+                node_id=node_id,
+                session_id_path=session_id_path,
+                model=model,
+                prompt_path=prompt_path,
+                timeout=timeout,
+                resilience=resilience,
+                cwd=cwd,
+                add_dirs=add_dirs,
+                effort=effort,
+                agent=agent,
+                delegates=delegates,
+                models=models,
+            )
+        )
 
     @abstractmethod
+    def execute(self, turn: TurnRequest) -> str:
+        """Run ``turn`` on this CLI and return the final result text."""
+
     def compact(
         self,
         session_id_path: Path | None,
@@ -176,4 +214,5 @@ class AgentBackend(ABC):
         timeout: float,
         resilience: AgentResilience,
     ) -> bool:
-        """Best-effort: compact the node's session to free context so it can continue."""
+        """Best-effort: compact the node's session to free context so it can continue. A CLI that cannot compact answers False."""
+        return False

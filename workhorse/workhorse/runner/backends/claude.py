@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import re
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
@@ -17,10 +16,11 @@ from workhorse.runner import acp
 from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentBackend, AgentProfile, git_worktree, operator_config_dirs
+from workhorse.runner.backends import AgentBackend, AgentProfile, TurnRequest, git_worktree
 from workhorse.runner.backends.delegates import Delegate
 from workhorse.runner.backends import model_guard
 from workhorse.runner.backends.guard import Policy, hook_command, policy_file
+from workhorse.runner.backends.policy import confined_policy
 
 
 _OUTLIVING_TOOLS = ("Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger")
@@ -39,74 +39,58 @@ class ClaudeBackend(AgentBackend):
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return ClaudeTranscript()
 
-    def run_turn(
-        self,
-        prompt: str,
-        node_id: str,
-        session_id_path: Path | None,
-        model: str | None = None,
-        *,
-        prompt_path: Path | None = None,
-        timeout: float,
-        resilience: AgentResilience,
-        cwd: str | None = None,
-        add_dirs: list[str] | None = None,
-        effort: str | None = None,
-        agent: AgentProfile | None = None,
-        delegates: tuple[Delegate, ...] = (),
-        models: tuple[str, ...] = (),
-    ) -> str:
+    def execute(self, turn: TurnRequest) -> str:
         """Run one Claude CLI turn and return its final result text."""
         cmd = [
             "claude",
-            *_permission_flags(agent),
+            *_permission_flags(turn.agent),
             "--output-format", "stream-json",
             "--verbose",
             "--disallowedTools", *_OUTLIVING_TOOLS,
-            *_tool_flags(agent),
+            *_tool_flags(turn.agent),
         ]
-        if model:
-            cmd.extend(["--model", model])
-        if effort:
-            cmd.extend(["--effort", effort])
-        if agent is not None and agent.steps is not None:
-            cmd.extend(["--max-turns", str(agent.steps)])
-        if prompt_path is not None:
-            cmd.extend(["--append-system-prompt", _brief_anchor(prompt_path)])
-        for directory in add_dirs or []:
+        if turn.model:
+            cmd.extend(["--model", turn.model])
+        if turn.effort:
+            cmd.extend(["--effort", turn.effort])
+        if turn.agent is not None and turn.agent.steps is not None:
+            cmd.extend(["--max-turns", str(turn.agent.steps)])
+        if turn.prompt_path is not None:
+            cmd.extend(["--append-system-prompt", _brief_anchor(turn.prompt_path)])
+        for directory in turn.add_dirs or []:
             cmd.extend(["--add-dir", directory])
-        if delegates:
-            cmd.extend(["--agents", _agents_json(delegates)])
+        if turn.delegates:
+            cmd.extend(["--agents", _agents_json(turn.delegates)])
         cmd.append("-p")
 
-        if session_id_path and session_id_path.exists():
-            sid = session_id_path.read_text().strip()
+        if turn.session_id_path and turn.session_id_path.exists():
+            sid = turn.session_id_path.read_text().strip()
             if sid:
                 cmd.extend(["--resume", sid])
-                print(f"[{node_id}] 🔄 Resuming session: {sid[:8]}...", flush=True)
+                print(f"[{turn.node_id}] 🔄 Resuming session: {sid[:8]}...", flush=True)
 
-        with _guard_flags(_guard_policy(agent, cwd, add_dirs), models) as guard_flags:
+        with _guard_flags(_guard_policy(turn.agent, turn.cwd, turn.add_dirs), turn.models) as guard_flags:
             stream = _stream_events(
                 [*cmd, *guard_flags],
-                node_id,
-                timeout,
-                resilience=resilience,
-                stdin_data=prompt,
-                cwd=cwd or None,
-                env_extra={**_FOREGROUND_ENV, **self.harness_env(), **_command_timeout_env(agent)},
-                session_id_path=session_id_path,
+                turn.node_id,
+                turn.timeout,
+                resilience=turn.resilience,
+                stdin_data=turn.prompt,
+                cwd=turn.cwd or None,
+                env_extra={**_FOREGROUND_ENV, **self.harness_env(), **_command_timeout_env(turn.agent)},
+                session_id_path=turn.session_id_path,
             )
 
         return _failure.classify_turn(
             "claude",
-            node_id,
+            turn.node_id,
             result_text=stream.result_text,
             diagnostics=stream.diagnostics_text,
             timed_out=stream.timed_out,
             returncode=stream.returncode,
-            timeout=timeout,
+            timeout=turn.timeout,
             session_id=stream.session_id,
-            session_id_path=session_id_path,
+            session_id_path=turn.session_id_path,
             rate_limited=stream.rate_limited,
             rate_reset_at=stream.rate_reset_at,
         )
@@ -224,17 +208,7 @@ def _permission_flags(agent: AgentProfile | None) -> list[str]:
 
 
 def _guard_policy(agent: AgentProfile | None, cwd: str | None, add_dirs: list[str] | None) -> Policy | None:
-    """What the guard holds a confined turn to: its cwd, the dirs it reads and its commands. None for a turn that is not confined."""
-    if agent is None or not agent.confined:
-        return None
-    turn_cwd = Path(cwd or os.getcwd()).resolve()
-    roots = (
-        turn_cwd,
-        *(Path(directory).resolve() for directory in add_dirs or []),
-        *_skill_dirs(turn_cwd),
-        *operator_config_dirs("claude"),
-    )
-    return Policy(cwd=turn_cwd, read_roots=tuple(dict.fromkeys(roots)), commands=tuple(agent.commands))
+    return confined_policy(agent, cwd, add_dirs, "claude", _skill_dirs)
 
 
 @contextmanager

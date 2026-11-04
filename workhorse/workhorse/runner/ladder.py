@@ -7,7 +7,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Required, TypedDict, Unpack
 
 from workhorse import control, otel, reload
 from workhorse.artifacts import write_unlinked
@@ -44,6 +44,25 @@ if TYPE_CHECKING:
     from workhorse.runner.backends import AgentBackend
 
 logger = logging.getLogger(__name__)
+
+
+class RunOptions(TypedDict, total=False):
+    resume_session: bool
+    session_chain: str
+    run_dir: Path | None
+    visit_dir: Path | None
+    validate: Callable[[dict[str, Any]], object] | None
+    rebrief: Callable[[], str] | None
+
+
+class TurnOptions(TypedDict, total=False):
+    prompt_path: Path | None
+    timeout: Required[float]
+    budget_scale: float
+    base_timeout_s: float | None
+    cwd: str | None
+    add_dirs: list[str] | None
+    effort: str | None
 
 
 def _write_prompt_for_inspection(node_id: str, prompt: str, run_dir: Path | None) -> Path | None:
@@ -191,15 +210,15 @@ class AgentRunner:
         context: WorkflowContext,
         workflow_dir: Path,
         session_id_path: Path | None = None,
-        *,
-        resume_session: bool = False,
-        session_chain: str = "",
-        run_dir: Path | None = None,
-        visit_dir: Path | None = None,
-        validate: Callable[[dict[str, Any]], object] | None = None,
-        rebrief: Callable[[], str] | None = None,
+        **options: Unpack[RunOptions],
     ) -> tuple[str, dict[str, Any]]:
         """Render the prompt, invoke the agent, and parse its declared outputs — resiliently."""
+        resume_session = options.get("resume_session", False)
+        session_chain = options.get("session_chain", "")
+        run_dir = options.get("run_dir")
+        visit_dir = options.get("visit_dir")
+        validate = options.get("validate")
+        rebrief = options.get("rebrief")
         node_id = node.id
         resilience = self.resilience
         turn = self.render(node, context.as_dict(), workflow_dir)
@@ -413,25 +432,17 @@ class AgentRunner:
         session_id_path: Path | None,
         model: str | None,
         *,
-        prompt_path: Path | None = None,
-        timeout: float,
-        budget_scale: float = 1.0,
-        base_timeout_s: float | None = None,
-        cwd: str | None = None,
-        add_dirs: list[str] | None = None,
-        effort: str | None = None,
         validate: Callable[[dict[str, Any]], object] | None = None,
+        **turn_options: Unpack[TurnOptions],
     ) -> dict[str, Any]:
         """Invoke the agent and parse the node's declared outputs."""
         max_output_retries = self.resilience.max_output_retries
         for attempt in range(max_output_retries + 1):
             result_text = self.turn(
-                prompt, node.id, session_id_path, model=model, timeout=timeout,
-                prompt_path=prompt_path,
-                budget_scale=budget_scale, base_timeout_s=base_timeout_s,
-                cwd=cwd, add_dirs=add_dirs, effort=effort,
+                prompt, node.id, session_id_path, model=model,
                 agent=node.agent,
                 invoke_retries=node.invoke_retries,
+                **turn_options,
             )
             try:
                 outputs = extract_outputs(result_text, node)
