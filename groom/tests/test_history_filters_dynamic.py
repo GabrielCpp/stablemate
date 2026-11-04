@@ -106,7 +106,7 @@ def test_the_range_filter_offers_the_last_7_and_30_days_starts_on_30_and_narrows
             again = _totals(page)[0]
         finally:
             page.close()
-    assert ranges == ["Last 30 days", "Last 7 days"]
+    assert ranges == ["Last 30 days", "Last 7 days", "Everything, archives included"]
     assert start == "Last 30 days"
     assert before == ["hist-a", "hist-b", "hist-c", "hist-d"]
     assert after == ["hist-a", "hist-b", "hist-c"]

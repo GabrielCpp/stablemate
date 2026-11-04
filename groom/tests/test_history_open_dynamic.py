@@ -60,6 +60,15 @@ def _ready(page) -> None:
     page.wait_for_selector(f"{DETAIL} .ov", timeout=15000)
 
 
+def _read_the_failure_and_retry(page, answers: dict) -> tuple[str, int]:
+    page.wait_for_selector(f"{DETAIL} .retry-overview", timeout=10000)
+    text = page.locator(f"{DETAIL} [role=alert]").inner_text()
+    rows = page.locator("#history .row").count()
+    answers["fail"] = False
+    page.get_by_role("button", name="Retry now").click()
+    return text, rows
+
+
 def test_selecting_a_row_narrows_the_list_opens_the_detail_beside_it_and_marks_the_row_selected():
     live = _live()
     assert live is not None, _UNAVAILABLE
@@ -296,11 +305,7 @@ def test_a_failed_read_says_the_run_figures_could_not_be_read_keeps_the_list_and
         try:
             page.wait_for_selector("#history table.ht", timeout=10000)
             page.locator("#history tr.hrow", has_text="hist-a").click()
-            page.wait_for_selector(f"{DETAIL} .retry-overview", timeout=10000)
-            text = page.locator(f"{DETAIL} [role=alert]").inner_text()
-            rows = page.locator("#history .row").count()
-            answers["fail"] = False
-            page.get_by_role("button", name="Retry now").click()
+            text, rows = _read_the_failure_and_retry(page, answers)
             _ready(page)
             rows_after = page.locator("#history .row").count()
         finally:

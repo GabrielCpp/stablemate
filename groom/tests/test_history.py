@@ -203,7 +203,7 @@ def test_an_ended_run_with_no_summary_yet_is_listed_unread_and_fills_in_when_it_
 
 
 def _item(**fields: object) -> dict:
-    base = {"ready": True, "ending": "success", "cost_usd": None, "est_usd": None, "priced_turns": 0, "turns": 0, "active_s": 0.0}
+    base = {"ready": True, "unreadable": False, "ending": "success", "cost_usd": None, "est_usd": None, "priced_turns": 0, "turns": 0, "active_s": 0.0}
     return {**base, **fields}
 
 
@@ -326,7 +326,7 @@ def test_the_book_screen_describes_the_history_filters_and_their_rules() -> None
         assert heading in book
     assert "No runs match these filters." in book
     assert "- rule: the filters narrow the rows in the browser from the list already loaded, with no request" in rules
-    assert "- rule: the range offers the last 7 days and the last 30 days and starts on the last 30 days" in rules
+    assert "- rule: the range offers the last 7 days, the last 30 days and Everything, archives included, and starts on the last 30 days" in rules
 
 
 def unnamed(run: str, base: float, terminal: str, workspace: str = "", branch: str = "", late: float | None = None) -> None:

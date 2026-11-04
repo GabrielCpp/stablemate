@@ -9,7 +9,7 @@ Selecting a row in History opens the run beside a narrowed column of the same ru
 
 The detail is built in the browser from the run's [history row](run-history-summary.md) and from the run's own [Overview](../http/get-run-overview.md) and [activity](run-activity-tab.md) reads. The screen is the [groom dashboard](../gui/screens/groom-dashboard.md#open-history-run).
 
-- code: groom/groom/assets/dashboard.js::endedDetail@d25fd1f1412b
+- code: groom/groom/assets/dashboard.js::endedDetail@0aed4e3a84b9
 - code: groom/groom/assets/dashboard.js::Detail@e1d4b94aa72a
 - code: groom/groom/assets/dashboard.js::HistoryNarrow@51b05351f8ec
 - code: groom/groom/assets/dashboard.js::HistoryDetail@3415c7123ea0
@@ -27,7 +27,8 @@ The detail is built in the browser from the run's [history row](run-history-summ
 - rule: while the run is read the detail says `Reading this run…` and clears when the Overview appears, and a failed read says the run's figures could not be read, offers a retry and keeps the list
 - rule: selecting or closing a run keeps the [history filters](run-history-filters.md), and the narrowed column holds the runs that match them
 - rule: closing the run returns the full table and puts focus on the run's row, and `j` and `k` open the next and previous run in History and move the timeline while Activity shows
-- rule: the detail of an ended run is built in the browser from the history row and the run's own Overview and Activity reads, and groom adds no endpoint for it
+- rule: the detail of an ended run is built in the browser from the history row and the run's own Overview and Activity reads, and groom adds no endpoint for it, except that an [archived run](archived-run-history.md) reads its Overview from [get-archive-overview](../http/get-archive-overview.md)
+- rule: the head of an archived run carries an archived chip and the word archived where a live run says live, and its detail has the Overview tab only
 - rule: a workflow chip in a narrowed row keeps one line at its natural width, and the repo and run text take the ellipsis
 - rule: a narrowed row cuts a long run id or repo label off with an ellipsis and never pushes a column or a control out of view, and the head wraps the whole run id
 - tests: groom/tests/test_history_open_dynamic.py::test_selecting_a_row_narrows_the_list_opens_the_detail_beside_it_and_marks_the_row_selected

@@ -417,7 +417,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the selected tab controls the single tabpanel `#detail-panel`, whose accessible name is the selected tab's.
 - states: the Diff tab adds the [diff view switch](#detail-diff-view-switch) at the right of the bar.
 - states: the Files and Diff tabs add the [checkout selector](#detail-checkout-select) for a run with several checkouts.
-- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
+- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
 - tests: groom/tests/test_a11y_dynamic.py::test_tabs_switch_with_the_arrow_keys_and_details_keeps_todays_content
 - tests: groom/tests/test_diff_tab_dynamic.py::test_diff_tab_controls_have_roles_names_and_keyboard_operation_and_pass_axe
 - leads-to: [switch detail tab](#switch-detail-tab), which swaps the panel's content.
@@ -489,7 +489,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a refresh keeps the scroll position and does not blank the figures it replaces.
 - states: the `ago` after `as of the last finished turn` counts up every second in the browser.
 - code: groom/groom/assets/dashboard.js::CostTile@eb7154f2e7c2
-- code: groom/groom/assets/dashboard.js::OverviewTiles@e5dc0819e9f6
+- code: groom/groom/assets/dashboard.js::OverviewTiles@ad81d114229e
 - detail: [run clock sections](../../concepts/run-clock-sections.md)
 - detail: [run flow tree](../../concepts/run-flow-tree.md)
 - tests: groom/tests/test_a11y_dynamic.py::test_new_telemetry_updates_the_open_overview_and_keeps_the_operators_place
@@ -544,7 +544,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: an ended run says `This run's figures could not be read` and `The list still works.` in that alert.
 - states: a retry of an ended run that succeeds shows the Overview.
 - states: shown inside an alert, only while the Overview read has failed. The Activity tab keeps working meanwhile, and the alert clears on the next successful read.
-- code: groom/groom/assets/dashboard.js::Overview@a13d033913fa
+- code: groom/groom/assets/dashboard.js::Overview@29501190120e
 - tests: groom/tests/test_a11y_dynamic.py::test_overview_says_it_is_reading_then_offers_a_retry_when_the_read_fails
 - leads-to: [get run overview](../../http/get-run-overview.md), requested again.
 
@@ -937,7 +937,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="#detail-diff-count for a clean checkout")
 - states: Diff content goes through diff2html, which escapes file content, so a changed file cannot inject markup.
 - verify: omits(subject="rendered run diff", matches="<script")
-- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
+- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
 - code: groom/groom/assets/dashboard.js::useRunDiff@42e89852f3e2
 - code: groom/groom/assets/dashboard.js::loadRunDiff@6b1e2d0423d6
 - code: groom/groom/projection.py::run_row@f4041c085d72
@@ -961,7 +961,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the change size is figures and words in the accessible name, never colour alone.
 - states: untracked files are not counted.
 - states: it is absent when the tracked change is empty.
-- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
+- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
 - tests: groom/tests/test_diff_tab_dynamic.py::test_the_diff_tab_shows_the_size_of_the_change_before_it_is_opened_after_exactly_one_read
 - tests: groom/tests/test_diff_tab_dynamic.py::test_untracked_files_sit_in_their_own_group_and_are_not_counted_in_the_tab
 
@@ -1157,7 +1157,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: moving to another tab and back keeps the tree and the selected file and reads nothing new.
 - states: selecting another run resets the tree and the selected file.
 - states: choosing another checkout clears the selected file and reads that checkout's tree.
-- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
+- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
 - code: groom/groom/assets/dashboard.js::useRunFiles@9ef89b78abfa
 - code: groom/groom/assets/dashboard.js::loadRunFiles@0928854e5520
 - detail: [run Files tab](../../concepts/run-files-tab.md)
@@ -1340,7 +1340,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: pressing the [Raw control](#detail-activity-raw) replaces the bar and the list with the [Raw view](#detail-activity-raw-list).
 - states: the list of a live run follows the run as rows arrive.
 - states: the selected tab controls the single tabpanel `#detail-panel`, as the other tabs do.
-- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
+- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
 - code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_follows_overview_and_ends_the_tabs_of_a_run_without_a_checkout
@@ -1897,6 +1897,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the $/item vs median cell shows the cost per finished item.
 - states: the $/item vs median cell of a run that ended in success with five other comparable runs adds a signed percent against the [median](../../concepts/run-median-comparison.md).
 - states: the $/item vs median cell of any other run shows the cost per item alone, and a run with no finished item shows a dash.
+- states: with the range on Everything it also lists every archived run from its stored summary, each with an `archived` chip beside its run id.
 - states: lists the runs that ended in the last 30 days and no run that is alive. A finished run is listed while its row is still in Runs.
 - states: a run that continues after a resume leaves the table while it is alive and returns with its new figures when it ends again.
 - states: a run with no recorded ending is listed once it has been silent for 48 hours, at its last record's time, with the ending `no ending recorded`.
@@ -1907,7 +1908,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the open run's narrowed row carries `aria-current`, and selecting a row follows [open history run](#open-history-run).
 - code: groom/groom/assets/dashboard.js::HistoryPane@225d4e52e6a1
 - code: groom/groom/assets/dashboard.js::historyKey@bc95c514230a
-- code: groom/groom/history.py::listing@4a2b382b1cde
+- code: groom/groom/history.py::listing@518e84d69d37
 - detail: [run history summary](../../concepts/run-history-summary.md)
 - tests: groom/tests/test_history_dynamic.py::test_selecting_history_shows_the_ended_runs_newest_end_time_first_under_every_column
 - tests: groom/tests/test_history_median_dynamic.py::test_the_table_gains_a_column_with_cost_per_item_and_its_signed_percent_from_the_median
@@ -1938,12 +1939,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a run whose summary is still being read counts in the number of runs.
 - states: a run whose summary is still being read stays out of the sums and the success count.
 - states: the money cell says how many summaries are still being read.
+- states: the money cell says how many summaries could not be read.
 - states: with a workflow filter and rows shown, a fifth cell reads the median cost per item of that workflow and the number of comparable runs behind it, whatever the range and the other filters.
 - states: with a workflow filter and under five comparable runs, the fifth cell says how many exist and that it takes five, or `no comparable run yet` with none.
 - states: with no ended run every cell reads zero.
 - states: the cells describe the rows shown after the [history filters](#history-filters).
-- code: groom/groom/assets/dashboard.js::historyTotals@d98d0ba7b1bd
-- code: groom/groom/history.py::totals@4a99a0e9f8a4
+- code: groom/groom/assets/dashboard.js::historyTotals@277af5fb4f8b
+- code: groom/groom/history.py::totals@2730abe88b52
 - detail: [run history totals](../../concepts/run-history-totals.md)
 - tests: groom/tests/test_history_dynamic.py::test_the_totals_show_runs_money_active_time_and_successes_and_omit_a_clause_that_is_zero
 - tests: groom/tests/test_history_median_dynamic.py::test_with_a_workflow_filter_the_totals_show_the_median_per_item_and_the_runs_behind_it_without_a_request
@@ -1971,9 +1973,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a run whose summary is not written yet shows its run, repo and end time.
 - states: a row opens its run on click, Enter or Space, as [open history run](#open-history-run) says.
 - states: a run whose summary is not written yet reads `reading its summary` in the ending cell.
+- states: an archive whose summary could not be read reads `could not be read` in the ending cell, shows no figures and carries a `Retry now` button that asks again and does not open the run.
+- states: an archived run carries an `archived` chip beside its run id, in the table and in the narrowed row.
 - verify: visible(locator="#history-row", text="reading its summary")
 - states: the figures of a row that is not written yet read `—`, and the row fills in without a reload.
-- code: groom/groom/assets/dashboard.js::HistoryRow@e949ce67911f
+- code: groom/groom/assets/dashboard.js::HistoryRow@22e2fe9ffa15
 - code: groom/groom/assets/dashboard.js::HistoryCost@ffb23dc164fe
 - code: groom/groom/assets/dashboard.js::HistoryItems@73fd80c8f781
 - detail: [run ending mapping](../../concepts/run-ending-mapping.md)
@@ -1999,7 +2003,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#history-state", text="History could not be read")
 - states: while any listed run is still being read, the pane asks again every four seconds, and stops when no run is pending or the mode changes.
 - code: groom/groom/assets/dashboard.js::HistoryPane@225d4e52e6a1
-- code: groom/groom/assets/dashboard.js::loadHistory@bbe016bd5bff
+- code: groom/groom/assets/dashboard.js::loadHistory@a9f77953b1df
 - tests: groom/tests/test_history_dynamic.py::test_the_pane_shows_a_reading_state_that_clears_when_the_table_appears
 - tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
 - tests: groom/tests/test_history_dynamic.py::test_with_no_ended_runs_the_pane_says_so_with_the_totals_at_zero
@@ -2029,6 +2033,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable itself.
 - parent: [activity-history-mode](#activity-history-mode)
 - states: hidden while no run is open in History, and in the accessibility tree only while one is.
+- states: for an archived run it holds the Overview tab only.
+- states: the first open of an archived run shows a reading state.
+- states: an archived run whose telemetry file is missing shows the stored tiles and facts with `files are gone`.
+- states: an archive that cannot be opened shows a failed state with a retry.
 - verify: absent(subject="#history-detail-pane in the accessibility tree while no run is open")
 - states: beside the narrowed list while a run is open, it holds the [detail pane](#detail-pane) of that ended run.
 - verify: visible(locator="#history-detail-pane", text="ended")
@@ -2049,18 +2057,20 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a Workflow select that offers `All workflows` and then each workflow in the list.
 - states: a Repo select that offers `All repos` and then each repo in the list.
 - states: an Ending select that offers `Any ending`, then success, gave up, failed, interrupted, crashed and no ending recorded.
-- states: a Range select that offers `Last 30 days` and `Last 7 days` and starts on the last 30 days.
+- states: a Range select that offers `Last 30 days`, `Last 7 days` and `Everything, archives included`.
+- states: the Range select starts on the last 30 days.
+- states: choosing `Everything, archives included` lists [archived runs](../../concepts/archived-run-history.md) too, and its scope line reads `everything`.
 - states: every control narrows the rows at once with no request.
 - states: the controls combine, so a run shows only when it matches every one that is set.
 - states: with a run open the bar sits above the narrowed column, with a line under the text box that states the filters, such as `coder, last 7 days`.
 - states: the selects keep one width whatever they hold, and a long value cuts off with an ellipsis.
 - states: `j`, `k` and `e` do nothing while a control of the bar holds focus.
-- code: groom/groom/assets/dashboard.js::HistoryFilters@669c36ca8aa4
+- code: groom/groom/assets/dashboard.js::HistoryFilters@3cfabbfa6291
 - code: groom/groom/assets/dashboard.js::HistoryChoice@0db9daffece8
-- code: groom/groom/assets/dashboard.js::historyShown@1f04a4430cf5
-- code: groom/groom/assets/dashboard.js::historyScope@334b5763b299
-- code: groom/groom/assets/dashboard.js::setHistoryFilters@a091b10df441
-- code: groom/groom/history.py::listing@4a2b382b1cde
+- code: groom/groom/assets/dashboard.js::historyShown@d00c7d343c75
+- code: groom/groom/assets/dashboard.js::historyScope@ecd53402de51
+- code: groom/groom/assets/dashboard.js::setHistoryFilters@3979d133a051
+- code: groom/groom/history.py::listing@518e84d69d37
 - detail: [run history filters](../../concepts/run-history-filters.md)
 - tests: groom/tests/test_history_filters_dynamic.py::test_the_workflow_and_repo_filters_offer_the_values_in_the_list_each_with_an_all_choice
 - tests: groom/tests/test_history_filters_dynamic.py::test_the_ending_filter_offers_every_ending_in_words_with_an_any_choice
@@ -3041,7 +3051,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Requests [get-run-history](../../http/get-run-history.md) again.
   - Shows the table when the read succeeds.
   - Keeps the failed state when the read fails again.
-- code: groom/groom/assets/dashboard.js::loadHistory@bbe016bd5bff
+- code: groom/groom/assets/dashboard.js::loadHistory@a9f77953b1df
 - tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
 ### open-history-run
 - on: [history-row](#history-row)
@@ -3064,7 +3074,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Shows no Files or Diff tab, no follow control, no live pill and no answer box.
   - Keeps the list while the read fails.
 - code: groom/groom/assets/dashboard.js::openHistoryRun@1e7244010b4a
-- code: groom/groom/assets/dashboard.js::endedDetail@d25fd1f1412b
+- code: groom/groom/assets/dashboard.js::endedDetail@0aed4e3a84b9
 - detail: [run history detail](../../concepts/run-history-detail.md)
 - tests: groom/tests/test_history_open_dynamic.py::test_selecting_a_row_narrows_the_list_opens_the_detail_beside_it_and_marks_the_row_selected
 - tests: groom/tests/test_history_open_dynamic.py::test_a_narrowed_row_shows_cost_with_priced_count_active_time_end_time_and_ending
@@ -3107,9 +3117,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: count(subject="HTTP requests", equals=0)
   - Keeps the filters when a run is selected or closed.
   - Keeps the filters and the open run when the operator leaves History for another rail tab and comes back.
-- code: groom/groom/assets/dashboard.js::setHistoryFilters@a091b10df441
-- code: groom/groom/assets/dashboard.js::historyShown@1f04a4430cf5
-- code: groom/groom/assets/dashboard.js::historySums@d98874013e39
+- code: groom/groom/assets/dashboard.js::setHistoryFilters@3979d133a051
+- code: groom/groom/assets/dashboard.js::historyShown@d00c7d343c75
+- code: groom/groom/assets/dashboard.js::historySums@9488262fd247
 - detail: [run history filters](../../concepts/run-history-filters.md)
 - tests: groom/tests/test_history_filters_dynamic.py::test_each_filter_narrows_the_rows_at_once_and_filters_combine_without_a_request
 - tests: groom/tests/test_history_filters_dynamic.py::test_the_text_filter_narrows_rows_by_run_or_repo_as_the_operator_types

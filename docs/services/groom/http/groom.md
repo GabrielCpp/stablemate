@@ -5,7 +5,7 @@ title: groom server
 ---
 # groom server
 
-- code: groom/groom/app.py::create_app@724bc47d35ee
+- code: groom/groom/app.py::create_app@6b8940263771
 - openapi: none; every first-party handler is registered with `include_in_schema=False`.
 
 The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves one HTML document — the shell for the [groom dashboard service](../groom.md) — and then speaks JSON for everything else: the [dashboard state payload](../formats/dashboard-state-payload.md) behind the [runs fleet view](../runs-fleet-view.md), the [run detail payload](#get-run-detail), and the repository/file/diff panel data. It also receives the residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md) and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member, which registers 32 route handlers: one dashboard HTML entry point, nine JSON read endpoints, four mutation/push endpoints, four run outbox/inbox endpoints, six attendant endpoints (four reads, two writes), three OTLP ingest routes and one telemetry query route, one reload endpoint, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`, which registers five startup hooks — [schedule startup discovery scan](#schedule-startup-discovery-scan), the alert-rule ticker, the [live clock](#schedule-live-clock), the run-telemetry archive routine, and the attend-recovery routine — and cancels the three loop-driven ones (alert-rule, live clock, archive), plus shuts down the process worker pools, on shutdown.
@@ -23,6 +23,8 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - [get-run-search](get-run-search.md)
 - [get-run-records](get-run-records.md)
 - [get-run-history](get-run-history.md)
+- [get-archive-overview](get-archive-overview.md)
+- [retry-history-summary](retry-history-summary.md)
 
 ### get-root-dashboard-html
 
@@ -650,7 +652,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - body: bytes of the matched packaged asset; no application JSON envelope is added by groom.
 - status: `200` for an existing requested asset; missing files, unsupported methods, and conditional request outcomes use the framework static-file response for the mounted router.
 - errors: no endpoint-specific error body is produced by groom; absent assets and invalid static-file requests are handled by the mounted framework router.
-- code: groom/groom/app.py::create_app@f4ea07948060
+- code: groom/groom/app.py::create_app@6b8940263771
 - route: `GET /assets/*`
 - parent: [groom server](#groom-server)
 - invocation: [serve-static-asset](#serve-static-asset)
@@ -1384,7 +1386,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: count(subject="fallback workspace file-list results consumed after an unavailable sidecar path", equals=1)
 - status: `200`
 - errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume and a failed fallback reader are represented as an empty `paths` array with `failed` true, and a sidecar RPC failure becomes fallback data. Request parsing failures propagate as framework-level failures.
-- code: groom/groom/app.py::files@1c1f943b617a
+- code: groom/groom/app.py::files@1a8049542599
 - tests: groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list,
   groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected,
   groom/tests/test_app.py::test_files_falls_back_to_volume_when_socket_errors
@@ -1524,7 +1526,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: count(subject="fallback workspace file-content values consumed after an unavailable sidecar path", equals=1)
 - status: `200`
 - errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, empty selected paths, traversal-guard failures, missing files, unreadable files, and empty reader output are all represented as an empty `content` or sidecar/fallback data. Request parsing failures and unexpected reader exceptions other than traversal rejection propagate as framework-level failures.
-- code: groom/groom/app.py::file_content@13698e6ec6a6
+- code: groom/groom/app.py::file_content@6a4a53a92140
 - tests: groom/tests/test_app.py::test_file_content_prefers_sidecar_socket,
   groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content,
   groom/tests/test_app.py::test_file_endpoint_swallows_unsafe_path
@@ -1648,7 +1650,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
 - status: `200`
 - errors: none intentionally emitted by this invocation; absent workflow state, absent workspace volume, absent or failed sidecar RPCs, no discovered fallback checkout, non-zero fallback git/Docker completion, and empty diff output are all represented as an empty `diff` under a `200 OK`. Request parsing failures and unexpected sidecar-registry, Docker process-launch, Docker timeout, or response-construction exceptions propagate as framework-level failures.
-- code: groom/groom/app.py::diff@3b4a38e8e9ca
+- code: groom/groom/app.py::diff@09402337f758
 - code: groom/groom/app.py::_branch_start@06e790f82049
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket,
   groom/tests/test_app.py::test_diff_endpoint_passes_repo_through
@@ -2251,7 +2253,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: count(subject="request-body reads for a static asset request", equals=0)
 - status: `200` when the path maps to an existing packaged asset; otherwise the framework static-file status.
 - errors: no endpoint-specific error body is produced by groom; missing files, unsupported methods, invalid paths, and conditional request outcomes are handled by the mounted static-file router.
-- code: groom/groom/app.py::create_app@f4ea07948060
+- code: groom/groom/app.py::create_app@6b8940263771
 - request:
   - method: `GET`
   - path: `/assets/{path...}` where `{path...}` is required and relative to `groom/groom/assets`.
@@ -2698,7 +2700,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 ### serve-run-history
 
 - on: [get-run-history](get-run-history.md)
-- trigger: the operator selects History on the rail, a four-second timer fires while a listed run is still being read, or the operator presses Retry now after a failed read, and the dashboard requests `GET /api/history`.
+- trigger: the operator selects History on the rail, a four-second timer fires while a listed run is still being read, the operator chooses Everything in the range, or the operator presses Retry now after a failed read, and the dashboard requests `GET /api/history`, with `archives=1` for Everything.
 - when:
   - The groom process has started and the route table includes the history route.
 - does:
@@ -2712,6 +2714,6 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: emitted(event="run-history HTTP response", count=1)
 - emits: no websocket frame is emitted.
 - verify: emitted(event="run-history websocket frame", count=0)
-- code: groom/groom/app.py::api_history@b3d9fc46ae77
+- code: groom/groom/app.py::api_history@a5a1f947233b
 - tests: groom/tests/test_history.py::test_the_history_route_lists_the_ended_runs_and_leaves_out_a_run_that_is_alive
 

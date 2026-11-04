@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -33,6 +34,9 @@ _INDEX_BATCH = 5000
 _KIND_TABLES = {"span": "spans", "log": "logs", "metric": "metrics"}
 
 _TMP_SUFFIX = ".tmp"
+
+_BUILDING: dict[str, threading.Lock] = {}
+_BUILDING_GUARD = threading.Lock()
 
 
 
@@ -70,6 +74,23 @@ def archive_dir(run: str) -> Path | None:
         return exact
     matches = [path for path in archive_dirs() if path.name.startswith(f"{run}-")]
     return matches[0] if matches else None
+
+
+def exact_dir(run: str) -> Path | None:
+    """The folder holding ``run``'s archive under its own name, or ``None``: no prefix match, no live-store fallback."""
+    if not run or "/" in run or run in (".", ".."):
+        return None
+    folder = archives_root() / run
+    return folder if (folder / TELEMETRY_FILE).exists() else None
+
+
+def is_indexed(run: str) -> bool:
+    """Is ``run``'s archive already read into an index? Two stats, no file opened."""
+    folder = archives_root() / run
+    try:
+        return (folder / INDEX_FILE).stat().st_mtime >= (folder / TELEMETRY_FILE).stat().st_mtime
+    except OSError:
+        return False
 
 
 def manifest(path: Path) -> dict[str, Any]:
@@ -168,9 +189,9 @@ def records(run_id: str) -> Iterator[dict[str, Any]]:
         yield record
 
 
-def _manifest_line(run: RunBounds, now: float) -> dict[str, Any]:
-    """Line 1 of the file: what it holds, without reading the rest of it."""
-    return {
+def _manifest_line(run: RunBounds, now: float, summary: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Line 1 of the file: what it holds, without reading the rest of it, and the run's summary when one could be computed."""
+    line: dict[str, Any] = {
         "kind": "manifest",
         "run_id": run.run_id,
         "workflow": run.workflow,
@@ -181,16 +202,24 @@ def _manifest_line(run: RunBounds, now: float) -> dict[str, Any]:
         "max_ts": run.max_ts,
         "rows": {"span": run.spans, "log": run.logs, "metric": run.metrics},
     }
+    if summary is not None:
+        line["summary"] = summary
+    return line
 
 
-def write_telemetry(run: RunBounds, target: Path, now: float | None = None) -> int:
+def write_telemetry(
+    run: RunBounds,
+    target: Path,
+    now: float | None = None,
+    summary: dict[str, Any] | None = None,
+) -> int:
     """Write ``target`` — manifest first, then every record in ``ts`` order; bytes."""
     stamp = now if now is not None else time.time()
     counts = {"span": 0, "log": 0, "metric": 0}
     tmp = target.with_name(target.name + _TMP_SUFFIX)
     tmp.parent.mkdir(parents=True, exist_ok=True)
     with tmp.open("w", encoding="utf-8") as handle:
-        handle.write(json.dumps(_manifest_line(run, stamp)) + "\n")
+        handle.write(json.dumps(_manifest_line(run, stamp, summary)) + "\n")
         for record in records(run.run_id):
             counts[record["kind"]] += 1
             handle.write(json.dumps(record) + "\n")
@@ -242,7 +271,14 @@ def _flush(
 
 
 def build_index(folder: Path) -> Path:
-    """Build ``folder``'s ``telemetry.db`` from its jsonl, unless it is already current."""
+    """Build ``folder``'s ``telemetry.db`` from its jsonl, unless it is already current. Two callers on one folder take turns, so the first builds and the second finds it current."""
+    with _BUILDING_GUARD:
+        gate = _BUILDING.setdefault(str(folder), threading.Lock())
+    with gate:
+        return _build_index(folder)
+
+
+def _build_index(folder: Path) -> Path:
     source = folder / TELEMETRY_FILE
     index = folder / INDEX_FILE
     try:
@@ -376,16 +412,32 @@ class SweepResult:
 _LAST: SweepResult | None = None
 
 
+def _summary_of(run: RunBounds, now: float | None) -> dict[str, Any] | None:
+    """The run's summary while its rows still exist, or ``None`` when it cannot be computed: the archive is then listed later from its index."""
+    from groom import history
+
+    try:
+        return history.summarize(run.run_id, now)
+    except Exception:  # noqa: BLE001
+        logger.warning("groom: summary of run %s could not be computed before archiving", run.run_id, exc_info=True)
+        return None
+
+
 def archive_run(run: RunBounds, now: float | None = None) -> tuple[Path | None, int]:
-    """Freeze one run: write its telemetry, move its directory, drop its rows."""
+    """Freeze one run: write its telemetry with its summary, move its directory, store the summary, drop its rows."""
+    from groom import history
+
     destination = _destination(run)
     if destination is not None:
         source = turns.transcripts_root() / run.run_id
         source.mkdir(parents=True, exist_ok=True)
-        write_telemetry(run, source / TELEMETRY_FILE, now)
+        summary = _summary_of(run, now)
+        write_telemetry(run, source / TELEMETRY_FILE, now, summary)
         destination.parent.mkdir(parents=True, exist_ok=True)
         os.rename(source, destination)
         _fsync_dir(destination.parent)
+        if summary is not None:
+            history.keep_archived(summary)
     return destination, store.delete_run_telemetry(run.run_id)
 
 

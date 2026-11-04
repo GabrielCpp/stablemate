@@ -632,10 +632,49 @@ async def run_overview(run_id: Annotated[str, PathParameter()]) -> dict:
     return await pools.QUERY.run(_overview_with_ending, run_id)
 
 
+def _archive_overview(run_id: str) -> dict | None:
+    """An archived run's Overview, read from its frozen archive, or from its stored summary when the archive's files are gone. None when the run is not an archive. The run is resolved by exact id before anything is read, because ``run_source`` falls back to the live store and ``archive_dir`` to a prefix."""
+    row = history.stored(run_id)
+    if row is None or not row["archived"]:
+        return None
+    folder = archive.exact_dir(run_id)
+    if folder is None:
+        return overview.stored_overview(row, history.comparison(run_id))
+    try:
+        found = _overview_with_ending(run_id)
+    except sqlite3.DatabaseError:
+        (folder / archive.INDEX_FILE).unlink(missing_ok=True)
+        raise
+    if found["ending"]:
+        found["ending"]["moment"] = ""
+    return {**found, "archive": "ready"}
+
+
+@get("/api/archive/{run_id:str}/overview", include_in_schema=False)
+async def archive_overview(run_id: Annotated[str, PathParameter()]) -> dict:
+    """One archived run's Overview, on its own pool so that reading an archive never holds the dashboard's queries."""
+    found = await pools.ARCHIVE.run(_archive_overview, run_id)
+    if found is None:
+        raise NotFoundException(f"no archived run {run_id}")
+    return found
+
+
 @get("/api/history", include_in_schema=False)
-async def api_history() -> dict:
-    """The runs that ended in the retention window, newest first, with the totals above the table. Reads the stored summaries and nothing else."""
-    return await pools.QUERY.run(history.listing, alerts.unfinished_run_ids())
+async def api_history(archives: Annotated[int, QueryParameter()] = 0) -> dict:
+    """The runs that ended in the retention window, newest first, with the totals above the table, or every summary there is with ``archives=1``. Reads the stored summaries and nothing else, and asks the worker to give any archive without a row one."""
+    found = await pools.QUERY.run(history.listing, alerts.unfinished_run_ids(), None, bool(archives))
+    if found["unlisted"]:
+        _wake_summaries()
+    return found
+
+
+@post("/api/history/{run_id:str}/retry", include_in_schema=False)
+async def history_retry(run_id: Annotated[str, PathParameter()]) -> dict:
+    """Ask for an archive whose summary could not be read to be read again."""
+    asked = await asyncio.to_thread(history.retry, run_id)
+    if asked:
+        _wake_summaries()
+    return {"ok": asked}
 
 
 async def _live_turns(run_id: str) -> activity.LiveRows:
@@ -1667,12 +1706,18 @@ def _wake_summaries() -> None:
 
 
 async def _summary_pass() -> int:
-    """Find the ended runs with no current summary and write them one at a time, pausing between runs so the event loop and the store serve the dashboard first."""
+    """Find the ended runs with no current summary and write them one at a time, pausing between runs so the event loop and the store serve the dashboard first. Archives that stored no summary follow, one at a time, and give way as soon as another run needs one."""
     wanted = await pools.SUMMARY.run(history.discover)
     for run_id in wanted:
         await pools.SUMMARY.run(history.compute, run_id)
         await asyncio.sleep(SUMMARY_PAUSE_S)
-    return len(wanted)
+    older = await pools.SUMMARY.run(history.discover_archives)
+    for run_id in older:
+        if _summary_wake is not None and _summary_wake.is_set():
+            break
+        await pools.ARCHIVE.run(history.compute_archive, run_id)
+        await asyncio.sleep(SUMMARY_PAUSE_S)
+    return len(wanted) + len(older)
 
 
 async def _summary_loop() -> None:
@@ -1775,6 +1820,8 @@ def create_app() -> Litestar:
             outbox_get,
             run_overview,
             api_history,
+            archive_overview,
+            history_retry,
             run_activity,
             run_records,
             run_turn,

@@ -7,14 +7,14 @@ title: Run median comparison
 
 An operator reading History wants to know whether a finished run cost more or less than usual for its workflow. The comparison answers it with the run's cost per finished item against the median cost per finished item of the workflow's successful runs. It appears in four places: a column of the [history table](../gui/screens/groom-dashboard.md#history-table), a cell of the [history totals](run-history-totals.md), the Work items tile of the [overview tiles](overview-tiles.md), and the By node table of the [run breakdown views](run-breakdown-views.md).
 
-The median is read from the stored [history summaries](run-history-summary.md) and from nothing else, so the table still opens in under two seconds. A difference is a signed percent in the text of the cell, never a colour alone.
+The median is read from the stored [history summaries](run-history-summary.md), which cover the store and the [archives](archived-run-history.md), and from nothing else, so the table still opens in under two seconds. A difference is a signed percent in the text of the cell, never a colour alone.
 
 - code: groom/groom/medians.py::per_item_costs@7dc0aa8fbd46
 - code: groom/groom/medians.py::median_of_others@4f7dcbfa94de
 - code: groom/groom/medians.py::per_workflow@380d64db36ea
 - code: groom/groom/medians.py::compare@06ae41aeb33c
 - code: groom/groom/medians.py::node_readings@36bf55cc4cc5
-- code: groom/groom/history.py::listing@4a2b382b1cde
+- code: groom/groom/history.py::listing@518e84d69d37
 - code: groom/groom/history.py::comparison@6a2671c47856
 - code: groom/groom/overview.py::run_overview@f1c1a8297756
 - code: groom/groom/assets/dashboard.js::historyMedian@b9931eaf950e
@@ -24,7 +24,7 @@ The median is read from the stored [history summaries](run-history-summary.md) a
 ## Which runs form the median
 
 - rule: a comparable run is a successful run with a reported cost and a finished item, and every count the screen shows beside a median says comparable, so the operator who reads `26 of 33 ended in success` is not told `3 successful runs` on the same line. A node's count is the comparable runs that ran that node, so it can differ from the workflow's count.
-- rule: the median covers every successful run of the workflow whatever the history filters and the range, and the 30-day listing does not limit it.
+- rule: the median covers every successful run of the workflow whatever the history filters and the range, and the 30-day listing does not limit it. It is taken over every stored summary, so a run frozen into an archive counts in the median and a run's comparison does not move when the range is set to Everything.
 - rule: a run enters the median only when it ended in success, has a cost and at least one priced turn, finished at least one item, and is not alive. A run that continued after its summary was written has no end time and stays out.
 - rule: a run that reports no cost and shows only an estimate stays out of the median and shows no comparison. Its cost per item reads with the prefix `est`.
 - rule: a run priced for only some of its turns stays in the median with the cost it reports.

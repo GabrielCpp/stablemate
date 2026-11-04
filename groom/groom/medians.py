@@ -1,4 +1,4 @@
-"""The median a finished run is judged against: cost per finished item and time per visit of a node, over the successful runs of its workflow in the stored summaries."""
+"""The median a finished run is judged against: cost per finished item and time per visit of a node, over the successful runs of its workflow in the stored summaries, which cover the store and the archives."""
 
 from __future__ import annotations
 

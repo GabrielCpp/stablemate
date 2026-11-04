@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from groom import activity, history
+from groom import activity, archive, history
 
 HEADS = {
     "failed": "{error}",
@@ -49,7 +49,9 @@ def banner(run_id: str) -> dict[str, Any] | None:
     if row is None or row["state"] != history.READY or row["ending"] not in history.STOPPED:
         return None
     ending, node = row["ending"], row["failing_node"]
-    moment = _moment(ending, node, activity.timeline(run_id)["items"])
+    with archive.run_source(run_id):
+        items = activity.timeline(run_id)["items"]
+    moment = _moment(ending, node, items)
     reason = _sentence(moment.get("reason") or moment["result"], cut="reason" not in moment and len(moment["result"]) >= activity.RESULT_CHARS) if moment and ending in ("failed", "interrupted") and moment["kind"] == "failed" else ""
     if ending == "gave-up":
         work = (moment or {}).get("work") or ""

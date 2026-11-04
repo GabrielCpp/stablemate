@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shlex
 import sqlite3
 import time
@@ -11,8 +12,10 @@ from typing import Any
 
 from workhorse.records import LaunchRecord, parse_launch_record
 
-from groom import alerts, docker_io, figures, flows, medians, projection, state, store
+from groom import alerts, archive, docker_io, figures, flows, medians, projection, state, store
 from groom.store import STORE, read_connection, reading, register_table, resilient
+
+logger = logging.getLogger(__name__)
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS run_summary (
@@ -44,7 +47,8 @@ CREATE TABLE IF NOT EXISTS run_summary (
     problems        INTEGER NOT NULL DEFAULT 0,
     sessions_json   TEXT NOT NULL DEFAULT '[]',
     nodes_json      TEXT NOT NULL DEFAULT '[]',
-    computed_at     REAL NOT NULL DEFAULT 0
+    computed_at     REAL NOT NULL DEFAULT 0,
+    archived        INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS run_summary_ended ON run_summary(ended_ts DESC);
 """
@@ -52,11 +56,12 @@ CREATE INDEX IF NOT EXISTS run_summary_ended ON run_summary(ended_ts DESC);
 _ADDED = (
     ("resume_container", "INTEGER NOT NULL DEFAULT 0"),
     ("resume_read", "INTEGER NOT NULL DEFAULT 0"),
+    ("archived", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 register_table("run_summary", _DDL, _ADDED)
 
-READY, PENDING = "ready", "pending"
+READY, PENDING, UNREADABLE = "ready", "pending", "unreadable"
 
 LABELS = {
     "success": "success",
@@ -68,6 +73,8 @@ LABELS = {
 }
 
 ENDING_TOLERANCE_S = 60.0
+
+DERIVED_TOKEN = 8
 
 LAUNCH_FILE = "launch.json"
 
@@ -323,6 +330,8 @@ def _item(row: sqlite3.Row) -> dict[str, Any]:
         "repo": row["repo"],
         "branch": row["branch"],
         "ready": ready,
+        "unreadable": row["state"] == UNREADABLE,
+        "archived": bool(row["archived"]),
         "ending": row["ending"] if ready else "",
         "ending_label": LABELS.get(row["ending"], "") if ready else "",
         "ended_ts": row["ended_ts"],
@@ -344,9 +353,11 @@ def totals(items: list[dict[str, Any]]) -> dict[str, Any]:
     ready = [item for item in items if item["ready"]]
     reported = sum(item["cost_usd"] or 0.0 for item in ready)
     estimate = sum(item["est_usd"] or 0.0 for item in ready)
+    unreadable = sum(1 for item in items if item["unreadable"])
     return {
         "runs": len(items),
-        "reading": len(items) - len(ready),
+        "reading": len(items) - len(ready) - unreadable,
+        "unreadable": unreadable,
         "spent_usd": reported + estimate,
         "estimate_usd": estimate,
         "partly_priced": sum(1 for item in ready if item["cost_usd"] is not None and item["priced_turns"] < item["turns"]),
@@ -357,15 +368,16 @@ def totals(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 @reading
-def listing(alive: set[str], now: float | None = None) -> dict[str, Any]:
-    """The runs that ended in the last retention window, newest first, with their totals. Reads the summary table and nothing else."""
+def listing(alive: set[str], now: float | None = None, archives: bool = False) -> dict[str, Any]:
+    """The runs that ended, newest first, with their totals: the last retention window, or every summary there is, archives included. Reads the summary table and the archive folder names, and opens no telemetry file."""
     now = now if now is not None else time.time()
     cutoff = now - store.RETENTION_DAYS * 86400
-    rows = read_connection().execute(
-        "SELECT * FROM run_summary WHERE ended_ts IS NOT NULL AND ended_ts >= ? ORDER BY ended_ts DESC, run_id",
-        (cutoff,),
-    )
+    where, params = ("ended_ts IS NOT NULL", ()) if archives else ("ended_ts IS NOT NULL AND ended_ts >= ? AND archived = 0", (cutoff,))
+    rows = read_connection().execute(f"SELECT * FROM run_summary WHERE {where} ORDER BY ended_ts DESC, run_id", params)  # noqa: S608 - literals only
     items = [_item(row) for row in rows if row["run_id"] not in alive]
+    for item in items:
+        if item["archived"]:
+            item["indexed"] = archive.is_indexed(item["run_id"])
     pool = medians.per_item_costs(alive)
     for item in items:
         item.update(medians.compare(item, pool.get(item["workflow"], {})))
@@ -374,6 +386,7 @@ def listing(alive: set[str], now: float | None = None) -> dict[str, Any]:
         "totals": totals(items),
         "medians": medians.per_workflow(pool),
         "endings": [[key, label] for key, label in LABELS.items()],
+        "unlisted": len(_unlisted()) if archives else 0,
     }
 
 
@@ -385,3 +398,119 @@ def comparison(run_id: str) -> dict[str, Any] | None:
         return None
     item = _item(row)
     return {**medians.compare(item, medians.per_item_costs(set()).get(item["workflow"], {})), "ending": item["ending"], "ending_label": item["ending_label"], "workflow": item["workflow"]}
+
+
+@reading
+def _flags() -> dict[str, int]:
+    rows = read_connection().execute("SELECT run_id, archived FROM run_summary")
+    return {row["run_id"]: row["archived"] for row in rows}
+
+
+def _covered(name: str, flags: dict[str, int]) -> bool:
+    """Does a row stand for this archive folder: under its own name, or under the run id a derived ``<run_id>-<8 hex>`` name extends?"""
+    base, _, token = name.rpartition("-")
+    return name in flags or (len(token) == DERIVED_TOKEN and base in flags)
+
+
+def _unlisted() -> list[str]:
+    """The archive folders that no summary row stands for yet."""
+    flags = _flags()
+    return [folder.name for folder in archive.archive_dirs() if not _covered(folder.name, flags)]
+
+
+def row_from_archive(found: dict[str, Any]) -> dict[str, Any] | None:
+    """The summary row of an archive from its manifest: the stored summary when it carries one, else a pending row naming the run, repo and end time."""
+    run_id = str(found.get("run_id") or "")
+    if not run_id:
+        return None
+    summary = found.get("summary")
+    if isinstance(summary, dict) and summary.get("run_id") == run_id:
+        return {**summary, "archived": 1}
+    return {
+        "run_id": run_id,
+        "workflow": found.get("workflow") or "",
+        "repo": found.get("repo") or "",
+        "branch": found.get("branch") or "",
+        "state": PENDING,
+        "ended_ts": found.get("max_ts") or None,
+        "last_ts": 0,
+        "archived": 1,
+    }
+
+
+@resilient
+def _insert_archives(rows: list[dict[str, Any]]) -> None:
+    with STORE.writing() as conn:
+        for row in rows:
+            columns = ", ".join(row)
+            marks = ", ".join(f":{name}" for name in row)
+            conn.execute(f"INSERT OR IGNORE INTO run_summary ({columns}) VALUES ({marks})", row)  # noqa: S608 - names come from row_from_archive
+
+
+@resilient
+def _mark_archived(run_ids: list[str]) -> None:
+    with STORE.writing() as conn:
+        conn.executemany("UPDATE run_summary SET archived = 1 WHERE run_id = ?", [(run_id,) for run_id in run_ids])
+
+
+@reading
+def _pending_archives() -> list[str]:
+    rows = read_connection().execute("SELECT run_id FROM run_summary WHERE archived = 1 AND state = ? ORDER BY ended_ts DESC, run_id", (PENDING,))
+    return [row["run_id"] for row in rows]
+
+
+def discover_archives() -> list[str]:
+    """Give every archive a summary row, and return the ids of the archives whose summary must still be read, newest first. An archive that stored its summary needs no read, and a run summarized before it was archived only gets its flag."""
+    flags = _flags()
+    fresh: list[dict[str, Any]] = []
+    marked: list[str] = []
+    for folder in archive.archive_dirs():
+        if _covered(folder.name, flags):
+            if flags.get(folder.name) == 0:
+                marked.append(folder.name)
+            continue
+        row = row_from_archive(archive.manifest(folder))
+        if row is not None and row["run_id"] not in flags:
+            fresh.append(row)
+    if fresh:
+        _insert_archives(fresh)
+    if marked:
+        _mark_archived(marked)
+    return _pending_archives()
+
+
+def keep_archived(summary: dict[str, Any]) -> None:
+    """Store the summary of a run that was just archived, flagged as archived."""
+    _write({**summary, "archived": 1})
+
+
+@resilient
+def _settle(run_id: str, outcome: str) -> None:
+    with STORE.writing() as conn:
+        conn.execute("UPDATE run_summary SET state = ? WHERE run_id = ? AND archived = 1 AND state != ?", (outcome, run_id, READY))
+
+
+def compute_archive(run_id: str, now: float | None = None) -> bool:
+    """Read an archive's index once and store its summary. Returns whether it could be read; an archive that cannot be read keeps its row as unreadable."""
+    folder = archive.exact_dir(run_id)
+    row: dict[str, Any] | None = None
+    try:
+        if folder is not None:
+            with store.reading_from(archive.build_index(folder)):
+                row = summarize(run_id, now)
+    except Exception:  # noqa: BLE001
+        logger.warning("groom: the archive of run %s could not be read", run_id, exc_info=True)
+    if row is None:
+        _settle(run_id, UNREADABLE)
+        return False
+    _write({**row, "archived": 1})
+    return True
+
+
+def retry(run_id: str) -> bool:
+    """Ask for an unreadable archive summary to be read again. Returns whether the run was waiting on a retry."""
+    row = stored(run_id)
+    if row is None or not row["archived"] or row["state"] != UNREADABLE:
+        return False
+    _settle(run_id, PENDING)
+    return True

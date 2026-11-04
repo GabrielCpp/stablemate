@@ -179,7 +179,10 @@ def test_a_write_that_fails_leaves_the_run_in_the_database(monkeypatch: pytest.M
         _seed()
         _live_dir()
         def _disk_full(
-            run: store.RunBounds, target: Path, now: int | float | None = None
+            run: store.RunBounds,
+            target: Path,
+            now: int | float | None = None,
+            summary: dict | None = None,
         ) -> int:
             raise OSError("disk full")
 

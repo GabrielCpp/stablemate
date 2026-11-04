@@ -9,7 +9,7 @@ An operator opens a run that stopped and needs to know why and how to go on. The
 
 The banner is the `ending` member of the run's [Overview](../http/get-run-overview.md), composed on the server from the run's stored [history summary](run-history-summary.md) and its activity timeline. The ending itself comes from the [run ending mapping](run-ending-mapping.md). The same pane shows the work items tile, whose cost per item for an ended run reads `$X per item` and, for a run that ended in success, its difference from the median, as described by [overview tiles](overview-tiles.md) and the [run median comparison](run-median-comparison.md). The screen is the [groom dashboard](../gui/screens/groom-dashboard.md#detail-ending-banner).
 
-- code: groom/groom/banner.py::banner@8183e6380968
+- code: groom/groom/banner.py::banner@55f289d13d79
 - code: groom/groom/history.py::summarize@b25e47db2c11
 - code: groom/groom/history.py::_launch_record@a6c29de69bf3
 - code: groom/groom/app.py::_overview_with_ending@80eed7ace691

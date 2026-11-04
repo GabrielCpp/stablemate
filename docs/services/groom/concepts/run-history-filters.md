@@ -11,19 +11,21 @@ The filters belong to History, not to a run. Selecting a run, closing it, and le
 
 The screen is the [groom dashboard](../gui/screens/groom-dashboard.md#history-filters). The rows come from [get-run-history](../http/get-run-history.md), and the strip is the [run history totals](run-history-totals.md).
 
-- code: groom/groom/assets/dashboard.js::historyShown@1f04a4430cf5
-- code: groom/groom/assets/dashboard.js::historySums@d98874013e39
-- code: groom/groom/assets/dashboard.js::historyScope@334b5763b299
-- code: groom/groom/assets/dashboard.js::HistoryFilters@669c36ca8aa4
+- code: groom/groom/assets/dashboard.js::historyShown@d00c7d343c75
+- code: groom/groom/assets/dashboard.js::historySums@9488262fd247
+- code: groom/groom/assets/dashboard.js::historyScope@ecd53402de51
+- code: groom/groom/assets/dashboard.js::HistoryFilters@3cfabbfa6291
 - code: groom/groom/assets/dashboard.js::HistoryChoice@0db9daffece8
 - code: groom/groom/assets/dashboard.js::clearHistoryFilters@6e225267a691
-- code: groom/groom/history.py::listing@4a2b382b1cde
+- code: groom/groom/history.py::listing@518e84d69d37
 - rule: the filters narrow the rows in the browser from the list already loaded, with no request
 - rule: the workflow, repo, ending, range and text filters combine, and a run shows only when it matches every filter that is set
 - rule: the workflow and repo selects offer the values in the list, each with an All choice, and keep a chosen value in the options when the list no longer holds it
 - rule: the ending select offers the endings the history route names, in the route's order, with an Any choice, so the browser holds no second mapping of endings
 - rule: a run whose summary is still being read has no ending, and any ending filter leaves it out
-- rule: the range offers the last 7 days and the last 30 days and starts on the last 30 days, which is the retention of the list
+- rule: the range offers the last 7 days, the last 30 days and Everything, archives included, and starts on the last 30 days, which is the retention of the list
+- rule: choosing Everything asks the server again with archives included, and leaving it narrows the rows already loaded, so the other filters still ask for nothing
+- rule: the range select keeps one width whatever it holds and the scope line reads everything while Everything is chosen
 - rule: the text filter matches the run id or the repo and branch, ignoring case, as the operator types
 - rule: the totals strip is computed from the rows shown with the same sums as the route, so a run still being read counts in the runs and stays out of the sums
 - rule: the narrowed column keeps the filters and states them above its rows, and with no filter set it holds every run the table held

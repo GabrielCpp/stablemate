@@ -13,13 +13,15 @@ A run that is alive, which is a run the server holds with no terminal and heard 
 
 A background worker on a pool of its own writes the summary of an ended run that has none, one run at a time, and wakes when an end is heard and on a timer. Until the worker has written the row, the list shows the run by its run, repo and end time and says the summary is being read. The dashboard asks again every four seconds while any row is pending, so the row fills in without a reload. The list and the worker never share a pool, so a page read is not queued behind a summary.
 
+A run whose rows have left the store for an [archive](archived-run-history.md) keeps its row, flagged archived, so History can still list it.
+
 The operator-facing screen is the [history table](../gui/screens/groom-dashboard.md#history-table), and its figures above the table are the [run history totals](run-history-totals.md). The route is [get-run-history](../http/get-run-history.md).
 
 - code: groom/groom/history.py::discover@1c90072aa772
 - code: groom/groom/history.py::compute@afbde2532938
-- code: groom/groom/history.py::listing@4a2b382b1cde
+- code: groom/groom/history.py::listing@518e84d69d37
 - code: groom/groom/app.py::_summary_loop@7d25526428f4
-- code: groom/groom/pools.py::SUMMARY@6ead18da664b
+- code: groom/groom/pools.py::SUMMARY@9f14083a924c
 - rule: the resume command is read from the run's launch record when its summary is written, as `cd <recorded cwd> && <resume argv>` with shell quoting, and an ended run summarized before the record was read, or with an older form of the command, is summarized once more so its row gains it. The [run ending banner](run-ending-banner.md) shows it.
 - rule: a run that gave up stores the node of its give-up span as its failing node
 - rule: the history list reads stored per-run summaries and scans no run's records
@@ -31,7 +33,8 @@ The operator-facing screen is the [history table](../gui/screens/groom-dashboard
 - rule: a summary is written by a background worker with one thread on a pool of its own, one run at a time, so a page read never waits for it
 - rule: an ended run with no summary yet is listed by run, repo and end time as being read, and is left out of every sum
 - rule: each row carries its cost per finished item and its comparison with the [median of the workflow's successful runs](run-median-comparison.md), computed from the stored summaries alone
-- rule: the list holds the runs that ended in the last 30 days, the same retention as the telemetry store, newest end time first
+- rule: the list holds the runs that ended in the last 30 days, the same retention as the telemetry store, newest end time first, and with the range set to Everything it also holds every [archived run](archived-run-history.md) whatever its age
+- rule: a summary row carries a flag that says it describes an archived run, and an archive whose summary cannot be read keeps its row with no figures and the state unreadable
 - verify: json_path(path="$.totals.runs", matches="^[0-9]+$")
 - tests: groom/tests/test_history.py::test_a_run_whose_spans_name_a_workspace_and_a_branch_reads_that_repo_and_branch
 - tests: groom/tests/test_history.py::test_a_run_whose_spans_record_no_workspace_keeps_no_repo

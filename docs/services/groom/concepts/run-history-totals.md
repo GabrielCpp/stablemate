@@ -9,13 +9,14 @@ The strip above the history table gives the operator the answer to what the list
 
 A run whose summary is still being read counts in the number of runs and adds nothing to the sums or to the success count, and the strip says how many are being read. The success count reads against the runs whose summary is ready, not against all runs.
 
-- code: groom/groom/history.py::totals@4a99a0e9f8a4
-- code: groom/groom/assets/dashboard.js::historyTotals@d98d0ba7b1bd
-- code: groom/groom/assets/dashboard.js::historySums@d98874013e39
+- code: groom/groom/history.py::totals@2730abe88b52
+- code: groom/groom/assets/dashboard.js::historyTotals@277af5fb4f8b
+- code: groom/groom/assets/dashboard.js::historySums@9488262fd247
 - code: groom/groom/assets/dashboard.js::historyMedian@b9931eaf950e
 - rule: the money spent is the reported cost plus the estimate of the runs that report no cost
 - rule: the strip says how much of the money is an estimate and how many runs are partly priced, and omits each clause when it is zero
 - rule: a run still being read counts in the number of runs and stays out of the sums and the success count
+- rule: an archive whose summary could not be read counts in the number of runs, stays out of the sums, and the strip says how many summaries could not be read, apart from how many are still being read
 - rule: the success count reads against the runs whose summary is ready
 - rule: the strip describes the rows shown after the [history filters](run-history-filters.md), and the browser sums them the way the route does
 - rule: with a workflow filter and rows shown, the strip adds the [median cost per item](run-median-comparison.md) of that workflow and the number of comparable runs behind it, whatever the range and the other filters

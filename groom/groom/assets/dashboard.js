@@ -38,7 +38,8 @@ const UNCOMMITTED_VIEW = "uncommitted";
 const BRANCH_VIEW = "branch";
 const RETENTION_DAYS = 30;
 const NO_HISTORY_FILTERS = { text: "", workflow: "", repo: "", ending: "", days: RETENTION_DAYS };
-const HISTORY_RANGES = [[RETENTION_DAYS, "Last 30 days"], [7, "Last 7 days"]];
+const EVERYTHING = 0;
+const HISTORY_RANGES = [[RETENTION_DAYS, "Last 30 days", "last 30 days"], [7, "Last 7 days", "last 7 days"], [EVERYTHING, "Everything, archives included", "everything"]];
 
 // --------------------------------------------------------------------------- //
 // Store — one snapshot, subscribed to by every island
@@ -828,7 +829,7 @@ function ItemsTile({ figures, ended, compare }) {
   return html`<${Tile} label="Work items" id="detail-items-tile" value=${figures.items_done + " of " + figures.items_total}>${each}<//>`;
 }
 
-function AttentionTile({ standing, running }) {
+function AttentionTile({ standing, running, archived }) {
   useSecondTick();
   const open = running && running.wait_kind === "operator" ? running : null;
   const gates = standing.gates + (open ? 1 : 0);
@@ -840,20 +841,20 @@ function AttentionTile({ standing, running }) {
     plural(standing.churn_alerts, "churn alert", "churn alerts"),
   ];
   return html`<${Tile} label="Attention" id="detail-attention-tile" value=${plural(gates, "gate", "gates")}>
-    ${fmtSpan(waited)} waiting · ${standing.problems > 0
+    ${fmtSpan(waited)} waiting · ${standing.problems > 0 && !archived
       ? html`<button type="button" class="linkish" id="detail-problems-link" title=${parts.join(", ")} aria-label=${plural(standing.problems, "problem", "problems") + ", open them in the Activity tab"} onClick=${openProblems}>${plural(standing.problems, "problem", "problems")}</button>`
       : html`<span title=${parts.join(", ")}>${plural(standing.problems, "problem", "problems")}</span>`}
   <//>`;
 }
 
-function OverviewTiles({ data, running, ended }) {
+function OverviewTiles({ data, running, ended, archived }) {
   const figures = data.figures;
   return html`<div class="kpis">
     <${CostTile} figures=${figures} asOf=${data.as_of_ts} ended=${ended} />
     <${Tile} label="Active time" id="detail-active-tile" value=${fmtSpan(figures.active_s)}>${fmtSpan(figures.wall_s)} wall, ${plural(figures.sessions, "session", "sessions")}<//>
     <${ItemsTile} figures=${figures} ended=${ended} compare=${data.compare} />
     <${Tile} label="Agent turns" id="detail-turns-tile" value=${String(figures.turns)}>${plural(data.standing.retries, "backend retry", "backend retries")}<//>
-    <${AttentionTile} standing=${data.standing} running=${running} />
+    <${AttentionTile} standing=${data.standing} running=${running} archived=${archived} />
   </div>`;
 }
 
@@ -1131,14 +1132,17 @@ function Breakdown({ data, running, finished }) {
 
 let overviewSeq = 0;
 
-async function loadOverview(runId, rev = 0, refresh = false) {
+async function loadOverview(runId, rev = 0, refresh = false, archived = false) {
   const seq = ++overviewSeq;
   if (!refresh) store.set({ overview: { runId, status: "loading", data: null, rev } });
   try {
-    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/overview");
+    const response = await fetch((archived ? "/api/archive/" : "/api/run/") + encodeURIComponent(runId) + "/overview");
     if (!response.ok) throw new Error("overview " + response.status);
     const data = await response.json();
-    if (seq === overviewSeq) store.set({ overview: { runId, status: "ready", data, rev } });
+    if (seq === overviewSeq) {
+      store.set({ overview: { runId, status: "ready", data, rev } });
+      if (archived) markIndexed(runId);
+    }
   } catch (err) {
     if (seq !== overviewSeq) return;
     if (refresh) store.set({ overview: { ...store.get().overview, rev } });
@@ -1321,10 +1325,28 @@ function EndingBanner({ ending, runId }) {
   return html`<div id="detail-ending" class=${"side-state ending ending-" + rule} role="region" aria-label="How this run ended"><h2>${ending.head}</h2>${ending.text}${" "}${ending.moment ? html`<button type="button" class="linkish" id="detail-ending-moment" onClick=${() => openMoment(runId, ending.moment)}>Open this moment in Activity</button>` : null}${how}</div>`;
 }
 
+function ArchiveGone({ data, detail }) {
+  const figures = data.figures;
+  return html`<div class="ov">
+    <div class="side-state" role="status" style="border-left-color:var(--idle)"><h2>This archive's files are gone</h2>The cost and times below come from the run's stored summary. Activity and transcripts cannot be read.</div>
+    <div class="kpis">
+      <${CostTile} figures=${figures} asOf=${null} ended=${detail.ended} />
+      <${Tile} label="Active time" id="detail-active-tile" value=${fmtSpan(figures.active_s)}>${fmtSpan(figures.wall_s)} wall<//>
+      <${ItemsTile} figures=${figures} ended=${detail.ended} compare=${data.compare} />
+      <${Tile} label="Agent turns" id="detail-turns-tile" value=${String(figures.turns)}>${plural(data.standing.retries, "backend retry", "backend retries")}<//>
+      <${Tile} label="Attention" id="detail-attention-tile" value=${plural(data.gates, "gate", "gates")}>${plural(data.problems, "problem", "problems")}<//>
+    </div>
+    <div class="pair">
+      <${RunFacts} facts=${data.facts} runId=${data.run_id} ended=${detail.ended} />
+    </div>
+  </div>`;
+}
+
 function Overview({ detail }) {
   const { overview } = useStore();
   const runId = detail.run_id;
   const ended = detail.ended || null;
+  const archived = !!detail.archived;
   const rev = detail.figures_rev || 0;
   const mounted = useRef(false);
   useEffect(() => {
@@ -1333,28 +1355,36 @@ function Overview({ detail }) {
     const current = store.get().overview;
     if (!runId || current.status === "loading") return;
     if (current.status === "failed" && current.runId === runId) {
-      if (first) loadOverview(runId, rev);
+      if (first) loadOverview(runId, rev, false, archived);
       return;
     }
-    if (current.runId !== runId) loadOverview(runId, rev);
-    else if (current.rev !== rev) loadOverview(runId, rev, true);
+    if (current.runId !== runId) loadOverview(runId, rev, false, archived);
+    else if (current.rev !== rev) loadOverview(runId, rev, true, archived);
   }, [runId, rev, overview.status, overview.rev]);
   if (!runId) {
     return html`<div class="side-state"><h3>No figures for this run</h3>It has not reported a telemetry run id.</div>`;
   }
   if (overview.runId === runId && overview.status === "failed") {
     return html`<div class="side-state" role="alert">
-      <h3>${ended ? "This run's figures could not be read" : "These figures could not be read"}</h3>
-      ${ended ? "The list still works." : "The Activity tab still works."}
-      <div class="acts"><button type="button" class="btn ghost retry-overview" onClick=${() => loadOverview(runId, rev)}>Retry now</button></div>
+      ${archived ? html`<h2>This archive could not be read</h2>` : html`<h3>${ended ? "This run's figures could not be read" : "These figures could not be read"}</h3>`}
+      ${archived ? "Its row in the list comes from the stored summary." : ended ? "The list still works." : "The Activity tab still works."}
+      <div class="acts"><button type="button" class="btn ghost retry-overview" onClick=${() => loadOverview(runId, rev, false, archived)}>Retry now</button></div>
     </div>`;
   }
   if (overview.runId !== runId || overview.status !== "ready") {
+    if (archived) {
+      return detail.indexed
+        ? html`<div class="detail-empty" aria-busy="true"></div>`
+        : html`<div class="detail-empty loading" role="status" aria-busy="true">
+            <span class="spin" aria-hidden="true"></span>Reading the archive for the first time. This takes a few seconds once, then it is instant.
+          </div>`;
+    }
     return html`<div class="detail-empty loading" role="status" aria-busy="true">
       <span class="spin" aria-hidden="true"></span>${ended ? "Reading this run…" : "Reading this run's figures…"}
     </div>`;
   }
   const data = overview.data;
+  if (data.archive === "gone") return html`<${ArchiveGone} data=${data} detail=${detail} />`;
   const strip = detail.strip ? html`<${NowStrip} strip=${detail.strip} />` : null;
   if (!data.finished) {
     return html`<div class="ov">
@@ -1371,7 +1401,7 @@ function Overview({ detail }) {
   return html`<div class="ov">
     <${EndingBanner} ending=${data.ending} runId=${runId} />
     ${strip}
-    <${OverviewTiles} data=${data} running=${detail.running} ended=${ended} />
+    <${OverviewTiles} data=${data} running=${detail.running} ended=${ended} archived=${archived} />
     <${WallClock} clock=${data.clock} />
     <${Breakdown} key=${runId} data=${data} running=${detail.running} finished=${true} />
     <div class="pair">
@@ -2593,6 +2623,7 @@ const BASE_TABS = [
   ["overview", "Overview"],
   ["activity", "Activity"],
 ];
+const ARCHIVE_TABS = [["overview", "Overview"]];
 
 function runDiffSize(runDiff) {
   if (runDiff.status !== "ready") return null;
@@ -2698,8 +2729,8 @@ function DiffViewSwitch({ id, value }) {
   />`;
 }
 
-function DetailTabs({ id, tab, hasDiff, stale, runDiff, repos, checkout, view, problems }) {
-  const tabs = hasDiff ? BASE_TABS.concat([["files", "Files"], ["diff", "Diff"]]) : BASE_TABS;
+function DetailTabs({ id, tab, hasDiff, stale, runDiff, repos, checkout, view, problems, archived }) {
+  const tabs = archived ? ARCHIVE_TABS : hasDiff ? BASE_TABS.concat([["files", "Files"], ["diff", "Diff"]]) : BASE_TABS;
   const size = hasDiff && !stale ? runDiffSize(runDiff) : null;
   const switcher = hasDiff && tab === "diff" ? html`<${DiffViewSwitch} id=${id} value=${view} />` : null;
   const picker = hasDiff && (tab === "diff" || tab === "files") && repos.length > 1
@@ -2801,7 +2832,8 @@ function DetailBody({ ended }) {
     : null;
   useRunDiff(ended ? null : selected, live, stale, runDiff.id, runDiff.shownKept);
   useRunFiles(ended ? null : selected, live, chosen === "files", runFiles.id);
-  const known = chosen === "activity" || ((chosen === "diff" || chosen === "files") && hasDiff);
+  const archived = !!detail && !!detail.archived;
+  const known = !archived && (chosen === "activity" || ((chosen === "diff" || chosen === "files") && hasDiff));
   const tab = known ? chosen : "overview";
   const fromActivity = detail && snap.activity.runId === detail.run_id && snap.activity.status === "ready" ? snap.activity.problemCount : null;
   const fromOverview = detail && snap.overview.runId === detail.run_id && snap.overview.status === "ready" && snap.overview.data.standing ? snap.overview.data.standing.problems : null;
@@ -2817,7 +2849,7 @@ function DetailBody({ ended }) {
   return html`
     <${RunHead} head=${detail.head} runId=${detail.run_id} onClose=${ended ? null : closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
     ${detail.gates.length ? html`<${GateStrip} detail=${detail} collapsed=${gatesCollapsed} />` : null}
-    <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} problems=${problems} />
+    <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} problems=${problems} archived=${archived} />
     <div class="fill" id="detail-panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
       ${tab === "diff"
         ? html`<${DiffTab} runDiff=${runDiff} mark=${mark} />`
@@ -2877,6 +2909,8 @@ function endedDetail(run) {
     running: null,
     strip: null,
     figures_rev: 0,
+    archived: !!run.archived,
+    indexed: !!run.indexed,
     metrics: { cells: [] },
     head: {
       ended: true,
@@ -2886,10 +2920,18 @@ function endedDetail(run) {
       type_hue: run.type_hue,
       repo: run.repo ? run.repo + (run.branch ? "@" + run.branch : "") : "",
       live: "done",
-      live_label: "ended",
+      live_label: run.archived ? "archived" : "ended",
       activity: "ended " + (when ? when + " · " : "") + label,
     },
   };
+}
+
+function markIndexed(runId) {
+  const { history } = store.get();
+  const run = history.runs.find((one) => one.run_id === runId);
+  if (!run || run.indexed) return;
+  const runs = history.runs.map((one) => (one.run_id === runId ? { ...one, indexed: true } : one));
+  setIn("history", { runs, ...(history.selected === runId ? { detail: endedDetail({ ...run, indexed: true }) } : {}) });
 }
 
 function openHistoryRun(id) {
@@ -3546,25 +3588,29 @@ function stopHistoryPoll() {
   _historyPoll = null;
 }
 
+let historySeq = 0;
+
 function loadHistory() {
   stopHistoryPoll();
+  const seq = ++historySeq;
   const first = store.get().history.status !== "ready";
   if (first) setIn("history", { status: "loading" });
-  fetch("/api/history")
+  fetch(store.get().history.filters.days === EVERYTHING ? "/api/history?archives=1" : "/api/history")
     .then((r) => {
       if (!r.ok) throw new Error(String(r.status));
       return r.json();
     })
     .then((body) => {
+      if (seq !== historySeq) return;
       const runs = body.runs || [];
       const open = runs.find((one) => one.run_id === store.get().history.selected);
       setIn("history", { status: "ready", runs, totals: body.totals, medians: body.medians || {}, endings: body.endings || [], ...(open ? { detail: endedDetail(open) } : {}) });
-      if (store.get().mode === "history" && body.totals && body.totals.reading > 0) {
+      if (store.get().mode === "history" && body.totals && (body.totals.reading > 0 || body.unlisted > 0)) {
         _historyPoll = setTimeout(loadHistory, HISTORY_POLL_MS);
       }
     })
     .catch(() => {
-      if (first) setIn("history", { status: "failed", runs: [], totals: null });
+      if (first && seq === historySeq) setIn("history", { status: "failed", runs: [], totals: null });
     });
 }
 
@@ -3592,17 +3638,19 @@ function historyShown(runs, filters) {
     (!filters.workflow || run.workflow === filters.workflow)
     && (!filters.repo || run.repo === filters.repo)
     && (!filters.ending || run.ending === filters.ending)
-    && (run.ended_ts || 0) >= since
+    && (filters.days === EVERYTHING || (run.ended_ts || 0) >= since)
     && (!text || (run.run_id + " " + historyRepoText(run)).toLowerCase().includes(text)));
 }
 
 function historySums(runs) {
   const ready = runs.filter((run) => run.ready);
+  const unreadable = runs.filter((run) => run.unreadable).length;
   const sum = (list, pick) => list.reduce((total, run) => total + (pick(run) || 0), 0);
   const estimate = sum(ready, (run) => run.est_usd);
   return {
     runs: runs.length,
-    reading: runs.length - ready.length,
+    reading: runs.length - ready.length - unreadable,
+    unreadable,
     spent_usd: sum(ready, (run) => run.cost_usd) + estimate,
     estimate_usd: estimate,
     partly_priced: ready.filter((run) => run.cost_usd != null && run.priced_turns < run.turns).length,
@@ -3613,7 +3661,17 @@ function historySums(runs) {
 }
 
 function setHistoryFilters(patch) {
+  const before = store.get().history.filters.days === EVERYTHING;
   setIn("history", { filters: Object.assign({}, store.get().history.filters, patch) });
+  if (before !== (store.get().history.filters.days === EVERYTHING)) loadHistory();
+}
+
+async function retryHistoryRun(id) {
+  try {
+    await fetch("/api/history/" + encodeURIComponent(id) + "/retry", { method: "POST" });
+  } finally {
+    loadHistory();
+  }
 }
 
 function clearHistoryFilters() {
@@ -3625,8 +3683,8 @@ function clearHistoryFilters() {
 function historyScope(history) {
   const { filters, endings } = history;
   const ending = (endings.find(([key]) => key === filters.ending) || [])[1];
-  const range = (HISTORY_RANGES.find(([days]) => days === filters.days) || HISTORY_RANGES[0])[1];
-  return [filters.workflow || "all workflows", filters.repo, ending, range.toLowerCase()].filter(Boolean).join(", ");
+  const range = (HISTORY_RANGES.find(([days]) => days === filters.days) || HISTORY_RANGES[0])[2];
+  return [filters.workflow || "all workflows", filters.repo, ending, range].filter(Boolean).join(", ");
 }
 
 function HistoryChoice({ label, all, value, values, onChange }) {
@@ -3646,7 +3704,7 @@ function HistoryFilters({ history, narrow }) {
     <${HistoryChoice} label="Workflow" all="All workflows" value=${filters.workflow} values=${distinct((run) => run.workflow)} onChange=${(workflow) => setHistoryFilters({ workflow })} />
     <${HistoryChoice} label="Repo" all="All repos" value=${filters.repo} values=${distinct((run) => run.repo)} onChange=${(repo) => setHistoryFilters({ repo })} />
     <${HistoryChoice} label="Ending" all="Any ending" value=${filters.ending} values=${endings} onChange=${(ending) => setHistoryFilters({ ending })} />
-    <select class="h-sel" aria-label="Range" onChange=${(e) => setHistoryFilters({ days: Number(e.target.value) })}>
+    <select class="h-sel h-range" aria-label="Range" onChange=${(e) => setHistoryFilters({ days: Number(e.target.value) })}>
       ${HISTORY_RANGES.map(([days, text]) => html`<option value=${days} selected=${days === filters.days}>${text}</option>`)}
     </select>
   </div>`;
@@ -3673,6 +3731,7 @@ function historyTotals(t) {
   if (t.estimate_usd > 0) spent.push(fmtUsdLong(t.estimate_usd) + " of it an estimate");
   if (t.partly_priced > 0) spent.push(plural(t.partly_priced, "run", "runs") + " partly priced");
   if (t.reading > 0) spent.push(plural(t.reading, "summary", "summaries") + " still being read");
+  if (t.unreadable > 0) spent.push(plural(t.unreadable, "summary", "summaries") + " could not be read");
   const cells = [
     [String(t.runs), t.runs === 1 ? "run" : "runs"],
     [fmtUsdLong(t.spent_usd), spent.length ? "spent, " + spent.join(", ") : "spent"],
@@ -3710,7 +3769,7 @@ function HistoryItems({ run }) {
 }
 
 function historyOpenKey(event, id) {
-  if (event.key !== "Enter" && event.key !== " ") return;
+  if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
   event.preventDefault();
   openHistoryRun(id);
 }
@@ -3718,12 +3777,14 @@ function historyOpenKey(event, id) {
 function HistoryRow({ run, tabIndex }) {
   const repoText = historyRepoText(run);
   const repo = run.repo ? html`${run.repo}<span class="dim">${run.branch ? "@" + run.branch : ""}</span>` : html`<span class="dim">—</span>`;
-  const who = html`<td class="l clip" title=${run.run_id}><span class="who"><${TypeBadge} type=${run.workflow} hue=${run.type_hue} /><span class="id">${run.run_id}</span></span></td>`;
+  const who = html`<td class="l clip" title=${run.run_id}><span class="who"><${TypeBadge} type=${run.workflow} hue=${run.type_hue} /><span class="id">${run.run_id}</span>${run.archived ? html`<span class="chip">archived</span>` : null}</span></td>`;
   const when = html`<td class="l">${fmtWhen(run.ended_ts)}</td>`;
   if (!run.ready) {
     return html`<tr class="hrow" data-run=${run.run_id} tabindex=${tabIndex} onClick=${() => openHistoryRun(run.run_id)} onKeyDown=${(e) => historyOpenKey(e, run.run_id)}>
       ${who}<td class="l clip" title=${repoText}>${repo}</td>
-      <td class="l"><span class="spin" aria-hidden="true"></span><span class="dim">reading its summary</span></td>
+      <td class="l">${run.unreadable
+        ? html`<span class="unread">could not be read</span> <button type="button" class="btn ghost retry-summary" aria-label=${"Retry now, " + run.run_id} onClick=${(e) => { e.stopPropagation(); retryHistoryRun(run.run_id); }}>Retry now</button>`
+        : html`<span class="dim">reading its summary</span>`}</td>
       ${when}
       ${[0, 1, 2, 3, 4, 5, 6, 7].map(() => html`<td class="dim">—</td>`)}
     </tr>`;
@@ -3758,10 +3819,12 @@ function HistoryNarrowRow({ run, selected }) {
     ? html`${fmtUsdLong(run.cost_usd)}${run.priced_turns < run.turns ? html` <span class="dim">${run.priced_turns}/${run.turns}</span>` : null}`
     : run.est_usd != null ? html`<span class="dim">est ${fmtUsdLong(run.est_usd)}</span>` : html`<span class="dim">—</span>`;
   return html`<button type="button" class=${"row" + (selected ? " selected" : "")} data-run=${run.run_id} aria-current=${selected ? "true" : null} onClick=${() => openHistoryRun(run.run_id)}>
-    <span class="line1"><${TypeBadge} type=${run.workflow} hue=${run.type_hue} /><span class="repo-branch" title=${repoText}>${repoText || "—"}</span><span class="wid" title=${run.run_id}>#${run.run_id}</span></span>
+    <span class="line1"><${TypeBadge} type=${run.workflow} hue=${run.type_hue} /><span class="repo-branch" title=${repoText}>${repoText || "—"}</span><span class="wid" title=${run.run_id}>#${run.run_id}</span>${run.archived ? html`<span class="chip">archived</span>` : null}</span>
     ${run.ready
       ? html`<span class="line3"><span class="nw">${cost}</span><span class="nw">${fmtLong(run.active_s)}</span><span class="nw dim">${run.ended_ts ? fmtWhen(run.ended_ts) : "—"}</span><span class=${"chip " + historyEndingClass(run.ending)} style="margin-left:auto">${run.ending_label}</span></span>`
-      : html`<span class="line3"><span class="spin" aria-hidden="true"></span><span class="dim">reading its summary</span></span>`}
+      : run.unreadable
+        ? html`<span class="line3"><span class="unread">could not be read</span></span>`
+        : html`<span class="line3"><span class="dim">reading its summary</span></span>`}
   </button>`;
 }
 

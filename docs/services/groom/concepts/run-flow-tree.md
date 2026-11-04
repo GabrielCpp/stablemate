@@ -12,7 +12,7 @@ Spans export when they end. A flow or state that is still open, and the run's ow
 - code: groom/groom/flows.py::build_flows@3c6e64500c11
 - code: groom/groom/overview.py::run_overview@f1c1a8297756
 - code: groom/groom/live_history.py::LiveHistory@3671ced6241f
-- code: groom/groom/assets/dashboard.js::Overview@a13d033913fa
+- code: groom/groom/assets/dashboard.js::Overview@29501190120e
 - code: groom/groom/flows.py::turn_passes@74192984c983
 - code: groom/groom/flows.py::span_passes@55f223c1146d
 - tests: groom/tests/test_flows.py::test_an_ended_flow_is_named_from_its_own_span

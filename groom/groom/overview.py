@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from groom import archive, figures, flows, history, medians, norms, store
@@ -75,4 +76,32 @@ def run_overview(run_id: str) -> dict[str, Any]:
             **(profile["facts"] if profile else {"branch": "", "run_dir": ""}),
         },
         "as_of_ts": result["last_turn_end_ts"],
+    }
+
+
+def stored_overview(row: dict[str, Any], compare: dict[str, Any] | None) -> dict[str, Any]:
+    """What an archive whose files are gone still says, read from its stored summary: the tiles and the facts, with no breakdown, no clock and no sessions' detail."""
+    ready = row["state"] == history.READY
+    priced = row["cost_usd"] is not None and row["priced_turns"] > 0
+    return {
+        "archive": "gone",
+        "finished": ready,
+        "run_id": row["run_id"],
+        "figures": {
+            "reports_cost": priced,
+            "cost_usd": row["cost_usd"] if priced else None,
+            "est_usd": row["est_usd"],
+            "turns": row["turns"],
+            "priced_turns": row["priced_turns"],
+            "active_s": row["active_s"],
+            "wall_s": row["wall_s"],
+            "items_done": row["items_done"],
+            "items_total": row["items_total"],
+            "backends": [],
+        },
+        "gates": row["gates"],
+        "problems": row["problems"],
+        "compare": compare,
+        "standing": {"retries": sum(node["retries"] for node in json.loads(row["nodes_json"])), "gates": row["gates"], "problems": row["problems"]},
+        "facts": {"started_ts": None, "branch": row["branch"], "run_dir": ""},
     }
