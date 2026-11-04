@@ -8,10 +8,12 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from ostler import index, testing
+from ostler.qa.plan import load_plan, validate_v2
 
 
 FOO_ID = "t-01foo"
@@ -273,3 +275,14 @@ def _inline_books_are_legal_okf(request: pytest.FixtureRequest):
         f"run — the fixture is written against a grammar these types no longer declare: "
         f"{violations}"
     )
+
+
+def compiled_plan_problems(root: Path, context: dict[str, Any], source: str) -> list[str]:
+    """What the plan validator refuses in a compiled plan, past the coverage a small test book leaves owed."""
+    spec = root / "spec"
+    spec.mkdir()
+    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
+    (spec / "qa_plan.py").write_text(source, encoding="utf-8")
+    document, problems = load_plan(spec / "qa_plan.py", spec, root)
+    assert document is not None, problems
+    return [item for item in [*problems, *validate_v2(document)] if not item.startswith("required OKF obligation")]

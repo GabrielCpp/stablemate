@@ -1756,18 +1756,20 @@ class Qa:
         self,
         state: str,
         states: Mapping[str, Sequence[tuple[str, Any, Mapping[str, Any]]]],
+        *,
+        covers: Sequence[str] | None = None,
     ) -> bool:
         """Record whether the record read back is in `state`, and when it is not, name the sibling state it is in."""
         def matches(name: str) -> bool:
             return all(VERIFIERS[check](operand, args).passed for check, operand, args in states[name])
 
         if matches(state):
-            return self._record(f"the record is in {state}", True, state, state, None)
+            return self._record(f"the record is in {state}", True, state, state, covers)
         holding = next((name for name in states if name != state and matches(name)), "")
         actual = holding or "no state of the lifecycle"
         return self._record(
             f"the record should be in {state}, and {holding + ' holds instead' if holding else 'no state of the lifecycle holds'}",
-            False, actual, state, None,
+            False, actual, state, covers,
             extra={"state": state, "holds": holding},
         )
 
@@ -2470,7 +2472,7 @@ class Convert:
 
 
 
-CHECK_METHODS = frozenset({"check", "require", "eventually", "require_eventually", "verify", "settle"})
+CHECK_METHODS = frozenset({"check", "require", "eventually", "require_eventually", "verify", "settle", "holds"})
 
 VET_METHOD = "vet"
 ARRIVAL_WAIT_S = 10.0
@@ -2618,6 +2620,7 @@ def _module_constants(tree: ast.Module) -> dict[str, Any]:
 
 
 VERIFY_METHOD = "verify"
+HOLDS_METHOD = "holds"
 
 
 def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
@@ -2628,6 +2631,8 @@ def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
     for function, reachable in parsed.reachable.items():
         calls: list[dict[str, Any]] = []
         for call in reachable:
+            if isinstance(call.func, ast.Attribute) and call.func.attr == HOLDS_METHOD:
+                calls.extend(_held_check_calls(call, constants))
             if not isinstance(call.func, ast.Attribute) or call.func.attr != VERIFY_METHOD:
                 continue
             name = _resolve(call.args[0], constants) if call.args else None
@@ -2649,6 +2654,31 @@ def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
                 }
             )
         found[function] = calls
+    return found
+
+
+def _held_check_calls(call: ast.Call, constants: dict[str, Any]) -> list[dict[str, Any]]:
+    """The named checks a `qa.holds` evaluates: the rows it writes for the state it holds, bound to what it covers."""
+    covers = next((_covers_ids(keyword.value, constants) for keyword in call.keywords if keyword.arg == "covers"), [])
+    if len(call.args) < 2 or not isinstance(call.args[1], ast.Dict):
+        return []
+    state = _resolve(call.args[0], constants)
+    rows = next((value for key, value in zip(call.args[1].keys, call.args[1].values, strict=True)
+                 if key is not None and _resolve(key, constants) == state), None)
+    if not isinstance(rows, ast.List):
+        return []
+    found: list[dict[str, Any]] = []
+    for row in rows.elts:
+        if not isinstance(row, ast.Tuple) or len(row.elts) != 3 or not isinstance(row.elts[2], ast.Dict):
+            continue
+        name = _resolve(row.elts[0], constants)
+        args: dict[str, Any] = {}
+        for key, value in zip(row.elts[2].keys, row.elts[2].values, strict=True):
+            argument = _resolve(key, constants) if key is not None else None
+            if isinstance(argument, str):
+                written = _check_argument(value, constants)
+                args[argument] = written if written is not None else COMPUTED
+        found.append({"check": name if isinstance(name, str) else COMPUTED, "args": args, "covers": covers})
     return found
 
 

@@ -94,7 +94,7 @@ its first hop.
 - code: ostler/ostler/qa/compile.py::compiled_from_the_book@dedfe53e8b6d
 - code: ostler/ostler/qa/compile_http.py::api_scenarios@4dc4547ef07a
 - code: ostler/ostler/qa/compile_http.py::http_walk@62469eaf0f71
-- code: ostler/ostler/qa/compile_http.py::read_back@2eba39db5fe6
+- code: ostler/ostler/qa/compile_http.py::read_back@e2bf27f788d2
 - code: ostler/ostler/qa/compile_cli.py::cli_scenario_body@cf06f3c86495
 - code: ostler/ostler/qa/compile_cli.py::cli_journey@e73ecb534125
 - code: ostler/ostler/qa/compile_cli.py::_run_arguments@f4d1cc0ce021
@@ -213,6 +213,10 @@ its first hop.
 - rule: a text field is never checked with `visible(text=)`. A field shows its content as a value and
   never as text, so doctor refuses that check on a `textbox` or `searchbox` component with
   `text-of-a-field`, and the check is `value(locator=..., equals=...)` instead.
+- rule: a read-back claims what it proves. `qa.holds` carries the literal `covers=` of the state it
+  holds and of the move that landed there, so the plan validator and the run's report credit the same
+  assertion the scenario names. The rows `qa.holds` evaluates for that state count as the invocation
+  of the state's `verify:` checks, so a state's page needs no second `qa.verify` of the same check.
 - rule: an HTTP page's claims share one scenario, except a claim that names a fixture with
   `lifetime: scenario`, which runs in a scenario of its own. Such a fixture holds a condition one
   request can consume, such as an account with no list yet, and the harness builds it once per

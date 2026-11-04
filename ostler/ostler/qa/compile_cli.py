@@ -271,8 +271,8 @@ def _state_rows(state: DataState, observed: str) -> list[str] | str:
     return rows
 
 
-def cli_read_back(where: str, observed: str, target: DataState, book: BookIndex) -> list[str] | str:
-    """The lines that run *target*'s observing command and hold its checks on what it left, naming the sibling state that holds when they fail, or why the walk cannot read it."""
+def cli_read_back(where: str, observed: str, target: DataState, book: BookIndex, *, covers: Iterable[str]) -> list[str] | str:
+    """The lines that run *target*'s observing command and hold its checks on what it left, claiming *covers*, naming the sibling state that holds when they fail, or why the walk cannot read it."""
     label = f"{where} of `{anchor_of(target.node)}`"
     call = _node_call(label, target.observe, book.acts_by_node, book.acts_refused, book.cli_binaries)
     if isinstance(call, StepRefusal):
@@ -290,7 +290,7 @@ def cli_read_back(where: str, observed: str, target: DataState, book: BookIndex)
     return [
         f"    {observed} = {call}",
         *([f"    {observed}_tree = qa.checkout_tree()"] if taken_tree else []),
-        f"    qa.holds({python_literal(anchor_of(target.node))}, {{{held}}})",
+        f"    qa.holds({python_literal(anchor_of(target.node))}, {{{held}}}, covers=[{', '.join(map(python_literal, covers))}])",
     ]
 
 
@@ -325,12 +325,13 @@ def _step_lines(
         if target is None:
             continue
         name = f"moved_{index}" if number == 1 else f"moved_{index}_{number}"
-        found = cli_read_back(f"step {index}'s read-back", name, target, book)
+        proved = (move_obligation_id(step.ref, move.index), state_obligation_id(move.end))
+        found = cli_read_back(f"step {index}'s read-back", name, target, book, covers=proved)
         if isinstance(found, str):
             gaps.extend(Gap(oid, "unresolved-precondition", found) for oid in ids)
             continue
         inside.extend(f"    {line}" for line in found)
-        reached.update((move_obligation_id(step.ref, move.index), state_obligation_id(move.end)))
+        reached.update(proved)
     if inside:
         lines.append(f"    with qa.at_node({python_literal(step.ref)}):")
         lines.extend(inside)
@@ -407,7 +408,7 @@ def cli_move_walk(
     stepped = _step_lines(1, step, calls[0][1], book, ids, gaps, reached)
     if stepped is None or not set(ids) <= reached:
         return None
-    before = cli_read_back("the read of the starting state", "before_move", start, book)
+    before = cli_read_back("the read of the starting state", "before_move", start, book, covers=(state_obligation_id(start.node),))
     if isinstance(before, str):
         gaps.extend(Gap(oid, "unresolved-precondition", before) for oid in ids)
         return None
@@ -420,7 +421,7 @@ def cli_observe_walk(
     state: DataState, book: BookIndex, gaps: list[Gap], ids: list[str],
 ) -> list[str] | None:
     """Run the command that reads the record in *state* and hold the state's checks on what it left, or `None` once a gap says why the walk cannot read it."""
-    read = cli_read_back("the read of the state", "observed", state, book)
+    read = cli_read_back("the read of the state", "observed", state, book, covers=(state_obligation_id(state.node),))
     if isinstance(read, str):
         gaps.extend(Gap(oid, "unresolved-precondition", read) for oid in ids)
         return None

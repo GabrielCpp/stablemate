@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 from dataclasses import field
 from dataclasses import replace
-from collections.abc import Callable, Collection, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from typing import Any
 
 from ostler import acts as acts_mod
@@ -965,16 +965,16 @@ def _planned_read(
 def read_back(
     where: str, observed: str, target: DataState, book: BookIndex, known: Produced, produced: set[str],
     owners: dict[str, set[str]], step_headers: dict[str, CheckValue] | None = None, rewire: bool = False,
-    record_fixtures: frozenset[str] = frozenset(),
+    record_fixtures: frozenset[str] = frozenset(), *, covers: Iterable[str],
 ) -> list[str] | str:
-    """The lines that request *target*'s observing endpoint as a step would and hold its checks on the answer, or why the walk cannot read it."""
+    """The lines that request *target*'s observing endpoint as a step would and hold its checks on the answer, claiming *covers*, or why the walk cannot read it."""
     planned = _planned_read(where, observed, target, book, known, produced, owners, step_headers, rewire, record_fixtures)
     if isinstance(planned, str):
         return planned
     path = f"qa.resolve({python_literal(planned.path)})" if references.find_references(planned.path) else python_literal(planned.path)
     return [
         f"    {observed} = qa.http.{planned.method}({path}{planned.kwargs})",
-        f"    qa.holds({planned.anchor}, {{{planned.held}}})",
+        f"    qa.holds({planned.anchor}, {{{planned.held}}}, covers=[{', '.join(map(python_literal, covers))}])",
     ]
 
 
@@ -1056,12 +1056,13 @@ def _move_lines(
         if target is None:
             continue
         observed = f"moved_{index}" if number == 1 else f"moved_{index}_{number}"
-        found = read_back(f"step {index}'s read-back", observed, target, book, known, produced, owners, credentials)
+        proved = (move_obligation_id(step.ref, move.index), state_obligation_id(move.end))
+        found = read_back(f"step {index}'s read-back", observed, target, book, known, produced, owners, credentials, covers=proved)
         if isinstance(found, str):
             gaps.extend(Gap(oid, "unresolved-precondition", found) for oid in walk.ids)
             continue
         lines.extend(found)
-        reached.update((move_obligation_id(step.ref, move.index), state_obligation_id(move.end)))
+        reached.update(proved)
     return lines
 
 
@@ -1269,7 +1270,8 @@ def move_walk(
         return None
     own = bool(walk.steps) and _own_record(walk.steps[0].ref, book)
     before = read_back("the read of the starting state", "before_move", start, book, known, set(),
-                       _fixture_owners(walk.obligations), steps.first_headers if own else None)
+                       _fixture_owners(walk.obligations), steps.first_headers if own else None,
+                       covers=(state_obligation_id(start.node),))
     if isinstance(before, str):
         sinks.gaps.extend(Gap(oid, "unresolved-precondition", before) for oid in walk.ids)
         return None
@@ -1287,7 +1289,7 @@ def observe_walk(
     for obligation in walk_obligations:
         known.record_fixtures(obligation)
     read = read_back("the read of the state", "observed", state, book, known, set(), _fixture_owners(walk_obligations),
-                     rewire=True, record_fixtures=record_fixtures)
+                     rewire=True, record_fixtures=record_fixtures, covers=(state_obligation_id(state.node),))
     if isinstance(read, str):
         sinks.gaps.extend(Gap(obligation.id, "unresolved-precondition", read) for obligation in walk_obligations)
         return None

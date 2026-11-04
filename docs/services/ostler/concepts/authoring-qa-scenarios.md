@@ -86,7 +86,7 @@ directory, so a differential check compares the reads either side of an action.
 - code: ostler/ostler/qa/harness/ostler_qa.py::secret@03ec751a0a19
 - code: ostler/ostler/qa/harness/ostler_qa.py::background@ff9310569202
 - code: ostler/ostler/qa/harness/ostler_qa.py::scenario@4627c6acef7d
-- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@10638713e0d1
+- code: ostler/ostler/qa/harness/ostler_qa.py::Qa@0acb4f76fed5
 - code: ostler/ostler/qa/harness/ostler_qa.py::Http@55912ec4cef1
 - code: ostler/ostler/qa/harness/ostler_qa.py::scenario_env@8aaa84a452d8
 - code: ostler/ostler/qa/harness/ostler_qa.py::CheckFailed@2d91bd45de1f
@@ -100,7 +100,7 @@ directory, so a differential check compares the reads either side of an action.
 - code: ostler/ostler/qa/harness/ostler_qa.py::Tool@c59d509df426
 - code: ostler/ostler/qa/harness/ostler_qa.py::count_checks@be8beed2102a
 - code: ostler/ostler/qa/harness/ostler_qa.py::extract_check_covers@cfad605b8ed6
-- code: ostler/ostler/qa/harness/ostler_qa.py::extract_check_calls@a635c68e9653
+- code: ostler/ostler/qa/harness/ostler_qa.py::extract_check_calls@bd1ccad73fca
 - code: ostler/ostler/qa/harness/ostler_qa.py::extract_locators@5b27c72c2ace
 - code: ostler/ostler/qa/harness/ostler_qa.py::extract_vets@8b3fe168ef09
 - code: ostler/ostler/qa/harness/ostler_qa.py::extract_instances@9dae79f46dc6

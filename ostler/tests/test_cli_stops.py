@@ -12,7 +12,7 @@ import pytest
 from ostler.qa.compile import Plan, Refusal, compile_plan_gaps
 from ostler.qa.context import build_context
 
-from conftest import write
+from conftest import compiled_plan_problems, write
 
 HARNESS_DIR = Path(__file__).resolve().parents[1] / "ostler" / "qa" / "harness"
 CLI = "docs/services/tally/tally.md"
@@ -253,6 +253,12 @@ def test_a_passage_step_runs_each_command_it_holds_in_its_own_block(tmp_path: Pa
     code, records, calls = _walk(tmp_path, planned, _scenario(planned, "pay_a_bill"), "good")
     assert code == 0, records
     assert calls == ["add", "pay", "show"]
+
+
+def test_a_compiled_cli_read_back_passes_the_plan_validator(tmp_path: Path) -> None:
+    planned = _plan(tmp_path, _cli(pay_moves=True))
+    context = build_context(tmp_path, base="HEAD", whole_book=True)
+    assert compiled_plan_problems(tmp_path, context, planned.source) == []
 
 
 def test_a_move_read_back_fails_at_the_command_that_left_the_record_in_the_old_state(tmp_path: Path) -> None:

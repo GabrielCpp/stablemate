@@ -14,7 +14,7 @@ from pathlib import Path
 from ostler.qa.compile import Plan, compile_plan_gaps
 from ostler.qa.context import build_context
 
-from conftest import write
+from conftest import compiled_plan_problems, write
 from data_state_books import (API, FIXTURE, FIXTURE_PAGE, FLOW, FLOW_PAGE, ISSUED, PAID_ARRANGED, PAID_FIXTURE,
                               PAID_FIXTURE_PAGE, PAY_MOVES, RUNBOOK, RUNBOOK_PAGE, VOID, VOID_FROM_ISSUED,
                               ISSUED_ARRANGED, void_page)
@@ -142,6 +142,23 @@ def test_the_walk_passes_when_the_server_voids_the_bill(tmp_path: Path) -> None:
         code, records = _walk(tmp_path, planned, url)
     assert code == 0, records
     assert [r["passed"] for r in _held(records)] == [True, True]
+
+
+def test_a_compiled_read_back_passes_the_plan_validator(tmp_path: Path) -> None:
+    planned = _plan(tmp_path, _book())
+    context = build_context(tmp_path, base="HEAD", whole_book=True)
+    assert compiled_plan_problems(tmp_path, context, planned.source) == []
+
+
+def test_a_read_back_records_the_move_and_the_state_it_proves(tmp_path: Path) -> None:
+    planned = _plan(tmp_path, _book())
+    with _serving(_stub("void")) as url:
+        code, records = _walk(tmp_path, planned, url)
+    assert code == 0, records
+    assert [r["covers"] for r in _held(records)] == [
+        [f"okf:{API}#bill-issued:contract"],
+        [VOID_MOVE, f"okf:{API}#bill-void:contract"],
+    ]
 
 
 def test_the_walk_fails_at_the_void_step_when_the_server_leaves_the_bill_issued(tmp_path: Path) -> None:
