@@ -9,7 +9,7 @@ Estimate token costs for runs using published vendor rate cards when billing dat
 
 Each token class (input, output, cache reads, cache writes) carries its own rate, and cache defaults follow Anthropic's published multipliers (reads at 0.1x input, writes at 2.0x input for hour-TTL contexts). An estimate is kept in a separate column from actual billing data — they are different claims — and never summed together.
 
-- code: groom/groom/prices.py
+- code: groom/groom/prices.py@ea944d8733b1
 - tests: groom/tests/test_prices.py
 - detail: [prices configuration file](../formats/prices-config.md)
 
@@ -85,9 +85,10 @@ This model's rates, or None when nothing in the table names it.
 - sig: `price_for(model: str) -> Price | None`
 - returns: a [Price](#price) when the model is in the table after normalization, or None when the model is unpriced
 - returns: when the input carries route segments — e.g. `openrouter/openai/gpt-5.6-luna` — progressively strips the first segment until a match is found, so a routed id's tail segment is the resolved model
+- rule: a model id recorded with a leading `@` prices as the model it names, so a codex turn on `@gpt-5.6-terra` gets the estimate of `gpt-5.6-terra`
 - code: groom/groom/prices.py::price_for
 
-Model normalization strips date suffixes (e.g., `claude-sonnet-5-20250929` becomes `claude-sonnet-5`), lowercases, and whitespace.
+Model normalization strips date suffixes (e.g., `claude-sonnet-5-20250929` becomes `claude-sonnet-5`), a leading `@` (the form codex records, e.g. `@gpt-5.6-terra`), whitespace, and case.
 
 ### estimate
 

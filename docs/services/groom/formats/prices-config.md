@@ -9,7 +9,7 @@ Override or extend the built-in [pricing module](../concepts/groom-prices-module
 
 - file: `~/.config/stablemate/prices.toml` (or `$GROOM_PRICES` if set)
 - config: per-operator, per-vendor, keyed by model id
-- code: groom/groom/prices.py::_overrides
+- code: groom/groom/prices.py::_overrides@f2d463c35133
 - detail: [Price dataclass](../concepts/groom-prices-module.md#price)
 - tests: groom/tests/test_prices.py
 
@@ -28,7 +28,7 @@ cache_write = 0.25    # optional; defaults to input * 2.0
 The entry schema:
 
 - `models` — required top-level table holding all model overrides
-  - `"<model-id>"` — a model name, case-insensitive, date-suffix stripped on lookup (e.g. `"claude-opus-5-20250909"` is normalized to `"claude-opus-5"`)
+  - `"<model-id>"` — a model name, case-insensitive, date-suffix and leading `@` stripped on lookup (e.g. `"claude-opus-5-20250909"` is normalized to `"claude-opus-5"`)
     - `input` — required field, float ≥ 0; dollars per million input tokens
     - `output` — required field, float ≥ 0; dollars per million output tokens
     - `cache_read` — optional field, float ≥ 0; defaults to `input * 0.1`; dollars per million cache-hit tokens

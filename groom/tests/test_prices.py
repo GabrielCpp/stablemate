@@ -93,6 +93,12 @@ def test_a_dated_or_routed_id_prices_as_the_model_it_names():
         assert prices.price_for("openrouter/anthropic/claude-haiku-4-5") is not None
 
 
+def test_a_model_recorded_with_a_leading_at_prices_as_the_model_it_names():
+    with _env():
+        named = prices.price_for("@gpt-5.6-terra")
+        assert named is not None and named == prices.price_for("gpt-5.6-terra")
+
+
 def test_the_override_file_extends_and_corrects_the_built_in_table():
     with _env('[models."acme/fast-1"]\ninput = 2.0\noutput = 8.0\n'):
         added = prices.price_for("acme/fast-1")

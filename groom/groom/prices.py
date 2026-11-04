@@ -116,7 +116,7 @@ def reset() -> None:
 
 
 def _normalize(model: str) -> str:
-    return _DATE_SUFFIX.sub("", model.strip().lower())
+    return _DATE_SUFFIX.sub("", model.strip().lstrip("@").lower())
 
 
 def price_for(model: str) -> Price | None:
