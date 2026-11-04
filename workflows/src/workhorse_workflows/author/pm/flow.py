@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed, dry_run
 from workhorse_workflows.author.pm.angles import ANGLES, Angle, stage_prompt
 from workhorse_workflows.author.pm.nodes import record_pm_receipt
 from workhorse_workflows.author.pm.schemas import PMFinding, PMReceipt, PMResult, Verdict
@@ -58,6 +58,7 @@ def format_findings(findings: Sequence[PMFinding]) -> str:
     )
 
 
+@dry_run(stage="story")
 class PMReview(Workflow):
     """Judge one stage's output as the product manager, in a session no earlier turn touched."""
 

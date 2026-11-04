@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from okf_book.main.tally import TALLY
+from okf_book.support import bound
 
 from workhorse import gates, templates
 from workhorse.runner.usage import TurnUsage
@@ -28,7 +29,7 @@ ANSWER = "The admin checks revoke the supplier's tokens. Give them their own use
 
 
 def test_the_answer_to_the_blockers_is_kept_for_the_owner(tmp_path: Path) -> None:
-    book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,))
+    book = bound(OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,)))
     _ = book.start()
     _ = record_blocker(tmp_path, Blocker(subject="tally", service="tally", phase=Phase.EXERCISE, side=Side.BOOK, reason="failed its run"))
     question = "The run stopped on 1 blockers."

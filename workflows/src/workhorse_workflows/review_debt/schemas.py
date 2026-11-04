@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel
+from workhorse.pyflow import dry_run
 
 
 class CompleteRead(BaseModel):
@@ -28,6 +29,11 @@ class Singleton(BaseModel):
     cause: str
 
 
+@dry_run(
+    clusters=[{"name": "dry-run", "cause": "dry run", "ids": ["dry-run-1", "dry-run-2", "dry-run-3"]}],
+    singletons=[],
+    summary="dry run",
+)
 class TrendReport(BaseModel):
     """The clusters, the singletons and a paragraph for the maintainer."""
 
@@ -48,6 +54,7 @@ class Accounting(BaseModel):
         return not (self.missing or self.duplicated or self.unknown)
 
 
+@dry_run(path="trends.md", changed=True)
 class TrendsWritten(BaseModel):
     """Where `trends.md` landed and whether this write changed its text."""
 
@@ -55,6 +62,7 @@ class TrendsWritten(BaseModel):
     changed: bool
 
 
+@dry_run(name="dry-run", cause="dry run", ids=["dry-run-1", "dry-run-2", "dry-run-3"], lines=[])
 class Candidate(BaseModel):
     """One cluster whose unbound records may be enough for a decision."""
 
@@ -64,12 +72,14 @@ class Candidate(BaseModel):
     lines: list[str]
 
 
+@dry_run(clusters=[{"name": "dry-run", "cause": "dry run", "ids": ["dry-run-1", "dry-run-2", "dry-run-3"], "lines": []}])
 class Candidates(BaseModel):
     """The clusters of a report that reach the decision threshold."""
 
     clusters: list[Candidate] = []
 
 
+@dry_run(slug="dry-run", title="Dry run", context="dry run", decision="dry run", consequences="dry run")
 class DecisionDraft(BaseModel):
     """The prose of one proposed decision."""
 
@@ -80,6 +90,7 @@ class DecisionDraft(BaseModel):
     consequences: str
 
 
+@dry_run(ok=True, id="dry-run")
 class Filed(BaseModel):
     """What proposing one decision came to: its id, or the refusal."""
 

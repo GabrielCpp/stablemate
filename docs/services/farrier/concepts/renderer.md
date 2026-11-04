@@ -15,7 +15,7 @@ install time — see the [`scaffold` command](../farrier-commands-init.md#scaffo
 come from the [source loader](source-loader.md), which excludes a skill's bundled asset Markdown
 from the top-level source set.
 
-- code: `farrier/farrier/renderer.py::Renderer` @d3a48cfb8aab
+- code: `farrier/farrier/renderer.py::Renderer` @ec09ec542ab9
 - detail: [renderer naming and relative output paths](naming.md)
 - detail: [generated context manifest](../formats/generated-context-manifest.md)
 
@@ -81,6 +81,12 @@ ownership, or source-part metadata.
 - sig: `root_banner(source_rel: str, dest_rel: str) -> str`
 - does: create a generated-file warning for a Copilot root instruction file
 - code: `farrier/farrier/renderer.py::root_banner` @efb3a33cbc98
+- verify: json_path(path="return value", matches="DO NOT EDIT")
+
+### method: home_root_banner
+- sig: `home_root_banner(source_rel: str) -> str`
+- does: create a generated-file warning for a home instruction file that names `farrier install --user` as the way to regenerate it
+- code: `farrier/farrier/renderer.py::home_root_banner` @b65a6536c00c
 - verify: json_path(path="return value", matches="DO NOT EDIT")
 
 ### method: with_banner
@@ -203,7 +209,7 @@ enabled assistant (`"claude"` if none is enabled). When the repository has no ro
 set additionally contains a thin one (`-include .agents/agents.mk`); an existing root `Makefile` is
 left intact and `ensure_makefile_include` wires it at install time instead.
 
-- code: `farrier/farrier/renderer.py::Renderer.render` @dc1791ac8135
+- code: `farrier/farrier/renderer.py::Renderer.render` @1e3d2fe0d5b3
 
 ### `context_manifest` — the per-repo run-time manifest
 
@@ -370,6 +376,21 @@ template values, policies, and repo/user scope.
 - verify: count(subject="unknown skill directory targets rejected with SystemExit", equals=1)
 - code: `farrier/farrier/renderer.py::Renderer.skill_dir_path` @f1058c6017a7
 
+### method: check_roots
+- sig: `check_roots(self, roots: set[str]) -> None`
+- does: return when every selected root names a file in the library layers
+- verify: count(subject="roots missing from the library", equals=0)
+- raises: `SystemExit` naming each unknown root
+- verify: stderr(text="unknown root")
+- code: `farrier/farrier/renderer.py::Renderer.check_roots` @f161f008346c
+
+### method: home_root
+- sig: `home_root(self, root: str, target: str) -> dict[Path, str]`
+- does: render *root* through the template surface for *target* into that harness's home instruction file, with its banner
+- verify: created(subject="c131/home/.claude/CLAUDE.md")
+- fixture: claude-roots-home dir=c131
+- code: `farrier/farrier/renderer.py::Renderer.home_root` @91d4a03b07da
+
 ### method: render_templates
 - sig: `render_templates(content: str, target: str, from_file: Path) -> str`
 - does: leave content unchanged when it contains no Farrier or Jinja helper token
@@ -466,7 +487,7 @@ template values, policies, and repo/user scope.
 - verify: absent(subject="user-scope launcher and context manifest outputs")
 - raises: `SystemExit` listing unknown roots and searched layers
 - verify: count(subject="unknown-root SystemExit messages listing roots and searched layers", equals=1)
-- code: `farrier/farrier/renderer.py::Renderer.render` @dc1791ac8135
+- code: `farrier/farrier/renderer.py::Renderer.render` @1e3d2fe0d5b3
 - tests: `farrier/tests/test_selection_misses.py::test_unknown_root_fails_even_with_copilot_disabled`
 
 ### method: instruction_sources

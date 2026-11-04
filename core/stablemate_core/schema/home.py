@@ -278,6 +278,12 @@ class UserLibraryTable(Section):
         examples=[{"skills": ["farrier-setup"]}],
         default_text="absent",
     )
+    opencode: Selection | None = setting(
+        None,
+        description="The rules, MCP servers, guards and agents installed for OpenCode under `~/.config/opencode`. Skills and prompts are left out, because OpenCode reads the skills of `~/.claude` and `~/.agents`.",
+        examples=[{"packs": ["general"]}],
+        default_text="absent",
+    )
     template: dict[str, Any] = setting(
         factory=dict,
         description="Template values shared by every harness's rendered content. The keys belong to the library whose templates read them, so no tool lists them.",

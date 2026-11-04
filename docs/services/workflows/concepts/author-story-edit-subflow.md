@@ -13,7 +13,7 @@ on one package-local blueprint, which the author composition root imports into i
 An add request names an open record on the [debt register](../../ostler/concepts/the-debt-register.md).
 The epic-edit pass then closes that record as promoted, as [promoting a record](promote-a-record.md) describes.
 
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit` @479f91007555
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit` @7502bb7244b5
 - code: `workflows/src/workhorse_workflows/author/story_edit/nodes.py::blueprint` @56840d04faa5
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_add_resolves_a_record_into_its_edit_intent`
 - tests: `workflows/tests/author/test_workflow.py::test_story_edit_add_refuses_a_token_that_names_no_record`
@@ -33,14 +33,14 @@ The epic-edit pass then closes that record as promoted, as [promoting a record](
 - does: loads the configured author paths in `story-edit` mode
 - returns: returns the resolved author configuration to the flow context
 - verify: count(subject="story-edit configuration loads", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.setup` @479f91007555
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.setup` @4565c9ad44c4
 
 ### labels
 - sig: `labels() -> dict[str, str]`
 - does: labels an add run with its epic and a remove run with its story
 - returns: returns labels containing the work id, epic, and reconciliation progress text
 - verify: json_path(path="$.progress", equals="reconciling epic scope")
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.labels` @479f91007555
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.labels` @4c8b958a4d45
 
 ### start
 - sig: `start() -> Done`
@@ -48,7 +48,7 @@ The epic-edit pass then closes that record as promoted, as [promoting a record](
 - does: hands the intent and operator mode to `EpicEdit`
 - returns: returns `Done` containing the epic-edit handoff result
 - verify: count(subject="story-edit epic-edit handoffs", equals=1)
-- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.start` @479f91007555
+- code: `workflows/src/workhorse_workflows/author/story_edit/flow.py::StoryEdit.start` @183063fddd1a
 
 ## Resolution
 

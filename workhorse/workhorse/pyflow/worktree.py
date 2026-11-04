@@ -6,6 +6,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from workhorse._vendor.stablemate_core import worktree as shared
 from workhorse.records import WorktreeOutcome
 
 TIMEOUT_S = 60.0
@@ -75,16 +76,8 @@ def _branch_exists(repo_dir: Path, branch: str) -> bool:
 
 
 def base_name(repo_dir: Path, base_ref: str) -> str:
-    """The name a branch cut from ``base_ref`` is later judged merged against: ``HEAD`` resolves to the branch it points at, or its commit when detached."""
-    if base_ref != "HEAD":
-        return base_ref
-    branch = _git(repo_dir, "symbolic-ref", "--quiet", "--short", "HEAD")
-    if branch is not None and branch.returncode == 0 and branch.stdout.strip():
-        return branch.stdout.strip()
-    head = _git(repo_dir, "rev-parse", "HEAD")
-    if head is not None and head.returncode == 0:
-        return head.stdout.strip()
-    return base_ref
+    """The name a branch cut from ``base_ref`` is later judged merged against."""
+    return shared.base_name(repo_dir, base_ref)
 
 
 def kept(reason: str) -> WorktreeOutcome:
@@ -94,99 +87,8 @@ def kept(reason: str) -> WorktreeOutcome:
 
 def retire(*, path: Path, branch: str, base: str, repo_dir: Path | None = None) -> WorktreeOutcome:
     """Remove a finished run's worktree when nothing in it would be lost, and its branch when the branch is merged into ``base``."""
-    repo = repo_dir or _owning_repo(path)
-    if repo is None:
-        return kept(f"cannot find the repository that owns {path}")
-    base = base or "HEAD"
-    tips: list[tuple[str, str]] = []
-    present = path.exists()
-    if present:
-        status = _git(path, "status", "--porcelain")
-        if status is None or status.returncode != 0:
-            return kept(f"git status failed in {path}: {_stderr(status)}")
-        if status.stdout.strip():
-            return kept("the worktree has uncommitted changes")
-        head = _rev(path, "HEAD")
-        if head is None:
-            return kept(f"cannot read the worktree's HEAD in {path}")
-        tips.append(("the worktree's HEAD", head))
-    branch_tip = _rev(repo, f"refs/heads/{branch}") if branch else None
-    if branch_tip is not None:
-        tips.append((f"branch '{branch}'", branch_tip))
-
-    pushed = False
-    for label, sha in tips:
-        if _merged(repo, sha, base):
-            continue
-        if not _pushed(repo, sha):
-            return kept(f"{label} is neither merged into '{base}' nor pushed to a remote")
-        pushed = True
-
-    if present:
-        removed = _git(repo, "worktree", "remove", str(path))
-        if removed is None or removed.returncode != 0:
-            return kept(f"git worktree remove failed: {_stderr(removed)}")
-
-    reason = f"pushed to a remote, not merged into '{base}'" if pushed else f"merged into '{base}'"
-    if not tips:
-        reason = "the worktree directory was already gone"
-    deleted = False
-    if branch_tip is not None:
-        if _merged(repo, branch_tip, base):
-            done = _git(repo, "branch", "-D", branch)
-            deleted = done is not None and done.returncode == 0
-            if not deleted:
-                reason += f"; branch '{branch}' kept: {_stderr(done)}"
-        else:
-            reason += f"; branch '{branch}' kept: not merged into '{base}'"
-    return WorktreeOutcome(action="removed", reason=reason, branch_deleted=deleted)
-
-
-def _git(cwd: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
-    try:
-        return subprocess.run(
-            ["git", "-C", str(cwd), *args],
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT_S,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-
-
-def _stderr(done: subprocess.CompletedProcess[str] | None) -> str:
-    if done is None:
-        return "git could not be run"
-    return done.stderr.strip() or f"exit {done.returncode}"
-
-
-def _rev(cwd: Path, ref: str) -> str | None:
-    done = _git(cwd, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
-    if done is None or done.returncode != 0:
-        return None
-    return done.stdout.strip() or None
-
-
-def _merged(repo: Path, sha: str, base: str) -> bool:
-    done = _git(repo, "merge-base", "--is-ancestor", sha, base)
-    return done is not None and done.returncode == 0
-
-
-def _pushed(repo: Path, sha: str) -> bool:
-    done = _git(repo, "for-each-ref", "--contains", sha, "--count=1", "--format=%(refname)", "refs/remotes")
-    return done is not None and done.returncode == 0 and bool(done.stdout.strip())
-
-
-def _owning_repo(path: Path) -> Path | None:
-    """The checkout a linked worktree belongs to, read off the git dir it shares."""
-    if not path.exists():
-        return None
-    done = _git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
-    if done is None or done.returncode != 0 or not done.stdout.strip():
-        return None
-    common = Path(done.stdout.strip())
-    return common.parent if common.name == ".git" else common
+    done = shared.retire(path=path, branch=branch, base=base, repo_dir=repo_dir)
+    return WorktreeOutcome(action=done.action, reason=done.reason, branch_deleted=done.branch_deleted)
 
 
 def default_names(*, workflow: str, run_id: str) -> tuple[str, str]:

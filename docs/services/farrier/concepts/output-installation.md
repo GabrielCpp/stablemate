@@ -13,7 +13,7 @@ maintains repository integration files.
 - sig: `Managed(dirs: tuple[str, ...], files: tuple[str, ...] = (), assumed: tuple[str, ...] = (), repo_scaffolding: bool = True, links: tuple[tuple[str, str], ...] = ())`
 - does: define the directories, files, convention-owned paths, repository upkeep, and linked-skill directories owned by one install scope
 - does: record each linked skills directory as a `(linked dir, source dir)` pair in `links`
-- code: `farrier/farrier/outputs.py::Managed` @dac739157ac9
+- code: `farrier/farrier/outputs.py::Managed` @a17678c02c61
 - verify: count(subject="output ownership scopes", equals=1)
 
 ## Methods
@@ -106,7 +106,19 @@ maintains repository integration files.
 - verify: count(subject="user-library harness selections", equals=1)
 - raises: `SystemExit` when a non-Claude harness names prompts
 - verify: exit_status(code=1)
-- code: `farrier/farrier/outputs.py::user_selections` @f33b23df94fb
+- raises: `SystemExit` when a table selects no skills, prompts, roots, MCP servers, guards or agents
+- verify: stderr(text="selected no skills, prompts, roots")
+- code: `farrier/farrier/outputs.py::user_selections` @0a7e85754f65
+
+### method: user_roots
+- sig: `user_roots(home: HomeConfig) -> dict[str, str]`
+- does: return the one root each Claude, Codex or OpenCode table selects, keyed by harness
+- verify: count(subject="harnesses with a selected home root", equals=1)
+- raises: `SystemExit` when another harness names roots
+- verify: stderr(text="only for claude, codex")
+- raises: `SystemExit` when a table names more than one root
+- verify: stderr(text="it takes one root")
+- code: `farrier/farrier/outputs.py::user_roots` @27a76f569999
 
 ### method: share_home_folders
 - sig: `share_home_folders(selections: dict[str, tuple[list[Source], list[Source]]]) -> dict[str, tuple[list[Source], list[Source]]]`
@@ -118,7 +130,10 @@ maintains repository integration files.
 - sig: `render_user_expected(config: dict[str, Any], home: Path) -> dict[Path, str]`
 - does: render configured user-scope harness selections without repository scaffolding, once per home folder that several harnesses share
 - verify: absent(subject="repository scaffolding in user-scope output map")
-- code: `farrier/farrier/outputs.py::render_user_expected` @7ce4f5144d6f
+- does: add each selected root's home instruction file to the output set
+- verify: created(subject="c131/home/.claude/CLAUDE.md")
+- fixture: claude-roots-home dir=c131
+- code: `farrier/farrier/outputs.py::render_user_expected` @6655a5353346
 
 ### method: selected_hooks
 - sig: `selected_hooks(prefix: str, skills) -> list[SkillHook]`
@@ -132,7 +147,7 @@ maintains repository integration files.
 - does: check a symlink output's missing/changed status through `link_drift` instead of a text comparison, and include farrier-owned symlinks (`owned_links`, via `link_map`) when scanning for extras
 - returns: `1` when any drift exists and `0` otherwise
 - verify: unchanged(subject="repository after output check")
-- code: `farrier/farrier/outputs.py::check_outputs` @21080b84dad2
+- code: `farrier/farrier/outputs.py::check_outputs` @f1679e1479e3
 
 ### method: ensure_gitignore_entry
 - sig: `ensure_gitignore_entry(repo: Path, entry: str) -> bool`

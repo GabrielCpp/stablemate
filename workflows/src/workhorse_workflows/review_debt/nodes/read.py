@@ -9,12 +9,13 @@ from workhorse_workflows.review_debt.nodes._blueprint import blueprint
 from workhorse_workflows.review_debt.schemas import CompleteRead
 
 
-def _empty(*_args: object, **_kwargs: object) -> CompleteRead:
-    """`read_register` under `--dry-run`: a register with nothing on it."""
-    return CompleteRead()
+def _three_records(*_args: object, **_kwargs: object) -> CompleteRead:
+    """`read_register` under `--dry-run`: a register big enough to walk every state, down to a filed decision."""
+    ids = ["dry-run-1", "dry-run-2", "dry-run-3"]
+    return CompleteRead(ids=ids, listing=ids, shelf="dry-run")
 
 
-@blueprint.node(stub=_empty)
+@blueprint.node(stub=_three_records)
 def read_register(logger: logging.Logger, repo_dir: str = "") -> CompleteRead:
     """Read every parseable record of every status in every repository, and name the files that did not parse."""
     okf = Ostler(find_docs_root(repo_dir))

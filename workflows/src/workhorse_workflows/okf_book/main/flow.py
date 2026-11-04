@@ -5,13 +5,14 @@ from functools import cached_property
 from pathlib import Path
 
 from ostler.qa.attribution import Cause, Signature
-from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done, WorkflowFailed, dry_run
 from workhorse_workflows.kit import last_commit_subject, last_commit_trailer
 from workhorse_workflows.okf_book.main.exercise_book_flow import ExerciseBook, bring_book_stack_up
 from workhorse_workflows.okf_book.main.nodes import gate
 from workhorse_workflows.okf_book.main.nodes.book_problems import book_problems, unopted_tools
 from workhorse_workflows.okf_book.main.nodes.check_lead import latest_check_findings, record_check, unheld
 from workhorse_workflows.okf_book.main.nodes.gate import ESCALATED_SIDES, SIDE_BY_ESCALATED_CAUSE, RunFailures, keep_failures, rerun_command, take_failures
+from workhorse_workflows.okf_book.main.nodes.confined_tree import book_cites_changed_file
 from workhorse_workflows.okf_book.main.nodes.lead_findings import (
     Escalation,
     LeadFinding,
@@ -40,7 +41,6 @@ from workhorse_workflows.okf_book.shared.book_commits import (
 )
 from workhorse_workflows.okf_book.shared.book_flow import PREFLIGHT_GATE, BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult, stack_down_failures, unstarted_failures
-from workhorse_workflows.okf_book.shared.citations import cites_changed_file
 from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, plan_scenarios, spec_dir, write_run
@@ -107,6 +107,7 @@ def _stall(exercised: ExerciseResult, laps: tuple[LapCounts, ...]) -> str:
     return ""
 
 
+@dry_run(surfaces=[{"service": "dry-run", "kind": "cli", "entry": "."}])
 class OkfBook(BookFlow):
     """The run: each surface's book is written by its owner's turns, each committed, checked and run against the app."""
 
@@ -165,7 +166,7 @@ class OkfBook(BookFlow):
         book = _book_folder(service)
         if not (self.root / book).is_dir():
             return Continue(None, self.check_source, index=index).because("no book yet: write it")
-        if not regrounded and cites_changed_file(self.root, service):
+        if not regrounded and self.call(book_cites_changed_file, self.root, service):
             return Continue(service, self.reground_book, index=index).because("the code the book cites has changed: read the changes first")
         pending = take_failures(self.records_dir, service)
         if pending:

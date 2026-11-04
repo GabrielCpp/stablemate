@@ -52,7 +52,9 @@ def _sources_clause(sources: list[str], drifted: set[str]) -> str:
     return "  It is generated from these files, in render order:\n" + listed
 
 
-def changed_report(rel: str, sources: list[str], drifted: set[str]) -> str:
+def changed_report(
+    rel: str, sources: list[str], drifted: set[str], regenerate: str = REGENERATE
+) -> str:
     """The block printed under one ``changed:`` line."""
     return "\n".join(
         [
@@ -62,28 +64,30 @@ def changed_report(rel: str, sources: list[str], drifted: set[str]) -> str:
             _sources_clause(sources, drifted),
             "  Put the update in the upstream file"
             + ("s" if len(sources) > 1 else "")
-            + f" above, then re-render with `{REGENERATE}`.",
+            + f" above, then re-render with `{regenerate}`.",
             f"  An edit made in {rel} itself is not kept — the next render",
             "  overwrites it, and nothing reports the loss.",
         ]
     )
 
 
-def changed_link_report(rel: str, expected: str, actual: str) -> str:
+def changed_link_report(
+    rel: str, expected: str, actual: str, regenerate: str = REGENERATE
+) -> str:
     """The block printed under one ``changed:`` line for a skill symlink."""
     return "\n".join(
         [
             f"  {rel} should be a {expected}, but it is {actual}.",
-            f"  Run `{REGENERATE}` to restore the link. A skill folder that a harness",
+            f"  Run `{regenerate}` to restore the link. A skill folder that a harness",
             "  links from another harness is not edited under the linking harness.",
         ]
     )
 
 
-def missing_report(rel: str) -> str:
+def missing_report(rel: str, regenerate: str = REGENERATE) -> str:
     return (
         f"  {rel} is generated but absent from the working tree.\n"
-        f"  Run `{REGENERATE}` to write it."
+        f"  Run `{regenerate}` to write it."
     )
 
 
@@ -122,22 +126,23 @@ def report(
     changed: list[Drifted],
     extra: list[str],
     fences: list[str] | None = None,
+    regenerate: str = REGENERATE,
 ) -> str:
     """The whole ``--check`` failure, ready to print."""
     blocks: list[str] = []
     for rel in missing:
-        blocks.append(f"missing: {rel}\n{missing_report(rel)}")
+        blocks.append(f"missing: {rel}\n{missing_report(rel, regenerate)}")
     for record in changed:
         if record.is_link:
             blocks.append(
                 f"changed: {record.rel}\n"
-                f"{changed_link_report(record.rel, record.expected, record.actual)}"
+                f"{changed_link_report(record.rel, record.expected, record.actual, regenerate)}"
             )
             continue
         sources = sources_for(record.content, record.expected)
         drifted = attribute(record.content, record.actual)
         blocks.append(
-            f"changed: {record.rel}\n{changed_report(record.rel, sources, drifted)}"
+            f"changed: {record.rel}\n{changed_report(record.rel, sources, drifted, regenerate)}"
         )
     for rel in extra:
         blocks.append(f"extra: {rel}\n{extra_report(rel)}")

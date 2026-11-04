@@ -104,6 +104,15 @@ reply model. A `@dry_run` declaration belongs to the model it decorates, so a su
 does not inherit it. The decorator validates the reply against the model when the module
 imports, so a declaration fails loudly even for a turn no dry run reaches.
 
+Launch parameters have a stand-in too. `@dry_run(...)` on a workflow class seeds the
+parameters that class needs to start, under `--dry-run` only, and a parameter named on the
+command line wins. So `run [flow] --dry-run` needs no `--params`. A real run never reads the
+declaration.
+
+The contract holds only for what crosses the seam. A flow that calls an effect directly
+runs it for real under a dry run, so a state reaches every write, commit and subprocess
+through `self.call`.
+
 **What a fail terminal means depends on whether the workflow declared any stand-ins.**
 Undeclared, every reply is blank, so the machine takes whichever branch a blank selects
 — and for any workflow with a reachable `raise WorkflowFailed` that can be the failing

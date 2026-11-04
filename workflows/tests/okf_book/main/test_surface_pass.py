@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from okf_book.main.tally import TALLY
+from okf_book.support import bound
 
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
 from workhorse_workflows.okf_book.main.nodes.surface_pass import read_pass
@@ -17,7 +18,7 @@ def test_a_run_that_wrote_no_pass_routes_every_service(tmp_path: Path) -> None:
 
 def test_the_operators_answer_routes_only_the_books_it_blocked(tmp_path: Path) -> None:
     ledger = Surface(service="ledger", kind=SurfaceKind.CLI, entry="ledger/__main__.py")
-    book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY, ledger))
+    book = bound(OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY, ledger)))
     _ = book.start()
     _ = record_blocker(tmp_path, Blocker(subject="ledger", service="ledger", phase=Phase.EXERCISE, side=Side.BOOK, reason="failed its run"))
 

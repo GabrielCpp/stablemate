@@ -8,14 +8,35 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import override
 
+from workhorse.artifacts import ArtifactWriter
+from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
+from workhorse.pyflow.engine import Engine, RunEnv
 from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
+from workhorse_workflows import okf_book
+from workhorse_workflows.okf_book.workflow import OkfBook, workflow
+
 FIX_COMMIT_NODE = "fix-refused-commit"
 
 Reply = Callable[[dict[str, object]], dict[str, object]]
+
+def bound(book: OkfBook) -> OkfBook:
+    """The book bound to a run with no agent turn scripted, so a test may call one of its states directly."""
+    writer = ArtifactWriter("okf-book", Path(book.parent_records_dir) / "runs", run_id="t0")
+    env = RunEnv(
+        writer=writer,
+        workflow_dir=Path(okf_book.__file__).parent,
+        session_id_path=writer.run_dir / ".session_id",
+        config=RunConfig(),
+        nodes=workflow.nodes,
+        agent_runner=ScriptedRunner({}),
+    )
+    book._bind(Engine(env))  # pyright: ignore[reportPrivateUsage]
+    return book
+
 
 def git(repo: Path, *args: str) -> str:
     done = subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)

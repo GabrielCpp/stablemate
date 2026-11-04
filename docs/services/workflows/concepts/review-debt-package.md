@@ -35,7 +35,7 @@ Every node module under `review_debt/nodes/` registers against the one `blueprin
 - verify: json_path(path="$.ids", equals="[]")
 - returns: the ids of the read, their listing lines and the register path
 - verify: json_path(path="$.ids[0]", equals="api-cart")
-- code: `workflows/src/workhorse_workflows/review_debt/nodes/read.py::read_register` @f3bb0f59d614
+- code: `workflows/src/workhorse_workflows/review_debt/nodes/read.py::read_register` @7fda2aa0dd76
 - tests: `workflows/tests/review_debt/test_nodes.py::test_the_read_holds_every_status_in_every_repository`
 - tests: `workflows/tests/review_debt/test_nodes.py::test_an_unreadable_record_is_carried_and_never_accounted`
 - tests: `workflows/tests/review_debt/test_nodes.py::test_an_empty_shelf_reads_as_no_ids`

@@ -6,7 +6,7 @@ proposes a decision for each cluster big enough to need one.
 
 ```bash
 workhorse-review-debt run
-workhorse-review-debt run --dry-run   # ends at "register is empty", no agent CLI needed
+workhorse-review-debt run --dry-run   # walks to a filed decision, no agent CLI needed
 ```
 
 ## States

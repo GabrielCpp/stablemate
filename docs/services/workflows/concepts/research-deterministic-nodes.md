@@ -74,7 +74,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: program-relative directory containing detached measurement job records
 - verify: json_path(path="$.JOBS_DIR", equals="jobs")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::JOBS_DIR` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::JOBS_DIR` @1ef9604d680a
 
 ### JOBS_GITIGNORE
 - type: `str`
@@ -82,7 +82,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: ignore rule written beside job directories so large job logs do not enter the result branch
 - verify: omits(subject="research result branch", text="stderr.log")
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::JOBS_GITIGNORE` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::JOBS_GITIGNORE` @1ef9604d680a
 
 ### DRY_RUN_TIMEOUT_S
 - type: `float`
@@ -90,7 +90,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: maximum seconds a rehearsal may run inside the calling state
 - verify: json_path(path="$.DRY_RUN_TIMEOUT_S", equals=900.0)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::DRY_RUN_TIMEOUT_S` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::DRY_RUN_TIMEOUT_S` @1ef9604d680a
 
 ### DRY_RUN_POLL_S
 - type: `float`
@@ -98,7 +98,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: seconds between rehearsal runner-state reads
 - verify: json_path(path="$.DRY_RUN_POLL_S", equals=1.0)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::DRY_RUN_POLL_S` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::DRY_RUN_POLL_S` @1ef9604d680a
 
 ### STDERR_TAIL_CHARS
 - type: `int`
@@ -106,7 +106,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: maximum stderr suffix retained in rehearsal and collected failure data
 - verify: json_path(path="$.STDERR_TAIL_CHARS", equals=4000)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::STDERR_TAIL_CHARS` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::STDERR_TAIL_CHARS` @1ef9604d680a
 
 ### RESULT_CORE
 - type: `tuple[str, str]`
@@ -114,7 +114,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: result-object keys required for a measurement to classify as valid
 - verify: count(subject="required research result core keys", equals=2)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::RESULT_CORE` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::RESULT_CORE` @1ef9604d680a
 
 ### TOOLING_PACKAGES
 - type: `tuple[str, str]`
@@ -122,7 +122,7 @@ in [research workflow schemas](research-schemas.md).
 - required: true
 - semantics: installed package names whose traceback frames classify a failure as tooling-owned
 - verify: count(subject="research tooling traceback package names", equals=2)
-- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::TOOLING_PACKAGES` @c71d59ff38b8
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::TOOLING_PACKAGES` @1ef9604d680a
 
 ## Methods
 
@@ -331,3 +331,11 @@ in [research workflow schemas](research-schemas.md).
 - verify: json_path(path="$.result_branch", equals="story/acme-story")
 - code: `workflows/src/workhorse_workflows/research/nodes/publish.py::publish_results` @09c543912af9
 - tests: `workflows/tests/research/test_workflow.py::test_publishing_commits_the_gate_onto_the_result_branch`
+
+### commit_experiment
+- sig: `commit_experiment(logger: logging.Logger, repo_dir: str, cwd: str, gate_id: str, code_files: list[str]) -> None`
+- does: sets the research commit identity and commits the build's code files as `feat(<gate>): build experiment`
+- verify: persists(subject="research experiment commit")
+- does: commits nothing and sets no identity under a dry run
+- verify: count(subject="research experiment commits under a dry run", equals=0)
+- code: `workflows/src/workhorse_workflows/research/nodes/measure.py::commit_experiment` @53a87d1f2f6b

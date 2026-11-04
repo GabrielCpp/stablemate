@@ -16,7 +16,7 @@ The templates deliberately refer to repository-local research skills by capabili
 than embedding implementation instructions. They do not run experiments in an agent turn,
 re-grade an artifact, or choose a path outside the decision assigned to their persona.
 
-- code: `workflows/src/workhorse_workflows/research/workflow.py::Research` @b2a751617c3b
+- code: `workflows/src/workhorse_workflows/research/workflow.py::Research` @18fb69a66d48
 - detail: [research workflow documentation boundaries](research-workflow-documentation-boundaries.md)
 - detail: [research workflow composition root](research-workflow-composition-root.md)
 

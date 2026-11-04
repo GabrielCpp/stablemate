@@ -6,7 +6,7 @@ title: Make-target drivers
 # Make-target drivers
 
 - driver: cli
-- code: `Makefile::install` @9fba3abc3777
+- code: `Makefile::install` @2dc79a61753b
 - working-directory: .
 
 This runbook documents the repository's Make-driven operational interface. The workspace
@@ -121,14 +121,6 @@ status stops the target and its dependent target chain.
 - run: `make check-no-giveup`
 - working-directory: .
 - produces: a pass only when the deleted give-up control-flow vocabulary is absent
-- verify: [workspace Makefile](../../../../Makefile)
-
-### check-no-shell
-
-- kind: run
-- run: `make check-no-shell`
-- working-directory: .
-- produces: a pass only when no unapproved shell script is tracked
 - verify: [workspace Makefile](../../../../Makefile)
 
 ### check-fixtures

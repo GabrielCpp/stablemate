@@ -8,6 +8,7 @@ from pathlib import Path
 from workhorse.pyflow.blueprint import node_spec
 
 from review_debt.scripted import git_out
+from workhorse_workflows.review_debt.flow import ReviewDebt
 from workhorse_workflows.review_debt.nodes import read_register, write_trends
 from workhorse_workflows.review_debt.schemas import Cluster, Singleton, TrendReport
 
@@ -62,10 +63,10 @@ def test_an_empty_shelf_reads_as_no_ids(repo: Path, artifacts: Path, logger: log
     assert (read.ids, read.listing, read.unreadable) == ([], [], [])
 
 
-def test_a_dry_run_read_is_empty() -> None:
+def test_a_dry_run_read_holds_enough_records_for_a_decision() -> None:
     stub = node_spec(read_register).stub
     assert stub is not None
-    assert stub(logging.getLogger("x")).ids == []
+    assert len(stub(logging.getLogger("x")).ids) >= ReviewDebt.model_fields["decision_threshold"].default
 
 
 def test_writing_the_same_report_twice_changes_once(

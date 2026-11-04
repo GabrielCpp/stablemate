@@ -150,3 +150,13 @@ Each invocation below is one command line that a [flow](entries.md) step perform
   - Writes the fenced hook entry into the hook manager file.
 - run: invoke(argv=["hooks", "install", "--repo", "c211"], env={"HOME": "c211/home", "STABLEMATE_CONFIG": "c211/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c211/pipx-stub-bin:$PATH"})
 - verify: contents(subject="c211/.husky/pre-commit", text="make farrier-run-hook")
+
+### sweep-abandoned-worktrees
+
+- on: [worktrees](farrier-commands-workflows.md#worktrees)
+- trigger: an operator runs `farrier worktrees --apply`
+- fixture: abandoned-worktrees dir=c922
+- does:
+  - Reports the worktree whose work landed as `removed`.
+- run: invoke(argv=["worktrees", "c922/acme", "--apply"], env={"HOME": "c922/home", "STABLEMATE_CONFIG": "c922/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+- verify: stdout(text="removed")

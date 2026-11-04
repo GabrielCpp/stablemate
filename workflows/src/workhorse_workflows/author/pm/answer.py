@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workhorse.pyflow import Await, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Await, Done, Workflow, WorkflowFailed, dry_run
 from workhorse_workflows.author.pm.nodes import append_ledger
 from workhorse_workflows.author.pm.schemas import Answer, GapAnswered
 from workhorse_workflows.author.shared import paths
@@ -27,6 +27,7 @@ def note_for(question: str, answer: str, by: str) -> str:
     return f"You asked: {question.strip()}\nThe {by} answers: {answer}"
 
 
+@dry_run(question="dry run")
 class GapAnswer(Workflow):
     """Answer one writer's question as the PM, or ask the operator when only an amendment can."""
 

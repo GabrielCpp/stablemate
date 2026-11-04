@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 
 from workhorse_workflows.okf_book.main.nodes.check_lead import NODES_SHOWN, SAMPLES_SHOWN, check_findings, check_groups, next_check_lap, write_check_problems
@@ -27,6 +28,7 @@ from workhorse_workflows.okf_book.main.nodes.lead_findings import (
 from workhorse_workflows.okf_book.main.nodes.operator_answer import read_answer
 from workhorse_workflows.okf_book.main.nodes.progress_ledger import read_laps, service_laps
 from workhorse_workflows.okf_book.main.nodes.source_view import kept_for_turn, turn_folder
+from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.scenarios import PLAN_NAME, RUN_NAME, spec_dir
@@ -90,6 +92,28 @@ def gate_template_args(root: Path, records_dir: Path, service: str, gates: Gates
         "earlier": [finding.model_dump(mode="json") for finding in read_findings(records_dir) if finding.service == service],
         "operator_answer": read_answer(records_dir, service),
     }
+
+
+def _gate_args_in_dry_run(_logger: logging.Logger, _root: Path, records_dir: Path, service: str, gates: Gates) -> dict[str, object]:
+    return gate_template_args(records_dir, records_dir, service, gates)
+
+
+@blueprint.node(stub=_gate_args_in_dry_run)
+def owner_gate_args(logger: logging.Logger, root: Path, records_dir: Path, service: str, gates: Gates) -> dict[str, object]:
+    """The gate results the owner's turn opens on, kept in the working tree where the confined turn can read them. A dry run keeps them in its own records."""
+    del logger
+    return gate_template_args(root, records_dir, service, gates)
+
+
+def _owner_folder_in_dry_run(_logger: logging.Logger, _root: Path, records_dir: Path) -> Path:
+    return turn_folder(records_dir, OWNER_FOLDER)
+
+
+@blueprint.node(stub=_owner_folder_in_dry_run)
+def owner_folder(logger: logging.Logger, root: Path, records_dir: Path) -> Path:
+    """The folder of the working tree the owner's turn may read. A dry run keeps it in its own records."""
+    del logger, records_dir
+    return turn_folder(root, OWNER_FOLDER)
 
 
 def record_owner_reply(records_dir: Path, service: str, gates: Gates, reply: OwnerReply) -> tuple[LeadFinding, ...]:

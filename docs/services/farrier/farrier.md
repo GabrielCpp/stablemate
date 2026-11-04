@@ -26,6 +26,7 @@ staged-files gate.
 - detail: [selection error reporting](concepts/selection-errors.md)
 - detail: [vendored core package](concepts/vendored-core-package.md)
 - detail: [drift report](concepts/drift-report.md)
+- detail: [worktree sweep](concepts/worktree-sweep.md)
 - detail: [repository diagnosis](concepts/doctor-diagnosis.md)
 - detail: [library front-matter check](concepts/library-frontmatter-check.md)
 - detail: [front-matter parsing](concepts/frontmatter-parsing.md)

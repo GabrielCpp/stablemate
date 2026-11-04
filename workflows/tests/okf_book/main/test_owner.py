@@ -6,6 +6,7 @@ from pathlib import Path
 from okf_book.main.tally import (
     TALLY,
 )
+from okf_book.support import bound
 from ostler.qa.attribution import Cause, Signature
 
 from workhorse_workflows.okf_book.main.nodes.check_lead import latest_check_findings, unheld
@@ -23,7 +24,7 @@ UNNAMED = PageProblem(PAGE, f"{PAGE}:4: prose-name: the control has no name", no
 UNLINKED = PageProblem(PAGE, f"{PAGE}:9: off-journey: no flow links it", node=f"{PAGE}#list", code="off-journey")
 
 def _book(tmp_path: Path) -> OkfBook:
-    book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,))
+    book = bound(OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,)))
     _ = book.start()
     return book
 

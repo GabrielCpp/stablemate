@@ -5,6 +5,7 @@ import argparse
 import importlib.metadata
 import os
 import sys
+import time
 
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ from farrier._vendor.stablemate_core.config import (
     ConfigVersionError,
     config_path,
     load_home_config,
+    resolve_worktree_dir,
     write_base_dir,
     write_config_section,
     write_config_value,
@@ -68,6 +70,19 @@ from farrier.library_check import check_library, format_findings
 from farrier.library_view import KINDS, find, format_list, layer_label, stack
 from farrier.manifest import excluded, find_manifest, locate_manifest, read_manifest
 from farrier.naming import repo_prefix
+from farrier.home_guards import (
+    APPROVE,
+    check_pending,
+    codex_guards_move,
+    excepted_guards,
+    guard_entries,
+)
+from farrier.home_entries import (
+    check_entries,
+    install_entries,
+    refuse_foreign_entries,
+    user_entries,
+)
 from farrier.outputs import (
     USER_MANAGED,
     check_outputs,
@@ -99,6 +114,7 @@ from farrier.sources import (
     selected_sources,
 )
 from farrier.user_library import user_library_tables
+from farrier.worktree_sweep import discover_repos, format_row, process_cwds, sweep_repo
 
 
 def _add_install_args(parser: argparse.ArgumentParser) -> None:
@@ -192,11 +208,24 @@ def _confirm(question: str) -> bool:
 def _run_user_install(home: Path | None, check: bool) -> int:
     """`farrier install --user` — render the user_library tables into the harness homes."""
     home = (home or Path.home()).expanduser().resolve()
-    outputs = render_user_expected(load_home_config(), home)
+    config = load_home_config()
+    outputs = render_user_expected(config, home)
+    entries = [*user_entries(config), *guard_entries(config, home)]
     if check:
-        return check_outputs(home, outputs, None, USER_MANAGED)
+        files_drift = check_outputs(home, outputs, None, USER_MANAGED)
+        entries_drift = check_entries(home, entries, USER_MANAGED.regenerate)
+        return check_pending(config, home) or entries_drift or files_drift
+    refuse_foreign_entries(home, entries)
     install_outputs(home, outputs, None, USER_MANAGED)
+    guards_moved = codex_guards_move(home, entries)
+    changed = install_entries(home, entries)
     print(f"Installed {len(outputs)} generated files into {home}")
+    if changed:
+        print(f"Changed {changed} entries in shared config files")
+    for line in excepted_guards(config):
+        print(line)
+    if guards_moved:
+        print(f"Codex skips a new or changed guard until you approve it. {APPROVE}")
     return 0
 
 
@@ -906,6 +935,29 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repository root the commit lands in (default: cwd)",
     )
 
+    worktrees_p = sub.add_parser(
+        "worktrees",
+        help="List the linked worktrees that are safe to remove, and remove them with --apply",
+    )
+    worktrees_p.add_argument(
+        "paths",
+        nargs="*",
+        type=Path,
+        help="A checkout, or a folder of checkouts (default: cwd). "
+             "The repositories behind the configured worktree_dir are always included.",
+    )
+    worktrees_p.add_argument(
+        "--apply",
+        action="store_true",
+        help="Remove what the listing marks. Without it nothing changes.",
+    )
+    worktrees_p.add_argument(
+        "--idle-days",
+        type=int,
+        default=7,
+        help="Leave a worktree whose git state changed more recently than this (default: 7)",
+    )
+
     sub.add_parser("version", help="Print the installed farrier version")
 
     return parser
@@ -1127,6 +1179,23 @@ def _run_workflows(args: argparse.Namespace) -> int:
     return 1 if any(dist.missing for dist in found) else 0
 
 
+def _run_worktrees(args: argparse.Namespace) -> int:
+    """`farrier worktrees` — what agents left behind, and what can go."""
+    repos = discover_repos(args.paths or [Path.cwd()], resolve_worktree_dir())
+    cwds = process_cwds()
+    now = time.time()
+    rows = [
+        row
+        for repo in repos
+        for row in sweep_repo(repo, apply=args.apply, idle_days=args.idle_days, now=now, cwds=cwds)
+    ]
+    for row in rows:
+        print(format_row(row))
+    if not args.apply and any(row.action in ("remove", "prune") for row in rows):
+        print("Nothing changed. Re-run with --apply to remove these.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         return _main(argv)
@@ -1151,6 +1220,7 @@ def _main(argv: list[str] | None) -> int:
         "library",
         "doctor",
         "hooks",
+        "worktrees",
     }
     if not argv or argv[0] in ("-h", "--help"):
         parser.print_help()
@@ -1196,6 +1266,9 @@ def _main(argv: list[str] | None) -> int:
 
     if args.command == "doctor":
         return doctor.report(args.repo)
+
+    if args.command == "worktrees":
+        return _run_worktrees(args)
 
     return _run_install(args)
 

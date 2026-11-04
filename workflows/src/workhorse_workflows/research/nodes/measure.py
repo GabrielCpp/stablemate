@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from workhorse import job
+from workhorse_workflows.kit import commit_paths, set_identity
 from workhorse_workflows.research.nodes._blueprint import blueprint
 from workhorse_workflows.research.schemas import (
     Collected,
@@ -192,6 +193,18 @@ def submit_job(
     )
 
 
+
+
+def _committed_nothing(_logger: logging.Logger, *_args: object) -> None:
+    return None
+
+
+@blueprint.node(stub=_committed_nothing)
+def commit_experiment(logger: logging.Logger, repo_dir: str, cwd: str, gate_id: str, code_files: list[str]) -> None:
+    """Commit what the build wrote under the research agent's name. A dry run commits nothing and sets no identity."""
+    del logger
+    set_identity(repo_dir, "Research Agent", "research-agent@local")
+    commit_paths(cwd, f"feat({gate_id.lower()}): build experiment", *code_files)
 
 
 @blueprint.node

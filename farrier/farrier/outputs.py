@@ -8,8 +8,9 @@ from fnmatch import fnmatch
 from pathlib import Path
 
 from farrier.agents import Agents, parse_agents
-from farrier.drift import Drifted, report
+from farrier.drift import REGENERATE, Drifted, report
 from farrier.frontmatter import frontmatter_mapping
+from farrier.home_entries import tool_server_names
 from farrier.local_instructions import LocalInstruction
 from farrier.hook_managers import (
     HOOK_RUNNER,
@@ -43,12 +44,21 @@ from farrier.ownership import (
     owned_links,
     sweep,
 )
-from farrier.renderer import Output, Rendered, Renderer, Symlink, user_harness_dir
+from farrier.renderer import (
+    USER_ROOT_FILES,
+    Output,
+    Rendered,
+    Renderer,
+    Symlink,
+    user_harness_dir,
+)
 from farrier.selection_errors import (
     suggestions,
     unknown_selection_error,
 )
 from farrier.skill_hooks import SkillHook, hooks_for
+from farrier.home_agents import agent_files, agent_names
+from farrier.home_guards import BRIDGE_FILE, guard_files, guard_names
 from farrier.sources import (
     Source,
     collect_selection,
@@ -101,19 +111,30 @@ class Managed:
     assumed: tuple[str, ...] = ()
     repo_scaffolding: bool = True
     links: tuple[tuple[str, str], ...] = ()
+    regenerate: str = REGENERATE
 
 
 REPO_MANAGED = Managed(tuple(MANAGED_DIRS), tuple(MANAGED_FILES), tuple(ASSUMED_OWNED))
+
+HOME_ONLY = {"mcp", "hooks", "agents"}
+
+READS_OTHER_SKILLS = {"opencode"}
 
 USER_MANAGED = Managed(
     (
         ".claude/skills",
         ".claude/commands",
+        ".claude/agents",
         ".agents/skills",
+        ".agents/hooks",
         ".codex/skills",
+        ".codex/agents",
         ".copilot/skills",
+        ".config/opencode/agents",
     ),
+    (*USER_ROOT_FILES.values(), BRIDGE_FILE),
     repo_scaffolding=False,
+    regenerate="farrier install --user",
 )
 
 
@@ -454,14 +475,8 @@ def user_selections(
     selections: dict[str, tuple[list[Source], list[Source]]] = {}
     for harness, table in user_library_tables(home).items():
         include_skills, include_prompts, roots, _scaffolds = collect_selection(
-            table.model_dump(exclude_unset=True)
+            table.model_dump(exclude_unset=True, exclude=HOME_ONLY)
         )
-        if roots:
-            raise SystemExit(
-                f"error: [user_library.{harness}] names roots. A root renders into a "
-                "repo's always-on instruction file, and no harness reads one from the "
-                "home directory."
-            )
         if harness != "claude":
             if table.prompts:
                 raise SystemExit(
@@ -483,12 +498,46 @@ def user_selections(
                 ("prompts", all_prompts, include_prompts),
             ]
         )
-        if not skills and not prompts:
+        if not (
+            skills
+            or prompts
+            or roots
+            or tool_server_names(table)
+            or guard_names(table)
+            or agent_names(table)
+        ):
             raise SystemExit(
-                f"error: [user_library.{harness}] selected no skills or prompts."
+                f"error: [user_library.{harness}] selected no skills, prompts, roots, "
+                "MCP servers, guards or agents."
             )
+        if harness in READS_OTHER_SKILLS:
+            skills, prompts = [], []
         selections[harness] = (skills, prompts)
     return share_home_folders(selections)
+
+
+def user_roots(home: HomeConfig) -> dict[str, str]:
+    """The root each harness renders into its home instruction file."""
+    selected: dict[str, str] = {}
+    for harness, table in user_library_tables(home).items():
+        _skills, _prompts, roots, _scaffolds = collect_selection(
+            table.model_dump(exclude_unset=True, exclude=HOME_ONLY)
+        )
+        if not roots:
+            continue
+        if harness not in USER_ROOT_FILES:
+            raise SystemExit(
+                f"error: [user_library.{harness}] names roots, and farrier renders a "
+                f"home instruction file only for {', '.join(USER_ROOT_FILES)}."
+            )
+        if len(roots) > 1:
+            raise SystemExit(
+                f"error: [user_library.{harness}] names {len(roots)} roots "
+                f"({', '.join(sorted(roots))}). A home has one instruction file, so "
+                "it takes one root."
+            )
+        selected[harness] = next(iter(roots))
+    return selected
 
 
 def share_home_folders(
@@ -520,15 +569,21 @@ def render_user_expected(config: HomeConfig, home: Path) -> dict[Path, str]:
     all_prompts = load_layered_sources("prompt", "library", "prompts")
 
     selections = user_selections(config, all_skills, all_prompts)
+    roots = user_roots(config)
     outputs: dict[Path, str] = {}
     rendered: set[str] = set()
     for harness in HARNESSES:
-        if harness not in selections or user_harness_dir(harness) in rendered:
+        if harness not in selections:
             continue
-        rendered.add(user_harness_dir(harness))
         skills, prompts = selections[harness]
         renderer = Renderer(home, "", {}, values, skills, prompts, scope="user")
-        outputs.update(renderer.render({harness: True}, set()))
+        if user_harness_dir(harness) not in rendered:
+            rendered.add(user_harness_dir(harness))
+            outputs.update(renderer.render({harness: True}, set()))
+        if harness in roots:
+            outputs.update(renderer.home_root(roots[harness], harness))
+    outputs.update(guard_files(config, home))
+    outputs.update(agent_files(config, home))
     return outputs
 
 
@@ -612,7 +667,7 @@ def check_outputs(
             if path not in expected_paths:
                 extra.append(path.relative_to(repo).as_posix())
     named = list(managed.files)
-    if managed.files:
+    if managed.repo_scaffolding:
         named.append(LAUNCHER_CONTEXT_MANIFEST)
     for rel in named:
         path = repo / rel
@@ -623,7 +678,7 @@ def check_outputs(
     fences = fence_drift(repo, manager) if manager is not None else []
 
     if missing or changed or extra or fences:
-        print(report(missing, changed, extra, fences))
+        print(report(missing, changed, extra, fences, managed.regenerate))
         return 1
     return 0
 

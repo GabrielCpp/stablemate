@@ -6,18 +6,14 @@ from pathlib import Path
 
 import pytest
 from okf_book.main.tally import TALLY
-from okf_book.support import ScriptedRunner
-from workhorse.artifacts import ArtifactWriter
-from workhorse.config_run import RunConfig
+from okf_book.support import bound
 from workhorse.pyflow import Await
-from workhorse.pyflow.engine import Engine, RunEnv
 
-from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.main import exercise_book_flow
 from workhorse_workflows.okf_book.main.nodes import preflight
 from workhorse_workflows.okf_book.shared import book_flow
 from workhorse_workflows.okf_book.shared.book_run import StackReadiness
-from workhorse_workflows.okf_book.workflow import OkfBook, workflow
+from workhorse_workflows.okf_book.workflow import OkfBook
 
 RUNBOOK = "docs/services/tally/ops/http.md"
 
@@ -25,18 +21,7 @@ RUNBOOK = "docs/services/tally/ops/http.md"
 def _book(tmp_path: Path, *, with_folder: bool = True) -> OkfBook:
     if with_folder:
         (tmp_path / "docs/services/tally").mkdir(parents=True)
-    book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,))
-    writer = ArtifactWriter("okf-book", tmp_path / "runs", run_id="t0")
-    env = RunEnv(
-        writer=writer,
-        workflow_dir=Path(okf_book.__file__).parent,
-        session_id_path=writer.run_dir / ".session_id",
-        config=RunConfig(),
-        nodes=workflow.nodes,
-        agent_runner=ScriptedRunner({}),
-    )
-    book._bind(Engine(env))  # pyright: ignore[reportPrivateUsage]
-    return book
+    return bound(OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,)))
 
 
 def _stack(monkeypatch: pytest.MonkeyPatch, readiness: StackReadiness) -> tuple[list[str], list[tuple[str, ...]]]:

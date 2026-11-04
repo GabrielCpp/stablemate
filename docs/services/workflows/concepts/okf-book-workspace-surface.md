@@ -14,8 +14,8 @@ A surface of kind `grpc` also names a `contract`, the folder of its repository t
 - code: `workflows/src/workhorse_workflows/okf_book/shared/book_compilation.py::compile_services` @c55b3025b98a
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/surface.py::Surface` @082af3baf3dd
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_request.py::writer_request` @fe46090a0ed8
-- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook.check_source` @e451bf02692b
-- code: `workflows/src/workhorse_workflows/okf_book/main/reground_book_flow.py::RegroundBook` @b82da8d89134
+- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook.check_source` @59e225d43398
+- code: `workflows/src/workhorse_workflows/okf_book/main/reground_book_flow.py::RegroundBook` @02badb057e6b
 - rule: `repo` is required when the run's repository is a member of a workspace and refused when it is not, and it must name a member of the home config's workspace table
 - rule: the reground turn reads a member's file in the member checkout, given as an added directory, and builds no source view
 - rule: the writer reads the surface's source folder in place, given as an added directory, and the run copies no source

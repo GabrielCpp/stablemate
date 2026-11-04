@@ -10,7 +10,7 @@ is a symlink to `core/stablemate_core` at the repository root, and a built wheel
 real files at that path, so an installed Farrier needs no core checkout. The package is not
 published independently; its modules use relative imports so this tool cannot accidentally resolve
 another installation's copy. It contains shared configuration, clock, cache, discovery, and
-library-layout contracts, while Farrier-specific behavior remains outside it.
+library-layout contracts and the worktree retirement test, while Farrier-specific behavior remains outside it.
 
 The package initializer is a one-line docstring and exports no application behavior. The core has
 no dependency on Farrier, workhorse, or ostler, and farrier, workhorse, ostler, paddock and
@@ -30,6 +30,7 @@ settings remain global to that CLI across profiles.
 - code: `farrier/farrier/_vendor/stablemate_core/config.py` @3e622cefa870
 - code: `farrier/farrier/_vendor/stablemate_core/discovery.py` @e9e6727f2048
 - code: `farrier/farrier/_vendor/stablemate_core/layout.py` @d69e52175abc
+- code: `farrier/farrier/_vendor/stablemate_core/worktree.py` @3d9191255ccb
 - rule: a checkout holds a symlink to `core/stablemate_core` and a `stablemate_core.sha256` digest beside it, and a built distribution holds real files; a change to core rewrites each tool's digest in the same commit (`make vendor`) because release-please maps a commit to a package only by the paths it touched, so the rewritten digest is what releases the tool, and `make check-vendor` fails when a link is missing or misdirected or a digest is stale
 - detail: [library directory](library-directory.md)
 - detail: [home config](../formats/home-config.md)

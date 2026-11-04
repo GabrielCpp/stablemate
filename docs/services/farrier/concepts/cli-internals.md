@@ -54,8 +54,8 @@ These helpers form the command parser and dispatch seams behind the public `farr
 ### method: _build_parser
 - sig: `_build_parser() -> argparse.ArgumentParser`
 - does: construct the complete farrier command and subcommand parser
-- verify: count(subject="registered farrier subcommands", equals=11)
-- code: `farrier/farrier/cli.py::_build_parser` @70b4b13de746
+- verify: count(subject="registered farrier subcommands", equals=12)
+- code: `farrier/farrier/cli.py::_build_parser` @3b175d16659c
 
 ### method: _run_hooks_install
 - sig: `_run_hooks_install(args: argparse.Namespace) -> int`

@@ -25,7 +25,7 @@ class Selection(Section):
 
     packs: list[str] = setting(
         factory=list,
-        description="Packs to install. A pack is a named bundle of skills, prompts and roots in the library.",
+        description="Packs to install. A pack is a named bundle of skills, prompts, roots, MCP servers, guards and agents in the library.",
         examples=[["general", "stablemate"]],
     )
     skills: list[str] = setting(
@@ -40,8 +40,23 @@ class Selection(Section):
     )
     roots: list[str] = setting(
         factory=list,
-        description="Roots to render into the always-on instruction file. A user-scope table that names one is refused, because no harness reads an instruction file from the home directory.",
+        description="Roots to render into the always-on instruction file. A claude or codex user-scope table takes one, which becomes ~/.claude/CLAUDE.md or ~/.codex/AGENTS.md.",
         examples=[["agents-overview"]],
+    )
+    mcp: list[str] = setting(
+        factory=list,
+        description="MCP servers to install on top of the packs, each a file under library/mcp. A claude or codex user-scope table takes them, and a repository does not.",
+        examples=[["playwright"]],
+    )
+    hooks: list[str] = setting(
+        factory=list,
+        description="Guards to install on top of the packs, each a folder under library/hooks. A claude or codex user-scope table takes them. A guard runs before each tool call it watches and can deny the call.",
+        examples=[["no-comments"]],
+    )
+    agents: list[str] = setting(
+        factory=list,
+        description="Helper agents to install on top of the packs, each a file under library/agents. A claude or codex user-scope table takes them, and each needs a model under `delegates` in the profile named after the harness.",
+        examples=[["lookup"]],
     )
     scaffolds: list[str] = setting(
         factory=list,

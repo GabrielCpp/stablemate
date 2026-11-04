@@ -1,75 +1,3 @@
-## This is a `uv` workspace monorepo
-
-One `uv.lock` and one venv at the root serve every member. A member is not a
-separate environment to activate — it is a package in the same resolution.
-
-```bash
-uv sync --all-packages   # every member importable
-uv run <cmd>             # from the ROOT, against that one venv
-```
-
-`--all-packages` is load-bearing, not thoroughness. A bare `uv sync` (and the
-implicit sync a bare `uv run` performs) resolves **this root and its dev group
-only** — every other member is absent, and code that imports one dies with
-`ModuleNotFoundError` on a machine where nothing is wrong. That failure reads as
-a broken import, which is why it costs an afternoon.
-
-Python ≥ 3.12.
-
-- **A member's dependency belongs in that member's `pyproject.toml`**, not the
-  root's. The root pins the workspace and the dev tooling; a dependency added
-  there is invisible to the package that actually needs it the moment that
-  package is installed on its own.
-- **Every member has a README, and it is the thing to read before changing that
-  member** — before its source, and instead of hunting for a per-package
-  instruction file. Assume no member carries a nested `CLAUDE.md` / `AGENTS.md`
-  — one that does is the exception, and it is there in the directory to be seen.
-- **Run tools from the root**, so one pass covers every member. A lint or a type
-  check run inside a single package sees a subset of the code and a subset of
-  the config.
-
----
-
-## Python linting (load-bearing)
-
-This repo is linted with **ruff** and type-checked with **ty** *and*
-**basedpyright**. Keep all three clean — zero findings is the bar, and a change
-isn't done until `make lint` passes.
-
-```bash
-# all three, from the repo root — every package in one pass
-make lint
-# apply the autofixable ruff findings (unused imports, etc.)
-ruff check . --fix
-```
-
-Run it from the **repo root** before wrapping up any Python change, so every
-package is covered in one pass. The test target runs it first, so a type error
-fails the suite rather than waiting for a reviewer.
-
-**Two type checkers is deliberate.** ty is fast and follows this repo's own
-calls; basedpyright carries pyright's inference and its bundled third-party
-stubs, so it sees through libraries ty treats as opaque. They disagree often
-enough that each catches defects the other misses — neither one is the
-redundant one, and a finding from either is a finding.
-
-- **Fix the finding, don't silence it.** Prefer correcting the code over adding
-  `# noqa` / `# ty: ignore` / `# pyright: ignore` or broadening an ignore. Reach
-  for config only when a rule is genuinely wrong for this codebase, and say why.
-- **The same bar applies to test files** — unused imports, ambiguous names
-  (`l`/`I`/`O`), multi-statement semicolon lines, and a fake that has drifted
-  from the port it stands in for are findings, not style preferences.
-- **`# type: ignore[...]` is mypy's spelling and is inert for both.** ty reads
-  `# ty: ignore[rule]`; basedpyright reads `# pyright: ignore[rule]`. Each names
-  the rule, and each is ignored by the other checker — a suppression that
-  silences one still has to answer to the other.
-- **Run basedpyright with `-p <config>`.** Invoked without it, it does not read
-  the `[tool.basedpyright]` table in `pyproject.toml`: it silently falls back to
-  its own default mode over its own default tree, and reports a different set of
-  findings than the gate does.
-
----
-
 # Commit
 
 Land the work that is finished right now. Not the session's whole diff — the
@@ -222,3 +150,35 @@ delta is merged into the book in the same change as the code, which means all of
 Author through `ostler scaffold`, `ostler fmt` and `ostler doctor`, never by
 hand-writing frontmatter or a `docs/services/` path. The `ostler-okf` skill
 carries the per-type bar and the merge procedure.
+
+---
+
+## This is a `uv` workspace monorepo
+
+One `uv.lock` and one venv at the root serve every member. A member is not a
+separate environment to activate — it is a package in the same resolution.
+
+```bash
+uv sync --all-packages   # every member importable
+uv run <cmd>             # from the ROOT, against that one venv
+```
+
+`--all-packages` is load-bearing, not thoroughness. A bare `uv sync` (and the
+implicit sync a bare `uv run` performs) resolves **this root and its dev group
+only** — every other member is absent, and code that imports one dies with
+`ModuleNotFoundError` on a machine where nothing is wrong. That failure reads as
+a broken import, which is why it costs an afternoon.
+
+Python ≥ 3.12.
+
+- **A member's dependency belongs in that member's `pyproject.toml`**, not the
+  root's. The root pins the workspace and the dev tooling; a dependency added
+  there is invisible to the package that actually needs it the moment that
+  package is installed on its own.
+- **Every member has a README, and it is the thing to read before changing that
+  member** — before its source, and instead of hunting for a per-package
+  instruction file. Assume no member carries a nested `CLAUDE.md` / `AGENTS.md`
+  — one that does is the exception, and it is there in the directory to be seen.
+- **Run tools from the root**, so one pass covers every member. A lint or a type
+  check run inside a single package sees a subset of the code and a subset of
+  the config.

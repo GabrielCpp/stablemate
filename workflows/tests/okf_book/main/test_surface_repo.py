@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from okf_book.main.tally import TALLY
-from okf_book.support import MEMBER, MEMBER_FOLDER, Workspace
+from okf_book.support import MEMBER, MEMBER_FOLDER, Workspace, bound
 from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.okf_book.main.nodes.surface import Surface, SurfaceKind
@@ -21,20 +21,20 @@ def test_a_surface_names_no_repo_by_default() -> None:
 
 
 def test_a_workspace_run_starts_when_each_surface_names_a_member(workspace: Workspace) -> None:
-    book = OkfBook(repo_dir=str(workspace.member), parent_records_dir=str(workspace.docs), surfaces=(_surface(MEMBER),))
+    book = bound(OkfBook(repo_dir=str(workspace.member), parent_records_dir=str(workspace.docs), surfaces=(_surface(MEMBER),)))
 
     assert book.start().state == "route_book"
 
 
 def test_a_workspace_run_with_a_surface_that_names_no_repo_fails_before_any_turn(workspace: Workspace) -> None:
-    book = OkfBook(repo_dir=str(workspace.member), parent_records_dir=str(workspace.docs), surfaces=(_surface(""),))
+    book = bound(OkfBook(repo_dir=str(workspace.member), parent_records_dir=str(workspace.docs), surfaces=(_surface(""),)))
 
     with pytest.raises(WorkflowFailed, match=rf"ledger.*{MEMBER}"):
         _ = book.start()
 
 
 def test_a_run_outside_a_workspace_with_a_surface_that_names_a_repo_fails_before_any_turn(tmp_path: Path) -> None:
-    book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(_surface(MEMBER),))
+    book = bound(OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(_surface(MEMBER),)))
 
     with pytest.raises(WorkflowFailed, match="ledger.*no workspace"):
         _ = book.start()

@@ -200,6 +200,9 @@ def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
         "skills": set(data.get("skills", []) or []),
         "prompts": set(data.get("prompts", []) or []),
         "roots": set(data.get("roots", []) or []),
+        "mcp": set(data.get("mcp", []) or []),
+        "hooks": set(data.get("hooks", []) or []),
+        "agents": set(data.get("agents", []) or []),
         "scaffolds": parse_scaffold_ids(data.get("scaffolds"), f"pack {pack_id}"),
     }
     for include in data.get("includes", []) or []:
@@ -216,6 +219,9 @@ def collect_selection(
         "skills": set(),
         "prompts": set(),
         "roots": set(),
+        "mcp": set(),
+        "hooks": set(),
+        "agents": set(),
         "scaffolds": set(),
     }
     manifest = as_manifest(config)

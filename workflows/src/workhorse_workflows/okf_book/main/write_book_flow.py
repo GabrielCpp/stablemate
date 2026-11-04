@@ -5,14 +5,13 @@ import time
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
-from ostler.stamp import stamp_page
-from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed
+from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, WorkflowFailed, dry_run
 from workhorse.runner.failure import OutputParseError
+from workhorse_workflows.okf_book.main.nodes.confined_tree import book_pages_changed, make_book_folder, pages_kept, put_back_strays, stamp_changed_pages, tree_snapshot
 from workhorse_workflows.okf_book.main.nodes.gate import RunFailures
 from workhorse_workflows.okf_book.main.nodes.lead_findings import OwnerReply
 from workhorse_workflows.okf_book.main.nodes.operator_answer import forget_heard, mark_heard
-from workhorse_workflows.okf_book.main.nodes.owner_gate import OWNER_FOLDER, Gates, gate_template_args, record_owner_reply
-from workhorse_workflows.okf_book.main.nodes.source_view import turn_folder
+from workhorse_workflows.okf_book.main.nodes.owner_gate import Gates, owner_folder, owner_gate_args, record_owner_reply
 from workhorse_workflows.okf_book.main.nodes.surface import Surface
 from workhorse_workflows.okf_book.main.nodes.writer_commands import WriterCommandState, write_command_state
 from workhorse_workflows.okf_book.main.nodes.writer_jobs import settle_jobs
@@ -21,8 +20,7 @@ from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject, unfinished_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.shared.book_run import ExerciseResult
-from workhorse_workflows.okf_book.shared.confine import Snapshot, book_changes, kept_changes, put_back_outside, snapshot
-from workhorse_workflows.okf_book.shared.entries import SERVICES_DIR
+from workhorse_workflows.okf_book.shared.confine import Snapshot
 from workhorse_workflows.okf_book.shared.metrics import TurnMetric, record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.page_check import PageProblem
 from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
@@ -44,6 +42,7 @@ class WriteOutcome(BaseModel):
     failure: str = ""
 
 
+@dry_run(surface={"service": "dry-run", "kind": "cli", "entry": "."}, book_folder="docs/services/dry-run")
 class WriteBook(BookFlow):
     """Sends one turn of a surface's book owner with the gates it last failed, keeps its writes inside its book, and ends on whether the book was committed."""
 
@@ -70,8 +69,8 @@ class WriteBook(BookFlow):
 
     def start(self) -> Continue[...]:
         """Record the tree before the writer runs, so what it changes outside its book can be put back."""
-        (self.root / self.book_folder).mkdir(parents=True, exist_ok=True)
-        before = snapshot(self.root)
+        self.call(make_book_folder, self.root, self.book_folder)
+        before = self.call(tree_snapshot, self.root)
         return Continue(None, self.reset_command_state, before=before).because("give the writer its run allowance")
 
     def reset_command_state(self, before: Snapshot) -> Continue[...]:
@@ -88,7 +87,7 @@ class WriteBook(BookFlow):
         """One turn, confined to its book folder and to ostler and the two checks, opens on the gates the book last failed and writes the whole book until both pass. The turn resumes the owner's conversation, and a turn that ends without a reply starts the next one fresh. A reply that names no side leaves the gates as they were."""
         surface = self.surface_to_write
         request = writer_request(self.run_dir, self.root, surface, self.source_folder, self.source_repo)
-        gate = gate_template_args(self.root, self.records_dir, surface.service, self._gates())
+        gate = self.call(owner_gate_args, self.root, self.records_dir, surface.service, self._gates())
         started = time.monotonic()
         reply = OwnerReply()
         failure: str | None = None
@@ -100,7 +99,7 @@ class WriteBook(BookFlow):
                 timeout=float("inf"),
                 args={**request.template_args(), **gate},
                 cwd=self.root / self.book_folder,
-                add_dirs=request.add_dirs(turn_folder(self.root, OWNER_FOLDER)),
+                add_dirs=request.add_dirs(self.call(owner_folder, self.root, self.records_dir)),
                 profile=request.profile,
                 session=owner_chain(surface.service),
             )
@@ -137,7 +136,7 @@ class WriteBook(BookFlow):
         service = self.surface_to_write.service
         if reply is None or not any(verdict.side == "book" for verdict in (*reply.run, *reply.check)):
             return
-        if book_changes(self.root, service, before):
+        if self.call(book_pages_changed, self.root, service, before):
             return
         self.logger.warning("the owner of %s named the book's side and changed no page; its next turn starts a fresh conversation", service)
         self.reset_session(owner_chain(service))
@@ -145,7 +144,7 @@ class WriteBook(BookFlow):
 
     def put_back_after_failed_turn(self, before: Snapshot, failure: str) -> Continue[...]:
         """Put back what the failed writer turn changed outside its book."""
-        stray = put_back_outside(self.root, self.surface_to_write.service, before, self.run_dir)
+        stray = self.call(put_back_strays, self.root, self.surface_to_write.service, before, self.run_dir)
         for path in stray:
             self.logger.warning("put back %s, which the failed writer turn changed outside its book", path)
         return Continue(stray, self.render_agent_files_for_unfinished, before=before, failure=failure).because("render the agent files")
@@ -163,7 +162,7 @@ class WriteBook(BookFlow):
         A turn that left pages has committed its book, whatever ended it. A retry after the commit landed finds nothing to commit. A refused commit waits for the operator.
         """
         service = self.surface_to_write.service
-        pages = kept_changes(self.root, service, before, self.run_dir)
+        pages = self.call(pages_kept, self.root, service, before, self.run_dir)
         waiting = self._commit_or_await(unfinished_book_commit_subject(service), pages, self.commit_unfinished, before=before, failure=failure)
         if waiting:
             return waiting
@@ -171,7 +170,7 @@ class WriteBook(BookFlow):
 
     def put_back(self, before: Snapshot) -> Continue[...]:
         """Put back what the writer changed outside its book."""
-        stray = put_back_outside(self.root, self.surface_to_write.service, before, self.run_dir)
+        stray = self.call(put_back_strays, self.root, self.surface_to_write.service, before, self.run_dir)
         for path in stray:
             self.logger.warning("put back %s, which the writer changed outside its book", path)
         return Continue(stray, self.stamp_book, before=before).because("stamp the book's pages")
@@ -180,10 +179,8 @@ class WriteBook(BookFlow):
         """Stamp every page the writer changed in its book. The pages of other books it retargeted go to the commit unstamped."""
         root = self.root
         service = self.surface_to_write.service
-        for page in book_changes(root, service, before):
-            if page.endswith(".md") and (root / page).is_file():
-                _ = stamp_page(root, root / SERVICES_DIR, page)
-        pages = kept_changes(root, service, before, self.run_dir)
+        self.call(stamp_changed_pages, root, service, before)
+        pages = self.call(pages_kept, root, service, before, self.run_dir)
         return Continue(pages, self.render_agent_files, pages=pages).because("render the agent files")
 
     def render_agent_files(self, pages: tuple[str, ...]) -> Continue[...] | Await[...]:

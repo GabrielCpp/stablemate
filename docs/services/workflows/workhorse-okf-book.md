@@ -19,7 +19,7 @@ Writes, repairs and runs one OKF book per surface of an app. It registers the wr
   - `--params-file PATH` supplies workflow parameters from a JSON object.
   - `--cli NAME`, `--profile NAME`, and `--config PATH` select the agent harness and configuration.
   - `--runs-dir DIR` and `--run-id ID` select the run-artifact location and stable identity.
-  - `--dry-run` walks the graph with the agent turns and the stack stubbed.
+  - `--dry-run` walks the graph with the agent turns and the stack stubbed. It starts from a stand-in surface when `--params` names none, and leaves the repository untouched.
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
 - does:
   - starts the main OKF book flow

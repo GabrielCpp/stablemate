@@ -32,7 +32,7 @@ It ends in one of these ways: every surface's book checks clean and passes its r
 
 The implementation is `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook`.
 
-- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook` @de9f4c940fbc
+- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook` @17e8e92a26b2
 
 ## Steps
 
@@ -47,7 +47,7 @@ declares no stack, is skipped. A stack that does not come up waits at the `prefl
 whose text names the service and the stack's notes. The operator fixes the stack and answers, and the
 check runs again.
 
-- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook` @de9f4c940fbc
+- code: `workflows/src/workhorse_workflows/okf_book/main/flow.py::OkfBook` @17e8e92a26b2
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/preflight.py::down_stack` @205895c7b25b
 
 ### route
@@ -175,4 +175,4 @@ names back through [route](#route).
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/claim_snapshot.py::changed_claims` @57a8620d5f3a
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/operator_answer.py::answer_below` @73a08a138358
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/operator_answer.py::write_answer` @88058a978352
-- code: `workflows/src/workhorse_workflows/okf_book/shared/book_flow.py::BookFlow` @04fac76d75ef
+- code: `workflows/src/workhorse_workflows/okf_book/shared/book_flow.py::BookFlow` @0d7da5d9a6b8

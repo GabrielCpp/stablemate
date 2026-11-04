@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 from okf_book.main.tally import TALLY
+from okf_book.support import bound
 from ostler.qa.attribution import Cause, Signature
 
 from workhorse_workflows.okf_book.main.nodes import gate
@@ -214,7 +215,7 @@ def test_an_answer_that_changed_a_claim_routes_its_book_with_the_finding(tmp_pat
 
 
 def test_a_gate_left_only_with_escalations_reopens(tmp_path: Path) -> None:
-    book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,))
+    book = bound(OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,)))
     _ = book.start()
 
     step = book.route_blocked(routed=())
@@ -223,7 +224,7 @@ def test_a_gate_left_only_with_escalations_reopens(tmp_path: Path) -> None:
 
 
 def test_a_book_the_gate_left_failures_for_goes_to_its_writer_with_them(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    book = OkfBook(repo_dir=str(_book(tmp_path)), parent_records_dir=str(tmp_path), surfaces=(TALLY,))
+    book = bound(OkfBook(repo_dir=str(_book(tmp_path)), parent_records_dir=str(tmp_path), surfaces=(TALLY,)))
     _ = book.start()
     _ = record_blocker(tmp_path, _blocker())
     failure = PageProblem(ADD, "adds: expected [201], observed 422")

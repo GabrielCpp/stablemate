@@ -26,12 +26,12 @@ need one. Workhorse provides the shared command parser, and this package registe
   - `--params-file PATH` supplies workflow parameters from a JSON object.
   - `--cli NAME`, `--profile NAME`, and `--config PATH` select the agent harness and configuration.
   - `--runs-dir DIR` and `--run-id ID` select the run-artifact location and stable identity.
-  - `--dry-run` runs the registered stand-ins, which read an empty register, so the run ends at "register is empty" with no agent turn.
+  - `--dry-run` runs the registered stand-ins, which read three records, so the run drafts a decision with no agent turn.
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
 - does:
   - starts the registered `ReviewDebt` flow
 - run: invoke(argv=["run", "--dry-run"])
-- verify: stderr(matches="register is empty")
+- verify: stderr(matches="decisions proposed")
 - fixture: none, because the dry run reads a stand-in register and writes nothing the check reads
 - code: `workflows/src/workhorse_workflows/review_debt/workflow.py::main` @69cce66c2aa2
 - detail: [review-debt flow](flows/review-debt.md)

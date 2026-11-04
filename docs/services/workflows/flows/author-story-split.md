@@ -48,7 +48,7 @@ The split result can be `complete`, `standoff`, or `blocked`:
 - kind: run
 - run: invoke split-stories agent, read rework notes and the PM ledger, record stories via ostler
 - verify: [split_stories](../concepts/story-split-subflow.md#split_stories)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.split_stories` @1b1d7dff108e
 
 ## Check coverage
 
@@ -60,7 +60,7 @@ times.
 - kind: verify
 - run: bound each story's `services` by its covered seeds' union, then validate seed coverage, story services and graph integrity
 - verify: [check_coverage](../concepts/story-split-subflow.md#check_coverage)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.check_coverage` @74ccda420e6f
 
 ## Review
 
@@ -71,7 +71,7 @@ and count against the same three reworks.
 - kind: verify
 - run: PM review of the story split with the previous findings
 - verify: [review](../concepts/story-split-subflow.md#review)
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.review` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.review` @d88abd2924a0
 
 ## Done
 
@@ -83,4 +83,4 @@ edits keep the pass.
 - run: accept the split whose receipt the PM review wrote
 - verify: [review](../concepts/story-split-subflow.md#review)
 - verify: created(subject="pm-receipt.json")
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.review` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow.review` @d88abd2924a0

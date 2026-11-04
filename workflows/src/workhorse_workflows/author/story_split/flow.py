@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Continue, Done, Workflow, WorkflowFailed, dry_run
 from workhorse_workflows.author.pm import MAX_ANSWERS, GapAnswer, PMReview
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.nodes import load_config, validate_coverage
@@ -15,6 +15,7 @@ from workhorse_workflows.kit.telemetry import counter_labels
 MAX_REWORKS = 3
 
 
+@dry_run(epic="dry-run")
 class StorySplitFlow(Workflow):
     """Create and accept the story graph for one explicitly named epic."""
 

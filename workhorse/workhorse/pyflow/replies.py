@@ -16,7 +16,7 @@ _DECLARING_MODULES: set[str] = set()
 
 
 def dry_run(**reply: Any) -> Callable[[M], M]:
-    """Declare the reply a dry run gives for every agent turn that returns this model."""
+    """Declare what a dry run stands in with: the reply to every agent turn that returns this model, or the launch parameters of this workflow."""
 
     def declare(cls: M) -> M:
         try:

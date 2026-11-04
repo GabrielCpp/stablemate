@@ -196,6 +196,34 @@ rule. Text that only ever belongs to one repo's root file wants to be a **policy
 see above for why a skill in that position is charged twice. That is a selection-side feature, documented in
 [`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml).
 
+## `library/roots/<name>.md`: a home's always-on rules
+
+A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` table takes one root
+in `roots`. It renders to `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or `~/.config/opencode/AGENTS.md`. Branch on `target` for wording that differs per
+harness: `{% if target == "claude" %}…{% endif %}`.
+
+## `library/mcp/<name>.yml`: a home's MCP servers
+
+A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` table lists names in
+`mcp`, or a pack does. Each file holds `command`, and optionally `args` and `env`. Farrier writes the server into
+`~/.claude.json`, `~/.codex/config.toml` or `~/.config/opencode/opencode.json` as one entry and leaves the rest of the file alone.
+
+## `library/hooks/<name>/`: a home's guards
+
+A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` table lists names in `hooks`, or a pack does.
+The folder holds `hook.yml` and the guard's scripts. The record holds `command` and `watches`, and
+optionally `timeout`, `status` and `not_on`. Farrier installs the folder into `~/.agents/hooks/<name>`,
+without `tests` or `__pycache__`, and writes one hook group into `~/.claude/settings.json` or
+`~/.codex/hooks.json`. On OpenCode a generated plugin, `~/.config/opencode/plugins/farrier-guards.ts`,
+calls the command instead. `{dir}` in `command` stands for the installed folder.
+
+## `library/agents/<name>.md`: a home's helper agents
+
+A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` table lists names in `agents`, or a pack does.
+The front matter holds `description` and optionally `read_only`, and the text below it is the prompt.
+The record names no model. Farrier reads the model from `[profiles.<harness>.delegates.<name>]` and
+writes `~/.claude/agents/<name>.md`, `~/.codex/agents/<name>.toml` or `~/.config/opencode/agents/<name>.md`.
+
 ## `packs/<pack>.yml` — bundles
 
 A repo never selects individual skills/prompts — it selects **packs**. A pack is

@@ -11,12 +11,12 @@ The product manager reads the milestone, its [ledger](../formats/pm-ledger.md) a
 
 Each question runs in a fresh session. A stage asks at most twice (`MAX_ANSWERS`). A third question ends the stage as blocked, and the Author flow asks the operator.
 
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer` @e0c54f0a14b1
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer.start` @e0c54f0a14b1
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer.record_human` @e0c54f0a14b1
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::MAX_ANSWERS` @e0c54f0a14b1
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::accepts` @e0c54f0a14b1
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::note_for` @e0c54f0a14b1
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer` @9cc9f138ed16
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer.start` @fca542ecbaa7
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer.record_human` @029dda37aac4
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::MAX_ANSWERS` @edfaad6b5955
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::accepts` @87126db819d4
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::note_for` @0a71dbce01a0
 - code: `workflows/src/workhorse_workflows/author/pm/nodes/ledger.py::append_ledger` @b6b6f49ef343
 - tests: `workflows/tests/author/pm/test_pm.py::test_a_pm_answer_is_kept_in_the_ledger`
 - tests: `workflows/tests/author/pm/test_pm.py::test_an_amendment_waits_on_the_operator_and_records_the_human_answer`
@@ -31,7 +31,7 @@ Each question runs in a fresh session. A stage asks at most twice (`MAX_ANSWERS`
 - required: true
 - semantics: the writer's blocking question
 - verify: json_path(path="$.question", equals="Which sign-in method comes first?")
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer` @e0c54f0a14b1
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer` @9cc9f138ed16
 
 ### asker
 - type: string
@@ -39,7 +39,7 @@ Each question runs in a fresh session. A stage asks at most twice (`MAX_ANSWERS`
 - required: false
 - semantics: the stage that asked, recorded as the ledger entry's heading
 - verify: json_path(path="$.asker", equals="story-split")
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer` @e0c54f0a14b1
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer` @9cc9f138ed16
 
 ## Methods
 
@@ -53,23 +53,23 @@ Each question runs in a fresh session. A stage asks at most twice (`MAX_ANSWERS`
 - verify: created(subject="grills/pm.md")
 - does: for an amendment, waits on the operator file with the question and the reason
 - verify: json_path(path="$.await", matches="needs a product decision")
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer.start` @e0c54f0a14b1
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer.start` @fca542ecbaa7
 
 ### record_human
 - sig: `record_human(asked: str) -> Done`
 - does: reads the operator's text below the question and appends it to the ledger as a human answer
 - verify: json_path(path="$.by", equals="human")
 - returns: returns the operator's answer with the retry note
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer.record_human` @e0c54f0a14b1
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::GapAnswer.record_human` @029dda37aac4
 
 ### accepts
 - sig: `accepts(answer: Answer) -> None`
 - does: refuses an answered reply with no text and an amendment with no reason
 - verify: json_path(path="$.error", matches="non-empty")
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::accepts` @e0c54f0a14b1
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::accepts` @87126db819d4
 
 ### note_for
 - sig: `note_for(question: str, answer: str, by: str) -> str`
 - does: renders the note a writer is retried with, as `You asked: ...` and `The <by> answers: ...`
 - verify: json_path(path="$.note", matches="^You asked: ")
-- code: `workflows/src/workhorse_workflows/author/pm/answer.py::note_for` @e0c54f0a14b1
+- code: `workflows/src/workhorse_workflows/author/pm/answer.py::note_for` @0a71dbce01a0

@@ -5,7 +5,7 @@ from typing import Any
 
 from farrier._vendor.stablemate_core.schema import HomeConfig, Selection
 
-HARNESSES = ("claude", "codex", "copilot")
+HARNESSES = ("claude", "codex", "copilot", "opencode")
 
 USER_LIBRARY_KEY = "user_library"
 TEMPLATE_KEY = "template"

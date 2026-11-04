@@ -14,6 +14,7 @@ from pathlib import Path
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.failure import OutputParseError
+from workhorse_workflows.okf_book.main.nodes.confined_tree import restore_tree, stale_book_files, stamp_spared_pages, tree_snapshot
 from workhorse_workflows.okf_book.main.nodes.stale_citations import (
     Failures,
     Regrounded,
@@ -23,8 +24,6 @@ from workhorse_workflows.okf_book.main.nodes.stale_citations import (
     keep_old_version,
     reground_template_args,
     spared_pairs,
-    stale_files,
-    stamp_spared,
     stamped_text,
     unread_problems,
     with_problems,
@@ -32,7 +31,6 @@ from workhorse_workflows.okf_book.main.nodes.stale_citations import (
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.book_commits import repaired_book_commit_message
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.confine import changed_since, restore, snapshot
 from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
 from workhorse_workflows.okf_book.shared.source_repo import repository_root
 
@@ -51,7 +49,7 @@ class RegroundBook(BookFlow):
 
     def start(self) -> Continue[...]:
         """List the changed files the book cites, each with the nodes citing it."""
-        files = stale_files(self.root, self.service)
+        files = self.call(stale_book_files, self.root, self.service)
         return Continue(len(files), self.read_change, files=files).because("read each changed file the book cites")
 
     def read_change(
@@ -88,7 +86,7 @@ class RegroundBook(BookFlow):
         return (tree / stale.path).as_posix()
 
     def _verdict(self, stale: StaleFile, old: str, tree: Path) -> RegroundVerdict | None:
-        before = snapshot(self.root)
+        before = self.call(tree_snapshot, self.root)
         started = time.monotonic()
         verdict: RegroundVerdict | None = None
         try:
@@ -103,14 +101,14 @@ class RegroundBook(BookFlow):
             )
         except (AgentTurnFailed, AgentTimeout, OutputParseError) as ended:
             self.logger.warning("the reading of %s ended without a verdict: %s", stale.path, ended)
-        _ = restore(self.root, changed_since(self.root, before), before)
+        _ = self.call(restore_tree, self.root, before)
         node = Path(REGROUND_PROMPT).stem
         record_turn(self.records_dir, turn_metric(Phase.WRITE, node, (stale.path,), (time.monotonic() - started) / 60, self.turn_usage(node)))
         return verdict
 
     def stamp_spared_citations(self, failures: Failures, spared: Pairs = ()) -> Continue[...]:
         """Stamp each citation its file's change spares on the file as it is now."""
-        pages, stamped = stamp_spared(self.root, spared)
+        pages, stamped = self.call(stamp_spared_pages, self.root, spared)
         return Continue(stamped, self.commit_stamps, failures=failures, pages=pages, stamped=stamped).because("commit the stamped pages")
 
     def commit_stamps(self, failures: Failures, pages: tuple[str, ...] = (), stamped: int = 0) -> Await[...] | Done:

@@ -13,6 +13,9 @@ uv tool install workhorse-workflows    # or: pipx install workhorse-workflows
 workhorse-loop-runner run --dry-run    # the install check; needs no agent CLI
 ```
 
+Every workflow and sub-flow passes `run [flow] --dry-run` with no `--params` and leaves the
+repository untouched. `workflows/tests/test_dry_run_conformance.py` holds each one to that.
+
 Working on the workflows themselves wants a checkout of the
 [stablemate](https://github.com/GabrielCpp/stablemate) workspace instead —
 `make sync` at the workspace root lands engine and workflows in one venv, and

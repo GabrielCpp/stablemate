@@ -403,7 +403,7 @@ An operator can [answer the inbox](flows/answer-inbox.md), [inspect a stopped ru
   - Stubs every node and names the run directory it wrote.
 - run: invoke(argv=["run", "--dry-run", "--cli", "claude", "--config", "/tmp/workhorse-book/seeded/config.toml", "--run-id", "walk"])
 - verify: stdout(matches="artifacts in /.*/[.]agents/runs/")
-- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @6dfe1a1c5ba6
+- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @b486d0b36d19
 - code: `workhorse/workhorse/artifacts.py::ArtifactWriter` @a21146f24b40
 - code: `workhorse/workhorse/logsetup.py::setup` @b4b552e503f9
 - code: `workhorse/workhorse/otel.py::install` @0cfd934d680b

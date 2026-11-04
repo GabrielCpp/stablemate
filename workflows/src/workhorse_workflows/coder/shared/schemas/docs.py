@@ -9,6 +9,7 @@ from workhorse.pyflow import dry_run
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
+@dry_run(has_okf="yes", services_root="/dry-run/docs/services", reason="dry run")
 class OkfDetection(CoderResult):
     """`detect-okf-docs.py` — does this repo have an OKF book root that loads?"""
 
@@ -78,6 +79,7 @@ class SpecNodes(CoderResult):
     nodes: list[str] = []
 
 
+@dry_run(status="passed")
 class DocumentationGate(CoderResult):
     """`verify-story-documentation.py` — the fail-closed conformance and grounding gate."""
 

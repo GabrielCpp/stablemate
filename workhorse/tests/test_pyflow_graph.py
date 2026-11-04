@@ -808,6 +808,50 @@ def test_a_dry_run_whose_schema_declared_the_happy_path_fails_on_the_fail_termin
     assert "ERROR: budget exhausted" in out.getvalue(), out.getvalue()
 
 
+SUBJECTS_STARTED: list[str] = []
+
+
+@dry_run(subject="stood in")
+class NeedsASubject(Workflow):
+    """A machine that cannot start without a launch parameter, and declares the one a dry run starts with."""
+
+    subject: str
+
+    def start(self) -> Transition:
+        SUBJECTS_STARTED.append(self.subject)
+        return Done(Report())
+
+
+SEEDING = RegistryAt("acme")
+SEEDING.entry_point(NeedsASubject)
+
+
+def _launch_needing_a_subject(params: dict[str, str], *, dry_run: bool) -> int:
+    from workhorse.pyflow import run as pyflow_run
+
+    SUBJECTS_STARTED.clear()
+    with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        SEEDING.at = Path(tmp)
+        return pyflow_run.run_pyflow(
+            pyflow_run.RunInvocation(SEEDING, runs_dir=Path(tmp) / "runs", run_id="seeded", params=params, dry_run=dry_run)
+        )
+
+
+def test_a_dry_run_starts_from_the_launch_parameters_the_workflow_declared():
+    assert _launch_needing_a_subject({}, dry_run=True) == 0
+    assert SUBJECTS_STARTED == ["stood in"]
+
+
+def test_a_launch_parameter_named_on_the_dry_run_wins_over_the_declared_one():
+    assert _launch_needing_a_subject({"subject": "named"}, dry_run=True) == 0
+    assert SUBJECTS_STARTED == ["named"]
+
+
+def test_a_real_run_never_starts_from_the_declared_launch_parameters():
+    assert _launch_needing_a_subject({}, dry_run=False) != 0
+    assert SUBJECTS_STARTED == []
+
+
 def _run_naming_a_skill(
     tmp: Path, monkeypatch: pytest.MonkeyPatch, *, installed: bool, dry_run: bool
 ) -> tuple[int, str]:

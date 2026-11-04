@@ -12,7 +12,7 @@ mode. A real research run receives its program and repository selection through 
 - driver: cli
 - cli: [workhorse-research](../workhorse-research.md)
 - surfaces: [workhorse-research](../workhorse-research.md)
-- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @b2a751617c3b
+- code: `workflows/src/workhorse_workflows/research/workflow.py::main` @2901df384805
 - working-directory: .
 
 ## Steps

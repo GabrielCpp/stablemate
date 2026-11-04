@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 from okf_book.main.tally import TALLY
-from okf_book.support import ScriptedRunner
+from okf_book.support import ScriptedRunner, bound
 from pydantic import ValidationError
 from workhorse import templates
 from workhorse.artifacts import ArtifactWriter
@@ -187,7 +187,7 @@ def test_a_single_repo_writer_is_given_its_entry_contract_and_owner_folders(tmp_
 def test_a_grpc_surface_whose_contract_is_no_folder_is_a_blocker(tmp_path: Path) -> None:
     (tmp_path / "ledger").mkdir()
     (tmp_path / "proto").mkdir()
-    book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(GRPC,))
+    book = bound(OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(GRPC,)))
     _ = book.start()
 
     _ = book.check_source(index=0)
@@ -201,7 +201,7 @@ def test_a_grpc_surface_whose_contract_is_no_folder_is_a_blocker(tmp_path: Path)
 def test_a_grpc_surface_whose_contract_is_a_folder_goes_to_its_writer(tmp_path: Path) -> None:
     (tmp_path / "ledger").mkdir()
     (tmp_path / CONTRACT).mkdir(parents=True)
-    book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(GRPC,))
+    book = bound(OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(GRPC,)))
     _ = book.start()
 
     step = book.check_source(index=0)

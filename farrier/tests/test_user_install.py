@@ -423,3 +423,148 @@ def test_a_repo_check_prints_no_duplicate_notice(
     assert install_repo(tmp_path / "acme", tmp_path / "home", library, "--check") == 0
 
     assert "user library" not in capsys.readouterr().out
+
+
+ROOTS_BOTH = (
+    '[user_library.claude]\nroots = ["rules"]\n\n'
+    '[user_library.codex]\nroots = ["rules"]\n'
+)
+
+
+def add_root(library: Path, body: str = "Follow the house rules.\n") -> None:
+    roots = library / "library" / "roots"
+    roots.mkdir(parents=True, exist_ok=True)
+    (roots / "rules.md").write_text(body, encoding="utf-8")
+
+
+def test_a_root_becomes_each_harness_home_instruction_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    add_root(library)
+    write_config(tmp_path, monkeypatch, ROOTS_BOTH)
+    home = tmp_path / "home"
+
+    assert install(home, library) == 0
+
+    for rel in (".claude/CLAUDE.md", ".codex/AGENTS.md"):
+        text = (home / rel).read_text(encoding="utf-8")
+        assert text.endswith("Follow the house rules.\n")
+        assert "farrier install --user" in text
+        assert "library/roots/rules.md" in text
+
+
+def test_a_root_words_itself_per_harness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    add_root(library, '{% if target == "claude" %}Use Haiku.{% else %}Use Luna.{% endif %}\n')
+    write_config(tmp_path, monkeypatch, ROOTS_BOTH)
+    home = tmp_path / "home"
+
+    assert install(home, library) == 0
+
+    assert "Use Haiku." in (home / ".claude/CLAUDE.md").read_text(encoding="utf-8")
+    assert "Use Luna." in (home / ".codex/AGENTS.md").read_text(encoding="utf-8")
+
+
+def test_check_reports_an_edited_instruction_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    library = make_library(tmp_path)
+    add_root(library)
+    write_config(tmp_path, monkeypatch, ROOTS_BOTH)
+    home = tmp_path / "home"
+    assert install(home, library) == 0
+    assert install(home, library, "--check") == 0
+
+    target = home / ".codex/AGENTS.md"
+    target.write_text(target.read_text(encoding="utf-8") + "A local edit.\n", encoding="utf-8")
+    capsys.readouterr()
+
+    assert install(home, library, "--check") == 1
+    out = capsys.readouterr().out
+    assert ".codex/AGENTS.md" in out
+    assert "re-render with `farrier install --user`" in out
+    assert "make agent-install" not in out
+
+
+def test_a_hand_written_instruction_file_stops_the_install(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    add_root(library)
+    write_config(tmp_path, monkeypatch, ROOTS_BOTH)
+    home = tmp_path / "home"
+    mine = home / ".claude/CLAUDE.md"
+    mine.parent.mkdir(parents=True)
+    mine.write_text("My rules.\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit, match=".claude/CLAUDE.md"):
+        install(home, library)
+
+    assert mine.read_text(encoding="utf-8") == "My rules.\n"
+    assert not (home / ".codex/AGENTS.md").exists()
+
+
+def test_a_hand_written_instruction_file_is_ignored_when_no_root_is_selected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, CLAUDE_ONE)
+    home = tmp_path / "home"
+    mine = home / ".claude/CLAUDE.md"
+    mine.parent.mkdir(parents=True)
+    mine.write_text("My rules.\n", encoding="utf-8")
+
+    assert install(home, library) == 0
+    assert install(home, library, "--check") == 0
+    assert mine.read_text(encoding="utf-8") == "My rules.\n"
+
+
+def test_dropping_the_root_removes_the_generated_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    add_root(library)
+    write_config(tmp_path, monkeypatch, ROOTS_BOTH)
+    home = tmp_path / "home"
+    assert install(home, library) == 0
+
+    write_config(tmp_path, monkeypatch, CLAUDE_ONE)
+    assert install(home, library) == 0
+
+    assert not (home / ".claude/CLAUDE.md").exists()
+    assert not (home / ".codex/AGENTS.md").exists()
+
+
+def test_a_home_takes_one_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    add_root(library)
+    write_config(tmp_path, monkeypatch, '[user_library.codex]\nroots = ["rules", "more"]\n')
+
+    with pytest.raises(SystemExit, match="one root"):
+        install(tmp_path / "home", library)
+
+
+def test_copilot_has_no_home_instruction_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    add_root(library)
+    write_config(tmp_path, monkeypatch, '[user_library.copilot]\nroots = ["rules"]\n')
+
+    with pytest.raises(SystemExit, match="only for claude, codex"):
+        install(tmp_path / "home", library)
+
+
+def test_an_unknown_root_names_the_miss(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    write_config(tmp_path, monkeypatch, '[user_library.codex]\nroots = ["nope"]\n')
+
+    with pytest.raises(SystemExit, match="nope"):
+        install(tmp_path / "home", library)

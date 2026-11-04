@@ -32,7 +32,7 @@ many citations the pass restamped unread because the change spared them.
 
 The implementation is `workflows/src/workhorse_workflows/okf_book/main/reground_book_flow.py::RegroundBook`.
 
-- code: `workflows/src/workhorse_workflows/okf_book/main/reground_book_flow.py::RegroundBook` @1228ac2f98a9
+- code: `workflows/src/workhorse_workflows/okf_book/main/reground_book_flow.py::RegroundBook` @02badb057e6b
 
 ## Steps
 
@@ -56,6 +56,11 @@ proves what changed. Otherwise one turn reads the diff and names the nodes the c
 a turn that ends without a verdict leaves its citations as they are, so a reading that failed
 blocks no repair that did not need one.
 
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::stale_book_files` @22251353a766
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::book_cites_changed_file` @b3569ac4597b
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::stamp_changed_pages` @5d31dbe00a58
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::stamp_spared_pages` @28f7c31415c9
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::restore_tree` @a95dd6dda3b3
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/stale_citations.py::stamped_text` @bf08d51b9f51
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/stale_citations.py::unread_problems` @bf08d51b9f51
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/stale_citations.py::affected_problems` @bf08d51b9f51

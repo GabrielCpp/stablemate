@@ -88,6 +88,25 @@ Install has two scopes, and each one writes only where it is pointed. `--repo PA
 renders the repo's `agents.yml` selection under `PATH` and nothing else. `--user` renders
 the `[user_library.<harness>]` tables of the shared config into the harness homes
 (`~/.claude`, and `~/.agents` for Codex and Copilot), reads no repo and writes to none.
+A Claude or Codex table that names a `roots` entry also writes that home's always-on rules,
+`~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`, from one file in the library.
+A table that names `mcp` servers adds each one to `~/.claude.json` or `~/.codex/config.toml`,
+and a value farrier did not install stops the install instead of being replaced.
+A table that names `hooks` guards adds each one to `~/.claude/settings.json` or
+`~/.codex/hooks.json`. Codex skips a new guard until you approve it in `/hooks`,
+and `farrier install --user --check` names each guard still waiting.
+
+A table that names `agents` writes each helper agent to `~/.claude/agents` or
+`~/.codex/agents`, on the model `[profiles.<harness>.delegates.<name>]` names.
+Codex cannot enforce a read-only agent, so its prompt asks for it instead.
+
+A `[user_library.opencode]` table takes the same `roots`, `mcp`, `hooks` and `agents`.
+They land in `~/.config/opencode`: rules in `AGENTS.md`, servers in `opencode.json`, helper
+agents in `agents/`, and guards through a generated plugin, `plugins/farrier-guards.ts`.
+Farrier never writes `opencode.jsonc`, and a server it holds under the same name with another
+value stops the install. OpenCode reads skills from `~/.claude/skills`, so farrier writes none
+for it and a pack's skills are left out.
+
 Pass both, `farrier install --repo . --user`, to refresh the home right after the repo
 from the same library. A repo install never touches the home on its own, so a worktree
 on an older branch cannot overwrite the skills your main checkout installed there.
@@ -103,6 +122,7 @@ farrier eject <name>                       # hand a generated skill or a policy 
 farrier scaffold --list                    # the scaffolds this repo may apply, and their params
 farrier scaffold <id> [--param KEY=VALUE]  # seed repo files from one
 farrier workflows                          # the workflows installed on this machine
+farrier worktrees ~/code                   # the linked worktrees that are safe to remove
 farrier version
 ```
 
@@ -135,6 +155,16 @@ goes before the action and names the file every config verb reads and writes, so
 question can be asked of a config that is not this machine's home one. There is no
 setter: a profile is a nested table, and `set-library`-style flat assignment cannot
 express one — edit the file.
+
+`worktrees` finds the linked worktrees agents left behind and changes nothing until you pass
+`--apply`. Each path is a checkout or a folder of checkouts, the default is the current
+directory, and the repositories behind the configured `worktree_dir` are always included.
+A worktree goes only when its tree is clean and every commit on it is merged into the branch
+the main checkout has out, or pushed to a remote. Ignored files do not count as changes, so
+they go with it. The branch goes too when it is merged. Four things keep a worktree regardless:
+`git worktree lock`, a running process using it, git state touched within `--idle-days`
+(default 7), and a platform without `/proc`, where farrier cannot see which processes use it.
+An entry whose folder is already gone is pruned.
 
 ## Configuring `agents.yml`
 

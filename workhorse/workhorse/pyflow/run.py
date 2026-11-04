@@ -32,6 +32,7 @@ from workhorse.pyflow.errors import (
 from workhorse.pyflow.graph import registry_graphs
 from workhorse.pyflow.preflight import preflight
 from workhorse.pyflow.registry import Registry
+from workhorse.pyflow.replies import declared_reply
 from workhorse.pyflow.workflow import Workflow
 from workhorse.pyflow.worktree import WorktreeError
 from workhorse.pyflow import worktree as worktree_mod
@@ -264,7 +265,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
                 f"{'them' if len(retired) > 1 else 'it'}",
             )
     else:
-        inputs = params
+        inputs = {**(declared_reply(workflow_cls) or {}), **params} if dry_run else params
 
     try:
         wf = _instantiate(workflow_cls, inputs)

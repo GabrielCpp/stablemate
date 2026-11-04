@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Literal
 
+from workhorse.pyflow import dry_run
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
@@ -49,6 +50,7 @@ class FarrierInstall(CoderResult):
     scaffolds_rendered: list[str] = []
 
 
+@dry_run(ok=True, path="/dry-run/docs/epics")
 class EpicsRoot(CoderResult):
     """`create_epics_root` — the folder the work queue lives in, made or found."""
 
@@ -57,6 +59,7 @@ class EpicsRoot(CoderResult):
     note: str = ""
 
 
+@dry_run(valid=True)
 class GenesisReport(CoderResult):
     """`validate-genesis.py` — every precondition the main loop assumes, checked."""
 

@@ -321,14 +321,161 @@ it — are the operator's to choose, not farrier's.
     - run: invoke(argv=["install", "--user", "--home", "c130/home", "--library", "c130/lib"], env={"HOME": "c130/home", "STABLEMATE_CONFIG": "c130/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c130/pipx-stub-bin:$PATH"})
     - verify: stderr(text="Claude is the only harness with a personal command directory")
     - fixture: codex-prompts-home dir=c130
-  - exit with an error when a table names `roots:`, because no harness reads a root instruction
-    file from the home directory
+  - render a Claude table's one root into `~/.claude/CLAUDE.md` and a Codex table's into
+    `~/.codex/AGENTS.md`, under a banner naming its library source
     - run: invoke(argv=["install", "--user", "--home", "c131/home", "--library", "c131/lib"], env={"HOME": "c131/home", "STABLEMATE_CONFIG": "c131/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c131/pipx-stub-bin:$PATH"})
-    - verify: stderr(text="names roots")
+    - verify: created(subject="c131/home/.claude/CLAUDE.md")
     - fixture: claude-roots-home dir=c131
-  - exit with an error when a table selects no skills or prompts
+  - exit with an error when a Copilot table names `roots:`, because farrier renders a home
+    instruction file only for Claude, Codex and OpenCode
+    - run: invoke(argv=["install", "--user", "--home", "c924/home", "--library", "c924/lib"], env={"HOME": "c924/home", "STABLEMATE_CONFIG": "c924/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c924/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="only for claude, codex")
+    - fixture: copilot-roots-home dir=c924
+  - exit with an error when a table names more than one root, because a home has one
+    instruction file
+    - run: invoke(argv=["install", "--user", "--home", "c925/home", "--library", "c925/lib"], env={"HOME": "c925/home", "STABLEMATE_CONFIG": "c925/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c925/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="it takes one root")
+    - fixture: two-roots-home dir=c925
+  - stop the install before writing anything when a selected root's instruction file is hand
+    written, and keep that file
+    - run: invoke(argv=["install", "--user", "--home", "c926/home", "--library", "c926/lib"], env={"HOME": "c926/home", "STABLEMATE_CONFIG": "c926/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c926/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="will not overwrite files it did not generate")
+    - fixture: hand-written-rules-home dir=c926
+  - write each server a Claude or Codex table names in `mcp` into the shared file that harness reads, as a [merged home entry](concepts/merged-home-entry.md)
+    - run: invoke(argv=["install", "--user", "--home", "c927/home", "--library", "c927/lib"], env={"HOME": "c927/home", "STABLEMATE_CONFIG": "c927/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c927/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c927/home/.claude.json", text="mcpServers")
+    - fixture: mcp-home dir=c927
+  - keep the comments and other servers of the Codex config around the new entry
+    - run: invoke(argv=["install", "--user", "--home", "c928/home", "--library", "c928/lib"], env={"HOME": "c928/home", "STABLEMATE_CONFIG": "c928/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c928/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c928/home/.codex/config.toml", text="# my settings")
+    - fixture: mcp-home dir=c928
+  - stop before writing anything when a name it would install holds another value it did not install, and name that entry
+    - run: invoke(argv=["install", "--user", "--home", "c929/home", "--library", "c929/lib"], env={"HOME": "c929/home", "STABLEMATE_CONFIG": "c929/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c929/pipx-stub-bin:$PATH"})
+    - verify: stderr(text=".claude.json mcpServers.stub")
+    - fixture: mcp-foreign-home dir=c929
+  - leave a matching entry it did not install in place when the library no longer names it
+    - run: invoke(argv=["install", "--user", "--home", "c930/home", "--library", "c930/lib"], env={"HOME": "c930/home", "STABLEMATE_CONFIG": "c930/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c930/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c930/home/.claude.json", text="stub")
+    - fixture: mcp-matching-home dir=c930
+  - delete only its own entry when the table drops a server, keeping the user's
+    - run: invoke(argv=["install", "--user", "--home", "c931/home", "--library", "c931/lib"], env={"HOME": "c931/home", "STABLEMATE_CONFIG": "c931/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c931/pipx-stub-bin:$PATH"})
+    - verify: omits(subject="c931/home/.claude.json", text="stub")
+    - fixture: mcp-removed-home dir=c931
+  - report an owned entry the table no longer names under `--check`, by file and name
+    - run: invoke(argv=["install", "--user", "--home", "c932/home", "--library", "c932/lib", "--check"], env={"HOME": "c932/home", "STABLEMATE_CONFIG": "c932/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c932/pipx-stub-bin:$PATH"})
+    - verify: stdout(text="extra entry: .claude.json mcpServers.stub")
+    - fixture: mcp-removed-home dir=c932
+  - exit with an error when a Copilot table names `mcp`
+    - run: invoke(argv=["install", "--user", "--home", "c933/home", "--library", "c933/lib"], env={"HOME": "c933/home", "STABLEMATE_CONFIG": "c933/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c933/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="only for claude, codex")
+    - fixture: mcp-copilot-home dir=c933
+  - write each guard a Claude table names in `hooks` into `~/.claude/settings.json`, in Claude's tool names, as a [home guard](concepts/home-guard.md)
+    - run: invoke(argv=["install", "--user", "--home", "c934/home", "--library", "c934/lib"], env={"HOME": "c934/home", "STABLEMATE_CONFIG": "c934/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c934/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c934/home/.claude/settings.json", text="Bash|Write|Edit|MultiEdit")
+    - fixture: guards-home dir=c934
+  - write each guard a Codex table names in `hooks` into `~/.codex/hooks.json`, in Codex's tool names
+    - run: invoke(argv=["install", "--user", "--home", "c935/home", "--library", "c935/lib"], env={"HOME": "c935/home", "STABLEMATE_CONFIG": "c935/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c935/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c935/home/.codex/hooks.json", text="Bash|apply_patch")
+    - fixture: guards-home dir=c935
+  - install each guard's scripts into `~/.agents/hooks/<name>`
+    - run: invoke(argv=["install", "--user", "--home", "c936/home", "--library", "c936/lib"], env={"HOME": "c936/home", "STABLEMATE_CONFIG": "c936/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c936/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c936/home/.agents/hooks/stub/check.py", text="stub guard")
+    - fixture: guards-home dir=c936
+  - keep a guard off a harness its record's `not_on` names, and print the guard it left out
+    - run: invoke(argv=["install", "--user", "--home", "c937/home", "--library", "c937/lib"], env={"HOME": "c937/home", "STABLEMATE_CONFIG": "c937/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c937/pipx-stub-bin:$PATH"})
+    - verify: stdout(text="Left out on codex: guard claude-only")
+    - fixture: guards-home dir=c937
+  - say that Codex skips a guard the install added or changed until the user approves it
+    - run: invoke(argv=["install", "--user", "--home", "c938/home", "--library", "c938/lib"], env={"HOME": "c938/home", "STABLEMATE_CONFIG": "c938/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c938/pipx-stub-bin:$PATH"})
+    - verify: stdout(text="Codex skips a new or changed guard")
+    - fixture: guards-home dir=c938
+  - stop before writing anything when a guard's command already runs in a group farrier did not install, and name that command
+    - run: invoke(argv=["install", "--user", "--home", "c939/home", "--library", "c939/lib"], env={"HOME": "c939/home", "STABLEMATE_CONFIG": "c939/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c939/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="hooks.PreToolUse./bin/true --stub")
+    - fixture: guards-foreign-home dir=c939
+  - name each guard with no approval recorded in the Codex config under `--check`, and how to approve it
+    - run: invoke(argv=["install", "--user", "--home", "c940/home", "--library", "c940/lib", "--check"], env={"HOME": "c940/home", "STABLEMATE_CONFIG": "c940/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c940/pipx-stub-bin:$PATH"})
+    - verify: stdout(text="pending approval: Codex skips guard stub")
+    - fixture: guards-pending-home dir=c940
+  - exit 0 under `--check` once the Codex config records an approval for each installed guard
+    - run: invoke(argv=["install", "--user", "--home", "c941/home", "--library", "c941/lib", "--check"], env={"HOME": "c941/home", "STABLEMATE_CONFIG": "c941/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c941/pipx-stub-bin:$PATH"})
+    - verify: exit_status(code=0)
+    - fixture: guards-approved-home dir=c941
+  - exit with an error when a Copilot table names `hooks`
+    - run: invoke(argv=["install", "--user", "--home", "c942/home", "--library", "c942/lib"], env={"HOME": "c942/home", "STABLEMATE_CONFIG": "c942/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c942/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="names guards")
+    - fixture: guards-copilot-home dir=c942
+  - write each agent a Claude table names in `agents` into `~/.claude/agents/<name>.md`, on the model the Claude profile's delegate names, as a [helper agent](concepts/helper-agent.md)
+    - run: invoke(argv=["install", "--user", "--home", "c943/home", "--library", "c943/lib"], env={"HOME": "c943/home", "STABLEMATE_CONFIG": "c943/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c943/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c943/home/.claude/agents/lookup.md", text="model: haiku-x")
+    - fixture: agents-home dir=c943
+  - write each agent a Codex table names in `agents` into `~/.codex/agents/<name>.toml`, on the model the Codex profile's delegate names
+    - run: invoke(argv=["install", "--user", "--home", "c944/home", "--library", "c944/lib"], env={"HOME": "c944/home", "STABLEMATE_CONFIG": "c944/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c944/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c944/home/.codex/agents/lookup.toml", text="model = \"luna\"")
+    - fixture: agents-home dir=c944
+  - limit a `read_only` agent to read tools on Claude
+    - run: invoke(argv=["install", "--user", "--home", "c945/home", "--library", "c945/lib"], env={"HOME": "c945/home", "STABLEMATE_CONFIG": "c945/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c945/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c945/home/.claude/agents/lookup.md", text="tools: Read, Grep, Glob, Bash")
+    - fixture: agents-home dir=c945
+  - open a `read_only` agent's prompt with a read-only instruction on Codex
+    - run: invoke(argv=["install", "--user", "--home", "c946/home", "--library", "c946/lib"], env={"HOME": "c946/home", "STABLEMATE_CONFIG": "c946/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c946/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c946/home/.codex/agents/lookup.toml", text="Read only. Never edit")
+    - fixture: agents-home dir=c946
+  - exit with an error naming the table when a selected agent has no model in that harness's profile
+    - run: invoke(argv=["install", "--user", "--home", "c947/home", "--library", "c947/lib"], env={"HOME": "c947/home", "STABLEMATE_CONFIG": "c947/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c947/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="[profiles.codex.delegates.lookup] names no model")
+    - fixture: agents-no-role-home dir=c947
+  - stop before writing anything when a hand-written agent file holds a name the table selects
+    - run: invoke(argv=["install", "--user", "--home", "c948/home", "--library", "c948/lib"], env={"HOME": "c948/home", "STABLEMATE_CONFIG": "c948/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c948/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="will not overwrite")
+    - fixture: agents-foreign-home dir=c948
+  - report an agent whose role model changed under `--check`, writing nothing
+    - run: invoke(argv=["install", "--user", "--home", "c949/home", "--library", "c949/lib", "--check"], env={"HOME": "c949/home", "STABLEMATE_CONFIG": "c949/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c949/pipx-stub-bin:$PATH"})
+    - verify: stdout(text=".codex/agents/lookup.toml")
+    - fixture: agents-changed-home dir=c949
+  - delete a generated agent the table no longer names
+    - run: invoke(argv=["install", "--user", "--home", "c950/home", "--library", "c950/lib"], env={"HOME": "c950/home", "STABLEMATE_CONFIG": "c950/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c950/pipx-stub-bin:$PATH"})
+    - verify: absent(subject="c950/home/.codex/agents/worker.toml")
+    - fixture: agents-dropped-home dir=c950
+  - exit with an error when a Copilot table names `agents`
+    - run: invoke(argv=["install", "--user", "--home", "c951/home", "--library", "c951/lib"], env={"HOME": "c951/home", "STABLEMATE_CONFIG": "c951/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c951/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="names agents")
+    - fixture: agents-copilot-home dir=c951
+  - write an OpenCode table's one root into `~/.config/opencode/AGENTS.md`
+    - run: invoke(argv=["install", "--user", "--home", "c952/home", "--library", "c952/lib"], env={"HOME": "c952/home", "STABLEMATE_CONFIG": "c952/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c952/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c952/home/.config/opencode/AGENTS.md", text="Say hello.")
+    - fixture: opencode-home dir=c952
+  - write each server an OpenCode table names in `mcp` into `~/.config/opencode/opencode.json`, in OpenCode's spelling
+    - run: invoke(argv=["install", "--user", "--home", "c953/home", "--library", "c953/lib"], env={"HOME": "c953/home", "STABLEMATE_CONFIG": "c953/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c953/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c953/home/.config/opencode/opencode.json", text="ostler")
+    - fixture: opencode-home dir=c953
+  - leave `~/.config/opencode/opencode.jsonc` as it was, comments included
+    - run: invoke(argv=["install", "--user", "--home", "c954/home", "--library", "c954/lib"], env={"HOME": "c954/home", "STABLEMATE_CONFIG": "c954/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c954/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c954/home/.config/opencode/opencode.jsonc", text="// my settings")
+    - fixture: opencode-home dir=c954
+  - stop before writing anything when `opencode.jsonc` holds a selected server's name with another value, and name that entry
+    - run: invoke(argv=["install", "--user", "--home", "c955/home", "--library", "c955/lib"], env={"HOME": "c955/home", "STABLEMATE_CONFIG": "c955/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c955/pipx-stub-bin:$PATH"})
+    - verify: stderr(text="opencode.jsonc mcp.search")
+    - fixture: opencode-foreign-home dir=c955
+  - write the guard bridge into `~/.config/opencode/plugins/farrier-guards.ts` when an OpenCode table names a guard
+    - run: invoke(argv=["install", "--user", "--home", "c956/home", "--library", "c956/lib"], env={"HOME": "c956/home", "STABLEMATE_CONFIG": "c956/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c956/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c956/home/.config/opencode/plugins/farrier-guards.ts", text="tool.execute.before")
+    - fixture: opencode-home dir=c956
+  - write each agent an OpenCode table names into `~/.config/opencode/agents/<name>.md`, on the model the OpenCode profile's delegate names
+    - run: invoke(argv=["install", "--user", "--home", "c957/home", "--library", "c957/lib"], env={"HOME": "c957/home", "STABLEMATE_CONFIG": "c957/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c957/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c957/home/.config/opencode/agents/lookup.md", text="model: kimi/k3")
+    - fixture: opencode-home dir=c957
+  - deny edits to a `read_only` agent on OpenCode
+    - run: invoke(argv=["install", "--user", "--home", "c958/home", "--library", "c958/lib"], env={"HOME": "c958/home", "STABLEMATE_CONFIG": "c958/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c958/pipx-stub-bin:$PATH"})
+    - verify: contents(subject="c958/home/.config/opencode/agents/lookup.md", text="edit: deny")
+    - fixture: opencode-home dir=c958
+  - leave out the skills an OpenCode table names, because OpenCode reads the Claude skill folder
+    - run: invoke(argv=["install", "--user", "--home", "c959/home", "--library", "c959/lib"], env={"HOME": "c959/home", "STABLEMATE_CONFIG": "c959/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c959/pipx-stub-bin:$PATH"})
+    - verify: absent(subject="c959/home/.config/opencode/skills")
+    - fixture: opencode-home dir=c959
+  - exit with an error when a table selects no skills, prompts, roots, MCP servers, guards or agents
     - run: invoke(argv=["install", "--user", "--home", "c132/home", "--library", "c132/lib"], env={"HOME": "c132/home", "STABLEMATE_CONFIG": "c132/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c132/pipx-stub-bin:$PATH"})
-    - verify: stderr(text="selected no skills or prompts")
+    - verify: stderr(text="selected no skills, prompts, roots")
     - fixture: excluded-skill-home dir=c132
   - render each table's selection with a [`Renderer`](concepts/renderer.md) at user scope into
     `~/.claude/skills/<name>/SKILL.md`, `~/.claude/commands/<name>.md` and
@@ -421,8 +568,8 @@ it — are the operator's to choose, not farrier's.
     - run: invoke(argv=["install", "--user", "--home", "c150/home", "--library", "c150/lib"], env={"HOME": "c150/home", "STABLEMATE_CONFIG": "c150/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c150/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: empty-repo-with-library dir=c150
-- code: `farrier/farrier/cli.py::_run_user_install` @d70b7dfd31a8
-- code: `farrier/farrier/outputs.py::render_user_expected` @7ce4f5144d6f
+- code: `farrier/farrier/cli.py::_run_user_install` @9d2479f24c68
+- code: `farrier/farrier/outputs.py::render_user_expected` @6655a5353346
 - tests: `farrier/tests/test_user_install.py::test_skills_and_prompts_land_in_the_harness_home`
 - tests: `farrier/tests/test_user_install.py::test_the_repo_scaffolding_stays_out_of_the_home`
 - tests: `farrier/tests/test_user_install.py::test_a_deselected_skill_is_swept_and_a_hand_written_one_is_not`

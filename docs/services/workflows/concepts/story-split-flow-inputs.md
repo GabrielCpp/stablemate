@@ -15,6 +15,6 @@ split with the operator's answer. The note never changes which epic is in scope.
 no longer depend on a mode: the PM answers the splitter's questions, and the operator is asked only
 when the split stays blocked.
 
-- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9e26ab4671cb
+- code: `workflows/src/workhorse_workflows/author/story_split/flow.py::StorySplitFlow` @9f180bda92e0
 - rule: provide `epic` always, and `note` only to carry an earlier answer
 - detail: [story-split flow concept selection](story-split-flow-concept-selection.md)

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from okf_book.main.tally import TALLY
+from okf_book.support import bound
 from ostler.qa.attribution import Cause, Signature
 
 from workhorse_workflows.okf_book.main import flow
@@ -33,7 +34,7 @@ def _escalated_run(*signatures: Signature) -> ExerciseResult:
 
 
 def _book(tmp_path: Path) -> OkfBook:
-    book = OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,))
+    book = bound(OkfBook(repo_dir=str(tmp_path), parent_records_dir=str(tmp_path), surfaces=(TALLY,)))
     _ = book.start()
     return book
 

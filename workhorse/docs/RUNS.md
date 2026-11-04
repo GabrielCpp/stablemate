@@ -112,7 +112,9 @@ configured and fails fast, creating nothing, on a branch or directory collision;
 sets `PROTECT_WORKTREE = True` does not get the guard on a worktree-dispatched run,
 since that run already owns its tree exclusively.
 
-The run's ending decides what happens to that worktree, and nothing else removes it.
+The run's ending decides what happens to that worktree. The one other thing that removes
+it is `farrier worktrees --apply`, which applies the same test below to a worktree idle for
+a week. Lock a kept worktree with `git worktree lock` to keep it from that sweep.
 A run that reaches its terminal state removes the worktree with `git worktree remove`
 when the tree is clean and every commit on it is merged into the recorded base
 (`worktree_base`, the base branch's name) or pushed to a remote. Ignored files do not

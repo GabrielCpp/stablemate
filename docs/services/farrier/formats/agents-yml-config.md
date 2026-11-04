@@ -107,7 +107,7 @@ agents:
 
 ### packs
 - type: `list` of `string` (pack ids, `.yml` omitted) — required: no — default: `[]`
-- code: `farrier/farrier/sources.py::collect_selection` @318ff5c6d190
+- code: `farrier/farrier/sources.py::collect_selection` @1f04f637d5a5
 - detail: [selection aggregation](../concepts/selection-aggregation.md)
 
 ### skills / prompts / roots

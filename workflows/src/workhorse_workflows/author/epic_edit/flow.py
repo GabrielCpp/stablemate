@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed, dry_run
 from workhorse_workflows.author.epic_edit.nodes import (
     apply_edit_plan,
     read_register_listing,
@@ -45,6 +45,7 @@ from workhorse_workflows.kit.telemetry import counter_labels
 MAX_REWORKS = 3
 
 
+@dry_run(epic="dry-run", change="dry run")
 class EpicEdit(Workflow):
     """Reconcile one epic after a direct scope change or a story-edit handoff."""
 

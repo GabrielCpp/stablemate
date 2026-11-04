@@ -32,7 +32,7 @@ files, waits for the operator.
 
 The implementation is `workflows/src/workhorse_workflows/okf_book/main/write_book_flow.py::WriteBook`.
 
-- code: `workflows/src/workhorse_workflows/okf_book/main/write_book_flow.py::WriteBook` @6fdc237dbe80
+- code: `workflows/src/workhorse_workflows/okf_book/main/write_book_flow.py::WriteBook` @b8fd0d0186c5
 
 ## Steps
 
@@ -45,6 +45,11 @@ folder can be put back after. `reset_command_state` then writes the state file t
 commands read, with none of their runs spent.
 
 - code: `workflows/src/workhorse_workflows/okf_book/shared/confine.py::snapshot` @d458a2a86e0b
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::make_book_folder` @024deebbe730
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::tree_snapshot` @4c60aaa3795d
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::put_back_strays` @893826bed8e9
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::pages_kept` @a78bd75983cb
+- code: `workflows/src/workhorse_workflows/okf_book/main/nodes/confined_tree.py::book_pages_changed` @c478530ced0e
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_commands.py::WriterCommandState` @6ebfece6cfd3
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_commands.py::write_command_state` @34d19133a0d6
 - code: `workflows/src/workhorse_workflows/okf_book/main/nodes/writer_jobs.py::settle_jobs` @cb4daf02dd0f

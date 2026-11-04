@@ -12,8 +12,8 @@ title: Coder documentation schemas
   `SpecNodes` records the nodes a spec pass wrote for the lanes after it. The deterministic gate answers with a
   `DocumentationGate`, and the flow ends with a `DocsResult`.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @8a5691c5dbb4
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @8a5691c5dbb4
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @d0a03cdb64f7
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @d0a03cdb64f7
 - detail: [Coder story pipeline](story-pipeline.md)
 - detail: [Coder documentation flow](../flows/coder-docs.md)
 

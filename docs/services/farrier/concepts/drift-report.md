@@ -12,7 +12,7 @@ trusting provenance copied into the worktree. It attributes changes from the exp
 - sig: `Drifted(rel: str, content: str, expected: str, actual: str, is_link: bool = False)`
 - does: carry the relative output path, rendered record, expected text, and worktree text for one drift finding
 - does: flag a record as a skill-symlink drift with `is_link`, defaulting to false
-- code: `farrier/farrier/drift.py::Drifted` @17c0ef085eef
+- code: `farrier/farrier/drift.py::Drifted` @36dc1b6beb73
 - verify: count(subject="drifted output records", equals=1)
 
 ## Methods
@@ -22,48 +22,48 @@ trusting provenance copied into the worktree. It attributes changes from the exp
 - does: return recorded aggregate sources when present, otherwise front-matter source metadata, otherwise banner sources
 - returns: an empty list when no provenance carrier is present
 - verify: count(subject="provenance sources selected from expected output", equals=1)
-- code: `farrier/farrier/drift.py::sources_for` @17c0ef085eef
+- code: `farrier/farrier/drift.py::sources_for` @bfaeff4c8759
 
 ### method: attribute
 - sig: `attribute(content: str, actual: str) -> set[str]`
 - does: identify aggregate source parts missing from the actual text
 - returns: an empty set when every recorded part was altered or no parts were recorded
 - verify: count(subject="aggregate source parts attributed to drift", equals=1)
-- code: `farrier/farrier/drift.py::attribute` @17c0ef085eef
+- code: `farrier/farrier/drift.py::attribute` @4efc79881b7f
 
 ### method: changed_report
-- sig: `changed_report(rel: str, sources: list[str], drifted: set[str]) -> str`
+- sig: `changed_report(rel: str, sources: list[str], drifted: set[str], regenerate: str = REGENERATE) -> str`
 - does: describe the changed output, its editable source files, and the regeneration command
 - verify: json_path(path="return value", matches="re-render")
-- code: `farrier/farrier/drift.py::changed_report` @17c0ef085eef
+- code: `farrier/farrier/drift.py::changed_report` @2a5e9838ec90
 
 ### method: missing_report
-- sig: `missing_report(rel: str) -> str`
+- sig: `missing_report(rel: str, regenerate: str = REGENERATE) -> str`
 - does: identify a missing generated file and tell the operator to regenerate it
 - verify: json_path(path="return value", matches="Run")
-- code: `farrier/farrier/drift.py::missing_report` @17c0ef085eef
+- code: `farrier/farrier/drift.py::missing_report` @d30bf9e57819
 
 ### method: extra_report
 - sig: `extra_report(rel: str) -> str`
 - does: explain that an output is no longer generated and must be deleted or selected again
 - verify: json_path(path="return value", matches="Delete")
-- code: `farrier/farrier/drift.py::extra_report` @17c0ef085eef
+- code: `farrier/farrier/drift.py::extra_report` @fb8008d7326c
 
 ### method: fence_report
 - sig: `fence_report(rel: str) -> str`
 - does: explain restoration or disabling of a Farrier hook fence while preserving surrounding user content
 - verify: json_path(path="return value", matches="Everything outside the fence")
-- code: `farrier/farrier/drift.py::fence_report` @17c0ef085eef
+- code: `farrier/farrier/drift.py::fence_report` @9fcba91b35d6
 
 ### method: footer
 - sig: `footer() -> str`
 - does: explain that comparison uses the working tree and identify `farrier source` as the reverse lookup
 - verify: json_path(path="return value", matches="working tree")
-- code: `farrier/farrier/drift.py::footer` @17c0ef085eef
+- code: `farrier/farrier/drift.py::footer` @7a6c860a2c27
 
 ### method: report
 - sig: `report(missing: list[str], changed: list[Drifted], extra: list[str], fences: list[str] | None = None) -> str`
 - does: emit missing, changed, extra, and hook-fence blocks in category order followed by the footer
 - does: describe a changed skill-symlink record by telling the operator to run `make agent-install` and not edit a linked skill folder under the linking harness, instead of the changed-source blame it gives a changed text record
 - verify: count(subject="drift report category blocks", equals=4)
-- code: `farrier/farrier/drift.py::report` @17c0ef085eef
+- code: `farrier/farrier/drift.py::report` @1a9f1601fe8a

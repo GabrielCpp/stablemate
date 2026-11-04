@@ -723,7 +723,8 @@ Four ways to put something else in the table:
 def measure(logger, subject: str) -> Reading: ...
 
 # 2. declared on the reply model — what --dry-run returns for every agent turn
-#    whose `returns=` is this model; a subclass does not inherit it
+#    whose `returns=` is this model, or on a workflow class the launch parameters
+#    --dry-run starts it with; a subclass does not inherit it
 @dry_run(ok=True)
 class Review(BaseModel):
     ok: bool = False

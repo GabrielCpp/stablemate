@@ -273,3 +273,59 @@ The hook-wiring behaviour is implemented by `_run_hooks_install`, `_run_hooks_li
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_falls_back_to_detection_with_no_agents_yml`
 
 A legacy whole-file Farrier hook is replaced before the new fenced entry is written. For the `githooks` manager, `hooks install` sets Git `core.hooksPath` to `.githooks`. When a library resolves, it also regenerates `.agents/hooks/pre-commit` from the hooks the selected skills declare. None of the three leaves a trace that a stdout, stderr or working-tree check can name.
+
+### worktrees
+- usage: `farrier worktrees [PATH...] [--apply] [--idle-days N]`
+- flags:
+  - `--apply` — remove what the listing marks. Without it the command changes nothing.
+  - `--idle-days <n>` — leave a worktree whose git state changed fewer than `n` days ago.
+    Default: 7.
+- args:
+  - `PATH` — a checkout, or a folder whose direct children are checkouts. Default: the current
+    working directory. The repositories behind the configured `worktree_dir` are always added.
+- does:
+  - without `--apply`, mark a worktree whose work landed as `remove`
+    - run: invoke(argv=["worktrees", "c912/acme"], env={"HOME": "c912/home", "STABLEMATE_CONFIG": "c912/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: stdout(text="remove")
+    - fixture: abandoned-worktrees dir=c912
+  - without `--apply`, say how to remove what it marked
+    - run: invoke(argv=["worktrees", "c913/acme"], env={"HOME": "c913/home", "STABLEMATE_CONFIG": "c913/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: stdout(text="Re-run with --apply")
+    - fixture: abandoned-worktrees dir=c913
+  - without `--apply`, leave a marked worktree in place
+    - run: invoke(argv=["worktrees", "c914/acme"], env={"HOME": "c914/home", "STABLEMATE_CONFIG": "c914/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: contents(subject="c914/landed/.git", text="gitdir")
+    - fixture: abandoned-worktrees dir=c914
+  - with `--apply`, remove a worktree whose work landed
+    - run: invoke(argv=["worktrees", "c915/acme", "--apply"], env={"HOME": "c915/home", "STABLEMATE_CONFIG": "c915/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: absent(subject="c915/landed")
+    - fixture: abandoned-worktrees dir=c915
+  - keep a worktree with uncommitted changes
+    - run: invoke(argv=["worktrees", "c916/acme", "--apply"], env={"HOME": "c916/home", "STABLEMATE_CONFIG": "c916/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: stdout(text="the worktree has uncommitted changes")
+    - fixture: abandoned-worktrees dir=c916
+  - keep a worktree whose commits are neither merged nor pushed
+    - run: invoke(argv=["worktrees", "c917/acme", "--apply"], env={"HOME": "c917/home", "STABLEMATE_CONFIG": "c917/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: stdout(text="neither merged into")
+    - fixture: abandoned-worktrees dir=c917
+  - keep a locked worktree
+    - run: invoke(argv=["worktrees", "c918/acme", "--apply"], env={"HOME": "c918/home", "STABLEMATE_CONFIG": "c918/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: stdout(text="locked")
+    - fixture: abandoned-worktrees dir=c918
+  - keep a worktree touched within the idle window
+    - run: invoke(argv=["worktrees", "c919/acme", "--apply"], env={"HOME": "c919/home", "STABLEMATE_CONFIG": "c919/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: stdout(text="touched less than 7 days ago")
+    - fixture: abandoned-worktrees dir=c919
+  - keep a worktree a running process is using
+    - run: invoke(argv=["worktrees", "c920/acme", "--apply"], env={"HOME": "c920/home", "STABLEMATE_CONFIG": "c920/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: stdout(text="a running process is using it")
+    - fixture: abandoned-worktrees dir=c920
+  - clear the entry of a worktree whose folder is gone
+    - run: invoke(argv=["worktrees", "c921/acme", "--apply"], env={"HOME": "c921/home", "STABLEMATE_CONFIG": "c921/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: stdout(text="its folder is gone")
+    - fixture: abandoned-worktrees dir=c921
+- exits: `0` whatever it finds, including a run that keeps every worktree
+- code: `farrier/farrier/cli.py::_run_worktrees` @b4c544abb3e2
+- code: `farrier/farrier/worktree_sweep.py::sweep_repo` @d8fcdb2bcd1b
+- detail: [worktree sweep](concepts/worktree-sweep.md)
+- tests: `farrier/tests/test_worktree_sweep.py::test_command_lists_then_applies`

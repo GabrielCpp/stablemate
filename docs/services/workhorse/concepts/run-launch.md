@@ -38,6 +38,13 @@ turn. A dry run that reaches an operator gate fails with `failure_class: dry-run
 nothing answers a gate under a dry run and the stand-ins have to walk past it instead. A dry run
 is how an author checks the workflow binds.
 
+A `--dry-run` starts from the launch parameters the workflow class declared with `@dry_run`, and
+a parameter named on the command line wins over a declared one. So `run [flow] --dry-run` needs
+no `--params`. A real run never reads the declaration.
+
+- rule: a dry run substitutes only what crosses the node index, so a flow state reaches every write, commit and subprocess through `self.call`, because an effect called directly runs for real under `--dry-run`
+- rule: a declared stand-in stays true only while something executes it, so a workflow distribution runs every flow's bare dry run in its test suite, from a scratch repository it then compares byte for byte
+
 A `--worktree` run cuts a fresh branch and git worktree first and runs inside it. The run's
 records land in its [run directory](run-directory.md). The per-run settings, such as recovery
 budgets and timeouts, are fixed when the run starts and do not change under it.
@@ -52,10 +59,10 @@ worktree while it is still going.
 - code: `workhorse/workhorse/cli/run.py::backend_for_profile` @ccb42ff9f0d8
 - code: `workhorse/workhorse/cli/params.py::load_params` @43dababb9ed6
 - code: `workhorse/workhorse/pyflow/run.py::RunInvocation` @a94ca2f0b4b6
-- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @6dfe1a1c5ba6
+- code: `workhorse/workhorse/pyflow/run.py::run_pyflow` @b486d0b36d19
 - code: `workhorse/workhorse/pyflow/worktree.py::Worktree` @2da3d23c967a
-- code: `workhorse/workhorse/pyflow/replies.py::dry_run` @0ccecab8791a
+- code: `workhorse/workhorse/pyflow/replies.py::dry_run` @e8e3bfb82302
 - code: `workhorse/workhorse/manifest.py::ContextManifest` @e896594bc36c
 - code: `workhorse/workhorse/config_run.py::RunConfig` @d96de3e447d1
 - code: `workhorse/workhorse/config_run.py::AgentResilience` @d96de3e447d1
-- code: `workhorse/docs/RUNS.md` @a576bc9d9fb9
+- code: `workhorse/docs/RUNS.md` @180f78b06430

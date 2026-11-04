@@ -1,13 +1,14 @@
 """Story-level edit entry point; epic-edit owns the resulting reconciliation."""
 from __future__ import annotations
 
-from workhorse.pyflow import Done, Workflow
+from workhorse.pyflow import Done, Workflow, dry_run
 from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.shared.nodes import load_config
 from workhorse_workflows.author.shared.schemas import Config
 from workhorse_workflows.author.story_edit.nodes import resolve_story_intent
 
 
+@dry_run(epic="dry-run", record="dry run")
 class StoryEdit(Workflow):
     """Translate one story add/remove command into an epic-edit handoff."""
 

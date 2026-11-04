@@ -24,6 +24,9 @@ its public entry point. They share runtime state and must agree about it:
   must point at the same installed file. `scan_catalog` reads the skills a harness loads
   at run time: the folders from the cwd up to the repo root, the added dirs on Claude
   Code, then home.
+- **worktree retirement** (`worktree.py`) — one test for whether a linked worktree can go
+  without losing anything. A workhorse run applies it at its end and `farrier worktrees`
+  applies it to what sessions left behind.
 
 This was duplicated code in both tools until the duplication caused a real bug: two
 hand-rolled TOML writers, one of which stringified nested tables and silently destroyed

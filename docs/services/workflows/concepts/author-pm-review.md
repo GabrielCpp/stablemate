@@ -11,11 +11,11 @@ Each review runs in a fresh agent session that no earlier turn touched. The revi
 
 When the agent CLI can spawn subagents, the review runs from the delegated prompt: the parent spawns one subagent per angle and merges their verdicts. Otherwise it runs from the inline prompt, which asks one session to judge each angle in turn. Both prompts share the same inputs, rules and angle files.
 
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview` @71c759122da8
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview.start` @71c759122da8
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview.review` @71c759122da8
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::complete` @71c759122da8
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::format_findings` @71c759122da8
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview` @102eae1b95f7
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview.start` @e25de21c3101
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview.review` @797fd373027a
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::complete` @6a82e31c6d9b
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::format_findings` @68cf5c609628
 - code: `workflows/src/workhorse_workflows/author/pm/nodes/receipt.py::record_pm_receipt` @5c73dfc30d46
 - code: `workflows/src/workhorse_workflows/author/pm/nodes/_blueprint.py::blueprint` @6147fef19ca9
 - tests: `workflows/tests/author/pm/test_pm.py::test_a_passing_review_writes_a_receipt_and_a_failing_one_does_not`
@@ -33,7 +33,7 @@ When the agent CLI can spawn subagents, the review runs from the delegated promp
 - required: true
 - semantics: names the angle set and the stage brief the review uses
 - verify: json_path(path="$.stage", equals="story")
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview` @71c759122da8
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview` @102eae1b95f7
 
 ### subject
 - type: string
@@ -41,7 +41,7 @@ When the agent CLI can spawn subagents, the review runs from the delegated promp
 - required: false
 - semantics: the repository path of the output under review: the milestone for `epic-split`, the epic directory for `story-split`, the `story.md` for `story`, the epic directory for `epic-edit-plan`
 - verify: json_path(path="$.subject", equals="docs/milestones/m1/epics/0001-accounts/stories/0001-sign-in/story.md")
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview` @71c759122da8
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview` @102eae1b95f7
 
 ### prior
 - type: string
@@ -49,7 +49,7 @@ When the agent CLI can spawn subagents, the review runs from the delegated promp
 - required: false
 - semantics: the findings of the previous review of the same subject, so the reviewer checks that each was repaired
 - verify: json_path(path="$.prior", equals="")
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview` @71c759122da8
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview` @102eae1b95f7
 
 ## Methods
 
@@ -58,7 +58,7 @@ When the agent CLI can spawn subagents, the review runs from the delegated promp
 - does: refuses a stage that has no angles before any agent turn runs
 - verify: json_path(path="$.failure_class", equals="pm-review-unknown-stage")
 - returns: returns a continuation targeting `review`
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview.start` @71c759122da8
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview.start` @e25de21c3101
 
 ### review
 - sig: `review() -> Done`
@@ -70,19 +70,19 @@ When the agent CLI can spawn subagents, the review runs from the delegated promp
 - verify: created(subject="pm-receipt.json")
 - returns: returns whether the review passed, its findings and the receipt path
 - verify: json_path(path="$.passed", equals=True)
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview.review` @71c759122da8
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::PMReview.review` @797fd373027a
 
 ### complete
 - sig: `complete(angles: Sequence[Angle]) -> Callable[[Verdict], None]`
 - does: builds the check that refuses a reply with a missing, repeated or foreign angle
 - verify: json_path(path="$.error", matches="no verdict for the angles")
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::complete` @71c759122da8
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::complete` @6a82e31c6d9b
 
 ### format_findings
 - sig: `format_findings(findings: Sequence[PMFinding]) -> str`
 - does: renders each finding as `[angle] target: issue. Repair: repair`, one per line
 - verify: json_path(path="$.notes", matches="^\\[[a-z-]+\\] ")
-- code: `workflows/src/workhorse_workflows/author/pm/flow.py::format_findings` @71c759122da8
+- code: `workflows/src/workhorse_workflows/author/pm/flow.py::format_findings` @68cf5c609628
 
 ## Nodes
 

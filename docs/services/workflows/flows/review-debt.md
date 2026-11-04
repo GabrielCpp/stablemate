@@ -24,7 +24,7 @@ title: Review the debt register
   - [run](../workhorse-review-debt.md#run)
 - start: the working directory holds no rendered graph
 - verify: absent(subject="workhorse-review-debt.dot")
-- end: the dry run reads an empty register and ends with a zero exit status
+- end: the dry run reads three stand-in records, drafts a decision and ends with a zero exit status
 - verify: exit_status(code=0)
 - detail: [review-debt package](../concepts/review-debt-package.md)
 - detail: [trend report](../formats/trend-report.md)

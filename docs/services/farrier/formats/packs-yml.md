@@ -13,7 +13,7 @@ fields below; a pack contributes selections to the repository configuration,
 but it does not itself render files.
 
 - file: `packs/<id>.yml`
-- code: `farrier/farrier/sources.py::load_pack` @c1986d368b10
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
 - detail: [agents.yml pack selection](agents-yml-config.md#packs)
 - detail: [selection aggregation](../concepts/selection-aggregation.md)
 
@@ -27,7 +27,7 @@ but it does not itself render files.
 - semantics: optional human-readable pack metadata
 - semantics: the installer reads the YAML mapping but does not use this value when collecting selections
 - verify: unchanged(subject="merged selection when pack description changes")
-- code: `farrier/farrier/sources.py::load_pack` @c1986d368b10
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
 - detail: [pack field selection](../concepts/pack-field-selection.md)
 
 ### includes
@@ -40,7 +40,7 @@ but it does not itself render files.
 - verify: count(subject="merged skill selection from one included pack", equals=1)
 - semantics: an include cycle terminates loading with `Pack include cycle detected at <id>`
 - verify: exit_status(code=1)
-- code: `farrier/farrier/sources.py::load_pack` @c1986d368b10
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
 - detail: [pack field selection](../concepts/pack-field-selection.md)
 
 ### skills
@@ -53,7 +53,7 @@ but it does not itself render files.
 - verify: count(subject="merged skill selection from one pack", equals=1)
 - semantics: duplicate skill entries collapse when packs and the repository config are unioned
 - verify: count(subject="merged skill selection when pack and repository select one skill", equals=1)
-- code: `farrier/farrier/sources.py::load_pack` @c1986d368b10
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
 - detail: [pack field selection](../concepts/pack-field-selection.md)
 
 ### prompts
@@ -66,8 +66,35 @@ but it does not itself render files.
 - verify: count(subject="merged prompt selection from one pack", equals=1)
 - semantics: duplicate prompt entries collapse when packs and the repository config are unioned
 - verify: count(subject="merged prompt selection when pack and repository select one prompt", equals=1)
-- code: `farrier/farrier/sources.py::load_pack` @c1986d368b10
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
 - detail: [pack field selection](../concepts/pack-field-selection.md)
+
+### mcp
+- type: `list[string]`
+- default: `[]`
+- required: false
+- semantics: literal [tool server record](tool-server-record.md) names a `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` table takes through this pack, and a repository install ignores them
+- verify: count(subject="merged server selection from one pack", equals=1)
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
+- detail: [merged home entry](../concepts/merged-home-entry.md)
+
+### hooks
+- type: `list[string]`
+- default: `[]`
+- required: false
+- semantics: literal [guard record](guard-record.md) names a `[user_library.claude]` or `[user_library.codex]` table takes through this pack, and a repository install ignores them
+- verify: count(subject="merged guard selection from one pack", equals=1)
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
+- detail: [home guard](../concepts/home-guard.md)
+
+### agents
+- type: `list[string]`
+- default: `[]`
+- required: false
+- semantics: literal [agent record](agent-record.md) names a `[user_library.claude]` or `[user_library.codex]` table takes through this pack, and a repository install ignores them
+- verify: count(subject="merged agent selection from one pack", equals=1)
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
+- detail: [helper agent](../concepts/helper-agent.md)
 
 ### roots
 - type: `list[string]`
@@ -79,7 +106,7 @@ but it does not itself render files.
 - verify: exit_status(code=1)
 - semantics: roots render only for the Copilot adapter
 - verify: absent(subject="non-Copilot root instruction output")
-- code: `farrier/farrier/sources.py::load_pack` @c1986d368b10
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
 - tests: `farrier/tests/test_selection_misses.py::test_unknown_root_fails_even_with_copilot_disabled`
 - detail: [pack field selection](../concepts/pack-field-selection.md)
 
@@ -110,12 +137,12 @@ an unknown pack too.
 - sig: `load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]`
 - does: resolves `packs/<pack_id>.yml` from the highest-precedence library layer
 - does: recursively loads each `includes:` entry
-- does: unions skills, prompts, roots, and scaffolds from included packs
+- does: unions skills, prompts, roots, MCP servers, guards, agents and scaffolds from included packs
 - raises: exits for an unknown direct or indirect pack id
 - raises: exits when a recursive include revisits a pack id
-- returns: four selection sets keyed by `skills`, `prompts`, `roots`, and `scaffolds`
+- returns: seven selection sets keyed by `skills`, `prompts`, `roots`, `mcp`, `hooks`, `agents` and `scaffolds`
 - verify: exit_status(code=1)
-- code: `farrier/farrier/sources.py::load_pack` @c1986d368b10
+- code: `farrier/farrier/sources.py::load_pack` @ff13d790a7ed
 
 ### method: parse_scaffold_ids
 - sig: `parse_scaffold_ids(entries: Any, origin: str) -> set[str]`
