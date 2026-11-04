@@ -9,7 +9,7 @@ The persistent, queryable half of groom's telemetry collection: a SQLite databas
 
 Connection discipline is load-bearing: one process-wide writer with an `RLock`, many readers with per-thread read-only connections, both autocommit and explicit `BEGIN IMMEDIATE`, and resilience that retries once on failure. The design separates read and write contention so a cold dashboard query does not stall OTLP ingest, which used to cause collector 500s under load. Query methods use keyset pagination (cursor-based) rather than OFFSET, which remains stable when new rows are inserted by concurrent writers — essential for live telemetry queries where OFFSET would drift across page boundaries.
 
-- code: `groom/groom/store.py` @4e2112d62f41
+- code: `groom/groom/store.py` @8996a9ec06d6
 - extends: [run-telemetry](run-telemetry.md)
 - rule: a turn on a backend that reports the session's running total (`claude`, whose `--resume` result carries the conversation's cumulative `total_cost_usd`) is charged its reported cost minus the previous report on the same run and session, ordered by start, end and span id. A report below the previous one starts a new count and is charged whole. A turn with no session id, no reported cost, or another backend is charged its reported cost. The stored attribute keeps the raw report, so the charge is computed when a cost is read and corrects rows already ingested.
 - tests: `groom/tests/test_store.py`
@@ -95,7 +95,7 @@ Schema is versioned via `_ADDED_*_COLUMNS`, and a ledger table by the columns it
 - does: order by visit key (generation, seq) to preserve run sequence across generations — this survives checkpoint rewinds where wall-clock order would not
 - verify: json_path(path="$[0].generation", equals=1)
 - returns: newest visit last (so `[1:]` is "every pass after the first" for loop analysis)
-- code: `groom/groom/store.py::query_turns` @c979483e42a5
+- code: `groom/groom/store.py::query_turns` @2bd8beac028b
 - tests: `groom/tests/test_store.py::test_turns_ordered_by_visit_across_generations`
 
 ### run_turn_spans
@@ -396,7 +396,7 @@ One turn of a loop, held as three independent readings rather than one resolved 
 - verify: persists(subject="run telemetry directory inventory")
 - does: feed the archive harvester inventory: a run that moved between directories is two rows and both may hold records
 - returns: rows ordered by uniqueness, not chronologically
-- code: `groom/groom/store.py::run_directories` @486ad0baa31a
+- code: `groom/groom/store.py::run_directories` @58871a257b01
 - tests: `groom/tests/test_store.py::test_run_directories_lists_inventory_for_archive`
 
 ### is_test_run_dir

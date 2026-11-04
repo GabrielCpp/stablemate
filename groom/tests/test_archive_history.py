@@ -6,6 +6,8 @@ import hashlib
 import json
 import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -296,8 +298,8 @@ def test_archive_reads_have_a_pool_of_their_own_so_the_dashboard_queries_never_w
     assert pools.ARCHIVE.workers >= 1
 
 
-def test_history_answers_while_every_archive_read_worker_is_busy() -> None:
-    now = time.time()
+@contextmanager
+def every_archive_worker_busy() -> Iterator[threading.Event]:
     release = threading.Event()
     started = threading.Barrier(pools.ARCHIVE.workers + 1)
 
@@ -305,19 +307,25 @@ def test_history_answers_while_every_archive_read_worker_is_busy() -> None:
         started.wait(timeout=10)
         release.wait(timeout=30)
 
+    holders = [pools.ARCHIVE.executor().submit(hold) for _ in range(pools.ARCHIVE.workers)]
+    try:
+        started.wait(timeout=10)
+        yield release
+    finally:
+        release.set()
+        for holder in holders:
+            holder.result(timeout=30)
+
+
+def test_history_answers_while_every_archive_read_worker_is_busy() -> None:
+    now = time.time()
     with _DB():
         _archived("run-old", now)
-        holders = [pools.ARCHIVE.executor().submit(hold) for _ in range(pools.ARCHIVE.workers)]
-        try:
-            started.wait(timeout=10)
+        with every_archive_worker_busy():
             began = time.perf_counter()
             with TestClient(app=groom_app.create_app()) as client:
                 body = client.get("/api/history?archives=1").json()
             took = time.perf_counter() - began
-        finally:
-            release.set()
-            for holder in holders:
-                holder.result(timeout=30)
     assert [item["run_id"] for item in body["runs"]] == ["run-old"]
     assert took < 5
 

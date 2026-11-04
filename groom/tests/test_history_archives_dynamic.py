@@ -187,7 +187,7 @@ def test_an_unreadable_summary_shows_the_row_with_no_figures_says_so_and_retry_n
     assert state == history.PENDING
 
 
-def test_the_first_open_of_an_archive_says_it_is_reading_then_shows_the_overview_with_no_files_diff_or_activity_tab() -> None:
+def test_the_first_open_of_an_archive_says_it_is_reading_then_shows_the_overview_with_an_activity_tab_and_no_files_or_diff_tab() -> None:
     live = _live()
     assert live is not None, _UNAVAILABLE
     held: list = []
@@ -209,10 +209,10 @@ def test_the_first_open_of_an_archive_says_it_is_reading_then_shows_the_overview
             page.close()
     assert reading == READING
     assert problems_during == 0
-    assert [tab.split()[0] for tab in tabs] == ["Overview"]
+    assert [tab.split()[0] for tab in tabs] == ["Overview", "Activity"]
     assert "archived" in head
     assert "problem" in attention
-    assert links == 0
+    assert links == 1
 
 
 def test_a_later_open_of_an_archive_shows_no_reading_state_and_the_overview_comes_in_under_two_seconds() -> None:
@@ -261,7 +261,7 @@ def test_an_archive_whose_files_are_gone_keeps_its_row_and_shows_the_stored_tile
     assert "The cost and times below come from the run's stored summary. Activity and transcripts cannot be read." in state
     assert "$3.00" in tiles and "wall" in tiles and "agent turns" in tiles and "attention" in tiles
     assert "arch-a" in facts and "branch" in facts
-    assert tabs == 1
+    assert tabs == 2
 
 
 def test_an_archive_that_cannot_be_opened_says_so_in_the_detail_and_a_retry_shows_the_overview() -> None:

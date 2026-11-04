@@ -29,8 +29,8 @@ title: get-run-records
 - errors:
   - `400` with detail `not a cursor of this run's records` for a `before` that does not parse.
 - verify: json_path(path="$.detail", equals="not a cursor of this run's records")
-- code: groom/groom/app.py::run_records@f4d1ddb739b6
-- code: groom/groom/records.py::page@f5876216d8e3
+- code: groom/groom/app.py::run_records@c9a62cda6413
+- code: groom/groom/records.py::page@09731cb4c8bf
 - detail: [run Activity tab](../concepts/run-activity-tab.md)
 - tests: groom/tests/test_records.py::test_the_records_endpoint_serves_a_page_and_refuses_a_bad_cursor
 - tests: groom/tests/test_records.py::test_a_page_lists_spans_logs_events_and_alerts_newest_first_with_time_kind_node_and_text

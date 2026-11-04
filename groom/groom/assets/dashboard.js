@@ -829,7 +829,7 @@ function ItemsTile({ figures, ended, compare }) {
   return html`<${Tile} label="Work items" id="detail-items-tile" value=${figures.items_done + " of " + figures.items_total}>${each}<//>`;
 }
 
-function AttentionTile({ standing, running, archived }) {
+function AttentionTile({ standing, running }) {
   useSecondTick();
   const open = running && running.wait_kind === "operator" ? running : null;
   const gates = standing.gates + (open ? 1 : 0);
@@ -841,20 +841,20 @@ function AttentionTile({ standing, running, archived }) {
     plural(standing.churn_alerts, "churn alert", "churn alerts"),
   ];
   return html`<${Tile} label="Attention" id="detail-attention-tile" value=${plural(gates, "gate", "gates")}>
-    ${fmtSpan(waited)} waiting · ${standing.problems > 0 && !archived
+    ${fmtSpan(waited)} waiting · ${standing.problems > 0
       ? html`<button type="button" class="linkish" id="detail-problems-link" title=${parts.join(", ")} aria-label=${plural(standing.problems, "problem", "problems") + ", open them in the Activity tab"} onClick=${openProblems}>${plural(standing.problems, "problem", "problems")}</button>`
       : html`<span title=${parts.join(", ")}>${plural(standing.problems, "problem", "problems")}</span>`}
   <//>`;
 }
 
-function OverviewTiles({ data, running, ended, archived }) {
+function OverviewTiles({ data, running, ended }) {
   const figures = data.figures;
   return html`<div class="kpis">
     <${CostTile} figures=${figures} asOf=${data.as_of_ts} ended=${ended} />
     <${Tile} label="Active time" id="detail-active-tile" value=${fmtSpan(figures.active_s)}>${fmtSpan(figures.wall_s)} wall, ${plural(figures.sessions, "session", "sessions")}<//>
     <${ItemsTile} figures=${figures} ended=${ended} compare=${data.compare} />
     <${Tile} label="Agent turns" id="detail-turns-tile" value=${String(figures.turns)}>${plural(data.standing.retries, "backend retry", "backend retries")}<//>
-    <${AttentionTile} standing=${data.standing} running=${running} archived=${archived} />
+    <${AttentionTile} standing=${data.standing} running=${running} />
   </div>`;
 }
 
@@ -1401,7 +1401,7 @@ function Overview({ detail }) {
   return html`<div class="ov">
     <${EndingBanner} ending=${data.ending} runId=${runId} />
     ${strip}
-    <${OverviewTiles} data=${data} running=${detail.running} ended=${ended} archived=${archived} />
+    <${OverviewTiles} data=${data} running=${detail.running} ended=${ended} />
     <${WallClock} clock=${data.clock} />
     <${Breakdown} key=${runId} data=${data} running=${detail.running} finished=${true} />
     <div class="pair">
@@ -1437,13 +1437,19 @@ function ordinal(n) {
   return n + (["th", "st", "nd", "rd"][n % 10] || "th");
 }
 
+function runApi(runId) {
+  const open = shownDetail(store.get());
+  const archived = !!open && open.run_id === runId && !!open.archived;
+  return (archived ? "/api/archive/" : "/api/run/") + encodeURIComponent(runId);
+}
+
 async function loadEntry(runId, key, refresh = false) {
   const seq = ++entrySeq;
   turnSeq++;
   const held = store.get().activity;
   if (!refresh) store.set({ activity: { ...held, selected: key, entry: { key, status: "loading", data: null } } });
   try {
-    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/entry/" + encodeURIComponent(key));
+    const response = await fetch(runApi(runId) + "/entry/" + encodeURIComponent(key));
     if (!response.ok) throw new Error("entry " + response.status);
     const data = await response.json();
     if (seq !== entrySeq) return;
@@ -1462,7 +1468,7 @@ async function loadTurn(runId, slug, refresh = false) {
   const held = store.get().activity;
   if (!refresh) store.set({ activity: { ...held, selected: slug, turn: { slug, status: "loading", data: null } } });
   try {
-    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/activity/" + encodeURIComponent(slug));
+    const response = await fetch(runApi(runId) + "/activity/" + encodeURIComponent(slug));
     if (!response.ok) throw new Error("turn " + response.status);
     const data = await response.json();
     if (seq !== turnSeq) return;
@@ -1479,7 +1485,11 @@ async function loadActivity(runId, rev = 0, refresh = false, absorbLogs = false)
   const kept = store.get().activity;
   if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev, aim: kept.aim, problems: kept.problems, steps: kept.steps, logs: kept.logs } });
   try {
-    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/activity" + (kept.logs ? "?logs=1" : ""));
+    const response = await fetch(runApi(runId) + "/activity" + (kept.logs ? "?logs=1" : ""));
+    if (response.status === 410) {
+      if (seq === activitySeq) store.set({ activity: { ...idleActivity(), runId, status: "gone", rev, problems: kept.problems, steps: kept.steps, logs: kept.logs } });
+      return;
+    }
     if (!response.ok) throw new Error("activity " + response.status);
     const data = await response.json();
     if (seq !== activitySeq) return;
@@ -1520,7 +1530,7 @@ function setRaw(patch) {
 
 async function fetchRecords(runId, before, metrics) {
   const query = "?metrics=" + (metrics ? 1 : 0) + (before ? "&before=" + encodeURIComponent(before) : "");
-  const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/records" + query);
+  const response = await fetch(runApi(runId) + "/records" + query);
   if (!response.ok) throw new Error("records " + response.status);
   return response.json();
 }
@@ -1847,7 +1857,7 @@ async function searchTranscripts(runId, query) {
   const seq = ++searchSeq;
   store.set({ activity: { ...store.get().activity, search: { status: "loading", query, matches: {} } } });
   try {
-    const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/search?q=" + encodeURIComponent(query));
+    const response = await fetch(runApi(runId) + "/search?q=" + encodeURIComponent(query));
     if (!response.ok) throw new Error("search " + response.status);
     const data = await response.json();
     if (seq !== searchSeq) return;
@@ -2406,7 +2416,7 @@ function TurnPane({ runId, rows, turn, items, selected, entry }) {
   }
   if (turn.status !== "ready") {
     return html`<div class="rd"><div class="detail-empty loading" role="status" aria-busy="true">
-      <span class="spin" aria-hidden="true"></span>Reading this turn…
+      <span class="spin" aria-hidden="true"></span>${shownDetail(store.get())?.archived ? "Reading this turn from the archive…" : "Reading this turn…"}
     </div></div>`;
   }
   return html`<div class="rd"><${TurnHead} row=${row} /><${TurnReading} key=${turn.slug} row=${row} matched=${turn.data.head?.matched ?? row.matched} entries=${turn.data.entries} cut=${turn.data.cut} prompt=${turn.data.prompt} thinking=${turn.data.thinking} /></div>`;
@@ -2527,6 +2537,12 @@ function ActivityTab({ detail }) {
   if (!runId) {
     return html`<div class="side-state"><h3>No activity for this run</h3>It has not reported a telemetry run id.</div>`;
   }
+  if (activity.runId === runId && activity.status === "gone") {
+    return html`<div class="side-state act-state" id="activity-gone" role="status">
+      <h3>Activity cannot be read</h3>
+      This archive's files are gone. The Overview still shows the run's stored summary.
+    </div>`;
+  }
   if (activity.runId === runId && activity.status === "failed") {
     return html`<div class="side-state act-state" role="alert">
       <h3>This run's activity could not be read</h3>
@@ -2623,7 +2639,6 @@ const BASE_TABS = [
   ["overview", "Overview"],
   ["activity", "Activity"],
 ];
-const ARCHIVE_TABS = [["overview", "Overview"]];
 
 function runDiffSize(runDiff) {
   if (runDiff.status !== "ready") return null;
@@ -2729,8 +2744,8 @@ function DiffViewSwitch({ id, value }) {
   />`;
 }
 
-function DetailTabs({ id, tab, hasDiff, stale, runDiff, repos, checkout, view, problems, archived }) {
-  const tabs = archived ? ARCHIVE_TABS : hasDiff ? BASE_TABS.concat([["files", "Files"], ["diff", "Diff"]]) : BASE_TABS;
+function DetailTabs({ id, tab, hasDiff, stale, runDiff, repos, checkout, view, problems }) {
+  const tabs = hasDiff ? BASE_TABS.concat([["files", "Files"], ["diff", "Diff"]]) : BASE_TABS;
   const size = hasDiff && !stale ? runDiffSize(runDiff) : null;
   const switcher = hasDiff && tab === "diff" ? html`<${DiffViewSwitch} id=${id} value=${view} />` : null;
   const picker = hasDiff && (tab === "diff" || tab === "files") && repos.length > 1
@@ -2832,8 +2847,7 @@ function DetailBody({ ended }) {
     : null;
   useRunDiff(ended ? null : selected, live, stale, runDiff.id, runDiff.shownKept);
   useRunFiles(ended ? null : selected, live, chosen === "files", runFiles.id);
-  const archived = !!detail && !!detail.archived;
-  const known = !archived && (chosen === "activity" || ((chosen === "diff" || chosen === "files") && hasDiff));
+  const known = (chosen === "activity" || ((chosen === "diff" || chosen === "files") && hasDiff));
   const tab = known ? chosen : "overview";
   const fromActivity = detail && snap.activity.runId === detail.run_id && snap.activity.status === "ready" ? snap.activity.problemCount : null;
   const fromOverview = detail && snap.overview.runId === detail.run_id && snap.overview.status === "ready" && snap.overview.data.standing ? snap.overview.data.standing.problems : null;
@@ -2849,7 +2863,7 @@ function DetailBody({ ended }) {
   return html`
     <${RunHead} head=${detail.head} runId=${detail.run_id} onClose=${ended ? null : closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
     ${detail.gates.length ? html`<${GateStrip} detail=${detail} collapsed=${gatesCollapsed} />` : null}
-    <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} problems=${problems} archived=${archived} />
+    <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} problems=${problems} />
     <div class="fill" id="detail-panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
       ${tab === "diff"
         ? html`<${DiffTab} runDiff=${runDiff} mark=${mark} />`

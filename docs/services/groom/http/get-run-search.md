@@ -25,7 +25,7 @@ title: get-run-search
 - errors:
   - `503` with detail `the transcripts could not be searched` when any turn of the run exists but its record is not on this machine yet. The dashboard keeps the row matches and offers a retry.
 - verify: json_path(path="$.detail", equals="the transcripts could not be searched")
-- code: groom/groom/app.py::run_search@60270d508d18
+- code: groom/groom/app.py::run_search@4d019c3d9c82
 - code: groom/groom/activity.py::search@addb2fe1fa01
 - detail: [groom activity module](../concepts/groom-activity-module.md)
 - detail: [Run Activity tab](../concepts/run-activity-tab.md)

@@ -417,7 +417,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the selected tab controls the single tabpanel `#detail-panel`, whose accessible name is the selected tab's.
 - states: the Diff tab adds the [diff view switch](#detail-diff-view-switch) at the right of the bar.
 - states: the Files and Diff tabs add the [checkout selector](#detail-checkout-select) for a run with several checkouts.
-- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
+- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
 - tests: groom/tests/test_a11y_dynamic.py::test_tabs_switch_with_the_arrow_keys_and_details_keeps_todays_content
 - tests: groom/tests/test_diff_tab_dynamic.py::test_diff_tab_controls_have_roles_names_and_keyboard_operation_and_pass_axe
 - leads-to: [switch detail tab](#switch-detail-tab), which swaps the panel's content.
@@ -489,7 +489,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a refresh keeps the scroll position and does not blank the figures it replaces.
 - states: the `ago` after `as of the last finished turn` counts up every second in the browser.
 - code: groom/groom/assets/dashboard.js::CostTile@eb7154f2e7c2
-- code: groom/groom/assets/dashboard.js::OverviewTiles@ad81d114229e
+- code: groom/groom/assets/dashboard.js::OverviewTiles@e5dc0819e9f6
 - detail: [run clock sections](../../concepts/run-clock-sections.md)
 - detail: [run flow tree](../../concepts/run-flow-tree.md)
 - tests: groom/tests/test_a11y_dynamic.py::test_new_telemetry_updates_the_open_overview_and_keeps_the_operators_place
@@ -544,7 +544,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: an ended run says `This run's figures could not be read` and `The list still works.` in that alert.
 - states: a retry of an ended run that succeeds shows the Overview.
 - states: shown inside an alert, only while the Overview read has failed. The Activity tab keeps working meanwhile, and the alert clears on the next successful read.
-- code: groom/groom/assets/dashboard.js::Overview@29501190120e
+- code: groom/groom/assets/dashboard.js::Overview@5879210bf7c1
 - tests: groom/tests/test_a11y_dynamic.py::test_overview_says_it_is_reading_then_offers_a_retry_when_the_read_fails
 - leads-to: [get run overview](../../http/get-run-overview.md), requested again.
 
@@ -937,7 +937,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="#detail-diff-count for a clean checkout")
 - states: Diff content goes through diff2html, which escapes file content, so a changed file cannot inject markup.
 - verify: omits(subject="rendered run diff", matches="<script")
-- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
+- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
 - code: groom/groom/assets/dashboard.js::useRunDiff@42e89852f3e2
 - code: groom/groom/assets/dashboard.js::loadRunDiff@6b1e2d0423d6
 - code: groom/groom/projection.py::run_row@f4041c085d72
@@ -961,7 +961,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the change size is figures and words in the accessible name, never colour alone.
 - states: untracked files are not counted.
 - states: it is absent when the tracked change is empty.
-- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
+- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
 - tests: groom/tests/test_diff_tab_dynamic.py::test_the_diff_tab_shows_the_size_of_the_change_before_it_is_opened_after_exactly_one_read
 - tests: groom/tests/test_diff_tab_dynamic.py::test_untracked_files_sit_in_their_own_group_and_are_not_counted_in_the_tab
 
@@ -1157,7 +1157,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: moving to another tab and back keeps the tree and the selected file and reads nothing new.
 - states: selecting another run resets the tree and the selected file.
 - states: choosing another checkout clears the selected file and reads that checkout's tree.
-- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
+- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
 - code: groom/groom/assets/dashboard.js::useRunFiles@9ef89b78abfa
 - code: groom/groom/assets/dashboard.js::loadRunFiles@0928854e5520
 - detail: [run Files tab](../../concepts/run-files-tab.md)
@@ -1340,8 +1340,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: pressing the [Raw control](#detail-activity-raw) replaces the bar and the list with the [Raw view](#detail-activity-raw-list).
 - states: the list of a live run follows the run as rows arrive.
 - states: the selected tab controls the single tabpanel `#detail-panel`, as the other tabs do.
-- code: groom/groom/assets/dashboard.js::DetailTabs@c2fc00f7b2f5
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_activity_tab_follows_overview_and_ends_the_tabs_of_a_run_without_a_checkout
 - tests: groom/tests/test_activity_groups_dynamic.py::test_selecting_a_heading_opens_or_closes_it_by_pointer_and_by_keyboard
@@ -1376,7 +1376,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: when the run ends, the headings take the cost of the last turn.
 - states: a list with no turn is replaced by `No activity yet. The first agent turn appears here when it starts.` and says whether the run is alive or has finished.
 - states: while the list reads, a status named `Reading this run's activity…` shows and clears when the list arrives.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_run_with_telemetry_and_no_turn_says_it_has_no_activity_yet_and_that_it_is_alive
@@ -1423,7 +1423,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: that pane says `This turn ended with no record, so its cost was not reported.` above the transcript.
 - states: when a step or a gate cannot be read, an alert `The details of this step could not be read` shows with `Retry now`, the row in the list stays with its one line, and a retry that succeeds replaces the alert with the details.
 - verify: visible(locator="#detail-activity-pane", text="Reading this turn")
-- code: groom/groom/assets/dashboard.js::TurnPane@e7b5300db574
+- code: groom/groom/assets/dashboard.js::TurnPane@517c9e61a048
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_being_read_shows_a_reading_state_that_clears_when_it_appears
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
@@ -1505,7 +1505,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: shown in place of the list when the run's turns could not be read, as `This run's activity could not be read`, with `The Overview tab still works.`
 - verify: visible(locator="#detail-activity-state", text="could not be read")
 - states: a failed list never reads as `No activity yet`.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it
 
@@ -1611,7 +1611,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the list reads again when the connection returns.
 - states: goes, with the pill, when the run ends while the tab is open.
 - code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_follow_dynamic.py::test_a_live_runs_timeline_shows_a_control_that_says_it_is_following
 - tests: groom/tests/test_activity_follow_dynamic.py::test_scrolling_up_pauses_the_follow_and_the_control_says_paused
@@ -1647,7 +1647,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: pressing it moves focus to the [follow control](#detail-activity-follow).
 - states: its container is a polite live region, present while the run is live.
 - states: the container is empty until a count shows.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - code: groom/groom/assets/dashboard.js::arrivals@7a0483d82c3a
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_follow_dynamic.py::test_while_paused_a_pill_counts_what_has_arrived
@@ -1674,7 +1674,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: while the transcripts are read, a status in the list says `Searching the transcripts of this run…`, and it clears when the search ends.
 - states: a search with no match says what was searched and offers `Clear the search`.
 - states: a failed transcript search says so beside the rows that match by their text, and offers `Retry now`.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - code: groom/groom/assets/dashboard.js::setQuery@8a88835d1d66
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_keys_dynamic.py::test_typing_in_the_search_field_narrows_the_timeline_at_once_and_highlights_the_match
@@ -1701,7 +1701,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: it keeps one width of 155 pixels whatever its options, and a long item name is clipped.
 - states: it applies together with the search and the Problems control.
 - states: clearing the filters restores the list.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_keys_dynamic.py::test_the_work_item_selector_keeps_one_width_whatever_its_options
 - tests: groom/tests/test_activity_keys_dynamic.py::test_the_work_item_selector_limits_the_timeline_to_one_item_and_its_first_option_shows_every_item
@@ -1737,7 +1737,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#detail-activity-state", text="Show the whole timeline")
 - states: the pane of a run with no problem says what the view lists.
 - states: a work item or a query with no problem in the view says so and offers to clear the filters or the search.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - code: groom/groom/assets/dashboard.js::setProblems@a49e35ca488b
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_problems_dynamic.py::test_the_bar_has_a_problems_control_with_the_count
@@ -1760,7 +1760,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: pressed, it opens every run of passed steps into one row per step.
 - states: pressed again, it closes them, and a fold the operator opened by hand closes with the rest.
 - states: it opens step folds only and leaves the work item and flow pass headings as they were.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - code: groom/groom/assets/dashboard.js::toggleSteps@5673f32caefa
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_raw_dynamic.py::test_the_steps_control_opens_every_fold_shows_a_count_and_closes_them_again
@@ -1783,7 +1783,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a log row never splits a run of passed steps.
 - states: selecting a log row reads its level, node, time and message in the pane.
 - states: a log line below INFO level is not a row, and the [Raw view](#detail-activity-raw-list) lists it.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - code: groom/groom/assets/dashboard.js::toggleLogs@ccb7b918e30f
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_raw_dynamic.py::test_the_info_logs_control_adds_log_rows_with_a_count_and_removes_them_again
@@ -1803,7 +1803,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: in Raw the bar holds only the follow control of a live run, the [Metric samples control](#detail-activity-metrics) and Raw.
 - states: in Raw, `j`, `k` and `e` do nothing.
 - states: pressed again, the timeline returns with the selection as it was.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - code: groom/groom/assets/dashboard.js::toggleRaw@48da790711fb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_raw_dynamic.py::test_in_raw_the_bar_holds_only_follow_metric_samples_and_raw_and_j_k_e_do_nothing
@@ -1821,7 +1821,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#detail-activity-metrics", text="Metric samples")
 - states: it exposes its pressed state as `aria-pressed` and starts released, so the Raw view hides metric samples.
 - states: pressed, the Raw view reads again with the samples in their place by time, and the note counts them.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_raw_dynamic.py::test_raw_hides_metric_samples_until_the_control_asks_and_shows_how_many
 
@@ -2033,7 +2033,10 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: not focusable itself.
 - parent: [activity-history-mode](#activity-history-mode)
 - states: hidden while no run is open in History, and in the accessibility tree only while one is.
-- states: for an archived run it holds the Overview tab only.
+- states: for an archived run it holds the Overview and Activity tabs.
+- states: the Activity tab of an archived run reads its timeline, turns, Raw and search from the archive.
+- states: the problem count on the Overview of an archived run links to its Activity tab.
+- states: an archived run whose files are gone shows `Activity cannot be read` on the Activity tab and says the Overview still shows the stored summary.
 - states: the first open of an archived run shows a reading state.
 - states: an archived run whose telemetry file is missing shows the stored tiles and facts with `files are gone`.
 - states: an archive that cannot be opened shows a failed state with a retry.
@@ -2971,8 +2974,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Opens the newest turn and requests `GET /api/run/{run_id}/activity/{slug}` for it.
   - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
   - Reads the list again when the run's figures revision moves, every 3 seconds while a turn runs, and when the connection returns.
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
-- code: groom/groom/assets/dashboard.js::loadActivity@e756f0975c85
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
+- code: groom/groom/assets/dashboard.js::loadActivity@1f0b1d9fd49c
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 
@@ -2991,7 +2994,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
   - Drops the reply of an earlier selection that arrives after a later one.
   - Does not read the list again and does not move the list's scroll.
-- code: groom/groom/assets/dashboard.js::loadTurn@e82692951f08
+- code: groom/groom/assets/dashboard.js::loadTurn@9b48e974304c
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_selecting_a_row_opens_the_turn_beside_the_list_and_marks_it_selected
 
@@ -3008,7 +3011,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Reads the list again, or the open turn again, whichever failed, and clears the alert when the read succeeds.
   - verify: absent(subject=".act-state after a successful retry")
   - Keeps the list on screen while a turn is read again.
-- code: groom/groom/assets/dashboard.js::loadActivity@e756f0975c85
+- code: groom/groom/assets/dashboard.js::loadActivity@1f0b1d9fd49c
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it

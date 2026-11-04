@@ -18,7 +18,7 @@ from typing import Annotated, Literal
 from litestar import Litestar, Request, Response, delete, get, post, websocket
 from litestar.connection import WebSocket
 from litestar.enums import MediaType
-from litestar.exceptions import ClientException, NotFoundException, ServiceUnavailableException, WebSocketDisconnect
+from litestar.exceptions import ClientException, HTTPException, NotFoundException, ServiceUnavailableException, WebSocketDisconnect
 from litestar.params import PathParameter, QueryParameter
 from litestar.static_files import create_static_files_router
 
@@ -723,35 +723,104 @@ def _gate_reader(run_id: str):
     return lambda path: read(volume, path)
 
 
+def _archive_read(run_id: str, read: Callable, *args):
+    """``read(*args)`` over one archived run's frozen file. The run is resolved by exact id before anything is read, and ``run_source`` is entered here because the pool does not copy the context variable that redirects the reads."""
+    row = history.stored(run_id)
+    if row is None or not row["archived"]:
+        raise NotFoundException(f"no archived run {run_id}")
+    folder = archive.exact_dir(run_id)
+    if folder is None:
+        raise HTTPException(status_code=410, detail="this archive's files are gone")
+    try:
+        with archive.run_source(run_id):
+            return read(*args)
+    except sqlite3.DatabaseError:
+        (folder / archive.INDEX_FILE).unlink(missing_ok=True)
+        raise
+
+
+def _in_archive(run_id: str) -> Callable:
+    async def read(fn: Callable, *args):
+        return await pools.ARCHIVE.run(_archive_read, run_id, fn, *args)
+
+    return read
+
+
+async def _timeline(read: Callable, run_id: str, live: activity.LiveRows, standing: dict | None, logs: int) -> dict:
+    return await read(activity.timeline, run_id, live, standing, bool(logs))
+
+
+async def _records(read: Callable, run_id: str, before: str, limit: int, metrics: int) -> dict:
+    try:
+        return await read(records.page, run_id, before, limit, bool(metrics))
+    except records.BadCursor as exc:
+        raise ClientException(detail="not a cursor of this run's records") from exc
+
+
+async def _search(read: Callable, run_id: str, q: str, live: activity.LiveRows, pending: bool) -> dict:
+    try:
+        return await read(activity.search, run_id, q, live, pending)
+    except activity.SearchFailed as exc:
+        raise ServiceUnavailableException(detail="the transcripts could not be searched") from exc
+
+
+async def _entry(read: Callable, run_id: str, key: str, *rest) -> dict:
+    try:
+        return await read(activity.entry, run_id, key, *rest)
+    except activity.EntryNotFound as exc:
+        raise NotFoundException(detail="no such step or gate") from exc
+
+
+async def _turn(read: Callable, run_id: str, slug: str, live: activity.LiveRows, pending: bool) -> dict:
+    try:
+        return await read(activity.turn, run_id, slug, live, pending)
+    except activity.TurnNotFound as exc:
+        raise NotFoundException(detail="no such turn") from exc
+    except activity.TurnUnreadable as exc:
+        raise ServiceUnavailableException(detail="the turn could not be read") from exc
+
+
 @get("/api/run/{run_id:str}/activity", include_in_schema=False)
 async def run_activity(run_id: Annotated[str, PathParameter()], logs: Annotated[int, QueryParameter()] = 0) -> dict:
     """One run's agent turns, oldest first, with the one still running read from its live transcript. `logs=1` adds the run's info logs at their place in the timeline."""
-    return await pools.QUERY.run(activity.timeline, run_id, await _live_turns(run_id), _standing(run_id), bool(logs))
+    return await _timeline(pools.QUERY.run, run_id, await _live_turns(run_id), _standing(run_id), logs)
+
+
+@get("/api/archive/{run_id:str}/activity", include_in_schema=False)
+async def archive_activity(run_id: Annotated[str, PathParameter()], logs: Annotated[int, QueryParameter()] = 0) -> dict:
+    """One archived run's turns, read from its frozen file on the archive pool."""
+    return await _timeline(_in_archive(run_id), run_id, {}, None, logs)
+
+
+_RunId = Annotated[str, PathParameter()]
+_Cursor = Annotated[str, QueryParameter()]
+_PageSize = Annotated[int, QueryParameter()]
+_Switch = Annotated[int, QueryParameter()]
 
 
 @get("/api/run/{run_id:str}/records", include_in_schema=False)
-async def run_records(
-    run_id: Annotated[str, PathParameter()],
-    before: Annotated[str, QueryParameter()] = "",
-    limit: Annotated[int, QueryParameter()] = records.PAGE,
-    metrics: Annotated[int, QueryParameter()] = 0,
-) -> dict:
+async def run_records(run_id: _RunId, before: _Cursor = "", limit: _PageSize = records.PAGE, metrics: _Switch = 0) -> dict:
     """One page of the run's stored records, newest first, from the cursor a previous page returned."""
-    try:
-        return await pools.QUERY.run(records.page, run_id, before, limit, bool(metrics))
-    except records.BadCursor as exc:
-        raise ClientException(detail="not a cursor of this run's records") from exc
+    return await _records(pools.QUERY.run, run_id, before, limit, metrics)
+
+
+@get("/api/archive/{run_id:str}/records", include_in_schema=False)
+async def archive_records(run_id: _RunId, before: _Cursor = "", limit: _PageSize = records.PAGE, metrics: _Switch = 0) -> dict:
+    """One page of an archived run's stored records, newest first, read from its frozen file."""
+    return await _records(_in_archive(run_id), run_id, before, limit, metrics)
 
 
 @get("/api/run/{run_id:str}/search", include_in_schema=False)
 async def run_search(run_id: Annotated[str, PathParameter()], q: Annotated[str, QueryParameter()] = "") -> dict:
     """The turns of this one run whose transcript says the query, each with its first matching line."""
     wf = state.WORKFLOWS.get(run_id)
-    pending = wf is not None and not wf.native
-    try:
-        return await pools.QUERY.run(activity.search, run_id, q, await _live_turns(run_id), pending)
-    except activity.SearchFailed as exc:
-        raise ServiceUnavailableException(detail="the transcripts could not be searched") from exc
+    return await _search(pools.QUERY.run, run_id, q, await _live_turns(run_id), wf is not None and not wf.native)
+
+
+@get("/api/archive/{run_id:str}/search", include_in_schema=False)
+async def archive_search(run_id: Annotated[str, PathParameter()], q: Annotated[str, QueryParameter()] = "") -> dict:
+    """The turns of one archived run whose transcript says the query."""
+    return await _search(_in_archive(run_id), run_id, q, {}, False)
 
 
 @get("/api/run/{run_id:str}/entry/{key:str}", include_in_schema=False)
@@ -759,10 +828,15 @@ async def run_entry(
     run_id: Annotated[str, PathParameter()], key: Annotated[str, PathParameter()]
 ) -> dict:
     """One step, operator gate, backend retry or churn alert of the run, read in full."""
-    try:
-        return await pools.QUERY.run(activity.entry, run_id, key, await _live_turns(run_id), _standing(run_id), _gate_reader(run_id))
-    except activity.EntryNotFound as exc:
-        raise NotFoundException(detail="no such step or gate") from exc
+    return await _entry(pools.QUERY.run, run_id, key, await _live_turns(run_id), _standing(run_id), _gate_reader(run_id))
+
+
+@get("/api/archive/{run_id:str}/entry/{key:str}", include_in_schema=False)
+async def archive_entry(
+    run_id: Annotated[str, PathParameter()], key: Annotated[str, PathParameter()]
+) -> dict:
+    """One step, gate, backend retry or churn alert of an archived run, read in full. Its workspace is gone, so a gate's answer reads as unavailable."""
+    return await _entry(_in_archive(run_id), run_id, key, {}, None, lambda _path: None)
 
 
 @get("/api/run/{run_id:str}/activity/{slug:str}", include_in_schema=False)
@@ -770,14 +844,16 @@ async def run_turn(
     run_id: Annotated[str, PathParameter()], slug: Annotated[str, PathParameter()]
 ) -> dict:
     """One agent turn: its head figures, its messages and its tool calls."""
-    try:
-        wf = state.WORKFLOWS.get(run_id)
-        pending = wf is not None and not wf.native
-        return await pools.QUERY.run(activity.turn, run_id, slug, await _live_turns(run_id), pending)
-    except activity.TurnNotFound as exc:
-        raise NotFoundException(detail="no such turn") from exc
-    except activity.TurnUnreadable as exc:
-        raise ServiceUnavailableException(detail="the turn could not be read") from exc
+    wf = state.WORKFLOWS.get(run_id)
+    return await _turn(pools.QUERY.run, run_id, slug, await _live_turns(run_id), wf is not None and not wf.native)
+
+
+@get("/api/archive/{run_id:str}/activity/{slug:str}", include_in_schema=False)
+async def archive_turn(
+    run_id: Annotated[str, PathParameter()], slug: Annotated[str, PathParameter()]
+) -> dict:
+    """One agent turn of an archived run, read from the records the archive kept."""
+    return await _turn(_in_archive(run_id), run_id, slug, {}, False)
 
 
 @post("/api/run/{run_id:str}/outbox", include_in_schema=False)
@@ -1823,10 +1899,15 @@ def create_app() -> Litestar:
             archive_overview,
             history_retry,
             run_activity,
+            archive_activity,
             run_records,
+            archive_records,
             run_turn,
+            archive_turn,
             run_search,
+            archive_search,
             run_entry,
+            archive_entry,
             outbox_post,
             inbox_get,
             inbox_post,

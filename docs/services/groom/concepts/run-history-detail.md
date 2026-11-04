@@ -28,7 +28,7 @@ The detail is built in the browser from the run's [history row](run-history-summ
 - rule: selecting or closing a run keeps the [history filters](run-history-filters.md), and the narrowed column holds the runs that match them
 - rule: closing the run returns the full table and puts focus on the run's row, and `j` and `k` open the next and previous run in History and move the timeline while Activity shows
 - rule: the detail of an ended run is built in the browser from the history row and the run's own Overview and Activity reads, and groom adds no endpoint for it, except that an [archived run](archived-run-history.md) reads its Overview from [get-archive-overview](../http/get-archive-overview.md)
-- rule: the head of an archived run carries an archived chip and the word archived where a live run says live, and its detail has the Overview tab only
+- rule: the head of an archived run carries an archived chip and the word archived where a live run says live, and its detail has the Overview and Activity tabs, the Activity tab read from the archive
 - rule: a workflow chip in a narrowed row keeps one line at its natural width, and the repo and run text take the ellipsis
 - rule: a narrowed row cuts a long run id or repo label off with an ellipsis and never pushes a column or a control out of view, and the head wraps the whole run id
 - tests: groom/tests/test_history_open_dynamic.py::test_selecting_a_row_narrows_the_list_opens_the_detail_beside_it_and_marks_the_row_selected

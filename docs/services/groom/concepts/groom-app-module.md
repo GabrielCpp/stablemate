@@ -204,7 +204,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - sig: `async run_activity(run_id: str, logs: int = 0) -> dict`
 - abstract: false
 - raises: propagates store read failures as a framework server error.
-- code: groom/groom/app.py::run_activity@a7f0fcdaf20d
+- code: groom/groom/app.py::run_activity@2fe4f5787aa2
 - endpoint: [get run activity](../http/get-run-activity.md)
 - invocation: [serve run activity](../http/groom.md#serve-run-activity)
 - does: Copies the run's rows out of the live history under its lock and lists the run's agent turns on the query pool through the [groom activity module](groom-activity-module.md).
@@ -220,7 +220,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - sig: `async run_turn(run_id: str, slug: str) -> dict`
 - abstract: false
 - raises: propagates the two errors of the [groom activity module](groom-activity-module.md) as framework not-found and service-unavailable errors.
-- code: groom/groom/app.py::run_turn@353c67ab773c
+- code: groom/groom/app.py::run_turn@1ff96e7d3dd4
 - endpoint: [get run turn](../http/get-run-turn.md)
 - invocation: [serve run turn](../http/groom.md#serve-run-turn)
 - does: Reads one turn's head and entries on the query pool through the [groom activity module](groom-activity-module.md).
@@ -237,7 +237,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - verify: json_path(path="$.kind", matches="^(step|gate|retry|churn)$")
 - raises: propagates the not-found error of the [groom activity module](groom-activity-module.md) as a framework not-found error.
 - returns: a JSON object with `run_id`, `kind`, `key`, `head` and `next`, and the reading's own fields.
-- code: groom/groom/app.py::run_entry@54b739415692
+- code: groom/groom/app.py::run_entry@6b8ee6a19d50
 - endpoint: [get run entry](../http/get-run-entry.md)
 - invocation: [serve run entry](../http/groom.md#serve-run-entry)
 - tests: groom/tests/test_activity_entries.py::test_an_unknown_key_is_not_found
@@ -526,7 +526,7 @@ Browser dashboard websockets receive shell fragments as out-of-band HTML. Their 
 - verify: json_path(path="$.matches", matches="^\\[")
 - raises: propagates the search failure of the [groom activity module](groom-activity-module.md) as a framework service-unavailable error.
 - returns: a JSON object with `run_id`, `query` and `matches`.
-- code: groom/groom/app.py::run_search@60270d508d18
+- code: groom/groom/app.py::run_search@4d019c3d9c82
 - tests: groom/tests/test_activity.py::test_an_unreadable_transcript_fails_the_search_and_the_endpoint_answers_503
 - endpoint: [get run search](../http/get-run-search.md)
 - invocation: [serve run search](../http/groom.md#serve-run-search)
@@ -540,7 +540,7 @@ Browser dashboard websockets receive shell fragments as out-of-band HTML. Their 
 - does: Reads one run's stored rows only. It does not mutate workflow state.
 - raises: `ClientException` with status 400 when `before` is not a cursor of this run's records. Store read failures propagate as a framework server error.
 - returns: a JSON object with `run_id`, `records`, `total`, `metric_samples`, `metrics` and `next`.
-- code: groom/groom/app.py::run_records@f4d1ddb739b6
+- code: groom/groom/app.py::run_records@d432207a786b
 - detail: [run Activity tab](run-activity-tab.md)
 - tests: groom/tests/test_records.py::test_the_records_endpoint_serves_a_page_and_refuses_a_bad_cursor
 - endpoint: [get run records](../http/get-run-records.md)

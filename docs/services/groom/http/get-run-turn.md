@@ -52,7 +52,7 @@ title: get-run-turn
 - errors:
   - `503` with detail `the turn could not be read` when the turn exists but its record is not on this machine yet, which is a turn of a container run whose records the sidecar has not pulled, and the live history does not hold it. A native run answers `200` instead.
 - verify: json_path(path="$.detail", equals="the turn could not be read")
-- code: groom/groom/app.py::run_turn@353c67ab773c
+- code: groom/groom/app.py::run_turn@1ff96e7d3dd4
 - code: groom/groom/activity.py::turn@98eb76416148
 - detail: [groom activity module](../concepts/groom-activity-module.md)
 - detail: [groom transcript parse module](../concepts/groom-transcript-parse-module.md)

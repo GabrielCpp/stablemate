@@ -5,7 +5,7 @@ title: groom server
 ---
 # groom server
 
-- code: groom/groom/app.py::create_app@6b8940263771
+- code: groom/groom/app.py::create_app@d836c15078bb
 - openapi: none; every first-party handler is registered with `include_in_schema=False`.
 
 The `groom` server is the Litestar surface used by browser dashboard tabs, workflow-container sidecars, and the `groom-sidecar` development loop. It serves one HTML document — the shell for the [groom dashboard service](../groom.md) — and then speaks JSON for everything else: the [dashboard state payload](../formats/dashboard-state-payload.md) behind the [runs fleet view](../runs-fleet-view.md), the [run detail payload](#get-run-detail), and the repository/file/diff panel data. It also receives the residual best-effort pushes described by [sidecar protocol](../sidecar-protocol.md) and owns the persistent sidecar socket described by [sidecar live sessions](../sidecar-live-sessions.md). The route table is fixed by the [Groom app module](../concepts/groom-app-module.md) `create_app` member, which registers 32 route handlers: one dashboard HTML entry point, nine JSON read endpoints, four mutation/push endpoints, four run outbox/inbox endpoints, six attendant endpoints (four reads, two writes), three OTLP ingest routes and one telemetry query route, one reload endpoint, two websocket channels, and the vendored static asset mount. Application startup is also fixed by `create_app`, which registers five startup hooks — [schedule startup discovery scan](#schedule-startup-discovery-scan), the alert-rule ticker, the [live clock](#schedule-live-clock), the run-telemetry archive routine, and the attend-recovery routine — and cancels the three loop-driven ones (alert-rule, live clock, archive), plus shuts down the process worker pools, on shutdown.
@@ -25,6 +25,11 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - [get-run-history](get-run-history.md)
 - [get-archive-overview](get-archive-overview.md)
 - [retry-history-summary](retry-history-summary.md)
+- [get-archive-activity](get-archive-activity.md)
+- [get-archive-turn](get-archive-turn.md)
+- [get-archive-entry](get-archive-entry.md)
+- [get-archive-records](get-archive-records.md)
+- [get-archive-search](get-archive-search.md)
 
 ### get-root-dashboard-html
 
@@ -652,7 +657,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
   - body: bytes of the matched packaged asset; no application JSON envelope is added by groom.
 - status: `200` for an existing requested asset; missing files, unsupported methods, and conditional request outcomes use the framework static-file response for the mounted router.
 - errors: no endpoint-specific error body is produced by groom; absent assets and invalid static-file requests are handled by the mounted framework router.
-- code: groom/groom/app.py::create_app@6b8940263771
+- code: groom/groom/app.py::create_app@d836c15078bb
 - route: `GET /assets/*`
 - parent: [groom server](#groom-server)
 - invocation: [serve-static-asset](#serve-static-asset)
@@ -2253,7 +2258,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - verify: count(subject="request-body reads for a static asset request", equals=0)
 - status: `200` when the path maps to an existing packaged asset; otherwise the framework static-file status.
 - errors: no endpoint-specific error body is produced by groom; missing files, unsupported methods, invalid paths, and conditional request outcomes are handled by the mounted static-file router.
-- code: groom/groom/app.py::create_app@6b8940263771
+- code: groom/groom/app.py::create_app@d836c15078bb
 - request:
   - method: `GET`
   - path: `/assets/{path...}` where `{path...}` is required and relative to `groom/groom/assets`.
@@ -2694,7 +2699,7 @@ Nothing on this surface renders HTML on the browser's behalf. The single shape a
 - emits: one `application/json` HTTP response.
 - verify: emitted(event="run-search HTTP response", count=1)
 - emits: no websocket frame is emitted.
-- code: groom/groom/app.py::run_search@60270d508d18
+- code: groom/groom/app.py::run_search@4d019c3d9c82
 - tests: groom/tests/test_activity.py::test_an_unreadable_transcript_fails_the_search_and_the_endpoint_answers_503
 
 ### serve-run-history

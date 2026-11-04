@@ -56,7 +56,7 @@ title: get-run-activity
   - body: `{"run_id": str, "rows": [{"slug": str, "node": str, "visit": str, "work_id": str, "flow": str, "pass": int, "model": str, "started_ts": float, "ended_ts": float | null, "duration_s": float | null, "cost_usd": float | null, "output_tokens": int, "cache_read_tokens": int, "status": str, "result": str, "session_id": str, "matched": bool}, ...], "items": [{"work_id": str, "outcome": str, "latest": bool, "running": bool, "time_s": float, "cost_usd": float | null, "passes": [{"flow": str, "pass": int, "state": str, "time_s": float, "cost_usd": float | null, "first_ts": float, "entries": [{"kind": str, "key": str, "ts": float, ...}, ...]}, ...]}, ...], "problems": int, "log_count": int, "as_of": float}`. An unknown run id returns an empty `rows`.
 - status: `200`
 - verify: http_status(code=200, path="/api/run/{run_id}/activity")
-- code: groom/groom/app.py::run_activity@a7f0fcdaf20d
+- code: groom/groom/app.py::run_activity@2fe4f5787aa2
 - code: groom/groom/activity.py::timeline@29dffacc393b
 - detail: [groom activity module](../concepts/groom-activity-module.md)
 - tests: groom/tests/test_activity_problems.py::test_every_count_of_problems_reads_one_definition

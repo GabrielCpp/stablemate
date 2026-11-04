@@ -13,11 +13,11 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 
 - code: groom/groom/activity.py::timeline@29dffacc393b
 - code: groom/groom/activity.py::turn@98eb76416148
-- code: groom/groom/app.py::run_activity@a7f0fcdaf20d
-- code: groom/groom/app.py::run_turn@353c67ab773c
-- code: groom/groom/app.py::run_entry@54b739415692
+- code: groom/groom/app.py::run_activity@2fe4f5787aa2
+- code: groom/groom/app.py::run_turn@1ff96e7d3dd4
+- code: groom/groom/app.py::run_entry@6b8ee6a19d50
 - code: groom/groom/activity.py::entry@0f2f5d6b3ac6
-- code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
+- code: groom/groom/assets/dashboard.js::ActivityTab@9f06916df7fb
 - code: groom/groom/assets/dashboard.js::FollowControl@eadd2c5a8017
 - code: groom/groom/assets/dashboard.js::arrivals@7a0483d82c3a
 - code: groom/groom/assets/dashboard.js::TranscriptText@53282490d240
@@ -29,10 +29,10 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/flows.py::span_passes@55f223c1146d
 - code: groom/groom/flows.py::state_steps@5e91dc845e5e
 - code: groom/groom/activity.py::search@addb2fe1fa01
-- code: groom/groom/app.py::run_search@60270d508d18
+- code: groom/groom/app.py::run_search@4d019c3d9c82
 - code: groom/groom/assets/dashboard.js::timelineView@95096bdd9294
 - code: groom/groom/assets/dashboard.js::setQuery@8a88835d1d66
-- code: groom/groom/assets/dashboard.js::searchTranscripts@d1a20e37c796
+- code: groom/groom/assets/dashboard.js::searchTranscripts@e7d6b8276056
 - code: groom/groom/assets/dashboard.js::goToRow@353fee539d28
 - code: groom/groom/assets/dashboard.js::moveTimeline@f0d369c1a4a4
 - code: groom/groom/assets/dashboard.js::nextProblem@b7db5ac0a3e5
@@ -41,7 +41,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - code: groom/groom/assets/dashboard.js::openProblems@edcbcb9b11f0
 - code: groom/groom/assets/dashboard.js::ProblemReading@57c7ab082da3
 - code: groom/groom/records.py::page@09731cb4c8bf
-- code: groom/groom/app.py::run_records@f4d1ddb739b6
+- code: groom/groom/app.py::run_records@d432207a786b
 - code: groom/groom/assets/dashboard.js::RawView@486c0e271fee
 - code: groom/groom/assets/dashboard.js::toggleRaw@48da790711fb
 - code: groom/groom/assets/dashboard.js::loadOlder@572ae75051be
@@ -109,7 +109,7 @@ Transcript text is untrusted. A model or a tool can write any characters, so no 
 - rule: the prompt, the thinking and a tool's output are untrusted text. The prompt and the thinking render as Markdown under the message rule, and a tool's output renders as literal text in a `pre` box that is a named, focusable region, so a script or an image in any of them runs nothing and loads nothing.
 - rule: a part's open state belongs to the turn on screen. Selecting another turn, or reading the same one again after another, shows every part collapsed. A read that only refreshes the open turn keeps the parts the operator opened.
 - rule: a finished turn of a native run whose record is not on this machine, because no record was archived for it or the record holds no transcript, reads as a turn with no messages, for a plain slug and for a suffixed key alike. The server answers `200`, the pane says no record of the turn could be found, and it offers no retry. Only a turn of a container run whose records are not pulled yet answers `503` with a retry, and a still-running turn with no rows yet is unchanged.
-- rule: the tab shows no archived run's turns.
+- rule: an archived run shows the same tab, its rows, turns, Raw and search read from the archive by the [archive routes](archived-run-history.md), and the reading state says it is reading from the archive.
 - rule: on the Activity tab, `j` selects the next row and `k` the previous one in the order the rows are on screen, the selected row stays in view, and the pane opens it. On every other tab `j` and `k` keep moving the run list. A key never acts while the operator types in the search field, the gate answer box or any field, and never while the work item selector is focused.
 - rule: `e` selects the next problem after the selection and wraps to the first, and it steps through the same rows the Problems view lists. A problem is a failed step, a failed gate check, a backend retry or a churn alert, and a failed turn is a failed step. In the whole timeline a failed turn is a stop once, at its turn row. A heading that folds the problem opens so the row can be reached. With no problem in the run, `e` says `This run has no problems.` and the selection stays.
 - rule: after `j`, `k` or `e` moves the selection, focus sits on the selected row when focus was on the page or on another row of the list, so Enter and Space act on the row the operator just moved to and no focus ring shows on another row. A key never takes focus from another control.

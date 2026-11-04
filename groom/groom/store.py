@@ -1881,7 +1881,7 @@ def query_turns(
     workflow: str = "",
     limit: int = 200,
 ) -> list[dict[str, Any]]:
-    """Archived turns, newest visit last — a node's laps read top to bottom."""
+    """Archived turns, newest visit last — a node's laps read top to bottom. The index of turns lives in ``groom.db`` and never in a frozen run's file, so a read redirected to an archive still asks the live database."""
     clauses: list[str] = []
     params: list[Any] = []
     for column, value in (
@@ -1895,7 +1895,7 @@ def query_turns(
             params.append(value)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     params.append(max(1, limit))
-    rows = read_connection().execute(
+    rows = STORE.read_connection().execute(
         "SELECT run_id, workflow, flow, node, session_id, generation, seq, ts, backend,"
         f" source, path, bytes, sha256, head FROM turns {where}"  # noqa: S608 - bound values
         " ORDER BY run_id, generation, seq LIMIT ?",
