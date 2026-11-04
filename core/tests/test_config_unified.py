@@ -343,7 +343,7 @@ def test_a_fixed_file_replaces_the_last_good_value(cfg_file):
 
 
 def test_a_rewrite_after_the_guard_with_the_mtime_reset_is_read_again(cfg_file, monkeypatch):
-    monkeypatch.setattr(cfgmod, "_RACY_NS", 50_000_000)
+    monkeypatch.setattr(cfgmod, "_RACY_NS", 60_000_000_000)
     cfg_file.write_text(_POWER)
     stat = cfg_file.stat()
     assert cfgmod.load_home_config().profiles["claude"].powers["low"].model == "haiku"
