@@ -6,6 +6,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from ostler import accessible_names, markdown, registry
 from ostler.checks import CheckCall, parse_intercept
+from ostler.model import property_text
 from ostler.qa.journey_steps import JourneyStep, journey_steps
 from ostler.untyped import JsonValue
 
@@ -190,13 +191,6 @@ class NodeEdge:
             via=str(fields.get("via") or ""),
             href=str(fields.get("href") or ""),
         )
-
-
-def property_text(value: object) -> str:
-    """One serialized entry property as its text — the JSON-side twin of `Entry.property_text`."""
-    if isinstance(value, list):
-        return " ".join(str(v).strip() for v in value if str(v).strip())
-    return str(value).strip() if value is not None else ""
 
 
 @dataclass(frozen=True)

@@ -68,6 +68,27 @@ def _resolve_path(graph: Graph, kind: TemplateKind, name: str,
     return graph.doc_roots[kind.doc_root] / rel, None
 
 
+def _locate(graph: Graph, kind_name: str, name: str) -> tuple[TemplateKind, Path] | crud.Result:
+    """The kind and the file of the instance *name*, or the refusal saying which is missing."""
+    kind = _kind_by_name(graph, kind_name)
+    if kind is None:
+        return crud.Result(False, f"no template-declared kind '{kind_name}'")
+    path = _find_path(graph, kind, name)
+    if path is None:
+        return crud.Result(False, f"no {kind_name} '{name}'")
+    return kind, path
+
+
+def _invalid_field(kind: TemplateKind, fields: dict) -> crud.Result | None:
+    """The refusal for a field whose value is outside its declared enum, if any."""
+    for fname, spec in kind.fields.items():
+        enum = (spec or {}).get("enum")
+        if enum and fname in fields and fields[fname] not in enum:
+            return crud.Result(
+                False, f"invalid {fname} '{fields[fname]}' (one of {', '.join(str(e) for e in enum)})")
+    return None
+
+
 def create_instance(graph: Graph, kind_name: str, name: str, fields: dict) -> crud.Result:
     kind = _kind_by_name(graph, kind_name)
     if kind is None:
@@ -86,11 +107,8 @@ def create_instance(graph: Graph, kind_name: str, name: str, fields: dict) -> cr
     missing = [r for r in kind.required if r != "type" and not fields.get(r)]
     if missing:
         return crud.Result(False, f"missing required field(s): {', '.join(missing)}")
-    for fname, spec in kind.fields.items():
-        enum = (spec or {}).get("enum")
-        if enum and fname in fields and fields[fname] not in enum:
-            return crud.Result(
-                False, f"invalid {fname} '{fields[fname]}' (one of {', '.join(str(e) for e in enum)})")
+    if (invalid := _invalid_field(kind, fields)) is not None:
+        return invalid
 
     fm = {"type": kind.name, **fields}
     if kind.id:
@@ -144,17 +162,12 @@ def find_instance(graph: Graph, kind_name: str, name: str | None = None) -> list
 
 
 def edit_instance(graph: Graph, kind_name: str, name: str, fields: dict) -> crud.Result:
-    kind = _kind_by_name(graph, kind_name)
-    if kind is None:
-        return crud.Result(False, f"no template-declared kind '{kind_name}'")
-    path = _find_path(graph, kind, name)
-    if path is None:
-        return crud.Result(False, f"no {kind_name} '{name}'")
-    for fname, spec in kind.fields.items():
-        enum = (spec or {}).get("enum")
-        if enum and fname in fields and fields[fname] not in enum:
-            return crud.Result(
-                False, f"invalid {fname} '{fields[fname]}' (one of {', '.join(str(e) for e in enum)})")
+    located = _locate(graph, kind_name, name)
+    if isinstance(located, crud.Result):
+        return located
+    kind, path = located
+    if (invalid := _invalid_field(kind, fields)) is not None:
+        return invalid
 
     doc = markdown.split(path.read_text(encoding="utf-8"))
     fm = doc.frontmatter or {"type": kind.name}
@@ -166,12 +179,10 @@ def edit_instance(graph: Graph, kind_name: str, name: str, fields: dict) -> crud
 
 
 def delete_instance(graph: Graph, kind_name: str, name: str) -> crud.Result:
-    kind = _kind_by_name(graph, kind_name)
-    if kind is None:
-        return crud.Result(False, f"no template-declared kind '{kind_name}'")
-    path = _find_path(graph, kind, name)
-    if path is None:
-        return crud.Result(False, f"no {kind_name} '{name}'")
+    located = _locate(graph, kind_name, name)
+    if isinstance(located, crud.Result):
+        return located
+    kind, path = located
     if kind.is_bundle:
         shutil.rmtree(path.parent)
         removed = path.parent

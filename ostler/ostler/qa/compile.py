@@ -51,14 +51,11 @@ from ostler.qa.compile_observe import has_checks
 from ostler.qa.plan_source import Gap
 from ostler.qa.plan_source import PlanSinks
 from ostler.qa.plan_source import ScenarioRefusal
-from ostler.qa.plan_source import SourceScenario
 from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import by_source
-from ostler.qa.plan_source import claim_scenario_function_name
+from ostler.qa.plan_source import covered_scenario
 from ostler.qa.plan_source import decline_captures
 from ostler.qa.plan_source import python_literal
-from ostler.qa.plan_source import scenario_lines
-from ostler.qa.plan_source import target_lines
 from ostler.qa.plan_source import target_variable
 
 
@@ -457,13 +454,9 @@ def _cli_scenarios(
                                  book.resource_reads)
         if not covered:
             continue
-        emitted.covered.update(covered)
-        target_var = target_variable(obligations[0].surface, "cli")
-        lines.extend(target_lines(target_var, PYTHON.name, "", emitted))
-        scenario = SourceScenario(
-            source, target_var, [o.id for o in obligations if o.id in covered],
-            arrangement, body)
-        lines.extend(scenario_lines(scenario, claim_scenario_function_name(scenario, emitted)))
+        lines.extend(covered_scenario(
+            source, obligations, arrangement, body, covered, emitted,
+            target_variable(obligations[0].surface, "cli"), PYTHON.name))
     return lines
 
 

@@ -2,41 +2,23 @@
 
 from __future__ import annotations
 
-import re
 import sys
 from pathlib import Path
 from typing import TextIO
 
 from ostler import markdown, model
+from ostler._vendor.stablemate_core.dotenv import assignment
 from ostler.edit import FileChange
 from ostler.environments import commands, inject, page
 from ostler.environments.runtime import Runner, run_command
-
-_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*")
-_EXPORT = re.compile(r"export\s+")
-_COMMENT = re.compile(r"\s+#.*$")
-
-
-def _unquote(text: str) -> str:
-    if text[:1] in ("'", '"'):
-        end = text.find(text[0], 1)
-        return text[1:end] if end > 0 else text[1:]
-    return _COMMENT.sub("", text).strip()
 
 
 def parse_assignments(text: str) -> dict[str, str]:
     """The dotenv's `KEY=value` lines in file order, read the way `saddlebag env` reads them."""
     found: dict[str, str] = {}
     for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if match := _EXPORT.match(line):
-            line = line[match.end():]
-        key, sep, rest = line.partition("=")
-        key = key.strip()
-        if sep and _KEY.fullmatch(key):
-            found[key] = _unquote(rest.strip())
+        if (assigned := assignment(raw)) is not None:
+            found[assigned[0]] = assigned[1]
     return found
 
 

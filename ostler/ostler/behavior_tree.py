@@ -1,15 +1,13 @@
 """Tree-sitter behavior candidates for languages a table can describe."""
 from __future__ import annotations
 
-import hashlib
-import json
-from collections import Counter
 from dataclasses import dataclass, field
+from typing import Any
 
 from tree_sitter import Node
 
 from ostler import syntax
-from ostler.behavior_models import BehaviorEvidence, SourceContext
+from ostler.behavior_lexical import LexicalEvidence
 
 
 @dataclass(frozen=True)
@@ -137,21 +135,6 @@ TABLES: dict[str, LanguageTable] = {"typescript": TYPESCRIPT, "tsx": TYPESCRIPT,
 MAX_DEPTH = 500
 
 
-def _tokens(node: Node, source_bytes: bytes, skip: frozenset[str]) -> list[tuple[str, str]]:
-    """Keep syntax and literal bytes, not comments, offsets or inter-token whitespace."""
-    result: list[tuple[str, str]] = []
-    stack = [node]
-    while stack:
-        current = stack.pop()
-        if current.type in skip or current.type == ";":
-            continue
-        if not current.children:
-            result.append((current.type, source_bytes[current.start_byte:current.end_byte].decode()))
-        else:
-            stack.extend(reversed(current.children))
-    return result
-
-
 def _member_name(call: Node, path: tuple[str, ...], source_bytes: bytes) -> str:
     if not path:
         return ""
@@ -167,60 +150,21 @@ def _member_name(call: Node, path: tuple[str, ...], source_bytes: bytes) -> str:
     return source_bytes[child.start_byte:child.end_byte].decode()
 
 
-class TreeEvidence:
-    """Retain lexical branch and declaration enclosure for each syntax observation."""
+class TreeEvidence(LexicalEvidence):
+    """The TypeScript and PHP collector, driven by a language table."""
 
     def __init__(self, path: str, source: str, digest: str, table: LanguageTable) -> None:
-        self.path = path
-        self.source = source
-        self.source_bytes = source.encode()
-        self.digest = digest
+        super().__init__(path, source, digest)
         self.table = table
-        self.symbols: list[str] = []
+        self.skip = table.skip
+        self.framework = table.framework
         self.exported: list[bool] = []
-        self.conditions: list[str] = []
-        self.candidates: list[BehaviorEvidence] = []
-        self.source_context: list[SourceContext] = []
-        self.occurrences: Counter[str] = Counter()
-        self.literals: Counter[str] = Counter()
         self.reexported: set[str] = set()
         self.handlers = 0
         """Depth inside a route registration call; its literal argument is the handler."""
 
-    def _slice(self, node: Node | None) -> str:
-        """Same shape as ``GoEvidence._slice`` — the bytes ``node`` spans, decoded."""
-        if node is None:
-            return ""
-        start, end = node.start_byte, node.end_byte
-        if start < 0 or end > len(self.source_bytes) or start > end:
-            return ""
-        return self.source_bytes[start:end].decode()
-
-    def _field(self, node: Node, field: str) -> str:
-        return self._slice(node.child_by_field_name(field))
-
-    def emit(self, node: Node, kind: str, *, text: str = "", snippet: str = "", framework: str = "") -> None:
-        symbol = ".".join(self.symbols) or "<module>"
-        identity = json.dumps((self.path, symbol, kind, _tokens(node, self.source_bytes, self.table.skip)), ensure_ascii=True)
-        self.occurrences[identity] += 1
-        ident = hashlib.sha256(f"{identity}\0{self.occurrences[identity]}".encode()).hexdigest()
-        sliced = self._slice(node)
-        self.candidates.append(BehaviorEvidence.model_validate({
-            "id": f"evidence:{ident}", "path": self.path, "symbol": symbol,
-            "start_line": node.start_point.row + 1, "end_line": node.end_point.row + 1,
-            "start_column": node.start_point.column, "end_column": node.end_point.column,
-            "kind": kind, "text": text or sliced, "snippet": snippet or sliced,
-            "conditions": tuple(self.conditions), "source_digest": self.digest,
-            "framework": framework or self.table.framework,
-            "exported": None if symbol == "<module>" else all(self.exported),
-        }))
-
-    def context(self, node: Node) -> None:
-        start, end = syntax.lines_of(node)
-        self.source_context.append(SourceContext(
-            path=self.path, symbol=".".join(self.symbols) or "<module>", start_line=start, end_line=end,
-            text="".join(self.source.splitlines(keepends=True)[start - 1:end]), source_digest=self.digest,
-        ))
+    def _extra(self, symbol: str) -> dict[str, Any]:
+        return {"exported": None if symbol == "<module>" else all(self.exported)}
 
     def _header(self, node: Node, *, stop: Node | None = None) -> str:
         end = stop.start_byte if stop is not None else node.end_byte

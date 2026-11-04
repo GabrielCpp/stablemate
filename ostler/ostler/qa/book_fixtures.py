@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from ostler import markdown
 from ostler.markdown import extract_refs
 from ostler.model import Graph, UINode
 from ostler.qa import fixture_browser
@@ -13,17 +14,8 @@ from ostler.qa import runbook as runbook_mod
 from ostler.qa.stack import STEP_TIMEOUT_S, boot_timeout
 
 
-def _bullet_values(value: object) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, list):
-        return [str(v).strip() for v in value if str(v).strip()]
-    text = str(value).strip()
-    return [text] if text else []
-
-
 def _declared_args(node: UINode) -> list[str]:
-    return fixtures_mod.declared_names(_bullet_values(node.meta.get("args")))
+    return fixtures_mod.declared_names(markdown.children(node.meta, "args"))
 
 
 def _provides_from_step(raw: str) -> str:
@@ -63,13 +55,13 @@ def _declared_provides(node: UINode) -> list[dict[str, str]]:
 
 
 def _declared_secrets(node: UINode) -> list[str]:
-    return fixtures_mod.declared_names(_bullet_values(node.meta.get("secrets")))
+    return fixtures_mod.declared_names(markdown.children(node.meta, "secrets"))
 
 
 def _needs_of(graph: Graph, node: UINode, by_name: dict[str, UINode]) -> list[dict[str, Any]]:
     """Each `needs:` child as `{"fixture": stem, "args": {name: value}}`."""
     bindings: list[dict[str, Any]] = []
-    for value in _bullet_values(node.meta.get("needs")):
+    for value in markdown.children(node.meta, "needs"):
         links = extract_refs(value).links
         if not links:
             continue
@@ -140,7 +132,7 @@ def _steps_of(graph: Graph, node: UINode) -> list[dict[str, Any]]:
 def _properties(node: UINode, key: str) -> dict[str, str]:
     """A nested bullet's `name: value` children."""
     found: dict[str, str] = {}
-    for item in _bullet_values(node.meta.get(key)):
+    for item in markdown.children(node.meta, key):
         name, sep, value = item.partition(":")
         if sep and name.strip():
             found[name.strip()] = value.strip().strip("`")
@@ -185,6 +177,6 @@ def resolved(graph: Graph) -> dict[str, dict[str, Any]]:
             "provides": _declared_provides(node),
             "needs": _needs_of(graph, node, by_name),
             "secrets": _declared_secrets(node),
-            "lifetime": "scenario" if _bullet_values(node.meta.get("lifetime")) == ["scenario"] else "lap",
+            "lifetime": "scenario" if markdown.children(node.meta, "lifetime") == ["scenario"] else "lap",
         }
     return out

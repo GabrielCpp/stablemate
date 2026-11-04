@@ -125,6 +125,7 @@ def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequenc
             files.append(EvidenceFile(path=relative, status="unsupported", source_digest=digest,
                                       message="Only Python, Go, TypeScript, TSX and PHP files have an extractor."))
             continue
+        visitor: GoEvidence | TreeEvidence | PythonEvidence | None = None
         if language != "python":
             try:
                 source = data.decode("utf-8")
@@ -135,30 +136,24 @@ def extract_evidence(root: Path, paths: Sequence[str], *, context_paths: Sequenc
                 files.append(EvidenceFile(path=relative, status="parse_error", source_digest=digest, message=str(exc)))
                 continue
             if relative in selected:
-                tree_visitor = GoEvidence(relative, source, digest) if table is None else TreeEvidence(relative, source, digest, table)
-                tree_visitor.visit(tree_root)
-                candidates.extend(tree_visitor.candidates)
-                source_context.extend(tree_visitor.source_context)
-            if relative in support_paths:
-                support_context.append(SourceExcerpt(path=relative, start_line=1,
-                                                     end_line=max(1, len(source.splitlines())),
-                                                     text=source, source_digest=digest))
-            files.append(EvidenceFile(path=relative, status="parsed", source_digest=digest))
-            continue
-        try:
-            encoding, _ = tokenize.detect_encoding(io.BytesIO(data).readline)
-            source = data.decode(encoding)
-            tree = ast.parse(source, filename=relative)
-        except (SyntaxError, UnicodeError, LookupError) as exc:
-            files.append(EvidenceFile(path=relative, status="parse_error", source_digest=digest,
-                                      message=str(exc)))
-            continue
-        if relative in selected:
-            visitor = PythonEvidence(relative, source, digest)
-            visitor.visit(tree)
+                visitor = GoEvidence(relative, source, digest) if table is None else TreeEvidence(relative, source, digest, table)
+                visitor.visit(tree_root)
+        else:
+            try:
+                encoding, _ = tokenize.detect_encoding(io.BytesIO(data).readline)
+                source = data.decode(encoding)
+                tree = ast.parse(source, filename=relative)
+            except (SyntaxError, UnicodeError, LookupError) as exc:
+                files.append(EvidenceFile(path=relative, status="parse_error", source_digest=digest,
+                                          message=str(exc)))
+                continue
+            if relative in selected:
+                visitor = PythonEvidence(relative, source, digest)
+                visitor.visit(tree)
+                context_limitations.extend(visitor.limitations)
+        if visitor is not None:
             candidates.extend(visitor.candidates)
             source_context.extend(visitor.source_context)
-            context_limitations.extend(visitor.limitations)
         if relative in support_paths:
             support_context.append(SourceExcerpt(path=relative, start_line=1,
                                                  end_line=max(1, len(source.splitlines())),

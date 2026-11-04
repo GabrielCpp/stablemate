@@ -657,23 +657,35 @@ def _from_stack_file(root: Path, services_root: str, lease: str, near: Path | No
     return act(root, lease=lease, near=near)
 
 
-def cmd_stack_up(root: Path, *, name: str = "", services_root: str = "", lease: str = "",
-                 near: Path | None = None,
-                 logger: logging.Logger | None = None) -> QaOutcome:
-    """`ostler qa stack up` — bring the book's declared stack to ready, or say why not."""
-    copied = None if name else _from_stack_file(root, services_root, lease, near, leases.up)
+def _chosen_stack(
+    root: Path, name: str, services_root: str, lease: str, near: Path | None,
+    logger: logging.Logger | None, act: Callable[..., QaOutcome | None], verb: str,
+) -> QaOutcome | tuple[logging.Logger, list[dict[str, Any]], StackSelection, StackLease]:
+    """The stacks to *verb*, their selection and held lease, or the outcome that settles it."""
+    copied = None if name else _from_stack_file(root, services_root, lease, near, act)
     if copied is not None:
         return copied
     log = logger or logging.getLogger(__name__)
     graph = _graph_for(root, services_root)
     manifests, selection = load_stacks(graph, name=name, near=near, leased=bool(lease),
                                        logger=log)
-    refused = _refusal(root, services_root, selection, "bring up")
+    refused = _refusal(root, services_root, selection, verb)
     if refused is not None and not manifests:
         return refused
     held = stack_lease(graph, selection, lease)
     if isinstance(held, QaOutcome):
         return held
+    return log, manifests, selection, held
+
+
+def cmd_stack_up(root: Path, *, name: str = "", services_root: str = "", lease: str = "",
+                 near: Path | None = None,
+                 logger: logging.Logger | None = None) -> QaOutcome:
+    """`ostler qa stack up` — bring the book's declared stack to ready, or say why not."""
+    chosen = _chosen_stack(root, name, services_root, lease, near, logger, leases.up, "bring up")
+    if isinstance(chosen, QaOutcome):
+        return chosen
+    log, manifests, selection, held = chosen
     if held.per_run and held.book is not None:
         held.book.unlink(missing_ok=True)
     with held.holding():
@@ -709,19 +721,10 @@ def cmd_stack_down(root: Path, *, name: str = "", services_root: str = "", lease
                    near: Path | None = None,
                    logger: logging.Logger | None = None) -> QaOutcome:
     """`ostler qa stack down` — run the declared teardown, or leave an expensive stack up."""
-    copied = None if name else _from_stack_file(root, services_root, lease, near, leases.down)
-    if copied is not None:
-        return copied
-    log = logger or logging.getLogger(__name__)
-    graph = _graph_for(root, services_root)
-    manifests, selection = load_stacks(graph, name=name, near=near, leased=bool(lease),
-                                       logger=log)
-    refused = _refusal(root, services_root, selection, "tear down")
-    if refused is not None and not manifests:
-        return refused
-    held = stack_lease(graph, selection, lease)
-    if isinstance(held, QaOutcome):
-        return held
+    chosen = _chosen_stack(root, name, services_root, lease, near, logger, leases.down, "tear down")
+    if isinstance(chosen, QaOutcome):
+        return chosen
+    log, manifests, selection, held = chosen
     with held.holding():
         results = [stack_mod.teardown_stack({}, manifest, logger=log)
                    for manifest in reversed(manifests)]

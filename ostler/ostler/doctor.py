@@ -8,7 +8,7 @@ import json
 import os
 import re
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -1413,8 +1413,8 @@ def _check_conformance(graph: Graph, f: list[Finding]) -> None:
                     f.append(Finding("warn", "schema", f"{rel}: {msg}", path=rel))
 
 
-def _check_misplaced_book_pages(graph: Graph, f: list[Finding]) -> None:
-    """A typed book page that has moved (or was authored) outside every doc root is invisible."""
+def _typed_book_pages(graph: Graph) -> Iterator[tuple[str, Path, str]]:
+    """Each tracked markdown page whose frontmatter declares a `type`, as (rel, path, type)."""
     try:
         result = subprocess.run(
             ["git", "ls-files", "-z", "--", "*.md"],
@@ -1423,7 +1423,6 @@ def _check_misplaced_book_pages(graph: Graph, f: list[Finding]) -> None:
         return
     if result.returncode != 0:
         return
-    roots = [p.resolve() for p in graph.doc_roots.values()]
     for rel in result.stdout.decode("utf-8", "replace").split("\0"):
         if not rel:
             continue
@@ -1435,8 +1434,14 @@ def _check_misplaced_book_pages(graph: Graph, f: list[Finding]) -> None:
         except OSError:
             continue
         declared = registry.type_of(fm)
-        if not declared:
-            continue
+        if declared:
+            yield rel, path, declared
+
+
+def _check_misplaced_book_pages(graph: Graph, f: list[Finding]) -> None:
+    """A typed book page that has moved (or was authored) outside every doc root is invisible."""
+    roots = [p.resolve() for p in graph.doc_roots.values()]
+    for rel, path, declared in _typed_book_pages(graph):
         resolved = path.resolve()
         if any(resolved.is_relative_to(root) for root in roots):
             continue
@@ -1453,28 +1458,8 @@ def _check_misplaced_book_pages(graph: Graph, f: list[Finding]) -> None:
 
 def _check_misrooted_book_pages(graph: Graph, f: list[Finding]) -> None:
     """A typed page can sit inside *a* doc root and still be inside the *wrong* one."""
-    try:
-        result = subprocess.run(
-            ["git", "ls-files", "-z", "--", "*.md"],
-            cwd=graph.root, capture_output=True, timeout=30)
-    except (OSError, subprocess.SubprocessError):
-        return
-    if result.returncode != 0:
-        return
     roots = {key: root.resolve() for key, root in graph.doc_roots.items() if root.is_dir()}
-    for rel in result.stdout.decode("utf-8", "replace").split("\0"):
-        if not rel:
-            continue
-        path = graph.root / rel
-        if path.name in registry.RESERVED_FILES or not path.is_file():
-            continue
-        try:
-            fm = dict(read_doc(path).frontmatter or {})
-        except OSError:
-            continue
-        declared = registry.type_of(fm)
-        if not declared:
-            continue
+    for rel, path, declared in _typed_book_pages(graph):
         expected_key = registry.doc_root_of(declared)
         if expected_key is None:
             continue
@@ -2212,14 +2197,19 @@ def _check_reachability(data: dict, f: list[Finding]) -> None:
                              suggestion="- leads-to: [<this screen>](<path>)"))
 
 
-def _check_unknown_driver(data: dict, f: list[Finding]) -> None:
-    """A runbook's `driver:` must be one of the eight values `drivers.DRIVERS` declares."""
+def _runbook_drivers(data: dict) -> Iterator[tuple[dict, str]]:
+    """Each runbook file node that declares a `driver:`, with the driver lowercased."""
     for node in data["nodes"]:
         if node["type"] != reach.RUNBOOK_TYPE or node["kind"] != "file":
             continue
         driver = runbook_mod.bullet_value(node["bullets"], reach.DRIVER_BULLET).strip().lower()
-        if not driver:
-            continue
+        if driver:
+            yield node, driver
+
+
+def _check_unknown_driver(data: dict, f: list[Finding]) -> None:
+    """A runbook's `driver:` must be one of the eight values `drivers.DRIVERS` declares."""
+    for node, driver in _runbook_drivers(data):
         if driver in drivers.DRIVERS:
             continue
         legal = ", ".join(drivers.DRIVERS)
@@ -2233,12 +2223,7 @@ def _check_unknown_driver(data: dict, f: list[Finding]) -> None:
 def _check_runbook_driver_surface(data: dict, f: list[Finding]) -> None:
     """A runbook's `driver:` must be able to perform against at least one of its `surfaces:`."""
     by_id = {n["id"]: n for n in data["nodes"]}
-    for node in data["nodes"]:
-        if node["type"] != reach.RUNBOOK_TYPE or node["kind"] != "file":
-            continue
-        driver = runbook_mod.bullet_value(node["bullets"], reach.DRIVER_BULLET).strip().lower()
-        if not driver:
-            continue
+    for node, driver in _runbook_drivers(data):
         performable = routes_mod.performable_surface_types(driver)
         if not performable:
             continue

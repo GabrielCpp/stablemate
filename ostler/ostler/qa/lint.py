@@ -193,8 +193,8 @@ def lint_source(source: str, *, filename: str = "<qa_plan.py>") -> list[str]:
     return visitor.problems
 
 
-def cmd_lint(plan_file: Path, *, root: Path | None = None) -> QaOutcome:
-    """Lint a `qa_plan.py` against the AST allowlist without importing or executing it."""
+def locate_plan(plan_file: Path, root: Path | None) -> tuple[Path, Path] | QaOutcome:
+    """The resolved root and the plan file under it, or the outcome saying the file is missing."""
     root = (root or Path.cwd()).resolve()
     resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
     if not resolved_plan.is_file():
@@ -203,6 +203,15 @@ def cmd_lint(plan_file: Path, *, root: Path | None = None) -> QaOutcome:
             message=f"plan file not found: {resolved_plan}",
             status="invalid",
         )
+    return root, resolved_plan
+
+
+def cmd_lint(plan_file: Path, *, root: Path | None = None) -> QaOutcome:
+    """Lint a `qa_plan.py` against the AST allowlist without importing or executing it."""
+    located = locate_plan(plan_file, root)
+    if isinstance(located, QaOutcome):
+        return located
+    _root, resolved_plan = located
     source = resolved_plan.read_text(encoding="utf-8")
     problems = lint_source(source, filename=str(resolved_plan))
     if problems:

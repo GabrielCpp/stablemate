@@ -16,6 +16,7 @@ from ostler.qa.compile_http import nested_body_literal
 from ostler.qa.compile_http import within_claim
 from ostler.qa.compile_journey import api_target
 from ostler.qa.compile_support import PYTHON
+from ostler.qa.compile_support import HeaderVotes
 from ostler.qa.compile_support import bullet_value
 from ostler.qa.compile_support import resolved_literal
 from ostler.qa.compile_support import unarranged_scenario_gap
@@ -93,8 +94,7 @@ def _json_literal(value: object) -> str:
 
 def _node_credentials(obligations: list[Obligation], book: BookIndex) -> dict[str, tuple[CallRow, ...]]:
     nodes = dict.fromkeys(obligation.node for obligation in obligations)
-    values: dict[str, dict[str, set[str]]] = {}
-    rows: dict[str, dict[str, CallRow]] = {}
+    votes = HeaderVotes()
     for node in nodes:
         for claim in book.claims_by_node.get(node, []):
             if not node or expect_code(claim.checks) in _REFUSED:
@@ -102,11 +102,8 @@ def _node_credentials(obligations: list[Obligation], book: BookIndex) -> dict[st
             for row in claim.acts:
                 if row.name != "header":
                     continue
-                name = row.text_arg("name")
-                values.setdefault(node, {}).setdefault(name, set()).add(row.text_arg("value"))
-                rows.setdefault(node, {}).setdefault(name, row)
-    return {node: tuple(row for name, row in by_name.items() if len(values[node][name]) == 1)
-            for node, by_name in rows.items()}
+                votes.add(node, row)
+    return votes.agreed()
 
 
 def _claim_acts(obligation: Obligation, credentials: tuple[CallRow, ...]) -> tuple[CallRow, ...]:

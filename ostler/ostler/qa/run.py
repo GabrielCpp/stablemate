@@ -335,14 +335,10 @@ def cmd_validate(
     require_coverage: bool = True,
 ) -> QaOutcome:
     """Validate a `qa_plan.py` without executing it."""
-    root = (root or Path.cwd()).resolve()
-    resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
-    if not resolved_plan.is_file():
-        return QaOutcome(
-            ok=False,
-            message=f"plan file not found: {resolved_plan}",
-            status="invalid",
-        )
+    located = lint_mod.locate_plan(plan_file, root)
+    if isinstance(located, QaOutcome):
+        return located
+    root, resolved_plan = located
 
     lint_result = lint_mod.cmd_lint(resolved_plan, root=root)
     if not lint_result.ok:

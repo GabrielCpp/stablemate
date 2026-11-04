@@ -341,6 +341,24 @@ def _render(fm: dict, body: list[str]) -> str:
     return f"---\n{crud.dump_frontmatter(fm)}---\n" + "\n".join(body)
 
 
+def _require_conserved(lost: Counter[str], gained: Counter[str]) -> None:
+    """Refuse a carve whose pages lose or invent a claim."""
+    if lost or gained:
+        sample = [f"-{k}" for k in list(lost)[:3]] + [f"+{k}" for k in list(gained)[:3]]
+        raise CarveError(f"the carve would not conserve the page's claims: {sample}")
+
+
+def _carved_texts(doc: markdown.MarkdownDoc, body: list[str], host: Path,
+                  pages: list[tuple[Path, dict, list[str]]],
+                  moved: dict[Address, Address]) -> dict[Path, str]:
+    """The text of the slimmed *host* and of each new page, with their links rewritten."""
+    head = f"---\n{doc.raw_frontmatter}---\n" if doc.has_frontmatter else ""
+    texts = {host: head + _rewrite("\n".join(body), host, host, host, moved)}
+    for path, fm, page_body in pages:
+        texts[path] = _rewrite(_render(fm, page_body), host, path, host, moved)
+    return texts
+
+
 def _carve(graph: Graph, server: Path) -> CarvePlan:
     raw = server.read_text(encoding="utf-8")
     doc = markdown.split(raw)
@@ -376,16 +394,11 @@ def _carve(graph: Graph, server: Path) -> CarvePlan:
     declared_removed = Counter(dropped)
     lost = (before_claims - after_claims) - declared_removed
     gained = (after_claims - before_claims) - declared_added
-    if lost or gained:
-        sample = [f"-{k}" for k in list(lost)[:3]] + [f"+{k}" for k in list(gained)[:3]]
-        raise CarveError(f"the carve would not conserve the page's claims: {sample}")
+    _require_conserved(lost, gained)
 
-    texts: dict[Path, str] = {}
-    head = f"---\n{doc.raw_frontmatter}---\n" if doc.has_frontmatter else ""
-    texts[server] = head + _rewrite("\n".join(body), server, server, server, moved)
-    for page in pages:
-        fm_page = {"type": "endpoint", "slug": page.name, "title": page.title}
-        texts[page.path] = _rewrite(_render(fm_page, page.body), server, page.path, server, moved)
+    texts = _carved_texts(doc, body, server, [
+        (page.path, {"type": "endpoint", "slug": page.name, "title": page.title}, page.body)
+        for page in pages], moved)
     changes = [FileChange(server, raw, texts[server])]
     changes += [FileChange(p.path, "", texts[p.path]) for p in pages]
     book = [p for p in (f.resolve() for f in _doc_files(graph)) if p != server]

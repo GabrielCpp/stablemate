@@ -747,16 +747,7 @@ class Browser:
 
     def _on_request(self, request: Any) -> None:
         """Every request issued, whether or not anything came back."""
-        record = {
-            "atMs": self.clock(),
-            "url": request.url,
-            "method": request.method,
-            "resourceType": request.resource_type,
-            "initiator": self._initiator(request),
-            "requestHeaders": self._headers(getattr(request, "headers", None)),
-            "requestBody": self._payload(getattr(request, "post_data", None)),
-        }
-        self._remember(request, record)
+        self._begin(request)
         self._open[id(request)] = str(request.method).upper()
 
     def _on_failed_request(self, request: Any) -> None:
@@ -828,16 +819,21 @@ class Browser:
         """The record for this request, creating it if the `request` event was missed."""
         record = self._by_request.get(id(request))
         if record is None:
-            record = {
-                "atMs": self.clock(),
-                "url": request.url,
-                "method": request.method,
-                "resourceType": getattr(request, "resource_type", ""),
-                "initiator": self._initiator(request),
-                "requestHeaders": self._headers(getattr(request, "headers", None)),
-                "requestBody": self._payload(getattr(request, "post_data", None)),
-            }
-            self._remember(request, record)
+            record = self._begin(request)
+        return record
+
+    def _begin(self, request: Any) -> dict[str, Any]:
+        """Start the record of *request* and remember it."""
+        record: dict[str, Any] = {
+            "atMs": self.clock(),
+            "url": request.url,
+            "method": request.method,
+            "resourceType": getattr(request, "resource_type", ""),
+            "initiator": self._initiator(request),
+            "requestHeaders": self._headers(getattr(request, "headers", None)),
+            "requestBody": self._payload(getattr(request, "post_data", None)),
+        }
+        self._remember(request, record)
         return record
 
     @staticmethod

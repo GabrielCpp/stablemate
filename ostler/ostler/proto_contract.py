@@ -61,6 +61,15 @@ class Contract:
         return next((s for s in self.services if s.name == full_name), None)
 
 
+def _string_end(text: str, start: int) -> int:
+    """The index of the quote, newline or end of text that closes the literal opening at *start*."""
+    quote, n = text[start], len(text)
+    j = start + 1
+    while j < n and text[j] != quote and text[j] != "\n":
+        j += 2 if text[j] == "\\" else 1
+    return j
+
+
 def _strip_comments(text: str) -> str:
     """*text* with `//` and `/* */` comments blanked, string literals left whole."""
     out: list[str] = []
@@ -68,9 +77,7 @@ def _strip_comments(text: str) -> str:
     while i < n:
         ch = text[i]
         if ch in "\"'":
-            j = i + 1
-            while j < n and text[j] != ch and text[j] != "\n":
-                j += 2 if text[j] == "\\" else 1
+            j = _string_end(text, i)
             out.append(text[i:j + 1])
             i = j + 1
         elif text.startswith("//", i):
@@ -92,9 +99,7 @@ def _block_end(text: str, open_at: int) -> int:
     while i < n:
         ch = text[i]
         if ch in "\"'":
-            j = i + 1
-            while j < n and text[j] != ch and text[j] != "\n":
-                j += 2 if text[j] == "\\" else 1
+            j = _string_end(text, i)
             i = j
         elif ch == "{":
             depth += 1
@@ -113,9 +118,7 @@ def _top_level(text: str) -> str:
     while i < n:
         ch = text[i]
         if ch in "\"'":
-            j = i + 1
-            while j < n and text[j] != ch and text[j] != "\n":
-                j += 2 if text[j] == "\\" else 1
+            j = _string_end(text, i)
             if depth == 0:
                 out.append(text[i:j + 1])
             i = j + 1

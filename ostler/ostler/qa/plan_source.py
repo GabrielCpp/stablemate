@@ -324,6 +324,19 @@ def is_journey(scenario_id: str) -> bool:
     return scenario_id.endswith(f"-{JOURNEY_SUFFIX}")
 
 
+def covered_scenario(
+    source: str, obligations: list[Obligation], arrangement: Arrangement, body: list[str],
+    covered: set[str], emitted: EmittedScenarios, target_var: str, driver: str, kwargs: str = "",
+) -> list[str]:
+    """The target and scenario lines of a page whose *covered* obligations compiled, once recorded as covered."""
+    emitted.covered.update(covered)
+    lines = target_lines(target_var, driver, kwargs, emitted)
+    scenario = SourceScenario(
+        source, target_var, [o.id for o in obligations if o.id in covered], arrangement, body)
+    lines.extend(scenario_lines(scenario, claim_scenario_function_name(scenario, emitted)))
+    return lines
+
+
 def scenario_lines(scenario: SourceScenario, function_name: str) -> list[str]:
     """The rendered `@scenario` source, named `function_name`, holding every obligation one book page owes live evidence for on one target."""
     arranged = scenario.arranged.rows

@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import functools
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ostler.checks import Call, Malformed, Refusal, _typed, literal, parse_call
+from ostler.checks import (
+    Call, Malformed, Refusal, _typed, bad_arguments, literal, no_such_argument, parse_call, spread_call,
+)
 
 WEB = "web"
 MOBILE = "mobile"
@@ -197,25 +200,14 @@ def parse_act(value: str) -> ActCall | Refusal:
     if spec is None:
         return _unknown(parsed.name)
 
-    def wrong(message: str) -> Refusal:
-        return Refusal("bad-arguments", message, spec.signature())
+    wrong = functools.partial(bad_arguments, spec)
 
     if isinstance(parsed, Malformed):
         return wrong(f"`{parsed.name}`: {parsed.problem}")
     assert isinstance(parsed, Call)
-    if len(parsed.positional) > len(spec.params):
-        return wrong(f"`{spec.name}` takes at most {len(spec.params)} arguments")
-    args: dict[str, Any] = {}
-    for param, bound in zip(spec.params, parsed.positional, strict=False):
-        args[param.name] = bound
-    for key, bound in parsed.keywords.items():
-        param = spec.param_by_name.get(key)
-        if param is None:
-            allowed = ", ".join(p.name for p in spec.params)
-            return wrong(f"`{spec.name}` has no argument `{key}` — it takes: {allowed}")
-        if param.name in args:
-            return wrong(f"`{spec.name}`: `{param.name}` given twice")
-        args[param.name] = bound
+    args = spread_call(spec, parsed)
+    if isinstance(args, Refusal):
+        return args
     return bind(parsed.name, args)
 
 
@@ -225,15 +217,13 @@ def bind(name: str, args: Mapping[str, Any]) -> ActCall | Refusal:
     if spec is None:
         return _unknown(name)
 
-    def wrong(message: str) -> Refusal:
-        return Refusal("bad-arguments", message, spec.signature())
+    wrong = functools.partial(bad_arguments, spec)
 
     bound: dict[str, Any] = {}
     for key, value in args.items():
         param = spec.param_by_name.get(key)
         if param is None:
-            allowed = ", ".join(p.name for p in spec.params)
-            return wrong(f"`{spec.name}` has no argument `{key}` — it takes: {allowed}")
+            return no_such_argument(spec, spec.name, key)
         if not _typed(value, param.type):
             return wrong(f"`{spec.name}`: `{key}` is {param.type}, got "
                          f"{type(value).__name__} — an act's arguments are what the "

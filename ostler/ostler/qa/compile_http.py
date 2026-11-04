@@ -44,6 +44,7 @@ from ostler.qa.obligation import NO_LOCATORS
 from ostler.qa.obligation import Obligation
 from ostler.qa.plan_source import Arrangement
 from ostler.qa.plan_source import EmittedScenarios
+from ostler.qa.compile_support import HeaderVotes
 from ostler.qa.compile_support import Produced
 from ostler.qa.compile_observe import has_checks, observation_lines, within_off_observation
 from ostler.qa.plan_source import Gap
@@ -330,8 +331,7 @@ def _arranging(obligations: list[Obligation], book: BookIndex) -> list[Obligatio
 
 def _node_credentials(obligations: list[Obligation]) -> dict[str, tuple[CallRow, ...]]:
     """Each endpoint's `header` acts, from every claim of it that arranges one and does not expect a refusal, less a name two claims set apart. A claim that expects a 401 or a 403 names the caller the endpoint refuses, which is its own to send."""
-    values: dict[str, dict[str, set[str]]] = {}
-    rows: dict[str, dict[str, CallRow]] = {}
+    votes = HeaderVotes()
     stated = _stated_statuses(obligations)
     for obligation in obligations:
         if _claim_status(obligation, stated.get(_request_key(obligation))) in _REFUSED:
@@ -339,11 +339,8 @@ def _node_credentials(obligations: list[Obligation]) -> dict[str, tuple[CallRow,
         for row in obligation.acts:
             if row.name != "header" or not obligation.node:
                 continue
-            name = row.text_arg("name")
-            values.setdefault(obligation.node, {}).setdefault(name, set()).add(row.text_arg("value"))
-            rows.setdefault(obligation.node, {}).setdefault(name, row)
-    return {node: tuple(row for name, row in by_name.items() if len(values[node][name]) == 1)
-            for node, by_name in rows.items()}
+            votes.add(obligation.node, row)
+    return votes.agreed()
 
 
 def _credential_lenders(declared: list[Obligation], arranging: list[Obligation]) -> list[Obligation]:

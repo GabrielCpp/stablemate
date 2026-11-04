@@ -183,16 +183,8 @@ def cli_scenario_body(
         if reads_tree_either_side:
             lines.append(f"    after_{index} = qa.checkout_tree()")
 
-        assertions: list[str] = []
-        whole = True
-        for row in rows:
-            operand = _operand(row, name, f"before_{index}", f"after_{index}")
-            if isinstance(operand, ScenarioRefusal):
-                lines.append(f"    # TODO(arrange): {operand.detail}")
-                gaps.append(Gap(oid, operand.kind, operand.detail))
-                whole = False
-                continue
-            assertions.append(_verify_line(row, operand, oid))
+        assertions, whole = _verify_lines(
+            rows, lambda row: _operand(row, name, f"before_{index}", f"after_{index}"), oid, lines, gaps)
         if within_off_observation(obligation, gaps):
             whole = False
         side = observation_lines(obligation, name, resources or {}, gaps, resource_reads, produced.resolves)
@@ -428,15 +420,14 @@ def cli_observe_walk(
     return [f"    with qa.at_node({python_literal(state.node)}):", *(f"    {line}" for line in read)]
 
 
-def _append_journey_verifies(
-    obligation: Obligation, operand_of: Callable[[CallRow], str | ScenarioRefusal],
-    lines: list[str], gaps: list[Gap], covered: set[str],
-) -> None:
-    """Append the verify lines of one journey obligation, or the gaps that keep it from compiling whole."""
-    oid = obligation.id
+def _verify_lines(
+    rows: Iterable[CallRow], operand_of: Callable[[CallRow], str | ScenarioRefusal], oid: str,
+    lines: list[str], gaps: list[Gap],
+) -> tuple[list[str], bool]:
+    """The verify line of each row, and whether every row had an operand; a refused row leaves its gap."""
     assertions: list[str] = []
     whole = True
-    for row in obligation.checks:
+    for row in rows:
         operand = operand_of(row)
         if isinstance(operand, ScenarioRefusal):
             lines.append(f"    # TODO(arrange): {operand.detail}")
@@ -444,6 +435,16 @@ def _append_journey_verifies(
             whole = False
             continue
         assertions.append(_verify_line(row, operand, oid))
+    return assertions, whole
+
+
+def _append_journey_verifies(
+    obligation: Obligation, operand_of: Callable[[CallRow], str | ScenarioRefusal],
+    lines: list[str], gaps: list[Gap], covered: set[str],
+) -> None:
+    """Append the verify lines of one journey obligation, or the gaps that keep it from compiling whole."""
+    oid = obligation.id
+    assertions, whole = _verify_lines(obligation.checks, operand_of, oid, lines, gaps)
     if whole and assertions:
         lines.append("")
         lines.append(f"    # {oid}")

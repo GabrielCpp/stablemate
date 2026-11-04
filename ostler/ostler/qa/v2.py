@@ -31,6 +31,16 @@ def _run_verdicts(selected: list[dict[str, Any]], results: Mapping[str, Scenario
     return {claim: str(verdict) for claim, verdict in sorted(verdicts.items())}
 
 
+def _result_fields(result: ScenarioResult) -> dict[str, Any]:
+    return {
+        "status": result.status,
+        "assertions": result.assertions,
+        "failures": result.failures,
+        **({"aborted": True} if result.aborted else {}),
+        **({"message": result.message} if result.message else {}),
+    }
+
+
 def _fixture_builds(results: Mapping[str, ScenarioResult]) -> list[dict[str, Any]]:
     """Each book fixture the run built, with how many times and how long in all, slowest first."""
     totals: dict[str, dict[str, Any]] = {}
@@ -187,11 +197,7 @@ def run_plan(
                     "scenario": scenario_id,
                     "target": target_id,
                     "driver": plan["targets"][target_id]["driver"],
-                    "status": result.status,
-                    "assertions": result.assertions,
-                    "failures": result.failures,
-                    **({"aborted": True} if result.aborted else {}),
-                    **({"message": result.message} if result.message else {}),
+                    **_result_fields(result),
                 }
             )
             if result.status != "passed":
@@ -263,11 +269,7 @@ def run_plan(
             **({"report": str(report.relative_to(spec_dir))} if report else {}),
             "scenarios": {
                 name: {
-                    "status": result.status,
-                    "assertions": result.assertions,
-                    "failures": result.failures,
-                    **({"aborted": True} if result.aborted else {}),
-                    **({"message": result.message} if result.message else {}),
+                    **_result_fields(result),
                     **({"failed_checks": [asdict(check) for check in result.failed_checks]}
                        if result.failed_checks else {}),
                     **({"unreached": result.unreached} if result.unreached else {}),

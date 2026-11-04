@@ -349,10 +349,7 @@ def boot_app(
                 clock.sleep(POLL_INTERVAL_S)
                 continue
             if proc.returncode != 0:
-                logger.warning("app exited with code %s during startup", proc.returncode)
-                return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "",
-                        "app_pgid": "",
-                        "reason": _launch_died(proc.returncode, output) + _port_hint(health_url)}
+                return _died_during_startup(proc, entry_url, output, health_url, logger)
             logger.info("launch command exited cleanly onto a held address — treating it "
                         "as a bring-up command and waiting for %s", health_url)
             detached = True
@@ -372,10 +369,7 @@ def boot_app(
             break
         if not detached and proc.poll() is not None:
             if proc.returncode != 0:
-                logger.warning("app exited with code %s during startup", proc.returncode)
-                return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "",
-                        "app_pgid": "",
-                        "reason": _launch_died(proc.returncode, output) + _port_hint(health_url)}
+                return _died_during_startup(proc, entry_url, output, health_url, logger)
             # Exit 0 with nothing serving yet: a bring-up command that handed the app off
             # to something it doesn't own (containers, a supervisor). Not death — keep
             # polling health to the deadline.
@@ -918,6 +912,13 @@ def _step_error(code: int, stdout: str | None, stderr: str | None) -> str:
     if tails:
         return f"exit {code}: {' | '.join(tails)}"
     return f"exit {code} with no output on either stream"
+
+
+def _died_during_startup(proc: subprocess.Popen[bytes], entry_url: str, output: Path | None, health_url: str,
+                        logger: logging.Logger) -> dict[str, str]:
+    logger.warning("app exited with code %s during startup", proc.returncode)
+    return {"boot_ok": "no", "entry_url": entry_url, "app_pid": "", "app_pgid": "",
+            "reason": _launch_died(proc.returncode, output) + _port_hint(health_url)}
 
 
 def _launch_died(code: int, output: Path | None) -> str:

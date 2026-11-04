@@ -8,7 +8,7 @@ from pathlib import Path
 import yaml
 
 from ostler import ids, markdown, model, path as path_mod, registry, select, todo as todo_mod
-from ostler.model import Graph
+from ostler.model import Epic, Graph, Story
 from ostler.result import Result
 
 
@@ -296,6 +296,29 @@ def create_story(graph: Graph, epic_name: str, slug: str, title: str,
                   [epic_md, story_md], entity_id=sid)
 
 
+def _story_in_epic(graph: Graph, slug: str, purpose: str) -> tuple[Epic, Story, Path] | Result:
+    """The epic, story and epic.md of *slug*, or the refusal naming what *purpose* lacks."""
+    found = graph.find_story(slug)
+    if found is None:
+        return Result(False, graph.no_story(slug))
+    epic, story = found
+    if epic.epic_md is None:
+        return Result(False, f"epic '{epic.name}' has no epic.md to {purpose}")
+    return epic, story, epic.epic_md
+
+
+def _story_page(graph: Graph, slug: str) -> tuple[Path, markdown.MarkdownDoc, dict] | Result:
+    """The story.md of *slug*, parsed, with its frontmatter, or why it has none."""
+    found = graph.find_story(slug)
+    if found is None:
+        return Result(False, graph.no_story(slug))
+    story = found[1]
+    if story.story_md is None:
+        return Result(False, f"story '{story.slug}' has no story.md")
+    doc = markdown.split(story.story_md.read_text(encoding="utf-8"))
+    return story.story_md, doc, doc.frontmatter or {"type": "story", "slug": slug}
+
+
 def update_story(
     graph: Graph,
     slug: str,
@@ -306,14 +329,11 @@ def update_story(
     fixtures: list[str] | None = None,
 ) -> Result:
     """Replace a story's graph metadata without touching its id, body, status, or extra fields."""
-    found = graph.find_story(slug)
-    if found is None:
-        return Result(False, graph.no_story(slug))
-    epic, story = found
+    located = _story_in_epic(graph, slug, "update the story in")
+    if isinstance(located, Result):
+        return located
+    epic, story, epic_md = located
     slug = story.slug
-    epic_md = epic.epic_md
-    if epic_md is None:
-        return Result(False, f"epic '{epic.name}' has no epic.md to update the story in")
 
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     section = doc.find_section(registry.STORIES_HEADING)
@@ -417,14 +437,11 @@ def _insert_at(doc: markdown.MarkdownDoc, position: int) -> int:
 
 
 def delete_story(graph: Graph, slug: str) -> Result:
-    found = graph.find_story(slug)
-    if found is None:
-        return Result(False, graph.no_story(slug))
-    epic, story = found
+    located = _story_in_epic(graph, slug, "remove the story from")
+    if isinstance(located, Result):
+        return located
+    epic, story, epic_md = located
     slug = story.slug
-    epic_md = epic.epic_md
-    if epic_md is None:
-        return Result(False, f"epic '{epic.name}' has no epic.md to remove the story from")
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     _remove_subsection(doc, registry.STORIES_HEADING, slug)
     epic_md.write_text(doc.render(), encoding="utf-8")
@@ -434,14 +451,10 @@ def delete_story(graph: Graph, slug: str) -> Result:
 
 
 def set_status(graph: Graph, slug: str, status: str) -> Result:
-    found = graph.find_story(slug)
-    if found is None:
-        return Result(False, graph.no_story(slug))
-    if found[1].story_md is None:
-        return Result(False, f"story '{found[1].slug}' has no story.md")
-    path = found[1].story_md
-    doc = markdown.split(path.read_text(encoding="utf-8"))
-    fm = doc.frontmatter or {"type": "story", "slug": slug}
+    located = _story_page(graph, slug)
+    if isinstance(located, Result):
+        return located
+    path, doc, fm = located
     fm["status"] = status
     doc.raw_frontmatter = dump_frontmatter(fm)
     bullet = model.status_bullet(doc)
@@ -457,14 +470,10 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
 
 def set_conflict(graph: Graph, slug: str, conflict: str) -> Result:
     """Record, or clear, a story's acceptance-criteria conflict (frontmatter ``conflict:``)."""
-    found = graph.find_story(slug)
-    if found is None:
-        return Result(False, graph.no_story(slug))
-    if found[1].story_md is None:
-        return Result(False, f"story '{found[1].slug}' has no story.md")
-    path = found[1].story_md
-    doc = markdown.split(path.read_text(encoding="utf-8"))
-    fm = doc.frontmatter or {"type": "story", "slug": slug}
+    located = _story_page(graph, slug)
+    if isinstance(located, Result):
+        return located
+    path, doc, fm = located
     text = " ".join(conflict.split())
     if text:
         fm["conflict"] = text

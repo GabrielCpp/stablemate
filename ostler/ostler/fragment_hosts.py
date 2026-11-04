@@ -7,14 +7,8 @@ from pathlib import Path
 from ostler import markdown, registry
 from ostler.finding import Finding
 from ostler.links import LinkResolver
-from ostler.model import Graph, UINode, fragment_host, read_doc
-
-
-def _hosts(node: UINode, resolver: LinkResolver) -> list[Path]:
-    hrefs = [href for k, value, _p in node.bullet_order if k == "host"
-             for _t, href, _l in markdown.iter_links(value)]
-    targets = (resolver.resolve(node.path, href) for href in hrefs)
-    return [t.path.resolve() for t in targets if t is not None and t.file_exists]
+from ostler.model import Graph, fragment_host, read_doc
+from ostler.server_membership import linked_pages
 
 
 def _links(host: Path, fragment: Path, resolver: LinkResolver) -> bool:
@@ -44,7 +38,7 @@ def check_fragment_hosts(graph: Graph, f: list[Finding], resolver: LinkResolver)
     for node in graph.ui_nodes_of_type("fragment"):
         if node.kind != "file" or "host" not in node.meta:
             continue
-        hosts = _hosts(node, resolver)
+        hosts = linked_pages(node, "host", resolver)
         if len(hosts) != 1:
             named = "names no page" if not hosts else f"names {len(hosts)} pages"
             f.append(Finding(

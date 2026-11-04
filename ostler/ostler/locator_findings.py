@@ -97,9 +97,7 @@ class UnprovenUniqueName:
 
 
 @dataclass(frozen=True, slots=True)
-class MalformedTemplate:
-    """A repeated-scope node whose name template has an unbalanced brace."""
-
+class _TemplateNode:
     screen: str
     node: str
     template: str
@@ -109,15 +107,13 @@ class MalformedTemplate:
 
 
 @dataclass(frozen=True, slots=True)
-class TemplateOutsideRepeat:
+class MalformedTemplate(_TemplateNode):
+    """A repeated-scope node whose name template has an unbalanced brace."""
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateOutsideRepeat(_TemplateNode):
     """A node whose name reads as a template but which repeats over nothing."""
-
-    screen: str
-    node: str
-    template: str
-
-    def row(self) -> dict[str, JsonValue]:
-        return {"screen": self.screen, "node": self.node, "template": self.template}
 
 
 @dataclass(frozen=True, slots=True)

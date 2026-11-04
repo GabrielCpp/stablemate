@@ -8,7 +8,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ostler.markdown import split
+from ostler.markdown import Bullet, MarkdownDoc, split
 from ostler.model import Graph, UINode
 from ostler.provenance import checkout_for, effective_checkouts
 from ostler.refs import bare_targets, normalize_ref, parse_code_ref
@@ -163,6 +163,32 @@ class StampResult:
     changed: bool = False
 
 
+def _restamp_bullet(
+    body_lines: list[str], bullet: Bullet, digest_for: Callable[[str], str | None],
+    unresolved: list[str],
+) -> bool:
+    """Restamp one ``code:`` bullet in *body_lines*; whether its text changed."""
+    raw = "\n".join(body_lines[bullet.line_start:bullet.line_end])
+    key, sep, rest = raw.partition(":")
+    if not sep:
+        return False
+    new_rest = restamp_leading_code_spans(rest, digest_for)
+    if new_rest == rest:
+        return False
+    new_lines = (key + ":" + new_rest).split("\n")
+    if len(new_lines) != bullet.line_end - bullet.line_start:
+        unresolved.append(raw)
+        return False
+    body_lines[bullet.line_start:bullet.line_end] = new_lines
+    return True
+
+
+def _save_page(doc: MarkdownDoc, path: Path, body_lines: list[str], changed: bool) -> None:
+    if changed:
+        doc.replace_body(body_lines)
+        path.write_text(doc.render(), encoding="utf-8")
+
+
 def stamp_page(root: Path, services_root: Path, page: str, *,
                 line_ranges: list[tuple[int, int]] | None = None,
                 only_targets: dict[tuple[int, int], frozenset[str]] | None = None,
@@ -225,23 +251,10 @@ def stamp_page(root: Path, services_root: Path, page: str, *,
             continue
         if not in_scope(bullet.line_start):
             continue
-        raw = "\n".join(body_lines[bullet.line_start:bullet.line_end])
-        key, sep, rest = raw.partition(":")
-        if not sep:
-            continue
-        new_rest = restamp_leading_code_spans(rest, make_digest_for(allowed_targets(bullet.line_start)))
-        if new_rest == rest:
-            continue
-        new_lines = (key + ":" + new_rest).split("\n")
-        if len(new_lines) != bullet.line_end - bullet.line_start:
-            unresolved.append(raw)
-            continue
-        body_lines[bullet.line_start:bullet.line_end] = new_lines
-        changed = True
+        digest_for = make_digest_for(allowed_targets(bullet.line_start))
+        changed |= _restamp_bullet(body_lines, bullet, digest_for, unresolved)
 
-    if changed:
-        doc.replace_body(body_lines)
-        path.write_text(doc.render(), encoding="utf-8")
+    _save_page(doc, path, body_lines, changed)
 
     return StampResult(page=page, stamped=stamped, unresolved=unresolved, changed=changed)
 
@@ -354,22 +367,8 @@ def stamp_page_from_catalog(root: Path, page: str, catalog: SourceCatalog) -> St
     for bullet in doc.walk_bullets():
         if bullet.label != "code":
             continue
-        raw = "\n".join(body_lines[bullet.line_start:bullet.line_end])
-        key, sep, rest = raw.partition(":")
-        if not sep:
-            continue
-        new_rest = restamp_leading_code_spans(rest, digest_for)
-        if new_rest == rest:
-            continue
-        new_lines = (key + ":" + new_rest).split("\n")
-        if len(new_lines) != bullet.line_end - bullet.line_start:
-            unresolved.append(raw)
-            continue
-        body_lines[bullet.line_start:bullet.line_end] = new_lines
-        changed = True
+        changed |= _restamp_bullet(body_lines, bullet, digest_for, unresolved)
 
-    if changed:
-        doc.replace_body(body_lines)
-        path.write_text(doc.render(), encoding="utf-8")
+    _save_page(doc, path, body_lines, changed)
 
     return StampResult(page=page, stamped=stamped, unresolved=unresolved, changed=changed)

@@ -1254,13 +1254,15 @@ def _repo_relative(graph, path: str) -> str | None:
     return candidate.relative_to(root).as_posix()
 
 
-def _node_line_range(graph, node) -> tuple[int, int]:
-    """*node*'s own extent: its heading line up to (not including) the next node's, in its file."""
-    siblings = sorted(
-        (n.line for n in graph.ui_nodes if n.path == node.path and n.line > node.line),
-    )
-    end = siblings[0] if siblings else len(node.path.read_text(encoding="utf-8").splitlines()) + 1
-    return node.line, end
+def _book_pages(graph, paths: list[str]) -> list[str] | None:
+    """The repo-relative form of each of *paths*, or `None` after naming those outside the book."""
+    scope = [_repo_relative(graph, p) for p in paths]
+    outside = [p for p, rel in zip(paths, scope, strict=True) if rel is None]
+    if outside:
+        print(f"ostler stamp: --path {', '.join(outside)} is not a file of this book",
+              file=sys.stderr)
+        return None
+    return [rel for rel in scope if rel is not None]
 
 
 def _print_stamp_results(results: list[stamp_mod.StampResult], args) -> None:
@@ -1288,13 +1290,10 @@ def _cmd_stamp_from_catalog(graph, args) -> int:
               file=sys.stderr)
         return 2
     if args.path:
-        scope = [_repo_relative(graph, p) for p in args.path]
-        outside = [p for p, rel in zip(args.path, scope, strict=True) if rel is None]
-        if outside:
-            print(f"ostler stamp: --path {', '.join(outside)} is not a file of this book",
-                  file=sys.stderr)
+        scope = _book_pages(graph, args.path)
+        if scope is None:
             return 2
-        pages = sorted({rel for rel in scope if rel is not None})
+        pages = sorted(set(scope))
     else:
         pages = sorted({node.path.relative_to(graph.root).as_posix() for node in graph.ui_nodes})
     results = [stamp_mod.stamp_page_from_catalog(graph.root, page, catalog) for page in pages]
@@ -1351,7 +1350,7 @@ def _cmd_stamp(graph, args) -> int:
                 print(f"ostler stamp: --node {ident} is not a node of this book", file=sys.stderr)
                 return 2
             rel = node.path.relative_to(graph.root).as_posix()
-            node_range = _node_line_range(graph, node)
+            node_range = stamp_mod.node_line_range(graph, node)
             pages.setdefault(rel, []).append(node_range)
             if args.file:
                 file_target = _repo_relative(graph, args.file[i]) or args.file[i]
@@ -1368,15 +1367,12 @@ def _cmd_stamp(graph, args) -> int:
             for rel, ranges in pages.items()
         ]
     else:
-        scope = [_repo_relative(graph, p) for p in args.path]
-        outside = [p for p, rel in zip(args.path, scope, strict=True) if rel is None]
-        if outside:
-            print(f"ostler stamp: --path {', '.join(outside)} is not a file of this book",
-                  file=sys.stderr)
+        scope = _book_pages(graph, args.path)
+        if scope is None:
             return 2
         results = [
             stamp_mod.stamp_page(graph.root, services_root, rel, checkouts=checkouts)
-            for rel in scope if rel is not None
+            for rel in scope
         ]
     _print_stamp_results(results, args)
     return 1 if any(r.unresolved for r in results) else 0
@@ -1532,46 +1528,37 @@ def _cmd_index(graph, args) -> int:
     return 0
 
 
-def _cmd_fmt(graph, args) -> int:
-    result = fmt_mod.run_fmt(graph, args.paths, check=args.check)
+def _report_changed(graph, result, args, *, would: str, did: str, clean: str, drift: str) -> int:
     for path in result.changed:
         rel = (
             path.relative_to(graph.root).as_posix()
             if path.is_relative_to(graph.root)
             else path.as_posix()
         )
-        _out(f"{'would reformat' if args.check else 'reformatted'}: {rel}")
+        _out(f"{would if args.check else did}: {rel}")
     if not result.changed:
-        _out("all files already canonical")
+        _out(clean)
         return 0
     if args.check:
-        _out(
-            f"\n{len(result.changed)} file(s) not canonical (run `ostler fmt` to fix)"
-        )
+        _out(f"\n{len(result.changed)} file(s) {drift}")
         return 1
-    _out(f"\nreformatted {len(result.changed)} file(s)")
+    _out(f"\n{did} {len(result.changed)} file(s)")
     return 0
+
+
+def _cmd_fmt(graph, args) -> int:
+    result = fmt_mod.run_fmt(graph, args.paths, check=args.check)
+    return _report_changed(
+        graph, result, args, would="would reformat", did="reformatted",
+        clean="all files already canonical",
+        drift="not canonical (run `ostler fmt` to fix)")
 
 
 def _cmd_autofix(graph, args) -> int:
     result = autofix_mod.run_autofix(graph, args.paths, check=args.check)
-    for path in result.changed:
-        rel = (
-            path.relative_to(graph.root).as_posix()
-            if path.is_relative_to(graph.root)
-            else path.as_posix()
-        )
-        _out(f"{'would fix' if args.check else 'fixed'}: {rel}")
-    if not result.changed:
-        _out("no fixable drift found")
-        return 0
-    if args.check:
-        _out(
-            f"\n{len(result.changed)} file(s) carry fixable drift (run `ostler autofix` to fix)"
-        )
-        return 1
-    _out(f"\nfixed {len(result.changed)} file(s)")
-    return 0
+    return _report_changed(
+        graph, result, args, would="would fix", did="fixed", clean="no fixable drift found",
+        drift="carry fixable drift (run `ostler autofix` to fix)")
 
 
 def _cmd_gc(graph, args) -> int:
@@ -1674,6 +1661,14 @@ def _cmd_artifact(graph, args) -> int:
             for problem in outcome.problems:
                 _out(f"  - {problem}")
     return 0 if outcome.status == "clean" else 1
+
+
+def _context_outcome(result, args) -> int:
+    if result.status == "invalid":
+        _out(json.dumps(result.data, indent=2) if args.json else f"error: {result.message}")
+        return 1
+    _out(json.dumps(result.data, indent=2) if args.json else result.message)
+    return 0 if result.ok else 1
 
 
 def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
@@ -1879,12 +1874,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
     if op == "context":
         spec_dir = _resolve_spec(args.spec)
         if args.refresh:
-            result = qa_mod.cmd_context_refresh(root, spec_dir)
-            if result.status == "invalid":
-                _out(json.dumps(result.data, indent=2) if args.json else f"error: {result.message}")
-                return 1
-            _out(json.dumps(result.data, indent=2) if args.json else result.message)
-            return 0 if result.ok else 1
+            return _context_outcome(qa_mod.cmd_context_refresh(root, spec_dir), args)
         if not args.base:
             _out("error: ostler qa context needs --base, or --refresh to reuse a packet's inputs")
             return 2
@@ -1898,7 +1888,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
         story_file = args.story_file
         if story_file is not None and not story_file.is_absolute():
             story_file = root / story_file
-        result = qa_mod.cmd_context(
+        return _context_outcome(qa_mod.cmd_context(
             root,
             spec_dir,
             base=args.base,
@@ -1906,12 +1896,7 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             source_roots=source_roots,
             services_root=args.services_root,
             story_file=story_file,
-        )
-        if result.status == "invalid":
-            _out(json.dumps(result.data, indent=2) if args.json else f"error: {result.message}")
-            return 1
-        _out(json.dumps(result.data, indent=2) if args.json else result.message)
-        return 0 if result.ok else 1
+        ), args)
 
     if op == "context-show":
         spec_dir = _resolve_spec(args.spec)

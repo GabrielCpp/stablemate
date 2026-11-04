@@ -24,7 +24,8 @@ def _inventory(server: Path, heading: str, resolver: LinkResolver) -> set[Path]:
     return {t.path.resolve() for t in targets if t is not None and t.file_exists}
 
 
-def _servers(node: UINode, key: str, resolver: LinkResolver) -> list[Path]:
+def linked_pages(node: UINode, key: str, resolver: LinkResolver) -> list[Path]:
+    """The existing pages that *node* links from its *key* bullets."""
     hrefs = [href for k, value, _p in node.bullet_order if k == key
              for _t, href, _l in markdown.iter_links(value)]
     targets = (resolver.resolve(node.path, href) for href in hrefs)
@@ -40,7 +41,7 @@ def _type_of(path: Path) -> str:
 
 def host_servers(node: UINode, uitype: registry.UINodeType, resolver: LinkResolver) -> list[Path]:
     """The host pages of the type *uitype* that the page *node* links from its first bullet."""
-    return [p for p in _servers(node, uitype.bullet_keys[0].key, resolver)
+    return [p for p in linked_pages(node, uitype.bullet_keys[0].key, resolver)
             if _type_of(p) in uitype.host_page_types]
 
 

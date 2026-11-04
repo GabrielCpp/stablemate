@@ -104,6 +104,24 @@ _CODE_SPAN = re.compile(r"^\s*`?\s*(.*?)\s*`?\s*$")
 _NONE_SENTINEL = "none"
 
 
+class HeaderVotes:
+    """The `header` acts each endpoint's claims set, kept until a name two claims set apart is dropped."""
+
+    def __init__(self) -> None:
+        self.values: dict[str, dict[str, set[str]]] = {}
+        self.rows: dict[str, dict[str, CallRow]] = {}
+
+    def add(self, node: str, row: CallRow) -> None:
+        name = row.text_arg("name")
+        self.values.setdefault(node, {}).setdefault(name, set()).add(row.text_arg("value"))
+        self.rows.setdefault(node, {}).setdefault(name, row)
+
+    def agreed(self) -> dict[str, tuple[CallRow, ...]]:
+        """Each endpoint's headers that every claim setting them sets to one value."""
+        return {node: tuple(row for name, row in by_name.items() if len(self.values[node][name]) == 1)
+                for node, by_name in self.rows.items()}
+
+
 def bullet_value(raw: str | None) -> str | None:
     """*raw* as one line, stripped of a wrapping code span, with `none` read as absent."""
     if raw is None:

@@ -1970,14 +1970,19 @@ def _parse_checks(
     return rows
 
 
-def _unparsed_checks(values: list[str]) -> list[dict[str, Any]]:
-    """The `verify:` bullets among *values* the parser read and refused, with its own account."""
+def _refused(values: list[str], parse: Callable[[str], object]) -> list[dict[str, Any]]:
+    """The *values* that *parse* read and refused, with its own account, once per value."""
     rows: list[dict[str, Any]] = []
     for value in values:
-        parsed = checks_mod.parse_check(value)
+        parsed = parse(value)
         if isinstance(parsed, checks_mod.Refusal):
             rows.append({"value": value, "kind": parsed.kind, "problem": parsed.message})
     return list({row["value"]: row for row in rows}.values())
+
+
+def _unparsed_checks(values: list[str]) -> list[dict[str, Any]]:
+    """The `verify:` bullets among *values* the parser read and refused, with its own account."""
+    return _refused(values, checks_mod.parse_check)
 
 
 def _locator_resolver(
@@ -2101,12 +2106,7 @@ def _parse_acts(
 
 def _unparsed_acts(values: list[str]) -> list[dict[str, Any]]:
     """The `arrange:` bullets among *values* the act parser read and refused, with its account."""
-    rows: list[dict[str, Any]] = []
-    for value in values:
-        parsed = acts_mod.parse_act(value)
-        if isinstance(parsed, checks_mod.Refusal):
-            rows.append({"value": value, "kind": parsed.kind, "problem": parsed.message})
-    return list({row["value"]: row for row in rows}.values())
+    return _refused(values, acts_mod.parse_act)
 
 
 def _parse_fixtures(

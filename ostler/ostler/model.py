@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -376,22 +376,30 @@ class Entry:
 
     def property_text(self, name: str) -> str:
         """One property as the single string the book wrote, or ``""`` when it stated none."""
-        value = self.properties.get(name)
-        if isinstance(value, list):
-            return " ".join(str(v).strip() for v in value if str(v).strip())
-        return str(value).strip() if value is not None else ""
+        return property_text(self.properties.get(name))
+
+
+def property_text(value: object) -> str:
+    """One entry property as the single string the book wrote, or ``""`` when it stated none."""
+    if isinstance(value, list):
+        return " ".join(str(v).strip() for v in value if str(v).strip())
+    return str(value).strip() if value is not None else ""
+
+
+def _labelled(bullets: "Sequence[markdown.Bullet]") -> "Iterator[tuple[int, markdown.Bullet, str, str]]":
+    """Each ``- key: value`` bullet as ``(position, bullet, key, raw value)``, the key lowercased."""
+    for position, bullet in enumerate(bullets):
+        text = bullet.text.strip()
+        idx = markdown.label_colon_index(text)
+        if idx == -1:
+            continue
+        yield position, bullet, text[:idx].strip().lower(), text[idx + 1:]
 
 
 def _fold_bullets(bullets: "list[markdown.Bullet]") -> dict[str, str | list[str]]:
     """``- key: value`` children folded into a dict, deeper descendants flattened into the value."""
     folded: dict[str, str | list[str]] = {}
-    for bullet in bullets:
-        text = bullet.text.strip()
-        idx = markdown.label_colon_index(text)
-        if idx == -1:
-            continue
-        key, value = text[:idx], text[idx + 1:]
-        key = key.strip().lower()
+    for _position, bullet, key, value in _labelled(bullets):
         nested = [item.text.strip() for child in bullet.children for item in child.walk()]
         values = [item for item in (value.strip(), *nested) if item]
         parsed: str | list[str] = "" if not values else values[0] if len(values) == 1 else values
@@ -417,12 +425,7 @@ def _entries_from_bullets(section: markdown.Section,
     if uitype is None:
         return {}
     found: dict[str, list[Entry]] = {}
-    for bullet in section.bullets:
-        text = bullet.text.strip()
-        idx = markdown.label_colon_index(text)
-        if idx == -1:
-            continue
-        key = text[:idx].strip().lower()
+    for _position, bullet, key, _value in _labelled(section.bullets):
         spec = uitype.bullet_by_key.get(key)
         if spec is None or not spec.entries:
             continue
@@ -437,12 +440,7 @@ def _records_from_bullets(section: markdown.Section,
     if uitype is None:
         return {}
     children: dict[str, list[markdown.Bullet]] = {}
-    for bullet in section.bullets:
-        text = bullet.text.strip()
-        idx = markdown.label_colon_index(text)
-        if idx == -1:
-            continue
-        key = text[:idx].strip().lower()
+    for _position, bullet, key, _value in _labelled(section.bullets):
         spec = uitype.bullet_by_key.get(key)
         if spec is None or not spec.record:
             continue
@@ -501,13 +499,7 @@ def _bullet_pairs(section: markdown.Section,
                   uitype: "registry.UINodeType | None" = None) -> list[tuple[str, str, int]]:
     """Every `- key: value` of a section as ``(key, value, bullet)`` in document order."""
     pairs: list[tuple[str, str, int]] = []
-    for position, bullet in enumerate(section.bullets):
-        text = bullet.text.strip()
-        idx = markdown.label_colon_index(text)
-        if idx == -1:
-            continue
-        key, value = text[:idx], text[idx + 1:]
-        key = key.strip().lower()
+    for position, bullet, key, value in _labelled(section.bullets):
         own = "" if _combiner(bullet) else value.strip()
         pairs.extend((stated, item, position)
                      for stated, item in ((key, own), *_nested_pairs(key, bullet, uitype)) if item)
@@ -518,13 +510,7 @@ def _meta_from_bullets(section: markdown.Section,
                        uitype: "registry.UINodeType | None" = None) -> dict[str, str | list[str]]:
     """Parse the leading `- key: value` metadata bullets of a section into an ordered dict."""
     meta: dict[str, str | list[str]] = {}
-    for bullet in section.bullets:
-        text = bullet.text.strip()
-        idx = markdown.label_colon_index(text)
-        if idx == -1:
-            continue
-        key, value = text[:idx], text[idx + 1:]
-        key = key.strip().lower()
+    for _position, bullet, key, value in _labelled(section.bullets):
         value = "" if _combiner(bullet) else value.strip()
         pairs = _nested_pairs(key, bullet, uitype)
         _merge_meta(meta, key, [item for item in (value, *(v for k, v in pairs if k == key)) if item])

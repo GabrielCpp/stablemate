@@ -56,7 +56,7 @@ from ostler.qa.plan_source import ScenarioRefusal
 from ostler.qa.plan_source import SourceScenario
 from ostler.qa.plan_source import arrangement_of
 from ostler.qa.plan_source import by_source
-from ostler.qa.plan_source import claim_scenario_function_name
+from ostler.qa.plan_source import covered_scenario
 from ostler.qa.plan_source import call_kwargs
 from ostler.qa.plan_source import check_observes
 from ostler.qa.plan_source import decline_captures
@@ -609,14 +609,9 @@ def mobile_scenarios(
         body = _scenario_body(obligations, book, launch, sinks, covered)
         if not covered:
             continue
-        emitted.covered.update(covered)
-        target_var = target_variable(surface, "mobile")
-        app_id = f", app_id={python_literal(launch.bundle_id)}"
-        lines.extend(target_lines(target_var, MAESTRO.name, app_id, emitted))
-        scenario = SourceScenario(
-            source, target_var, [o.id for o in obligations if o.id in covered],
-            arrangement, body)
-        lines.extend(scenario_lines(scenario, claim_scenario_function_name(scenario, emitted)))
+        lines.extend(covered_scenario(
+            source, obligations, arrangement, body, covered, emitted,
+            target_variable(surface, "mobile"), MAESTRO.name, f", app_id={python_literal(launch.bundle_id)}"))
     return lines
 
 

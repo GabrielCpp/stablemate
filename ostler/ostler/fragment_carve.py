@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ostler import markdown, registry
-from ostler.carve import CarveError, CarvePlan, _address_map, _broken, _claims, _render, _rewrite, _trim, references
+from ostler.carve import CarveError, CarvePlan, _address_map, _broken, _carved_texts, _claims, _require_conserved, _rewrite, _trim, references
 from ostler.edit import FileChange, _doc_files
 from ostler.links import is_doc_link
 from ostler.model import Graph, document_anchors
@@ -181,16 +181,11 @@ def _carve(graph: Graph, host: Path) -> CarvePlan:
     declared += _claims([line for f in fragments for line in f.added])
     lost = before_claims - after_claims
     gained = (after_claims - before_claims) - declared
-    if lost or gained:
-        sample = [f"-{k}" for k in list(lost)[:3]] + [f"+{k}" for k in list(gained)[:3]]
-        raise CarveError(f"the carve would not conserve the page's claims: {sample}")
+    _require_conserved(lost, gained)
 
-    texts: dict[Path, str] = {}
-    head = f"---\n{doc.raw_frontmatter}---\n" if doc.has_frontmatter else ""
-    texts[host] = head + _rewrite("\n".join(body), host, host, host, moved)
-    for frag in fragments:
-        fm_frag = {"type": "fragment", "slug": frag.name, "title": frag.title}
-        texts[frag.path] = _rewrite(_render(fm_frag, frag.body), host, frag.path, host, moved)
+    texts = _carved_texts(doc, body, host, [
+        (frag.path, {"type": "fragment", "slug": frag.name, "title": frag.title}, frag.body)
+        for frag in fragments], moved)
     if (left := len(texts[host].encode())) > PAGE_SIZE_LIMIT:
         raise CarveError(f"{host.name} would still hold {left // 1024} KiB with every section's subsections "
                          f"moved, past the {PAGE_SIZE_LIMIT // 1024} KiB limit; shorten its intros by hand")

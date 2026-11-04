@@ -9,7 +9,7 @@ import warnings
 from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from ostler import keys, markdown, refs
 
@@ -660,6 +660,46 @@ class Refusal:
         return f"- {self.relocates_to or key}: {self.form}"
 
 
+class Signed(Protocol):
+    """A named spec with parameters, which both the check and the act vocabularies are."""
+
+    @property
+    def name(self) -> str: ...
+    @property
+    def params(self) -> tuple[Any, ...]: ...
+    @property
+    def param_by_name(self) -> dict[str, Any]: ...
+    def signature(self) -> str: ...
+
+
+def bad_arguments(spec: Signed, message: str) -> Refusal:
+    """The refusal for arguments that do not fit *spec*, suggesting its signature."""
+    return Refusal("bad-arguments", message, spec.signature())
+
+
+def no_such_argument(spec: Signed, name: str, key: str) -> Refusal:
+    allowed = ", ".join(p.name for p in spec.params)
+    return bad_arguments(spec, f"`{name}` has no argument `{key}` — it takes: {allowed}")
+
+
+def spread_call(spec: Signed, parsed: Call) -> dict[str, Any] | Refusal:
+    """*parsed*'s positional and keyword arguments keyed by parameter name, or why they do not fit."""
+    name = parsed.name
+    if len(parsed.positional) > len(spec.params):
+        return bad_arguments(spec, f"`{name}` takes at most {len(spec.params)} arguments")
+    args: dict[str, Any] = {}
+    for param, bound in zip(spec.params, parsed.positional, strict=False):
+        args[param.name] = bound
+    for key, bound in parsed.keywords.items():
+        param = spec.param_by_name.get(key)
+        if param is None:
+            return no_such_argument(spec, name, key)
+        if param.name in args:
+            return bad_arguments(spec, f"`{name}`: `{param.name}` given twice")
+        args[param.name] = bound
+    return args
+
+
 def _unknown_check(name: str, table: Mapping[str, CheckSpec] = CHECK_BY_NAME) -> Refusal:
     """The refusal for a name no entry of *table* declares — one spelling for every caller."""
     known = ", ".join(sorted(table))
@@ -696,8 +736,7 @@ def _parse(value: str, table: Mapping[str, CheckSpec]) -> CheckCall | Refusal:
     if spec is None:
         return _unknown_check(parsed.name, table)
 
-    def wrong(message: str) -> Refusal:
-        return Refusal("bad-arguments", message, spec.signature())
+    wrong = functools.partial(bad_arguments, spec)
 
     if isinstance(parsed, Malformed):
         return wrong(f"`{parsed.name}`: {parsed.problem}")
@@ -706,22 +745,10 @@ def _parse(value: str, table: Mapping[str, CheckSpec]) -> CheckCall | Refusal:
         return wrong(
             f"`{parsed.name}`: a line break opens or closes the string {broken!r}, and markdown "
             f"folds it to a space; write `\\n` for a newline, or keep the string on one line")
-    name = parsed.name
-    args: dict[str, CheckValue] = {}
-    if len(parsed.positional) > len(spec.params):
-        return wrong(f"`{name}` takes at most {len(spec.params)} arguments")
-    for param, bound in zip(spec.params, parsed.positional, strict=False):
-        args[param.name] = bound
-    for key, bound in parsed.keywords.items():
-        param = spec.param_by_name.get(key)
-        if param is None:
-            allowed = ", ".join(p.name for p in spec.params)
-            return wrong(f"`{name}` has no argument `{key}` — it takes: {allowed}")
-        if param.name in args:
-            return wrong(f"`{name}`: `{param.name}` given twice")
-        args[param.name] = bound
-
-    return bind(name, args, table)
+    args = spread_call(spec, parsed)
+    if isinstance(args, Refusal):
+        return args
+    return bind(parsed.name, args, table)
 
 
 def is_check_expression(value: str) -> bool:
@@ -809,15 +836,13 @@ def bind(
     if spec is None:
         return _unknown_check(name, table)
 
-    def wrong(message: str) -> Refusal:
-        return Refusal("bad-arguments", message, spec.signature())
+    wrong = functools.partial(bad_arguments, spec)
 
     bound: dict[str, CheckValue] = {}
     for key, value in args.items():
         param = spec.param_by_name.get(key)
         if param is None:
-            allowed = ", ".join(p.name for p in spec.params)
-            return wrong(f"`{name}` has no argument `{key}` — it takes: {allowed}")
+            return no_such_argument(spec, name, key)
         if not _typed(value, param.type):
             return wrong(f"`{name}`: `{key}` is {param.type}, got {type(value).__name__}")
         if param.pattern:
