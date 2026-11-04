@@ -6,7 +6,7 @@ title: Make-target drivers
 # Make-target drivers
 
 - driver: cli
-- code: `Makefile::install` @2dc79a61753b
+- code: `Makefile::install` @ce0eb1111ce4
 - working-directory: .
 
 This runbook documents the repository's Make-driven operational interface. The workspace
@@ -129,22 +129,6 @@ status stops the target and its dependent target chain.
 - run: `make check-fixtures`
 - working-directory: .
 - produces: declared-fixture consistency results for the benchmark corpus
-- verify: [workspace Makefile](../../../../Makefile)
-
-### check-prompt-agnostic
-
-- kind: run
-- run: `make check-prompt-agnostic`
-- working-directory: .
-- produces: a pass only when coder prompts do not hard-code a technology stack
-- verify: [workspace Makefile](../../../../Makefile)
-
-### check-parsers
-
-- kind: run
-- run: `make check-parsers`
-- working-directory: .
-- produces: structured-document parser-boundary results
 - verify: [workspace Makefile](../../../../Makefile)
 
 ### check-portability

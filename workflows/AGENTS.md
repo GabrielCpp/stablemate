@@ -119,9 +119,8 @@ turn with no skill reference. A file is everything else. `self.agent` refuses a 
 outright. The rest is a judgement call, and it goes the file's way whenever the turn
 carries a skill reference or runs past a screen.
 
-Nothing under `coder/` goes inline at all. `scripts/check_prompt_agnostic.py` and
-`coder/test_prompt_stack_neutrality.py` glob `coder/*/prompts/*.md`, so an inline body
-would escape that workflow's central invariant.
+Nothing under `coder/` goes inline at all. `coder/test_prompt_stack_neutrality.py` globs
+`coder/*/prompts/*.md`, so an inline body would escape that workflow's central invariant.
 
 ## Map
 

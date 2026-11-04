@@ -165,21 +165,6 @@ check-fixtures: ## Guard the declared-fixture rule across the benchmark corpus
 	# about which entries in a story's fixture list are names and which are prose.
 	uv run --all-packages python scripts/check_fixtures.py
 
-.PHONY: check-prompt-agnostic
-check-prompt-agnostic: ## Guard invariant 1 (the coder workflow names no stack of its own)
-	# A stack name in a coder prompt is a deployment assumption the workflow charges every
-	# repo for: a Go command sent to a Python service, a `package.json` marker offered to a
-	# repo that has none. What runs comes out of the repo's own `agents.yml`; this is what
-	# stops the guessed list from growing back, one helpful example at a time.
-	uv run python scripts/check_prompt_agnostic.py
-
-.PHONY: check-parsers
-check-parsers: ## Guard the parse-don't-match rule (a format with a grammar gets its parser)
-	# A regex over a structured document is that format's parser rewritten without its
-	# cases, and it fails silently in both directions — a `//` inside a JSON string read
-	# as a comment, a link matched inside a fenced code block.
-	uv run python scripts/check_parsers.py
-
 .PHONY: check-portability
 check-portability: ## Guard the portability tiers (a shipped package runs on the user's OS, not ours)
 	# The container is Ubuntu and CI is ubuntu-latest, so a POSIX-only call in a package

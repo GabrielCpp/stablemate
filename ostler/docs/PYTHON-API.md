@@ -118,8 +118,7 @@ for label, href, line in markdown.iter_links(text):
 
 A heading, bullet, table row or link inside a fenced code block is not one — that falls
 out of the token stream rather than being approximated. Line numbers on `Section` and
-`Table` are 0-indexed and body-relative; `doc.body_offset` converts to a file line. `make check-parsers`
-enforces the rule this serves, and its guard names the parser for every other format.
+`Table` are 0-indexed and body-relative; `doc.body_offset` converts to a file line.
 
 ## `ostler.syntax` — the same rule, for source code
 

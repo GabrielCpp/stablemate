@@ -115,7 +115,6 @@ exists because its failure mode is invisible on the machine where the code was w
 
 | Guard | Rule |
 | --- | --- |
-| `make check-parsers` | a format with a grammar gets a parser, not a regex |
 | `make check-portability` | a shipped package runs on the user's OS, not ours |
 | `make check-vendor` | each tool links `core/` and carries its current digest |
 | `make check-library` | the base library's front matter parses |

@@ -8,7 +8,7 @@
 # `make test` chains lint (ruff + ty) and every package suite, so this file adds no steps
 # of its own beyond the three the runner cannot infer: the browser binary, a workhorse-new
 # scaffold installed outside the checkout, and the hooks check below. It does NOT chain the repo's own guards — check-public, check-no-env,
-# check-parsers, check-portability are their own targets and nothing here invokes them,
+# check-portability are their own targets and nothing here invokes them,
 # so no job in this workflow enforces them.
 
 name: ci
