@@ -4,19 +4,17 @@ from __future__ import annotations
 
 import json
 import socket
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from saddlebag._vendor.stablemate_core import sockets as sockets_core
 from saddlebag.sockets import socket_path
 
 REQUEST_LIMIT = 64 * 1024
 REPLY_LIMIT = 4 * 1024 * 1024
 CONNECT_RETRY_S = 0.05
 DEFAULT_TIMEOUT = 120.0
-
-_CHUNK = 64 * 1024
 
 
 class DaemonNotRunning(RuntimeError):
@@ -78,25 +76,7 @@ class Reply:
 
 
 def read_message(conn: socket.socket, *, limit: int) -> str:
-    """One newline-terminated message, reassembled across however many packets it arrives in."""
-    chunks: list[bytes] = []
-    total = 0
-    while True:
-        chunk = conn.recv(_CHUNK)
-        if not chunk:
-            break
-        newline = chunk.find(b"\n")
-        if newline >= 0:
-            chunks.append(chunk[:newline])
-            total += newline
-            if total > limit:
-                raise ProtocolError(f"message exceeded {limit} bytes")
-            break
-        chunks.append(chunk)
-        total += len(chunk)
-        if total > limit:
-            raise ProtocolError(f"message exceeded {limit} bytes with no newline")
-    return b"".join(chunks).decode("utf-8", errors="replace")
+    return sockets_core.read_message(conn, limit=limit, error=ProtocolError)
 
 
 def write_message(conn: socket.socket, text: str) -> None:
@@ -118,22 +98,12 @@ def is_live(path: Path) -> bool:
 
 
 def _connected(path: Path, timeout: float) -> socket.socket:
-    deadline = time.monotonic() + timeout
-    while True:
-        client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        client.settimeout(timeout)
-        try:
-            client.connect(str(path))
-        except (FileNotFoundError, ConnectionRefusedError) as exc:
-            client.close()
-            raise DaemonNotRunning(f"no saddlebag daemon on {path}: start one with `saddlebag serve`") from exc
-        except BlockingIOError as exc:
-            client.close()
-            if time.monotonic() >= deadline:
-                raise DaemonNotRunning(f"the daemon on {path} took no request for {timeout:g}s") from exc
-            time.sleep(CONNECT_RETRY_S)
-        else:
-            return client
+    try:
+        return sockets_core.connected(path, timeout, retry_s=CONNECT_RETRY_S)
+    except FileNotFoundError as exc:
+        raise DaemonNotRunning(f"no saddlebag daemon on {path}: start one with `saddlebag serve`") from exc
+    except TimeoutError as exc:
+        raise DaemonNotRunning(f"the daemon on {path} took no request for {timeout:g}s") from exc
 
 
 def send(request: Request, *, timeout: float = DEFAULT_TIMEOUT) -> Reply:

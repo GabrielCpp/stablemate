@@ -5,10 +5,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from saddlebag._vendor.stablemate_core.dotenv import assignment
+
 MARK = "[REDACTED]"
-_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_.-]*")
-_EXPORT = re.compile(r"export\s+")
-_COMMENT = re.compile(r"\s+#.*$")
 
 
 @dataclass(frozen=True)
@@ -20,24 +19,11 @@ class Line:
     value: str | None
 
 
-def _unquote(text: str) -> str:
-    if text[:1] in ("'", '"'):
-        end = text.find(text[0], 1)
-        return text[1:end] if end > 0 else text[1:]
-    return _COMMENT.sub("", text).strip()
-
-
 def _line(raw: str) -> Line:
-    text = raw.strip()
-    if not text or text.startswith("#"):
+    found = assignment(raw)
+    if found is None:
         return Line(raw, None, None)
-    if match := _EXPORT.match(text):
-        text = text[match.end():]
-    key, sep, rest = text.partition("=")
-    key = key.strip()
-    if not sep or not _KEY.fullmatch(key):
-        return Line(raw, None, None)
-    return Line(raw, key, _unquote(rest.strip()))
+    return Line(raw, found[0], found[1])
 
 
 def parse(text: str) -> list[Line]:
