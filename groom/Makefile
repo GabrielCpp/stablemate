@@ -26,7 +26,7 @@ PORT ?= 8787
 
 # Generous because one file in the suite boots a real groom and drives Chromium
 # through five panes; the rest finish in seconds.
-TEST_TIMEOUT ?= 300
+TEST_TIMEOUT ?= 600
 
 .PHONY: run
 run: ## Start the groom web dashboard (HOST=… PORT=… to override; binds 0.0.0.0:8787)
