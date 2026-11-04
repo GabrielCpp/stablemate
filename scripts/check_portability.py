@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-import argparse
 import ast
 import sys
-import tomllib
 from pathlib import Path
+
+import guards
 
 CONFIG = ".agent-checks.toml"
 TABLE = "check-portability"
@@ -28,11 +28,7 @@ POSIX_SUBPROCESS_KWARGS = frozenset({"start_new_session", "preexec_fn", "restore
 UNIX_PATH_PREFIXES = ("/tmp", "/var/", "/etc/", "/usr/", "/opt/", "/proc/")
 
 def declarations(root: Path) -> dict:
-    """What *root*'s repo declares to this check, from its `.agent-checks.toml`."""
-    config = root / CONFIG
-    if not config.is_file():
-        return {}
-    return tomllib.loads(config.read_text(encoding="utf-8")).get(TABLE, {})
+    return guards.declarations(root, CONFIG, TABLE)
 
 
 def _tier1_modules(root: Path, tier1: list[str]) -> list[Path]:
@@ -125,14 +121,10 @@ def check_portability(root: Path) -> list[str]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--root", type=Path, default=Path.cwd(), help=f"repo holding {CONFIG} (default: cwd)"
-    )
-    args = parser.parse_args()
+    root = guards.root_argument(__doc__, CONFIG)
 
-    allowed: dict[str, str] = declarations(args.root).get("allow", {})
-    problems = check_portability(args.root)
+    allowed: dict[str, str] = declarations(root).get("allow", {})
+    problems = check_portability(root)
     if not problems:
         return 0
     print("\nFAIL check_portability:", file=sys.stderr)

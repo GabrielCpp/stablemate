@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
+
+import guards
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -25,13 +26,7 @@ SCANNED_ROOTS = ("workflows/",)
 
 
 def _tracked_files() -> list[Path]:
-    out = subprocess.run(
-        ["git", "-C", str(REPO), "ls-files", "-z", *SCANNED_ROOTS],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
-    return [REPO / p for p in out.split("\0") if p]
+    return guards.tracked_files(REPO, SCANNED_ROOTS)
 
 
 def check_no_giveup() -> list[str]:
