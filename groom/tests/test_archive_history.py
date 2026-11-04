@@ -7,7 +7,7 @@ import json
 import threading
 import time
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from litestar.testing import TestClient
@@ -271,7 +271,7 @@ def test_the_retry_route_puts_an_unreadable_summary_back_in_the_queue() -> None:
         history.discover_archives()
         with patch.object(archive, "build_index", side_effect=OSError("x")):
             history.compute_archive("run-older", now)
-        with TestClient(app=groom_app.create_app()) as client:
+        with patch.object(groom_app, "_summary_pass", AsyncMock(return_value=0)), TestClient(app=groom_app.create_app()) as client:
             answer = client.post("/api/history/run-older/retry")
         row = history.stored("run-older")
     assert answer.status_code in (200, 201)
