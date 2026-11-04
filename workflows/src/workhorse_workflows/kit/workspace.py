@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import re
 import subprocess
 import sys
 from pathlib import Path
@@ -19,9 +18,7 @@ def _repo_name(path: Path) -> str:
     """A repo's name: its agents.yml `repo.name` when set, else its directory name, normalized the same way farrier's repo_prefix() derives the install prefix, so the key here and the prefix on that repo's installed skills are the same string by construction."""
     manifest = read_manifest(path)
     named = manifest.repo.name if manifest is not None else None
-    raw = named if named else path.name
-    name = re.sub(r"[^a-zA-Z0-9/-]+", "-", raw.replace(".", "-").replace("_", "-"))
-    return re.sub(r"-+", "-", name).strip("-").lower()
+    return core_config.repo_slug(named if named else path.name)
 
 
 def resolve_workspace(

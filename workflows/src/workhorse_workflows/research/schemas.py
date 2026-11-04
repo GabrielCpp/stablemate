@@ -3,21 +3,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 from workhorse.pyflow import dry_run
 
+from workhorse_workflows.kit.result import Result
 
-class ResearchResult(BaseModel):
+
+class ResearchResult(Result):
     """Base for every agent reply and node return in this workflow."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _drop_nulls(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            return {k: v for k, v in data.items() if v is not None}
-        return data
 
 
 

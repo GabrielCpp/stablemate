@@ -233,7 +233,10 @@ class FixCi(Workflow):
             timeout=UNBOUNDED,
             add_dirs=list(self.ctx.dirs),
             args=resolver_args(
-                self, block_kind="ci", notes=notes, story=self._gate()
+                self,
+                block_kind="ci",
+                notes=notes,
+                story=self._gate(),
             ),
         )
         if answered(self, result, "ci"):

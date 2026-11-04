@@ -4,19 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from ostler import path as okf_path
-
+from workhorse_workflows.kit.paths import agents_repo_root as survey_repo_root
 from workhorse_workflows.kit.paths import docs_home_or
-
-
-def survey_repo_root(repo_dir: str | Path = "") -> Path:
-    """*repo_dir* when given, else the nearest ancestor of the cwd holding `agents.yml`, else the cwd. Each answer passes through the docs home, which is the artifacts repo while the repository belongs to a workspace."""
-    if repo_dir:
-        return docs_home_or(Path(repo_dir).resolve())
-    here = Path.cwd().resolve()
-    for candidate in [here, *here.parents]:
-        if (candidate / "agents.yml").exists():
-            return docs_home_or(candidate)
-    return docs_home_or(here)
 
 
 def launch_repo_root(repo_dir: str | Path = "") -> Path:

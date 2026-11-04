@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 import yaml
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
@@ -15,6 +15,14 @@ from workhorse_workflows.author.shared.schemas.survey import EmitResult, Partiti
 
 _SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 STRATEGIES = {"mechanical", "dedicated"}
+
+
+def _read_units(logger: logging.Logger, root: Path, inv_rel: str) -> list | None:
+    try:
+        return json.loads((root / inv_rel).read_text(encoding="utf-8")).get("units") or []
+    except (OSError, json.JSONDecodeError, ValueError):
+        logger.warning("inventory at %s could not be read", inv_rel)
+        return None
 
 
 @blueprint.node(stub=stubs.partitioned)
@@ -43,10 +51,8 @@ def validate_partition(
         logger.warning("partition file %s is not valid YAML: %s", part_rel, exc)
         return PartitionCheck(partition_errors=f"partition file is not valid YAML: {exc}")
 
-    try:
-        units = json.loads((root / inv_rel).read_text(encoding="utf-8")).get("units") or []
-    except (OSError, json.JSONDecodeError, ValueError):
-        logger.warning("inventory at %s could not be read", inv_rel)
+    units = _read_units(logger, root, inv_rel)
+    if units is None:
         return PartitionCheck(partition_errors=f"inventory at {inv_rel} could not be read")
 
     unit_status = {str(u.get("id")): u.get("status") for u in units if isinstance(u, dict)}
@@ -193,10 +199,8 @@ def emit_artifacts(
                 f"partition at {part_rel} could not be read — run the partition gate first"
             )
         )
-    try:
-        units = json.loads((root / inv_rel).read_text(encoding="utf-8")).get("units") or []
-    except (OSError, json.JSONDecodeError, ValueError):
-        logger.warning("inventory at %s could not be read", inv_rel)
+    units = _read_units(logger, root, inv_rel)
+    if units is None:
         return EmitResult(emit_errors=f"inventory at {inv_rel} could not be read")
 
     paths = {

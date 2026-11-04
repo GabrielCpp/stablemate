@@ -28,7 +28,9 @@ def guard() -> Any:
     spec = importlib.util.spec_from_file_location("check_no_giveup", SCRIPT)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    with pytest.MonkeyPatch.context() as patch:
+        patch.syspath_prepend(str(SCRIPT.parent))
+        spec.loader.exec_module(module)
     return module
 
 

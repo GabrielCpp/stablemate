@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from collections.abc import Iterator
 
 import yaml
 from ostler import markdown
@@ -35,6 +36,23 @@ def load_record(text: str) -> dict:
     return data
 
 
+def _finding_list(value: object, errors: list[str]) -> list:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        errors.append("`findings` must be a list")
+        return []
+    return value
+
+
+def _finding_entries(findings: list, errors: list[str]) -> Iterator[tuple[int, dict]]:
+    for i, f in enumerate(findings):
+        if isinstance(f, dict):
+            yield i, f
+        else:
+            errors.append(f"findings[{i}] is not a mapping")
+
+
 def check_record(record: dict, unit_id: str) -> list[str]:
     """Every structural error in a parsed record, worded for the assessor fixing it."""
     errors: list[str] = []
@@ -52,16 +70,8 @@ def check_record(record: dict, unit_id: str) -> list[str]:
     if status not in RECORD_STATUSES:
         errors.append(f"`status` '{status}' not one of {sorted(RECORD_STATUSES)}")
 
-    findings = record.get("findings")
-    if findings is None:
-        findings = []
-    if not isinstance(findings, list):
-        errors.append("`findings` must be a list")
-        findings = []
-    for i, f in enumerate(findings):
-        if not isinstance(f, dict):
-            errors.append(f"findings[{i}] is not a mapping")
-            continue
+    findings = _finding_list(record.get("findings"), errors)
+    for i, f in _finding_entries(findings, errors):
         if not str(f.get("description") or "").strip():
             errors.append(f"findings[{i}] missing non-empty `description`")
         pattern = str(f.get("remediation_pattern") or "").strip()
@@ -120,14 +130,8 @@ def record_errors(record: dict, unit_id: str) -> list[str]:
     status = record.get("status")
     if status not in RECORD_STATUSES:
         errors.append(f"`status` '{status}' not one of {sorted(RECORD_STATUSES)}")
-    findings = record.get("findings") or []
-    if not isinstance(findings, list):
-        errors.append("`findings` must be a list")
-        findings = []
-    for i, f in enumerate(findings):
-        if not isinstance(f, dict):
-            errors.append(f"findings[{i}] is not a mapping")
-            continue
+    findings = _finding_list(record.get("findings") or [], errors)
+    for i, f in _finding_entries(findings, errors):
         if not str(f.get("description") or "").strip():
             errors.append(f"findings[{i}] missing `description`")
         if not PATTERN_SLUG_RE.match(str(f.get("remediation_pattern") or "")):

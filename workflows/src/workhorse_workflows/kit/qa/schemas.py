@@ -3,25 +3,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import Field
 from workhorse.pyflow import dry_run
+
+from workhorse_workflows.kit.result import Result as _Result
 
 BLOCKED_STATUSES = frozenset({"blocked", "unfixable", "not_passed", "invalid"})
 
 QaStatus = Literal["passed", "failed", "blocked", "invalid"]
-
-
-class _Result(BaseModel):
-    """Extra keys ignored, nulls dropped."""
-
-    model_config = ConfigDict(extra="ignore")
-
-    @model_validator(mode="before")
-    @classmethod
-    def _drop_nulls(cls, data: Any) -> Any:
-        if isinstance(data, dict):
-            return {k: v for k, v in data.items() if v is not None}
-        return data
 
 
 class QaBaseResult(_Result):

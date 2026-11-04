@@ -382,6 +382,46 @@ class EpicEdit(Workflow):
             mockup=result.mockup,
         )
 
+    def _story_args(self, applied: AppliedEpicEdit, pick: StoryChoice, mockup: str) -> dict[str, str]:
+        return {
+            "epic": applied.epic,
+            "story_path": pick.story_path,
+            "story_slug": pick.story_slug,
+            "story_id": pick.story_id,
+            "story_dir": pick.story_dir,
+            "services_dir": self.ctx.services_dir,
+            "mockup_path": mockup,
+            "ledger": self.ctx.pm_ledger,
+        }
+
+    def _rework_result(
+        self,
+        intent: EditIntent,
+        applied: AppliedEpicEdit,
+        pick: StoryChoice,
+        mockup: str,
+        reworks: int,
+        findings: str,
+    ) -> WriteStoryResult:
+        ledger = self.call(
+            record_attempt,
+            f"{pick.story_dir.rstrip('/')}/attempts.md",
+            str(reworks),
+            findings,
+        )
+        return self.agent(
+            "epic_edit/prompts/rework-story.md",
+            returns=WriteStoryResult,
+            power="high",
+            cwd=self.ctx.repo_root,
+            args={
+                **self._story_args(applied, pick, mockup),
+                "validation_errors": findings,
+                "prior_attempts": ledger.prior_attempts,
+                "operator_feedback": intent.change,
+            },
+        )
+
     def write_story(
         self,
         intent: EditIntent,
@@ -396,17 +436,7 @@ class EpicEdit(Workflow):
             returns=WriteStoryResult,
             power="high",
             cwd=self.ctx.repo_root,
-            args={
-                "epic": applied.epic,
-                "story_path": pick.story_path,
-                "story_slug": pick.story_slug,
-                "story_id": pick.story_id,
-                "story_dir": pick.story_dir,
-                "services_dir": self.ctx.services_dir,
-                "mockup_path": mockup,
-                "epic_edit": intent.change,
-                "ledger": self.ctx.pm_ledger,
-            },
+            args={**self._story_args(applied, pick, mockup), "epic_edit": intent.change},
         )
         if result.status == "blocked":
             return Await(
@@ -466,31 +496,7 @@ class EpicEdit(Workflow):
                     mockup=mockup,
                     reworks=0,
                 )
-            ledger = self.call(
-                record_attempt,
-                f"{pick.story_dir.rstrip('/')}/attempts.md",
-                str(reworks),
-                errors,
-            )
-            result = self.agent(
-                "epic_edit/prompts/rework-story.md",
-                returns=WriteStoryResult,
-                power="high",
-                cwd=self.ctx.repo_root,
-                args={
-                    "epic": applied.epic,
-                    "story_path": pick.story_path,
-                    "story_slug": pick.story_slug,
-                    "story_id": pick.story_id,
-                    "story_dir": pick.story_dir,
-                    "services_dir": self.ctx.services_dir,
-                    "mockup_path": mockup,
-                    "validation_errors": errors,
-                    "prior_attempts": ledger.prior_attempts,
-                    "operator_feedback": intent.change,
-                    "ledger": self.ctx.pm_ledger,
-                },
-            )
+            result = self._rework_result(intent, applied, pick, mockup, reworks, errors)
             return Continue(
                 result,
                 self.check_story,
@@ -573,31 +579,7 @@ class EpicEdit(Workflow):
         mockup: str = "",
         reworks: int = 0,
     ) -> Continue:
-        ledger = self.call(
-            record_attempt,
-            f"{pick.story_dir.rstrip('/')}/attempts.md",
-            str(reworks),
-            findings,
-        )
-        result = self.agent(
-            "epic_edit/prompts/rework-story.md",
-            returns=WriteStoryResult,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={
-                "epic": applied.epic,
-                "story_path": pick.story_path,
-                "story_slug": pick.story_slug,
-                "story_id": pick.story_id,
-                "story_dir": pick.story_dir,
-                "services_dir": self.ctx.services_dir,
-                "mockup_path": mockup,
-                "validation_errors": findings,
-                "prior_attempts": ledger.prior_attempts,
-                "operator_feedback": intent.change,
-                "ledger": self.ctx.pm_ledger,
-            },
-        )
+        result = self._rework_result(intent, applied, pick, mockup, reworks, findings)
         return Continue(
             result,
             self.check_story,

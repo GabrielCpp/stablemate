@@ -142,9 +142,7 @@ class Surveyor(Workflow):
             )
         return Continue(result, self.resolve_plan, notes=notes, plan_resolve=plan_resolve)
 
-    def resolve_plan(self, notes: str, plan_resolve: int = 0) -> Await:
-        """Investigate a granularity block, then park for the operator."""
-        self.logger.info("resolving the granularity block", extra={"activity": True})
+    def _investigate(self, block_stage: str, notes: str) -> None:
         self.agent(
             "surveyor/prompts/resolve-operator.md",
             returns=OperatorResolution,
@@ -154,10 +152,15 @@ class Surveyor(Workflow):
             args={
                 "context_path": self.ctx.context,
                 "survey_dir": self.ctx.survey_dir,
-                "block_stage": "plan-units",
+                "block_stage": block_stage,
                 "block_notes": notes,
             },
         )
+
+    def resolve_plan(self, notes: str, plan_resolve: int = 0) -> Await:
+        """Investigate a granularity block, then park for the operator."""
+        self.logger.info("resolving the granularity block", extra={"activity": True})
+        self._investigate("plan-units", notes)
         return Await(
             self._context,
             notes,
@@ -314,19 +317,7 @@ class Surveyor(Workflow):
     def resolve_verify(self, notes: str, verify_resolve: int = 0) -> Await:
         """Investigate a coverage failure, then park for the operator."""
         self.logger.info("resolving the coverage block", extra={"activity": True})
-        self.agent(
-            "surveyor/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power="high",
-            timeout=UNBOUNDED,
-            cwd=self.ctx.repo_root,
-            args={
-                "context_path": self.ctx.context,
-                "survey_dir": self.ctx.survey_dir,
-                "block_stage": "survey-coverage",
-                "block_notes": notes,
-            },
-        )
+        self._investigate("survey-coverage", notes)
         return Await(self._context, notes, self.pick, verify_resolve=verify_resolve + 1)
 
 
@@ -390,19 +381,7 @@ class Surveyor(Workflow):
     def resolve_partition(self, notes: str, partition_resolve: int = 0) -> Await:
         """Investigate a clustering block, then park for the operator."""
         self.logger.info("resolving the partition block", extra={"activity": True})
-        self.agent(
-            "surveyor/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power="high",
-            timeout=UNBOUNDED,
-            cwd=self.ctx.repo_root,
-            args={
-                "context_path": self.ctx.context,
-                "survey_dir": self.ctx.survey_dir,
-                "block_stage": "partition",
-                "block_notes": notes,
-            },
-        )
+        self._investigate("partition", notes)
         return Await(
             self._context,
             notes,

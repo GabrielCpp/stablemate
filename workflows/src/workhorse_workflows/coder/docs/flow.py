@@ -469,7 +469,11 @@ class Docs(Workflow):
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=workspace_dirs(self),
-            args=resolver_args(self, block_kind="docs", notes=notes),
+            args=resolver_args(
+                self,
+                block_kind="docs",
+                notes=notes,
+            ),
         )
         carried = {"obligations": obligations, "authored_nodes": authored_nodes}
         if answered(self, result, "docs"):

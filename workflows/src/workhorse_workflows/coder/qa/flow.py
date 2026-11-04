@@ -497,7 +497,11 @@ class Qa(Workflow):
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=self._dirs(),
-            args=resolver_args(self, block_kind="qa", notes=notes),
+            args=resolver_args(
+                self,
+                block_kind="qa",
+                notes=notes,
+            ),
         )
         if answered(self, result, "qa"):
             return Continue(result, self.read_operator, blocks=blocks + 1)

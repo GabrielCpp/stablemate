@@ -649,7 +649,11 @@ class Dev(Workflow):
             power=RESOLVER_POWER,
             timeout=UNBOUNDED,
             add_dirs=workspace_dirs(self),
-            args=resolver_args(self, block_kind="dev", notes=notes),
+            args=resolver_args(
+                self,
+                block_kind="dev",
+                notes=notes,
+            ),
         )
         if answered(self, result, "dev"):
             return Continue(result, self.read_operator, blocks=blocks + 1, phase=phase)
