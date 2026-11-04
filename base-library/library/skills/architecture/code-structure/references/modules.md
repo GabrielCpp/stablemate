@@ -257,7 +257,7 @@ reasons = ["the public API's error codes", "the internal report's error codes"]
 ```
 
 One reason, or the same reason twice, is not a coincidence, and the check refuses it. Generated
-code, vendored code, mocks, fixtures and migrations are outside the check by default. A copy
+code, vendored code, mocks, fixtures, migrations and the repository's `docs/` tree are outside the check by default. A copy
 between two test files is inside it, and rule 14 of the testing-design skill says where shared
 test setup lives, on a test-only path that rule 2.10 leaves alone. A repeat inside one test file
 passes the check. A repo sets its own size and ignore list in the same file's `[check-clones]`

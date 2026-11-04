@@ -73,7 +73,7 @@ Rules 2.5 to 2.13 in modules.md cover where shared code lives: below every featu
 in a module whose name predicts it, in a directory of its kind, with one owner per decoding,
 constant and domain fact, and no module that only tests import. Rules 2.11 and 2.12 keep it
 shared: search the tree before adding a name, and extract on the second copy. A pre-commit hook
-enforces 2.12. Rule 2.13 covers two copies in separately built services: the owner is a library
+enforces 2.12 by running [scripts/check_clones.py](scripts/check_clones.py). Rule 2.13 covers two copies in separately built services: the owner is a library
 the workspace lists, and an extraction that changes how the code ships is proposed and recorded
 before it is built. Rules 1.5 to 1.8 in objects.md
 keep derived analysis off a core model, keep one model per entity, keep an index read-only after it
