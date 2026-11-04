@@ -11,21 +11,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 from litestar.testing import TestClient
-from opentelemetry.proto.collector.logs.v1.logs_service_pb2 import (
-    ExportLogsServiceRequest,
-)
-from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
-    ExportMetricsServiceRequest,
-)
-from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
-    ExportTraceServiceRequest,
-)
 from opentelemetry.proto.trace.v1.trace_pb2 import Status
 
 from groom import alerts, cli, discovery, notify, otlp, projection, state, store
 from groom import app as groom_app
 from groom.cli import _format_status
 from groom.models import WorkflowContainer
+from groom.otlp import (
+    ExportLogsServiceRequest,
+    ExportMetricsServiceRequest,
+    ExportTraceServiceRequest,
+)
 
 _SPAN_IDS = iter(f"{i:016x}" for i in range(1, 10_000))
 

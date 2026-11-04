@@ -7,6 +7,7 @@ import subprocess
 from typing import Any, TypedDict
 
 from groom import gitdiff
+from groom.relpath import safe_relpath
 
 DOCKER_TIMEOUT = 20
 ALPINE_IMAGE = "alpine:3.20"
@@ -100,15 +101,6 @@ def is_running(container_id: str) -> bool:
     if not inspect:
         return False
     return bool(inspect.get("State", {}).get("Running"))
-
-
-def safe_relpath(path: str) -> str:
-    if not path or path.startswith("/") or path.startswith("\\"):
-        raise ValueError(f"unsafe path: {path!r}")
-    parts = path.replace("\\", "/").split("/")
-    if any(part in ("", "..") for part in parts):
-        raise ValueError(f"unsafe path: {path!r}")
-    return "/".join(parts)
 
 
 _SKIP_DIRS = (".git", "node_modules", "__pycache__", ".venv")

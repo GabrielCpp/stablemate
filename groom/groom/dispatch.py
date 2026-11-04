@@ -5,17 +5,15 @@ from __future__ import annotations
 import json
 import logging
 import os
-import signal
 import subprocess
 import threading
-import time
 import uuid
 from typing import Any
 
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
-from groom import dispatch_ledger
+from groom import dispatch_ledger, procs
 from groom.settings import DispatchQueueSettings, resolve_dispatch_queues
 
 logger = logging.getLogger(__name__)
@@ -152,14 +150,7 @@ def stop(item_id: str) -> bool:
     row = dispatch_ledger.dispatch_get(item_id)
     if row is None or row.get("status") != dispatch_ledger.DISPATCH_RUNNING:
         return False
-    pid = row.get("pid")
-    if isinstance(pid, int) and pid > 0:
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(pid, sig)
-            except OSError:
-                break
-            time.sleep(0.2)
+    procs.kill_group(row.get("pid"))
     won = dispatch_ledger.dispatch_finish(item_id, status=dispatch_ledger.DISPATCH_CANCELLED, exit_code=None)
     if not won:
         return False
@@ -171,27 +162,12 @@ def stop(item_id: str) -> bool:
     return True
 
 
-def _alive(pid: Any) -> bool:
-    """Whether that pid is still a process — identical to `attend._alive`."""
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
-    return True
-
-
 def recover_orphans() -> int:
     """Reconcile every row still saying `running` after a groom restart."""
     closed = 0
     for row in dispatch_ledger.dispatch_orphans():
         item_id = str(row.get("item_id") or "")
-        if not item_id or _alive(row.get("pid")):
+        if not item_id or procs.alive(row.get("pid")):
             continue
         dispatch_ledger.dispatch_finish(item_id, status=dispatch_ledger.DISPATCH_FAILED, exit_code=None)
         closed += 1

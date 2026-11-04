@@ -3196,10 +3196,7 @@ function attendWhen(epoch) {
 
 function attendElapsed(row) {
   const end = row.ended_at || Date.now() / 1000;
-  const secs = Math.max(0, Math.round(end - (row.started_at || 0)));
-  if (secs < 60) return secs + "s";
-  if (secs < 3600) return Math.floor(secs / 60) + "m " + (secs % 60) + "s";
-  return Math.floor(secs / 3600) + "h " + Math.floor((secs % 3600) / 60) + "m";
+  return fmtSpan(end - (row.started_at || 0));
 }
 
 function AttendRow({ row, selected }) {
@@ -4468,6 +4465,14 @@ function useRunDiff(id, live, stale, have, shownKept) {
   }, [id, live, stale, have, shownKept]);
 }
 
+function switchedCheckout(body, id, repo) {
+  const repos = body.repos || [];
+  if (!(repos.length && repo && !repos.includes(repo))) return false;
+  setCheckout(id, repos[0]);
+  loadRunDiff(id, true);
+  return true;
+}
+
 function loadRunDiff(id, switched) {
   const seq = ++runDiffSeq;
   const before = store.get().runDiff;
@@ -4496,11 +4501,8 @@ function loadRunDiff(id, switched) {
     })
     .then((body) => {
       if (seq !== runDiffSeq) return;
+      if (switchedCheckout(body, id, repo)) return;
       const repos = body.repos || [];
-      if (repos.length && repo && !repos.includes(repo)) {
-        setCheckout(id, repos[0]);
-        return loadRunDiff(id, true);
-      }
       if (body.served === "volume" || (body.failed && sidecarDown(id))) return miss();
       const text = body.diff || "";
       if (body.failed || (text.trim() && !window.Diff2Html)) return failed(repos);
@@ -4722,11 +4724,8 @@ function loadRunFiles(id) {
     })
     .then((body) => {
       if (seq !== runFilesSeq) return;
+      if (switchedCheckout(body, id, repo)) return;
       const repos = body.repos || [];
-      if (repos.length && repo && !repos.includes(repo)) {
-        setCheckout(id, repos[0]);
-        return loadRunDiff(id, true);
-      }
       if (body.served === "volume" || (body.failed && sidecarDown(id))) return miss();
       if (body.failed) return failed(repos);
       setIn("runFiles", { status: "ready", paths: body.paths || [], reported: body.reported !== false, repos });

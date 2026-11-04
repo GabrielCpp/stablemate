@@ -171,6 +171,38 @@ def _indexed(run_id: str) -> dict[tuple[Any, Any, str], str]:
     }
 
 
+def _record(
+    run_id: str,
+    workflow: str,
+    row: dict[str, Any],
+    session_id: str,
+    generation: Any,
+    seq: Any,
+    backend: str,
+    source: str,
+    path: str,
+    size: int,
+    digest: str,
+) -> dict[str, Any]:
+    """One archived turn's index row."""
+    return {
+        "run_id": run_id,
+        "workflow": workflow,
+        "flow": str(row.get("flow", "")),
+        "node": str(row.get("node", "")),
+        "session_id": session_id,
+        "generation": generation,
+        "seq": seq,
+        "ts": row.get("ts") or 0.0,
+        "backend": backend,
+        "source": source,
+        "path": path,
+        "bytes": size,
+        "sha256": digest,
+        "head": row.get("head"),
+    }
+
+
 def harvest_run(run_dir: Path, run_id: str = "", workflow: str = "") -> int:
     """Archive every turn record this run dir holds that is not already archived."""
     rows = _session_rows(run_dir)
@@ -200,22 +232,19 @@ def harvest_run(run_dir: Path, run_id: str = "", workflow: str = "") -> int:
             continue
         copied.add(key)
         archived.append(
-            {
-                "run_id": run,
-                "workflow": workflow or str(row.get("workflow", "")),
-                "flow": str(row.get("flow", "")),
-                "node": str(row.get("node", "")),
-                "session_id": session_id,
-                "generation": generation,
-                "seq": seq,
-                "ts": row.get("ts") or 0.0,
-                "backend": str(row.get("backend", "")),
-                "source": _capture_source(run_dir, slug, session_id),
-                "path": str(target.relative_to(root)),
-                "bytes": written,
-                "sha256": digest,
-                "head": row.get("head"),
-            }
+            _record(
+                run,
+                workflow or str(row.get("workflow", "")),
+                row,
+                session_id,
+                generation,
+                seq,
+                str(row.get("backend", "")),
+                _capture_source(run_dir, slug, session_id),
+                str(target.relative_to(root)),
+                written,
+                digest,
+            )
         )
     return store.insert_turns(archived)
 
@@ -278,22 +307,19 @@ def backfill(dry_run: bool = False) -> list[dict[str, Any]]:
                 digest, size = _digest_of(sources)
             known[key] = digest
             target = root / run_id / f"{slug}__{session_id}"
-            record = {
-                "run_id": run_id,
-                "workflow": workflow,
-                "flow": str(row.get("flow", "")),
-                "node": str(row.get("node", "")),
-                "session_id": session_id,
-                "generation": generation,
-                "seq": seq,
-                "ts": row.get("ts") or 0.0,
-                "backend": backend,
-                "source": "export-backfill" if exported is not None else "store-backfill",
-                "path": str(target.relative_to(root)),
-                "bytes": size,
-                "sha256": digest,
-                "head": row.get("head"),
-            }
+            record = _record(
+                run_id,
+                workflow,
+                row,
+                session_id,
+                generation,
+                seq,
+                backend,
+                "export-backfill" if exported is not None else "store-backfill",
+                str(target.relative_to(root)),
+                size,
+                digest,
+            )
             planned.append(record)
             if dry_run:
                 continue

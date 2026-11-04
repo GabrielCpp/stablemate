@@ -14,10 +14,10 @@ from groom import cli, sidecar
 
 
 def test_safe_relpath_accepts_normal_and_rejects_traversal():
-    assert sidecar._safe_relpath("acme/src/a.py") == "acme/src/a.py"
+    assert sidecar.safe_relpath("acme/src/a.py") == "acme/src/a.py"
     for bad in ("/etc/passwd", "../x", "a/../../b", "", "a/../b"):
         try:
-            sidecar._safe_relpath(bad)
+            sidecar.safe_relpath(bad)
         except ValueError:
             continue
         raise AssertionError(f"expected ValueError for {bad!r}")

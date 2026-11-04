@@ -102,7 +102,7 @@ def test_read_turn_file_slices_and_reports_the_end():
 
 
 def test_read_turn_file_refuses_anything_outside_a_turn_record():
-    """Traversal is the guard `_safe_relpath` already gives every read; this is the narrower one — a path with no `..` in it that is simply not a turn record."""
+    """Traversal is the guard `safe_relpath` already gives every read; this is the narrower one — a path with no `..` in it that is simply not a turn record."""
     with _runs_volume():
         for bad in ("checkpoint.json", "../etc/passwd", "/etc/passwd"):
             try:
@@ -113,7 +113,7 @@ def test_read_turn_file_refuses_anything_outside_a_turn_record():
 
 
 def test_read_turn_file_refuses_a_symlink_out_of_the_volume():
-    """The workspace reads survive on `_safe_relpath` alone because they return text a panel asked for."""
+    """The workspace reads survive on `safe_relpath` alone because they return text a panel asked for."""
     with _runs_volume() as root:
         with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as fh:
             fh.write("secret\n")

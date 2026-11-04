@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import signal
 import subprocess
 import threading
 import time
@@ -22,7 +21,7 @@ from workhorse._vendor.stablemate_core.config import ConfigError
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
-from groom import attend_ledger, attend_transcript, gates
+from groom import attend_ledger, attend_transcript, gates, procs
 from groom.settings import AttendSettings, resolve_attend_settings
 
 logger = logging.getLogger(__name__)
@@ -270,33 +269,11 @@ def stop(job_id: str) -> bool:
     row = attend_ledger.attend_get(job_id)
     if row is None or row.get("status") != attend_ledger.ATTEND_RUNNING:
         return False
-    pid = row.get("pid")
-    if isinstance(pid, int) and pid > 0:
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(pid, sig)
-            except OSError:
-                break
-            time.sleep(0.2)
+    procs.kill_group(row.get("pid"))
     for session_id in row.get("session_ids") or []:
         attend_transcript.copy_session(str(session_id))
     attend_ledger.attend_finish(job_id, exit_code=None, released_state="stopped")
     release(str(row.get("run_id") or ""))
-    return True
-
-
-def _alive(pid: Any) -> bool:
-    """Whether that pid is still a process."""
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
     return True
 
 
@@ -306,7 +283,7 @@ def recover_orphans() -> int:
     restarted = 0
     for row in attend_ledger.attend_orphans():
         job_id = str(row.get("job_id") or "")
-        if not job_id or _alive(row.get("pid")):
+        if not job_id or procs.alive(row.get("pid")):
             continue
         if not spawning:
             attend_ledger.attend_finish(job_id, exit_code=None, released_state="lost")

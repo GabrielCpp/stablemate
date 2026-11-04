@@ -123,13 +123,48 @@ def _flow_row(flow: _Flow) -> dict[str, Any]:
     return _sum(flow.kind, flow.name, visits, rows, title=flow.title)
 
 
-def build_flows(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    by_id = {span["span_id"]: span for span in spans}
-    containers = {
+def _containers(spans: list[dict[str, Any]]) -> set[str]:
+    return {
         span["parent_id"]
         for span in spans
         if span["parent_id"] and (_is_state(span) or _is_node(span))
     }
+
+
+def _ancestry(item: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    chain = [item]
+    visited = {item["span_id"]}
+    while (above := by_id.get(chain[-1]["parent_id"])) is not None and above["span_id"] not in visited:
+        chain.append(above)
+        visited.add(above["span_id"])
+    return chain
+
+
+def _flow_above(chain: list[dict[str, Any]]) -> dict[str, Any] | None:
+    state = next((span for span in chain if _is_state(span)), None)
+    beyond = chain[chain.index(state) + 1 :] if state is not None else chain[1:]
+    return next((span for span in beyond if _is_node(span)), None)
+
+
+def _standin(turn: dict[str, Any], by_id: dict[str, dict[str, Any]], containers: set[str]) -> dict[str, Any]:
+    parent = by_id.get(turn["parent_id"])
+    return parent if parent is not None and _is_node(parent) and parent["span_id"] not in containers else turn
+
+
+def _represented(
+    original: dict[str, Any], by_id: dict[str, dict[str, Any]], containers: set[str], bare: set[str]
+) -> dict[str, Any] | None:
+    if _is_turn(original):
+        return _standin(original, by_id, containers)
+    leaf = (_is_node(original) and original["span_id"] not in containers) or original["span_id"] in bare
+    if leaf or original["attrs"].get("workhorse.span_kind") == "wait":
+        return original
+    return None
+
+
+def build_flows(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_id = {span["span_id"]: span for span in spans}
+    containers = _containers(spans)
     bare = {span["span_id"] for span in state_steps(spans)}
     workflow = next((span["workflow"] for span in spans if span["workflow"]), "") or "run"
     flows: dict[tuple[str, str], _Flow] = {}
@@ -141,18 +176,9 @@ def build_flows(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return found
 
     def place(item: dict[str, Any]) -> tuple[_Flow, _State | None]:
-        chain = [item]
-        seen = {item["span_id"]}
-        while True:
-            parent = by_id.get(chain[-1]["parent_id"])
-            if parent is None or parent["span_id"] in seen:
-                break
-            chain.append(parent)
-            seen.add(parent["span_id"])
-        ancestors = chain[1:]
+        chain = _ancestry(item, by_id)
         state = next((span for span in chain if _is_state(span)), None)
-        above = chain[chain.index(state) + 1 :] if state is not None else ancestors
-        flow_span = next((span for span in above if _is_node(span)), None)
+        flow_span = _flow_above(chain)
         top = chain[-1]
         attrs = item["attrs"]
         named_flow = attrs.get("workhorse.flow")
@@ -246,11 +272,7 @@ def turn_passes(spans: list[dict[str, Any]]) -> dict[str, tuple[str, int]]:
     A pass is one run of the flow's node span, counted from one in the order they started. A turn outside any flow node is absent.
     """
     by_id = {span["span_id"]: span for span in spans}
-    containers = {
-        span["parent_id"]
-        for span in spans
-        if span["parent_id"] and (_is_state(span) or _is_node(span))
-    }
+    containers = _containers(spans)
     started = sorted(
         (span for span in spans if _is_node(span) and span["span_id"] in containers),
         key=lambda span: span["start_ts"],
@@ -264,16 +286,9 @@ def turn_passes(spans: list[dict[str, Any]]) -> dict[str, tuple[str, int]]:
     for turn in spans:
         if not _is_turn(turn):
             continue
-        parent = by_id.get(turn["parent_id"])
-        item = parent if parent is not None and _is_node(parent) and parent["span_id"] not in containers else turn
-        chain = [item]
-        visited = {item["span_id"]}
-        while (above := by_id.get(chain[-1]["parent_id"])) is not None and above["span_id"] not in visited:
-            chain.append(above)
-            visited.add(above["span_id"])
-        state = next((span for span in chain if _is_state(span)), None)
-        beyond = chain[chain.index(state) + 1 :] if state is not None else chain[1:]
-        flow = next((span for span in beyond if _is_node(span)), None)
+        item = _standin(turn, by_id, containers)
+        chain = _ancestry(item, by_id)
+        flow = _flow_above(chain)
         if flow is not None and flow["span_id"] in ordinals:
             found[turn["span_id"]] = (flow["node"], ordinals[flow["span_id"]])
     return found
@@ -285,11 +300,7 @@ def _work_of(span: dict[str, Any]) -> str:
 
 def _numbered(spans: list[dict[str, Any]]) -> tuple[dict[str, tuple[str, int, bool]], dict[tuple[str, str, int], str]]:
     by_id = {span["span_id"]: span for span in spans}
-    containers = {
-        span["parent_id"]
-        for span in spans
-        if span["parent_id"] and (_is_state(span) or _is_node(span))
-    }
+    containers = _containers(spans)
     bare = {span["span_id"] for span in state_steps(spans)}
     started = sorted(
         (span for span in spans if _is_node(span) and span["span_id"] in containers),
@@ -299,21 +310,11 @@ def _numbered(spans: list[dict[str, Any]]) -> tuple[dict[str, tuple[str, int, bo
     seen_in: dict[tuple[str, str], dict[str, None]] = {}
     where: dict[str, tuple[str, str]] = {}
     for original in spans:
-        item = original
-        if _is_turn(item):
-            parent = by_id.get(item["parent_id"])
-            if parent is not None and _is_node(parent) and parent["span_id"] not in containers:
-                item = parent
-        elif not ((_is_node(item) and item["span_id"] not in containers) or item["span_id"] in bare) and item["attrs"].get("workhorse.span_kind") != "wait":
+        item = _represented(original, by_id, containers, bare)
+        if item is None:
             continue
-        chain = [item]
-        visited = {item["span_id"]}
-        while (above := by_id.get(chain[-1]["parent_id"])) is not None and above["span_id"] not in visited:
-            chain.append(above)
-            visited.add(above["span_id"])
-        state = next((span for span in chain if _is_state(span)), None)
-        beyond = chain[chain.index(state) + 1 :] if state is not None else chain[1:]
-        flow = next((span for span in beyond if _is_node(span)), None)
+        chain = _ancestry(item, by_id)
+        flow = _flow_above(chain)
         if flow is not None and flow["span_id"] in order:
             where[original["span_id"]] = (_work_of(original), flow["span_id"])
             seen_in.setdefault((_work_of(original), flow["node"]), {})[flow["span_id"]] = None
@@ -336,18 +337,10 @@ def _numbered(spans: list[dict[str, Any]]) -> tuple[dict[str, tuple[str, int, bo
         key = original["span_id"]
         if key in found:
             continue
-        item = original
-        if _is_turn(item):
-            parent = by_id.get(item["parent_id"])
-            if parent is not None and _is_node(parent) and parent["span_id"] not in containers:
-                item = parent
-        elif not ((_is_node(item) and item["span_id"] not in containers) or item["span_id"] in bare) and item["attrs"].get("workhorse.span_kind") != "wait":
+        item = _represented(original, by_id, containers, bare)
+        if item is None:
             continue
-        chain = [item]
-        visited = {item["span_id"]}
-        while (above := by_id.get(chain[-1]["parent_id"])) is not None and above["span_id"] not in visited:
-            chain.append(above)
-            visited.add(above["span_id"])
+        chain = _ancestry(item, by_id)
         top = chain[-1]
         named = item["attrs"].get("workhorse.flow")
         if top["parent_id"] and top["parent_id"] not in by_id and _depth(top) != 0 and isinstance(named, str) and named:
@@ -376,11 +369,7 @@ def span_seconds(span: dict[str, Any]) -> float:
 
 def leaf_steps(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """The node spans that hold no other node or state, in the order given."""
-    containers = {
-        span["parent_id"]
-        for span in spans
-        if span["parent_id"] and (_is_state(span) or _is_node(span))
-    }
+    containers = _containers(spans)
     return [span for span in spans if _is_node(span) and span["span_id"] not in containers]
 
 

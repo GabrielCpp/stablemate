@@ -21,6 +21,7 @@ from workhorse import control
 from groom import gitdiff
 from groom.checkpoints import parse_position
 from groom.gates import AWAITING, extract_question, status_of
+from groom.relpath import safe_relpath
 
 WORKSPACE_DIR = Path(os.environ.get("GROOM_WORKSPACE_DIR", "/workspace"))
 RUNS_DIR = Path(os.environ.get("GROOM_RUNS_DIR", "/runs"))
@@ -198,15 +199,6 @@ def _handle_event(path: Path) -> None:
         push_blocked(frame["file_path"], frame["question"])
 
 
-def _safe_relpath(path: str) -> str:
-    if not path or path.startswith("/") or path.startswith("\\"):
-        raise ValueError(f"unsafe path: {path!r}")
-    parts = path.replace("\\", "/").split("/")
-    if any(part in ("", "..") for part in parts):
-        raise ValueError(f"unsafe path: {path!r}")
-    return "/".join(parts)
-
-
 def _repo_base(repo: str) -> Path:
     return WORKSPACE_DIR / repo if repo else WORKSPACE_DIR
 
@@ -289,7 +281,7 @@ def _rpc_get_file(params: dict) -> dict:
     rel = f"{repo}/{path}".lstrip("/") if repo else path
     if not rel:
         return {"content": "", "failed": True}
-    safe = _safe_relpath(rel)
+    safe = safe_relpath(rel)
     try:
         content = (WORKSPACE_DIR / safe).read_text(errors="replace")
     except OSError:
@@ -310,7 +302,7 @@ TURN_CHUNK_BYTES = 512 * 1024
 def _run_base(run: str) -> Path:
     """The run dir a turn-record RPC is talking about — named, or the latest."""
     if run:
-        return RUNS_DIR / _safe_relpath(run)
+        return RUNS_DIR / safe_relpath(run)
     latest = _latest_run_dir()
     if latest is None:
         raise ValueError("no run directory")
@@ -357,7 +349,7 @@ def _rpc_list_turns(params: dict) -> dict:
 def _rpc_read_turn_file(params: dict) -> dict:
     """One slice of one turn-record file, base64'd."""
     base = _run_base(str(params.get("run", "")))
-    rel = _safe_relpath(str(params.get("path", "")))
+    rel = safe_relpath(str(params.get("path", "")))
     if rel.split("/")[0] not in TURN_SURFACE:
         raise ValueError(f"not a turn record: {rel}")
     offset = max(0, int(params.get("offset", 0)))

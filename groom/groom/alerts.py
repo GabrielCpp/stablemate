@@ -108,6 +108,19 @@ def _note_alive(run: RunTelemetry) -> None:
     run.fired.discard("STALL")
 
 
+def _close_wait(run: RunTelemetry) -> None:
+    """The wait this run was in is over: remember its series and retire the pages it raised."""
+    if run.wait_series is not None:
+        run.closed_wait_series.add(run.wait_series)
+    run.wait_kind = ""
+    run.wait_series = None
+    run.wait_elapsed_s = 0.0
+    run.wait_gate_path = ""
+    run.wait_gate_question = ""
+    run.fired.discard("BLOCKED")
+    run.fired.discard("WAITING")
+
+
 CLEAN_TERMINALS = frozenset({"terminal", "ended"})
 
 
@@ -346,15 +359,7 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 if run.current_node != node:
                     run.fired.discard("STUCK")
                     if run.wait_kind and _wait_series_node(run.wait_series) not in ("", node):
-                        if run.wait_series is not None:
-                            run.closed_wait_series.add(run.wait_series)
-                        run.wait_kind = ""
-                        run.wait_series = None
-                        run.wait_elapsed_s = 0.0
-                        run.wait_gate_path = ""
-                        run.wait_gate_question = ""
-                        run.fired.discard("BLOCKED")
-                        run.fired.discard("WAITING")
+                        _close_wait(run)
                 run.current_node = node
             elif run.current_node == node:
                 run.current_node = ""
@@ -384,15 +389,7 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                         alerts,
                     )
             else:
-                if run.wait_series is not None:
-                    run.closed_wait_series.add(run.wait_series)
-                run.wait_kind = ""
-                run.wait_series = None
-                run.wait_elapsed_s = 0.0
-                run.wait_gate_path = ""
-                run.wait_gate_question = ""
-                run.fired.discard("BLOCKED")
-                run.fired.discard("WAITING")
+                _close_wait(run)
         elif name == "workhorse.wait.elapsed_s":
             if not run.wait_kind and (incoming_kind := str(attrs.get("wait_kind") or "")):
                 run.wait_series = _wait_series(attrs)

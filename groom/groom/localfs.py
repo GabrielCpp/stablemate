@@ -8,7 +8,8 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from groom import gitdiff
-from groom.docker_io import _SKIP_DIRS, DOCKER_TIMEOUT, TreeRead, safe_relpath
+from groom.docker_io import _SKIP_DIRS, DOCKER_TIMEOUT, TreeRead
+from groom.relpath import safe_relpath
 
 _SKIP = set(_SKIP_DIRS)
 
