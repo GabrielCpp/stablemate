@@ -18,6 +18,7 @@ from paddock.tasks.leverage import LEVERAGE_KEYS, leverage, leverage_line, pool_
 from paddock.tasks import tree
 from paddock.tasks.stablemate import (
     TrialError,
+    farrier_install,
     git,
     no_leaks,
     pin_held,
@@ -507,15 +508,9 @@ def run_round(run: Run, fixture: Fixture) -> None:
         for index, (story, row) in enumerate(plan_round(run, app, fixture), start=1):
             variant = str(row["id"]) if row else CLEAN
             run_id = f"{fixture.repo_dir}-{run.name.n}-qa-{story}-{variant}-{index}"
-            def install(repo: Path, run_id: str = run_id) -> None:
-                run.cli(
-                    *uv_run(checkout, "farrier"),
-                    "farrier", "install", "--repo", str(repo),
-                    cwd=checkout, log_name=f"{run_id}-farrier", check=True,
-                )
-
             repo = materialize(
-                run.stage, story, run.workdir(run_id) / fixture.repo_dir, install,
+                run.stage, story, run.workdir(run_id) / fixture.repo_dir,
+                farrier_install(run, checkout, run_id),
                 stories=app if member_names else None, run=run,
             )
             if row:
@@ -538,13 +533,41 @@ def run_round(run: Run, fixture: Fixture) -> None:
                 "run_id": run_id, "story": story, "defect": variant,
                 "obligation": str(row["obligation"]) if row else "",
                 "path": str(row["path"]) if row else "",
-                "rc": result.returncode,
-                "audit_turn": not fixture.first_verdict,
-                "witness": str(witness.relative_to(run.stage)),
-                "timing": fx.timing_of(run_id, wall, since),
-                "laps": fx.laps_of(run_id, since),
+                **trial_measures(run, fixture, run_id, result, witness, wall, since),
             })
             run.write_json(trials_dir(run) / "trials.json", ledger)
+
+
+def trial_measures(
+    run: Run, fixture: Fixture, run_id: str, result: CommandResult, witness: Path, wall: float, since: float
+) -> dict[str, Any]:
+    """The ledger fields every frozen-app trial records about its run."""
+    return {
+        "rc": result.returncode,
+        "audit_turn": not fixture.first_verdict,
+        "witness": str(witness.relative_to(run.stage)),
+        "timing": fx.timing_of(run_id, wall, since),
+        "laps": fx.laps_of(run_id, since),
+    }
+
+
+def trial_evidence(run: Run, entry: dict[str, Any]) -> tuple[Path, dict[str, str] | None, dict[str, Any]]:
+    """A recorded trial's witness, its obligation statuses and the auditor's last verdict."""
+    witness = run.stage / str(entry["witness"])
+    statuses = evidence_statuses(witness, str(entry["story"]), run=run)
+    audit = audit_result(run.stage.joinpath(*TRIALS) / "runs", str(entry["run_id"]))
+    return witness, statuses, audit
+
+
+def trial_leverage(
+    run: Run, entry: dict[str, Any], witness: Path, statuses: dict[str, str] | None
+) -> dict[str, Any]:
+    """What a recorded trial's witness leaves for the next reader."""
+    return leverage(
+        witness, str(entry["story"]), statuses,
+        spec=tree.spec_dir(run, witness, str(entry["story"])),
+        book=tree.witness_docs(run, witness),
+    )
 
 
 def score_round(run: Run, fixture: Fixture) -> Score:
@@ -558,9 +581,7 @@ def score_round(run: Run, fixture: Fixture) -> Score:
     trials: list[dict[str, Any]] = []
     for entry in json.loads(ledger.read_text(encoding="utf-8")):
         row = by_id.get(str(entry["defect"]))
-        witness = run.stage / str(entry["witness"])
-        statuses = evidence_statuses(witness, str(entry["story"]), run=run)
-        audit = audit_result(run.stage.joinpath(*TRIALS) / "runs", str(entry["run_id"]))
+        witness, statuses, audit = trial_evidence(run, entry)
         verdict, because = classify(
             row,
             statuses,
@@ -572,11 +593,7 @@ def score_round(run: Run, fixture: Fixture) -> Score:
             **entry,
             "verdict": verdict,
             "because": because,
-            "leverage": leverage(
-                witness, str(entry["story"]), statuses,
-                spec=tree.spec_dir(run, witness, str(entry["story"])),
-                book=tree.witness_docs(run, witness),
-            ),
+            "leverage": trial_leverage(run, entry, witness, statuses),
         })
 
     return Score(

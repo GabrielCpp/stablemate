@@ -8,11 +8,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from paddock.tasks import forensics as fx
 from paddock.tasks import frozenapp as fz
 from paddock.tasks import leverage as lv
 from paddock.tasks import tree
-from paddock.tasks.stablemate import TrialError, no_leaks, pin_held, stablemate_checkout, uv_run
+from paddock.tasks.stablemate import TrialError, farrier_install, no_leaks, pin_held, stablemate_checkout
 from paddock.runner import Run
 from paddock.registry import Score
 from paddock.tasks import inputs
@@ -256,15 +255,9 @@ def run_round(run: Run, fixture: fz.Fixture) -> None:
             story, mutant = str(row["story"]), str(row["id"])
             run_id = f"{fixture.repo_dir}-{run.name.n}-mut-{story}-{mutant}-{index}"
 
-            def install(repo: Path, run_id: str = run_id) -> None:
-                run.cli(
-                    *uv_run(checkout, "farrier"),
-                    "farrier", "install", "--repo", str(repo),
-                    cwd=checkout, log_name=f"{run_id}-farrier", check=True,
-                )
-
             repo = fz.materialize(
-                run.stage, story, run.workdir(run_id) / fixture.repo_dir, install,
+                run.stage, story, run.workdir(run_id) / fixture.repo_dir,
+                farrier_install(run, checkout, run_id),
                 stories=app if member_names else None, run=run,
             )
             seed_mutant(app, row, repo)
@@ -284,11 +277,7 @@ def run_round(run: Run, fixture: fz.Fixture) -> None:
                 "pool": str(row["pool"]),
                 "bullet": str(row.get("bullet", "") or ""),
                 "path": str(row["path"]),
-                "rc": result.returncode,
-                "audit_turn": not fixture.first_verdict,
-                "witness": str(witness.relative_to(run.stage)),
-                "timing": fx.timing_of(run_id, wall, since),
-                "laps": fx.laps_of(run_id, since),
+                **fz.trial_measures(run, fixture, run_id, result, witness, wall, since),
             })
             run.write_json(fz.trials_dir(run) / LEDGER, ledger)
 
@@ -304,9 +293,7 @@ def score_round(run: Run, fixture: fz.Fixture) -> Score:
     trials: list[dict[str, Any]] = []
     for entry in json.loads(ledger.read_text(encoding="utf-8")):
         row = by_id[str(entry["mutant"])]
-        witness = run.stage / str(entry["witness"])
-        statuses = fz.evidence_statuses(witness, str(entry["story"]), run=run)
-        audit = fz.audit_result(run.stage.joinpath(*fz.TRIALS) / "runs", str(entry["run_id"]))
+        witness, statuses, audit = fz.trial_evidence(run, entry)
         verdict, because = classify_mutant(
             row,
             statuses,
@@ -320,11 +307,7 @@ def score_round(run: Run, fixture: fz.Fixture) -> Score:
             "because": because,
             "defect": f"{entry['mutant']}:{entry['pool']}",
             "obligation": str(row.get("bullet", "") or "") or f"pool B · {entry['path']}",
-            "leverage": lv.leverage(
-                witness, str(entry["story"]), statuses,
-                spec=tree.spec_dir(run, witness, str(entry["story"])),
-                book=tree.witness_docs(run, witness),
-            ),
+            "leverage": fz.trial_leverage(run, entry, witness, statuses),
         })
 
     return Score(

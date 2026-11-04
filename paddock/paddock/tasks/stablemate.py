@@ -6,7 +6,7 @@ import os
 import shutil
 import subprocess
 import tomllib
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -88,6 +88,19 @@ def stablemate_checkout(run: Run) -> Path:
 def uv_run(checkout: Path, package: str) -> list[str]:
     """The `uv run` prefix that runs *checkout*'s own code, not this machine's."""
     return ["uv", "run", "--project", str(checkout), "--package", package]
+
+
+def farrier_install(run: Run, checkout: Path, run_id: str) -> Callable[[Path], None]:
+    """The step that installs *checkout*'s farrier guards into a trial repo."""
+
+    def install(repo: Path) -> None:
+        run.cli(
+            *uv_run(checkout, "farrier"),
+            "farrier", "install", "--repo", str(repo),
+            cwd=checkout, log_name=f"{run_id}-farrier", check=True,
+        )
+
+    return install
 
 
 def effective(run: Run) -> Path:

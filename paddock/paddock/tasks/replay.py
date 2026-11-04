@@ -288,15 +288,9 @@ def run_round(run: Run, fixture: Fixture) -> None:
         for index, (pin, flow) in enumerate(plan_round(run, fixture), start=1):
             run_id = f"{fixture.app}-{run.name.n}-{flow}-{pin.story}-{index}"
 
-            def install(repo: Path, run_id: str = run_id) -> None:
-                run.cli(
-                    *sm.uv_run(checkout_dir, "farrier"),
-                    "farrier", "install", "--repo", str(repo),
-                    cwd=checkout_dir, log_name=f"{run_id}-farrier", check=True,
-                )
-
             repo = checkout(
-                run, fixture, pin, flow, run.workdir(run_id) / fixture.app, install
+                run, fixture, pin, flow, run.workdir(run_id) / fixture.app,
+                sm.farrier_install(run, checkout_dir, run_id),
             )
 
             started, since = time.monotonic(), time.time()
