@@ -224,11 +224,11 @@ check-skills: ## Guard the base library's writing doctrine (sprawl, dead disclos
 	uv run python base-library/library/skills/farrier/farrier-skills-writing/scripts/check_skills.py
 
 .PHONY: vendor
-vendor: ## Copy core/stablemate_core into workhorse, farrier, ostler, paddock and saddlebag (run it with any core change)
-	# stablemate-core is not published; each tool carries a copy. The copy is committed
-	# rather than synthesized at build time because release-please decides what to ship
-	# from the paths a commit touched — a fix committed only under core/ touches no
-	# released package and would reach nobody.
+vendor: ## Link core/stablemate_core into workhorse, farrier, ostler, paddock and saddlebag and rewrite each digest (run it with any core change)
+	# stablemate-core is not published; each tool links it in a checkout and ships real
+	# files in its wheel. Each tool also commits a digest of the package, because
+	# release-please decides what to ship from the paths a commit touched — a fix
+	# committed only under core/ touches no released package and would reach nobody.
 	uv run python scripts/vendor_core.py
 
 .PHONY: sync-pins
@@ -236,17 +236,17 @@ sync-pins: ## Widen each pin a sibling's new major left behind and raise the umb
 	uv run python scripts/sync_pins.py
 
 .PHONY: check-vendor
-check-vendor: ## Guard the vendored copies (they must match core/stablemate_core byte for byte)
-	# Two copies of a config *writer* is the failure this repo already had once. They are
-	# safe only while they are identical, and identical is not something anyone notices
-	# by reading a diff of the package they happened to open.
+check-vendor: ## Guard the vendored links (each tool must link core/stablemate_core and carry its current digest)
+	# Two copies of a config *writer* is the failure this repo already had once. A link
+	# cannot drift from core, and a stale digest is how a core change fails to release
+	# the tools that ship it.
 	uv run python scripts/vendor_core.py --check
 
 .PHONY: build
 build: ## Build sdists + wheels for the published distributions (into each package's dist/)
 	# The same order the release workflow publishes in, and for the same reason: an
 	# install of a release has to resolve — workflows trails because it declares
-	# workhorse-agent and ostler. core is not here: it is vendored, not published.
+	# workhorse-agent and ostler. core is not here: it is linked into the tools, not published.
 	$(MAKE) -C ostler build
 	$(MAKE) -C workhorse build
 	$(MAKE) -C farrier build

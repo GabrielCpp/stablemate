@@ -5,15 +5,20 @@ title: Vendored stablemate-core
 ---
 # Vendored stablemate-core
 
-Ostler is installed on its own, without the rest of the stablemate monorepo, so it carries a
-private copy of the handful of cross-tool helpers every stablemate CLI shares: config
+Ostler is installed on its own, without the rest of the stablemate monorepo, so it carries the
+handful of cross-tool helpers every stablemate CLI shares: config
 persistence, the shared base-skill library, and wall-clock access as an injectable dependency.
-The copy lives at `ostler/_vendor/stablemate_core/`, written there by `make vendor` from
-`core/stablemate_core` at the repository root; a caller edits the root copy and re-runs
-`make vendor`, never this one, and `make check-vendor` fails the build if the two drift apart.
+In a checkout, `ostler/_vendor/stablemate_core` is a symlink to `core/stablemate_core` at the
+repository root, created by `make vendor`, and a built wheel or sdist holds real files at that
+path. A caller edits `core/stablemate_core` and re-runs `make vendor`, which rewrites the
+`stablemate_core.sha256` digest beside the link; `make check-vendor` fails the build if the link
+is missing or misdirected or the digest is stale. The rewritten digest is what makes
+release-please release ostler with a core change, because it maps a commit to a package only by
+the paths the commit touched.
 Ostler's `index`, `model`, `qa/stack`, `qa/tools` and `qa/addresses` modules import a few helpers from it, for config, the base-library cache and the clock. Discovery, profiles and skill references are carried but no ostler module calls them.
 
-- code: ostler/ostler/_vendor/__init__.py@d63f5d827a00
+- rule: a checkout holds a symlink and a digest, a built distribution holds real files, and a core change rewrites the digest of every tool so release-please releases it
+- code: ostler/ostler/_vendor/__init__.py@4b7e17d3161f
 - code: ostler/ostler/_vendor/stablemate_core/__init__.py@3b3d6fe59b0c
 - code: ostler/ostler/_vendor/stablemate_core/clock.py::Clock@1fcd1289ac40
 - code: ostler/ostler/_vendor/stablemate_core/clock.py::SYSTEM_CLOCK@99322cfda640

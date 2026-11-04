@@ -203,8 +203,8 @@ jobs:
       # Uploads remain dependency-ordered below the smoke test.
       #
       # stablemate-core is absent deliberately: it is not a distribution. workhorse and
-      # farrier each carry a copy of it (`make vendor`), so a core change is committed as
-      # a change to both of their trees and releases through them.
+      # farrier each link it in a checkout and ship real files in their wheels, so a core
+      # change is committed with a rewritten digest in each tool's tree and releases through them.
 
       - name: Build ostler
         if: contains(fromJSON(env.RELEASED), 'ostler')

@@ -25,6 +25,6 @@ your commits.
 - [ ] `make test` is green from the repo root (this runs `make lint` first)
 - [ ] Commit subjects are Conventional Commits, one concern per commit
 - [ ] New behaviour has a test
-- [ ] Touched `core/`? Ran `make vendor` and committed the copies in the same commit
+- [ ] Touched `core/`? Ran `make vendor` and committed the rewritten digests in the same commit
 - [ ] Touched `workflows/`? No `os.environ` / `os.getenv` — inputs are parameters
 - [ ] Prose that describes a retired YAML workflow engine was fixed, not left alone

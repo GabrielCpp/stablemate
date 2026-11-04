@@ -14,8 +14,8 @@ classifiers = [
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3.12",
   # PyPI refuses any upload carrying this classifier. It is here because the only
-  # copies of this package that ship are the vendored ones inside workhorse and farrier
-  # (`make vendor`); an install that resolved this name from an index would be a second,
+  # copies of this package that ship are the ones inside each tool's wheel, linked in
+  # by `make vendor`; an install that resolved this name from an index would be a second,
   # independently-versioned copy of the config writer — the thing vendoring removes.
   "Private :: Do Not Upload",
 ]
@@ -28,7 +28,7 @@ classifiers = [
 # [power.*] settings.
 #
 # It is a workspace member so it can be tested and imported in a checkout, but it is not
-# a distribution: `make vendor` copies it into each tool. These dependencies are declared
+# a distribution: `make vendor` links it into each tool. These dependencies are declared
 # again by every tool that vendors it — `make check-vendor` cannot notice a missing
 # requirement, only a changed file.
 #

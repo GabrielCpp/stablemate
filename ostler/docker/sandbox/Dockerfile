@@ -16,9 +16,9 @@
 # started on the host by ostler, not command lines. There is no `bash -c` on any path a
 # scenario reaches.
 #
-# Build context is the `ostler/` package directory:
-#   docker build -f docker/sandbox/Dockerfile --target base   -t ostler-qa-sandbox:base    .
-#   docker build -f docker/sandbox/Dockerfile --target browser -t ostler-qa-sandbox:browser .
+# Build context is the repo root, because ostler links `core/` and the link must resolve:
+#   docker build -f ostler/docker/sandbox/Dockerfile --target base   -t ostler-qa-sandbox:base    .
+#   docker build -f ostler/docker/sandbox/Dockerfile --target browser -t ostler-qa-sandbox:browser .
 
 # --------------------------------------------------------------------------------------
 # base — command/HTTP scenarios
@@ -28,7 +28,8 @@ FROM python:3.12.13-bookworm AS base
 # Installed from disk on purpose. A sandbox that pip-installs ostler from an index at
 # build time has a network dependency in the one place the whole point is not having one,
 # and would silently drift from the working tree the run is testing.
-COPY . /src/ostler
+COPY ostler /src/ostler
+COPY core /src/core
 RUN python3 -m pip install --no-cache-dir /src/ostler && rm -rf /root/.cache
 
 # Where `python -m ostler_qa` is found. The harness is stdlib-only and never imports
@@ -40,8 +41,8 @@ ENV PYTHONPATH=/usr/local/lib/python3.12/site-packages/ostler/qa/harness
 # qa_plan.py in the target repo's `git status`, owned by whatever uid the container ran as.
 ENV PYTHONDONTWRITEBYTECODE=1
 
-COPY docker/sandbox/forwarder.py /opt/ostler-sandbox/forwarder.py
-COPY docker/sandbox/entrypoint.sh /opt/ostler-sandbox/entrypoint.sh
+COPY ostler/docker/sandbox/forwarder.py /opt/ostler-sandbox/forwarder.py
+COPY ostler/docker/sandbox/entrypoint.sh /opt/ostler-sandbox/entrypoint.sh
 RUN chmod 0755 /opt/ostler-sandbox/entrypoint.sh
 
 # Containers run as the invoking uid (`--user`) so that artifacts written into the

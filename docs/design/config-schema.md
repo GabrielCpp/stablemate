@@ -296,8 +296,8 @@ they live now.
   (`paddock/paddock/homeconfig.py`). It keeps writing dicts, and its output is loaded through
   the Document like any other file, so a malformed scratch config fails at the start of a
   trial.
-- The vendor guard (`make check-vendor`, `scripts/vendor_core.py`). It keeps every tool's
-  copy of the Documents identical, which is what lets one tool speak for all.
+- The vendor guard (`make check-vendor`, `scripts/vendor_core.py`). It keeps every tool linked
+  to the one copy of the Documents, which is what lets one tool speak for all.
 
 ### Claims against the existing system
 

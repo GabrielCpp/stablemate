@@ -192,7 +192,7 @@ status stops the target and its dependent target chain.
 - kind: run
 - run: `make vendor`
 - working-directory: .
-- produces: refreshed vendored core copies in the dependent packages
+- produces: a symlink to `core/stablemate_core` and a rewritten `stablemate_core.sha256` digest in each dependent package
 - verify: [workspace Makefile](../../../../Makefile)
 
 ### check-vendor
@@ -200,7 +200,7 @@ status stops the target and its dependent target chain.
 - kind: run
 - run: `make check-vendor`
 - working-directory: .
-- produces: byte-for-byte vendored-core consistency results
+- produces: results naming each package whose core symlink is missing or misdirected or whose digest is stale
 - verify: [workspace Makefile](../../../../Makefile)
 
 ### build-workspace

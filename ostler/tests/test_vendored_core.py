@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import filecmp
 import importlib
 import importlib.util
 import os
 import subprocess
 import sys
 import tomllib
+import zipfile
 from pathlib import Path
 from types import ModuleType
 
@@ -32,15 +32,6 @@ def _vendor_script() -> ModuleType:
     return module
 
 
-def _files(root: Path) -> list[Path]:
-    """Every file making up a package, relative to its own root, `__pycache__` aside."""
-    return sorted(
-        p.relative_to(root)
-        for p in root.rglob("*")
-        if p.is_file() and "__pycache__" not in p.parts
-    )
-
-
 def _run(
     *argv: str, timeout: int = 900, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
@@ -58,9 +49,9 @@ def _run(
 
 def test_the_vendor_script_lists_ostlers_destination():
     """ostler joins workhorse and farrier in `DESTINATIONS` — one copy per shipping tool."""
-    destinations = [Path(d).resolve() for d in _vendor_script().DESTINATIONS]
+    destinations = [Path(d) for d in _vendor_script().DESTINATIONS]
 
-    assert OSTLER_VENDOR.resolve() in destinations, (
+    assert OSTLER_VENDOR in destinations, (
         "ostler's vendor destination is not listed in scripts/vendor_core.py, so "
         f"`make vendor` never writes it and `make check-vendor` never guards it: {destinations}"
     )
@@ -68,19 +59,12 @@ def test_the_vendor_script_lists_ostlers_destination():
         assert any(tool in d.parts for d in destinations), f"no vendored copy for {tool}"
 
 
-def test_the_committed_copy_is_byte_identical_to_core():
-    """The copy is in the tree, complete, and the same bytes as `core/stablemate_core`."""
-    assert OSTLER_VENDOR.is_dir(), (
-        f"no committed copy at {OSTLER_VENDOR.relative_to(REPO_ROOT)} — run `make vendor`"
+def test_the_committed_path_is_a_symlink_resolving_to_core():
+    """A checkout holds a link to `core/stablemate_core`, not a second copy of it."""
+    assert OSTLER_VENDOR.is_symlink(), (
+        f"{OSTLER_VENDOR.relative_to(REPO_ROOT)} is not a symlink — run `make vendor`"
     )
-
-    want, have = _files(CORE), _files(OSTLER_VENDOR)
-    assert have == want, "the vendored copy is missing or has extra files"
-
-    differing = [
-        str(p) for p in want if not filecmp.cmp(CORE / p, OSTLER_VENDOR / p, shallow=False)
-    ]
-    assert not differing, f"vendored copy has drifted from core/stablemate_core: {differing}"
+    assert OSTLER_VENDOR.resolve() == CORE.resolve()
 
 
 def test_check_vendor_passes_and_covers_every_copy():
@@ -94,14 +78,80 @@ def test_check_vendor_passes_and_covers_every_copy():
     assert done.returncode == 0, done.stderr or done.stdout
 
 
+def _fake_repo(root: Path) -> Path:
+    core = root / "core" / "stablemate_core"
+    core.mkdir(parents=True)
+    (core / "__init__.py").write_text("", encoding="utf-8")
+    (core / "config.py").write_text("VALUE = 1\n", encoding="utf-8")
+    return root
+
+
+def test_vendoring_a_repo_links_every_tool_and_passes_check(tmp_path):
+    """Default mode builds the links and digests that `--check` then accepts."""
+    repo = _fake_repo(tmp_path)
+
+    wrote = _run(sys.executable, str(VENDOR_SCRIPT), "--root", str(repo))
+    assert wrote.returncode == 0, wrote.stderr or wrote.stdout
+    for tool in VENDORING_TOOLS:
+        link = repo / tool / tool / "_vendor" / "stablemate_core"
+        assert link.is_symlink() and link.resolve() == (repo / "core" / "stablemate_core").resolve()
+
+    checked = _run(sys.executable, str(VENDOR_SCRIPT), "--root", str(repo), "--check")
+    assert checked.returncode == 0, checked.stderr or checked.stdout
+
+
+def test_a_stale_digest_fails_check_naming_the_tool(tmp_path):
+    """A core change without `make vendor` is the change that ships to nobody."""
+    repo = _fake_repo(tmp_path)
+    assert _run(sys.executable, str(VENDOR_SCRIPT), "--root", str(repo)).returncode == 0
+
+    (repo / "core" / "stablemate_core" / "config.py").write_text("VALUE = 2\n", encoding="utf-8")
+
+    done = _run(sys.executable, str(VENDOR_SCRIPT), "--root", str(repo), "--check")
+    assert done.returncode != 0
+    for tool in VENDORING_TOOLS:
+        assert f"{tool}: " in done.stderr and "stale" in done.stderr
+    assert "make vendor" in done.stderr
+
+
+def test_a_missing_or_misdirected_link_fails_check(tmp_path):
+    """A real directory or a link elsewhere is not the shared package."""
+    repo = _fake_repo(tmp_path)
+    assert _run(sys.executable, str(VENDOR_SCRIPT), "--root", str(repo)).returncode == 0
+
+    farrier = repo / "farrier" / "farrier" / "_vendor" / "stablemate_core"
+    farrier.unlink()
+    elsewhere = repo / "elsewhere"
+    elsewhere.mkdir()
+    saddlebag = repo / "saddlebag" / "saddlebag" / "_vendor" / "stablemate_core"
+    saddlebag.unlink()
+    saddlebag.symlink_to(elsewhere, target_is_directory=True)
+
+    done = _run(sys.executable, str(VENDOR_SCRIPT), "--root", str(repo), "--check")
+    assert done.returncode != 0
+    assert "farrier: " in done.stderr and "not a symlink" in done.stderr
+    assert "saddlebag: " in done.stderr and "does not resolve" in done.stderr
+
+
+def test_the_built_wheel_ships_real_core_files(tmp_path):
+    """A build that stops following the link would ship ostler without core."""
+    done = _run("uv", "build", "--package", "ostler", "--wheel", "--out-dir", str(tmp_path))
+    assert done.returncode == 0, done.stderr or done.stdout
+
+    (wheel,) = tmp_path.glob("ostler-*.whl")
+    with zipfile.ZipFile(wheel) as archive:
+        names = archive.namelist()
+    assert "ostler/_vendor/stablemate_core/config.py" in names, names
+
+
 def test_the_vendored_package_is_importable_under_ostler():
     """`ostler._vendor.stablemate_core` resolves, and resolves *inside* the ostler package."""
     ostler = importlib.import_module("ostler")
     vendored = importlib.import_module("ostler._vendor.stablemate_core")
 
     assert vendored.__file__ is not None
-    inside = [Path(root).resolve() for root in ostler.__path__]
-    assert any(Path(vendored.__file__).resolve().is_relative_to(root) for root in inside), (
+    inside = [Path(root) for root in ostler.__path__]
+    assert any(Path(vendored.__file__).is_relative_to(root) for root in inside), (
         "the vendored package must live under the ostler package, or the wheel ships without it"
     )
 

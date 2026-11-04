@@ -40,7 +40,7 @@ file. Pip's resolver never sees across them.
 So the invariant is enforced on the **file**, via `config_version` (see `config.py`): an
 older build refuses to *write* a newer config, a newer build migrates an older one
 forward, and a read of a newer file warns instead of failing, so a week-long run
-cannot be killed by another tool's upgrade. That guard holds however the tools got installed — separate venvs, one shared
+cannot be killed by another tool's upgrade. That guard holds however the tools got installed: separate venvs, one shared
 venv, even vendored copies.
 
 What this package buys is therefore ordinary: one implementation to fix bugs in, one
@@ -55,30 +55,40 @@ read.
 ## It is vendored, not published
 
 Because the guard above holds however the tools got installed, this package is not a
-distribution. `make vendor` copies this directory into each tool that needs it:
+distribution. Five tools carry it: farrier, workhorse, ostler, paddock and saddlebag.
+In a checkout each one holds a symlink to this directory:
 
 ```
-core/stablemate_core  →  farrier/farrier/_vendor/stablemate_core
-                      →  workhorse/workhorse/_vendor/stablemate_core
-                      →  ostler/ostler/_vendor/stablemate_core
-                      →  paddock/paddock/_vendor/stablemate_core
+farrier/farrier/_vendor/stablemate_core       ->  ../../../core/stablemate_core
+workhorse/workhorse/_vendor/stablemate_core   ->  ../../../core/stablemate_core
+ostler/ostler/_vendor/stablemate_core         ->  ../../../core/stablemate_core
+paddock/paddock/_vendor/stablemate_core       ->  ../../../core/stablemate_core
+saddlebag/saddlebag/_vendor/stablemate_core   ->  ../../../core/stablemate_core
 ```
 
-The copies are committed rather than synthesized during the wheel build, for a release
-reason: release-please decides which package to bump from the paths a commit touched, so
-a fix committed only under `core/` touches no released package and would ship to nobody.
-Running `make vendor` in the same commit is what makes every tool release it. Editing a
-copy directly is caught by `make check-vendor`, its own target from the repo root.
+A built wheel or sdist holds real files at that path, because the build follows the link.
+Imports read `farrier._vendor.stablemate_core` in both places, and an installed tool needs
+no core checkout.
+
+Next to each link sits `stablemate_core.sha256`, a digest of every file in this package.
+It exists for a release reason. Release-please decides which package to bump from the
+paths a commit touched, and it has no option to watch another path. A fix committed only
+under `core/` touches no released package and would ship to nobody. Running `make vendor`
+in the same commit rewrites each digest, which touches every tool and releases it. The
+digest covers only this package, so a change to core tests alone rewrites nothing.
+`make check-vendor` fails, naming the tool, when a link is missing or points elsewhere or
+a digest is stale.
 
 Two consequences to keep in mind when changing anything here:
 
 - **Every import inside this package must be relative.** The same file is imported under
-  three names, and an absolute `from stablemate_core.x import y` resolves to whichever
-  copy is on `sys.path` — a vendored module would reach back out of the wheel that
-  contains it while still comparing byte-identical on disk. The repo-wide ban on relative
-  imports is lifted for exactly this package, in the root `pyproject.toml`.
+  several names, and an absolute `from stablemate_core.x import y` resolves to whichever
+  one is on `sys.path`. A vendored module would reach back out of the wheel that contains
+  it. The repo-wide ban on relative imports is lifted for exactly this package, in the
+  root `pyproject.toml`.
 - **A new dependency has to be added to every tool that vendors this.** `check-vendor`
-  compares files; it cannot notice a requirement that only `core/pyproject.toml` declares.
+  checks links and digests. It cannot notice a requirement that only `core/pyproject.toml`
+  declares.
 
 You do not install this directly, and you cannot: the `Private :: Do Not Upload`
 classifier makes PyPI reject it.

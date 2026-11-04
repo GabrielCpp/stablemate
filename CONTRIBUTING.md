@@ -117,13 +117,15 @@ exists because its failure mode is invisible on the machine where the code was w
 | --- | --- |
 | `make check-parsers` | a format with a grammar gets a parser, not a regex |
 | `make check-portability` | a shipped package runs on the user's OS, not ours |
-| `make check-vendor` | `core/` and its three vendored copies match byte for byte |
+| `make check-vendor` | each tool links `core/` and carries its current digest |
 | `make check-library` | the base library's front matter parses |
 
-`core/stablemate_core` is vendored into `workhorse/`, `farrier/` and `ostler/` rather than
-depended on. If you change it, run `make vendor` and commit the copies in the same commit —
-that is also what makes release-please bump the tools that carry it, since it decides what
-to ship from the paths a commit touched.
+`core/stablemate_core` is linked into `farrier/`, `workhorse/`, `ostler/`, `paddock/` and
+`saddlebag/` rather than depended on. A checkout holds a symlink in each tool, and a built
+wheel holds real files. If you change core, run `make vendor` and commit the rewritten
+`stablemate_core.sha256` of each tool in the same commit. That digest is what makes
+release-please bump the tools that carry core, since it decides what to ship from the
+paths a commit touched.
 
 ## Opening a pull request
 
