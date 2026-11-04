@@ -17,7 +17,7 @@ The screen is the [groom dashboard](../gui/screens/groom-dashboard.md#history-fi
 - code: groom/groom/assets/dashboard.js::HistoryFilters@669c36ca8aa4
 - code: groom/groom/assets/dashboard.js::HistoryChoice@0db9daffece8
 - code: groom/groom/assets/dashboard.js::clearHistoryFilters@6e225267a691
-- code: groom/groom/history.py::listing@931989b4c09b
+- code: groom/groom/history.py::listing@4a2b382b1cde
 - rule: the filters narrow the rows in the browser from the list already loaded, with no request
 - rule: the workflow, repo, ending, range and text filters combine, and a run shows only when it matches every filter that is set
 - rule: the workflow and repo selects offer the values in the list, each with an All choice, and keep a chosen value in the options when the list no longer holds it

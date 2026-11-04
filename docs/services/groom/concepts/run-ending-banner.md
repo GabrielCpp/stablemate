@@ -7,7 +7,7 @@ title: Run ending banner
 
 An operator opens a run that stopped and needs to know why and how to go on. The banner at the top of that run's Overview answers both. It names the node where the run ended and the error class, says in a sentence what happened, links to the failing row in the Activity tab, and shows the command that continues the run with a control that copies it.
 
-The banner is the `ending` member of the run's [Overview](../http/get-run-overview.md), composed on the server from the run's stored [history summary](run-history-summary.md) and its activity timeline. The ending itself comes from the [run ending mapping](run-ending-mapping.md). The same pane shows the work items tile, whose cost per item for an ended run reads `$X per item` with no comparison to a median, as described by [overview tiles](overview-tiles.md). The screen is the [groom dashboard](../gui/screens/groom-dashboard.md#detail-ending-banner).
+The banner is the `ending` member of the run's [Overview](../http/get-run-overview.md), composed on the server from the run's stored [history summary](run-history-summary.md) and its activity timeline. The ending itself comes from the [run ending mapping](run-ending-mapping.md). The same pane shows the work items tile, whose cost per item for an ended run reads `$X per item` and, for a run that ended in success, its difference from the median, as described by [overview tiles](overview-tiles.md) and the [run median comparison](run-median-comparison.md). The screen is the [groom dashboard](../gui/screens/groom-dashboard.md#detail-ending-banner).
 
 - code: groom/groom/banner.py::banner@8183e6380968
 - code: groom/groom/history.py::summarize@b25e47db2c11

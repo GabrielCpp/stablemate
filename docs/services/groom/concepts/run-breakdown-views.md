@@ -11,7 +11,7 @@ The Overview breaks a run's time and cost down in up to three views: by flow, by
 - code: groom/groom/flows.py::node_breakdown@3d65d32d70bb
 - code: groom/groom/store.py::run_work_items@9d40b5b83666
 - code: groom/groom/norms.py::for_nodes@c2ab9657804d
-- code: groom/groom/overview.py::run_overview@d4e666f27ee7
+- code: groom/groom/overview.py::run_overview@f1c1a8297756
 - tests: groom/tests/test_breakdown.py::test_the_median_beside_a_node_counts_successful_runs_only
 - tests: groom/tests/test_breakdown_dynamic.py::test_the_view_and_sort_survive_a_tab_round_trip_and_a_live_refresh_and_reset_on_another_run
 - tests: groom/tests/test_breakdown.py::test_fewer_than_five_successful_runs_leave_the_comparison_blank_and_the_count_visible
@@ -19,7 +19,7 @@ The Overview breaks a run's time and cost down in up to three views: by flow, by
 - tests: groom/tests/test_breakdown.py::test_the_item_rows_read_the_laps_groom_loops_counts
 - tests: groom/tests/test_breakdown.py::test_items_and_the_outside_row_add_up_to_the_trees_totals
 - tests: groom/tests/test_breakdown.py::test_a_run_with_no_work_item_has_no_item_view
-- refs: [run flow tree](run-flow-tree.md), [run now strip](run-now-strip.md), [overview tiles](overview-tiles.md), [groom CLI](../groom-cli.md), [get run overview](../http/get-run-overview.md), [the flow table](../gui/screens/groom-dashboard.md#detail-flow-table)
+- refs: [run median comparison](run-median-comparison.md), [run flow tree](run-flow-tree.md), [run now strip](run-now-strip.md), [overview tiles](overview-tiles.md), [groom CLI](../groom-cli.md), [get run overview](../http/get-run-overview.md), [the flow table](../gui/screens/groom-dashboard.md#detail-flow-table)
 
 ## Views
 
@@ -36,10 +36,11 @@ The Overview breaks a run's time and cost down in up to three views: by flow, by
 
 ## Median comparison
 
-- rule: the median beside a node is the norm the [run now strip](run-now-strip.md) uses, from the same cache, so the strip and the table show one median for a node.
+- rule: the median beside a node of a run that is still live is the norm the [run now strip](run-now-strip.md) uses, from the same cache, so the strip and the table show one median for a node.
+- rule: the median beside an agent node of an ended run is the [median of the other successful runs' mean visit times](run-median-comparison.md) for that node, and a step node has none. A run that did not end in success compares no node.
 - rule: the norm counts only successful runs of the same workflow, a run being successful when its root span ended with `workhorse.terminal` equal to `terminal`.
-- rule: the comparison needs five such runs. With fewer, the cell stays blank and the heading reads `vs median: N runs, under five`. Otherwise the heading reads `vs median of N`, where N is the sample size from the same read.
-- rule: a mean 20% or more above its median reads `+N% longer` in words, and a smaller difference reads dim, so the flag is not colour alone.
+- rule: the comparison needs five such runs. With fewer, the cell stays blank and the heading reads `vs median: N runs, under five`. Otherwise the heading reads `vs median of N`, where N is the sample size from the same read. A run that did not end in success reads a bare `vs median`.
+- rule: the cell of an ended run reads the signed difference as a percent, `+N%` or `−N%`, in plain ink with no word beside it, so the sign carries the meaning. A run that has not ended keeps `+N% longer` with its warn styling.
 - rule: the sample size comes from the cache, not from a scan per update or per sort. A changed cached norm raises the run's `figures_rev`, and an unchanged one does not.
 
 ## View and sort state

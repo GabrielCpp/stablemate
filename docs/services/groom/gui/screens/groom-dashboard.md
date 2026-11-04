@@ -489,7 +489,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a refresh keeps the scroll position and does not blank the figures it replaces.
 - states: the `ago` after `as of the last finished turn` counts up every second in the browser.
 - code: groom/groom/assets/dashboard.js::CostTile@eb7154f2e7c2
-- code: groom/groom/assets/dashboard.js::OverviewTiles@2612b7261918
+- code: groom/groom/assets/dashboard.js::OverviewTiles@e5dc0819e9f6
 - detail: [run clock sections](../../concepts/run-clock-sections.md)
 - detail: [run flow tree](../../concepts/run-flow-tree.md)
 - tests: groom/tests/test_a11y_dynamic.py::test_new_telemetry_updates_the_open_overview_and_keeps_the_operators_place
@@ -510,8 +510,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#detail-flow-table", text="By node")
 - states: a second group named `Sort by` orders By flow and By node by time or by cost, with no fetch. By work item has no sort.
 - states: By node lists each node with kind, visits, time, mean, longest visit, cost, cost share and retries.
-- states: By node compares each mean with the workflow's median under a heading `vs median of N`.
+- states: By node compares each agent node's mean with the workflow's median under a heading `vs median of N`, as a signed percent in plain ink with no word beside it. A run that has not ended keeps `+N% longer`.
 - states: By node leaves the comparison blank under a heading `vs median: N runs, under five` when fewer than five runs compare.
+- states: By node of a run that did not end in success compares no node and the heading reads `vs median`.
 - states: By work item lists each item with passes, agent time, cost and outcome.
 - states: By work item marks the open item.
 - states: By work item ends with an `outside any work item` row and a Total row.
@@ -877,7 +878,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a run whose folder is gone says `This run's folder is gone, so it cannot be continued.` and shows no command.
 - verify: visible(locator="#detail-ending-banner", text="cannot be continued")
 - states: a run whose folder stays but recorded no launch command says `This run recorded no launch command, so it cannot be continued from here.` and shows no command.
-- states: the work items tile of an ended run reads `$X per item` with no median comparison.
+- states: the work items tile of an ended run reads `$X per item` and, for a run that ended in success with five other comparable runs, the signed percent and `vs median of R runs`.
+- states: the work items tile of an ended run with fewer than five comparable runs says how many other comparable runs exist and that it takes five.
+- states: the work items tile of a run that did not end in success reads `not compared` with the ending in words, and an estimate run reads `est $X per item, not compared`.
 - code: groom/groom/assets/dashboard.js::EndingBanner@e4949071c6e1
 - code: groom/groom/assets/dashboard.js::openMoment@11ef31e84f7e
 - detail: [run ending banner](../../concepts/run-ending-banner.md)
@@ -887,6 +890,9 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - tests: groom/tests/test_history_banner_dynamic.py::test_a_container_runs_banner_says_the_command_runs_inside_that_container
 - tests: groom/tests/test_history_banner_dynamic.py::test_a_runs_banner_says_it_cannot_be_continued_when_its_folder_is_gone_and_shows_no_command
 - tests: groom/tests/test_history_banner_dynamic.py::test_the_work_items_tile_of_an_ended_run_shows_the_cost_per_item_with_no_median_comparison
+- tests: groom/tests/test_history_median_dynamic.py::test_the_work_items_tile_shows_cost_per_item_the_signed_percent_and_the_sample_size_in_words
+- tests: groom/tests/test_history_median_dynamic.py::test_the_tile_of_a_run_with_under_five_comparable_runs_says_how_many_exist_and_that_it_takes_five
+- tests: groom/tests/test_history_median_dynamic.py::test_a_run_that_did_not_end_in_success_shows_no_comparison_in_the_tile_or_by_node
 - tests: groom/tests/test_history_banner_dynamic.py::test_history_offers_no_stop_resume_or_rewind_control_on_a_stopped_run
 - tests: groom/tests/test_history_banner_dynamic.py::test_the_banner_passes_an_axe_scan_and_its_link_and_copy_control_work_from_the_keyboard
 
@@ -1886,8 +1892,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - keyboard: the rows form one roving tab stop. Tab enters on the current row, ArrowDown and ArrowUp move to the next and previous row, Home moves to the first and End to the last.
 - verify: visible(locator="#history-row", text="success")
 - parent: [activity-history-mode](#activity-history-mode)
-- states: eleven column headers, each with `scope="col"`, in this order: Run, Repo, Ending, Ended, Active, Wall, Cost, Items, Turns, Gates, Problems. The Ended header carries `aria-sort="descending"`, because rows are ordered newest end time first.
+- states: twelve column headers, each with `scope="col"`, in this order: Run, Repo, Ending, Ended, Active, Wall, Cost, Items, $/item vs median, Turns, Gates, Problems. The Ended header carries `aria-sort="descending"`, because rows are ordered newest end time first.
 - verify: visible(locator="#history-table", text="Ended")
+- states: the $/item vs median cell shows the cost per finished item.
+- states: the $/item vs median cell of a run that ended in success with five other comparable runs adds a signed percent against the [median](../../concepts/run-median-comparison.md).
+- states: the $/item vs median cell of any other run shows the cost per item alone, and a run with no finished item shows a dash.
 - states: lists the runs that ended in the last 30 days and no run that is alive. A finished run is listed while its row is still in Runs.
 - states: a run that continues after a resume leaves the table while it is alive and returns with its new figures when it ends again.
 - states: a run with no recorded ending is listed once it has been silent for 48 hours, at its last record's time, with the ending `no ending recorded`.
@@ -1896,11 +1905,13 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: when none match, the table is replaced by the [no-match state](#history-no-match).
 - states: with a run open the table is a column of narrowed rows, each a button with the workflow, the run, the repo and branch, the cost with its priced count, the active time, the end time and the ending.
 - states: the open run's narrowed row carries `aria-current`, and selecting a row follows [open history run](#open-history-run).
-- code: groom/groom/assets/dashboard.js::HistoryPane@9c6071bcac1c
+- code: groom/groom/assets/dashboard.js::HistoryPane@225d4e52e6a1
 - code: groom/groom/assets/dashboard.js::historyKey@bc95c514230a
-- code: groom/groom/history.py::listing@931989b4c09b
+- code: groom/groom/history.py::listing@4a2b382b1cde
 - detail: [run history summary](../../concepts/run-history-summary.md)
 - tests: groom/tests/test_history_dynamic.py::test_selecting_history_shows_the_ended_runs_newest_end_time_first_under_every_column
+- tests: groom/tests/test_history_median_dynamic.py::test_the_table_gains_a_column_with_cost_per_item_and_its_signed_percent_from_the_median
+- tests: groom/tests/test_history_median_dynamic.py::test_under_five_comparable_runs_the_table_cell_shows_the_cost_per_item_with_no_difference
 - tests: groom/tests/test_history_dynamic.py::test_a_run_that_is_alive_is_not_listed_in_the_browser
 - tests: groom/tests/test_history_dynamic.py::test_the_table_and_its_rows_have_a_role_a_name_and_keyboard_operation
 - tests: groom/tests/test_history_dynamic.py::test_the_history_pane_has_no_accessibility_violations
@@ -1927,12 +1938,16 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a run whose summary is still being read counts in the number of runs.
 - states: a run whose summary is still being read stays out of the sums and the success count.
 - states: the money cell says how many summaries are still being read.
+- states: with a workflow filter and rows shown, a fifth cell reads the median cost per item of that workflow and the number of comparable runs behind it, whatever the range and the other filters.
+- states: with a workflow filter and under five comparable runs, the fifth cell says how many exist and that it takes five, or `no comparable run yet` with none.
 - states: with no ended run every cell reads zero.
 - states: the cells describe the rows shown after the [history filters](#history-filters).
 - code: groom/groom/assets/dashboard.js::historyTotals@d98d0ba7b1bd
 - code: groom/groom/history.py::totals@4a99a0e9f8a4
 - detail: [run history totals](../../concepts/run-history-totals.md)
 - tests: groom/tests/test_history_dynamic.py::test_the_totals_show_runs_money_active_time_and_successes_and_omit_a_clause_that_is_zero
+- tests: groom/tests/test_history_median_dynamic.py::test_with_a_workflow_filter_the_totals_show_the_median_per_item_and_the_runs_behind_it_without_a_request
+- tests: groom/tests/test_history_median_dynamic.py::test_the_totals_median_ignores_the_range_and_the_other_filters
 - tests: groom/tests/test_history_dynamic.py::test_an_ended_run_with_no_summary_reads_reading_its_summary_stays_out_of_the_sums_and_fills_in_without_a_reload
 - tests: groom/tests/test_history.py::test_the_totals_count_runs_money_active_time_and_successes
 - tests: groom/tests/test_history.py::test_a_run_still_being_read_counts_in_runs_and_stays_out_of_the_sums_and_the_success_count
@@ -1958,7 +1973,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a run whose summary is not written yet reads `reading its summary` in the ending cell.
 - verify: visible(locator="#history-row", text="reading its summary")
 - states: the figures of a row that is not written yet read `—`, and the row fills in without a reload.
-- code: groom/groom/assets/dashboard.js::HistoryRow@f0620a455a76
+- code: groom/groom/assets/dashboard.js::HistoryRow@e949ce67911f
 - code: groom/groom/assets/dashboard.js::HistoryCost@ffb23dc164fe
 - code: groom/groom/assets/dashboard.js::HistoryItems@73fd80c8f781
 - detail: [run ending mapping](../../concepts/run-ending-mapping.md)
@@ -1983,8 +1998,8 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: failed when the read fails, an alert (`role="alert"`) that says `History could not be read` and `The Runs tab still works.`, with a `Retry now` button. A retry that succeeds shows the table.
 - verify: visible(locator="#history-state", text="History could not be read")
 - states: while any listed run is still being read, the pane asks again every four seconds, and stops when no run is pending or the mode changes.
-- code: groom/groom/assets/dashboard.js::HistoryPane@9c6071bcac1c
-- code: groom/groom/assets/dashboard.js::loadHistory@0e24571027b3
+- code: groom/groom/assets/dashboard.js::HistoryPane@225d4e52e6a1
+- code: groom/groom/assets/dashboard.js::loadHistory@bbe016bd5bff
 - tests: groom/tests/test_history_dynamic.py::test_the_pane_shows_a_reading_state_that_clears_when_the_table_appears
 - tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
 - tests: groom/tests/test_history_dynamic.py::test_with_no_ended_runs_the_pane_says_so_with_the_totals_at_zero
@@ -2045,7 +2060,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::historyShown@1f04a4430cf5
 - code: groom/groom/assets/dashboard.js::historyScope@334b5763b299
 - code: groom/groom/assets/dashboard.js::setHistoryFilters@a091b10df441
-- code: groom/groom/history.py::listing@931989b4c09b
+- code: groom/groom/history.py::listing@4a2b382b1cde
 - detail: [run history filters](../../concepts/run-history-filters.md)
 - tests: groom/tests/test_history_filters_dynamic.py::test_the_workflow_and_repo_filters_offer_the_values_in_the_list_each_with_an_all_choice
 - tests: groom/tests/test_history_filters_dynamic.py::test_the_ending_filter_offers_every_ending_in_words_with_an_any_choice
@@ -3026,7 +3041,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Requests [get-run-history](../../http/get-run-history.md) again.
   - Shows the table when the read succeeds.
   - Keeps the failed state when the read fails again.
-- code: groom/groom/assets/dashboard.js::loadHistory@0e24571027b3
+- code: groom/groom/assets/dashboard.js::loadHistory@bbe016bd5bff
 - tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
 ### open-history-run
 - on: [history-row](#history-row)

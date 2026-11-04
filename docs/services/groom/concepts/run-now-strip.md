@@ -47,7 +47,7 @@ The norm is the median length of the same kind of work at the same node across t
 
 - rule: the norm is cached in memory per workflow and node, and building the strip reads only the cache, so a pushed detail frame, a received telemetry batch and a render read nothing from the store.
 - rule: the cache fills through the store's query pool, off the event loop and off any timer, once per workflow and node when a watched run first reports the node and again when the run moves to a new node. It does not scan the whole store on an update.
-- rule: the By node table of the [run breakdown views](run-breakdown-views.md) reads the same cache and the same five-run minimum, so the strip and the table show one median for one node.
+- rule: while the run is live, the By node table of the [run breakdown views](run-breakdown-views.md) reads the same cache and the same five-run minimum, so the strip and the table show one median for one node. An ended run compares against the [run median comparison](run-median-comparison.md) instead.
 - rule: while the first read is outstanding the strip says `reading the norm`, and the detail is pushed again when the read lands.
 
 ## Counting

@@ -481,6 +481,9 @@ dl.facts dd { margin:0; font-family:var(--mono); font-size:11.5px; color:var(--t
 .copy:hover { color:var(--text-0); }
 .copy-note { font-family:var(--sans); font-size:10.5px; color:var(--running); margin-left:4px; }
 .copy-note.bad { color:var(--blocked-ink); }
+.vs { font-size:10.5px; }
+.vs.up { color:var(--idle); }
+.vs.dn { color:var(--running); }
 .cov { color:var(--idle); font-size:10px; margin-left:4px; }
 .tt td.how { text-align:left; white-space:normal; }
 table.tt { width:100%; border-collapse:collapse; font-size:12px; }
@@ -609,7 +612,7 @@ table.ht { width:100%; border-collapse:collapse; }
 .ht .who { display:flex; align-items:center; gap:7px; }
 .ht .who .id { color:var(--text-0); overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .ht .who > :first-child { flex:none; }
-.ht td.clip { max-width:300px; overflow:hidden; text-overflow:ellipsis; }
+.ht td.clip { max-width:230px; overflow:hidden; text-overflow:ellipsis; }
 .rd-head .l1 .rd-node { flex:none; white-space:nowrap; }
 .rd-head .l1 .dim { min-width:0; overflow-wrap:anywhere; }
 .rd-head .l1 .dim:first-of-type { flex:none; }

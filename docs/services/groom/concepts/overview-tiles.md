@@ -13,8 +13,8 @@ The tiles are not a second set of numbers. Cost, coverage, active time and items
 - code: groom/groom/problems.py::standing@f89e1e45bc40
 - code: groom/groom/problems.py::found@a0059fcef241
 - code: groom/groom/churn.py::count_alerts@156655db35bb
-- code: groom/groom/overview.py::run_overview@d4e666f27ee7
-- code: groom/groom/assets/dashboard.js::OverviewTiles@2612b7261918
+- code: groom/groom/overview.py::run_overview@f1c1a8297756
+- code: groom/groom/assets/dashboard.js::OverviewTiles@e5dc0819e9f6
 - tests: groom/tests/test_overview_tiles.py::test_the_problem_count_adds_failed_steps_retries_failed_gate_checks_and_churn
 - tests: groom/tests/test_overview_tiles.py::test_an_answered_gate_is_counted_as_a_gate_and_not_as_a_problem
 - tests: groom/tests/test_overview_tiles.py::test_the_retries_on_the_tile_equal_the_sum_of_the_trees_retries_column
@@ -30,7 +30,7 @@ The tiles are not a second set of numbers. Cost, coverage, active time and items
 - tests: groom/tests/test_a11y_dynamic.py::test_a_run_with_no_finished_node_shows_no_tiles_and_no_problem_count
 - tests: groom/tests/test_a11y_dynamic.py::test_a_backend_with_no_cost_labels_its_estimate_and_gives_no_cost_per_item
 - tests: groom/tests/test_a11y_dynamic.py::test_the_tiles_refresh_in_place_when_a_turn_lands
-- refs: [run clock sections](run-clock-sections.md), [run flow tree](run-flow-tree.md), [run row figures](run-row-figures.md), [run now strip](run-now-strip.md), [get run overview](../http/get-run-overview.md), [the groom dashboard detail pane](../gui/screens/groom-dashboard.md#detail-pane)
+- refs: [run median comparison](run-median-comparison.md), [run clock sections](run-clock-sections.md), [run flow tree](run-flow-tree.md), [run row figures](run-row-figures.md), [run now strip](run-now-strip.md), [get run overview](../http/get-run-overview.md), [the groom dashboard detail pane](../gui/screens/groom-dashboard.md#detail-pane)
 
 ## Figures
 
@@ -39,7 +39,8 @@ The tiles are not a second set of numbers. Cost, coverage, active time and items
 - rule: the Active time tile shows the active time and, beside it, the wall time and the session count, as `<wall> wall, N sessions`. Wall time appears beside active time.
 - rule: a session is one distinct resume generation among the run's spans. A run whose spans carry none is one session. The Sessions table in the [run clock sections](run-clock-sections.md) lists exactly these sessions.
 - rule: the Work items tile shows `N of M` items done from the same figure as the run row, and the cost per finished item, which is the run's cost divided by the items done.
-- rule: the Work items tile of an ended run reads `$X per item` and, when no item finished, `no cost per item without a price` or `no item finished`, and it does not compare the figure with a median. The live wording stays `per finished item`.
+- rule: the Work items tile of an ended run reads `$X per item` and, when no item finished, `no cost per item without a price` or `no item finished`. The live wording stays `per finished item`.
+- rule: the Work items tile of a run that ended in success compares the figure with the [median of the workflow's other successful runs](run-median-comparison.md) and reads `$X per item +N% vs median of R runs`. Under five such runs it reads `no comparison: only R other comparable runs, and it takes 5`. A run that did not end in success reads `not compared` with its ending in words, and a run that reports no cost reads `est $X per item, not compared`.
 - rule: while no item has finished the tile says `none finished yet` and shows no per-item figure. A run with no cost shows `no cost per item without a price`, and a run that reports no item count shows `no item count reported`.
 - rule: the Agent turns tile shows the turn count and the backend retries, and the retries equal the sum of the flow tree's Retries column because both read the same computation.
 

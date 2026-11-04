@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from groom import archive, figures, flows, norms, store
+from groom import archive, figures, flows, history, medians, norms, store
 
 
 def outcome(item: dict[str, Any], progress: tuple[int, int] | None) -> str:
@@ -48,7 +48,11 @@ def run_overview(run_id: str) -> dict[str, Any]:
     tiles = figures.tile_figures(costs, profile, progress)
     nodes = flows.node_breakdown(result["flows"])
     workflow = profile["workflow"] if profile else ""
-    readings = norms.for_nodes(workflow, {row["node"]: row["kind"] for row in nodes})
+    compare = history.comparison(run_id)
+    if compare is None:
+        readings = norms.for_nodes(workflow, {row["node"]: row["kind"] for row in nodes})
+    else:
+        readings = medians.node_readings(compare["workflow"], run_id, nodes, compare["ending"] == medians.SUCCESS)
     for row in nodes:
         row["norm"] = readings[row["node"]]
     return {
@@ -59,6 +63,7 @@ def run_overview(run_id: str) -> dict[str, Any]:
         "standing": result["standing"],
         "flows": result["flows"],
         "nodes": nodes,
+        "compare": compare,
         "norm_runs": max((row["norm"]["runs"] for row in nodes if row["norm"]), default=0),
         "items": _items(work, progress, result["flows"], result["time_s"]),
         "time_s": result["time_s"],

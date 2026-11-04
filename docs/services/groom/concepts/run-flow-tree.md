@@ -10,7 +10,7 @@ The run flow tree is the Overview tab's account of where a run's time and money 
 Spans export when they end. A flow or state that is still open, and the run's own root span, are absent from the store. The tree places finished work by walking the parents that did end. Where the walk meets a parent that is missing, it reads the flow and state names the work's own span carries, which workhorse stamps on every step of a new run. A new run therefore names its open flow while it runs. A run recorded without those names shows the work as unfinished. The tree never names a parent it cannot read from a span.
 
 - code: groom/groom/flows.py::build_flows@3c6e64500c11
-- code: groom/groom/overview.py::run_overview@d4e666f27ee7
+- code: groom/groom/overview.py::run_overview@f1c1a8297756
 - code: groom/groom/live_history.py::LiveHistory@3671ced6241f
 - code: groom/groom/assets/dashboard.js::Overview@a13d033913fa
 - code: groom/groom/flows.py::turn_passes@74192984c983

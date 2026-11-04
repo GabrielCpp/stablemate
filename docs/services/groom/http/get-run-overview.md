@@ -36,6 +36,9 @@ title: get-run-overview
   - Returns `norm_runs`, the largest count of comparable successful runs behind any node's median, which is the sample size the By node heading names.
 - verify: json_path(path="$.norm_runs", matches="^\\d+$")
 - does:
+  - Returns `compare`, the run's cost per item against the [median of the workflow's other successful runs](../concepts/run-median-comparison.md) with its ending, or `null` for a run that has not ended.
+- verify: json_path(path="$.compare", matches="^null$")
+- does:
   - Returns `items`, the run's work items with passes, time, cost and outcome, or `null` when the run has no work item.
 - verify: json_path(path="$.items", matches="^null$")
 - does:
@@ -58,6 +61,7 @@ title: get-run-overview
 - status: `200`
 - verify: http_status(code=200, path="/api/run/{run_id}/overview")
 - code: groom/groom/app.py::run_overview@410abf361ab6
+- code: groom/groom/medians.py::node_readings@36bf55cc4cc5
 - code: groom/groom/app.py::_overview_with_ending@80eed7ace691
 - tests: groom/tests/test_flows.py::test_the_overview_endpoint_serves_the_same_figures
 

@@ -17,7 +17,7 @@ from test_a11y_dynamic import (
 from test_history import seed
 
 TABLE = "Runs that ended, newest first"
-HEADERS = ["Run", "Repo", "Ending", "Ended ▾", "Active", "Wall", "Cost", "Items", "Turns", "Gates", "Problems"]
+HEADERS = ["Run", "Repo", "Ending", "Ended ▾", "Active", "Wall", "Cost", "Items", "$/item vs median", "Turns", "Gates", "Problems"]
 WHEN = re.compile(r"^[A-Z][a-z]{2} \d{1,2} \d\d:\d\d$")
 
 
@@ -126,7 +126,7 @@ def test_a_row_reads_the_workflow_run_repo_ending_end_time_active_wall_cost_item
     assert cells[1] == "acme@main"
     assert cells[2] == "failed"
     assert WHEN.match(cells[3]), cells[3]
-    assert cells[4:] == ["68h 07m", "13h", "$148.02", "2", "41", "1", "4"]
+    assert cells[4:] == ["68h 07m", "13h", "$148.02", "2", "$74", "41", "1", "4"]
 
 
 def test_every_ending_is_written_in_words():
@@ -218,7 +218,7 @@ def test_an_ended_run_with_no_summary_reads_reading_its_summary_stays_out_of_the
     assert pending[0] == "coder hist-a"
     assert "reading its summary" in pending[2]
     assert WHEN.match(pending[3])
-    assert pending[4:] == ["—"] * 7
+    assert pending[4:] == ["—"] * 8
     assert before == ["1 run", "$0.00 spent, 1 summary still being read", "0m active"]
     assert filled[2] == "success"
     assert filled[6] == "$4.00"

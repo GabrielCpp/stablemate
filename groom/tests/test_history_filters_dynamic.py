@@ -41,6 +41,14 @@ def _choose(page, name: str, option: str) -> None:
     page.get_by_role("combobox", name=name).select_option(label=option)
 
 
+def _api_requests_after_the_table(page) -> list[str]:
+    asked: list[str] = []
+    page.on("request", lambda request: asked.append(request.url) if "/api/" in request.url else None)
+    page.wait_for_selector("#history table.ht", timeout=10000)
+    asked.clear()
+    return asked
+
+
 def _options(page, name: str) -> list[str]:
     return page.get_by_role("combobox", name=name).locator("option").all_inner_texts()
 
@@ -133,11 +141,8 @@ def test_each_filter_narrows_the_rows_at_once_and_filters_combine_without_a_requ
     assert live is not None, _UNAVAILABLE
     with _history(*_rows()):
         page = _open_history(live)
-        asked = []
-        page.on("request", lambda request: asked.append(request.url) if "/api/" in request.url else None)
         try:
-            page.wait_for_selector("#history table.ht", timeout=10000)
-            asked.clear()
+            asked = _api_requests_after_the_table(page)
             _choose(page, "Workflow", "coder")
             by_workflow = _shown(page)
             _choose(page, "Repo", "globex")
@@ -178,8 +183,8 @@ def test_the_totals_describe_the_rows_shown_with_the_estimate_partly_priced_and_
         finally:
             page.close()
     assert everything == ["5 runs", "$201.70 spent, $31.20 of it an estimate, 1 run partly priced, 1 summary still being read", "1h 40m active", "1 of 4 ended in success"]
-    assert coder == ["3 runs", "$131.20 spent, $31.20 of it an estimate, 1 summary still being read", "1h 10m active", "1 of 2 ended in success"]
-    assert book == ["1 run", "$20.00 spent, 1 run partly priced", "0m active", "0 of 1 ended in success"]
+    assert coder == ["3 runs", "$131.20 spent, $31.20 of it an estimate, 1 summary still being read", "1h 10m active", "1 of 2 ended in success", "— median per coder item: only 1 comparable run, and it takes 5"]
+    assert book == ["1 run", "$20.00 spent, 1 run partly priced", "0m active", "0 of 1 ended in success", "— median per okf-book item: no comparable run yet, and it takes 5"]
     assert winners == ["1 run", "$100.00 spent", "1h active", "1 of 1 ended in success"]
 
 

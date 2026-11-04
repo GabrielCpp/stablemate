@@ -17,7 +17,7 @@ The operator-facing screen is the [history table](../gui/screens/groom-dashboard
 
 - code: groom/groom/history.py::discover@1c90072aa772
 - code: groom/groom/history.py::compute@afbde2532938
-- code: groom/groom/history.py::listing@931989b4c09b
+- code: groom/groom/history.py::listing@4a2b382b1cde
 - code: groom/groom/app.py::_summary_loop@7d25526428f4
 - code: groom/groom/pools.py::SUMMARY@6ead18da664b
 - rule: the resume command is read from the run's launch record when its summary is written, as `cd <recorded cwd> && <resume argv>` with shell quoting, and an ended run summarized before the record was read, or with an older form of the command, is summarized once more so its row gains it. The [run ending banner](run-ending-banner.md) shows it.
@@ -27,9 +27,10 @@ The operator-facing screen is the [history table](../gui/screens/groom-dashboard
 - rule: a run with no recorded ending is listed after 48 hours of silence at its last record's time, and leaves the list if it comes back alive
 - rule: the repo is the one a run's spans declare or the directory name of the workspace path they record, the branch is the one they declare or record at the start, and both are stored plain and separately, so a run reads the same repo and branch in History as in Runs
 - rule: a run whose spans record no workspace reads no repo, and the pending row carries the same repo and branch as the summary that replaces it
-- rule: a long run name or repo cuts off with an ellipsis at 300 px and keeps its full text as the cell title, so every column of the table stays in view
+- rule: a long run name or repo cuts off with an ellipsis at 230 px and keeps its full text as the cell title, so every column of the table stays in view
 - rule: a summary is written by a background worker with one thread on a pool of its own, one run at a time, so a page read never waits for it
 - rule: an ended run with no summary yet is listed by run, repo and end time as being read, and is left out of every sum
+- rule: each row carries its cost per finished item and its comparison with the [median of the workflow's successful runs](run-median-comparison.md), computed from the stored summaries alone
 - rule: the list holds the runs that ended in the last 30 days, the same retention as the telemetry store, newest end time first
 - verify: json_path(path="$.totals.runs", matches="^[0-9]+$")
 - tests: groom/tests/test_history.py::test_a_run_whose_spans_name_a_workspace_and_a_branch_reads_that_repo_and_branch

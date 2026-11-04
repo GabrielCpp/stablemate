@@ -12,7 +12,7 @@ The sections are not a second set of numbers. They come from the same profile th
 - code: groom/groom/store.py::run_profile@05d8c4f81e30
 - code: groom/groom/store.py::_profile_models@5ff7246d5bfe
 - code: groom/groom/store.py::_profile_sessions@84ea59be739d
-- code: groom/groom/overview.py::run_overview@d4e666f27ee7
+- code: groom/groom/overview.py::run_overview@f1c1a8297756
 - code: groom/groom/projection.py::head@c6501d02c398
 - code: groom/groom/cli.py::_format_profile@db621328f245
 - code: groom/groom/assets/dashboard.js::WallClock@9dbf41855332

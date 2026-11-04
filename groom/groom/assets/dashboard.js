@@ -77,7 +77,7 @@ const store = {
     // that only the server's own threads see — so this pane polls while open.
     dispatch: { status: "idle", queues: [], selectedQueue: null, items: [], selectedItem: null },
     settings: { status: "idle", attend: null, saving: false },
-    history: { status: "idle", runs: [], totals: null, endings: [], filters: NO_HISTORY_FILTERS, selected: null, detail: null },
+    history: { status: "idle", runs: [], totals: null, medians: {}, endings: [], filters: NO_HISTORY_FILTERS, selected: null, detail: null },
     palette: { open: false, query: "", active: 0 },
   },
   listeners: new Set(),
@@ -685,6 +685,14 @@ function fmtUsd(value) {
   return "$" + value.toFixed(2);
 }
 
+function fmtEach(value) {
+  return value >= 10 ? "$" + Math.round(value).toLocaleString("en-US") : fmtUsd(value);
+}
+
+function fmtSigned(percent) {
+  return (percent < 0 ? "\u2212" : "+") + Math.abs(percent).toFixed(0) + "%";
+}
+
 function fmtTokens(count) {
   if (count >= 1e6) return (count / 1e6).toFixed(1) + "M";
   if (count >= 1e3) return (count / 1e3).toFixed(1) + "k";
@@ -779,9 +787,36 @@ function CostTile({ figures, asOf, ended }) {
   <//>`;
 }
 
-function ItemsTile({ figures, ended }) {
+const COMPARABLE = "Successful runs of this workflow with a reported cost and a finished item";
+
+function notCompared(compare) {
+  if (compare.ending === "none") return "no ending recorded";
+  return compare.ending === "success" ? "an estimate has no median" : "the run " + compare.ending_label;
+}
+
+function eachNote(compare) {
+  if (compare.per_item_usd === null) {
+    return compare.per_item_est_usd === null
+      ? null
+      : "est " + fmtEach(compare.per_item_est_usd) + " per item, not compared: " + notCompared(compare);
+  }
+  const each = fmtEach(compare.per_item_usd) + " per item";
+  if (compare.ending !== "success") return each + ", not compared: " + notCompared(compare);
+  if (compare.vs_pct === null) {
+    const who = compare.vs_runs ? "only " + plural(compare.vs_runs, "other comparable " + compare.workflow + " run", "other comparable " + compare.workflow + " runs") : "no other comparable " + compare.workflow + " run yet";
+    return html`${each}, no comparison: <span title=${COMPARABLE}>${who}, and it takes 5</span>`;
+  }
+  const css = compare.vs_pct >= MEDIAN_WARN ? "warn" : "dim";
+  return html`${each} <span class=${css} title=${COMPARABLE}>${fmtSigned(compare.vs_pct)} vs median of ${compare.vs_runs} runs</span>`;
+}
+
+function ItemsTile({ figures, ended, compare }) {
   if (!figures.items_total) {
     return html`<${Tile} label="Work items" id="detail-items-tile" value=${html`<span class="dim">—</span>`}>no item count reported<//>`;
+  }
+  const compared = compare && figures.items_done > 0 ? eachNote(compare) : null;
+  if (compared) {
+    return html`<${Tile} label="Work items" id="detail-items-tile" value=${figures.items_done + " of " + figures.items_total}>${compared}<//>`;
   }
   const stopped = !!(ended && ended.ending);
   let each = stopped ? "no item finished, so no cost per item" : "none finished yet";
@@ -816,7 +851,7 @@ function OverviewTiles({ data, running, ended }) {
   return html`<div class="kpis">
     <${CostTile} figures=${figures} asOf=${data.as_of_ts} ended=${ended} />
     <${Tile} label="Active time" id="detail-active-tile" value=${fmtSpan(figures.active_s)}>${fmtSpan(figures.wall_s)} wall, ${plural(figures.sessions, "session", "sessions")}<//>
-    <${ItemsTile} figures=${figures} ended=${ended} />
+    <${ItemsTile} figures=${figures} ended=${ended} compare=${data.compare} />
     <${Tile} label="Agent turns" id="detail-turns-tile" value=${String(figures.turns)}>${plural(data.standing.retries, "backend retry", "backend retries")}<//>
     <${AttentionTile} standing=${data.standing} running=${running} />
   </div>`;
@@ -967,7 +1002,7 @@ function FlowTree({ data, running, finished, sort, open, toggle, head }) {
 
 const MEDIAN_WARN = 20;
 
-function medianCell(row) {
+function medianCell(row, ended) {
   const norm = row.norm;
   if (!norm) return html`<span class="none">—</span>`;
   if (norm.median_s === null) {
@@ -975,8 +1010,9 @@ function medianCell(row) {
   }
   const mean = row.time_s / row.samples;
   const change = ((mean - norm.median_s) / norm.median_s) * 100;
-  const text = (change >= 0 ? "+" : "-") + Math.abs(change).toFixed(0) + "%";
+  const text = fmtSigned(change);
   const title = "mean " + fmtSpan(mean) + ", median " + fmtSpan(norm.median_s) + " across " + plural(norm.runs, "run", "runs");
+  if (ended) return html`<span title=${title}>${text}</span>`;
   return change >= MEDIAN_WARN
     ? html`<span class="warn" title=${title}>${text} longer</span>`
     : html`<span class="dim" title=${title}>${text}</span>`;
@@ -996,7 +1032,7 @@ function NodeTable({ data, running, sort }) {
       <th scope="col">Visits</th>
       <th scope="col">Time</th>
       <th scope="col">Mean</th>
-      <th scope="col">${medianHeading(data.norm_runs)}</th>
+      <th scope="col" title=${data.compare ? "Mean visit against the same node across successful runs of this workflow" : null}>${data.compare && !data.norm_runs ? "vs median" : medianHeading(data.norm_runs)}</th>
       <th scope="col">Longest</th>
       <th scope="col">${reports ? "Cost" : "Output"}</th>
       <th scope="col">Cost %</th>
@@ -1010,7 +1046,7 @@ function NodeTable({ data, running, sort }) {
         <td>${row.visits}</td>
         <td class="barcell">${timeCell(row.time_s, data.time_s)}</td>
         <td>${row.samples > 0 ? fmtSpan(row.time_s / row.samples) : html`<span class="none">—</span>`}</td>
-        <td>${medianCell(row)}</td>
+        <td>${medianCell(row, !!data.compare)}</td>
         <td>${fmtSpan(row.longest_s)}</td>
         <td>${moneyCell(row, data)}</td>
         <td>${moneyShare(row, data)}</td>
@@ -3522,7 +3558,7 @@ function loadHistory() {
     .then((body) => {
       const runs = body.runs || [];
       const open = runs.find((one) => one.run_id === store.get().history.selected);
-      setIn("history", { status: "ready", runs, totals: body.totals, endings: body.endings || [], ...(open ? { detail: endedDetail(open) } : {}) });
+      setIn("history", { status: "ready", runs, totals: body.totals, medians: body.medians || {}, endings: body.endings || [], ...(open ? { detail: endedDetail(open) } : {}) });
       if (store.get().mode === "history" && body.totals && body.totals.reading > 0) {
         _historyPoll = setTimeout(loadHistory, HISTORY_POLL_MS);
       }
@@ -3624,6 +3660,14 @@ function historyEndingClass(ending) {
   return { success: "ok", gave_up: "warn", "gave-up": "warn", failed: "bad", interrupted: "warn", crashed: "bad" }[ending] || "";
 }
 
+function historyMedian(filters, medians) {
+  const found = medians[filters.workflow] || { runs: 0 };
+  const who = "median per " + filters.workflow + " item";
+  if (found.runs >= 5) return [fmtEach(found.usd), who + ", " + plural(found.runs, "comparable run", "comparable runs"), COMPARABLE];
+  const only = found.runs ? "only " + plural(found.runs, "comparable run", "comparable runs") : "no comparable run yet";
+  return ["—", who + ": " + only + ", and it takes 5", COMPARABLE];
+}
+
 function historyTotals(t) {
   const spent = [];
   if (t.estimate_usd > 0) spent.push(fmtUsdLong(t.estimate_usd) + " of it an estimate");
@@ -3649,6 +3693,16 @@ function HistoryCost({ run }) {
   return html`<td><span class="dim">—</span></td>`;
 }
 
+function HistoryEach({ run }) {
+  if (run.per_item_usd == null) {
+    return run.per_item_est_usd == null
+      ? html`<td><span class="dim">—</span></td>`
+      : html`<td><span class="dim">est ${fmtEach(run.per_item_est_usd)}</span></td>`;
+  }
+  const css = run.vs_pct > 0 ? "up" : run.vs_pct < 0 ? "dn" : "";
+  return html`<td>${fmtEach(run.per_item_usd)}${run.vs_pct == null ? null : html` <span class=${"vs " + css}>${fmtSigned(run.vs_pct)}</span>`}</td>`;
+}
+
 function HistoryItems({ run }) {
   if (run.items_total == null) return html`<td><span class="dim">—</span></td>`;
   const all = run.items_done === run.items_total;
@@ -3671,7 +3725,7 @@ function HistoryRow({ run, tabIndex }) {
       ${who}<td class="l clip" title=${repoText}>${repo}</td>
       <td class="l"><span class="spin" aria-hidden="true"></span><span class="dim">reading its summary</span></td>
       ${when}
-      ${[0, 1, 2, 3, 4, 5, 6].map(() => html`<td class="dim">—</td>`)}
+      ${[0, 1, 2, 3, 4, 5, 6, 7].map(() => html`<td class="dim">—</td>`)}
     </tr>`;
   }
   return html`<tr class="hrow" data-run=${run.run_id} tabindex=${tabIndex} onClick=${() => openHistoryRun(run.run_id)} onKeyDown=${(e) => historyOpenKey(e, run.run_id)}>
@@ -3679,7 +3733,7 @@ function HistoryRow({ run, tabIndex }) {
     <td class="l"><span class=${"chip " + historyEndingClass(run.ending)}>${run.ending_label}</span></td>
     ${when}
     <td>${fmtLong(run.active_s)}</td><td class="dim">${fmtLong(run.wall_s)}</td>
-    <${HistoryCost} run=${run} /><${HistoryItems} run=${run} />
+    <${HistoryCost} run=${run} /><${HistoryItems} run=${run} /><${HistoryEach} run=${run} />
     <td>${run.turns}</td>
     <td>${run.gates ? run.gates : html`<span class="dim">0</span>`}</td>
     <td>${run.problems ? html`<span style="color:var(--idle)">${run.problems}</span>` : html`<span class="dim">0</span>`}</td>
@@ -3742,17 +3796,18 @@ function HistoryPane() {
   }
   const shown = historyShown(history.runs, history.filters);
   const cells = historyTotals(historySums(shown));
+  if (history.filters.workflow && shown.length) cells.push(historyMedian(history.filters, history.medians));
   const table = shown.length
     ? html`<table class="ht" aria-label="Runs that ended, newest first" onKeyDown=${historyKey}>
         <thead><tr>
           <th scope="col" class="l">Run</th><th scope="col" class="l">Repo</th><th scope="col" class="l">Ending</th><th scope="col" class="l sorted" aria-sort="descending">Ended ▾</th>
-          <th scope="col">Active</th><th scope="col">Wall</th><th scope="col">Cost</th><th scope="col">Items</th><th scope="col">Turns</th><th scope="col">Gates</th><th scope="col">Problems</th>
+          <th scope="col">Active</th><th scope="col">Wall</th><th scope="col">Cost</th><th scope="col">Items</th><th scope="col" title="Per finished item, against the median of successful runs of the same workflow. A failed run is not compared, and fewer than five comparable runs show none.">$/item vs median</th><th scope="col">Turns</th><th scope="col">Gates</th><th scope="col">Problems</th>
         </tr></thead>
         <tbody>${shown.map((run, i) => html`<${HistoryRow} key=${run.run_id} run=${run} tabIndex=${i === 0 ? 0 : -1} />`)}</tbody>
       </table>`
     : history.runs.length ? html`<${HistoryNoMatch} />` : html`<div class="empty-big">No run has ended in the last ${RETENTION_DAYS} days.</div>`;
   return html`<${HistoryFilters} history=${history} />
-    <div class="h-sum">${cells.map(([big, text]) => html`<span><b>${big}</b>${text}</span>`)}</div>
+    <div class="h-sum">${cells.map(([big, text, title]) => html`<span title=${title}><b>${big}</b>${text}</span>`)}</div>
     <div class="h-list">${table}</div>`;
 }
 

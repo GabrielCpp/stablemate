@@ -11,7 +11,7 @@ from typing import Any
 
 from workhorse.records import LaunchRecord, parse_launch_record
 
-from groom import alerts, docker_io, figures, flows, projection, state, store
+from groom import alerts, docker_io, figures, flows, medians, projection, state, store
 from groom.store import STORE, read_connection, reading, register_table, resilient
 
 _DDL = """
@@ -366,4 +366,22 @@ def listing(alive: set[str], now: float | None = None) -> dict[str, Any]:
         (cutoff,),
     )
     items = [_item(row) for row in rows if row["run_id"] not in alive]
-    return {"runs": items, "totals": totals(items), "endings": [[key, label] for key, label in LABELS.items()]}
+    pool = medians.per_item_costs(alive)
+    for item in items:
+        item.update(medians.compare(item, pool.get(item["workflow"], {})))
+    return {
+        "runs": items,
+        "totals": totals(items),
+        "medians": medians.per_workflow(pool),
+        "endings": [[key, label] for key, label in LABELS.items()],
+    }
+
+
+@reading
+def comparison(run_id: str) -> dict[str, Any] | None:
+    """An ended run's cost per item against the median of the other successful runs of its workflow, or None for a run that has not ended."""
+    row = read_connection().execute("SELECT * FROM run_summary WHERE run_id = ?", (run_id,)).fetchone()
+    if row is None or row["state"] != READY or row["ended_ts"] is None:
+        return None
+    item = _item(row)
+    return {**medians.compare(item, medians.per_item_costs(set()).get(item["workflow"], {})), "ending": item["ending"], "ending_label": item["ending_label"], "workflow": item["workflow"]}
