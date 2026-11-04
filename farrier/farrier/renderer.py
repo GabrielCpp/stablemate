@@ -525,13 +525,19 @@ class Renderer:
             return f"Use for {self.prefix} repository work involving {title}. Applies to {apply_to}."
         return f"Use for {self.prefix} repository work involving {title}."
 
-    def generated_skill(self, source: Source, target: str, output_path: Path) -> str:
+    def rendered_source(
+        self, source: Source, target: str, output_path: Path
+    ) -> tuple[dict[str, str], str]:
+        """*source*'s front matter and body with the target's templates filled in."""
         header, body = split_front_matter(source.path.read_text(encoding="utf-8"))
         header = {
             key: self.render_templates(value, target, output_path)
             for key, value in header.items()
         }
-        body = self.render_templates(body, target, output_path).strip()
+        return header, self.render_templates(body, target, output_path).strip()
+
+    def generated_skill(self, source: Source, target: str, output_path: Path) -> str:
+        header, body = self.rendered_source(source, target, output_path)
         name = public_name(self.prefix, source)
         description = self.skill_description(source, header, body)
         dest_rel = self.dest_rel(output_path)
@@ -580,12 +586,7 @@ class Renderer:
 
     def generated_command(self, source: Source, target: str, output_path: Path) -> str:
         """Render a library prompt with target-specific fields and shared provenance."""
-        header, body = split_front_matter(source.path.read_text(encoding="utf-8"))
-        header = {
-            key: self.render_templates(value, target, output_path)
-            for key, value in header.items()
-        }
-        body = self.render_templates(body, target, output_path).strip()
+        header, body = self.rendered_source(source, target, output_path)
         if target == "copilot":
             rendered = self.render_templates(
                 source.path.read_text(encoding="utf-8"), target, output_path
