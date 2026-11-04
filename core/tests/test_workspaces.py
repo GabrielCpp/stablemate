@@ -202,3 +202,9 @@ def test_ensure_artifacts_repo_leaves_an_artifacts_dir_inside_another_repo_alone
     assert root.is_dir()
     assert not (root / ".git").exists()
     assert not (root / ".gitignore").exists()
+
+
+def test_repo_slug_normalises_like_an_install_prefix():
+    assert cfgmod.repo_slug("My_Repo.v2") == "my-repo-v2"
+    assert cfgmod.repo_slug("--a  b--") == "a-b"
+    assert cfgmod.member_name(Path("/x/Web_App")) == "web-app"

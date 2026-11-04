@@ -239,3 +239,15 @@ def load_manifest(path: Path) -> Manifest:
     if stamp is not None:
         _held[path] = _Held(stamp, document, read_ns)
     return document
+
+
+def read_manifest(root: str | Path) -> Manifest | None:
+    """The manifest directly in *root*, or ``None`` when there is none.
+
+    A manifest that fails validation raises :class:`ConfigError` naming its key paths. A re-read
+    of a file that broke after a good load keeps the last good document.
+    """
+    path = locate_manifest(Path(root))
+    if path is None:
+        return None
+    return load_manifest(path)

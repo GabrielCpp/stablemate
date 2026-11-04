@@ -244,3 +244,18 @@ def test_a_rewrite_after_the_guard_with_the_mtime_reset_is_read_again(tmp_path, 
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
 
     assert load_manifest(path).packs == ["b"]
+
+
+def test_read_manifest_returns_nothing_for_a_folder_without_one(tmp_path):
+    from stablemate_core.manifest import read_manifest
+
+    assert read_manifest(tmp_path) is None
+    assert read_manifest(str(tmp_path)) is None
+
+
+def test_read_manifest_loads_the_manifest_in_the_folder(tmp_path):
+    from stablemate_core.manifest import MANIFEST_NAME, read_manifest
+
+    (tmp_path / MANIFEST_NAME).write_text("repo:\n  name: demo\n")
+    manifest = read_manifest(str(tmp_path))
+    assert manifest is not None and manifest.repo.name == "demo"

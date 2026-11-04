@@ -602,11 +602,15 @@ class WorkspaceMember:
     branch: str = ""
 
 
-def member_name(path: Path) -> str:
-    """A folder's workspace name: its basename, normalised the way farrier derives an install prefix."""
-    raw = path.name
+def repo_slug(raw: str) -> str:
+    """A repo name normalised the way farrier derives an install prefix."""
     name = re.sub(r"[^a-zA-Z0-9/-]+", "-", raw.replace(".", "-").replace("_", "-"))
     return re.sub(r"-+", "-", name).strip("-").lower()
+
+
+def member_name(path: Path) -> str:
+    """A folder's workspace name: its basename, normalised the way farrier derives an install prefix."""
+    return repo_slug(path.name)
 
 
 def _member_of(entry: WorkspaceEntry) -> WorkspaceMember:
