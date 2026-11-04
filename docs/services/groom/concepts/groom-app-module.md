@@ -190,7 +190,7 @@ For a connected sidecar, the method reads the selected repository through `getTr
 - sig: `async run_overview(run_id: str) -> dict`
 - abstract: false
 - raises: propagates store read failures as a framework server error.
-- code: groom/groom/app.py::run_overview@1fc6eaf7565a
+- code: groom/groom/app.py::run_overview@410abf361ab6
 - endpoint: [get run overview](../http/get-run-overview.md)
 - invocation: [serve run overview](../http/groom.md#serve-run-overview)
 - does: Runs the cost summary and the [run flow tree](run-flow-tree.md) for one run on the query pool, with the per-node breakdown and its norms, the work items and the overview tiles.

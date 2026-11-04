@@ -779,14 +779,15 @@ function CostTile({ figures, asOf, ended }) {
   <//>`;
 }
 
-function ItemsTile({ figures }) {
+function ItemsTile({ figures, ended }) {
   if (!figures.items_total) {
     return html`<${Tile} label="Work items" id="detail-items-tile" value=${html`<span class="dim">—</span>`}>no item count reported<//>`;
   }
-  let each = "none finished yet";
+  const stopped = !!(ended && ended.ending);
+  let each = stopped ? "no item finished, so no cost per item" : "none finished yet";
   if (figures.items_done > 0) {
     each = figures.reports_cost
-      ? fmtUsd(figures.cost_usd / figures.items_done) + " per finished item"
+      ? fmtUsd(figures.cost_usd / figures.items_done) + (stopped ? " per item" : " per finished item")
       : "no cost per item without a price";
   }
   return html`<${Tile} label="Work items" id="detail-items-tile" value=${figures.items_done + " of " + figures.items_total}>${each}<//>`;
@@ -815,7 +816,7 @@ function OverviewTiles({ data, running, ended }) {
   return html`<div class="kpis">
     <${CostTile} figures=${figures} asOf=${data.as_of_ts} ended=${ended} />
     <${Tile} label="Active time" id="detail-active-tile" value=${fmtSpan(figures.active_s)}>${fmtSpan(figures.wall_s)} wall, ${plural(figures.sessions, "session", "sessions")}<//>
-    <${ItemsTile} figures=${figures} />
+    <${ItemsTile} figures=${figures} ended=${ended} />
     <${Tile} label="Agent turns" id="detail-turns-tile" value=${String(figures.turns)}>${plural(data.standing.retries, "backend retry", "backend retries")}<//>
     <${AttentionTile} standing=${data.standing} running=${running} />
   </div>`;
@@ -1171,18 +1172,18 @@ async function copyText(text) {
   }
 }
 
-function CopyButton({ what, text }) {
+function CopyButton({ what, text, said }) {
   const [result, setResult] = useState("");
   const timer = useRef(0);
   useEffect(() => () => clearTimeout(timer.current), []);
   const copy = async () => {
     const ok = await copyText(text);
-    setResult(ok ? "Copied " + what : "Could not copy " + what);
+    setResult(ok ? said || "Copied " + what : "Could not copy " + what);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setResult(""), 4000);
   };
   const failed = result.startsWith("Could not");
-  return html`<button type="button" class="copy" title=${"Copy " + what} aria-label=${"Copy " + what} onClick=${copy}><span aria-hidden="true">⧉</span></button><span class=${failed ? "copy-note bad" : "copy-note"} role="status">${result}</span>`;
+  return html`<button type="button" class="copy" title=${"Copy " + what} aria-label=${"Copy " + what} onClick=${copy}>${said && result ? null : html`<span aria-hidden="true">⧉</span>`}</button><span class=${failed ? "copy-note bad" : "copy-note"} role="status">${result}</span>`;
 }
 
 function fmtWhen(ts) {
@@ -1194,9 +1195,9 @@ function gasOf(detail) {
   return cell ? cell.value : "";
 }
 
-function RunFacts({ facts, runId, checkout, pid, gas, ended }) {
+function RunFacts({ facts, runId, checkout, pid, gas, ended, fact }) {
   const rows = [
-    ended ? ["Ending", ended.ending_label, "ending"] : null,
+    ended ? ["Ending", fact || ended.ending_label, "ending"] : null,
     facts.started_ts ? ["Started", fmtWhen(facts.started_ts), "start time"] : null,
     ended && ended.ended_ts ? [ended.ending ? "Ended" : "Last record", fmtWhen(ended.ended_ts), "end time"] : null,
     facts.branch ? ["Branch", facts.branch, "branch"] : null,
@@ -1220,7 +1221,7 @@ const ENDINGS = {
   interrupted: "interrupted",
   reload: "reloaded",
   fail: "failed",
-  aborted: "aborted",
+  aborted: "crashed",
 };
 
 function sessionEnding(row, last, live) {
@@ -1260,6 +1261,30 @@ function Sessions({ sessions, live }) {
   </section>`;
 }
 
+function openMoment(runId, key) {
+  const held = store.get().activity;
+  if (held.runId === runId && held.status === "ready") {
+    store.set({ tab: "activity", activity: { ...held, note: "" } });
+    openRow(key);
+    return;
+  }
+  store.set({ tab: "activity", activity: { ...held, aim: key, note: "" } });
+}
+
+function EndingBanner({ ending, runId }) {
+  if (!ending) return null;
+  const rule = ending.ending === "gave-up" ? "idle" : "blocked";
+  let how = null;
+  if (ending.command) {
+    how = html`<div class="mono dim ending-how">${ending.container ? "To continue it, run this inside the container it ran in: " : "To continue it from a terminal: "}<span class="ending-cmd">${ending.command}</span> <${CopyButton} what="command" text=${ending.command} said="Copied" /></div>`;
+  } else if (ending.gone) {
+    how = html`<div class="dim ending-how">This run's folder is gone, so it cannot be continued.</div>`;
+  } else if (ending.unrecorded) {
+    how = html`<div class="dim ending-how">This run recorded no launch command, so it cannot be continued from here.</div>`;
+  }
+  return html`<div id="detail-ending" class=${"side-state ending ending-" + rule} role="region" aria-label="How this run ended"><h2>${ending.head}</h2>${ending.text}${" "}${ending.moment ? html`<button type="button" class="linkish" id="detail-ending-moment" onClick=${() => openMoment(runId, ending.moment)}>Open this moment in Activity</button>` : null}${how}</div>`;
+}
+
 function Overview({ detail }) {
   const { overview } = useStore();
   const runId = detail.run_id;
@@ -1297,30 +1322,32 @@ function Overview({ detail }) {
   const strip = detail.strip ? html`<${NowStrip} strip=${detail.strip} />` : null;
   if (!data.finished) {
     return html`<div class="ov">
+      <${EndingBanner} ending=${data.ending} runId=${runId} />
       ${strip}
       <div class="side-state" role="status">
         <h3>No finished work yet</h3>
         Figures appear when the first node finishes.
       </div>
-      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} ended=${ended} />
+      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} ended=${ended} fact=${data.ending && data.ending.fact} />
       ${detail.running ? html`<${Breakdown} data=${Object.assign({}, data, { flows: [], items: null })} running=${detail.running} finished=${false} />` : null}
     </div>`;
   }
   return html`<div class="ov">
+    <${EndingBanner} ending=${data.ending} runId=${runId} />
     ${strip}
     <${OverviewTiles} data=${data} running=${detail.running} ended=${ended} />
     <${WallClock} clock=${data.clock} />
     <${Breakdown} key=${runId} data=${data} running=${detail.running} finished=${true} />
     <div class="pair">
       <${Models} models=${data.models} />
-      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} ended=${ended} />
+      <${RunFacts} facts=${data.facts} runId=${runId} checkout=${detail.head.checkout} pid=${detail.head.pid} gas=${gasOf(detail)} ended=${ended} fact=${data.ending && data.ending.fact} />
     </div>
     <${Sessions} sessions=${data.sessions} live=${detail.head.state === "running" || detail.head.state === "blocked"} />
   </div>`;
 }
 
 function idleActivity() {
-  return { runId: "", status: "idle", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null, query: "", item: "", search: idleSearch(), note: "", problems: false, problemCount: null, steps: false, logs: false, logCount: null, raw: idleRaw() };
+  return { runId: "", status: "idle", aim: "", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null, query: "", item: "", search: idleSearch(), note: "", problems: false, problemCount: null, steps: false, logs: false, logCount: null, raw: idleRaw() };
 }
 
 function idleRaw() {
@@ -1384,7 +1411,7 @@ async function loadTurn(runId, slug, refresh = false) {
 async function loadActivity(runId, rev = 0, refresh = false, absorbLogs = false) {
   const seq = ++activitySeq;
   const kept = store.get().activity;
-  if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev, problems: kept.problems, steps: kept.steps, logs: kept.logs } });
+  if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev, aim: kept.aim, problems: kept.problems, steps: kept.steps, logs: kept.logs } });
   try {
     const response = await fetch("/api/run/" + encodeURIComponent(runId) + "/activity" + (kept.logs ? "?logs=1" : ""));
     if (!response.ok) throw new Error("activity " + response.status);
@@ -1397,6 +1424,11 @@ async function loadActivity(runId, rev = 0, refresh = false, absorbLogs = false)
     const seen = absorbLogs && held.seen ? new Set([...held.seen, ...timelineKeys(rows, items)].filter((key) => key.startsWith("log:") || held.seen.has(key))) : held.seen;
     store.set({ activity: { ...held, runId, status: "ready", rows, items, problemCount: data.problems || 0, logCount: data.log_count || 0, selected: chosen, rev, seen } });
     const wasRunning = held.rows.some((row) => row.slug === chosen && row.status === "running");
+    if (!refresh && held.aim) {
+      store.set({ activity: { ...store.get().activity, aim: "" } });
+      openRow(held.aim);
+      return;
+    }
     if (!refresh && held.problems && showNewestProblem()) return;
     if (!chosen && rows.length) loadTurn(runId, rows[rows.length - 1].slug);
     else if (chosen && rows.some((row) => row.slug === chosen && (row.status === "running" || wasRunning))) loadTurn(runId, chosen, true);

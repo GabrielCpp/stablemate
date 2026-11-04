@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import shlex
 import sqlite3
 import time
+from pathlib import Path
 from typing import Any
 
-from groom import alerts, figures, flows, projection, state, store
+from workhorse.records import LaunchRecord, parse_launch_record
+
+from groom import alerts, docker_io, figures, flows, projection, state, store
 from groom.store import STORE, read_connection, reading, register_table, resilient
 
 _DDL = """
@@ -23,6 +27,8 @@ CREATE TABLE IF NOT EXISTS run_summary (
     error_class     TEXT NOT NULL DEFAULT '',
     failing_node    TEXT NOT NULL DEFAULT '',
     resume_command  TEXT NOT NULL DEFAULT '',
+    resume_container INTEGER NOT NULL DEFAULT 0,
+    resume_read     INTEGER NOT NULL DEFAULT 0,
     started_ts      REAL,
     ended_ts        REAL,
     last_ts         REAL NOT NULL DEFAULT 0,
@@ -43,7 +49,12 @@ CREATE TABLE IF NOT EXISTS run_summary (
 CREATE INDEX IF NOT EXISTS run_summary_ended ON run_summary(ended_ts DESC);
 """
 
-register_table("run_summary", _DDL)
+_ADDED = (
+    ("resume_container", "INTEGER NOT NULL DEFAULT 0"),
+    ("resume_read", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+register_table("run_summary", _DDL, _ADDED)
 
 READY, PENDING = "ready", "pending"
 
@@ -57,6 +68,14 @@ LABELS = {
 }
 
 ENDING_TOLERANCE_S = 60.0
+
+LAUNCH_FILE = "launch.json"
+
+RUNS_MOUNT = "/runs/"
+
+CONTINUABLE = ("failed", "interrupted", "crashed")
+STOPPED = (*CONTINUABLE, "gave-up")
+RESUME_READ = 2
 
 _TERMINAL_ENDINGS = {"fail": "failed", "interrupted": "interrupted", "aborted": "crashed"}
 
@@ -106,8 +125,15 @@ def _latest_roots() -> dict[str, tuple[float, str]]:
 
 @reading
 def _stored() -> dict[str, dict[str, Any]]:
-    rows = read_connection().execute("SELECT run_id, state, last_ts, ended_ts FROM run_summary")
+    rows = read_connection().execute("SELECT run_id, state, last_ts, ended_ts, ending, resume_read FROM run_summary")
     return {row["run_id"]: dict(row) for row in rows}
+
+
+@reading
+def stored(run_id: str) -> dict[str, Any] | None:
+    """One run's stored summary row, or None when it has none."""
+    row = read_connection().execute("SELECT * FROM run_summary WHERE run_id = ?", (run_id,)).fetchone()
+    return dict(row) if row is not None else None
 
 
 @resilient
@@ -148,7 +174,7 @@ def discover(now: float | None = None) -> list[str]:
                 pending.append((run_id, found["workflow"] or "", repo, branch, root_ts if ended else last_ts))
                 wanted.append((last_ts, run_id))
             continue
-        if row["state"] == PENDING or abs(float(row["last_ts"]) - last_ts) > 1e-6:
+        if row["state"] == PENDING or abs(float(row["last_ts"]) - last_ts) > 1e-6 or (row["ending"] in STOPPED and row["resume_read"] < RESUME_READ):
             if ended or silent:
                 wanted.append((last_ts, run_id))
             elif row["ended_ts"] is not None:
@@ -170,6 +196,34 @@ def _items(progress: tuple[int, int] | None, work_items: int) -> tuple[int | Non
     if progress is not None:
         return progress
     return (work_items, work_items) if work_items else (None, None)
+
+
+def _command(launch: LaunchRecord | None) -> str:
+    """The recorded resume argv as one shell line that works from any folder: a `cd` into the recorded cwd, when there is one, then the argv."""
+    if launch is None or not launch.resume_argv:
+        return ""
+    argv = shlex.join(launch.resume_argv)
+    return f"cd {shlex.quote(launch.cwd)} && {argv}" if launch.cwd else argv
+
+
+def _launch_record(run_id: str, run_dir: str) -> LaunchRecord | None:
+    """What the run recorded at launch: from its folder for a native run, and from the runs volume of its container while the volume exists."""
+    text: str | None = None
+    if run_dir and Path(run_dir).is_dir():
+        try:
+            text = (Path(run_dir) / LAUNCH_FILE).read_text()
+        except OSError:
+            return None
+    elif run_dir.startswith(RUNS_MOUNT):
+        container = next((one for one in state.WORKFLOWS.values() if one.run_id == run_id and one.runs_volume), None)
+        if container is not None:
+            text = docker_io.read_file(container.runs_volume, f"{run_dir.removeprefix(RUNS_MOUNT).strip('/')}/{LAUNCH_FILE}")
+    if not text:
+        return None
+    try:
+        return parse_launch_record(text)
+    except ValueError:
+        return None
 
 
 def summarize(run_id: str, now: float | None = None) -> dict[str, Any] | None:
@@ -198,6 +252,9 @@ def summarize(run_id: str, now: float | None = None) -> dict[str, Any] | None:
     attrs = root["attrs"] if root else {}
     broken = ending in ("failed", "crashed", "interrupted")
     run_dir = identity["run_dir"] or ""
+    launch = _launch_record(run_id, run_dir) if ending in CONTINUABLE else None
+    stopped = next((span for span in reversed(spans) if span["node"] in giveup), None) if ending == "gave-up" else None
+    failing = errors[-1]["node"] if broken and errors else stopped["node"] if stopped else ""
     return {
         "run_id": run_id,
         "workflow": identity["workflow"] or "",
@@ -207,8 +264,10 @@ def summarize(run_id: str, now: float | None = None) -> dict[str, Any] | None:
         "state": READY,
         "ending": ending or "",
         "error_class": str(attrs.get("error.class") or "") if broken else "",
-        "failing_node": errors[-1]["node"] if broken and errors else "",
-        "resume_command": f"workhorse-{identity['workflow']} run --resume-run {run_dir}" if broken and run_dir and identity["workflow"] else "",
+        "failing_node": failing,
+        "resume_command": _command(launch),
+        "resume_container": int(launch.container) if launch else 0,
+        "resume_read": RESUME_READ,
         "started_ts": profile["observed_start_ts"] if profile else None,
         "ended_ts": ended_ts,
         "last_ts": last_ts,

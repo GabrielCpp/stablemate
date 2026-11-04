@@ -25,8 +25,8 @@ DETAIL = "#history-detail"
 AXE = Path(__file__).resolve().parent / "vendor" / "axe.min.js"
 
 
-def _rich(run: str, base: float, terminal: str = "terminal") -> None:
-    spans = [span("r1", "t1", "", "coder", "run:coder", base, 5000, {"workhorse.terminal": terminal}, 1)]
+def _rich(run: str, base: float, terminal: str = "terminal", root: dict | None = None) -> None:
+    spans = [span("r1", "t1", "", "coder", "run:coder", base, 5000, {"workhorse.terminal": terminal, **(root or {})}, 1)]
     spans += _pass("a", "qa", base + 10, "sign-in", [("lint", 5, "UNSET"), ("test", 7, "ERROR")], turn=(100, 2.0))
     waited = {"workhorse.span_kind": "wait", "workhorse.wait_kind": "operator", "workhorse.wait_outcome": "completed", "workhorse.gate_path": "gates/qa-story.md", "workhorse.gate_question": ASKED}
     spans.append(span("g1", "t1", "sa", "resolve", "wait:operator", base + 50, 30, waited, 1))

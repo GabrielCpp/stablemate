@@ -17,8 +17,8 @@ The sections are not a second set of numbers. They come from the same profile th
 - code: groom/groom/cli.py::_format_profile@db621328f245
 - code: groom/groom/assets/dashboard.js::WallClock@9dbf41855332
 - code: groom/groom/assets/dashboard.js::Models@dfdce71eb006
-- code: groom/groom/assets/dashboard.js::CopyButton@075340c266d2
-- code: groom/groom/assets/dashboard.js::RunFacts@af965a58ed8b
+- code: groom/groom/assets/dashboard.js::CopyButton@7b2dbe079eaf
+- code: groom/groom/assets/dashboard.js::RunFacts@21b96cb09b84
 - code: groom/groom/assets/dashboard.js::Sessions@60d00a14245d
 - tests: groom/tests/test_run_clock.py::test_the_wall_clock_segments_sum_to_the_wall_time_and_the_active_ones_to_the_active_tile
 - tests: groom/tests/test_run_clock.py::test_the_model_totals_equal_the_cost_report_and_an_unpriced_model_has_no_cost

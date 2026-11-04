@@ -9,7 +9,7 @@ The activity module builds what the [Activity tab](run-activity-tab.md) shows: t
 
 The module reads and returns plain data. It writes nothing, holds no state between calls and raises two errors the server maps to statuses: `TurnNotFound` for a slug the run has no turn under, and `TurnUnreadable` for a turn that exists whose record is not on this machine.
 
-- code: groom/groom/activity.py@1e3cd24d5cfd
+- code: groom/groom/activity.py@42768da271bc
 - tests: groom/tests/test_activity.py
 - tests: groom/tests/test_activity_groups.py
 - refs: [groom transcript parse module](groom-transcript-parse-module.md), [groom store](groom-store.md), [groom turns module](groom-turns-module.md), [run flow tree](run-flow-tree.md)

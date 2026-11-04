@@ -5,7 +5,7 @@ title: Run history summary
 ---
 # Run history summary
 
-History answers what a run cost, how long it took and how it ended after the run has left the fleet. It cannot answer by scanning a run's records, because the store holds the records of every run for 30 days and a scan per run would not open in seconds. Groom therefore keeps one stored summary row per ended run and the list reads only those rows. The row holds the workflow, repo, branch, run folder, native or container, the [ending](run-ending-mapping.md), the error class and failing node, the resume command, the start, end and last-record times, the active and wall time, the cost with its priced and total turns and its estimate, the items finished and total, the turns, gates and problems, the sessions with how each stopped, and the per-node visits, time and cost.
+History answers what a run cost, how long it took and how it ended after the run has left the fleet. It cannot answer by scanning a run's records, because the store holds the records of every run for 30 days and a scan per run would not open in seconds. Groom therefore keeps one stored summary row per ended run and the list reads only those rows. The row holds the workflow, repo, branch, run folder, native or container, the [ending](run-ending-mapping.md), the error class and failing node, the resume command the run recorded at launch and whether it ran in a container, the start, end and last-record times, the active and wall time, the cost with its priced and total turns and its estimate, the items finished and total, the turns, gates and problems, the sessions with how each stopped, and the per-node visits, time and cost.
 
 A run is listed only once it has ended. The repo and branch come from what the run's spans record, the same way the Runs pane names them. The repo is the one the spans declare, or the directory name of the workspace path they record, and the branch is the one they declare or the branch they record at the start. A run whose spans record no workspace has no repo and the table shows a dash. The stored repo and branch are the plain name and the plain branch, separately, and the table joins them with `@`.
 
@@ -15,11 +15,13 @@ A background worker on a pool of its own writes the summary of an ended run that
 
 The operator-facing screen is the [history table](../gui/screens/groom-dashboard.md#history-table), and its figures above the table are the [run history totals](run-history-totals.md). The route is [get-run-history](../http/get-run-history.md).
 
-- code: groom/groom/history.py::discover@a3250acb0567
+- code: groom/groom/history.py::discover@1c90072aa772
 - code: groom/groom/history.py::compute@afbde2532938
 - code: groom/groom/history.py::listing@931989b4c09b
 - code: groom/groom/app.py::_summary_loop@7d25526428f4
 - code: groom/groom/pools.py::SUMMARY@6ead18da664b
+- rule: the resume command is read from the run's launch record when its summary is written, as `cd <recorded cwd> && <resume argv>` with shell quoting, and an ended run summarized before the record was read, or with an older form of the command, is summarized once more so its row gains it. The [run ending banner](run-ending-banner.md) shows it.
+- rule: a run that gave up stores the node of its give-up span as its failing node
 - rule: the history list reads stored per-run summaries and scans no run's records
 - rule: a run that is alive is not listed, a finished run is listed while its row is still in Runs, and a run that continues after a resume leaves the list and returns with its new figures when it ends again
 - rule: a run with no recorded ending is listed after 48 hours of silence at its last record's time, and leaves the list if it comes back alive

@@ -19,6 +19,7 @@ The detail is built in the browser from the run's [history row](run-history-summ
 - rule: an ended run has the Overview and Activity tabs and never a Files or Diff tab, whether it ran natively or in a container, because its checkout is gone or no longer the run's
 - rule: the head of an ended run says `ended`, its end time and its ending in words, and never shows a running chip, a burn rate or a current turn strip
 - rule: the Overview of an ended run takes its figures from the same terminal queries as the Overview of a live run, so a run's cost and its times per node and per flow equal `groom cost` and `groom profile`, and the dashboard calculates none of them a second time
+- rule: the Overview of a run that failed, was interrupted, crashed or gave up starts with the [run ending banner](run-ending-banner.md), and History offers no stop, resume or rewind control
 - rule: a cost-less backend shows the labelled estimate in the cost tile and an output tokens column in place of cost in the breakdown, and an ended run's cost tile says how many turns were priced
 - rule: a run recorded before the flow attributes existed still shows its flow times
 - rule: the Activity tab of an ended run opens with finished items folded and has no follow control and no live pill, and an answered gate reads in Activity only, because the detail of an ended run has no answer box

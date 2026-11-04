@@ -45,6 +45,10 @@ title: get-run-overview
   - Returns the cost and per-node time that `groom cost` and `groom profile` report for the same run.
 - verify: json_path(path="$.cost.usd", equals=2.0)
 - does:
+  - Returns `ending`, the [run ending banner](../concepts/run-ending-banner.md) of a run that failed, was interrupted, crashed or gave up, and `null` for any other run.
+- does:
+  - Carries in that `ending` the `ending`, `head`, `text`, `moment`, `command` as one line, `cd <cwd> && <resume argv>` from the launch record, `container`, `gone` and `unrecorded` members.
+- does:
   - Reads an archived run's spans from its archive once the run has left the live store.
 - does:
   - Does not mutate workflow state, the telemetry store, or any websocket client.
@@ -53,7 +57,8 @@ title: get-run-overview
   - body: `{"finished": bool, "run_id": str, "cost": {...}, "flows": [{...}, ...], "time_s": {...}, "as_of_ts": float | null}`. An unknown run id returns `finished` false, an empty `flows` and a `cost.usd` of `null`.
 - status: `200`
 - verify: http_status(code=200, path="/api/run/{run_id}/overview")
-- code: groom/groom/app.py::run_overview@1fc6eaf7565a
+- code: groom/groom/app.py::run_overview@410abf361ab6
+- code: groom/groom/app.py::_overview_with_ending@80eed7ace691
 - tests: groom/tests/test_flows.py::test_the_overview_endpoint_serves_the_same_figures
 
 The route is `GET /api/run/{run_id}/overview`, registered by the [groom server](groom.md) and requested through the [serve-run-overview](groom.md#serve-run-overview) invocation. The path variable `run_id` is the telemetry run id from the run detail payload. The request has no query, no required headers and no body. A failed read of the store is a framework-level `500`, which the dashboard shows as a failed Overview with a retry.

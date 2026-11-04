@@ -29,6 +29,7 @@ from groom import (
     attend,
     attend_ledger,
     attend_transcript,
+    banner,
     discovery,
     dispatch,
     dispatch_ledger,
@@ -621,10 +622,14 @@ async def outbox_get(run_id: Annotated[str, PathParameter()]) -> dict:
     }
 
 
+def _overview_with_ending(run_id: str) -> dict:
+    return {**overview.run_overview(run_id), "ending": banner.banner(run_id)}
+
+
 @get("/api/run/{run_id:str}/overview", include_in_schema=False)
 async def run_overview(run_id: Annotated[str, PathParameter()]) -> dict:
     """One run's cost so far and its time per flow, from the queries behind ``groom cost`` and ``groom profile``."""
-    return await pools.QUERY.run(overview.run_overview, run_id)
+    return await pools.QUERY.run(_overview_with_ending, run_id)
 
 
 @get("/api/history", include_in_schema=False)

@@ -489,7 +489,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: a refresh keeps the scroll position and does not blank the figures it replaces.
 - states: the `ago` after `as of the last finished turn` counts up every second in the browser.
 - code: groom/groom/assets/dashboard.js::CostTile@eb7154f2e7c2
-- code: groom/groom/assets/dashboard.js::OverviewTiles@7d0c9d54868d
+- code: groom/groom/assets/dashboard.js::OverviewTiles@2612b7261918
 - detail: [run clock sections](../../concepts/run-clock-sections.md)
 - detail: [run flow tree](../../concepts/run-flow-tree.md)
 - tests: groom/tests/test_a11y_dynamic.py::test_new_telemetry_updates_the_open_overview_and_keeps_the_operators_place
@@ -543,7 +543,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: an ended run says `This run's figures could not be read` and `The list still works.` in that alert.
 - states: a retry of an ended run that succeeds shows the Overview.
 - states: shown inside an alert, only while the Overview read has failed. The Activity tab keeps working meanwhile, and the alert clears on the next successful read.
-- code: groom/groom/assets/dashboard.js::Overview@125cf40a686e
+- code: groom/groom/assets/dashboard.js::Overview@a13d033913fa
 - tests: groom/tests/test_a11y_dynamic.py::test_overview_says_it_is_reading_then_offers_a_retry_when_the_read_fails
 - leads-to: [get run overview](../../http/get-run-overview.md), requested again.
 
@@ -855,6 +855,40 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - parent: [detail-pane](#detail-pane)
 - states: the Agent turns tile shows the turn count and the backend retries.
 - detail: [overview tiles](../../concepts/overview-tiles.md)
+
+### detail-ending-banner
+
+- selector: `#detail-ending`
+- role: region
+- name: How this run ended
+- keyboard: not focusable itself. The link and the copy button in it are reached with Tab.
+- parent: [detail-pane](#detail-pane)
+- placement: width 60-100%, x 0-20%
+- states: the first thing on the Overview of a run that failed, was interrupted, crashed or gave up, as a heading `Ended at <node>: <error class>`, one sentence of what happened and `N of M work items finished.`
+- verify: visible(locator="#detail-ending-banner", text="Ended at")
+- states: a successful run and a run with no recorded ending show no banner.
+- verify: absent(subject="#detail-ending on a run that succeeded")
+- states: an interrupted or crashed run shows the same banner, and its heading names what stopped it.
+- states: a run that gave up says it finished with the work item skipped after exhausting its retries and shows no command.
+- states: a link named `Open this moment in Activity` opens the Activity tab with the failing row selected and its turn or step in the reading pane. A run with no failing row shows no link.
+- verify: visible(locator="#detail-ending-banner", text="Open this moment in Activity")
+- states: a failed, interrupted or crashed run shows `To continue it from a terminal:` and the command the run recorded at launch as one line, `cd <recorded folder> && <resume command>`, with a copy button named `Copy command` that copies it and answers `Copied`.
+- states: a container run says `To continue it, run this inside the container it ran in:` before the command.
+- states: a run whose folder is gone says `This run's folder is gone, so it cannot be continued.` and shows no command.
+- verify: visible(locator="#detail-ending-banner", text="cannot be continued")
+- states: a run whose folder stays but recorded no launch command says `This run recorded no launch command, so it cannot be continued from here.` and shows no command.
+- states: the work items tile of an ended run reads `$X per item` with no median comparison.
+- code: groom/groom/assets/dashboard.js::EndingBanner@e4949071c6e1
+- code: groom/groom/assets/dashboard.js::openMoment@11ef31e84f7e
+- detail: [run ending banner](../../concepts/run-ending-banner.md)
+- tests: groom/tests/test_history_banner_dynamic.py::test_a_failed_runs_overview_starts_with_the_banner_and_a_successful_run_has_none
+- tests: groom/tests/test_history_banner_dynamic.py::test_the_link_opens_the_activity_tab_with_the_failing_row_selected_and_its_step_in_the_reading_pane
+- tests: groom/tests/test_history_banner_dynamic.py::test_the_banner_shows_the_recorded_command_and_the_copy_control_copies_it_and_says_copied
+- tests: groom/tests/test_history_banner_dynamic.py::test_a_container_runs_banner_says_the_command_runs_inside_that_container
+- tests: groom/tests/test_history_banner_dynamic.py::test_a_runs_banner_says_it_cannot_be_continued_when_its_folder_is_gone_and_shows_no_command
+- tests: groom/tests/test_history_banner_dynamic.py::test_the_work_items_tile_of_an_ended_run_shows_the_cost_per_item_with_no_median_comparison
+- tests: groom/tests/test_history_banner_dynamic.py::test_history_offers_no_stop_resume_or_rewind_control_on_a_stopped_run
+- tests: groom/tests/test_history_banner_dynamic.py::test_the_banner_passes_an_axe_scan_and_its_link_and_copy_control_work_from_the_keyboard
 
 ### detail-attention-tile
 
@@ -2913,7 +2947,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: http_status(code=200, path="/api/run/{run_id}/activity/{slug}")
   - Reads the list again when the run's figures revision moves, every 3 seconds while a turn runs, and when the connection returns.
 - code: groom/groom/assets/dashboard.js::ActivityTab@cab45b64cf4c
-- code: groom/groom/assets/dashboard.js::loadActivity@32c314e1c997
+- code: groom/groom/assets/dashboard.js::loadActivity@e756f0975c85
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_the_tab_lists_turns_oldest_first_each_with_time_node_duration_cost_and_result
 
@@ -2949,7 +2983,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Reads the list again, or the open turn again, whichever failed, and clears the alert when the read succeeds.
   - verify: absent(subject=".act-state after a successful retry")
   - Keeps the list on screen while a turn is read again.
-- code: groom/groom/assets/dashboard.js::loadActivity@32c314e1c997
+- code: groom/groom/assets/dashboard.js::loadActivity@e756f0975c85
 - detail: [run Activity tab](../../concepts/run-activity-tab.md)
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_turn_that_cannot_be_read_says_so_keeps_the_list_and_a_retry_clears_it
 - tests: groom/tests/test_activity_tab_dynamic.py::test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry_clears_it

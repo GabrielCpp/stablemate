@@ -211,20 +211,28 @@ def _work_id(span: dict[str, Any]) -> str:
     return str(span["attrs"].get("work_id") or span["attrs"].get("wf.work_id") or "")
 
 
-def _plain(text: str) -> str:
+def _whole(text: str) -> str:
     for line in text.splitlines():
         cleaned = line.strip().lstrip("#>- ").replace("*", "").replace("`", "").strip()
         if cleaned:
-            return cleaned[:RESULT_CHARS]
+            return cleaned
     return ""
 
 
+def _plain(text: str) -> str:
+    return _whole(text)[:RESULT_CHARS]
+
+
 def _failure(span: dict[str, Any]) -> str:
+    return _whole_failure(span)[:RESULT_CHARS] or "failed"
+
+
+def _whole_failure(span: dict[str, Any]) -> str:
     attrs = span["attrs"]
     for key in ("status_message", "workhorse.out.reason"):
-        if _plain(str(attrs.get(key) or "")):
-            return _plain(str(attrs[key]))
-    return "failed"
+        if _whole(str(attrs.get(key) or "")):
+            return _whole(str(attrs[key]))
+    return ""
 
 
 def _seconds_of(span: dict[str, Any]) -> float:
@@ -386,6 +394,7 @@ def _groups(spans: list[dict[str, Any]], rows: list[dict[str, Any]], placed: dic
         span = item["span"]
         if item["kind"] == "failed":
             entry = _span_entry("failed", span, _failure(span))
+            entry["reason"] = _whole_failure(span)
             if span["name"] == TURN_SPAN:
                 entry["turn"] = visits.get(span["span_id"], "")
         elif item["kind"] == "retry":
@@ -647,7 +656,7 @@ def _flat(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     for item in items:
         for one in item["passes"]:
             for entry in one["entries"]:
-                found.extend(entry["steps"] if entry["kind"] == "steps" else [entry])
+                found.extend({**part, "work": item["work_id"]} for part in (entry["steps"] if entry["kind"] == "steps" else [entry]))
     return sorted(found, key=lambda entry: (entry["ts"], entry["key"]))
 
 

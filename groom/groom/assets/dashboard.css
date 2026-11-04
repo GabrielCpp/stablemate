@@ -157,7 +157,7 @@ body {
 .at-msg.plan { border-left-color:var(--idle); }
 details.at-msg summary { cursor:pointer; }
 /* ---- raw records ---- */
-.log-line { display:grid; grid-template-columns:112px 52px 130px minmax(0, 1fr); gap:8px; padding:2px 8px;
+.log-line { display:grid; grid-template-columns:112px 72px 130px minmax(0, 1fr); gap:8px; padding:2px 8px;
   border-bottom:1px solid var(--bg-2); color:var(--text-1); }
 .log-line:last-child { border-bottom:0; }
 .log-line .lt-ts, .log-line .lt-lvl, .log-line .lt-node { color:var(--text-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -447,7 +447,11 @@ details.at-msg summary { cursor:pointer; }
 .sec-h { display:flex; align-items:center; gap:10px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-2); border-bottom:1px solid var(--border); padding-bottom:4px; margin-bottom:8px; }
 .side-state { margin:18px; padding:14px 16px; background:var(--bg-2); border:1px solid var(--border); border-left:3px solid var(--idle); border-radius:5px; max-width:560px; font-size:12.5px; color:var(--text-1); }
 .ov > .side-state { margin:0; max-width:none; border-left-color:var(--border-2); }
-.side-state h3 { margin:0 0 6px; font-size:13px; color:var(--text-0); font-weight:600; }
+.ov > .ending { border-left-color:var(--blocked); }
+.ov > .ending-idle { border-left-color:var(--idle); }
+.ending .copy-note { color:var(--text-1); }
+.ending-how { margin-top:8px; font-family:var(--mono); font-size:11.5px; overflow-wrap:anywhere; }
+.side-state h3, .side-state h2 { margin:0 0 6px; font-size:13px; color:var(--text-0); font-weight:600; }
 .side-state .acts { margin-top:10px; display:flex; gap:8px; }
 .sec-h .aside { margin-left:auto; text-transform:none; letter-spacing:0; }
 .seg { display:inline-flex; border:1px solid var(--border-2); border-radius:4px; overflow:hidden; text-transform:none; letter-spacing:0; }

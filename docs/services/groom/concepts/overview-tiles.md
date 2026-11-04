@@ -14,7 +14,7 @@ The tiles are not a second set of numbers. Cost, coverage, active time and items
 - code: groom/groom/problems.py::found@a0059fcef241
 - code: groom/groom/churn.py::count_alerts@156655db35bb
 - code: groom/groom/overview.py::run_overview@d4e666f27ee7
-- code: groom/groom/assets/dashboard.js::OverviewTiles@7d0c9d54868d
+- code: groom/groom/assets/dashboard.js::OverviewTiles@2612b7261918
 - tests: groom/tests/test_overview_tiles.py::test_the_problem_count_adds_failed_steps_retries_failed_gate_checks_and_churn
 - tests: groom/tests/test_overview_tiles.py::test_an_answered_gate_is_counted_as_a_gate_and_not_as_a_problem
 - tests: groom/tests/test_overview_tiles.py::test_the_retries_on_the_tile_equal_the_sum_of_the_trees_retries_column
@@ -39,6 +39,7 @@ The tiles are not a second set of numbers. Cost, coverage, active time and items
 - rule: the Active time tile shows the active time and, beside it, the wall time and the session count, as `<wall> wall, N sessions`. Wall time appears beside active time.
 - rule: a session is one distinct resume generation among the run's spans. A run whose spans carry none is one session. The Sessions table in the [run clock sections](run-clock-sections.md) lists exactly these sessions.
 - rule: the Work items tile shows `N of M` items done from the same figure as the run row, and the cost per finished item, which is the run's cost divided by the items done.
+- rule: the Work items tile of an ended run reads `$X per item` and, when no item finished, `no cost per item without a price` or `no item finished`, and it does not compare the figure with a median. The live wording stays `per finished item`.
 - rule: while no item has finished the tile says `none finished yet` and shows no per-item figure. A run with no cost shows `no cost per item without a price`, and a run that reports no item count shows `no item count reported`.
 - rule: the Agent turns tile shows the turn count and the backend retries, and the retries equal the sum of the flow tree's Retries column because both read the same computation.
 
