@@ -15,6 +15,7 @@ from coder.fix.scripted import (
     answers,
     assert_agent_story_commit,
     record_of,
+    refuse_copies,
 )
 from workhorse_workflows.coder.fix.flow import Fix
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
@@ -67,6 +68,48 @@ def test_a_gate_still_red_when_the_laps_run_out_parks_rather_than_giving_up(
     assert counts["fix-item"] == MAX_LAPS + 2, counts
     assert counts["resolve-operator"] == 1, counts
     assert "Twenty per page" in agent.args_for("fix-item")[-1]["operator_context"]
+    assert record_of(docs).status == "done", record_of(docs)
+
+
+def test_a_refused_commit_sends_the_owner_what_the_hook_said(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A hook's verdict is a verdict on the work, so the owner repairs it and the drain goes on."""
+    refuse_copies(workspace["api"])
+    agent = ScriptedAgent(workspace, refused_commits=1)
+
+    result = drive_flow(Fix(), env(), agent)
+
+    assert result.has_fix is False, result
+    assert agent.counts()["fix-item"] == 2, agent.counts()
+    assert "resolve-operator" not in agent.counts(), agent.counts()
+    report = agent.args_for("fix-item")[1]["report"]
+    assert "copied.go repeats pagination.go" in report, report
+    assert record_of(docs).status == "done", record_of(docs)
+
+
+def test_a_commit_still_refused_when_the_laps_run_out_parks_rather_than_giving_up(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A spent repair budget on a refused commit goes to the resolver, then the operator, never `WorkflowFailed`."""
+    refuse_copies(workspace["api"])
+    agent = ScriptedAgent(workspace, refused_commits=MAX_LAPS + 1)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", answers(seen)):
+        result = drive_flow(Fix(), env(), agent)
+
+    assert result.has_fix is False, result
+    (gate,) = seen
+    assert "the commit of the fix-drain item" in gate, gate
+    assert "copied.go repeats pagination.go" in gate, gate
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
     assert record_of(docs).status == "done", record_of(docs)
 
 

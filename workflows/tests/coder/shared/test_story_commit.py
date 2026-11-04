@@ -45,6 +45,51 @@ def test_the_agent_files_are_rendered_before_the_story_commit_so_their_drift_is_
     assert "the-story" in git(repo, "log", "-1", "--format=%s").stdout
 
 
+def test_the_story_commit_leaves_the_artifacts_dir_and_tool_output_to_the_lanes_that_wrote_them(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(repo / "artifacts"))
+    write(repo / "artifacts" / "specs" / "the-story" / "qa-okf-context.json", "{}\n")
+    write(repo / "__screenshots__" / "failure.png", "png\n")
+    write(repo / "feature.py", "VALUE = 1\n")
+
+    result = story_commit.commit_story(
+        logger, story_slug="the-story", repo_dir=str(repo), roots=[str(repo)]
+    )
+
+    assert result.committed
+    landed = git(repo, "show", "--name-only", "--format=", "HEAD").stdout.split()
+    assert landed == ["feature.py"], landed
+
+
+def test_a_refused_story_commit_comes_back_as_the_refusal_and_stamps_nothing(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    hook = write(
+        repo / ".git" / "hooks" / "pre-commit",
+        f"#!{sys.executable}\nimport sys\nprint('feature.py repeats other.py', file=sys.stderr)\nsys.exit(1)\n",
+    )
+    hook.chmod(0o755)
+    write(repo / "feature.py", "VALUE = 1\n")
+    before = git(repo, "rev-parse", "HEAD").stdout
+
+    result = story_commit.commit_story(
+        logger, story_slug="the-story", repo_dir=str(repo), roots=[str(repo)]
+    )
+
+    assert not result.committed
+    assert "feature.py repeats other.py" in result.refused, result
+    assert git(repo, "rev-parse", "HEAD").stdout == before
+    assert git(repo, "diff", "--cached", "--name-only").stdout == ""
+
+
 EPIC = "EPIC-1"
 SLUG = "STORY-1"
 STORY_FOLDER = "stories/EPIC-1/STORY-1"

@@ -20,7 +20,7 @@ A QA refix sends the story back to dev and then through `document` and QA again.
 - rule: the spec pass's book delta is committed by the workflow before dev starts, so dev's clean-repo check never counts the spec as dev's leftovers
 - rule: every pre-QA docs pass commits its book delta, so an owner's clean-repo check never counts the book as its leftovers
 - rule: the finalize recheck leaves its book delta uncommitted, so an edit after the passing QA still reopens the scenarios that cover it
-- rule: an owner's clean-repo check skips the artifacts dir, because workflow lanes write there and the story commit carries what is tracked
+- rule: an owner's clean-repo check and the story commit skip the artifacts dir, because workflow lanes write their records there and each lane commits its own
 - rule: the spec pass and the build pass keep separate owner conversations, because they see different books
 - rule: a path reopens a proof only when its bytes changed after the passing QA saw them
 - rule: the artifacts dir, the book and tool output are never product, so they never reopen a docs pass, and the artifacts dir and tool output never reopen a proof

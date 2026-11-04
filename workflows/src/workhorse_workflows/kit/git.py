@@ -116,7 +116,7 @@ def commits_ahead(path: str | Path, branch: str, base: str) -> int:
 
 
 def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool = True) -> bool:
-    """Stage exactly ``pathspecs`` and commit them."""
+    """Stage exactly ``pathspecs`` and commit them. A refused commit leaves them unstaged, so the next commit does not carry them."""
     if not pathspecs:
         return False
     scope = ["--", *pathspecs]
@@ -132,7 +132,11 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
         return False
     except GitCommandError:
         pass
-    repo.git.commit("-m", message, *(() if verify else ("--no-verify",)), *scope)
+    try:
+        repo.git.commit("-m", message, *(() if verify else ("--no-verify",)), *scope)
+    except GitCommandError:
+        repo.git.reset("-q", "--", *scope)
+        raise
     return True
 
 

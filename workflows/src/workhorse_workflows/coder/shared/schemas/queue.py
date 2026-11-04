@@ -48,6 +48,7 @@ class StoryCommitted(CoderResult):
 
     committed: bool = False
     superseded_outcome: bool = False
+    refused: str = ""
 
 
 @dry_run(clean=True)

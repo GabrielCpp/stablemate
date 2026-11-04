@@ -45,6 +45,9 @@ title: Coder standalone fix flow
 - `commit` calls `commit_story` with `kind="fix"` and the repositories reported by
   `_changed_dirs`, then closes the record and returns to `start`. It does not create a branch,
   push, open a pull request, or include an untouched workspace repository.
+- A commit git refuses goes back to `work` with what the hook said while laps remain, and blocks
+  once the laps run out.
+- rule: a refused commit is a verdict on the work, so it goes to the owner and then to the operator gate, because only they can act on it
 - fixture: none, because the walk dry-runs the registered flow, which stands in for every agent turn
 - steps:
   - [run](../workhorse-coder.md#run)
@@ -65,6 +68,8 @@ title: Coder standalone fix flow
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_commits_land_on_the_branch_the_repos_were_already_on`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_the_first_pass_is_handed_the_item_and_no_report_at_all`
 - tests: `workflows/tests/coder/fix/test_flow.py::test_a_run_killed_after_the_owner_turn_does_not_run_it_again`
+- tests: `workflows/tests/coder/fix/test_blocks.py::test_a_refused_commit_sends_the_owner_what_the_hook_said`
+- tests: `workflows/tests/coder/fix/test_blocks.py::test_a_commit_still_refused_when_the_laps_run_out_parks_rather_than_giving_up`
 
 The flow resolves its workspace once because no story exists at setup time. Each iteration then
 draws without changing the register, creates the `fixes` story bucket when needed, and guards the
@@ -74,7 +79,7 @@ are gated and committed; repositories merely listed in the workspace manifest ar
 The stages, in order: [draw-and-seed](#draw-and-seed), [own-the-item](#own-the-item), [gates](#gates), [operator-block](#operator-block), [document](#document), [commit-and-redraw](#commit-and-redraw).
 
 The flow starts when the workspace directories resolve before a record is drawn; or when the register holds an open `qa` record of a workspace repository.
-It ends in one of these ways: a register with no open `qa` record of the workspace returns `Done` without starting another item; an item whose commit landed closes its record as `done` and draws the next; an item no repository landed a commit for leaves its record open and returns `Done`; a fix that changed nothing raises `WorkflowFailed` and leaves its record open; an owner turn that reports a block waits for an operator; an exhausted gate-repair budget waits for an operator.
+It ends in one of these ways: a register with no open `qa` record of the workspace returns `Done` without starting another item; an item whose commit landed closes its record as `done` and draws the next; an item no repository landed a commit for leaves its record open and returns `Done`; a fix that changed nothing raises `WorkflowFailed` and leaves its record open; an owner turn that reports a block waits for an operator; an exhausted gate-repair budget waits for an operator; a commit still refused when the laps run out waits for an operator.
 
 ## Steps
 
@@ -113,7 +118,7 @@ workspace manifest. A repository with no paths for this item is neither gated no
 
 - kind: drive
 
-Implementation refusals and exhausted red gates take the block path. In `auto` mode `resolve` runs
+Implementation refusals, exhausted red gates and a commit still refused after the last lap take the block path. In `auto` mode `resolve` runs
 the shared operator-resolution turn and, when it answers, resumes `work` with the answer. In a human
 operator mode, or after `MAX_BLOCKS` blocks, the flow writes the block to the drained story's
 `context.md` and returns `Await`. The operator answer is read back into `operator_context` and the
@@ -133,7 +138,9 @@ committed or closed.
 - kind: run
 
 `commit` commits the changed repositories with `kind="fix"`, the story identity, and no push or
-pull request. A fix that changed nothing has no commit carrying the story's trailer, so the commit
+pull request. The artifacts dir and tool output stay out of that commit. When git refuses it, the
+paths are left unstaged and nothing is stamped or closed. What the hook said re-enters `work` as the
+report while laps remain, and a commit still refused after the last lap enters the block path. A fix that changed nothing has no commit carrying the story's trailer, so the commit
 raises `WorkflowFailed` and the record stays open. The flow then reads the HEAD of every workspace
 repository that holds a commit of the item. With none, the record stays open and the run returns
 `Done` with that reason. Otherwise the flow closes the record as `done`, naming each repository and

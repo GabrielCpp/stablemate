@@ -5,8 +5,8 @@ title: Coder queue story committed field roles
 ---
 # Coder queue story committed field roles
 
-`StoryCommitted` reports two independent facts about a passing story. They are not alternative
-implementations and neither replaces the other.
+`StoryCommitted` reports independent facts about a story's commit. They are not alternative
+implementations and none replaces another.
 
 `committed` answers whether implementation work landed in an affected repository. It excludes
 the separate `QA passed` documentation-status stamp because every passing story writes that
@@ -16,6 +16,9 @@ stamp, including a rerun whose implementation work had already landed.
 outcome, such as a give-up, documentation block, or interrupted run. It is false for a
 never-attempted story, even when that story has no implementation commit.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted` @5263a86ab920
+`refused` carries what git said when it refused a story commit. A refused story gets no status
+stamp, so the flow that asked for the commit decides what happens next.
+
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryCommitted` @ad8d73f2466b
 - rule: read both fields together: use `committed` to identify implementation work and
   `superseded_outcome` to identify a passing status stamp that replaces an earlier attempt outcome

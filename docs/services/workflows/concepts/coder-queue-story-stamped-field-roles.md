@@ -16,5 +16,5 @@ when the caller needs to know whether the status write occurred; read `supersede
 it needs to distinguish a prior-attempt outcome from an initial status. A caller can need both
 facts, so the schema records both and defines no ranking between them.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped` @5263a86ab920
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/queue.py::StoryStamped` @343fc8251a9d
 - rule: use `stamped` for the status-write fact and `superseded_outcome` for the prior-attempt replacement fact; neither field supersedes the other

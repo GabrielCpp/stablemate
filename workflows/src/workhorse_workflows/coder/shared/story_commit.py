@@ -22,7 +22,12 @@ from workhorse_workflows.coder.shared.schemas.queue import (
     WorktreeCleanliness,
 )
 from workhorse_workflows.coder.shared.schemas.worktree import ProvenState
-from workhorse_workflows.coder.shared.worktree import digest, not_product_roots, untouched_since
+from workhorse_workflows.coder.shared.worktree import (
+    digest,
+    is_product,
+    not_product_roots,
+    untouched_since,
+)
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
 from workhorse_workflows.kit import (
     GitError,
@@ -485,7 +490,7 @@ def commit_story(
     story_id: str = "",
     preexisting: list[str] | None = None,
 ) -> StoryCommitted:
-    """Commit what a completed story changed in each affected code repo, then stamp it passed."""
+    """Commit what a completed story changed in each affected code repo, then stamp it passed. A commit git refused comes back in `refused`, and nothing is stamped."""
     slug = story_slug or "story"
     root = find_repo_root(repo_dir)
 
@@ -498,10 +503,12 @@ def commit_story(
         )
 
     snapshot = tuple(preexisting or ())
+    excluded = not_product_roots(repo_dir, book=False)
+    refusals: list[str] = []
 
     def _commit_in(repo_path: Path, package: str) -> bool:
-        """Commit the dirty paths that were not dirty and untouched at story start, with a git refusal turned into a halt rather than a False."""
-        dirty = _uncommitted(repo_path)
+        """Commit the product paths that were not dirty and untouched at story start, keeping what git said when it refused them."""
+        dirty = [rel for rel in _uncommitted(repo_path) if is_product(repo_path, rel, excluded)]
         excused = untouched_since(repo_path, snapshot)
         rels = [rel for rel in dirty if rel not in excused]
         if len(rels) < len(dirty):
@@ -512,9 +519,8 @@ def commit_story(
         try:
             return commit_paths(repo_path, _story_message(package), *rels)
         except GitError as exc:
-            raise WorkflowFailed(
-                f"git refused the commit for {slug} in {repo_path}: {exc}"
-            ) from exc
+            refusals.append(f"git refused the commit for {slug} in {repo_path}: {exc}")
+            return False
 
     any_committed = False
     for name, repo_path in _commit_roots(logger, root, spec_dir, workspace, repo_dir, roots):
@@ -525,6 +531,8 @@ def commit_story(
             logger.info("committed in %s", repo_path.name)
             any_committed = True
 
+    if refusals:
+        return StoryCommitted(committed=any_committed, refused="\n\n".join(refusals))
     _, superseded = _stamp_status(logger, root, epic, slug, story_id, story_path)
     return StoryCommitted(committed=any_committed, superseded_outcome=superseded)
 

@@ -12,7 +12,7 @@ initializer; the individual modules below own the behavior and models they provi
 - code: `workflows/src/workhorse_workflows/coder/shared/__init__.py::__all__` @e517b81d10c2
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @b083ae1394dd
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @67580925bd96
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @665c4ab3a258
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @de0cabd282d9
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @7709a90ae30b
 - code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @7709a90ae30b
 - detail: [coder queue run scope](../formats/coder-queue-run-scope.md)
@@ -313,15 +313,18 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - sig: `commit_story(logger: logging.Logger, epic: str = "", story_slug: str = "", spec_dir: str = "", story_path: str = "", repo_dir: str = "", workspace: str = "", kind: str = "feat", roots: list[str] | None = None, story_id: str = "") -> StoryCommitted`
 - does: commits implementation changes in each affected repository using the requested Conventional Commit kind and repository scope
 - does: excludes the documentation host repository unless the story plan explicitly lists it as an implementation target
+- does: leaves the artifacts dir and tool output out of the commit, because lanes write their records there and those records are not the story's product
 - does: renders the agent files of each repository before committing in it, and logs a warning when that render fails
 - does: stamps `QA passed` only after implementation commits succeed
 - does: counts only implementation commits in `committed`, not the separate status stamp
-- raises: `WorkflowFailed` when git refuses an implementation commit
-- returns: whether implementation work committed anywhere and whether the status stamp superseded a prior outcome
+- does: keeps what git said when it refuses an implementation commit, and stamps nothing
+- returns: whether implementation work committed anywhere, whether the status stamp superseded a prior outcome, and the refusal text when git refused a commit
 - verify: persists(subject="the story implementation commit and separate QA status stamp")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @cbbe679d80c9
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @92bc54a42dd1
 - code: `workflows/src/workhorse_workflows/kit/agent_files.py::render_agent_files_returning_failure` @d57c5f0ad8ab
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_and_its_status_stamp_commit_as_conventional_commits`
+- tests: `workflows/tests/coder/shared/test_story_commit.py::test_the_story_commit_leaves_the_artifacts_dir_and_tool_output_to_the_lanes_that_wrote_them`
+- tests: `workflows/tests/coder/shared/test_story_commit.py::test_a_refused_story_commit_comes_back_as_the_refusal_and_stamps_nothing`
 
 ### proof_scope
 

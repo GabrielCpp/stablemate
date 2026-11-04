@@ -149,7 +149,7 @@ class Fix(Workflow):
             reports.append(leftover_text(state.dirty))
         if not reports:
             self.logger.info("gates are clean for %s", self._story.story_slug)
-            return Continue(state, self.document)
+            return Continue(state, self.document, laps=laps, blocks=blocks)
         text = "\n\n".join(reports)
         found = failures[0] if failures else state
         if laps >= MAX_LAPS:
@@ -157,7 +157,7 @@ class Fix(Workflow):
             return self._block(found, notes, "the gates on the fix-drain item", blocks)
         return Continue(found, self.work, report=text, laps=laps + 1, blocks=blocks)
 
-    def document(self) -> Continue:
+    def document(self, laps: int = 0, blocks: int = 0) -> Continue:
         """Fold the drained item into the OKF book, by handing off to the `docs` flow."""
         seed = self.output(seed_fix_story)
         result = self.handoff(
@@ -172,12 +172,12 @@ class Fix(Workflow):
                 f"documenting the drained fix {self._story.story_slug!r} failed: "
                 f"{result.notes or 'no notes'}"
             )
-        return Continue(result, self.commit)
+        return Continue(result, self.commit, laps=laps, blocks=blocks)
 
-    def commit(self) -> Continue | Done:
-        """Commit this one item onto the current branch, close its record, then draw the next."""
+    def commit(self, laps: int = 0, blocks: int = 0) -> Continue | Done | Await:
+        """Commit this one item onto the current branch, close its record, then draw the next. A refused commit goes back to the owner."""
         seed = self.output(seed_fix_story)
-        self.call(
+        committed = self.call(
             commit_story,
             seed.epic,
             self._story.story_slug,
@@ -187,6 +187,11 @@ class Fix(Workflow):
             story_id=self._story.story_id,
             preexisting=self._dirty_at(snapshot_worktree_state),
         )
+        if committed.refused:
+            if laps >= MAX_LAPS:
+                notes = f"{committed.refused}\n\nThe commit is still refused after {laps} repair turn(s)."
+                return self._block(committed, notes, "the commit of the fix-drain item", blocks)
+            return Continue(committed, self.work, report=committed.refused, laps=laps + 1, blocks=blocks)
         record_id = self.output(select_fix_item).record_id
         landed = self._landed()
         if not landed:
