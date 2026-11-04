@@ -10,10 +10,10 @@ Dashboard toast pusher is the groom dashboard's in-page notification helper. It 
 It is a client-side unit. The server no longer renders script fragments that dispatch DOM CustomEvents; it pushes JSON, and the frame dispatcher in the client module calls this helper directly.
 
 - code: groom/groom/assets/dashboard.js::pushToast@f1678abc58fe
-- code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
+- code: groom/groom/assets/dashboard.js::onNotify@142e9f95a262
 - code: groom/groom/assets/dashboard.js::onAnswered@054f98f0ef29
-- code: groom/groom/assets/dashboard.css::#toasts@07f1cb1e6c6f
-- code: groom/groom/assets/dashboard.css::.toast@07f1cb1e6c6f
+- code: groom/groom/assets/dashboard.css::#toasts@85ee14d17ea8
+- code: groom/groom/assets/dashboard.css::.toast@85ee14d17ea8
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
 
 ## Contract
@@ -24,7 +24,8 @@ It is a client-side unit. The server no longer renders script fragments that dis
 - ordering: newer toasts are appended after older toasts in DOM order; the CSS host stacks them as a fixed vertical column.
 - lifetime: each toast schedules its own removal with `setTimeout`; no shared queue, cancellation, deduplication, persistence, or maximum-count trimming exists.
 - content safety: title and body values are assigned through `textContent`, so markup-like message text is displayed as text rather than interpreted as HTML.
-- consistency: notify-frame-blocked-toast — a `{"type": "notify", "message": …}` frame always pushes one `blocked` toast titled `⛔ worker blocked` with the frame's message or fallback body `A workflow needs your input.` and a 7000 ms lifetime, independent of Notification API availability or permission state.
+- consistency: notify-frame-blocked-toast — a `{"type": "notify", "message": …}` frame whose `rule` is absent or is not `ENDED` always pushes one `blocked` toast titled `⛔ worker blocked` with the frame's message or fallback body `A workflow needs your input.` and a 7000 ms lifetime, independent of Notification API availability or permission state.
+- ended notify: a notify frame whose `rule` is `ENDED` pushes one toast titled `run ended` with the same body and lifetime. The toast is `blocked` when the frame's `failed` member is true, and `ok` otherwise, so a run that succeeded or that the operator stopped never reads as a blocked worker. The system notification for it is titled `groom: run ended`. The client reads `rule` and `failed` and never parses the `[ENDED]` text.
 - answered frame behavior: a `{"type": "answered", …}` frame always pushes one `ok` toast titled `✓ answer sent`, omits a body node, and uses a 3500 ms lifetime. It does not refresh the detail pane: the same server command that produced the frame also pushed a `detail` frame to the tabs watching that run, so the pane is already current.
 - send-failure behavior: when `sendCommand` reports that there was no open socket, the answer-form handler pushes one `blocked` toast titled `✗ not sent` with a 7000 ms lifetime and leaves the operator's typed answer in the textarea.
 - visual placement: the toast host is fixed at the lower-right of the viewport with a high z-index; individual toasts are 300 px wide cards with a dark background, border, left accent stripe, small title, optional single-line body, shadow, and slide-in animation.
@@ -99,17 +100,18 @@ It is a client-side unit. The server no longer renders script fragments that dis
 
 ### method-on-notify
 
-- sig: `onNotify(message) -> void`
+- sig: `onNotify(msg) -> void`
 - abstract: false
 - raises: none intentionally caught or transformed by groom.
 - verify: absent(subject="a groom-transformed exception")
-- code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
+- code: groom/groom/assets/dashboard.js::onNotify@142e9f95a262
 - detail: [blocked notification delivery](blocked-notification-delivery.md)
-- step: Receive the `message` string carried by a `{"type": "notify"}` frame, dispatched by the socket frame handler.
-- step: Compute the visible body as `message || "A workflow needs your input."`.
-- step: Call `pushToast("blocked", "⛔ worker blocked", body, 7000)` before any optional system-notification check.
+- step: Receive the `{"type": "notify"}` frame, dispatched by the socket frame handler.
+- step: Compute the visible body as `msg.message || "A workflow needs your input."`.
+- step: Call `pushToast("blocked", "⛔ worker blocked", body, 7000)` before any optional system-notification check, unless `msg.rule` is `ENDED`.
+- step: For an `ENDED` frame call `pushToast` with the title `run ended` and the variant `blocked` when `msg.failed` is true or `ok` when it is not.
 - step: Leave the in-page toast unconditional with respect to `window.Notification` support and `Notification.permission` value.
-- step: Continue to the separate browser-notification permission check, which may create a system notification but does not change the in-page toast that was already appended.
+- step: Continue to the separate browser-notification permission check, which may create a system notification titled `groom: workflow blocked`, or `groom: run ended` for an `ENDED` frame, but does not change the in-page toast that was already appended.
 
 ### method-on-answered
 

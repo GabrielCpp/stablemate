@@ -7,7 +7,7 @@ title: Groom app module
 
 The Groom app module is the HTTP and websocket composition point for the [groom server](../http/groom.md): it owns the Litestar route table, loads the static dashboard entry document used by the [groom dashboard](../gui/screens/groom-dashboard.md), connects browser and sidecar transports to the process-local [workflow registry](workflow-registry.md) owned by the [Groom state module](groom-state-module.md), and schedules startup discovery through the [startup background discovery scan](startup-background-discovery-scan.md). At import, `groom/groom/app.py` resolves package-local paths and preloads the asset-stamped dashboard HTML; `groom/groom/app.py::create_app` configures route handlers plus discovery, alert-rule, live-state, and archival startup routines, with discovery scheduling its scan task without delaying application startup. Its public route handlers are the code anchors for the server's endpoints and invocations; its private helpers are folded into the module contract through linked helper concepts such as the [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [sidecar RPC helper](sidecar-rpc-helper.md), [push-first volume metadata resolver](push-first-volume-metadata-resolver.md), [sidecar hello applier](sidecar-hello-applier.md), [sidecar progress applier](sidecar-progress-applier.md), and [sidecar blocked applier](sidecar-blocked-applier.md). The module consumes [progress push payload](../formats/progress-push-payload.md), [blocked push payload](../formats/blocked-push-payload.md), [exited push payload](../formats/exited-push-payload.md), [dashboard websocket answer frame](../formats/dashboard-websocket-answer-frame.md), and [sidecar websocket frame](../formats/sidecar-websocket-frame.md) formats while emitting HTML fragments, plain workspace data, JSON status objects, browser websocket frames, and sidecar websocket frames through the server surface. Its behavior is covered by `groom/tests/test_app.py::test_repos_endpoint_lists_one_entry_per_container_repo`, `groom/tests/test_app.py::test_files_endpoint_returns_a_json_path_list`, `groom/tests/test_app.py::test_refresh_prunes_vanished_containers`, `groom/tests/test_app.py::test_spawn_scan_returns_before_discovery_completes`, `groom/tests/test_app.py::test_files_prefers_sidecar_socket_when_connected`, `groom/tests/test_app.py::test_reload_broadcasts_to_all_connected_sidecars`, and `groom/tests/test_app.py::test_apply_hello_marks_blocked_with_gate`.
 
-- code: groom/groom/app.py@69bde83fd43b
+- code: groom/groom/app.py@6b48de8cbcff
 
 Endpoint validation is handler-local: the push handlers return compact `{"ok": false}` responses
 for missing required identifiers, while their other exceptions propagate rather than passing through
@@ -30,7 +30,7 @@ a module-wide error envelope (`groom/groom/app.py::push_progress`,
 - type: `pathlib.Path`
 - default: package path `groom/groom/assets`
 - required: true
-- code: groom/groom/app.py::ASSETS_DIR@69bde83fd43b
+- code: groom/groom/app.py::ASSETS_DIR@6b48de8cbcff
 - meaning: package-local directory mounted by [get static assets](../http/groom.md#get-static-assets) at `/assets` for dashboard CSS and vendored browser libraries.
 
 ### field-dashboard-html
@@ -39,7 +39,7 @@ a module-wide error envelope (`groom/groom/app.py::push_progress`,
 - default: contents of package file `groom/groom/templates/dashboard.html`, loaded and passed through `groom/groom/app.py::stamp_assets` when the module is imported.
 - required: true
 - semantics: the `stamp_assets` helper rewrites every `/assets/...` URL in the HTML to carry the referenced file's mtime and size, so a browser's asset cache is busted whenever the underlying file changes rather than reused heuristically.
-- code: groom/groom/app.py::_DASHBOARD_HTML@69bde83fd43b
+- code: groom/groom/app.py::_DASHBOARD_HTML@6b48de8cbcff
 - meaning: immutable browser entry document returned by [serve root dashboard html](../http/groom.md#serve-root-dashboard-html) for `GET /`.
 
 ### field-question-notify-limit
@@ -47,7 +47,7 @@ a module-wide error envelope (`groom/groom/app.py::push_progress`,
 - type: `int`
 - default: `200`
 - required: true
-- code: groom/groom/app.py::_QUESTION_NOTIFY_LIMIT@69bde83fd43b
+- code: groom/groom/app.py::_QUESTION_NOTIFY_LIMIT@6b48de8cbcff
 - meaning: maximum gate-question prefix included in browser notification script text for blocked-push and sidecar-blocked updates; stored gate question text remains untruncated.
 
 ### field-scan-task
@@ -55,7 +55,7 @@ a module-wide error envelope (`groom/groom/app.py::push_progress`,
 - type: `asyncio.Task | None`
 - default: `None`
 - required: true
-- code: groom/groom/app.py::_scan_task@69bde83fd43b
+- code: groom/groom/app.py::_scan_task@6b48de8cbcff
 - meaning: strong process-local reference to the startup background discovery task created by [schedule startup discovery scan](../http/groom.md#schedule-startup-discovery-scan), preventing the event loop from retaining only a weak task reference while the scan runs.
 
 ## Public Members
@@ -67,7 +67,7 @@ The factory assembles application configuration only: it does not run discovery,
 - sig: `create_app() -> Litestar`
 - abstract: false
 - raises: propagates framework application construction errors and static router setup errors.
-- code: groom/groom/app.py::create_app@f4ea07948060
+- code: groom/groom/app.py::create_app@d836c15078bb
 - does: Constructs the Litestar application for the [groom server](../http/groom.md).
 - verify: created(subject="Litestar application")
 - does: Registers 39 route handlers — 38 first-party handlers plus the package-static `/assets` router.
@@ -540,7 +540,7 @@ Browser dashboard websockets receive shell fragments as out-of-band HTML. Their 
 - does: Reads one run's stored rows only. It does not mutate workflow state.
 - raises: `ClientException` with status 400 when `before` is not a cursor of this run's records. Store read failures propagate as a framework server error.
 - returns: a JSON object with `run_id`, `records`, `total`, `metric_samples`, `metrics` and `next`.
-- code: groom/groom/app.py::run_records@d432207a786b
+- code: groom/groom/app.py::run_records@c9a62cda6413
 - detail: [run Activity tab](run-activity-tab.md)
 - tests: groom/tests/test_records.py::test_the_records_endpoint_serves_a_page_and_refuses_a_bad_cursor
 - endpoint: [get run records](../http/get-run-records.md)

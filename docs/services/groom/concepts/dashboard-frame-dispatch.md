@@ -21,7 +21,7 @@ A refused gate answer gets its own `answer_rejected` frame. The server sends it 
 sent the answer and to no other tab. The dispatcher routes it to `onAnswerRejected(message)`,
 which toasts the server's reason as text and puts the answer text this tab sent for that gate back into its answer box when the box is empty.
 
-- code: groom/groom/assets/dashboard.js::onFrame@561cd42ccdab
+- code: groom/groom/assets/dashboard.js::onFrame@9fe704fcb25c
 - code: groom/groom/assets/dashboard.js::onAnswerRejected@de5d47f81c94
 - rule: use `notify` for a blocking or alert event and `answered` only to acknowledge a successful gate answer; neither frame supersedes the other
 - rule: use `answer_rejected` only to tell the sending tab why its answer was refused

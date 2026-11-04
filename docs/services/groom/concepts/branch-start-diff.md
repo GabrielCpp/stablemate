@@ -12,7 +12,7 @@ The branch start diff is the change of one checkout since its branch started: th
 - code: groom/groom/gitdiff.py::_default_branch@e9d109fe680b
 - code: groom/groom/gitdiff.py::_git@f952fc5bea78
 - code: groom/groom/sidecar.py::_git_diff@4a6396f4f32c
-- code: groom/groom/app.py::diff@3b4a38e8e9ca
+- code: groom/groom/app.py::diff@09402337f758
 - code: groom/groom/app.py::_branch_start@06e790f82049
 - rule: the base is the merge base of `HEAD` and the default branch, so the view shows the whole change the branch made, committed and uncommitted, and none of what the default branch gained since.
 - rule: the default branch is found in this order: the ref `origin/HEAD` names, then a local `main`, then a local `master`. The first that resolves to a commit wins, and a ref that names nothing is skipped.

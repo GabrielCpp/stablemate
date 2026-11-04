@@ -12,6 +12,7 @@ from test_activity_tab_dynamic import _open_activity, _pick, _rows, _run
 from test_run_clock import span
 from test_a11y_dynamic import (
     _UNAVAILABLE,
+    _export,
     _live,
     _open,
     _scan,
@@ -250,7 +251,6 @@ def test_while_paused_in_the_problems_view_the_pill_counts_new_problems_and_name
 
 def _send_failed(live, run: str) -> None:
     import time
-    import urllib.request
 
     from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
     from opentelemetry.proto.trace.v1.trace_pb2 import Status
@@ -270,9 +270,7 @@ def _send_failed(live, run: str) -> None:
     one.status.code = Status.STATUS_CODE_ERROR
     kv = one.attributes.add()
     kv.key, kv.value.string_value = "workhorse.node", "lint"
-    http = urllib.request.Request(live.url() + "v1/traces", data=request.SerializeToString(), headers={"Content-Type": "application/x-protobuf"})
-    with urllib.request.urlopen(http, timeout=10) as reply:
-        assert reply.status == 200
+    _export(live, request)
 
 
 def test_e_steps_through_the_same_rows_the_problems_view_lists(tmp_path):

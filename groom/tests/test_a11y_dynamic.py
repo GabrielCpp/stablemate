@@ -279,8 +279,12 @@ def _open(live: _Live):
     return page
 
 
-_VIOLATIONS = """async () => {
-  const r = await axe.run(document, { resultTypes: ["violations"] });
+def _violations_in(scope: str) -> str:
+    return (
+        """async () => {
+  const r = await axe.run("""
+        + scope
+        + """, { resultTypes: ["violations"] });
   return r.violations.map((v) => ({
     id: v.id,
     impact: v.impact,
@@ -288,6 +292,17 @@ _VIOLATIONS = """async () => {
     targets: v.nodes.map((n) => n.target.join(" ")).slice(0, 6),
   }));
 }"""
+    )
+
+
+_VIOLATIONS = _violations_in("document")
+
+
+def _export(live, request) -> None:
+    http = urllib.request.Request(live.url() + "v1/traces", data=request.SerializeToString(), headers={"Content-Type": "application/x-protobuf"})
+    with urllib.request.urlopen(http, timeout=10) as reply:
+        assert reply.status == 200
+
 
 
 def _scan(page) -> list[dict]:

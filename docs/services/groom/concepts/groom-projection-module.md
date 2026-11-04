@@ -13,7 +13,7 @@ Nothing here emits markup, reads a request, opens a socket, or touches Docker. I
 
 Labels that encode a *judgement* — `alive` versus `silent 4m`, the fleet's sort rank, an exit hint — are computed here rather than in the browser. They are policy, they are thresholded against server-side constants, and two implementations of them would disagree. Raw numbers ride along beside every label so the client can re-format without re-deciding.
 
-- code: groom/groom/projection.py@67751f7c27c4
+- code: groom/groom/projection.py@f656a8dbce60
 - refs: [workflow container](workflow-container.md), [gate info](gate-info.md), [dashboard state payload](../formats/dashboard-state-payload.md), [runs fleet view](../runs-fleet-view.md), [dashboard client store](dashboard-client-store.md), [dashboard shell broadcaster](dashboard-shell-broadcaster.md), [run watch registry](run-watch-registry.md)
 
 The projection tests cover JSON serializability, consistency between a run message and its
@@ -50,7 +50,7 @@ questions travel as data rather than markup.
 - type: `dict[WorkflowState, int]`
 - default: blocked 0, running 1, idle 2, finished 3
 - required: true
-- code: groom/groom/projection.py::STATE_ORDER@67751f7c27c4
+- code: groom/groom/projection.py::STATE_ORDER@f656a8dbce60
 - meaning: the primary sort key behind fleet order — work that needs an operator sorts above work that does not.
 
 ### field-log-trail-limit
@@ -58,7 +58,7 @@ questions travel as data rather than markup.
 - type: `int`
 - default: 60
 - required: true
-- code: groom/groom/projection.py::LOG_TRAIL_LIMIT@67751f7c27c4
+- code: groom/groom/projection.py::LOG_TRAIL_LIMIT@f656a8dbce60
 - meaning: how many log lines the `/worker/{id}` payload carries, newest first, for the terminal client. The dashboard no longer shows this trail. The same constant bounds the durable query, so the payload size is decided once.
 
 ### field-severity-class
@@ -66,7 +66,7 @@ questions travel as data rather than markup.
 - type: `dict[str, str]`
 - default: `FATAL`/`ERROR` → `bad`, `WARNING` → `warn`
 - required: true
-- code: groom/groom/projection.py::SEVERITY_CLASS@67751f7c27c4
+- code: groom/groom/projection.py::SEVERITY_CLASS@f656a8dbce60
 - meaning: which log severities earn a color class in the trail; everything else reads plain.
 
 ### field-ext-lang
@@ -74,7 +74,7 @@ questions travel as data rather than markup.
 - type: `dict[str, str]`
 - default: a fixed extension → highlight.js language table
 - required: true
-- code: groom/groom/projection.py::EXT_LANG@67751f7c27c4
+- code: groom/groom/projection.py::EXT_LANG@f656a8dbce60
 - meaning: the language hint the file viewer passes to highlight.js. An unmapped extension projects `""`, which the viewer reads as "auto-detect".
 
 ## Methods
@@ -119,7 +119,7 @@ questions travel as data rather than markup.
 - raises: none intentionally raised.
 - verify: json_path(path="exception.type", absent=true)
 - verify: json_path(path="$.running.node", equals="build")
-- code: groom/groom/projection.py::run_detail@3752b117b430
+- code: groom/groom/projection.py::run_detail@fa62bd02b6e8
 - tests: groom/tests/test_projection.py::test_run_detail_carries_the_running_node
 - step: Project identity (`id`, `run_id`, `state`, `node`), every open gate through `gate_dict`, the node the run is in through `running_node` as `running`, the [run now strip](run-now-strip.md) through `running_strip` as `strip`, and the live slice (`head`, `metrics`, `logs`).
 - step: Set `running` to `{node, elapsed_s, wait_kind, wait_elapsed_s, node_since_ts}` while the run is unfinished and names a node, and to `null` once it finished or names none. A node held at an operator wait carries `wait_kind` `operator` and the time waited, so the Overview marks it as waiting on the operator rather than running.

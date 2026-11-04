@@ -26,7 +26,7 @@ per run until recovery, forward progress, wait closure, or a resumed session ret
 - required: true
 - semantics: identifies the originating run, copied from the RunTelemetry's `run_id` at the moment the rule fires via `_fire`
 - verify: count(subject="distinct run_id values among alerts emitted from one run's ingest call", equals=1)
-- code: `groom/groom/alerts.py::Alert.run_id` @616d7b0a6152
+- code: `groom/groom/alerts.py::Alert.run_id` @fce12956ab3d
 - tests: `groom/tests/test_telemetry.py::test_watchdog_and_giveup_fire_once_per_run`
 - detail: [run telemetry](run-telemetry.md#field-run-id)
 
@@ -46,6 +46,6 @@ per run until recovery, forward progress, wait closure, or a resumed session ret
 - required: true
 - semantics: human-readable operator-facing evidence — the run label, the rule-specific phrasing, and (when known) the run's current node.
 - verify: json_path(path="$.message", matches="^\\S+ \\S+: .+")
-- code: `groom/groom/alerts.py::Alert.message` @616d7b0a6152
+- code: `groom/groom/alerts.py::Alert.message` @fce12956ab3d
 - tests: `groom/tests/test_telemetry.py::test_a_run_that_dies_pages_instead_of_quietly_leaving_the_queue_idle`
 - detail: [dashboard notify message](../formats/dashboard-notify-message.md#field-message)

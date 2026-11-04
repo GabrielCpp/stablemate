@@ -10,7 +10,7 @@ The run Diff tab shows the uncommitted change of one live container run, or the 
 - code: groom/groom/assets/dashboard.js::DiffTab@8ed2100fd582
 - code: groom/groom/assets/dashboard.js::useRunDiff@42e89852f3e2
 - code: groom/groom/assets/dashboard.js::loadRunDiff@6b1e2d0423d6
-- code: groom/groom/projection.py::run_row@f4041c085d72
+- code: groom/groom/projection.py::run_row@22e2f47320c4
 - code: groom/groom/gitdiff.py::parse@3a6aaa904d86
 - code: groom/groom/gitdiff.py::read_local@f444995ad07c
 - code: groom/groom/gitdiff.py::read_branch_local@66fa6eddc2a9

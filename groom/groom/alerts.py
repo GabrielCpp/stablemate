@@ -85,6 +85,8 @@ def _clear_stale_terminal(run: RunTelemetry, ts: float) -> None:
     if run.last_session is None and run.terminal and ts > run.terminal_ts:
         run.terminal = ""
         run.terminal_ts = 0.0
+        run.error_kind = ""
+        run.error_class = ""
         run.worktree = ""
         run.fired.clear()
 
@@ -190,6 +192,8 @@ def _accept_session(run: RunTelemetry, record: dict[str, Any]) -> bool:
     run.closed_wait_series = set()
     run.terminal = ""
     run.terminal_ts = 0.0
+    run.error_kind = ""
+    run.error_class = ""
     run.worktree = ""
     run.last_heartbeat_ts = 0.0
     run.last_beat_ts = 0.0
@@ -248,6 +252,8 @@ def ingest_spans(spans: list[dict[str, Any]], now: float | None = None) -> list[
         if span.get("name", "").startswith("run:"):
             run.terminal = str(attrs.get("workhorse.terminal") or "ended")
             run.terminal_ts = float(span.get("end_ts") or now)
+            run.error_kind = str(attrs.get("error.kind") or "")
+            run.error_class = str(attrs.get("error.class") or "")
             run.worktree = _worktree_line(attrs)
             _fire(run, "ENDED", _ended_message(run, label, attrs), alerts)
             continue

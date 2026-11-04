@@ -187,7 +187,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none intentionally raised for a workflow with or without gates, telemetry, or an exit code.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::run_row@f4041c085d72
+- code: groom/groom/projection.py::run_row@22e2f47320c4
 - step: Sort the workflow's open gates by file path and take the first, if any.
 - step: Derive liveness from telemetry and the clock, and the exit hint from state and exit code.
 - step: Resolve the `doing` line gate-path → exit-hint → activity → node.
@@ -235,7 +235,7 @@ Projection coverage includes `groom/tests/test_projection.py::test_fleet_rows_in
 - abstract: false
 - raises: none intentionally raised for missing repository name or branch.
 - verify: json_path(path="exception.type", absent=true)
-- code: groom/groom/projection.py::repo_label@28ce19d20393
+- code: groom/groom/projection.py::repo_label@2bcea30456cc
 - step: Return `{repo_name}@{repo_branch}` when a branch is known.
 - step: Return `repo_name` when it is not.
 - step: Return the em dash placeholder when neither is set.

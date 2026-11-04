@@ -47,6 +47,9 @@ const HISTORY_RANGES = [[RETENTION_DAYS, "Last 30 days", "last 30 days"], [7, "L
 // Deliberately not a per-component `useState`: the socket is a singleton and the
 // islands read overlapping slices of the same truth, so the state lives outside
 // the component tree and the components are pure functions of it.
+const HISTORY_SEEN_KEY = "groom.history.seen";
+const HISTORY_FAILED_KEY = "groom.history.failed";
+
 const store = {
   snapshot: {
     // fleet (socket-pushed)
@@ -78,6 +81,7 @@ const store = {
     // that only the server's own threads see — so this pane polls while open.
     dispatch: { status: "idle", queues: [], selectedQueue: null, items: [], selectedItem: null },
     settings: { status: "idle", attend: null, saving: false },
+    failedSince: readFailedSince(),
     history: { status: "idle", runs: [], totals: null, medians: {}, endings: [], filters: NO_HISTORY_FILTERS, selected: null, detail: null },
     palette: { open: false, query: "", active: 0 },
   },
@@ -107,8 +111,51 @@ function useStore() {
   return snap;
 }
 
+function readStored(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
+  } catch (err) {
+    return fallback;
+  }
+}
+
+function writeStored(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    return;
+  }
+}
+
+function readFailedSince() {
+  if (readStored(HISTORY_SEEN_KEY, null) === null) writeStored(HISTORY_SEEN_KEY, Date.now() / 1000);
+  const kept = readStored(HISTORY_FAILED_KEY, []);
+  return Array.isArray(kept) ? kept : [];
+}
+
+function markHistorySeen() {
+  writeStored(HISTORY_SEEN_KEY, Date.now() / 1000);
+  writeStored(HISTORY_FAILED_KEY, []);
+  if (store.get().failedSince.length) store.set({ failedSince: [] });
+}
+
+function noteEndings(rows) {
+  if (store.get().mode === "history") return;
+  const seen = readStored(HISTORY_SEEN_KEY, 0);
+  const kept = store.get().failedSince;
+  const fresh = rows
+    .filter((row) => row.ended && row.ended.failed && row.ended.ended_ts > seen && !kept.includes(row.run_id || row.id))
+    .map((row) => row.run_id || row.id);
+  if (!fresh.length) return;
+  const next = kept.concat(fresh.filter((id, at) => fresh.indexOf(id) === at));
+  writeStored(HISTORY_FAILED_KEY, next);
+  store.set({ failedSince: next });
+}
+
 /** The single entry point for fleet-wide state, from either delivery path. */
 function applyState(msg) {
+  noteEndings(msg.runs || []);
   store.set({ runs: msg.runs || [], status: msg.status || store.get().status, scanning: !!msg.scanning, ...sidecarTrack(msg.runs || []) });
   // The frame carries one entry per attended run and a revision, never the log —
   // 200 rows on a 5s tick would dwarf the fleet itself. A `rev` that moved is what
@@ -126,6 +173,7 @@ function applyState(msg) {
 function applyRun(msg) {
   const row = msg.run;
   if (!row) return;
+  noteEndings([row]);
   const runs = store.get().runs.slice();
   const at = runs.findIndex((r) => r.id === row.id);
   if (at >= 0) runs[at] = row;
@@ -221,7 +269,8 @@ function onFrame(msg) {
   if (msg.type === "state") applyState(msg);
   else if (msg.type === "run") applyRun(msg);
   else if (msg.type === "detail") onDetail(msg);
-  else if (msg.type === "notify") onNotify(msg.message);
+  else if (msg.type === "summary") onSummary(msg);
+  else if (msg.type === "notify") onNotify(msg);
   else if (msg.type === "answered") onAnswered(msg);
   else if (msg.type === "answer_rejected") onAnswerRejected(msg);
 }
@@ -449,8 +498,19 @@ function RowFigures({ figures, narrow }) {
   </span>`;
 }
 
+function endedDoing(ended) {
+  if (ended.ending === "success") return "finished";
+  return ended.ending_label + (ended.node ? " at " + ended.node : "");
+}
+
+function EndedAgo({ ts }) {
+  useSecondTick();
+  return html`<span class="mini">ended ${fmtSpan(Date.now() / 1000 - ts)} ago</span>`;
+}
+
 function RunRow({ run, selected, narrow }) {
-  const cls = "row" + (run.state === "blocked" ? " blocked" : "") + (selected ? " selected" : "");
+  const ended = run.ended;
+  const cls = "row" + (run.state === "blocked" ? " blocked" : "") + (ended ? " ended" : "") + (selected ? " selected" : "");
   return html`
     <button
       type="button"
@@ -465,11 +525,11 @@ function RunRow({ run, selected, narrow }) {
         <${TypeBadge} type=${run.type} hue=${run.type_hue} />
         <span class="repo-branch">${run.repo}</span>
         <span class="wid">#${run.row_id}</span>
-        ${run.live_label ? html`<span class="pulse ${run.live}">${run.live_label}</span>` : null}
+        ${run.live_label ? html`<span class="pulse ${run.live}">${ended ? "done" : run.live_label}</span>` : null}
       </span>
       <span class="line2">
-        <span class="doing">${run.doing}</span>
-        <${MiniClock} clock=${run.clock} mini=${run.mini} />
+        <span class="doing">${ended ? endedDoing(ended) : run.doing}</span>
+        ${ended ? html`<${EndedAgo} ts=${ended.ended_ts} />` : html`<${MiniClock} clock=${run.clock} mini=${run.mini} />`}
       </span>
       ${run.question ? html`<span class="q">${run.question}</span>` : null}
       ${run.figures ? html`<${RowFigures} figures=${run.figures} narrow=${narrow} />` : null}
@@ -570,7 +630,7 @@ function RunHead({ head, runId, onClose, sidecar }) {
   // half mid-paste.
   // role="status" because that is what it is: the line that says what this run is
   // doing right now, re-rendered on the server's clock.
-  return html`<div class="detail-head" role="status" aria-label="Selected run">
+  return html`<div class=${head.ended ? "detail-head ended" : "detail-head"} role="status" aria-label="Selected run">
     <${StateDot} state=${head.state} />
     <${TypeBadge} type=${head.type} hue=${head.type_hue} />
     <span class="repo-branch">${head.repo}</span>
@@ -2831,6 +2891,21 @@ function Detail({ ended }) {
   return html`<${DetailBody} ended=${ended} />`;
 }
 
+function EndedStrip({ ended, runId }) {
+  useSecondTick();
+  const how = ended.ending === "success" ? ended.ending_label : ended.ending_label + (ended.node ? " at " + ended.node : "");
+  return html`<div class=${"ended-strip" + (ended.failed ? " fail" : "")} id="ended-strip" role="status">
+    <b>This run ended ${fmtSpan(Date.now() / 1000 - ended.ended_ts)} ago: ${how}.</b>
+    <span>It stays open here.</span>
+    <a href="#history" onClick=${(evt) => { evt.preventDefault(); openInHistory(runId); }}>Open it in History</a>
+  </div>`;
+}
+
+function liveEndedHead(head, ended) {
+  const when = ended.ended_ts ? fmtWhen(ended.ended_ts) : "";
+  return { ...head, ended: true, live_label: "done", activity: "ended " + (when ? when + " · " : "") + ended.ending_label };
+}
+
 function DetailBody({ ended }) {
   const snap = useStore();
   const { tab: chosen, gatesCollapsed, runs, runDiff, runFiles } = snap;
@@ -2860,8 +2935,10 @@ function DetailBody({ ended }) {
     <span class="spin" aria-hidden="true"></span>Loading the run…
   </div>`;
   if (!detail.found) return html`<div class="detail-empty">Run not found.</div>`;
+  const strip = !ended && detail.ended ? detail.ended : null;
   return html`
-    <${RunHead} head=${detail.head} runId=${detail.run_id} onClose=${ended ? null : closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
+    <${RunHead} head=${strip ? liveEndedHead(detail.head, strip) : detail.head} runId=${detail.run_id} onClose=${ended ? null : closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
+    ${strip ? html`<${EndedStrip} ended=${strip} runId=${detail.run_id} />` : null}
     ${detail.gates.length ? html`<${GateStrip} detail=${detail} collapsed=${gatesCollapsed} />` : null}
     <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} problems=${problems} />
     <div class="fill" id="detail-panel" role="tabpanel" aria-labelledby=${"tab-" + tab}>
@@ -2954,6 +3031,30 @@ function openHistoryRun(id) {
   const same = store.get().history.selected === id;
   const slots = same ? {} : resetSlots();
   store.set({ ...slots, history: { ...store.get().history, selected: id, detail: endedDetail(run) } });
+}
+
+let pendingHistoryOpen = "";
+
+function openInHistory(runId) {
+  pendingHistoryOpen = runId;
+  if (store.get().mode === "history") loadHistory();
+  else setMode("history");
+}
+
+function settleHistoryOpen() {
+  if (!pendingHistoryOpen) return;
+  const { history } = store.get();
+  const run = history.runs.find((one) => one.run_id === pendingHistoryOpen);
+  if (!run) return;
+  pendingHistoryOpen = "";
+  if (!historyShown([run], history.filters).length) setHistoryFilters(NO_HISTORY_FILTERS);
+  openHistoryRun(run.run_id);
+}
+
+function onSummary(msg) {
+  const { mode, detail, overview } = store.get();
+  if (mode === "history") loadHistory();
+  if (detail && detail.run_id === msg.run_id && overview.runId === msg.run_id) loadOverview(msg.run_id, detail.figures_rev || 0, true);
 }
 
 function closeHistoryRun() {
@@ -3619,6 +3720,7 @@ function loadHistory() {
       const runs = body.runs || [];
       const open = runs.find((one) => one.run_id === store.get().history.selected);
       setIn("history", { status: "ready", runs, totals: body.totals, medians: body.medians || {}, endings: body.endings || [], ...(open ? { detail: endedDetail(open) } : {}) });
+      settleHistoryOpen();
       if (store.get().mode === "history" && body.totals && (body.totals.reading > 0 || body.unlisted > 0)) {
         _historyPoll = setTimeout(loadHistory, HISTORY_POLL_MS);
       }
@@ -3902,7 +4004,11 @@ function setMode(mode) {
   const leaving = store.get().mode;
   store.set(leaving !== mode && (leaving === "history" || mode === "history") ? { ...resetSlots(), mode: mode } : { mode: mode });
   if (mode !== "dispatch") stopDispatchPoll();
-  if (mode !== "history") stopHistoryPoll();
+  if (mode !== "history") {
+    stopHistoryPoll();
+    pendingHistoryOpen = "";
+  }
+  if (leaving === "history" || mode === "history") markHistorySeen();
   if (mode === "history") loadHistory();
   else if (mode === "attend") loadAttend();
   else if (mode === "dispatch") loadDispatch();
@@ -4061,11 +4167,13 @@ function pushToast(variant, titleText, bodyText, ttl) {
 }
 
 // A new block (or a fired alert rule): toast + optional browser notification.
-function onNotify(message) {
-  const body = message || "A workflow needs your input.";
-  pushToast("blocked", "⛔ worker blocked", body, 7000);
+function onNotify(msg) {
+  const body = msg.message || "A workflow needs your input.";
+  const ended = msg.rule === "ENDED";
+  const tone = ended && !msg.failed ? "ok" : "blocked";
+  pushToast(tone, ended ? "run ended" : "⛔ worker blocked", body, 7000);
   if ("Notification" in window && Notification.permission === "granted") {
-    new Notification("groom: workflow blocked", { body: body });
+    new Notification(ended ? "groom: run ended" : "groom: workflow blocked", { body: body });
   }
 }
 
@@ -4278,6 +4386,19 @@ function paintRunsBadge(snap) {
 }
 store.subscribe(paintRunsBadge);
 paintRunsBadge(store.get());
+
+const historyButton = document.getElementById("act-history");
+const historyBadge = document.getElementById("history-badge");
+function paintHistoryBadge(snap) {
+  const count = snap.failedSince.length;
+  const name = count ? "History, " + plural(count, "run", "runs") + " failed since you last looked" : "History";
+  historyBadge.hidden = !count;
+  historyBadge.textContent = count ? String(count) : "";
+  historyButton.setAttribute("aria-label", name);
+  historyButton.title = name;
+}
+store.subscribe(paintHistoryBadge);
+paintHistoryBadge(store.get());
 
 wireEvents();
 wireAnswerForm();

@@ -64,10 +64,11 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: the Runs button carries a badge with the blocked-run count while another pane is open.
 - states: the badge is hidden on the Runs pane.
 - states: the badge is hidden while no run is blocked.
+- states: the History button carries its own badge, the [history badge](#history-badge).
 - states: the button's accessible name says the count in words, such as `Runs, 2 blocked runs`.
 - verify: visible(locator="#activity-rail", text="2")
 - verify: json_path(path="activity_rail.buttons.active.aria_pressed", equals="true")
-- code: groom/groom/templates/dashboard.html@5f66f9550840
+- code: groom/groom/templates/dashboard.html@4b14991c2a91
 - code: groom/groom/assets/dashboard.js::paintRunsBadge@bd8cea76ff7e
 - tests: groom/tests/test_a11y_dynamic.py::test_the_activity_rail_is_reachable_and_operable_by_keyboard
 - tests: groom/tests/test_gate_strip_dynamic.py::test_the_runs_button_carries_a_counted_badge_while_another_pane_is_open_and_clears_with_the_last_block
@@ -89,7 +90,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="states.present", equals=true)
 - states: its visible child is whichever pane `.app[data-mode]` selects.
 - verify: json_path(path="states.visible_child", equals="pane selected by .app[data-mode]")
-- code: groom/groom/templates/dashboard.html@5f66f9550840
+- code: groom/groom/templates/dashboard.html@4b14991c2a91
 - dom: holds all five panes as siblings. The four inactive ones are `display:none`, so exactly one pane's controls are in the accessibility tree at a time. `groom/groom/assets/dashboard.css` gives `.app` a fixed 48px activity column and assigns `#main` the remaining `main` grid area.
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-main-region.png
 
@@ -125,7 +126,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in a run's Files or Diff tab whose name happens to be the literal text `Runs` — a directory or a file ([detail-files-file-row](#detail-files-file-row), [detail-diff-file-row](#detail-diff-file-row)) named `Runs` — renders with the identical `role=button name="Runs"` pair as this always-present rail button, so `getByRole('button', {name: 'Runs'})` cannot distinguish them.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because the rail button's name cannot be changed without changing the product's navigation label.
 - states: the collision is left standing rather than papered over with an invented distinguishing label, because a repository's file and directory names are arbitrary user data this doc cannot constrain.
-- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
+- code: groom/groom/assets/dashboard.js::setMode@dd272df55c5e
 - props:
   - `data-mode`: literal `runs`; required; the mode value the delegated rail handler passes to the mode switch.
   - `title`: literal `Runs`; required; tooltip text only.
@@ -151,7 +152,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="settings"`.
 - verify: visible(locator=".act-btn[data-mode='settings'].active[aria-pressed='true']", text="Settings")
 - states: this is a real, data-dependent accessibility ambiguity, not a mislabeling: any tree row in a run's Files or Diff tab whose name happens to be the literal text `Settings` — a directory or a file ([detail-files-file-row](#detail-files-file-row), [detail-diff-file-row](#detail-diff-file-row)) named `Settings` — renders with the identical `role=button name="Settings"` pair as this always-present rail button, so `getByRole('button', {name: 'Settings'})` cannot distinguish them. The rail button's name cannot be changed without changing the product's navigation label. A repository's file and directory names are arbitrary user data this doc cannot constrain. The collision is therefore left standing rather than papered over with an invented distinguishing label.
-- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
+- code: groom/groom/assets/dashboard.js::setMode@dd272df55c5e
 - dom: icon-only native `<button type="button">` after the rail spacer, at the bottom of the rail; an inline `aria-hidden` gear SVG and no text node.
 - leads-to: [select activity settings mode](#select-activity-settings-mode), which shows the settings pane containing the [settings rescan button](#settings-rescan-button) and [settings enable notifications button](#settings-enable-notifications-button).
 - screenshot: docs/specs/groom-dashboard/vet/post-discovery-activity-settings-mode.png
@@ -232,7 +233,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: every other row omits `aria-current` entirely rather than setting it to `"false"`.
 - verify: omits(subject="#runs-list .row[data-worker-id]:not(.selected)", matches="aria-current")
 - code: groom/groom/assets/dashboard.js::RowFigures@3c877ee5e531
-- code: groom/groom/assets/dashboard.js::RunRow@703c0edbc1b1
+- code: groom/groom/assets/dashboard.js::RunRow@8fd05dedb6a4
 - detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
 - tests: `groom/tests/test_dashboard_client.py::test_a_run_row_prints_its_figures_in_words_and_keeps_the_coverage_when_narrowed`
 - tests: `groom/tests/test_projection.py::test_fleet_rows_order_blocked_then_live_then_dead_then_finished`
@@ -310,7 +311,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - states: an attendant link, `an attendant is on this run` or `last attendant`, sits in the head when the run has an attendant session, and activating it opens the Attendant pane on that session.
 - states: a container run with a connected sidecar also shows a `docker · sidecar` chip after the run id, and the chip reads `docker` alone when the sidecar drops while a kept diff shows.
 - verify: visible(locator="#detail-run-header", text="docker · sidecar")
-- code: groom/groom/assets/dashboard.js::RunHead@0988e62145d0
+- code: groom/groom/assets/dashboard.js::RunHead@7fd914fca601
 - code: groom/groom/assets/dashboard.js::AttendLink@e18dc3f105c3
 - detail: [workflow type badge style rules](../../concepts/workflow-type-badge-style-rules.md)
 - tests: groom/tests/test_activity_raw_dynamic.py::test_the_attend_link_sits_in_the_run_head_and_opens_the_attendant_pane_on_that_session
@@ -399,7 +400,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - parent: [detail-pane](#detail-pane)
 - states: always enabled while a run is open.
 - states: it stays at the top right of the head's first row, with the run's doing line on the row below it.
-- code: groom/groom/assets/dashboard.js::RunHead@0988e62145d0
+- code: groom/groom/assets/dashboard.js::RunHead@7fd914fca601
 - tests: groom/tests/test_a11y_dynamic.py::test_selecting_a_run_narrows_the_list_and_close_restores_it_with_its_filter
 - leads-to: [close run detail](#close-run-detail), which clears the selection and returns the list to full width.
 
@@ -940,7 +941,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::DetailTabs@0f89a2a690cc
 - code: groom/groom/assets/dashboard.js::useRunDiff@42e89852f3e2
 - code: groom/groom/assets/dashboard.js::loadRunDiff@6b1e2d0423d6
-- code: groom/groom/projection.py::run_row@f4041c085d72
+- code: groom/groom/projection.py::run_row@22e2f47320c4
 - detail: [run Diff tab](../../concepts/run-diff-tab.md)
 - tests: groom/tests/test_diff_tab_dynamic.py::test_a_container_run_with_a_connected_sidecar_has_a_diff_tab_beside_overview_and_details
 - tests: groom/tests/test_diff_tab_dynamic.py::test_a_native_run_an_ended_run_and_a_run_without_a_sidecar_have_no_diff_tab
@@ -1876,7 +1877,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#activity-rail", text="History")
 - states: active with the `active` class and `aria-pressed="true"` when `.app` has `data-mode="history"`.
 - verify: visible(locator="#history-table", text="Ended")
-- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
+- code: groom/groom/assets/dashboard.js::setMode@dd272df55c5e
 - tests: groom/tests/test_history_dynamic.py::test_the_rail_shows_runs_history_attendant_dispatch_and_settings_in_that_order
 - tests: groom/tests/test_history.py::test_the_book_screen_names_history_in_the_rail_and_describes_its_pane
 - tests: groom/tests/test_history_dynamic.py::test_runs_attendant_dispatch_and_settings_open_as_they_did
@@ -2003,7 +2004,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: visible(locator="#history-state", text="History could not be read")
 - states: while any listed run is still being read, the pane asks again every four seconds, and stops when no run is pending or the mode changes.
 - code: groom/groom/assets/dashboard.js::HistoryPane@225d4e52e6a1
-- code: groom/groom/assets/dashboard.js::loadHistory@a9f77953b1df
+- code: groom/groom/assets/dashboard.js::loadHistory@c7cd7e7b2ad2
 - tests: groom/tests/test_history_dynamic.py::test_the_pane_shows_a_reading_state_that_clears_when_the_table_appears
 - tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
 - tests: groom/tests/test_history_dynamic.py::test_with_no_ended_runs_the_pane_says_so_with_the_totals_at_zero
@@ -2109,6 +2110,75 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - tests: groom/tests/test_history_filters_dynamic.py::test_when_nothing_matches_the_pane_says_so_the_totals_read_zero_and_a_control_clears_the_filters
 - tests: groom/tests/test_history_filters_dynamic.py::test_the_narrowed_list_says_so_when_the_text_filter_leaves_it_empty_and_the_run_stays_open
 
+### ended-strip
+
+- selector: `#ended-strip`
+- role: status
+- name: `This run ended <how long ago>: <ending>[ at <node>].`
+- placement: width 60-100%, x 0-20%
+- keyboard: not focusable itself. The link in it is reached with Tab and activated with Enter.
+- verify: visible(locator="#ended-strip", text="This run ended")
+- parent: [detail-pane](#detail-pane)
+- states: absent while the selected run is running, idle, waiting or blocked,.
+- verify: absent(subject="#ended-strip on a run that is still running")
+- states: present under the run's head from the update that says the run ended, as `This run ended <how long ago>: <ending>`, then ` at <node>` when the run recorded a node, then `It stays open here.` and a link named `Open it in History`.
+- verify: visible(locator="#ended-strip", text="It stays open here.")
+- states: the ending is written by the [run ending mapping](../../concepts/run-ending-mapping.md), as `success`, `failed`, `crashed`, `interrupted` or `gave-up`, so the strip never says an ending in colour alone.
+- states: the left edge is red for a run that failed, crashed, gave up or was interrupted by a fatal error, and neutral otherwise.
+- states: a run that fails while open shows the [ending banner](#detail-ending-banner) under the strip once its summary is written.
+- verify: visible(locator="#detail-ending-banner", text="Ended")
+- states: it stays until the operator selects another run, and stays when the run's row leaves the list.
+- states: the run's row reads `ended <how long ago>` with the ending in its doing line and a `done` pulse, in the same update as the strip.
+- states: the head reads `ended <time> · <ending>` in the same update.
+- states: the Files and Diff tabs leave the detail in the same update.
+- code: groom/groom/assets/dashboard.js::EndedStrip@2b1948d89fcb
+- code: groom/groom/assets/dashboard.js::liveEndedHead@114a80d11a36
+- code: groom/groom/projection.py::ended_of@bb4def095c60
+- code: groom/groom/assets/dashboard.css@85ee14d17ea8
+- detail: [run ended notice](../../concepts/run-ended-notice.md)
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_selected_run_that_ends_stays_open_with_a_strip_saying_it_ended_how_long_ago_and_how
+- tests: groom/tests/test_run_ended_dynamic.py::test_the_row_and_the_head_change_to_ended_with_the_strip_and_the_tabs_leave_no_files_or_diff
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_run_that_fails_while_open_shows_its_failure_banner_under_the_strip
+- tests: groom/tests/test_run_ended_dynamic.py::test_the_strip_stays_until_the_operator_selects_another_run
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_selected_runs_row_that_is_evicted_leaves_the_detail_open_and_the_list_without_a_row
+- tests: groom/tests/test_run_ended_dynamic.py::test_the_runs_tab_keeps_a_run_that_is_not_ending_as_it_was
+- tests: groom/tests/test_run_ended_dynamic.py::test_the_strip_and_both_badges_pass_an_axe_scan_and_the_link_works_from_the_keyboard
+- tests: groom/tests/test_run_ended.py::test_the_row_and_the_detail_carry_the_same_ending
+- leads-to: [open ended run in history](#open-ended-run-in-history), reached through its link.
+
+### history-badge
+
+- selector: `#history-badge`
+- role: none
+- one-per: `activity-history-mode` — one badge in the History button.
+- name: the History button's own name, which says the count in words.
+- placement: width 0-20%, x 0-20%
+- keyboard: not focusable itself.
+- verify: visible(locator="#history-badge", text="1")
+- parent: [activity-rail](#activity-rail)
+- states: hidden while no run has failed since the operator last opened History, and the button's name is then `History`.
+- verify: absent(subject="#history-badge on a first load")
+- states: shows the count of runs that failed, gave up, crashed or were interrupted by a fatal error while the operator was on another pane, and the button's name says it in words, such as `History, 2 runs failed since you last looked`.
+- states: a successful run, a run the operator stopped, and a run that continues through a reload add nothing.
+- states: hidden on the History pane. Opening History clears it, and leaving History stamps the time again.
+- states: the count survives a reload, and a run that failed before the page loaded counts when it failed after the last time the operator opened History.
+- states: a first load with no last-opened time shows no badge and records now as that time.
+- states: the Runs button's badge counts blocked runs while History is open, as described under [activity-rail](#activity-rail).
+- verify: visible(locator="#activity-rail", text="1")
+- code: groom/groom/assets/dashboard.js::noteEndings@258f66db4860
+- code: groom/groom/assets/dashboard.js::markHistorySeen@9617a8841533
+- code: groom/groom/assets/dashboard.js::paintHistoryBadge@58d905184dac
+- code: groom/groom/templates/dashboard.html@4b14991c2a91
+- detail: [run ended notice](../../concepts/run-ended-notice.md)
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_run_that_fails_crashes_or_is_stopped_by_a_fatal_error_raises_the_history_badge_by_one_each
+- tests: groom/tests/test_run_ended_dynamic.py::test_opening_history_clears_the_badge_and_the_count_survives_a_reload
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_success_a_stop_the_operator_asked_for_and_a_reload_raise_no_badge
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_first_load_with_no_last_opened_time_shows_no_badge_and_sets_that_time_to_now
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_run_that_failed_before_the_dashboard_loaded_counts_when_it_failed_after_the_last_open
+- tests: groom/tests/test_run_ended_dynamic.py::test_the_last_opened_time_lives_in_the_browser_and_the_server_is_told_nothing
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_run_that_becomes_blocked_raises_the_runs_badge_while_history_is_open
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_run_that_ends_while_history_is_open_tops_the_table_the_totals_follow_and_an_open_run_stays_open
+
 ## Interactions
 
 ### select-activity-runs-mode
@@ -2191,7 +2261,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Performs no permission prompt.
 - verify: count(subject="permission prompts", equals=0)
-- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
+- code: groom/groom/assets/dashboard.js::setMode@dd272df55c5e
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 
 ### select-activity-settings-mode
@@ -2225,7 +2295,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: absent(subject="loader")
 - verify: absent(subject="permission dialog")
 - verify: unchanged(subject="application state", except_fields=["mode", "active", "aria-pressed"])
-- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
+- code: groom/groom/assets/dashboard.js::setMode@dd272df55c5e
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - screenshot: docs/services/groom/gui/screenshots/operator-refreshes-workflow-fleet-settings-idle.png
 
@@ -2336,7 +2406,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - verify: unchanged(subject="server state except the selecting tab's watch subscription")
 - code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
 - code: groom/groom/assets/dashboard.js::onDetail@f9e46aa48020
-- code: groom/groom/assets/dashboard.js::RunRow@703c0edbc1b1
+- code: groom/groom/assets/dashboard.js::RunRow@8fd05dedb6a4
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 - tests: groom/tests/test_app.py::test_watch_registers_the_tab_and_pushes_that_run_immediately
 - tests: groom/tests/test_app.py::test_a_detail_push_reaches_only_the_tabs_watching_that_run
@@ -2380,7 +2450,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - verify: json_path(path="selection.empty_list_does_nothing", equals=true)
 - code: groom/groom/assets/dashboard.js::wireEvents@b80b4c7b0586
 - code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
-- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
+- code: groom/groom/assets/dashboard.js::setMode@dd272df55c5e
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
@@ -2650,7 +2720,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - The first-click path requires a user gesture because browsers ignore an unprompted permission dialog.
 - verify: emitted(event="browser notification permission request", count=0)
 - code: groom/groom/assets/dashboard.js::wireEvents@b80b4c7b0586
-- code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
+- code: groom/groom/assets/dashboard.js::onNotify@142e9f95a262
 - detail: [dashboard event wiring interaction contexts](../../concepts/dashboard-event-wiring-interaction-contexts.md)
 
 ### toggle-command-palette-shortcut
@@ -2798,7 +2868,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Chooses by run id rather than by rendered position, so the result list re-rendering under a concurrent push cannot open the wrong run.
 - code: groom/groom/assets/dashboard.js::choosePaletteHit@79c641f3d2fb
 - code: groom/groom/assets/dashboard.js::select@d3e401af6aa0
-- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
+- code: groom/groom/assets/dashboard.js::setMode@dd272df55c5e
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - detail: [dashboard run selector](../../concepts/dashboard-run-selector.md)
 
@@ -3034,7 +3104,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - does:
   - Requests [get-run-history](../../http/get-run-history.md) and shows the reading state until the list arrives.
   - Stops the four-second re-read when the mode changes away from History.
-- code: groom/groom/assets/dashboard.js::setMode@11d392c3f50b
+- code: groom/groom/assets/dashboard.js::setMode@dd272df55c5e
 - detail: [dashboard mode selection](../../concepts/dashboard-mode-selection.md)
 - tests: groom/tests/test_history_dynamic.py::test_selecting_history_shows_the_ended_runs_newest_end_time_first_under_every_column
 
@@ -3054,7 +3124,7 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
   - Requests [get-run-history](../../http/get-run-history.md) again.
   - Shows the table when the read succeeds.
   - Keeps the failed state when the read fails again.
-- code: groom/groom/assets/dashboard.js::loadHistory@a9f77953b1df
+- code: groom/groom/assets/dashboard.js::loadHistory@c7cd7e7b2ad2
 - tests: groom/tests/test_history_dynamic.py::test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry_that_succeeds_shows_the_table
 ### open-history-run
 - on: [history-row](#history-row)
@@ -3147,3 +3217,25 @@ Connection state is its own visible fact. The [connection chip](#connection-chip
 - code: groom/groom/assets/dashboard.js::clearHistoryFilters@6e225267a691
 - detail: [run history filters](../../concepts/run-history-filters.md)
 - tests: groom/tests/test_history_filters_dynamic.py::test_when_nothing_matches_the_pane_says_so_the_totals_read_zero_and_a_control_clears_the_filters
+
+### open-ended-run-in-history
+
+- on: [ended-strip](#ended-strip)
+- trigger: pointer click, tap or Enter on the strip's `Open it in History` link.
+- role: link
+- name: `Open it in History`
+- keyboard: Tab reaches the link and Enter activates it.
+- verify: visible(locator="#ended-strip", text="Open it in History")
+- when:
+  - The strip is showing for the open run.
+- does:
+  - Switches to the History pane, as [select activity history mode](#select-activity-history-mode) does.
+  - Clears any kept History filter that would hide the run.
+  - verify: visible(locator="#history-table", text="Ended")
+  - Selects that run in the History table, as it would be selected by a click, and opens its detail.
+  - verify: visible(locator="#history-detail-pane", text="ended")
+- code: groom/groom/assets/dashboard.js::openInHistory@8d4dc57ff5f1
+- code: groom/groom/assets/dashboard.js::settleHistoryOpen@17b5d3283b6b
+- detail: [run ended notice](../../concepts/run-ended-notice.md)
+- tests: groom/tests/test_run_ended_dynamic.py::test_the_strip_links_to_the_run_in_history_and_clears_a_filter_that_would_hide_it
+

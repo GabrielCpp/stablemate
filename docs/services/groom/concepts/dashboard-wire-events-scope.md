@@ -16,7 +16,7 @@ bootstrap. Each listener closes over its own DOM targets and dispatches on its
 own event; none of them re-implements another's concern; and none is called
 by, delegates to, or supersedes another.
 
-- code: groom/groom/assets/dashboard.js@ce7a2e7897ae
+- code: groom/groom/assets/dashboard.js@501c5750353c
 - rule: `wireEvents` is a single registration point for unrelated,
   independently reachable browser-event concerns, not a set of alternative
   implementations of one operation. The source records no preference,

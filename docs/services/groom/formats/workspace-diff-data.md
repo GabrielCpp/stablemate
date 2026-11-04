@@ -136,7 +136,7 @@ The raw unified text stays whole inside the `diff` member instead of being proje
 - raises: unexpected sidecar-registry, Docker subprocess launch/timeout, or response-construction failures can propagate.
 - verify: json_path(path="exception.type", matches="Error$")
 - verify: json_path(path="$.diff", equals="diff --git a/x b/x\n")
-- code: groom/groom/app.py::diff@3b4a38e8e9ca
+- code: groom/groom/app.py::diff@09402337f758
 - detail: [diff documentation scopes](../concepts/diff-documentation-scopes.md)
 - tests: groom/tests/test_app.py::test_diff_prefers_sidecar_socket
 - tests: groom/tests/test_app.py::test_diff_endpoint_passes_repo_through

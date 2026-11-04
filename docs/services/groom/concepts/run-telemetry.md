@@ -14,7 +14,7 @@ and logs belong to the SQLite store, while the three [liveness metrics](groom-mo
 remain memory-only because they are needed only for the current live picture.
 The [alert](alert.md) value is returned when an ingest or periodic rule newly pages an operator.
 
-- code: groom/groom/models.py::RunTelemetry@f8fa7c521e64
+- code: groom/groom/models.py::RunTelemetry@bd6f66b5c63a
 - tests: groom/tests/test_telemetry.py::test_live_status_row_shape_is_the_cli_json_contract
 - tests: groom/tests/test_telemetry.py::test_a_resumed_run_clears_the_previous_sessions_terminal
 - tests: groom/tests/test_store_memory.py::test_terminated_run_evicted_after_grace
@@ -45,7 +45,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - verify: unchanged(subject="RUNS")
 - returns: a list of run ids eligible for removal from the hot cache.
 - verify: count(subject="stale run ids", equals=1)
-- code: `groom/groom/alerts.py::stale_run_ids` @4c397d0f7b2e
+- code: `groom/groom/alerts.py::stale_run_ids` @c04b171a2f48
 - tests: `groom/tests/test_store_memory.py::test_terminated_run_evicted_after_grace`
 
 ### ingest_spans
@@ -61,7 +61,7 @@ The [alert](alert.md) value is returned when an ingest or periodic rule newly pa
 - verify: emitted(event="CHURN", count=1)
 - returns: newly-fired alerts, with duplicate `(run_id, rule)` pages omitted.
 - verify: count(subject="span-ingest alerts", equals=2)
-- code: `groom/groom/alerts.py::ingest_spans` @efeb84ae01b7
+- code: `groom/groom/alerts.py::ingest_spans` @e2818cb194ce
 - tests: `groom/tests/test_telemetry.py::test_watchdog_and_giveup_fire_once_per_run`
 
 ### ingest_metrics

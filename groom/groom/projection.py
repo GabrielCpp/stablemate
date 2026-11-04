@@ -133,6 +133,26 @@ def liveness(wf: WorkflowContainer, tel: RunTelemetry | None, now: float) -> tup
     return "dead", f"silent {fmt_duration(silence)}"
 
 
+def ended_of(tel: RunTelemetry | None) -> dict[str, Any] | None:
+    """How a run just ended, read through the one ending mapping History uses, or None while it runs or when its terminal records no ending. ``failed`` is what raises the History badge: a stop the operator asked for and a clean finish do not."""
+    from groom import history
+
+    if tel is None or not tel.terminal:
+        return None
+    ending = history.ending_of(tel.terminal, "GAVE-UP" in tel.fired)
+    if ending is None:
+        return None
+    failed = ending != "success" and not (ending == "interrupted" and tel.error_kind != "fatal")
+    return {
+        "ending": ending,
+        "ending_label": history.LABELS[ending],
+        "ended_ts": tel.terminal_ts,
+        "node": tel.current_node,
+        "error_class": tel.error_class,
+        "failed": failed,
+    }
+
+
 def fleet_rank(wf: WorkflowContainer, live_cls: str) -> int:
     """Blocked first (it is waiting on *you*), then alive, then presumed-dead, then finished — the order in which a run deserves the operator's attention."""
     if wf.state == WorkflowState.BLOCKED:
@@ -263,6 +283,7 @@ def run_row(
         "native": bool(wf.native),
         "sidecar": not wf.native and sidecar_hub.get(wf.container_id) is not None,
         "figures": tel.figures if tel else None,
+        "ended": ended_of(tel),
         "rank": fleet_rank_for(state, live_cls),
     }
 
@@ -791,6 +812,7 @@ def run_detail(
         "gates": [gate_dict(gate) for gate in reported_gates(wf, tel)],
         "running": running_node(wf, tel, facts, now),
         "strip": running_strip(wf, tel, facts, now),
+        "ended": ended_of(tel),
         **run_live(wf, tel, facts, logs, now, history=history),
     }
 

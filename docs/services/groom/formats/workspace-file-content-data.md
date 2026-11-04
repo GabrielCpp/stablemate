@@ -214,7 +214,7 @@ The sidecar and HTTP behaviors described here are covered by `test_file_content_
 - verify: http_status(code=200, path="/file/abc123")
 - raises: unexpected HTTP framework failures or fallback reader exceptions other than `ValueError` can propagate.
 - verify: json_path(path="exception.type", matches="^(?!ValueError$).+")
-- code: groom/groom/app.py::file_content@13698e6ec6a6
+- code: groom/groom/app.py::file_content@6a4a53a92140
 - detail: [file content documentation scopes](../concepts/file-content-documentation-scopes.md)
 - tests: `groom/tests/test_app.py::test_file_content_prefers_sidecar_socket`
 - tests: `groom/tests/test_app.py::test_file_endpoint_joins_repo_and_path_and_returns_content`

@@ -25,7 +25,7 @@ The screen is the [groom dashboard](../gui/screens/groom-dashboard.md#history-fi
 - code: groom/groom/history.py::retry@109fc9780a80
 - code: groom/groom/overview.py::stored_overview@085a2ec7726c
 - code: groom/groom/app.py::_archive_overview@c3bd4430105d
-- code: groom/groom/app.py::_summary_pass@88f8d7f4556e
+- code: groom/groom/app.py::_summary_pass@cf9fc7a67434
 - code: groom/groom/pools.py::ARCHIVE@9f14083a924c
 - code: groom/groom/assets/dashboard.js::ArchiveGone@14177614ee11
 - code: groom/groom/assets/dashboard.js::loadOverview@c2590f259fb2

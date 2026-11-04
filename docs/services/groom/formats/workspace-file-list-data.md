@@ -145,7 +145,7 @@ The sidecar's `getTree` handler delegates path discovery to its local tree reade
 - type: `list[str]`
 - default: `[]`
 - required: true
-- code: groom/groom/assets/dashboard.js::loadRunFiles@6468e7a48cc1
+- code: groom/groom/assets/dashboard.js::loadRunFiles@0928854e5520
 - wire-location: browser-internal value after the Files tab parses the `GET /files/{container_id}` response body.
 - meaning: path strings used to build the Files tab tree; this is the input to [dashboard path tree](dashboard-path-tree.md) construction.
 - derivation: the parsed body's `paths` member, or an empty list when it is missing. The run Files tab also reads `failed` and `reported`.

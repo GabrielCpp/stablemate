@@ -96,13 +96,14 @@ body {
 .row.blocked { border-left-color:var(--blocked); }
 .row .line1 { display:flex; align-items:center; gap:7px; min-width:0; }
 .row .line2 { display:flex; align-items:baseline; gap:8px; min-width:0; }
-/* A run id is now a whole name rather than a four-character fragment, so line1
-   needs somewhere to give. The id is the half you paste, so it never shrinks;
-   the repo label ellipsizes instead. */
+/* A run id is a whole name, so line1 needs somewhere to give. The type badge, the
+   state dot and the pill keep their size; the repo label and the id both shrink
+   with an ellipsis and each keeps a few characters. */
+.row .line1 .badge, .row .line1 .dot { flex:none; white-space:nowrap; }
 .row .repo-branch { font-family:var(--mono); font-size:11.5px; color:var(--text-1);
-  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; min-width:6ch; }
 .row .wid { font-family:var(--mono); font-size:11.5px; color:var(--text-2);
-  white-space:nowrap; flex:none; }
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; min-width:6ch; }
 .row .doing { font-family:var(--mono); font-size:10.5px; color:var(--text-2);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
 .row .mini { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--text-2); white-space:nowrap; flex:none; }
@@ -428,6 +429,10 @@ details.at-msg summary { cursor:pointer; }
 .gate-strip .answer-actions { margin-top:0; }
 .rail-badge { position:absolute; top:5px; right:7px; min-width:13px; height:13px; line-height:13px; padding:0 3px; box-sizing:border-box; border-radius:7px; background:var(--blocked); color:#fff; font:600 9px var(--mono); text-align:center; }
 .rail-badge[hidden] { display:none; }
+.ended-strip { flex:none; padding:8px 14px; background:var(--bg-2); border-bottom:1px solid var(--border); border-left:3px solid var(--idle); font-size:12.5px; color:var(--text-1); display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.ended-strip.fail { border-left-color:var(--blocked); }
+.ended-strip b { color:var(--text-0); font-weight:600; }
+.ended-strip a { color:var(--accent); }
 .fill { flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
 .ov { padding:12px; display:flex; flex-direction:column; gap:14px; overflow-y:auto; flex:1; min-height:0; }
 .dim { color:var(--text-2); }
@@ -593,7 +598,7 @@ table.tt { width:100%; border-collapse:collapse; font-size:12px; }
 #history-pane.has-sel .h-col { border-right:1px solid var(--border); }
 #history-pane .pane-head .copy { flex:none; }
 .row .line3 .nw { white-space:nowrap; }
-#history-detail .detail-head .pulse { margin-left:0; }
+#history-detail .detail-head .pulse, .detail-head.ended .pulse { margin-left:0; }
 #history-detail .fill > .side-state { margin:16px; max-width:none; }
 #history-detail .fill > .side-state .acts { display:inline-flex; margin:0 0 0 4px; }
 #history .row .repo-branch { flex:0 1 auto; max-width:55%; min-width:9ch; }
@@ -619,4 +624,3 @@ table.ht { width:100%; border-collapse:collapse; }
 .rd-head .l1 .rd-node { flex:none; white-space:nowrap; }
 .rd-head .l1 .dim { min-width:0; overflow-wrap:anywhere; }
 .rd-head .l1 .dim:first-of-type { flex:none; }
-#history .row .line1 .badge { flex:none; white-space:nowrap; }

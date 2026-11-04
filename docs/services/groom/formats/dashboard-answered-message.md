@@ -13,7 +13,7 @@ The frame is broadcast fleet-wide rather than returned to the submitting socket.
 
 - file: not an on-disk artifact; this is one transient server-to-browser websocket JSON message.
 - code: groom/groom/app.py::_handle_command@593ac30728de
-- code: groom/groom/assets/dashboard.js::onFrame@561cd42ccdab
+- code: groom/groom/assets/dashboard.js::onFrame@9fe704fcb25c
 - code: groom/groom/assets/dashboard.js::onAnswered@054f98f0ef29
 - detail: [dashboard answer command artifacts](../concepts/dashboard-answer-command-artifacts.md)
 - detail: [dashboard frame dispatch](../concepts/dashboard-frame-dispatch.md)

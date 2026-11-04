@@ -25,9 +25,9 @@ fallback: `coder` is teal `#2f9e8f` and `author` is purple `#8a6ff0`. New non-em
 the generic treatment, while the [workflow type field](workflow-container.md#field-workflow-type)
 documents why an empty kind renders no badge at all.
 
-- code: `groom/groom/assets/dashboard.css::.badge` @cafd8832be54
-- code: `groom/groom/assets/dashboard.css::.badge[data-type="coder"]` @cafd8832be54
-- code: `groom/groom/assets/dashboard.css::.badge[data-type="author"]` @cafd8832be54
+- code: `groom/groom/assets/dashboard.css::.badge` @85ee14d17ea8
+- code: `groom/groom/assets/dashboard.css::.badge[data-type="coder"]` @85ee14d17ea8
+- code: `groom/groom/assets/dashboard.css::.badge[data-type="author"]` @85ee14d17ea8
 
 ## Methods
 

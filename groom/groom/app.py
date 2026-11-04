@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from litestar import Litestar, Request, Response, delete, get, post, websocket
 from litestar.connection import WebSocket
@@ -221,9 +221,14 @@ async def _push_watched() -> None:
         await _push_detail(run_id)
 
 
-async def _broadcast_notify(message: str) -> None:
-    """A one-shot alert for the tabs to toast (and raise a browser notification for)."""
-    await state.broadcast({"type": "notify", "message": message})
+async def _broadcast_notify(message: str, rule: str = "", failed: bool = False) -> None:
+    """A one-shot alert for the tabs to toast (and raise a browser notification for), naming the alert rule that raised it and, for an ended run, whether it failed."""
+    frame: dict[str, Any] = {"type": "notify", "message": message}
+    if rule:
+        frame["rule"] = rule
+    if rule == "ENDED":
+        frame["failed"] = failed
+    await state.broadcast(frame)
 
 
 async def _ensure_volumes(container_id: str) -> None:
@@ -1142,7 +1147,8 @@ async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
         ):
             _attend_death(alert.run_id)
         await asyncio.to_thread(notify.push, f"groom: {alert.rule}", alert.message)
-        await _broadcast_notify(f"[{alert.rule}] {alert.message}")
+        ended = projection.ended_of(state.RUNS.get(alert.run_id)) if alert.rule == "ENDED" else None
+        await _broadcast_notify(f"[{alert.rule}] {alert.message}", alert.rule, bool(ended and ended["failed"]))
 
 
 def _real_runs(records: list[dict]) -> list[dict]:
@@ -1781,11 +1787,17 @@ def _wake_summaries() -> None:
         _summary_wake.set()
 
 
+async def _write_summary(run_id: str) -> None:
+    """Write one run's summary, then tell every tab it is there so an open Overview and the History list read it."""
+    await pools.SUMMARY.run(history.compute, run_id)
+    await state.broadcast({"type": "summary", "run_id": run_id})
+
+
 async def _summary_pass() -> int:
     """Find the ended runs with no current summary and write them one at a time, pausing between runs so the event loop and the store serve the dashboard first. Archives that stored no summary follow, one at a time, and give way as soon as another run needs one."""
     wanted = await pools.SUMMARY.run(history.discover)
     for run_id in wanted:
-        await pools.SUMMARY.run(history.compute, run_id)
+        await _write_summary(run_id)
         await asyncio.sleep(SUMMARY_PAUSE_S)
     older = await pools.SUMMARY.run(history.discover_archives)
     for run_id in older:

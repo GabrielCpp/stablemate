@@ -21,7 +21,7 @@ The loop is seeded so that the first tick after startup sweeps, rather than wait
 - default: `21600.0` (six hours)
 - required: true
 - semantics: The elapsed time in seconds between archive sweep passes. Loaded from the environment variable `GROOM_ARCHIVE_EVERY_S` and re-exported as `ARCHIVE_EVERY_S` in the app module.
-- code: `groom/groom/app.py::ARCHIVE_EVERY_S` @64d2a173881e
+- code: `groom/groom/app.py::ARCHIVE_EVERY_S` @6b48de8cbcff
 
 ### rules-tick-s
 
@@ -29,7 +29,7 @@ The loop is seeded so that the first tick after startup sweeps, rather than wait
 - default: `60.0`
 - required: true
 - semantics: The interval in seconds between loop ticks, loaded from the environment variable `GROOM_RULES_TICK_S`. The rules loop shares it. The archive loop wakes this often to check whether it is time to run a sweep, but only runs the sweep when the elapsed time since the last sweep exceeds `ARCHIVE_EVERY_S`.
-- code: `groom/groom/app.py::RULES_TICK_S` @64d2a173881e
+- code: `groom/groom/app.py::RULES_TICK_S` @6b48de8cbcff
 
 ## Methods
 

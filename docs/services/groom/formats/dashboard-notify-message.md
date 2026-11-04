@@ -14,12 +14,12 @@ The frame is deliberately kept **off** the [dashboard state payload](dashboard-s
 `_dispatch_alerts` sends this frame to every open browser tab and, in the same call, delivers the same alert through [outbound notification push](../concepts/outbound-notification-push.md) to any configured ntfy/webhook channel — the browser toast and the external push are two independent deliveries of one alert, not a fallback chain.
 
 - file: not an on-disk artifact; this is one transient server-to-browser websocket JSON message.
-- code: groom/groom/app.py::_broadcast_notify@5a8abf2cd7e5
+- code: groom/groom/app.py::_broadcast_notify@f31477c7fe04
 - code: groom/groom/app.py::push_blocked@077514cee86e
 - code: groom/groom/app.py::_apply_socket_blocked@17ce49ea9092
-- code: groom/groom/app.py::_dispatch_alerts@e9fa720c8145
-- code: groom/groom/assets/dashboard.js::onFrame@561cd42ccdab
-- code: groom/groom/assets/dashboard.js::onNotify@cce9ad7b825b
+- code: groom/groom/app.py::_dispatch_alerts@d41555b24ed0
+- code: groom/groom/assets/dashboard.js::onFrame@9fe704fcb25c
+- code: groom/groom/assets/dashboard.js::onNotify@142e9f95a262
 - detail: [blocked push flow contexts](../concepts/blocked-push-flow-contexts.md)
 - detail: [dashboard frame dispatch](../concepts/dashboard-frame-dispatch.md)
 - refs: [blocked push payload](blocked-push-payload.md), [dashboard state payload](dashboard-state-payload.md), [dashboard answered message](dashboard-answered-message.md), [browser notification permission](../concepts/browser-notification-permission.md)
@@ -28,11 +28,11 @@ Automated coverage for this format includes `groom/tests/test_app.py::test_push_
 
 ## Contract
 
-The dashboard's `onNotify` handler pushes a blocked-variant toast with a seven-second lifetime and creates a browser `Notification` only when the API exists and `Notification.permission` is already `granted`.
+The dashboard's `onNotify` handler pushes a seven-second toast, titled `⛔ worker blocked` in the blocked variant unless the frame's `rule` is `ENDED`, and creates a browser `Notification` only when the API exists and `Notification.permission` is already `granted`.
 
 - producer: three server paths send this frame — [receive blocked push](../http/groom.md#receive-blocked-push), the [sidecar blocked applier](../concepts/sidecar-blocked-applier.md) handling a live `blocked` websocket delta, and the alert-rule dispatcher when a telemetry alert fires. All three go through the same one broadcast helper, so there is one wire shape rather than three.
 - media: a JSON object on the dashboard websocket. It is not an HTTP body, an inline `<script>`, a DOM `CustomEvent`, or a persisted record.
-- shape: exactly two keys — `type` and `message`. No workflow id, gate file path, rule name as its own member, severity, timestamp, toast variant, lifetime, or envelope is included.
+- shape: `type` and `message`, plus `rule` on a frame an alert rule raised, plus `failed` on a frame the `ENDED` rule raised. A gate frame carries no `rule`. No workflow id, gate file path, severity, timestamp, toast variant, lifetime, or envelope is included.
 - discriminator: `type` is the string `notify`, which is how the client's frame dispatcher routes it. It is the same discriminator every dashboard push carries, so the client has one dispatch table rather than a shape-sniffing branch.
 - audience: every connected dashboard client. The [run watch registry](../concepts/run-watch-registry.md) scopes detail pushes; it does not scope this one. Groom is a shared console, and a run blocking is a fact about the fleet rather than about whoever happens to have that pane open.
 - pre-composition: the human-readable string is assembled server-side before broadcast, and the client displays it verbatim. The client applies no formatting, no truncation, and no template of its own; there is exactly one place each alert's wording lives.
@@ -62,3 +62,27 @@ The dashboard's `onNotify` handler pushes a blocked-variant toast with a seven-s
 - source: for a gate, the workflow's display name, a colon, and the gate question truncated to the [question notification limit](../concepts/groom-app-module.md#field-question-notify-limit); for a fired rule, the bracketed rule name followed by the rule's own message.
 - consumer-use: the toast body, and the body of the system notification when one is raised. An empty or absent value falls back to `A workflow needs your input.` in the client, so a malformed frame still produces a legible alert rather than a blank toast.
 - meaning: the whole human-readable content of the alert. The question is truncated rather than sent whole because this is an interruption, not the pane — the full markdown question is already on the wire in the run's detail payload, rendered and sanitized there.
+
+### field-rule
+
+- type: JSON string
+- default: absent on a gate frame
+- required: false
+- semantics: the name of the alert rule that raised the frame, such as `BLOCKED` or `ENDED`.
+- semantics: the client reads it to choose the toast title, so it never parses the bracketed name in `message`.
+- semantics: a frame with no `rule` is titled as a blocked worker.
+- tests: groom/tests/test_run_ended.py::test_a_notify_frame_names_its_rule_and_an_ended_one_says_whether_the_run_failed
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_blocked_notify_still_toasts_worker_blocked
+- wire-key: `rule`
+
+### field-failed
+
+- type: JSON boolean
+- default: absent unless `rule` is `ENDED`
+- required: false
+- semantics: true when the run ended failed, gave up, crashed or was interrupted by a fatal error, the endings that raise the History badge.
+- semantics: false for a success, and for a stop the operator asked for.
+- semantics: the client uses the red toast tone only when it is true.
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_successful_ending_toasts_run_ended_and_not_worker_blocked
+- tests: groom/tests/test_run_ended_dynamic.py::test_a_failed_ending_toasts_run_ended_in_the_red_tone
+- wire-key: `failed`

@@ -84,7 +84,7 @@ which is rendered here.
 
 - consistency: changes-view — no runtime CDN: `diff2html`, `marked`, `DOMPurify`, `highlight.js`, and the Preact/htm bundle are all vendored under the static asset mount.
 - verify: count(subject="CDN hostnames in the served shell", equals=0)
-- code: groom/groom/templates/dashboard.html@5f66f9550840
+- code: groom/groom/templates/dashboard.html@4b14991c2a91
 - code: groom/groom/app.py::stamp_assets@daf0c62ee7d3
 - tests: groom/tests/test_app.py::test_an_asset_that_is_not_on_disk_keeps_its_url
 - tests: groom/tests/test_app.py::test_the_shell_stamps_every_asset_url_with_the_files_version
