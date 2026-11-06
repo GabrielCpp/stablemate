@@ -1,6 +1,6 @@
 ---
 name: grill
-description: "Interviewing me about a plan, a design or an idea until its design tree has no unvisited branch: one round of numbered questions per frontier, each with a recommended answer, every fact looked up instead of asked, and at the end the settled decisions, rejected alternatives and unresolved objections filed where the repo keeps each. Load when asked to grill, stress-test or challenge a plan, when a plan is about to be built with decisions nobody took, or after a brainstorm picked a direction. For options on a problem with no plan yet, load brainstorm."
+description: "Load when I share my own plan, design or idea ('I was thinking about changing that to', 'the idea would be', 'what do we need to change to', a path to a plan file), when asked to grill, stress-test or challenge a plan, when a plan is about to be built with decisions nobody took, or after a brainstorm picked a direction. Interviews me until the design tree has no unvisited branch: one round of numbered questions per frontier, each with a recommended answer, every fact looked up instead of asked, and at the end the settled decisions, rejected alternatives and unresolved objections filed where the repo keeps each. For options on a problem with no plan yet, load brainstorm."
 argument-hint: "[the plan, decision or idea to stress-test]"
 tags: [grill]
 ---
