@@ -154,10 +154,6 @@ exclude = [
     # would report 28 findings whose only available fix is to edit the historical
     # record. Nothing imports it; it is prose that happens to be syntactically Python.
     "docs/plans/author-workflow-python/workflow.py",
-    # Three worked-example books for the book redesign. They import `ostler.book`, a
-    # module that does not exist yet: the files show the shape the module must serve.
-    # The exclude goes when the module lands and the books move out of plans.
-    "docs/plans/todo-books",
 ]
 
 # basedpyright — pyright's inference and its bundled third-party stubs, run from this
@@ -193,7 +189,6 @@ exclude = [
     "**/__pycache__",
     "**/.*",
     "docs/plans/author-workflow-python/workflow.py",
-    "docs/plans/todo-books",
 ]
 
 # A test module imports its own conftest and its `_fakes` siblings by bare name, the
