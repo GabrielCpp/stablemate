@@ -1,7 +1,7 @@
 ---
 name: pursue-goal
-description: "Load when handed a goal to pursue without the operator, when told to make a process better, faster, cheaper or more reliable, to 'reassess until we land on' something, or to show 'where I sit compared to my goal', when a track just closed and the next step is unclear, or when a goal directory is resumed. Pursues a goal that is an aspiration and not a figure, as a loop: the goal kept in the operator's words, its dimensions inferred and put to the operator in priority order before any run, the record already paid for read first, one cause question from the dominant loss, tracks worked one at a time under a spending ceiling, then the goal judged again on the operator's benchmark across every dimension. For the cause of one effect, load isolating-causes; for a mechanism that does not exist yet, load explore-then-improve; for waste in one that does, load self-improve."
-argument-hint: "[the goal, in the operator's words]"
+description: "Load when handed a goal to pursue without the operator, when told to make a process better, faster, cheaper or more reliable, to 'reassess until we land on' something, or to show 'where I sit compared to my goal', when a track just closed and the next step is unclear, or when a goal directory is resumed. Pursues a goal that is an aspiration and not a figure, as a loop: the problem and the operator's own use cases kept in their words and reread at every reading, its dimensions inferred and put to the operator in priority order before any run, the record already paid for read first, one cause question from the dominant loss, tracks worked one at a time under a spending ceiling, then the goal judged again on the operator's benchmark across every dimension. For the cause of one effect, load isolating-causes; for a mechanism that does not exist yet, load explore-then-improve; for waste in one that does, load self-improve."
+argument-hint: "[the problem and the use cases, in the operator's words]"
 tags: [process]
 ---
 
@@ -21,13 +21,22 @@ every reading of step 7, `PROFILE.md` holds step 3, `TRACKS.md` holds steps 5 an
 A resumed goal starts by reading all four. Nothing paid runs before step 6: every reading
 up to there comes from the record.
 
-## 1. The goal, in the operator's words
+## 1. The problem and the use cases, in the operator's words
 
-Copy the operator's context and goal into `GOAL.md` word for word, with the benchmark they
+Copy the operator's problem statement into `GOAL.md` word for word, with the benchmark they
 named, the record they pointed at, and every figure they gave. Rewrite nothing. A restated
-goal is what the loop then pursues, and the restatement is the agent's, not the operator's.
+problem is what the loop then pursues, and the restatement is the agent's, not the operator's.
 
-Done when `GOAL.md` quotes the operator and names the benchmark and the record.
+Under it, copy the operator's use cases: numbered, each one a concrete situation they want to
+work and what they expect to see when it does, in their words. The use cases are the
+operator's acceptance of the goal, and the readings of step 7 are written against them. An
+operator who gave a one-line goal and no use cases is asked for them once, with a drafted
+list as the recommendation. Until they answer, the loop runs on the draft, marked as the
+agent's, and the operator's list replaces it the moment it arrives. A use case the operator
+adds later is appended with its date, and the next reading covers it.
+
+Done when `GOAL.md` quotes the operator's problem, holds their numbered use cases, and names
+the benchmark and the record.
 
 ## 2. The dimensions
 
@@ -117,8 +126,14 @@ was shipped, the lap count and the wall for how late, the transcripts for where 
 was misled, the bill for the ceiling. A count appears only where a dimension counts. A track
 that cleared its own check has moved nothing until this reading says so.
 
-Done when `GOAL.md` holds the reading, one line per dimension with its evidence, and one
-line saying where the goal stands.
+Then reread the use cases of step 1 and write one line per use case: works, works in part,
+or not yet, each with the evidence that shows it and, for one not yet met, what stands in its
+way. This is the progress the operator reads when they come back, so it is written for them
+and in their vocabulary, and a use case nothing in the loop has touched says so instead of
+being left out.
+
+Done when `GOAL.md` holds the reading, one line per use case and one line per dimension, each
+with its evidence, and one line saying where the goal stands.
 
 ## 8. Again
 
@@ -131,8 +146,9 @@ starts from the reading and not from the last track.
 
 Each line checkable from the directory alone:
 
-- `GOAL.md` quotes the operator, holds the ordered dimensions with who feels each, and holds
-  a reading per loop with one line per dimension.
+- `GOAL.md` quotes the operator's problem and their numbered use cases, holds the ordered
+  dimensions with who feels each, and holds a reading per loop with one line per use case and
+  one per dimension.
 - `PROFILE.md` cites the record for every dimension and holds the cause question with its
   answer.
 - `TRACKS.md` ranks every track by the dimension it protects, each with its check.
