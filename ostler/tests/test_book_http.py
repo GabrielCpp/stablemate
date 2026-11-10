@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from ostler.book import Field, Int, List, Object, Str
-from ostler.book.http import Identities
+from ostler.book.http import Identities, canonical
 
 
 @dataclass
@@ -68,3 +68,9 @@ def test_an_id_the_app_gave_as_the_models_own_is_not_rewritten():
     ids = Identities()
     ids.learn(Item, "same", "same")
     assert ids.spoken("no todo 'same'") == "no todo 'same'"
+
+
+def test_a_keyword_field_of_a_record_is_read_off_its_underscored_attribute():
+    app = canonical(TRIP, {"from": "Oslo", "to": "Rome"}, app=True, ids=None, where="Trip")
+    model = canonical(TRIP, Trip(from_="Oslo", to="Rome"), app=False, ids=None, where="Trip")
+    assert app == model

@@ -1112,8 +1112,8 @@ def canonical(shape: Shape | None, value: Any, *, app: bool, ids: Identities | N
                     continue
                 if app:
                     got = value.get(name)
-                elif hasattr(value, spec.reads or name):
-                    got = getattr(value, spec.reads or name)
+                elif hasattr(value, spec.reads or attribute(name)):
+                    got = getattr(value, spec.reads or attribute(name))
                 else:
                     continue
                 out[name] = None if got is None else SET
@@ -1121,10 +1121,10 @@ def canonical(shape: Shape | None, value: Any, *, app: bool, ids: Identities | N
             if app:
                 got = value.get(name)
             else:
-                attribute = spec.reads or name
-                if not hasattr(value, attribute):
-                    raise BookError(f"{where}.{name}: the model's view carries no {attribute!r} and the field is not opaque")
-                got = getattr(value, attribute)
+                held = spec.reads or attribute(name)
+                if not hasattr(value, held):
+                    raise BookError(f"{where}.{name}: the model's view carries no {held!r} and the field is not opaque")
+                got = getattr(value, held)
             out[name] = None if got is None else canonical(spec.shape, got, app=app, ids=ids, where=f"{where}.{name}")
         return out
     if isinstance(shape, Bytes):
