@@ -188,6 +188,7 @@ accepted as input either way).
 | `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` `audit` | the `docs/services/` node/edge book — see below |
 | `qa` `artifact` | the verification control plane — see below |
 | `env` | bring up a local copy of the stack the books declare, and tear it down — see below |
+| `book` | run a service book, the executable model of one HTTP or gRPC service, against the live service — see below |
 
 `edit` is **dry-run unless `--write`**, so a rename across a whole graph is reviewable before it
 happens; `create … --json` returns
@@ -362,6 +363,36 @@ Every service needs an `about:` line, which `ostler env ls` shows. The format re
 A copy's directory lives under the user state directory, or under
 `$OSTLER_ENV_HOME`. It holds the rendered compose file, the helper files, the secrets file a
 `decrypt:` command wrote for it, and an address book in the format `ostler qa` reads.
+
+### Service books
+
+`ostler book` runs a service book: the executable Python model of one HTTP or gRPC service, kept in
+a repo under `services/<name>/`. A run plays the book's journeys, the cells of its lifecycle
+matrices and the input classes of its endpoints against the model and against the live service, and
+compares the two. It refuses to judge an environment that is down. A web or mobile surface is not
+covered yet.
+
+The directory that holds `services/` is the working directory, or the one `-C DIR` names before
+`book`. The command puts it on the import path itself. A service is named by its module.
+
+```bash
+ostler book check   services.api          # build everything the book declares, no stack; 0 findings or 1
+ostler book run     services.api          # every journey, cell and input class; exit 0, 1, 2 or 3
+ostler book run     services.api --no-stack --only AddTodo,FindTodos
+ostler book explore services.api --seed-only   # walk the model's state graph, no app
+ostler book walk    services.api --scene overdue --action read
+ostler book search  overdue               # what the book says, read from index.tsv
+ostler book explain services.api AddTodo
+ostler book index   services.api          # rewrite index.tsv
+ostler book stale   services.api --app ../api   # what changed in the app since the verified commit
+ostler book verified services.api --app ../api  # record the app's head once stale is worked
+ostler book decisions services.api
+ostler book graph   services.api          # each record's state graph, as dot and svg
+ostler book endpoints|screens|matrix|denied|plan services.api   # read the model, no app
+```
+
+Exit 3 means the place could not be judged, and what ran before it is no verdict. Reports go to
+`results/`, or to `--out`. The `ostler-book` skill is the guide to writing a book.
 
 ## The parse index
 
