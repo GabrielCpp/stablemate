@@ -627,6 +627,8 @@ def report_exploration(service: Service[Any], args: argparse.Namespace, walked: 
         print(f"cells: {len(cells)} total ({baselines(cells)} baselines, {refusals(cells)} refusals, {len(cells) - baselines(cells) - refusals(cells)} classes, "
               f"{sum(1 for c in cells if c.writes)} writes), none played; time: walk {walk_took:.1f}s")
     print(f"rules never refused: {len(unrefused)}")
+    for r in unrefused:
+        print(f"  {r}")
     print(f"declared scenes never reached: {len(missing)}")
     for m in missing:
         print(f"  {m}")

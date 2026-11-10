@@ -49,6 +49,17 @@ def test_run_plays_the_journeys_the_cells_and_the_input_classes(todo_app, tmp_pa
     assert "27 of 27 answers and 47 of 47 fields witnessed" in done.stdout
 
 
+def test_explore_names_each_rule_never_refused_under_the_count(todo_app, tmp_path: Path):
+    done = run_book(["explore", "services.api", "--no-stack", "--out", str(tmp_path / "out")], todo_app.port)
+    assert done.returncode == 0, done.stdout + done.stderr
+    lines = done.stdout.splitlines()
+    head = next(i for i, line in enumerate(lines) if line.startswith("rules never refused: "))
+    count = int(lines[head].rsplit(": ", 1)[1])
+    assert count > 0
+    assert all(line.startswith("  ") for line in lines[head + 1 : head + 1 + count])
+    assert lines[head + 1 + count].startswith("declared scenes never reached: ")
+
+
 def test_an_update_that_changes_nothing_turns_the_book_red(buggy_app, tmp_path: Path):
     done = run_book(["run", "services.api", "--no-stack", "--out", str(tmp_path / "out")], buggy_app.port)
     assert done.returncode == 1, done.stdout + done.stderr
