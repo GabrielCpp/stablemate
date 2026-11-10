@@ -72,3 +72,16 @@ def test_a_read_after_a_read_keeps_the_arrangement_a_write_after_it_ends():
     played = play((_axes("read one", "read two", "bump", "read three"),), surface, fresh)
     assert played.arrangements == 2
     assert fresh.made == 2
+
+
+def test_a_scene_whose_steps_are_generated_is_described_like_any_other() -> None:
+    def later(today: date):
+        yield "bump"
+        yield "bump"
+
+    def nothing(today: date):
+        yield from ()
+
+    assert Scene("twice", "bumped twice", later).describe(DAY) == "- **twice**: bumped twice. Reached by: bump; bump."
+    assert Scene("fresh", "untouched", nothing).describe(DAY) == "- **fresh**: untouched. Reached by: a fresh service, nothing done."
+    assert Scene("twice", "bumped twice", later).arrange(Counter(DAY)).rows() == (2,)

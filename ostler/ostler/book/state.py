@@ -19,7 +19,9 @@ S = TypeVar("S", bound=Model)
 class Scene:
     name: str
     when: str
-    reached_by: Callable[[date], tuple[object, ...]]
+    reached_by: Callable[[date], Iterable[object]]
+    """The steps from a fresh service, as a tuple, or as a generator where a
+    step is built from what the step before it was answered."""
 
     def arrange(self, model: S) -> S:
         for step in self.reached_by(model.today):
@@ -27,7 +29,7 @@ class Scene:
         return model
 
     def describe(self, today: date) -> str:
-        steps = self.reached_by(today)
+        steps = tuple(self.reached_by(today))
         path = "; ".join(str(step) for step in steps) if steps else "a fresh service, nothing done"
         return f"- **{self.name}**: {self.when}. Reached by: {path}."
 
