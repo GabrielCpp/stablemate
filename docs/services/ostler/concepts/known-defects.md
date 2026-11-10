@@ -12,7 +12,7 @@ A journey step on which a declared defect shows passes as `KNOWN` when the servi
 When the service answers what was meant, the defect is gone. The step fails with a note to delete its declaration, and the model takes the change the intended behaviour makes so the steps after it stay honest. A declared defect that no journey, cell or input met fails a full run under `Known defects never met`. A declared input divergence works the same way: an unmet `Diverges` fails the run.
 
 - code: ostler/ostler/book/model.py::Defect@96b792c83feb
-- code: ostler/ostler/book/runner.py::flawed@31302b4d5f25
+- code: ostler/ostler/book/runner.py::flawed@22dacbbc8178
 - code: ostler/ostler/book/runner.py::defect_answered@0c67eacc1991
 - code: ostler/ostler/book/defects.py::never_met@b3124c8bacfc
 - code: ostler/ostler/book/defects.py::section@504610991c82

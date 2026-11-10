@@ -26,7 +26,7 @@ An outcome that counts an account's whole history, such as a quota, a usage tota
 - rule: the backstage sets the row the service made when the service creates a companion row for every record, and never inserts a second one beside it
 - rule: a run on a shared environment changes the shared records it puts back under whoever else uses it, so the book's report lists them
 - code: ostler/ostler/book/cells.py::one@655a8b6469b4
-- code: ostler/ostler/book/http.py::real_id@e60779761034
+- code: ostler/ostler/book/http.py::real_id@156f188442d2
 - code: ostler/ostler/book/http.py::Id@6df9c1a622cc
 - code: ostler/ostler/book/httpsurface.py::HttpSurface@44aee6cc091e
 - code: ostler/ostler/book/backstage.py::Backstage@b9527ba87e23
