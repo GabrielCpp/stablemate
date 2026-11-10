@@ -76,7 +76,7 @@ Builds each endpoint, journey, rule, matrix and decision the book declares once 
 
 ### ostler-book-explore
 
-Prints the number of new state signatures at each depth, the cells in all as baselines, refusals and input classes, the declared scenes the walk never reached and the rules no cell refused. Writes `<out>/<service>-explore.md`, the walk, the failures with the path that reached each and the cells. Names a book that contradicts itself when a fixture or scene arranges a record the model refuses.
+Prints the number of new state signatures at each depth, the cells in all as baselines, refusals and input classes, the declared scenes the walk never reached and the rules no cell refused. The count of rules never refused is followed by each rule's name, one per line, as the scenes never reached are. Writes `<out>/<service>-explore.md`, the walk, the failures with the path that reached each and the cells. Names a book that contradicts itself when a fixture or scene arranges a record the model refuses.
 
 - usage: ostler book explore SERVICE [--depth N] [--only ENDPOINT,...] [--seed-only] [--out DIR] [--no-stack] [--env NAME] [--print-exec] — walks the model's state graph to a depth bound, then plays every state, action and input class it reached once against the service; exits 0 when every cell passes, 1 when a cell fails or the check of the book blocks, 3 when the place cannot be judged
 - flags:
@@ -94,7 +94,7 @@ Prints the number of new state signatures at each depth, the cells in all as bas
 - verify: stdout(matches="cells: 109 total")
 - fixture: [book todo scratch](fixtures/book-todo-scratch.md)
 - code: ostler/ostler/book/cli.py::cmd_explore@bab3c85eed93
-- code: ostler/ostler/book/cli.py::report_exploration@ffb1b7c42d66
+- code: ostler/ostler/book/cli.py::report_exploration@0cbd534d2455
 - code: ostler/ostler/book/exploration.py::seed@5e45b9984c09
 - detail: [Cells of a scene share an arrangement](concepts/cells-share-an-arrangement.md)
 - tests: ostler/tests/test_book_exploration.py
