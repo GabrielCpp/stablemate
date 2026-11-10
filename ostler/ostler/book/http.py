@@ -139,11 +139,18 @@ class Id(Shape):
     """The identifier of one record of the model. `kind` is the record class
     the model keeps, `of` the shape the id has on the wire. A model id of one
     kind is refused where another kind is typed. With `strangers` set, a value
-    the book never issued is read back as written, and the text says why."""
+    the book never issued is read back as written, and the text says why. With
+    `minted` set, the book supplies the value and the client sends a unique one
+    for it, and the text says why it must be unique in the environment."""
 
     kind: type
     of: Shape = Str(format="uuid")
     strangers: str = ""
+    minted: str = ""
+
+    def __post_init__(self) -> None:
+        if self.strangers and self.minted:
+            raise BookError(f"Id of {self.kind.__name__}: strangers and minted are both set; pick who makes the value")
 
     def check(self, value: object, where: str = "body") -> list[str]:
         return self.of.check(value, where)
@@ -578,10 +585,18 @@ def unknown_value(shape: Shape) -> str:
 
 def real_id(shape: Id, value: object, ids: Identities | None, where: str) -> str:
     """The id the app knows for the model id `value`. An id the book never
-    issued, a stranger, goes through as written."""
+    issued, a stranger, goes through as written. A minted id is made unique on
+    first use, the model's value and eight hex characters, and the same real
+    value goes out each time after."""
     text = str(value)
     if ids is None:
         return text
+    if shape.minted:
+        held = ids.real(shape.kind, text)
+        if held is None:
+            held = f"{text}-{uuid4().hex[:8]}"
+            ids.learn(shape.kind, text, held)
+        return held
     found = ids.real(shape.kind, text)
     if found is not None:
         return found

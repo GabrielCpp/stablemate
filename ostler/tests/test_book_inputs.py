@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from ostler.book import Answer, Diverges, Done, Endpoint, Enum, Field, Model, Object, Refusal, Service, Str
+from ostler.book import Answer, Diverges, Done, Endpoint, Enum, Field, Id, Model, Object, Refusal, Service, Str
 from ostler.book.inputs import InputClass, classes, judge
 
 from book_fakes import Quiet, no_stack
@@ -30,6 +30,21 @@ class Send(Endpoint):
     path = "/send"
     body = Object("Send", **FIELDS)
     answers = (Answer(200, None, "sent"),)
+
+
+class Team:
+    pass
+
+
+class SendTeam(Endpoint):
+    method = "POST"
+    path = "/teams"
+    body = Object("SendTeam", name=Field(Id(Team, Str(), minted="one cell owns it")))
+    answers = (Answer(200, None, "sent"),)
+
+
+class SendTypedTeam(SendTeam):
+    body = Object("SendTypedTeam", name=Field(Id(Team, Str(), strangers="a person chose it")))
 
 
 class SendTyped(Send):
@@ -78,3 +93,21 @@ def test_an_undeclared_divergence_with_no_default_refusal_fails():
     sent = judge(_service(), Send({"kind": "nobody"}), chosen, Plain(DAY), Listening(Done()))
     assert not sent.ok
     assert "declares no malformed refusal" in sent.note
+
+
+def _classes_of(endpoint: type[Endpoint]) -> set[str]:
+    return {c.kind for c in classes(endpoint({"name": "core"}), Plain(DAY), None)}
+
+
+def test_a_minted_id_gets_the_input_classes_of_plain_text():
+    plain = Object("SendPlain", name=Field(Str()))
+
+    class SendPlain(SendTeam):
+        body = plain
+
+    assert _classes_of(SendTeam) == _classes_of(SendPlain)
+
+
+def test_a_minted_id_gets_none_of_the_id_classes():
+    assert not {"unknown", "wrong kind", "another owner's"} & _classes_of(SendTeam)
+    assert "malformed" not in _classes_of(SendTeam)

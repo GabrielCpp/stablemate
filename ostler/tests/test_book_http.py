@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
-from ostler.book import Field, Int, List, Object, Str
-from ostler.book.http import Identities, canonical
+import pytest
+
+from ostler.book import BookError, Field, Id, Int, List, Object, Str
+from ostler.book.http import Identities, canonical, real_id
 
 
 @dataclass
@@ -74,3 +77,35 @@ def test_a_keyword_field_of_a_record_is_read_off_its_underscored_attribute():
     app = canonical(TRIP, {"from": "Oslo", "to": "Rome"}, app=True, ids=None, where="Trip")
     model = canonical(TRIP, Trip(from_="Oslo", to="Rome"), app=False, ids=None, where="Trip")
     assert app == model
+
+
+class Team:
+    pass
+
+
+MINTED = Id(Team, Str(), minted="one cell owns it")
+
+
+def test_a_minted_id_goes_out_as_the_models_value_and_a_suffix_that_stays():
+    ids = Identities()
+    first = real_id(MINTED, "core", ids, "Send")
+    assert first.startswith("core-")
+    assert len(first) == len("core-") + 8
+    assert real_id(MINTED, "core", ids, "Send") == first
+
+
+def test_a_minted_id_differs_between_two_clients():
+    one, other = Identities(), Identities()
+    assert real_id(MINTED, "core", one, "Send") != real_id(MINTED, "core", other, "Send")
+
+
+def test_an_answer_with_a_minted_id_reads_back_as_the_models_value():
+    ids = Identities()
+    sent = real_id(MINTED, "core", ids, "Send")
+    body = Object("Reply", team=Field(MINTED))
+    assert canonical(body, {"team": sent}, app=True, ids=ids, where="Reply") == canonical(body, SimpleNamespace(team="core"), app=False, ids=None, where="Reply")
+
+
+def test_an_id_made_by_two_people_is_refused():
+    with pytest.raises(BookError, match="pick who makes the value"):
+        Id(Team, Str(), strangers="a person chose it", minted="one cell owns it")

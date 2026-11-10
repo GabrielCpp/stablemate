@@ -128,6 +128,8 @@ def _wrong_type(shape: Any) -> Any:
 def field_classes(place: str, name: str, spec: Field, model: Model, ids: Identities | None, by: Actor | None = None,
                   current: Any = None) -> list[InputClass]:
     shape = spec.shape
+    if isinstance(shape, Id) and shape.minted:
+        return field_classes(place, name, dataclasses.replace(spec, shape=shape.of), model, ids, by, current)
     out: list[InputClass] = []
 
     def add(kind: str, value: Any, default: str = "", valid: bool = False) -> None:
@@ -168,6 +170,8 @@ def field_classes(place: str, name: str, spec: Field, model: Model, ids: Identit
 
 def _filler(spec: Field) -> Any:
     shape = spec.shape
+    if isinstance(shape, Id) and shape.minted:
+        return _filler(dataclasses.replace(spec, shape=shape.of))
     if isinstance(shape, Id):
         return unknown_value(shape)
     if isinstance(shape, Str):
