@@ -561,6 +561,30 @@ class Identities:
     def model_of(self, kind: type, real: str) -> str | None:
         return next((m for m, r in self.by_kind.get(kind, {}).items() if r == real), None)
 
+    def minted(self, kind: type, name: str, room: int | None = None) -> str:
+        """The unique value this run sends for the name the book wrote, made on
+        first use and kept. An empty name is sent as it is, so a blank stays a
+        blank. The made value is the name, a dash and eight hex characters;
+        where that would pass `room`, the bound the shape declares, the tail of
+        the name gives way instead, so a value at a bound stays at it and one
+        past it stays past it. A name held in another case gives the held
+        value in that case."""
+        if not name:
+            return name
+        held = self.real(kind, name)
+        if held is not None:
+            return held
+        for known, real in list(self.by_kind.get(kind, {}).items()):
+            recased = real.upper() if name == known.upper() else real.lower() if name == known.lower() else None
+            if recased is not None:
+                self.learn(kind, name, recased)
+                return recased
+        tail = uuid4().hex[:8]
+        fits = room is None or len(name) + len(tail) + 1 <= room
+        made = f"{name}-{tail}" if fits or len(name) <= len(tail) + 1 else f"{name[:-len(tail) - 1]}-{tail}"
+        self.learn(kind, name, made)
+        return made
+
     def spoken(self, text: str) -> str:
         """A message as the model says it: an id the app issued, quoted whole,
         reads as the model's id of the same record."""
@@ -586,17 +610,12 @@ def unknown_value(shape: Shape) -> str:
 def real_id(shape: Id, value: object, ids: Identities | None, where: str) -> str:
     """The id the app knows for the model id `value`. An id the book never
     issued, a stranger, goes through as written. A minted id is made unique on
-    first use, the model's value and eight hex characters, and the same real
-    value goes out each time after."""
+    first use and the same real value goes out each time after."""
     text = str(value)
     if ids is None:
         return text
     if shape.minted:
-        held = ids.real(shape.kind, text)
-        if held is None:
-            held = f"{text}-{uuid4().hex[:8]}"
-            ids.learn(shape.kind, text, held)
-        return held
+        return ids.minted(shape.kind, text, shape.of.max_len if isinstance(shape.of, Str) else None)
     found = ids.real(shape.kind, text)
     if found is not None:
         return found

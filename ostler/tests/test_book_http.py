@@ -109,3 +109,23 @@ def test_an_answer_with_a_minted_id_reads_back_as_the_models_value():
 def test_an_id_made_by_two_people_is_refused():
     with pytest.raises(BookError, match="pick who makes the value"):
         Id(Team, Str(), strangers="a person chose it", minted="one cell owns it")
+
+
+def test_a_blank_minted_value_is_sent_as_it_is():
+    assert real_id(MINTED, "", Identities(), "body.team") == ""
+
+
+def test_a_minted_value_at_a_length_bound_stays_at_it():
+    bounded = Id(Team, Str(max_len=20), minted="one cell owns it")
+    ids = Identities()
+    assert len(real_id(bounded, "x" * 20, ids, "body.team")) == 20
+    assert len(real_id(bounded, "y" * 21, ids, "body.team")) == 21
+    assert len(real_id(bounded, "desk", ids, "body.team")) == len("desk") + 9
+
+
+def test_a_minted_name_in_another_case_is_the_same_value_in_that_case():
+    ids = Identities()
+    made = real_id(MINTED, "Desk", ids, "body.team")
+    assert real_id(MINTED, "DESK", ids, "body.team") == made.upper()
+    assert real_id(MINTED, "desk", ids, "body.team") == made.lower()
+    assert ids.model_of(Team, made.upper()) == "DESK"
