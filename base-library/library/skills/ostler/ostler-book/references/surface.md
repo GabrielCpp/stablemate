@@ -86,6 +86,10 @@ Declare each body once in `endpoints/shapes.py` and reuse it.
     team only one cell uses): `minted="<why it must be unique>"`. The book writes a stable
     name, the runtime sends that name with a dash and eight hex characters, and every answer,
     step text and report shows the stable name.
+    A blank is sent blank and a value at a declared length bound stays at it, so the field keeps
+    its input classes. The same name in capitals or in lower case is the same value in that
+    case. A name is one record for the whole run: two journeys that each create one write two
+    names.
 - `Object(...).one_of("a", "b")` when the handler takes exactly one of two fields, and
   `.together("a", "b")` when it takes both or neither. The runtime sends the body with
   neither, with all, and with each one alone, and the model's rules judge each.
