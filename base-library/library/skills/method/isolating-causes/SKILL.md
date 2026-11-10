@@ -99,10 +99,13 @@ credential stays out of what you show.
 
 ## Phase 2: reproduce, then minimise
 
-Run the loop and watch it go red. Confirm three things:
+Run the loop and watch it go red. Confirm four things:
 
 - It produces the effect **the report described**, not a different one nearby. Wrong effect,
   wrong cause.
+- When the effect is a gap to a **reference**, such as a baseline run, a benchmark set or an
+  earlier figure, both sides hold the same kind of case and count each case once. A gap
+  measured against a reference of another kind is partly the difference in kind.
 - It reproduces across runs, or at a rate high enough to work against.
 - You have captured the exact effect (message, wrong value, timing, score), so a later phase
   can prove the cause it names is *this* effect's cause.
@@ -155,6 +158,16 @@ or a score, logs are usually the wrong instrument. Establish a baseline measurem
 the system's own wall-time breakdown, a timer, a profiler for in-process work, or the scorer
 the effect was reported in. Then bisect against that number. Measure first, change second.
 
+Read the baseline's **spread** before any change: run it unchanged over several inputs, or
+several times on one, and note how far the number moves with nothing changed. A delta inside
+that spread is no reading. Judge a change on the same inputs before and after, pair by pair,
+over enough pairs that the deltas agree in sign.
+
+The number that reports an effect seldom locates it. When it is read at the end of a chain of
+producers, read it again after each producer alone, on the same input, beside a measure that
+only one producer can move. The cause sits in the producer after which the number first
+departs from the reference.
+
 ## Phase 5: confirm the cause
 
 A hypothesis is confirmed when removing its cause turns the loop green and restoring the cause
@@ -162,10 +175,17 @@ turns it red again. Do both. A loop that went green once may have gone green for
 Then re-run the Phase 1 loop against the **original, un-minimised** scenario, and against every
 example when the effect showed on a set.
 
-**A change that leaves the loop red has refuted its hypothesis.** Revert it, cross the
-hypothesis off the Phase 3 list and take the next one. A second change stacked on the first
-tests two variables at once, and the loop can no longer say which one mattered. When the list is
-exhausted, return to Phase 3 with what the refutations showed and write a new list.
+**A change that leaves the loop red in the same way has refuted its hypothesis.** Revert it,
+cross the hypothesis off the Phase 3 list and take the next one. A second change stacked on the
+first tests two variables at once, and the loop can no longer say which one mattered. When the
+list is exhausted, return to Phase 3 with what the refutations showed and write a new list.
+
+**A change that makes the loop fail differently has reached the mechanism.** A new failure, or
+the same effect grown worse, is a finding to read before any revert. It often names a second
+place that holds the assumption the change just altered: a producer and the checks downstream
+of it agree on one rule, and changing the rule in one sets them against each other. List every
+place that holds the assumption, change them together as one variable, and let the loop judge
+that.
 
 Three refuted hypotheses on one effect is a stream of attempts. Judge the stream from
 outside before the fourth.
