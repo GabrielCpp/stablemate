@@ -4,6 +4,7 @@ each step to."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Callable, Iterable, cast
 
 from ostler.book.arrange import Arrange
@@ -217,7 +218,7 @@ def listed(step: Listed, model: Model, surface: Surface, baseline: tuple[object,
 
 
 def perform(step: object, request: object, model: Model, surface: Surface) -> StepResult:
-    model_outcome = model.perform(request)
+    model_outcome = spoken(surface, model.perform(request))
     reduced = trace(model)
     try:
         app_outcome = surface.perform(request)
@@ -263,6 +264,17 @@ class Landings:
         event gets three times the longest landing seen, so the cells behind a
         broken consumer fail in seconds each."""
         return max(3 * cls.longest, PATIENCE) if cls.missed else RETAKES
+
+
+def spoken(surface: Surface, outcome: Outcome) -> Outcome:
+    """A refusal as the two sides are compared. The app's message arrives with
+    each id the app issued read as the model's id. The model's message is read
+    the same way here, so a message that quotes an id the caller typed as the
+    app knows it compares equal on both sides."""
+    ids = getattr(getattr(surface, "client", None), "ids", None)
+    if isinstance(outcome, Refusal) and ids is not None:
+        return replace(outcome, message=ids.spoken(outcome.message))
+    return outcome
 
 
 def landed(surface: Surface, wanted: tuple[object, ...]) -> tuple[tuple[object, ...], int]:
@@ -313,7 +325,7 @@ def flawed(step: object, model_outcome: Flawed, app_outcome: Outcome, model: Mod
         note = "rows differ after the defect: model " + str([str(r) for r in model_rows]) + " app " + str([str(r) for r in app_rows])
         return StepResult(step, model_outcome, app_outcome, model_rows, app_rows, False, note, reduced)
     model_rows, app_rows = listing(surface, model), surface.rows()
-    if agree(model_outcome.meant, app_outcome):
+    if agree(spoken(surface, model_outcome.meant), app_outcome):
         model.adopt(model_outcome)
         model_rows = listing(surface, model)
         if model_rows == app_rows:

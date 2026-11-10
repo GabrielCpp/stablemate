@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 
-from ostler.book import Answer, Arrange, Endpoint, OffShape
-from ostler.book.runner import PATIENCE, Landings, landed, perform
+from ostler.book import Answer, Arrange, Endpoint, OffShape, Refusal
+from ostler.book.http import Identities
+from ostler.book.runner import PATIENCE, Landings, landed, perform, spoken
 
 from book_fakes import Counter as Tally
 from book_fakes import Quiet
@@ -97,3 +99,20 @@ def test_a_step_that_lands_after_a_miss_is_still_read_within_the_lower_bound():
     Landings.missed = True
     surface = Late(lands_on=7)
     assert landed(surface, (1,)) == ((1,), 7)
+
+
+
+def test_a_model_refusal_that_quotes_an_app_id_is_read_under_the_model_id() -> None:
+    class Asset:
+        pass
+
+    class Desk(Quiet):
+        def __init__(self) -> None:
+            self.client = SimpleNamespace(ids=Identities())
+
+    surface = Desk()
+    surface.client.ids.learn(Asset, "asset-1", "AS-15")
+    told = spoken(surface, Refusal("user AS-15 not found", 404))
+    assert told == Refusal("user asset-1 not found", 404)
+    assert spoken(surface, Refusal("user AS-150 not found", 404)) == Refusal("user AS-150 not found", 404)
+    assert spoken(Quiet(), Refusal("user AS-15 not found", 404)) == Refusal("user AS-15 not found", 404)
