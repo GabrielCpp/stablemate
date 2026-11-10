@@ -24,6 +24,11 @@ preceded by one question: which record already paid for answers it. A record tha
 cited, not re-run. One that does not is named as missing, and the run's cost is written
 before it starts.
 
+Every death line this skill writes to `TRIED.md` names what read the result: the gate, or the
+run with its measure and its cases. A line already there is as dead as what read it. A
+candidate killed by a measure, or on cases, that the caller has since replaced returns to the
+field.
+
 ## 1. Frame the goal
 
 A **framing** is a reading of the goal: what the thing under study does, on which input, to

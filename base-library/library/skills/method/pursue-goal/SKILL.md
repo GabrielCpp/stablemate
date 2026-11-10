@@ -17,7 +17,8 @@ with the dimensions in hand.
 The loop works in a directory per goal, `.goal/<slug>/`, under the directory the operator
 keeps for such records and outside any tracked tree: `GOAL.md` holds steps 1 and 2 and
 every reading of step 7, `PROFILE.md` holds step 3, `TRACKS.md` holds steps 5 and 6, and
-`TRIED.md` holds one plain-words line per track or fix that ended, with its result and why.
+`TRIED.md` holds one plain-words line per track or fix that ended, with its result, why, and
+what read the result: the measure and the cases it was read on.
 A resumed goal starts by reading all four. Nothing paid runs before step 6: every reading
 up to there comes from the record.
 
@@ -115,7 +116,8 @@ with the work that does not depend on the answer done.
 One track is in hand at a time. A second one started before the first was read answers for
 neither.
 
-Done when the track's `TRIED.md` line is written, with the result and why.
+Done when the track's `TRIED.md` line is written, with the result, why, and the measure and
+cases that read it.
 
 ## 7. Measure again
 
@@ -137,7 +139,10 @@ with its evidence, and one line saying where the goal stands.
 
 ## 8. Again
 
-Rewrite the dimensions and the profile with what the reading taught, and return to step 4.
+Rewrite the dimensions and the profile with what the reading taught. Then reread `TRIED.md`.
+A line is as dead as the measure that killed it. When the cause answer or the measure has
+changed since a line was written, a line whose verdict rested on the old one returns to
+`TRACKS.md` with a check on the new one. Return to step 4.
 The loop ends when the operator says the goal is met, never when a track clears. Before a
 session or a tranche ends, write where the goal stands in one line, so the next session
 starts from the reading and not from the last track.
@@ -153,6 +158,6 @@ Each line checkable from the directory alone:
   answer.
 - `TRACKS.md` ranks every track by the dimension it protects, each with its check.
 - `TRIED.md` has a line for every track or fix that ended, in words a reader outside the
-  project follows.
+  project follows, each naming the measure and the cases that read its result.
 - No spend went above the ceiling, and every spend above the standing authorization carries
   the operator's answer.
