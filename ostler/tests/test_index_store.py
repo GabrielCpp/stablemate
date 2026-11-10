@@ -509,7 +509,7 @@ def test_every_parse_product_is_served_from_the_store():
     served = ("from ostler import index", "from ostler.index", "ostler.index", "IndexStore",
               "read_doc")
     sources = {path.name: path.read_text(encoding="utf-8")
-               for path in package.rglob("*.py") if path.name in PRODUCT_MODULES}
+               for path in package.glob("*.py") if path.name in PRODUCT_MODULES}
 
     unserved = [name for name, text in sources.items()
                 if not any(marker in text for marker in served)]

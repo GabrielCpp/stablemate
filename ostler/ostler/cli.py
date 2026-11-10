@@ -30,6 +30,7 @@ from ostler import stamp as stamp_mod
 from ostler import behavior_cli
 from ostler.environments import cli as env_cli
 from ostler import book_reach
+from ostler.book import cli as book_cli
 from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.model import find_root, load
 
@@ -40,7 +41,7 @@ _TYPES = (
 )
 
 
-_INDEXLESS_COMMANDS = frozenset({"checks", "cache"})
+_INDEXLESS_COMMANDS = frozenset({"checks", "cache", "book"})
 
 _DEFAULT_MAX_AGE_DAYS = index_mod.DEFAULT_MAX_AGE_S / (24 * 60 * 60)
 
@@ -87,6 +88,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print ids in full (default for --json)")
     sub = p.add_subparsers(dest="command", required=True)
     env_cli.add_parser(sub)
+
+    sub.add_parser(
+        "book", parents=[book_cli.build_parser(embedded=True)], add_help=False,
+        help="run a service's book: check, run, explore, walk, search, explain, plan",
+    )
 
     d = sub.add_parser("doctor", help="referential-integrity check")
     d.add_argument("--epic", help="restrict checks to one epic (name or folder)")
@@ -2064,13 +2070,40 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
 
+def _book_position(argv: list[str]) -> int | None:
+    """Where the `book` command sits among the global options, so everything after it is the runtime's."""
+    at = 0
+    while at < len(argv):
+        word = argv[at]
+        if word in ("-C", "--chdir", "--index-dir"):
+            at += 2
+        elif word.startswith("-"):
+            at += 1
+        else:
+            return at if word == "book" else None
+    return None
+
+
+def _cmd_book(cwd: Path | None, book_args: list[str]) -> int:
+    """Hand the arguments to the book runtime from the directory that holds `services/`."""
+    if cwd is not None:
+        os.chdir(cwd)
+    sys.path.insert(0, os.getcwd())
+    return book_cli.main(book_args)
+
+
 def _main(argv: list[str] | None) -> int:
-    args = _build_parser().parse_args(argv)
+    given = sys.argv[1:] if argv is None else argv
+    at = _book_position(given)
+    book_args = given[at + 1:] if at is not None else []
+    args = _build_parser().parse_args(given[:at + 1] if at is not None else given)
     cwd = Path(args.chdir) if args.chdir else None
     if args.command == "checks":
         return _cmd_checks(args)
     if args.command == "cache":
         return _cmd_cache(args)
+    if args.command == "book":
+        return _cmd_book(cwd, book_args)
     if args.command == "env":
         return env_cli.run(args, find_root(cwd if cwd is not None else Path.cwd()))
     if args.command == "doctor" and args.verify_index:
