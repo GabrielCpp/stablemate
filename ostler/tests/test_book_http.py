@@ -113,6 +113,7 @@ def test_an_id_made_by_two_people_is_refused():
 
 def test_a_blank_minted_value_is_sent_as_it_is():
     assert real_id(MINTED, "", Identities(), "body.team") == ""
+    assert real_id(MINTED, "   ", Identities(), "body.team") == "   "
 
 
 def test_a_minted_value_at_a_length_bound_stays_at_it():

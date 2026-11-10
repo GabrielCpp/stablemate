@@ -563,13 +563,13 @@ class Identities:
 
     def minted(self, kind: type, name: str, room: int | None = None) -> str:
         """The unique value this run sends for the name the book wrote, made on
-        first use and kept. An empty name is sent as it is, so a blank stays a
-        blank. The made value is the name, a dash and eight hex characters;
+        first use and kept. An empty name, or one of spaces alone, is sent as it
+        is, so a blank stays a blank. The made value is the name, a dash and eight hex characters;
         where that would pass `room`, the bound the shape declares, the tail of
         the name gives way instead, so a value at a bound stays at it and one
         past it stays past it. A name held in another case gives the held
         value in that case."""
-        if not name:
+        if not name.strip():
             return name
         held = self.real(kind, name)
         if held is not None:
