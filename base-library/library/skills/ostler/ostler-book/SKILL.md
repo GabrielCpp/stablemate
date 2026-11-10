@@ -74,8 +74,8 @@ Do these in order. Each ends on a check you can run.
    [references/matrices-and-journeys.md](references/matrices-and-journeys.md).
 6. **Give it fixtures and a journey.** A fixture for each state the route needs, registered
    in `__all__`. At least one journey per batch that a user would recognise as a story. A
-   later step that names a record an earlier step created takes that step's fixture, or a
-   fixture holding it as a field: the id the app answered travels with the object.
+   later step that names a record an earlier step created takes that step's fixture, never its
+   id, or a fixture holding it as a field: the id the app answered travels with the object.
    `Fixture.of(record)`, path and query fixtures and `examples` are in
    [references/matrices-and-journeys.md](references/matrices-and-journeys.md#fixtures).
 7. **Replay it and settle every finding.** The targeted replay of your endpoints, then the
@@ -126,8 +126,11 @@ already busy:
 - **A cell makes what it acts on.** A scene's steps create the records the column aims at.
   Ids come from the app's answers; a fixture learns its id from the `creates=` answer. Never
   write an id the app issues.
-- **A list is read as containing.** The runtime compares a list only on the entries the
-  book made. Never assume a list is empty, and never assert a count of everything listed.
+- **A list is read as containing.** The runtime compares a list only on the entries whose
+  ids the book learned. An entry whose id the book never learned drops out of the comparison,
+  and an entry whose id is read as written (`strangers`) stays in it. So the service's own
+  records get learned ids, the model keeps no seeded record a call can make, and a cell reads
+  only what it made. Assume no list is empty, and assert no count of everything listed.
 - **An outcome that counts the account's whole history needs `fresh=`.** A quota, a usage
   total, a "first time" banner. Declare the actor with `fresh="<why>"` and it gets a new
   account per cell, so the count starts at zero and the book asserts it. A field made opaque
@@ -138,8 +141,12 @@ already busy:
   standing actor, so the walk never plays it on one. Every other actor is a standing account.
 - **An account the app must not list**, such as a fresh member that would show in a list of
   recipients under a name the book cannot know, is a cast member with no user record.
-- **A value the caller types and the book never issued** is `Id(kind, strangers="<why>")`:
-  the runtime reads it back as written instead of as an unknown id.
+- **`restore()` leaves every record the run did not make as it found it.** It retires,
+  deletes, cancels and edits none of them, whatever a list shows, because they belong to
+  whoever shares the environment. The two exceptions are worded in
+  [references/grpc.md](references/grpc.md): a shared record keyed by a name is put back, and a
+  record that keeps acting is ended, each limited to records the run made or the named shared
+  ones.
 - **An order the app does not fix** is `List(shape, unordered="<why>")`, the why naming the
   tie the app leaves open.
 - **Nothing tears down.** The backstage arranges; it has no wipe, sweep or delete. A record

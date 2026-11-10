@@ -30,7 +30,10 @@ MATRICES = (
 
 - `Scene(name, when, reached_by)`. `when` says how a reader tells the scene apart.
   `reached_by(today)` returns the steps that bring the app there from nothing, using the
-  standing actors. The steps create every record the scene needs.
+  standing actors. The steps create every record the scene needs. A step that needs what an
+  earlier step's answer issued names that step's fixture, never its id. Where a step must
+  read an id, `reached_by` is a generator that yields each step, so each step is built after
+  the one before it played.
 - An action is `model -> call`. A helper such as `_on_chore` finds the record in the model
   and builds the call on `Fixture.of(record)`, or returns `Impossible("<why>")` where the pair
   cannot occur.

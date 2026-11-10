@@ -71,13 +71,21 @@ Declare each body once in `endpoints/shapes.py` and reuse it.
   field empty. A placeholder value fails every row the app leaves empty.
 - `Str(format=..., max_len=...)`, `Int()`, `Num()`, `Bool()`, `Enum(values)`, `Bytes()`,
   `Map(of)`, `List(of, unordered="")`.
-- `Id(kind, of=Str(format="uuid"), strangers="")`: an id of a record kind. The runtime maps
-  the app's ids to the model's. `of` is the id's own shape: `Str(format="uuid")`,
+- `Id(kind, of=Str(format="uuid"), strangers="", minted="")`: an id of a record kind. The
+  runtime maps the app's ids to the model's. `of` is the id's own shape: `Str(format="uuid")`,
   `Str(format="hex32")`, `Str(format="ulid")`, or a plain `Str()` when the app checks no
   form. Give the form the handler checks: the runtime sends one character short, one too
   many and one outside the alphabet, and the model's refusal for a malformed id judges each.
-  `strangers="<why>"` makes the runtime read back a value the book never issued as written,
-  for a value the caller types rather than one the app issued.
+  Who makes the id decides which form it takes, and one `Id` names one maker:
+  - The service issues it, in any form (a uuid, `AS-15`): `Id(Record, <its wire shape>)`, and
+    the fixture learns it from the answer that `creates=` names.
+  - A person chose it, or another service issued it and this book only types it (a handle, a
+    team someone named, another service's ticket): `strangers="<why>"` makes the runtime read
+    back a value the book never issued as written.
+  - The value must be unique in the environment and the book supplies it (a tag, an email, a
+    team only one cell uses): `minted="<why it must be unique>"`. The book writes a stable
+    name, the runtime sends that name with a dash and eight hex characters, and every answer,
+    step text and report shows the stable name.
 - `Object(...).one_of("a", "b")` when the handler takes exactly one of two fields, and
   `.together("a", "b")` when it takes both or neither. The runtime sends the body with
   neither, with all, and with each one alone, and the model's rules judge each.

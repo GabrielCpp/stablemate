@@ -49,8 +49,8 @@ name.
   `Upsert(policy: Terms)`, where `Terms` is a dataclass with the fields of `Policy`. The
   runtime packs it by the shape the body declares.
 - **A field whose name is a Python keyword takes an underscore**: `from` is written `from_`
-  in the fixture, and `**{"from": Field(...)}` in the `Object`. The wire and the report say
-  `from`.
+  in the fixture and in a record class of the model, and `**{"from": Field(...)}` in the
+  `Object`. The wire and the report say `from`.
 - **A field the caller may leave out is `required=False`**, with what leaving it out means in
   `does=`. The service reads a field left out as its zero value, so "left out" and "sent
   empty" are one case.
@@ -131,8 +131,9 @@ a record, so two rules replace "a cell makes what it acts on" for these records 
   seeded records, read from the app's seed source.
 - **The surface puts them back before each cell.** The service's surface subclasses the
   shared one and its `restore()` reads the records through the product's own calls, as an
-  account allowed to edit them, then removes what the seed did not make and writes back what
-  differs. It never writes to the store. Say in the docstring which calls it uses.
+  account allowed to edit them, then writes back what differs among the named shared
+  records. It never writes to the store and leaves every other record as it found it. Say in
+  the docstring which calls it uses.
 
 An id that is a name, such as a team id that is the team's name in lower case, is
 `Id(Record, Str(), "<why it is read as written>")`.
@@ -176,16 +177,16 @@ reads until it has landed.
   that quotes the id is compared under the model's id.
 - **A cell asks only about what it made.** A list or a count over a team, a queue or a day
   holds what other cells and other people made. Give the cell's record a scope only it has,
-  such as a team whose name the surface generates and learns as an id, and ask within it. A
+  such as a team whose id is `minted`, and ask within it. A
   column that cannot be scoped in a scene is `Impossible("<why>")`.
 - **Read only what a cell made.** Once an outside event makes the record, the model keeps no
   seeded one. A seeded record has aged since the seed: its minutes, its targets and its flags
   drift, and a field left opaque for the seeded ones is unchecked for every record. With only
   the cell's own records, a timer's target and its warned and breached flags are compared.
   The health journey makes one too, so a bus that carries nothing reads as "could not judge".
-- **A scope's name is generated once.** Journeys share a model, so two tickets handed to the
-  model's team `desk` are in one team. The surface asks `self.client.ids.real(TeamRecord, name)`
-  before it generates a name.
+- **A scope's name is minted once.** Journeys share a model, so two tickets handed to the
+  model's team `desk` are in one team: the runtime sends one generated name for `desk` for as
+  long as the client lives.
 - **A record that keeps acting is ended.** An open ticket's timer breaches hours later and
   pages a team. `restore()` and `stop()` end what the last cell opened, through the other
   service's own call. Say so in the docstring and list it in the report.
