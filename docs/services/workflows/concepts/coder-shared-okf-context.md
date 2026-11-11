@@ -11,7 +11,7 @@ when all packet files exist, their bytes match the digests the stamp recorded, a
 fingerprint still matches the repository state and the arguments that shaped the build. Validation independently checks the packet and cannot report
 `passed` when the build that produced it was invalid.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::__all__` @a8cbd64f2928
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::__all__` @8ebc0987096f
 - rule: the QA lane owns the packet's scope. The QA turn reads the packet through
   `ostler qa context-show` and never runs `ostler qa context --base`, because a packet built
   from a new base drops the story scope and charges the story with every other story's
@@ -29,7 +29,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - required: true
 - semantics: names the three files that must all exist before a memo can be reused
 - verify: count(subject="OKF packet files", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::PACKET_FILES` @a8cbd64f2928
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::PACKET_FILES` @8ebc0987096f
 
 ### STAMP_FILE
 - type: `str`
@@ -37,7 +37,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - required: true
 - semantics: names the JSON stamp recording the packet fingerprint, each packet file's SHA-256, status, notes, and raw Ostler result
 - verify: count(subject="OKF packet stamp filename", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::STAMP_FILE` @a8cbd64f2928
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::STAMP_FILE` @8ebc0987096f
 
 ## Methods
 
@@ -53,7 +53,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - verify: json_path(path="$.signature", matches="^[0-9a-f]{64}$")
 - returns: `None` when Git cannot answer the requested repository query
 - verify: absent(subject="worktree signature after Git query failure")
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::worktree_signature` @a8cbd64f2928
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::worktree_signature` @5b983534a0af
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_editing_a_tracked_file_rebuilds`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_brand_new_untracked_file_rebuilds`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_committing_rebuilds`
@@ -66,7 +66,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - verify: count(subject="memo fingerprint inputs", equals=2)
 - returns: a SHA-256 key for a non-None signature and its arguments
 - verify: json_path(path="$.fingerprint", matches="^[0-9a-f]{64}$")
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::fingerprint` @a8cbd64f2928
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::fingerprint` @90389beb1ed1
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_the_stamp_records_the_key_the_next_visit_recomputes`
 
 ### recall
@@ -79,7 +79,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - verify: absent(subject="OKF memo over a rewritten packet")
 - returns: the recorded status, notes, and Ostler payload when the complete stamp matches
 - verify: json_path(path="$.status", matches="passed|invalid")
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::recall` @a8cbd64f2928
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::recall` @69c5bf567c40
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_an_unreadable_stamp_rebuilds_rather_than_guessing`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_missing_packet_file_rebuilds_even_with_a_matching_stamp`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_packet_rewritten_after_the_build_rebuilds_even_with_a_matching_stamp`
@@ -90,7 +90,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - verify: persists(subject="passing OKF memo stamp")
 - does: leaves no stamp when the key is absent or the result status is not `passed`
 - verify: absent(subject="failed OKF memo stamp")
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::remember` @a8cbd64f2928
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::remember` @fcc742e58541
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_failed_build_is_not_memoized`
 
 ### build_okf_context
@@ -115,7 +115,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - verify: count(subject="local-source OKF context calls", equals=1)
 - returns: `passed` when Ostler reports success, otherwise `invalid`, with diagnostic notes and raw payload
 - verify: json_path(path="$.status", matches="passed|invalid")
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::build_okf_context` @a8cbd64f2928
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::build_okf_context` @ec81375afe7d
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_repeat_visit_reuses_the_packet_byte_for_byte`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_different_spec_dir_does_not_read_the_other_ones_memo`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_multi_repository_context_is_grouped_and_invalidated_by_source_edits`
@@ -132,5 +132,5 @@ fingerprint still matches the repository state and the arguments that shaped the
 - verify: json_path(path="$.status", equals="passed")
 - returns: `invalid` when Ostler validation fails or the build status is not `passed`
 - verify: json_path(path="$.status", equals="invalid")
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::validate_okf_context` @a8cbd64f2928
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::validate_okf_context` @27f3460af5d4
 - tests: `workflows/tests/coder/docs/test_flow.py::test_sources_inside_the_docs_worktree_take_the_local_route`
