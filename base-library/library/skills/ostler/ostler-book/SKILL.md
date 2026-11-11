@@ -48,6 +48,9 @@ A web app, driven through a browser, is written with [references/screens.md](ref
 open: it covers `Screen`, components found by role and accessible name, `Interaction`,
 `PageSurface`, and how the run judges a page.
 
+A command-line tool is written with [references/commands.md](references/commands.md) open: it covers
+`Command`, the argv template, exits, the sandbox, the file watch and what the run compares.
+
 ## Adding a route
 
 Do these in order. Each ends on a check you can run.
