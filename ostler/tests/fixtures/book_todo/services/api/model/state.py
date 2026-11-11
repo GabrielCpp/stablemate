@@ -26,7 +26,7 @@ class TodoApp(State):
     def row(self, entity: object) -> Row:
         todo = cast(TodoRecord, entity)
         return Row(todo.id, todo.title, todo.description, todo.due_on.isoformat() if todo.due_on else None, todo.assignee,
-                   todo.status(self.today))
+                   todo.status(self.today), todo.remind_at, todo.remind_day.isoformat() if todo.remind_day else None)
 
 
 class StoreAction(Action[A, TodoApp], Generic[A]):

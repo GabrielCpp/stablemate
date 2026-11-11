@@ -19,7 +19,8 @@ def record(a: Todo) -> TodoRecord:
     """The record the service keeps for the todo a client sent; the id is already set."""
     assert a.id is not None
     due = rules.as_date(a.due_on) if a.due_on is not None else None
-    return TodoRecord(a.id, (a.title or "").strip(), a.description, due, a.assignee)
+    day = date.fromisoformat(a.remind_at[:10]) if a.remind_at is not None else None
+    return TodoRecord(a.id, (a.title or "").strip(), a.description, due, a.assignee, a.remind_at, day)
 
 
 def matches(q: Query, today: date):

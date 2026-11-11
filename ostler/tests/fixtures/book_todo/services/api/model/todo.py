@@ -17,6 +17,8 @@ class TodoRecord:
     description: str | None
     due_on: date | None
     assignee: str | None
+    remind_at: str | None = None
+    remind_day: date | None = None
 
     def status(self, today: date) -> str:
         if self.due_on is None:
@@ -47,6 +49,8 @@ class Row:
     due_on: str | None
     assignee: str | None
     status: str
+    remind_at: str | None = None
+    remind_day: str | None = None
 
     def __str__(self) -> str:
         bits = [self.title, self.status]

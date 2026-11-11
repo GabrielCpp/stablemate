@@ -20,7 +20,7 @@ import urllib.parse
 import urllib.request
 from uuid import uuid4
 from dataclasses import dataclass, field, is_dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Callable, ClassVar, Iterable, Mapping, cast
 
 from ostler.book.cast import KEEP, SOLE, Actor
@@ -281,6 +281,15 @@ class Field:
     does: str = ""
     reads: str | None = None
     opaque: str = ""
+    ignores: tuple[str, ...] = ()
+    why: str = ""
+
+    def __post_init__(self) -> None:
+        unknown = [d for d in self.ignores if d not in DIMENSIONS]
+        if unknown:
+            raise BookError(f"Field ignores {unknown}: the dimensions are {list(DIMENSIONS)}")
+        if self.ignores and not self.why.strip():
+            raise BookError(f"Field ignores {list(self.ignores)}: say why the product is indifferent to it")
 
     def describe(self) -> str:
         bits = [self.shape.describe()]
@@ -295,6 +304,8 @@ class Field:
         if self.opaque:
             compared = "not compared" if self.required and not self.nullable else "only whether it is set is compared"
             bits.append(f"({compared}: {self.opaque})")
+        if self.ignores:
+            bits.append(f"(indifferent to {', '.join(self.ignores)}: {self.why})")
         return " ".join(bits)
 
 
@@ -393,6 +404,74 @@ class List(Shape):
 
     def describe(self) -> str:
         return f"[{self.of.describe()}]" + (f" (any order: {self.unordered})" if self.unordered else "")
+
+
+DIMENSIONS = ("time of day", "offset", "surrounding spaces", "case", "trailing zeros", "order", "duplicate")
+
+
+def _written_day(current: object, today: date) -> str:
+    if isinstance(current, str):
+        try:
+            return date.fromisoformat(current[:10]).isoformat()
+        except ValueError:
+            pass
+    return (today + timedelta(days=2)).isoformat()
+
+
+def _str_twins(shape: Str, current: object, today: date) -> list[tuple[str, object, object]]:
+    if shape.format == "date-time":
+        day = _written_day(current, today)
+        return [("time of day", f"{day}T00:30:00+00:00", f"{day}T23:30:00+00:00"),
+                ("offset", f"{day}T12:00:00+14:00", f"{day}T12:00:00-12:00")]
+    if shape.format is not None and (shape.format in FORMS or shape.format == "date"):
+        return []
+    text = current.strip() if isinstance(current, str) and current.strip() else "sample"
+    out: list[tuple[str, object, object]] = [("surrounding spaces", text, f"  {text}  ")]
+    if text.lower() != text.upper():
+        out.append(("case", text.lower(), text.upper()))
+    return out
+
+
+def _num_twins(shape: Num, current: object, today: date) -> list[tuple[str, object, object]]:
+    if shape.text:
+        plain = str(current) if isinstance(current, str) and "." not in current else "1"
+        return [("trailing zeros", plain, f"{plain}.0"), ("trailing zeros", plain, f"{plain}.000")]
+    whole = current if isinstance(current, int) and not isinstance(current, bool) else 1
+    return [("trailing zeros", whole, float(whole))]
+
+
+def _list_twins(shape: List, current: object, today: date) -> list[tuple[str, object, object]]:
+    if not isinstance(current, list) or len(current) < 2:
+        return []
+    items = cast("list[object]", current)
+    out: list[tuple[str, object, object]] = [("order", items, items[::-1])]
+    if not isinstance(shape.of, Id):
+        out.append(("duplicate", items, [*items, items[0]]))
+    return out
+
+
+TWINS: dict[type, Callable[..., list[tuple[str, object, object]]]] = {Str: _str_twins, Num: _num_twins, List: _list_twins}
+
+
+def twins(shape: Shape, current: object, today: date) -> list[tuple[str, object, object]]:
+    """Pairs of valid values that differ along one dimension the wire type
+    carries: the dimension, the first value, the second. `current` is the value
+    the call being varied holds, if any; the pair keeps the date it reads."""
+    make = TWINS.get(type(shape))
+    pairs = make(shape, current, today) if make is not None else []
+    return [(d, a, b) for d, a, b in pairs if json.dumps(a, default=str) != json.dumps(b, default=str) and not shape.check(a) and not shape.check(b)]
+
+
+def blind(shape: Shape | None, value: Any) -> Any:
+    """An answer in the compared form with every id the shape types as an Id
+    replaced by a placeholder, so two records made apart compare alike."""
+    if isinstance(shape, Id):
+        return None if value is None else "<id>"
+    if isinstance(shape, List) and isinstance(value, (list, tuple)):
+        return tuple(blind(shape.of, item) for item in cast("Iterable[Any]", value))
+    if isinstance(shape, Object) and isinstance(value, dict):
+        return {k: blind(shape.fields[k].shape, v) if k in shape.fields else v for k, v in cast("dict[str, Any]", value).items()}
+    return value
 
 
 @dataclass(frozen=True)

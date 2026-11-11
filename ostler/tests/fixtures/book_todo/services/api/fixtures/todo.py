@@ -21,6 +21,7 @@ class Todo(Fixture):
     description: str | None = None
     due_on: date | str | None = None
     assignee: str | None = None
+    remind_at: str | None = None
     id: str | None = None
 
     def __str__(self) -> str:
@@ -41,6 +42,10 @@ def past_due(today: date, days: int = 1, **fields: Any) -> Todo:
 
 def assigned(who: str, **fields: Any) -> Todo:
     return todo(assignee=who, **fields)
+
+
+def reminded(at: str, **fields: Any) -> Todo:
+    return todo(remind_at=at, **fields)
 
 
 def described(text: str, **fields: Any) -> Todo:

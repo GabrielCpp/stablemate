@@ -45,8 +45,8 @@ def test_run_plays_the_journeys_the_cells_and_the_input_classes(todo_app, tmp_pa
     assert done.returncode == 0, done.stdout + done.stderr
     assert "5 pass, 0 known defects, 0 fail" in done.stdout
     assert "cells: 38 played on 24 arrangements, 8 impossible, 0 fail" in done.stdout
-    assert "inputs: 47 played, 5 diverge as declared, 0 fail" in done.stdout
-    assert "27 of 27 answers and 47 of 47 fields witnessed" in done.stdout
+    assert "inputs: 49 played, 5 diverge as declared, 0 fail" in done.stdout
+    assert "27 of 27 answers and 55 of 55 fields witnessed" in done.stdout
 
 
 def test_explore_names_each_rule_never_refused_under_the_count(todo_app, tmp_path: Path):

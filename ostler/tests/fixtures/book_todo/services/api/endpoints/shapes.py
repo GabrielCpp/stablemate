@@ -13,6 +13,8 @@ TODO = Object(
     assignee=Field(Enum(USERS), nullable=True),
     status=Field(Enum(STATUSES), does="read off due_on against the service's today"),
     created_at=Field(Str(format="date-time"), opaque="the service stamps its own clock and the model keeps no time of day"),
+    remind_at=Field(Str(format="date-time"), nullable=True, does="echoed as written"),
+    remind_day=Field(Str(format="date"), nullable=True, does="the day of the reminder, read off the date written in remind_at"),
 )
 
 TODO_INPUT = Object(
@@ -22,6 +24,7 @@ TODO_INPUT = Object(
     due_on=Field(Str(format="date"), required=False, nullable=True,
                  does="today or later; on an update the stored day may stay as it is; absent or null clears"),
     assignee=Field(Enum(USERS), required=False, nullable=True, does="absent or null clears"),
+    remind_at=Field(Str(format="date-time"), required=False, nullable=True, does="an RFC 3339 date-time with an offset; absent or null clears"),
 )
 
 ERROR = Object("Error", error=Field(Str(), does="the reason, as a user reads it"))

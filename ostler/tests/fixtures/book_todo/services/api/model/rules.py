@@ -3,7 +3,7 @@ service sends, word for word. A rule reads the request (`a`) and the state (`s`)
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from ostler.book import Actor, Rule
 
@@ -28,6 +28,15 @@ def as_date(value: date | str) -> date:
     return value if isinstance(value, date) else date.fromisoformat(value)
 
 
+def is_date_time(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).tzinfo is not None
+    except ValueError:
+        return False
+
+
 def _due_moved_into_the_past(a: Todo, s: TodoApp, by: Actor | None) -> bool:
     due = parse_date(a.due_on) if a.due_on is not None else None
     if due is None or due >= s.today:
@@ -43,9 +52,12 @@ description_too_long = Rule[Todo, TodoApp]("Description is too long",
 due_must_be_a_date = Rule[Todo, TodoApp]("Due date must be a date", lambda a, s, by: a.due_on is not None and parse_date(a.due_on) is None)
 due_not_in_the_past = Rule[Todo, TodoApp]("Due date cannot be in the past", _due_moved_into_the_past,
                                          why="A chore due yesterday would show as overdue the moment it is written, so the app refuses it; a date already past is kept only when it is left unchanged.")
+reminder_must_be_a_date_time = Rule[Todo, TodoApp]("Reminder must be a date-time",
+                                                   lambda a, s, by: a.remind_at is not None and not is_date_time(a.remind_at))
 no_such_user = Rule[Todo, TodoApp]("No such user", lambda a, s, by: a.assignee is not None and a.assignee not in USERS)
 not_found = Rule[Todo, TodoApp]("Not found", lambda a, s, by: a.id not in s.todos, 404)
 unknown_status = Rule[Query, TodoApp]("Unknown status", lambda a, s, by: a.status is not None and a.status not in STATUSES)
 clock_must_be_a_date = Rule[Clock, TodoApp]("Due date must be a date", lambda a, s, by: parse_date(a.today) is None)
 
-FIELD_RULES = (title_required, title_too_long, description_too_long, due_must_be_a_date, due_not_in_the_past, no_such_user)
+FIELD_RULES = (title_required, title_too_long, description_too_long, due_must_be_a_date, due_not_in_the_past, no_such_user,
+               reminder_must_be_a_date_time)

@@ -13,7 +13,8 @@ class AWeekOfChores(Journey):
 
     def steps(self, today: date):
         milk = scheduled(today, 1, title="Buy milk", assignee="ana")
-        plumber = scheduled(today, 2, title="Call the plumber", description="The kitchen tap drips", assignee="ana")
+        plumber = scheduled(today, 2, title="Call the plumber", description="The kitchen tap drips", assignee="ana",
+                        remind_at=f"{today + timedelta(days=1)}T08:00:00+00:00")
         photos = todo("Sort the photos")
         yield AddTodo(milk)
         yield AddTodo(plumber)

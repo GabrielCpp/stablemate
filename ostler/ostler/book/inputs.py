@@ -15,14 +15,15 @@ import itertools
 from dataclasses import dataclass, field
 from datetime import date
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Callable, Mapping, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, TypeGuard, cast
 
 from ostler.book.backstage import CannotArrange
 from ostler.book.cast import Actor
 from ostler.book.domain import Fixture
 from ostler.book.errors import BookError, Unhealthy
-from ostler.book.http import Bool, Client, Endpoint, Enum, Field, Id, Identities, Int, List, Object, OffShape, Str, Undeclared, unknown_value
-from ostler.book.journey import StepResult
+from ostler.book.http import (Bool, Client, Endpoint, Enum, Field, Id, Identities, Int, List, Object, OffShape, Str, Undeclared,
+                              blind, twins, unknown_value)
+from ostler.book.journey import StepResult, difference
 from ostler.book.model import Defect, Model
 from ostler.book.outcome import Done, Flawed, Outcome, Refusal, Refusals
 from ostler.book.runner import agree, attempt, listing
@@ -117,6 +118,21 @@ def _values(call: Endpoint, place: str) -> Mapping[str, Any]:
     return {}
 
 
+def input_fields(call: Endpoint) -> Iterator[tuple[str, str, Field, Any]]:
+    """Every declared input of a call: where it goes, its name (`[].name` inside a list body), its field and the value the call holds."""
+    cls = type(call)
+    for place, shape in zip(PLACES, (cls.params, cls.query, cls.body, cls.headers)):
+        if isinstance(shape, Object):
+            values = _values(call, place)
+            for name, spec in shape.fields.items():
+                yield place, name, spec, values.get(name)
+        elif place == "body" and isinstance(shape, List) and isinstance(shape.of, Object):
+            items = shape.pack(call.body_value)
+            first = items[0] if items and isinstance(items[0], Mapping) else {}
+            for name, spec in shape.of.fields.items():
+                yield place, f"[].{name}", spec, first.get(name)
+
+
 def _wrong_type(shape: Any) -> Any:
     if isinstance(shape, Bool):
         return "yes"
@@ -209,17 +225,8 @@ def classes(call: Endpoint, model: Model, ids: Identities | None) -> list[InputC
         return []
     cls = type(call)
     out: list[InputClass] = []
-    for place, shape in zip(PLACES, (cls.params, cls.query, cls.body, cls.headers)):
-        if isinstance(shape, Object):
-            values = _values(call, place)
-            for name, spec in shape.fields.items():
-                out += field_classes(place, name, spec, model, ids, call.by, values.get(name))
-        elif place == "body" and isinstance(shape, List) and isinstance(shape.of, Object):
-            items = shape.pack(call.body_value)
-            first = items[0] if items and isinstance(items[0], Mapping) else {}
-            for name, spec in shape.of.fields.items():
-                out += [dataclasses.replace(c, name=f"[].{name}")
-                        for c in field_classes(place, name, spec, model, ids, call.by, first.get(name))]
+    for place, name, spec, current in input_fields(call):
+        out += [dataclasses.replace(c, name=name) for c in field_classes(place, name.removeprefix("[]."), spec, model, ids, call.by, current)]
     if isinstance(cls.body, Object) and (cls.body.one_ofs or cls.body.togethers):
         out += relation_classes(cls.body, cls.body.pack(call.body_value))
     if cls.typed_wire:
@@ -412,11 +419,29 @@ class Tried:
 
     @property
     def ok(self) -> bool:
-        return all(s.ok for s in self.sent)
+        return all(s.ok for s in self.sent) and all(t.ok for t in self.twins)
 
     @property
     def diverged(self) -> set[Diverges]:
         return {s.diverged for s in self.sent if s.diverged is not None}
+
+    twins: list[Twinned] = field(default_factory=list)
+
+    @property
+    def underspecified(self) -> list[Twinned]:
+        return [t for t in self.twins if t.split]
+
+    @property
+    def twins_played(self) -> int:
+        return sum(1 for t in self.twins if t.played)
+
+    @property
+    def twins_distinguished(self) -> int:
+        return sum(1 for t in self.twins if t.distinguished)
+
+    @property
+    def twins_ignored(self) -> int:
+        return sum(1 for t in self.twins if t.ignored)
 
 
 def judge(service: Service[Any], call: Endpoint, c: InputClass, model: Model, surface: Surface) -> Sent:
@@ -469,6 +494,8 @@ def play(service: Service[Any], surface: Surface, fresh: Callable[[], Model], on
         if base is None:
             continue
         count = len(classes(base.call, base.before, ids_of(surface)))
+        for twin in twin_classes(base.call, base.before):
+            tried.twins.append(weigh(endpoint, twin, base, surface, fresh))
         held: tuple[Model, Endpoint] | None = None
         for n in range(count):
             sent, arranged = one(service, endpoint, base, n, surface, fresh, held)
@@ -498,3 +525,171 @@ def one(service: Service[Any], endpoint: type[Endpoint], base: Base, n: int, sur
         return Sent(endpoint, c, True, skipped=cannot.reason), None
     except BookError as wrong:
         return Sent(endpoint, c, False, f"the book contradicts itself: {wrong}"), None
+
+
+@dataclass(frozen=True)
+class Twin:
+    """Two valid values of one input that differ along one dimension of its wire
+    type. `ignored` is set where the field declares the product indifferent to
+    that dimension."""
+
+    place: str
+    name: str
+    dimension: str
+    left: Any
+    right: Any
+    ignored: bool = False
+
+    @property
+    def label(self) -> str:
+        return f"{self.name} {self.dimension}"
+
+
+@dataclass
+class Twinned:
+    """What the run made of one twin pair. `split` is where the app's two
+    answers first differ, set only when the model predicted the same outcome for
+    both; the pair is then underspecified."""
+
+    endpoint: type[Endpoint]
+    twin: Twin
+    played: bool = False
+    distinguished: bool = False
+    ignored: bool = False
+    skipped: str = ""
+    split: str = ""
+    answers: tuple[str, str] = ("", "")
+    note: str = ""
+    ok: bool = True
+
+    @property
+    def text(self) -> str:
+        return f"{self.endpoint.__name__} {self.twin.place} {self.twin.label}"
+
+    @property
+    def values(self) -> str:
+        return f"{self.twin.left!r} and {self.twin.right!r}"
+
+
+def twin_classes(call: Endpoint, model: Model) -> list[Twin]:
+    """The twin pairs of a call the model accepts as it stands."""
+    if model.explain(call) is not None:
+        return []
+    return [Twin(place, name, dimension, left, right, dimension in spec.ignores)
+            for place, name, spec, current in input_fields(call)
+            for dimension, left, right in twins(spec.shape, current, model.today)]
+
+
+def _blind_rows(surface: Surface, rows: tuple[object, ...]) -> tuple[object, ...]:
+    shapes = []
+    for read in getattr(surface, "watch", ()):
+        answer = read.success()
+        if answer is not None and answer.body is not None:
+            shapes.append(answer.body.of if isinstance(answer.body, List) else answer.body)
+    out = []
+    for row in rows:
+        shape = next((s for s in shapes if isinstance(s, Object) and isinstance(row, dict) and set(row) <= set(s.fields)), None)
+        out.append(blind(shape, row))
+    return tuple(out)
+
+
+def _blind_view(shape: Any, view: tuple[object, ...]) -> tuple[object, ...]:
+    if isinstance(shape, List):
+        return cast("tuple[object, ...]", blind(shape, view))
+    return tuple(blind(shape, v) for v in view)
+
+
+def _model_said(surface: Surface, model: Model, call: Endpoint) -> tuple[Any, ...] | None:
+    """What the model predicts for the call, as it is compared across a pair: None where it
+    cannot say, or a known defect shows."""
+    after = model.copy()
+    try:
+        outcome = after.perform(call)
+        if isinstance(outcome, Refusal):
+            return ("refused", outcome.status, outcome.message)
+        if not isinstance(outcome, Done):
+            return None
+        express = getattr(surface, "express", None)
+        view = cast("tuple[object, ...]", express(call, outcome)) if callable(express) else tuple(outcome.view or ())
+        answer = type(call).success()
+        return ("done", _blind_view(answer.body if answer else None, tuple(view)), _blind_rows(surface, listing(surface, after)))
+    except Exception:
+        return None
+
+
+def _app_said(surface: Surface, call: Endpoint, outcome: Outcome) -> tuple[Any, ...]:
+    if isinstance(outcome, Refusal):
+        return ("refused", outcome.status, outcome.message)
+    if not isinstance(outcome, Done):
+        return ("other", str(outcome))
+    reply = call.reply
+    shape = reply.answer.body if reply is not None else None
+    return ("done", _blind_view(shape, tuple(outcome.view or ())), _blind_rows(surface, tuple(outcome.rows)))
+
+
+def _without(value: Any, key: str) -> Any:
+    if isinstance(value, dict):
+        return {k: _without(v, key) for k, v in value.items() if k != key}
+    if isinstance(value, (list, tuple)):
+        return tuple(_without(v, key) for v in value)
+    return value
+
+
+def _holds(value: Any, key: str, sent: Any) -> bool:
+    if isinstance(value, dict):
+        return (key in value and str(value[key]) == str(sent)) or any(_holds(v, key, sent) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_holds(v, key, sent) for v in value)
+    return False
+
+
+def _shown(said: tuple[Any, ...]) -> str:
+    if said[0] == "refused":
+        return f"refused {said[1]} {said[2]}"
+    if said[0] == "other":
+        return said[1]
+    return "ok " + ", ".join(str(v) for v in said[1]) if said[1] else "ok"
+
+
+def weigh(endpoint: type[Endpoint], twin: Twin, base: Base, surface: Surface, fresh: Callable[[], Model]) -> Twinned:
+    """Plays one pair. A pair the model predicts differently is not sent: the model already reasons on
+    that dimension. A pair it predicts alike is sent from the base, each value from a world arranged
+    anew, and the app's two answers, with the list the watch reads afterwards, are compared."""
+    found = Twinned(endpoint, twin)
+    if twin.ignored:
+        found.ignored = True
+        return found
+    calls = [vary(copy.deepcopy(base.call), InputClass(twin.place, twin.name, twin.dimension, value, True))
+             for value in (twin.left, twin.right)]
+    said = [_model_said(surface, base.before, call) for call in calls]
+    if None in said:
+        found.note = "the model cannot predict one side"
+        return found
+    key = twin.name.removeprefix("[].")
+    echoed = (said[0] != said[1] and _without(said[0], key) == _without(said[1], key)
+              and _holds(said[0], key, twin.left) and _holds(said[1], key, twin.right))
+    if said[0] != said[1] and not echoed:
+        found.distinguished = True
+        return found
+    got: list[tuple[Any, ...]] = []
+    try:
+        for value in (twin.left, twin.right):
+            model, call = base.arrange(surface, fresh)
+            sent = vary(call, InputClass(twin.place, twin.name, twin.dimension, value, True))
+            said_by_app = _app_said(surface, sent, surface.perform(sent))
+            got.append(_without(said_by_app, key) if echoed else said_by_app)
+    except Unhealthy:
+        raise
+    except CannotArrange as cannot:
+        found.skipped = cannot.reason
+        return found
+    except (Undeclared, OffShape) as outside:
+        found.ok, found.note = False, f"the app answered outside the book: {outside}"
+        return found
+    except Exception as crash:
+        found.ok, found.note = False, f"crashed: {type(crash).__name__}: {str(crash).splitlines()[0]}"
+        return found
+    found.played = True
+    found.answers = (_shown(got[0]), _shown(got[1]))
+    found.split = difference(got[0], got[1]) or ""
+    return found

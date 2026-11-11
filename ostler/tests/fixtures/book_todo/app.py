@@ -28,13 +28,21 @@ def valid_date(text: str) -> bool:
     return True
 
 
+def moment(text: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
 def now() -> datetime:
     return datetime.now(timezone.utc)
 
 
 class Todo:
     def __init__(self, ident: str, title: str, description: str | None, due_on: str | None,
-                 assignee: str | None, created_at: str, seq: int) -> None:
+                 assignee: str | None, created_at: str, seq: int, remind_at: str | None = None) -> None:
         self.ident = ident
         self.title = title
         self.description = description
@@ -42,10 +50,13 @@ class Todo:
         self.assignee = assignee
         self.created_at = created_at
         self.seq = seq
+        self.remind_at = remind_at
 
 
 class Fields:
-    def __init__(self, title: str, description: str | None, due_on: str | None, assignee: str | None) -> None:
+    def __init__(self, title: str, description: str | None, due_on: str | None, assignee: str | None,
+                 remind_at: str | None = None) -> None:
+        self.remind_at = remind_at
         self.title = title
         self.description = description
         self.due_on = due_on
@@ -78,7 +89,16 @@ class TodoStore:
         return {
             "id": todo.ident, "title": todo.title, "description": todo.description, "due_on": todo.due_on,
             "assignee": todo.assignee, "status": status, "created_at": todo.created_at,
+            "remind_at": todo.remind_at, "remind_day": self.remind_day(todo.remind_at),
         }
+
+    def remind_day(self, remind_at: str | None) -> str | None:
+        if remind_at is None:
+            return None
+        if self.bug == "remind_utc":
+            parsed = moment(remind_at)
+            return parsed.astimezone(timezone.utc).date().isoformat() if parsed is not None else None
+        return remind_at[:10]
 
     def find(self, ident: str) -> Todo | None:
         for todo in self.todos:
@@ -114,7 +134,13 @@ class TodoStore:
             if not isinstance(raw, str) or raw not in USERS:
                 return None, "No such user"
             assignee = raw
-        return Fields(title, description, due_on, assignee), ""
+        remind_at: str | None = None
+        if body.get("remind_at") is not None:
+            raw = body["remind_at"]
+            if not isinstance(raw, str) or moment(raw) is None:
+                return None, "Reminder must be a date-time"
+            remind_at = raw
+        return Fields(title, description, due_on, assignee, remind_at), ""
 
     def create_todo(self, body: dict[str, Any]) -> tuple[int, Any]:
         fields, message = self.parse_fields(body, None)
@@ -122,7 +148,7 @@ class TodoStore:
             return 400, {"error": message}
         self.counter += 1
         todo = Todo(str(uuid.uuid4()), fields.title, fields.description, fields.due_on, fields.assignee,
-                    now().strftime("%Y-%m-%dT%H:%M:%SZ"), self.counter)
+                    now().strftime("%Y-%m-%dT%H:%M:%SZ"), self.counter, fields.remind_at)
         self.todos.append(todo)
         return 201, self.view(todo)
 
@@ -135,6 +161,7 @@ class TodoStore:
             return 400, {"error": message}
         if self.bug != "update":
             todo.title, todo.description, todo.due_on, todo.assignee = fields.title, fields.description, fields.due_on, fields.assignee
+            todo.remind_at = fields.remind_at
         return 200, self.view(todo)
 
     def remove_todo(self, ident: str) -> tuple[int, Any]:

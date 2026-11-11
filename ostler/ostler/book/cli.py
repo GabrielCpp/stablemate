@@ -417,7 +417,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         if not args.no_stack:
             stack.stop()
     skips = [r.skipped for r in results if r.skipped] + [c.skipped for c in played.cells if c.skipped] \
-        + [s.skipped for s in tried.sent if s.skipped]
+        + [s.skipped for s in tried.sent if s.skipped] + [t.skipped for t in tried.twins if t.skipped]
     partial = args.partial or bool(skips) or bool(names)
     found = declared(service, args.service)
     report(service, results, args.out, order, found, not partial, played, tried)
@@ -438,6 +438,12 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             print(f"- {d}: {d.why}")
     print(f"inputs: {sum(1 for s in tried.sent if not s.skipped)} played, {len(tried.diverged)} diverge as declared, "
           f"{sum(1 for s in tried.sent if not s.ok)} fail")
+    for t in tried.twins:
+        if not t.ok:
+            print(f"FAIL  twin {t.text}\n      {t.note}")
+    for line in underspecified_lines(tried):
+        print(line)
+    print(twin_tally(tried))
     print(f"time: journeys {journeys_took:.1f}s, cells {cells_took:.1f}s, inputs {inputs_took:.1f}s")
     everything = [*results, played, tried]
     stale = never_met(found, met(everything))
@@ -445,7 +451,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         print(line)
     show_witness(service, seen, args.out, not partial)
     show_skips(args.environment, skips)
-    return 0 if (all(r.ok for r in results) and played.ok and tried.ok and not (names and unmet)
+    return 0 if (all(r.ok for r in results) and played.ok and tried.ok and not tried.underspecified and not (names and unmet)
                  and (partial or (not stale and not unmet and seen.complete))) else 1
 
 
@@ -651,6 +657,28 @@ def fresh(service: Service[Any], surface: Surface) -> Model:
     return service.new_model(_today(surface))
 
 
+def underspecified_lines(tried: Tried) -> list[str]:
+    """The pairs the model treats alike and the app answers apart, each a question for the story."""
+    found = tried.underspecified
+    if not found:
+        return []
+    out = ["Underspecified (fails the run)"]
+    for t in found:
+        out.append(f"- {t.text}: {t.values}")
+        out.append(f"    the model predicts the same outcome for both; the app answered {t.answers[0]} and {t.answers[1]} ({t.split})")
+        out.append(f"    either the intent ignores the {t.twin.dimension} of {t.twin.name} and the app is wrong, "
+                   f"or the book must model it; declare ignores=({t.twin.dimension!r},) on the field if the product does not care")
+    return out
+
+
+def twin_tally(tried: Tried) -> str:
+    bits = [f"{tried.twins_played} pairs played", f"{tried.twins_distinguished} skipped because the model distinguished them"]
+    if tried.twins_ignored:
+        bits.append(f"{tried.twins_ignored} skipped as declared indifferent")
+    bits.append(f"{len(tried.underspecified)} underspecified")
+    return "twins: " + ", ".join(bits)
+
+
 def report(service: Service[Any], results: list[JourneyResult], out: str, order: str = "declared",
            found: list[tuple[type, Any]] | None = None, complete: bool = True, played: Played | None = None,
            tried: Tried | None = None) -> None:
@@ -690,6 +718,11 @@ def report(service: Service[Any], results: list[JourneyResult], out: str, order:
         for s in tried.sent:
             lines.append(f"| {s.text} | {s.verdict}{' ' + s.note if s.note else ''} | {s.outcome} |")
         lines.append("")
+    if tried is not None and tried.twins:
+        lines += ["## The twins played", "", twin_tally(tried) + ".", ""]
+        said = underspecified_lines(tried)
+        if said:
+            lines += ["## Underspecified", "", *said[1:], ""]
     with open(os.path.join(out, f"{service.name}.md"), "w") as f:
         f.write("\n".join(lines))
 
