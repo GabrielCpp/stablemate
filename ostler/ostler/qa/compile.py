@@ -709,6 +709,32 @@ def annotate_deferred_obligations(context: dict[str, Any], *, story: str = "") -
     return context
 
 
+DEFERRALS_FILE = "qa-deferrals.json"
+
+
+def apply_deferrals(context: dict[str, Any], spec_dir: Path) -> dict[str, Any]:
+    """Stamp, in place, each required obligation that is not deferred yet and whose `node` starts with a prefix of `<spec_dir>/qa-deferrals.json`; an absent or unreadable file stamps nothing."""
+    try:
+        entries = json.loads((spec_dir / DEFERRALS_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return context
+    rules = [
+        (str(entry["prefix"]), {"kind": str(entry.get("kind", "")), "detail": str(entry.get("detail", ""))})
+        for entry in entries if isinstance(entry, dict) and entry.get("prefix")
+    ] if isinstance(entries, list) else []
+    for obligation in context.get("obligations", []):
+        if not isinstance(obligation, dict) or obligation.get("required", True) is False:
+            continue
+        if isinstance(obligation.get("deferred"), dict):
+            continue
+        node = str(obligation.get("node") or "")
+        for prefix, deferred in rules:
+            if node.startswith(prefix):
+                obligation["deferred"] = dict(deferred)
+                break
+    return context
+
+
 _JOURNEY_WALKERS = JourneyWalkers(http=http_walk, web=web_walk, maestro=maestro_walk)
 
 
