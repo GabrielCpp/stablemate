@@ -1,7 +1,7 @@
 ---
 name: ui-accessibility
-description: "The universal accessibility contract for any UI, framework-neutral — every interactive element carries a role, an accessible name, and keyboard operability; focus is always deliberate; state is perceivable without sight; contrast meets WCAG AA. Load for any screen/GUI work; a framework skill (react-router-a11y, python-htmx-accessibility, flutter-a11y, react-native-a11y) supplies the concrete mechanics. Applies to **/*.tsx,**/*.jsx,**/*.dart,**/*.html,**/templates/**,**/assets/**/*.js."
-applyTo: "**/*.tsx,**/*.jsx,**/*.dart,**/*.html,**/templates/**,**/assets/**/*.js"
+description: "The universal accessibility contract for any UI, framework-neutral — every interactive element carries a role, an accessible name, and keyboard operability; focus is always deliberate; state is perceivable without sight; contrast meets WCAG AA. Load for any screen/GUI work; a framework skill (react-router-a11y, python-htmx-accessibility, flutter-a11y, react-native-a11y, kmp-a11y) supplies the concrete mechanics. Applies to **/*.tsx,**/*.jsx,**/*.dart,**/*.kt,**/*.html,**/templates/**,**/assets/**/*.js."
+applyTo: "**/*.tsx,**/*.jsx,**/*.dart,**/*.kt,**/*.html,**/templates/**,**/assets/**/*.js"
 tags: [standards]
 ---
 
@@ -15,6 +15,7 @@ skill for the stack you're in:
 - React Router + MUI → the `react-router-a11y` skill
 - Flutter → the `flutter-a11y` skill
 - React Native → the `react-native-a11y` skill
+- Kotlin Multiplatform / Compose → the `kmp-a11y` skill
 
 Accessibility is the actual goal — screen-reader users, keyboard-only users, and low-vision users
 must be able to operate the thing. **Machine-legibility is a free consequence, not the reason.** A

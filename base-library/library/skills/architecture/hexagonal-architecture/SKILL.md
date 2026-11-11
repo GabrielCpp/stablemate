@@ -1,7 +1,7 @@
 ---
 name: hexagonal-architecture
-description: "The universal ports-and-adapters contract for any codebase, language-neutral — the domain depends on nothing; the application depends only on ports it owns; adapters implement those ports and own the infrastructure types. Covers the five obligations, the file layout they imply (port at the package root, adapters beneath, factory apart), why a deferred import is a dependency cycle rather than a style choice, and why an absent collaborator is a null adapter rather than a nullable reference. Load for any service, app, or library with a domain worth protecting; code-structure covers structure inside a ring, and a stack skill (go-architecture, flutter-architecture, python-architecture, typescript-architecture) supplies the concrete mechanics. Applies to **/*.go,**/*.dart,**/*.ts,**/*.py."
-applyTo: "**/*.go,**/*.dart,**/*.ts,**/*.py"
+description: "The universal ports-and-adapters contract for any codebase, language-neutral — the domain depends on nothing; the application depends only on ports it owns; adapters implement those ports and own the infrastructure types. Covers the five obligations, the file layout they imply (port at the package root, adapters beneath, factory apart), why a deferred import is a dependency cycle rather than a style choice, and why an absent collaborator is a null adapter rather than a nullable reference. Load for any service, app, or library with a domain worth protecting; code-structure covers structure inside a ring, and a stack skill (go-architecture, flutter-architecture, kmp-architecture, python-architecture, typescript-architecture) supplies the concrete mechanics. Applies to **/*.go,**/*.dart,**/*.kt,**/*.ts,**/*.py."
+applyTo: "**/*.go,**/*.dart,**/*.kt,**/*.ts,**/*.py"
 tags: [standards]
 ---
 
@@ -13,6 +13,7 @@ mechanics of meeting it are stack-specific — pair this with the matching stack
 
 - Go → the `go-architecture` skill
 - Flutter / Dart → the `flutter-architecture` skill
+- Kotlin Multiplatform → the `kmp-architecture` skill
 - Python → the `python-architecture` skill
 - TypeScript / Node → the `typescript-architecture` skill
 

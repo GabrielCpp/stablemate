@@ -1,7 +1,7 @@
 ---
 name: ui-design-system
-description: "How to create (bootstrap) a design system from a reference design — palette, typography, spacing, radii, shadows, and motion captured as named, traceable tokens and wired into the app theme. Applies to **/*theme*.ts,**/*theme*.tsx,**/*theme*.dart,**/theme/**,**/design_system.dart,**/root.tsx."
-applyTo: "**/*theme*.ts,**/*theme*.tsx,**/*theme*.dart,**/theme/**,**/design_system.dart,**/root.tsx"
+description: "How to create (bootstrap) a design system from a reference design — palette, typography, spacing, radii, shadows, and motion captured as named, traceable tokens and wired into the app theme. Applies to **/*theme*.ts,**/*theme*.tsx,**/*theme*.dart,**/*Theme*.kt,**/designsystem/**,**/theme/**,**/design_system.dart,**/root.tsx."
+applyTo: "**/*theme*.ts,**/*theme*.tsx,**/*theme*.dart,**/*Theme*.kt,**/designsystem/**,**/theme/**,**/design_system.dart,**/root.tsx"
 tags: [standards]
 ---
 
@@ -106,6 +106,9 @@ look without per-instance overrides:
   token classes, set `useMaterial3: true`, and configure component themes
   centrally in one `_buildTheme`. Widgets read `Theme.of(context).colorScheme` for
   variant colors and the token classes for constant brand values.
+- **Compose Multiplatform.** Build one `AppTheme` composable in the shared `designsystem`
+  package from the token objects and wrap the app root in it on every platform. Screens read
+  `MaterialTheme.colorScheme` and the token objects. The `kmp-design-system` skill has the mechanics.
 - **React Native + Paper.** Build the MD3 theme from the palette and feed
   it to `PaperProvider`; read it through `useTheme()` and the theme spacing scale.
 

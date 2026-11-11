@@ -1,7 +1,7 @@
 ---
 name: testing-design
-description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, cover the composition and not only the units, and give setup two test files share one home built from small builders. Load whenever writing or reviewing tests, or when the clone check refuses a copy between test files; a stack skill (go-testing, python-testing, flutter-testing, react-router-testing, pulumi-qa) supplies the concrete mechanics, the testing-component skill layers the UI state and async-ordering contract on top, and the testing-e2e skill layers the end-to-end-specific contract (locators, waits, flake diagnosis) on top. Applies to test files in any language."
-applyTo: "**/*_test.go,**/test_*.py,**/*_test.py,**/*_test.dart,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**,**/__tests__/**"
+description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, cover the composition and not only the units, and give setup two test files share one home built from small builders. Load whenever writing or reviewing tests, or when the clone check refuses a copy between test files; a stack skill (go-testing, python-testing, flutter-testing, kmp-testing, react-router-testing, pulumi-qa) supplies the concrete mechanics, the testing-component skill layers the UI state and async-ordering contract on top, and the testing-e2e skill layers the end-to-end-specific contract (locators, waits, flake diagnosis) on top. Applies to test files in any language."
+applyTo: "**/*_test.go,**/test_*.py,**/*_test.py,**/*_test.dart,**/*Test.kt,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**,**/__tests__/**"
 tags: [standards, tests]
 ---
 
@@ -14,6 +14,7 @@ tool — are stack-specific. Pair this with the matching stack skill:
 - Go → the `go-testing` skill
 - Python → the `python-testing` skill
 - Flutter / Dart → the `flutter-testing` skill
+- Kotlin Multiplatform → the `kmp-testing` skill
 - React Router / TypeScript → the `react-router-testing` skill
 - UI component and screen tests (any framework) → the `testing-component` skill, which also draws the line against end-to-end specs
 - End-to-end / journey specs (any driver) → the `testing-e2e` skill, plus the stack's driver mechanics (e.g. `react-router-playwright`)

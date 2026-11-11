@@ -1,7 +1,7 @@
 ---
 name: testing-e2e
-description: "The end-to-end test contract, driver-neutral — locate by role plus a stable minimal accessible name, never a full literal string; rely on auto-retrying assertions instead of sleeps; recognize the cold-start first-navigation race as a named failure shape; run the flaky-vs-real checklist before calling a failure either one; keep every scenario isolated. Load whenever writing or reviewing an end-to-end/journey spec; a stack skill (react-router-playwright, flutter-qa) supplies the concrete driver mechanics. Applies to E2E spec files on any platform."
-applyTo: "**/e2e/**,**/*.journey.spec.ts,**/*-qa.spec.ts,**/maestro_flows/**/*.yaml,**/integration_test/**"
+description: "The end-to-end test contract, driver-neutral — locate by role plus a stable minimal accessible name, never a full literal string; rely on auto-retrying assertions instead of sleeps; recognize the cold-start first-navigation race as a named failure shape; run the flaky-vs-real checklist before calling a failure either one; keep every scenario isolated. Load whenever writing or reviewing an end-to-end/journey spec; a stack skill (react-router-playwright, flutter-qa, kmp-qa) supplies the concrete driver mechanics. Applies to E2E spec files on any platform."
+applyTo: "**/e2e/**,**/*.journey.spec.ts,**/*-qa.spec.ts,**/maestro_flows/**/*.yaml,**/.maestro/**/*.yaml,**/integration_test/**"
 tags: [standards, tests]
 ---
 
