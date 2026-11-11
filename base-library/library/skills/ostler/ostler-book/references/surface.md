@@ -100,6 +100,17 @@ Declare each body once in `endpoints/shapes.py` and reuse it.
 - `List(shape, unordered="<why>")` when the app leaves ties in an order the book cannot
   predict. Without it, order is compared.
 
+### Twins and `ignores=`
+
+The run also sends twins: two valid values that differ along one dimension of the wire type.
+A date-time varies in `time of day` and `offset`, text in `surrounding spaces` and `case`, a
+`Num` in `trailing zeros`, a `List` in `order` and `duplicate` (not for ids). Other shapes have
+none. A pair is sent only where the model predicts the same outcome for both. If the app answers
+them apart, in the answer or the watch list, the run reports `underspecified` and exits 1. It
+asks the story: the intent ignores that dimension and the app is wrong, or the book must model
+it. Model it, or declare the field indifferent:
+`Field(Str(format="date-time"), ignores=("time of day",), why="the product keeps one day")`.
+
 ## Refusal keys
 
 `Service(refusals=Refusals(...))` names what the app answers to each class of wrong input
