@@ -26,6 +26,8 @@ A book follows the service's source commit by commit. The service declares the s
 - rule: an endpoint that no lifecycle matrix places is played in every state of the service
 - rule: a service book covers HTTP and gRPC services, and web and mobile surfaces come with a later release
 - rule: the book is spec first, so when the service and the book disagree the run reports which one is wrong and a person decides
+- rule: whoever runs a book names the stack copy it reaches, by `--copy`, else by the lease the run holds, else by the name the book wrote, else the shared copy, so one book serves a run by hand and an unattended run
+- code: ostler/ostler/book/environment.py::Environment@eef3fb3a0f85
 - code: ostler/ostler/book/service.py::Service@9dc13c88a409
 - code: ostler/ostler/book/__init__.py::__all__@3a67e49102c3
 - code: ostler/ostler/book/state.py::Axes@0d0318cd1dd0

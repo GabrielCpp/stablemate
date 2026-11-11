@@ -13,8 +13,8 @@ A verb that takes a service exits through one rule: 0 when the verdict is good, 
 
 - binary: ostler
 - code: ostler/ostler/cli.py::_cmd_book@7a2f3e9833fd
-- code: ostler/ostler/book/cli.py::main@325a304f7f89
-- code: ostler/ostler/book/cli.py::build_parser@423018a4f9c8
+- code: ostler/ostler/book/cli.py::main@170578926c66
+- code: ostler/ostler/book/cli.py::build_parser@eb1c6285752e
 - detail: [A service book](concepts/service-book.md)
 - detail: [What a run judges](concepts/what-a-run-judges.md)
 
@@ -24,7 +24,7 @@ A verb that takes a service exits through one rule: 0 when the verdict is good, 
 
 Reads each health journey the service declares on a fresh model before anything else and stops without a verdict when one fails or a host does not answer. Plays the journeys in the chosen order on one long-lived account, and prints one line per journey with its verdict PASS, KNOWN, FAIL or SKIP, its step count and its time. After the journeys, plays every declared cell of the lifecycle matrices, then every input class of every endpoint, when no `--journey` is given. Prints the witness report, the answers and fields the run saw the service produce against those the book declares. Writes `<out>/<service>.md`, the journeys step by step with the model and the app side by side, the state table played and the input classes sent, and `<out>/<service>-witness.md`, the witness report. Writes the stack's process output to `<out>/logs/<process>.log`.
 
-- usage: ostler book run SERVICE [--journey TITLE ...] [--partial] [--only ENDPOINT,...] [--order declared|reversed|shuffled] [--seed N] [--out DIR] [--no-stack] [--env NAME] [--print-exec] — checks the book, starts the service's stack, reads the health journeys, plays every journey, every declared cell of the lifecycle matrices and every input class, and prints the verdict; exits 0 when all of it passes and the witness is complete, 1 when a journey, cell or input fails, a declared known defect or divergence was never met, an answer or field stays unseen undeclared, or the check of the book finds a fault that blocks a run, 2 for `--journey` without `--partial` or when saddlebag leaves a secret unset, 3 when the place cannot be judged
+- usage: ostler book run SERVICE [--journey TITLE ...] [--partial] [--only ENDPOINT,...] [--order declared|reversed|shuffled] [--seed N] [--out DIR] [--no-stack] [--env NAME] [--copy NAME] [--print-exec] — checks the book, starts the service's stack, reads the health journeys, plays every journey, every declared cell of the lifecycle matrices and every input class, and prints the verdict; exits 0 when all of it passes and the witness is complete, 1 when a journey, cell or input fails, a declared known defect or divergence was never met, an answer or field stays unseen undeclared, or the check of the book finds a fault that blocks a run, 2 for `--journey` without `--partial` or when saddlebag leaves a secret unset, 3 when the place cannot be judged
 - flags:
   - --journey (play the journey of this title only, repeatable; the rest stay unseen, so the run needs --partial)
   - --partial (a run of some journeys only: unseen answers and unmet defects do not fail it)
@@ -34,6 +34,7 @@ Reads each health journey the service declares on a fresh model before anything 
   - --out (the directory the reports go to, `results` by default, relative to the working directory)
   - --no-stack (leave the stack alone: the service is already running at the environment's address)
   - --env (the environment to reach, by name; omitted, the service's default)
+  - --copy (the stack copy to reach where the environment names a host as one ostler runs; omitted, the lease the run holds, else the copy the book names, else `shared`)
   - --print-exec (print the saddlebag command that would supply the secrets, and stop)
 - args: service — the module of the book, such as `services.api`
 - exits: 0 when every journey, cell and input passes and the witness is complete
@@ -78,7 +79,7 @@ Builds each endpoint, journey, rule, matrix and decision the book declares once 
 
 Prints the number of new state signatures at each depth, the cells in all as baselines, refusals and input classes, the declared scenes the walk never reached and the rules no cell refused. The count of rules never refused is followed by each rule's name, one per line, as the scenes never reached are. Writes `<out>/<service>-explore.md`, the walk, the failures with the path that reached each and the cells. Names a book that contradicts itself when a fixture or scene arranges a record the model refuses.
 
-- usage: ostler book explore SERVICE [--depth N] [--only ENDPOINT,...] [--seed-only] [--out DIR] [--no-stack] [--env NAME] [--print-exec] — walks the model's state graph to a depth bound, then plays every state, action and input class it reached once against the service; exits 0 when every cell passes, 1 when a cell fails or the check of the book blocks, 3 when the place cannot be judged
+- usage: ostler book explore SERVICE [--depth N] [--only ENDPOINT,...] [--seed-only] [--out DIR] [--no-stack] [--env NAME] [--copy NAME] [--print-exec] — walks the model's state graph to a depth bound, then plays every state, action and input class it reached once against the service; exits 0 when every cell passes, 1 when a cell fails or the check of the book blocks, 3 when the place cannot be judged
 - flags:
   - --depth (the depth bound of the walk, 4 by default)
   - --only (play the cells of these endpoints only, repeatable or comma-separated; the walk stays whole)
@@ -86,6 +87,7 @@ Prints the number of new state signatures at each depth, the cells in all as bas
   - --out (the directory the report goes to, `results` by default)
   - --no-stack (leave the stack alone)
   - --env (the environment to reach)
+  - --copy (the stack copy to reach where the environment names a host as one ostler runs; omitted, the lease the run holds, else the copy the book names, else `shared`)
   - --print-exec (print the saddlebag command that would supply the secrets, and stop)
 - args: service — the module of the book
 - exits: 0 when the seed-only walk ends
@@ -103,7 +105,7 @@ Prints the number of new state signatures at each depth, the cells in all as bas
 
 Prints the scene's description, one line per step taken as ok, FAIL or SKIP, then the scene the model now reads and the model's state.
 
-- usage: ostler book walk SERVICE --scene NAME [--action NAME] [--record RECORD] [--out DIR] [--no-stack] [--env NAME] [--print-exec] — arranges one scene of one matrix on the live service, takes one action there and prints each step with the model and the app side by side; exits 0 when every step is ok, 1 when a step fails, 2 for an action the matrix does not name, 3 when the place cannot be judged
+- usage: ostler book walk SERVICE --scene NAME [--action NAME] [--record RECORD] [--out DIR] [--no-stack] [--env NAME] [--copy NAME] [--print-exec] — arranges one scene of one matrix on the live service, takes one action there and prints each step with the model and the app side by side; exits 0 when every step is ok, 1 when a step fails, 2 for an action the matrix does not name, 3 when the place cannot be judged
 - flags:
   - --scene (a scene named in the matrix, required)
   - --action (an action named in the matrix; omitted, only the scene is arranged)
@@ -111,6 +113,7 @@ Prints the scene's description, one line per step taken as ok, FAIL or SKIP, the
   - --out (the directory for the stack's logs, `results` by default)
   - --no-stack (leave the stack alone)
   - --env (the environment to reach)
+  - --copy (the stack copy to reach where the environment names a host as one ostler runs; omitted, the lease the run holds, else the copy the book names, else `shared`)
   - --print-exec (print the saddlebag command that would supply the secrets, and stop)
 - args: service — the module of the book
 - exits: 2 when the action is not one of the matrix's
