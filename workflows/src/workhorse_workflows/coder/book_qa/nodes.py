@@ -12,6 +12,7 @@ from workhorse_workflows.coder.shared.schemas.book_qa import (
     BookDeferral,
     BookPlay,
     BookQaRecord,
+    BookScope,
     CoveredServices,
     ServiceCalls,
 )
@@ -19,7 +20,7 @@ from workhorse_workflows.coder.shared.schemas.qa import QaFinding
 from workhorse_workflows.coder.shared.schemas.queue import StoryCommitted
 from workhorse_workflows.coder.shared.story_commit import uncommitted_paths
 from workhorse_workflows.coder.shared.worktree import is_product, not_product_roots, untouched_since
-from workhorse_workflows.kit import GitError, commit_paths, find_docs_root, find_repo_root
+from workhorse_workflows.kit import GitError, commit_paths, find_docs_root, find_repo_root, open_repo
 from workhorse_workflows.kit.tools import run_tool
 
 TAIL_LINES = 200
@@ -62,6 +63,67 @@ def book_check(logger: logging.Logger, service: str, repo_dir: str = "") -> Book
     return play
 
 
+SHARED_EXEMPT_FILES = frozenset({"index.tsv", "DISAGREEMENTS.md", "WALLS.md", "VERIFIED"})
+
+
+def shared_book_paths(service: str, changed: dict[str, bool]) -> list[str]:
+    """The changed paths under a service's book that other claims depend on, from `{path: added in this pass}`.
+
+    A new journey file states one more claim and no other journey reads it, so a targeted play of
+    the named calls judges it. An edit to an existing journey, to the model, the fixtures, the
+    backstage or any other file of the book can move the answer of a call this pass never named,
+    so only a play of the whole book judges it. The index, the disagreement and wall notes, the
+    verified stamp and the decisions are records about the book that no play reads.
+    """
+    prefix = book_dir(service) + "/"
+    shared: list[str] = []
+    for rel, added in sorted(changed.items()):
+        if not rel.startswith(prefix):
+            continue
+        inner = rel[len(prefix):]
+        if inner in SHARED_EXEMPT_FILES or inner.startswith("decisions/"):
+            continue
+        if added and inner.startswith("journeys/"):
+            continue
+        shared.append(rel)
+    return shared
+
+
+def _added_in_pass(root: Path, rel: str) -> bool:
+    try:
+        repo = open_repo(root)
+        _ = repo.head.commit.tree / rel
+    except KeyError:
+        return True
+    except (GitError, OSError, TypeError, ValueError, RuntimeError):
+        return False
+    return False
+
+
+@blueprint.node
+def book_scope(
+    logger: logging.Logger,
+    service: str,
+    preexisting: list[str] | None = None,
+    repo_dir: str = "",
+) -> BookScope:
+    """Decide whether the play of a service's book is the whole book: it is when this pass changed a shared part of it."""
+    root = find_repo_root(repo_dir)
+    excused = untouched_since(root, tuple(preexisting or ()))
+    prefix = book_dir(service) + "/"
+    changed = {
+        rel: _added_in_pass(root, rel)
+        for rel in uncommitted_paths(root)
+        if rel.startswith(prefix) and rel not in excused
+    }
+    shared = shared_book_paths(service, changed)
+    logger.info(
+        "the pass changed %d path(s) of %s, %d of them shared: %s book",
+        len(changed), service, len(shared), "whole" if shared else "named-call",
+    )
+    return BookScope(whole=bool(shared), shared=shared, changed=len(changed))
+
+
 @blueprint.node
 def book_run(
     logger: logging.Logger,
@@ -71,13 +133,13 @@ def book_run(
     out_dir: str,
     repo_dir: str = "",
 ) -> BookPlay:
-    """Play the named calls of the service's book against the run's copy of the stack."""
-    argv = [
-        sys.executable, "-m", "ostler.book", "run", f"services.{service}",
-        "--only", ",".join(only), "--copy", copy, "--out", out_dir,
-    ]
+    """Play the named calls of the service's book against the run's copy of the stack, or the whole book when `only` is empty. The play has no time bound."""
+    argv = [sys.executable, "-m", "ostler.book", "run", f"services.{service}"]
+    if only:
+        argv += ["--only", ",".join(only)]
+    argv += ["--copy", copy, "--out", out_dir]
     play = _play(argv, find_repo_root(repo_dir))
-    logger.info("book run of %s over %d call(s) exited %d", service, len(only), play.exit_code)
+    logger.info("book run of %s over %s exited %d", service, f"{len(only)} call(s)" if only else "the whole book", play.exit_code)
     return play
 
 
@@ -191,9 +253,11 @@ __all__ = [
     "book_check",
     "book_dir",
     "book_run",
+    "book_scope",
     "commit_service_book",
     "defer_book_judged",
     "covered_services",
     "read_book_record",
+    "shared_book_paths",
     "write_book_record",
 ]

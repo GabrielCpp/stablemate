@@ -10,6 +10,7 @@ from workhorse_workflows.coder.book_qa.nodes import (
     BOOK_OUT,
     book_check,
     book_run,
+    book_scope,
     commit_service_book,
     covered_services,
     read_book_record,
@@ -147,7 +148,16 @@ class BookQa(QaOwner):
             if checked.exit_code:
                 return self._lap(checked, [_gate(f"ostler book check services.{name}", checked.output)], laps, blocks)
             self.logger.info("playing the book of %s", name, extra={"activity": True})
-            play = self.call(book_run, name, named[name].calls, target.lease, out_dir)
+            scope = self.call(book_scope, name, list(self.preexisting))
+            if scope.whole:
+                self.logger.info(
+                    "playing the whole book of %s: the pass changed a shared part (%s)", name, ", ".join(scope.shared)
+                )
+            else:
+                self.logger.info(
+                    "playing the named calls of %s: %d changed path(s), none shared", name, scope.changed
+                )
+            play = self.call(book_run, name, [] if scope.whole else named[name].calls, target.lease, out_dir)
             if play.exit_code == ENVIRONMENT_EXIT:
                 return self._ask(_gate(f"ostler book run services.{name}", play.output), "the QA environment", blocks)
             if play.exit_code:

@@ -16,11 +16,12 @@ from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.blueprint import NODE_ATTR, node_spec
 from workhorse.pyflow.engine import RunEnv
+from workhorse.templates import render
 
 from workhorse_workflows.coder.book_qa import flow as book_flow
 from workhorse_workflows.coder.book_qa import nodes as book_nodes
 from workhorse_workflows.coder.book_qa.flow import BookQa
-from workhorse_workflows.coder.shared import qa_owner
+from workhorse_workflows.coder.shared import qa_owner, roles
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
 from workhorse_workflows.coder.shared.schemas.qa import StackStatus, StackTarget, StackTornDown
 
@@ -148,8 +149,11 @@ class _Stack:
 class _Agent:
     """The book seat's turn, scripted: one reply per turn, and the files it leaves in the repo."""
 
-    def __init__(self, repo: Path, *replies: dict[str, Any], stray: str = "") -> None:
+    def __init__(
+        self, repo: Path, *replies: dict[str, Any], stray: str = "", touch: str = "journeys/added.py"
+    ) -> None:
         self.repo = repo
+        self.touch = touch
         self.replies = replies or ({"status": "passed", "calls": CALLS},)
         self.stray = stray
         self.args: list[dict[str, Any]] = []
@@ -162,7 +166,8 @@ class _Agent:
         self.calls.append(stem)
         nth = self.calls.count(stem)
         reply = self.replies[min(nth, len(self.replies)) - 1]
-        book = self.repo / "services" / "api" / "records.py"
+        book = self.repo / "services" / "api" / self.touch
+        book.parent.mkdir(parents=True, exist_ok=True)
         book.write_text(f"# turn {nth}\n", encoding="utf-8")
         if self.stray:
             (self.repo / self.stray).write_text("edited\n", encoding="utf-8")
@@ -185,6 +190,7 @@ def lane(
     write(_spec_dir() / "plan-context.json", json.dumps({"story": STORY, "services": []}))
     write(repo / "services" / "api" / "service.py", "# the api book\n")
     write(repo / "services" / "api" / "records.py", "# base\n")
+    write(repo / "services" / "api" / "journeys" / "existing.py", "# base\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "chore: add the api book")
     return repo
@@ -538,3 +544,111 @@ def test_a_product_edit_outside_the_book_is_refused_and_sent_back_unlanded(
     assert "`README.md`" in agent.args[1]["report"], agent.args[1]["report"]
     assert not any("play " in c for c in _commits(lane, git)), _commits(lane, git)
     assert not (_spec_dir() / "book-qa.json").exists()
+
+
+def _played_whole(argv: list[str]) -> bool:
+    return "--only" not in argv
+
+
+def test_a_pass_that_changed_only_a_new_journey_and_the_index_plays_the_named_calls(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A new journey states one claim nothing else reads, so the named calls judge it."""
+    write(lane / "services" / "api" / "index.tsv", "refreshed\n")
+    write(lane / "services" / "api" / "decisions" / "why.md", "why\n")
+    scripted = book()
+
+    drive_flow(_flow(), env(), _Agent(lane, touch="journeys/new.py"))
+
+    [argv] = scripted.argv["run"]
+    assert argv[argv.index("--only") + 1] == "ListX,BuildX", argv
+
+
+@pytest.mark.parametrize("touch", ["model/records.py", "journeys/existing.py", "records.py"])
+def test_a_pass_that_changed_a_shared_part_plays_the_whole_book(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    touch: str,
+) -> None:
+    """A model, fixture or existing journey edit can move a call the pass never named."""
+    scripted = book()
+
+    result = drive_flow(_flow(), env(), _Agent(lane, touch=touch))
+
+    assert result.status == "passed", result
+    [argv] = scripted.argv["run"]
+    assert _played_whole(argv), argv
+    assert argv[argv.index("--copy") + 1] == stack_lease(argv), argv
+
+
+def test_a_shared_edit_beside_a_new_journey_still_plays_the_whole_book(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """One shared path decides the scope, whatever else the pass added."""
+    write(lane / "services" / "api" / "fixtures.py", "# new\n")
+    scripted = book()
+
+    drive_flow(_flow(), env(), _Agent(lane, touch="journeys/new.py"))
+
+    assert _played_whole(scripted.argv["run"][0]), scripted.argv["run"]
+
+
+def test_the_recorded_replay_stays_targeted_when_nothing_changed(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A replay has no seat turn and no change, so the whole book buys nothing."""
+    write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS}))
+    scripted = book()
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    assert not _played_whole(scripted.argv["run"][0]), scripted.argv["run"]
+
+
+def test_the_shared_rule_names_what_a_play_reads() -> None:
+    changed = {
+        "services/api/journeys/new.py": True,
+        "services/api/journeys/old.py": False,
+        "services/api/index.tsv": False,
+        "services/api/WALLS.md": True,
+        "services/api/DISAGREEMENTS.md": False,
+        "services/api/VERIFIED": False,
+        "services/api/decisions/a.md": False,
+        "services/api/model/records.py": True,
+        "services/other/model/records.py": True,
+    }
+
+    shared = book_nodes.shared_book_paths("api", changed)
+
+    assert shared == ["services/api/journeys/old.py", "services/api/model/records.py"], shared
+
+
+def test_the_seat_prompt_renders_the_restructure_step_and_the_narrowed_unreached_rule(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    coder = Path(roles.__file__).resolve().parent.parent
+
+    text = render("book_qa/prompts/qa-book.md", {"_node_cwd": str(repo), "services": ["api"]}, coder)
+
+    assert "Restructure when the book's shape is in the way" in text
+    assert "not a contract" in text
+    assert "`unreached` is only for a claim no call or backstage step can" in text
+    assert "is not\n   `unreached`: restructure the book for it" in text

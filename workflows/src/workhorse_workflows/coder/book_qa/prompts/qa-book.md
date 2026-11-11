@@ -66,22 +66,36 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    intent in the model, declare the app's answer as a known defect the way the skill says,
    and report one finding per claim: the claim in the story's words, the call, the observed
    answer.
-6. **Name what no call reaches.** A claim no call can show goes in `notes` as out of reach,
-   with the reason. Also list it in `unreached`, one entry per claim in the story's words, for
+6. **Restructure when the book's shape is in the way.** When a call can show a claim but the
+   book cannot arrange the world it needs, change the book until it can. A fact every journey
+   shares may be one the claim needs absent, so give the journeys that need it their own records,
+   created by the backstage with run-unique names. A fixture shape may not hold the case. The
+   backstage may have no step for the world yet, so add the step, and write SQL through the copy
+   the way the existing steps do. The book's current structure is the last author's best guess,
+   not a contract. Moving a fact, splitting a record or replacing a standing world is in scope,
+   as long as every journey still states what it stated before. The workflow plays the whole
+   book after a pass that changes a shared part of it, so a restructure that breaks another
+   journey comes back to this seat.
+7. **Name what no call reaches.** `unreached` is only for a claim no call or backstage step can
+   observe, such as a browser screen, a source-level test, a count of internal calls or a request
+   between two other services. A claim left out because the world could not be arranged is not
+   `unreached`: restructure the book for it. Put a claim that is out of reach in `notes` with the
+   reason. Also list it in `unreached`, one entry per claim in the story's words, for
    example "no request reaches the report service". The scenario QA skips every page of a
    service whose book passed, and it reads `unreached` to know which claims are still its
    to judge. A claim you stated in the book and played is not listed.
-7. **Run until green.** Run `ostler book check`, then the targeted run, until the run exits
-   0. Never run the whole book. Run one at a time. Exit 3 means the environment is not
+8. **Run until green.** Run `ostler book check`, then the targeted run, until the run exits
+   0. Never run the whole book yourself: the workflow plays it when your pass needs it. Run one at a time. Exit 3 means the environment is not
    healthy. Report `blocked` and repair nothing.
-8. **Stay in the book.** Edit only under `services/<name>/` of the covered services. Put no
+9. **Stay in the book.** Edit only under `services/<name>/` of the covered services. Put no
    sleep, timer or retry loop in the book.
-9. **Report.** Return the calls you played per service, the findings and the notes.
+10. **Report.** Return the calls you played per service, the findings and the notes.
 
 ## The checks after this turn
 
 The workflow runs `ostler book check` on each covered service, then plays the calls your
-result names, one service at a time. Exit 0 on every service ends the pass. Exit 1 or 2
+result names, one service at a time. When your pass changed a shared part of a book, it plays
+the whole book of that service instead. Exit 0 on every service ends the pass. Exit 1 or 2
 comes back to you in this session with the output. Exit 3 means the environment could not
 be judged, and it goes to an operator, never to you. A story does not pass while your result
 lists a finding, even when the run is green.

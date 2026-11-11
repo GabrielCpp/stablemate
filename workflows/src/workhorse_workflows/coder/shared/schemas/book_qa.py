@@ -69,6 +69,14 @@ class BookPlay(CoderResult):
     output: str = ""
 
 
+class BookScope(CoderResult):
+    """`book_scope`: whether a play of one service's book is the whole book, and the changed paths that decided it."""
+
+    whole: bool = False
+    shared: list[str] = []
+    changed: int = 0
+
+
 class BookQaRecord(CoderResult):
     """`book-qa.json`: the calls a passed check played, the findings it stood on and the claims the book could not state, so a later visit replays them."""
 
@@ -82,4 +90,4 @@ class BookDeferral(CoderResult):
 
     services: list[str] = []
 
-__all__ = ["BookDeferral", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "CoveredServices", "ServiceCalls"]
+__all__ = ["BookDeferral", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "BookScope", "CoveredServices", "ServiceCalls"]
