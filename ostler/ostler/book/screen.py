@@ -10,6 +10,7 @@ from typing import Any, Callable, ClassVar, Generic, TypeVar, cast
 from ostler.book.cast import KEEP, SOLE, Actor
 from ostler.book.domain import Action
 from ostler.book.errors import BookError
+from ostler.book.http import Field as Wire
 
 
 @dataclass(frozen=True)
@@ -51,10 +52,14 @@ class Component:
     does: str = ""
     options: tuple[T, ...] = ()
     per_row: bool = False
+    takes: str = ""
+    holds: Wire | None = None
 
     def __post_init__(self) -> None:
         if self.id is None and self.label is None:
             raise BookError(f"a {self.kind} component has neither an id nor a label")
+        if (self.holds is None) != (not self.takes):
+            raise BookError(f"a {self.kind} component holds a shape only with the fixture field it takes, and the reverse")
 
     def found_by(self, lang: str = "en") -> str:
         """How a driver finds this component: its id, or its role and name."""
@@ -66,20 +71,20 @@ class Component:
         return f"text {name!r}" if role is None else f"{role} {name!r}"
 
 
-def Field(id: str | None, label: T, does: str = "") -> Component:
-    return Component(id, "field", label, does)
+def Field(id: str | None, label: T, does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
+    return Component(id, "field", label, does, takes=takes, holds=holds)
 
 
-def TextArea(id: str | None, label: T, does: str = "") -> Component:
-    return Component(id, "textarea", label, does)
+def TextArea(id: str | None, label: T, does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
+    return Component(id, "textarea", label, does, takes=takes, holds=holds)
 
 
-def DateField(id: str | None, label: T, does: str = "") -> Component:
-    return Component(id, "date", label, does)
+def DateField(id: str | None, label: T, does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
+    return Component(id, "date", label, does, takes=takes, holds=holds)
 
 
-def Select(id: str | None, label: T, options: tuple[T, ...], does: str = "") -> Component:
-    return Component(id, "select", label, does, options)
+def Select(id: str | None, label: T, options: tuple[T, ...], does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
+    return Component(id, "select", label, does, options, takes=takes, holds=holds)
 
 
 def Button(id: str | None, label: T | None = None, does: str = "", per_row: bool = False) -> Component:
@@ -198,7 +203,8 @@ class Screen:
             label = f" {c.label[lang]!r}" if c.label else ""
             opts = "  options: " + ", ".join(o[lang] for o in c.options) if c.options else ""
             row = " (per row)" if c.per_row else ""
-            lines.append(f"  {c.found_by(lang):18} {c.kind:9}{label}{row}  {c.does}{opts}".rstrip())
+            holds = f"  holds {c.holds.describe()} as {c.takes}" if c.holds is not None else ""
+            lines.append(f"  {c.found_by(lang):18} {c.kind:9}{label}{row}  {c.does}{opts}{holds}".rstrip())
         if cls.sends:
             lines.append("")
             lines.append(f"sends (to {cls.api or 'the product API'}):")
@@ -264,6 +270,11 @@ class Interaction(Generic[F]):
 
     def input(self) -> F:
         return self.of
+
+    @classmethod
+    def typed(cls) -> list[Component]:
+        """The components of its screen that declare the shape of the fixture field they take."""
+        return [c for c in cls.screen.components() if c.holds is not None] if cls.screen is not None else []
 
     @classmethod
     def describe(cls) -> str:

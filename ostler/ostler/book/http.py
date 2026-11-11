@@ -406,7 +406,7 @@ class List(Shape):
         return f"[{self.of.describe()}]" + (f" (any order: {self.unordered})" if self.unordered else "")
 
 
-DIMENSIONS = ("time of day", "offset", "surrounding spaces", "case", "trailing zeros", "order", "duplicate")
+DIMENSIONS = ("time of day", "offset", "surrounding spaces", "case", "trailing zeros", "order", "duplicate", "midnight")
 
 
 def _written_day(current: object, today: date) -> str:

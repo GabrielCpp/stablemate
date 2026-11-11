@@ -9,7 +9,7 @@ from contextlib import contextmanager
 from datetime import date
 from typing import Any, Iterator, cast
 
-from ostler.book import Done, Environment, Outcome, PageSurface, Received, Refusal, answer, refusal, request
+from ostler.book import CannotReach, Done, Environment, Outcome, PageSurface, Received, Refusal, answer, refusal, request
 
 from .backend import Backend
 from .fixtures import Query, Todo
@@ -21,6 +21,10 @@ from .screens.labels import STATUSES
 
 STATUS_VALUES = dict(zip(STATUSES, ("unscheduled", "scheduled", "overdue")))
 ROWS = '[data-testid="todo-row"]'
+
+
+def _typed(due: date | str | None) -> str | None:
+    return due.isoformat() if isinstance(due, date) else (due or None)
 
 
 class TodoWeb(PageSurface):
@@ -149,16 +153,20 @@ class TodoWeb(PageSurface):
         if li is None or shown is None:
             return Refusal("Not found", 404)
         self.browser.in_row(li, ListPage.edit).click()
-        was_due = as_date(shown.due_on) if shown.due_on else None
-        now_due = as_date(todo.due_on) if todo.due_on else None
-        self._fill(
-            EditForm,
-            None if todo.title == shown.title else (todo.title or ""),
-            None if todo.description == shown.description else (todo.description or ""),
-            None if now_due == was_due or now_due is None else now_due,
-            None if todo.assignee == shown.assignee else (todo.assignee or ""),
-            clear_due=was_due is not None and now_due is None,
-        )
+        was_due = _typed(shown.due_on)
+        now_due = _typed(todo.due_on)
+        try:
+            self._fill(
+                EditForm,
+                None if todo.title == shown.title else (todo.title or ""),
+                None if todo.description == shown.description else (todo.description or ""),
+                None if now_due == was_due or now_due is None else now_due,
+                None if todo.assignee == shown.assignee else (todo.assignee or ""),
+                clear_due=was_due is not None and now_due is None,
+            )
+        except CannotReach:
+            self.browser.press(EditForm.cancel, within=EditForm.root)
+            raise
         outcome = self._save(EditForm, "PUT")
         if isinstance(outcome, Refusal):
             self.browser.press(EditForm.cancel, within=EditForm.root)

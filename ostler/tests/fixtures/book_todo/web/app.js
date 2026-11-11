@@ -134,6 +134,7 @@ function form(kind, todo, done, cancel) {
       };
       if (window.BUG === "wrong-assignee" && body.assignee === "bo") body.assignee = "ana";
     }
+    if (window.BUG === "utc-midnight" && body.due_on) body.due_on = new Date(`${body.due_on}T00:00:00+02:00`).toISOString().slice(0, 10);
     phase = "saving";
     error.textContent = "";
     refresh();

@@ -173,3 +173,70 @@ def test_a_passing_journey_leaves_no_video_unless_asked(todo_web, tmp_path: Path
                      "--out", str(tmp_path / "kept")], api.port, web=page.port)
     assert kept.returncode == 0, kept.stdout + kept.stderr
     assert [v.name for v in (tmp_path / "kept" / "videos").iterdir()] == ["ClearTheList.webm"]
+
+
+def _todo_base():
+    from ostler.book.inputs import bases
+
+    service = module("services.web.service").service
+    return module("services.web.interactions").AddTodo, bases(service)
+
+
+def test_a_screen_input_with_a_shape_gets_input_classes():
+    from ostler.book.inputs import classes
+
+    add, found = _todo_base()
+    base = found[add]
+    labels = [c.label for c in classes(base.call, base.before, None)]
+    assert labels == ["due_on malformed date"]
+
+
+def test_a_screen_input_with_a_shape_gets_twins_on_either_side_of_midnight():
+    from datetime import timedelta
+
+    from ostler.book.inputs import twin_classes
+
+    add, found = _todo_base()
+    base = found[add]
+    today = base.before.today
+    pairs = [(t.place, t.name, t.dimension, t.left, t.right, t.ignored) for t in twin_classes(base.call, base.before)]
+    assert pairs == [("screen", "due_on", "midnight", today.isoformat(), (today + timedelta(days=1)).isoformat(), False)]
+
+
+def test_a_screen_input_that_ignores_a_dimension_skips_its_twins(monkeypatch: pytest.MonkeyPatch):
+    import dataclasses
+
+    from ostler.book import Field as Wire, Str
+    from ostler.book.inputs import twin_classes
+
+    add, found = _todo_base()
+    form = add.screen
+    due = dataclasses.replace(form.due, holds=Wire(Str(format="date"), required=False, ignores=("midnight",), why="the product keeps a day"))
+    monkeypatch.setattr(form, "due", due)
+    base = found[add]
+    assert [t.ignored for t in twin_classes(base.call, base.before)] == [True]
+
+
+def test_a_screen_input_must_name_the_fixture_field_it_holds():
+    from ostler.book import Field as Wire, Str
+
+    with pytest.raises(BookError, match="takes"):
+        Field("x", T("X", "X"), holds=Wire(Str()))
+
+
+def test_the_twins_of_a_date_pass_when_the_page_keeps_the_day(todo_web, tmp_path: Path):
+    done = _run(todo_web, tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert re.search(r"twins: [1-9]\d* pairs played, .*, 0 underspecified", done.stdout), done.stdout
+    assert "Underspecified" not in done.stdout
+
+
+def test_a_page_that_sends_the_date_from_a_local_midnight_is_underspecified(tmp_path: Path):
+    stack = _stack("utc-midnight")
+    try:
+        done = _run(stack, tmp_path)
+    finally:
+        _stop(stack)
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "Underspecified (fails the run)" in done.stdout
+    assert "- AddTodo screen due_on midnight" in done.stdout

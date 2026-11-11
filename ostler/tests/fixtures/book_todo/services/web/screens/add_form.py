@@ -1,6 +1,6 @@
 """The form above the list. One todo per Save; the fields clear when it lands."""
 
-from ostler.book import Phase, Screen, Stored, T, Transition, When, request
+from ostler.book import Field as Wire, Phase, Screen, Str, Stored, T, Transition, When, request
 from ostler.book.screen import Button, DateField, Field, Select, Spinner, Text, TextArea
 
 from .labels import ASSIGNEE, DESCRIPTION, DUE, NOBODY, SAVE, TITLE
@@ -8,7 +8,7 @@ from .labels import ASSIGNEE, DESCRIPTION, DUE, NOBODY, SAVE, TITLE
 form = Text("add-form", does="the form element, role=form")
 title = Field(None, TITLE)
 description = TextArea("todo-description", DESCRIPTION)
-due = DateField("todo-due", DUE)
+due = DateField("todo-due", DUE, takes="due_on", holds=Wire(Str(format="date"), required=False))
 assignee = Select(None, ASSIGNEE, (NOBODY, T("ana", "ana"), T("bo", "bo")))
 save = Button(None, SAVE, "POST /todos with the non-empty fields")
 saving = Spinner("todo-saving", "the request is out")

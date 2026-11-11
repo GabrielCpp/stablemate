@@ -194,7 +194,12 @@ class Browser:
         it is a `CannotReach`."""
         found = self.locate(component, within=within)
         if component.kind != "select":
-            found.fill(value)
+            try:
+                found.fill(value)
+            except Exception as rejected:
+                if "Malformed value" not in str(rejected):
+                    raise
+                raise CannotReach(f"{component.found_by(self.lang)} does not take {value!r}") from None
             return
         offered = found.evaluate("el => [...el.options].map(o => o.value)")
         if value not in offered:

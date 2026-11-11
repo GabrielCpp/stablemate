@@ -412,7 +412,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             cells_took = 0.0
         tried = Tried()
         inputs_took = 0.0
-        if not args.journey and service.endpoints:
+        if not args.journey and (service.endpoints or service.interactions):
             print("playing the input classes")
             began = time.time()
             tried = play_inputs(service, surface, lambda: fresh(service, surface), only=names)

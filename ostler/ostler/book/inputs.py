@@ -13,9 +13,9 @@ import copy
 import dataclasses
 import itertools
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Mapping, TypeGuard, cast
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, TypeGuard, cast
 
 from ostler.book.backstage import CannotArrange
 from ostler.book.cast import Actor
@@ -27,6 +27,7 @@ from ostler.book.journey import StepResult, difference
 from ostler.book.model import Defect, Model
 from ostler.book.outcome import Done, Flawed, Outcome, Refusal, Refusals
 from ostler.book.runner import agree, attempt, listing
+from ostler.book.screen import Interaction
 from ostler.book.surface import Surface
 
 if TYPE_CHECKING:
@@ -34,6 +35,7 @@ if TYPE_CHECKING:
 
 GONE = object()
 PLACES = ("path", "query", "body", "headers")
+SCREEN = "screen"
 
 
 @dataclass(frozen=True)
@@ -68,7 +70,9 @@ class InputClass:
         return f"{self.name} {self.kind}"
 
 
-def has_inputs(endpoint: type[Endpoint]) -> bool:
+def has_inputs(endpoint: type[Any]) -> bool:
+    if issubclass(endpoint, Interaction):
+        return bool(endpoint.typed())
     return bool(endpoint.params.fields or endpoint.query or isinstance(endpoint.body, Object) or endpoint.headers)
 
 
@@ -117,9 +121,15 @@ def _values(call: Endpoint, place: str) -> Mapping[str, Any]:
     return {}
 
 
-def input_fields(call: Endpoint) -> Iterator[tuple[str, str, Field, Any]]:
-    """Every declared input of a call: where it goes, its name (`[].name` inside a list body), its field and the value the call holds."""
+def input_fields(call: Any) -> Iterator[tuple[str, str, Field, Any]]:
+    """Every declared input of a call: where it goes, its name (`[].name` inside a list body), its field and the value the call holds.
+    An interaction's inputs are the fixture fields its screen's components declare, at the place `screen`."""
     cls = type(call)
+    if isinstance(call, Interaction):
+        for component in type(call).typed():
+            assert component.holds is not None
+            yield SCREEN, component.takes, component.holds, getattr(call.of, component.takes, None)
+        return
     for place, shape in zip(PLACES, (cls.params, cls.query, cls.body, cls.headers)):
         if isinstance(shape, Object):
             values = _values(call, place)
@@ -216,7 +226,7 @@ def relation_classes(body: Object, sent: Mapping[str, Any]) -> list[InputClass]:
     return out
 
 
-def classes(call: Endpoint, model: Model, ids: Identities | None) -> list[InputClass]:
+def classes(call: Any, model: Model, ids: Identities | None) -> list[InputClass]:
     """The classes of a call the model accepts as it stands. A call the model
     already refuses for its caller says nothing of its inputs, only of the order
     of two rules, so it has none."""
@@ -226,6 +236,8 @@ def classes(call: Endpoint, model: Model, ids: Identities | None) -> list[InputC
     out: list[InputClass] = []
     for place, name, spec, current in input_fields(call):
         out += [dataclasses.replace(c, name=name) for c in field_classes(place, name.removeprefix("[]."), spec, model, ids, call.by, current)]
+    if isinstance(call, Interaction):
+        return out
     if isinstance(cls.body, Object) and (cls.body.one_ofs or cls.body.togethers):
         out += relation_classes(cls.body, cls.body.pack(call.body_value))
     if cls.typed_wire:
@@ -233,9 +245,11 @@ def classes(call: Endpoint, model: Model, ids: Identities | None) -> list[InputC
     return out
 
 
-def vary(call: Endpoint, c: InputClass) -> Endpoint:
+def vary(call: Any, c: InputClass) -> Any:
     """The call with this one input replaced."""
     cls = type(call)
+    if isinstance(call, Interaction):
+        return cls(call.of.but(**{c.name: None if c.value is GONE else c.value}), by=call.by)
 
     def edited(values: Mapping[str, Any]) -> dict[str, Any]:
         out = dict(values)
@@ -293,8 +307,8 @@ class Base:
     call: Endpoint
 
 
-def _carried(step: object) -> TypeGuard[Endpoint]:
-    return isinstance(step, Endpoint) and step.carries is not None
+def _carried(step: object) -> TypeGuard[Any]:
+    return isinstance(step, (Endpoint, Interaction)) and step.carries is not None
 
 
 def _journey_base(journey: Any, k: int) -> Callable[[Surface, Callable[[], Model]], tuple[Model, Endpoint]]:
@@ -332,10 +346,10 @@ def _ok(step: StepResult) -> None:
         raise BookError(f"the scene cannot be arranged: {step.text}: {step.note}")
 
 
-def bases(service: Service[Any]) -> dict[type[Endpoint], Base]:
+def bases(service: Service[Any]) -> dict[type[Any], Base]:
     """For each endpoint, the first call the journeys or the cells make that the
     model accepts, found on the model alone."""
-    found: dict[type[Endpoint], Base] = {}
+    found: dict[type[Any], Base] = {}
     for journey in service.journeys:
         model = service.new_model(date.today())
         try:
@@ -366,8 +380,8 @@ def bases(service: Service[Any]) -> dict[type[Endpoint], Base]:
     return found
 
 
-def refusals_for(service: Service[Any], endpoint: type[Endpoint]) -> Refusals:
-    return endpoint.refusals.over(service.refusals)
+def refusals_for(service: Service[Any], endpoint: type[Any]) -> Refusals:
+    return service.refusals if issubclass(endpoint, Interaction) else endpoint.refusals.over(service.refusals)
 
 
 def predicted(call: Endpoint, model: Model) -> Outcome | None:
@@ -386,7 +400,7 @@ def expected(c: InputClass, outcome: Outcome | None) -> bool:
 
 @dataclass
 class Sent:
-    endpoint: type[Endpoint]
+    endpoint: type[Any]
     c: InputClass
     ok: bool
     note: str = ""
@@ -484,7 +498,7 @@ def play(service: Service[Any], surface: Surface, fresh: Callable[[], Model], on
     tried = Tried()
     found = bases(service)
     skipped = {u.endpoint for u in service.unseen if u.item == "inputs"}
-    for endpoint in service.endpoints:
+    for endpoint in (*service.endpoints, *service.interactions):
         if only and endpoint.__name__ not in only:
             continue
         if endpoint.carries is None or not has_inputs(endpoint) or endpoint in skipped:
@@ -503,7 +517,7 @@ def play(service: Service[Any], surface: Surface, fresh: Callable[[], Model], on
     return tried
 
 
-def one(service: Service[Any], endpoint: type[Endpoint], base: Base, n: int, surface: Surface,
+def one(service: Service[Any], endpoint: type[Any], base: Base, n: int, surface: Surface,
         fresh: Callable[[], Model], held: tuple[Model, Endpoint] | None = None) -> tuple[Sent, tuple[Model, Endpoint] | None]:
     """Sends class `n` on the base. A world the previous class left as it found it, both sides
     having refused, is `held` and taken again instead of arranged anew."""
@@ -550,7 +564,7 @@ class Twinned:
     answers first differ, set only when the model predicted the same outcome for
     both; the pair is then underspecified."""
 
-    endpoint: type[Endpoint]
+    endpoint: type[Any]
     twin: Twin
     played: bool = False
     distinguished: bool = False
@@ -576,7 +590,24 @@ def twin_classes(call: Endpoint, model: Model) -> list[Twin]:
         return []
     return [Twin(place, name, dimension, left, right, dimension in spec.ignores)
             for place, name, spec, current in input_fields(call)
-            for dimension, left, right in twins(spec.shape, current, model.today)]
+            for dimension, left, right in [*twins(spec.shape, current, model.today), *_midnight(place, spec.shape, model.today)]]
+
+
+def _midnight(place: str, shape: Any, today: date) -> list[tuple[str, object, object]]:
+    """The two days either side of the clock's midnight, for a date typed into a screen: a page that
+    reads the day in another time zone shifts one of them across the line the model keeps."""
+    if place == SCREEN and isinstance(shape, Str) and shape.format == "date":
+        return [("midnight", today.isoformat(), (today + timedelta(days=1)).isoformat())]
+    return []
+
+
+def _plain(value: Any) -> Any:
+    """A dataclass row as the mapping of its fields, so a row compares by field as an endpoint's record does."""
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {f.name: _plain(getattr(value, f.name)) for f in dataclasses.fields(value)}
+    if isinstance(value, (list, tuple)):
+        return tuple(_plain(v) for v in cast("Iterable[Any]", value))
+    return value
 
 
 def _blind_rows(surface: Surface, rows: tuple[object, ...]) -> tuple[object, ...]:
@@ -610,8 +641,9 @@ def _model_said(surface: Surface, model: Model, call: Endpoint) -> tuple[Any, ..
             return None
         express = getattr(surface, "express", None)
         view = cast("tuple[object, ...]", express(call, outcome)) if callable(express) else tuple(outcome.view or ())
-        answer = type(call).success()
-        return ("done", _blind_view(answer.body if answer else None, tuple(view)), _blind_rows(surface, listing(surface, after)))
+        success = getattr(type(call), "success", None)
+        answer: Any = success() if callable(success) else None
+        return ("done", _blind_view(answer.body if answer else None, _plain(tuple(view))), _blind_rows(surface, _plain(listing(surface, after))))
     except Exception:
         return None
 
@@ -621,9 +653,9 @@ def _app_said(surface: Surface, call: Endpoint, outcome: Outcome) -> tuple[Any, 
         return ("refused", outcome.status, outcome.message)
     if not isinstance(outcome, Done):
         return ("other", str(outcome))
-    reply = call.reply
+    reply = getattr(call, "reply", None)
     shape = reply.answer.body if reply is not None else None
-    return ("done", _blind_view(shape, tuple(outcome.view or ())), _blind_rows(surface, tuple(outcome.rows)))
+    return ("done", _blind_view(shape, _plain(tuple(outcome.view or ()))), _blind_rows(surface, _plain(tuple(outcome.rows))))
 
 
 def _without(value: Any, key: str) -> Any:
@@ -650,7 +682,7 @@ def _shown(said: tuple[Any, ...]) -> str:
     return "ok " + ", ".join(str(v) for v in said[1]) if said[1] else "ok"
 
 
-def weigh(endpoint: type[Endpoint], twin: Twin, base: Base, surface: Surface, fresh: Callable[[], Model]) -> Twinned:
+def weigh(endpoint: type[Any], twin: Twin, base: Base, surface: Surface, fresh: Callable[[], Model]) -> Twinned:
     """Plays one pair. A pair the model predicts differently is not sent: the model already reasons on
     that dimension. A pair it predicts alike is sent from the base, each value from a world arranged
     anew, and the app's two answers, with the list the watch reads afterwards, are compared."""
