@@ -9,7 +9,7 @@ The `Qa` machine hands one story's QA to a single owner session, then reruns and
 owner claims. The owner selects the scenarios, runs them, debugs each failure and records the result in one turn, with no subagent seat. The flow
 rebuilds the context packet and the stack, reruns the plan the owner left, and decides whether
 the story passes, goes back to the dev owner with findings, or replans. The Coder main flow
-enters it after documentation passes, and `workhorse-coder run qa` enters it directly.
+enters it as `scenario_qa`, after documentation passes and the [book QA flow](coder-book-qa.md) passes, and `workhorse-coder run qa` enters it directly.
 
 Inputs are the story slug, optional docs and workspace selectors, the epic, `operator_mode`
 (default `auto`), `target_env` (default `local`), `stop_at_first_verdict` and the preexisting

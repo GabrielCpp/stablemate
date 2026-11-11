@@ -5,17 +5,21 @@ title: Coder lane order
 ---
 # Coder lane order
 
-A story in the Coder main loop passes through its lanes in one order: prepare, specify, dev, document, QA, drain, finalize, commit. `specify` and `document` are the two phases of the one [docs flow](../flows/coder-docs.md). `specify` runs the spec phase before any code. It writes the story's behaviour model and the book delta it implies. The main loop records the nodes it wrote and commits the book pages the pass left uncommitted. `dev` builds to those nodes. `document` runs the build phase after dev, grounds the book in the code, and commits the book pages that pass left uncommitted before QA runs. The `finalize` recheck runs the build phase once more and commits nothing.
+A story in the Coder main loop passes through its lanes in one order: prepare, specify, dev, document, book QA, scenario QA, drain, finalize, commit. `specify` and `document` are the two phases of the one [docs flow](../flows/coder-docs.md). `specify` runs the spec phase before any code. It writes the story's behaviour model and the book delta it implies. The main loop records the nodes it wrote and commits the book pages the pass left uncommitted. `dev` builds to those nodes. `document` runs the build phase after dev, grounds the book in the code, and commits the book pages that pass left uncommitted before QA runs. The [book lane](coder-book-qa-package.md) runs first of the two QA lanes: the service books the story touches are played against its code. The scenario lane follows it, so a story that holds both kinds of service is judged by both, in that order. The `finalize` recheck runs the build phase once more and commits nothing.
 
-A QA refix sends the story back to dev and then through `document` and QA again. It does not run `specify` a second time. The spec nodes recorded by the first pass stay in force for the whole story.
+A refix from either QA lane sends the story back to dev and then through `document`, the book lane and the scenario lane again. It does not run `specify` a second time. The spec nodes recorded by the first pass stay in force for the whole story.
 
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder` @46634ff7efb1
-- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @1ebd7f882eb0
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder` @518272d9d26f
+- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @3a6a962e2abc
+- code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @a072a35baa32
 - rule: the book is written before dev from a behaviour model, so dev builds to the book's `verify:` checks and QA compiles its plan from them on its first pass
 - rule: the build pass after dev grounds `code:` bullets and never rewrites a spec bullet the build contradicts
 - rule: the build docs pass passes only when the book compiles into a QA plan with no defect gap on a page the story touched
 - rule: QA starts from the plan the book compiles and amends it, and writes a plan by hand only when the book refuses to compile
-- rule: a refix goes dev, document, QA and never specifies again, because the spec describes the story and a defect in the build does not change it
+- rule: the book lane runs before the scenario lane, and a book refix or replan is sent back before the scenario lane starts
+- rule: a run killed in the scenario lane resumes there and does not replay the book lane
+- rule: a story with no covered service passes the book lane with no agent call, so its QA is the scenario lane alone
+- rule: a refix goes dev, document, the book lane, the scenario lane and never specifies again, because the spec describes the story and a defect in the build does not change it
 - rule: the spec pass has no diff, so it skips context classification, source provenance and the grounding worklist, and its gate is `doctor` on the nodes it wrote
 - rule: the spec pass's book delta is committed by the workflow before dev starts, so dev's clean-repo check never counts the spec as dev's leftovers
 - rule: every pre-QA docs pass commits its book delta, so an owner's clean-repo check never counts the book as its leftovers
@@ -25,6 +29,9 @@ A QA refix sends the story back to dev and then through `document` and QA again.
 - rule: a path reopens a proof only when its bytes changed after the passing QA saw them
 - rule: the artifacts dir, the book and tool output are never product, so they never reopen a docs pass, and the artifacts dir and tool output never reopen a proof
 - rule: a book page edited after the passing QA reopens only the scenarios that cover it
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_story_with_no_covered_service_passes_with_no_seat_and_no_stack`
+- tests: `workflows/tests/coder/test_workflow.py::test_a_book_refix_reaches_the_dev_owner_before_the_scenario_qa_is_handed_off`
+- tests: `workflows/tests/coder/test_workflow.py::test_a_run_killed_in_qa_resumes_on_the_scenario_qa_without_replaying_the_book_lane`
 - tests: `workflows/tests/coder/test_workflow.py::test_a_leftover_qa_already_passed_over_commits_without_a_rerun_or_a_docs_pass`
 - tests: `workflows/tests/coder/shared/test_worktree.py::test_a_book_page_and_a_spec_file_do_not_count_as_a_code_change`
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_is_specified_before_dev_and_a_refix_does_not_specify_again`

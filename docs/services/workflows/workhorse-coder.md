@@ -6,7 +6,7 @@ title: workhorse-coder
 # workhorse-coder
 
 - binary: `workhorse-coder`
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @874f55e9107a
 - detail: [coder shared library](concepts/coder-shared-library.md)
 - detail: [operational runbooks index](concepts/ops-runbooks.md)
 
@@ -28,13 +28,13 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
   - `--dry-run` runs registered deterministic stand-ins.
   - `--resume-run PATH`, `--resume-latest`, and `--no-cache` select resume or fresh-run behavior.
 - args:
-  - `<flow>` selects `genesis`, `dev`, `docs`, `qa`, `fix`, or `fix_ci`; omitting it starts Coder.
+  - `<flow>` selects `genesis`, `dev`, `docs`, `qa`, `book_qa`, `fix`, or `fix_ci`; omitting it starts Coder.
 - does:
   - starts the selected registered coder flow
 - run: invoke(argv=["run", "--dry-run"])
 - verify: exit_status(code=0)
 - fixture: none, because the command reads only the installed package
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @874f55e9107a
 - detail: [Coder command selection](concepts/coder-command-selection.md)
 
 ### dot
@@ -47,7 +47,7 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
 - run: invoke(argv=["dot"])
 - verify: exit_status(code=0)
 - fixture: none, because the command reads only the installed package
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @874f55e9107a
 - detail: [Coder command selection](concepts/coder-command-selection.md)
 
 ### version
@@ -57,5 +57,5 @@ The [workhorse-coder driver runbook](ops/workhorse-coder.md) exercises this CLI 
 - run: invoke(argv=["version"])
 - verify: exit_status(code=0)
 - fixture: none, because the command reads only the installed package
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @874f55e9107a
 - detail: [Coder command selection](concepts/coder-command-selection.md)

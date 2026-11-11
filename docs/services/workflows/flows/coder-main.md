@@ -34,7 +34,10 @@ register against the one blueprint every Coder flow shares.
 - tests: `workflows/tests/coder/test_workflow.py::test_an_opened_pr_goes_to_the_ship_lane_for_ci_and_stays_open`
 - tests: `workflows/tests/coder/test_workflow.py::test_a_required_final_docs_block_replans_in_either_mode`
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_is_specified_before_dev_and_a_refix_does_not_specify_again`
+- tests: `workflows/tests/coder/test_workflow.py::test_a_book_refix_reaches_the_dev_owner_before_the_scenario_qa_is_handed_off`
+- tests: `workflows/tests/coder/test_workflow.py::test_a_run_killed_in_qa_resumes_on_the_scenario_qa_without_replaying_the_book_lane`
 - detail: [coder lane order](../concepts/coder-lane-order.md)
+- detail: [coder book qa package](../concepts/coder-book-qa-package.md)
 
 The stages, in order: [initialize](#initialize), [route](#route), [story-pipeline](#story-pipeline), [agent-turn-contract](#agent-turn-contract), [backlog-drain](#backlog-drain), [story-commit](#story-commit), [delivery](#delivery).
 
@@ -85,16 +88,26 @@ the helpers that file, find, replace and merge them.
 - kind: run
 
 Each claimed item is snapshotted against pre-existing work, resolved to its story's paths, and
-sent through `specify`, `dev`, `document` and `qa`. `specify` runs the `Docs` flow in its spec
+sent through `specify`, `dev`, `document`, `qa` and `scenario_qa`. `specify` runs the `Docs` flow in its spec
 phase: it writes the story's behaviour model and the book delta before any code, and records the
 nodes it wrote on the run. The workflow then commits the book pages the pass left uncommitted, so
 `dev`'s clean-repo check never counts them as its leftovers. `dev` and the later `document` pass receive those nodes. `document`
 runs the same flow in its build phase, which grounds the book in the code and reconciles it with
 the build. The workflow commits the book pages that pass left uncommitted before `qa` runs. The
 `finalize` recheck commits nothing, so a book edit after the passing QA stays dirty and still
-reopens the scenarios that cover it. A pr run hands `dev` the run branch to land on. A commit run hands it none. QA findings
-are filed against the item and return to its dev owner, who then goes through `document` and `qa`
-again without a second `specify`. A replan from the spec pass, the dev owner, QA or documentation
+reopens the scenarios that cover it. A pr run hands `dev` the run branch to land on. A commit run hands it none.
+
+`qa` is the first gate. It hands off to the [`BookQa` flow](coder-book-qa.md), which judges each
+service of the story that has an executable book by a run of that book. A story with no such service
+passes it with no agent call. A `refix` result files the book lane's findings against the item and
+returns the story to its dev owner, and a `replan` result replans the epic, the same way a scenario
+QA result does. A `passed` result continues to `scenario_qa`, which holds the
+[`Qa` flow](coder-qa.md) handoff: the same two outcomes send the story back, and a pass continues to
+the backlog drain. A story is believed only when both states pass.
+
+QA findings from either state are filed against the item and return to its dev owner, who then goes
+through `document` and `qa` again without a second `specify`, so the book lane plays its recorded
+calls again before the scenario lane runs. A replan from the spec pass, the dev owner, QA or documentation
 rewrites the epic and re-files its open stories. The lane order is the
 [coder lane order](../concepts/coder-lane-order.md) concept.
 
@@ -103,7 +116,7 @@ rewrites the epic and re-files its open stories. The lane order is the
 - kind: drive
 - detail: [coder replan-epic prompt](../formats/coder-replan-epic-prompt.md)
 
-The main flow hands implementation, documentation, QA and backlog work to typed sub-flows. Their
+The main flow hands implementation, documentation, book QA, scenario QA and backlog work to typed sub-flows. Their
 turns receive the story-derived backbone or a lane-specific session according to the specialist
 flow's contract. The main flow preserves returned statuses rather than reconstructing their
 conversations. Its one own turn is `replan`, which uses the authoritative operator answer and
@@ -113,7 +126,7 @@ conversations. Its one own turn is `replan`, which uses the authoritative operat
 
 - kind: run
 
-A passing QA result hands off to the [`fix` flow](coder-fix.md). That flow drains the open `qa`
+A passing scenario QA result hands off to the [`fix` flow](coder-fix.md). That flow drains the open `qa`
 records of the workspace on the [debt register](../../ostler/concepts/the-debt-register.md). It
 documents and commits each drained item and closes its record before this machine resumes. The
 current story's documentation-recheck flag is carried forward unchanged.
