@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from typing import Mapping
 
 from ostler.book.errors import BookError
+from ostler.environments.render import SHARED
+from ostler.qa.addresses import LEASE_ENV
 
 OSTLER = "ostler:"
 PREFIX = "BOOK_SECRET_"
@@ -24,6 +26,7 @@ class Environment:
     secrets: dict[str, str] = field(default_factory=dict)
     backstage: type | None = None
     root: str = ""
+    leased: str = ""
 
     def address(self, host: str) -> str:
         if host not in self.hosts:
@@ -31,17 +34,23 @@ class Environment:
         url = self.hosts[host]
         if not url.startswith(OSTLER):
             return url
-        done = subprocess.run(["ostler", "env", "address", host, "--copy", url[len(OSTLER):]], cwd=self.root or None,
+        done = subprocess.run(["ostler", "env", "address", host, "--copy", self._copy_of(url)], cwd=self.root or None,
                               capture_output=True, text=True, check=False)
         if done.returncode:
             raise RuntimeError(done.stderr or done.stdout)
         return done.stdout.strip()
 
     def copy(self) -> str:
+        """The stack copy this environment reaches, or nothing when no host is one ostler runs."""
         for url in self.hosts.values():
             if url.startswith(OSTLER):
-                return url[len(OSTLER):]
+                return self._copy_of(url)
         return ""
+
+    def _copy_of(self, url: str) -> str:
+        """The copy the run named, else the lease the process runs under, else the one the book names, else the
+        shared one. A book's own name is a default for a run by hand, so whoever runs the book outranks it."""
+        return self.leased or os.environ.get(LEASE_ENV, "") or url[len(OSTLER):] or SHARED
 
     def variables(self) -> dict[str, str]:
         return {PREFIX + handle.upper(): secret for handle, secret in self.secrets.items()}

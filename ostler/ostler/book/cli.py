@@ -86,6 +86,8 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     live.add_argument("--no-stack", action="store_true")
     for p in (run, explorer, live):
         p.add_argument("--print-exec", action="store_true", help="print the saddlebag command that would supply the secrets, and stop")
+        p.add_argument("--copy", default="", metavar="NAME",
+                       help="the stack copy to reach (default: $STABLEMATE_LEASE, else the one the book names, else `shared`)")
     find = sub.add_parser("search", help="find a term among the endpoints, rules, actions, journeys, screens and scenes")
     find.add_argument("term", help="the text to find; the old form `search <service> <term>` still works")
     find.add_argument("extra", nargs="?", help=argparse.SUPPRESS)
@@ -144,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
     service = load(args.service)
     if args.command in ("run", "explore", "walk", "check"):
         args.environment = service.environment(args.env)
+        args.environment.leased = getattr(args, "copy", "")
     if args.command in ("run", "explore", "walk") and not getattr(args, "seed_only", False):
         stop = credentials(args.environment, sys.argv[1:] if argv is None else argv, args.print_exec)
         if stop is not None:
