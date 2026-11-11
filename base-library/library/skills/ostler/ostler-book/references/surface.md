@@ -55,7 +55,9 @@ class FindTodos(Endpoint):
 
 `Answer(status, shape, means, creates=None, why="")`. `means` says when the app gives it.
 `creates="id"` names the field the fixture learns as its id. `why` explains an answer that
-looks wrong but is the app's behaviour, such as a 500 a malformed id earns.
+looks wrong but is the app's behaviour, such as a 500 a malformed id earns. An endpoint
+declares each status once. A status the app gives in two forms, such as a 401 with a detail
+and one without, is one shape whose differing field is optional.
 
 ## Shapes
 

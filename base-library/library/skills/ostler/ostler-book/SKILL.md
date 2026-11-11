@@ -176,7 +176,7 @@ one is live.
 
 | Command | Takes | Tells you |
 | --- | --- | --- |
-| `ostler book check services.<name>` | seconds, no app | the format: unregistered endpoints, journeys or rules, unplaced endpoints, modules nothing imports, missing source pointers |
+| `ostler book check services.<name>` | seconds, no app | the format: unregistered endpoints, journeys or rules, unplaced endpoints, modules nothing imports, missing source pointers, a journey with no docstring, an `index.tsv` older than the book (run `index`, then `check`) |
 | `ostler book explore services.<name> --seed-only` | seconds to minutes as matrices grow, no app | the model's walk to depth 4; run it after every change to a fixture, a scene or an endpoint; "the book contradicts itself" means a fixture arranges a record that cannot exist |
 | `ostler book explore services.<name> --no-stack --only <A>,<B>` | about 2 s a cell | every cell of the named endpoints on every state the walk reaches, against the app |
 | `ostler book run services.<name> --no-stack --only <A>,<B>` | a few minutes | the journeys that call the named endpoints, their declared cells and their input classes, including divergences declared for them and never met |
@@ -186,7 +186,13 @@ one is live.
 | `ostler book verified services.<name> --app <root>` | seconds | records the app's HEAD once `stale` is worked |
 
 `--only` takes endpoint class names, never journey names. `explore` and `run` print nothing until they end, and a long one may outlive the shell's
-wait. Send the output to a file and read its last lines once the command has exited.
+wait. Send the output to a file and read its last lines once the command has exited. Their report goes under
+`--out`, by default `results/` where you stand: point it outside the repo. `--no-stack` skips starting the
+stack `service.py` declares, and changes nothing when that stack is empty.
+
+A host written `ostler:` in an environment is a copy of the stack that `ostler env` runs. The copy is the
+runner's to name: `--copy NAME`, else the lease the run holds, else the name the book wrote after `ostler:`,
+else `shared`. Write no copy name the book cannot keep for every runner.
 
 `search <term>` and `explain <Endpoint|Journey|Action>` answer what the book already says
 before you read any source. While authoring, `explore` against the app always takes `--only`: the full replay is the
