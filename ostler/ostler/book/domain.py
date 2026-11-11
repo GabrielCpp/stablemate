@@ -392,7 +392,7 @@ class Action(Generic[A, S]):
             except Refused as refused:
                 for defect in cls.defects:
                     if defect.over is rule and defect.shows(accepted, state, by):
-                        raise Flaw(defect, None, rule, cls.wrong(defect, accepted, state, by), refused.said) from None
+                        raise Flaw(defect, refused.kept, rule, cls.wrong(defect, accepted, state, by), refused.said) from None
                 raise
         reduced = cls.reduce(accepted, state, by)
         for defect in cls.defects:
@@ -409,6 +409,8 @@ class Action(Generic[A, S]):
         lines = [f"{cls.__name__}: accepts " + (cls.accept.__name__ if cls.accept else "nothing")]
         for rule in cls.rules:
             lines.append(f"  refuses {rule.status} {rule.message!r}")
+            if rule.does is not None:
+                lines.append("    keeps what it did before it refused")
             if rule.why:
                 lines.append(f"    why: {rule.why}")
         for defect in cls.defects:
@@ -481,6 +483,9 @@ class State(Model):
             result = self.dispatch(request)
         except (Refused, Flaw) as stopped:
             self.log.append(Entry(request, stopped))
+            if isinstance(stopped, Refused) and stopped.kept is not None:
+                self.commit(cast(Reduced, stopped.kept))
+                self.view = None
             raise
         self.log.append(Entry(request, result))
         return self.commit(result)

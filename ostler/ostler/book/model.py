@@ -25,12 +25,15 @@ class Rule(Generic[A, S]):
     word for word; where the service quotes what it was sent, the message names
     the request's field in braces, `user {sub} not found`. The predicate reads
     the request, the state and the caller. `why` is the reason the product
-    behaves so, in the product's words."""
+    behaves so, in the product's words. `does` is the change the service keeps
+    when it refuses, read like an action's reduce, such as the orders of a batch
+    it sent before the one it refused; without it a refusal changes nothing."""
 
     message: str
     broken_when: Callable[[A, S, Actor | None], bool]
     status: Status = 400
     why: str = ""
+    does: Callable[[A, S, Actor | None], Any] | None = None
 
     @property
     def name(self) -> str:
@@ -47,7 +50,7 @@ class Rule(Generic[A, S]):
 
     def check(self, a: A, s: S, by: Actor | None) -> None:
         if self.broken_when(a, s, by):
-            raise Refused(self, self.said(a))
+            raise Refused(self, self.said(a), self.does(a, s, by) if self.does is not None else None)
 
 
 @dataclass(frozen=True)
@@ -94,9 +97,10 @@ class Flaw(Exception):
 
 
 class Refused(Exception):
-    def __init__(self, rule: Rule[Any, Any], said: str = ""):
+    def __init__(self, rule: Rule[Any, Any], said: str = "", kept: object = None):
         self.rule = rule
         self.said = said or rule.message
+        self.kept = kept
         super().__init__(self.said)
 
     def as_outcome(self) -> Refusal:
