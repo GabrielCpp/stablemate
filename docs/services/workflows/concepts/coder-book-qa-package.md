@@ -56,6 +56,9 @@ The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is
 - rule: a record that holds a finding, or no record, defers nothing, so a service whose book found a defect keeps every obligation in the scenario lane
 - rule: the claims the seat lists as unreached stay the scenario lane's to cover or to report out of reach, because the book judged nothing about them
 - rule: the scenario lane passes with no seat turn and no plan when a clean book record names services, holds no unreached claim and leaves the packet no required obligation undeferred, and its rerun passes the same way without linting a plan, so a fully judged story pays for the book lane alone
+- rule: a story whose services all have an executable book gives the scenario seat only the claims the books could not state, each a criterion named `claim:<n>`, and a prompt that names no markdown page, because the books judged every other claim and the markdown book is not read on that path
+- rule: the scenario lane writes `qa-unreached.json` before every build of the packet for such a story, holding the recorded claims, or none when the record holds a finding, and removes it for any other story, so the packet's criteria are the claims and a plan that leaves one uncovered fails validation
+- rule: the scenario seat of such a story brings the stack up from the book's environment with `ostler env up --copy <lease>` and reads addresses with `ostler env address <service> --copy <lease>`, because no runbook page exists for it
 - rule: the lane depends on the result type of the scenario QA and not on its inside, so a third lane is one more flow and one more branch in the main flow
 - rule: a second visit for the same story replays the calls the first visit recorded and calls the seat only when that play disagrees, and the findings recorded beside them still stand while the replay is green
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_story_with_no_covered_service_passes_with_no_seat_and_no_stack`
@@ -77,6 +80,8 @@ The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_unreached_claim_keeps_the_seat_turn`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_book_record_with_findings_defers_nothing`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_the_owner_is_told_which_books_judged_and_which_claims_they_left`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_story_whose_services_all_have_a_book_owes_the_scenario_seat_only_the_unreached_claims`
+- tests: `workflows/tests/coder/test_book_only_path.py::test_the_scenario_prompt_of_an_all_covered_story_names_no_markdown_page`
 - detail: [coder book QA flow](../flows/coder-book-qa.md)
 - detail: [QA deferrals](../../ostler/formats/qa-deferrals.md)
 - detail: [coder lane order](coder-lane-order.md)

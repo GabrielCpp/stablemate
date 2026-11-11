@@ -38,6 +38,9 @@ The flow ends in a `QaFlowResult` whose status is `passed`, `refix` or `replan`.
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_unreached_claim_keeps_the_seat_turn`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_book_record_with_findings_defers_nothing`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_the_owner_is_told_which_books_judged_and_which_claims_they_left`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_story_whose_services_all_have_a_book_owes_the_scenario_seat_only_the_unreached_claims`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_story_with_an_uncovered_service_writes_no_claims_file_and_removes_a_stale_one`
+- tests: `workflows/tests/coder/test_book_only_path.py::test_the_scenario_prompt_of_an_all_covered_story_names_no_markdown_page`
 - tests: `workflows/tests/coder/qa/test_compile_story_plan.py::test_a_compilable_packet_writes_the_plan`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_failed_run_with_findings_sends_them_back_as_a_refix`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_blocked_owner_is_answered_and_resumes_with_the_answer`
@@ -87,7 +90,7 @@ abort, because a broken packet or stack is the owner's to repair. Before every b
 the record holds no finding, and an empty list otherwise. The ostler build marks every required
 obligation under `docs/services/<name>/` that is not already deferred as deferred with kind `book`,
 on a valid packet and on an invalid one, and so does each rebuild the owner makes. The marked obligations
-leave the compiled plan, and the backlog never files them as checks QA could not run. When every service of the story is covered, the packet build treats a changed unit that no markdown page owns as no failure and writes a packet with no obligation. Once the
+leave the compiled plan, and the backlog never files them as checks QA could not run. When every service of the story is covered, the packet build treats a changed unit that no markdown page owns as no failure and writes a packet with no obligation. For such a story `write_unreached_claims` also writes [QA unreached claims](../../ostler/formats/qa-unreached.md) from the book record before every build, and the build makes those claims the packet's only criteria, named `claim:<n>`. Any other story has the file removed. Once the
 packet validates, the flow checks whether a clean book record names services, holds no unreached claim and leaves
 the packet no required obligation undeferred. If so, the flow ends `passed` with the note "every
 obligation of this story was judged by a service book", with no owner turn and no plan. The
@@ -109,7 +112,7 @@ verification setup, the fixtures, the QA run plan, the QA tool catalog and the l
 granted only the repositories the plan touches. It also learns whether a standing `qa_plan.py`
 already lints and validates, so it starts from that plan rather than authoring a new one, and
 whether that plan was written by hand. It reads which services the books judged and the claims
-the books could not state. Obligations deferred with kind `book` stay out of the plan, and each
+the books could not state. When every service of the story has an executable book, the turn's prompt names no markdown page: the claims are its whole scope, numbered `claim:<n>`, the seat writes `qa_plan.py` by hand with `covers=["claim:<n>"]`, and it brings the stack up with `ostler env up --copy <lease>` and reads addresses with `ostler env address <service> --copy <lease>`. A plan that leaves a claim uncovered fails validation. Obligations deferred with kind `book` stay out of the plan, and each
 unreached claim still needs a scenario or a report in `notes` that no scenario reaches it. The compiled plan counts as standing. A hand-written one
 stands too, and the turn then says so, names `qa_plan.compiled.py` as the book's plan beside it,
 and asks the owner to bind the criteria on the compiled plan, port only the hand-written

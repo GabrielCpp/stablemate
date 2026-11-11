@@ -12,7 +12,7 @@ the marks hold whether or not the packet's health findings make it invalid.
 
 - file: `qa-deferrals.json` in the story's spec directory, beside `qa-okf-context.json`
 - code: `ostler/ostler/qa/compile.py::apply_deferrals` @439aa015bce5
-- code: `ostler/ostler/qa/context.py::cmd_context` @2e5f40cd24df
+- code: `ostler/ostler/qa/context.py::cmd_context` @4bda2b351c61
 - detail: [compiling a book into a QA plan](../concepts/compiling-a-book-into-a-qa-plan.md)
 - detail: [coder book qa package](../../workflows/concepts/coder-book-qa-package.md)
 - tests: `ostler/tests/test_qa_deferrals.py::test_the_build_defers_required_undeferred_obligations_under_a_prefix`

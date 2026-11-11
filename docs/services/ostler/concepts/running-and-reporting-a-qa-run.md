@@ -109,7 +109,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 
 - code: ostler/ostler/qa/context.py::build_context@4c11b18e0f7f
 - code: ostler/ostler/qa/context.py::write_context@af155aaf038e
-- code: ostler/ostler/qa/context.py::cmd_context@2e5f40cd24df
+- code: ostler/ostler/qa/context.py::cmd_context@4bda2b351c61
 - code: ostler/ostler/qa/context.py::cmd_context_validate@f2fc5672fe0a
 - code: ostler/ostler/qa/context.py::validate_context@f85328d3f2ee
 - code: ostler/ostler/qa/context.py::node_obligations@1a2bc445cf90

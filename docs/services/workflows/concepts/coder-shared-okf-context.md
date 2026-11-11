@@ -11,7 +11,7 @@ when all packet files exist, their bytes match the digests the stamp recorded, a
 fingerprint still matches the repository state and the arguments that shaped the build. Validation independently checks the packet and cannot report
 `passed` when the build that produced it was invalid.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::__all__` @71c7de13230c
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::__all__` @4cf07dd59db2
 - rule: the QA lane owns the packet's scope. The QA turn reads the packet through
   `ostler qa context-show` and never runs `ostler qa context --base`, because a packet built
   from a new base drops the story scope and charges the story with every other story's
@@ -29,7 +29,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - required: true
 - semantics: names the three files that must all exist before a memo can be reused
 - verify: count(subject="OKF packet files", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::PACKET_FILES` @71c7de13230c
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::PACKET_FILES` @4cf07dd59db2
 
 ### STAMP_FILE
 - type: `str`
@@ -37,7 +37,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - required: true
 - semantics: names the JSON stamp recording the packet fingerprint, each packet file's SHA-256, status, notes, and raw Ostler result
 - verify: count(subject="OKF packet stamp filename", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::STAMP_FILE` @71c7de13230c
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::STAMP_FILE` @4cf07dd59db2
 
 ## Methods
 
@@ -115,7 +115,7 @@ fingerprint still matches the repository state and the arguments that shaped the
 - verify: count(subject="local-source OKF context calls", equals=1)
 - returns: `passed` when Ostler reports success, otherwise `invalid`, with diagnostic notes and raw payload
 - verify: json_path(path="$.status", matches="passed|invalid")
-- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::build_okf_context` @99087708f093
+- code: `workflows/src/workhorse_workflows/coder/shared/okf.py::build_okf_context` @317c98409aa8
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_repeat_visit_reuses_the_packet_byte_for_byte`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_a_different_spec_dir_does_not_read_the_other_ones_memo`
 - tests: `workflows/tests/coder/shared/test_okf_memo.py::test_multi_repository_context_is_grouped_and_invalidated_by_source_edits`

@@ -15,9 +15,9 @@ The flow ends in a `QaFlowResult` that is `passed`, `refix` or `replan`. Repair 
 at `MAX_LAPS` and operator blocks at `MAX_BLOCKS`. A spent cap, or a human operator mode, parks
 the run on the story's context file.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py` @2d92a488bcc1
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py` @7b64a28e25eb
 - code: `workflows/src/workhorse_workflows/coder/shared/qa_owner.py::QaOwner` @7c46741d5c85
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @39326aac24f4
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @59e5173c275a
 - rule: the QA plan starts as ostler's compile of the book, narrowed by the owner's selection; the owner adds a missing scenario to the book, or by hand when the book cannot state it, and no reviewer checks it
 - rule: the scored run is the QA verdict, with no audit seat or dry-run gate beside it
 - rule: the QA owner spawns no planner, fixer or auditor seat; a `lookup` delegate for a narrow read stays allowed
