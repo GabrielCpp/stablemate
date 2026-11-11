@@ -44,6 +44,7 @@ from ostler.book.witness import WitnessReport, witnessed
 from ostler.book.service import Service
 from ostler.book.stack import Stack
 from ostler.book.sources import head_of, stale
+from ostler.qa.report import video_clock
 from ostler.book.surface import Surface
 
 
@@ -61,6 +62,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     run.add_argument("--journey", action="append")
     run.add_argument("--out", default="results")
     run.add_argument("--no-stack", action="store_true")
+    run.add_argument("--keep-videos", action="store_true")
     run.add_argument("--order", choices=("declared", "reversed", "shuffled"), default="declared",
                      help="the order the journeys are taken in on the one long-lived account")
     run.add_argument("--seed", type=int, default=0, help="the seed of a shuffled order")
@@ -346,6 +348,10 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     if isinstance(begun, int):
         return begun
     surface, stack = begun
+    record_to = getattr(surface, "record_to", None)
+    if callable(record_to):
+        record_to(os.path.join(args.out, "videos"))
+        os.makedirs(os.path.join(args.out, "videos"), exist_ok=True)
     results: list[JourneyResult] = []
     names = named(service, args.only)
     journeys = [j for j in service.journeys
@@ -370,13 +376,19 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             _set_lang(surface, journey.lang)
             if journey.alone or model is None:
                 model, why = renewed(service, surface)
+            record = getattr(surface, "record", None)
+            if callable(record):
+                record(journey.title())
             result = walk(journey, model, surface) if model is not None else blocked(journey, surface, why)
+            finish = getattr(surface, "finish", None)
+            if callable(finish):
+                result.video = str(finish(args.keep_videos or not result.ok or bool(result.defects)))
             results.append(result)
             print(f"{result.verdict}  {journey.title()}  ({len(result.steps)} steps, {time.time() - started:.1f}s)"
                   + ("  [alone]" if journey.alone else ""))
             for step in result.steps:
                 if not step.ok:
-                    print(f"      at: {step.text}\n      {step.note}")
+                    print(f"      at: {step.text}\n      {step.note}" + video_note(result.video, step.at))
                 elif step.skipped:
                     print(f"      {step.note}")
             if not result.ok:
@@ -393,7 +405,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             print(f"journeys took {journeys_took:.0f}s; playing the cells")
             began = time.time()
             played = play(service.matrices, surface, lambda: fresh(service, surface),
-                          keep=lambda axes, scene, name: not names or aims(service, axes, scene, name, names))
+                          keep=lambda axes, scene, name: not names or aims(service, axes, scene, name, names),
+                          keep_videos=args.keep_videos)
             cells_took = time.time() - began
         else:
             cells_took = 0.0
@@ -421,10 +434,12 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     partial = args.partial or bool(skips) or bool(names)
     found = declared(service, args.service)
     report(service, results, args.out, order, found, not partial, played, tried)
+    for line in video_lines(results, played):
+        print(line)
     print(tally(results))
     for c in played.cells:
         if not c.ok:
-            print(f"FAIL  cell {c.text}\n      {c.note}")
+            print(f"FAIL  cell {c.text}\n      {c.note}" + video_note(c.video, c.at))
     print(f"cells: {played.count} played on {played.arrangements} arrangements, {sum(1 for c in played.cells if c.why)} impossible, "
           f"{sum(1 for c in played.cells if not c.ok)} fail")
     for s in tried.sent:
@@ -708,6 +723,10 @@ def report(service: Service[Any], results: list[JourneyResult], out: str, order:
         lines.append(result.state)
         lines.append("```")
         lines.append("")
+    if played is not None:
+        said = video_lines(results, played)
+        if said:
+            lines += ["## Videos", "", *said[1:], ""]
     if played is not None and played.cells:
         lines += ["## The state table played", "", "| cell | verdict | model / app |", "|---|---|---|"]
         for c in played.cells:
@@ -725,6 +744,26 @@ def report(service: Service[Any], results: list[JourneyResult], out: str, order:
             lines += ["## Underspecified", "", *said[1:], ""]
     with open(os.path.join(out, f"{service.name}.md"), "w") as f:
         f.write("\n".join(lines))
+
+
+def video_note(video: str, at: float | None) -> str:
+    """Where to look in the recording of a step: the file and the clock a player shows."""
+    if not video:
+        return ""
+    return f"\n      video: {video}" + (f" at {video_clock(at)}" if at is not None else "")
+
+
+def video_lines(results: list[JourneyResult], played: Played) -> list[str]:
+    """Each failed or known step of a journey or cell that kept a video, with the video and the offset in it."""
+    out: list[str] = []
+    for result in results:
+        for step in result.steps:
+            if result.video and (not step.ok or step.known is not None):
+                out.append(f"- {result.journey.title()}: {step.text}: {video_clock(step.at or 0.0)} of {result.video}")
+    for cell in played.cells:
+        if cell.video and (not cell.ok or cell.known is not None):
+            out.append(f"- {cell.text}: {video_clock(cell.at or 0.0)} of {cell.video}")
+    return ["Videos"] + out if out else []
 
 
 def _package_dir(args: argparse.Namespace) -> str:

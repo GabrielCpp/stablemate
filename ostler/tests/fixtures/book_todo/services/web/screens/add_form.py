@@ -1,0 +1,52 @@
+"""The form above the list. One todo per Save; the fields clear when it lands."""
+
+from ostler.book import Phase, Screen, Stored, T, Transition, When, request
+from ostler.book.screen import Button, DateField, Field, Select, Spinner, Text, TextArea
+
+from .labels import ASSIGNEE, DESCRIPTION, DUE, NOBODY, SAVE, TITLE
+
+form = Text("add-form", does="the form element, role=form")
+title = Field(None, TITLE)
+description = TextArea("todo-description", DESCRIPTION)
+due = DateField("todo-due", DUE)
+assignee = Select(None, ASSIGNEE, (NOBODY, T("ana", "ana"), T("bo", "bo")))
+save = Button(None, SAVE, "POST /todos with the non-empty fields")
+saving = Spinner("todo-saving", "the request is out")
+error = Text("todo-error", does="the API's error text, role=alert")
+
+idle = Phase("idle", hides=(saving, error), because="Save is enabled only when the title is not blank")
+saving_phase = Phase("saving", shows=(saving,), disabled=(title, description, due, assignee, save))
+refused = Phase("refused", shows=(error,), because="the fields keep what was typed")
+
+
+class AddForm(Screen):
+    api = "/todos"
+    sends = (request("POST", "/todos"),)
+    name = T("Add a todo", "Ajouter une tâche")
+    reached_from = "ListPage: always shown above the list"
+    root = form
+    title = title
+    description = description
+    due = due
+    assignee = assignee
+    save = save
+    saving = saving
+    error = error
+
+    stored = (
+        Stored("title", "any text; Save needs it non-blank", '""'),
+        Stored("description", "any text", '""'),
+        Stored("due", "YYYY-MM-DD or empty", '""'),
+        Stored("assignee", '"" | "ana" | "bo"', '""'),
+        Stored("phase", "idle | saving | refused", "idle"),
+        Stored("error", "the last refusal's message, or empty", '""'),
+    )
+    phases = (idle, saving_phase, refused)
+    transitions = (
+        Transition(idle, When("click", save), saving_phase, only_if="title is not blank and online"),
+        Transition(saving_phase, When("201"), idle, then="fields cleared; list refetched"),
+        Transition(saving_phase, When("4xx or 5xx"), refused, then="error = body.error; fields kept"),
+        Transition(saving_phase, When("network error"), refused, then="error = a generic message"),
+        Transition(refused, When("edit any field"), idle, then="error hidden"),
+        Transition(refused, When("click", save), saving_phase, only_if="title is not blank"),
+    )

@@ -62,6 +62,7 @@ def attempt(step: object, model: Model, surface: Surface, baseline: tuple[object
     """Takes one step on both sides and turns anything that escapes into a failed step.
     The step's text is read before it is taken: a fixture moves on with later steps."""
     text = str(step)
+    at = offset(surface)
     try:
         result = take(step, model, surface, baseline, seen if seen is not None else {})
     except Unhealthy:
@@ -75,12 +76,18 @@ def attempt(step: object, model: Model, surface: Surface, baseline: tuple[object
     except Exception as crash:
         result = StepResult(step, None, None, model.rows(), (), False, f"crashed: {type(crash).__name__}: {str(crash).splitlines()[0]}")
     result.text = text
+    result.at = at
     stray = strays(surface)
     if stray and not result.skipped:
         note = "the page sent a request no screen declares: " + ", ".join(stray)
         result.note = f"{result.note}; {note}" if result.note else note
         result.ok = False
     return result
+
+
+def offset(surface: Surface) -> float | None:
+    ask = getattr(surface, "offset", None)
+    return cast(Callable[[], float | None], ask)() if callable(ask) else None
 
 
 def strays(surface: Surface) -> list[str]:

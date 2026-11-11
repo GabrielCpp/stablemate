@@ -220,6 +220,7 @@ class StepResult:
     text: str = ""
     known: Any = None
     skipped: str = ""
+    at: float | None = None
 
 
 @dataclass
@@ -228,6 +229,7 @@ class JourneyResult:
     surface: str
     steps: list[StepResult] = field(default_factory=list)
     state: str = ""
+    video: str = ""
 
     @property
     def ok(self) -> bool:

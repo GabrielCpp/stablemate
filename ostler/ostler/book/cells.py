@@ -28,6 +28,8 @@ class CellRun:
     why: str = ""
     known: Defect[Any, Any] | None = None
     skipped: str = ""
+    at: float | None = None
+    video: str = ""
 
     @property
     def text(self) -> str:
@@ -60,17 +62,37 @@ class Played:
 
 
 def play(matrices: tuple[Any, ...], surface: Surface, fresh: Callable[[], Model],
-         keep: Callable[[Any, Any, str], bool] = lambda axes, scene, name: True) -> Played:
+         keep: Callable[[Any, Any, str], bool] = lambda axes, scene, name: True, keep_videos: bool = False) -> Played:
+    """Plays the cells. A surface that records gets one video for each arrangement, kept when a cell of it
+    fails or meets a known defect, or when `keep_videos` says so."""
     played = Played()
+    record = getattr(surface, "record", None)
+    finish = getattr(surface, "finish", None)
+
+    def close(made: list[CellRun]) -> None:
+        if callable(finish):
+            path = str(finish(keep_videos or any(not c.ok or c.known is not None for c in made)))
+            for c in made:
+                c.video = path
+
     for axes in matrices:
         for scene in axes.scenes:
             world: Model | None = None
+            made: list[CellRun] = []
             for name, build in axes.actions.items():
                 if keep(axes, scene, name):
                     if world is None:
                         played.arrangements += 1
+                        if callable(record):
+                            record(f"cell-{axes.record}-{scene.name}-{played.arrangements}")
                     cell, world = one(axes, scene, name, build, surface, fresh, world)
                     played.cells.append(cell)
+                    made.append(cell)
+                    if world is None:
+                        close(made)
+                        made = []
+            if made:
+                close(made)
     return played
 
 
@@ -92,6 +114,7 @@ def one(axes: Any, scene: Any, name: str, build: Callable[[Model], object], surf
                 cell.skipped = arranged.skipped
                 return cell, None
             if not arranged.ok:
+                cell.at = arranged.at
                 cell.ok, cell.note = False, f"the scene cannot be arranged: {arranged.text}: {arranged.note}"
                 return cell, None
     try:
@@ -110,6 +133,6 @@ def one(axes: Any, scene: Any, name: str, build: Callable[[Model], object], surf
     if taken.skipped:
         cell.skipped = taken.skipped
         return cell, None
-    cell.ok, cell.note, cell.known = taken.ok, taken.note, taken.known
+    cell.ok, cell.note, cell.known, cell.at = taken.ok, taken.note, taken.known, taken.at
     cell.outcome = f"{taken.model} / {taken.app}"
     return cell, model if taken.ok and taken.known is None and model.key() == before else None
