@@ -288,10 +288,12 @@ class MoveToday(Change):
 
 
 class Transaction:
-    """Changes applied together, in order."""
+    """Changes applied together, in order. `says` is what the call answers with
+    when that is not the record it wrote: the lines a command prints."""
 
-    def __init__(self, *changes: Change):
+    def __init__(self, *changes: Change, says: tuple[object, ...] | None = None):
         self.changes = changes
+        self.says = says
 
     def __str__(self) -> str:
         return "; ".join(str(c) for c in self.changes) or "nothing changes"
@@ -521,7 +523,7 @@ class State(Model):
             for change in result.changes:
                 change.apply(self)
             written = [c.entity for c in result.changes if isinstance(c, (Create, Update))]
-            self.view = (self.row(written[-1]),) if written else None
+            self.view = result.says if result.says is not None else (self.row(written[-1]),) if written else None
         elif isinstance(result, Change):
             result.apply(self)
             if isinstance(result, (Create, Update)):

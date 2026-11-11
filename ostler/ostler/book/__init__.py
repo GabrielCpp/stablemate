@@ -13,6 +13,7 @@ from ostler.book.browser import Browser, Received, answer, refusal, request
 from ostler.book.cast import SOLE, Actor
 from ostler.book.domain import (Action, App, Become, Change, Collection, Create, Delete, Entry, Fixture, Heard, Index, MoveToday,
                                 Select, Show, State, Total, Transaction, Unique, Update)
+from ostler.book.command import STDERR, Command, CommandSurface, Exit, Files, Flag, Lines, Mark, Outside, Positional, Sandbox, Seed, Switch
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.http import (Answer, ApiKey, Bearer, Bool, Bytes, Client, Endpoint, Enum, Field, Id, Int, List, Map, Num, Object,
@@ -28,7 +29,7 @@ from ostler.book.screen import Component, Interaction, Phase, Screen, Stored, T,
 from ostler.book.service import Service
 from ostler.book.stack import Process, Stack
 from ostler.book.state import Axes, Impossible, Scene
-from ostler.book.status import Code, refused, succeeded
+from ostler.book.status import Code, Exited, refused, succeeded
 from ostler.book.surface import Surface
 from ostler.book.witness import Because, Unseen
 
@@ -40,6 +41,7 @@ __all__ = [
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",
     "Endpoint", "Enum", "Field", "Given", "Id", "Impossible", "Int", "Interaction", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",
     "Num", "On", "Phase", "Process", "Reference", "Refusal", "Refusals", "Refused", "Relates", "Rule", "Same", "Scene", "Screen", "Seen", "Service", "Shows", "Stack", "Stored", "Str", "Surface",
-    "Code", "GrpcClient", "GrpcSurface", "HttpSurface", "Rpc", "STATUS", "refused", "succeeded",
+    "Command", "CommandSurface", "Exit", "Files", "Flag", "Lines", "Mark", "Outside", "Positional", "STDERR", "Sandbox", "Seed", "Switch",
+    "Code", "Exited", "GrpcClient", "GrpcSurface", "HttpSurface", "Rpc", "STATUS", "refused", "succeeded",
     "T", "Transition", "Undeclared", "Undo", "Unreachable", "Unseen", "Because", "When", "error_field", "masked", "pluck", "problem",
 ]

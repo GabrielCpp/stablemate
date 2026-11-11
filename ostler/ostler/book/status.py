@@ -1,5 +1,5 @@
-"""What a service answered, in the words of its protocol: an HTTP status number
-or a gRPC status code by name. Everything that asks whether an answer is a
+"""What a service answered, in the words of its protocol: an HTTP status number,
+a gRPC status code by name or a process exit code. Everything that asks whether an answer is a
 success or a refusal asks here, so neither protocol is read as the other."""
 
 from __future__ import annotations
@@ -33,14 +33,22 @@ class Code(StrEnum):
         return list(cls)[number]
 
 
-Status = int | Code
+class Exited(int):
+    """A process exit code as a status: zero is success, any other number a refusal."""
+
+
+Status = int | Code | Exited
 
 
 def succeeded(status: Status) -> bool:
     """The service did what was asked."""
+    if isinstance(status, Exited):
+        return status == 0
     return status is Code.OK if isinstance(status, Code) else 200 <= status < 300
 
 
 def refused(status: Status) -> bool:
     """The service turned the call away."""
+    if isinstance(status, Exited):
+        return status != 0
     return status is not Code.OK if isinstance(status, Code) else status >= 400

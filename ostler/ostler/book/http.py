@@ -786,6 +786,7 @@ class Endpoint:
     source: ClassVar[tuple[str, ...]] = ()
     unauthenticated: ClassVar[Status] = 401
     typed_wire: ClassVar[bool] = False
+    typed_away: ClassVar[tuple[str, ...]] = ("wrong type", "out of enum", "null")
 
     def __init_subclass__(cls, abstract: bool = False) -> None:
         if abstract:
@@ -1000,7 +1001,8 @@ class Endpoint:
         return _prepared(cls.body, cast("Object | List", cls.body).pack(self.body_value), ids, know,
                          f"{cls.__name__} body")
 
-    def send(self, client: Client) -> Reply:
+    def exchange(self, client: Client) -> tuple[Status, bytes]:
+        """The call carried out: the status the service gave and the bytes of its answer."""
         cls = type(self)
         headers = {"Content-Type": "application/json"}
         for name, value in self.header_values.items():
@@ -1017,7 +1019,11 @@ class Endpoint:
             data, headers["Content-Type"] = payload, "application/octet-stream"
         else:
             data = None if payload is None else json.dumps(payload).encode()
-        status, raw = client.transport(cls.method, self.url(client.address(cls.host), client.ids, client.resolve), headers, data)
+        return client.transport(cls.method, self.url(client.address(cls.host), client.ids, client.resolve), headers, data)
+
+    def send(self, client: Client) -> Reply:
+        cls = type(self)
+        status, raw = self.exchange(client)
         answer = next((a for a in cls.answers if a.status == status), None)
         if answer is None and status in GATEWAY:
             raise Unhealthy(f"{cls.route()} answered {status}: the service is not there to answer")

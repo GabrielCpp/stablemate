@@ -34,7 +34,6 @@ if TYPE_CHECKING:
 
 GONE = object()
 PLACES = ("path", "query", "body", "headers")
-TYPED_AWAY = ("wrong type", "out of enum", "null")
 
 
 @dataclass(frozen=True)
@@ -230,7 +229,7 @@ def classes(call: Endpoint, model: Model, ids: Identities | None) -> list[InputC
     if isinstance(cls.body, Object) and (cls.body.one_ofs or cls.body.togethers):
         out += relation_classes(cls.body, cls.body.pack(call.body_value))
     if cls.typed_wire:
-        out = [c for c in out if c.kind not in TYPED_AWAY]
+        out = [c for c in out if c.kind not in cls.typed_away]
     return out
 
 

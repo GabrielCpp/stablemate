@@ -14,7 +14,7 @@ from ostler.book.errors import BookError
 from ostler.book.status import Status
 from ostler.book.http import Endpoint, Witness, declared_paths
 
-ITEM = re.compile(r"^((\d{3}|[A-Z]+(_[A-Z]+)*)(: \S.*)?|inputs)$")
+ITEM = re.compile(r"^((\d{1,3}|[A-Z]+(_[A-Z]+)*)(: \S.*)?|inputs)$")
 
 
 class Because(Enum):
