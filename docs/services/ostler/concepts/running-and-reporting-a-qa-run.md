@@ -109,7 +109,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 
 - code: ostler/ostler/qa/context.py::build_context@4c11b18e0f7f
 - code: ostler/ostler/qa/context.py::write_context@af155aaf038e
-- code: ostler/ostler/qa/context.py::cmd_context@d78961619e5c
+- code: ostler/ostler/qa/context.py::cmd_context@2e5f40cd24df
 - code: ostler/ostler/qa/context.py::cmd_context_validate@f2fc5672fe0a
 - code: ostler/ostler/qa/context.py::validate_context@f85328d3f2ee
 - code: ostler/ostler/qa/context.py::node_obligations@1a2bc445cf90
@@ -131,7 +131,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/run.py::cmd_stop@924d13c43e6a
 - code: ostler/ostler/qa/run.py::cmd_report@2feca403e7fc
 - code: ostler/ostler/qa/run.py::cmd_replay@ba435f9598dd
-- code: ostler/ostler/qa/run.py::cmd_validate@652387ec658e
+- code: ostler/ostler/qa/run.py::cmd_validate@884c4b008852
 - code: ostler/ostler/qa/session.py::QaSession@ae3779d0ea70
 - code: ostler/ostler/qa/session.py::_execute_check@90e0502a040f
 - code: ostler/ostler/qa/dispatch.py::dispatch_target@3498f7cccfe4
@@ -159,7 +159,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/plan.py::load_plan@9193a20ade5e
 - code: ostler/ostler/qa/plan.py::validate_v2@0fc5e2d5e7b6
 - code: ostler/ostler/qa/plan.py::check_runtime_requirements@076b9e807404
-- code: ostler/ostler/qa/v2.py::run_plan@38eb59b5533e
+- code: ostler/ostler/qa/v2.py::run_plan@c40306c595a6
 - code: ostler/ostler/qa/captures.py::CaptureDecl@10b921bebae2
 - code: ostler/ostler/qa/captures.py::parse_bullet@7374dad1096a
 - code: ostler/ostler/qa/report.py::build_report@37a6da59f531
@@ -187,7 +187,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/sensitivity.py::cmd_sensitivity@98b7251d8c51
 - code: ostler/ostler/qa/lint.py::PlanLintVisitor@fb80c08961c4
 - code: ostler/ostler/qa/lint.py::lint_source@5dfcd48d7ce8
-- code: ostler/ostler/qa/lint.py::cmd_lint@73eb987731e2
+- code: ostler/ostler/qa/lint.py::cmd_lint@52c0d3a7c20e
 - code: ostler/ostler/qa/clean.py::cmd_clean@caa5b8678b25
 - code: ostler/ostler/qa/clean.py::legacy_scratch_roots@1d4e6e6e829c
 - code: ostler/ostler/qa/tools.py::catalog@b9ec43ce49bb
@@ -204,7 +204,7 @@ re-exports the public surface of all of the above (`cmd_run`, `cmd_compile_plan`
 - code: ostler/ostler/qa/addresses.py::leased@5b7fe1122ee2
 - code: ostler/ostler/qa/stack.py::ensure_stack@2562d217d605
 - code: ostler/ostler/qa/stack.py::teardown_stack@a577e8ec1b5d
-- code: ostler/ostler/qa/stack.py::boot_app@e08996ac308e
+- code: ostler/ostler/qa/stack.py::boot_app@0894c91c9acf
 - code: ostler/ostler/qa/stack.py::health_probe@9c2321812e35
 - code: ostler/ostler/qa/runbook.py::select_runbook@6743210e42d4
 - code: ostler/ostler/qa/runbook.py::select_stack@09f8a18d7f5c
