@@ -109,5 +109,20 @@ A web run records a video of each journey and each cell arrangement under `<out>
 the video of one with a failed or known step, or all of them with `--keep-videos`, and the run
 lists each failed or known step with the video path and the offset to seek to.
 
-Twins and input classes read endpoint shapes, and a screen's components carry none. A screen
-book reports `inputs: 0 played` and `twins: 0 pairs played`.
+## Typed inputs
+
+A field, text area, date field or select may declare the shape of the fixture field it takes.
+The shape is the HTTP `Field`, so `ignores=` and `why=` work as on an endpoint.
+
+```python
+from ostler.book import Field as Wire, Str
+
+due = DateField("todo-due", DUE, takes="due_on", holds=Wire(Str(format="date"), required=False))
+```
+
+`takes` and `holds` come together. The interaction on that screen then gets input classes,
+and twins for each typed input. A date also gets a pair either side of the clock's midnight,
+`today` and the day after. When the model reads a pair alike and the page answers it apart
+(the rows it shows, or its refusal), the run reports it `underspecified`. A browser that
+rejects a typed value, such as text in a date input, makes the class unreachable and not a
+failure. The surface must leave the screen as it found it when `fill` raises `CannotReach`.
