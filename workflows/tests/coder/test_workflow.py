@@ -211,6 +211,7 @@ class _Sub:
         qa_status: QaFlowStatus = "passed",
         qa_statuses: list[QaFlowStatus] | None = None,
         qa_docs_recheck_required: bool = False,
+        book_statuses: list[QaFlowStatus] | None = None,
         ci_status: CiStatus = "passed",
         explode: set[str] | None = None,
     ) -> None:
@@ -231,6 +232,8 @@ class _Sub:
         self.qa_status: QaFlowStatus = qa_status
         self.qa_statuses: list[QaFlowStatus] = qa_statuses or []
         self.qa_docs_recheck_required = qa_docs_recheck_required
+        self.book_statuses: list[QaFlowStatus] = book_statuses or []
+        self.book_calls: list[str] = []
         self.ci_status: CiStatus = ci_status
         self.explode = explode or set()
         self.calls: list[str] = []
@@ -245,11 +248,18 @@ class _Sub:
             ("Fix", self._fix),
         ):
             monkeypatch.setattr(coder_main, name, self._flow(name, reply))
+        monkeypatch.setattr(
+            coder_main, "BookQa", self._flow("BookQa", self._book, calls=self.book_calls)
+        )
         return self
 
-    def _flow(self, name: str, reply: Callable[[_StubFlow], Any]) -> type:
+    def _flow(
+        self, name: str, reply: Callable[[_StubFlow], Any], calls: list[str] | None = None
+    ) -> type:
         """A real `Workflow` subclass named for the flow it stands in for."""
-        calls, explode, seen = self.calls, self.explode, self.seen
+        seen = self.seen if calls is None else []
+        calls = self.calls if calls is None else calls
+        explode = self.explode
 
         def start(child: _StubFlow) -> Done:
             calls.append(name)
@@ -311,6 +321,20 @@ class _Sub:
             qa=QaResult(status="passed" if status == "passed" else "failed"),
             operator_notes="",
             docs_recheck_required=self.qa_docs_recheck_required,
+        )
+
+    def _book(self, child: _StubFlow) -> QaFlowResult:
+        status = self.book_statuses.pop(0) if self.book_statuses else "passed"
+        findings = (
+            [QaFinding(id="book-1", target="acme/services/api", issue="the claim fails")]
+            if status == "refix"
+            else []
+        )
+        return QaFlowResult(
+            status=status,
+            qa=QaResult(status="failed" if findings else "passed"),
+            findings=findings,
+            docs_recheck_required=False,
         )
 
     def _fix_ci(self, child: _StubFlow) -> CiChecks:
@@ -973,6 +997,32 @@ def test_a_refix_files_qas_findings_and_sends_the_story_back_to_its_dev_owner(
     assert second.worklist_dir == str(run_env.writer.run_dir), second
 
 
+def test_a_book_refix_reaches_the_dev_owner_before_the_scenario_qa_is_handed_off(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A claim the service book proves false goes back to the dev owner, and the scenario QA first runs on the code that answers it."""
+    repo = epic()
+    sub = _Sub(repo, book_statuses=["refix", "passed"]).install(monkeypatch)
+    run_env = env()
+
+    drive_flow(Coder(), run_env, _Agent())
+
+    assert sub.book_calls == ["BookQa", "BookQa"], sub.book_calls
+    assert sub.calls.count("Dev") == 2, sub.calls
+    assert sub.calls.count("Qa") == 1, sub.calls
+    second_dev = [i for i, name in enumerate(sub.calls) if name == "Dev"][1]
+    assert sub.calls.index("Qa") > second_dev, sub.calls
+    filed = [
+        it.payload
+        for it in work.worklist(run_env.writer.run_dir).items(work.FINDING)
+        if it.payload.get("source") == "qa"
+    ]
+    assert [f["target"] for f in filed] == ["acme/services/api"], filed
+
+
 def test_a_finding_still_open_at_commit_is_owned_by_a_follow_up_filed_for_its_cause(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
@@ -1157,13 +1207,13 @@ def test_the_drain_runs_even_when_the_backlog_is_empty(
 
 
 
-def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
+def test_a_run_killed_in_qa_resumes_on_the_scenario_qa_without_replaying_the_book_lane(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The reason `dev`, `document` and `qa` are three states and not one."""
+    """The reason `dev`, `document`, `qa` and `scenario_qa` are four states and not one: a resume hands its parked scope to the first handoff its state makes, so the book lane must not sit in front of the scenario QA's."""
     repo = epic()
     _Sub(repo, explode={"Qa"}).install(monkeypatch)
     run_env = env()
@@ -1174,7 +1224,7 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
 
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
-    assert resume.state == "qa", resume
+    assert resume.state == "scenario_qa", resume
     assert resume.flow == "Coder", resume
 
     sub = _Sub(repo).install(monkeypatch)
@@ -1183,4 +1233,5 @@ def test_a_run_killed_in_qa_resumes_on_qa_without_rebuilding_the_story(
     assert result.status == "skipped", result
     assert "Dev" not in sub.calls, sub.calls
     assert sub.calls == ["Qa", "Fix"], sub.calls
+    assert sub.book_calls == [], sub.book_calls
     assert [c.epic for c in sub.calls_to("Qa")] == [EPIC], "the epic is read back, not carried"

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from ostler.qa.compile import compiled_from_the_book
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.qa.nodes import (
@@ -19,7 +19,6 @@ from workhorse_workflows.coder.qa.nodes import (
     flush_root_screenshots,
     lint_qa_plan,
     qa_tools_catalog,
-    release_copy,
     run_qa_plan,
     run_regression_suite,
     stack_target,
@@ -43,31 +42,20 @@ from workhorse_workflows.coder.qa.report import (
     unproved_findings,
 )
 from workhorse_workflows.coder.qa.sides import run_sides
-from workhorse_workflows.coder.shared import causes, paths, roles, work
+from workhorse_workflows.coder.shared import causes, roles
 from workhorse_workflows.coder.shared.backlog import (
     file_backlog_items,
     file_deferred_obligations,
     filed_backlog,
     unfiled,
 )
-from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.docs import detect_okf_docs, services_root
-from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
-from workhorse_workflows.coder.shared.owner import (
-    HUMAN_MODES,
-    MAX_BLOCKS,
-    MAX_LAPS,
-    SILENCE_S,
-    UNBOUNDED,
-    owner_profile,
-)
 from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_context
+from workhorse_workflows.coder.shared.qa_owner import QaOwner
 from workhorse_workflows.coder.shared.provenance import resolve_story_sources
 from workhorse_workflows.coder.shared.reach import resolve_check_set
-from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, answered, resolver_args
 from workhorse_workflows.coder.shared.review import check_feedback
-from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.qa import (
     QaFinding,
     QaFlowResult,
@@ -76,61 +64,23 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaPlanRun,
     QaResult,
 )
-from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.coder.shared.story import (
-    prepare_story,
     stamp_specs,
     sync_story_fixtures,
 )
 from workhorse_workflows.coder.shared.worktree import code_changed, snapshot_code_state
 from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
-from workhorse_workflows.kit.telemetry import counter_labels
 
 
-class Qa(Workflow):
+class Qa(QaOwner):
     """QA one story through one owner session, then rerun and gate what it claims."""
 
-    story: str = ""
-    epic: str = ""
-    operator_mode: str = "auto"
-    target_env: str = "local"
     stop_at_first_verdict: bool = False
-    preexisting: tuple[str, ...] = ()
     rerun: bool = False
     scope: tuple[str, ...] = ()
 
-    injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
-
-    INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack, release_copy})
-
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("laps", "blocks")
-
-    def setup(self) -> StoryPaths:
-        """Resolve the slug to the story path, its spec dir and its `qa/` directory."""
-        ctx = self.call(prepare_story, self.story, self.epic)
-        if not ctx.story_path:
-            raise WorkflowFailed(
-                f"no story path for {self.story!r}. The story could not be resolved, so "
-                "there is nothing to QA."
-            )
-        return ctx
-
-    def labels(self) -> dict[str, str]:
-        """Which story this run is on: what the run's activity line shows."""
-        return {"work_id": self.ctx.story_slug} if self.ctx.story_slug else {}
-
-    def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
-        """The same, plus which attempt of which budget the next state is on."""
-        return self.labels() | counter_labels(params, "qa", self.BUDGET_LABELS)
-
-    @property
-    def _session(self) -> str:
-        return f"qa:{self.ctx.story_slug}"
-
-    def _dirs(self) -> list[str]:
-        """The repos this story's plan touches: every agent turn's `add_dirs`."""
-        return list(self.output(resolve_impl_context).affected_repo_paths)
+    LABEL_PREFIX: ClassVar[str] = "qa"
 
     def _file_backlog(self) -> None:
         """File the items the owner left for the backlog, less the ones an open `qa` record already holds."""
@@ -259,12 +209,7 @@ class Qa(Workflow):
             result: QaOwnerResult = self.agent(
                 turn.prompt,
                 returns=turn.returns,
-                power="high",
-                timeout=UNBOUNDED,
-                silence=SILENCE_S,
-                profile=owner_profile("qa"),
-                session=self._session,
-                add_dirs=self._dirs(),
+                **self._owner_options(),
                 args=turn.args
                 | self._owner_args()
                 | {
@@ -415,7 +360,7 @@ class Qa(Workflow):
             failures.append(unclassified_failure(run, unattributed))
         ids = sorted([s.id for s in sides.book] + unattributed)
         failed = failed_scenarios_arg(self.ctx.spec_dir, ids)
-        return self._lap(run, failures, laps, blocks, failed)
+        return self._lap(run, failures, laps, blocks, failed_scenarios=failed)
 
     def _failed(self, run: QaPlanRun, found: list[QaFinding]) -> Done:
         """A failed run with its findings: the dev owner's to fix, or the tracker's in dev."""
@@ -425,27 +370,6 @@ class Qa(Workflow):
         self.logger.info("QA found product defects in %s", self.ctx.story_slug)
         return self._finish("refix", run, refix_findings(found, self.ctx.qa_dir, run.notes))
 
-    def _lap(
-        self,
-        result: object,
-        failures: list[str],
-        laps: int,
-        blocks: int,
-        failed: list[dict[str, Any]] | None = None,
-    ) -> Continue | Await:
-        text = "\n\n".join(failures)
-        if laps >= MAX_LAPS:
-            notes = f"{text}\n\nThe checks still fail after {laps} repair turn(s)."
-            return self._block(result, notes, "the checks", blocks)
-        return Continue(
-            result,
-            self.work,
-            report=text,
-            failed_scenarios=failed or [],
-            laps=laps + 1,
-            blocks=blocks,
-        )
-
     def _finish(
         self, status: QaFlowStatus, run: QaPlanRun, findings: list[QaFinding] | None = None
     ) -> Done:
@@ -453,9 +377,7 @@ class Qa(Workflow):
         changed = self.call(code_changed, before=before)
         if status == "passed":
             self.call(file_deferred_obligations, self.ctx.spec_dir)
-        self._release()
-        if status != "refix":
-            self.reset_session(self._session)
+        self._retire(status)
         return Done(
             QaFlowResult(
                 status=status,
@@ -464,59 +386,6 @@ class Qa(Workflow):
                 docs_recheck_required=changed.changed,
             )
         )
-
-    def _release(self) -> None:
-        """Tear down this run's stack copy: the next pass QAs changed code, so it builds a new one."""
-        target = self.output(stack_target)
-        self.call(release_copy, near=target.near, lease=target.lease)
-
-    def _block(self, result: object, notes: str, where: str, blocks: int) -> Continue | Await:
-        if self.operator_mode in HUMAN_MODES or blocks >= MAX_BLOCKS:
-            return self._ask(notes, where, blocks)
-        return Continue(result, self.resolve, notes=notes, where=where, blocks=blocks)
-
-    def _ask(
-        self, notes: str, where: str, blocks: int, result: OperatorResolution | None = None
-    ) -> Await:
-        gate = escalation(
-            self,
-            block_kind="qa",
-            where=where,
-            notes=notes,
-            number=blocks + 1,
-            result=result,
-        )
-        return Await(context_path(self), gate.body, self.read_operator, blocks=blocks + 1)
-
-    def resolve(self, notes: str, where: str, blocks: int = 0) -> Continue | Await:
-        """Answer a block from what is already written down, or ask the operator."""
-        self.logger.info("resolving a block at %s", where, extra={"activity": True})
-        result = self.agent(
-            "shared/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power=RESOLVER_POWER,
-            timeout=UNBOUNDED,
-            add_dirs=self._dirs(),
-            args=resolver_args(
-                self,
-                block_kind="qa",
-                notes=notes,
-            ),
-        )
-        if answered(self, result, "qa"):
-            return Continue(result, self.read_operator, blocks=blocks + 1)
-        return self._ask(notes, where, blocks, result)
-
-    def read_operator(self, blocks: int = 0) -> Continue | Done:
-        """Log the answer, then resume the owner's session with it in hand."""
-        answer = self.call(read_operator_context, self.ctx.story_path)
-        work.log_answer(self.run_dir, f"{self.ctx.story_slug}: {answer.scope}", answer.content)
-        if answer.scope == "epic":
-            self.logger.info("the operator scoped the answer to the epic, so the run replans")
-            self.reset_session(self._session)
-            self._release()
-            return Done(QaFlowResult(status="replan", operator_notes=answer.content))
-        return Continue(answer, self.work, operator_context=answer.content, blocks=blocks)
 
 
 __all__ = ["Qa"]

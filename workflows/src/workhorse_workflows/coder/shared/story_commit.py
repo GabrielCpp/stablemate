@@ -123,7 +123,7 @@ def _affected_roots(
     return found
 
 
-def _uncommitted(root: Path) -> list[str]:
+def uncommitted_paths(root: Path) -> list[str]:
     """Every path in *root* holding work that is not in a commit yet."""
     try:
         repo = open_repo(root)
@@ -157,7 +157,7 @@ def _leftovers(
         excused = untouched_since(repo_path, snapshot)
         found.extend(
             (name, repo_path, rel)
-            for rel in _uncommitted(repo_path)
+            for rel in uncommitted_paths(repo_path)
             if rel not in excused and not paths.is_gate_context(rel)
         )
     return found, names
@@ -403,7 +403,7 @@ def commit_book_delta(
         excused = untouched_since(repo_path, snapshot)
         rels = [
             rel
-            for rel in _uncommitted(repo_path)
+            for rel in uncommitted_paths(repo_path)
             if rel not in excused and (repo_path / rel).resolve().is_relative_to(book)
         ]
         if not rels:
@@ -508,7 +508,7 @@ def commit_story(
 
     def _commit_in(repo_path: Path, package: str) -> bool:
         """Commit the product paths that were not dirty and untouched at story start, keeping what git said when it refused them."""
-        dirty = [rel for rel in _uncommitted(repo_path) if is_product(repo_path, rel, excluded)]
+        dirty = [rel for rel in uncommitted_paths(repo_path) if is_product(repo_path, rel, excluded)]
         excused = untouched_since(repo_path, snapshot)
         rels = [rel for rel in dirty if rel not in excused]
         if len(rels) < len(dirty):
@@ -547,4 +547,5 @@ __all__ = [
     "proof_scope",
     "snapshot_proven_state",
     "stamp_story_passed",
+    "uncommitted_paths",
 ]

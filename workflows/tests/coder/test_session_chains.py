@@ -14,6 +14,7 @@ from workhorse_workflows.coder.shared.conversation import backbone, opening_phas
 from workhorse_workflows.coder.docs import flow as docs_flow
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.dev.flow import Dev
+from workhorse_workflows.coder.shared import qa_owner
 from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import stack_target
@@ -98,7 +99,7 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
     monkeypatch.setattr(
         qa_flow, "code_changed", lambda _log, **_k: SimpleNamespace(changed=False)
     )
-    monkeypatch.setattr(qa_flow, "release_copy", lambda _log, *_a, **_k: StackTornDown(torn_down="skipped"))
+    monkeypatch.setattr(qa_owner, "release_copy", lambda _log, *_a, **_k: StackTornDown(torn_down="skipped"))
     return seen
 
 

@@ -31,7 +31,7 @@ from ostler.qa.compile import COMPILED_BANNER, Plan
 from ostler.qa.source_context import SourceRepository
 
 from workhorse_workflows.coder.shared.plan import resolve_impl_context
-from workhorse_workflows.coder.qa import flow as qa_flow
+from workhorse_workflows.coder.shared import qa_owner
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import qa as qa_nodes
 from workhorse_workflows.coder.qa.nodes import regression as regression_nodes
@@ -816,7 +816,7 @@ def test_a_packet_that_stays_unmappable_blocks_after_the_lap_budget(
         drive_flow(Qa(story=STORY), env(), agent)
 
     assert agent.counts() == {
-        "qa-story": qa_flow.MAX_LAPS + 1,
+        "qa-story": qa_owner.MAX_LAPS + 1,
         "resolve-operator": 1,
     }, agent.counts()
     assert okf.runs == 0, "the packet never validated, so nothing should have run"
@@ -1269,7 +1269,7 @@ def test_evidence_the_vetter_keeps_refusing_blocks_after_the_lap_budget(
         drive_flow(Qa(story=STORY), env(), agent)
 
     assert agent.counts() == {
-        "qa-story": qa_flow.MAX_LAPS + 1,
+        "qa-story": qa_owner.MAX_LAPS + 1,
         "resolve-operator": 1,
     }, agent.counts()
     assert len(seen) == 1 and "repair turn(s)" in seen[0], seen

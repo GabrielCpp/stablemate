@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from workhorse.cli import console_script
 from workhorse.pyflow import Registry
+from workhorse_workflows.coder.book_qa import BookQa
 from workhorse_workflows.coder.docs import Docs
 from workhorse_workflows.coder.fix import Fix
 from workhorse_workflows.coder.fix_ci import FixCi
@@ -20,6 +21,7 @@ workflow = (
         dev=Dev,
         docs=Docs,
         qa=Qa,
+        book_qa=BookQa,
         fix=Fix,
         fix_ci=FixCi,
     )

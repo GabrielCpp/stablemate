@@ -16,6 +16,7 @@ from workhorse_workflows.coder.docs import Docs
 from workhorse_workflows.coder.fix import Fix
 from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.dev import Dev
+from workhorse_workflows.coder.book_qa import BookQa
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.qa.nodes import teardown_stack
 from workhorse_workflows.coder.shared.branches import cut_run_branch
@@ -185,7 +186,22 @@ class Coder(Workflow):
         return Continue(result, self.qa)
 
     def qa(self) -> Continue:
-        """The gate the item turns on: pass it, or send what QA found back to the dev owner."""
+        """The first gate the item turns on: the service books, or what they found back to the dev owner."""
+        book = self.handoff(
+            BookQa,
+            story=self._story.story_id,
+            epic=self._story_epic(),
+            operator_mode=self.operator_mode,
+            target_env=self.target_env,
+            preexisting=self._preexisting(),
+        )
+        sent_back = self._sent_back(book)
+        if sent_back is not None:
+            return sent_back
+        return Continue(book, self.scenario_qa)
+
+    def scenario_qa(self) -> Continue:
+        """The scenario QA of the story: pass it, or send what it found back to the dev owner."""
         result = self.handoff(
             Qa,
             story=self._story.story_id,

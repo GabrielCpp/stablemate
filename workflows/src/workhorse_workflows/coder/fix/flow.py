@@ -5,8 +5,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow, WorkflowFailed
-from workhorse_workflows.coder.shared import paths, roles
+from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, WorkflowFailed
+from workhorse_workflows.coder.shared import roles
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.backlog import (
     already_fixed,
@@ -18,17 +18,14 @@ from workhorse_workflows.coder.shared.conversation import story_chain
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.provenance import changed_files
 from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, run_gate
-from workhorse_workflows.coder.shared.escalation import context_path, escalation
+from workhorse_workflows.coder.shared.gated import Gated
 from workhorse_workflows.coder.shared.failure import from_gate
 from workhorse_workflows.coder.shared.owner import (
-    HUMAN_MODES,
-    MAX_BLOCKS,
     MAX_LAPS,
     SILENCE_S,
     UNBOUNDED,
     owner_profile,
 )
-from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, answered, resolver_args
 from workhorse_workflows.coder.shared.story_commit import (
     check_repos_clean,
     commit_story,
@@ -43,7 +40,6 @@ from workhorse_workflows.coder.shared.schemas.backlog import FixPick
 from workhorse_workflows.coder.shared.schemas.dev import (
     FailureReport,
     ImplResult,
-    OperatorResolution,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 from workhorse_workflows.coder.shared.schemas.worktree import DirtyAtStart
@@ -63,13 +59,10 @@ def render_gate(report: FailureReport) -> str:
     )
 
 
-class Fix(Workflow):
+class Fix(Gated):
     """Drain the register's open `qa` records, each as a one-AC story, each committed and then closed."""
 
-    target_env: str = "local"
-    operator_mode: str = "auto"
-
-    injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
+    BLOCK_KIND: ClassVar[str] = "implementation"
 
     def setup(self) -> WorkspaceDirs:
         """Every directory an agent turn in this run may read."""
@@ -207,54 +200,10 @@ class Fix(Workflow):
         closed = self.call(close_fix_item, record_id, landed)
         return Continue(closed, self.start)
 
-    def resolve(self, notes: str, where: str, blocks: int = 0) -> Continue | Await:
-        """Answer a block from what is already written down, or ask the operator."""
-        self.logger.info("resolving a block at %s", where, extra={"activity": True})
-        result = self.agent(
-            "shared/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power=RESOLVER_POWER,
-            timeout=UNBOUNDED,
-            add_dirs=self._dirs(),
-            args=resolver_args(
-                self,
-                block_kind="implementation",
-                notes=notes,
-                story=self._story,
-            ),
-        )
-        if answered(self, result, "implementation"):
-            return Continue(result, self.read_operator, blocks=blocks + 1)
-        return self._ask(notes, where, blocks, result)
-
     def read_operator(self, blocks: int = 0) -> Continue:
         """Resume the owner's session with the answer in hand."""
         answer = self.call(read_operator_context, self._story.story_path)
         return Continue(answer, self.work, operator_context=answer.content, blocks=blocks)
-
-    def _block(self, result: object, notes: str, where: str, blocks: int) -> Continue | Await:
-        if self.operator_mode in HUMAN_MODES or blocks >= MAX_BLOCKS:
-            return self._ask(notes, where, blocks)
-        return Continue(result, self.resolve, notes=notes, where=where, blocks=blocks)
-
-    def _ask(
-        self, notes: str, where: str, blocks: int, result: OperatorResolution | None = None
-    ) -> Await:
-        gate = escalation(
-            self,
-            block_kind="implementation",
-            where=where,
-            notes=notes,
-            number=blocks + 1,
-            result=result,
-            story=self._story,
-        )
-        return Await(
-            context_path(self, self._story.story_path),
-            gate.body,
-            self.read_operator,
-            blocks=blocks + 1,
-        )
 
     def _gate_failures(self, laps: int) -> list[FailureReport]:
         """The first red gate of each changed repository."""
@@ -304,6 +253,9 @@ class Fix(Workflow):
     def _story(self) -> StoryPaths:
         """The story this iteration is draining, as `prepare_fix_story` resolved it."""
         return self.output(prepare_fix_story)
+
+    def _gate_story(self) -> StoryPaths:
+        return self._story
 
     def _dirs(self) -> list[str]:
         """The `add_dirs` every agent turn in this flow is given."""

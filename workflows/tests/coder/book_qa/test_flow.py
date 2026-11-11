@@ -1,0 +1,501 @@
+"""The book lane: coverage, the seat's turn, the plays of the book tool and where each verdict goes."""
+from __future__ import annotations
+
+import json
+import subprocess
+from collections import Counter
+from collections.abc import Callable
+from dataclasses import replace
+from pathlib import Path
+from typing import Any, Literal
+from unittest.mock import patch
+
+import pytest
+from _epics import epics_root
+from workhorse._vendor.stablemate_core import config as core_config
+from workhorse.pyflow import park as pyflow_park
+from workhorse.pyflow.blueprint import NODE_ATTR, node_spec
+from workhorse.pyflow.engine import RunEnv
+
+from workhorse_workflows.coder.book_qa import flow as book_flow
+from workhorse_workflows.coder.book_qa import nodes as book_nodes
+from workhorse_workflows.coder.book_qa.flow import BookQa
+from workhorse_workflows.coder.shared import qa_owner
+from workhorse_workflows.coder.shared.owner import MAX_LAPS
+from workhorse_workflows.coder.shared.schemas.qa import StackStatus, StackTarget, StackTornDown
+
+STORY = "STORY-1"
+EPIC = "EPIC-1"
+LEASE = "lease-1"
+
+EPIC_MD = "---\ntitle: Epic One\nstatus: active\n---\n\n# Epic One\n\n## Stories\n\n### STORY-1\n\n- title: Story One\n"
+
+STORY_MD = """---
+id: STORY-1
+type: story
+services: [api]
+---
+
+# Story One
+
+## Dependencies
+
+(none)
+
+## Fixtures
+
+(none)
+
+## Context
+
+Users need a thing.
+
+## Acceptance Criteria
+
+- the thing exists
+
+## Non-Functional Acceptance Criteria
+
+- the thing is fast
+
+## Technical Notes
+
+- the thing is a function
+
+## Implementation Status
+
+- **Status**: Done
+"""
+
+FINDING: dict[str, str] = {
+    "id": "list-drops-token",
+    "target": "acme/services/api:1",
+    "issue": "the list drops the share token: ListX answered 200 with no token",
+    "repair": "keep the token when the list is built",
+}
+
+CALLS = [{"service": "api", "calls": ["ListX", "BuildX"]}]
+
+
+class _Parked(Exception):
+    """Raised by the patched `wait_for_answer` to stop a run right at its `Await`."""
+
+
+def _parked_at(seen: list[str]) -> Callable[..., None]:
+    def stop(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        raise _Parked
+
+    return stop
+
+
+def _spec_dir() -> Path:
+    return core_config.resolve_artifacts_dir() / "specs" / STORY
+
+
+class _Book:
+    """`ostler book`, scripted at the process edge: the exit code each verb answers with, in order."""
+
+    def __init__(self, check: tuple[int, ...] = (0,), run: tuple[int, ...] = (0,)) -> None:
+        self.script = {"check": check, "run": run}
+        self.argv: dict[str, list[list[str]]] = {"check": [], "run": []}
+
+    def __call__(
+        self, argv: list[str], cwd: Any = None, *, check: bool = False, logger: Any = None
+    ) -> subprocess.CompletedProcess[str]:
+        verb = argv[argv.index("ostler.book") + 1]
+        self.argv[verb].append(argv)
+        codes = self.script[verb]
+        code = codes[min(len(self.argv[verb]), len(codes)) - 1]
+        return subprocess.CompletedProcess(argv, code, f"{verb} said exit {code}\n", "")
+
+
+class _Stack:
+    """The stack nodes, replaced, with the calls each one received."""
+
+    def __init__(self) -> None:
+        self.ensured = 0
+        self.released = 0
+        self.targets = 0
+        self.ready: Literal["yes", "no", "none", "unneeded"] = "yes"
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> _Stack:
+        def stack_target(logger: Any, story: str = "", lease: str = "", repo_dir: str = "") -> StackTarget:
+            self.targets += 1
+            return StackTarget(near="api", lease=lease)
+
+        def ensure_stack(
+            logger: Any, repo_dir: str = "", near: str = "", lease: str = ""
+        ) -> StackStatus:
+            self.ensured += 1
+            return StackStatus(ready=self.ready, failed_step="serve")
+
+        def release_copy(
+            logger: Any, repo_dir: str = "", near: str = "", lease: str = ""
+        ) -> StackTornDown:
+            self.released += 1
+            return StackTornDown(torn_down="yes")
+
+        for fn in (stack_target, ensure_stack, release_copy):
+            original = getattr(qa_owner, fn.__name__)
+            setattr(fn, NODE_ATTR, replace(node_spec(original), fn=fn))
+            for module in (book_flow, qa_owner):
+                if hasattr(module, fn.__name__):
+                    monkeypatch.setattr(module, fn.__name__, fn)
+        return self
+
+
+class _Agent:
+    """The book seat's turn, scripted: one reply per turn, and the files it leaves in the repo."""
+
+    def __init__(self, repo: Path, *replies: dict[str, Any], stray: str = "") -> None:
+        self.repo = repo
+        self.replies = replies or ({"status": "passed", "calls": CALLS},)
+        self.stray = stray
+        self.args: list[dict[str, Any]] = []
+        self.calls: list[str] = []
+
+    def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+        self.args.append(ctx.as_dict())
+        stem = Path(node.prompt).stem
+        assert stem == "qa-book", f"unexpected agent turn: {stem}"
+        self.calls.append(stem)
+        nth = self.calls.count(stem)
+        reply = self.replies[min(nth, len(self.replies)) - 1]
+        book = self.repo / "services" / "api" / "records.py"
+        book.write_text(f"# turn {nth}\n", encoding="utf-8")
+        if self.stray:
+            (self.repo / self.stray).write_text("edited\n", encoding="utf-8")
+        return f"(scripted) {node.prompt}", {"notes": f"turn {nth}", **reply}
+
+    def counts(self) -> Counter[str]:
+        return Counter(self.calls)
+
+
+@pytest.fixture
+def lane(
+    repo: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> Path:
+    """A repo with one story that lists `api`, and an executable book for `api` committed under `services/`."""
+    write(epics_root() / EPIC / "epic.md", EPIC_MD)
+    write(epics_root() / EPIC / "stories" / STORY / "story.md", STORY_MD)
+    write(_spec_dir() / "plan-context.json", json.dumps({"story": STORY, "services": []}))
+    write(repo / "services" / "api" / "service.py", "# the api book\n")
+    write(repo / "services" / "api" / "records.py", "# base\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "chore: add the api book")
+    return repo
+
+
+@pytest.fixture
+def book(monkeypatch: pytest.MonkeyPatch) -> Callable[..., _Book]:
+    def install(**kwargs: Any) -> _Book:
+        scripted = _Book(**kwargs)
+        monkeypatch.setattr(book_nodes, "run_tool", scripted)
+        return scripted
+
+    return install
+
+
+@pytest.fixture
+def stack(monkeypatch: pytest.MonkeyPatch) -> _Stack:
+    return _Stack().install(monkeypatch)
+
+
+def _flow(**kwargs: Any) -> BookQa:
+    return BookQa(story=STORY, operator_mode="human", **kwargs)
+
+
+def _commits(repo: Path, git: Callable[..., subprocess.CompletedProcess[str]]) -> list[str]:
+    return git(repo, "log", "--format=%s%n%b%x00").stdout.split("\0")[:-1]
+
+
+def test_a_story_with_no_covered_service_passes_with_no_seat_and_no_stack(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A service whose `service.py` is absent is not covered, so the lane must cost nothing there."""
+    (lane / "services" / "api" / "service.py").unlink()
+    git(lane, "commit", "-qam", "chore: drop the api book")
+    scripted = book()
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert (result.status, result.findings, result.docs_recheck_required) == ("passed", [], False)
+    assert agent.calls == [], agent.calls
+    assert (stack.targets, stack.ensured, stack.released) == (0, 0, 0)
+    assert scripted.argv == {"check": [], "run": []}
+
+
+def test_a_green_pass_plays_the_named_calls_records_them_and_lands_the_book(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The judgement plays what the seat named against the run's copy, and the seat's edit is committed under the story's footer."""
+    scripted = book()
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert (result.status, result.findings, result.docs_recheck_required) == ("passed", [], False)
+    assert agent.counts() == {"qa-book": 1}, agent.counts()
+    [argv] = scripted.argv["run"]
+    assert argv[argv.index("--only") + 1] == "ListX,BuildX", argv
+    assert argv[argv.index("--copy") + 1] == stack_lease(argv), argv
+    assert argv[argv.index("services.api") - 1] == "run", argv
+    record = json.loads((_spec_dir() / "book-qa.json").read_text(encoding="utf-8"))
+    assert record == {"services": CALLS}, record
+    landed = _commits(lane, git)[0]
+    assert landed.startswith("test(acme): play ") and "Story: STORY-1" in landed, landed
+    assert git(lane, "status", "--porcelain").stdout == ""
+    assert stack.released == 1, stack.released
+
+
+def stack_lease(argv: list[str]) -> str:
+    return argv[argv.index("--copy") + 1]
+
+
+def test_a_finding_beside_a_green_run_goes_back_to_the_developer_and_the_book_still_lands(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A declared defect makes the run green by design, so only the finding can stop the story passing."""
+    book()
+    agent = _Agent(lane, {"status": "findings", "findings": [FINDING], "calls": CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "refix", result
+    assert [f.id for f in result.findings] == ["list-drops-token"], result.findings
+    assert "Story: STORY-1" in _commits(lane, git)[0]
+    assert stack.released == 1
+
+
+def test_a_findings_verdict_that_lists_no_finding_goes_back_to_the_seat(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """An empty list would pass the story over a defect the seat said it found."""
+    book()
+    agent = _Agent(lane, {"status": "findings", "calls": CALLS}, {"status": "passed", "calls": CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert "listed none" in agent.args[1]["report"], agent.args[1]["report"]
+
+
+def test_a_red_run_with_no_finding_goes_back_to_the_seat_with_the_output(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A disagreement the seat did not turn into a finding is the seat's to repair, never a developer finding."""
+    scripted = book(run=(1, 0))
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"qa-book": 2}, agent.counts()
+    assert agent.args[0]["report"] == ""
+    assert "run said exit 1" in agent.args[1]["report"], agent.args[1]["report"]
+    assert len(scripted.argv["run"]) == 2
+
+
+def test_a_red_check_goes_back_to_the_seat_before_any_play(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A book that does not build cannot be played, so the run must not reach the stack with it."""
+    scripted = book(check=(2, 0))
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert "check said exit 2" in agent.args[1]["report"], agent.args[1]["report"]
+    assert len(scripted.argv["run"]) == 1
+
+
+def test_a_run_that_stays_red_parks_at_the_operator_after_the_lap_budget(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A workflow never gives up: a spent repair budget is an `Await`, not a failure."""
+    book(run=(1,))
+    agent = _Agent(lane)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert agent.counts() == {"qa-book": MAX_LAPS + 1}, agent.counts()
+    assert len(seen) == 1 and "repair turn(s)" in seen[0] and "run said exit 1" in seen[0], seen
+
+
+def test_a_run_that_could_not_judge_asks_the_operator_and_spends_no_second_turn(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Exit 3 says nothing about the story, so it is never a finding and never a lap."""
+    scripted = book(run=(3,))
+    agent = _Agent(lane)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert agent.counts() == {"qa-book": 1}, agent.counts()
+    assert len(scripted.argv["run"]) == 1
+    assert len(seen) == 1 and "the QA environment" in seen[0] and "run said exit 3" in seen[0], seen
+
+
+def test_a_stack_that_did_not_come_up_asks_the_operator_before_the_seat_starts(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The seat cannot repair a stack, so it must not be paid for a turn on one."""
+    stack.ready = "no"
+    book()
+    agent = _Agent(lane)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert agent.calls == [], agent.calls
+    assert "the QA environment" in seen[0] and "`serve`" in seen[0], seen
+
+
+def test_a_second_visit_replays_the_recorded_calls_with_no_seat(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """After a developer fix the same calls are the exam, and a model turn buys nothing while they pass."""
+    write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS}))
+    scripted = book()
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.calls == [], agent.calls
+    [argv] = scripted.argv["run"]
+    assert argv[argv.index("--only") + 1] == "ListX,BuildX", argv
+
+
+def test_a_green_replay_over_a_recorded_finding_sends_it_back_again(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The finding's defect is declared known, so the replay stays green while the app is still wrong, and the story must not pass on it."""
+    write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS, "findings": [FINDING]}))
+    book()
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "refix", result
+    assert [f.id for f in result.findings] == ["list-drops-token"], result.findings
+    assert agent.calls == [], agent.calls
+
+
+def test_a_red_replay_goes_to_the_seat_with_the_output_as_its_report(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A fix that moved the app's answer leaves the book stale, and the seat is the one who restates it."""
+    write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS}))
+    book(run=(1, 0))
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"qa-book": 1}, agent.counts()
+    assert "run said exit 1" in agent.args[0]["report"], agent.args[0]["report"]
+
+
+def test_a_seat_that_names_no_call_for_a_covered_service_is_sent_back_before_any_play(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """With no calls named the run would judge nothing and pass the story."""
+    scripted = book()
+    agent = _Agent(lane, {"status": "passed", "calls": []}, {"status": "passed", "calls": CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert "Name the calls the story touches" in agent.args[1]["report"], agent.args[1]["report"]
+    assert "api" in agent.args[1]["report"]
+    assert len(scripted.argv["run"]) == 1
+
+
+def test_a_product_edit_outside_the_book_is_refused_and_sent_back_unlanded(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The seat edits the book only, so a changed product path must not ride into the story's commit."""
+    book()
+    agent = _Agent(lane, stray="README.md")
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert "`README.md`" in agent.args[1]["report"], agent.args[1]["report"]
+    assert not any("play " in c for c in _commits(lane, git)), _commits(lane, git)
+    assert not (_spec_dir() / "book-qa.json").exists()
