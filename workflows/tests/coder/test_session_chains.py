@@ -19,7 +19,9 @@ from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import stack_target
 from workhorse_workflows.coder.shared.owner import UNBOUNDED, owner_profile
+from workhorse_workflows.coder.book_qa.nodes import covered_services
 from workhorse_workflows.coder.shared.docs import detect_okf_docs
+from workhorse_workflows.coder.shared.schemas.book_qa import CoveredServices
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult, OkfDetection
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaPlanRun, StackTarget, StackTornDown
 from workhorse_workflows.coder.shared.worktree import snapshot_code_state
@@ -45,6 +47,8 @@ class _Spy:
             return StackTarget()
         if node is detect_okf_docs:
             return OkfDetection(has_okf="yes")
+        if node is covered_services:
+            return CoveredServices()
         if node is not snapshot_code_state:
             raise NodeNotRunError(f"{node} has not run")
         return SimpleNamespace(status="")
@@ -105,13 +109,13 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
 
 def _docs() -> Docs:
     flow = Docs(story=STORY)
-    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="")
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="", story_services=[])
     return flow
 
 
 def _qa() -> Qa:
     flow = Qa(story=STORY)
-    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="")
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="", story_services=[])
     return flow
 
 
@@ -132,7 +136,7 @@ def test_every_docs_turn_continues_the_story_s_own_owner_conversation(spy: _Spy)
 def test_the_spec_pass_has_its_own_owner_conversation(spy: _Spy) -> None:
     """The spec pass and the build pass see different books, so they never share a conversation."""
     flow = Docs(story=STORY, phase="spec")
-    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="")
+    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="", story_services=[])
     with pytest.raises(_Reached):
         flow.work()
 
@@ -165,7 +169,8 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
     story_md.write_text("# Story\n", encoding="utf-8")
     spec_dir = tmp_path / "specs" / STORY
     ctx = SimpleNamespace(
-        story_slug=STORY, story_id="", story_path=str(story_md), spec_dir=str(spec_dir), qa_dir=""
+        story_slug=STORY, story_id="", story_path=str(story_md), spec_dir=str(spec_dir), qa_dir="",
+        story_services=[],
     )
     for flow_cls in (Docs, Qa):
         monkeypatch.setattr(

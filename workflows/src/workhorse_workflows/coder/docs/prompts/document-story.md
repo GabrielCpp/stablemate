@@ -14,6 +14,14 @@ below.
 
 Your session is resumable. A later turn on this story continues this conversation with the
 workflow's report or an operator's answer.
+{% if book_services %}
+
+## Only the markdown services
+
+{% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} of this story are covered by executable books under `services/<name>/`, and the book lane keeps them
+current. Write and ground no page for them, and read none. This turn documents only the pages of
+{% for name in markdown_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}.
+{% endif %}
 {% if spec_nodes %}
 
 ## The book already specifies this story

@@ -385,26 +385,35 @@ def commit_book_delta(
     workspace: str = "",
     story_id: str = "",
     phase: Literal["spec", "build"] = "spec",
+    book_services: list[str] | None = None,
+    markdown: bool = True,
 ) -> StoryCommitted:
-    """Commit the book pages the *phase* docs pass left uncommitted, so an owner's clean-repo check never counts the book as its leftovers."""
+    """Commit the book pages the *phase* docs pass left uncommitted, so an owner's clean-repo check never counts the book as its leftovers. A covered service's executable book is committed by its `services/<name>/` folder; the markdown pages only when `markdown` is true."""
     slug = story_slug or "story"
     verb = "specify" if phase == "spec" else "document"
     root = find_repo_root(repo_dir)
     docs_root = find_docs_root(repo_dir)
     book = okf_path.services_root_in(docs_root).resolve()
+    folders = [(root / "services" / name).resolve() for name in book_services or []]
     snapshot = tuple(preexisting or ())
     held = _affected_roots(logger, root, spec_dir, workspace, repo_dir)
     if not any(repo_path.resolve() == docs_root.resolve() for _, repo_path in held) and (
         docs_root / ".git"
     ).exists():
         held.append((docs_root.name, docs_root))
+    if folders and not any(repo_path.resolve() == root.resolve() for _, repo_path in held):
+        held.append((root.name, root))
     committed = False
     for name, repo_path in held:
         excused = untouched_since(repo_path, snapshot)
         rels = [
             rel
             for rel in uncommitted_paths(repo_path)
-            if rel not in excused and (repo_path / rel).resolve().is_relative_to(book)
+            if rel not in excused
+            and (
+                (markdown and (repo_path / rel).resolve().is_relative_to(book))
+                or any((repo_path / rel).resolve().is_relative_to(folder) for folder in folders)
+            )
         ]
         if not rels:
             continue

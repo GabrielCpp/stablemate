@@ -218,8 +218,9 @@ def build_okf_context(
     preexisting: tuple[str, ...] = (),
     story_sources: tuple[StorySource, ...] = (),
     story_refs: tuple[str, ...] = (),
+    book_only: bool = False,
 ) -> OkfContextResult:
-    """Map a diff onto the OKF graph and write the obligation packet into the spec dir."""
+    """Map a diff onto the OKF graph and write the obligation packet into the spec dir. With `book_only`, every service of the story has an executable book and no markdown page owns its code, so a change nothing owns is not a failure and the packet holds no obligation."""
     docs_root = find_docs_root(repo_dir)
     held = Path(docs_root).resolve()
     checkouts = {Path(source.checkout).resolve() for source in story_sources if source.checkout}
@@ -279,6 +280,8 @@ def build_okf_context(
         "exclude_paths": inherited,
         "deferrals": deferrals_digest(spec_path),
     }
+    if book_only:
+        arguments["book_only"] = True
     if story_sources:
         arguments["story_sources"] = [
             source.model_dump(mode="json") for source in story_sources
@@ -315,12 +318,21 @@ def build_okf_context(
             story_file=story_file or None,
             exclude_paths=inherited,
         )
-    status: Literal["passed", "invalid"] = "passed" if outcome.ok else "invalid"
-    logger.info("qa context build for spec_dir=%s: status=%s", spec_dir, status)
-    notes = notes_for(
-        outcome,
-        "QA OKF context generated." if status == "passed" else "QA OKF context generation failed.",
+    health = outcome.data.get("healthFindings") if isinstance(outcome.data, dict) else None
+    unowned = isinstance(health, list) and bool(health) and all(
+        isinstance(item, dict) and item.get("kind") == "unmapped-change" for item in health
     )
+    status: Literal["passed", "invalid"] = (
+        "passed" if outcome.ok or (book_only and unowned) else "invalid"
+    )
+    logger.info("qa context build for spec_dir=%s: status=%s", spec_dir, status)
+    if status == "passed" and not outcome.ok:
+        notes = "QA OKF context generated: every service of the story has an executable book."
+    else:
+        notes = notes_for(
+            outcome,
+            "QA OKF context generated." if status == "passed" else "QA OKF context generation failed.",
+        )
     result = OkfContextResult(status=status, notes=notes, ostler=outcome.data)
     remember(spec_path, key, result)
     return result

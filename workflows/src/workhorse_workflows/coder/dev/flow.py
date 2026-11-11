@@ -19,6 +19,7 @@ from workhorse_workflows.coder.dev.report import (
     unconsulted_text,
     walk_text,
 )
+from workhorse_workflows.coder.book_qa.nodes import covered_services
 from workhorse_workflows.coder.shared import causes, paths, roles, work
 from workhorse_workflows.coder.shared.backlog import file_follow_up_backlog
 from workhorse_workflows.coder.shared.branches import branch_code_repos
@@ -131,6 +132,7 @@ class Dev(Workflow):
     preexisting: tuple[str, ...] = ()
     worklist_dir: str = ""
     spec_nodes: tuple[str, ...] = ()
+    spec_book_paths: tuple[str, ...] = ()
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
@@ -175,6 +177,7 @@ class Dev(Workflow):
         )
 
     def _story_args(self) -> dict[str, Any]:
+        covered = list(self.call(covered_services, list(self.ctx.story_services)).services)
         return {
             "story_slug": self.ctx.story_slug,
             "story_id": self.ctx.story_id,
@@ -184,6 +187,9 @@ class Dev(Workflow):
             "spec_dir": self.ctx.spec_dir,
             "branch": self.branch,
             "spec_nodes": list(self.spec_nodes),
+            "spec_book_paths": list(self.spec_book_paths),
+            "book_services": covered,
+            "markdown_services": [n for n in self.ctx.story_services if n not in covered],
             "decisions_dir": str(decisions_dir(self.repo_dir)),
         }
 

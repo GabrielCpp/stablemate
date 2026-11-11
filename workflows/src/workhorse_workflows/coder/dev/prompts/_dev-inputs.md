@@ -10,7 +10,10 @@ read it again at any point in the turn.
 - Story: `{{ workhorse_var('story_slug') }}` (id `{{ workhorse_var('story_id') }}`, epic `{{ workhorse_var('epic') }}`)
 - Story path: `{{ workhorse_var('story_path') }}`
 {% if story_services and not opening_brief %}
-- Services this story changes (book names under `docs/services/`): {% for name in story_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}
+- Services this story changes: {% for name in story_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}
+{% if markdown_services %}
+- Of those, the services whose book is a markdown page under `docs/services/`: {% for name in markdown_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}
+{% endif %}
 {% endif %}
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
 {% if branch and not opening_brief %}
@@ -44,6 +47,24 @@ with a `service.py`. For each one, read `services/<name>/decisions/*.md` and
 `services/<name>/DISAGREEMENTS.md` before you plan. A decision says why the service behaves as
 it does and which story settled it. Where your plan changes a behaviour a decision explains,
 cite the decision in the plan and say whether the story keeps it or overturns it.
+{% endif %}
+{% if spec_book_paths and not opening_brief and not follow_up_title %}
+
+## The book is this story's spec (executable books)
+
+Before you started, the spec pass wrote the story's behaviour model to
+`{{ workhorse_var('spec_dir') }}/model.md` and its claims into the executable book of
+{% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}. These are the paths it changed:
+
+{% for path in workhorse_var('spec_book_paths') %}
+- `{{ path }}`
+{% endfor %}
+
+Build to them. Each claim states behaviour the story owes, and it is expected to fail until your
+build. Plan from the model's cells, use the names the book gives each endpoint and field, and
+make every claim pass before you hand off. A claim you cannot meet is a block that names the
+claim, not a change you make silently. You do not edit these paths. The book lane plays them after
+you and keeps their `source=` pointers and index current.
 {% endif %}
 {% if spec_nodes and not opening_brief and not follow_up_title %}
 

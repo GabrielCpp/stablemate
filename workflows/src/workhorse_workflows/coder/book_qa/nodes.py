@@ -10,12 +10,14 @@ from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.book_qa import (
     BookDeferral,
+    BookPaths,
     BookPlay,
     BookQaRecord,
     BookScope,
     CoveredServices,
     ServiceCalls,
 )
+from workhorse_workflows.coder.shared.schemas.docs import DocumentationGate
 from workhorse_workflows.coder.shared.schemas.qa import QaFinding
 from workhorse_workflows.coder.shared.schemas.queue import StoryCommitted
 from workhorse_workflows.coder.shared.story_commit import uncommitted_paths
@@ -61,6 +63,58 @@ def book_check(logger: logging.Logger, service: str, repo_dir: str = "") -> Book
     play = _play([sys.executable, "-m", "ostler.book", "check", f"services.{service}"], find_repo_root(repo_dir))
     logger.info("book check of %s exited %d", service, play.exit_code)
     return play
+
+
+@blueprint.node
+def verify_book_spec(
+    logger: logging.Logger,
+    services: list[str],
+    author_status: str = "blocked",
+    repo_dir: str = "",
+) -> DocumentationGate:
+    """Gate the spec pass of covered services: it ends when `ostler book check` exits 0 for each. A claim red against the app is expected before the build and is not read here."""
+    root = find_repo_root(repo_dir)
+    problems: list[str] = []
+    failures: list[str] = []
+    if author_status not in {"documented", "not_required"}:
+        problems.append(f"the spec turn's status is {author_status!r}")
+        failures.append("S:author-status")
+    for name in services:
+        play = _play([sys.executable, "-m", "ostler.book", "check", f"services.{name}"], root)
+        logger.info("book check of %s exited %d", name, play.exit_code)
+        if play.exit_code != 0:
+            problems.append(
+                f"`ostler book check services.{name}` exited {play.exit_code}:\n{play.output}"
+            )
+            failures.append(f"B:{name}")
+    return DocumentationGate(
+        status="invalid" if failures else "passed",
+        notes="\n\n".join(problems),
+        failures=failures,
+    )
+
+
+@blueprint.node
+def changed_book_paths(
+    logger: logging.Logger,
+    services: list[str],
+    preexisting: list[str] | None = None,
+    repo_dir: str = "",
+) -> BookPaths:
+    """The uncommitted paths under each covered service's book folder, less what was dirty before the story."""
+    root = find_repo_root(repo_dir)
+    excused = untouched_since(root, tuple(preexisting or ()))
+    prefixes = tuple(book_dir(name) + "/" for name in services)
+    found = [
+        rel for rel in uncommitted_paths(root) if rel.startswith(prefixes) and rel not in excused
+    ]
+    logger.info("the spec pass changed %d book path(s)", len(found))
+    return BookPaths(paths=found)
+
+
+def without_covered_roots(source_roots: tuple[str, ...], covered: list[str]) -> tuple[str, ...]:
+    """The `surface=path` source roots whose surface is not a covered service."""
+    return tuple(r for r in source_roots if r.partition("=")[0].strip() not in covered)
 
 
 SHARED_EXEMPT_FILES = frozenset({"index.tsv", "DISAGREEMENTS.md", "WALLS.md", "VERIFIED"})
@@ -252,6 +306,9 @@ __all__ = [
     "RECORD_FILE",
     "book_check",
     "book_dir",
+    "changed_book_paths",
+    "verify_book_spec",
+    "without_covered_roots",
     "book_run",
     "book_scope",
     "commit_service_book",

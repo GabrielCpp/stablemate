@@ -56,6 +56,12 @@ class BookQaOwnerResult(CoderResult):
     )
 
 
+class BookPaths(CoderResult):
+    """`changed_book_paths`: the uncommitted paths under the covered services' book folders."""
+
+    paths: list[str] = []
+
+
 class CoveredServices(CoderResult):
     """`covered_services`: the story's services that have an executable book."""
 
@@ -90,4 +96,4 @@ class BookDeferral(CoderResult):
 
     services: list[str] = []
 
-__all__ = ["BookDeferral", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "BookScope", "CoveredServices", "ServiceCalls"]
+__all__ = ["BookDeferral", "BookPaths", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "BookScope", "CoveredServices", "ServiceCalls"]

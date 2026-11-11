@@ -51,6 +51,7 @@ from workhorse_workflows.coder.shared.backlog import (
     filed_backlog,
     unfiled,
 )
+from workhorse_workflows.coder.book_qa.nodes import covered_services, without_covered_roots
 from workhorse_workflows.coder.shared.docs import CONTEXT_FILE, detect_okf_docs, services_root
 from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_context
@@ -150,12 +151,16 @@ class Qa(QaOwner):
         """The OKF context packet and the QA stack, as failures the owner repairs."""
         impl = self.output(resolve_impl_context)
         self.call(defer_book_judged, self.ctx.spec_dir)
+        covered = self.call(covered_services, list(self.ctx.story_services)).services
+        book_only = bool(covered) and len(covered) == len(set(self.ctx.story_services))
         build = self.call(
             build_okf_context,
             self.ctx.spec_dir,
             self.ctx.story_path,
             services_root(self),
-            tuple(impl.qa_source_roots),
+            without_covered_roots(tuple(impl.qa_source_roots), covered)
+            if covered and not book_only
+            else tuple(impl.qa_source_roots),
             TRUNK,
             "WORKTREE",
             preexisting=tuple(self.preexisting),
@@ -163,6 +168,7 @@ class Qa(QaOwner):
             story_refs=tuple(
                 dict.fromkeys(ref for ref in (self.ctx.story_id, self.ctx.story_slug) if ref)
             ),
+            book_only=book_only,
         )
         context =self.call(validate_okf_context, self.ctx.spec_dir, build.status)
         failures = []

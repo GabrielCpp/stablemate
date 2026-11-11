@@ -89,6 +89,8 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    healthy. Report `blocked` and repair nothing.
 9. **Stay in the book.** Edit only under `services/<name>/` of the covered services. Put no
    sleep, timer or retry loop in the book.
+   No document pass runs after this turn, so you keep every touched endpoint's `source=` pointers and
+   `index.tsv` current with the code the story changed.
 10. **Report.** Return the calls you played per service, the findings and the notes.
 
 ## The checks after this turn

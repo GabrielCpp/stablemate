@@ -10,6 +10,11 @@ from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_con
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.dev import read_operator_context
+from workhorse_workflows.coder.book_qa.nodes import (
+    covered_services,
+    verify_book_spec,
+    without_covered_roots,
+)
 from workhorse_workflows.coder.qa.nodes import compile_story_plan
 from workhorse_workflows.coder.shared.failed import failed_scenario_ids, failed_scenarios_arg
 from workhorse_workflows.coder.shared.provenance import resolve_story_sources
@@ -95,8 +100,11 @@ class Docs(Workflow):
     def setup(self) -> StoryPaths:
         """Resolve the workspace to directories and the story to its id and paths."""
         self.call(resolve_workspace_dirs)
-        self.call(detect_okf_docs)
-        return self.call(prepare_story, self.story, self.epic)
+        story = self.call(prepare_story, self.story, self.epic)
+        covered = self.call(covered_services, list(story.story_services))
+        if not story.story_services or len(covered.services) < len(set(story.story_services)):
+            self.call(detect_okf_docs)
+        return story
 
     def labels(self) -> dict[str, str]:
         """Which story this run is on: what the run's activity line shows."""
@@ -117,22 +125,53 @@ class Docs(Workflow):
         self.reset_session(self._chain)
         return Done(result)
 
+    @property
+    def _book(self) -> list[str]:
+        """The story's services that have an executable book."""
+        return list(self.output(covered_services).services)
+
+    @property
+    def _markdown(self) -> list[str]:
+        """The story's services that still have only a markdown book."""
+        covered = self._book
+        return [name for name in self.ctx.story_services if name not in covered]
+
+    @property
+    def _book_only(self) -> bool:
+        """Is every service of the story covered by an executable book?"""
+        return bool(self.ctx.story_services) and not self._markdown
+
     def start(self) -> Continue | Done:
         """Decide whether there is a book to document into, and how the diff can be read."""
         self.reset_session(self._chain)
-        okf = self.output(detect_okf_docs)
-        if okf.has_okf != "yes":
-            raise WorkflowFailed(f"OKF documentation is unusable here: {okf.reason}")
+        okf = None
+        if not self._book_only:
+            okf = self.output(detect_okf_docs)
+            if okf.has_okf != "yes":
+                raise WorkflowFailed(f"OKF documentation is unusable here: {okf.reason}")
         if not self.ctx.story_path:
             raise WorkflowFailed(
                 f"no story path for {self.story!r}. The story could not be resolved, so "
                 "there is nothing to document."
             )
         if self.phase == "spec":
-            return Continue(okf, self.work)
+            return Continue(okf or self.output(covered_services), self.work)
+        if self._book_only:
+            self.logger.info(
+                "documentation skipped for %s: every service is covered by an executable "
+                "book, and the book lane keeps it current",
+                self.ctx.story_slug,
+            )
+            return self._ends(
+                DocsResult(
+                    status="not_applicable",
+                    notes="every service of the story is covered by an executable book",
+                )
+            )
         impl = self.call(resolve_impl_context, self.ctx.spec_dir)
         classification = self.call(
-            classify_documentation_context, tuple(impl.qa_source_roots)
+            classify_documentation_context,
+            without_covered_roots(tuple(impl.qa_source_roots), self._book),
         )
         if classification.mode == "error":
             raise WorkflowFailed(
@@ -151,7 +190,7 @@ class Docs(Workflow):
                     + "; ".join(sources.errors)
                 )
         obligations = self._obligations(classification)
-        return Continue(okf, self.work, obligations=tuple(obligations.refs))
+        return Continue(okf or self.output(covered_services), self.work, obligations=tuple(obligations.refs))
 
     def work(
         self,
@@ -185,6 +224,7 @@ class Docs(Workflow):
             session=self._chain,
             add_dirs=workspace_dirs(self),
             args=turn.args
+            | {"book_services": self._book, "markdown_services": self._markdown}
             | (
                 self._spec_brief()
                 if spec
@@ -219,7 +259,7 @@ class Docs(Workflow):
             "story_id": self.ctx.story_id,
             "epic": self.epic,
             "docs_root": str(find_docs_root(self.repo_dir)),
-            "services_root": services_root(self),
+            "services_root": "" if self._book_only else services_root(self),
             "epic_path": self._epic_path,
         }
 
@@ -266,16 +306,26 @@ class Docs(Workflow):
                 validate_status = self.call(
                     validate_okf_context, self.ctx.spec_dir, build.status
                 ).status
-        gate = self.call(
-            verify_story_documentation,
-            self.ctx.spec_dir,
-            author.status,
-            build_status,
-            validate_status,
-            mode,
-            authored_nodes,
-            preexisting=tuple(self.preexisting),
+        book_gate = (
+            self.call(verify_book_spec, self._book, author.status)
+            if self.phase == "spec" and self._book
+            else None
         )
+        if book_gate is not None and self._book_only:
+            gate = book_gate
+        else:
+            gate = self.call(
+                verify_story_documentation,
+                self.ctx.spec_dir,
+                author.status,
+                build_status,
+                validate_status,
+                mode,
+                authored_nodes,
+                preexisting=tuple(self.preexisting),
+            )
+            if book_gate is not None:
+                gate = self._joined(gate, book_gate)
         if self.phase != "spec" and mode == "local" and build_status == "passed":
             gate = self._with_compile_gaps(gate, authored_nodes)
             if gate.status == "passed":
@@ -308,6 +358,20 @@ class Docs(Workflow):
             laps=laps + 1,
             blocks=blocks,
             exercised=exercised,
+        )
+
+    @staticmethod
+    def _joined(markdown: DocumentationGate, book: DocumentationGate) -> DocumentationGate:
+        """One gate from the markdown doctor gate and the executable book's check."""
+        if book.status == "passed":
+            return markdown
+        notes = "\n\n".join(part for part in (markdown.notes, book.notes) if part)
+        return DocumentationGate(
+            status="invalid",
+            notes=notes,
+            changed_code_count=markdown.changed_code_count,
+            doctor_error_count=markdown.doctor_error_count,
+            failures=[*markdown.failures, *book.failures],
         )
 
     def _with_compile_gaps(

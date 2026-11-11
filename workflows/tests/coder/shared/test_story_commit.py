@@ -443,3 +443,71 @@ def test_the_book_delta_commit_has_nothing_to_land_when_the_book_is_clean(
 
     assert not result.committed
     assert git(repo, "status", "--porcelain").stdout.strip() == "M src/server.py"
+
+
+def test_a_covered_services_spec_delta_commit_holds_only_its_book_folder(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    write(repo / "services" / "api" / "service.py", "SERVICE = 1\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "the api book")
+    write(repo / "services" / "api" / "journeys" / "publish.py", "JOURNEY = 1\n")
+    write(repo / "services" / "api" / "service.py", "SERVICE = 2\n")
+    write(repo / "docs" / "services" / "app" / "fresh.md", "# fresh\n")
+    write(repo / "src" / "server.py", "def run():\n    return 2\n")
+
+    result = story_commit.commit_book_delta(
+        logger,
+        epic=EPIC,
+        story_slug=SLUG,
+        spec_dir=spec,
+        repo_dir=str(repo),
+        book_services=["api"],
+        markdown=False,
+    )
+
+    assert result.committed
+    landed = git(repo, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
+    assert sorted(line for line in landed[1:] if line) == [
+        "services/api/journeys/publish.py",
+        "services/api/service.py",
+    ]
+    assert sorted(git(repo, "status", "--porcelain").stdout.splitlines()) == [
+        " M src/server.py",
+        "?? docs/services/app/fresh.md",
+    ]
+
+
+def test_a_mixed_story_commits_the_markdown_pages_beside_the_covered_book(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    write(repo / "services" / "api" / "journeys" / "publish.py", "JOURNEY = 1\n")
+    write(repo / "docs" / "services" / "app" / "fresh.md", "# fresh\n")
+
+    story_commit.commit_book_delta(
+        logger,
+        epic=EPIC,
+        story_slug=SLUG,
+        spec_dir=spec,
+        repo_dir=str(repo),
+        book_services=["api"],
+        markdown=True,
+    )
+
+    landed = git(repo, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
+    assert sorted(line for line in landed[1:] if line) == [
+        "docs/services/app/fresh.md",
+        "services/api/journeys/publish.py",
+    ]

@@ -17,6 +17,7 @@ from workhorse_workflows.coder.fix import Fix
 from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.dev import Dev
 from workhorse_workflows.coder.book_qa import BookQa
+from workhorse_workflows.coder.book_qa.nodes import changed_book_paths, covered_services
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.qa.nodes import teardown_stack
 from workhorse_workflows.coder.shared.branches import cut_run_branch
@@ -132,8 +133,10 @@ class Coder(Workflow):
         result = self._document(phase="spec")
         if not _documented(result):
             return Continue(result, self.replan, notes=result.notes)
-        self.call(record_spec_nodes, list(result.authored_nodes))
         story = self._story
+        covered = self.call(covered_services, list(story.story_services)).services
+        book = self.call(changed_book_paths, covered, list(self._preexisting())).paths if covered else []
+        self.call(record_spec_nodes, list(result.authored_nodes), book)
         self.call(
             commit_book_delta,
             self._epic,
@@ -142,6 +145,8 @@ class Coder(Workflow):
             list(self._preexisting()),
             story_id=story.story_id,
             phase="spec",
+            book_services=covered,
+            markdown=len(covered) < len(story.story_services) or not covered,
         )
         return Continue(result, self.dev)
 
@@ -163,6 +168,7 @@ class Coder(Workflow):
             preexisting=self._preexisting(),
             worklist_dir=str(self.run_dir),
             spec_nodes=self._spec_nodes(),
+            spec_book_paths=self._spec_book_paths(),
         )
         if result.status == "replan":
             return Continue(result, self.replan, notes=result.operator_notes)
@@ -429,6 +435,13 @@ class Coder(Workflow):
         """The nodes the spec pass wrote for this story, or nothing when it never ran."""
         try:
             return tuple(self.output(record_spec_nodes).nodes)
+        except NodeNotRunError:
+            return ()
+
+    def _spec_book_paths(self) -> tuple[str, ...]:
+        """The executable-book paths the spec pass wrote for this story, or nothing when it never ran."""
+        try:
+            return tuple(self.output(record_spec_nodes).book_paths)
         except NodeNotRunError:
             return ()
 

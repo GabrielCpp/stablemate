@@ -186,6 +186,7 @@ class _StubFlow(Workflow):
     worklist_dir: str = ""
     phase: str = ""
     spec_nodes: tuple[str, ...] = ()
+    spec_book_paths: tuple[str, ...] = ()
     rerun: bool = False
     scope: tuple[str, ...] = ()
 

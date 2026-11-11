@@ -56,15 +56,17 @@ class SpecResult(CoderResult):
 
     status: Literal["documented", "not_required", "blocked"] = Field(
         description="`documented` when model.md is written, every decided cell is a bullet "
-        "with a `verify:` in the book, and `doctor` reports no error on the touched nodes. "
+        "with a `verify:` in the book, `doctor` reports no error on the touched markdown "
+        "nodes, and `ostler book check` exits 0 for every covered service. "
         "`not_required` when the story changes no observable behaviour, with the reason in "
         "`notes`. `blocked` when a cell needs a product decision that is not yours, named in "
         "`notes`.",
     )
     nodes: list[str] = Field(
         default=[],
-        description="Every OKF node you edited, by exact graph identity with its section "
-        "anchor preserved.",
+        description="Every markdown OKF node you edited, by exact graph identity with its "
+        "section anchor preserved. Empty for a covered service, whose claims live in its "
+        "executable book.",
     )
     notes: str = Field(
         default="",
@@ -74,9 +76,10 @@ class SpecResult(CoderResult):
 
 
 class SpecNodes(CoderResult):
-    """`record_spec_nodes` — the nodes the spec pass wrote, kept for the lanes after it."""
+    """`record_spec_nodes` — the nodes and book paths the spec pass wrote, kept for the lanes after it."""
 
     nodes: list[str] = []
+    book_paths: list[str] = []
 
 
 @dry_run(status="passed")

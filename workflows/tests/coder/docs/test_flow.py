@@ -22,6 +22,7 @@ from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
+import workhorse_workflows.coder.book_qa.nodes as book_nodes
 import workhorse_workflows.coder.docs.flow as docs_flow
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.docs.flow import _prompt_note
@@ -36,6 +37,7 @@ from workhorse_workflows.coder.shared.docs import (
 )
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.owner import MAX_BLOCKS, MAX_LAPS
+from workhorse_workflows.coder.shared.schemas.book_qa import BookPlay
 from workhorse_workflows.coder.shared.schemas.docs import CompileGaps, DocumentationGate
 from workhorse_workflows.coder.shared.schemas.qa import (
     CompiledPlan,
@@ -1526,3 +1528,123 @@ def test_a_run_killed_mid_repair_resumes_knowing_what_was_outstanding(
     assert result.status == "passed", result
     assert agent.counts() == {"document-story": 1}, agent.counts()
     assert "one symbol is not directly grounded" in agent.author_args()[0]["report"]
+
+
+def _served_by(root: Path, write: Callable[[Path, str], Path], *services: str, covered: tuple[str, ...]) -> None:
+    """Name the story's services, and give each covered one an executable book."""
+    write(
+        epics_root() / STORY_REL / "story.md",
+        STORY_MD.replace("type: story\n", f"type: story\nservices: [{', '.join(services)}]\n"),
+    )
+    for name in covered:
+        write(root / "services" / name / "service.py", "SERVICE = 1\n")
+    subprocess.run(["git", "add", "-A"], cwd=root, check=True)
+    subprocess.run(["git", "commit", "-qm", "the story and its books"], cwd=root, check=True)
+
+
+class _Checks:
+    """The book tool's `check`, scripted by the exit code of each call."""
+
+    def __init__(self, *exits: int) -> None:
+        self.exits = list(exits)
+        self.argv: list[list[str]] = []
+
+    def __call__(self, argv: list[str], cwd: Path) -> BookPlay:
+        self.argv.append(argv)
+        code = self.exits.pop(0) if self.exits else 0
+        return BookPlay(exit_code=code, output="" if code == 0 else "claim unreadable")
+
+
+def test_an_all_covered_story_is_specified_with_the_book_check_and_no_doctor(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _served_by(docs, write, "api", covered=("api",))
+    checks = _Checks()
+    monkeypatch.setattr(book_nodes, "_play", checks)
+    agent = _Agent(author_nodes=())
+    run_env = env()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC, phase="spec"), run_env, agent)
+
+    assert result.status == "passed", result
+    assert [argv[2:] for argv in checks.argv] == [["ostler.book", "check", "services.api"]]
+    assert _output(run_env, book_nodes.verify_book_spec)["status"] == "passed"
+    for node in (verify_story_documentation, detect_okf_docs):
+        assert not (run_env.writer.run_dir / node.__name__).exists(), node.__name__
+    brief = agent.args_for("specify-story")[0]
+    assert brief["book_services"] == ["api"] and brief["markdown_services"] == [], brief
+    assert brief["services_root"] == "", brief
+
+
+def test_a_red_book_check_sends_the_spec_pass_back_with_its_output(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _served_by(docs, write, "api", covered=("api",))
+    monkeypatch.setattr(book_nodes, "_play", _Checks(1, 0))
+    agent = _Agent(author_nodes=())
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC, phase="spec"), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"specify-story": 2}
+    report = agent.args_for("specify-story")[1]["report"]
+    assert "`ostler book check services.api` exited 1" in report and "claim unreadable" in report
+
+
+def test_an_all_covered_story_skips_the_document_pass(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+) -> None:
+    _served_by(docs, write, "api", covered=("api",))
+    agent = _Agent()
+    run_env = env()
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), run_env, agent)
+
+    assert result.status == "not_applicable", result
+    assert agent.counts() == {}
+    for node in (classify_documentation_context, documentation_obligations, verify_story_documentation):
+        assert not (run_env.writer.run_dir / node.__name__).exists(), node.__name__
+
+
+def test_a_mixed_story_keeps_the_markdown_path_for_the_uncovered_service_only(
+    docs: Path,
+    alongside: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _served_by(docs, write, "api", "web", covered=("api",))
+    checks = _Checks()
+    monkeypatch.setattr(book_nodes, "_play", checks)
+    agent = _Agent()
+    run_env = env()
+
+    spec = drive_flow(Docs(story=STORY, epic=EPIC, phase="spec"), run_env, agent)
+
+    assert spec.status == "passed", spec
+    assert len(checks.argv) == 1 and checks.argv[0][-1] == "services.api"
+    assert _output(run_env, verify_story_documentation)["status"] == "passed"
+    brief = agent.args_for("specify-story")[0]
+    assert brief["book_services"] == ["api"] and brief["markdown_services"] == ["web"], brief
+    assert brief["services_root"].endswith("docs/services"), brief
+
+    built = drive_flow(Docs(story=STORY, epic=EPIC), env(name="docs-build"), agent)
+
+    assert built.status == "passed", built
+    brief = agent.args_for("document-story")[0]
+    assert brief["book_services"] == ["api"] and brief["markdown_services"] == ["web"], brief
