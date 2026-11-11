@@ -493,6 +493,24 @@ def test_a_copy_whose_run_is_gone_is_reclaimed_at_the_next_lease(tmp_path: Path)
     assert [copy.name for copy in runtime.copies(root)] == ["by-hand", "story-2", "story-3"]
 
 
+def test_a_resumed_run_restamps_its_copy_and_survives_reclaim(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    docker = FakeDocker()
+    up = commands.cmd_up(root, ["web"], copy_name="story-1", holder=_gone_pid(), runner=docker)
+    directory = Path(up.data["directory"])
+    assert not runtime.holder_alive(runtime.read_manifest(directory)["holder"])
+    assert runtime.hold(root, "story-1", os.getpid())
+    assert runtime.read_manifest(directory)["holder"] == runtime.holder_stamp(os.getpid())
+    assert commands.reclaim(runner=docker) == []
+    assert [copy.name for copy in runtime.copies(root)] == ["story-1"]
+
+
+def test_holding_a_copy_that_does_not_exist_does_nothing(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    assert not runtime.hold(root, "story-9", os.getpid())
+    assert runtime.copies(root) == []
+
+
 def test_a_reused_pid_does_not_pass_for_the_run_that_held_the_copy() -> None:
     stamp = runtime.holder_stamp(os.getpid())
     assert runtime.holder_alive(stamp)

@@ -116,6 +116,16 @@ def holder_alive(holder: object) -> bool:
     return not (started and current and current != started)
 
 
+def hold(repo: Path, name: str, pid: int) -> bool:
+    """Name the process *pid* as the holder of *repo*'s copy *name*; False when the copy does not exist."""
+    copy = copy_for(repo, name)
+    manifest = read_manifest(copy.directory)
+    if not manifest:
+        return False
+    write_manifest(copy, {**manifest, "holder": holder_stamp(pid)})
+    return True
+
+
 def held_copies() -> list[tuple[Copy, dict[str, object]]]:
     """Every copy on this machine, of any repo, with its manifest."""
     root = home()
