@@ -32,6 +32,10 @@ The flow ends in a `QaFlowResult` whose status is `passed`, `refix` or `replan`.
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_book_that_compiles_hands_the_owner_its_plan_as_the_standing_one`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_service_the_book_judged_clean_defers_its_required_obligations`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_no_book_record_defers_nothing`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_story_every_obligation_of_which_a_book_judged_passes_with_no_seat_turn`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_reprove_of_a_fully_book_judged_story_passes_with_no_plan_and_no_lint`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_one_undeferred_required_obligation_keeps_the_seat_turn`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_one_unreached_claim_keeps_the_seat_turn`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_book_record_with_findings_defers_nothing`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_the_owner_is_told_which_books_judged_and_which_claims_they_left`
 - tests: `workflows/tests/coder/qa/test_compile_story_plan.py::test_a_compilable_packet_writes_the_plan`
@@ -83,7 +87,10 @@ obligation under `docs/services/<name>/` of a recorded service, that is not alre
 deferred with kind `book`, rewrites the packet in place and logs how many it marked per service.
 Without a record, or with one that holds a finding, it marks nothing. The marked obligations
 leave the compiled plan, and the backlog never files them as checks QA could not run. Then
-`compile_story_plan` reads the standing `qa_plan.py` for its provenance. The banner
+the node checks whether a clean book record names services, holds no unreached claim and leaves
+the packet no required obligation undeferred. If so, the flow ends `passed` with the note "every
+obligation of this story was judged by a service book", with no owner turn and no plan. The
+rerun does the same before it lints any plan. Otherwise `compile_story_plan` reads the standing `qa_plan.py` for its provenance. The banner
 `compile-plan` writes on its first line is the only provenance a plan file carries. A plan that
 opens with it is the book's and is never overwritten. A plan without it was written by hand, so
 its `covers=` labels are its author's and not the book's, and the node compiles the book beside
