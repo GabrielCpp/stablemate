@@ -41,11 +41,13 @@ lane keeps.
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_run_that_could_not_judge_asks_the_operator_and_spends_no_second_turn`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_stack_that_did_not_come_up_asks_the_operator_before_the_seat_starts`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_second_visit_replays_the_recorded_calls_with_no_seat`
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_the_claims_the_seat_could_not_state_are_recorded_beside_its_calls`
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_replay_keeps_the_recorded_unreached_claims`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_green_replay_over_a_recorded_finding_sends_it_back_again`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_red_replay_goes_to_the_seat_with_the_output_as_its_report`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_seat_that_names_no_call_for_a_covered_service_is_sent_back_before_any_play`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_product_edit_outside_the_book_is_refused_and_sent_back_unlanded`
-- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @9bef23bc81f1
+- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @5a49c22948b4
 
 The seat session is keyed `book-qa:<story slug>`. The flow resets it on every ending except `refix`,
 so the developer's fix returns to the same seat. Each ending releases the run's copy of the stack.
@@ -97,7 +99,7 @@ It reads no other QA's plan, report or evidence.
 
 A `blocked` result goes to the operator block. A `findings` result that lists no finding goes back
 to the seat as a lap, with a note to list each claim the app does not meet. Any other result
-continues to `check` with the calls it named and the findings it listed.
+continues to `check` with the calls it named, the findings it listed and the claims it could not state in the book.
 
 ### check
 
@@ -118,9 +120,14 @@ continues to `check` with the calls it named and the findings it listed.
    `test` commit that carries the story's footer. A product path the seat changed outside those folders
    refuses the commit, commits nothing and goes back to the seat as a lap that lists each path and says
    to restore it. A pass that left no uncommitted book path commits nothing.
-5. It writes `book-qa.json` with the calls played and the findings the seat listed, releases the stack
+5. It writes `book-qa.json` with the calls played, the findings the seat listed and the claims it
+   could not state in the book, releases the stack
    copy, and ends. With findings the lane ends `refix`, and its result lists them with `qa` failed.
    With none it ends `passed`.
+
+The record is what the [scenario QA flow](coder-qa.md) reads to leave out what the book judged. A
+record with no finding makes the scenario lane defer the required obligations under the recorded
+services' book pages, and the claims the seat listed as unreached stay the scenario lane's to cover.
 
 A finding stops the story even on a green run, because a declared defect makes the run green by
 design. A second visit enters this stage with the recorded calls, so a red replay goes to the seat
@@ -130,8 +137,9 @@ with the output as its report, and a green replay over a recorded finding ends `
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_check` @08d492ed6b13
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @a32cf444c3c3
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::commit_service_book` @c3c45d5dacbc
-- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::read_book_record` @09e8b1009c6f
-- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::write_book_record` @309e7a3456e6
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::read_book_record` @d7c92c6f59ff
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::write_book_record` @509765d04b59
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::defer_book_judged` @986fdb2642e7
 
 ### operator-block
 

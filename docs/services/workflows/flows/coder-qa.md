@@ -30,6 +30,10 @@ The flow ends in a `QaFlowResult` whose status is `passed`, `refix` or `replan`.
 - detail: [coder QA subflow](../concepts/coder-qa-subflow.md)
 - tests: `workflows/tests/coder/qa/test_flow.py::test_one_clean_pass_spends_one_owner_turn`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_book_that_compiles_hands_the_owner_its_plan_as_the_standing_one`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_service_the_book_judged_clean_defers_its_required_obligations`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_no_book_record_defers_nothing`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_a_book_record_with_findings_defers_nothing`
+- tests: `workflows/tests/coder/qa/test_flow.py::test_the_owner_is_told_which_books_judged_and_which_claims_they_left`
 - tests: `workflows/tests/coder/qa/test_compile_story_plan.py::test_a_compilable_packet_writes_the_plan`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_failed_run_with_findings_sends_them_back_as_a_refix`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_blocked_owner_is_answered_and_resumes_with_the_answer`
@@ -73,6 +77,12 @@ sources are invalid. It then detects the OKF book, names the run's lease on a co
 and records the stack target. The preflight builds and validates the OKF context packet and
 brings the stack up. Each failure becomes a line of the first owner turn's report instead of an
 abort, because a broken packet or stack is the owner's to repair. Once the packet validates,
+`defer_book_judged` reads the [book QA record](../formats/book-qa-record.md) from the spec
+directory. When the record names services and holds no finding, it marks every required
+obligation under `docs/services/<name>/` of a recorded service, that is not already deferred, as
+deferred with kind `book`, rewrites the packet in place and logs how many it marked per service.
+Without a record, or with one that holds a finding, it marks nothing. The marked obligations
+leave the compiled plan, and the backlog never files them as checks QA could not run. Then
 `compile_story_plan` reads the standing `qa_plan.py` for its provenance. The banner
 `compile-plan` writes on its first line is the only provenance a plan file carries. A plan that
 opens with it is the book's and is never overwritten. A plan without it was written by hand, so
@@ -90,7 +100,9 @@ wall-clock bound and a silence limit. The turn reads the story, the spec directo
 verification setup, the fixtures, the QA run plan, the QA tool catalog and the last report. It is
 granted only the repositories the plan touches. It also learns whether a standing `qa_plan.py`
 already lints and validates, so it starts from that plan rather than authoring a new one, and
-whether that plan was written by hand. The compiled plan counts as standing. A hand-written one
+whether that plan was written by hand. It reads which services the books judged and the claims
+the books could not state. Obligations deferred with kind `book` stay out of the plan, and each
+unreached claim still needs a scenario or a report in `notes` that no scenario reaches it. The compiled plan counts as standing. A hand-written one
 stands too, and the turn then says so, names `qa_plan.compiled.py` as the book's plan beside it,
 and asks the owner to bind the criteria on the compiled plan, port only the hand-written
 scenarios the book cannot state, and replace `qa_plan.py` with the result, because a hand-written

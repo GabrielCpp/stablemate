@@ -10,7 +10,7 @@ seat names and gates these claims before it believes them.
 
 - file: none — agent reply and checkpoint value
 - config: `BookQaOwnerResult` agent-turn output contract
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult` @1421adfe6964
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult` @1a67f68b46f2
 - detail: [coder book QA flow](../flows/coder-book-qa.md)
 - detail: [coder book qa package](../concepts/coder-book-qa-package.md)
 
@@ -27,7 +27,7 @@ seat names and gates these claims before it believes them.
 - semantics: a `findings` reply that lists no finding goes back to the seat
 - semantics: `blocked` only when the base run was red or the environment was not healthy, and the seat repairs nothing there
 - verify: json_path(path="$.status", equals="blocked")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult.status` @97b65ee8ad1c
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult.status` @e6d3fa97677b
 
 ### notes
 
@@ -38,7 +38,7 @@ seat names and gates these claims before it believes them.
 - semantics: the claims no call can show, with the reason for each
 - semantics: on `blocked`, the output that stopped the seat
 - verify: json_path(path="$.notes", equals="Played three calls and brought the book up to the story.")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult.notes` @97b65ee8ad1c
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult.notes` @e6d3fa97677b
 
 ### findings
 
@@ -49,7 +49,7 @@ seat names and gates these claims before it believes them.
 - verify: json_path(path="$.findings[0].target", equals="services/app")
 - semantics: empty on `passed` and on `blocked`
 - verify: json_path(path="$.findings", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult.findings` @97b65ee8ad1c
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult.findings` @e6d3fa97677b
 
 ### calls
 
@@ -61,5 +61,16 @@ seat names and gates these claims before it believes them.
 - verify: json_path(path="$.calls[0].service", equals="app")
 - semantics: at least one call is named for every covered service, or the flow sends the seat back before any play
 - verify: json_path(path="$.calls[0].calls[0]", equals="create-link")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult.calls` @97b65ee8ad1c
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult.calls` @e6d3fa97677b
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::ServiceCalls` @5a9ef6a7352e
+
+### unreached
+
+- type: list of `str`
+- default: empty list
+- required: false
+- semantics: the story's claims the seat could not state in the book, one per entry, in the story's words
+- semantics: a claim the seat stated and played is not listed
+- semantics: the scenario QA reads the list and still covers each claim by a scenario or reports it out of reach, because the book judged nothing about it
+- verify: json_path(path="$.unreached[0]", equals="no request reaches the report service")
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaOwnerResult.unreached` @e6d3fa97677b
