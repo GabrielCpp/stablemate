@@ -10,7 +10,7 @@ A story in the Coder main loop passes through its lanes in one order: prepare, s
 A refix from either QA lane sends the story back to dev and then through `document`, the book lane and the scenario lane again. It does not run `specify` a second time. The spec nodes recorded by the first pass stay in force for the whole story.
 
 - code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder` @03264fd820e2
-- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @552d7cda8ee9
+- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @428f20f96d84
 - code: `workflows/src/workhorse_workflows/coder/docs/flow.py::Docs` @2c7b8159826d
 - rule: the book is written before dev from a behaviour model, so dev builds to the book's `verify:` checks and QA compiles its plan from them on its first pass
 - rule: the build pass after dev grounds `code:` bullets and never rewrites a spec bullet the build contradicts

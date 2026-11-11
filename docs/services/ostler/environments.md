@@ -10,7 +10,7 @@ title: ostler env
 a secret no source supplies, without ever starting docker.
 
 - binary: ostler
-- code: ostler/ostler/environments/cli.py::run@b521bae7b440
+- code: ostler/ostler/environments/cli.py::run@a2cdf551584c
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
 
 ## Commands
@@ -37,12 +37,12 @@ a secret no source supplies, without ever starting docker.
 - verify: json_path(path="files[0]", matches="(?s)^.*compose\\.yml$")
 - fixture: [environments render and secrets](fixtures/environments-render-and-secrets.md) — seeds
   env-render-fixture, one service whose template references no secret
-- code: ostler/ostler/environments/render.py::render@c93ab3c3f7b3
-- code: ostler/ostler/environments/render.py::write@c93ab3c3f7b3
-- code: ostler/ostler/environments/runtime.py::copy_for@bf9459423d5a
-- code: ostler/ostler/environments/runtime.py::write_manifest@bf9459423d5a
-- code: ostler/ostler/environments/commands.py::cmd_render@5b8dac7706e8
-- code: ostler/ostler/environments/cli.py::run@b521bae7b440
+- code: ostler/ostler/environments/render.py::render@2b996371a211
+- code: ostler/ostler/environments/render.py::write@b18b23b7045b
+- code: ostler/ostler/environments/runtime.py::copy_for@02834c13f824
+- code: ostler/ostler/environments/runtime.py::write_manifest@952c9680a5ac
+- code: ostler/ostler/environments/commands.py::cmd_render@03c6aa19dcc4
+- code: ostler/ostler/environments/cli.py::run@a2cdf551584c
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
 
 ### ostler-env-render-fixture-missing
@@ -58,9 +58,9 @@ a secret no source supplies, without ever starting docker.
 - fixture: [environments render and secrets](fixtures/environments-render-and-secrets.md) — seeds
   env-render-fixture's demo service with a `okf-book-probe-missing` fixture set naming a file
   no step ever creates
-- code: ostler/ostler/environments/checkout.py::locate@abb56c78967b
-- code: ostler/ostler/environments/render.py::render@c93ab3c3f7b3
-- code: ostler/ostler/environments/commands.py::cmd_render@5b8dac7706e8
+- code: ostler/ostler/environments/checkout.py::locate@938779eb5ed2
+- code: ostler/ostler/environments/render.py::render@2b996371a211
+- code: ostler/ostler/environments/commands.py::cmd_render@03c6aa19dcc4
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
 
 ### ostler-env-check-required-name
@@ -76,12 +76,12 @@ a secret no source supplies, without ever starting docker.
 - fixture: [environments render and secrets](fixtures/environments-render-and-secrets.md) — seeds
   env-secrets-fixture, whose `worker` service's template references `${OKF_BOOK_PROBE_SECRET}`,
   and no stack root declares a `secrets:` source to supply it
-- code: ostler/ostler/environments/secrets.py::source_for@761a72c7a6dd
-- code: ostler/ostler/environments/secrets.py::missing_names@761a72c7a6dd
-- code: ostler/ostler/environments/secrets.py::required_names@761a72c7a6dd
-- code: ostler/ostler/environments/secrets.py::allowed_names@761a72c7a6dd
-- code: ostler/ostler/environments/commands.py::cmd_check@5b8dac7706e8
-- code: ostler/ostler/environments/spec.py::load@ece1017c2482
+- code: ostler/ostler/environments/secrets.py::source_for@d9bf1e14c9f0
+- code: ostler/ostler/environments/secrets.py::missing_names@aa2bc1fcdc10
+- code: ostler/ostler/environments/secrets.py::required_names@461aa6cf846a
+- code: ostler/ostler/environments/secrets.py::allowed_names@55906ca4c382
+- code: ostler/ostler/environments/commands.py::cmd_check@97145d809f39
+- code: ostler/ostler/environments/spec.py::load@1eaa304e6344
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
 
 ### ostler-env-address-not-up
@@ -99,10 +99,10 @@ a secret no source supplies, without ever starting docker.
 - verify: json_path(path="ok", equals=false)
 - verify: json_path(path="error", matches="^okf-book-env-address-never-up publishes no `demo` \\(it publishes none, since it is not up\\)$")
 - fixture: none, because nothing is seeded
-- code: ostler/ostler/qa/addresses.py::read_book@910467430420
-- code: ostler/ostler/environments/commands.py::cmd_address@5b8dac7706e8
-- code: ostler/ostler/environments/runtime.py::copy_for@bf9459423d5a
-- code: ostler/ostler/environments/cli.py::run@b521bae7b440
+- code: ostler/ostler/qa/addresses.py::read_book@59900dc28eae
+- code: ostler/ostler/environments/commands.py::cmd_address@fc3f9a080be7
+- code: ostler/ostler/environments/runtime.py::copy_for@02834c13f824
+- code: ostler/ostler/environments/cli.py::run@a2cdf551584c
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
 
 ### ostler-env-exec
@@ -125,13 +125,13 @@ a secret no source supplies, without ever starting docker.
 - verify: exit_status(code=0)
 - verify: stdout(text="debug")
 - fixture: [environments variables page](fixtures/environments-variables-page.md)
-- code: ostler/ostler/environments/commands.py::cmd_exec@5b8dac7706e8
-- code: ostler/ostler/environments/inject.py::resolve@f3a3093eb2a9
-- code: ostler/ostler/environments/inject.py::exec_argv@f3a3093eb2a9
-- code: ostler/ostler/environments/inject.py::composed_environment@f3a3093eb2a9
-- code: ostler/ostler/environments/page.py::find_environment@22a09f593926
-- code: ostler/ostler/environments/page.py::read_variables@22a09f593926
-- code: ostler/ostler/environments/cli.py::run@b521bae7b440
+- code: ostler/ostler/environments/commands.py::cmd_exec@dcd3002d4d32
+- code: ostler/ostler/environments/inject.py::resolve@60e36bd81dc8
+- code: ostler/ostler/environments/inject.py::exec_argv@cea17b755d29
+- code: ostler/ostler/environments/inject.py::composed_environment@cab444f35a6a
+- code: ostler/ostler/environments/page.py::find_environment@229ec14aa7ec
+- code: ostler/ostler/environments/page.py::read_variables@45bf345aacfd
+- code: ostler/ostler/environments/cli.py::run@a2cdf551584c
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
 
 ### ostler-env-dotenv
@@ -154,11 +154,11 @@ a secret no source supplies, without ever starting docker.
 - verify: contents(subject="docs/services/env-vars-fixture/ops/probe.env", text="OKF_BOOK_PROBE_LEVEL=debug")
 - verify: contents(subject="docs/services/env-vars-fixture/ops/probe.env", text="OKF_BOOK_PROBE_PORT=8080")
 - fixture: [environments variables page](fixtures/environments-variables-page.md)
-- code: ostler/ostler/environments/commands.py::cmd_dotenv@5b8dac7706e8
-- code: ostler/ostler/environments/inject.py::render_dotenv@f3a3093eb2a9
-- code: ostler/ostler/environments/inject.py::ensure_ignored@f3a3093eb2a9
-- code: ostler/ostler/environments/page.py::read_variables@22a09f593926
-- code: ostler/ostler/environments/cli.py::run@b521bae7b440
+- code: ostler/ostler/environments/commands.py::cmd_dotenv@d9fe0c0234ed
+- code: ostler/ostler/environments/inject.py::render_dotenv@f70ec1d4cde1
+- code: ostler/ostler/environments/inject.py::ensure_ignored@1c64db858094
+- code: ostler/ostler/environments/page.py::read_variables@45bf345aacfd
+- code: ostler/ostler/environments/cli.py::run@a2cdf551584c
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)
 
 ### ostler-env-import-dotenv-unknown-environment
@@ -182,9 +182,9 @@ a secret no source supplies, without ever starting docker.
 - run: invoke(argv=["env", "import-dotenv", "docs/services/env-vars-fixture/ops/absent.env", "--environment", "okf-book-no-such-environment"])
 - verify: exit_status(code=1)
 - verify: stderr(text="no environment page is named `okf-book-no-such-environment`")
-- code: ostler/ostler/environments/migrate.py::cmd_import_dotenv@b0a1040701b6
-- code: ostler/ostler/environments/migrate.py::rewrite_variables@b0a1040701b6
-- code: ostler/ostler/environments/inject.py::classify_file@f3a3093eb2a9
-- code: ostler/ostler/environments/page.py::find_environment@22a09f593926
-- code: ostler/ostler/environments/cli.py::run@b521bae7b440
+- code: ostler/ostler/environments/migrate.py::cmd_import_dotenv@fa0e40c97f3f
+- code: ostler/ostler/environments/migrate.py::rewrite_variables@b8adfc0a82f4
+- code: ostler/ostler/environments/inject.py::classify_file@f170b198fe1f
+- code: ostler/ostler/environments/page.py::find_environment@229ec14aa7ec
+- code: ostler/ostler/environments/cli.py::run@a2cdf551584c
 - detail: [Local stack bring-up](concepts/local-stack-bring-up.md)

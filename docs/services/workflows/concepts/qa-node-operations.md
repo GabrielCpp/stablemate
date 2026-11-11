@@ -14,7 +14,7 @@ copy when the run settles. The stack, release and run steps are thin nodes over 
 `kit/qa/runner.py`. The secret helper is private but is documented because it controls the runner's
 credential boundary.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__` @12322d64ca70
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::__all__` @95fb822cc588
 - detail: [coder QA flow](../flows/coder-qa.md)
 
 ## Fields
@@ -27,7 +27,7 @@ credential boundary.
 - verify: count(subject="accepted QA runner statuses", equals=4)
 - semantics: any other runner status text becomes `invalid`
 - verify: json_path(path="$.status", equals="invalid")
-- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::RUN_STATUSES` @d3e5d78e6ac8
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::RUN_STATUSES` @2a1c25a10940
 
 ### TEARDOWN_STATES
 - type: `dict[str, Literal["yes", "no", "skipped"]]`
@@ -35,7 +35,7 @@ credential boundary.
 - required: true
 - semantics: closed mapping used to preserve whether stack teardown succeeded, failed, or was not declared
 - verify: count(subject="accepted QA teardown states", equals=3)
-- code: `workflows/src/workhorse_workflows/coder/shared/stack.py::TEARDOWN_STATES` @43bb2726ccd9
+- code: `workflows/src/workhorse_workflows/coder/shared/stack.py::TEARDOWN_STATES` @4b0677126155
 
 ### SECRET_MINT_TIMEOUT_S
 - type: `float`
@@ -43,7 +43,7 @@ credential boundary.
 - required: true
 - semantics: maximum time allowed for one runbook secret-mint recipe before the QA run is blocked
 - verify: json_path(path="$.SECRET_MINT_TIMEOUT_S", equals=60.0)
-- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::SECRET_MINT_TIMEOUT_S` @d3e5d78e6ac8
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::SECRET_MINT_TIMEOUT_S` @2a1c25a10940
 
 ### QA_SCRATCH_DIRNAME
 - type: `str`
@@ -51,7 +51,7 @@ credential boundary.
 - required: true
 - semantics: spec-relative directory holding the scored ledger and, one subdirectory per label, the dry-run ledgers of single-scenario runs (a pass's reset empties the scored ledger and keeps the dry-run ledgers, which the scored evidence gate never reads)
 - verify: json_path(path="$.QA_SCRATCH_DIRNAME", equals="qa")
-- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME` @12322d64ca70
+- code: `workflows/src/workhorse_workflows/coder/qa/nodes/qa.py::QA_SCRATCH_DIRNAME` @95fb822cc588
 
 ## Methods
 
@@ -123,6 +123,15 @@ credential boundary.
 - verify: json_path(path="$.notes", equals="Applied the change and ran the gates.")
 - code: `workflows/src/workhorse_workflows/coder/shared/stack.py::ensure_stack` @0de0ccc2dc0c
 - tests: `workflows/tests/coder/qa/test_flow.py::test_an_empty_manifest_splits_on_whether_the_book_serves_anything`
+
+### hold_copy
+- sig: `hold_copy(logger: logging.Logger, repo_dir: str = "", lease: str = "") -> bool`
+- does: names this run's process the holder of the copy the lease holds, so a resumed run is not reclaimed mid-play
+- verify: count(subject="QA stack copy holder stamps", equals=1)
+- does: changes nothing and returns false when the lease is empty or its copy does not exist
+- returns: whether a copy was stamped
+- code: `workflows/src/workhorse_workflows/coder/shared/stack.py::hold_copy` @74762ca392c5
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_green_pass_plays_the_named_calls_records_them_and_lands_the_book`
 
 ### release_copy
 - sig: `release_copy(logger: logging.Logger, repo_dir: str = "", near: str = "", lease: str = "") -> StackTornDown`

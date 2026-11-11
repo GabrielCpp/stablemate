@@ -25,8 +25,8 @@ The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is
 [book QA record](../formats/book-qa-record.md). The lane sits ahead of the scenario lane in the
 [coder lane order](coder-lane-order.md).
 
-- code: `workflows/src/workhorse_workflows/coder/shared/qa_owner.py::QaOwner` @7c46741d5c85
-- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @552d7cda8ee9
+- code: `workflows/src/workhorse_workflows/coder/shared/qa_owner.py::QaOwner` @94ffb1775e0c
+- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @428f20f96d84
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::covered_services` @5794657c4d83
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_check` @08d492ed6b13
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @c328d89377e6

@@ -13,29 +13,30 @@ read an `environment` page instead of a stack file: the page's `variables:` are 
 command outside compose runs with, and the page is where a repo's dotenv moves to.
 
 - code: ostler/ostler/environments/__init__.py@cbf4cafcdc33
-- code: ostler/ostler/environments/cli.py::add_parser@b521bae7b440
-- code: ostler/ostler/environments/cli.py::run@b521bae7b440
-- code: ostler/ostler/environments/leases.py::books_near@f4228a813f39
-- code: ostler/ostler/environments/leases.py::up@f4228a813f39
-- code: ostler/ostler/environments/leases.py::down@f4228a813f39
-- code: ostler/ostler/environments/leases.py::run_env@f4228a813f39
-- code: ostler/ostler/environments/render.py::render@c93ab3c3f7b3
-- code: ostler/ostler/environments/render.py::write@c93ab3c3f7b3
-- code: ostler/ostler/environments/render.py::_mount_outputs@c93ab3c3f7b3
-- code: ostler/ostler/environments/runtime.py::copy_for@bf9459423d5a
-- code: ostler/ostler/environments/runtime.py::Compose@bf9459423d5a
-- code: ostler/ostler/environments/runtime.py::holder_alive@bf9459423d5a
-- code: ostler/ostler/environments/runtime.py::remove@bf9459423d5a
-- code: ostler/ostler/environments/runtime.py::remove_secrets@bf9459423d5a
-- code: ostler/ostler/environments/secrets.py::source_for@761a72c7a6dd
-- code: ostler/ostler/environments/secrets.py::missing_names@761a72c7a6dd
-- code: ostler/ostler/environments/secrets.py::allowed_names@761a72c7a6dd
-- code: ostler/ostler/environments/secrets.py::write_private@761a72c7a6dd
-- code: ostler/ostler/environments/page.py::read_variables@22a09f593926
-- code: ostler/ostler/environments/page.py::find_environment@22a09f593926
-- code: ostler/ostler/environments/inject.py::resolve@f3a3093eb2a9
-- code: ostler/ostler/environments/inject.py::render_dotenv@f3a3093eb2a9
-- code: ostler/ostler/environments/migrate.py::cmd_import_dotenv@b0a1040701b6
+- code: ostler/ostler/environments/cli.py::add_parser@03ca0f5405c9
+- code: ostler/ostler/environments/cli.py::run@a2cdf551584c
+- code: ostler/ostler/environments/leases.py::books_near@f3dc55131ce7
+- code: ostler/ostler/environments/leases.py::up@c9e11fad8ccb
+- code: ostler/ostler/environments/leases.py::down@bba92dc8fb8f
+- code: ostler/ostler/environments/leases.py::run_env@50c6a3f3ff03
+- code: ostler/ostler/environments/render.py::render@2b996371a211
+- code: ostler/ostler/environments/render.py::write@b18b23b7045b
+- code: ostler/ostler/environments/render.py::_mount_outputs@9abcec004bd8
+- code: ostler/ostler/environments/runtime.py::copy_for@02834c13f824
+- code: ostler/ostler/environments/runtime.py::Compose@fc97524c55b6
+- code: ostler/ostler/environments/runtime.py::holder_alive@b5f32816eaf6
+- code: ostler/ostler/environments/runtime.py::hold@a118625f33a8
+- code: ostler/ostler/environments/runtime.py::remove@4e1b0c3a3b98
+- code: ostler/ostler/environments/runtime.py::remove_secrets@4fb61acec73f
+- code: ostler/ostler/environments/secrets.py::source_for@d9bf1e14c9f0
+- code: ostler/ostler/environments/secrets.py::missing_names@aa2bc1fcdc10
+- code: ostler/ostler/environments/secrets.py::allowed_names@55906ca4c382
+- code: ostler/ostler/environments/secrets.py::write_private@24a534b2ab0e
+- code: ostler/ostler/environments/page.py::read_variables@45bf345aacfd
+- code: ostler/ostler/environments/page.py::find_environment@229ec14aa7ec
+- code: ostler/ostler/environments/inject.py::resolve@60e36bd81dc8
+- code: ostler/ostler/environments/inject.py::render_dotenv@f70ec1d4cde1
+- code: ostler/ostler/environments/migrate.py::cmd_import_dotenv@fa0e40c97f3f
 - detail: [ostler](../cli.md)
 
 ## Contract
@@ -69,6 +70,9 @@ command outside compose runs with, and the page is where a repo's dotenv moves t
   `down` or a later `up` treats a copy as free once that process is gone, so a crashed holder
   cannot keep a lease forever, but a live process with the same reused pid is not mistaken for
   the original holder.
+- rule: a run that resumes after its process died names itself the holder of the copies it still
+  plays against, so the next `up` of any other copy on the machine does not reclaim them
+  mid-play. Naming a copy that does not exist changes nothing.
 - rule: only the copy a lease names records the lease's holder. A command run under a lease
   that brings up another named copy, such as `--copy prod`, leaves that copy without a holder, so
   the next lease does not reclaim it and drop its data when the run that started it restarts.

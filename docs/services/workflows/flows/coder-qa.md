@@ -125,7 +125,8 @@ recompiles, and writes a scenario for a criterion no obligation proves into the 
 state it, into `qa_plan.py` after its last recompile. Nobody reviews those scenarios. It records
 the result in `qa.md` and in `jira-comment.md`, which names each Acceptance Criterion, its
 verdict and the evidence path that proves it. The stack's
-environment is scoped around the turn. Specs are stamped after the turn. A `blocked` result goes
+environment is scoped around the turn, and the run names its own process the holder of its stack
+copy before the turn and before each plan run, so a resumed run is not reclaimed mid-play. Specs are stamped after the turn. A `blocked` result goes
 to the block path. Any other result continues to `check` with its findings.
 
 ### check
