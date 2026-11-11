@@ -735,6 +735,29 @@ def apply_deferrals(context: dict[str, Any], spec_dir: Path) -> dict[str, Any]:
     return context
 
 
+UNREACHED_FILE = "qa-unreached.json"
+
+
+def apply_unreached(context: dict[str, Any], spec_dir: Path) -> dict[str, Any]:
+    """With `<spec_dir>/qa-unreached.json` present, make its claims the packet's only criteria, as `claim:<n>` rows in the order listed, and drop the `unmapped-change` findings: every service of the story has an executable book, so no page owns its code and the claims are all a plan owes. An absent or unreadable file changes nothing."""
+    try:
+        claims = json.loads((spec_dir / UNREACHED_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return context
+    if not isinstance(claims, list):
+        return context
+    context["acceptanceCriteria"] = [
+        {"id": f"claim:{index}", "requirement": str(claim), "kind": "behavioral", "category": "functional"}
+        for index, claim in enumerate(claims, start=1)
+    ]
+    context["healthFindings"] = [
+        finding
+        for finding in context.get("healthFindings", [])
+        if not (isinstance(finding, dict) and finding.get("kind") == "unmapped-change")
+    ]
+    return context
+
+
 _JOURNEY_WALKERS = JourneyWalkers(http=http_walk, web=web_walk, maestro=maestro_walk)
 
 

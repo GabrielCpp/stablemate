@@ -31,7 +31,7 @@ from ostler.qa.dispatch import owes_live_evidence
 from ostler.qa.fixture_browser import BROWSER_KEYS
 from ostler.qa import fixture_provides as provides_mod
 from ostler.qa import fixtures as fixtures_mod
-from ostler.qa.compile import annotate_deferred_obligations, apply_deferrals
+from ostler.qa.compile import annotate_deferred_obligations, apply_deferrals, apply_unreached
 from ostler.qa.obligation_frame import (
     BookNode,
     RepeatContract,
@@ -1135,6 +1135,7 @@ def cmd_context(
         )
         annotate_deferred_obligations(packet)
         apply_deferrals(packet, spec_dir)
+        apply_unreached(packet, spec_dir)
         json_path, md_path = write_context(packet, spec_dir)
     except (OSError, RuntimeError, ValueError) as exc:
         return QaOutcome(ok=False, message=str(exc), status="invalid",
