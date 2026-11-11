@@ -47,7 +47,13 @@ lane keeps.
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_red_replay_goes_to_the_seat_with_the_output_as_its_report`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_seat_that_names_no_call_for_a_covered_service_is_sent_back_before_any_play`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_product_edit_outside_the_book_is_refused_and_sent_back_unlanded`
-- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @5a49c22948b4
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_pass_that_changed_only_a_new_journey_and_the_index_plays_the_named_calls`
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_pass_that_changed_a_shared_part_plays_the_whole_book`
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_shared_edit_beside_a_new_journey_still_plays_the_whole_book`
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_the_recorded_replay_stays_targeted_when_nothing_changed`
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_the_shared_rule_names_what_a_play_reads`
+- tests: `workflows/tests/coder/book_qa/test_flow.py::test_the_seat_prompt_renders_the_restructure_step_and_the_narrowed_unreached_rule`
+- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @552d7cda8ee9
 
 The seat session is keyed `book-qa:<story slug>`. The flow resets it on every ending except `refix`,
 so the developer's fix returns to the same seat. Each ending releases the run's copy of the stack.
@@ -93,7 +99,9 @@ spends no seat turn. A story with no record goes to `work`. See the
 `work` runs the `qa-book` seat at high power under the shared QA owner profile, with no wall-clock
 bound and a silence limit. The turn reads the story, its plan and its review answers, then the diff.
 It plays the calls its claims bear on before any edit to prove the base, brings each covered book up
-to the story's claims and plays the calls again. It edits only under `services/<name>/`. It is
+to the story's claims and plays the calls again. When the book's shape keeps a claim out of reach, it
+restructures the book instead of listing the claim as unreached, and it lists as unreached only a claim
+no call or backstage step can observe. It edits only under `services/<name>/`. It is
 granted only the repositories the plan touches, and the stack's environment is scoped around the turn.
 It reads no other QA's plan, report or evidence.
 
@@ -112,8 +120,15 @@ continues to `check` with the calls it named, the findings it listed and the cla
 2. For each covered service the flow runs `ostler book check services.<name>`, which builds
    everything the book declares with no stack. A non-zero exit goes back to the seat as a lap with the
    tail of the output.
-3. It then plays the service's named calls with `ostler book run services.<name> --only <calls>
-   --copy <lease>`, writing its output under the spec directory's `qa/book` folder. Exit 3 means the
+3. It then lists the paths the pass changed under `services/<name>/`, uncommitted against HEAD. When
+   any of them is a shared part of the book, it plays the whole book with `ostler book run
+   services.<name> --copy <lease>`. Otherwise it plays the service's named calls with `ostler book
+   run services.<name> --only <calls> --copy <lease>`. A shared part is anything under the service's
+   folder except a journey file the pass added, `index.tsv`, `DISAGREEMENTS.md`, `WALLS.md`,
+   `VERIFIED` and the files under `decisions/`. An edit to an existing journey file is shared. A
+   replay with no seat turn changed nothing, so it plays the named calls. The flow logs which scope it
+   played and the shared paths that decided it. The play has no time bound, so a whole run is not cut
+   short. It writes its output under the spec directory's `qa/book` folder. Exit 3 means the
    environment could not be judged, and the flow asks the operator with the output and spends no
    lap. Any other non-zero exit goes back to the seat as a lap with the tail of the output.
 4. When every service plays green the flow commits the changed paths under each covered book as one
@@ -135,7 +150,9 @@ with the output as its report, and a green replay over a recorded finding ends `
 
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::covered_services` @5794657c4d83
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_check` @08d492ed6b13
-- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @a32cf444c3c3
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @c328d89377e6
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_scope` @cecc862b6af7
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::shared_book_paths` @859ee9c370a0
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::commit_service_book` @c3c45d5dacbc
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::read_book_record` @d7c92c6f59ff
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::write_book_record` @509765d04b59
