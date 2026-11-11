@@ -2039,3 +2039,79 @@ def test_a_red_rerun_on_the_book_side_takes_an_owner_turn(
     assert agent.calls == ["qa-story"], agent.calls
     assert "Check: the book" in agent.args[0]["report"]
     assert okf.runs == 2, okf.runs
+
+
+UNREACHED_CLAIMS = ["no request reaches the report service", "the audit line names the actor"]
+
+
+def _covered_story(docs: Path, write: Callable[[Path, str], Path], covered: bool = True) -> None:
+    write(
+        epics_root() / STORY_REL / "story.md",
+        STORY_MD.replace("type: story\n", "type: story\nservices:\n  - api\n", 1),
+    )
+    if covered:
+        write(docs / "services" / "api" / "service.py", "SERVICE = 1\n")
+
+
+def test_a_story_whose_services_all_have_a_book_owes_the_scenario_seat_only_the_unreached_claims(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The packet's criteria are those claims, so the plan is validated against them and nothing else."""
+    ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
+    _covered_story(docs, write)
+    write_json(
+        docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "unreached": UNREACHED_CLAIMS}
+    )
+    agent = _Agent(docs)
+
+    drive_flow(Qa(story=STORY), env(), agent)
+
+    assert json.loads((docs / spec_dir() / "qa-unreached.json").read_text(encoding="utf-8")) == UNREACHED_CLAIMS
+    assert agent.args[0]["book_only"] is True
+    assert agent.args[0]["lease"]
+    assert agent.args[0]["book_unreached"] == UNREACHED_CLAIMS
+
+
+def test_a_story_with_an_uncovered_service_writes_no_claims_file_and_removes_a_stale_one(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    ostler(context={"obligations": OBLIGATIONS})
+    _covered_story(docs, write, covered=False)
+    write_json(docs / spec_dir() / "qa-unreached.json", ["a stale claim"])
+    agent = _Agent(docs)
+
+    _stopped_at_the_gate(drive_flow, env(), agent)
+
+    assert not (docs / spec_dir() / "qa-unreached.json").exists()
+    assert agent.args[0]["book_only"] is False
+
+
+def test_the_claims_file_of_a_book_judged_story_with_a_defect_holds_no_claim(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
+    _covered_story(docs, write)
+    finding = {"id": "f", "target": "acme/x:1", "issue": "the list drops the token", "repair": "keep it"}
+    write_json(
+        docs / spec_dir() / "book-qa.json",
+        {"services": BOOK_CALLS, "findings": [finding], "unreached": UNREACHED_CLAIMS},
+    )
+
+    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
+
+    assert json.loads((docs / spec_dir() / "qa-unreached.json").read_text(encoding="utf-8")) == []

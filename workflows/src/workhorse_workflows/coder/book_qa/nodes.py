@@ -16,6 +16,7 @@ from workhorse_workflows.coder.shared.schemas.book_qa import (
     BookScope,
     CoveredServices,
     ServiceCalls,
+    UnreachedClaims,
 )
 from workhorse_workflows.coder.shared.schemas.docs import DocumentationGate
 from workhorse_workflows.coder.shared.schemas.qa import QaFinding
@@ -30,6 +31,7 @@ RECORD_FILE = "book-qa.json"
 BOOK_OUT = Path("qa") / "book"
 BOOK_PAGES = "docs/services"
 DEFERRALS_FILE = "qa-deferrals.json"
+UNREACHED_FILE = "qa-unreached.json"
 
 
 def book_dir(service: str) -> str:
@@ -249,6 +251,25 @@ def defer_book_judged(logger: logging.Logger, spec_dir: str, repo_dir: str = "")
 
 
 @blueprint.node
+def write_unreached_claims(
+    logger: logging.Logger, spec_dir: str, book_only: bool = False, repo_dir: str = ""
+) -> UnreachedClaims:
+    """Write `qa-unreached.json` beside the QA context packet for a story whose services all have a book: the claims a clean book record could not state, which are all the scenario seat owes. Any other story removes the file."""
+    root = find_docs_root(repo_dir)
+    spec = root / spec_dir
+    target = spec / UNREACHED_FILE
+    if not book_only:
+        target.unlink(missing_ok=True)
+        return UnreachedClaims()
+    record = _load_record(spec)
+    claims = [] if record.findings else list(record.unreached)
+    spec.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(claims, indent=2) + "\n", encoding="utf-8")
+    logger.info("the scenario seat owes %d unreached claim(s) of this book-only story", len(claims))
+    return UnreachedClaims(claims=claims)
+
+
+@blueprint.node
 def commit_service_book(
     logger: logging.Logger,
     services: list[str],
@@ -304,6 +325,7 @@ __all__ = [
     "BOOK_OUT",
     "DEFERRALS_FILE",
     "RECORD_FILE",
+    "UNREACHED_FILE",
     "book_check",
     "book_dir",
     "changed_book_paths",
@@ -317,4 +339,5 @@ __all__ = [
     "read_book_record",
     "shared_book_paths",
     "write_book_record",
+    "write_unreached_claims",
 ]

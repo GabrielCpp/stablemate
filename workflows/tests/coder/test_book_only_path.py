@@ -129,3 +129,79 @@ def test_the_scenario_packet_of_an_all_covered_story_passes_with_no_obligation(
     covered = packet(True)
     assert covered.status == "passed", covered
     assert "executable book" in covered.notes
+
+
+QA_PROMPTS = ("qa/prompts/qa-story.md",)
+UNREACHED = ["the export lands in the mailbox", "the audit line names the actor"]
+QA_ARGS = {
+    "story_path": "stories/STORY-1.md",
+    "story_slug": "story-1",
+    "story_id": "STORY-1",
+    "epic": "E-1",
+    "qa_dir": "qa",
+    "qa_scratch_dir": "qa",
+    "docs_root": "docs",
+    "target_env": "local",
+    "runtime_python": "python",
+    "verification_setup": None,
+    "fixtures": [],
+    "shared_packages": [],
+    "qa_run_plan": [],
+    "plan_services": "",
+    "qa_only_scenarios": [],
+    "qa_tools": [],
+    "standing_plan": False,
+    "hand_written_plan": False,
+    "compiled_plan_file": "qa_plan.compiled.py",
+    "book_services": ["api"],
+    "book_unreached": UNREACHED,
+    "book_only": True,
+    "lease": "story-1-run",
+    "result_schema": "{}",
+    "failed_scenarios": [],
+}
+
+
+def _qa_rendered(tmp_path: Path, with_skill: bool, **args: object) -> str:
+    return _rendered("qa/prompts/qa-story.md", tmp_path, with_skill, **(QA_ARGS | args))
+
+
+@pytest.mark.parametrize("with_skill", [True, False])
+@pytest.mark.parametrize("standing", [True, False])
+def test_the_scenario_prompt_of_an_all_covered_story_names_no_markdown_page(
+    standing: bool, with_skill: bool, tmp_path: Path
+) -> None:
+    text = _qa_rendered(tmp_path, with_skill, standing_plan=standing)
+
+    for needle in ("docs/services", "okf:", "ostler-okf", "qa-stack.md", "ostler doctor", "ostler qa compile-plan"):
+        assert needle not in text, needle
+
+
+def test_the_scenario_prompt_of_an_all_covered_story_states_its_scope_as_numbered_claims(
+    tmp_path: Path,
+) -> None:
+    text = _qa_rendered(tmp_path, True)
+
+    assert "`claim:1`: the export lands in the mailbox" in text
+    assert "`claim:2`: the audit line names the actor" in text
+    assert 'covers=["claim:<n>"]' in text
+    assert "are your whole\n   scope" in text
+
+
+def test_the_scenario_prompt_of_an_all_covered_story_brings_the_stack_up_from_the_environment(
+    tmp_path: Path,
+) -> None:
+    text = _qa_rendered(tmp_path, True)
+
+    assert "ostler env up --copy story-1-run" in text
+    assert "ostler env address <service> --copy story-1-run" in text
+
+
+def test_the_scenario_prompt_of_a_story_with_an_uncovered_service_keeps_the_markdown_instructions(
+    tmp_path: Path,
+) -> None:
+    text = _qa_rendered(tmp_path, True, book_only=False)
+
+    assert "docs/services/<service>/ops/qa-stack.md" in text
+    assert "ostler qa compile-plan" in text
+    assert "ostler env up" not in text

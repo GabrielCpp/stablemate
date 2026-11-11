@@ -66,6 +66,14 @@ def deferrals_digest(spec_path: Path) -> str:
         return "absent"
 
 
+def unreached_digest(spec_path: Path) -> str:
+    """The sha256 of the spec dir's `qa-unreached.json`, or `absent`, so the memo key sees the claims the packet's criteria are made of."""
+    try:
+        return hashlib.sha256((spec_path / "qa-unreached.json").read_bytes()).hexdigest()
+    except OSError:
+        return "absent"
+
+
 def packet_digests(spec_path: Path) -> dict[str, str]:
     """The sha256 of each packet file, so a stamp names the bytes it vouches for."""
     return {
@@ -279,6 +287,7 @@ def build_okf_context(
         "head": head,
         "exclude_paths": inherited,
         "deferrals": deferrals_digest(spec_path),
+        "unreached": unreached_digest(spec_path),
     }
     if book_only:
         arguments["book_only"] = True

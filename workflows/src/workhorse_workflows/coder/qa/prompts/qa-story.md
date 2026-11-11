@@ -33,7 +33,15 @@ earlier turn.
 - Docs root: `{{ workhorse_var('docs_root') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - The QA runner's interpreter: `{{ workhorse_var('runtime_python') }}`
-{% if standing_plan and hand_written_plan %}- A hand-written `qa_plan.py` stands in the spec dir, and it lints and validates against the
+{% if book_only %}{% if standing_plan %}- A `qa_plan.py` already stands in the spec dir, and it lints and validates. Change only the
+  scenarios a claim or a check calls for.
+{% else %}- No plan that lints and validates stands in the spec dir yet. Write `qa_plan.py` by hand.
+{% endif %}- The executable books of {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} already
+  judged this story. Their play covers every claim a call can show, so your scope is only the
+  claims the books could not state, each one a criterion of the plan:
+{% for claim in book_unreached %}  - `claim:{{ loop.index }}`: {{ claim }}
+{% endfor %}
+{% elif standing_plan and hand_written_plan %}- A hand-written `qa_plan.py` stands in the spec dir, and it lints and validates against the
   context packet. No compile produced it, so its `covers=` labels are its author's and not the
   book's. The workflow compiled every obligation of the book into `{{ compiled_plan_file }}`
   beside it. Bind the criteria on the compiled plan with `--cover`, port only the hand-written
@@ -43,7 +51,7 @@ earlier turn.
   `ostler qa compile-plan`. Start from it and change only what the story or a check calls for.
 {% else %}- No plan that lints and validates stands in the spec dir yet. Compile one with
   `ostler qa compile-plan`, or repair the one that is there.
-{% endif %}{% if book_services %}- The executable books of these services already judged the story: {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}.
+{% endif %}{% if book_services and not book_only %}- The executable books of these services already judged the story: {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}.
   Obligations the packet marks deferred with kind `book` stay out of the plan.{% if book_unreached %} The
   books could not state these claims, so each one still needs a scenario, or a report in
   `notes` that no scenario reaches it:
@@ -56,7 +64,7 @@ earlier turn.
 {% for f in fixtures %}  - `{{ f.name }}`{% if f.provides %}: {{ f.provides }}{% endif %}
 {% endfor %}{% endif %}{% if shared_packages %}- Shared files the story's services both read:
 {% for p in shared_packages %}  - `{{ p }}`
-{% endfor %}{% endif %}{% if qa_only_scenarios %}- Scenarios the implementation plan marked QA-only. No automated test covers them, so
+{% endfor %}{% endif %}{% if qa_only_scenarios and not book_only %}- Scenarios the implementation plan marked QA-only. No automated test covers them, so
   each one is an obligation of this plan with its own `verify:` check:
 {% for s in qa_only_scenarios %}  - {{ s.title }}: AC {{ s.ac or 'none stated' }} ({{ s.level }})
 {% endfor %}{% endif %}{% if plan_services %}
@@ -110,7 +118,16 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
 
 ## How to work
 
-1. **Select.** Read the story and its Acceptance Criteria, the repo's `AGENTS.md` and
+{% if book_only %}1. **Select.** Read the story and its Acceptance Criteria, the repo's `AGENTS.md` and
+   `docs/qa/lessons.md` under the docs root when it exists. The claims above are your whole
+   scope. For each one, find the Acceptance Criterion whose words it comes from and decide what
+   observation of the running product shows it. Write `qa_plan.py` by hand: one scenario per
+   claim, or one for several claims that a single observation proves, each with
+   `covers=["claim:<n>"]` and a `qa.check(..., covers=["claim:<n>"])` in its body. A claim no
+   scenario can reach is reported in `notes` with the reason, and the plan then fails
+   validation, so return `blocked` with that reason. Nobody reviews the scenarios you write.
+   Run `ostler qa lint` and `ostler qa validate` on the plan.
+{% else %}1. **Select.** Read the story and its Acceptance Criteria, the repo's `AGENTS.md` and
    `docs/qa/lessons.md` under the docs root when it exists. The Acceptance Criteria define
    done. `qa-okf-context.json` in the spec dir holds the obligations, read through
    `ostler qa context-show`. The workflow compiled every obligation into
@@ -126,13 +143,26 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
    recompile. A recompile replaces the file, so a scenario written by hand goes in after your
    last recompile. Nobody reviews the scenarios you write. Run `ostler qa lint` and
    `ostler qa validate` on the plan.
-2. **Run.** Stand the stack up with the setup brief below when the report names a context or
+{% endif %}2. **Run.** Stand the stack up with the setup brief below when the report names a context or
    stack failure, or a runner requirement. The workflow rebuilds the context packet before
    every check, so a context failure names what the book or the story lacks. Then run the
    whole plan, scored, from the spec dir:
    `ostler qa run {{ workhorse_var('spec_dir') }}/qa_plan.py --spec {{ workhorse_var('spec_dir') }}`,
    with no `--out-dir`. Bound it with a `timeout`. The scored run is the verdict.
-3. **Debug.** Read `qa-report.md` and classify every failure:
+{% if book_only %}3. **Debug.** Read `qa-report.md` and classify every failure:
+   - **product**: the repo's code does not do what a criterion says, or fails where it ran
+     before. A finding. QA never fixes the product.
+   - **plan**: the scenario asserts the wrong thing or reads the wrong field. Repair the scenario.
+   - **stack or setup**: the environment, a seed, a tool, a stale build. Repair it with the
+     setup brief below. When the cause is the repo's own tracked code, such as its stack
+     definition or setup scripts, it is a finding too.
+   - **evidence**: the proof is missing, stale or does not support its claim. Repair the
+     scenario so it records it.
+   - **regression**: an existing spec this story's change broke, or a stale spec. Fix a stale
+     or flaky spec in the spec, against the real stack, without weakening an assertion or
+     deep-linking past a broken step. A regression in the product is a finding.
+
+{% else %}3. **Debug.** Read `qa-report.md` and classify every failure:
    - **product**: the repo's code does not do what a criterion says, or fails where it ran
      before. A finding. QA never fixes the product.
    - **plan** (the book is wrong or silent): repair the book node, then recompile. A scenario
@@ -146,7 +176,7 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
      or flaky spec in the spec, against the real stack, without weakening an assertion or
      deep-linking past a broken step. A regression in the product is a finding.
 
-   You may run one scenario on its own with `--scenario <id> --out-dir <label>` while you
+{% endif %}   You may run one scenario on its own with `--scenario <id> --out-dir <label>` while you
    debug it. Run the whole plan again once a repair lands. Stop when the scored run passes, or
    when every failure left is a product finding.
 4. **Record.** Judge whether the run reached its objective and write `qa.md` (below). Write
@@ -224,9 +254,11 @@ every pass. Never append.
 Never edit an evidence artifact, and never upgrade an `invalid`, `blocked` or `failed`
 result.
 
-{% include "_qa-plan-contract.md" %}
+{% if book_only %}{% include "_qa-claims-contract.md" %}
 
-{% include "_qa-setup-brief.md" %}
+{% include "_qa-claims-setup-brief.md" %}{% else %}{% include "_qa-plan-contract.md" %}
+
+{% include "_qa-setup-brief.md" %}{% endif %}
 
 
 {% include "_dev-report-brief.md" %}
@@ -251,7 +283,7 @@ unblock you and what you ruled out.
 
 ## Commit Identity
 
-Commit nothing but QA artifacts that live in the repo: the runbook node, the regression specs, local
+Commit nothing but QA artifacts that live in the repo: {% if book_only %}the stack definition{% else %}the runbook node{% endif %}, the regression specs, local
 config. Every commit carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as footers, spelled exactly so. Do not push.
 

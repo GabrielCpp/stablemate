@@ -10,7 +10,7 @@ from ostler.qa.compile import compiled_from_the_book
 from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 
 from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.coder.book_qa.nodes import defer_book_judged, read_book_record
+from workhorse_workflows.coder.book_qa.nodes import defer_book_judged, read_book_record, write_unreached_claims
 from workhorse_workflows.coder.qa.nodes import (
     QA_SCRATCH_DIRNAME,
     check_sentinel_ids,
@@ -152,7 +152,8 @@ class Qa(QaOwner):
         impl = self.output(resolve_impl_context)
         self.call(defer_book_judged, self.ctx.spec_dir)
         covered = self.call(covered_services, list(self.ctx.story_services)).services
-        book_only = bool(covered) and len(covered) == len(set(self.ctx.story_services))
+        book_only = self._book_only(covered)
+        self.call(write_unreached_claims, self.ctx.spec_dir, book_only)
         build = self.call(
             build_okf_context,
             self.ctx.spec_dir,
@@ -180,6 +181,10 @@ class Qa(QaOwner):
         stack = self.call(ensure_stack, near=target.near, lease=target.lease)
         return failures + stack_failures(stack)
 
+    def _book_only(self, covered: list[str]) -> bool:
+        """Does every service of the story have an executable book?"""
+        return bool(covered) and len(covered) == len(set(self.ctx.story_services))
+
     def _owner_args(self) -> dict[str, Any]:
         """What the owner reads about its story, its plan and the tools it may drive."""
         impl = self.output(resolve_impl_context)
@@ -192,6 +197,7 @@ class Qa(QaOwner):
         spec_dir = self.ctx.spec_dir
         record = self.call(read_book_record, spec_dir)
         judged = not record.findings
+        covered = self.call(covered_services, list(self.ctx.story_services)).services
         return {
             "story_path": self.ctx.story_path,
             "spec_dir": spec_dir,
@@ -215,6 +221,8 @@ class Qa(QaOwner):
             "compiled_plan_file": QA_COMPILED_PLAN_FILE,
             "book_services": [s.service for s in record.services] if judged else [],
             "book_unreached": list(record.unreached) if judged else [],
+            "book_only": self._book_only(covered),
+            "lease": self.output(stack_target).lease,
         }
 
     def _standing_plan(self) -> bool:

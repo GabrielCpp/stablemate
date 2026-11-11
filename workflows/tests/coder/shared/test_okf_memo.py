@@ -145,6 +145,18 @@ def test_a_changed_deferrals_file_rebuilds_wherever_the_spec_dir_lies(
     assert len(FakeOstler.calls) == 3
 
 
+def test_a_changed_unreached_claims_file_rebuilds(repo: Path) -> None:
+    spec = repo / "docs" / "spec"
+    build(repo)
+    build(repo)
+    assert len(FakeOstler.calls) == 1
+    (spec / "qa-unreached.json").write_text('["a claim"]\n', encoding="utf-8")
+    build(repo)
+    assert len(FakeOstler.calls) == 2
+    build(repo)
+    assert len(FakeOstler.calls) == 2
+
+
 def test_a_failed_build_is_not_memoized(repo: Path) -> None:
     FakeOstler.ok = False
     first = build(repo)
@@ -180,6 +192,7 @@ def test_the_stamp_records_the_key_the_next_visit_recomputes(repo: Path) -> None
             "head": "WORKTREE",
             "exclude_paths": [],
             "deferrals": "absent",
+            "unreached": "absent",
         },
     )
 
