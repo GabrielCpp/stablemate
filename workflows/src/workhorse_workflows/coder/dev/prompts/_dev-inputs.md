@@ -35,6 +35,16 @@ phase opens with its own brief. A later turn of the same phase sends only what c
 points back at the brief's path above. When you no longer hold this brief, read it again
 from that path before you act.
 {% endif %}
+{% if not opening_brief and not follow_up_title %}
+
+## The decisions the executable books keep
+
+A service of this story may have an executable book at `services/<name>/` under the repo root,
+with a `service.py`. For each one, read `services/<name>/decisions/*.md` and
+`services/<name>/DISAGREEMENTS.md` before you plan. A decision says why the service behaves as
+it does and which story settled it. Where your plan changes a behaviour a decision explains,
+cite the decision in the plan and say whether the story keeps it or overturns it.
+{% endif %}
 {% if spec_nodes and not opening_brief and not follow_up_title %}
 
 ## The book is this story's spec

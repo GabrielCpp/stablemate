@@ -43,6 +43,14 @@ assumption in the story, the model or the book. Do not raise the same block agai
 {{ workhorse_var('operator_context') }}
 {% endif %}
 
+## The decisions the executable books keep
+
+A service of this story may have an executable book at `services/<name>/` under the repo root,
+with a `service.py`. For each one, read `services/<name>/decisions/*.md` and
+`services/<name>/DISAGREEMENTS.md` before you model. A decision says why the service behaves as
+it does and which story settled it. Where the story changes a behaviour a decision explains,
+name the decision in the model and say whether the story keeps it or overturns it.
+
 ## 1. The behaviour model
 
 {% if has_skill("behaviour-model") %}
