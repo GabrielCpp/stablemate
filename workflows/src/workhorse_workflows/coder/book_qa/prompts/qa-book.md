@@ -67,7 +67,10 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    and report one finding per claim: the claim in the story's words, the call, the observed
    answer.
 6. **Name what no call reaches.** A claim no call can show goes in `notes` as out of reach,
-   with the reason.
+   with the reason. Also list it in `unreached`, one entry per claim in the story's words, for
+   example "no request reaches the report service". The scenario QA skips every page of a
+   service whose book passed, and it reads `unreached` to know which claims are still its
+   to judge. A claim you stated in the book and played is not listed.
 7. **Run until green.** Run `ostler book check`, then the targeted run, until the run exits
    0. Never run the whole book. Run one at a time. Exit 3 means the environment is not
    healthy. Report `blocked` and repair nothing.

@@ -8,7 +8,9 @@ from pathlib import Path
 
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 from workhorse_workflows.coder.shared.schemas.book_qa import (
+    BookDeferral,
     BookPlay,
     BookQaRecord,
     CoveredServices,
@@ -18,12 +20,13 @@ from workhorse_workflows.coder.shared.schemas.qa import QaFinding
 from workhorse_workflows.coder.shared.schemas.queue import StoryCommitted
 from workhorse_workflows.coder.shared.story_commit import uncommitted_paths
 from workhorse_workflows.coder.shared.worktree import is_product, not_product_roots, untouched_since
-from workhorse_workflows.kit import GitError, commit_paths, find_repo_root
+from workhorse_workflows.kit import GitError, commit_paths, find_docs_root, find_repo_root
 from workhorse_workflows.kit.tools import run_tool
 
 TAIL_LINES = 200
 RECORD_FILE = "book-qa.json"
 BOOK_OUT = Path("qa") / "book"
+BOOK_PAGES = "docs/services"
 
 
 def book_dir(service: str) -> str:
@@ -81,7 +84,11 @@ def book_run(
 @blueprint.node
 def read_book_record(logger: logging.Logger, spec_dir: str) -> BookQaRecord:
     """The calls a passed check of this story played, or an empty record when none did."""
-    record = Path(spec_dir) / RECORD_FILE
+    return _load_record(Path(spec_dir))
+
+
+def _load_record(spec: Path) -> BookQaRecord:
+    record = spec / RECORD_FILE
     if not record.is_file():
         return BookQaRecord()
     return BookQaRecord.model_validate(json.loads(record.read_text(encoding="utf-8")))
@@ -93,14 +100,48 @@ def write_book_record(
     spec_dir: str,
     services: list[ServiceCalls],
     findings: list[QaFinding] | None = None,
+    unreached: list[str] | None = None,
 ) -> BookQaRecord:
-    """Record the calls a passed check played and the findings it stood on, so a second visit for the story replays them. A green replay means a declared defect still holds, so its finding still stands."""
-    record = BookQaRecord(services=services, findings=findings or [])
+    """Record the calls a passed check played, the findings it stood on and the claims the book could not state, so a second visit for the story replays them. A green replay means a declared defect still holds, so its finding still stands."""
+    record = BookQaRecord(services=services, findings=findings or [], unreached=unreached or [])
     target = Path(spec_dir) / RECORD_FILE
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(record.model_dump(exclude_defaults=True), indent=2) + "\n", encoding="utf-8")
     logger.info("recorded the calls of %d service(s) in %s", len(services), target)
     return record
+
+
+@blueprint.node
+def defer_book_judged(logger: logging.Logger, spec_dir: str, repo_dir: str = "") -> BookDeferral:
+    """Mark each required obligation under a recorded service's book pages as deferred to that book, in the QA context packet. A missing record, or one with findings, marks nothing."""
+    root = find_docs_root(repo_dir)
+    spec = root / spec_dir
+    record = _load_record(spec)
+    context_path = spec / CONTEXT_FILE
+    if not record.services or record.findings or not context_path.is_file():
+        logger.info("no service book judged this story clean, so no obligation is deferred")
+        return BookDeferral()
+    context = json.loads(context_path.read_text(encoding="utf-8"))
+    marked: dict[str, int] = {}
+    for obligation in context.get("obligations") or []:
+        if not isinstance(obligation, dict) or obligation.get("required", True) is False:
+            continue
+        if isinstance(obligation.get("deferred"), dict):
+            continue
+        page = str(obligation.get("node") or "").partition("#")[0]
+        for entry in record.services:
+            if page.startswith(f"{BOOK_PAGES}/{entry.service}/"):
+                obligation["deferred"] = {
+                    "kind": "book",
+                    "detail": f"judged by the executable book of {entry.service}",
+                }
+                marked[entry.service] = marked.get(entry.service, 0) + 1
+                break
+    if marked:
+        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
+    for name, count in marked.items():
+        logger.info("deferred %d obligation(s) to the book of %s", count, name)
+    return BookDeferral(marked=marked)
 
 
 @blueprint.node
@@ -162,6 +203,7 @@ __all__ = [
     "book_dir",
     "book_run",
     "commit_service_book",
+    "defer_book_judged",
     "covered_services",
     "read_book_record",
     "write_book_record",

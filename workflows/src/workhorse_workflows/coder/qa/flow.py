@@ -9,6 +9,7 @@ from ostler.qa.compile import compiled_from_the_book
 from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
 
 from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.coder.book_qa.nodes import defer_book_judged, read_book_record
 from workhorse_workflows.coder.qa.nodes import (
     QA_SCRATCH_DIRNAME,
     check_sentinel_ids,
@@ -139,6 +140,7 @@ class Qa(QaOwner):
         if context.status != "passed":
             failures.append(gate_text("the OKF context packet", context.notes))
         else:
+            self.call(defer_book_judged, self.ctx.spec_dir)
             self.call(compile_story_plan, self.ctx.spec_dir, self.ctx.story_id or self.ctx.story_slug)
         target = self.output(stack_target)
         stack = self.call(ensure_stack, near=target.near, lease=target.lease)
@@ -154,6 +156,8 @@ class Qa(QaOwner):
             self.ctx.story_id,
         )
         spec_dir = self.ctx.spec_dir
+        record = self.call(read_book_record, spec_dir)
+        judged = not record.findings
         return {
             "story_path": self.ctx.story_path,
             "spec_dir": spec_dir,
@@ -175,6 +179,8 @@ class Qa(QaOwner):
             "standing_plan": self._standing_plan(),
             "hand_written_plan": self._hand_written_plan(),
             "compiled_plan_file": QA_COMPILED_PLAN_FILE,
+            "book_services": [s.service for s in record.services] if judged else [],
+            "book_unreached": list(record.unreached) if judged else [],
         }
 
     def _standing_plan(self) -> bool:

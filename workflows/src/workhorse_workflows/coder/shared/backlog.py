@@ -290,7 +290,8 @@ def _deferred_pages(context: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
     for obligation in context.get("obligations") or []:
         if not isinstance(obligation, dict) or obligation.get("required", True) is False:
             continue
-        if not isinstance(obligation.get("deferred"), dict):
+        deferred = obligation.get("deferred")
+        if not isinstance(deferred, dict) or deferred.get("kind") == "book":
             continue
         node = str(obligation.get("node") or "")
         page = str(obligation.get("source") or node.partition("#")[0])

@@ -43,6 +43,12 @@ earlier turn.
   `ostler qa compile-plan`. Start from it and change only what the story or a check calls for.
 {% else %}- No plan that lints and validates stands in the spec dir yet. Compile one with
   `ostler qa compile-plan`, or repair the one that is there.
+{% endif %}{% if book_services %}- The executable books of these services already judged the story: {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}.
+  Obligations the packet marks deferred with kind `book` stay out of the plan.{% if book_unreached %} The
+  books could not state these claims, so each one still needs a scenario, or a report in
+  `notes` that no scenario reaches it:
+{% for claim in book_unreached %}  - {{ claim }}
+{% endfor %}{% endif %}
 {% endif %}{% if verification_setup and verification_setup.profile %}- The stack profile the surface needs: `{{ verification_setup.profile }}`.
 {% endif %}{% if verification_setup and verification_setup.capable_of_rendering %}- What the stack can render: {{ verification_setup.capable_of_rendering }}
 {% endif %}{% if fixtures %}- The fixtures this story declared. They are the only arrangements a scenario may stand up,

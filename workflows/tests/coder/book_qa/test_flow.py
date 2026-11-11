@@ -263,6 +263,24 @@ def test_a_green_pass_plays_the_named_calls_records_them_and_lands_the_book(
     assert stack.released == 1, stack.released
 
 
+def test_the_claims_the_seat_could_not_state_are_recorded_beside_its_calls(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The scenario lane reads the record to learn which claims the book left to it."""
+    book()
+    unreached = ["no request reaches the report service"]
+    agent = _Agent(lane, {"status": "passed", "calls": CALLS, "unreached": unreached})
+
+    drive_flow(_flow(), env(), agent)
+
+    record = json.loads((_spec_dir() / "book-qa.json").read_text(encoding="utf-8"))
+    assert record == {"services": CALLS, "unreached": unreached}, record
+
+
 def stack_lease(argv: list[str]) -> str:
     return argv[argv.index("--copy") + 1]
 
@@ -420,6 +438,27 @@ def test_a_second_visit_replays_the_recorded_calls_with_no_seat(
     assert agent.calls == [], agent.calls
     [argv] = scripted.argv["run"]
     assert argv[argv.index("--only") + 1] == "ListX,BuildX", argv
+
+
+def test_a_replay_keeps_the_recorded_unreached_claims(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A replay with no seat turn must not lose the claims the book never stated."""
+    unreached = ["no request reaches the report service"]
+    write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS, "unreached": unreached}))
+    book()
+    agent = _Agent(lane)
+
+    drive_flow(_flow(), env(), agent)
+
+    record = json.loads((_spec_dir() / "book-qa.json").read_text(encoding="utf-8"))
+    assert record == {"services": CALLS, "unreached": unreached}, record
+    assert agent.calls == [], agent.calls
 
 
 def test_a_green_replay_over_a_recorded_finding_sends_it_back_again(

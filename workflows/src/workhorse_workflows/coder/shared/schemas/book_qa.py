@@ -48,6 +48,12 @@ class BookQaOwnerResult(CoderResult):
         description="The calls you played, per covered service. Name at least one call for every "
         "covered service.",
     )
+    unreached: list[str] = Field(
+        default=[],
+        description="The story's claims you could not state in the book, one per entry, in the "
+        "story's words, for example `no request reaches the report service`. A claim you stated "
+        "and played is not listed. Empty when the book states every claim.",
+    )
 
 
 class CoveredServices(CoderResult):
@@ -64,10 +70,16 @@ class BookPlay(CoderResult):
 
 
 class BookQaRecord(CoderResult):
-    """`book-qa.json`: the calls a passed check played and the findings it stood on, so a later visit replays them."""
+    """`book-qa.json`: the calls a passed check played, the findings it stood on and the claims the book could not state, so a later visit replays them."""
 
     services: list[ServiceCalls] = []
     findings: list[QaFinding] = []
+    unreached: list[str] = []
 
 
-__all__ = ["BookPlay", "BookQaOwnerResult", "BookQaRecord", "CoveredServices", "ServiceCalls"]
+class BookDeferral(CoderResult):
+    """`defer_book_judged`: how many obligations each recorded service's book took off the scenario lane."""
+
+    marked: dict[str, int] = {}
+
+__all__ = ["BookDeferral", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "CoveredServices", "ServiceCalls"]

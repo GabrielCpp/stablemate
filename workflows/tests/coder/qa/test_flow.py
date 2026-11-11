@@ -1454,6 +1454,111 @@ def test_a_standing_valid_plan_is_handed_to_the_owner_to_adopt(
     assert agent.args[0]["compiled_plan_file"] == "qa_plan.compiled.py"
 
 
+BOOK_CALLS = [{"service": "api", "calls": ["ListX"]}]
+
+OBLIGATIONS = [
+    {"id": "ob-api", "node": "docs/services/api/lists.md#share", "required": True},
+    {"id": "ob-api-optional", "node": "docs/services/api/lists.md#nice", "required": False},
+    {
+        "id": "ob-api-held",
+        "node": "docs/services/api/lists.md#held",
+        "required": True,
+        "deferred": {"kind": "no-check", "detail": "no runnable check"},
+    },
+    {"id": "ob-web", "node": "docs/services/web/pages.md#home", "required": True},
+]
+
+
+def _stopped_at_the_gate(drive_flow: Callable[..., Any], run_env: RunEnv, agent: _Agent) -> None:
+    """Drive the lane to the first operator gate, since the scripted run proves none of the packet's obligations."""
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
+        drive_flow(Qa(story=STORY), run_env, agent)
+
+
+def _packet(docs: Path) -> dict[str, Any]:
+    return json.loads((docs / spec_dir() / "qa-okf-context.json").read_text(encoding="utf-8"))
+
+
+def _deferred(docs: Path) -> dict[str, Any]:
+    return {o["id"]: o.get("deferred") for o in _packet(docs)["obligations"]}
+
+
+def test_a_service_the_book_judged_clean_defers_its_required_obligations(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Only the required, not yet deferred obligations under the recorded service's pages are left to the book."""
+    ostler(context={"obligations": OBLIGATIONS})
+    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
+
+    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
+
+    assert _deferred(docs) == {
+        "ob-api": {"kind": "book", "detail": "judged by the executable book of api"},
+        "ob-api-optional": None,
+        "ob-api-held": {"kind": "no-check", "detail": "no runnable check"},
+        "ob-web": None,
+    }
+
+
+def test_no_book_record_defers_nothing(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A story with no book pass keeps every obligation for the scenario lane."""
+    ostler(context={"obligations": OBLIGATIONS})
+
+    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
+
+    assert [d for d in _deferred(docs).values() if d and d["kind"] == "book"] == []
+
+
+def test_a_book_record_with_findings_defers_nothing(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A service whose book found a defect is not judged, so the scenario lane keeps its obligations."""
+    ostler(context={"obligations": OBLIGATIONS})
+    finding = {"id": "f", "target": "acme/x:1", "issue": "the list drops the token", "repair": "keep it"}
+    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "findings": [finding]})
+    agent = _Agent(docs)
+
+    _stopped_at_the_gate(drive_flow, env(), agent)
+
+    assert [d for d in _deferred(docs).values() if d and d["kind"] == "book"] == []
+    assert agent.args[0]["book_services"] == []
+    assert agent.args[0]["book_unreached"] == []
+
+
+def test_the_owner_is_told_which_books_judged_and_which_claims_they_left(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The seat covers each unreached claim by a scenario or reports it out of reach."""
+    ostler(context={"obligations": OBLIGATIONS})
+    unreached = ["no request reaches the report service"]
+    write_json(
+        docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "unreached": unreached}
+    )
+    agent = _Agent(docs)
+
+    _stopped_at_the_gate(drive_flow, env(), agent)
+
+    assert agent.args[0]["book_services"] == ["api"]
+    assert agent.args[0]["book_unreached"] == unreached
+
+
 def test_a_book_that_compiles_hands_the_owner_its_plan_as_the_standing_one(
     docs: Path,
     ostler: Callable[..., _Ostler],

@@ -66,6 +66,7 @@ class BookQa(QaOwner):
                 self.check,
                 calls=[s.model_dump() for s in record.services],
                 findings=[f.model_dump() for f in record.findings],
+                unreached=list(record.unreached),
             )
         return Continue(stack, self.work)
 
@@ -115,6 +116,7 @@ class BookQa(QaOwner):
             self.check,
             calls=[c.model_dump() for c in result.calls],
             findings=[f.model_dump() for f in result.findings],
+            unreached=list(result.unreached),
             laps=laps,
             blocks=blocks,
         )
@@ -123,6 +125,7 @@ class BookQa(QaOwner):
         self,
         calls: list[dict[str, Any]] | None = None,
         findings: list[dict[str, Any]] | None = None,
+        unreached: list[str] | None = None,
         laps: int = 0,
         blocks: int = 0,
     ) -> Continue | Await | Done:
@@ -160,7 +163,7 @@ class BookQa(QaOwner):
         if landed.refused:
             return self._lap(landed, [_gate("the book commit", landed.refused)], laps, blocks)
         found = [QaFinding.model_validate(f) for f in findings or []]
-        self.call(write_book_record, self.ctx.spec_dir, list(named.values()), found)
+        self.call(write_book_record, self.ctx.spec_dir, list(named.values()), found, list(unreached or []))
         return self._finish("refix" if found else "passed", found)
 
     def _finish(self, status: QaFlowStatus, findings: list[QaFinding]) -> Done:
