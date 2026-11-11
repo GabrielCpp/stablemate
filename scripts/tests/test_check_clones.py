@@ -356,6 +356,34 @@ def test_a_dart_method_names_the_method_and_skips_control_flow(tmp_path: Path):
     assert _unit(tmp_path, "a.dart", text, 4) == "write"
 
 
+def test_a_kotlin_extension_function_names_the_function(tmp_path: Path):
+    text = (
+        "class Sheet {\n"
+        "    override suspend fun <T> List<T>.write(rows: List<String>): Int {\n"
+        "        if (rows.isEmpty()) {\n"
+        "            return 0\n"
+        "        }\n"
+        "        return rows.size\n"
+        "    }\n"
+        "}\n"
+    )
+
+    assert _unit(tmp_path, "a.kt", text, 4) == "write"
+
+
+def test_a_kotlin_declaration_names_the_type_past_its_modifiers(tmp_path: Path):
+    text = "sealed interface State {\n    data object Loading : State\n    val busy: Boolean\n}\n"
+
+    assert _unit(tmp_path, "a.kt", text, 1) == "State"
+    assert _unit(tmp_path, "a.kt", text, 3) == "Loading"
+
+
+def test_kotlin_test_source_sets_are_test_paths():
+    assert gate.is_test("shared/src/commonMain/kotlin/a/NotesTest.kt")
+    assert gate.is_test("shared/src/jvmTest/kotlin/a/Fakes.kt")
+    assert not gate.is_test("shared/src/commonMain/kotlin/a/Notes.kt")
+
+
 def test_a_range_across_two_units_is_labelled_with_both(tmp_path: Path):
     (tmp_path / "a.py").write_text("def one():\n    x = 1\n\ndef two():\n    y = 2\n", encoding="utf-8")
 

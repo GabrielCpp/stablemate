@@ -40,7 +40,7 @@ DEFAULT_IGNORE = (
 )
 TEST_PATHS = (
     "**/tests/**", "**/test/**", "**/__tests__/**", "**/*_test.go", "**/test_*.py",
-    "**/*_test.py", "**/*_test.dart", "**/*.test.*", "**/*.spec.*",
+    "**/*_test.py", "**/*_test.dart", "**/*.test.*", "**/*.spec.*", "**/*Test.kt", "**/*Test/**",
 )
 ALWAYS_IGNORE = (
     ".git/**", ".agents/**", ".claude/**", ".github/**", "docs/**", "**/*.md",
@@ -105,7 +105,11 @@ _DART = _patterns(
     r"^\s*(?:abstract\s+)?class\s+(\w+)",
     r"^\s*(?:static\s+)?(?:[\w<>?,\[\] ]+\s+)?(\w+)\s*\([^;]*\)\s*(?:async\s*)?\{",
 )
-DEFINITIONS.update({".go": _GO, ".py": _PY, ".dart": _DART})
+_KOTLIN = _patterns(
+    r"^\s*(?:[\w@()]+\s+)*fun\s+(?:<[^>]*>\s*)?(?:[\w<>?,. ]+\.)?(\w+)\s*\(",
+    r"^\s*(?:[\w@()]+\s+)*(?:class|interface|object)\s+(\w+)",
+)
+DEFINITIONS.update({".go": _GO, ".py": _PY, ".dart": _DART, ".kt": _KOTLIN})
 DEFINITIONS.update({ext: _TS for ext in (".ts", ".tsx", ".js", ".jsx", ".mjs")})
 
 
