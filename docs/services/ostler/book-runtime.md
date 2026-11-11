@@ -5,7 +5,7 @@ title: ostler book
 ---
 # ostler book
 
-`ostler book <verb> ...` runs a [service book](concepts/service-book.md): the executable Python model of one HTTP or gRPC service or one web app that lives under `services/<name>/` in a repo. The verbs build what the book declares, play it against the running service, search it and keep it current with the service's source. A run judges the service against the book, so a green run means the service does what the book says. The page [What a run judges](concepts/what-a-run-judges.md) lists what the verdict covers and what it leaves out.
+`ostler book <verb> ...` runs a [service book](concepts/service-book.md): the executable Python model of one HTTP or gRPC service, one command-line tool or one web app that lives under `services/<name>/` in a repo. The verbs build what the book declares, play it against the running service, search it and keep it current with the service's source. A run judges the service against the book, so a green run means the service does what the book says. The page [What a run judges](concepts/what-a-run-judges.md) lists what the verdict covers and what it leaves out.
 
 `ostler book` hands every argument after `book` to the runtime's own command line and leaves with its exit code. The directory that holds `services/` is the working directory, or the one `-C DIR` names before `book`. The command puts that directory first on the import path itself, so no `PYTHONPATH` is set. A service is named by its module, as in `services.api`. `python -m ostler.book <verb>` runs the same command line.
 
