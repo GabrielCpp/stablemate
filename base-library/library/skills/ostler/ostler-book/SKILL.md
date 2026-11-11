@@ -94,6 +94,12 @@ gate, not the batch's: it runs once when a backfill ends and once a night after 
 there is a batch that left an endpoint out of its targeted run, so the fix names that endpoint
 in the next targeted run.
 
+A book is restructured when a new claim needs it. The first structure is not a contract. A
+fact every journey shares is the usual thing to split: a claim that needs it absent gets its
+own record, created by the backstage with a run-unique name, and the journeys that rely on it
+keep theirs. A pass that changes a shared part of the book is judged by a play of the whole
+book, not by the targeted run.
+
 ## Backfilling commits
 
 A book follows the app commit by commit. `service.py` names the app's `roots`, the whole source
