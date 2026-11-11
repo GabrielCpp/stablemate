@@ -37,7 +37,7 @@ has passed.
 - semantics: for each covered service, the calls a passed check played, by the names the book gives them
 - verify: json_path(path="$.services[0].service", equals="app")
 - semantics: a second visit plays exactly these calls
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaRecord.services` @e6d3fa97677b
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaRecord.services` @cea015dcbd7e
 
 ### findings
 
@@ -47,7 +47,7 @@ has passed.
 - semantics: the findings the passed check stood on
 - semantics: a green replay over them returns them again as a `refix`, because each declared defect still holds
 - verify: json_path(path="$.findings[0].issue", equals="the link answers 200 where the story says 404")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaRecord.findings` @e6d3fa97677b
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaRecord.findings` @cea015dcbd7e
 
 ### unreached
 
@@ -57,4 +57,4 @@ has passed.
 - semantics: the story's claims the seat could not state in the book, in the story's words
 - semantics: a second visit keeps them, and the scenario QA covers each one itself
 - verify: json_path(path="$.unreached[0]", equals="no request reaches the report service")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaRecord.unreached` @e6d3fa97677b
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookQaRecord.unreached` @cea015dcbd7e

@@ -139,7 +139,7 @@ with the output as its report, and a green replay over a recorded finding ends `
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::commit_service_book` @c3c45d5dacbc
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::read_book_record` @d7c92c6f59ff
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::write_book_record` @509765d04b59
-- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::defer_book_judged` @986fdb2642e7
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::defer_book_judged` @8c461bc019e7
 
 ### operator-block
 

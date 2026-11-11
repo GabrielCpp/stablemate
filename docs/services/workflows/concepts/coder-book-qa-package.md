@@ -31,8 +31,8 @@ The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_check` @08d492ed6b13
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @a32cf444c3c3
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::commit_service_book` @c3c45d5dacbc
-- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::defer_book_judged` @986fdb2642e7
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookDeferral` @43101eeaab27
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::defer_book_judged` @8c461bc019e7
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookDeferral` @abe2fde8fc02
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::CoveredServices` @3f5d80c4d178
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookPlay` @d4b8c52a4eaa
 - code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::uncommitted_paths` @7f13eae9cb98
@@ -48,7 +48,7 @@ The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is
 - rule: the base is played before the seat edits, and a red base or an unhealthy environment makes the seat report `blocked` and repair nothing
 - rule: the run plays the calls the story touches, not the whole book
 - rule: the book reaches the stack copy the run leased without naming it, because the play takes the lease as `--copy` and the book names a host as the run's copy
-- rule: the scenario lane defers every required, not yet deferred obligation under `docs/services/<name>/` of a service the book record names, as kind `book`, when the record holds no finding, so a service the book judged is not judged again and the backlog never files the deferral as a missing check
+- rule: the scenario lane writes `qa-deferrals.json` before every build of the QA context packet, one entry per service a clean book record names, and ostler marks every required, not yet deferred obligation under `docs/services/<name>/` as kind `book`, so the marks hold on an invalid packet and on a seat rebuild, and a service the book judged is not judged again and the backlog never files the deferral as a missing check
 - rule: a record that holds a finding, or no record, defers nothing, so a service whose book found a defect keeps every obligation in the scenario lane
 - rule: the claims the seat lists as unreached stay the scenario lane's to cover or to report out of reach, because the book judged nothing about them
 - rule: the scenario lane passes with no seat turn and no plan when a clean book record names services, holds no unreached claim and leaves the packet no required obligation undeferred, and its rerun passes the same way without linting a plan, so a fully judged story pays for the book lane alone
@@ -70,6 +70,7 @@ The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is
 - tests: `workflows/tests/coder/qa/test_flow.py::test_a_book_record_with_findings_defers_nothing`
 - tests: `workflows/tests/coder/qa/test_flow.py::test_the_owner_is_told_which_books_judged_and_which_claims_they_left`
 - detail: [coder book QA flow](../flows/coder-book-qa.md)
+- detail: [QA deferrals](../../ostler/formats/qa-deferrals.md)
 - detail: [coder lane order](coder-lane-order.md)
 
 ## Methods

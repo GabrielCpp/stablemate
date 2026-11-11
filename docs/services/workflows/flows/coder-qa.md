@@ -80,14 +80,15 @@ story id are both set, it also resolves story-source provenance and fails the ru
 sources are invalid. It then detects the OKF book, names the run's lease on a copy of the stack,
 and records the stack target. The preflight builds and validates the OKF context packet and
 brings the stack up. Each failure becomes a line of the first owner turn's report instead of an
-abort, because a broken packet or stack is the owner's to repair. Once the packet validates,
-`defer_book_judged` reads the [book QA record](../formats/book-qa-record.md) from the spec
-directory. When the record names services and holds no finding, it marks every required
-obligation under `docs/services/<name>/` of a recorded service, that is not already deferred, as
-deferred with kind `book`, rewrites the packet in place and logs how many it marked per service.
-Without a record, or with one that holds a finding, it marks nothing. The marked obligations
-leave the compiled plan, and the backlog never files them as checks QA could not run. Then
-the node checks whether a clean book record names services, holds no unreached claim and leaves
+abort, because a broken packet or stack is the owner's to repair. Before every build of the packet,
+`defer_book_judged` reads the
+[book QA record](../formats/book-qa-record.md) from the spec directory and writes the
+[QA deferrals](../../ostler/formats/qa-deferrals.md) file with one entry per recorded service when
+the record holds no finding, and an empty list otherwise. The ostler build marks every required
+obligation under `docs/services/<name>/` that is not already deferred as deferred with kind `book`,
+on a valid packet and on an invalid one, and so does each rebuild the owner makes. The marked obligations
+leave the compiled plan, and the backlog never files them as checks QA could not run. Once the
+packet validates, the flow checks whether a clean book record names services, holds no unreached claim and leaves
 the packet no required obligation undeferred. If so, the flow ends `passed` with the note "every
 obligation of this story was judged by a service book", with no owner turn and no plan. The
 rerun does the same before it lints any plan. Otherwise `compile_story_plan` reads the standing `qa_plan.py` for its provenance. The banner
