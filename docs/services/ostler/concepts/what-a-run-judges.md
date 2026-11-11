@@ -27,14 +27,14 @@ Before it plays anything, the run reads each health journey. It stops with exit 
 - rule: a pair of twins the model predicts differently is not sent, because the model already reasons on that dimension
 - rule: a field declares the dimensions the product is indifferent to with `ignores` and a why, and the run skips those pairs
 - rule: a failure is the book wrong or the service wrong, and the fix never loosens a shape or widens a fixture to make a run green
-- code: ostler/ostler/book/cli.py::cmd_run@59456cdb9123
+- code: ostler/ostler/book/cli.py::cmd_run@e69634444558
 - code: ostler/ostler/book/cli.py::unhealthy@a5cb92003bb1
 - code: ostler/ostler/book/runner.py::walk@65ef938bcb5d
 - code: ostler/ostler/book/runner.py::agree@cd74b3fc30a6
-- code: ostler/ostler/book/cells.py::play@002f27654e76
-- code: ostler/ostler/book/inputs.py::play@f2972d96c48a
+- code: ostler/ostler/book/cells.py::play@68cf5733c64d
+- code: ostler/ostler/book/inputs.py::play@714481c76363
 - code: ostler/ostler/book/inputs.py::Diverges@715904303028
-- code: ostler/ostler/book/inputs.py::weigh@10cb27178f43
+- code: ostler/ostler/book/inputs.py::weigh@e6dbd12342d5
 - code: ostler/ostler/book/http.py::twins@589c3dff328a
 - code: ostler/ostler/book/witness.py::Unseen@8032062e8dcd
 - code: ostler/ostler/book/witness.py::WitnessReport@bc2d28ac2287

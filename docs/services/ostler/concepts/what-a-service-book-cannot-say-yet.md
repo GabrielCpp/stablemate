@@ -20,5 +20,5 @@ The format has edges. A call that needs one of these is left out of the book and
 - rule: an HTTP or gRPC book makes no claim about a web or mobile surface
 - rule: a web book plays its journeys and its lifecycle cells, and makes no claim about input classes or twin pairs of a screen's fields
 - code: ostler/ostler/book/witness.py::Because@a08d2e476d9e
-- code: ostler/ostler/book/screen.py::Screen@36149e8afa72
+- code: ostler/ostler/book/screen.py::Screen@2ca061585fdf
 - code: ostler/ostler/book/cli.py::cmd_screens@06efe5170dd7

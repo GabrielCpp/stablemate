@@ -48,7 +48,7 @@ Reads each health journey the service declares on a fresh model before anything 
 - verify: exit_status(code=2)
 - verify: stdout(text="a run of some journeys leaves the rest unseen: add --partial")
 - fixture: [book todo scratch](fixtures/book-todo-scratch.md)
-- code: ostler/ostler/book/cli.py::cmd_run@db84a26eef2e
+- code: ostler/ostler/book/cli.py::cmd_run@e69634444558
 - code: ostler/ostler/book/cli.py::report@54b37ecbd8a8
 - code: ostler/ostler/book/cli.py::unhealthy@a5cb92003bb1
 - code: ostler/ostler/book/witness.py::WitnessReport@bc2d28ac2287
