@@ -1,6 +1,7 @@
 """One QA owner selects, runs, debugs and records a story's QA, and the run checks it."""
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from typing import Any, ClassVar
@@ -50,7 +51,7 @@ from workhorse_workflows.coder.shared.backlog import (
     filed_backlog,
     unfiled,
 )
-from workhorse_workflows.coder.shared.docs import detect_okf_docs, services_root
+from workhorse_workflows.coder.shared.docs import CONTEXT_FILE, detect_okf_docs, services_root
 from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_context
 from workhorse_workflows.coder.shared.qa_owner import QaOwner
@@ -74,6 +75,9 @@ from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
 
 
+JUDGED_NOTE = "every obligation of this story was judged by a service book"
+
+
 class Qa(QaOwner):
     """QA one story through one owner session, then rerun and gate what it claims."""
 
@@ -90,7 +94,7 @@ class Qa(QaOwner):
         drop = [item_id for item_id in pending.items if item_id not in keep]
         self.call(file_backlog_items, self.ctx.spec_dir, drop=drop)
 
-    def start(self) -> Continue:
+    def start(self) -> Continue | Done:
         """Clear the last run's evidence, decode what the story touched, and check its context and stack."""
         self.call(snapshot_code_state)
         if not (self.rerun and self.scope):
@@ -112,7 +116,31 @@ class Qa(QaOwner):
         self.call(stack_target, self.ctx.story_slug, lease)
         if self.rerun:
             return Continue(okf, self.recheck)
-        return Continue(okf, self.work, report="\n\n".join(self._preflight()))
+        failures = self._preflight()
+        if self._all_judged_by_books():
+            return self._finish_judged()
+        return Continue(okf, self.work, report="\n\n".join(failures))
+
+    def _all_judged_by_books(self) -> bool:
+        """Does a clean book record name services, hold no unreached claim, and leave the packet no required obligation undeferred?"""
+        if self.output(validate_okf_context).status != "passed":
+            return False
+        record = self.call(read_book_record, self.ctx.spec_dir)
+        if not record.services or record.findings or record.unreached:
+            return False
+        context = Path(self.ctx.spec_dir) / CONTEXT_FILE
+        if not context.is_file():
+            return False
+        obligations = json.loads(context.read_text(encoding="utf-8")).get("obligations") or []
+        return not any(
+            isinstance(o, dict) and o.get("required", True) is not False and not isinstance(o.get("deferred"), dict)
+            for o in obligations
+        )
+
+    def _finish_judged(self) -> Done:
+        """Pass a story whose every obligation a service book judged, with no seat turn and no plan."""
+        self.logger.info("QA passed for %s without a plan: its books judged it", self.ctx.story_slug)
+        return self._finish("passed", QaPlanRun(status="passed", notes=JUDGED_NOTE))
 
     @property
     def _sourced(self) -> bool:
@@ -238,7 +266,10 @@ class Qa(QaOwner):
 
     def recheck(self) -> Continue | Await | Done:
         """Rerun the standing plan, or the scenarios of `scope`, with no owner turn unless the stack or plan broke."""
-        failures = self._preflight() or self._plan_failures()
+        preflight = self._preflight()
+        if self._all_judged_by_books():
+            return self._finish_judged()
+        failures = preflight or self._plan_failures()
         if failures:
             return self._lap(None, failures, 0, 0)
         self.logger.info("rerunning the QA plan", extra={"activity": True})

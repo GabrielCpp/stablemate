@@ -1559,6 +1559,102 @@ def test_the_owner_is_told_which_books_judged_and_which_claims_they_left(
     assert agent.args[0]["book_unreached"] == unreached
 
 
+ALL_BOOK_OBLIGATIONS = [
+    {"id": "ob-api", "node": "docs/services/api/lists.md#share", "required": True},
+    {"id": "ob-api-optional", "node": "docs/services/web/pages.md#nice", "required": False},
+]
+
+JUDGED_NOTE = "every obligation of this story was judged by a service book"
+
+
+def test_a_story_every_obligation_of_which_a_book_judged_passes_with_no_seat_turn(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """With nothing left for a scenario to prove, a seat turn buys nothing."""
+    okf = ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
+    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert result.qa.notes == JUDGED_NOTE, result.qa
+    assert agent.calls == [], agent.calls
+    assert okf.runs == 0
+    assert not (docs / spec_dir() / "qa_plan.py").exists()
+
+
+def test_a_reprove_of_a_fully_book_judged_story_passes_with_no_plan_and_no_lint(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write_json: Callable[[Path, Any], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The rerun that follows leftovers must not need a plan file the first visit never wrote."""
+    okf = ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
+    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
+    linted: list[str] = []
+    original = _Session.qa_lint if hasattr(_Session, "qa_lint") else Ostler.qa_lint
+
+    def lint(self: Any, plan_file: Any) -> Any:
+        linted.append(str(plan_file))
+        return original(self, plan_file)
+
+    monkeypatch.setattr(_Session, "qa_lint", lint, raising=False)
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY, rerun=True), env(), agent)
+
+    assert result.status == "passed", result
+    assert result.qa.notes == JUDGED_NOTE, result.qa
+    assert agent.calls == [] and linted == [], (agent.calls, linted)
+    assert okf.runs == 0
+
+
+def test_one_undeferred_required_obligation_keeps_the_seat_turn(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A page no recorded book covers is still the scenario lane's."""
+    ostler(context={"obligations": [*ALL_BOOK_OBLIGATIONS, OBLIGATIONS[3] | {"id": "ob-other"}]})
+    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
+    agent = _Agent(docs)
+
+    _stopped_at_the_gate(drive_flow, env(), agent)
+
+    assert agent.calls, agent.calls
+
+
+def test_one_unreached_claim_keeps_the_seat_turn(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A claim the book could not state is the scenario lane's even when every obligation is deferred."""
+    ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
+    write_json(
+        docs / spec_dir() / "book-qa.json",
+        {"services": BOOK_CALLS, "unreached": ["no request reaches the report service"]},
+    )
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.calls == ["qa-story"], agent.calls
+
+
 def test_a_book_that_compiles_hands_the_owner_its_plan_as_the_standing_one(
     docs: Path,
     ostler: Callable[..., _Ostler],
