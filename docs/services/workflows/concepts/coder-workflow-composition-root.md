@@ -16,9 +16,9 @@ the shared node blueprint and exposes six named flows: `genesis`, `dev`, `docs`,
 `fix`, and `fix_ci`. Only `genesis` is entered directly; the main Coder flow hands off to the other five. Each result schema declares its own dry-run reply, so a dry run advances through its gates
 without an agent backend.
 
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow` @a28e84f788c2
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @a28e84f788c2
-- code: `workflows/src/workhorse_workflows/coder/workflow.py::__all__` @a28e84f788c2
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::workflow` @874f55e9107a
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::main` @874f55e9107a
+- code: `workflows/src/workhorse_workflows/coder/workflow.py::__all__` @874f55e9107a
 - detail: [Coder main flow](../flows/coder-main.md)
 - detail: [Coder genesis flow](../flows/coder-genesis.md)
 - detail: [Coder dev flow](../flows/coder-dev.md)

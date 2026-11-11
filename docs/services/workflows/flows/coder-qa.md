@@ -87,7 +87,7 @@ abort, because a broken packet or stack is the owner's to repair. Before every b
 the record holds no finding, and an empty list otherwise. The ostler build marks every required
 obligation under `docs/services/<name>/` that is not already deferred as deferred with kind `book`,
 on a valid packet and on an invalid one, and so does each rebuild the owner makes. The marked obligations
-leave the compiled plan, and the backlog never files them as checks QA could not run. Once the
+leave the compiled plan, and the backlog never files them as checks QA could not run. When every service of the story is covered, the packet build treats a changed unit that no markdown page owns as no failure and writes a packet with no obligation. Once the
 packet validates, the flow checks whether a clean book record names services, holds no unreached claim and leaves
 the packet no required obligation undeferred. If so, the flow ends `passed` with the note "every
 obligation of this story was judged by a service book", with no owner turn and no plan. The

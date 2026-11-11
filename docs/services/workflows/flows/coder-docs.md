@@ -54,13 +54,38 @@ The stages, in order: [setup](#setup), [context-classification](#context-classif
 The flow starts when the configured story slug resolves to a readable story before any documentation turn; or when the repository has a usable OKF book and a classified documentation context.
 It ends in one of these ways: a passing grounding gate returns a passed result containing every node authored during the flow; an absent OKF book returns not-applicable without an agent turn; an unusable OKF book fails before documentation; an epic-scoped operator answer returns a blocked result carrying the answer.
 
+## Covered services
+
+A story service is covered when `services/<name>/service.py` exists at the repo root, and the
+book lane's `covered_services` node decides it. A story whose services are all covered takes the
+book path in both phases and touches no markdown page. A story with an uncovered service keeps the
+markdown path for that service only.
+
+In the spec phase of an all-covered story the flow detects no OKF book. The owner turn writes the
+story's claims into each covered service's executable book as intent with the `ostler-book` skill,
+runs no app, and writes no `docs/services` page. The gate is `ostler book check services.<name>`
+for every covered service, which must exit 0. A claim that fails against the current app is
+expected before the build and is not read here. A red check goes back to the owner as a `B:<name>`
+failure with the tool's output and spends a lap. The main loop, not the owner's reply, reads the
+changed paths under `services/<name>/` from the tree.
+
+In the build phase of an all-covered story the flow logs that documentation is skipped and returns
+`not_applicable` with no agent turn: the book lane's seat keeps `source=` pointers and `index.tsv`
+current after the build.
+
+A mixed story runs the owner turn with the covered and markdown service lists. The spec gate joins
+`verify_story_documentation` for the markdown pages with the book check for the covered services.
+The build phase documents the uncovered services' pages only and classifies the diff without the
+source roots named for a covered service.
+
 ## Steps
 
 ### setup
 
 - kind: prepare
 
-The flow resolves workspace directories and prepares the requested story. An empty or
+The flow resolves workspace directories and prepares the requested story, then detects the OKF
+book unless every service of the story is covered. An empty or
 unresolvable story path raises a workflow failure before OKF detection or an agent turn. Every
 entry resets the story's documentation conversation so a resume or post-fix pass cannot reuse a
 conversation describing an older book. Every terminal return resets it too. The spec phase keeps

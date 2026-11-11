@@ -6,7 +6,7 @@ title: Coder dev-build prompt
 # Coder dev-build prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-build.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @fe195e40d574
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.build` @1a116aa6e0a4
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev phase turns](../concepts/coder-dev-phase-turns.md)
 - detail: [coder development build result](dev-build-result.md)

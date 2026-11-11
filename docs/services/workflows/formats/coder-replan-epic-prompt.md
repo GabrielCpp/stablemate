@@ -6,7 +6,7 @@ title: Coder epic replan prompt
 # Coder epic replan prompt
 
 - file: `workflows/src/workhorse_workflows/coder/main/prompts/replan-epic.md`
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.replan` @b2f1b57d20a5
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder.replan` @45f61ff4257e
 - detail: [coder main flow](../flows/coder-main.md)
 - detail: [coder prompt role resolution](../concepts/coder-prompt-role-resolution.md)
 - detail: [coder rendered schema contracts](../concepts/coder-render-schema-contracts.md)

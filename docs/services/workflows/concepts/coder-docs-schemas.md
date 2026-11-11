@@ -12,8 +12,8 @@ title: Coder documentation schemas
   `SpecNodes` records the nodes a spec pass wrote for the lanes after it. The deterministic gate answers with a
   `DocumentationGate`, and the flow ends with a `DocsResult`.
 
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @d0a03cdb64f7
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @d0a03cdb64f7
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::__all__` @435f3823eca8
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::DocsStatus` @435f3823eca8
 - detail: [Coder story pipeline](story-pipeline.md)
 - detail: [Coder documentation flow](../flows/coder-docs.md)
 
@@ -63,14 +63,14 @@ title: Coder documentation schemas
 - does: reserves `blocked` for a cell that needs a product decision the pass cannot make, named in the notes
 - returns: status is required and has no default
 - verify: json_path(path="exception.type", equals="ValidationError")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::SpecResult` @8ddbbee5688b
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::SpecResult` @a84df544c42a
 
 ### method: SpecNodes
 - sig: `SpecNodes(nodes: list[str] = []) -> SpecNodes`
 - does: carries the node identities the spec pass wrote, so dev and the build pass can read them back
 - returns: an empty list by default
 - verify: json_path(path="$.nodes", equals="[]")
-- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::SpecNodes` @12cd672d8497
+- code: `workflows/src/workhorse_workflows/coder/shared/schemas/docs.py::SpecNodes` @d94be0d774ba
 
 ### method: DocumentationGate
 - sig: `DocumentationGate(status: Literal["passed", "invalid"] = "invalid", notes: str = "", changed_code_count: int = 0, doctor_error_count: int = 0, failures: list[str] = []) -> DocumentationGate`

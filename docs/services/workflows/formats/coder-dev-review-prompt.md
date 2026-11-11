@@ -6,7 +6,7 @@ title: Coder dev-review prompt
 # Coder dev-review prompt
 
 - file: `workflows/src/workhorse_workflows/coder/dev/prompts/dev-review.md`
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.review` @80dd00949225
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev.review` @fff1ad8ef684
 - detail: [coder development flow](../flows/coder-dev.md)
 - detail: [coder dev phase turns](../concepts/coder-dev-phase-turns.md)
 - tests: `workflows/tests/coder/dev/test_flow.py::test_a_clean_pass_settles_the_fix_and_records_the_decline`

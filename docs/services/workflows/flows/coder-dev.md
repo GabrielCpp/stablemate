@@ -73,9 +73,9 @@ The flow forgets which conversation each phase was briefed on, so each phase ope
 brief. A story QA has sent back skips this step and the build, and starts at the review. One
 `max`-power plan turn runs in the story's conversation with no timeout. It receives the story
 identity, the spec directory, the worklist path, the path its brief is kept at, a resume note read
-from disk, the declared services, the book nodes the spec pass wrote before dev, and the last operator
-answer. The spec nodes are the story's spec: dev builds to their `verify:` checks and does not edit
-them. It writes and commits the plan
+from disk, the declared services, the book nodes and executable-book paths the spec pass wrote before dev, which of the story's services are covered, and the last operator
+answer. The spec nodes and book paths are the story's spec: dev builds to their `verify:` checks or claims and does not edit
+them. For a covered service a claim dev cannot meet is a block that names the claim, and the book lane updates the book after review. It writes and commits the plan
 files and no product code. The flow writes the rendered brief to disk before the turn, and records
 the conversation id the turn ran on. A result of `blocked` goes to the operator-block step.
 Otherwise the build step runs.

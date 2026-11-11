@@ -91,7 +91,7 @@ Each claimed item is snapshotted against pre-existing work, resolved to its stor
 sent through `specify`, `dev`, `document`, `qa` and `scenario_qa`. `specify` runs the `Docs` flow in its spec
 phase: it writes the story's behaviour model and the book delta before any code, and records the
 nodes it wrote on the run. The workflow then commits the book pages the pass left uncommitted, so
-`dev`'s clean-repo check never counts them as its leftovers. `dev` and the later `document` pass receive those nodes. `document`
+`dev`'s clean-repo check never counts them as its leftovers. `dev` and the later `document` pass receive those nodes, and `dev` also receives the executable-book paths changed under each covered service's `services/<name>/`, which the workflow reads from the tree and commits by that folder alone. For a story whose services are all covered the pass writes no markdown page and `document` returns without a turn. `document`
 runs the same flow in its build phase, which grounds the book in the code and reconciles it with
 the build. The workflow commits the book pages that pass left uncommitted before `qa` runs. The
 `finalize` recheck commits nothing, so a book edit after the passing QA stays dirty and still

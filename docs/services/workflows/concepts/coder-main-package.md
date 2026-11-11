@@ -28,7 +28,7 @@ sits at `coder/main/`, housing the machine (`flow.py`) and the nodes only this g
 every flow's prompt paths resolve correctly.
 
 - code: `workflows/src/workhorse_workflows/coder/main/__init__.py` @7ace1e5304ae
-- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder` @a73e14cb41a8
+- code: `workflows/src/workhorse_workflows/coder/main/flow.py::Coder` @03264fd820e2
 - tests: `workflows/tests/coder/test_workflow.py::test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue`
 - detail: [coder workflow composition root](coder-workflow-composition-root.md)
 

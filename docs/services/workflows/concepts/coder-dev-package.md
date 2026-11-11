@@ -23,9 +23,9 @@ and QA reads its obligations from that merge. The story's opening brief says so,
 instruction that the book changes with the code does not send the plan, build and review turns
 into the same merge the docs phase then does again.
 
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @fe9a59b929f0
-- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @ca8894553071
-- code: `workflows/src/workhorse_workflows/coder/dev/prompts/_dev-scope.md` @a8a851e0a839
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py` @bac9f6d7a652
+- code: `workflows/src/workhorse_workflows/coder/dev/flow.py::Dev` @c68d9b51467e
+- code: `workflows/src/workhorse_workflows/coder/dev/prompts/_dev-scope.md` @36c20d3e53fa
 - rule: the plan, build and review turns write, stamp and doctor nothing under the book's services root, because the docs phase owns the story's book merge
 - rule: a copy the story adds of code the tree already has is the story's to extract to one owner, and a copy that predates the story is an `extract-module` follow-up
 - rule: a copy across two builds is extracted to a library the workspace lists without asking when a standing decision covers it, or when the workspace exists and every build and deploy stays as it was, because nothing about how the code ships changes

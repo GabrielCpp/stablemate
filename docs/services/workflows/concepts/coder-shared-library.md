@@ -12,9 +12,9 @@ initializer; the individual modules below own the behavior and models they provi
 - code: `workflows/src/workhorse_workflows/coder/shared/__init__.py::__all__` @e517b81d10c2
 - code: `workflows/src/workhorse_workflows/coder/shared/branches.py::__all__` @b083ae1394dd
 - code: `workflows/src/workhorse_workflows/coder/shared/queue.py::__all__` @67580925bd96
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @de0cabd282d9
-- code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @7709a90ae30b
-- code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @7709a90ae30b
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::__all__` @9c80061833f4
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_PLAN_FILE` @7f9c979ef491
+- code: `workflows/src/workhorse_workflows/kit/qa/support.py::QA_RUN_LOG` @7f9c979ef491
 - detail: [coder queue run scope](../formats/coder-queue-run-scope.md)
 - detail: [coder queue run branch](../formats/coder-queue-run-branch.md)
 - detail: [coder queue epic pruned](../formats/coder-queue-epic-pruned.md)
@@ -302,7 +302,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - verify: json_path(path="$.committed", equals=false)
 - returns: whether a book delta was committed
 - verify: json_path(path="$.committed", equals=true)
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_book_delta` @3d74cd258494
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_book_delta` @5dcfbb86f774
 - tests: `workflows/tests/coder/shared/test_story_commit.py::test_the_book_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_rest`
 - tests: `workflows/tests/coder/shared/test_story_commit.py::test_the_build_book_delta_commit_lands_book_pages_as_a_document_commit`
 - tests: `workflows/tests/coder/test_workflow.py::test_the_spec_passs_book_page_is_committed_before_dev_starts`
@@ -320,7 +320,7 @@ The legacy queue is used as a fallback by `resolve_launch` and `prune_epic` when
 - does: keeps what git said when it refuses an implementation commit, and stamps nothing
 - returns: whether implementation work committed anywhere, whether the status stamp superseded a prior outcome, and the refusal text when git refused a commit
 - verify: persists(subject="the story implementation commit and separate QA status stamp")
-- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @92bc54a42dd1
+- code: `workflows/src/workhorse_workflows/coder/shared/story_commit.py::commit_story` @a20985bbdbf5
 - code: `workflows/src/workhorse_workflows/kit/agent_files.py::render_agent_files_returning_failure` @d57c5f0ad8ab
 - tests: `workflows/tests/coder/test_workflow.py::test_the_story_and_its_status_stamp_commit_as_conventional_commits`
 - tests: `workflows/tests/coder/shared/test_story_commit.py::test_the_story_commit_leaves_the_artifacts_dir_and_tool_output_to_the_lanes_that_wrote_them`
