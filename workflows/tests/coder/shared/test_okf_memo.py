@@ -122,6 +122,29 @@ def test_a_packet_rewritten_after_the_build_rebuilds_even_with_a_matching_stamp(
     assert len(FakeOstler.calls) == 2
 
 
+def test_a_changed_deferrals_file_rebuilds_wherever_the_spec_dir_lies(
+    repo: Path, tmp_path: Path
+) -> None:
+    """The spec dir may sit outside the docs repo, where the worktree signature cannot see the file."""
+    spec = tmp_path / "artifacts" / "spec"
+    spec.mkdir(parents=True)
+
+    def outside() -> Any:
+        return okf.build_okf_context(LOGGER, spec_dir=str(spec), repo_dir=str(repo))
+
+    outside()
+    outside()
+    assert len(FakeOstler.calls) == 1
+    (spec / "qa-deferrals.json").write_text("[]\n", encoding="utf-8")
+    outside()
+    assert len(FakeOstler.calls) == 2
+    outside()
+    assert len(FakeOstler.calls) == 2
+    (spec / "qa-deferrals.json").write_text('[{"prefix": "docs/services/api/"}]\n', encoding="utf-8")
+    outside()
+    assert len(FakeOstler.calls) == 3
+
+
 def test_a_failed_build_is_not_memoized(repo: Path) -> None:
     FakeOstler.ok = False
     first = build(repo)
@@ -156,6 +179,7 @@ def test_the_stamp_records_the_key_the_next_visit_recomputes(repo: Path) -> None
             "base": "HEAD",
             "head": "WORKTREE",
             "exclude_paths": [],
+            "deferrals": "absent",
         },
     )
 

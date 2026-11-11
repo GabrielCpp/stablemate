@@ -58,6 +58,14 @@ def fingerprint(signature: str | None, arguments: dict[str, object]) -> str | No
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def deferrals_digest(spec_path: Path) -> str:
+    """The sha256 of the spec dir's `qa-deferrals.json`, or `absent`, so the memo key sees the file wherever the spec dir lies."""
+    try:
+        return hashlib.sha256((spec_path / "qa-deferrals.json").read_bytes()).hexdigest()
+    except OSError:
+        return "absent"
+
+
 def packet_digests(spec_path: Path) -> dict[str, str]:
     """The sha256 of each packet file, so a stamp names the bytes it vouches for."""
     return {
@@ -269,6 +277,7 @@ def build_okf_context(
         "base": base,
         "head": head,
         "exclude_paths": inherited,
+        "deferrals": deferrals_digest(spec_path),
     }
     if story_sources:
         arguments["story_sources"] = [
