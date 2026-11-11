@@ -12,8 +12,9 @@ helpers distinguish an empty tree from a Git refusal: `commit_paths` stages only
 pathspecs, while `commit_all` deliberately stages the whole tree and is safe only in an
 exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failure.
 
-- code: `workflows/src/workhorse_workflows/kit/git.py` @51f03fd62c35
+- code: `workflows/src/workhorse_workflows/kit/git.py` @1861bab839d5
 - tests: `workflows/tests/test_kit_git.py::test_commit_paths_stages_only_the_named_paths`
+- tests: `workflows/tests/test_kit_git.py::test_commit_paths_takes_a_deletion_an_agent_already_staged`
 - tests: `workflows/tests/test_kit_git.py::test_commit_paths_with_no_pathspecs_commits_nothing`
 - tests: `workflows/tests/test_kit_git.py::test_commit_all_still_sweeps_the_whole_tree`
 - tests: `workflows/tests/test_kit_git.py::test_a_refused_commit_raises_instead_of_reading_as_an_empty_one`
@@ -28,7 +29,7 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - semantics: trunk refs are ordered from highest to lowest priority
 - verify: json_path(path="$.value", equals="origin/master, origin/main, master, main")
 - semantics: remote-tracking refs take precedence over local branches
-- code: `workflows/src/workhorse_workflows/kit/git.py::TRUNK_CANDIDATES` @51f03fd62c35
+- code: `workflows/src/workhorse_workflows/kit/git.py::TRUNK_CANDIDATES` @1861bab839d5
 
 ## Methods
 
@@ -133,11 +134,13 @@ exclusive checkout. `merge_ref` aborts a conflicted merge before reporting failu
 - does: returns `false` when the named scope has no working-tree changes
 - does: stages and commits only the named pathspecs, running the repository's commit hooks unless `verify` is false
 - does: unstages the named pathspecs when the commit is refused, so the next commit does not carry them
+- does: commits a deletion an agent already staged with `git rm`, staging only the named paths Git can still match
 - raises: `GitCommandError` when Git refuses staging or the commit
 - returns: `true` when a commit is created, otherwise `false` for an empty scope or non-repository path
 - verify: count(subject="paths committed by the scoped helper", equals=1)
-- code: `workflows/src/workhorse_workflows/kit/git.py::commit_paths` @df5938986c1c
+- code: `workflows/src/workhorse_workflows/kit/git.py::commit_paths` @9aa0aeb66897
 - tests: `workflows/tests/test_kit_git.py::test_commit_paths_stages_only_the_named_paths`
+- tests: `workflows/tests/test_kit_git.py::test_commit_paths_takes_a_deletion_an_agent_already_staged`
 - tests: `workflows/tests/coder/shared/test_story_commit.py::test_a_refused_story_commit_comes_back_as_the_refusal_and_stamps_nothing`
 - tests: `workflows/tests/test_kit_git.py::test_commit_paths_with_no_pathspecs_commits_nothing`
 - tests: `workflows/tests/test_kit_git.py::test_a_refused_commit_raises_instead_of_reading_as_an_empty_one`
