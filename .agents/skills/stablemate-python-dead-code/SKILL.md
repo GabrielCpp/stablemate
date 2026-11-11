@@ -1,6 +1,6 @@
 ---
 name: stablemate-python-dead-code
-description: "Find and delete Python code that no production path reaches: modules only tests import, modules nothing imports, and unused functions, classes and constants. Ships a stdlib reachability script and pairs it with vulture for unused symbols. Every candidate is verified against dynamic references before deletion, and a dead module leaves with its tests and its doc mentions. Load before a refactor or a target-architecture pass, when a module looks orphaned, or when asked to trim, prune or clean up unused code. Applies to **/*.py."
+description: "Find and delete Python code that no production path reaches: modules only tests import, modules nothing imports, and unused functions, classes and constants. Ships a stdlib reachability script and pairs it with vulture for unused symbols. Every candidate is verified against dynamic references before deletion, and a dead module leaves with its tests and its doc mentions. Load when starting a refactor or a target-architecture pass, when a module looks orphaned, or when asked to trim, prune or clean up unused code."
 metadata:
   name: python-dead-code
   generated_by: farrier
@@ -31,7 +31,7 @@ the target architecture is drawn around code that runs.
 
 | Finds | Command |
 |-------|---------|
-| Unreachable modules | `python3 <skill>/scripts/py_unreachable.py` (this skill) |
+| Unreachable modules | `python3 <skill>/scripts/py_unreachable.py`, bundled as [scripts/py_unreachable.py](scripts/py_unreachable.py) |
 | Unused symbols | `uvx vulture <pkg> --exclude '*_test.py,test_*.py,tests' --min-confidence 60` |
 
 Run vulture through `uvx`. Do not add it as a dependency for one pass.

@@ -1,6 +1,6 @@
 ---
 name: stablemate-python-htmx-accessibility
-description: "Accessibility for an HTMX + server-rendered HTML + vanilla-JS app (no SPA framework, no bundler) — semantic templates, ARIA on hand-authored HTML, focus management across hx-swap, aria-live for websocket/out-of-band pushes, accessible command palettes and keyboard nav, and keeping sanitized markdown perceivable. The concrete mechanics behind the universal contract for this stack. Applies to **/templates/**/*.html,**/assets/**/*.js."
+description: "Accessibility for an HTMX, server-rendered HTML and vanilla-JS app with no SPA framework and no bundler: semantic templates, ARIA on hand-authored HTML, focus management across hx-swap, aria-live for websocket and out-of-band pushes, accessible command palettes and keyboard navigation, sanitized markdown kept perceivable. The concrete mechanics behind ui-accessibility for this stack. Load when writing or reviewing Jinja or HTML templates and vanilla JS in an HTMX app, adding a keyboard shortcut or palette, or fixing lost focus after a swap."
 metadata:
   name: python-htmx-accessibility
   generated_by: farrier
