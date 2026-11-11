@@ -22,9 +22,9 @@ A verb that takes a service exits through one rule: 0 when the verdict is good, 
 
 ### ostler-book-run
 
-Reads each health journey the service declares on a fresh model before anything else and stops without a verdict when one fails or a host does not answer. Plays the journeys in the chosen order on one long-lived account, and prints one line per journey with its verdict PASS, KNOWN, FAIL or SKIP, its step count and its time. After the journeys, plays every declared cell of the lifecycle matrices, then every input class of every endpoint, when no `--journey` is given. Prints the witness report, the answers and fields the run saw the service produce against those the book declares. Writes `<out>/<service>.md`, the journeys step by step with the model and the app side by side, the state table played and the input classes sent, and `<out>/<service>-witness.md`, the witness report. Writes the stack's process output to `<out>/logs/<process>.log`.
+Reads each health journey the service declares on a fresh model before anything else and stops without a verdict when one fails or a host does not answer. Plays the journeys in the chosen order on one long-lived account, and prints one line per journey with its verdict PASS, KNOWN, FAIL or SKIP, its step count and its time. After the journeys, plays every declared cell of the lifecycle matrices, then every input class of every endpoint and the twin pairs of its valid inputs, when no `--journey` is given. Prints an `Underspecified` section for each twin pair the model predicts alike and the service answers apart, and the count of pairs played and skipped. Prints the witness report, the answers and fields the run saw the service produce against those the book declares. Writes `<out>/<service>.md`, the journeys step by step with the model and the app side by side, the state table played, the input classes sent, the twins played and, when any pair is underspecified, an `Underspecified` section, and `<out>/<service>-witness.md`, the witness report. Writes the stack's process output to `<out>/logs/<process>.log`.
 
-- usage: ostler book run SERVICE [--journey TITLE ...] [--partial] [--only ENDPOINT,...] [--order declared|reversed|shuffled] [--seed N] [--out DIR] [--no-stack] [--env NAME] [--copy NAME] [--print-exec] — checks the book, starts the service's stack, reads the health journeys, plays every journey, every declared cell of the lifecycle matrices and every input class, and prints the verdict; exits 0 when all of it passes and the witness is complete, 1 when a journey, cell or input fails, a declared known defect or divergence was never met, an answer or field stays unseen undeclared, or the check of the book finds a fault that blocks a run, 2 for `--journey` without `--partial` or when saddlebag leaves a secret unset, 3 when the place cannot be judged
+- usage: ostler book run SERVICE [--journey TITLE ...] [--partial] [--only ENDPOINT,...] [--order declared|reversed|shuffled] [--seed N] [--out DIR] [--no-stack] [--env NAME] [--copy NAME] [--print-exec] — checks the book, starts the service's stack, reads the health journeys, plays every journey, every declared cell of the lifecycle matrices, every input class and the twins of its valid inputs, and prints the verdict; exits 0 when all of it passes and the witness is complete, 1 when a journey, cell or input fails, a twin pair is underspecified, a declared known defect or divergence was never met, an answer or field stays unseen undeclared, or the check of the book finds a fault that blocks a run, 2 for `--journey` without `--partial` or when saddlebag leaves a secret unset, 3 when the place cannot be judged
 - flags:
   - --journey (play the journey of this title only, repeatable; the rest stay unseen, so the run needs --partial)
   - --partial (a run of some journeys only: unseen answers and unmet defects do not fail it)
@@ -37,7 +37,7 @@ Reads each health journey the service declares on a fresh model before anything 
   - --copy (the stack copy to reach where the environment names a host as one ostler runs; omitted, the lease the run holds, else the copy the book names, else `shared`)
   - --print-exec (print the saddlebag command that would supply the secrets, and stop)
 - args: service — the module of the book, such as `services.api`
-- exits: 0 when every journey, cell and input passes and the witness is complete
+- exits: 0 when every journey, cell and input passes, no twin pair is underspecified and the witness is complete
 - run: invoke(argv=["-C", "book-todo", "book", "run", "services.api"])
 - verify: exit_status(code=0)
 - verify: stdout(matches="5 pass, 0 known defects, 0 fail")
@@ -47,8 +47,8 @@ Reads each health journey the service declares on a fresh model before anything 
 - verify: exit_status(code=2)
 - verify: stdout(text="a run of some journeys leaves the rest unseen: add --partial")
 - fixture: [book todo scratch](fixtures/book-todo-scratch.md)
-- code: ostler/ostler/book/cli.py::cmd_run@80afbf8ae3c7
-- code: ostler/ostler/book/cli.py::report@b08de2d26283
+- code: ostler/ostler/book/cli.py::cmd_run@59456cdb9123
+- code: ostler/ostler/book/cli.py::report@58c55b715285
 - code: ostler/ostler/book/cli.py::unhealthy@a5cb92003bb1
 - code: ostler/ostler/book/witness.py::WitnessReport@bc2d28ac2287
 - detail: [What a run judges](concepts/what-a-run-judges.md)

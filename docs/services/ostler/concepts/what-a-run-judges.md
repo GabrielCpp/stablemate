@@ -10,6 +10,7 @@ title: What a run judges
 - Journeys: each step is taken on the model and on the service. The step passes when both answer alike and the rows the watch reads afterwards are equal.
 - Cells: each cell of each lifecycle matrix arranges its scene on the service, takes one action there and compares the model and the service the same way.
 - Input classes: each endpoint's inputs are varied one at a time, from a call the run already saw succeed. A class is one way to fill one input, a valid one the shape names or a wrong one the shape implies. The model says what a class gets when it has a rule for it. When it has none and the class is wrong, the service's declared default refusal is expected.
+- Twins: for each valid input the run plays, it sends pairs of valid values that differ along one dimension of the field's wire type, such as the time of day or the offset of a date-time, the case or surrounding spaces of text, the trailing zeros of a number, or the order of a list. It sends a pair only where the model predicts the same outcome for both, and compares the service's two answers and the rows the watch reads afterwards.
 - The witness lists each declared answer and each declared field the run never saw the service produce.
 
 A run leaves with 0 when all of this passes, 1 when the service or the book is wrong, 2 when the command cannot do what was asked and 3 when the place cannot be judged. A run of some journeys only, or of some endpoints, does not fail for what it left unseen, but an unmet declared divergence of a named endpoint still fails it.
@@ -22,17 +23,25 @@ Before it plays anything, the run reads each health journey. It stops with exit 
 - rule: an answer or field no run saw and no `Unseen` declares fails a full run, and so does an `Unseen` for something the run did see
 - rule: a declared input class the service now refuses fails the run, because the divergence is gone and its declaration is stale
 - rule: a wire that types its fields plays no wrong type, no value outside an enum and no null, because such a value never reaches the service
+- rule: a pair of twins the model predicts alike and the service answers apart is `underspecified`, reported in its own section and counted apart, and it fails the run
+- rule: a pair of twins the model predicts differently is not sent, because the model already reasons on that dimension
+- rule: a field declares the dimensions the product is indifferent to with `ignores` and a why, and the run skips those pairs
 - rule: a failure is the book wrong or the service wrong, and the fix never loosens a shape or widens a fixture to make a run green
-- code: ostler/ostler/book/cli.py::cmd_run@80afbf8ae3c7
+- code: ostler/ostler/book/cli.py::cmd_run@59456cdb9123
 - code: ostler/ostler/book/cli.py::unhealthy@a5cb92003bb1
 - code: ostler/ostler/book/runner.py::walk@65ef938bcb5d
 - code: ostler/ostler/book/runner.py::agree@cd74b3fc30a6
 - code: ostler/ostler/book/cells.py::play@002f27654e76
-- code: ostler/ostler/book/inputs.py::play@a35750c5423f
+- code: ostler/ostler/book/inputs.py::play@f2972d96c48a
 - code: ostler/ostler/book/inputs.py::Diverges@715904303028
+- code: ostler/ostler/book/inputs.py::weigh@10cb27178f43
+- code: ostler/ostler/book/http.py::twins@589c3dff328a
 - code: ostler/ostler/book/witness.py::Unseen@8032062e8dcd
 - code: ostler/ostler/book/witness.py::WitnessReport@bc2d28ac2287
 - tests: ostler/tests/test_book_todo.py::test_run_plays_the_journeys_the_cells_and_the_input_classes
 - tests: ostler/tests/test_book_inputs.py::test_a_typed_wire_plays_no_wrong_type_no_out_of_enum_and_no_null
 - tests: ostler/tests/test_book_inputs.py::test_a_declared_divergence_needs_no_default_refusal
+- tests: ostler/tests/test_book_twins.py::test_a_pair_the_model_treats_alike_and_the_app_splits_is_underspecified
+- tests: ostler/tests/test_book_twins.py::test_a_pair_the_model_predicts_differently_is_not_sent
+- tests: ostler/tests/test_book_twins.py::test_a_pair_on_a_dimension_the_field_ignores_is_skipped
 - tests: ostler/tests/test_book_witness.py::test_unseen_refuses_a_blank_why
