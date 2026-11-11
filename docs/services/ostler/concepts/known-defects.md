@@ -11,7 +11,11 @@ A journey step on which a declared defect shows passes as `KNOWN` when the servi
 
 When the service answers what was meant, the defect is gone. The step fails with a note to delete its declaration, and the model takes the change the intended behaviour makes so the steps after it stay honest. A declared defect that no journey, cell or input met fails a full run under `Known defects never met`. A declared input divergence works the same way: an unmet `Diverges` fails the run.
 
+A refusal the service gives rightly can still keep what the call did before it. A batch the service stops at its first failing item keeps the items it finished. The `Rule` names that change with `does`, read like an action's reduce, and the model keeps it while the caller gets the refusal. A defect laid over such a rule keeps that change as the meant one.
+
 - code: ostler/ostler/book/model.py::Defect@96b792c83feb
+- code: ostler/ostler/book/model.py::Rule@e2247d422caa
+- code: ostler/ostler/book/domain.py::State.apply@07e8122e1e9e
 - code: ostler/ostler/book/runner.py::flawed@22dacbbc8178
 - code: ostler/ostler/book/runner.py::defect_answered@0c67eacc1991
 - code: ostler/ostler/book/defects.py::never_met@b3124c8bacfc
@@ -20,4 +24,6 @@ When the service answers what was meant, the defect is gone. The step fails with
 - rule: a declared defect fails the run once the service stops showing it, so the declaration is removed when the service is fixed
 - rule: a defect keeps the intended behaviour in the model, and a call the service answers wrongly is a defect on the action while a whole input class it accepts and the book refuses is a divergence on the endpoint
 - rule: a partial run does not fail for a defect it never met
+- rule: a refusal that keeps earlier changes, such as a batch stopped halfway, is a rule with `does` and never a defect, because the service is right and a defect says it is wrong
 - tests: ostler/tests/test_book_inputs.py::test_a_declared_divergence_needs_no_default_refusal
+- tests: ostler/tests/test_book_refusal_keeps.py::test_a_refused_batch_keeps_the_orders_sent_before_the_refusal
