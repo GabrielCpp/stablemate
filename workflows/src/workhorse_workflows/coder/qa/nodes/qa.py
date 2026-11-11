@@ -14,6 +14,7 @@ from workhorse_workflows.coder.shared.compilation import compile_packet
 from workhorse_workflows.coder.shared.stack import (
     TEARDOWN_STATES,
     ensure_stack,
+    hold_copy,
     release_copy,
     run_qa_plan,
     stack_target,
@@ -145,6 +146,7 @@ __all__ = [
     "compile_story_plan",
     "clear_qa_evidence",
     "ensure_stack",
+    "hold_copy",
     "lint_qa_plan",
     "qa_tools_catalog",
     "release_copy",

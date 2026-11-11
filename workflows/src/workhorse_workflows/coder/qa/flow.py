@@ -19,6 +19,7 @@ from workhorse_workflows.coder.qa.nodes import (
     detect_regression_suites,
     ensure_stack,
     flush_root_screenshots,
+    hold_copy,
     lint_qa_plan,
     qa_tools_catalog,
     run_qa_plan,
@@ -253,6 +254,7 @@ class Qa(QaOwner):
         """Run the owner turn: it selects, runs, debugs and records the story's QA."""
         self.logger.info("owning QA for %s", self.ctx.story_slug, extra={"activity": True})
         turn = roles.turn(self, "qa-story", returns=QaOwnerResult)
+        self.call(hold_copy, lease=self.output(stack_target).lease)
         with scoped_envs(self.output(stack_target).env):
             result: QaOwnerResult = self.agent(
                 turn.prompt,
@@ -288,6 +290,7 @@ class Qa(QaOwner):
             return self._lap(None, failures, 0, 0)
         self.logger.info("rerunning the QA plan", extra={"activity": True})
         target = self.output(stack_target)
+        self.call(hold_copy, lease=target.lease)
         run = self.call(
             run_qa_plan,
             self.ctx.spec_dir,
@@ -321,6 +324,7 @@ class Qa(QaOwner):
             return self._lap(None, failures, laps, blocks)
         self.logger.info("running the QA plan", extra={"activity": True})
         target = self.output(stack_target)
+        self.call(hold_copy, lease=target.lease)
         run = self.call(
             run_qa_plan, self.ctx.spec_dir, near=target.near, lease=target.lease
         )

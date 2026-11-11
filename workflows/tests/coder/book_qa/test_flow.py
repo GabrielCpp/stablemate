@@ -118,6 +118,7 @@ class _Stack:
         self.ensured = 0
         self.released = 0
         self.targets = 0
+        self.held: list[str] = []
         self.ready: Literal["yes", "no", "none", "unneeded"] = "yes"
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Stack:
@@ -131,13 +132,17 @@ class _Stack:
             self.ensured += 1
             return StackStatus(ready=self.ready, failed_step="serve")
 
+        def hold_copy(logger: Any, repo_dir: str = "", lease: str = "") -> bool:
+            self.held.append(lease)
+            return True
+
         def release_copy(
             logger: Any, repo_dir: str = "", near: str = "", lease: str = ""
         ) -> StackTornDown:
             self.released += 1
             return StackTornDown(torn_down="yes")
 
-        for fn in (stack_target, ensure_stack, release_copy):
+        for fn in (stack_target, ensure_stack, hold_copy, release_copy):
             original = getattr(qa_owner, fn.__name__)
             setattr(fn, NODE_ATTR, replace(node_spec(original), fn=fn))
             for module in (book_flow, qa_owner):
@@ -267,6 +272,7 @@ def test_a_green_pass_plays_the_named_calls_records_them_and_lands_the_book(
     assert landed.startswith("test(acme): play ") and "Story: STORY-1" in landed, landed
     assert git(lane, "status", "--porcelain").stdout == ""
     assert stack.released == 1, stack.released
+    assert stack.held == [stack_lease(argv)], stack.held
 
 
 def test_the_claims_the_seat_could_not_state_are_recorded_beside_its_calls(

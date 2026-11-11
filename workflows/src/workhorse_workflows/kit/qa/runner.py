@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 from ostler import Ostler, graph as graph_mod, model, path as path_mod, query as query_mod
-from ostler.environments import leases
+from ostler.environments import leases, runtime
 from ostler.model import Graph, UINode
 from ostler.qa import runbook, stack
 from ostler.qa.outcome import QaOutcome
@@ -122,6 +122,13 @@ def teardown_stack(logger: logging.Logger, repo_dir: str = "") -> QaOutcome:
     if copied is not None:
         return copied
     return runbook.cmd_stack_down(root, logger=logger)
+
+
+def hold_copy(repo_dir: str = "", lease: str = "") -> bool:
+    """Name this process as the holder of the run's copy, so a resumed run keeps what it leased."""
+    if not lease:
+        return False
+    return runtime.hold(find_docs_root(repo_dir), lease, os.getpid())
 
 
 def ensure_stack(
@@ -382,4 +389,4 @@ def run_qa_plan(
     return QaPlanRun(status=status, notes=notes, ostler=outcome.data)
 
 
-__all__ = ["copy_lease", "ensure_stack", "release_copy", "run_qa_plan", "stack_env", "stack_stopped", "story_near", "teardown_stack"]
+__all__ = ["copy_lease", "ensure_stack", "hold_copy", "release_copy", "run_qa_plan", "stack_env", "stack_stopped", "story_near", "teardown_stack"]

@@ -29,7 +29,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaFlowStatus,
     QaResult,
 )
-from workhorse_workflows.coder.shared.stack import ensure_stack, stack_target
+from workhorse_workflows.coder.shared.stack import ensure_stack, hold_copy, stack_target
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
@@ -142,6 +142,7 @@ class BookQa(QaOwner):
             )
             return self._lap(None, [text], laps, blocks)
         target = self.output(stack_target)
+        self.call(hold_copy, lease=target.lease)
         out_dir = str(Path(self.ctx.spec_dir) / BOOK_OUT)
         for name in services:
             checked = self.call(book_check, name)

@@ -51,6 +51,18 @@ def ensure_stack(
 
 
 @blueprint.node
+def hold_copy(
+    logger: logging.Logger,
+    repo_dir: str = "",
+    lease: str = "",
+) -> bool:
+    """Name this run as the holder of its copy, so a resumed run is not reclaimed mid-play."""
+    held = _qa_runner.hold_copy(repo_dir=repo_dir, lease=lease)
+    logger.info("QA stack copy %s held by this run: %s", lease or "(none)", held)
+    return held
+
+
+@blueprint.node
 def release_copy(
     logger: logging.Logger,
     repo_dir: str = "",
@@ -95,6 +107,7 @@ def run_qa_plan(
 __all__ = [
     "TEARDOWN_STATES",
     "ensure_stack",
+    "hold_copy",
     "release_copy",
     "run_qa_plan",
     "stack_target",

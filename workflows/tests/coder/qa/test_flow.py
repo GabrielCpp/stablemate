@@ -1253,6 +1253,7 @@ def test_the_run_releases_the_copy_it_named_when_it_finishes(
     lease = _output(run_env, qa_nodes.stack_target)["lease"]
     assert lease.startswith("story-1-"), lease
     assert _output(run_env, qa_nodes.release_copy)["torn_down"] == "skipped"
+    assert (run_env.writer.run_dir / qa_nodes.hold_copy.__name__).is_dir()
 
 
 def test_evidence_the_vetter_keeps_refusing_blocks_after_the_lap_budget(

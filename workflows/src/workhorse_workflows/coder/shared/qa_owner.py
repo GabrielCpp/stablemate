@@ -19,6 +19,7 @@ from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaFlowStat
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.coder.shared.stack import (
     ensure_stack,
+    hold_copy,
     release_copy,
     stack_target,
 )
@@ -33,7 +34,7 @@ class QaOwner(Gated):
     epic: str = ""
     preexisting: tuple[str, ...] = ()
 
-    INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack, release_copy})
+    INFRA_NODES: ClassVar[frozenset[Any]] = frozenset({ensure_stack, hold_copy, release_copy})
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("laps", "blocks")
 
