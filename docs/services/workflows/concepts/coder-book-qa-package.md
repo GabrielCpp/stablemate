@@ -18,12 +18,15 @@ outcome, and never knows how the book was edited. The running copy is a copy of 
 story's code, and never knows the book. The record lands the book's change beside the story's code and
 writes the calls a passed check played.
 
+The lane shares its story params, labels, owner session, stack release, lap budget and operator block path with the scenario QA through one base, `QaOwner`, so a change to how a QA lane parks or labels itself lands in one place for both.
+
 The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is the
 [book QA owner result](../formats/book-qa-owner-result.md), and the lane's memory is the
 [book QA record](../formats/book-qa-record.md). The lane sits ahead of the scenario lane in the
 [coder lane order](coder-lane-order.md).
 
-- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @3a6a962e2abc
+- code: `workflows/src/workhorse_workflows/coder/shared/qa_owner.py::QaOwner` @7c46741d5c85
+- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @9bef23bc81f1
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::covered_services` @5794657c4d83
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_check` @08d492ed6b13
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @a32cf444c3c3
@@ -64,4 +67,4 @@ The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is
 - does: reports the `laps` and `blocks` counters under the `book-qa.` prefix, so the absence of a label distinguishes a never-spent budget from a spent one
 - returns: labels used for state telemetry
 - verify: count(subject="book-qa state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa.state_labels` @ec4f20698b3e
+- code: `workflows/src/workhorse_workflows/coder/shared/qa_owner.py::QaOwner.state_labels` @80ca7c994dac

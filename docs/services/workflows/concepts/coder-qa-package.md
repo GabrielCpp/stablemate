@@ -9,14 +9,15 @@ The `qa` machine hands one story's QA to a single owner session. The owner selec
 scenarios, runs them, debugs each failure and records the result in one turn, and the flow
 reruns the plan it leaves and gates its claims.
 It is a sub-flow the Coder main flow enters as `scenario_qa`, after documentation passes and the [book lane](coder-book-qa-package.md) passes, and `workhorse-coder run
-qa` runs it directly.
+qa` runs it directly. Its story params, labels, owner session, stack release, lap budget and operator block path live in `QaOwner`, the base it shares with the book lane.
 
 The flow ends in a `QaFlowResult` that is `passed`, `refix` or `replan`. Repair laps are capped
 at `MAX_LAPS` and operator blocks at `MAX_BLOCKS`. A spent cap, or a human operator mode, parks
 the run on the story's context file.
 
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py` @9afea4b0086a
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @66359785277b
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py` @9008e904f80b
+- code: `workflows/src/workhorse_workflows/coder/shared/qa_owner.py::QaOwner` @7c46741d5c85
+- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa` @a86c047d44b5
 - rule: the QA plan starts as ostler's compile of the book, narrowed by the owner's selection; the owner adds a missing scenario to the book, or by hand when the book cannot state it, and no reviewer checks it
 - rule: the scored run is the QA verdict, with no audit seat or dry-run gate beside it
 - rule: the QA owner spawns no planner, fixer or auditor seat; a `lookup` delegate for a narrow read stays allowed
@@ -39,6 +40,6 @@ resumes the owner's session instead of parking the run.
 - does: returns the base run labels alone when the parameters carry no counters
 - returns: labels used for state telemetry
 - verify: count(subject="qa state label sets", equals=1)
-- code: `workflows/src/workhorse_workflows/coder/qa/flow.py::Qa.state_labels` @a92567654802
+- code: `workflows/src/workhorse_workflows/coder/shared/qa_owner.py::QaOwner.state_labels` @80ca7c994dac
 - tests: `workflows/tests/coder/test_telemetry.py::test_qa_reports_its_repair_laps_and_its_blocks`
 - tests: `workflows/tests/coder/test_telemetry.py::test_a_state_with_no_loop_yet_reports_only_the_base_labels`

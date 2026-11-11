@@ -17,8 +17,8 @@ register, because the drain draws only `qa` records. A gate still red after the 
 or an owner turn that reports a block, goes to an operator gate. An item no repository landed a
 commit for leaves its record open.
 
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py` @5af589180b99
-- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @49705ad92ed1
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py` @67a219618178
+- code: `workflows/src/workhorse_workflows/coder/fix/flow.py::Fix` @2317a816f341
 - detail: [coder backlog contract](coder-backlog-contract.md)
 
 ## Methods

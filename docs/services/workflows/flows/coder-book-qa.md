@@ -45,7 +45,7 @@ lane keeps.
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_red_replay_goes_to_the_seat_with_the_output_as_its_report`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_seat_that_names_no_call_for_a_covered_service_is_sent_back_before_any_play`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_a_product_edit_outside_the_book_is_refused_and_sent_back_unlanded`
-- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @3a6a962e2abc
+- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @9bef23bc81f1
 
 The seat session is keyed `book-qa:<story slug>`. The flow resets it on every ending except `refix`,
 so the developer's fix returns to the same seat. Each ending releases the run's copy of the stack.
