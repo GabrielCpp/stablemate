@@ -8,7 +8,6 @@ from pathlib import Path
 
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 from workhorse_workflows.coder.shared.schemas.book_qa import (
     BookDeferral,
     BookPlay,
@@ -27,6 +26,7 @@ TAIL_LINES = 200
 RECORD_FILE = "book-qa.json"
 BOOK_OUT = Path("qa") / "book"
 BOOK_PAGES = "docs/services"
+DEFERRALS_FILE = "qa-deferrals.json"
 
 
 def book_dir(service: str) -> str:
@@ -113,35 +113,23 @@ def write_book_record(
 
 @blueprint.node
 def defer_book_judged(logger: logging.Logger, spec_dir: str, repo_dir: str = "") -> BookDeferral:
-    """Mark each required obligation under a recorded service's book pages as deferred to that book, in the QA context packet. A missing record, or one with findings, marks nothing."""
+    """Write `qa-deferrals.json` beside the QA context packet: one entry per service a clean book record names, so every build of the packet defers that service's book pages to its book. No record, or a record with findings, writes an empty list."""
     root = find_docs_root(repo_dir)
     spec = root / spec_dir
     record = _load_record(spec)
-    context_path = spec / CONTEXT_FILE
-    if not record.services or record.findings or not context_path.is_file():
-        logger.info("no service book judged this story clean, so no obligation is deferred")
-        return BookDeferral()
-    context = json.loads(context_path.read_text(encoding="utf-8"))
-    marked: dict[str, int] = {}
-    for obligation in context.get("obligations") or []:
-        if not isinstance(obligation, dict) or obligation.get("required", True) is False:
-            continue
-        if isinstance(obligation.get("deferred"), dict):
-            continue
-        page = str(obligation.get("node") or "").partition("#")[0]
-        for entry in record.services:
-            if page.startswith(f"{BOOK_PAGES}/{entry.service}/"):
-                obligation["deferred"] = {
-                    "kind": "book",
-                    "detail": f"judged by the executable book of {entry.service}",
-                }
-                marked[entry.service] = marked.get(entry.service, 0) + 1
-                break
-    if marked:
-        context_path.write_text(json.dumps(context, indent=2) + "\n", encoding="utf-8")
-    for name, count in marked.items():
-        logger.info("deferred %d obligation(s) to the book of %s", count, name)
-    return BookDeferral(marked=marked)
+    services = [] if record.findings else [entry.service for entry in record.services]
+    entries = [
+        {
+            "prefix": f"{BOOK_PAGES}/{name}/",
+            "kind": "book",
+            "detail": f"judged by the executable book of {name}",
+        }
+        for name in services
+    ]
+    spec.mkdir(parents=True, exist_ok=True)
+    (spec / DEFERRALS_FILE).write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
+    logger.info("deferred the book pages of %d service(s) to their books", len(services))
+    return BookDeferral(services=services)
 
 
 @blueprint.node
@@ -198,6 +186,7 @@ def commit_service_book(
 
 __all__ = [
     "BOOK_OUT",
+    "DEFERRALS_FILE",
     "RECORD_FILE",
     "book_check",
     "book_dir",

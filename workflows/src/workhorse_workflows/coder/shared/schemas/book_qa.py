@@ -78,8 +78,8 @@ class BookQaRecord(CoderResult):
 
 
 class BookDeferral(CoderResult):
-    """`defer_book_judged`: how many obligations each recorded service's book took off the scenario lane."""
+    """`defer_book_judged`: the services whose book pages `qa-deferrals.json` now defers."""
 
-    marked: dict[str, int] = {}
+    services: list[str] = []
 
 __all__ = ["BookDeferral", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "CoveredServices", "ServiceCalls"]

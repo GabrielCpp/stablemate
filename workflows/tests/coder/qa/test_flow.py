@@ -1,6 +1,7 @@
 """End-to-end tests for the `qa` flow: the owner turn, the check that reruns it, and the operator."""
 from __future__ import annotations
 
+import copy
 import json
 import logging
 import os
@@ -27,7 +28,7 @@ from workhorse.records import parse_checkpoint
 
 from ostler import Ostler
 from ostler.qa import QaOutcome
-from ostler.qa.compile import COMPILED_BANNER, Plan
+from ostler.qa.compile import COMPILED_BANNER, Plan, apply_deferrals
 from ostler.qa.source_context import SourceRepository
 
 from workhorse_workflows.coder.shared.plan import resolve_impl_context
@@ -246,6 +247,7 @@ class _Ostler:
         self.plan_validations = 0
         self.vets = 0
         self.context_args: list[dict[str, Any]] = []
+        self.deferrals_seen: list[str | None] = []
         self.only: list[list[str] | None] = []
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Ostler:
@@ -344,12 +346,14 @@ class _Session(Ostler):
         )
         spec_dir = Path(spec)
         spec_dir.mkdir(parents=True, exist_ok=True)
-        (spec_dir / "qa-okf-context.json").write_text(
-            json.dumps(
-                {"status": "passed", "obligations": [], "verificationIndex": [], **self.script.context}
-            ),
-            encoding="utf-8",
+        self.script.deferrals_seen.append(
+            (spec_dir / "qa-deferrals.json").read_text(encoding="utf-8")
+            if (spec_dir / "qa-deferrals.json").is_file()
+            else None
         )
+        packet = {"status": "passed", "obligations": [], "verificationIndex": [], **copy.deepcopy(self.script.context)}
+        apply_deferrals(packet, spec_dir)
+        (spec_dir / "qa-okf-context.json").write_text(json.dumps(packet), encoding="utf-8")
         return QaOutcome(ok=True, message=f"wrote {spec_dir}", data={"status": "passed"})
 
     def qa_context_validate(self, *, spec: str | Path) -> QaOutcome:
@@ -1502,6 +1506,47 @@ def test_a_service_the_book_judged_clean_defers_its_required_obligations(
         "ob-api-held": {"kind": "no-check", "detail": "no runnable check"},
         "ob-web": None,
     }
+
+
+def test_the_deferrals_file_is_written_before_the_packet_is_built(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Every build of the packet, the seat's rebuilds included, must find the marks already on disk."""
+    okf = ostler(context={"obligations": OBLIGATIONS})
+    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
+
+    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
+
+    seen = json.loads(okf.deferrals_seen[0] or "null")
+    assert seen == [
+        {
+            "prefix": "docs/services/api/",
+            "kind": "book",
+            "detail": "judged by the executable book of api",
+        }
+    ], okf.deferrals_seen
+
+
+def test_a_book_record_with_findings_writes_an_empty_deferral_list(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write_json: Callable[[Path, Any], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A stale list from an earlier clean record must lose its effect."""
+    okf = ostler(context={"obligations": OBLIGATIONS})
+    finding = {"id": "f", "target": "acme/x:1", "issue": "the list drops the token", "repair": "keep it"}
+    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "findings": [finding]})
+    write_json(docs / spec_dir() / "qa-deferrals.json", [{"prefix": "docs/services/api/", "kind": "book"}])
+
+    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
+
+    assert json.loads(okf.deferrals_seen[0] or "null") == []
 
 
 def test_no_book_record_defers_nothing(

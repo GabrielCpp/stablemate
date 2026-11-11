@@ -149,6 +149,7 @@ class Qa(QaOwner):
     def _preflight(self) -> list[str]:
         """The OKF context packet and the QA stack, as failures the owner repairs."""
         impl = self.output(resolve_impl_context)
+        self.call(defer_book_judged, self.ctx.spec_dir)
         build = self.call(
             build_okf_context,
             self.ctx.spec_dir,
@@ -168,7 +169,6 @@ class Qa(QaOwner):
         if context.status != "passed":
             failures.append(gate_text("the OKF context packet", context.notes))
         else:
-            self.call(defer_book_judged, self.ctx.spec_dir)
             self.call(compile_story_plan, self.ctx.spec_dir, self.ctx.story_id or self.ctx.story_slug)
         target = self.output(stack_target)
         stack = self.call(ensure_stack, near=target.near, lease=target.lease)
