@@ -5,7 +5,7 @@ title: A service book
 ---
 # A service book
 
-A service book is one backend service written as a model that ostler can run. It lives in the package `services/<name>/` of a repo and imports `ostler.book` and its own modules, nothing else. The model says what each call does to the state of the service. A run plays the same steps on the model and on the live service and compares what each answers and what each lists afterwards. The [ostler book commands](../book-runtime.md) build it, search it and play it.
+A service book is one service, backend or web app, written as a model that ostler can run. It lives in the package `services/<name>/` of a repo and imports `ostler.book` and its own modules, nothing else. The model says what each call does to the state of the service. A run plays the same steps on the model and on the live service and compares what each answers and what each lists afterwards. The [ostler book commands](../book-runtime.md) build it, search it and play it.
 
 The book is made of these parts, each declared once in Python and registered in the `ALL` or `__all__` of its package:
 
@@ -14,6 +14,7 @@ The book is made of these parts, each declared once in Python and registered in 
 - The lifecycle matrix gives each record a table: its scenes as rows and its actions as columns, so every state a record can be in meets every action that can reach it.
 - The fixtures are what a caller sends: a base factory per request and variants that fill one thing in. A fixture learns the id the service assigns when its answer comes back.
 - The journeys are stories a user lives through, one class per file, played in order on one long-lived account.
+- A web app declares screens and interactions in place of endpoints. A screen lists its components, found by role and accessible name, and what the page sends. An interaction is one thing a user does on a screen and carries a model action. The [web surface](web-book-surface.md) drives a browser through them.
 - The health journeys read the standing world every other journey relies on and make one round trip through the core of the product.
 - The service declaration names the environments, the stack to start, the refusals shared by every endpoint, the answers a run may not see, the input classes the service accepts and the book refuses, and the source roots the book follows.
 
@@ -24,12 +25,13 @@ A book follows the service's source commit by commit. The service declares the s
 - rule: a service book imports `ostler.book` and its own modules and no other library, so a run needs nothing the book does not declare
 - rule: an endpoint, journey, rule or fixture that no `ALL` or `__all__` lists does not exist for ostler, and `check` names it
 - rule: an endpoint that no lifecycle matrix places is played in every state of the service
-- rule: a service book covers HTTP and gRPC services, and web and mobile surfaces come with a later release
+- rule: a service book covers HTTP and gRPC services and web apps, and mobile surfaces come with a later release
 - rule: the book is spec first, so when the service and the book disagree the run reports which one is wrong and a person decides
 - rule: whoever runs a book names the stack copy it reaches, by `--copy`, else by the lease the run holds, else by the name the book wrote, else the shared copy, so one book serves a run by hand and an unattended run
 - code: ostler/ostler/book/environment.py::Environment@eef3fb3a0f85
+- detail: [The web surface of a book](web-book-surface.md)
 - code: ostler/ostler/book/service.py::Service@9dc13c88a409
-- code: ostler/ostler/book/__init__.py::__all__@3a67e49102c3
+- code: ostler/ostler/book/__init__.py::__all__@82abf55a79b5
 - code: ostler/ostler/book/state.py::Axes@0d0318cd1dd0
 - code: ostler/ostler/book/journey.py::Journey@b8acde935846
 - code: ostler/ostler/book/sources.py::stale@6d1d50984121
