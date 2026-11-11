@@ -55,6 +55,22 @@ def test_commit_paths_stages_only_the_named_paths(tmp_path: Path) -> None:
     assert (root / "src/unrelated.py").exists()
 
 
+def test_commit_paths_takes_a_deletion_an_agent_already_staged(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _write(root, "docs/gone.md")
+    _write(root, "docs/kept.md")
+    assert commit_paths(root, "docs: write both", "docs") is True
+    subprocess.run(["git", "rm", "-q", "docs/gone.md"], cwd=str(root), check=True)
+    _write(root, "docs/kept.md", "changed\n")
+    _write(root, "docs/new.md", "a page of its own\n")
+
+    assert commit_paths(root, "docs: retire one", "docs/gone.md", "docs/kept.md", "docs/new.md") is True
+    assert _tracked(root) == {"docs/gone.md", "docs/kept.md", "docs/new.md"}
+    assert not (root / "docs/gone.md").exists()
+    listed = subprocess.run(["git", "ls-files", "docs"], cwd=str(root), check=True, capture_output=True, text=True)
+    assert listed.stdout.split() == ["docs/kept.md", "docs/new.md"]
+
+
 def test_commit_paths_with_no_pathspecs_commits_nothing(tmp_path: Path) -> None:
     """The regression this file exists for."""
     root = make_git_repo(tmp_path / "acme")

@@ -126,7 +126,9 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
         return False
     if not repo.git.status("--porcelain", *scope).strip():
         return False
-    repo.git.add(*pathspecs)
+    present = [spec for spec in pathspecs if _matches(repo, spec)]
+    if present:
+        repo.git.add("--", *present)
     try:
         repo.git.diff("--cached", "--quiet", *scope)
         return False
@@ -138,6 +140,11 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
         repo.git.reset("-q", "--", *scope)
         raise
     return True
+
+
+def _matches(repo: Repo, spec: str) -> bool:
+    """Does ``spec`` name a file git can stage: one in the index or one untracked and not ignored. A deletion already staged names neither, and the commit's pathspec carries it."""
+    return bool(repo.git.ls_files("--cached", "--others", "--exclude-standard", "--", spec).strip())
 
 
 def _refusal(path: str | Path, message: str, pathspecs: tuple[str, ...]) -> str:
