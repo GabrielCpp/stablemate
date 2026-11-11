@@ -48,6 +48,10 @@ due_not_in_the_past = Rule[Todo, TodoApp]("Due date cannot be in the past", _due
 - The status defaults to 400.
 - `why` is the product's reason, in the product's words. A rule whose reason is not obvious
   from its message carries one. It is where a decision lives; there are no decision files.
+- `does=` is the change the service keeps when it refuses, read like a `reduce`. A batch the
+  service stops at its first failing item keeps the items it finished before it:
+  `does=lambda a, s, by: mark_sent(s, delivered_before(s, a))`. Without it a refusal changes
+  nothing. The app is right here, so this is a rule and never a `Defect`.
 
 ## Actions
 
