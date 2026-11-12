@@ -107,7 +107,7 @@ def test_bring_up_boots_the_device_beside_the_copy_and_reports_a_failed_install(
         {"entry_url": "http://localhost:49200", "address_book": "/copy/addresses.json"}))
     seen: list[object] = []
 
-    def devices(_graph: object, *, env: dict[str, str], **_kw: object) -> list[dict[str, str]]:
+    def devices(_graph: object, *, env: dict[str, str], **_kw: object) -> list[dict[str, object]]:
         seen.append((env["STABLEMATE_LEASE"], Path(env["STABLEMATE_ADDRESS_BOOK"]).name))
         return [{"ready": "no", "failed_step": "install-app", "error": "adb: no devices",
                  "source": "app", "manifest": {"stack_file": "docs/services/app/ops/stack.yml"}}]
