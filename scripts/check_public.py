@@ -29,7 +29,7 @@ BASE_SKILL_FAMILIES = {
 RESOLVER = REPO / "scripts" / "private_names.py"
 HOOK_NAME = "hooks/pre-commit"
 
-HOOK_MARKERS = ("scripts/check_public.py", "make farrier-run-hook")
+HOOK_MARKERS = ("make farrier-run-hook",)
 
 BINARY_SNIFF_BYTES = 8000
 
@@ -259,8 +259,8 @@ def check_hooks_installed() -> list[str]:
     if missing:
         detail = "absent" if not text else "missing " + ", ".join(repr(m) for m in missing)
         return [
-            f"{installed} is {detail} — the private-name, commit-message and "
-            "generated-file guards are not running on this clone. Fix: make hooks"
+            f"{installed} is {detail} — the generated-file guard is not running "
+            "on this clone. Fix: make hooks"
         ]
     print(f"ok: git hooks resolve through {installed}")
     return []

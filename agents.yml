@@ -135,6 +135,7 @@ template:
 localInstructions:
   - policies:
       - commit-and-push
+      - private-names
       - okf-book
     paths:
       - "."

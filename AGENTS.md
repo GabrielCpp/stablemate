@@ -110,6 +110,23 @@ You may be working in a local repository or one with a remote so keep your commi
 
 ---
 
+## Private project names stay out
+
+This repo is public. A private project name never enters a tracked file, a
+path or a commit message. Write a neutral placeholder instead: acme, globex,
+api-service, web-app, mobile-app, example.com.
+
+The names themselves live outside the repo, in `$STABLEMATE_PRIVATE_NAMES` or
+`$GIT_DIR/private-names`. Never copy them into a tracked file, and never print
+the list.
+
+Every agent commit runs a check over the staged files and the commit message.
+A refusal lists each line that carries a name. Replace each one, restage, and
+commit again. A name already in history needs a rewrite with
+`git filter-repo --replace-text`, not a removal commit.
+
+---
+
 ## The book comes first
 
 This repository carries an OKF book under `docs/services/`. It is the current
