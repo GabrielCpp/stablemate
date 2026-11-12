@@ -81,7 +81,7 @@ Each of these has a home that is not the prompt, and a copy in the prompt is a s
 source of truth that drifts:
 
 - **Commit protocol.** The target repo installs the `commit-and-push` policy
-  (`library/policies/git/commit-and-push.md`, aggregated into its generated agent
+  (`library/policies/git/commit-and-push/POLICY.md`, aggregated into its generated agent
   instructions via `localInstructions` in `agents.yml`), so every agent in that repo is
   already asked to commit finished work by explicit path with a conventional subject.
   Turn-specific trailers (`Epic:`/`Story:`) are the flow's job to apply

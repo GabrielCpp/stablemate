@@ -3,7 +3,8 @@
 A **policy** is library text that reaches a repository only by being aggregated into a
 generated `AGENTS.md`, through a `localInstructions` mapping in that repo's `agents.yml`.
 It is never installed as a skill, never gets a slash command, is never an
-`skill_link()` target, and never answers a tag query. It bundles no assets.
+`skill_link()` target, and never answers a tag query. Its only assets are
+scripts: the commit checks its text promises.
 
 ## Why the kind exists
 
@@ -36,12 +37,16 @@ it is library text like any other; layer shadowing and namespacing work the same
 ## Layout
 
 ```
-library/policies/<group>/<name>.md
+library/policies/<group>/<name>/POLICY.md
+library/policies/<group>/<name>/scripts/
 ```
 
-Flat files under a group, like prompts. Front matter carries `name` and `description`
+A folder under a group, like a skill. Front matter carries `name` and `description`
 for humans and for farrier's error messages; both are stripped before aggregation, so
-neither is emitted anywhere. No `applyTo` and no `tags` — a policy is not auto-loaded by
+neither is emitted anywhere. A policy may also declare `commit_checks:`, each a `run:`
+path under its `scripts/` and a `budget:` in seconds. Farrier installs the scripts to
+`.agents/policies/<name>/scripts/`, and the commit guard runs each check before an
+agent's `git commit`. No `applyTo` and no `tags` — a policy is not auto-loaded by
 glob and is not discoverable by query. The body renders through Jinja2 like any other
 library source.
 
