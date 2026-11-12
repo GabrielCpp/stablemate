@@ -191,6 +191,21 @@ def test_a_screen_input_with_a_shape_gets_input_classes():
     assert labels == ["due_on malformed date"]
 
 
+def test_a_declared_divergence_on_a_screen_input_names_a_class_the_check_knows():
+    import dataclasses
+
+    from ostler.book import Diverges
+    from ostler.book.check import input_faults
+
+    add, _ = _todo_base()
+    service = module("services.web.service").service
+    known = Diverges(add, "due_on malformed date", why="the page keeps any text it is given")
+    unknown = Diverges(add, "title missing", why="the page keeps an empty title")
+    found = input_faults(dataclasses.replace(service, diverges=(known, unknown)))
+    assert [(f.name, f.problem) for f in found if f.name.startswith("diverges")] == [
+        ("diverges AddTodo title missing", "no input class of the endpoint has this label")]
+
+
 def test_a_screen_input_with_a_shape_gets_twins_on_either_side_of_midnight():
     from datetime import timedelta
 

@@ -26,6 +26,7 @@ from ostler.book.matrix import cell, matrix
 from ostler.book.state import Impossible
 from ostler.book.outcome import Done
 from ostler.book.status import succeeded
+from ostler.book.screen import Interaction
 from ostler.book.search import actions_of, items, states_of
 from ostler.book.service import Service
 from ostler.book.sources import missing
@@ -110,11 +111,11 @@ def input_faults(service: Service[Any]) -> list[Finding]:
     found: list[Finding] = []
     skipped = {u.endpoint for u in service.unseen if u.item == "inputs"}
     reached = bases(service)
-    labels: dict[type[Endpoint], set[str]] = {}
-    for endpoint in service.endpoints:
+    labels: dict[type[Any], set[str]] = {}
+    for endpoint in (*service.endpoints, *service.interactions):
         if endpoint.carries is None or not has_inputs(endpoint):
             continue
-        name = f"endpoint {endpoint.__name__}"
+        name = f"{'interaction' if issubclass(endpoint, Interaction) else 'endpoint'} {endpoint.__name__}"
         base = reached.get(endpoint)
         if endpoint in skipped:
             if base is not None:

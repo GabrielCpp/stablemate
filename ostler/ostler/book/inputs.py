@@ -43,7 +43,7 @@ class Diverges:
     """The app accepts an input class the book refuses. `label` names the class
     as the run prints it, such as "down missing"."""
 
-    endpoint: type[Endpoint]
+    endpoint: type[Endpoint] | type[Interaction[Any]]
     label: str
     why: str
 
