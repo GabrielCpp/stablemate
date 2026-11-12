@@ -111,6 +111,13 @@ asks the story: the intent ignores that dimension and the app is wrong, or the b
 it. Model it, or declare the field indifferent:
 `Field(Str(format="date-time"), ignores=("time of day",), why="the product keeps one day")`.
 
+A pair is judged on the two answers and on the rows the call made, changed or removed. A record
+the world minted apart from the call is no split. A field outside your story's calls is the
+product owner's to answer. `ostler book run --register-outside <calls>` adds such a finding to
+`services/<name>/UNDERSPECIFIED.md` and reports it `KNOWN`. Never edit an entry or declare
+`ignores=` for a field outside your story. An entry that no longer splits fails the run until
+the owner's answer removes it.
+
 ## Refusal keys
 
 `Service(refusals=Refusals(...))` names what the app answers to each class of wrong input
