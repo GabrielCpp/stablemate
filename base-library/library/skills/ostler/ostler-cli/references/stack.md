@@ -36,6 +36,7 @@ services:
 | `secrets` | root | the one source of `${VAR}` values: `file:` a dotenv file, `decrypt:` a command whose stdout is dotenv, or `saddlebag:` the `key=value` tags that select secrets in saddlebag. Valid only in the stack root |
 | `needs` | book | the books whose every service this book's services need. They come up first, and a cycle across books is refused |
 | `default-fixtures` | book | the fixture sets loaded when a bring-up names none |
+| `device` | book | the steps that boot a device and install the app before a mobile book plays, in order. Each step is `name`, `run`, an optional `working-directory` resolved against the repo root (`repo://` allowed) and an optional `timeout` in seconds |
 | `about` | service | one line on what the service is, required. `ostler env ls` shows it |
 | `define` | service | the template that renders to this service's compose block |
 | `needs` | service | the services that must be up first. `name` is this book's, `book:name` another book's |

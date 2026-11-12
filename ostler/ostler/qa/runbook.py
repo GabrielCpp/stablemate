@@ -18,6 +18,7 @@ from ostler.markdown import bullet_text, children
 from ostler import model
 from ostler import path as path_mod
 from ostler.environments import leases
+from ostler.environments import spec as spec_mod
 from ostler.model import Graph, UINode
 from ostler.provenance import checkout_for, effective_checkouts
 from ostler.qa import addresses
@@ -635,18 +636,40 @@ _SERVED_BY_COPY = ("entry_url", "health_path", "identity")
 
 def bring_up_devices(graph: Graph, *, near: Path | None = None, address_book: str = "",
                      logger: logging.Logger | None = None) -> list[dict[str, Any]]:
-    """Boot the device and install the app for each `driver: mobile` runbook beside a stack a copy serves."""
-    mobile = [node for node in stack_runbooks(graph)
-              if bullet_value(node.meta, "driver") == "mobile"]
-    if near is not None:
-        mobile = _on_surface_of(graph, mobile, near) or mobile
-    manifests = [{key: value for key, value in _from_runbook(graph, node, service=False).items()
-                  if key not in _SERVED_BY_COPY} for node in mobile]
+    """Boot the device and install the app for each book whose `stack.yml` declares `device:` steps."""
+    root = system_root(graph)
+    manifests = _device_manifests(root, near) or _runbook_device_manifests(graph, near)
     if not manifests:
         return []
     env = {addresses.BOOK_ENV: address_book} if address_book else {}
     with addresses.leased(env):
-        return bring_up_stacks(manifests, repo_root=str(system_root(graph)), logger=logger)
+        return bring_up_stacks(manifests, repo_root=str(root), logger=logger)
+
+
+def _device_manifests(root: Path, near: Path | None) -> list[dict[str, Any]]:
+    books = [book for book in spec_mod.load(root).books.values() if book.device]
+    if near is not None:
+        where = near if near.is_absolute() else root / near
+        books = [book for book in books if where.resolve().is_relative_to(book.directory.resolve())] or books
+    return [{"source": book.name, "app_cwd": str(root), "repo_root": str(root),
+             "prepare": [_device_step(root, step) for step in book.device]} for book in books]
+
+
+def _device_step(root: Path, step: dict[str, Any]) -> dict[str, Any]:
+    command = {"run": step["run"],
+               "working-directory": str(resolve_directory(root, step.get("working-directory", ".")))}
+    if "timeout" in step:
+        command["timeout"] = str(step["timeout"])
+    return command
+
+
+def _runbook_device_manifests(graph: Graph, near: Path | None) -> list[dict[str, Any]]:
+    mobile = [node for node in stack_runbooks(graph)
+              if bullet_value(node.meta, "driver") == "mobile"]
+    if near is not None:
+        mobile = _on_surface_of(graph, mobile, near) or mobile
+    return [{key: value for key, value in _from_runbook(graph, node, service=False).items()
+             if key not in _SERVED_BY_COPY} for node in mobile]
 
 
 def _from_stack_file(root: Path, services_root: str, lease: str, near: Path | None,

@@ -1094,3 +1094,43 @@ def test_a_runbook_serves_what_its_grpc_server_surfaces_serve(tmp_path: Path) ->
 
 def test_a_runbook_with_no_grpc_surface_serves_nothing(repo: Path) -> None:
     assert "serves" not in rb.load_stack(repo)
+
+
+def _device_book(root: Path, book: str) -> None:
+    (root / ".git").mkdir(exist_ok=True)
+    stack = root / "docs" / "services" / book / "ops" / "stack.yml"
+    stack.parent.mkdir(parents=True, exist_ok=True)
+    stack.write_text(
+        "services: {}\n"
+        "device:\n"
+        "  - name: boot\n"
+        "    run: touch booted.marker\n"
+        "    timeout: 30\n"
+        "  - name: install\n"
+        "    run: echo \"$STABLEMATE_ADDRESS_BOOK\" > installed.marker\n"
+        "    working-directory: app\n", encoding="utf-8")
+    (root / "app").mkdir(exist_ok=True)
+
+
+def test_a_book_declaring_device_steps_boots_and_installs_from_its_stack_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _device_book(tmp_path, "app")
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("device steps launch no app and probe no health")
+
+    monkeypatch.setattr(stack_mod, "boot_app", forbidden)
+    monkeypatch.setattr(stack_mod, "health_probe", forbidden)
+    results = rb.bring_up_devices(model.load(tmp_path), address_book="/copy/addresses.json")
+    assert [(r["source"], r["ready"]) for r in results] == [("app", "yes")]
+    assert (tmp_path / "booted.marker").is_file()
+    assert (tmp_path / "app" / "installed.marker").read_text().strip() == "/copy/addresses.json"
+
+
+def test_device_steps_near_another_book_still_come_up(tmp_path: Path) -> None:
+    _device_book(tmp_path, "app")
+    (tmp_path / "docs" / "services" / "web" / "ops").mkdir(parents=True)
+    (tmp_path / "docs" / "services" / "web" / "ops" / "stack.yml").write_text("services: {}\n")
+    results = rb.bring_up_devices(model.load(tmp_path), near=Path("docs/services/web"))
+    assert [r["source"] for r in results] == ["app"]

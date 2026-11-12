@@ -1285,3 +1285,34 @@ def test_a_manifest_without_exec_prefix_reads_as_empty(tmp_path: Path) -> None:
     manifest.pop("exec_prefix")
     runtime.write_manifest(copy, manifest)
     assert runtime.exec_prefix(copy) == []
+
+
+def _set_device(root: Path, book: str, device: object) -> None:
+    target = root / SERVICES / book / spec.OPS_DIR / spec.STACK_FILE
+    data = yaml.safe_load(target.read_text(encoding="utf-8"))
+    data["device"] = device
+    target.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+
+def test_a_book_reads_its_device_steps_in_order(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    steps = [{"name": "boot", "run": "emulator -avd x", "timeout": 60},
+             {"name": "install", "run": "./gradlew installDebug", "working-directory": "app"}]
+    _set_device(root, "web", steps)
+    catalog = spec.load(root)
+    assert catalog.errors == []
+    assert catalog.books["web"].device == tuple(steps)
+
+
+def test_a_device_step_with_an_unknown_key_is_refused(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _set_device(root, "web", [{"name": "boot", "run": "emulator", "cwd": "app"}])
+    assert any("device step `boot`: `cwd` is not a device key" in error for error in spec.load(root).errors)
+
+
+def test_a_device_step_with_no_command_is_refused(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _set_device(root, "web", [{"name": "boot", "timeout": 0}])
+    errors = spec.load(root).errors
+    assert any("device step `boot`: `run` is not a string" in error for error in errors)
+    assert any("device step `boot`: `timeout` is not a positive number of seconds" in error for error in errors)

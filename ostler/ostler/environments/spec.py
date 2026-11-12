@@ -39,6 +39,18 @@ _SECRETS: dict[str, Any] = {
     "additionalProperties": False,
     "oneOf": [{"required": ["file"]}, {"required": ["decrypt"]}, {"required": ["saddlebag"]}],
 }
+_DEVICE: dict[str, Any] = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {"name": {"type": "string"}, "run": {"type": "string"},
+                       "working-directory": {"type": "string"},
+                       "timeout": {"type": "integer", "minimum": 1}},
+        "required": ["name", "run"],
+        "additionalProperties": False,
+    },
+}
+_DEVICE_KEYS = frozenset(_DEVICE["items"]["properties"])
 
 KEYS: tuple[Key, ...] = (
     Key("book", "services", {"type": "object"},
@@ -52,6 +64,9 @@ KEYS: tuple[Key, ...] = (
         "the books whose every service this book's services need, so they come up first"),
     Key("book", "default-fixtures", _STRINGS,
         "the fixture sets loaded when a bring-up names none"),
+    Key("book", "device", _DEVICE,
+        "the steps, in order, that boot the device and install the app before a mobile book "
+        "plays; `{name}` in a step reads a served address"),
     Key("service", "about", {"type": "string"},
         "one line on what the service is, the line `ostler env ls` shows for it"),
     Key("service", "define", {"type": "string"},
@@ -166,6 +181,7 @@ class Book:
     needs: tuple[str, ...] = ()
     default_fixtures: tuple[str, ...] = ()
     services: tuple[str, ...] = ()
+    device: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -289,7 +305,38 @@ def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> Non
         needs=tuple(str(item) for item in _as_list(raw.get("needs"))),
         default_fixtures=defaults,
         services=tuple(refs),
+        device=_read_device(catalog, where, raw.get("device")),
     )
+
+
+def _read_device(catalog: Catalog, where: str, raw: object) -> tuple[dict[str, Any], ...]:
+    if raw is None:
+        return ()
+    if not isinstance(raw, list):
+        catalog.errors.append(f"{where}: `device:` is not a list of steps")
+        return ()
+    steps: list[dict[str, Any]] = []
+    for index, item in enumerate(raw, 1):
+        if not isinstance(item, dict):
+            catalog.errors.append(f"{where}: device step {index} is not a mapping")
+            continue
+        step: dict[str, Any] = {str(key): value for key, value in item.items()}
+        label = step.get("name") if isinstance(step.get("name"), str) else str(index)
+        problems = [f"`{key}` is not a device key ({_listing(_DEVICE_KEYS)})"
+                    for key in sorted(str(key) for key in step) if key not in _DEVICE_KEYS]
+        problems += [f"`{key}` is not a string" for key in ("name", "run")
+                     if not isinstance(step.get(key), str)]
+        if "working-directory" in step and not isinstance(step["working-directory"], str):
+            problems.append("`working-directory` is not a string")
+        timeout = step.get("timeout")
+        if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, int)
+                                    or timeout < 1):
+            problems.append("`timeout` is not a positive number of seconds")
+        for problem in problems:
+            catalog.errors.append(f"{where}: device step `{label}`: {problem}")
+        if not problems:
+            steps.append(step)
+    return tuple(steps)
 
 
 def _check_default_fixtures(
