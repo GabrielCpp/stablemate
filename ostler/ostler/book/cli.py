@@ -37,6 +37,7 @@ from ostler.book.journey import JourneyResult
 from ostler.book.matrix import matrix
 from ostler.book.model import Model
 from ostler.book.planner import plan
+from ostler.book.register import Settled, load as load_register, path as register_path, save as save_register, settle
 from ostler.book.runner import attempt, blocked, walk
 from ostler.book.state import Impossible
 from ostler.book.search import KINDS, cmd_explain, cmd_search
@@ -71,6 +72,10 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     run.add_argument("--only", action="append", default=[], metavar="ENDPOINT",
                      help="play only the journeys that call these endpoints, their declared cells and their input classes; "
                           "repeatable or comma-separated")
+    run.add_argument("--register", action="store_true",
+                     help="add the underspecified findings the register lacks to the service's UNDERSPECIFIED.md, and do not fail on them")
+    run.add_argument("--register-outside", action="append", default=[], metavar="ENDPOINT",
+                     help="add only the findings of endpoints outside these calls to the register; repeatable or comma-separated")
     explorer = sub.add_parser("explore", help="walk the model's state graph, then play every state, action and input class once")
     explorer.add_argument("service")
     explorer.add_argument("--depth", type=int, default=4)
@@ -417,6 +422,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             began = time.time()
             tried = play_inputs(service, surface, lambda: fresh(service, surface), only=names)
             inputs_took = time.time() - began
+        settled = settle_register(service, args, tried)
         seen = witnessed(service, surface)
         if names:
             seen = dataclasses.replace(seen, gaps=[g for g in seen.gaps if g.endpoint.__name__ in names],
@@ -456,6 +462,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     for t in tried.twins:
         if not t.ok:
             print(f"FAIL  twin {t.text}\n      {t.note}")
+    for line in known_lines(tried, settled):
+        print(line)
     for line in underspecified_lines(tried):
         print(line)
     print(twin_tally(tried))
@@ -466,7 +474,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         print(line)
     show_witness(service, seen, args.out, not partial)
     show_skips(args.environment, skips)
-    return 0 if (all(r.ok for r in results) and played.ok and tried.ok and not tried.underspecified and not (names and unmet)
+    return 0 if (all(r.ok for r in results) and played.ok and tried.ok and not tried.underspecified and not settled.stale and not (names and unmet)
                  and (partial or (not stale and not unmet and seen.complete))) else 1
 
 
@@ -672,6 +680,29 @@ def fresh(service: Service[Any], surface: Surface) -> Model:
     return service.new_model(_today(surface))
 
 
+def settle_register(service: Service[Any], args: argparse.Namespace, tried: Tried) -> Settled:
+    """Reads the service's register of underspecified fields, adds what the run was asked to add, and
+    marks the findings it holds as known."""
+    file = register_path(args.service)
+    held = load_register(file)
+    outside = None
+    if args.register or args.register_outside:
+        outside = named(service, args.register_outside)
+    settled = settle(tried, held, outside, date.today())
+    if settled.fresh:
+        save_register(file, [*held, *settled.fresh])
+        print(f"registered {len(settled.fresh)} underspecified field{'s' if len(settled.fresh) != 1 else ''} in {file}")
+    return settled
+
+
+def known_lines(tried: Tried, settled: Settled) -> list[str]:
+    out = [f"KNOWN  twin {t.text}\n      {t.values}: the model predicts the same outcome for both, the app answered {t.answers[0]} and {t.answers[1]}"
+           for t in tried.known]
+    for entry in settled.stale:
+        out.append(f"FAIL  register {entry.key}\n      the field no longer splits along {entry.dimension}, remove its register entry")
+    return out
+
+
 def underspecified_lines(tried: Tried) -> list[str]:
     """The pairs the model treats alike and the app answers apart, each a question for the story."""
     found = tried.underspecified
@@ -691,6 +722,8 @@ def twin_tally(tried: Tried) -> str:
     if tried.twins_ignored:
         bits.append(f"{tried.twins_ignored} skipped as declared indifferent")
     bits.append(f"{len(tried.underspecified)} underspecified")
+    if tried.known:
+        bits.append(f"{len(tried.known)} known")
     return "twins: " + ", ".join(bits)
 
 
@@ -739,6 +772,8 @@ def report(service: Service[Any], results: list[JourneyResult], out: str, order:
         lines.append("")
     if tried is not None and tried.twins:
         lines += ["## The twins played", "", twin_tally(tried) + ".", ""]
+        if tried.known:
+            lines += ["## Underspecified and registered", "", *(f"- {t.text}: {t.values}" for t in tried.known), ""]
         said = underspecified_lines(tried)
         if said:
             lines += ["## Underspecified", "", *said[1:], ""]

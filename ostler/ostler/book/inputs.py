@@ -439,10 +439,11 @@ class Tried:
         return {s.diverged for s in self.sent if s.diverged is not None}
 
     twins: list[Twinned] = field(default_factory=list)
+    known: list[Twinned] = field(default_factory=list)
 
     @property
     def underspecified(self) -> list[Twinned]:
-        return [t for t in self.twins if t.split]
+        return [t for t in self.twins if t.split and t not in self.known]
 
     @property
     def twins_played(self) -> int:
@@ -648,14 +649,28 @@ def _model_said(surface: Surface, model: Model, call: Endpoint) -> tuple[Any, ..
         return None
 
 
-def _app_said(surface: Surface, call: Endpoint, outcome: Outcome) -> tuple[Any, ...]:
+def _changed(before: tuple[object, ...], after: tuple[object, ...]) -> tuple[object, ...]:
+    """The rows the call made or changed and the rows it removed, so a record the world minted
+    apart from the call is on neither side."""
+    left = list(before)
+    made: list[object] = []
+    for row in after:
+        if row in left:
+            left.remove(row)
+        else:
+            made.append(row)
+    return (tuple(made), tuple(left))
+
+
+def _app_said(surface: Surface, call: Endpoint, outcome: Outcome, before: tuple[object, ...] | None = None) -> tuple[Any, ...]:
     if isinstance(outcome, Refusal):
         return ("refused", outcome.status, outcome.message)
     if not isinstance(outcome, Done):
         return ("other", str(outcome))
     reply = getattr(call, "reply", None)
     shape = reply.answer.body if reply is not None else None
-    return ("done", _blind_view(shape, _plain(tuple(outcome.view or ()))), _blind_rows(surface, _plain(tuple(outcome.rows))))
+    rows = _blind_rows(surface, _plain(tuple(outcome.rows)))
+    return ("done", _blind_view(shape, _plain(tuple(outcome.view or ()))), rows if before is None else _changed(before, rows))
 
 
 def _without(value: Any, key: str) -> Any:
@@ -685,7 +700,8 @@ def _shown(said: tuple[Any, ...]) -> str:
 def weigh(endpoint: type[Any], twin: Twin, base: Base, surface: Surface, fresh: Callable[[], Model]) -> Twinned:
     """Plays one pair. A pair the model predicts differently is not sent: the model already reasons on
     that dimension. A pair it predicts alike is sent from the base, each value from a world arranged
-    anew, and the app's two answers, with the list the watch reads afterwards, are compared."""
+    anew, and the app's two answers, with the rows the call made, changed or removed in the list the
+    watch reads, are compared."""
     found = Twinned(endpoint, twin)
     if twin.ignored:
         found.ignored = True
@@ -707,7 +723,8 @@ def weigh(endpoint: type[Any], twin: Twin, base: Base, surface: Surface, fresh: 
         for value in (twin.left, twin.right):
             model, call = base.arrange(surface, fresh)
             sent = vary(call, InputClass(twin.place, twin.name, twin.dimension, value, True))
-            said_by_app = _app_said(surface, sent, surface.perform(sent))
+            before = _blind_rows(surface, _plain(tuple(surface.rows())))
+            said_by_app = _app_said(surface, sent, surface.perform(sent), before)
             got.append(_without(said_by_app, key) if echoed else said_by_app)
     except Unhealthy:
         raise

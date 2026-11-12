@@ -197,6 +197,47 @@ def test_a_run_with_an_underspecified_pair_is_not_ok():
     assert (tried.twins_played, tried.twins_distinguished, tried.twins_ignored) == (2, 0, 0)
 
 
+class Minting(Writes):
+    """A surface whose every world holds a record minted under a name of its own, and whose write adds one row."""
+
+    def __init__(self, reading: Any) -> None:
+        super().__init__(reading)
+        self.worlds = 0
+        self.listed: tuple[object, ...] = ()
+
+    def arrange(self, surface: Any, make: Any) -> tuple[Model, Endpoint]:
+        self.worlds += 1
+        self.listed = ({"name": f"minted in world {self.worlds}"},)
+        return Keeps(DAY), Remind({"at": "2026-11-06T09:00:00+00:00"})
+
+    def rows(self) -> tuple[object, ...]:
+        return self.listed
+
+    def perform(self, step: Any) -> Done:
+        reading = self.reading(step.body_value["at"])
+        self.listed = (*self.listed, {"day": reading})
+        return Done(self.listed)
+
+
+def _minting_base(surface: Minting) -> Base:
+    call = Remind({"at": "2026-11-06T09:00:00+00:00"})
+    return Base("test", surface.arrange, Keeps(DAY), call)
+
+
+def test_two_worlds_that_differ_in_a_record_the_call_never_touched_leave_the_pair_clean():
+    surface = Minting(written_day)
+    found = weigh(Remind, _twin(Remind, "offset"), _minting_base(surface), surface, lambda: Keeps(DAY))
+    assert found.played
+    assert found.split == ""
+
+
+def test_two_worlds_that_differ_in_the_row_the_call_wrote_still_split_the_pair():
+    surface = Minting(utc_day)
+    found = weigh(Remind, _twin(Remind, "offset"), _minting_base(surface), surface, lambda: Keeps(DAY))
+    assert found.split
+    assert "2026-11-05" in found.split and "2026-11-07" in found.split
+
+
 @pytest.fixture
 def todo_server() -> Iterator:
     server = module("app").TodoServer().start()
