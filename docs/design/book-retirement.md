@@ -118,12 +118,10 @@ written, not generated.
   `exercise_book_flow.py` becomes the book run.
 - Finding: **reshape**. Agents use `ostler book` search (`ostler/book/search.py`, `index.tsv`) instead of
   `ostler search`, `trace` and `reach` over markdown.
-- Stack bring-up: **reshape**. The book lane still finds its stack through the markdown graph.
-  `stack_target` loads it to name the story's surfaces (`coder/shared/stack.py:33-34`), and
-  `ensure_stack` brings no stack up unless the graph holds a served surface (`kit/qa/runner.py:142-151`).
-  `release_copy` reads it the same way (`kit/qa/runner.py:107-109`). With `docs/services/**` gone the
-  lane would play every book against no stack. The bring-up keys on the repo's stack copy and the
-  covered services' `service.py` instead, before slice 5.
+- Stack bring-up: **exists**. `ensure_stack` brings the repo's stack copy up before it reads the
+  markdown graph (`kit/qa/runner.py`), so a book with no markdown pages still plays against its copy.
+  `stack_target` and `release_copy` try the copy first too. The graph stays only for devices and the
+  runbook fallback of a repo with no `ops/stack.yml`.
 - Removal: **new**. After both repos switch: the markdown-only ostler commands (doctor, stamp, fmt, gc,
   checks, reach, search, trace, graph, refs, scaffold and their modules, `qa/context.py` and
   `qa/compile_*` once no uncovered service is left), the `ostler-okf` skill, the markdown parts of
@@ -141,7 +139,7 @@ written, not generated.
    Done when the written book plays green and its run is priced.
 4. Stablemate's services all covered (backfill the rest), then a stablemate coder story with no markdown.
 5. Delete the client's and stablemate's `docs/services/**`, then the markdown-only tooling, with the I4
-   gate in both repos. It waits on the stack bring-up reshape in section 5.
+   gate in both repos.
 
 ## 7. Assumptions
 
