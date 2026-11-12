@@ -72,16 +72,16 @@ def _tail(text: str) -> str:
 
 
 @blueprint.node(stub=_green)
-def python_book_check(logger: logging.Logger, root: Path, service: str) -> BookGate:
-    """Run the book's check from the repo root, and keep the tail of what it printed."""
-    done = run_tool(book_command("check", book_module(service)), cwd=root, logger=logger)
+def python_book_check(logger: logging.Logger, root: Path, module: str) -> BookGate:
+    """Run the check of one of the book's modules from the repo root, and keep the tail of what it printed."""
+    done = run_tool(book_command("check", module), cwd=root, logger=logger)
     return BookGate(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()))
 
 
 @blueprint.node(stub=_green)
-def python_book_run(logger: logging.Logger, root: Path, service: str, out_dir: Path) -> BookGate:
-    """Play the book against the live app from the repo root, and keep the tail of what it printed."""
-    done = run_tool(book_command("run", book_module(service), "--out", str(out_dir)), cwd=root, logger=logger)
+def python_book_run(logger: logging.Logger, root: Path, module: str, out_dir: Path) -> BookGate:
+    """Play one of the book's modules against the live app from the repo root, and keep the tail of what it printed."""
+    done = run_tool(book_command("run", module, "--out", str(out_dir)), cwd=root, logger=logger)
     return BookGate(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()))
 
 
@@ -104,6 +104,16 @@ class WritePythonBook(BookFlow):
     @property
     def package(self) -> str:
         return f"services/{self.service}"
+
+    @property
+    def kinds(self) -> tuple[str, ...]:
+        return tuple(kind.strip() for kind in self.kind.split(",") if kind.strip())
+
+    @property
+    def modules(self) -> tuple[str, ...]:
+        """One module per surface the service is reached by. A book with one surface is its package's module."""
+        base = book_module(self.service)
+        return (base,) if len(self.kinds) <= 1 else tuple(f"{base}.{kind}" for kind in self.kinds)
 
     def start(self) -> Continue[...]:
         """Send the owner its first lap."""
@@ -138,13 +148,12 @@ class WritePythonBook(BookFlow):
     def _prompt_args(self, gate: str) -> dict[str, object]:
         return {
             "service": self.service,
-            "kind": self.kind,
+            "kind": ", ".join(self.kinds),
+            "kinds": list(self.kinds),
             "package": self.package,
-            "book_module": book_module(self.service),
+            "modules": list(self.modules),
             "source_folder": self.source_folder,
             "repo_root": self.root.as_posix(),
-            "check": f"python -m ostler.book check {book_module(self.service)}",
-            "run": f"python -m ostler.book run {book_module(self.service)}",
             "gate": gate,
         }
 
@@ -156,21 +165,25 @@ class WritePythonBook(BookFlow):
         return Continue(said, self.write, gate=gate, lap=lap).because("the operator answered")
 
     def check(self, lap: int) -> Continue[...] | Await[...]:
-        """Run the book's check. A pass plays the book, and a fail sends the owner another lap."""
-        gate = self.call(python_book_check, self.root, self.service)
-        if gate.exit_code == 0:
-            return Continue(gate, self.play, lap=lap).because("the check passes")
-        return self._judged("check", gate, lap, self.check)
+        """Run the check of each of the book's modules. A pass plays the book, and the first fail sends the owner another lap."""
+        gate = BookGate(exit_code=0)
+        for module in self.modules:
+            gate = self.call(python_book_check, self.root, module)
+            if gate.exit_code != 0:
+                return self._judged("check", module, gate, lap, self.check)
+        return Continue(gate, self.play, lap=lap).because("the check passes")
 
     def play(self, lap: int) -> Continue[...] | Await[...]:
-        """Play the book against the live app. A pass commits the book, and a fail sends the owner another lap."""
-        gate = self.call(python_book_run, self.root, self.service, self.run_dir / "book-run")
-        if gate.exit_code == 0:
-            return Continue(gate, self.render, lap=lap).because("the book plays green")
-        return self._judged("run", gate, lap, self.play)
+        """Play each of the book's modules against the live app. A pass commits the book, and the first fail sends the owner another lap."""
+        gate = BookGate(exit_code=0)
+        for module in self.modules:
+            gate = self.call(python_book_run, self.root, module, self.run_dir / "book-run" / module)
+            if gate.exit_code != 0:
+                return self._judged("run", module, gate, lap, self.play)
+        return Continue(gate, self.render, lap=lap).because("the book plays green")
 
-    def _judged(self, verb: str, gate: BookGate, lap: int, retry: Callable[..., Transition]) -> Continue[...] | Await[...]:
-        said = f"`python -m ostler.book {verb} {book_module(self.service)}` exited {gate.exit_code}:\n\n{gate.output}"
+    def _judged(self, verb: str, module: str, gate: BookGate, lap: int, retry: Callable[..., Transition]) -> Continue[...] | Await[...]:
+        said = f"`python -m ostler.book {verb} {module}` exited {gate.exit_code}:\n\n{gate.output}"
         if gate.exit_code == COULD_NOT_JUDGE:
             question = f"The book's {verb} could not judge the {self.service} book, which is the environment's side:\n\n{said}\n\nFix the environment, then answer here to {verb} again."
             return Await(self.run_dir / ENVIRONMENT_GATE, question, retry, lap=lap).because("the book could not be judged")

@@ -8,31 +8,34 @@ from typing import cast
 import pytest
 from okf_book.support import Reply, ScriptedRunner, git, run_env
 from workhorse.pyflow import Await, Continue, Done
+from workhorse import templates
 from workhorse.pyflow.engine import Engine
 
+from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.main import python_book_flow
 from workhorse_workflows.okf_book.main.python_book_flow import PythonBookOutcome, WritePythonBook
 
 WRITE = "write-python-book"
 
 
-def _flow(tmp_path: Path, replies: dict[str, Reply] | None = None) -> tuple[WritePythonBook, ScriptedRunner]:
+def _flow(tmp_path: Path, replies: dict[str, Reply] | None = None, kind: str = "cli") -> tuple[WritePythonBook, ScriptedRunner]:
     runner = ScriptedRunner(replies or {})
     env = run_env(tmp_path / "runs", runner)
     repo = tmp_path / "repo"
     repo.mkdir()
-    flow = WritePythonBook(repo_dir=str(repo), service="ledger", kind="cli", source_folder="ledger")
+    flow = WritePythonBook(repo_dir=str(repo), service="ledger", kind=kind, source_folder="ledger")
     flow._bind(Engine(env))  # pyright: ignore[reportPrivateUsage]
     return flow, runner
 
 
-def _book_exits(monkeypatch: pytest.MonkeyPatch, **codes: int) -> list[list[str]]:
+def _book_exits(monkeypatch: pytest.MonkeyPatch, red_module: str = "", **codes: int) -> list[list[str]]:
     seen: list[list[str]] = []
 
     def _run(argv: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
         seen.append(argv)
-        verb = argv[3]
-        return subprocess.CompletedProcess(argv, codes.get(verb, 0), stdout=f"{verb} said cell 7 differs", stderr="")
+        verb, module = argv[3], argv[4]
+        code = codes.get(verb, 0) if module == red_module or not red_module else 0
+        return subprocess.CompletedProcess(argv, code, stdout=f"{verb} said cell 7 differs", stderr="")
 
     monkeypatch.setattr(python_book_flow, "run_tool", _run)
     return seen
@@ -46,9 +49,30 @@ def test_the_owner_turn_names_the_package_and_the_commands_that_judge_it(tmp_pat
     assert isinstance(step, Continue) and step.state == "check"
     sent = runner.args_of(WRITE)[0]
     assert sent["package"] == "services/ledger"
-    assert sent["check"] == "python -m ostler.book check services.ledger"
-    assert sent["run"] == "python -m ostler.book run services.ledger"
+    assert sent["modules"] == ["services.ledger"]
     assert runner.chains[0][1] == "pybook:ledger"
+
+
+def test_a_service_reached_by_two_surfaces_gets_one_module_per_surface(tmp_path: Path) -> None:
+    flow, runner = _flow(tmp_path, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}}, kind="http, web")
+
+    flow.write(gate="", lap=1)
+
+    sent = runner.args_of(WRITE)[0]
+    assert sent["kinds"] == ["http", "web"]
+    assert sent["modules"] == ["services.ledger.http", "services.ledger.web"]
+
+
+def test_the_second_surface_red_sends_the_owner_another_lap_naming_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _book_exits(monkeypatch, red_module="services.ledger.web", run=1)
+    flow, _runner = _flow(tmp_path, kind="http,web")
+
+    step = flow.play(lap=1)
+
+    assert [argv[4] for argv in seen] == ["services.ledger.http", "services.ledger.web"]
+    assert seen[0][5:] == ["--out", str(flow.run_dir / "book-run" / "services.ledger.http")]
+    assert isinstance(step, Continue) and step.state == "write"
+    assert "run services.ledger.web` exited 1" in cast("str", step.params["gate"])
 
 
 def test_a_blocked_owner_waits_for_the_operator_and_hears_the_answer_next_lap(tmp_path: Path) -> None:
@@ -108,7 +132,7 @@ def test_a_green_check_plays_the_book_into_the_run_dir(tmp_path: Path, monkeypat
 
     assert isinstance(checked, Continue) and checked.state == "play"
     assert isinstance(played, Continue) and played.state == "render"
-    assert seen[1][3:] == ["run", "services.ledger", "--out", str(flow.run_dir / "book-run")]
+    assert seen[1][3:] == ["run", "services.ledger", "--out", str(flow.run_dir / "book-run" / "services.ledger")]
 
 
 def test_a_green_book_commits_only_its_package(tmp_path: Path) -> None:
@@ -128,3 +152,21 @@ def test_a_green_book_commits_only_its_package(tmp_path: Path) -> None:
     assert step.result == PythonBookOutcome(service="ledger", laps=2)
     assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == ["services/ledger/service.py"]
     assert "scratch.txt" in git(repo, "status", "--porcelain")
+
+
+def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    skill = home / ".claude/skills/ostler-book/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    skill.write_text("---\nname: ostler-book\nmetadata:\n  name: ostler-book\n---\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("AGENT_CLI", "claude")
+    flow, _runner = _flow(tmp_path, kind="http,web")
+
+    rendered = templates.render(python_book_flow.WRITE_PROMPT, flow._prompt_args(""), Path(okf_book.__file__).parent)  # pyright: ignore[reportPrivateUsage]
+
+    assert "reached by: http, web" in rendered
+    assert "`services/ledger/model/`" in rendered
+    for module in ("services.ledger.http", "services.ledger.web"):
+        for verb in ("check", "run", "index"):
+            assert f"python -m ostler.book {verb} {module}\n" in rendered

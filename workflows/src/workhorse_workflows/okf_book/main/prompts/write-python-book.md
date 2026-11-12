@@ -1,12 +1,18 @@
-Write the Python book for this repository's `{{ service }}` service, a {{ kind }} surface.
+Write the Python book for this repository's `{{ service }}` service, reached by: {{ kind }}.
 
 The book is the package `{{ package }}/` under the repository root, `{{ repo_root }}`. Write only
 there. The app's source is the repository's `{{ source_folder }}/`. Its tests, test doubles and
 fixtures are no part of the book, so read none of them.
 
-The format is the `ostler-book` skill. Load it first, then open the reference it names for a
-{{ kind }} surface, and hold the book to its bar:
+The format is the `ostler-book` skill. Load it first, then open the reference it names for each
+of those surfaces, and hold the book to its bar:
 {{ skill_command("ostler-book") }}
+{% if kinds | length > 1 %}
+
+The service is reached by more than one surface, so the book is one shared model under
+`{{ package }}/model/` and one service per surface, each at `{{ package }}/<surface>/service.py`
+with its own surface, journeys and `index.tsv`. A record or a rule lives once, in the model.
+{% endif %}
 
 `services/farrier/` is a finished book for a command-line tool. Read it for the shape of each
 file, and take nothing of farrier's own behaviour into this book.
@@ -22,13 +28,15 @@ The last lap ended on this:
 {{ gate }}
 {% endif %}
 
-You are done when both commands below exit 0, from the repository root, and `index` has
-rewritten the book's `index.tsv`:
+You are done when every `check` and `run` below exits 0, from the repository root, and each
+`index` has rewritten its `index.tsv`:
 
 ```
-{{ check }}
-{{ run }}
-python -m ostler.book index {{ book_module }}
+{% for module in modules %}
+python -m ostler.book check {{ module }}
+python -m ostler.book run {{ module }}
+python -m ostler.book index {{ module }}
+{% endfor %}
 ```
 
 A run that fails names the cell the app answered differently. Decide, from the source, whether
