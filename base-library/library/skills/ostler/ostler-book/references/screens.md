@@ -126,3 +126,23 @@ and twins for each typed input. A date also gets a pair either side of the clock
 (the rows it shows, or its refusal), the run reports it `underspecified`. A browser that
 rejects a typed value, such as text in a date input, makes the class unreachable and not a
 failure. The surface must leave the screen as it found it when `fill` raises `CannotReach`.
+
+## A mobile app is a screen book on a device
+
+A mobile book uses the same screens, components, interactions, typed inputs and recording as a web
+book. Its surface subclasses `MobileSurface`, sets `app_id`, and `self.browser` is a `Device` on an
+Android emulator or phone (`ANDROID_SERIAL` picks it). A component's `id` is the app's semantics
+identifier (a Flutter `TestId`); one without an id is found by its visible text or hint.
+
+| `Device` verb | does |
+| --- | --- |
+| `clear()`, `launch()`, `forward(port)` | wipe the app's data, start it, forward a device port |
+| `press`, `fill`, `value`, `text`, `disabled`, `visible`, `wait_for` | as on the web |
+| `heard(prefixes)`, `await_heard(prefixes, present)` | a snackbar or label by its first words |
+| `await_value(component, text)` | a field comes to hold a value |
+
+`fill` types with `adb input text`, so text outside printable ASCII is a `CannotReach`. It reads
+the field back and types again, up to three times, when a keystroke was lost. The video comes from
+`adb screenrecord`. The app's backstage (an auth account, a bridge that signs the device in) lives
+in the book's `backstage.py`, and a surface stays short.
+
