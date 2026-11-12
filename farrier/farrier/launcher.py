@@ -267,8 +267,7 @@ agent-check: ## Verify generated agent adapters are up to date (no writes)
 \t\t&& echo "✓ agent files are up to date" \\
 \t\t|| {{ echo "↑ files above would be rewritten by 'make agent-install'"; exit 1; }}
 
-farrier-run-hook: ## Run the pre-commit checks farrier and the installed skills own
-	@$(FARRIER) --repo "$(CURDIR)" --check --skip-unresolvable $(FARRIER_LIB_ARG)
+farrier-run-hook: ## Run the pre-commit checks the installed skills own
 	@if [ -x "$(CURDIR)/.agents/hooks/pre-commit" ]; then "$(CURDIR)/.agents/hooks/pre-commit"; fi
 """
 

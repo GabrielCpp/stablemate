@@ -633,24 +633,6 @@ def _split_selection(config: ConfigLike, home_config: HomeConfig) -> tuple[list[
     return repo_skills, user_only
 
 
-def user_gates(config: ConfigLike, home_config: HomeConfig, home: Path) -> list[Path]:
-    """The installed script of each hook the user library adds to this repo.
-
-    A skill the repo selects already runs from the repo's own runner, and one it
-    excludes stays off. A hook whose script is not installed yet is left out.
-    """
-    _, user_only = _split_selection(config, home_config)
-    gates: dict[tuple[str, str], Path] = {}
-    for harness, skills in user_only.items():
-        folder = home / user_harness_dir(harness) / "skills"
-        for source in skills:
-            for hook in selected_hooks("", [source]):
-                gate = folder / hook.skill / hook.run
-                if gate.is_file():
-                    gates.setdefault((hook.skill, hook.run), gate)
-    return list(gates.values())
-
-
 @dataclass(frozen=True)
 class ListedCheck:
     """A commit check resolved to the command that runs it."""

@@ -50,7 +50,7 @@ class RunInstall(Action[InstallArgs, Repo]):
             write(s, ".agents/agents.mk", "agent-install"),
             write(s, ".agents/agents-context.json", '"prefix": "acme"'),
             write(s, ".agents/agents-context.claude.json", '"prefix": "acme"'),
-            write(s, ".agents/hooks/pre-commit", "farrier hooks run-user"),
+            write(s, ".agents/hooks/pre-commit", "No installed skill declares a pre-commit hook."),
             write(s, ".githooks/pre-commit", "make farrier-run-hook"),
             write(s, ".gitignore", ".agents/agents.mk"),
             write(s, "Makefile", "-include .agents/agents.mk"),
