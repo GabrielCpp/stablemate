@@ -1,0 +1,6 @@
+from .a_runs_life_on_the_page import ARunsLifeOnThePage
+from .narrowing_the_list import NarrowingTheList
+from .the_attendant_is_switched_on_the_page import TheAttendantIsSwitchedOnThePage
+from .the_list_is_ordered import TheListIsOrdered
+
+ALL = (ARunsLifeOnThePage, TheListIsOrdered, NarrowingTheList, TheAttendantIsSwitchedOnThePage)

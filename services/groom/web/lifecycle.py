@@ -1,0 +1,74 @@
+"""The lifecycle matrices of the page: one for a run as the list shows it, one for the
+attendant switch in the settings pane."""
+
+from __future__ import annotations
+
+from datetime import date
+from typing import Callable, cast
+
+from ostler.book import Axes, Impossible, Scene
+
+from ..fixtures import Push, Query, Settings, blocked, finished, running
+from ..model.records import Run
+from ..model.state import Dashboard
+from .interactions import FilterTheList, OpenRuns, OpenSettings, ReportExit, ReportGate, ReportProgress, SwitchTheAttendant
+
+TODAY = date(2026, 11, 4)
+
+
+def run_of(model: Dashboard) -> Run | None:
+    return next(iter(model.runs), None)
+
+
+def _on_run(build: Callable[[Push], object], none: Callable[[], object] | None = None) -> Callable[[Dashboard], object]:
+    def aim(model: Dashboard) -> object:
+        run = run_of(model)
+        if run is not None:
+            return build(Push.of(run))
+        return none() if none else Impossible("no run is on the list to aim at")
+
+    return aim
+
+
+RUN_SCENES = (
+    Scene("(none)", "the list holds no run of ours", lambda today: ()),
+    Scene("running", "the run reported progress and holds no gate", lambda today: (ReportProgress(running(current_node="build")),)),
+    Scene("blocked", "the run waits on one gate", lambda today: (ReportGate(blocked()),)),
+    Scene("finished", "the run exited with a code", lambda today: (ReportExit(finished(2)),)),
+)
+
+RUN_ACTIONS: dict[str, Callable[[Dashboard], object]] = {
+    "report progress": _on_run(lambda p: ReportProgress(p), lambda: ReportProgress(running())),
+    "report progress in a node": _on_run(lambda p: ReportProgress(p.but(current_node="test")), lambda: ReportProgress(running(current_node="test"))),
+    "report a gate": _on_run(lambda p: ReportGate(p.but(file_path="gates/approve.md", question="Ship it?")), lambda: ReportGate(blocked())),
+    "report a second gate": _on_run(lambda p: ReportGate(p.but(file_path="gates/review.md", question="Review done?")), lambda: ReportGate(blocked(path="gates/review.md"))),
+    "report an exit": _on_run(lambda p: ReportExit(p.but(exit_code=1)), lambda: ReportExit(finished(1))),
+    "report a clean exit": _on_run(lambda p: ReportExit(p.but(exit_code=0)), lambda: ReportExit(finished(0))),
+    "filter by its name": _on_run(lambda p: FilterTheList(Query(q=p.name)), lambda: FilterTheList(Query())),
+    "clear the filter": lambda m: FilterTheList(Query()),
+}
+
+
+def run_state(model: Dashboard) -> str:
+    run = run_of(model)
+    return run.lifecycle if run else "(none)"
+
+
+ATTEND_SCENES = (
+    Scene("Off", "no attendant answers the gates", lambda today: ()),
+    Scene("Headless", "an attendant answers the gates", lambda today: (SwitchTheAttendant(Settings(enabled=True)),)),
+)
+
+ATTEND_ACTIONS: dict[str, Callable[[Dashboard], object]] = {
+    "turn on": lambda m: SwitchTheAttendant(Settings(enabled=True)),
+    "turn off": lambda m: SwitchTheAttendant(Settings(enabled=False)),
+    "open settings": lambda m: OpenSettings(),
+    "return to the runs": lambda m: OpenRuns(),
+}
+
+MATRICES = (
+    Axes[Dashboard]("run", TODAY, RUN_SCENES, RUN_ACTIONS, run_state,
+                    state_of=lambda m, r: "blocked" if cast(Run, r).gates else cast(Run, r).state, entities=lambda m: m.runs),
+    Axes[Dashboard]("attendant", TODAY, ATTEND_SCENES, ATTEND_ACTIONS, lambda m: type(m).__name__,
+                    state_of=lambda m, _: type(m).__name__),
+)
