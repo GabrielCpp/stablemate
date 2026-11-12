@@ -54,9 +54,12 @@ def strip_known_suffix(path: Path) -> str:
     return path.stem
 
 
+OWNER_FILES = ("SKILL.md", "POLICY.md")
+
+
 def source_id(root: Path, path: Path) -> str:
     rel = path.relative_to(root)
-    if rel.name == "SKILL.md":
+    if rel.name in OWNER_FILES:
         parts = [kebab(part) for part in rel.parent.parts]
     else:
         parts = [kebab(part) for part in rel.with_name(strip_known_suffix(rel)).parts]

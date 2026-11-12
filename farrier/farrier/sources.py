@@ -14,7 +14,7 @@ from farrier.layers import (
     layer_dirs,
 )
 from farrier.manifest import ConfigLike, as_manifest
-from farrier.naming import compose_name, kebab, normalize_pattern, source_id
+from farrier.naming import OWNER_FILES, compose_name, kebab, normalize_pattern, source_id
 from farrier.selection_errors import unknown_selection_error
 
 
@@ -55,6 +55,8 @@ def public_name(prefix: str, source: Source) -> str:
 
 ASSET_DIRS = ("references", "scripts")
 
+POLICY_ROOT = ".agents/policies"
+
 _BYPRODUCT_DIRS = frozenset({"__pycache__"})
 
 
@@ -71,19 +73,19 @@ class Asset:
 
 
 def asset_owner(root: Path, path: Path) -> Path | None:
-    """The skill directory owning *path*, or None if *path* is not a bundled asset."""
+    """The skill or policy directory owning *path*, or None if *path* is not a bundled asset."""
     rel = path.relative_to(root)
     for index, part in enumerate(rel.parts[:-1]):
         if part in ASSET_DIRS:
             owner = root.joinpath(*rel.parts[:index])
-            if (owner / "SKILL.md").is_file():
+            if any((owner / name).is_file() for name in OWNER_FILES):
                 return owner
     return None
 
 
 def skill_assets(source: Source) -> list[Asset]:
     """Every file bundled under *source*'s ``references/``/``scripts/``, sorted."""
-    if source.path.name != "SKILL.md":
+    if source.path.name not in OWNER_FILES:
         return []
     skill_dir = source.path.parent
     assets: list[Asset] = []
@@ -100,13 +102,13 @@ def skill_assets(source: Source) -> list[Asset]:
     return sorted(assets, key=lambda asset: asset.rel)
 
 
-_NOT_SOURCES = frozenset({"SKILL.md", "README.md", "AGENTS.md", "CLAUDE.md"})
+_NOT_SOURCES = frozenset({*OWNER_FILES, "README.md", "AGENTS.md", "CLAUDE.md"})
 
 
 def load_sources(root: Path, kind: str, layer: Layer | None = None) -> list[Source]:
     sources: list[Source] = []
     for path in sorted(
-        list(root.rglob("SKILL.md"))
+        [p for name in OWNER_FILES for p in root.rglob(name)]
         + [p for p in root.rglob("*.md") if p.name not in _NOT_SOURCES]
     ):
         if asset_owner(root, path) is not None:

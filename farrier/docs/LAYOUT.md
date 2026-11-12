@@ -17,7 +17,7 @@ overlay whose content takes precedence. Farrier never bundles content in its whe
   library/
     skills/<group>/<name>/SKILL.md   # skills — frontmatter + markdown
     prompts/<group>/<name>.md        # prompts — optional frontmatter + markdown
-    policies/<group>/<name>.md       # policies — aggregated text, never installed
+    policies/<group>/<name>/POLICY.md  # policies — aggregated text, plus optional scripts/
   packs/<pack>.yml             # named bundles a repo opts into via `agents.yml`
   scaffolds/*.yml              # scaffold definitions applied via `farrier scaffold <id>`
 ```
@@ -136,12 +136,18 @@ verbatim (their own frontmatter intact).
 A **policy** is standing repo text that is only ever *aggregated* — into a generated
 `AGENTS.md`, through a `localInstructions` mapping. It is never installed as a skill or
 a command, never appears under `.claude/skills/`, is never an `instruction_file()`
-target, and is never returned by a tag query. Policies are flat files under a group,
-like prompts:
+target, and is never returned by a tag query. A policy is a folder under a group,
+like a skill:
 
 ```
-library/policies/stablemate/stablemate-repo.md   → policy name `stablemate-repo`
+library/policies/stablemate/stablemate-repo/POLICY.md   → policy name `stablemate-repo`
+library/policies/git/commit-and-push/scripts/           → installed to .agents/policies/commit-and-push/scripts/
 ```
+
+A policy may bundle a `scripts/` folder beside its `POLICY.md`. Farrier installs those
+scripts, with a generated copy of the policy text, under `.agents/policies/<name>/`. A
+script a policy names in `commit_checks:` runs from that installed copy. A flat
+`<group>/<name>.md` file still loads as a policy with no scripts.
 
 The reason the kind exists is the double charge. A skill folded into an always-loaded
 `AGENTS.md` pays twice: its whole body is resident every turn *and* its `name` plus

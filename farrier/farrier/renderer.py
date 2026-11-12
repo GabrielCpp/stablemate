@@ -40,6 +40,7 @@ from farrier.naming import compose_name, repo_prefix, yaml_quote
 from farrier.ownership import is_generated
 from farrier.selection_errors import unknown_selection_error
 from farrier.sources import (
+    POLICY_ROOT,
     Asset,
     Source,
     build_lookup,
@@ -843,6 +844,24 @@ class Renderer:
             + [self.instruction_skill(name) for name in skill_names]
             + [self.prompt_source(name) for name in prompt_names or []]
         )
+
+    def policy_bundles(self, names: Sequence[str]) -> dict[Path, Rendered]:
+        """Each named policy that bundles scripts, installed under ``.agents/policies``."""
+        outputs: dict[Path, Rendered] = {}
+        for source in dict.fromkeys(self.policy_source(name) for name in names):
+            scripts = [asset for asset in skill_assets(source) if asset.is_script]
+            if not scripts:
+                continue
+            folder = self.repo / POLICY_ROOT / library_name(source)
+            head = folder / "POLICY.md"
+            _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
+            banner = root_banner(library_source_path(source), self.dest_rel(head))
+            outputs[head] = Rendered(banner + body.strip() + "\n")
+            for asset in scripts:
+                outputs[folder / asset.rel] = Rendered(
+                    read_asset_text(asset), executable=True, verbatim=True
+                )
+        return outputs
 
     def instruction_part(self, source: Source, target: str, output_path: Path) -> str:
         """One source's body as it lands in a generated AGENTS.md."""

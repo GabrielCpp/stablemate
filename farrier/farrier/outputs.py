@@ -12,7 +12,7 @@ from farrier.agents import Agents, parse_agents
 from farrier.drift import REGENERATE, Drifted, report
 from farrier.frontmatter import frontmatter_mapping
 from farrier.home_entries import tool_server_names
-from farrier.local_instructions import LocalInstruction
+from farrier.local_instructions import LocalInstruction, local_instructions
 from farrier.hook_managers import (
     HOOK_RUNNER,
     LEFTHOOK_INCLUDE,
@@ -61,7 +61,9 @@ from farrier.skill_hooks import CommitCheck, SkillHook, checks_for, hooks_for
 from farrier.home_agents import agent_files, agent_names
 from farrier.home_guards import BRIDGE_FILE, guard_files, guard_names
 from farrier.sources import (
+    POLICY_ROOT,
     Source,
+    build_policy_lookup,
     collect_selection,
     library_name,
     load_layered_sources,
@@ -80,6 +82,7 @@ from farrier.user_library import (
 
 MANAGED_DIRS = [
     ".agents/skills",
+    POLICY_ROOT,
     ".agents/prompts",
     ".agents/hooks",
     ".claude/skills",
@@ -456,6 +459,11 @@ def render_expected(
                     policy_names,
                 )
 
+    outputs.update(
+        renderer.policy_bundles(
+            [name for instruction in instructions for name in instruction.policies]
+        )
+    )
     renderer.check_resolved()
 
     manager = configured_manager(config, repo)
@@ -661,6 +669,17 @@ def _listed(check: CommitCheck, folders: Sequence[Path], source: Source) -> List
     return ListedCheck(check.owner, check_command(script), check.budget)
 
 
+def selected_policies(config: ConfigLike) -> list[Source]:
+    """The library policies *config*'s localInstructions name, each once."""
+    lookup = build_policy_lookup(load_layered_sources("policy", "library", "policies"))
+    keys = [
+        name.replace(".", "-")
+        for instruction in local_instructions(config)
+        for name in instruction.policies
+    ]
+    return list(dict.fromkeys(lookup[key] for key in keys if key in lookup))
+
+
 def commit_checks(
     repo: Path,
     config: ConfigLike,
@@ -668,7 +687,7 @@ def commit_checks(
     home: Path,
     prefix: str,
 ) -> list[ListedCheck]:
-    """Every commit check that applies to *repo*: its own skills' first, then the user library's.
+    """Every commit check that applies to *repo*: its skills', its policies', then the user library's.
 
     A check runs from its installed copy, or from the library when nothing is installed yet.
     """
@@ -678,6 +697,10 @@ def commit_checks(
     for source in repo_skills:
         for check in _source_checks(prefix, source):
             listed.setdefault((check.owner, check.run), _listed(check, repo_folders, source))
+    policy_folders = [repo / POLICY_ROOT]
+    for source in selected_policies(config):
+        for check in _source_checks("", source):
+            listed.setdefault((check.owner, check.run), _listed(check, policy_folders, source))
     for harness, skills in user_only.items():
         folders = [home / user_harness_dir(harness) / "skills"]
         for source in skills:
