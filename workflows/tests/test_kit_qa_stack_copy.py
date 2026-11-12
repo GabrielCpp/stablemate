@@ -178,3 +178,18 @@ def test_a_plan_run_removes_the_files_it_left_and_keeps_the_rest(
     assert (repo / "agent-wrote.txt").is_file()
     assert (repo / "build" / "out.txt").is_file()
     assert (spec / "qa" / "qa-run.ndjson").is_file()
+
+
+def test_a_book_with_no_markdown_pages_brings_its_stack_copy_up(
+    repo: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    leased: list[str] = []
+
+    def up(_root: Path, **kw: object) -> QaOutcome:
+        leased.append(str(kw["lease"]))
+        return QaOutcome(True, "stack brought up and healthy at http://localhost:49200",
+                         {"entry_url": "http://localhost:49200"})
+
+    monkeypatch.setattr(leases, "up", up)
+    status = runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1")
+    assert (status.ready, status.entry_url, leased) == ("yes", "http://localhost:49200", ["story-1"])

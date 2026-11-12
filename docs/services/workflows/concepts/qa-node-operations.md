@@ -27,7 +27,7 @@ credential boundary.
 - verify: count(subject="accepted QA runner statuses", equals=4)
 - semantics: any other runner status text becomes `invalid`
 - verify: json_path(path="$.status", equals="invalid")
-- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::RUN_STATUSES` @2a1c25a10940
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::RUN_STATUSES` @9cd55b587534
 
 ### TEARDOWN_STATES
 - type: `dict[str, Literal["yes", "no", "skipped"]]`
@@ -43,7 +43,7 @@ credential boundary.
 - required: true
 - semantics: maximum time allowed for one runbook secret-mint recipe before the QA run is blocked
 - verify: json_path(path="$.SECRET_MINT_TIMEOUT_S", equals=60.0)
-- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::SECRET_MINT_TIMEOUT_S` @2a1c25a10940
+- code: `workflows/src/workhorse_workflows/kit/qa/runner.py::SECRET_MINT_TIMEOUT_S` @9cd55b587534
 
 ### QA_SCRATCH_DIRNAME
 - type: `str`
@@ -105,11 +105,11 @@ credential boundary.
 - sig: `ensure_stack(logger: logging.Logger, repo_dir: str = "", near: str = "", lease: str = "") -> StackStatus`
 - does: resolves the docs root and loads the book's graph
 - verify: count(subject="QA docs root resolutions", equals=1)
-- does: returns `ready="unneeded"` when the book serves no screen or server surface and therefore needs no stack
+- does: returns `ready="unneeded"` when no stack copy covers the place and the book serves no screen or server surface
 - verify: json_path(path="$.ready", equals="unneeded")
 - does: returns `ready="none"` when the book serves a screen or server but declares no stack runbook, or when several stack runbooks across environments leave bring-up with nothing to choose
 - verify: json_path(path="$.ready", equals="none")
-- does: brings up the run's own copy of the stack when the lease names one, and reports its entry URL
+- does: brings up the run's own copy of the stack first, wherever a stack copy covers the place, with or without markdown pages, and reports its entry URL
 - verify: count(subject="QA stack copy bring-ups", equals=1)
 - does: asks the declared stack lifecycle to adopt or bring up the stack when a manifest exists
 - verify: count(subject="QA stack lifecycle ensures", equals=1)
