@@ -54,13 +54,25 @@ const SHAPES = {
   apply_patch: (args) => ["apply_patch", { command: args.patchText }],
 }
 
+const REWRITES = {
+  bash: (args, updated) => {
+    if (typeof updated.command === "string") args.command = updated.command
+    if (typeof updated.timeout === "number") args.timeout = updated.timeout
+  },
+}
+
 function verdict(code, stdout, stderr) {
-  if (code === 2) return stderr.trim() || "Denied by a guard."
+  if (code === 2) return { deny: stderr.trim() || "Denied by a guard." }
   try {
     const decision = JSON.parse(stdout).hookSpecificOutput
-    if (decision?.permissionDecision === "deny") return decision.permissionDecisionReason || "Denied by a guard."
+    if (decision?.permissionDecision === "deny") {
+      return { deny: decision.permissionDecisionReason || "Denied by a guard." }
+    }
+    if (decision?.updatedInput && typeof decision.updatedInput === "object") {
+      return { updated: decision.updatedInput }
+    }
   } catch {}
-  return null
+  return {}
 }
 
 function ask(guard, call) {
@@ -70,7 +82,7 @@ function ask(guard, call) {
     let stderr = ""
     child.stdout.on("data", (chunk) => (stdout += chunk))
     child.stderr.on("data", (chunk) => (stderr += chunk))
-    child.on("error", () => resolve(null))
+    child.on("error", () => resolve({}))
     child.on("close", (code) => resolve(verdict(code, stdout, stderr)))
     child.stdin.on("error", () => {})
     child.stdin.end(call)
@@ -81,18 +93,19 @@ export const FarrierGuards = async ({ directory }) => ({
   "tool.execute.before": async (input, output) => {
     const shape = SHAPES[input.tool]
     if (!shape) return
-    const [tool_name, tool_input] = shape(output.args)
-    const call = JSON.stringify({
-      hook_event_name: "PreToolUse",
-      session_id: input.sessionID,
-      cwd: directory,
-      tool_name,
-      tool_input,
-    })
     for (const guard of GUARDS) {
       if (!guard.tools.includes(input.tool)) continue
-      const reason = await ask(guard, call)
-      if (reason) throw new Error(reason)
+      const [tool_name, tool_input] = shape(output.args)
+      const call = JSON.stringify({
+        hook_event_name: "PreToolUse",
+        session_id: input.sessionID,
+        cwd: directory,
+        tool_name,
+        tool_input,
+      })
+      const result = await ask(guard, call)
+      if (result.deny) throw new Error(result.deny)
+      if (result.updated && REWRITES[input.tool]) REWRITES[input.tool](output.args, result.updated)
     }
   },
 })
@@ -209,9 +222,13 @@ def selected_guards(home: HomeConfig) -> dict[str, list[Guard]]:
     return selected
 
 
-def installed_command(guard: Guard, home: Path) -> str:
-    """The record's command, with ``{dir}`` as the folder the guard installs into."""
-    return guard.command.replace("{dir}", shlex.quote(str(home / GUARD_HOME / guard.name)))
+def installed_command(guard: Guard, home: Path, harness: str) -> str:
+    """The record's command, with ``{dir}`` as the folder the guard installs into.
+
+    ``{harness}`` becomes the harness that runs it, for a guard whose answer differs by harness.
+    """
+    folder = shlex.quote(str(home / GUARD_HOME / guard.name))
+    return guard.command.replace("{dir}", folder).replace("{harness}", harness)
 
 
 def watched_tools(guard: Guard, harness: str) -> str:
@@ -228,7 +245,10 @@ def watched_tools(guard: Guard, harness: str) -> str:
 
 def guard_group(guard: Guard, harness: str, home: Path) -> dict[str, Any]:
     """The hook group that runs *guard* on *harness*, in the shape both harnesses read."""
-    handler: dict[str, Any] = {"type": "command", "command": installed_command(guard, home)}
+    handler: dict[str, Any] = {
+        "type": "command",
+        "command": installed_command(guard, home, harness),
+    }
     if guard.timeout is not None:
         handler["timeout"] = guard.timeout
     if guard.status:
@@ -248,7 +268,7 @@ def guard_entries(config: HomeConfig, home: Path) -> list[Entry]:
                     Entry(
                         GUARD_DIALECTS[harness].rel,
                         GUARD_CONTAINER,
-                        installed_command(guard, home),
+                        installed_command(guard, home, harness),
                         guard_group(guard, harness, home),
                     )
                 )
@@ -270,7 +290,7 @@ def bridge_text(guards: list[Guard], harness: str, home: Path) -> str:
     table = [
         {
             "name": guard.name,
-            "command": installed_command(guard, home),
+            "command": installed_command(guard, home, harness),
             "tools": watched_tools(guard, harness).split("|"),
             "timeout": guard.timeout or BRIDGE_DEFAULT_SECONDS,
         }
@@ -323,7 +343,7 @@ def pending_guards(config: HomeConfig, home: Path) -> list[str]:
     state = read_entry_file(home / CODEX_CONFIG).entries("hooks").get("state", {})
     pending: list[str] = []
     for guard in selected_guards(config).get("codex", []):
-        key = keys.get(installed_command(guard, home))
+        key = keys.get(installed_command(guard, home, "codex"))
         if key is not None and not state.get(key, {}).get("trusted_hash"):
             pending.append(guard.name)
     return pending

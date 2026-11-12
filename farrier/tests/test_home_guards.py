@@ -25,7 +25,7 @@ def library(tmp_path: Path) -> Path:
     (root / "packs").mkdir(parents=True)
     records = {
         "comments": "command: python3 {dir}/check.py --hook\nwatches: [edit, shell]\ntimeout: 10\nstatus: Checking\n",
-        "secrets": "command: /bin/guard --hook\nwatches: [read, search, shell]\n",
+        "secrets": "command: /bin/guard --hook {harness}\nwatches: [read, search, shell]\n",
         "timeouts": 'command: "{dir}/check.sh"\nwatches: [shell]\nnot_on: [codex]\n',
     }
     for name, record in records.items():
@@ -99,6 +99,17 @@ def test_each_harness_gets_its_own_tool_names_from_one_record(
             "statusMessage": "Checking",
         }
     ]
+
+
+def test_each_harness_reads_its_own_name_where_the_record_asks_for_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: Path, library: Path
+) -> None:
+    configure(tmp_path, monkeypatch, BOTH)
+
+    assert run(home, library) == 0
+
+    assert claude_groups(home)[1]["hooks"][0]["command"] == "/bin/guard --hook claude"
+    assert codex_groups(home)[1]["hooks"][0]["command"] == "/bin/guard --hook codex"
 
 
 def test_settings_outside_the_guards_survive_and_a_guard_joins_the_others(
@@ -218,7 +229,7 @@ def test_a_foreign_group_running_the_same_command_stops_the_install(
     home: Path,
     library: Path,
 ) -> None:
-    foreign = {"matcher": "Read", "hooks": [{"type": "command", "command": "/bin/guard --hook"}]}
+    foreign = {"matcher": "Read", "hooks": [{"type": "command", "command": "/bin/guard --hook codex"}]}
     (home / ".codex" / "hooks.json").write_text(
         json.dumps({"hooks": {"PreToolUse": [foreign]}}), encoding="utf-8"
     )

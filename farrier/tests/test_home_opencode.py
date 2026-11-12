@@ -24,7 +24,7 @@ const hooks = await FarrierGuards({ directory: "/project" })
 const [tool, args] = JSON.parse(process.argv[3])
 try {
   await hooks["tool.execute.before"]({ tool, sessionID: "s" }, { args })
-  console.log("allowed")
+  console.log(process.argv[4] ? JSON.stringify(args) : "allowed")
 } catch (error) {
   console.log("denied: " + error.message)
 }
@@ -82,13 +82,13 @@ def bridge(home: Path) -> Path:
     return home / ".config/opencode/plugins/farrier-guards.ts"
 
 
-def call_bridge(home: Path, tool: str, args: dict) -> str:
+def call_bridge(home: Path, tool: str, args: dict, *, show_args: bool = False) -> str:
     """What the installed plugin decides on one tool call, run as OpenCode's runtime would load it."""
     assert NODE is not None
     module = home.parent / "bridge.mjs"
     module.write_text(bridge(home).read_text(encoding="utf-8"), encoding="utf-8")
     done = subprocess.run(
-        [NODE, "--input-type=module", "-e", CALL_BRIDGE, "bridge", str(module), json.dumps([tool, args])],
+        [NODE, "--input-type=module", "-e", CALL_BRIDGE, "bridge", str(module), json.dumps([tool, args]), *(["args"] if show_args else [])],
         capture_output=True,
         text=True,
         check=True,
@@ -204,6 +204,31 @@ def test_the_bridge_hands_a_guard_the_call_in_claude_shape(
     assert call["tool_input"][field] == value
     assert call["hook_event_name"] == "PreToolUse"
     assert call["cwd"] == "/project"
+
+
+REWRITE = (
+    "cat >/dev/null; printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\","
+    "\"updatedInput\":{\"command\":\"checked && ls\",\"timeout\":9000}}}'\n"
+)
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node to load the plugin")
+def test_a_guard_that_rewrites_the_shell_call_changes_what_runs(home: Path, library: Path) -> None:
+    add_guard(library, "stub", REWRITE, watches="[shell]")
+    assert install(home, library, '[user_library.opencode]\nhooks = ["stub"]\n') == 0
+    ran = json.loads(call_bridge(home, "bash", {"command": "ls", "timeout": 5}, show_args=True))
+    assert ran == {"command": "checked && ls", "timeout": 9000}
+
+
+@pytest.mark.skipif(NODE is None, reason="needs node to load the plugin")
+def test_the_next_guard_sees_the_rewritten_call(home: Path, library: Path) -> None:
+    seen = home.parent / "seen.json"
+    add_guard(library, "a-rewrite", REWRITE, watches="[shell]")
+    add_guard(library, "b-watch", f"cat > {seen}\n", watches="[shell]")
+    config = '[user_library.opencode]\nhooks = ["a-rewrite", "b-watch"]\n'
+    assert install(home, library, config) == 0
+    assert call_bridge(home, "bash", {"command": "ls"}) == "allowed"
+    assert json.loads(seen.read_text(encoding="utf-8"))["tool_input"]["command"] == "checked && ls"
 
 
 @pytest.mark.skipif(NODE is None, reason="needs node to load the plugin")
