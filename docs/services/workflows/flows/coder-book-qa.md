@@ -101,7 +101,7 @@ bound and a silence limit. The turn reads the story, its plan and its review ans
 It plays the calls its claims bear on before any edit to prove the base, brings each covered book up
 to the story's claims and plays the calls again. When the book's shape keeps a claim out of reach, it
 restructures the book instead of listing the claim as unreached, and it lists as unreached only a claim
-no call or backstage step can observe. It edits only under `services/<name>/`. It is
+no call or backstage step can observe. It leaves the register `UNDERSPECIFIED.md` to the product owner. It edits only under `services/<name>/`. It is
 granted only the repositories the plan touches, and the stack's environment is scoped around the turn.
 It reads no other QA's plan, report or evidence.
 
@@ -124,10 +124,10 @@ continues to `check` with the calls it named, the findings it listed and the cla
    tail of the output.
 3. It then lists the paths the pass changed under `services/<name>/`, uncommitted against HEAD. When
    any of them is a shared part of the book, it plays the whole book with `ostler book run
-   services.<name> --copy <lease>`. Otherwise it plays the service's named calls with `ostler book
+   services.<name> --register-outside <calls> --copy <lease>`, so an underspecified field of a call the seat did not name goes to the book's `UNDERSPECIFIED.md` register as known and a finding on a named call fails the play. Otherwise it plays the service's named calls with `ostler book
    run services.<name> --only <calls> --copy <lease>`. A shared part is anything under the service's
    folder except a journey file the pass added, `index.tsv`, `DISAGREEMENTS.md`, `WALLS.md`,
-   `VERIFIED` and the files under `decisions/`. An edit to an existing journey file is shared. A
+   `VERIFIED`, `UNDERSPECIFIED.md` and the files under `decisions/`. An edit to an existing journey file is shared. A
    replay with no seat turn changed nothing, so it plays the named calls. The flow logs which scope it
    played and the shared paths that decided it. The play has no time bound, so a whole run is not cut
    short. It writes its output under the spec directory's `qa/book` folder. Exit 3 means the
@@ -152,9 +152,9 @@ with the output as its report, and a green replay over a recorded finding ends `
 
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::covered_services` @5794657c4d83
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_check` @08d492ed6b13
-- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @c328d89377e6
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @fa5f0fa335d5
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_scope` @cecc862b6af7
-- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::shared_book_paths` @859ee9c370a0
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::shared_book_paths` @71c782a9a780
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::commit_service_book` @c3c45d5dacbc
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::read_book_record` @d7c92c6f59ff
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::write_book_record` @509765d04b59

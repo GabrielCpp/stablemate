@@ -29,9 +29,9 @@ The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is
 - code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @428f20f96d84
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::covered_services` @5794657c4d83
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_check` @08d492ed6b13
-- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @c328d89377e6
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_run` @fa5f0fa335d5
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::book_scope` @cecc862b6af7
-- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::shared_book_paths` @859ee9c370a0
+- code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::shared_book_paths` @71c782a9a780
 - code: `workflows/src/workhorse_workflows/coder/shared/schemas/book_qa.py::BookScope` @7db9fc18b84e
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::commit_service_book` @c3c45d5dacbc
 - code: `workflows/src/workhorse_workflows/coder/book_qa/nodes.py::defer_book_judged` @8c461bc019e7
@@ -50,6 +50,8 @@ The flow is [Coder book QA flow](../flows/coder-book-qa.md). The seat's reply is
 - rule: the seat reads the story, its plan and its review answers, then the diff, and never another QA's plan, report or evidence
 - rule: the base is played before the seat edits, and a red base or an unhealthy environment makes the seat report `blocked` and repair nothing
 - rule: the run plays the calls the story touches when the pass changed no shared part of the book, and the whole book of that service when it did, because an edit to the model, the fixtures, the backstage or an existing journey can move a call the pass never named, while a new journey, the index, the notes and the decisions state or record one claim no other call reads
+- rule: the whole-book play registers an underspecified field of a call the seat did not name in the book's `UNDERSPECIFIED.md` as known and fails on one of a named call, because a field the story never touched is the product owner's to answer and the seat's turn is spent on the story's own calls
+- rule: the seat never edits an entry of the register and never declares `ignores` on a field outside the story's calls, and the lane commits the register with the book
 - rule: the seat restructures the book when the book's shape keeps a claim out of reach, and lists a claim as unreached only when no call or backstage step can observe it, because the book's structure is the last author's best guess and a book that could only grow would never state the claim its own shape blocks
 - rule: the book reaches the stack copy the run leased without naming it, because the play takes the lease as `--copy` and the book names a host as the run's copy
 - rule: the scenario lane writes `qa-deferrals.json` before every build of the QA context packet, one entry per service a clean book record names, and ostler marks every required, not yet deferred obligation under `docs/services/<name>/` as kind `book`, so the marks hold on an invalid packet and on a seat rebuild, and a service the book judged is not judged again and the backlog never files the deferral as a missing check
