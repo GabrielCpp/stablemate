@@ -23,7 +23,9 @@ from ostler import path as path_mod
 from ostler.model import load as load_graph
 from ostler.routes import arrived_at, is_comparable, vet_routes
 from ostler.untyped import JsonValue
+from ostler.qa import android
 from ostler.qa import book_fixtures as qa_book_fixtures
+from ostler.qa.android import ScreenRecording
 from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, CheckEvidence, CommandEnding, attribute
 from ostler.qa import fixtures as qa_fixtures
 from ostler.qa import tools as qa_tools
@@ -1198,22 +1200,23 @@ class DeviceRecorder:
         self.started = False
         self.start_offset = 0
         self.path = session.qa_dir / "videos" / f"{target_id}.mp4"
-        self._stop_event = threading.Event()
-        self._started_event = threading.Event()
+        self._screen = ScreenRecording(self.path.parent, target_id, session.run_id, session.offset_ms)
+        self._stop_event = self._screen.stop_event
+        self._started_event = self._screen.started_event
         self._thread: threading.Thread | None = None
-        self._thread_error = ""
-        self._segments: list[tuple[Path, int, int]] = []
-        self._remote_segments: list[tuple[str, Path, int, int]] = []
+        self._segments: list[tuple[Path, int, int]] = self._screen.segments
+        self._remote_segments = self._screen.remote_segments
+
+    @property
+    def _thread_error(self) -> str:
+        return self._screen.error
 
     def start(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if self.target.get("device", "android") == "android":
             if shutil.which("adb") is None:
                 raise DriverBlocked("adb is required for Android recording")
-            state = subprocess.run(
-                ["adb", "get-state"], capture_output=True, text=True, timeout=10
-            )
-            if state.returncode or state.stdout.strip() != "device":
+            if not android.ready():
                 raise DriverBlocked("no available Android device for recording")
             self._thread = threading.Thread(target=self._android_loop, daemon=True)
             self._thread.start()
@@ -1223,7 +1226,8 @@ class DeviceRecorder:
                 raise DriverBlocked("xcrun is required for iOS simulator recording")
             self.process = subprocess.Popen(["xcrun", "simctl", "io", "booted", "recordVideo", str(self.path)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(0.5)
-        if self._thread_error or self.process is None or self.process.poll() is not None:
+        recorder = self._screen.process if self._thread is not None else self.process
+        if self._thread_error or recorder is None or recorder.poll() is not None:
             raise DriverBlocked("device recorder failed to start")
         self.started = True
         self.start_offset = self.session.offset_ms()
@@ -1288,67 +1292,8 @@ class DeviceRecorder:
             }
         )
 
-    def _await_device_release(self, remote: str) -> None:
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            held = subprocess.run(
-                ["adb", "shell", "pgrep", "-f", remote], capture_output=True, timeout=10
-            )
-            if held.returncode:
-                return
-            time.sleep(0.2)
-
     def _android_loop(self) -> None:
-        index = 0
-        try:
-            while not self._stop_event.is_set():
-                index += 1
-                remote = f"/sdcard/ostler-{self.session.run_id}-{index:03d}.mp4"
-                path = self.session.qa_dir / "videos" / f"{self.target_id}-{index:03d}.mp4"
-                start = self.session.offset_ms()
-                self.process = subprocess.Popen(
-                    [
-                        "adb",
-                        "shell",
-                        "screenrecord",
-                        "--time-limit",
-                        "170",
-                        remote,
-                    ],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                self._started_event.set()
-                while self.process.poll() is None and not self._stop_event.wait(0.2):
-                    pass
-                if self.process.poll() is None:
-                    subprocess.run(
-                        ["adb", "shell", "pkill", "-INT", "-f", remote],
-                        capture_output=True,
-                        timeout=10,
-                    )
-                try:
-                    self.process.wait(timeout=15)
-                except subprocess.TimeoutExpired:
-                    self.process.kill()
-                    self.process.wait()
-                self._await_device_release(remote)
-                self._remote_segments.append(
-                    (remote, path, start, self.session.offset_ms())
-                )
-            for remote, path, start, end in self._remote_segments:
-                pull = subprocess.run(
-                    ["adb", "pull", remote, str(path)], capture_output=True, timeout=30
-                )
-                subprocess.run(
-                    ["adb", "shell", "rm", remote], capture_output=True, timeout=10
-                )
-                if pull.returncode or not path.is_file() or not path.stat().st_size:
-                    raise RuntimeError("could not pull Android recording segment")
-                self._segments.append((path, start, end))
-        except Exception as exc:  # noqa: BLE001
-            self._thread_error = str(exc)
-            self._started_event.set()
+        self._screen.loop()
 
 
 def create_driver(

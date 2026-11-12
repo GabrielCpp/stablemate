@@ -22,6 +22,8 @@ from ostler.book.journey import Check, Given, Journey, Listed, Refused, Relates,
 from ostler.book.inputs import Diverges
 from ostler.book.model import Defect, Model, Rule
 from ostler.book.pagesurface import PageSurface
+from ostler.book.mobilesurface import MobileSurface
+from ostler.book.device import Device
 from ostler.book.outcome import CannotReach, Done, Outcome, Refusal, Refusals, Unreachable
 from ostler.book.httpsurface import HttpSurface
 from ostler.book.rpc import STATUS, GrpcClient, GrpcSurface, Rpc
@@ -35,7 +37,7 @@ from ostler.book.witness import Because, Unseen
 
 __all__ = [
     "Actor", "Arrange", "Backstage", "CannotArrange", "Environment", "SOLE",
-    "Browser", "PageSurface", "Received", "answer", "refusal", "request",
+    "Browser", "Device", "MobileSurface", "PageSurface", "Received", "answer", "refusal", "request",
     "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Fixture", "Heard", "Index", "MoveToday", "Select",
     "Show", "State", "Total", "Transaction", "Unique", "Update",
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",

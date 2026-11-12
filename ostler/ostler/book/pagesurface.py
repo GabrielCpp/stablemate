@@ -23,7 +23,11 @@ class PageSurface:
     def __init__(self, environment: Environment, screens: tuple[type[Screen], ...], lang: str = "en"):
         self.screens = screens
         self.lang = lang
-        self.browser = Browser(environment.address(self.host), lang)
+        self.browser = self.drive(environment, lang)
+
+    def drive(self, environment: Environment, lang: str) -> Any:
+        """What the surface drives: a browser on the host's pages. A mobile surface drives a device instead."""
+        return Browser(environment.address(self.host), lang)
 
     def start(self) -> None:
         self.browser.start()
