@@ -165,22 +165,16 @@ adopted a workflow gate. Its only nonzero result is an unreadable or invalid `ag
 
 ### hooks
 
-The hook-wiring behaviour is implemented by `_run_hooks_install`, `_run_hooks_list` and
-`_run_hooks_run_user`, the three actions of the `hooks` command group. The generated runner calls
-`run-user` at every commit, so a person rarely types it.
+The hook-wiring behaviour is implemented by `_run_hooks_install` and `_run_hooks_list`, the two
+actions of the `hooks` command group.
 
-- usage: `farrier hooks install [--repo DIR] [--dry-run]`, `farrier hooks list [--repo DIR]` and
-  `farrier hooks run-user [--repo DIR]`
+- usage: `farrier hooks install [--repo DIR] [--dry-run]` and `farrier hooks list [--repo DIR]`
 - flags:
-  - `--repo <dir>` — repository root whose hook manager is wired or listed, or the repository the
-    commit lands in for `run-user`. Default: current working directory.
+  - `--repo <dir>` — repository root whose hook manager is wired or listed. Default: current
+    working directory.
   - `--dry-run` — `install` only. Print every action the verb would take, each line prefixed
     `[dry-run] `, and write nothing.
 - does:
-  - run nothing from `run-user` on a machine with no user library
-    - run: invoke(argv=["hooks", "run-user", "--repo", "c923"], env={"HOME": "c923/home", "STABLEMATE_CONFIG": "c923/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c923/pipx-stub-bin:$PATH"})
-    - verify: omits(subject="stderr", text="Skipped the user library's hooks")
-    - fixture: empty-dir dir=c923
   - read `<repo>/agents.yml` when it exists, otherwise use an empty configuration
     - run: invoke(argv=["hooks", "install", "--repo", "c181"], env={"HOME": "c181/home", "STABLEMATE_CONFIG": "c181/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c181/pipx-stub-bin:$PATH"})
     - verify: omits(subject="stderr", text="no agents.yml in")
@@ -263,16 +257,137 @@ The hook-wiring behaviour is implemented by `_run_hooks_install`, `_run_hooks_li
     - run: invoke(argv=["hooks", "install", "--repo", "c198"], env={"HOME": "c198/home", "STABLEMATE_CONFIG": "c198/config.toml", "STABLEMATE_FETCH_BASE": "0", "PATH": "c198/pipx-stub-bin:$PATH"})
     - verify: exit_status(code=1)
     - fixture: bad-manager-repo dir=c198
-- code: `farrier/farrier/cli.py::_run_hooks_install` @4a070cb3a89d
-- code: `farrier/farrier/cli.py::_run_hooks_list` @8f8e0c831a96
-- code: `farrier/farrier/cli.py::_run_hooks_run_user` @9ea0a08bcdee
-- code: `farrier/farrier/hook_managers.py::run_user_hooks` @9174f5c22105
-- code: `farrier/farrier/outputs.py::user_gates` @99cdc8ab244a
+- code: `farrier/farrier/cli.py::_run_hooks_install` @1c25f0f48620
+- code: `farrier/farrier/cli.py::_run_hooks_list` @2cc48a2ec247
 - detail: [hook manager wiring](concepts/hook-manager-wiring.md)
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_wires_a_repo_whose_packs_do_not_resolve`
 - tests: `farrier/tests/test_hook_managers.py::test_the_hooks_command_falls_back_to_detection_with_no_agents_yml`
 
-A legacy whole-file Farrier hook is replaced before the new fenced entry is written. For the `githooks` manager, `hooks install` sets Git `core.hooksPath` to `.githooks`. When a library resolves, it also regenerates `.agents/hooks/pre-commit` from the hooks the selected skills declare. None of the three leaves a trace that a stdout, stderr or working-tree check can name.
+A legacy whole-file Farrier hook is replaced before the new fenced entry is written. For the `githooks` manager, `hooks install` sets Git `core.hooksPath` to `.githooks`. When a library resolves, it also regenerates `.agents/hooks/pre-commit` and `.agents/hooks/commit-msg` from the hooks the selected skills and policies declare for each stage. None of the three leaves a trace that a stdout, stderr or working-tree check can name.
+
+### checks
+
+`checks` lists the commit checks an agent's commit runs in a repository. The
+[agent commit checks](concepts/agent-commit-checks.md) guard reads this listing and runs each line
+before the commit.
+
+- usage: `farrier checks [--repo DIR]`
+- flags:
+  - `--repo <dir>` — repository root the commit lands in. Default: current working directory.
+- does:
+  - print one `<command><TAB><budget>` line per check, the budget in seconds
+    - run: invoke(argv=["checks", "--repo", "c960"], env={"HOME": "c960/home", "STABLEMATE_CONFIG": "c960/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c960/lib"})
+    - verify: stdout(matches="\\A(?:[^\\t\\n]+\\t[0-9.]+\\n){3}\\Z")
+    - fixture: commit-check-repo dir=c960
+  - print `farrier sync --repo <repo>` with a budget of `3` first when the repository has an
+    `agents.yml`
+    - run: invoke(argv=["checks", "--repo", "c961"], env={"HOME": "c961/home", "STABLEMATE_CONFIG": "c961/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c961/lib"})
+    - verify: stdout(matches="\\A\\S*farrier sync --repo \\S+\\t3\\n")
+    - fixture: commit-check-repo dir=c961
+  - list the `commit_checks` of the repository's selected skills, then of its selected policies,
+    then of the user library's skills the repository neither selects nor excludes
+    - run: invoke(argv=["checks", "--repo", "c962"], env={"HOME": "c962/home", "STABLEMATE_CONFIG": "c962/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c962/lib"})
+    - verify: stdout(matches="check\\.py\\t1\\.5\\n[^\\n]*gate\\.py\\t2")
+    - fixture: commit-check-repo dir=c962
+  - list each `(owner, run)` pair once
+    - run: invoke(argv=["checks", "--repo", "c963"], env={"HOME": "c963/home", "STABLEMATE_CONFIG": "c963/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c963/lib"})
+    - verify: stdout(matches="\\A(?![\\s\\S]*gate\\.py[\\s\\S]*gate\\.py)")
+    - fixture: commit-check-repo dir=c963
+  - point each command at the installed copy of its script, or at the library source when nothing
+    is installed yet
+    - run: invoke(argv=["checks", "--repo", "c964"], env={"HOME": "c964/home", "STABLEMATE_CONFIG": "c964/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c964/lib"})
+    - verify: stdout(matches="\\.claude/skills/acme-checked/scripts/check\\.py\\t1\\.5")
+    - fixture: installed-commit-check-repo dir=c964
+  - run a `.py` script through `python3`
+    - run: invoke(argv=["checks", "--repo", "c965"], env={"HOME": "c965/home", "STABLEMATE_CONFIG": "c965/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c965/lib"})
+    - verify: stdout(matches="(?m)^python3 \\S+/scripts/gate\\.py\\t")
+    - fixture: commit-check-repo dir=c965
+  - print nothing when no library resolves
+    - run: invoke(argv=["checks", "--repo", "c966"], env={"HOME": "c966/home", "STABLEMATE_CONFIG": "c966/config.toml", "STABLEMATE_FETCH_BASE": "0"})
+    - verify: stdout(matches="\\A\\Z")
+    - fixture: commit-check-repo dir=c966
+- errors:
+  - print `Listed no commit checks: <reason>` on stderr when the configuration or the library
+    cannot be read
+    - run: invoke(argv=["checks", "--repo", "c967"], env={"HOME": "c967/home", "STABLEMATE_CONFIG": "c967/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c967/lib"})
+    - verify: stderr(text="Listed no commit checks:")
+    - fixture: broken-agents-yml dir=c967
+- exits:
+  - return `0` in every case, so a repository farrier cannot read lets an agent's commit through
+    - run: invoke(argv=["checks", "--repo", "c968"], env={"HOME": "c968/home", "STABLEMATE_CONFIG": "c968/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c968/lib"})
+    - verify: exit_status(code=0)
+    - fixture: broken-agents-yml dir=c968
+- code: `farrier/farrier/cli.py::_run_checks` @a3f609dc4085
+- code: `farrier/farrier/outputs.py::commit_checks` @4cdcc3e17a62
+- detail: [agent commit checks](concepts/agent-commit-checks.md)
+- tests: `farrier/tests/test_commit_checks.py::test_checks_list_the_library_script_before_install`
+- tests: `farrier/tests/test_commit_checks.py::test_checks_prefer_the_installed_script`
+- tests: `farrier/tests/test_commit_checks.py::test_checks_in_a_repo_without_agents_yml_list_nothing`
+- tests: `farrier/tests/test_commit_checks.py::test_checks_in_a_repo_farrier_cannot_resolve_list_nothing`
+
+### sync
+
+`sync` is the drift check an agent's commit runs first. It repairs the drift it finds, so an
+agent never stops to ask what to do about a stale generated file.
+
+- usage: `farrier sync [--repo DIR] [PATH...]`
+- flags:
+  - `--repo <dir>` — repository root the commit lands in. Default: current working directory.
+  - `PATH...` — the paths the commit names. Their presence means the commit is limited to them.
+- does:
+  - pass in silence when the generated files match what render expects
+    - run: invoke(argv=["sync", "--repo", "c970"], env={"HOME": "c970/home", "STABLEMATE_CONFIG": "c970/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c970/lib"})
+    - verify: stderr(matches="\\A\\Z")
+    - fixture: committed-commit-check-repo dir=c970
+  - reinstall the generated files on drift
+    - run: invoke(argv=["sync", "--repo", "c971"], env={"HOME": "c971/home", "STABLEMATE_CONFIG": "c971/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c971/lib"})
+    - verify: contents(subject="c971/.claude/skills/acme-checked/SKILL.md", matches="\\A(?![\\s\\S]*hand edit)")
+    - fixture: drifted-commit-check-repo dir=c971
+  - print `Staged <n> regenerated agent files` when the commit names no paths
+    - run: invoke(argv=["sync", "--repo", "c972"], env={"HOME": "c972/home", "STABLEMATE_CONFIG": "c972/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c972/lib"})
+    - verify: stderr(text="Staged 1 regenerated agent files")
+    - fixture: drifted-commit-check-repo dir=c972
+  - list every path the reinstall touched under `Regenerated the drifted agent files. Add these
+    paths to the commit and commit again:` when the commit names paths
+    - run: invoke(argv=["sync", "--repo", "c973", "notes.txt"], env={"HOME": "c973/home", "STABLEMATE_CONFIG": "c973/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c973/lib"})
+    - verify: stderr(matches="commit again:\\n  \\.claude/skills/acme-checked/SKILL\\.md\\n")
+    - fixture: drifted-commit-check-repo dir=c973
+- errors:
+  - print `Skipped the generated-file check: <reason>` on stderr when the configuration or the
+    library cannot be read
+    - run: invoke(argv=["sync", "--repo", "c974"], env={"HOME": "c974/home", "STABLEMATE_CONFIG": "c974/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c974/lib"})
+    - verify: stderr(text="Skipped the generated-file check:")
+    - fixture: broken-agents-yml dir=c974
+- exits:
+  - return `0` when the repository has no `agents.yml`
+    - run: invoke(argv=["sync", "--repo", "c975/docs"], env={"HOME": "c975/home", "STABLEMATE_CONFIG": "c975/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c975/lib"})
+    - verify: exit_status(code=0)
+    - fixture: commit-check-repo dir=c975
+  - return `0` when the configuration or the library cannot be read
+    - run: invoke(argv=["sync", "--repo", "c976"], env={"HOME": "c976/home", "STABLEMATE_CONFIG": "c976/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c976/lib"})
+    - verify: exit_status(code=0)
+    - fixture: broken-agents-yml dir=c976
+  - return `1` when the commit names paths and the reinstall touched a file
+    - run: invoke(argv=["sync", "--repo", "c977", "notes.txt"], env={"HOME": "c977/home", "STABLEMATE_CONFIG": "c977/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c977/lib"})
+    - verify: exit_status(code=1)
+    - fixture: drifted-commit-check-repo dir=c977
+  - return `0` otherwise
+    - run: invoke(argv=["sync", "--repo", "c978"], env={"HOME": "c978/home", "STABLEMATE_CONFIG": "c978/config.toml", "STABLEMATE_FETCH_BASE": "0", "FARRIER_LIBRARY_DIR": "c978/lib"})
+    - verify: exit_status(code=0)
+    - fixture: drifted-commit-check-repo dir=c978
+- code: `farrier/farrier/cli.py::_run_sync` @a7b19eb72fb4
+- code: `farrier/farrier/sync.py::sync` @e18ce8b0bcac
+- detail: [agent commit checks](concepts/agent-commit-checks.md)
+- tests: `farrier/tests/test_sync.py::test_a_clean_tree_passes_in_silence`
+- tests: `farrier/tests/test_sync.py::test_drift_is_reinstalled_and_staged`
+- tests: `farrier/tests/test_sync.py::test_drift_under_named_paths_is_listed_and_refused`
+- tests: `farrier/tests/test_sync.py::test_a_dirty_unrelated_file_is_left_unstaged`
+- tests: `farrier/tests/test_sync.py::test_a_repo_without_agents_yml_passes`
+
+When the commit names no paths, `sync` stages every path the reinstall touched, so the regenerated
+files ride along with the commit. When the commit names paths, it stages nothing. A changed file
+the reinstall did not touch stays unstaged in both cases. Git keeps the staged set in a binary
+index, so no stdout, stderr or file check can name it.
 
 ### worktrees
 - usage: `farrier worktrees [PATH...] [--apply] [--idle-days N]`
