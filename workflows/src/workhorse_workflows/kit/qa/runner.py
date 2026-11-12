@@ -153,8 +153,8 @@ def ensure_stack(
         if not copied.ok:
             return _copy_status(copied)
         devices = runbook.bring_up_devices(
-            graph, near=near_path, address_book=str(copied.data.get("address_book", "")),
-            logger=logger)
+            graph, near=near_path,
+            env=leases.run_env(root, lease, near_path, holder=os.getpid()), logger=logger)
         if devices and devices[-1].get("ready") != "yes":
             last = devices[-1]
             return StackStatus(

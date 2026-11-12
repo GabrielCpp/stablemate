@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import re
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -634,15 +634,15 @@ def bring_up_stacks(manifests: list[dict[str, Any]], *, repo_root: str,
 _SERVED_BY_COPY = ("entry_url", "health_path", "identity")
 
 
-def bring_up_devices(graph: Graph, *, near: Path | None = None, address_book: str = "",
+def bring_up_devices(graph: Graph, *, near: Path | None = None,
+                     env: Mapping[str, str] | None = None,
                      logger: logging.Logger | None = None) -> list[dict[str, Any]]:
-    """Boot the device and install the app for each book whose `stack.yml` declares `device:` steps."""
+    """Boot the device and install the app for each book whose `stack.yml` declares `device:` steps, each step run with the copy's *env*."""
     root = system_root(graph)
     manifests = _device_manifests(root, near) or _runbook_device_manifests(graph, near)
     if not manifests:
         return []
-    env = {addresses.BOOK_ENV: address_book} if address_book else {}
-    with addresses.leased(env):
+    with addresses.leased(env or {}):
         return bring_up_stacks(manifests, repo_root=str(root), logger=logger)
 
 

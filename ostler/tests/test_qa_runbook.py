@@ -1039,7 +1039,8 @@ def test_a_copy_served_backend_leaves_a_mobile_runbook_only_its_device_steps(
 
     monkeypatch.setattr(stack_mod, "boot_app", forbidden)
     monkeypatch.setattr(stack_mod, "health_probe", forbidden)
-    results = rb.bring_up_devices(model.load(tmp_path), address_book="/copy/addresses.json")
+    results = rb.bring_up_devices(model.load(tmp_path),
+                                  env={"STABLEMATE_ADDRESS_BOOK": "/copy/addresses.json"})
     assert [r["ready"] for r in results] == ["yes"]
     assert (tmp_path / "booted.marker").is_file()
     assert (tmp_path / "installed.marker").read_text().strip() == "/copy/addresses.json"
@@ -1107,7 +1108,7 @@ def _device_book(root: Path, book: str) -> None:
         "    run: touch booted.marker\n"
         "    timeout: 30\n"
         "  - name: install\n"
-        "    run: echo \"$STABLEMATE_ADDRESS_BOOK\" > installed.marker\n"
+        "    run: echo \"$STABLEMATE_LEASE $STABLEMATE_ADDRESS_BOOK\" > installed.marker\n"
         "    working-directory: app\n", encoding="utf-8")
     (root / "app").mkdir(exist_ok=True)
 
@@ -1122,10 +1123,12 @@ def test_a_book_declaring_device_steps_boots_and_installs_from_its_stack_file(
 
     monkeypatch.setattr(stack_mod, "boot_app", forbidden)
     monkeypatch.setattr(stack_mod, "health_probe", forbidden)
-    results = rb.bring_up_devices(model.load(tmp_path), address_book="/copy/addresses.json")
+    results = rb.bring_up_devices(model.load(tmp_path), env={
+        "STABLEMATE_LEASE": "story-1", "STABLEMATE_ADDRESS_BOOK": "/copy/addresses.json"})
     assert [(r["source"], r["ready"]) for r in results] == [("app", "yes")]
     assert (tmp_path / "booted.marker").is_file()
-    assert (tmp_path / "app" / "installed.marker").read_text().strip() == "/copy/addresses.json"
+    assert (tmp_path / "app" / "installed.marker").read_text().strip() == (
+        "story-1 /copy/addresses.json")
 
 
 def test_device_steps_near_another_book_still_come_up(tmp_path: Path) -> None:
