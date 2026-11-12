@@ -140,9 +140,8 @@ read-only: author never creates an inventory or registers a mockup outside its s
 
 Removing the last story does not silently strand scope. Its plan must also remove the last
 seeds; once both resulting sets are empty, the epic and its milestone/queue references
-are deleted. The complete behavior is recorded in the [epic edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/services/workflows/flows/author-epic-edit.md)
-and [story edit](https://github.com/GabrielCpp/stablemate/blob/main/docs/services/workflows/flows/author-story-edit.md)
-flows.
+are deleted. The complete behavior is recorded in the epic edit and story edit flows of the workflows book under
+[`services/workflows/`](../services/workflows/).
 
 ## Coder documentation convergence
 

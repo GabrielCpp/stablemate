@@ -9,12 +9,12 @@ than exiting, so the run keeps running. The answer travels over the run's own
 workhorse control socket and the run wakes at once. The gate file stays the durable
 record, and the fallback channel when nothing is listening.
 
-![groom's run list with a blocked coder run selected: the gate question rendered on the right, an answer typed, ready to send](../docs/services/groom/gui/screenshots/operator-answers-blocked-gate-answer-typed.png)
+![groom's run list with a blocked coder run selected: the gate question rendered on the right, an answer typed, ready to send](../docs/assets/groom/operator-answers-blocked-gate-answer-typed.png)
 
 Beyond the gates, the same dashboard is the fleet's telemetry reader — every run's
 spans, per-node timings and error status, filterable without leaving the browser:
 
-![The telemetry view: one run's spans with started/node/duration/status columns, two of them flagged ERROR](../docs/services/groom/gui/screenshots/groom-dashboard-telemetry.png)
+![The telemetry view: one run's spans with started/node/duration/status columns, two of them flagged ERROR](../docs/assets/groom/groom-dashboard-telemetry.png)
 
 ## How it works
 
@@ -438,5 +438,4 @@ complete one.
 Those commands, the schema and its one footgun, and worked SQL are in
 [docs/STORE.md](docs/STORE.md).
 
-See `docs/services/groom/` at the repo root for the full design — groom's own OKF book,
-queryable with `ostler graph --surface groom`.
+See `services/groom/` at the repo root for the full design, groom's own book.
