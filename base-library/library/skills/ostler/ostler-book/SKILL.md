@@ -1,7 +1,7 @@
 ---
 name: ostler-book
 description: "Write a service's book, the executable Python model of one HTTP or gRPC service that ostler replays against the running app: from its source or from a story, updating it for a commit or a coworker's shipped routes, settling a finding of check, explore or run, a gRPC service and the accounts and refusals services share, a state another service makes (an outside event), and recording what the book cannot see or the app gets wrong. Covers the model of records and states, endpoints, lifecycle matrices, fixtures, journeys and the standing-account world every cell runs in. A web or mobile app is a screen book, written with screens and interactions in place of endpoints. Load when writing or repairing anything under a book's services/<name>/ package, when a check, explore or run finding needs fixing, or when backfilling routes a coworker shipped."
-applyTo: "**/services/*/model/**/*.py, **/services/*/endpoints/**/*.py, **/services/*/fixtures/**/*.py, **/services/*/journeys/**/*.py, **/services/*/service.py, **/services/*/screens/**/*.py, **/services/*/interactions.py, **/services/*/surface.py"
+applyTo: "**/services/*/model/**/*.py, **/services/*/endpoints/**/*.py, **/services/*/fixtures/**/*.py, **/services/*/journeys/**/*.py, **/services/*/service.py, **/services/*/*/service.py, **/services/*/screens/**/*.py, **/services/*/interactions.py, **/services/*/surface.py"
 tags: [standards, docs]
 ---
 
@@ -18,7 +18,7 @@ package is `__init__.py`, which lists every name a book may use; this skill says
 meant. A question the skill and the examples do not answer goes in the report under "what the
 format could not express".
 
-This release covers HTTP, gRPC, web and mobile books.
+This release covers HTTP, gRPC, web, mobile and command-line books.
 
 ## The package
 
@@ -50,6 +50,13 @@ open: it covers `Screen`, components found by role and accessible name, `Interac
 
 A command-line tool is written with [references/commands.md](references/commands.md) open: it covers
 `Command`, the argv template, exits, the sandbox, the file watch and what the run compares.
+
+A service reached by more than one surface, say an API and the web app over it, keeps one book.
+The model lives once, in `services/<name>/model/`, because a record does not change with the
+surface that reaches it. Each surface gets its own `services/<name>/<surface>/service.py`, with
+its own surface, endpoints or screens, journeys and `index.tsv`, and ostler loads it as
+`services.<name>.<surface>`. A rule two surfaces enforce is one `Rule`, and each surface shows
+its refusal in its own words.
 
 ## Adding a route
 
