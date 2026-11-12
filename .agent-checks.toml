@@ -1,2 +1,16 @@
 [check-skills]
 skills = "base-library/library/skills"
+
+[[check-clones.coincidence]]
+files = ["services/workflows/model/files.py", "services/farrier/model/files.py"]
+reasons = [
+  "the workflows book model records the files a sandbox holds and cites the scaffold and pyflow run it mirrors, so it changes with the workflows watch list",
+  "the farrier book model records the files a repository holds and cites the outputs writer it mirrors, so it changes with farrier's watch list",
+]
+
+[[check-clones.coincidence]]
+files = ["services/workflows/model/state.py", "services/farrier/model/state.py"]
+reasons = [
+  "the workflows state is a workspace whose stages follow the scaffold and skill install of a workflows directory",
+  "the farrier state is a repository whose stages follow farrier's install and selection of agents.yml",
+]
