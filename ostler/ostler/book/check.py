@@ -320,8 +320,10 @@ def secret_faults(service: Service[Any], name: str | None) -> list[Finding]:
 
 
 def cmd_check(service: Service[Any], args: argparse.Namespace) -> int:
+    indexed: list[Finding] = []
+    attempt(indexed, "index", lambda: indexed.extend(index_faults(service, args.service)) or "done")
     found = check(service, args.service, args.app)
     attempt(found, "secrets", lambda: found.extend(secret_faults(service, args.env)) or "done")
-    attempt(found, "index", lambda: found.extend(index_faults(service, args.service)) or "done")
+    found.extend(indexed)
     report(found)
     return 1 if found else 0

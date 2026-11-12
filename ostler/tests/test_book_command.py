@@ -273,6 +273,13 @@ def test_the_farrier_book_checks_clean():
     assert done.stdout.strip().endswith("check: 0 findings")
 
 
+@pytest.mark.parametrize("module", ["services.groom.http", "services.groom.web"])
+def test_a_book_whose_fixtures_mint_names_checks_clean_against_its_index(module: str):
+    done = _book(["check", module])
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "index differed" not in done.stdout
+
+
 def test_the_farrier_book_runs_green_against_the_current_farrier(tmp_path: Path):
     done = _book(["run", "services.farrier", "--out", str(tmp_path / "out")])
     assert done.returncode == 0, done.stdout + done.stderr
