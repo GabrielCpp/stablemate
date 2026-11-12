@@ -6,13 +6,10 @@ from typing import cast
 
 import pytest
 from okf_book.main.tally import TALLY
-from okf_book.support import ScriptedRunner, bound
+from okf_book.support import ScriptedRunner, bound, run_env
 from pydantic import ValidationError
 from workhorse import templates
-from workhorse.artifacts import ArtifactWriter
-from workhorse.config_run import RunConfig
 from workhorse.pyflow.driver import drive
-from workhorse.pyflow.engine import RunEnv
 from workhorse.testing import make_git_repo
 
 from workhorse_workflows import okf_book
@@ -22,7 +19,7 @@ from workhorse_workflows.okf_book.main.nodes.writer_request import QaTool, write
 from workhorse_workflows.okf_book.main.write_book_flow import WRITE_PROMPT, WriteBook
 from workhorse_workflows.okf_book.shared.blockers import read_blockers
 from workhorse_workflows.okf_book.shared.source_repo import SourceRepo
-from workhorse_workflows.okf_book.workflow import OkfBook, workflow
+from workhorse_workflows.okf_book.workflow import OkfBook
 
 CONTRACT = "proto/ledger"
 GRPC = Surface(service="ledger", kind=SurfaceKind.GRPC, entry="ledger", contract=CONTRACT)
@@ -137,15 +134,7 @@ def test_a_grpc_render_does_not_carry_the_http_route_sentence(tmp_path: Path) ->
 
 def _add_dirs(repo: Path, tmp_path: Path, surface: Surface, source_folder: str) -> list[str]:
     runner = ScriptedRunner({"write-book": lambda _args: {}})
-    writer = ArtifactWriter("okf-book", tmp_path / "runs", run_id="t0")
-    env = RunEnv(
-        writer=writer,
-        workflow_dir=Path(okf_book.__file__).parent,
-        session_id_path=writer.run_dir / ".session_id",
-        config=RunConfig(),
-        nodes=workflow.nodes,
-        agent_runner=runner,
-    )
+    env = run_env(tmp_path / "runs", runner)
     flow = WriteBook(repo_dir=str(repo), parent_records_dir=str(repo), surface=surface, source_folder=source_folder, book_folder=f"docs/services/{surface.service}")
     _ = cast("object", drive(flow, env))
     [node] = runner.nodes

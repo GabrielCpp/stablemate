@@ -23,18 +23,22 @@ FIX_COMMIT_NODE = "fix-refused-commit"
 
 Reply = Callable[[dict[str, object]], dict[str, object]]
 
-def bound(book: OkfBook) -> OkfBook:
-    """The book bound to a run with no agent turn scripted, so a test may call one of its states directly."""
-    writer = ArtifactWriter("okf-book", Path(book.parent_records_dir) / "runs", run_id="t0")
-    env = RunEnv(
+def run_env(runs_dir: Path, runner: AgentRunner) -> RunEnv:
+    """An okf-book run under `runs_dir` whose agent turns go to `runner`."""
+    writer = ArtifactWriter("okf-book", runs_dir, run_id="t0")
+    return RunEnv(
         writer=writer,
         workflow_dir=Path(okf_book.__file__).parent,
         session_id_path=writer.run_dir / ".session_id",
         config=RunConfig(),
         nodes=workflow.nodes,
-        agent_runner=ScriptedRunner({}),
+        agent_runner=runner,
     )
-    book._bind(Engine(env))  # pyright: ignore[reportPrivateUsage]
+
+
+def bound(book: OkfBook) -> OkfBook:
+    """The book bound to a run with no agent turn scripted, so a test may call one of its states directly."""
+    book._bind(Engine(run_env(Path(book.parent_records_dir) / "runs", ScriptedRunner({}))))  # pyright: ignore[reportPrivateUsage]
     return book
 
 

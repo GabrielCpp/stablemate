@@ -5,15 +5,16 @@ import pytest
 from workhorse.pyflow.graph import registry_graphs, state_graph
 from workhorse.pyflow.preflight import preflight
 
-from workhorse_workflows.okf_book.main import exercise_book_flow, reground_book_flow, write_book_flow
+from workhorse_workflows.okf_book.main import exercise_book_flow, python_book_flow, reground_book_flow, write_book_flow
 from workhorse_workflows.okf_book.workflow import OkfBook, workflow
 
 @pytest.mark.parametrize(
     "machine",
-    [OkfBook, exercise_book_flow.ExerciseBook, reground_book_flow.RegroundBook, write_book_flow.WriteBook],
+    [OkfBook, exercise_book_flow.ExerciseBook, reground_book_flow.RegroundBook, write_book_flow.WriteBook, python_book_flow.WritePythonBook],
 )
 def test_every_transition_says_why(
-    machine: type[OkfBook] | type[exercise_book_flow.ExerciseBook] | type[reground_book_flow.RegroundBook] | type[write_book_flow.WriteBook],
+    machine: type[OkfBook] | type[exercise_book_flow.ExerciseBook] | type[reground_book_flow.RegroundBook] | type[write_book_flow.WriteBook]
+    | type[python_book_flow.WritePythonBook],
 ) -> None:
     edges = [edge for node in state_graph(machine).states for edge in node.edges]
     assert edges
