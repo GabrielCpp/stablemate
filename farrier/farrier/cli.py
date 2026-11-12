@@ -109,6 +109,7 @@ from farrier.scaffolds import (
     resolve_scaffold_params,
     substitute_scaffold_path,
 )
+from farrier.sync import SYNC_BUDGET, sync, sync_command
 from farrier.sources import (
     collect_selection,
     library_source_path,
@@ -949,6 +950,22 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repository root the commit lands in (default: cwd)",
     )
 
+    sync_p = sub.add_parser(
+        "sync",
+        help="Reinstall drifted generated files and stage them, as an agent commit check",
+    )
+    sync_p.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root the commit lands in (default: cwd)",
+    )
+    sync_p.add_argument(
+        "paths",
+        nargs="*",
+        help="The paths the commit names; drift then fails instead of being staged",
+    )
+
     worktrees_p = sub.add_parser(
         "worktrees",
         help="List the linked worktrees that are safe to remove, and remove them with --apply",
@@ -1054,9 +1071,36 @@ def _run_checks(args: argparse.Namespace) -> int:
     except SystemExit as exc:
         print(f"Listed no commit checks: {exc}", file=sys.stderr)
         return 0
+    if config_file is not None:
+        print(f"{sync_command(repo)}\t{SYNC_BUDGET:g}")
     for check in checks:
         print(f"{check.command}\t{check.budget:g}")
     return 0
+
+
+def _run_sync(args: argparse.Namespace) -> int:
+    """`farrier sync` — the drift check every agent commit runs first."""
+    repo = args.repo.resolve()
+    config_path = locate_manifest(repo)
+    if config_path is None:
+        return 0
+    try:
+        _load_library(None, check=True)
+        config = read_manifest(config_path)
+        manager = configured_manager(config, repo)
+        instructions = local_instructions(config)
+        agents = normalize_agents(config)
+        outputs = render_expected(config, repo, instructions, [])
+    except SystemExit as exc:
+        print(f"Skipped the generated-file check: {exc}", file=sys.stderr)
+        return 0
+    managed = repo_managed_with_claude_pointers(instructions, agents)
+    return sync(
+        repo,
+        args.paths,
+        lambda: check_outputs(repo, outputs, manager, managed),
+        lambda: install_outputs(repo, outputs, manager, managed),
+    )
 
 
 def _run_hooks_list(args: argparse.Namespace) -> int:
@@ -1260,6 +1304,7 @@ def _main(argv: list[str] | None) -> int:
         "doctor",
         "hooks",
         "checks",
+        "sync",
         "worktrees",
     }
     if not argv or argv[0] in ("-h", "--help"):
@@ -1306,6 +1351,9 @@ def _main(argv: list[str] | None) -> int:
 
     if args.command == "checks":
         return _run_checks(args)
+
+    if args.command == "sync":
+        return _run_sync(args)
 
     if args.command == "doctor":
         return doctor.report(args.repo)

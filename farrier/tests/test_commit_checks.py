@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from farrier import cli
+from farrier import sync as sync_module
 from farrier.install import set_layers
 from farrier._vendor.stablemate_core.schema import HomeConfig
 from farrier.skill_hooks import CommitCheck, check_findings, checks_for, findings
@@ -37,6 +38,7 @@ def _wire_library(monkeypatch, library: Path, tmp_path: Path):
     monkeypatch.setattr(cli, "resolve_library_dir", lambda _cli: library)
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     monkeypatch.setattr(cli, "load_home_config", lambda: HomeConfig())
+    monkeypatch.setattr(sync_module, "farrier_executable", lambda: "/bin/farrier")
 
 
 def _repo(tmp_path: Path) -> Path:
@@ -98,7 +100,9 @@ def test_checks_list_the_library_script_before_install(library: Path, tmp_path: 
     assert cli.main(["checks", "--repo", str(repo)]) == 0
 
     script = library / "library" / "skills" / "demo" / "checked" / "scripts" / "check.py"
-    assert capsys.readouterr().out == f"python3 {script}\t1.5\n"
+    assert capsys.readouterr().out == (
+        f"/bin/farrier sync --repo {repo.resolve()}\t3\npython3 {script}\t1.5\n"
+    )
 
 
 def test_checks_prefer_the_installed_script(library: Path, tmp_path: Path, capsys):
@@ -110,7 +114,7 @@ def test_checks_prefer_the_installed_script(library: Path, tmp_path: Path, capsy
 
     assert cli.main(["checks", "--repo", str(repo)]) == 0
 
-    assert capsys.readouterr().out == f"python3 {installed}\t1.5\n"
+    assert capsys.readouterr().out.splitlines()[1] == f"python3 {installed}\t1.5"
 
 
 def test_checks_in_a_repo_without_agents_yml_list_nothing(library: Path, tmp_path: Path, capsys):
