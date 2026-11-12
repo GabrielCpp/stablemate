@@ -1,0 +1,54 @@
+endpoint	TodoAdd	services.ostler.commands:TodoAdd	ostler --full-ids todo add\n  Queue an epic, last or first, by its folder name or its slug.\n  runs: ostler --full-ids todo add {name} [--front]\n  body: AddArgs\n  0 → lines of text: the epic is queued, with a warning when it has no epic.md yet\n  1 → lines of text: the epic is already in the queue, matched by number or by slug\n  carries: AddEpic\n    refuses 1 "epic '{canonical}' already in the queue"\n      why: adding an epic twice would run it twice, so the queue refuses the second.
+endpoint	TodoPrune	services.ostler.commands:TodoPrune	ostler --full-ids todo prune\n  Drop an epic from the queue.\n  runs: ostler --full-ids todo prune {name}\n  body: PruneArgs\n  0 → lines of text: the queued epic is dropped, named as the queue spelled it\n  1 → lines of text: the queue does not hold the epic\n  carries: PruneEpic\n    refuses 1 "epic '{name}' not in the queue"
+endpoint	TodoReorder	services.ostler.commands:TodoReorder	ostler --full-ids todo reorder\n  Move the named epics to the front of the queue in the order given; the rest keep their order after them.\n  runs: ostler --full-ids todo reorder {first} {then}\n  body: ReorderArgs\n  0 → lines of text: the queue is reordered\n  1 → lines of text: the queue does not hold a named epic; the message lists those it lacks, as typed\n  carries: ReorderEpics\n    refuses 1 'not in queue: {first}, {then}'\n    refuses 1 'not in queue: {first}'\n    refuses 1 'not in queue: {then}'
+endpoint	TodoList	services.ostler.commands:TodoList	ostler --full-ids todo list\n  Print the queue, one epic per line, first to last.\n  runs: ostler --full-ids todo list\n  body: ListArgs\n  0 → lines of text: the queued epics, or (none) when the queue is empty\n  carries: ListEpics
+endpoint	SeedAdd	services.ostler.commands:SeedAdd	ostler --full-ids seed add\n  List a seed under an epic's Seeds, or replace the one that has the id.\n  runs: ostler --full-ids seed add {epic} {seed} --status {status} --layer {layer}\n  body: SeedAddArgs\n  0 → lines of text: the seed is added, or replaced at the end of the Seeds section\n  1 → lines of text: the epic does not exist, or the status or the layer is not one the registry lists\n  carries: AddSeed\n    refuses 1 "no epic '{epic}'"\n    refuses 1 "invalid status '{status}' (one of backlog, researched, covered, resolved, dropped, deferred)"\n    refuses 1 "invalid layer '{layer}' (one of frontend, backend, infra)"
+endpoint	SeedRemove	services.ostler.commands:SeedRemove	ostler --full-ids seed remove\n  Take a seed out of an epic's Seeds.\n  runs: ostler --full-ids seed remove {epic} {seed}\n  body: SeedRemoveArgs\n  0 → lines of text: the seed is removed\n  1 → lines of text: the epic does not exist, or it lists no seed with the id\n  carries: RemoveSeed\n    refuses 1 "no epic '{epic}'"\n    refuses 1 "no seed '{seed}' in '{epic}'"
+endpoint	SetStatus	services.ostler.commands:SetStatus	ostler --full-ids set-status\n  Set a story's status in its frontmatter and in its Implementation Status line.\n  runs: ostler --full-ids set-status {story} {status}\n  body: SetStatusArgs\n  0 → lines of text: the status is set\n  1 → lines of text: no story has the id\n  carries: SetStoryStatus\n    refuses 1 "no story with id '{story}'"
+endpoint	Conflict	services.ostler.commands:Conflict	ostler --full-ids conflict\n  Record the conflict found in a story's acceptance criteria, or clear it.\n  runs: ostler --full-ids conflict {story} {text} [--clear]\n  body: ConflictArgs\n  0 → lines of text: the conflict is recorded or cleared\n  1 → lines of text: the text and --clear are both given or both left out, or no story has the id\n  carries: RecordConflict\n    refuses 1 'pass the conflict text, or --clear — one of the two'\n    refuses 1 "no story with id '{story}'"
+endpoint	PathEpic	services.ostler.commands:PathEpic	ostler --full-ids path epic\n  Print where an epic lives, relative to the repository.\n  runs: ostler --full-ids path epic {name}\n  body: PathEpicArgs\n  0 → lines of text: the epic's folder, whether or not it exists\n  carries: PathOfEpic
+endpoint	Look	services.ostler.commands:Look	sandbox files\n  List the watched files of the sandbox with the strings each holds.\n  auth: none\n  0 → [File]: every watched file with the strings it holds\n  carries: ListFiles
+action	AddEpic	services.ostler.model.actions:AddEpic	AddEpic
+rule	AddEpic	services.ostler.model.actions:AddEpic	1 epic '{canonical}' already in the queue\nwhy: adding an epic twice would run it twice, so the queue refuses the second.
+action	PruneEpic	services.ostler.model.actions:PruneEpic	PruneEpic
+rule	PruneEpic	services.ostler.model.actions:PruneEpic	1 epic '{name}' not in the queue
+action	ReorderEpics	services.ostler.model.actions:ReorderEpics	ReorderEpics
+rule	ReorderEpics	services.ostler.model.actions:ReorderEpics	1 not in queue: {first}, {then}
+rule	ReorderEpics	services.ostler.model.actions:ReorderEpics	1 not in queue: {first}
+rule	ReorderEpics	services.ostler.model.actions:ReorderEpics	1 not in queue: {then}
+action	ListEpics	services.ostler.model.actions:ListEpics	ListEpics
+action	AddSeed	services.ostler.model.actions:AddSeed	AddSeed
+rule	AddSeed	services.ostler.model.actions:AddSeed	1 no epic '{epic}'
+rule	AddSeed	services.ostler.model.actions:AddSeed	1 invalid status '{status}' (one of backlog, researched, covered, resolved, dropped, deferred)
+rule	AddSeed	services.ostler.model.actions:AddSeed	1 invalid layer '{layer}' (one of frontend, backend, infra)
+action	RemoveSeed	services.ostler.model.actions:RemoveSeed	RemoveSeed
+rule	RemoveSeed	services.ostler.model.actions:RemoveSeed	1 no epic '{epic}'
+rule	RemoveSeed	services.ostler.model.actions:RemoveSeed	1 no seed '{seed}' in '{epic}'
+action	SetStoryStatus	services.ostler.model.actions:SetStoryStatus	SetStoryStatus
+rule	SetStoryStatus	services.ostler.model.actions:SetStoryStatus	1 no story with id '{story}'
+action	RecordConflict	services.ostler.model.actions:RecordConflict	RecordConflict
+rule	RecordConflict	services.ostler.model.actions:RecordConflict	1 pass the conflict text, or --clear — one of the two
+rule	RecordConflict	services.ostler.model.actions:RecordConflict	1 no story with id '{story}'
+action	PathOfEpic	services.ostler.model.actions:PathOfEpic	PathOfEpic
+action	ListFiles	services.ostler.model.actions:ListFiles	ListFiles
+journey	GroomTheQueue	services.ostler.journeys.groom_the_queue:GroomTheQueue	GroomTheQueue\nA planner shapes the order the repo works its epics. They list the queue, queue the third epic by its slug, then\n    put it first, move the second ahead of the rest, drop the first, and find where the third epic lives.
+journey	WriteSeeds	services.ostler.journeys.write_seeds:WriteSeeds	WriteSeeds\nA planner lists two seeds under the second epic, rewrites the first with a status and a layer, and takes both\n    out again. The watch reads the epic's page after each step.
+journey	TrackAStory	services.ostler.journeys.track_a_story:TrackAStory	TrackAStory\nA planner moves the story alpha through its statuses, records a conflict in its criteria, replaces the conflict\n    with another, and clears it. A second story keeps its own status throughout.
+journey	WrongTurns	services.ostler.journeys.wrong_turns:WrongTurns	WrongTurns\nA planner slips. They queue an epic twice, prune and reorder epics the queue lacks, queue an epic that has no\n    folder yet, list a seed with a status and a layer the registry lacks, remove a seed that is not there, and\n    name a story that does not exist or give a conflict no text.
+scene	first > second	queue:first > second	- **first > second**: the queue holds the two epics it starts with. Reached by: a fresh service, nothing done.
+scene	first > second > third	queue:first > second > third	- **first > second > third**: the third epic is queued last. Reached by: ostler --full-ids todo add third.
+scene	third > first > second	queue:third > first > second	- **third > first > second**: the third epic is queued first. Reached by: ostler --full-ids todo add 0003-third --front.
+scene	second > first	queue:second > first	- **second > first**: the second epic was moved ahead of the first. Reached by: ostler --full-ids todo reorder 0002-second.
+scene	empty	queue:empty	- **empty**: both epics were pruned. Reached by: ostler --full-ids todo prune 0001-first; ostler --full-ids todo prune 0002-second.
+scene	Not started	story:Not started	- **Not started**: the story has not begun. Reached by: a fresh service, nothing done.
+scene	in-progress	story:in-progress	- **in-progress**: the story is in progress. Reached by: ostler --full-ids set-status TST-01M585P7WKBH9YJ8E6NA73W4S9 in-progress.
+scene	Blocked: waiting	story:Blocked: waiting	- **Blocked: waiting**: the story is blocked. Reached by: ostler --full-ids set-status TST-01M585P7WKBH9YJ8E6NA73W4S9 'Blocked: waiting'.
+scene	Not started with conflict	story:Not started with conflict	- **Not started with conflict**: a conflict is recorded on the story. Reached by: ostler --full-ids conflict TST-01M585P7WKBH9YJ8E6NA73W4S9 'criteria disagree'.
+scene	in-progress with conflict	story:in-progress with conflict	- **in-progress with conflict**: the story is in progress and a conflict is recorded. Reached by: ostler --full-ids set-status TST-01M585P7WKBH9YJ8E6NA73W4S9 in-progress; ostler --full-ids conflict TST-01M585P7WKBH9YJ8E6NA73W4S9 'criteria disagree'.
+scene	no seeds	seeds:no seeds	- **no seeds**: the epic lists no seeds. Reached by: a fresh service, nothing done.
+scene	SD-3	seeds:SD-3	- **SD-3**: the epic lists the seed SD-3. Reached by: ostler --full-ids seed add 0002-second SD-3.
+scene	SD-3 + SD-4	seeds:SD-3 + SD-4	- **SD-3 + SD-4**: the epic lists the seeds SD-3 and SD-4. Reached by: ostler --full-ids seed add 0002-second SD-3; ostler --full-ids seed add 0002-second SD-4 --status researched --layer frontend.
+decision	queue-names-resolve-to-their-numbered-directory	decisions/queue-names-resolve-to-their-numbered-directory.md:5	A bare slug of an epic that exists on disk (`second`) resolves to its numbered directory (`0002-second`) in
+decision	queue-names-resolve-to-their-numbered-directory	decisions/queue-names-resolve-to-their-numbered-directory.md:6	`todo add`, `todo prune`, `todo reorder` and `path epic`. A name with no folder stays as typed, and `todo add`
+decision	queue-names-resolve-to-their-numbered-directory	decisions/queue-names-resolve-to-their-numbered-directory.md:7	queues it with a warning that epic selection will skip it. The queue record therefore keeps canonical names, and
+decision	queue-names-resolve-to-their-numbered-directory	decisions/queue-names-resolve-to-their-numbered-directory.md:8	the fixtures carry a `canonical` property so a rule's message prints the name the tool prints.
