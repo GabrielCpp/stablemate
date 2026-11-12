@@ -29,6 +29,8 @@ outputs** — never hand-edit them. Change the library, then re-install.
   library/
     skills/<group>/<name>.md   # skill files (YAML frontmatter + markdown)
     prompts/<group>/*.md       # prompt files
+    policies/<group>/<name>/   # POLICY.md plus scripts/, aggregated into AGENTS.md
+    hooks/<name>/              # home guards farrier installs into each harness home
     roots/                     # root instruction files (CLAUDE.md / AGENTS.md)
   packs/<pack>.yml      # named bundles of skills + prompts a repo opts into
   scaffolds/*.yml       # scaffold definitions applied via `farrier scaffold <id>`
@@ -160,6 +162,48 @@ line inside the `---` fences; a block that loses its closing newline parses as n
 front matter at all, which silently strips *every* tag on that skill rather than
 erroring. After a bulk retag, check that each source still opens with a
 well-formed `---` … `---` block before trusting a query that comes back empty.
+
+## Commit checks: what an agent's commit runs
+
+A check that only an agent's commit needs is a commit check, not a git hook. A git
+hook runs on every human commit too, so it pays its cost on commits that never asked
+for it. Keep a git hook only for what must hold whoever commits, such as the
+commit-message format.
+
+A skill or a policy declares its checks in front matter:
+
+```yaml
+commit_checks:
+  - run: scripts/check_staged_files.py
+    budget: 2
+```
+
+- `run` is a path under the source's own `scripts/` folder. A `.py` script runs
+  through `python3`. Any other script must be executable.
+- `budget` is the check's usual cost in seconds. The guard adds it to the agent's
+  command timeout.
+
+A check honours one contract:
+
+1. It runs from the repository root and reads the index, never the working tree.
+2. It takes the commit's pathspecs as arguments when the commit names paths, and
+   checks only those.
+3. It exits 0 to pass. Any other exit stops the commit, and stderr tells the agent
+   what to fix.
+4. It may read `AGENT_COMMIT_COMMAND`, the agent's whole command, and
+   `AGENT_COMMIT_CWD`, the directory the agent ran it from. The private-names check
+   reads the commit message from them.
+
+`farrier checks --repo <repo>` prints one `command<TAB>budget` line per check. The
+first line is `farrier sync`, which reinstalls drifted agent files and stages them
+when `agents.yml` exists. The `commit-checks` home guard reads that listing and
+rewrites the agent's `git commit` command so the checks run first. Enable it by
+naming `commit-checks` in the `hooks` list of each harness profile in the farrier
+config.
+
+A home guard's `command` may carry a `{harness}` placeholder. Farrier replaces it
+with the harness it installs into, so one guard can answer each harness in its own
+dialect.
 
 ## Installing into the working repo
 
