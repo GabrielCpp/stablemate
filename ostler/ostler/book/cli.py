@@ -420,7 +420,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         if not args.journey and (service.endpoints or service.interactions):
             print("playing the input classes")
             began = time.time()
-            tried = play_inputs(service, surface, lambda: fresh(service, surface), only=names)
+            surface.reset()
+            tried = play_inputs(service, surface, lambda: fresh(service, surface), only=names, today=_today(surface))
             inputs_took = time.time() - began
         settled = settle_register(service, args, tried)
         seen = witnessed(service, surface)

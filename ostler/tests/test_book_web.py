@@ -203,6 +203,17 @@ def test_a_screen_input_with_a_shape_gets_twins_on_either_side_of_midnight():
     assert pairs == [("screen", "due_on", "midnight", today.isoformat(), (today + timedelta(days=1)).isoformat(), False)]
 
 
+def test_the_midnight_twins_count_days_on_the_app_clock_not_the_machine_clock():
+    from datetime import date
+
+    from ostler.book.inputs import bases, twin_classes
+
+    service = module("services.web.service").service
+    add = module("services.web.interactions").AddTodo
+    base = bases(service, date(2030, 1, 5))[add]
+    assert [(t.left, t.right) for t in twin_classes(base.call, base.before)] == [("2030-01-05", "2030-01-06")]
+
+
 def test_a_screen_input_that_ignores_a_dimension_skips_its_twins(monkeypatch: pytest.MonkeyPatch):
     import dataclasses
 

@@ -346,12 +346,12 @@ def _ok(step: StepResult) -> None:
         raise BookError(f"the scene cannot be arranged: {step.text}: {step.note}")
 
 
-def bases(service: Service[Any]) -> dict[type[Any], Base]:
+def bases(service: Service[Any], today: date | None = None) -> dict[type[Any], Base]:
     """For each endpoint, the first call the journeys or the cells make that the
     model accepts, found on the model alone."""
     found: dict[type[Any], Base] = {}
     for journey in service.journeys:
-        model = service.new_model(date.today())
+        model = service.new_model(today or date.today())
         try:
             for given in journey.given:
                 model.perform(given.request)
@@ -495,9 +495,15 @@ def ids_of(surface: Surface) -> Identities | None:
     return client.ids if isinstance(client, Client) else None
 
 
-def play(service: Service[Any], surface: Surface, fresh: Callable[[], Model], only: frozenset[str] = frozenset()) -> Tried:
+def play(
+    service: Service[Any],
+    surface: Surface,
+    fresh: Callable[[], Model],
+    only: frozenset[str] = frozenset(),
+    today: date | None = None,
+) -> Tried:
     tried = Tried()
-    found = bases(service)
+    found = bases(service, today)
     skipped = {u.endpoint for u in service.unseen if u.item == "inputs"}
     for endpoint in (*service.endpoints, *service.interactions):
         if only and endpoint.__name__ not in only:
