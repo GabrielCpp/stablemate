@@ -15,6 +15,7 @@ def verify_qa_evidence(
     claimed_status: str = "",
     claimed_notes: str = "",
     repo_dir: str = "",
+    book_only: bool = False,
 ) -> QaResult:
     """Check a claimed QA pass against the proof on disk; downgrade to `invalid` if it lies."""
     return _qa_evidence.verify_qa_evidence(
@@ -23,6 +24,7 @@ def verify_qa_evidence(
         claimed_status=claimed_status,
         claimed_notes=claimed_notes,
         repo_dir=repo_dir,
+        book_only=book_only,
     )
 
 

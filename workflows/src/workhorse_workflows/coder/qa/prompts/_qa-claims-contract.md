@@ -87,8 +87,8 @@ its function name with underscores turned into dashes.
 
 ### What the module may do
 
-- **Module level is declarations only.** `ostler qa validate` imports the module, so a request,
-  a subprocess or a file write at module scope runs on every validation.
+- **Module level is declarations only.** `ostler qa run` imports the module, so a request,
+  a subprocess or a file write at module scope runs on every load of the plan.
 - **Read product data with `qa.field`, never by subscript.** `qa.field(payload, "items.0.id")`
   yields `MISSING` where a key is absent, which satisfies no assertion, so the check goes red
   where it can explain itself. A `.get("items", [])` default makes a broken response pass.

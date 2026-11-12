@@ -39,8 +39,9 @@ def _exists(ref: Any, root: Path, spec_dir: Path) -> bool:
     )
 
 
-def _artifact_problems(spec_dir: Path, data: dict) -> tuple[list[str], dict, dict]:
-    """The four machine-owned files exist and parse, and the evidence points at the log."""
+def _artifact_problems(spec_dir: Path, data: dict, book_only: bool = False) -> tuple[list[str], dict, dict]:
+    """The machine-owned files exist and parse, and the evidence points at the log. A book-only
+    story has no context packet, so its absence is no problem there."""
     problems: list[str] = []
     plan_path = spec_dir / QA_PLAN_FILE
     context_path = spec_dir / "qa-okf-context.json"
@@ -52,7 +53,8 @@ def _artifact_problems(spec_dir: Path, data: dict) -> tuple[list[str], dict, dic
 
     context: dict = {}
     if not context_path.is_file():
-        problems.append("qa-okf-context.json is missing.")
+        if not book_only:
+            problems.append("qa-okf-context.json is missing.")
     else:
         try:
             parsed_context = json.loads(context_path.read_text(encoding="utf-8"))
@@ -393,8 +395,10 @@ def verify_qa_evidence(
     claimed_status: str = "",
     claimed_notes: str = "",
     repo_dir: str = "",
+    book_only: bool = False,
 ) -> QaResult:
-    """Check a claimed QA pass against the proof on disk; downgrade to `invalid` if it lies."""
+    """Check a claimed QA pass against the proof on disk; downgrade to `invalid` if it lies.
+    A book-only story is judged by its books, so it owes no context packet and no obligations."""
     claimed = claimed_status.strip().lower()
 
     if claimed != "passed":
@@ -461,7 +465,7 @@ def verify_qa_evidence(
             passed,
         )
 
-    problems, context, manifest = _artifact_problems(spec_path, data)
+    problems, context, manifest = _artifact_problems(spec_path, data, book_only)
 
     vetted = Ostler(root).artifact_vet("qa-evidence", spec_dir)
     if vetted.data.get("error"):
@@ -476,7 +480,8 @@ def verify_qa_evidence(
             f"overall is '{data.get('overall')}' but the runner reported passed — inconsistent."
         )
 
-    problems.extend(_obligation_problems(context, data))
+    if not book_only:
+        problems.extend(_obligation_problems(context, data))
     problems.extend(_criteria_problems(criteria, root, spec_path))
     problems.extend(_unsupported_pass_problems(criteria, spec_path))
     fidelity_problems, vet_notes = _visual_fidelity_problems(data, root, spec_path)

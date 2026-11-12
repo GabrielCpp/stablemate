@@ -124,11 +124,13 @@ class Qa(QaOwner):
         return Continue(okf, self.work, report="\n\n".join(failures))
 
     def _all_judged_by_books(self) -> bool:
-        """Does a clean book record name services, hold no unreached claim, and leave the packet no required obligation undeferred?"""
-        if self.output(validate_okf_context).status != "passed":
-            return False
+        """Does a clean book record name services and hold no unreached claim, with every service booked or the packet left no required obligation undeferred?"""
         record = self.call(read_book_record, self.ctx.spec_dir)
         if not record.services or record.findings or record.unreached:
+            return False
+        if self._book_only(self._covered()):
+            return True
+        if self.output(validate_okf_context).status != "passed":
             return False
         context = Path(self.ctx.spec_dir) / CONTEXT_FILE
         if not context.is_file():
@@ -149,19 +151,26 @@ class Qa(QaOwner):
         return bool(self.workspace and self.ctx.story_id)
 
     def _preflight(self) -> list[str]:
-        """The OKF context packet and the QA stack, as failures the owner repairs."""
-        impl = self.output(resolve_impl_context)
-        self.call(defer_book_judged, self.ctx.spec_dir)
-        covered = self.call(covered_services, list(self.ctx.story_services)).services
+        """The OKF context packet, for a story a service book does not cover whole, and the QA stack, as failures the owner repairs."""
+        covered = self._covered()
         book_only = self._book_only(covered)
         self.call(write_unreached_claims, self.ctx.spec_dir, book_only)
+        failures = [] if book_only else self._packet_failures(covered)
+        target = self.output(stack_target)
+        stack = self.call(ensure_stack, near=target.near, lease=target.lease)
+        return failures + stack_failures(stack)
+
+    def _packet_failures(self, covered: list[str]) -> list[str]:
+        """Build and validate the OKF context packet, and compile the plan from it when it passes."""
+        impl = self.output(resolve_impl_context)
+        self.call(defer_book_judged, self.ctx.spec_dir)
         build = self.call(
             build_okf_context,
             self.ctx.spec_dir,
             self.ctx.story_path,
             services_root(self),
             without_covered_roots(tuple(impl.qa_source_roots), covered)
-            if covered and not book_only
+            if covered
             else tuple(impl.qa_source_roots),
             TRUNK,
             "WORKTREE",
@@ -170,17 +179,16 @@ class Qa(QaOwner):
             story_refs=tuple(
                 dict.fromkeys(ref for ref in (self.ctx.story_id, self.ctx.story_slug) if ref)
             ),
-            book_only=book_only,
         )
-        context =self.call(validate_okf_context, self.ctx.spec_dir, build.status)
-        failures = []
+        context = self.call(validate_okf_context, self.ctx.spec_dir, build.status)
         if context.status != "passed":
-            failures.append(gate_text("the OKF context packet", context.notes))
-        else:
-            self.call(compile_story_plan, self.ctx.spec_dir, self.ctx.story_id or self.ctx.story_slug)
-        target = self.output(stack_target)
-        stack = self.call(ensure_stack, near=target.near, lease=target.lease)
-        return failures + stack_failures(stack)
+            return [gate_text("the OKF context packet", context.notes)]
+        self.call(compile_story_plan, self.ctx.spec_dir, self.ctx.story_id or self.ctx.story_slug)
+        return []
+
+    def _covered(self) -> list[str]:
+        """The story's services that have an executable book."""
+        return self.call(covered_services, list(self.ctx.story_services)).services
 
     def _book_only(self, covered: list[str]) -> bool:
         """Does every service of the story have an executable book?"""
@@ -198,7 +206,7 @@ class Qa(QaOwner):
         spec_dir = self.ctx.spec_dir
         record = self.call(read_book_record, spec_dir)
         judged = not record.findings
-        covered = self.call(covered_services, list(self.ctx.story_services)).services
+        covered = self._covered()
         return {
             "story_path": self.ctx.story_path,
             "spec_dir": spec_dir,
@@ -227,12 +235,14 @@ class Qa(QaOwner):
         }
 
     def _standing_plan(self) -> bool:
-        """Does a `qa_plan.py` already stand that lints and validates against the packet?"""
+        """Does a `qa_plan.py` already stand that lints, and validates against the packet when the story has one?"""
         spec_dir = self.ctx.spec_dir
         if not spec_dir or not (Path(spec_dir) / QA_PLAN_FILE).is_file():
             return False
         if self.call(lint_qa_plan, spec_dir).status != "passed":
             return False
+        if self._book_only(self._covered()):
+            return True
         return self.call(validate_qa_plan, spec_dir).status == "passed"
 
     def _hand_written_plan(self) -> bool:
@@ -348,10 +358,12 @@ class Qa(QaOwner):
         return self._lap(run, failures, laps, blocks)
 
     def _plan_failures(self) -> list[str]:
-        """The plan's lint and its validation against the packet."""
+        """The plan's lint, and its validation against the packet when the story has one."""
         lint = self.call(lint_qa_plan, self.ctx.spec_dir)
         if lint.status != "passed":
             return [gate_text("qa_plan.py lint", lint.notes)]
+        if self._book_only(self._covered()):
+            return []
         validation = self.call(validate_qa_plan, self.ctx.spec_dir)
         if validation.status != "passed":
             return [gate_text("qa_plan.py validation", validation.notes)]
@@ -363,7 +375,8 @@ class Qa(QaOwner):
 
     def _evidence_failures(self, run: QaPlanRun) -> list[str]:
         """The evidence gate, which reads every scenario's recording."""
-        evidence = self.call(verify_qa_evidence, self.ctx.spec_dir, run.status, run.notes)
+        book_only = self._book_only(self._covered())
+        evidence = self.call(verify_qa_evidence, self.ctx.spec_dir, run.status, run.notes, book_only=book_only)
         if evidence.status != "passed":
             return [gate_text("the QA evidence", evidence.notes)]
         return []

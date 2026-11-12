@@ -33,9 +33,9 @@ earlier turn.
 - Docs root: `{{ workhorse_var('docs_root') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - The QA runner's interpreter: `{{ workhorse_var('runtime_python') }}`
-{% if book_only %}{% if standing_plan %}- A `qa_plan.py` already stands in the spec dir, and it lints and validates. Change only the
-  scenarios a claim or a check calls for.
-{% else %}- No plan that lints and validates stands in the spec dir yet. Write `qa_plan.py` by hand.
+{% if book_only %}{% if standing_plan %}- A `qa_plan.py` already stands in the spec dir, and it lints. Change only the scenarios a
+  claim or a check calls for.
+{% else %}- No plan that lints stands in the spec dir yet. Write `qa_plan.py` by hand.
 {% endif %}- The executable books of {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} already
   judged this story. Their play covers every claim a call can show, so your scope is only the
   claims the books could not state, each one a criterion of the plan:
@@ -124,9 +124,8 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
    observation of the running product shows it. Write `qa_plan.py` by hand: one scenario per
    claim, or one for several claims that a single observation proves, each with
    `covers=["claim:<n>"]` and a `qa.check(..., covers=["claim:<n>"])` in its body. A claim no
-   scenario can reach is reported in `notes` with the reason, and the plan then fails
-   validation, so return `blocked` with that reason. Nobody reviews the scenarios you write.
-   Run `ostler qa lint` and `ostler qa validate` on the plan.
+   scenario can reach is reported in `notes` with the reason, and you return `blocked` with
+   that reason. Nobody reviews the scenarios you write. Run `ostler qa lint` on the plan.
 {% else %}1. **Select.** Read the story and its Acceptance Criteria, the repo's `AGENTS.md` and
    `docs/qa/lessons.md` under the docs root when it exists. The Acceptance Criteria define
    done. `qa-okf-context.json` in the spec dir holds the obligations, read through
@@ -144,8 +143,8 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
    last recompile. Nobody reviews the scenarios you write. Run `ostler qa lint` and
    `ostler qa validate` on the plan.
 {% endif %}2. **Run.** Stand the stack up with the setup brief below when the report names a context or
-   stack failure, or a runner requirement. The workflow rebuilds the context packet before
-   every check, so a context failure names what the book or the story lacks. Then run the
+   stack failure, or a runner requirement.{% if not book_only %} The workflow rebuilds the context packet before
+   every check, so a context failure names what the book or the story lacks.{% endif %} Then run the
    whole plan, scored, from the spec dir:
    `ostler qa run {{ workhorse_var('spec_dir') }}/qa_plan.py --spec {{ workhorse_var('spec_dir') }}`,
    with no `--out-dir`. Bound it with a `timeout`. The scored run is the verdict.
@@ -265,8 +264,8 @@ result.
 
 ## The checks after this turn
 
-The workflow rebuilds and validates the context packet and checks the stack. It lints
-and validates the plan. Then it runs the plan again, scored. A failed run with findings ends QA, and the findings go to the dev owner. A
+{% if book_only %}The workflow checks the stack and lints the plan.{% else %}The workflow rebuilds and validates the context packet and checks the stack. It lints
+and validates the plan.{% endif %} Then it runs the plan again, scored. A failed run with findings ends QA, and the findings go to the dev owner. A
 passed run must also clear the evidence verification, the operator's feedback, the
 regression suites and the sentinel ids. Whatever fails comes back to you as the next turn in
 this session, with the report attached.

@@ -2062,7 +2062,7 @@ def test_a_story_whose_services_all_have_a_book_owes_the_scenario_seat_only_the_
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The packet's criteria are those claims, so the plan is validated against them and nothing else."""
+    """The seat gets the unreached claims and no packet, and a pass needs no packet to stand."""
     ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
     _covered_story(docs, write)
     write_json(
@@ -2113,6 +2113,6 @@ def test_the_claims_file_of_a_book_judged_story_with_a_defect_holds_no_claim(
         {"services": BOOK_CALLS, "findings": [finding], "unreached": UNREACHED_CLAIMS},
     )
 
-    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
+    drive_flow(Qa(story=STORY), env(), _Agent(docs))
 
     assert json.loads((docs / spec_dir() / "qa-unreached.json").read_text(encoding="utf-8")) == []
