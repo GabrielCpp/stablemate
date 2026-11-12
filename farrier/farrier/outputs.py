@@ -14,8 +14,8 @@ from farrier.frontmatter import frontmatter_mapping
 from farrier.home_entries import tool_server_names
 from farrier.local_instructions import LocalInstruction, local_instructions
 from farrier.hook_managers import (
-    HOOK_RUNNER,
     LEFTHOOK_INCLUDE,
+    RUNNERS,
     configured_manager,
     fence_drift,
     install_manager,
@@ -57,7 +57,14 @@ from farrier.selection_errors import (
     suggestions,
     unknown_selection_error,
 )
-from farrier.skill_hooks import CommitCheck, SkillHook, checks_for, hooks_for
+from farrier.skill_hooks import (
+    SKILL_ROOTS,
+    STAGES,
+    CommitCheck,
+    SkillHook,
+    checks_for,
+    hooks_for,
+)
 from farrier.home_agents import agent_files, agent_names
 from farrier.home_guards import BRIDGE_FILE, guard_files, guard_names
 from farrier.sources import (
@@ -459,18 +466,16 @@ def render_expected(
                     policy_names,
                 )
 
-    outputs.update(
-        renderer.policy_bundles(
-            [name for instruction in instructions for name in instruction.policies]
-        )
-    )
+    policy_names = [name for instruction in instructions for name in instruction.policies]
+    outputs.update(renderer.policy_bundles(policy_names))
     renderer.check_resolved()
 
     manager = configured_manager(config, repo)
     if manager != "none":
-        outputs[repo / HOOK_RUNNER] = Rendered(
-            runner_text(selected_hooks(prefix, skills)), executable=True
-        )
+        policies = dict.fromkeys(renderer.policy_source(name) for name in policy_names)
+        hooks = [*selected_hooks(prefix, skills), *policy_hooks(policies)]
+        for stage in STAGES:
+            outputs[repo / RUNNERS[stage]] = Rendered(runner_text(hooks, stage), executable=True)
     if manager == "lefthook":
         outputs[repo / LEFTHOOK_INCLUDE] = Rendered(lefthook_include_text())
 
@@ -605,6 +610,15 @@ def selected_hooks(prefix: str, skills) -> list[SkillHook]:
     return hooks
 
 
+def policy_hooks(policies) -> list[SkillHook]:
+    """Every hook the selected policies declare, run from their installed folders."""
+    hooks: list[SkillHook] = []
+    for source in policies:
+        data = frontmatter_mapping(source.path.read_text(encoding="utf-8"))
+        hooks.extend(hooks_for(library_name(source), data, (POLICY_ROOT,)))
+    return hooks
+
+
 def _split_selection(config: ConfigLike, home_config: HomeConfig) -> tuple[list[Source], dict[str, list[Source]]]:
     """The skills the repo selects, and per harness the user-library skills the repo neither selects nor excludes."""
     all_skills = load_layered_sources("skill", "library", "skills")
@@ -635,9 +649,6 @@ def user_gates(config: ConfigLike, home_config: HomeConfig, home: Path) -> list[
                 if gate.is_file():
                     gates.setdefault((hook.skill, hook.run), gate)
     return list(gates.values())
-
-
-SKILL_ROOTS = (".claude/skills", ".agents/skills", ".github/skills")
 
 
 @dataclass(frozen=True)

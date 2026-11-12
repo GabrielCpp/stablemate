@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-STAGES = ("pre-commit",)
+STAGES = ("pre-commit", "commit-msg")
+
+SKILL_ROOTS = (".claude/skills", ".agents/skills", ".github/skills")
 
 
 @dataclass(frozen=True)
@@ -16,6 +18,7 @@ class SkillHook:
     skill: str
     stage: str
     run: str
+    roots: tuple[str, ...] = SKILL_ROOTS
 
 
 @dataclass(frozen=True)
@@ -35,14 +38,16 @@ def declared(data: dict[str, Any]) -> list[dict[str, Any]]:
     return [entry for entry in entries if isinstance(entry, dict)]
 
 
-def hooks_for(skill: str, data: dict[str, Any]) -> list[SkillHook]:
-    """The valid, wireable hooks a skill declares."""
+def hooks_for(
+    skill: str, data: dict[str, Any], roots: tuple[str, ...] = SKILL_ROOTS
+) -> list[SkillHook]:
+    """The valid, wireable hooks a skill or policy declares, found under *roots* once installed."""
     out: list[SkillHook] = []
     for entry in declared(data):
         stage = str(entry.get("stage") or "").strip()
         run = str(entry.get("run") or "").strip()
         if stage in STAGES and run:
-            out.append(SkillHook(skill=skill, stage=stage, run=run))
+            out.append(SkillHook(skill=skill, stage=stage, run=run, roots=roots))
     return out
 
 

@@ -14,6 +14,7 @@ from farrier.hook_managers import (
     FENCE_START,
     HOOK_COMMAND,
     HOOK_RUNNER,
+    MESSAGE_RUNNER,
     LEFTHOOK_INCLUDE,
     LEGACY_HOOK_MARKER,
     configured_manager,
@@ -183,7 +184,7 @@ def test_none_removes_the_entry_and_leaves_the_file(repo: Path):
 
 def test_a_missing_fence_is_drift_not_an_opt_out(repo: Path):
     """agents.yml is the authority on what is installed, so deleting the block is an edit about to be reverted."""
-    assert fence_drift(repo, "githooks") == [".githooks/pre-commit"]
+    assert fence_drift(repo, "githooks") == [".githooks/pre-commit", ".githooks/commit-msg"]
 
     install_manager(repo, "githooks")
     assert fence_drift(repo, "githooks") == []
@@ -211,7 +212,7 @@ def test_an_edit_outside_the_fence_is_not(repo: Path):
 def test_a_leftover_fence_is_drift_under_none(repo: Path):
     install_manager(repo, "githooks")
 
-    assert fence_drift(repo, "none") == [".githooks/pre-commit"]
+    assert fence_drift(repo, "none") == [".githooks/pre-commit", ".githooks/commit-msg"]
 
 
 
@@ -279,7 +280,7 @@ def test_install_runner_writes_when_text_differs(repo: Path):
 
     messages = install_runner(repo, hooks)
 
-    assert messages == [f"Wrote {HOOK_RUNNER}"]
+    assert messages == [f"Wrote {HOOK_RUNNER}", f"Wrote {MESSAGE_RUNNER}"]
     runner = repo / HOOK_RUNNER
     assert runner.is_file()
     assert runner.stat().st_mode & 0o111
@@ -299,7 +300,10 @@ def test_install_runner_dry_run_prints_without_writing(repo: Path):
 
     messages = install_runner(repo, hooks, dry_run=True)
 
-    assert messages == [f"[dry-run] would regenerate {HOOK_RUNNER}"]
+    assert messages == [
+        f"[dry-run] would regenerate {HOOK_RUNNER}",
+        f"[dry-run] would regenerate {MESSAGE_RUNNER}",
+    ]
     assert not (repo / HOOK_RUNNER).exists()
 
 
@@ -307,7 +311,7 @@ def test_install_runner_with_none_signals_no_library(repo: Path):
     """`hooks=None` is the no-library signal: silent without `--dry-run`, the cause-named note under `--dry-run`."""
     assert install_runner(repo, None) == []
     assert install_runner(repo, None, dry_run=True) == [
-        f"[dry-run] would regenerate {HOOK_RUNNER} "
+        f"[dry-run] would regenerate {HOOK_RUNNER}, {MESSAGE_RUNNER} "
         "(no library — run 'farrier install' to refresh)"
     ]
     assert not (repo / HOOK_RUNNER).exists()
@@ -384,7 +388,7 @@ def test_hooks_install_dry_run_with_no_library_prints_runner_note(
     assert cli.main(["hooks", "install", "--dry-run", "--repo", str(repo)]) == 0
 
     out = capsys.readouterr().out
-    assert "[dry-run] would regenerate .agents/hooks/pre-commit (no library" in out
+    assert "[dry-run] would regenerate .agents/hooks/pre-commit, .agents/hooks/commit-msg (no library" in out
 
 
 def test_bare_hooks_is_a_subcommand_error(capsys, repo: Path):
@@ -397,3 +401,30 @@ def test_bare_hooks_is_a_subcommand_error(capsys, repo: Path):
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
+
+
+def test_githooks_wires_the_commit_msg_stage(repo: Path):
+    install_manager(repo, "githooks")
+
+    text = (repo / ".githooks/commit-msg").read_text(encoding="utf-8")
+    assert '"$root/.agents/hooks/commit-msg" "$1"' in text
+
+
+def test_husky_wires_the_commit_msg_stage(repo: Path):
+    install_manager(repo, "husky")
+
+    assert ".agents/hooks/commit-msg" in (repo / ".husky/commit-msg").read_text(encoding="utf-8")
+
+
+def test_the_message_runner_runs_only_commit_msg_hooks():
+    hooks = [
+        SkillHook(skill="acme-ostler", stage="pre-commit", run="scripts/g.py"),
+        SkillHook(skill="commit-and-push", stage="commit-msg", run="scripts/m.py", roots=(".agents/policies",)),
+    ]
+
+    text = runner_text(hooks, "commit-msg")
+
+    assert '"$root/.agents/policies/commit-and-push/scripts/m.py"' in text
+    assert 'python3 "$gate" "$@"' in text
+    assert "acme-ostler" not in text
+    assert "run-user" not in text

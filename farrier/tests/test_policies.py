@@ -268,3 +268,26 @@ def test_a_policy_commit_check_runs_from_its_installed_copy(tmp_path):
     assert [(c.owner, c.command, c.budget) for c in listed] == [
         ("guarded", f"python3 {installed}", 2.0)
     ]
+
+
+def test_a_policy_message_hook_lands_in_the_commit_msg_runner(tmp_path):
+    root = _library(tmp_path)
+    folder = root / "library" / "policies" / "git" / "worded"
+    (folder / "scripts").mkdir(parents=True)
+    (folder / "POLICY.md").write_text(
+        "---\nname: worded\ndescription: x\n"
+        "hooks:\n  - stage: commit-msg\n    run: scripts/msg.py\n---\n\nWord it.\n",
+        encoding="utf-8",
+    )
+    (folder / "scripts" / "msg.py").write_text("print('ok')\n", encoding="utf-8")
+    set_layers(root)
+    repo = _repo(tmp_path, '  - policies: [worded]\n    paths: ["."]\n    includeReadme: false\n')
+    with (repo / "agents.yml").open("a", encoding="utf-8") as handle:
+        handle.write("hooks:\n  manager: githooks\n")
+    config = read_yaml(repo / "agents.yml")
+
+    outputs = render_expected(config, repo, local_instructions(config))
+
+    message = str(outputs[repo / ".agents/hooks/commit-msg"])
+    assert '"$root/.agents/policies/worded/scripts/msg.py"' in message
+    assert "worded" not in str(outputs[repo / ".agents/hooks/pre-commit"])

@@ -90,10 +90,12 @@ from farrier.outputs import (
     commit_checks,
     install_outputs,
     normalize_agents,
+    policy_hooks,
     render_expected,
     render_user_expected,
     repo_managed_with_claude_pointers,
     selected_hooks,
+    selected_policies,
     user_gates,
     write_text,
 )
@@ -996,7 +998,10 @@ def _run_hooks_install(args: argparse.Namespace) -> int:
             skills = selected_sources(
                 all_skills, include_skills, excluded(config, "skills")
             )
-            runner_hooks = selected_hooks(prefix, skills)
+            runner_hooks = [
+                *selected_hooks(prefix, skills),
+                *policy_hooks(selected_policies(config)),
+            ]
         except SystemExit:
             runner_hooks = None
     else:
@@ -1089,7 +1094,7 @@ def _run_hooks_list(args: argparse.Namespace) -> int:
     skills = selected_sources(
         all_skills, include_skills, excluded(config, "skills")
     )
-    hooks = selected_hooks(prefix, skills)
+    hooks = [*selected_hooks(prefix, skills), *policy_hooks(selected_policies(config))]
 
     by_stage: dict[str, list[SkillHook]] = {stage: [] for stage in STAGES}
     for hook in hooks:
