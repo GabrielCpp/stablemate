@@ -53,7 +53,7 @@ lane keeps.
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_the_recorded_replay_stays_targeted_when_nothing_changed`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_the_shared_rule_names_what_a_play_reads`
 - tests: `workflows/tests/coder/book_qa/test_flow.py::test_the_seat_prompt_renders_the_restructure_step_and_the_narrowed_unreached_rule`
-- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @428f20f96d84
+- code: `workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa` @a65eea6fcc24
 
 The seat session is keyed `book-qa:<story slug>`. The flow resets it on every ending except `refix`,
 so the developer's fix returns to the same seat. Each ending releases the run's copy of the stack.

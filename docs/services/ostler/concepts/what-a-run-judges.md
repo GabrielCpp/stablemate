@@ -32,12 +32,12 @@ Before it plays anything, the run reads each health journey. It stops with exit 
 - rule: a pair of twins the model predicts differently is not sent, because the model already reasons on that dimension
 - rule: a field declares the dimensions the product is indifferent to with `ignores` and a why, and the run skips those pairs
 - rule: a failure is the book wrong or the service wrong, and the fix never loosens a shape or widens a fixture to make a run green
-- code: ostler/ostler/book/cli.py::cmd_run@708af4162a97
+- code: ostler/ostler/book/cli.py::cmd_run@31f0736b8677
 - code: ostler/ostler/book/cli.py::unhealthy@a5cb92003bb1
 - code: ostler/ostler/book/runner.py::walk@65ef938bcb5d
 - code: ostler/ostler/book/runner.py::agree@cd74b3fc30a6
 - code: ostler/ostler/book/cells.py::play@68cf5733c64d
-- code: ostler/ostler/book/inputs.py::play@714481c76363
+- code: ostler/ostler/book/inputs.py::play@e18f62de8044
 - code: ostler/ostler/book/inputs.py::Diverges@715904303028
 - code: ostler/ostler/book/inputs.py::weigh@42f2cb78c7f7
 - code: ostler/ostler/book/register.py::settle@4b43a8da3b41
