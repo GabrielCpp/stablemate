@@ -95,7 +95,7 @@ template:
   repo_gate_command: "make lint   # ruff + ty + basedpyright from the root; then the affected test package"
   repo_bootstrap: "make install   # venv + hooks; see the root README"
 
-  # commit-and-push: the scope vocabulary `.githooks/commit-msg` accepts. The
+  # commit-and-push: the scope vocabulary its commit-msg check accepts. The
   # first list is derived from the tracked top-level directories, so a new
   # workspace member needs no edit here either — it is written out only so the
   # subject line can be got right without shelling out to check.
