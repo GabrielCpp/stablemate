@@ -6,6 +6,8 @@ import logging
 import sys
 from pathlib import Path
 
+from ostler.book.index import FILE as INDEX_FILE
+from ostler.book.index import parse as parse_index
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.book_qa import (
@@ -39,6 +41,19 @@ def book_dir(service: str) -> str:
     return f"services/{service}"
 
 
+def book_modules(root: Path, service: str) -> tuple[str, ...]:
+    """The modules of a service's book: its package when one surface reaches it, one per surface when several do."""
+    package = root / book_dir(service)
+    if (package / "service.py").is_file():
+        return (f"services.{service}",)
+    return tuple(sorted(f"services.{service}.{found.parent.name}" for found in package.glob("*/service.py")))
+
+
+def _surface(module: str) -> str:
+    parts = module.split(".")
+    return parts[2] if len(parts) > 2 else ""
+
+
 def _tail(text: str) -> str:
     return "\n".join(text.splitlines()[-TAIL_LINES:])
 
@@ -54,16 +69,21 @@ def covered_services(
 ) -> CoveredServices:
     """The story's services that have an executable book under the repo root."""
     root = find_repo_root(repo_dir)
-    covered = [name for name in services or [] if (root / book_dir(name) / "service.py").is_file()]
+    covered = [name for name in services or [] if book_modules(root, name)]
     logger.info("%d of %d story service(s) have an executable book", len(covered), len(services or []))
     return CoveredServices(services=covered)
 
 
 @blueprint.node
 def book_check(logger: logging.Logger, service: str, repo_dir: str = "") -> BookPlay:
-    """Build everything the service's book declares, with no stack, and return the exit code and output tail."""
-    play = _play([sys.executable, "-m", "ostler.book", "check", f"services.{service}"], find_repo_root(repo_dir))
-    logger.info("book check of %s exited %d", service, play.exit_code)
+    """Build everything each module of the service's book declares, with no stack, and return the first red exit code and output tail."""
+    root = find_repo_root(repo_dir)
+    play = BookPlay(exit_code=0, output="")
+    for module in book_modules(root, service):
+        play = _play([sys.executable, "-m", "ostler.book", "check", module], root)
+        logger.info("book check of %s exited %d", module, play.exit_code)
+        if play.exit_code != 0:
+            return BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
     return play
 
 
@@ -82,13 +102,13 @@ def verify_book_spec(
         problems.append(f"the spec turn's status is {author_status!r}")
         failures.append("S:author-status")
     for name in services:
-        play = _play([sys.executable, "-m", "ostler.book", "check", f"services.{name}"], root)
-        logger.info("book check of %s exited %d", name, play.exit_code)
-        if play.exit_code != 0:
-            problems.append(
-                f"`ostler book check services.{name}` exited {play.exit_code}:\n{play.output}"
-            )
-            failures.append(f"B:{name}")
+        for module in book_modules(root, name):
+            play = _play([sys.executable, "-m", "ostler.book", "check", module], root)
+            logger.info("book check of %s exited %d", module, play.exit_code)
+            if play.exit_code != 0:
+                problems.append(f"`ostler book check {module}` exited {play.exit_code}:\n{play.output}")
+                failures.append(f"B:{name}")
+                break
     return DocumentationGate(
         status="invalid" if failures else "passed",
         notes="\n\n".join(problems),
@@ -122,7 +142,7 @@ def without_covered_roots(source_roots: tuple[str, ...], covered: list[str]) -> 
 SHARED_EXEMPT_FILES = frozenset({"index.tsv", "DISAGREEMENTS.md", "WALLS.md", "UNDERSPECIFIED.md", "VERIFIED"})
 
 
-def shared_book_paths(service: str, changed: dict[str, bool]) -> list[str]:
+def shared_book_paths(service: str, changed: dict[str, bool], surfaces: frozenset[str] = frozenset()) -> list[str]:
     """The changed paths under a service's book that other claims depend on, from `{path: added in this pass}`.
 
     A new journey file states one more claim and no other journey reads it, so a targeted play of
@@ -130,7 +150,8 @@ def shared_book_paths(service: str, changed: dict[str, bool]) -> list[str]:
     backstage or any other file of the book can move the answer of a call this pass never named,
     so only a play of the whole book judges it. The index, the disagreement and wall notes, the
     register of underspecified fields, the verified stamp and the decisions are records about the
-    book that no play reads.
+    book that no play reads. In a book with several surfaces, each surface folder in `surfaces`
+    holds the same kinds of file, and the shared model beside them is shared.
     """
     prefix = book_dir(service) + "/"
     shared: list[str] = []
@@ -138,6 +159,9 @@ def shared_book_paths(service: str, changed: dict[str, bool]) -> list[str]:
         if not rel.startswith(prefix):
             continue
         inner = rel[len(prefix):]
+        head, _, rest = inner.partition("/")
+        if rest and head in surfaces:
+            inner = rest
         if inner in SHARED_EXEMPT_FILES or inner.startswith("decisions/"):
             continue
         if added and inner.startswith("journeys/"):
@@ -173,7 +197,8 @@ def book_scope(
         for rel in uncommitted_paths(root)
         if rel.startswith(prefix) and rel not in excused
     }
-    shared = shared_book_paths(service, changed)
+    surfaces = frozenset(_surface(module) for module in book_modules(root, service)) - {""}
+    shared = shared_book_paths(service, changed, surfaces)
     logger.info(
         "the pass changed %d path(s) of %s, %d of them shared: %s book",
         len(changed), service, len(shared), "whole" if shared else "named-call",
@@ -192,15 +217,46 @@ def book_run(
     repo_dir: str = "",
 ) -> BookPlay:
     """Play the named calls of the service's book against the run's copy of the stack, or the whole book when `only` is empty. A finding of an endpoint outside `outside` goes to the book's register of underspecified fields. The play has no time bound."""
-    argv = [sys.executable, "-m", "ostler.book", "run", f"services.{service}"]
+    root = find_repo_root(repo_dir)
+    modules = book_modules(root, service) or (f"services.{service}",)
+    if len(modules) == 1:
+        play = _play(_run_argv(modules[0], only, outside, copy, out_dir), root)
+        logger.info("book run of %s over %s exited %d", service, f"{len(only)} call(s)" if only else "the whole book", play.exit_code)
+        return play
+    claims = _endpoints_by_module(root, modules)
+    outputs: list[str] = []
+    for module in modules:
+        named = [call for call in only if call in claims[module] or (module == modules[0] and not any(call in held for held in claims.values()))]
+        if only and not named:
+            continue
+        kept = [call for call in outside or () if call in claims[module]]
+        module_outside = kept if kept or not outside else None
+        play = _play(_run_argv(module, named, module_outside, copy, str(Path(out_dir) / module), register=bool(outside) and not kept), root)
+        logger.info("book run of %s over %s exited %d", module, f"{len(named)} call(s)" if named else "the whole module", play.exit_code)
+        if play.exit_code != 0:
+            return BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
+        outputs.append(f"{module}:\n{play.output}")
+    return BookPlay(exit_code=0, output=_tail("\n".join(outputs)))
+
+
+def _run_argv(module: str, only: list[str], outside: list[str] | None, copy: str, out_dir: str, register: bool = False) -> list[str]:
+    argv = [sys.executable, "-m", "ostler.book", "run", module]
     if only:
         argv += ["--only", ",".join(only)]
     if outside:
         argv += ["--register-outside", ",".join(outside)]
-    argv += ["--copy", copy, "--out", out_dir]
-    play = _play(argv, find_repo_root(repo_dir))
-    logger.info("book run of %s over %s exited %d", service, f"{len(only)} call(s)" if only else "the whole book", play.exit_code)
-    return play
+    elif register:
+        argv += ["--register"]
+    return argv + ["--copy", copy, "--out", out_dir]
+
+
+def _endpoints_by_module(root: Path, modules: tuple[str, ...]) -> dict[str, frozenset[str]]:
+    held: dict[str, frozenset[str]] = {}
+    for module in modules:
+        index = root / Path(*module.split(".")) / INDEX_FILE
+        text = index.read_text(encoding="utf-8") if index.is_file() else ""
+        held[module] = frozenset(entry.name for entry in parse_index(text) if entry.kind == "endpoint")
+    return held
 
 
 @blueprint.node
@@ -335,6 +391,7 @@ __all__ = [
     "changed_book_paths",
     "verify_book_spec",
     "without_covered_roots",
+    "book_modules",
     "book_run",
     "book_scope",
     "commit_service_book",

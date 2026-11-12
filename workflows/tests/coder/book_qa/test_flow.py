@@ -696,6 +696,83 @@ def test_the_shared_rule_names_what_a_play_reads() -> None:
     assert shared == ["services/api/journeys/old.py", "services/api/model/records.py"], shared
 
 
+def test_the_shared_rule_reads_each_surface_folder_as_a_book_of_its_own() -> None:
+    changed = {
+        "services/api/web/index.tsv": False,
+        "services/api/web/journeys/new.py": True,
+        "services/api/http/journeys/old.py": False,
+        "services/api/http/service.py": False,
+        "services/api/model/records.py": False,
+    }
+
+    shared = book_nodes.shared_book_paths("api", changed, frozenset({"http", "web"}))
+
+    assert shared == [
+        "services/api/http/journeys/old.py",
+        "services/api/http/service.py",
+        "services/api/model/records.py",
+    ], shared
+
+
+def _two_surfaces(
+    repo: Path, git: Callable[..., subprocess.CompletedProcess[str]], write: Callable[[Path, str], Path]
+) -> None:
+    (repo / "services" / "api" / "service.py").unlink()
+    for surface, call in (("http", "ListX"), ("web", "BuildX")):
+        write(repo / "services" / "api" / surface / "service.py", f"# the api {surface} surface\n")
+        write(repo / "services" / "api" / surface / "index.tsv", f"endpoint\t{call}\tx:{call}\td\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-qm", "chore: split the api book by surface")
+
+
+def test_a_book_with_two_surfaces_checks_each_and_plays_each_its_own_calls(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Each surface is its own module, so a call is played only by the surface whose index lists it."""
+    _two_surfaces(lane, git, write)
+    scripted = book()
+
+    result = drive_flow(_flow(), env(), _Agent(lane, touch="web/journeys/added.py"))
+
+    assert result.status == "passed", result
+    checked = [argv[argv.index("check") + 1] for argv in scripted.argv["check"]]
+    assert checked[:2] == ["services.api.http", "services.api.web"], checked
+    played = {argv[argv.index("run") + 1]: argv for argv in scripted.argv["run"]}
+    assert sorted(played) == ["services.api.http", "services.api.web"], played
+    assert played["services.api.http"][played["services.api.http"].index("--only") + 1] == "ListX"
+    assert played["services.api.web"][played["services.api.web"].index("--only") + 1] == "BuildX"
+    for module, argv in played.items():
+        assert argv[argv.index("--out") + 1].endswith(f"/{module}"), argv
+
+
+def test_a_shared_model_edit_plays_every_surface_whole_and_registers_outside_its_calls(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The model sits under every surface, so an edit there can move a call of any of them."""
+    _two_surfaces(lane, git, write)
+    scripted = book()
+
+    drive_flow(_flow(), env(), _Agent(lane, touch="model/records.py"))
+
+    played = {argv[argv.index("run") + 1]: argv for argv in scripted.argv["run"]}
+    assert sorted(played) == ["services.api.http", "services.api.web"], played
+    assert all(_played_whole(argv) for argv in played.values()), played
+    assert played["services.api.http"][played["services.api.http"].index("--register-outside") + 1] == "ListX"
+    assert played["services.api.web"][played["services.api.web"].index("--register-outside") + 1] == "BuildX"
+
+
 def test_the_seat_prompt_renders_the_restructure_step_and_the_narrowed_unreached_rule(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
