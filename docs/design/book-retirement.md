@@ -125,7 +125,7 @@ written, not generated.
 - Removal: **new**. After both repos switch: the markdown-only ostler commands (doctor, stamp, fmt, gc,
   checks, reach, search, trace, graph, refs, scaffold and their modules, `qa/context.py` and
   `qa/compile_*` once no uncovered service is left), the `ostler-okf` skill, the markdown parts of
-  `ostler-cli` and `ostler-repo-docs`, `policies/repo/okf-book.md`, `scripts/bench_ostler_doctor.py`
+  `ostler-cli` and `ostler-repo-docs`, the interim section of `policies/repo/service-book`, `scripts/bench_ostler_doctor.py`
   and `make bench-doctor`. The import graph decides the exact list at that step; the names above are an
   inventory by name.
 

@@ -129,44 +129,56 @@ commit again. A name already in history needs a rewrite with
 
 ## The book comes first
 
-This repository carries an OKF book under `docs/services/`. It is the current
-spec of every service here: what each screen, command and endpoint does, the
-concepts behind them, how a user reaches a surface, and which of two similar
-things to use. It is indexed, so its size is no reason to skip it.
+Each service of this repository has a book under `services/<name>/`. The book is
+the current spec of the service. Its Python states what every endpoint, screen
+and command does, which rule refuses a call, and which journeys a user lives
+through. Ostler plays it against the running app. Its `decisions/` folder holds,
+in markdown, why a behaviour is so and which story settled it.
 
-Read the book before the code whenever the question is *what* something is,
-*why* it exists, or *how a user reaches it*:
+Read the book before the code whenever the question is *what* something does,
+*why* it is so, or *how a user reaches it*:
 
 ```bash
-ostler search <term> [--type concept|flow|endpoint|screen|command]
-ostler trace <id|slug|path>     # walk the graph from a node
-ostler reach <screen>           # the documented click-path
+ostler book search <term> [--service services.<name>] [--kind rule|endpoint|action|journey|screen|decision]
+ostler book explain services.<name> <ClassName>       # everything the book says of one element
+ostler book decisions services.<name> [--story <id>]  # each decision and the story behind it
 ```
 
 Read the code to learn *how it is implemented*. A grep over source that starts
 before a search over the book re-derives what is already written down, and gets
 it wrong wherever the code has a legacy twin the book would have steered you
-away from.
+away from. A story writer and an implementer both read the decisions a story
+touches before they write.
 
-## A story is done when the book says so
+## A story is done when the book plays it
 
-A story is a delta. The book is the whole. The story is not finished until the
-delta is merged into the book in the same change as the code, which means all of:
+A story is a delta. The book is the whole. The story is finished when the delta
+is in the book in the same change as the code, which means all of:
 
-- Every node whose behaviour changed describes the new current reality
-  completely. Never "this story added X".
-- Every file a `code:` bullet cites and the change touched is restamped:
-  `ostler stamp --node <id>`.
+- Every record, rule, action, endpoint, screen and journey the story changed
+  states the new current behaviour. Restructure the book when the story needs
+  it. The structure a first pass chose is not a contract.
 - Every assumption or tradeoff settled for the story, at the start or along the
-  way, is a `concept` node with a `rule:` bullet, or a `rule:` added to the
-  concept that already covers it. A decision that lives only in a chat or a
+  way, is a file under `services/<name>/decisions/`, or a line added to the
+  decision that already covers it. A decision that lives only in a chat or a
   story file is lost to the next reader.
-- `ostler doctor` raises no finding on a page the change touched that was not
-  there before the change.
+- Every `source=` pointer names code that exists:
+  `ostler book check services.<name> --app <app root>` passes.
+- `ostler book run services.<name>` is green on the story's code. A claim no
+  call and no screen can observe is checked by the story's QA and stays out of
+  the book.
 
-Author through `ostler scaffold`, `ostler fmt` and `ostler doctor`, never by
-hand-writing frontmatter or a `docs/services/` path. The `ostler-okf` skill
-carries the per-type bar and the merge procedure.
+Write the book with the `ostler-book` skill. It carries the format, the order of
+work and the bar for each element.
+
+## A service with no book yet
+
+A service that has pages under `docs/services/<name>/` and no
+`services/<name>/service.py` keeps those pages as its spec until its book
+exists. Read them with `ostler search` and `ostler trace`, and write them
+through `ostler scaffold`, `ostler fmt` and `ostler doctor` with the
+`ostler-okf` skill. A service that has a book gets its whole delta in the book
+and no page under `docs/services/`.
 
 ---
 

@@ -136,7 +136,7 @@ localInstructions:
   - policies:
       - commit-and-push
       - private-names
-      - okf-book
+      - service-book
     paths:
       - "."
     includeReadme: false
