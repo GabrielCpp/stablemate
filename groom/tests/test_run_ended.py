@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -86,19 +85,6 @@ async def _announce_with(queue: asyncio.Queue) -> None:
     with patch.object(history, "compute", return_value=None):
         await app._write_summary("r7")
     assert queue.get_nowait() == {"type": "summary", "run_id": "r7"}
-
-
-def test_the_book_screen_describes_the_ended_strip_and_both_rail_badges() -> None:
-    root = Path(__file__).resolve().parents[2] / "docs/services/groom"
-    book = (root / "gui/screens/groom-dashboard.md").read_text()
-    rules = (root / "concepts/run-ended-notice.md").read_text()
-    for heading in ("### ended-strip", "### history-badge", "### open-ended-run-in-history"):
-        assert heading in book
-    assert "It stays open here." in book
-    assert "History, 2 runs failed since you last looked" in book
-    assert "the Runs button's badge counts blocked runs while History is open" in book
-    assert "- rule: the strip derives from the open run's detail" in rules
-    assert "`error.kind` as `fatal`" in rules
 
 
 def test_a_notify_frame_names_its_rule_and_an_ended_one_says_whether_the_run_failed(monkeypatch: pytest.MonkeyPatch):

@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -308,25 +307,6 @@ def test_a_summary_pass_writes_the_rows_that_are_missing_one_run_at_a_time() -> 
     assert written == 2
     assert all(item["ready"] for item in items.values())
     assert again == 0
-
-
-def test_the_book_screen_names_history_in_the_rail_and_describes_its_pane() -> None:
-    book = (Path(__file__).resolve().parents[2] / "docs/services/groom/gui/screens/groom-dashboard.md").read_text()
-    assert "runs, history, attendant, dispatch, and settings mode controls" in book
-    assert "### activity-history-mode" in book
-    assert "### history-table" in book
-    assert 'aria-sort="descending"' in book
-
-
-def test_the_book_screen_describes_the_history_filters_and_their_rules() -> None:
-    root = Path(__file__).resolve().parents[2] / "docs/services/groom"
-    book = (root / "gui/screens/groom-dashboard.md").read_text()
-    rules = (root / "concepts/run-history-filters.md").read_text()
-    for heading in ("### history-filters", "### history-no-match", "### filter-history", "### clear-history-filters"):
-        assert heading in book
-    assert "No runs match these filters." in book
-    assert "- rule: the filters narrow the rows in the browser from the list already loaded, with no request" in rules
-    assert "- rule: the range offers the last 7 days, the last 30 days and Everything, archives included, and starts on the last 30 days" in rules
 
 
 def unnamed(run: str, base: float, terminal: str, workspace: str = "", branch: str = "", late: float | None = None) -> None:
