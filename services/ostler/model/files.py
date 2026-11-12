@@ -28,7 +28,7 @@ def seed_block(seed_id: str, status: str, layer: str | None) -> str:
     return f"### {seed_id}\n- status: {status}\n{layers}\n"
 
 
-SEED_BLOCKS = tuple(seed_block(i, s, l) for i in SEED_IDS for s in SEED_STATUSES for l in SEED_LAYERS)
+SEED_BLOCKS = tuple(seed_block(i, s, layer) for i in SEED_IDS for s in SEED_STATUSES for layer in SEED_LAYERS)
 
 MARKS = (
     Mark("art/epics/*/stories/*/story.md", NOT_STARTED, IN_PROGRESS, BLOCKED, *CONFLICT_LINES),
