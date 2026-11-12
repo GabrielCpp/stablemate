@@ -158,7 +158,14 @@ class BookQa(QaOwner):
                 self.logger.info(
                     "playing the named calls of %s: %d changed path(s), none shared", name, scope.changed
                 )
-            play = self.call(book_run, name, [] if scope.whole else named[name].calls, target.lease, out_dir)
+            play = self.call(
+                book_run,
+                name,
+                [] if scope.whole else named[name].calls,
+                target.lease,
+                out_dir,
+                named[name].calls if scope.whole else [],
+            )
             if play.exit_code == ENVIRONMENT_EXIT:
                 return self._ask(_gate(f"ostler book run services.{name}", play.output), "the QA environment", blocks)
             if play.exit_code:

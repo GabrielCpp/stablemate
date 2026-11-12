@@ -91,7 +91,12 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    sleep, timer or retry loop in the book.
    No document pass runs after this turn, so you keep every touched endpoint's `source=` pointers and
    `index.tsv` current with the code the story changed.
-10. **Report.** Return the calls you played per service, the findings and the notes.
+10. **Leave the register alone.** `services/<name>/UNDERSPECIFIED.md` is the product owner's list of
+    fields the book models no dimension for. The whole-book play adds a finding there when it lies
+    outside the calls you named, and reports it as known. A finding on a call you named is yours:
+    model the dimension or return a finding. Never edit or delete an entry, and never declare
+    `ignores=` on a field outside the story's calls.
+11. **Report.** Return the calls you played per service, the findings and the notes.
 
 ## The checks after this turn
 

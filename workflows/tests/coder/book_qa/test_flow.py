@@ -629,6 +629,55 @@ def test_the_recorded_replay_stays_targeted_when_nothing_changed(
     assert not _played_whole(scripted.argv["run"][0]), scripted.argv["run"]
 
 
+def test_the_whole_book_play_registers_the_findings_outside_the_named_calls(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A finding on a field the story never touched is the owner's to answer, so the whole play lists it in the register."""
+    scripted = book()
+
+    drive_flow(_flow(), env(), _Agent(lane, touch="records.py"))
+
+    [argv] = scripted.argv["run"]
+    assert _played_whole(argv), argv
+    assert argv[argv.index("--register-outside") + 1] == "ListX,BuildX", argv
+    assert "--register" not in argv, argv
+
+
+def test_a_play_of_the_named_calls_registers_nothing(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The story's own calls go back to the seat, and a targeted play reaches no others."""
+    scripted = book()
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    [argv] = scripted.argv["run"]
+    assert "--register-outside" not in argv and "--register" not in argv, argv
+
+
+def test_the_register_is_a_record_no_play_reads_for_scope() -> None:
+    assert book_nodes.shared_book_paths("api", {"services/api/UNDERSPECIFIED.md": True}) == []
+
+
+def test_the_seat_prompt_leaves_the_register_to_the_owner(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    coder = Path(roles.__file__).resolve().parent.parent
+
+    text = render("book_qa/prompts/qa-book.md", {"_node_cwd": str(repo), "services": ["api"]}, coder)
+
+    assert "UNDERSPECIFIED.md" in text
+    assert "owner's list" in text
+
+
 def test_the_shared_rule_names_what_a_play_reads() -> None:
     changed = {
         "services/api/journeys/new.py": True,

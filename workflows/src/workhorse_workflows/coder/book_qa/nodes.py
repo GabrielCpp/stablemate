@@ -119,7 +119,7 @@ def without_covered_roots(source_roots: tuple[str, ...], covered: list[str]) -> 
     return tuple(r for r in source_roots if r.partition("=")[0].strip() not in covered)
 
 
-SHARED_EXEMPT_FILES = frozenset({"index.tsv", "DISAGREEMENTS.md", "WALLS.md", "VERIFIED"})
+SHARED_EXEMPT_FILES = frozenset({"index.tsv", "DISAGREEMENTS.md", "WALLS.md", "UNDERSPECIFIED.md", "VERIFIED"})
 
 
 def shared_book_paths(service: str, changed: dict[str, bool]) -> list[str]:
@@ -129,7 +129,8 @@ def shared_book_paths(service: str, changed: dict[str, bool]) -> list[str]:
     the named calls judges it. An edit to an existing journey, to the model, the fixtures, the
     backstage or any other file of the book can move the answer of a call this pass never named,
     so only a play of the whole book judges it. The index, the disagreement and wall notes, the
-    verified stamp and the decisions are records about the book that no play reads.
+    register of underspecified fields, the verified stamp and the decisions are records about the
+    book that no play reads.
     """
     prefix = book_dir(service) + "/"
     shared: list[str] = []
@@ -187,12 +188,15 @@ def book_run(
     only: list[str],
     copy: str,
     out_dir: str,
+    outside: list[str] | None = None,
     repo_dir: str = "",
 ) -> BookPlay:
-    """Play the named calls of the service's book against the run's copy of the stack, or the whole book when `only` is empty. The play has no time bound."""
+    """Play the named calls of the service's book against the run's copy of the stack, or the whole book when `only` is empty. A finding of an endpoint outside `outside` goes to the book's register of underspecified fields. The play has no time bound."""
     argv = [sys.executable, "-m", "ostler.book", "run", f"services.{service}"]
     if only:
         argv += ["--only", ",".join(only)]
+    if outside:
+        argv += ["--register-outside", ",".join(outside)]
     argv += ["--copy", copy, "--out", out_dir]
     play = _play(argv, find_repo_root(repo_dir))
     logger.info("book run of %s over %s exited %d", service, f"{len(only)} call(s)" if only else "the whole book", play.exit_code)
