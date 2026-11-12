@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tomllib
 from fnmatch import fnmatch
+from collections.abc import Sequence
 from pathlib import Path
 
 CONFIG = ".agent-checks.toml"
@@ -38,9 +39,9 @@ def declarations(root: Path) -> dict:
     return tomllib.loads(config.read_text(encoding="utf-8")).get(TABLE, {})
 
 
-def staged_paths(root: Path) -> list[str]:
+def staged_paths(root: Path, pathspecs: Sequence[str] = ()) -> list[str]:
     """Repo-relative POSIX paths the commit would add or change."""
-    out = _git(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z")
+    out = _git(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--", *pathspecs)
     return [entry for entry in out.split("\0") if entry]
 
 
@@ -68,13 +69,13 @@ def is_qa_evidence(root: Path, path: str) -> bool:
     return False
 
 
-def check_staged_files(root: Path) -> list[str]:
+def check_staged_files(root: Path, pathspecs: Sequence[str] = ()) -> list[str]:
     declared = declarations(root)
     allow: list[str] = list(declared.get("allow", []))
     limit = int(declared.get("max-bytes", MAX_BYTES))
 
     problems: list[str] = []
-    for path in staged_paths(root):
+    for path in staged_paths(root, pathspecs):
         if any(fnmatch(path, pattern) for pattern in allow):
             continue
         size = staged_size(root, path)
@@ -93,10 +94,11 @@ def check_staged_files(root: Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="repo to check (default: cwd)")
+    parser.add_argument("pathspecs", nargs="*", help="limit the check to these staged paths")
     args = parser.parse_args()
 
     root = args.root.resolve()
-    problems = check_staged_files(root)
+    problems = check_staged_files(root, args.pathspecs)
     if not problems:
         return 0
 
@@ -112,8 +114,7 @@ def main() -> int:
         "  it belongs in git     add a glob to [check-staged-files] allow "
         f"in {CONFIG}\n"
         "\n"
-        "`--no-verify` also gets the commit in. It is the one route that leaves no trace\n"
-        "for a reviewer, which is why the allowlist is tracked.",
+        "The allowlist is tracked so a reviewer sees every exception.",
         file=sys.stderr,
     )
     return 1

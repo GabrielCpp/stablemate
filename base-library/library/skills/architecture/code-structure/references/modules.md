@@ -235,7 +235,7 @@ search still runs for its body.
 **Statement.** When code you write repeats code that already exists, the same change extracts it
 to one owner. Waiting for a third copy gives the first two time to drift.
 
-**Trigger.** The clone check reports a pair. It runs as this skill's pre-commit hook,
+**Trigger.** The clone check reports a pair. It runs as this skill's agent commit check,
 `scripts/check_clones.py`, and names both places with their lines and their enclosing functions.
 A reader sees the same trigger in a block of five or more lines repeated in two places.
 

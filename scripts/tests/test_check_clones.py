@@ -420,9 +420,10 @@ def _platforms(data: bytes, integrity: str | None = None) -> dict:
     return {("test", "x64", ""): gate.Platform("jscpd-test", integrity or digest)}
 
 
-def test_an_unset_cache_variable_names_the_variable():
-    with pytest.raises(gate.DetectorMissing, match="STABLEMATE_CACHE_DIR"):
-        gate.detector_path({})
+def test_an_unset_cache_variable_falls_back_to_the_user_cache(tmp_path: Path):
+    path = gate.detector_path({"XDG_CACHE_HOME": str(tmp_path)}, binary="jscpd")
+
+    assert path == tmp_path / "stablemate" / "tools" / "jscpd" / gate.JSCPD_VERSION / "jscpd"
 
 
 def test_the_detector_is_installed_from_a_verified_tarball(tmp_path: Path):

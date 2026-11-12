@@ -3,9 +3,9 @@ name: code-structure
 description: "Language-neutral rules for where code lives inside one layer: when functions become an object, when a module splits, where configuration, environment facts and side effects may appear, when a branch chain is a table, and which assumptions must raise. Each rule has a trigger a reader or a grep can detect. Load when choosing between a function and a class, adding a second way to do something the code already does, growing a parameter list or a module, adding a setting or a file path, reading a value another stage fills, extracting code two separately built services share, or reviewing structure. hexagonal-architecture covers the boundaries between layers. Applies to **/*.go,**/*.dart,**/*.kt,**/*.ts,**/*.tsx,**/*.py."
 applyTo: "**/*.go,**/*.dart,**/*.kt,**/*.ts,**/*.tsx,**/*.py"
 tags: [standards]
-hooks:
-  - stage: pre-commit
-    run: scripts/check_clones.py
+commit_checks:
+  - run: scripts/check_clones.py
+    budget: 3
 ---
 
 # Code Structure — Rules That Can Fire
@@ -72,7 +72,7 @@ reason the rule exists. Each carries a quarter of the rule set:
 Rules 2.5 to 2.13 in modules.md cover where shared code lives: below every feature that uses it,
 in a module whose name predicts it, in a directory of its kind, with one owner per decoding,
 constant and domain fact, and no module that only tests import. Rules 2.11 and 2.12 keep it
-shared: search the tree before adding a name, and extract on the second copy. A pre-commit hook
+shared: search the tree before adding a name, and extract on the second copy. An agent commit check
 enforces 2.12 by running [scripts/check_clones.py](scripts/check_clones.py). Rule 2.13 covers two copies in separately built services: the owner is a library
 the workspace lists, and an extraction that changes how the code ships is proposed and recorded
 before it is built. Rules 1.5 to 1.8 in objects.md

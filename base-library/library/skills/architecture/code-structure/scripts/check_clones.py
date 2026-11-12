@@ -207,12 +207,7 @@ def platform_key() -> tuple[str, str, str]:
 
 def detector_path(env: Mapping[str, str] | None = None, binary: str | None = None) -> Path:
     environ = os.environ if env is None else env
-    base = environ.get(CACHE_ENV)
-    if not base:
-        raise DetectorMissing(
-            f"${CACHE_ENV} is not set. The runner farrier generates for the pre-commit "
-            "hook sets it; run this check through that hook, or export it."
-        )
+    base = environ.get(CACHE_ENV) or str(Path(environ.get("XDG_CACHE_HOME") or "~/.cache") / "stablemate")
     if binary is None:
         binary = "jscpd.exe" if platform.system().lower() == "windows" else "jscpd"
     return Path(base).expanduser() / "tools" / "jscpd" / JSCPD_VERSION / binary
@@ -271,9 +266,9 @@ def ensure_detector(
     return target
 
 
-def staged_paths(root: Path) -> list[str]:
+def staged_paths(root: Path, pathspecs: Sequence[str] = ()) -> list[str]:
     """Repo-relative POSIX paths the commit would add or change."""
-    out = _git(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z").stdout
+    out = _git(root, "diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z", "--", *pathspecs).stdout
     return [entry for entry in out.split("\0") if entry]
 
 
@@ -476,13 +471,13 @@ def range_span(root: Path, base: str) -> Span:
 
 
 def check_clones(
-    root: Path, runner: Runner = run_detector, base: str | None = None
+    root: Path, runner: Runner = run_detector, base: str | None = None, pathspecs: Sequence[str] = ()
 ) -> tuple[list[str], list[CopyPair]]:
     """Config problems and the copy pairs this commit, or the range since `base`, adds."""
     limits = threshold(root)
     problems = coincidence_problems(limits)
     if base is None:
-        paths = staged_paths(root)
+        paths = staged_paths(root, pathspecs)
         if not paths or not has_head(root):
             return problems, []
         span = change_span(root, paths)
@@ -539,6 +534,7 @@ def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> in
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="repo to check (default: cwd)")
     parser.add_argument("--base", help="check every line changed since this ref instead of the staged paths")
     parser.add_argument("--json", action="store_true", help="print the pairs and problems as one JSON object")
+    parser.add_argument("pathspecs", nargs="*", help="limit the check to these staged paths")
     args = parser.parse_args(argv)
 
     root = args.root.resolve()
@@ -546,7 +542,7 @@ def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> in
     if top.returncode == 0 and top.stdout.strip():
         root = Path(top.stdout.strip())
     try:
-        problems, pairs = check_clones(root, runner, args.base)
+        problems, pairs = check_clones(root, runner, args.base, args.pathspecs)
     except DetectorMissing as error:
         print(f"\nFAIL check_clones: {error}", file=sys.stderr)
         return 2
@@ -588,8 +584,7 @@ def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> in
         "  tune the detector     min-tokens, min-lines and ignore live in "
         f"[{TABLE}] in {CONFIG}\n"
         "\n"
-        "`--no-verify` also gets the commit in. It is the one route that leaves no trace\n"
-        "for a reviewer, which is why the coincidence list is tracked.",
+        "The coincidence list is tracked so a reviewer sees every exception.",
         file=sys.stderr,
     )
     return 1
