@@ -1,6 +1,6 @@
 # Where the markdown pages and farrier disagree
 
-Found while writing this book from `docs/services/farrier/`. Each entry names the page, the claim, and what the
+Found while writing this book from the markdown pages it replaced. Each entry names the page, the claim, and what the
 tool does.
 
 1. `farrier-commands-init.md`, the `config` command, args: `set-library <path>` is said to error "unless `path`

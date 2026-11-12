@@ -18,7 +18,7 @@ repo:
 # `.githooks/` are already standalone scripts that read the index themselves, so the
 # framework was wiring around scripts that needed none. Farrier owns a fenced region
 # at the end of `.githooks/pre-commit` and nothing outside it, and `farrier install`
-# is what sets `core.hooksPath`; see docs/services/farrier/agents-yml-config.md.
+# is what sets `core.hooksPath`; see services/farrier/.
 hooks:
   manager: githooks
 
