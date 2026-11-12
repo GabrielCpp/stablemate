@@ -652,12 +652,15 @@ def _device_manifests(root: Path, near: Path | None) -> list[dict[str, Any]]:
         where = near if near.is_absolute() else root / near
         books = [book for book in books if where.resolve().is_relative_to(book.directory.resolve())] or books
     return [{"source": book.name, "app_cwd": str(root), "repo_root": str(root),
+             "stack_file": str((book.ops_dir / spec_mod.STACK_FILE).relative_to(root)),
              "prepare": [_device_step(root, step) for step in book.device]} for book in books]
 
 
 def _device_step(root: Path, step: dict[str, Any]) -> dict[str, Any]:
     command = {"run": step["run"],
                "working-directory": str(resolve_directory(root, step.get("working-directory", ".")))}
+    if step.get("name"):
+        command["name"] = str(step["name"])
     if "timeout" in step:
         command["timeout"] = str(step["timeout"])
     return command

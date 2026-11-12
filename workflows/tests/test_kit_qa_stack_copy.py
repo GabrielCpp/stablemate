@@ -109,14 +109,15 @@ def test_bring_up_boots_the_device_beside_the_copy_and_reports_a_failed_install(
 
     def devices(_graph: object, *, env: dict[str, str], **_kw: object) -> list[dict[str, str]]:
         seen.append((env["STABLEMATE_LEASE"], Path(env["STABLEMATE_ADDRESS_BOOK"]).name))
-        return [{"ready": "no", "failed_step": "prepare[1]", "error": "adb: no devices",
-                 "source": "app-qa"}]
+        return [{"ready": "no", "failed_step": "install-app", "error": "adb: no devices",
+                 "source": "app", "manifest": {"stack_file": "docs/services/app/ops/stack.yml"}}]
 
     monkeypatch.setattr(runbook, "bring_up_devices", devices)
     status = runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1")
     assert seen == [("story-1", "addresses.json")]
-    assert (status.ready, status.failed_step) == ("no", "prepare[1]")
-    assert "adb: no devices" in status.notes and "app-qa" in status.notes
+    assert (status.ready, status.failed_step) == ("no", "install-app")
+    assert status.notes == ("Device step 'install-app' failed: adb: no devices. Repair that step "
+                            "under `device:` in `docs/services/app/ops/stack.yml`.")
     monkeypatch.setattr(runbook, "bring_up_devices", lambda *_a, **_kw: [{"ready": "yes"}])
     assert runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1").ready == "yes"
 

@@ -640,10 +640,11 @@ def ensure_stack(
     )
 
     for i, step in enumerate(manifest.get("prepare") or []):
-        ok, err = _run_step(step, app_cwd, timeout_s, logger, label=f"prepare[{i}]")
+        label = (step.get("name") if isinstance(step, dict) else "") or f"prepare[{i}]"
+        ok, err = _run_step(step, app_cwd, timeout_s, logger, label=label)
         if not ok:
-            logger.warning("prepare[%d] failed: %s", i, err)
-            return _fail(f"prepare[{i}]", err)
+            logger.warning("%s failed: %s", label, err)
+            return _fail(label, err)
 
     entry_url = _url_now(manifest.get("entry_url", ""))
     health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""

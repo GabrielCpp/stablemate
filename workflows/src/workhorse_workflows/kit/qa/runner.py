@@ -159,9 +159,9 @@ def ensure_stack(
             last = devices[-1]
             return StackStatus(
                 ready="no", failed_step=last.get("failed_step", ""),
-                notes=bring_up_failure(
+                notes=device_failure(
                     last.get("failed_step", "unknown"), (last.get("error") or "").strip(),
-                    last.get("source", "")))
+                    (last.get("manifest") or {}).get("stack_file") or last.get("source", "")))
         return _copy_status(copied)
     try:
         manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
@@ -281,6 +281,12 @@ def stack_stopped(owned_pgids: tuple[str, ...]) -> str:
                     "launches it must start a server that keeps serving until the run stops it, with no "
                     "time limit of its own")
     return ""
+
+
+def device_failure(step: str, error: str, stack_file: str) -> str:
+    """Why a device step failed, and the book's stack file whose step repairs it."""
+    failed = f"Device step '{step}' failed" + (f": {error}" if error else "")
+    return f"{failed}. Repair that step under `device:` in `{stack_file}`."
 
 
 def bring_up_failure(step: str, error: str, source: str) -> str:

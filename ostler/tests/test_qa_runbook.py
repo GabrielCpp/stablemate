@@ -1131,6 +1131,14 @@ def test_a_book_declaring_device_steps_boots_and_installs_from_its_stack_file(
         "story-1 /copy/addresses.json")
 
 
+def test_a_failed_device_step_reports_its_name_and_its_stack_file(tmp_path: Path) -> None:
+    _device_book(tmp_path, "app")
+    (tmp_path / "app").rmdir()
+    results = rb.bring_up_devices(model.load(tmp_path))
+    assert [(r["ready"], r["failed_step"]) for r in results] == [("no", "install")]
+    assert results[0]["manifest"]["stack_file"] == "docs/services/app/ops/stack.yml"
+
+
 def test_device_steps_near_another_book_still_come_up(tmp_path: Path) -> None:
     _device_book(tmp_path, "app")
     (tmp_path / "docs" / "services" / "web" / "ops").mkdir(parents=True)
