@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from fnmatch import fnmatch
@@ -56,7 +57,7 @@ from farrier.selection_errors import (
     suggestions,
     unknown_selection_error,
 )
-from farrier.skill_hooks import SkillHook, hooks_for
+from farrier.skill_hooks import CommitCheck, SkillHook, checks_for, hooks_for
 from farrier.home_agents import agent_files, agent_names
 from farrier.home_guards import BRIDGE_FILE, guard_files, guard_names
 from farrier.sources import (
@@ -596,28 +597,93 @@ def selected_hooks(prefix: str, skills) -> list[SkillHook]:
     return hooks
 
 
+def _split_selection(config: ConfigLike, home_config: HomeConfig) -> tuple[list[Source], dict[str, list[Source]]]:
+    """The skills the repo selects, and per harness the user-library skills the repo neither selects nor excludes."""
+    all_skills = load_layered_sources("skill", "library", "skills")
+    all_prompts = load_layered_sources("prompt", "library", "prompts")
+    include, _, _, _ = collect_selection(config)
+    exclude = excluded(config, "skills")
+    repo_skills = selected_sources(all_skills, include, exclude)
+    user_only = {
+        harness: [source for source in skills if source not in repo_skills and not matches(source, exclude)]
+        for harness, (skills, _) in user_selections(home_config, all_skills, all_prompts).items()
+    }
+    return repo_skills, user_only
+
+
 def user_gates(config: ConfigLike, home_config: HomeConfig, home: Path) -> list[Path]:
     """The installed script of each hook the user library adds to this repo.
 
     A skill the repo selects already runs from the repo's own runner, and one it
     excludes stays off. A hook whose script is not installed yet is left out.
     """
-    all_skills = load_layered_sources("skill", "library", "skills")
-    all_prompts = load_layered_sources("prompt", "library", "prompts")
-    include, _, _, _ = collect_selection(config)
-    exclude = excluded(config, "skills")
-    repo_skills = selected_sources(all_skills, include, exclude)
+    _, user_only = _split_selection(config, home_config)
     gates: dict[tuple[str, str], Path] = {}
-    for harness, (skills, _) in user_selections(home_config, all_skills, all_prompts).items():
+    for harness, skills in user_only.items():
         folder = home / user_harness_dir(harness) / "skills"
         for source in skills:
-            if source in repo_skills or matches(source, exclude):
-                continue
             for hook in selected_hooks("", [source]):
                 gate = folder / hook.skill / hook.run
                 if gate.is_file():
                     gates.setdefault((hook.skill, hook.run), gate)
     return list(gates.values())
+
+
+SKILL_ROOTS = (".claude/skills", ".agents/skills", ".github/skills")
+
+
+@dataclass(frozen=True)
+class ListedCheck:
+    """A commit check resolved to the command that runs it."""
+
+    owner: str
+    command: str
+    budget: float
+
+
+def check_command(script: Path) -> str:
+    """The shell command that runs *script*."""
+    quoted = shlex.quote(str(script))
+    return f"python3 {quoted}" if script.suffix == ".py" else quoted
+
+
+def _source_checks(prefix: str, source: Source) -> list[CommitCheck]:
+    data = frontmatter_mapping(source.path.read_text(encoding="utf-8"))
+    return checks_for(public_name(prefix, source), data)
+
+
+def _listed(check: CommitCheck, folders: Sequence[Path], source: Source) -> ListedCheck:
+    script = next(
+        (folder / check.owner / check.run for folder in folders
+         if (folder / check.owner / check.run).is_file()),
+        source.path.parent / check.run,
+    )
+    return ListedCheck(check.owner, check_command(script), check.budget)
+
+
+def commit_checks(
+    repo: Path,
+    config: ConfigLike,
+    home_config: HomeConfig,
+    home: Path,
+    prefix: str,
+) -> list[ListedCheck]:
+    """Every commit check that applies to *repo*: its own skills' first, then the user library's.
+
+    A check runs from its installed copy, or from the library when nothing is installed yet.
+    """
+    repo_skills, user_only = _split_selection(config, home_config)
+    listed: dict[tuple[str, str], ListedCheck] = {}
+    repo_folders = [repo / root for root in SKILL_ROOTS]
+    for source in repo_skills:
+        for check in _source_checks(prefix, source):
+            listed.setdefault((check.owner, check.run), _listed(check, repo_folders, source))
+    for harness, skills in user_only.items():
+        folders = [home / user_harness_dir(harness) / "skills"]
+        for source in skills:
+            for check in _source_checks("", source):
+                listed.setdefault((check.owner, check.run), _listed(check, folders, source))
+    return list(listed.values())
 
 
 def link_drift(path: Path, rel: str, link: Symlink) -> Drifted | None:

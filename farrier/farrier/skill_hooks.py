@@ -18,6 +18,15 @@ class SkillHook:
     run: str
 
 
+@dataclass(frozen=True)
+class CommitCheck:
+    """One ``commit_checks:`` entry, bound to the skill or policy that declared it."""
+
+    owner: str
+    run: str
+    budget: float
+
+
 def declared(data: dict[str, Any]) -> list[dict[str, Any]]:
     """The raw ``hooks:`` entries of a parsed front matter, dropping malformed shapes."""
     entries = data.get("hooks")
@@ -37,17 +46,95 @@ def hooks_for(skill: str, data: dict[str, Any]) -> list[SkillHook]:
     return out
 
 
+def checks_for(owner: str, data: dict[str, Any]) -> list[CommitCheck]:
+    """The valid commit checks a skill or policy declares."""
+    entries = data.get("commit_checks")
+    if not isinstance(entries, list):
+        return []
+    out: list[CommitCheck] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        run = str(entry.get("run") or "").strip()
+        budget = _budget(entry.get("budget"))
+        if run and budget is not None:
+            out.append(CommitCheck(owner=owner, run=run, budget=budget))
+    return out
+
+
+def _budget(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, int | float) or value <= 0:
+        return None
+    return float(value)
+
+
+def _run_findings(where: str, run: str, source_dir: Path) -> list[tuple[str, str, str]]:
+    if Path(run).is_absolute() or ".." in Path(run).parts:
+        return [(
+            "error", "hook-run-escapes",
+            f"{where} `run: {run}` must be relative to the skill directory and stay "
+            "inside it — farrier installs the skill's own files and nothing else, so "
+            "any other path names something that will not be there.",
+        )]
+    if not (source_dir / run).is_file():
+        return [(
+            "error", "hook-run-missing",
+            f"{where} `run: {run}` is not a file in this skill. The hook installs "
+            "anyway and fails at the moment somebody commits, which is the worst "
+            "time to find out and the point farrier looks most like the culprit.",
+        )]
+    return []
+
+
+def check_findings(data: dict[str, Any], source_dir: Path) -> list[tuple[str, str, str]]:
+    """``(level, code, message)`` for every problem with a source's ``commit_checks:`` block."""
+    raw = data.get("commit_checks")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        return [(
+            "error", "commit-checks-not-a-list",
+            "`commit_checks:` must be a list of `- run: ... budget: ...` entries; farrier "
+            "reads any other shape as no checks at all, so the script silently never runs.",
+        )]
+    out: list[tuple[str, str, str]] = []
+    for index, entry in enumerate(raw):
+        where = f"commit_checks[{index}]"
+        if not isinstance(entry, dict):
+            out.append((
+                "error", "commit-check-not-a-mapping",
+                f"{where} is not a mapping — each entry needs `run:` and `budget:`.",
+            ))
+            continue
+        if _budget(entry.get("budget")) is None:
+            out.append((
+                "error", "commit-check-bad-budget",
+                f"{where} needs `budget:`, the check's average run time in seconds, as a "
+                "positive number. The commit guard adds it to the shell call's timeout, "
+                "so without it the commit can time out halfway through its checks.",
+            ))
+        run = str(entry.get("run") or "").strip()
+        if not run:
+            out.append((
+                "error", "commit-check-no-run",
+                f"{where} has no `run:` — there is nothing for the check to execute.",
+            ))
+            continue
+        out.extend(_run_findings(where, run, source_dir))
+    return out
+
+
 def findings(data: dict[str, Any], source_dir: Path) -> list[tuple[str, str, str]]:
     """``(level, code, message)`` for every problem with a source's ``hooks:`` block."""
     raw = data.get("hooks")
     if raw is None:
-        return []
+        return check_findings(data, source_dir)
     if not isinstance(raw, list):
         return [(
             "error", "hooks-not-a-list",
             "`hooks:` must be a list of `- stage: ... run: ...` entries; farrier reads "
             "any other shape as no hooks at all, so the script silently never runs.",
-        )]
+        )] + check_findings(data, source_dir)
     out: list[tuple[str, str, str]] = []
     for index, entry in enumerate(raw):
         where = f"hooks[{index}]"
@@ -77,18 +164,5 @@ def findings(data: dict[str, Any], source_dir: Path) -> list[tuple[str, str, str
                 f"{where} has no `run:` — there is nothing for the hook to execute.",
             ))
             continue
-        if Path(run).is_absolute() or ".." in Path(run).parts:
-            out.append((
-                "error", "hook-run-escapes",
-                f"{where} `run: {run}` must be relative to the skill directory and stay "
-                "inside it — farrier installs the skill's own files and nothing else, so "
-                "any other path names something that will not be there.",
-            ))
-        elif not (source_dir / run).is_file():
-            out.append((
-                "error", "hook-run-missing",
-                f"{where} `run: {run}` is not a file in this skill. The hook installs "
-                "anyway and fails at the moment somebody commits, which is the worst "
-                "time to find out and the point farrier looks most like the culprit.",
-            ))
-    return out
+        out.extend(_run_findings(where, run, source_dir))
+    return out + check_findings(data, source_dir)

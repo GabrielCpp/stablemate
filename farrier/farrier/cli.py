@@ -87,6 +87,7 @@ from farrier.outputs import (
     USER_MANAGED,
     check_outputs,
     check_selection,
+    commit_checks,
     install_outputs,
     normalize_agents,
     render_expected,
@@ -935,6 +936,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repository root the commit lands in (default: cwd)",
     )
 
+    checks_p = sub.add_parser(
+        "checks",
+        help="List the commit checks an agent's commit runs in this repo, with their budgets",
+    )
+    checks_p.add_argument(
+        "--repo",
+        type=Path,
+        default=Path.cwd(),
+        help="Repository root the commit lands in (default: cwd)",
+    )
+
     worktrees_p = sub.add_parser(
         "worktrees",
         help="List the linked worktrees that are safe to remove, and remove them with --apply",
@@ -1018,6 +1030,28 @@ def _run_hooks_run_user(args: argparse.Namespace) -> int:
         print(f"Skipped the user library's hooks: {exc}", file=sys.stderr)
         return 0
     return run_user_hooks(repo, gates)
+
+
+def _run_checks(args: argparse.Namespace) -> int:
+    """`farrier checks` — one `<command>\t<budget>` line per commit check.
+
+    A repo farrier cannot read lists nothing, so the commit guard lets its commits through.
+    """
+    repo = args.repo.resolve()
+    try:
+        config_file = locate_manifest(repo)
+        config = read_manifest(config_file) if config_file else Manifest()
+        set_layers(resolve_library_dir(None))
+        if not LAYERS:
+            return 0
+        prefix = repo_prefix(repo, config.repo)
+        checks = commit_checks(repo, config, load_home_config(), Path.home(), prefix)
+    except SystemExit as exc:
+        print(f"Listed no commit checks: {exc}", file=sys.stderr)
+        return 0
+    for check in checks:
+        print(f"{check.command}\t{check.budget:g}")
+    return 0
 
 
 def _run_hooks_list(args: argparse.Namespace) -> int:
@@ -1220,6 +1254,7 @@ def _main(argv: list[str] | None) -> int:
         "library",
         "doctor",
         "hooks",
+        "checks",
         "worktrees",
     }
     if not argv or argv[0] in ("-h", "--help"):
@@ -1263,6 +1298,9 @@ def _main(argv: list[str] | None) -> int:
         if args.hooks_action == "run-user":
             return _run_hooks_run_user(args)
         return 2
+
+    if args.command == "checks":
+        return _run_checks(args)
 
     if args.command == "doctor":
         return doctor.report(args.repo)

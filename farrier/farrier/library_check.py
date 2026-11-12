@@ -213,6 +213,10 @@ def check_text(text: str, path: Path, *, require_tags: bool = True) -> list[Find
         add("error", "hooks-not-a-skill",
             "only a SKILL.md may declare `hooks:` — a prompt bundles no scripts, so "
             "there is nothing for farrier to install and run.")
+    elif data.get("commit_checks") is not None and path.name not in ("SKILL.md", "POLICY.md"):
+        add("error", "commit-checks-not-a-skill",
+            "only a SKILL.md or a POLICY.md may declare `commit_checks:` — a prompt "
+            "bundles no scripts, so there is nothing for farrier to install and run.")
     else:
         for level, code, message in hook_findings(data, path.parent):
             add(level, code, message)
