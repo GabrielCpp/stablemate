@@ -50,7 +50,7 @@ def raw(service: Service[Any]) -> dict[str, tuple[str, ...]]:
 
 
 def missing(service: Service[Any], app_root: str | None) -> list[tuple[str, str]]:
-    members = core_config.workspace_members()
+    members = core_config.workspace_checkouts(Path(app_root) if app_root else Path.cwd())
     found: list[tuple[str, str]] = []
     for name, found_pointers in raw(service).items():
         for pointer in dict.fromkeys(file_of(p) for p in found_pointers):

@@ -31,6 +31,7 @@ from ostler import behavior_cli
 from ostler.environments import cli as env_cli
 from ostler import book_reach
 from ostler.book import cli as book_cli
+from ostler._vendor.stablemate_core import config as core_config
 from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.model import find_root, load
 
@@ -2062,6 +2063,11 @@ def _cmd_checks(args: argparse.Namespace) -> int:
     return 0
 
 
+def _env_root(start: Path) -> Path:
+    """The root `ostler env` reads its stacks under: the book root in a workspace, else the docs root."""
+    return core_config.book_home(start) or find_root(start)
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         return _main(argv)
@@ -2104,7 +2110,7 @@ def _main(argv: list[str] | None) -> int:
     if args.command == "book":
         return _cmd_book(cwd, book_args)
     if args.command == "env":
-        return env_cli.run(args, find_root(cwd if cwd is not None else Path.cwd()))
+        return env_cli.run(args, _env_root(cwd if cwd is not None else Path.cwd()))
     if args.command == "doctor" and args.verify_index:
         return _cmd_verify_index(cwd, args)
     with index_mod.session(

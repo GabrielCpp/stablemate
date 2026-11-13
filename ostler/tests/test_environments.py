@@ -207,6 +207,58 @@ def test_a_stack_template_in_the_artifacts_folder_reaches_a_member_repository(
     assert compose["services"]["api-api"]["build"] == str(member)
 
 
+def _real_repo(path: Path) -> Path:
+    path.mkdir(parents=True)
+    for args in (["init", "--quiet", "-b", "main"], ["commit", "--quiet", "--allow-empty", "-m", "x"]):
+        subprocess.run(["git", "-C", str(path), "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+                       check=True, capture_output=True)
+    return path.resolve()
+
+
+def _run_trees(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
+    member = _real_repo(tmp_path / "code" / "todo-api")
+    artifacts = _real_repo(tmp_path / "artifacts")
+    config = tmp_path / "home.toml"
+    config.write_text(f'[workspaces]\ntodo = ["{member}"]\n')
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
+    monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(artifacts))
+    trees = []
+    for name, repo in (("artifacts", artifacts), ("todo-api", member)):
+        target = tmp_path / "trees" / f"{name}-run-t"
+        subprocess.run(["git", "-C", str(repo), "worktree", "add", "--quiet", "-b", "run/t", str(target)],
+                       check=True, capture_output=True)
+        trees.append(target.resolve())
+    return artifacts, trees[0], trees[1]
+
+
+def _api_stack(root: Path) -> None:
+    _file(root, "services/api/ops/services/api.yml.j2", 'build: {{ repos["todo-api"] }}\n')
+    _file(root, "services/api/ops/stack.yml", yaml.safe_dump({
+        "services": {"api": {"about": "the HTTP API", "define": "services/api.yml.j2", "address": "api", "port": 8080}},
+    }))
+
+
+def test_a_stack_template_rendered_from_an_artifacts_worktree_reaches_the_member_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, book, member = _run_trees(tmp_path, monkeypatch)
+    _api_stack(book)
+    outcome = commands.cmd_render(book, ["api"], copy_name="story-1")
+    assert outcome.ok, outcome.message
+    compose = yaml.safe_load((Path(outcome.data["directory"]) / render_mod.COMPOSE_FILE).read_text(encoding="utf-8"))
+    assert compose["services"]["api-api"]["build"] == str(member)
+
+
+def test_env_from_a_member_worktree_reads_the_stacks_of_the_artifacts_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, book, member = _run_trees(tmp_path, monkeypatch)
+    _api_stack(book)
+    from ostler import cli as ostler_cli
+    assert ostler_cli.main(["-C", str(member), "env", "check", "--json"]) == 0
+    assert "api:api" in json.loads(capsys.readouterr().out)["services"]
+
+
 def test_the_shared_copy_keeps_its_fixed_port_and_a_run_copy_takes_any(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     shared = commands.cmd_render(root, ["web"])

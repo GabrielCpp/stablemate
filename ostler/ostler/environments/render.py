@@ -196,7 +196,7 @@ def _context(
         "project": copy.project,
         "shared": copy.shared,
         "repo": str(repo),
-        "repos": {name: str(path) for name, path in core_config.workspace_members().items()},
+        "repos": {name: str(path) for name, path in core_config.workspace_checkouts(repo).items()},
         "ops_dir": str(service.ops_dir),
         "env_dir": str(copy.directory),
         "dir": str(copy.directory / service.compose_name),

@@ -54,17 +54,30 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Workspace:
     return Workspace(artifacts=artifacts, api=api, web=web, env=runtime(0))
 
 
-def _lay_out_book(ws: Workspace) -> None:
-    shutil.copytree(FIXTURE / "services", ws.artifacts / "services", ignore=shutil.ignore_patterns("__pycache__"))
-    for path in (ws.artifacts / "services").rglob("*.py"):
+def _lay_out_book(ws: Workspace, book: Path | None = None, api: Path | None = None) -> None:
+    book = book or ws.artifacts
+    api = api or ws.api
+    shutil.copytree(FIXTURE / "services", book / "services", ignore=shutil.ignore_patterns("__pycache__"))
+    for path in (book / "services").rglob("*.py"):
         text = path.read_text()
         if '"app.py::' in text:
             path.write_text(text.replace('"app.py::', '"repo://todo-api/app.py::'))
-    shutil.copy(FIXTURE / "app.py", ws.api / "app.py")
-    unrelated = ws.api / "services" / "api"
+    shutil.copy(FIXTURE / "app.py", api / "app.py")
+    unrelated = api / "services" / "api"
     unrelated.mkdir(parents=True)
     (unrelated / "__init__.py").write_text("")
     (unrelated / "service.py").write_text("raise RuntimeError('the member repository is not the book')\n")
+
+
+def _run_worktrees(ws: Workspace, tmp_path: Path, branch: str = "run/book-t") -> tuple[Path, Path]:
+    core_config.ensure_artifacts_repo()
+    trees = tmp_path / "trees"
+    cut: list[Path] = []
+    for name, repo in (("artifacts", ws.artifacts), ("todo-api", ws.api)):
+        target = trees / f"{name}-{branch.replace('/', '-')}"
+        _git(repo, "worktree", "add", "--quiet", "-b", branch, str(target))
+        cut.append(target.resolve())
+    return cut[0], cut[1]
 
 
 def _ostler(ws: Workspace, arguments: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -138,3 +151,41 @@ def test_checkout_returns_the_folder_of_a_member(workspace):
 def test_checkout_of_an_unknown_member_names_the_known_ones(workspace):
     with pytest.raises(LookupError, match="todo-api, todo-web"):
         checkout("nowhere")
+
+
+def test_book_search_from_a_member_worktree_reads_the_artifacts_worktree_books(workspace, tmp_path):
+    book, api = _run_worktrees(workspace, tmp_path)
+    _lay_out_book(workspace, book, api)
+    done = _ostler(workspace, ["book", "search", "todo"], api)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "services.api" in done.stdout
+
+
+def test_book_check_from_the_artifacts_worktree_runs_there(workspace, tmp_path):
+    book, api = _run_worktrees(workspace, tmp_path)
+    _lay_out_book(workspace, book, api)
+    done = subprocess.run([sys.executable, "-m", "ostler.book", "check", "services.api"], cwd=book,
+                          env=workspace.env, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_checkout_from_a_member_worktree_is_the_member_worktree(workspace, tmp_path, monkeypatch):
+    _, api = _run_worktrees(workspace, tmp_path)
+    monkeypatch.chdir(api)
+    assert checkout("todo-api") == str(api)
+    assert checkout("todo-web") == str(workspace.web)
+
+
+def test_a_pointer_into_a_member_resolves_in_the_member_worktree(workspace, tmp_path):
+    _, api = _run_worktrees(workspace, tmp_path)
+    (api / "only.py").write_text("x = 1\n")
+    assert missing(_service("repo://todo-api/only.py::x"), str(api)) == []
+    assert missing(_service("repo://todo-api/only.py::x"), str(workspace.api)) == [("Thing", "repo://todo-api/only.py")]
+
+
+def test_stale_names_the_member_from_its_worktree(workspace, tmp_path):
+    book, api = _run_worktrees(workspace, tmp_path)
+    service = _service("repo://todo-api/README::x", "repo://todo-web/README::y", "README::z")
+    report = stale(service, str(api), str(book))
+    assert report.untraced == ["repo://todo-web/README::y"]
+    assert report.missing == []

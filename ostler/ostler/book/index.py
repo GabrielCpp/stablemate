@@ -96,7 +96,7 @@ def stale(directory: str) -> bool:
 
 
 def book_root(start: str) -> str | None:
-    home = core_config.docs_home(Path(start))
+    home = core_config.book_home(Path(start))
     if home is not None:
         return str(home)
     here = os.path.abspath(start)
