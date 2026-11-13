@@ -36,7 +36,7 @@ case in front of you.
 
 ## The package
 
-A service's book is `services/<name>/` under the book root: the repository root in a monorepo, the artifacts folder in a multi-repo workspace. A `source` pointer into another repository of the workspace is `repo://<member>/<path>::<symbol>`. A stack or a process that starts the app from a member repository takes the member's folder from `checkout("<member>")`.
+A service's book is `services/<name>/` under the book root: the repository root in a monorepo, the artifacts folder in a multi-repo workspace. A `source` pointer into another repository of the workspace is `repo://<member>/<path>::<symbol>`. A stack or a process that starts the app from a member repository takes the member's folder from `checkout("<member>")`. A run launched with `--worktree` from a workspace works on its own branch. Its book root is the artifacts worktree on that branch and a member's folder is its worktree on that branch, and `ostler` reads both from git when run inside one of them.
 
 | Path | Holds |
 | --- | --- |
