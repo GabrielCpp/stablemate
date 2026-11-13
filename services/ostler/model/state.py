@@ -8,8 +8,8 @@ from typing import cast
 from ostler.book import Collection, State, Unique
 
 from ..fixtures import ALPHA, STORY_PATHS, slug_of
-from .files import (CONFLICT_LINES, EPIC_PATHS, NOT_STARTED, SEED_IDS, STATUS_LINES, STORY_FILES, FileRecord,
-                    holding)
+from .files import (BULLET_LINES, CONFLICT_LINES, EPIC_PATHS, NOT_STARTED, SEED_IDS, STATUS_LINES, STORY_FILES,
+                    FileRecord, holding)
 from .records import Queue
 
 SEEDED_QUEUE = ("0001-first", "0002-second")
@@ -24,7 +24,7 @@ class Plan(State):
     def __init__(self, today: date):
         super().__init__(today)
         for path in STORY_FILES:
-            self.files.items[path] = holding(path, NOT_STARTED)
+            self.files.items[path] = holding(path, NOT_STARTED, BULLET_LINES["Not started"])
         for path in EPIC_PATHS:
             self.files.items[path] = holding(path)
         self.queue.items[QUEUE] = Queue(QUEUE, SEEDED_QUEUE)

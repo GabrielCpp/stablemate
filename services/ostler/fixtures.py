@@ -111,9 +111,16 @@ class SetStatusArgs(Fixture):
     story: str | None = None
     status: str | None = None
 
+    @property
+    def trimmed(self) -> str:
+        """The status as the tool keeps it: without the spaces and tabs around it."""
+        return (self.status or "").strip()
+
     @classmethod
     def examples(cls, state: Any, by: Actor | None) -> Iterable[SetStatusArgs]:
-        return (set_status(), set_status(ALPHA, "Blocked: waiting"), set_status(ALPHA, "Not started"), set_status("TST-NOPE"))
+        return (set_status(), set_status(ALPHA, "Blocked: waiting"), set_status(ALPHA, "Not started"), set_status(ALPHA, "Done"),
+                set_status(ALPHA, " Done "), set_status(ALPHA, "\tDone\t"), set_status(ALPHA, "In progress"), set_status(ALPHA, ""), set_status(ALPHA, "   "), set_status(ALPHA, "\t"),
+                set_status("TST-NOPE"), set_status("TST-NOPE", ""))
 
 
 @dataclass

@@ -105,17 +105,25 @@ class SeedRemove(Command):
 
 
 class SetStatus(Command):
-    does = "Set a story's status in its frontmatter and in its Implementation Status line."
+    does = ("Set a story's status in its frontmatter and in its Implementation Status line. "
+            "A status that is empty, or made only of spaces and tabs, is refused and no file changes.")
     program = "ostler"
     argv = ("--full-ids", "set-status", Positional("story"), Positional("status"))
     args = Object(
         "SetStatusArgs",
         story=STORY,
-        status=Field(Str(), required=False, does="the new status, free text"),
+        status=Field(
+            Str(classes={"an empty status": "", "a status of spaces": "   ", "a status of a tab": "\t",
+                         "a status with spaces around it": " Done ",
+                         "a status with tabs around it": "\tDone\t"}),
+            required=False,
+            does="the new status, free text. Any text is kept as typed apart from the spaces and tabs around it; "
+                 "text with nothing but spaces and tabs in it is refused",
+        ),
     )
     answers = (
-        Exit(0, Lines(), "the status is set"),
-        Exit(1, Lines(), "no story has the id"),
+        Exit(0, Lines(), "the status is set, written without the spaces and tabs around it"),
+        Exit(1, Lines(), "no story has the id, or the status is empty or made only of spaces and tabs; the story file is left as it was"),
     )
     carries = SetStoryStatus
     source = ("ostler/ostler/crud.py::set_status",)

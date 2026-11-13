@@ -11,8 +11,9 @@ from ..fixtures import ALPHA, conflict, seed_add, seed_remove, set_status, todo_
 
 class WrongTurns(Journey):
     """A planner slips. They queue an epic twice, prune and reorder epics the queue lacks, queue an epic that has no
-    folder yet, list a seed with a status and a layer the registry lacks, remove a seed that is not there, and
-    name a story that does not exist or give a conflict no text."""
+    folder yet, list a seed with a status and a layer the registry lacks, remove a seed that is not there, give a
+    story an empty status or one made of spaces and tabs and then `In progress`, and name a story that does not
+    exist or give a conflict no text."""
 
     alone = True
 
@@ -27,6 +28,10 @@ class WrongTurns(Journey):
             SeedAdd(seed_add("0002-second", "SD-3", status="weird")),
             SeedAdd(seed_add("0002-second", "SD-3", layer="cloud")),
             SeedRemove(seed_remove("0002-second", "SD-3")),
+            SetStatus(set_status(ALPHA, "")),
+            SetStatus(set_status(ALPHA, "  \t ")),
+            SetStatus(set_status("TST-NOPE", "")),
+            SetStatus(set_status(ALPHA, "In progress")),
             SetStatus(set_status("TST-NOPE", "in-progress")),
             Conflict(conflict(ALPHA, None)),
             Conflict(conflict(ALPHA, "criteria disagree", clear=True)),

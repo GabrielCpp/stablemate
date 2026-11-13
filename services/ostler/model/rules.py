@@ -68,6 +68,10 @@ def _no_story(a: SetStatusArgs | ConflictArgs, s: Plan, by: Actor | None) -> boo
     return a.story not in STORY_PATHS
 
 
+def _empty_status(a: SetStatusArgs, s: Plan, by: Actor | None) -> bool:
+    return a.trimmed == ""
+
+
 def _conflict_unclear(a: ConflictArgs, s: Plan, by: Actor | None) -> bool:
     return bool(a.text) == bool(a.clear)
 
@@ -85,5 +89,8 @@ invalid_layer = Rule[SeedAddArgs, Plan]("invalid layer '{layer}' (one of fronten
 no_epic_to_remove_from = Rule[SeedRemoveArgs, Plan]("no epic '{epic}'", _no_epic, FAILED)
 no_such_seed = Rule[SeedRemoveArgs, Plan]("no seed '{seed}' in '{epic}'", _no_seed, FAILED)
 no_story_for_status = Rule[SetStatusArgs, Plan]("no story with id '{story}'", _no_story, FAILED)
+empty_status = Rule[SetStatusArgs, Plan](
+    "status of '{story}' cannot be empty", _empty_status, FAILED,
+    why="a script that passes an unset variable would blank the story's status and be told it worked.")
 conflict_unclear = Rule[ConflictArgs, Plan]("pass the conflict text, or --clear — one of the two", _conflict_unclear, FAILED)
 no_story_for_conflict = Rule[ConflictArgs, Plan]("no story with id '{story}'", _no_story, FAILED)

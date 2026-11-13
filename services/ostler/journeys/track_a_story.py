@@ -11,7 +11,8 @@ from ..fixtures import ALPHA, BRAVO, conflict, set_status
 
 class TrackAStory(Journey):
     """A planner moves the story alpha through its statuses, records a conflict in its criteria, replaces the conflict
-    with another, and clears it. A second story keeps its own status throughout."""
+    with another, and clears it. They mark it Done with spaces around the word and Blocked: waiting with tabs around it, and the story keeps the words alone.
+    A second story keeps its own status throughout."""
 
     alone = True
 
@@ -25,6 +26,10 @@ class TrackAStory(Journey):
             SetStatus(set_status(BRAVO, "Blocked: waiting")),
             Look(),
             Conflict(conflict(ALPHA, None, clear=True)),
+            SetStatus(set_status(ALPHA, " Done ")),
+            Look(),
+            SetStatus(set_status(ALPHA, "\tBlocked: waiting\t")),
+            Look(),
             SetStatus(set_status(ALPHA, "Not started")),
             Look(),
         )

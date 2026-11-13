@@ -7,7 +7,7 @@ from ostler.book import Action, Actor, Select, Transaction, Update
 from ..fixtures import (EPICS, STORY_PATHS, AddArgs, ConflictArgs, ListArgs, PathEpicArgs, PruneArgs, ReorderArgs, SeedAddArgs,
                         SeedRemoveArgs, SetStatusArgs, directory_of)
 from . import rules
-from .files import CONFLICT_LINES, STATUS_LINES, FileRecord, holding, seed_block
+from .files import BULLET_LINES, CONFLICT_LINES, STATUS_LINES, FileRecord, holding, seed_block
 from .records import Queue
 from .rules import queued_as
 from .state import QUEUE, Plan
@@ -96,14 +96,17 @@ class RemoveSeed(Action[SeedRemoveArgs, Plan]):
 
 class SetStoryStatus(Action[SetStatusArgs, Plan]):
     accept = SetStatusArgs
-    rules = (rules.no_story_for_status,)
+    rules = (rules.no_story_for_status, rules.empty_status)
 
     @staticmethod
     def reduce(a: SetStatusArgs, s: Plan, by: Actor | None) -> Transaction:
-        assert a.story is not None and a.status is not None
+        assert a.story is not None
+        status = a.trimmed
         path = STORY_PATHS[a.story]
-        kept = tuple(h for h in s.files[path].holds if h not in STATUS_LINES.values())
-        return Transaction(rewrite(s, path, *kept, STATUS_LINES[a.status]), says=(f"status of '{a.story}' → {a.status}",))
+        replaced = (*STATUS_LINES.values(), *BULLET_LINES.values())
+        kept = tuple(h for h in s.files[path].holds if h not in replaced)
+        return Transaction(rewrite(s, path, *kept, STATUS_LINES[status], BULLET_LINES[status]),
+                           says=(f"status of '{a.story}' → {status}",))
 
 
 class RecordConflict(Action[ConflictArgs, Plan]):

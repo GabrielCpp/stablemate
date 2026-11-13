@@ -14,7 +14,11 @@ from ..fixtures import EPICS, STORY_PATHS
 NOT_STARTED = "status: Not started"
 IN_PROGRESS = "status: in-progress"
 BLOCKED = "status: 'Blocked: waiting'"
-STATUS_LINES = {"Not started": NOT_STARTED, "in-progress": IN_PROGRESS, "Blocked: waiting": BLOCKED}
+DONE = "status: Done"
+CAPITAL = "status: In progress"
+STATUS_LINES = {"Not started": NOT_STARTED, "in-progress": IN_PROGRESS, "In progress": CAPITAL, "Blocked: waiting": BLOCKED,
+                "Done": DONE}
+BULLET_LINES = {name: f"- **Status**: {name}" for name in STATUS_LINES}
 CONFLICT_TEXTS = ("criteria disagree", "specs contradict")
 CONFLICT_LINES = tuple(f"conflict: {t}" for t in CONFLICT_TEXTS)
 SEED_IDS = ("SD-3", "SD-4")
@@ -31,7 +35,7 @@ def seed_block(seed_id: str, status: str, layer: str | None) -> str:
 SEED_BLOCKS = tuple(seed_block(i, s, layer) for i in SEED_IDS for s in SEED_STATUSES for layer in SEED_LAYERS)
 
 MARKS = (
-    Mark("art/epics/*/stories/*/story.md", NOT_STARTED, IN_PROGRESS, BLOCKED, *CONFLICT_LINES),
+    Mark("art/epics/*/stories/*/story.md", *STATUS_LINES.values(), *BULLET_LINES.values(), *CONFLICT_LINES),
     Mark("art/epics/*/epic.md", *SEED_BLOCKS),
 )
 
