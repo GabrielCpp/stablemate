@@ -1,3 +1,3 @@
 # okf_book shared
 
-The code more than one okf-book machine calls.
+The code the python book flow calls.

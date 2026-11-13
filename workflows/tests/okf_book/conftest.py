@@ -1,11 +1,9 @@
-"""Fixtures that give every test a git identity, keep farrier out, and stub the ostler-okf skill."""
+"""Fixtures that give every test a git identity, and keep farrier out."""
 from __future__ import annotations
 
 from pathlib import Path
 
 import pytest
-from okf_book.support import MEMBER, MEMBER_FILE, MEMBER_FOLDER, MEMBER_SOURCE, Workspace
-from workhorse.testing import make_git_repo
 
 from workhorse_workflows.okf_book.shared import book_flow
 
@@ -31,30 +29,3 @@ def rendered_repos(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
 
     monkeypatch.setattr(book_flow, "render_agent_files_returning_failure", _render)
     return rendered
-
-
-@pytest.fixture
-def ostler_okf_skill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    home = tmp_path / "home"
-    skill = home / ".claude/skills/ostler-okf/SKILL.md"
-    skill.parent.mkdir(parents=True)
-    _ = skill.write_text("---\nname: ostler-okf\nmetadata:\n  name: ostler-okf\n---\n", encoding="utf-8")
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENT_CLI", "claude")
-    monkeypatch.chdir(tmp_path)
-    return skill
-
-
-@pytest.fixture
-def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Workspace:
-    member = tmp_path / "code" / MEMBER
-    (member / MEMBER_FOLDER).mkdir(parents=True)
-    _ = (member / MEMBER_FILE).write_text(MEMBER_SOURCE, encoding="utf-8")
-    _ = (member / "agents.yml").write_text("qa:\n  tools:\n    - curl\n", encoding="utf-8")
-    _ = make_git_repo(member, name=MEMBER)
-    docs = make_git_repo(tmp_path / "artifacts-home", name="docs")
-    config = tmp_path / "home.toml"
-    _ = config.write_text(f'[workspaces]\nacme = ["{member}"]\n\n[qa_tools.curl]\ncommand = "curl"\n', encoding="utf-8")
-    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
-    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(docs))
-    return Workspace(docs=docs.resolve(), member=member.resolve())

@@ -99,7 +99,7 @@ class RunOkfBook(Action[DryRunArgs, Workspace]):
 
     @staticmethod
     def reduce(a: DryRunArgs, s: Workspace, by: Actor | None) -> Transaction:
-        return ran(s, "okf-book", "OkfBook", (("exercise_book", "ExerciseBook"), ("write_book", "WriteBook")))
+        return ran(s, "okf-book", "WritePythonBook")
 
 
 class RunReviewDebt(Action[DryRunArgs, Workspace]):

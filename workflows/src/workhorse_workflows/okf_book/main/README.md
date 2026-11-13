@@ -1,3 +1,3 @@
 # okf_book main
 
-The machines that write and run one book per surface. The main flow hands each surface to the others.
+The python book flow, which writes one service book under `services/<name>/`.

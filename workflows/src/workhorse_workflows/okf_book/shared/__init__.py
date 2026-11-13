@@ -1,2 +1,2 @@
-"""What more than one okf-book flow reads: the book, its budgets, its records and the work list."""
+"""What the python book flow reads: its blockers, blueprint, commits and metrics."""
 from __future__ import annotations

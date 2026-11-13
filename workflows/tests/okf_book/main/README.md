@@ -1,3 +1,3 @@
 # main
 
-The tests of the okf-book flows.
+The tests of the python book flow.

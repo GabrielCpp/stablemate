@@ -20,7 +20,7 @@ REFUSED = Exited(1)
 
 
 def _unreadable(skills: str) -> str:
-    block = f"2 skill reference(s) will fail to render:\n{skills}\n"
+    block = f"{skills.count(chr(10)) + 1} skill reference(s) will fail to render:\n{skills}\n"
     block += (
         "  A turn whose prompt makes one stops with an error.\n"
         "  Install the skill in this repo or at home with `farrier install`, "
@@ -33,10 +33,7 @@ CODER_SKILLS = (
     "  - skill 'ostler-okf' (referenced in docs/prompts/document-story.md)\n"
     "  - skill 'ostler-okf' (referenced in docs/prompts/specify-story.md)"
 )
-OKF_BOOK_SKILLS = (
-    "  - skill 'ostler-okf' (referenced in main/prompts/write-book.md)\n"
-    "  - skill 'ostler-book' (referenced in main/prompts/write-python-book.md)"
-)
+OKF_BOOK_SKILLS = "  - skill 'ostler-book' (referenced in main/prompts/write-python-book.md)"
 
 
 def _no_name_and_no_check(a: NewArgs, s: Workspace, by: Actor | None) -> bool:

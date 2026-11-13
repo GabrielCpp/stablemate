@@ -2,7 +2,7 @@ story: workflows-book
 date: 2026-11-12
 elements: DryRunCoder, DryRunOkfBook, InstallSkills
 
-The coder and okf-book workflows render prompts that name skills (ostler-okf, and ostler-book for okf-book).
+The coder and okf-book workflows render prompts that name skills (ostler-okf for coder, ostler-book for okf-book).
 Before it starts, the engine resolves each name against the repository's .claude/skills and the home directory,
 prints the unresolved ones as a WARNING and again as an ERROR on standard output, and exits 1. The other four
 workflows name no skill, so their dry run passes in a bare directory. The sandbox home is empty, so a skill is

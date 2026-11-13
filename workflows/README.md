@@ -37,11 +37,9 @@ shipped and is now kept only for its reasoning.
   review against the skills' engineering standards, QA of the live app against the book
   with the code not in the room. The reasoning is in the workspace README's
   [methodology section](https://github.com/GabrielCpp/stablemate#the-methodology-three-evidence-bases-none-of-them-the-implementers).
-- **`okf-book`** — writes, checks and runs one OKF feature book per surface of an app:
-  `cli`, `http`, `web` or `mobile`. Each surface is a service slug, its kind and its
-  source folder, passed as `--params '{"surfaces":[…]}'`; the writer reads that folder,
-  ostler checks the pages, and the book's own scenarios run against the app's stack. A
-  book that fails stops at an operator gate. The launch is in
+- **`okf-book`** — writes the Python book of one service under `services/<name>/`: an
+  agent turn writes it, ostler checks it and plays it against the service's stack copy,
+  and a book that fails stops at an operator gate. The launch is in
   [its README](src/workhorse_workflows/okf_book/README.md).
 - **`review-debt`** — reads every record on the debt register, has one agent turn group
   them by shared cause, checks that the report accounts for every id exactly once, and
