@@ -18,11 +18,9 @@ from ostler import checks as checks_mod
 from ostler import carve as carve_mod
 from ostler import fragment_carve
 from ostler import census
-from ostler import provenance
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
-from ostler.qa import compile as qa_compile
 from ostler import index as index_mod
 from ostler import textindex as textindex_mod
 from ostler import source_snapshots
@@ -837,31 +835,6 @@ def _build_parser() -> argparse.ArgumentParser:
     qa_validate.add_argument("--spec", default=None, type=Path)
     qa_validate.add_argument("--json", action="store_true")
 
-    qa_sensitivity = qas.add_parser(
-        "sensitivity",
-        help="report which declared checks could actually have gone red",
-    )
-    qa_sensitivity.add_argument(
-        "--node", default="",
-        help="only claims whose id or book path contains this substring",
-    )
-    qa_sensitivity.add_argument("--json", action="store_true")
-
-    qa_assess = qas.add_parser(
-        "assess",
-        help="assess one book directory's surface completeness: capability, "
-             "sensitivity and evidence for every owed obligation, read-only",
-    )
-    qa_assess.add_argument(
-        "--book", required=True,
-        help="repo-relative services directory to assess, e.g. docs/services/groom",
-    )
-    qa_assess.add_argument(
-        "--spec", default=None, type=Path,
-        help="an existing run's spec directory whose evidence the assessment reads",
-    )
-    qa_assess.add_argument("--json", action="store_true")
-
     qa_run = qas.add_parser("run", help="execute a qa_plan.py in batch mode")
     qa_run.add_argument("plan_file", type=Path)
     qa_run.add_argument("--spec", default=None, type=Path)
@@ -884,176 +857,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_run.add_argument("--json", action="store_true")
 
-    qa_stack = qas.add_parser(
-        "stack", help="bring the stack the book declares up (or tear it down)"
-    )
-    qa_stack_ops = qa_stack.add_subparsers(dest="stack_op", required=True)
-    qa_stack_up = qa_stack_ops.add_parser("up", help="bring the declared stack to ready")
-    qa_stack_up.add_argument("--runbook", default="",
-                             help="which runbook, when the book carries more than one")
-    qa_stack_up.add_argument("--spec", default="",
-                             help="the qa context packet directory; its `servicesRoot` says "
-                                  "which book to bring up")
-    qa_stack_up.add_argument("--lease", default="",
-                             help="the name of this run's copy, for an environment copied per run "
-                                  "(default: $STABLEMATE_LEASE)")
-    qa_stack_up.add_argument("--json", action="store_true")
-    qa_stack_down = qa_stack_ops.add_parser("down", help="run the declared teardown recipe")
-    qa_stack_down.add_argument("--runbook", default="")
-    qa_stack_down.add_argument("--spec", default="",
-                               help="the qa context packet directory; its `servicesRoot` "
-                                    "says which book to tear down")
-    qa_stack_down.add_argument("--lease", default="",
-                               help="the name of this run's copy, for an environment copied per run "
-                                    "(default: $STABLEMATE_LEASE)")
-    qa_stack_down.add_argument("--json", action="store_true")
-
     qa_tools = qas.add_parser("tools", help="inspect this repo's opted-in QA tools")
     qa_tools_ops = qa_tools.add_subparsers(dest="tools_op", required=True)
     qa_tools_list = qa_tools_ops.add_parser("list", help="list opted-in tools and whether they resolve")
     qa_tools_list.add_argument("--json", action="store_true")
-
-    qa_fixtures = qas.add_parser("fixtures", help="this repo's app-language QA fixtures")
-    qa_fixtures_ops = qa_fixtures.add_subparsers(dest="fixtures_op", required=True)
-    qa_fixtures_migrate = qa_fixtures_ops.add_parser(
-        "migrate",
-        help="one-shot: write every agents.yml `qa: {fixtures:}` entry as a fixture-node "
-        "file, mechanically (a `run:` step holding the resolved command; no `provides:`/"
-        "`args:` — neither carries over)",
-    )
-    qa_fixtures_migrate.add_argument(
-        "--in", dest="in_dir", required=True,
-        help="directory the migrated fixture-node files are written into",
-    )
-    qa_fixtures_migrate.add_argument("--json", action="store_true")
-
-    qa_context = qas.add_parser(
-        "context", help="build the base/head changed-code to OKF obligation packet"
-    )
-    qa_context.add_argument("--base")
-    qa_context.add_argument(
-        "--refresh",
-        action="store_true",
-        help="rebuild the packet in --spec from the inputs it recorded: its base, story "
-        "file, source roots and excluded paths",
-    )
-    qa_context.add_argument("--head", default="WORKTREE")
-    qa_context.add_argument("--spec", required=True, type=Path)
-    qa_context.add_argument("--services-root", default="",
-                            help="repo-relative feature book; default: as configured")
-    qa_context.add_argument(
-        "--source-root",
-        action="append",
-        default=[],
-        metavar="SURFACE=PATH",
-        help="associate a production source root with an OKF surface (repeatable)",
-    )
-    qa_context.add_argument("--story-file", type=Path)
-    qa_context.add_argument("--json", action="store_true")
-
-    qa_context_show = qas.add_parser(
-        "context-show", help="read a filtered, paged slice of an already-built context packet"
-    )
-    qa_context_show.add_argument("--spec", required=True, type=Path)
-    owed = qa_context_show.add_mutually_exclusive_group()
-    owed.add_argument("--required", action="store_true",
-                      help="only obligations owed live evidence")
-    owed.add_argument("--context-only", action="store_true", dest="context_only",
-                      help="only obligations reached by closure")
-    qa_context_show.add_argument("--node", default="",
-                                 help="substring of the obligation's node path")
-    qa_context_show.add_argument("--kind", default="",
-                                 help="exact obligation kind, e.g. contract, journey, does")
-    qa_context_show.add_argument("--offset", type=int, default=0)
-    qa_context_show.add_argument("--limit", type=int,
-                                 help="how many to print; omit for all that matched")
-    qa_context_show.add_argument("--ids-only", action="store_true", dest="ids_only",
-                                 help="print bare obligation ids, no requirement text")
-    qa_context_show.add_argument("--no-locators", action="store_false", dest="locators",
-                                 help="omit each obligation's locator bullets")
-    qa_context_show.add_argument("--json", action="store_true")
-
-    qa_compile_plan = qas.add_parser(
-        "compile-plan",
-        help="compile a qa_plan.py skeleton from the context packet, reading no source",
-    )
-    qa_compile_plan.add_argument("--spec", required=True, type=Path)
-    qa_compile_plan.add_argument(
-        "--out", default=None, type=Path, metavar="PATH",
-        help="write the plan here; omit to print it. An existing file is overwritten only with --replace",
-    )
-    qa_compile_plan.add_argument(
-        "--select", action="append", default=[], metavar="ID",
-        help="keep only the obligations whose id or book node is ID; repeatable. "
-        "Omit to compile every obligation",
-    )
-    qa_compile_plan.add_argument(
-        "--cover", action="append", default=[], metavar="AC=ID[,ID...]",
-        help="the obligations (ids or book nodes) that prove acceptance criterion AC; repeatable. "
-        "The checks covering them then cover AC too",
-    )
-    qa_compile_plan.add_argument(
-        "--replace", action="store_true",
-        help="let --out overwrite an existing plan",
-    )
-    qa_compile_plan.add_argument(
-        "--story", default="",
-        help="story name for `plan(story=...)`; default: the one the packet was built for",
-    )
-    qa_compile_plan.add_argument("--run-id", default=None, dest="run_id")
-    qa_compile_plan.add_argument(
-        "--base-url", default=None, dest="base_url",
-        help="fallback base URL for a surface whose book states no `entry-url:` "
-        "(default: none — such a surface compiles an `undeclared-entry-url` gap instead)",
-    )
-    qa_compile_plan.add_argument("--json", action="store_true")
-
-    qa_compile_gaps = qas.add_parser(
-        "compile-gaps",
-        help="report the blocking compile gaps on pages a story touched",
-    )
-    qa_compile_gaps.add_argument("--spec", required=True, type=Path)
-    qa_compile_gaps.add_argument("--story", default="")
-    qa_compile_gaps.add_argument(
-        "--page", action="append", required=True, default=[],
-        help="repo-relative book page the story touched; repeatable",
-    )
-    qa_compile_gaps.add_argument("--json", action="store_true")
-
-    qa_context_validate = qas.add_parser(
-        "context-validate", help="validate qa-okf-context.json"
-    )
-    qa_context_validate.add_argument("--spec", required=True, type=Path)
-    qa_context_validate.add_argument("--json", action="store_true")
-
-    qa_evidence_map = qas.add_parser(
-        "evidence-map",
-        help="join the context packet, the run log, the manifest and qa-evidence.json "
-             "into one status per obligation",
-    )
-    qa_evidence_map.add_argument("--spec", default=None, type=Path)
-    qa_evidence_map.add_argument(
-        "--out-dir",
-        default=None,
-        dest="out_dir",
-        metavar="LABEL",
-        help="read the dry-run ledger at <spec>/qa/LABEL/ instead of the scored one; "
-             "must be the label that run was given",
-    )
-    qa_evidence_map.add_argument(
-        "--status",
-        default="",
-        choices=["", *qa_mod.STATUSES],
-        help="print only the obligations with this status",
-    )
-    qa_evidence_map.add_argument(
-        "--out",
-        default=None,
-        type=Path,
-        metavar="PATH",
-        help="also write the map as JSON here",
-    )
-    qa_evidence_map.add_argument("--json", action="store_true")
 
     qa_clean = qas.add_parser(
         "clean",
@@ -1119,20 +926,6 @@ def _parse_checkouts(raw_checkouts: list[str]) -> dict[str, Path] | None:
             return None
         checkouts[repository] = Path(checkout).expanduser().resolve()
     return checkouts
-
-
-def _packet_aim(spec: str, root: Path) -> str:
-    """The `servicesRoot` the qa context packet in `spec` recorded, normalised against `root`."""
-    if not spec:
-        return path_mod.resolve_services_root(None, root)
-    packet = Path(spec) / provenance.CONTEXT_FILE
-    if not packet.is_file():
-        return path_mod.resolve_services_root(None, root)
-    try:
-        data = json.loads(packet.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return path_mod.resolve_services_root(None, root)
-    return path_mod.resolve_services_root(data.get("servicesRoot"), root)
 
 
 def _out(value="") -> None:
@@ -1806,25 +1599,6 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             _out(result.message)
         return 0 if result.ok else 1
 
-    if op == "sensitivity":
-        result = qa_mod.cmd_sensitivity(root, node=args.node)
-        if args.json:
-            _out(json.dumps(result.data, indent=2))
-        else:
-            _out(result.message)
-        return 0 if result.ok else 1
-
-    if op == "assess":
-        spec_dir = _resolve_spec(args.spec) if args.spec is not None else None
-        result = qa_mod.cmd_assess(root, book=args.book, spec_dir=spec_dir)
-        if args.json:
-            _out(json.dumps(result.data, indent=2))
-        else:
-            _out(result.message)
-        if result.ok:
-            return 0
-        return 2 if result.status == "invalid" else 1
-
     if op == "run":
         spec_dir = args.spec
         if spec_dir is not None and not spec_dir.is_absolute():
@@ -1843,21 +1617,6 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             _out(result.message)
         return 0 if result.ok else 1
 
-    if op == "stack":
-        aim = _packet_aim(args.spec, root)
-        lease = args.lease or os.environ.get(qa_mod.addresses.LEASE_ENV, "")
-        if args.stack_op == "up":
-            result = qa_mod.runbook.cmd_stack_up(root, name=args.runbook, services_root=aim,
-                                                 lease=lease)
-        else:
-            result = qa_mod.runbook.cmd_stack_down(root, name=args.runbook, services_root=aim,
-                                                   lease=lease)
-        if args.json:
-            _out(json.dumps(result.data, indent=2))
-        else:
-            _out(result.message)
-        return 0 if result.ok else 1
-
     if op == "tools":
         result = qa_mod.tools.cmd_catalog(root)
         if args.json:
@@ -1869,125 +1628,6 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             for error in result.data["errors"]:
                 _out(f"error: {error}")
         return 0 if result.ok else 1
-
-    if op == "fixtures":
-        result = qa_mod.fixtures.cmd_migrate(root, args.in_dir)
-        if args.json:
-            _out(json.dumps(result.data, indent=2))
-        else:
-            _out(result.message)
-        return 0 if result.ok else 1
-
-    if op == "context":
-        spec_dir = _resolve_spec(args.spec)
-        if args.refresh:
-            return _context_outcome(qa_mod.cmd_context_refresh(root, spec_dir), args)
-        if not args.base:
-            _out("error: ostler qa context needs --base, or --refresh to reuse a packet's inputs")
-            return 2
-        source_roots: dict[str, list[str]] = {}
-        for raw in args.source_root:
-            if "=" not in raw:
-                _out(f"error: --source-root must be SURFACE=PATH, got {raw!r}")
-                return 2
-            surface, path = raw.split("=", 1)
-            source_roots.setdefault(surface.strip(), []).append(path.strip())
-        story_file = args.story_file
-        if story_file is not None and not story_file.is_absolute():
-            story_file = root / story_file
-        return _context_outcome(qa_mod.cmd_context(
-            root,
-            spec_dir,
-            base=args.base,
-            head=args.head,
-            source_roots=source_roots,
-            services_root=args.services_root,
-            story_file=story_file,
-        ), args)
-
-    if op == "context-show":
-        spec_dir = _resolve_spec(args.spec)
-        context_file = spec_dir / "qa-okf-context.json"
-        try:
-            packet = json.loads(context_file.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            _out(json.dumps({"status": "invalid", "message": str(exc)}, indent=2)
-                 if args.json else f"error: {exc}")
-            return 1
-        required = True if args.required else (False if args.context_only else None)
-        page, matched = qa_mod.select_obligations(
-            packet,
-            required=required,
-            node=args.node,
-            kind=args.kind,
-            offset=args.offset,
-            limit=args.limit,
-        )
-        if args.json:
-            _out(json.dumps({"obligations": page, "matched": matched,
-                             "total": len(packet.get("obligations", []))}, indent=2))
-            return 0
-        if args.ids_only:
-            _out("\n".join(item["id"] for item in page) or "- (none)")
-        else:
-            _out("\n".join(qa_mod.render_obligations(page, locators=args.locators)))
-        shown = args.offset + len(page)
-        _out(f"\n# showing {args.offset + 1 if page else 0}-{shown} of {matched} matched "
-             f"({len(packet.get('obligations', []))} in packet)")
-        return 0
-
-    if op == "compile-plan":
-        spec_dir = _resolve_spec(args.spec)
-        try:
-            cover = qa_compile.parse_cover(args.cover)
-        except qa_compile.CoverError as exc:
-            _out(f"error: {exc}")
-            return 1
-        result = qa_mod.cmd_compile_plan(
-            spec_dir,
-            out=_resolve_out(args.out),
-            story=args.story,
-            run_id=args.run_id,
-            base_url=args.base_url,
-            select=set(args.select) or None,
-            cover=cover,
-            replace=args.replace,
-        )
-        _out(json.dumps(result.data, indent=2) if args.json else result.message)
-        return 0 if result.ok else 1
-
-    if op == "compile-gaps":
-        result = qa_mod.cmd_compile_gaps(
-            _resolve_spec(args.spec), story=args.story, pages=args.page,
-        )
-        _out(json.dumps(result.data, indent=2) if args.json else result.message)
-        return 0 if result.ok else 1
-
-    if op == "context-validate":
-        spec_dir = _resolve_spec(args.spec)
-        result = qa_mod.cmd_context_validate(spec_dir)
-        if args.json:
-            _out(json.dumps(result.data, indent=2))
-        else:
-            _out(result.message)
-        return 0 if result.ok else 1
-
-    if op == "evidence-map":
-        spec_dir = _resolve_spec(args.spec)
-        try:
-            data = qa_mod.build_evidence_map(spec_dir, label=args.out_dir)
-        except (qa_mod.EvidenceMapError, qa_mod.ScratchLabelError) as exc:
-            _out(json.dumps({"status": "invalid", "message": str(exc)}, indent=2)
-                 if args.json else f"error: {exc}")
-            return 1
-        out_path = _resolve_out(args.out)
-        if out_path is not None:
-            out_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-        if args.json:
-            _out(json.dumps(data, indent=2))
-        else:
-            _out("\n".join(qa_mod.render_evidence_map(data, only=args.status)))
-        return 0 if data["counts"]["covered"] == len(data["obligations"]) else 1
 
     if op == "clean":
         result = qa_mod.cmd_clean(_resolve_spec(args.spec), apply=args.apply)

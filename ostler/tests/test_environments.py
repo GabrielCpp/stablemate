@@ -18,7 +18,7 @@ from ostler._vendor.stablemate_core import config as core_config
 from ostler.environments import checkout, cli, commands, leases, runtime, secrets, spec
 from ostler.environments import render as render_mod
 from ostler.model import load
-from ostler.qa import addresses, runbook
+from ostler.qa import addresses
 
 SERVICES = Path("docs/services")
 
@@ -635,25 +635,6 @@ def test_the_book_near_the_run_is_the_only_one_brought_up(tmp_path: Path) -> Non
     assert leases.books_near(root, tmp_path) == []
 
 
-def test_a_repo_with_no_stack_file_keeps_the_runbook_path(tmp_path: Path) -> None:
-    root = tmp_path / "globex"
-    (root / SERVICES).mkdir(parents=True)
-    assert leases.up(root, lease="story-1") is None
-    assert leases.down(root, lease="story-1") is None
-    assert leases.run_env(root, "story-1") is None
-
-
-def test_qa_stack_brings_a_stack_file_up_and_a_named_runbook_keeps_its_path(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    _rewrite_stack(root, "web", {"web": {"about": "x", "define": "services/missing.yml.j2"}})
-    refused = runbook.cmd_stack_up(root, lease="story-1")
-    assert not refused.ok
-    assert "do not fit together" in refused.message
-    named = runbook.cmd_stack_up(root, name="links-local", lease="story-1")
-    assert "do not fit together" not in named.message
-    assert runbook.cmd_stack_down(root, lease="story-1").message == "stack torn down"
-
-
 def _worktree(root: Path) -> Path:
     gitdir = root / ".git" / "worktrees" / "story-1"
     gitdir.mkdir(parents=True)
@@ -662,24 +643,6 @@ def _worktree(root: Path) -> Path:
     shutil.copytree(root / "docs", tree / "docs")
     _file(tree, ".git", f"gitdir: {gitdir}\n")
     return tree
-
-
-def test_a_lease_less_bring_up_keeps_the_stack_a_runbook_declares(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    root = _repo(tmp_path)
-    _file(root, f"{SERVICES}/api/ops/qa-stack.md", (
-        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
-        "- driver: web\n- entry-url: http://localhost:18084\n\n"
-        "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"))
-    copied: list[str] = []
-    monkeypatch.setattr(runbook.leases, "up", lambda _root, *, lease, near: copied.append(lease))
-    monkeypatch.setattr(runbook, "bring_up_stacks",
-                        lambda manifests, **_kw: [{"ready": "no", "manifest": manifests[-1]}])
-    runbook.cmd_stack_up(root)
-    assert copied == []
-    runbook.cmd_stack_up(root, lease="story-1")
-    assert copied == ["story-1"]
 
 
 def test_a_book_reads_its_paths_from_its_ops_folder(tmp_path: Path) -> None:

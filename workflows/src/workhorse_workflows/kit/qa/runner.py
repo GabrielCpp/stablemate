@@ -11,7 +11,7 @@ from pathlib import Path
 
 from ostler import Ostler
 from ostler.environments import leases, runtime, spec
-from ostler.qa import runbook, stack
+from ostler.qa import devices, stack
 from ostler.qa.outcome import QaOutcome
 
 from workhorse_workflows.kit.qa.schemas import QaPlanRun, QaStatus, StackStatus
@@ -95,11 +95,11 @@ def ensure_stack(
         )
     if not copied.ok:
         return _copy_status(copied)
-    devices = runbook.bring_up_book_devices(
+    booted = devices.bring_up_book_devices(
         root, near=near_path,
         env=leases.run_env(root, lease, near_path, holder=os.getpid()), logger=logger)
-    if devices and devices[-1].get("ready") != "yes":
-        last = devices[-1]
+    if booted and booted[-1].get("ready") != "yes":
+        last = booted[-1]
         return StackStatus(
             ready="no", failed_step=last.get("failed_step", ""),
             notes=device_failure(

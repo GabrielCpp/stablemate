@@ -12,7 +12,7 @@ import yaml
 
 from _workspace import cut_run_worktrees, lay_out, run_git
 from ostler.environments import leases, runtime
-from ostler.qa import addresses, runbook
+from ostler.qa import addresses, devices as qa_devices
 from ostler.qa.outcome import QaOutcome
 
 from workhorse_workflows.coder.shared.stack import stack_target
@@ -109,13 +109,13 @@ def test_bring_up_boots_the_device_beside_the_copy_and_reports_a_failed_install(
         return [{"ready": "no", "failed_step": "install-app", "error": "adb: no devices",
                  "source": "app", "manifest": {"stack_file": "services/app/ops/stack.yml"}}]
 
-    monkeypatch.setattr(runbook, "bring_up_book_devices", devices)
+    monkeypatch.setattr(qa_devices, "bring_up_book_devices", devices)
     status = runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1")
     assert seen == [("story-1", "addresses.json")]
     assert (status.ready, status.failed_step) == ("no", "install-app")
     assert status.notes == ("Device step 'install-app' failed: adb: no devices. Repair that step "
                             "under `device:` in `services/app/ops/stack.yml`.")
-    monkeypatch.setattr(runbook, "bring_up_book_devices", lambda *_a, **_kw: [{"ready": "yes"}])
+    monkeypatch.setattr(qa_devices, "bring_up_book_devices", lambda *_a, **_kw: [{"ready": "yes"}])
     assert runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1").ready == "yes"
 
 

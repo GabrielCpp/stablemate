@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from ostler import doctor, model, reach
-from ostler.qa import addresses, attribution, runbook as rb, stack as stack_mod
+from ostler import doctor, model
+from ostler.qa import addresses, attribution, stack as stack_mod
 from ostler.qa.harness_host import load_harness_module
 
 from conftest import write
@@ -131,14 +131,6 @@ def test_a_bring_up_reports_the_address_its_copy_wrote_while_the_gates_waited(
     assert out["entry_url"] == "http://localhost:4321/"
 
 
-def test_a_per_run_environment_refuses_a_bring_up_with_no_lease(tmp_path: Path) -> None:
-    _per_run_book(tmp_path)
-    outcome = rb.cmd_stack_up(tmp_path)
-    assert not outcome.ok and outcome.status == "lease-required"
-    assert rb.cmd_stack_down(tmp_path).status == "lease-required"
-    assert rb.cmd_stack_up(tmp_path, lease="Not A Lease").status == "bad-lease"
-
-
 def _fake_bring_up(book: dict[str, str] | None, seen: list[dict[str, str]]):
     def ensure_stack(manifest: dict[str, Any], *, repo_root: str, logger: Any) -> dict[str, Any]:
         seen.append({key: os.environ.get(key, "") for key in (addresses.LEASE_ENV, addresses.BOOK_ENV)})
@@ -149,63 +141,6 @@ def _fake_bring_up(book: dict[str, str] | None, seen: list[dict[str, str]]):
     return ensure_stack
 
 
-def test_a_per_run_bring_up_runs_under_its_lease_and_reports_the_addresses_it_left(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _per_run_book(tmp_path)
-    seen: list[dict[str, str]] = []
-    monkeypatch.setattr(rb.stack_mod, "ensure_stack",
-                        _fake_bring_up({"gateway": "http://localhost:4321"}, seen))
-    outcome = rb.cmd_stack_up(tmp_path, lease="story-1")
-    assert outcome.ok, outcome.message
-    assert seen[0][addresses.LEASE_ENV] == "story-1"
-    assert seen[0][addresses.BOOK_ENV].endswith("lease-story-1.json")
-    assert outcome.data["addresses"] == {"gateway": "http://localhost:4321"}
-    assert outcome.data["entry_url"] == "http://localhost:4321"
-
-
-def test_a_per_run_bring_up_never_trusts_a_book_left_before_it_started(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _per_run_book(tmp_path)
-    stale = addresses.book_path(tmp_path / OPS / "test.md", "story-1")
-    addresses.write_book(stale, {"gateway": "http://localhost:1"})
-    monkeypatch.setattr(rb.stack_mod, "ensure_stack", _fake_bring_up(None, []))
-    outcome = rb.cmd_stack_up(tmp_path, lease="story-1")
-    assert outcome.status == "address-book"
-    assert not stale.exists()
-
-
-def test_a_copy_that_leaves_no_book_is_not_ready(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _per_run_book(tmp_path)
-    monkeypatch.setattr(rb.stack_mod, "ensure_stack", _fake_bring_up(None, []))
-    outcome = rb.cmd_stack_up(tmp_path, lease="story-1")
-    assert not outcome.ok and outcome.status == "address-book"
-    assert "has not written it" in outcome.message
-
-
-def test_a_book_missing_a_page_name_is_not_ready(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _per_run_book(tmp_path)
-    monkeypatch.setattr(rb.stack_mod, "ensure_stack",
-                        _fake_bring_up({"other": "http://localhost:1"}, []))
-    outcome = rb.cmd_stack_up(tmp_path, lease="story-1")
-    assert outcome.status == "address-book"
-    assert "no address for `gateway`" in outcome.message
-
-
-def test_a_shared_environment_writes_its_book_from_the_page(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    (tmp_path / ".git").mkdir()
-    _environment(tmp_path, sharing="shared", entries={"gateway": "http://localhost:3000/"})
-    _runbook(tmp_path)
-    seen: list[dict[str, str]] = []
-    monkeypatch.setattr(rb.stack_mod, "ensure_stack", _fake_bring_up(None, seen))
-    outcome = rb.cmd_stack_up(tmp_path)
-    assert outcome.ok, outcome.message
-    assert seen[0][addresses.BOOK_ENV].endswith("shared.json")
-    assert outcome.data["entry_url"] == "http://localhost:3000"
-
-
 def _fake_teardown(seen: list[dict[str, str]]):
     def teardown_stack(handles: dict[str, str], manifest: dict[str, Any], *, logger: Any) -> dict[str, str]:
         seen.append({"source": manifest.get("source", ""),
@@ -214,81 +149,8 @@ def _fake_teardown(seen: list[dict[str, str]]):
     return teardown_stack
 
 
-def test_a_per_run_teardown_runs_under_its_lease_and_drops_its_book(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _per_run_book(tmp_path)
-    monkeypatch.setattr(rb.stack_mod, "ensure_stack",
-                        _fake_bring_up({"gateway": "http://localhost:4321"}, []))
-    assert rb.cmd_stack_up(tmp_path, lease="story-1").ok
-    seen: list[dict[str, str]] = []
-    monkeypatch.setattr(rb.stack_mod, "teardown_stack", _fake_teardown(seen))
-    outcome = rb.cmd_stack_down(tmp_path, lease="story-1")
-    assert outcome.ok, outcome.message
-    assert seen[0][addresses.LEASE_ENV] == "story-1"
-    assert not Path(seen[0][addresses.BOOK_ENV]).exists()
-    assert addresses.LEASE_ENV not in os.environ
-
-
-def test_a_teardown_near_a_book_takes_down_that_books_copy(
-        tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _per_run_book(tmp_path)
-    other = Path("docs") / "services" / "other" / "ops"
-    _environment(tmp_path, sharing="per-run", entries={"gateway": "the other front door"}, ops=other)
-    _runbook(tmp_path, ops=other)
-    seen: list[dict[str, str]] = []
-    monkeypatch.setattr(rb.stack_mod, "teardown_stack", _fake_teardown(seen))
-    outcome = rb.cmd_stack_down(tmp_path, lease="story-1", near=tmp_path / "docs" / "services" / "other")
-    assert outcome.ok, outcome.message
-    assert [entry["source"] for entry in seen] == [str(other / "web.md")]
-    assert seen[0][addresses.BOOK_ENV] == str(addresses.book_path(tmp_path / other / "test.md", "story-1"))
-
-
 def codes(root: Path) -> list[str]:
     return [fd.code for fd in doctor.run(model.load(root)).findings]
-
-
-def test_the_doctor_takes_a_named_entry_url_and_its_named_gates(tmp_path: Path) -> None:
-    _per_run_book(tmp_path)
-    errors = [fd.code for fd in doctor.run(model.load(tmp_path)).findings if fd.severity == "error"]
-    assert errors == []
-
-
-def test_the_doctor_refuses_a_url_on_a_per_run_address(tmp_path: Path) -> None:
-    (tmp_path / ".git").mkdir()
-    _environment(tmp_path, sharing="per-run", entries={"gateway": "http://localhost:3000"})
-    _runbook(tmp_path)
-    assert "environment-address-value" in codes(tmp_path)
-
-
-def test_the_doctor_asks_a_shared_address_for_its_url(tmp_path: Path) -> None:
-    (tmp_path / ".git").mkdir()
-    _environment(tmp_path, sharing="shared", entries={"gateway": "the front door"})
-    _runbook(tmp_path)
-    assert "environment-address-value" in codes(tmp_path)
-
-
-def test_the_doctor_refuses_a_name_no_reference_can_spell(tmp_path: Path) -> None:
-    (tmp_path / ".git").mkdir()
-    _environment(tmp_path, sharing="per-run", entries={"Gateway": "the front door"})
-    _runbook(tmp_path, entry_url="http://localhost:1", health="curl -fsS http://localhost:1")
-    assert "environment-address-name" in codes(tmp_path)
-
-
-def test_the_doctor_refuses_a_reference_the_environment_does_not_name(tmp_path: Path) -> None:
-    _per_run_book(tmp_path)
-    _runbook(tmp_path, health="curl -fsS {api}/health")
-    assert codes(tmp_path).count("runbook-unknown-address") == 1
-
-
-def test_a_named_entry_url_keeps_its_name_as_the_origin() -> None:
-    assert reach.url_origin("{gateway}/app") == "{gateway}"
-    assert reach.url_origin("http://localhost:3000/app") == "http://localhost:3000"
-
-
-def test_a_named_entry_url_enters_at_the_path_after_its_name() -> None:
-    assert reach.url_path("{gateway}/app") == "/app"
-    assert reach.url_path("{gateway}") == "/"
-    assert reach.url_path("http://localhost:3000/app") == "/app"
 
 
 def test_a_plan_target_opens_the_runs_copy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

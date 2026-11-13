@@ -194,16 +194,6 @@ def test_qa_validate_missing_plan_is_invalid(repo: Path):
     assert outcome.status == "invalid"
 
 
-def test_qa_context_validate_flags_a_bad_packet(repo: Path):
-    spec = repo / "spec"
-    spec.mkdir()
-    (spec / "qa-okf-context.json").write_text("{}", encoding="utf-8")
-    outcome = Ostler(repo).qa_context_validate(spec=spec)
-    assert outcome.ok is False
-    assert outcome.status == "invalid"
-    assert outcome.data["problems"]
-
-
 def test_settle_review_errors_without_a_verdict(repo: Path):
     plan = Ostler(repo).settle_review(FOO_ID)
     assert plan.error

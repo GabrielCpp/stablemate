@@ -25,9 +25,6 @@ from ostler import registry, select, todo as todo_mod
 from ostler.crud import Result
 from ostler.qa import (
     QaOutcome,
-    cmd_assess,
-    cmd_context,
-    cmd_context_validate,
     cmd_lint,
     cmd_frames,
     cmd_report,
@@ -39,7 +36,6 @@ from ostler.finding import Finding
 from ostler.model import Epic, Graph, Milestone, Story, find_root, load
 from ostler.pages import files_in_book
 from ostler.qa import fixtures as qa_fixtures
-from ostler.qa.source_context import SourceRepository
 
 if TYPE_CHECKING:
     from ostler.edit import EditPlan
@@ -655,25 +651,6 @@ class Ostler:
         p = Path(path)
         return p if p.is_absolute() else self.root / p
 
-    def qa_context(self, *, base: str, spec: str | Path, head: str = "WORKTREE",
-                   source_roots: dict[str, builtins.list[str]] | None = None,
-                   services_root: str = "",
-                   story_file: str | Path | None = None,
-                   exclude_paths: Iterable[str] = (),
-                   repositories: Iterable[SourceRepository] = ()) -> QaOutcome:
-        """Build the base/head changed-code→OKF obligation packet and write it into ``spec`` (``ostler qa context``); ``data`` is the packet."""
-
-        return cmd_context(
-            self.root, self._resolve(spec), base=base, head=head,
-            source_roots=source_roots or {}, services_root=services_root,
-            story_file=self._resolve(story_file) if story_file else None,
-            exclude_paths=exclude_paths, repositories=tuple(repositories))
-
-    def qa_context_validate(self, *, spec: str | Path) -> QaOutcome:
-        """Validate ``qa-okf-context.json`` in ``spec`` (``ostler qa context-validate``); ``data["problems"]`` holds the problem strings and is empty when it is valid."""
-
-        return cmd_context_validate(self._resolve(spec))
-
     def qa_lint(self, plan_file: str | Path) -> QaOutcome:
         """Statically lint a ``qa_plan.py``'s AST without importing or executing it (``ostler qa lint``)."""
 
@@ -712,12 +689,6 @@ class Ostler:
         """This repo's opted-in QA tools, resolved against the machine's stablemate config (``ostler qa tools list``)."""
 
         return qa_tools_mod.cmd_catalog(self.root)
-
-    def qa_assess(self, *, book: str, spec: str | Path | None = None) -> QaOutcome:
-        """Assess one book directory's surface completeness (``ostler qa assess``); ``data`` is the verdict report."""
-
-        return cmd_assess(self.root, book=book,
-                          spec_dir=self._resolve(spec) if spec else None)
 
     def artifact_vet(self, kind: str, spec: str | Path) -> QaOutcome:
         """Validate a workflow artifact against its contract (``ostler artifact vet``)."""

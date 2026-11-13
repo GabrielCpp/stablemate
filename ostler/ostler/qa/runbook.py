@@ -18,11 +18,16 @@ from ostler.markdown import bullet_text, children
 from ostler import model
 from ostler import path as path_mod
 from ostler.environments import leases
-from ostler.environments import spec as spec_mod
 from ostler.model import Graph, UINode
-from ostler.provenance import checkout_for, effective_checkouts
 from ostler.qa import addresses
 from ostler.qa import stack as stack_mod
+from ostler.qa.devices import (
+    WorkingDirectoryError,
+    _device_manifests,
+    bring_up_book_devices,
+    bring_up_stacks,
+    resolve_directory,
+)
 from ostler.qa.outcome import QaOutcome
 from ostler.registry import LAUNCHABLE_TYPES, SCENARIO_FRAME_TOKEN, STEP_KIND_VALUES
 
@@ -78,25 +83,6 @@ def is_scenario_frame(value: str, root: Path) -> bool:
     text = value.strip()
     bare = SCENARIO_FRAME_TOKEN.rstrip(":")
     return text == SCENARIO_FRAME_TOKEN or (text == bare and not (root / bare).is_dir())
-
-
-class WorkingDirectoryError(ValueError):
-    """A `working-directory:` names a workspace member this run does not have."""
-
-
-def resolve_directory(root: Path, value: str) -> Path:
-    """Where a `working-directory:` value points: `repo://<member>/<path>` in that member's checkout, anything else under *root*."""
-    if not value.startswith("repo://"):
-        return (root / value).resolve()
-    member, _slash, rest = value.removeprefix("repo://").partition("/")
-    checkouts = effective_checkouts(None)
-    checkout = checkout_for(member, checkouts)
-    if checkout is None:
-        known = ", ".join(sorted(checkouts)) or "none"
-        msg = (f"`working-directory: {value}` names workspace member {member!r}, "
-               f"and this run's members are: {known}")
-        raise WorkingDirectoryError(msg)
-    return (checkout / (rest or ".")).resolve()
 
 
 def _step_command(node: UINode, root: Path, default_cwd: str) -> dict[str, str] | None:
@@ -617,20 +603,6 @@ def stack_lease(graph: Graph, selection: StackSelection, lease: str) -> StackLea
     return StackLease(name=lease, book=book, addresses=found)
 
 
-def bring_up_stacks(manifests: list[dict[str, Any]], *, repo_root: str,
-                    logger: logging.Logger | None = None) -> list[dict[str, Any]]:
-    """Bring every manifest up in document order, stopping at the first that fails."""
-    log = logger or logging.getLogger(__name__)
-    results: list[dict[str, Any]] = []
-    for manifest in manifests:
-        result = stack_mod.ensure_stack(
-            manifest, repo_root=manifest.get("repo_root", repo_root), logger=log)
-        results.append({**result, "manifest": manifest, "source": manifest.get("source", "")})
-        if result.get("ready") != "yes":
-            break
-    return results
-
-
 _SERVED_BY_COPY = ("entry_url", "health_path", "identity")
 
 
@@ -644,37 +616,6 @@ def bring_up_devices(graph: Graph, *, near: Path | None = None,
         return []
     with addresses.leased(env or {}):
         return bring_up_stacks(manifests, repo_root=str(root), logger=logger)
-
-
-def bring_up_book_devices(root: Path, *, near: Path | None = None,
-                          env: Mapping[str, str] | None = None,
-                          logger: logging.Logger | None = None) -> list[dict[str, Any]]:
-    """Boot the device and install the app for each book whose `stack.yml` declares `device:` steps, read from the books alone."""
-    manifests = _device_manifests(root, near)
-    if not manifests:
-        return []
-    with addresses.leased(env or {}):
-        return bring_up_stacks(manifests, repo_root=str(root), logger=logger)
-
-
-def _device_manifests(root: Path, near: Path | None) -> list[dict[str, Any]]:
-    books = [book for book in spec_mod.load(root).books.values() if book.device]
-    if near is not None:
-        where = near if near.is_absolute() else root / near
-        books = [book for book in books if where.resolve().is_relative_to(book.directory.resolve())] or books
-    return [{"source": book.name, "app_cwd": str(root), "repo_root": str(root),
-             "stack_file": str((book.ops_dir / spec_mod.STACK_FILE).relative_to(root)),
-             "prepare": [_device_step(root, step) for step in book.device]} for book in books]
-
-
-def _device_step(root: Path, step: dict[str, Any]) -> dict[str, Any]:
-    command = {"run": step["run"],
-               "working-directory": str(resolve_directory(root, step.get("working-directory", ".")))}
-    if step.get("name"):
-        command["name"] = str(step["name"])
-    if "timeout" in step:
-        command["timeout"] = str(step["timeout"])
-    return command
 
 
 def _runbook_device_manifests(graph: Graph, near: Path | None) -> list[dict[str, Any]]:
@@ -782,6 +723,7 @@ __all__ = [
     "REUSE_POLICIES",
     "STEP_KINDS",
     "STEP_PHASES",
+    "WorkingDirectoryError",
     "bring_up_book_devices",
     "bring_up_devices",
     "bring_up_stacks",
@@ -796,6 +738,7 @@ __all__ = [
     "environment_of",
     "load_stack",
     "load_stacks",
+    "resolve_directory",
     "select_runbook",
     "select_stack",
     "system_root",

@@ -13,14 +13,10 @@ from ostler.qa.run import (
     cmd_stop,
     cmd_validate,
 )
-from ostler.qa.compile import cmd_compile_plan, compile_plan
-from ostler.qa.readiness import cmd_compile_gaps
 from ostler.qa.lint import cmd_lint
-from ostler.qa.sensitivity import cmd_sensitivity
-from ostler.qa.assessment import Assessment, assess, cmd_assess, contract_fingerprint, render as render_assessment
 from ostler.qa.clean import cmd_clean, legacy_scratch_roots
 from ostler.qa.session import QA_DIRNAME, RESERVED_LABELS, ScratchLabelError, scratch_dirname
-from ostler.qa import addresses, fixtures, runbook, tools
+from ostler.qa import addresses, devices, fixtures, tools
 from ostler.qa.report import (
     REPORT_FILE,
     ReportError,
@@ -29,23 +25,6 @@ from ostler.qa.report import (
     report_path,
     run_id_of,
     write_report,
-)
-from ostler.qa.evidence_map import (
-    STATUSES,
-    EvidenceMapError,
-    build_evidence_map,
-    render_evidence_map,
-)
-from ostler.qa.context import (
-    build_context,
-    cmd_context,
-    cmd_context_refresh,
-    cmd_context_validate,
-    render_context,
-    render_obligations,
-    select_obligations,
-    validate_context,
-    write_context,
 )
 
 __all__ = [
@@ -60,15 +39,6 @@ __all__ = [
     "cmd_replay",
     "cmd_run",
     "cmd_lint",
-    "cmd_compile_plan",
-    "cmd_compile_gaps",
-    "compile_plan",
-    "cmd_sensitivity",
-    "Assessment",
-    "assess",
-    "cmd_assess",
-    "contract_fingerprint",
-    "render_assessment",
     "cmd_validate",
     "cmd_clean",
     "legacy_scratch_roots",
@@ -76,19 +46,6 @@ __all__ = [
     "RESERVED_LABELS",
     "ScratchLabelError",
     "scratch_dirname",
-    "cmd_context",
-    "cmd_context_refresh",
-    "cmd_context_validate",
-    "build_context",
-    "write_context",
-    "render_context",
-    "render_obligations",
-    "select_obligations",
-    "validate_context",
-    "STATUSES",
-    "EvidenceMapError",
-    "build_evidence_map",
-    "render_evidence_map",
     "REPORT_FILE",
     "ReportError",
     "build_report",
@@ -98,6 +55,6 @@ __all__ = [
     "write_report",
     "fixtures",
     "addresses",
-    "runbook",
+    "devices",
     "tools",
 ]
