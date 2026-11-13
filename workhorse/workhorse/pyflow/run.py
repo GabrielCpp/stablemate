@@ -35,8 +35,9 @@ from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.replies import declared_reply
 from workhorse.pyflow.workflow import Workflow
 from workhorse.pyflow.worktree import WorktreeError
+from workhorse.pyflow import workspace_worktrees
 from workhorse.pyflow import worktree as worktree_mod
-from workhorse.records import PyflowCheckpoint, WorktreeOutcome, parse_checkpoint
+from workhorse.records import PyflowCheckpoint, RunWorktree, parse_checkpoint
 from workhorse.references import format_missing, missing_references
 from workhorse.rundir import (
     auto_resolve,
@@ -103,6 +104,35 @@ def _dispatch_worktree(
         )
         return 1
 
+    try:
+        planned, rel = workspace_worktrees.plan(
+            repo_dir=repo_dir,
+            workspace=str(params.get("workspace") or ""),
+            worktree_dir=worktree_dir,
+            sanitized=sanitized_branch,
+            base_ref=base_ref,
+            create=not dry_run,
+        )
+    except WorktreeError as exc:
+        print(f"[workhorse] ERROR: {exc}")
+        return 1
+    if planned:
+        if dry_run:
+            for item in planned:
+                print(
+                    f"[workhorse] --dry-run: would cut branch '{branch}' from '{item.base_ref}' "
+                    f"of {item.repo} into worktree '{item.target}'"
+                )
+            return None
+        try:
+            entries = workspace_worktrees.cut(planned, branch)
+        except WorktreeError as exc:
+            print(f"[workhorse] ERROR: could not cut the run's worktrees: {exc}")
+            return 1
+        writer.record_worktrees(entries)
+        params["repo_dir"] = str(Path(entries[0].path) / rel)
+        return None
+
     dir_name = worktree_mod.dir_name_for(repo_dir, sanitized_branch)
 
     if dry_run:
@@ -134,31 +164,37 @@ def _dispatch_worktree(
     return None
 
 
-def _end_worktree(writer: ArtifactWriter, outcome: WorktreeOutcome) -> None:
-    """Record and announce what the run's ending did with its worktree."""
-    writer.record_worktree_outcome(outcome)
-    otel.run_attribute("workhorse.worktree", outcome.action)
-    otel.run_attribute("workhorse.worktree_reason", outcome.reason)
-    if outcome.action == "removed":
-        branch = f" and branch '{writer.worktree_branch}'" if outcome.branch_deleted else ""
-        print(f"[workhorse] worktree → removed {writer.worktree_path}{branch}: {outcome.reason}")
-    else:
-        print(f"[workhorse] worktree → kept {writer.worktree_path}: {outcome.reason}")
+def _end_worktrees(writer: ArtifactWriter, entries: list[RunWorktree]) -> None:
+    """Record and announce what the run's ending did with each of its worktrees."""
+    writer.record_worktree_outcomes(entries)
+    first = entries[0].outcome
+    if first is not None:
+        otel.run_attribute("workhorse.worktree", first.action)
+        otel.run_attribute("workhorse.worktree_reason", first.reason)
+    for entry in entries:
+        landing = entry.landing
+        if landing is not None:
+            files = f"; conflicting: {', '.join(landing.files)}" if landing.files else ""
+            print(
+                f"[workhorse] book → {landing.action} {entry.branch} on '{entry.base}' "
+                f"in {entry.repo}: {landing.reason}{files}"
+            )
+            otel.run_attribute("workhorse.book_landing", landing.action)
+        outcome = entry.outcome
+        if outcome is None:
+            continue
+        if outcome.action == "removed":
+            branch = f" and branch '{entry.branch}'" if outcome.branch_deleted else ""
+            print(f"[workhorse] worktree → removed {entry.path}{branch}: {outcome.reason}")
+        else:
+            print(f"[workhorse] worktree → kept {entry.path}: {outcome.reason}")
 
 
 def _retire_worktree(writer: ArtifactWriter) -> None:
-    """On a terminal success, remove the run's worktree once nothing in it would be lost."""
-    if not writer.worktree_path:
+    """On a terminal success, land the book branch and remove each worktree once nothing in it would be lost."""
+    if not writer.worktrees:
         return
-    _end_worktree(
-        writer,
-        worktree_mod.retire(
-            path=Path(writer.worktree_path),
-            branch=writer.worktree_branch,
-            base=writer.worktree_base,
-            repo_dir=Path(writer.worktree_repo) if writer.worktree_repo else None,
-        ),
-    )
+    _end_worktrees(writer, workspace_worktrees.end(writer.worktrees))
 
 
 def _stop_resumable(writer: ArtifactWriter, name: str, exc: Exception) -> int:
@@ -174,7 +210,7 @@ def _stop_resumable(writer: ArtifactWriter, name: str, exc: Exception) -> int:
 
 def _keep_worktree(writer: ArtifactWriter, ending: str) -> None:
     """On any ending but success, keep the run's worktree so a resume or a person can pick it up."""
-    if not writer.worktree_path:
+    if not writer.worktrees:
         return
     try:
         checkpoint = writer.read_checkpoint()
@@ -182,7 +218,7 @@ def _keep_worktree(writer: ArtifactWriter, ending: str) -> None:
         checkpoint = None
     gate = checkpoint.waiting_on if isinstance(checkpoint, PyflowCheckpoint) else None
     where = f"while waiting on {gate}" if gate else f"in '{_state_of(writer)}'"
-    _end_worktree(writer, worktree_mod.kept(f"the run {ending} {where}"))
+    _end_worktrees(writer, workspace_worktrees.keep(writer.worktrees, f"the run {ending} {where}"))
 
 
 def _resume_worktree(invocation: RunInvocation, writer: ArtifactWriter, params: dict[str, Any]) -> None:

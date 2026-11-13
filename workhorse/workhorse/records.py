@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
@@ -66,6 +67,27 @@ class WorktreeOutcome(BaseModel):
     branch_deleted: bool = False
 
 
+class BookLanding(BaseModel):
+    """What landing a run's book branch on the artifacts base did."""
+
+    action: Literal["nothing", "landed", "rebased", "conflict", "kept"]
+    reason: str = ""
+    files: list[str] = Field(default_factory=list)
+
+
+class RunWorktree(BaseModel):
+    """One linked worktree `--worktree` cut for a run, in one repository of its workspace."""
+
+    name: str = ""
+    path: str = ""
+    branch: str = ""
+    repo: str = ""
+    base: str = ""
+    books: bool = False
+    landing: BookLanding | None = None
+    outcome: WorktreeOutcome | None = None
+
+
 class RunRecord(BaseModel):
     """`run.json` — what a run directory says about itself between processes."""
 
@@ -88,6 +110,23 @@ class RunRecord(BaseModel):
     worktree_repo: str = ""
     worktree_base: str = ""
     worktree_outcome: WorktreeOutcome | None = None
+    worktrees: list[RunWorktree] = Field(default_factory=list)
+
+
+def run_worktrees(record: RunRecord) -> list[RunWorktree]:
+    """The run's worktrees: the list, or the one an older record stored in its flat fields."""
+    if record.worktrees or not record.worktree_path:
+        return list(record.worktrees)
+    return [
+        RunWorktree(
+            name=Path(record.worktree_repo or record.worktree_path).name,
+            path=record.worktree_path,
+            branch=record.worktree_branch,
+            repo=record.worktree_repo,
+            base=record.worktree_base,
+            outcome=record.worktree_outcome,
+        )
+    ]
 
 
 class LaunchRecord(BaseModel):

@@ -18,10 +18,12 @@ from workhorse.records import (
     PyflowCheckpoint,
     RepoObservation,
     RunRecord,
+    RunWorktree,
     WorktreeOutcome,
     parse_checkpoint,
     parse_launch_record,
     parse_run_record,
+    run_worktrees,
 )
 from workhorse.runner.usage import TurnUsage, as_record, from_record
 
@@ -109,6 +111,7 @@ class ArtifactWriter:
         self._worktree_repo = ""
         self._worktree_base = ""
         self._worktree_outcome: WorktreeOutcome | None = None
+        self._worktrees: list[RunWorktree] = []
         self._previous_process_died_at = None
         self._previous_process_pid = None
         self._write_run_json(terminal=None)
@@ -147,6 +150,11 @@ class ArtifactWriter:
         """What this run's ending did with its worktree, or None before it ended."""
         return self._worktree_outcome
 
+    @property
+    def worktrees(self) -> list[RunWorktree]:
+        """Every worktree this run was dispatched into; the first is the one `repo_dir` points at."""
+        return list(self._worktrees)
+
     @classmethod
     def resume(cls, run_dir: Path) -> "ArtifactWriter":
         """Re-bind to an existing run directory (for checkpoint resume) without creating a new run or clobbering its step artifacts."""
@@ -175,6 +183,9 @@ class ArtifactWriter:
         self._worktree_repo = record.worktree_repo
         self._worktree_base = record.worktree_base
         self._worktree_outcome = None
+        self._worktrees = [
+            entry.model_copy(update={"landing": None, "outcome": None}) for entry in run_worktrees(record)
+        ]
         self._previous_process_died_at = None
         self._previous_process_pid = None
         if (
@@ -424,14 +435,34 @@ class ArtifactWriter:
 
     def record_worktree(self, path: str, branch: str, *, repo: str = "", base: str = "") -> None:
         """Record the worktree and branch this run was dispatched into."""
-        self._worktree_path = path
-        self._worktree_branch = branch
-        self._worktree_repo = repo
-        self._worktree_base = base
+        entry = RunWorktree(name=Path(repo or path).name, path=path, branch=branch, repo=repo, base=base)
+        self.record_worktrees([entry])
+
+    def record_worktrees(self, entries: list[RunWorktree]) -> None:
+        """Record every worktree this run was dispatched into; the first is the one `repo_dir` points at."""
+        self._worktrees = list(entries)
+        if entries:
+            first = entries[0]
+            self._worktree_path = first.path
+            self._worktree_branch = first.branch
+            self._worktree_repo = first.repo
+            self._worktree_base = first.base
         self._write_run_json(terminal=None)
 
     def record_worktree_outcome(self, outcome: WorktreeOutcome) -> None:
         """Stamp what the run's ending did with its worktree onto the `run.json` already on disk."""
+        if not self._worktrees:
+            self._stamp_worktrees([], outcome)
+            return
+        first = self._worktrees[0].model_copy(update={"outcome": outcome})
+        self.record_worktree_outcomes([first, *self._worktrees[1:]])
+
+    def record_worktree_outcomes(self, entries: list[RunWorktree]) -> None:
+        """Stamp what the run's ending did with each of its worktrees onto the `run.json` already on disk."""
+        self._stamp_worktrees(entries, entries[0].outcome if entries else None)
+
+    def _stamp_worktrees(self, entries: list[RunWorktree], outcome: WorktreeOutcome | None) -> None:
+        self._worktrees = list(entries)
         self._worktree_outcome = outcome
         path = self.run_dir / "run.json"
         try:
@@ -440,6 +471,7 @@ class ArtifactWriter:
             self._write_run_json(terminal=None)
             return
         record.worktree_outcome = outcome
+        record.worktrees = list(entries)
         path.write_text(record.model_dump_json(indent=2))
 
     def record_launch(self, argv: list[str], resume_argv: list[str], cwd: str) -> None:
@@ -507,6 +539,7 @@ class ArtifactWriter:
             worktree_repo=self._worktree_repo,
             worktree_base=self._worktree_base,
             worktree_outcome=self._worktree_outcome,
+            worktrees=self._worktrees,
             previous_process_died_at=self._previous_process_died_at,
             previous_process_pid=self._previous_process_pid,
         )

@@ -23,6 +23,7 @@ from workhorse.records import (
     parse_checkpoint,
     parse_launch_record,
     parse_run_record,
+    run_worktrees,
 )
 from workhorse.rewind import RewindError, rewind
 
@@ -227,6 +228,7 @@ def print_params(run_dir: Path) -> None:
     worktree = _worktree(run_dir)
     if worktree is not None:
         report["worktree"] = worktree
+        report["worktrees"] = _worktrees(run_dir)
     print(json.dumps(report, indent=2, sort_keys=True))
 
 
@@ -245,6 +247,15 @@ def _worktree(run_dir: Path) -> dict[str, Any] | None:
         "base": record.worktree_base,
         "outcome": outcome.model_dump() if outcome is not None else None,
     }
+
+
+def _worktrees(run_dir: Path) -> list[dict[str, Any]]:
+    """Every worktree `--worktree` cut for this run, the one `repo_dir` points at first."""
+    try:
+        record = parse_run_record((run_dir / "run.json").read_text())
+    except (OSError, ValidationError):
+        return []
+    return [entry.model_dump() for entry in run_worktrees(record)]
 
 
 def wait_gone(run_dir: Path, timeout: float) -> None:
