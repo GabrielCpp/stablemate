@@ -30,7 +30,7 @@ from ostler.book.errors import Unhealthy
 from ostler.book.explore import attempts, moves
 from ostler.book.exploration import BASELINE, REFUSED, Cell, Played as Explored, Walk, never_refused, play as play_cells, seed, unreached
 from ostler.book.graph import dot, render
-from ostler.book.index import cmd_index, cmd_search_book
+from ostler.book.index import book_root, cmd_index, cmd_search_book
 from ostler.book.http import Endpoint, identity_lines, named_shapes
 from ostler.book.inputs import Tried, play as play_inputs
 from ostler.book.journey import JourneyResult
@@ -143,6 +143,9 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(line_buffering=True)
     parser = build_parser()
     args = parser.parse_args(argv)
+    root = book_root(os.getcwd())
+    if root is not None:
+        sys.path.insert(0, root)
     if args.command == "search":
         if args.extra is not None:
             if not args.term.startswith("services."):
@@ -840,6 +843,8 @@ def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
     print("\n## Pointers to files that no longer exist")
     for element, path in found.missing:
         print(f"- {element}: {path}")
+    for pointer in found.untraced:
+        print(f"not traced: {pointer}")
     touched = [*found.stale, *(n for _, names in found.beside.values() for n in names)]
     print("\n## Decisions touching stale elements")
     for d in load_decisions(args.service):

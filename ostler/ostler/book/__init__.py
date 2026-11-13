@@ -33,11 +33,12 @@ from ostler.book.stack import Process, Stack
 from ostler.book.state import Axes, Impossible, Scene
 from ostler.book.status import Code, Exited, refused, succeeded
 from ostler.book.surface import Surface
+from ostler.book.workspace import checkout
 from ostler.book.witness import Because, Unseen
 
 __all__ = [
     "Actor", "Arrange", "Backstage", "CannotArrange", "Environment", "SOLE",
-    "Browser", "Device", "MobileSurface", "PageSurface", "Received", "answer", "refusal", "request",
+    "checkout", "Browser", "Device", "MobileSurface", "PageSurface", "Received", "answer", "refusal", "request",
     "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Fixture", "Heard", "Index", "MoveToday", "Select",
     "Show", "State", "Total", "Transaction", "Unique", "Update",
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",

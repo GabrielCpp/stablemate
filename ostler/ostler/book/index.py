@@ -7,8 +7,10 @@ import importlib
 import os
 import sys
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
+from ostler._vendor.stablemate_core import config as core_config
 from ostler.book import decisions
 from ostler.book.search import Item, items
 
@@ -94,6 +96,9 @@ def stale(directory: str) -> bool:
 
 
 def book_root(start: str) -> str | None:
+    home = core_config.docs_home(Path(start))
+    if home is not None:
+        return str(home)
     here = os.path.abspath(start)
     while True:
         if os.path.isdir(os.path.join(here, "services")):

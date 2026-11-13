@@ -8,9 +8,12 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, cast
 
+from ostler._vendor.stablemate_core import config as core_config
 from ostler.book.service import Service
+from ostler.refs import parse_code_ref
 
 
 @dataclass
@@ -21,6 +24,7 @@ class Report:
     unnamed: dict[str, list[str]] = field(default_factory=dict)
     missing: list[tuple[str, str]] = field(default_factory=list)
     coarse: set[tuple[str, str]] = field(default_factory=set)
+    untraced: list[str] = field(default_factory=list)
     beside: dict[str, tuple[list[str], list[str]]] = field(default_factory=dict)
     functions: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 
@@ -45,13 +49,33 @@ def raw(service: Service[Any]) -> dict[str, tuple[str, ...]]:
     return {e.__name__: tuple(cast(Any, e).source) for e in elements(service)}
 
 
-def pointers(service: Service[Any]) -> dict[str, tuple[str, ...]]:
-    return {name: tuple(dict.fromkeys(file_of(p) for p in found)) for name, found in raw(service).items()}
+def missing(service: Service[Any], app_root: str | None) -> list[tuple[str, str]]:
+    members = core_config.workspace_members()
+    found: list[tuple[str, str]] = []
+    for name, found_pointers in raw(service).items():
+        for pointer in dict.fromkeys(file_of(p) for p in found_pointers):
+            try:
+                ref = parse_code_ref(pointer)
+            except ValueError:
+                found.append((name, pointer))
+                continue
+            if ref.repository:
+                member = members.get(ref.repository)
+                if member is None or not os.path.exists(os.path.join(member, ref.path)):
+                    found.append((name, pointer))
+            elif app_root is not None and not os.path.exists(os.path.join(app_root, ref.path)):
+                found.append((name, pointer))
+    return found
 
 
-def missing(service: Service[Any], app_root: str) -> list[tuple[str, str]]:
-    return [(name, path) for name, paths in pointers(service).items() for path in paths
-            if not os.path.exists(os.path.join(app_root, path))]
+def traced_in(pointer: str, member: str) -> str | None:
+    try:
+        ref = parse_code_ref(pointer)
+    except ValueError:
+        return pointer
+    if not ref.repository:
+        return pointer
+    return pointer.removeprefix(f"repo://{member}/") if ref.repository == member else None
 
 
 def verified_at(service: Service[Any], package_dir: str) -> str | None:
@@ -137,12 +161,18 @@ def symbol_commits(app_root: str, commit: str, pointer: str) -> list[str] | None
 def stale(service: Service[Any], app_root: str, package_dir: str) -> Report:
     verified = verified_at(service, package_dir)
     report = Report(verified, head_of(app_root), missing=missing(service, app_root))
+    member = core_config.repository_name(Path(app_root))
+    pointed: dict[str, tuple[str, ...]] = {}
+    for name, found in raw(service).items():
+        kept = [(p, traced_in(p, member)) for p in found]
+        pointed[name] = tuple(t for _, t in kept if t is not None)
+        report.untraced += [p for p, t in kept if t is None and p not in report.untraced]
     if verified is None or service.app is None:
         return report
     changed = changed_since(service, app_root, verified)
     seen: dict[str, set[str]] = {}
     namers: dict[str, list[str]] = {}
-    for name, found in raw(service).items():
+    for name, found in pointed.items():
         for pointer in found:
             path = file_of(pointer)
             if path not in changed:
@@ -157,7 +187,7 @@ def stale(service: Service[Any], app_root: str, package_dir: str) -> Report:
             seen.setdefault(path, set()).update(commits)
             if commits:
                 report.stale.setdefault(name, {})[pointer] = commits
-    named = {(file_of(p), symbol_of(p)) for found in raw(service).values() for p in found if symbol_of(p)}
+    named = {(file_of(p), symbol_of(p)) for found in pointed.values() for p in found if symbol_of(p)}
     for path, names in namers.items():
         functions = changed_functions(app_root, verified, path)
         if functions is None:
@@ -170,6 +200,6 @@ def stale(service: Service[Any], app_root: str, package_dir: str) -> Report:
                 continue
             commits = symbol_commits(app_root, verified, f"{path}::{function}") or changed[path]
             report.functions.setdefault(path, {})[function] = commits
-    every = {file_of(p) for found in raw(service).values() for p in found}
+    every = {file_of(p) for found in pointed.values() for p in found}
     report.unnamed = {p: c for p, c in changed.items() if p not in every}
     return report

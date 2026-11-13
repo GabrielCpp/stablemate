@@ -2088,7 +2088,6 @@ def _cmd_book(cwd: Path | None, book_args: list[str]) -> int:
     """Hand the arguments to the book runtime from the directory that holds `services/`."""
     if cwd is not None:
         os.chdir(cwd)
-    sys.path.insert(0, os.getcwd())
     return book_cli.main(book_args)
 
 

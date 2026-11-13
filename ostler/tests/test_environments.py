@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from ostler import doctor
+from ostler._vendor.stablemate_core import config as core_config
 from ostler.environments import checkout, cli, commands, leases, runtime, secrets, spec
 from ostler.environments import render as render_mod
 from ostler.model import load
@@ -184,6 +185,26 @@ def test_the_render_names_orders_and_publishes_each_service(tmp_path: Path) -> N
     assert "api-db-data" in compose["volumes"]
     caddyfile = (directory / "web-gateway" / "Caddyfile").read_text(encoding="utf-8")
     assert "reverse_proxy /api/* api-api:8080" in caddyfile
+
+
+def test_a_stack_template_in_the_artifacts_folder_reaches_a_member_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    member = tmp_path / "code" / "todo-api"
+    member.mkdir(parents=True)
+    config = tmp_path / "home.toml"
+    config.write_text(f'[workspaces]\ntodo = ["{member}"]\n')
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
+    root = tmp_path / "artifacts"
+    (root / ".git").mkdir(parents=True)
+    _file(root, "services/api/ops/services/api.yml.j2", 'build: {{ repos["todo-api"] }}\n')
+    _file(root, "services/api/ops/stack.yml", yaml.safe_dump({
+        "services": {"api": {"about": "the HTTP API", "define": "services/api.yml.j2", "address": "api", "port": 8080}},
+    }))
+    outcome = commands.cmd_render(root, ["api"], copy_name="story-1")
+    assert outcome.ok, outcome.message
+    compose = yaml.safe_load((Path(outcome.data["directory"]) / render_mod.COMPOSE_FILE).read_text(encoding="utf-8"))
+    assert compose["services"]["api-api"]["build"] == str(member)
 
 
 def test_the_shared_copy_keeps_its_fixed_port_and_a_run_copy_takes_any(tmp_path: Path) -> None:

@@ -12,6 +12,7 @@ from typing import Any
 import jinja2
 import yaml
 
+from ostler._vendor.stablemate_core import config as core_config
 from ostler.environments.checkout import locate
 from ostler.environments.spec import Catalog, Service
 
@@ -195,6 +196,7 @@ def _context(
         "project": copy.project,
         "shared": copy.shared,
         "repo": str(repo),
+        "repos": {name: str(path) for name, path in core_config.workspace_members().items()},
         "ops_dir": str(service.ops_dir),
         "env_dir": str(copy.directory),
         "dir": str(copy.directory / service.compose_name),

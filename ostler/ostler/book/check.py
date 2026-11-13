@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Callable, Iterator, cast
 
+from ostler._vendor.stablemate_core import config as core_config
 from ostler.book import decisions
 from ostler.book.arrange import Arrange
 from ostler.book.explore import _overrides, attempts, moves
@@ -143,8 +144,15 @@ def input_faults(service: Service[Any]) -> list[Finding]:
 
 def source_faults(service: Service[Any], app: str | None) -> list[Finding]:
     found = [Finding(e.__name__, "no source pointer", blocks=False) for e in (*service.endpoints, *service.records) if not cast(Any, e).source]
-    if app is not None:
-        found += [Finding(name, f"source {path} does not exist under {app}") for name, path in missing(service, app)]
+    members = core_config.workspace_members()
+    for name, path in missing(service, app):
+        member = path.removeprefix("repo://").partition("/")[0] if path.startswith("repo://") else ""
+        if not member:
+            found.append(Finding(name, f"source {path} does not exist under {app}"))
+        elif member in members:
+            found.append(Finding(name, f"source {path} does not exist"))
+        else:
+            found.append(Finding(name, f"source {path} names no checkout"))
     return found
 
 
