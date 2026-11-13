@@ -140,7 +140,7 @@ Read the book before the code whenever the question is *what* something does,
 *why* it is so, or *how a user reaches it*:
 
 ```bash
-ostler book search <term> [--service services.<name>] [--kind rule|endpoint|action|journey|screen|decision]
+ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision]
 ostler book explain services.<name> <ClassName>       # everything the book says of one element
 ostler book decisions services.<name> [--story <id>]  # each decision and the story behind it
 ```

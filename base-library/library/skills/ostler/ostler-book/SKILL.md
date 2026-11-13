@@ -216,14 +216,14 @@ one is live.
 | --- | --- | --- |
 | `ostler book check services.<name>` | seconds, no app | the format: unregistered endpoints, journeys or rules, unplaced endpoints, modules nothing imports, missing source pointers, a journey with no docstring, an `index.tsv` older than the book (run `index`, then `check`) |
 | `ostler book explore services.<name> --seed-only` | seconds to minutes as matrices grow, no app | the model's walk to depth 4; run it after every change to a fixture, a scene or an endpoint; "the book contradicts itself" means a fixture arranges a record that cannot exist |
-| `ostler book explore services.<name> --no-stack --only <A>,<B>` | about 2 s a cell | every cell of the named endpoints on every state the walk reaches, against the app |
-| `ostler book run services.<name> --no-stack --only <A>,<B>` | a few minutes | the journeys that call the named endpoints, their declared cells and their input classes, including divergences declared for them and never met |
+| `ostler book explore services.<name> --no-stack --only <A>,<B>` | about 2 s a cell | every cell of the named endpoints, or interactions in a screen book, on every state the walk reaches, against the app |
+| `ostler book run services.<name> --no-stack --only <A>,<B>` | a few minutes | the journeys that call the named endpoints or interactions, their declared cells and their input classes, including divergences declared for them and never met |
 | `ostler book run services.<name> --no-stack` | tens of minutes | every journey, every declared cell and every input class; the book's gate, run when a backfill ends and nightly, never per batch |
 | `ostler book index services.<name>` | seconds | rewrites `index.tsv`, which `search` reads |
 | `ostler book stale services.<name> --app <root>` | seconds, no app | the elements whose source changed since the verified commit, changed files no element names, decisions they touch |
 | `ostler book verified services.<name> --app <root>` | seconds | records the app's HEAD once `stale` is worked |
 
-`--only` takes endpoint class names, never journey names. `explore` and `run` print nothing until they end, and a long one may outlive the shell's
+`--only` takes endpoint class names, or interaction class names in a screen book, never journey names. A wrong name is refused before anything starts. `explore` and `run` print nothing until they end, and a long one may outlive the shell's
 wait. Send the output to a file and read its last lines once the command has exited. Their report goes under
 `--out`, by default `results/` where you stand: point it outside the repo. `--no-stack` skips starting the
 stack `service.py` declares, and changes nothing when that stack is empty.
