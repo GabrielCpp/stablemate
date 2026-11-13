@@ -1,4 +1,4 @@
-"""Author composition: fill each kind of work from the ostler graph, drain it, then gate completion."""
+"""Author composition: fill each kind of work from the planning graph, drain it, then gate completion."""
 from __future__ import annotations
 
 from pathlib import Path

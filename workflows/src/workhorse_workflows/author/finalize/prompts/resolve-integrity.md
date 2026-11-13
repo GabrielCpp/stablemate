@@ -25,7 +25,7 @@ need), with full tool access.
 reference point at the *real* entity. Use **only** `ostler edit`:
 
 ```bash
-ostler trace <id|slug|path>          # localize: walk the graph from the broken node first
+ostler list --type story --epic <epic>   # localize: the epic's stories and their ids
 ostler edit relink <old-path> <new>  # fix a moved reference everywhere it appears
 ostler edit rename <old-slug> <new>  # rename a story/epic slug and cascade all references
 ostler edit settle-review <story-id> # settle a story's review artifacts when that is the block

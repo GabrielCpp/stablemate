@@ -23,11 +23,6 @@ comes straight back on the next review; if you believe a finding is wrong, say w
 - Design mockup: `{{ workhorse_var('mockup_path') }}` — keep the story's Context linked to this visual
   source of truth when the validation issue does not supersede it.
 {%- endif %}
-{%- if workhorse_var('services_dir') %}
-- **OKF book root**: `{{ workhorse_var('services_dir') }}` — the existing surface documentation the
-  story cites by node id from its `## Context`. Read it; never write to it, and do not inspect the
-  app or source code to discover replacement nodes.
-{%- endif %}
 - Validation errors or review findings to fix: `{{ workhorse_var('validation_errors') }}`
 - Operator feedback to apply (if any): `{{ workhorse_var('operator_feedback') }}`
 {%- if workhorse_var('prior_attempts') %}
@@ -35,6 +30,8 @@ comes straight back on the next review; if you believe a finding is wrong, say w
 
 {{ workhorse_var('prior_attempts') }}
 {%- endif %}
+
+{% include "pm/prompts/books.md" %}
 
 ## Task
 
@@ -60,8 +57,8 @@ Address every error or finding above. Common fixes:
   replace the hedge (`Decision to surface`, `accept, or tune`, `TBD`, `TODO`, `decide whether…`)
   with a made call — `**Decision:** <the choice> — <why>` — and make any interrogative acceptance
   criterion declarative. When the epic puts the behavior in scope, make the concrete choice in the
-  Acceptance Criteria even if no prior OKF node specifies the detail. Do not block merely because
-  the existing OKF book is silent. Block only if the choice would broaden scope, contradict an
+  Acceptance Criteria even if no book entry specifies the detail. Do not block merely because
+  the service's book is silent. Block only if the choice would broaden scope, contradict an
   existing source, or resolve a genuine conflict the supplied evidence cannot settle.
 If **Operator feedback to apply** above is non-empty, the validator and reviewer may have nothing
 to flag — the feedback is mid-flight guidance a human dropped into the run's inbox while the run

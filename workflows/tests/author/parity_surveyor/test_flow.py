@@ -11,6 +11,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from _books import write_book
 from _fakes import StubRunner
 from ostler import Ostler
 from workhorse.artifacts import ArtifactWriter
@@ -53,7 +54,7 @@ def surveyed(repo: Path, write_json: Callable[[Path, Any], Path]) -> Path:
             ]
         },
     )
-    (repo / "docs/services").mkdir(parents=True, exist_ok=True)
+    write_book(repo, "billing")
     (epics_root()).mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "add", "-A"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
     subprocess.run(
@@ -184,7 +185,6 @@ def test_the_assessor_is_handed_the_unit_and_both_sides_of_the_compare(
     assert first["unit_kind"] == "legacy-surface", first
     assert first["record_path"] == f"{FINDINGS}/legacy-billing-invoices.md", first
     assert first["baseline_inventory"] == BASELINE, first
-    assert first["target_services"] == "docs/services", first
     assert first["epics_dir"] == str(epics_root()), first
 
 
@@ -251,7 +251,7 @@ def test_a_baseline_with_nothing_to_survey_fails_the_freeze(
     """Every entry already owned by the rewrite leaves no units, and a survey with no units cannot prove anything — `parity_decide_expand`'s default arm."""
     write_json(repo / BASELINE, {"entries": [{"area": "a", "slug": "b",
                                               "rewriteSurface": True}]})
-    (repo / "docs/services").mkdir(parents=True, exist_ok=True)
+    write_book(repo, "billing")
 
     with pytest.raises(WorkflowFailed, match="no non-rewrite surfaces"):
         _drive(_env(tmp_path), _Assessor(repo))
@@ -259,7 +259,7 @@ def test_a_baseline_with_nothing_to_survey_fails_the_freeze(
 
 def test_a_missing_baseline_fails_in_setup(repo: Path, tmp_path: Path) -> None:
     """`load_parity_config` runs in `setup()`, so this halts before the first state and before any checkpoint exists — the paths every state reads are not a state's decision."""
-    (repo / "docs/services").mkdir(parents=True, exist_ok=True)
+    write_book(repo, "billing")
 
     with pytest.raises(WorkflowFailed, match="baseline inventory not found"):
         _drive(_env(tmp_path), _Assessor(repo))

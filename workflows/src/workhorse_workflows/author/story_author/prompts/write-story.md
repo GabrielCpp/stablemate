@@ -31,13 +31,6 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
   app's style, usually story-local as `./mockup.html`; link it from Context as the source of truth the
   criteria are judged against.
 {%- endif %}
-{%- if workhorse_var('services_dir') %}
-- **OKF book root**: `{{ workhorse_var('services_dir') }}` — the surface documentation, already built.
-  **Read it; never write to it.** This is where the story's grounding comes
-  from — see *Ground the story in the book* below. Do not inspect source code to invent product
-  surfaces; cite only OKF nodes that already exist. Inspect source separately for concise Technical
-  Notes about existing or legacy mechanics.
-{%- endif %}
 
 {%- if workhorse_var('note') %}
 
@@ -51,67 +44,45 @@ stories have still shipped with whole defects unnoticed — it just rots and mis
 - The parent `epic.md` — read its `## Stories` section to find THIS story's entry (its `covers`
   edge) and its `## Seeds` section for the seeds that story covers, so the Context reflects the
   right scope.
+- The book of each service the story's `services:` frontmatter names: the entries this story changes.
 - This repo's **artifact grammar** — the story file layout:
   {{ find_by_tags("planning", "docs") | default("(none installed — mirror the best-formed existing story)", true) }}.
 
 ## Authority for new behavior
 
 This workflow authors the product contract; it does not merely transcribe behavior already in the
-OKF book. When the epic's seeds and story entry put a goal in scope, you may make the concrete UX
+service's book. When the epic's seeds and story entry put a goal in scope, you may make the concrete UX
 and interaction decisions needed to make that goal buildable and independently verifiable. State
 each decision explicitly as observable Acceptance Criteria. Those Acceptance Criteria become the
 authoritative contract for the new behavior.
 
-Absence from the existing OKF book is not by itself a reason to block. Existing nodes remain
-authoritative for behavior they already describe, so a new decision must not contradict existing
+Absence from the service's book is not by itself a reason to block. The book stays
+authoritative for behavior it already models, so a new decision must not contradict existing
 documented behavior, broaden the epic's scope, or silently change another journey. Block only when
 the required choice would do one of those things or the supplied sources genuinely conflict.
 
-{%- if workhorse_var('services_dir') %}
+{% include "pm/prompts/books.md" %}
 
-## Ground the story in the book (cite node ids)
+## Ground the story in the book
 
-The OKF book under `{{ workhorse_var('services_dir') }}` already describes the surfaces author may
-reference — screens, components, interactions, flows, endpoints, commands. **That gathering is done;
-do not redo it and do not add to it.** Your job is to find the handful of existing nodes this story
-touches and *cite* them.
-
-A node's id **is** its location: a repo-relative path for a whole document (`docs/okf/web/settings.md`),
-and `path#anchor` for a section inside one (`docs/okf/web/settings.md#profile-form`). So a citation is
-an ordinary markdown link — write the id verbatim as the href:
-
-```markdown
-Covers the profile form on [the settings screen](docs/okf/web/settings.md), specifically
-[Save profile](docs/okf/web/settings.md#save-profile).
-```
-
-Rules:
-
-- Cite from `## Context`, **at least one** node, and only nodes the story actually works on.
-- Copy ids **exactly** as the book spells them. A link that resolves to no node fails the grounding
-  gate — which is the point: a mistyped id must not read as grounding.
-- Cite the *narrowest* node that is true — the component/interaction section over the whole screen —
-  and add the screen only for orientation.
-- A citation is a pointer, not a paste. Do not copy the node's contents into the story.
-- If this story's surface genuinely has no node yet (a new screen), there is nothing to cite from the
-  book — link the design mockup instead and say in one clause that the surface is new. If no mockup
-  was designed either — a backend-only story, where the mockup gate deliberately produced none —
-  ground in the epic's seeds this story `covers` instead, and say in that same clause that the
-  surface is new and undocumented. Do not block for the want of a node or a mockup: per *Authority
-  for new behavior* above, absence from the book is not a reason to block, and a mockup another gate
-  decided this story does not need is not one either.
-{%- endif %}
+Search the book of each service the story names with `ostler book search`, and `ostler book explain`
+each entry the story changes. Name those entries in `## Context` as plain text (`services.<name>`
+`<ClassName>`) and do not copy them into the story. If the book models no entry for this surface,
+link the design mockup instead and say in one clause that the surface is new. If no mockup was
+designed either, a backend-only story where the mockup gate deliberately produced none, ground the
+Context in the epic's seeds this story `covers` and say in that same clause that the surface is new
+and undocumented. Do not block for the want of a book entry or a mockup.
 
 ## Context (what & why — short)
 
 A few sentences in the user's terms: what surface or behaviour this story is about, where it lives,
 and what "done" means at a high level (e.g. "at parity with the legacy X editor"). Name the surface
-by **linking its OKF node ids** (above) so the scope is grounded rather than asserted. Link the
+by naming **the book entries you read** (above) so the scope is grounded rather than asserted. Link the
 **visual reference** the criteria are judged against, when this story has one: a running legacy
 surface (rewrite projects), or — when there is no live reference — the **story-local design mockup**
 for this surface (the `mockup_path` input above, normally `./mockup.html`). A spec, legacy route, or
 captured evidence all qualify. When the story has **none of those** — no `mockup_path` was supplied
-and the book holds no node for this surface, which is the ordinary case for a backend-only story in
+and the book models no entry for this surface, which is the ordinary case for a backend-only story in
 a repo whose book is not built yet — then there is no visual reference to link and
 its absence is not a block. Ground the Context in the epic's seeds this story `covers`, cite any
 record under the repo's decisions directory that bears on it, and say in one clause that the
@@ -134,19 +105,17 @@ selectors, file presence, framework setup, or implementation details:
   and one for when it clears. For example: "when the request fails, the spinner stops and the submit
   button works again", and "the failure message goes away when the person submits again".
 
-{%- if workhorse_var('services_dir') %}
-The criteria MUST cover the parts of cited nodes this story changes — read from the book, never invented:
+The criteria MUST cover the parts of the book this story changes, read with `ostler book explain`, never invented:
 
-- **The documented user journey(s)** — the `flow` nodes the cited surface takes part in: at least
+- **The documented user journey(s)** — the book's journeys (`--kind journey`) the surface takes part in: at least
   one AC that a user can complete the typical end-to-end use case (e.g. "a signed-in user can open
   the editor, change a value, save, and see it persisted on reload").
-- **Context-conditional chrome** — a component the book says appears only in some contexts: an AC
+- **Context-conditional chrome** — a screen element the book shows only in some contexts: an AC
   for its presence *and* absence in each context the story touches (e.g. "the project picker is
   shown on the projects list but hidden inside an open project").
-- **Transient feedback** — an interaction whose outcome the book describes as a flash/toast/
+- **Transient feedback** — an action whose outcome the book models as a flash/toast/
   confirmation: an AC that the feedback **appears then clears** (e.g. "saving shows a confirmation
   that then disappears"), not merely that a control exists.
-{%- endif %}
 
 One check per item, each independently verifiable from user-visible behavior once built. Do not put
 "ensure existing X remains unchanged" here: that is not behavior to build and belongs under
@@ -229,8 +198,7 @@ discovers all of that. Leave `## Implementation Status` as scaffolded; do not ha
 
 `## Fixtures` is not yours to write either. It names the QA arrangements this story's plan
 stands up — `- Fixture: <name>` per declared fixture — and which those are is not knowable
-until the plan exists. Leave it exactly as scaffolded; the coder fills it and `ostler doctor`
-holds each name to the repo's own declaration.
+until the plan exists. Leave it exactly as scaffolded; the coder fills it.
 
 `## Dependencies` is likewise not yours to write. It is the story dependency graph — one
 `- Blocked by: <sibling-slug>` per blocker, or the bare `(none)` — and the planner already set it.

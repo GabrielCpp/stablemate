@@ -17,15 +17,14 @@ Asked by `{{ workhorse_var('asker') }}`:
 {%- if workhorse_var('milestone_dir') %}
 - Milestone folder: `{{ workhorse_var('milestone_dir') }}`. Its `milestone.md` is the contract, its `grills/` folder holds the grill records, and its `mockups/` folder holds one mockup per journey.
 {%- endif %}
-{%- if workhorse_var('services_dir') %}
-- OKF book root: `{{ workhorse_var('services_dir') }}`. It documents each service. Read it and never write to it.
-{%- endif %}
 {%- if workhorse_var('epics_dir') %}
 - Epics: `{{ workhorse_var('epics_dir') }}`.
 {%- endif %}
 {%- if workhorse_var('ledger') %}
 - PM ledger: `{{ workhorse_var('ledger') }}`. It records the questions already answered for this milestone. Read it first. Its answers bind you and you do not contradict one.
 {%- endif %}
+
+{% include "pm/prompts/books.md" %}
 
 Edit no file. The workflow records your answer in the ledger.
 

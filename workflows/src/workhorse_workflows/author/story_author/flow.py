@@ -54,7 +54,6 @@ class StoryAuthor(Workflow):
             "story_slug": target.story,
             "story_id": target.story_id,
             "story_dir": target.story_dir,
-            "services_dir": self.ctx.services_dir,
             "mockup_path": mockup,
             "ledger": self.ctx.pm_ledger,
             **extra,
@@ -94,7 +93,6 @@ class StoryAuthor(Workflow):
                 "epic": target.epic,
                 "story_slug": target.story,
                 "story_dir": target.story_dir,
-                "services_dir": self.ctx.services_dir,
                 "epics_dir": self.ctx.epics_dir,
                 "milestone_mockups_dir": self.ctx.milestone_mockups_dir,
             },
@@ -172,7 +170,6 @@ class StoryAuthor(Workflow):
             check_story_grounding,
             target.story_dir,
             target.epic_dir,
-            self.ctx.services_dir,
         )
         if not grounding.ok:
             return self._rework(

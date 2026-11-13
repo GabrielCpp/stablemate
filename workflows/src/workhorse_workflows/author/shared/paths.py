@@ -29,11 +29,6 @@ def epics_dir(root: str | Path) -> str:
     return _rel(root, okf_path.epics_root_in(Path(root)))
 
 
-def services_dir(root: str | Path) -> str:
-    """The OKF feature book, repo-relative — the same directory `ostler coverage` reads."""
-    return _rel(root, okf_path.services_root_in(Path(root)))
-
-
 def epic_dir(root: str | Path, epic: str) -> str:
     """Where one epic's artifacts live, repo-relative — ostler resolves the folder."""
     epics_root = Path(root) / epics_dir(root)
@@ -54,7 +49,6 @@ __all__ = [
     "author_context",
     "epic_dir",
     "epics_dir",
-    "services_dir",
     "launch_repo_root",
     "story_dir",
     "survey_repo_root",

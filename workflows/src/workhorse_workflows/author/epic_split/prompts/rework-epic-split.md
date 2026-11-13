@@ -29,6 +29,7 @@ with the answer.
 
 {{ workhorse_var('note') }}
 {%- endif %}
+{% include "pm/prompts/books.md" %}
 {% include "pm/prompts/ledger.md" %}
 
 Do not author epic prose, seeds, stories, milestone changes beyond the epic list, legacy todo

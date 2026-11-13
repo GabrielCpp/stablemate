@@ -6,11 +6,10 @@ from workhorse_workflows.author.shared.schemas._base import AuthorResult
 
 
 class ParityConfig(AuthorResult):
-    """`load_parity_config` — the two documentation inventories being compared."""
+    """`load_parity_config` — the baseline inventory and the books it is compared with."""
 
     repo_root: str = ""
     baseline_inventory: str = ""
-    target_services: str = ""
     survey_dir: str = ""
     inventory: str = ""
     findings_dir: str = ""

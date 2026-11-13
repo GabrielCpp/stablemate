@@ -4,6 +4,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from _books import write_book
 from _fakes import StubRunner
 from _milestones import write_milestone
 from _pm import answer
@@ -144,7 +145,7 @@ def test_document_validation_rejects_a_seed_service_that_is_no_book(
 ) -> None:
     _planning_input(repo)
     _document_epic(repo)
-    (repo / "docs/services/account").mkdir(parents=True, exist_ok=True)
+    write_book(repo, "account")
     assert Ostler(repo).add_seed(
         "sign-in",
         "recovery",

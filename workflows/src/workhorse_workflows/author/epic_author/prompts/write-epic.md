@@ -24,10 +24,8 @@ canonical `## Seeds` section. Do not write stories yet.
 {%- endif %}
 
 Read the milestone, its `grills/` records, this epic and its neighboring epics in milestone order, installed planning and
-artifact guidance, and the read-only OKF book under
-`{{ workhorse_var('services_dir') }}` when configured. Existing docs and OKF are the discovery
-boundary; do not inspect the running app or source code to invent surfaces, and never write the
-feature book.
+artifact guidance, and the book of each service the milestone journey names. They are the discovery
+boundary; do not inspect the running app or source code to invent surfaces, and never write a book.
 
 Author `{{ epic_dir }}/epic.md` with `## User Outcome`, `## User Journeys`,
 `## Delivered Experience`, `## Guardrails`, `## Non-Goals`, `## Acceptance`, and `## Method`
@@ -40,14 +38,15 @@ Record each distinct in-scope behavior as a researched `### <stable-seed-id>` bl
 edit; do not launch a separate `ostler seed add` process per seed, because each process reloads the
 whole book. Seeds derive from this epic's milestone journey segment, not independently pruneable
 milestone headings, so omit `sourceRecord`. Populate documented surfaces, backing services,
-prerequisites, and services from evidence. A seed's `services:` lists book names, each a directory under
-`docs/services/`, and nothing else. The story split derives each story's services from the seeds
+prerequisites, and services from evidence. A seed's `services:` lists book names, each a folder under `services/`
+that holds a `service.py`, and nothing else. The story split derives each story's services from the seeds
 it covers, so a seed with no `services:` leaves its story without any. Every epic
 obligation must map to at least one seed, and every seed id must be stable for story coverage.
 
 If the existing docs cannot establish a required fact, record the uncertainty and return `blocked`
 when an owner decision is required. The product manager answers it, or the operator does, and you are
 run again with the answer. On re-run, refine existing seeds instead of discarding them.
+{% include "pm/prompts/books.md" %}
 {% include "pm/prompts/ledger.md" %}
 
 ## Final Response

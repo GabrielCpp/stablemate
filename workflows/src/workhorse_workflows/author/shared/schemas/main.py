@@ -15,7 +15,6 @@ class Config(AuthorResult):
     milestone_dir: str = ""
     pm_ledger: str = ""
     epics_dir: str = ""
-    services_dir: str = ""
     layers: list[str] = []
 
 

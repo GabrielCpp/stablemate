@@ -12,6 +12,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from _books import write_book
 from _epics import epics_root
 from _fakes import StubRunner
 from _milestones import write_milestone
@@ -76,20 +77,11 @@ CLUSTER = "missing-accessible-name"
 
 @pytest.fixture
 def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
-    """A repo with a milestone and one screen and nothing else: no epics, no OKF book."""
+    """A repo with a milestone and one screen and nothing else: no epics."""
     write_milestone(repo)
-    write(repo / "docs/services/account/gui/screens/sign-in.md", (
-        "---\ntype: screen\nslug: sign-in\ntitle: Sign in\n---\n# Sign in\n\n"
-        "- route: `/sign-in`\n- requires: none\n- params: none\n\n"
-        "## Screen states\n\n### Loaded\n- shows: none\n"
-    ))
-    write(repo / "docs/services/account/ops/stack.md", (
-        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
-        "- driver: web\n- entry-url: http://localhost:3000\n- surfaces: [sign-in](../gui/screens/sign-in.md)\n\n"
-        "## Steps\n\n### serve\n- kind: service\n- run: `serve`\n"
-    ))
+    write_book(repo, "account", screens=True)
     write(repo / "docs/milestones/account-access/mockups/sign-in.html", "<html></html>\n")
-    write(repo / "docs/services/api-service/.gitkeep", "")
+    write_book(repo, "api-service")
     _commit(repo, "seed")
     return repo
 
@@ -190,7 +182,7 @@ _BODY = """# Story: {title}
 
 {title} is one of the account surfaces this epic covers. The screen exists in the web app
 already, so this story adds behaviour to it rather than a new surface. It works on
-[sign-in](docs/services/account/gui/screens/sign-in.md).
+It changes the sign-in screen of the `account` book.
 
 ## Acceptance Criteria
 
@@ -488,19 +480,10 @@ The running system is the source of truth.
                 meta={"services": ["account"]},
             )
             return {"status": "complete", "notes": "profile seed recorded"}
-        surface = "docs/services/web/accounts.md"
-        if self.backend_seeds:
-            path = self.repo / surface
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(
-                "---\ntype: feature\nslug: accounts\narea: web\n"
-                "title: Accounts\n---\n# Accounts\n\nExisting account surface.\n",
-                encoding="utf-8",
-            )
         for seed_id, text in SEEDS.items():
             meta: dict[str, Any] = {"services": ["account"]}
             if self.backend_seeds:
-                meta |= {"surface": surface, "services": ["api-service"]}
+                meta |= {"services": ["api-service"]}
             okf.add_seed(EPIC, seed_id, status="researched", summary=text, meta=meta)
         return {"status": "complete", "notes": "seeds already recorded"}
 

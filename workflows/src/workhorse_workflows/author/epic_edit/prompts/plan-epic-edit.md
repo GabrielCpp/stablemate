@@ -18,7 +18,7 @@ plan only after it passes static validation and an independent semantic review.
 ## Required reading
 
 - `{{ workhorse_var('epic_dir') }}/epic.md` and its current stories.
-- Existing feature documentation under `{{ workhorse_var('services_dir') }}`; read only, never write.
+{% include "pm/prompts/books.md" %}
 
 ## Open debt register
 
@@ -61,7 +61,7 @@ Return exactly one JSON object matching this shape:
     "id": "seed-id",
     "status": "researched",
     "summary": "one line",
-    "surface": "documented surface or missing from OKF",
+    "surface": "the surface the book models, or new",
     "legacy_surface": "",
     "backing": "",
     "prerequisites": "none",

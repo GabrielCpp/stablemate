@@ -59,7 +59,6 @@ class GapAnswer(Workflow):
                 "asker": self.asker,
                 "milestone_dir": self.ctx.milestone_dir,
                 "ledger": self.ctx.pm_ledger,
-                "services_dir": self.ctx.services_dir,
                 "epics_dir": self.ctx.epics_dir,
             },
             accept=accepts,

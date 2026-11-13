@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from _books import write_book
 import workhorse_workflows
 from ostler import Ostler
 from workhorse.pyflow import WorkflowFailed
@@ -65,7 +66,7 @@ def _write(root: Path, slug: str = "account-access", **kwargs: str) -> Path:
     path = root / "docs/milestones" / slug / "milestone.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_milestone(**kwargs), encoding="utf-8")
-    (root / "docs/services/account").mkdir(parents=True, exist_ok=True)
+    write_book(root, "account")
     return path
 
 

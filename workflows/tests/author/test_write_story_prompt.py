@@ -24,7 +24,6 @@ def _backend_only_story() -> dict[str, object]:
         "story_slug": "create-example",
         "story_path": "docs/epics/0001-example-api/stories/create-example/story.md",
         "story_dir": "docs/epics/0001-example-api/stories/create-example",
-        "services_dir": "docs/okf",
         "mockup_path": "",
     }
 
@@ -46,7 +45,7 @@ def test_the_absent_mockup_is_not_a_block(prompt: Path) -> None:
     rendered = render(prompt.relative_to(WORKFLOW_DIR), _backend_only_story(), WORKFLOW_DIR)
 
     assert "its absence is not a block" in rendered
-    assert "Do not block for the want of a node or a mockup" in rendered
+    assert "Do not block for the want of a book entry or a mockup" in rendered
 
 
 @pytest.mark.parametrize("prompt", WRITE_STORY, ids=_id)
@@ -61,11 +60,9 @@ def test_the_mockup_arm_survives_for_the_story_that_has_one(prompt: Path) -> Non
 
 
 @pytest.mark.parametrize("prompt", WRITE_STORY, ids=_id)
-def test_a_new_transient_state_is_specified_to_clear_without_a_book(prompt: Path) -> None:
-    """This fails when the appear-and-clear rule hides behind a book the greenfield app lacks."""
-    context = _backend_only_story() | {"services_dir": ""}
-
-    rendered = render(prompt.relative_to(WORKFLOW_DIR), context, WORKFLOW_DIR)
+def test_a_new_transient_state_is_specified_to_clear(prompt: Path) -> None:
+    """This fails when the appear-and-clear rule hides behind a condition."""
+    rendered = render(prompt.relative_to(WORKFLOW_DIR), _backend_only_story(), WORKFLOW_DIR)
 
     assert "Every loading, busy or failure state this story introduces" in rendered
     assert "one for when it clears" in rendered

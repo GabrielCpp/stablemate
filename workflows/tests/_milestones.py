@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+from _books import write_book
+
 BODY = """# Account access
 
 ## Outcome
@@ -55,5 +57,5 @@ def write_milestone(
         f"---\ntype: milestone\ntitle: Account access\nstatus: {status}\n{listed}---\n{BODY}",
         encoding="utf-8",
     )
-    (root / "docs/services/account").mkdir(parents=True, exist_ok=True)
+    write_book(root, "account")
     return relative

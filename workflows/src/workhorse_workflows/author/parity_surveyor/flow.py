@@ -20,7 +20,7 @@ from workhorse_workflows.author.shared.schemas import ParityConfig, UnitAssessme
 
 
 class ParitySurveyor(Workflow):
-    """Legacy baseline vs the current OKF book, one surface at a time."""
+    """Legacy baseline vs the current service books, one surface at a time."""
 
     baseline_inventory: str = ""
     survey_dir: str = "docs/survey/legacy-vs-new"
@@ -94,7 +94,6 @@ class ParitySurveyor(Workflow):
                 "unit_kind": unit_kind,
                 "record_path": record_path,
                 "baseline_inventory": self.ctx.baseline_inventory,
-                "target_services": self.ctx.target_services,
                 "register_listing": register.text,
                 "epics_dir": self.ctx.epics_dir,
             },

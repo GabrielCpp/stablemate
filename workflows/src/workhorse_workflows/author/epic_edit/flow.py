@@ -93,7 +93,6 @@ class EpicEdit(Workflow):
             "validation_findings": findings,
             "epic_dir": snapshot.epic_dir,
             "register_listing": self.call(read_register_listing).text,
-            "services_dir": self.ctx.services_dir,
         }
 
     def start(self) -> Continue:
@@ -360,7 +359,6 @@ class EpicEdit(Workflow):
                 "story_slug": pick.story_slug,
                 "story_id": pick.story_id,
                 "story_dir": pick.story_dir,
-                "services_dir": self.ctx.services_dir,
                 "epics_dir": self.ctx.epics_dir,
                 "milestone_mockups_dir": self.ctx.milestone_mockups_dir,
             },
@@ -389,7 +387,6 @@ class EpicEdit(Workflow):
             "story_slug": pick.story_slug,
             "story_id": pick.story_id,
             "story_dir": pick.story_dir,
-            "services_dir": self.ctx.services_dir,
             "mockup_path": mockup,
             "ledger": self.ctx.pm_ledger,
         }
@@ -477,7 +474,6 @@ class EpicEdit(Workflow):
                 check_story_grounding,
                 pick.story_dir,
                 applied.epic_dir,
-                self.ctx.services_dir,
             )
             if structure.ok
             else Defects()

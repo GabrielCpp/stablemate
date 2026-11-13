@@ -27,11 +27,11 @@ def _prose(path: Path) -> str:
 
 
 @pytest.mark.parametrize("prompt", _copies("write-story.md"), ids=_id)
-def test_writer_can_define_in_scope_behavior_without_prior_okf_authority(prompt: Path) -> None:
+def test_writer_can_define_in_scope_behavior_without_prior_book_authority(prompt: Path) -> None:
     text = _prose(prompt)
 
     assert "Acceptance Criteria become the authoritative contract" in text
-    assert "Absence from the existing OKF book is not by itself a reason to block" in text
+    assert "Absence from the service's book is not by itself a reason to block" in text
     assert "must not contradict existing documented behavior" in text
 
 
@@ -56,7 +56,7 @@ def test_writer_records_concise_grounded_technical_notes(prompt: Path) -> None:
 def test_grounding_angle_does_not_demand_prior_citations_for_new_behavior() -> None:
     text = _prose(ANGLES / "story" / "grounding.md")
 
-    assert "Do not fail new in-scope behavior because no earlier node defines it" in text
+    assert "Do not fail new in-scope behavior because no earlier book entry defines it" in text
     assert "contradicts cited existing behavior" in text
 
 
@@ -75,7 +75,7 @@ def test_reworker_makes_in_scope_choices_instead_of_blocking(prompt: Path) -> No
     text = _prose(prompt)
 
     assert "make the concrete choice in the Acceptance Criteria" in text
-    assert "Do not block merely because the existing OKF book is silent" in text
+    assert "Do not block merely because the service's book is silent" in text
 
 
 @pytest.mark.parametrize(
@@ -122,3 +122,33 @@ def test_mockup_inspection_does_not_leave_screenshot_collateral(prompt: Path) ->
     assert "Browser inspection is ephemeral" in text
     assert "Do not save screenshots, evidence, or rendered exports" in text
     assert "story-local `mockup.html` is this turn's only output" in text
+
+
+BOOK_INCLUDE = '{% include "pm/prompts/books.md" %}'
+BOOK_READERS = sorted(
+    {
+        *AUTHOR.glob("*/prompts/write-story.md"),
+        *AUTHOR.glob("*/prompts/rework-story.md"),
+        *AUTHOR.glob("*/prompts/design-mockup.md"),
+        AUTHOR / "epic_author/prompts/write-epic.md",
+        AUTHOR / "epic_split/prompts/split-epics.md",
+        AUTHOR / "epic_split/prompts/rework-epic-split.md",
+        AUTHOR / "epic_edit/prompts/plan-epic-edit.md",
+        AUTHOR / "pm/prompts/_inputs.md",
+        AUTHOR / "pm/prompts/answer.md",
+        AUTHOR / "parity_surveyor/prompts/assess-parity-unit.md",
+    }
+)
+
+
+@pytest.mark.parametrize("prompt", BOOK_READERS, ids=lambda p: f"{p.parent.parent.name}/{p.stem}")
+def test_a_prompt_that_writes_or_reviews_reads_the_book(prompt: Path) -> None:
+    assert BOOK_INCLUDE in prompt.read_text(encoding="utf-8")
+
+
+def test_the_book_partial_names_the_three_commands() -> None:
+    text = _prose(AUTHOR / "pm/prompts/books.md")
+
+    assert "`ostler book search <term> --service services.<name>" in text
+    assert "`ostler book explain services.<name> <ClassName>`" in text
+    assert "`ostler book decisions services.<name>`" in text

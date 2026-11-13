@@ -6,7 +6,8 @@ import logging
 import re
 from pathlib import Path
 
-from ostler import markdown
+from ostler import Ostler, markdown
+from ostler.milestones import BOOKS_DIR
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.survey.blueprint import blueprint
 from workhorse_workflows.author.shared.survey import stubs
@@ -31,12 +32,11 @@ def load_parity_config(
     survey_dir: str = "docs/survey/legacy-vs-new",
     repo_dir: str = "",
 ) -> ParityConfig:
-    """Resolve and validate the two documentation inventories being compared."""
+    """Resolve and validate the baseline inventory and the books it is compared with."""
     baseline = baseline.strip()
     survey_dir = survey_dir.strip() or "docs/survey/legacy-vs-new"
 
     root = launch_repo_root(repo_dir)
-    target = paths.services_dir(root)
     epics = paths.epics_dir(root)
     if not baseline or not (root / baseline).is_file():
         logger.warning("baseline inventory not found: %s", baseline or "(empty)")
@@ -45,21 +45,19 @@ def load_parity_config(
             failure_class="parity-baseline-missing",
             artifacts={"baseline": str(root / baseline)} if baseline else {},
         )
-    if not (root / target).is_dir():
-        logger.warning("target feature book not found: %s", target)
+    if not Ostler(root).service_books():
+        logger.warning("no service book under %s/", BOOKS_DIR)
         raise WorkflowFailed(
-            f"target feature book not found: {target}",
+            f"no service book under {BOOKS_DIR}/: a parity survey compares the baseline with the "
+            "books, write one with `workhorse-okf-book run python_book`",
             failure_class="parity-target-missing",
-            artifacts={"target": str(root / target)},
+            artifacts={"target": str(root / BOOKS_DIR)},
         )
 
-    logger.info(
-        "config loaded: baseline=%s target=%s survey_dir=%s", baseline, target, survey_dir
-    )
+    logger.info("config loaded: baseline=%s survey_dir=%s", baseline, survey_dir)
     return ParityConfig(
         repo_root=str(root),
         baseline_inventory=baseline,
-        target_services=target,
         survey_dir=survey_dir,
         inventory=f"{survey_dir}/inventory.json",
         findings_dir=f"{survey_dir}/findings",

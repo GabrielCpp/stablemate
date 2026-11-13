@@ -1,4 +1,4 @@
-"""File the ostler graph's epics, story splits and stories on the run's work list."""
+"""File the planning graph's epics, story splits and stories on the run's work list."""
 from __future__ import annotations
 
 import logging
@@ -203,7 +203,7 @@ def fill_work(
     run_dir: str,
     repo_dir: str = "",
 ) -> Filled:
-    """File every item of *kind* the ostler graph holds, satisfied ones as done, skipping ids already filed."""
+    """File every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed."""
     if kind not in KINDS:
         raise WorkflowFailed(f"cannot fill unknown work kind '{kind}'")
     okf = Ostler(survey_repo_root(repo_dir))

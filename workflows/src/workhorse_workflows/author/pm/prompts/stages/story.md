@@ -7,6 +7,6 @@ Judge only the behavior changed by the story's covered seeds. The writer produce
 Read:
 
 - `{{ workhorse_var('subject') }}`: its Context, both Acceptance Criteria sections and its Technical Notes.
-- The OKF nodes the story's `## Context` cites. A node id is a repo-relative path, optionally `path#anchor`. They are the surface's documented components, interactions and flows. Never write to the book, and do not inspect the app or the source to discover missing nodes.
+- The book of each service in the story's `services:`: the entries it changes, read with `ostler book explain`. Never write to a book.
 - The epic's `## Seeds` and `## Stories` sections in `epic.md`, which hold the scope this story claims. The story's own `## Dependencies` section names what blocks it.
 - `mockup.html` beside the story, when it exists.

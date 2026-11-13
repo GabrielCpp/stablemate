@@ -67,12 +67,9 @@ def load_config(
     milestone = approved_milestone_path(root) if mode == "epic" else ""
 
     folder = approved_milestone_folder(root)
-    services_dir = paths.services_dir(root)
     layer_skills = layers(root)
 
-    logger.info(
-        "loaded config for %s (services_dir=%s, %d layer(s))", root, services_dir, len(layer_skills)
-    )
+    logger.info("loaded config for %s (%d layer(s))", root, len(layer_skills))
     return Config(
         repo_root=str(root),
         milestone_path=milestone,
@@ -80,7 +77,6 @@ def load_config(
         milestone_dir=str(folder) if folder is not None else "",
         pm_ledger=pm_ledger_path(folder) if folder is not None else "",
         epics_dir=epics_dir,
-        services_dir=str(services_dir),
         layers=layer_skills,
     )
 

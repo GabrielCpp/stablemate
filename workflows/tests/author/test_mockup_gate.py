@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from _books import write_book
 from ostler import Ostler
 from workhorse.pyflow import WorkflowFailed
 
@@ -15,24 +16,8 @@ EPIC = "accounts"
 
 
 def _books(root: Path) -> None:
-    screens = root / "docs/services/web-app/gui/screens"
-    screens.mkdir(parents=True)
-    (screens / "sign-in.md").write_text(
-        "---\ntype: screen\nslug: sign-in\ntitle: Sign in\n---\n# Sign in\n\n"
-        "- route: `/sign-in`\n- requires: none\n- params: none\n\n"
-        "## Screen states\n\n### Loaded\n- shows: none\n",
-        encoding="utf-8",
-    )
-    ops = root / "docs/services/web-app/ops"
-    ops.mkdir(parents=True)
-    (ops / "stack.md").write_text(
-        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
-        "- driver: web\n- entry-url: http://localhost:3000\n"
-        "- surfaces: [sign-in](../gui/screens/sign-in.md)\n\n"
-        "## Steps\n\n### serve\n- kind: service\n- run: `serve`\n",
-        encoding="utf-8",
-    )
-    (root / "docs/services/api-service").mkdir(parents=True)
+    write_book(root, "web-app", screens=True)
+    write_book(root, "api-service")
 
 
 def _epic(

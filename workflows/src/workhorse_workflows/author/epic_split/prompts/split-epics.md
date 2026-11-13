@@ -29,6 +29,7 @@ the answer.
 
 {{ workhorse_var('note') }}
 {%- endif %}
+{% include "pm/prompts/books.md" %}
 {% include "pm/prompts/ledger.md" %}
 
 Produce a JSON document that complies with this schema:

@@ -64,7 +64,6 @@ class EpicAuthor(Workflow):
                 "epic": self.ctx.epic,
                 "epic_dir": self.ctx.epic_dir,
                 "milestone": self.ctx.milestone_path,
-                "services_dir": self.ctx.services_dir,
                 "note": "\n\n".join(part for part in (self.note, note) if part),
                 "ledger": self.ctx.pm_ledger,
             },

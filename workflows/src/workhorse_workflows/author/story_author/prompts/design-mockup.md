@@ -15,7 +15,7 @@ You are the **design** stage. Produce a **visual mockup in the app's own style**
 link it and the coder has a concrete reference.
 
 **The decision to design has already been made.** The workflow reached you only because this story
-lists a service whose book is a web or mobile app; any other story never gets here. So do
+names a service whose book has screens; any other story never gets here. So do
 not re-litigate whether a mockup is warranted, and do not go looking for evidence that the surface
 already exists — depict the surface this story delivers, whether it is new or a change to a built
 screen. Your job is to draw it, not to decide whether to.
@@ -27,11 +27,6 @@ The story cannot be written without a mockup. If you genuinely cannot produce on
 
 - Story slug: `{{ workhorse_var('story_slug') }}`
 - Story folder: `{{ workhorse_var('story_dir') }}`
-{%- if workhorse_var('services_dir') %}
-- **OKF book root**: `{{ workhorse_var('services_dir') }}` — the existing surface documentation.
-  **Read it; never write to it.** Where it already describes this surface in part, it is the content
-  the mockup must depict. Do not inspect the app or source code to discover surfaces.
-{%- endif %}
 {%- if workhorse_var('milestone_mockups_dir') %}
 - **Milestone mockups**: `{{ workhorse_var('milestone_mockups_dir') }}` — the approved milestone's
   mockups, one per journey. Read the one this story belongs to. The story mockup must agree with it
@@ -41,6 +36,8 @@ The story cannot be written without a mockup. If you genuinely cannot produce on
   read one or two as exemplars when they exist. There is no gallery directory to write into; a
   mockup belongs to the story that needed it.
 - Story-local mockup path: `{{ workhorse_var('story_dir') }}/mockup.html` — write the mockup here.
+
+{% include "pm/prompts/books.md" %}
 
 ## Produce the mockup (in the app's style)
 
@@ -58,13 +55,14 @@ The story cannot be written without a mockup. If you genuinely cannot produce on
      a single self-contained HTML file (inline `<style>`, no external assets) that renders the screen
      in the app's style, grounded in the design tokens and exemplars above. This path needs no network,
      login, or API key — use it whenever the CLI path is unavailable rather than blocking.
-3. **Depict the real screen, all states.** Cover the documented user journey(s) — the book's `flow`
-   nodes this screen takes part in — and the states the goal implies (happy path **plus** empty /
+3. **Depict the real screen, all states.** Cover the documented user journey(s) — the journeys
+   the book models (`--kind journey`) and the screen's states (`--kind screen`, then
+   `ostler book explain`) — plus the states the goal implies (happy path **plus** empty /
    loading / error), using the content from the book and the story's seeds, not lorem-ipsum.
 4. **Write it inside the story.**
    - Save to `{{ workhorse_var('story_dir') }}/mockup.html`. The story owns the mockup; do not put the
       new source of truth under a global `docs/design/local/` gallery.
-   - Do not create or update any inventory, manifest, or OKF book file. Return the story-local path in
+   - Do not create or update any inventory, manifest, or book file. Return the story-local path in
      `mockup`; the workflow passes it directly to `write_story`.
 
 ## Final response (REQUIRED, exact shape)

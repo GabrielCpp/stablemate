@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from _books import write_book
 from _epics import epics_root
 from ostler import Ostler
 
@@ -13,7 +14,7 @@ from workhorse_workflows.author.shared.nodes.stories import validate_story
 def _authored_story(
     repo: Path, technical_notes: str, services: tuple[str, ...] = ("api-service",)
 ) -> str:
-    (repo / "docs/services/api-service").mkdir(parents=True, exist_ok=True)
+    write_book(repo, "api-service")
     okf = Ostler(repo)
     okf.create_epic("parser", "Parser")
     assert okf.create_story("parser", "safe-ast", "Safe AST").ok
@@ -139,23 +140,7 @@ def test_a_story_that_names_an_unknown_book_fails(logger: logging.Logger, repo: 
 
 
 def _web_book(repo: Path) -> None:
-    screens = repo / "docs/services/web-app/gui/screens"
-    screens.mkdir(parents=True)
-    (screens / "sign-in.md").write_text(
-        "---\ntype: screen\nslug: sign-in\ntitle: Sign in\n---\n# Sign in\n\n"
-        "- route: `/sign-in`\n- requires: none\n- params: none\n\n"
-        "## Screen states\n\n### Loaded\n- shows: none\n",
-        encoding="utf-8",
-    )
-    ops = repo / "docs/services/web-app/ops"
-    ops.mkdir(parents=True)
-    (ops / "stack.md").write_text(
-        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
-        "- driver: web\n- entry-url: http://localhost:3000\n"
-        "- surfaces: [sign-in](../gui/screens/sign-in.md)\n\n"
-        "## Steps\n\n### serve\n- kind: service\n- run: `serve`\n",
-        encoding="utf-8",
-    )
+    write_book(repo, "web-app", screens=True)
 
 
 def test_a_story_with_a_ui_service_needs_a_mockup_beside_it(

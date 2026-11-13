@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from _books import write_book
 from _epics import epics_root
 
 import logging
@@ -13,7 +14,7 @@ from workhorse_workflows.author.story_split.nodes.services import derive_story_s
 
 def _books(repo: Path) -> None:
     for name in ("api-service", "worker"):
-        (repo / "docs/services" / name).mkdir(parents=True, exist_ok=True)
+        write_book(repo, name)
 
 
 def _epic(repo: Path) -> str:

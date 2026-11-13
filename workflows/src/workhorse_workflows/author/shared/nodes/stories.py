@@ -1,4 +1,4 @@
-"""The per-story gates: the story contract, its grounding in the book, and its attempts ledger."""
+"""The per-story gates: the story contract, its claimed seeds, and its attempts ledger."""
 from __future__ import annotations
 
 import logging
@@ -146,10 +146,9 @@ def check_story_grounding(
     logger: logging.Logger,
     story_dir: str = "",
     epic_dir: str = "",
-    services_dir: str = "",
     repo_dir: str = "",
 ) -> Defects:
-    """Was the story written against the surface documentation, or from imagination?"""
+    """Does every seed the story claims belong to its epic?"""
     story_dir_rel = story_dir.strip()
     epic_dir_rel = epic_dir.strip()
     if not story_dir_rel or not epic_dir_rel:
@@ -174,28 +173,6 @@ def check_story_grounding(
         if seed_ids and sid not in seed_ids:
             errors.append(
                 f"story claims seed item '{sid}' that is not in the epic's seeds (phantom scope)"
-            )
-
-    story_id = str((story_row or {}).get("id", "") or "")
-    if okf.graph.ui_nodes and not story_id:
-        errors.append(
-            f"story '{slug}' is not in the epic's story list (or has no id), so its surface "
-            "citations cannot be checked"
-        )
-    elif okf.graph.ui_nodes:
-        refs = okf.query("surfaces-referenced-by-story", story_id)
-        cited = [r for r in refs if r.get("kind") == "ui"]
-        for path in [str(r.get("path", "")) for r in refs if r.get("kind") == "missing"]:
-            errors.append(
-                f"story cites '{path}', which resolves to no OKF node — cite the node's id "
-                "exactly as the book spells it (a repo-relative path, or path#anchor)"
-            )
-        if not cited:
-            logger.info("story '%s' cites no OKF node", slug)
-            errors.append(
-                "story cites no OKF node — link the ids of the surface/component/interaction "
-                "nodes this story works on from its `## Context`, so the scope is grounded in "
-                "the book instead of asserted"
             )
 
     logger.info(

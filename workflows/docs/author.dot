@@ -37,19 +37,19 @@ digraph author {
       label="fill_epics"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__fill_epics__0 [label="fill_work\nFile every item of *kind* the ostler graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
+      f0__fill_epics__0 [label="fill_work\nFile every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
     }
     subgraph cluster_f0__fill_stories {
       label="fill_stories"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__fill_stories__0 [label="fill_work\nFile every item of *kind* the ostler graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
+      f0__fill_stories__0 [label="fill_work\nFile every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
     }
     subgraph cluster_f0__fill_story_splits {
       label="fill_story_splits"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__fill_story_splits__0 [label="fill_work\nFile every item of *kind* the ostler graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
+      f0__fill_story_splits__0 [label="fill_work\nFile every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
     }
     f0__requeue [label="requeue"];
     subgraph cluster_f0__split_epic_stories {
@@ -255,7 +255,7 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f2__assess__0 [label="read_parity_register\nThe open records of the surveyed repository, for the assessor to match a surface against.", shape=box, fillcolor=white];
-      f2__assess__1 [label="assess-parity-unit.md\nCompare one baseline surface with the current OKF book", shape=note, fillcolor=lightyellow];
+      f2__assess__1 [label="assess-parity-unit.md\nCompare one baseline surface with the current service books", shape=note, fillcolor=lightyellow];
       f2__assess__0 -> f2__assess__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f2__emit {
@@ -328,7 +328,7 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f3__check_story__0 [label="validate_story\nThe bare-minimum story contract, checked deterministically.", shape=box, fillcolor=white];
-      f3__check_story__1 [label="check_story_grounding\nWas the story written against the surface documentation, or from imagination?", shape=box, fillcolor=white];
+      f3__check_story__1 [label="check_story_grounding\nDoes every seed the story claims belong to its epic?", shape=box, fillcolor=white];
       f3__check_story__2 [label="record_attempt\nAppend this attempt's failure to the story's attempts ledger, and read it back.", shape=box, fillcolor=white];
       f3__check_story__3 [label="rework-story.md\nRework the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
       f3__check_story__0 -> f3__check_story__1 [color=gray40, arrowsize=0.6];
@@ -632,7 +632,7 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f8__check_story__0 [label="validate_story\nThe bare-minimum story contract, checked deterministically.", shape=box, fillcolor=white];
-      f8__check_story__1 [label="check_story_grounding\nWas the story written against the surface documentation, or from imagination?", shape=box, fillcolor=white];
+      f8__check_story__1 [label="check_story_grounding\nDoes every seed the story claims belong to its epic?", shape=box, fillcolor=white];
       f8__check_story__0 -> f8__check_story__1 [color=gray40, arrowsize=0.6];
     }
     subgraph cluster_f8__design_mockup {

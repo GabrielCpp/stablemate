@@ -89,7 +89,6 @@ class PMReview(Workflow):
             "prior": self.prior,
             "milestone_dir": self.ctx.milestone_dir,
             "ledger": self.ctx.pm_ledger,
-            "services_dir": self.ctx.services_dir,
         }
 
     def start(self) -> Continue:
