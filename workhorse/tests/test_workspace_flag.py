@@ -91,3 +91,16 @@ def test_a_run_without_the_flag_passes_no_workspace(home, monkeypatch):
 
     assert "workspace" not in seen[0].params
     assert not (home / "artifacts").exists()
+
+
+def test_a_run_launched_inside_a_member_repo_initialises_the_artifacts_repo_without_the_flag(home, monkeypatch):
+    member = home / "api-service"
+    member.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(member)], check=True)
+    monkeypatch.chdir(member)
+
+    seen, code = _launch(["run", "--dry-run"], monkeypatch)
+
+    assert code == 0
+    assert "workspace" not in seen[0].params
+    assert (home / "artifacts" / ".git").exists()

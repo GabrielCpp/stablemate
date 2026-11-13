@@ -12,6 +12,7 @@ from workhorse._vendor.stablemate_core.config import (
     CONFIG_PATH_ENV,
     ensure_artifacts_repo,
     ConfigError,
+    docs_home,
     load_home_config,
     resolve_workspace,
 )
@@ -222,6 +223,8 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         recorded = _recorded_workspace(resume_run_dir)
         if recorded:
             _enter_workspace(recorded)
+    if docs_home(Path.cwd()) is not None:
+        ensure_artifacts_repo()
     params.setdefault("repo_dir", os.environ.get("AGENT_REPO_DIR") or str(Path.cwd().resolve()))
     params.setdefault("library_dirs", library_dirs(home))
 
