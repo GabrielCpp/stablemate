@@ -159,6 +159,16 @@ def test_a_run_that_names_no_stack_copy_leaves_the_copy_to_the_book(tmp_path: Pa
     assert "stack copy" not in rendered
 
 
+def test_a_service_named_with_a_hyphen_is_told_to_import_its_own_modules_relatively(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plain, _runner = _flow(tmp_path)
+    hyphened = plain.model_copy(update={"service": "ledger-api"})
+
+    assert "imports its siblings relatively" not in _rendered(plain, tmp_path, monkeypatch)
+    told = templates.render(python_book_flow.WRITE_PROMPT, hyphened._prompt_args(""), Path(okf_book.__file__).parent)  # pyright: ignore[reportPrivateUsage]
+    assert "imports its siblings relatively" in told
+    assert "python -m ostler.book check services.ledger-api\n" in told
+
+
 def test_a_green_book_commits_only_its_package(tmp_path: Path) -> None:
     flow, _runner = _flow(tmp_path)
     repo = flow.root

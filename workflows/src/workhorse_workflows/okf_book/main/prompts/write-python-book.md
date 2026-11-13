@@ -13,6 +13,12 @@ The service is reached by more than one surface, so the book is one shared model
 `{{ package }}/model/` and one service per surface, each at `{{ package }}/<surface>/service.py`
 with its own surface, journeys and `index.tsv`. A record or a rule lives once, in the model.
 {% endif %}
+{% if "-" in service %}
+
+The service's name holds a hyphen, so no `import` statement can spell the package. Every
+module of the book imports its siblings relatively, as `from .model import ...` does, and
+`python -m ostler.book` loads the package by the module name below.
+{% endif %}
 {% if references %}
 
 This repository already holds finished books:
