@@ -168,7 +168,8 @@ carries `environment=<slug of the ostler environment page>`.
 | `exec` | run a command with matching secrets in its environment |
 | `env show` `keys` `classify` | read a dotenv file with its secret values masked, list its keys with the rule that marks each secret one, or print the verdicts as JSON |
 | `env import` | store a dotenv's chosen keys as secrets, one record per key, without printing a value |
-| `guard --hook` `guard install` | the Claude Code PreToolUse hook that denies a read of a dotenv, key or credentials file, and its installer |
+| `export` `import` | write the whole store with its values to a plaintext JSON file, from a terminal only, and load such a file back |
+| `guard --hook` `guard install` | the Claude Code PreToolUse hook that denies a read of a dotenv, key, credentials or export file, and its installer |
 | `doctor` | backend and route in use, store reachable, secrets with no value, orphan keyring items, stray token file, and on the daemon route where its token came from |
 
 ```bash
@@ -177,6 +178,8 @@ saddlebag type NAME [--field username|password|totp|meta.KEY] [--device SERIAL]
 saddlebag exec [--tag k=v]... [--env VAR=NAME[.field|.meta.KEY]]... -- cmd args...
 saddlebag env show|keys|classify FILE [--json]
 saddlebag env import FILE --keys KEY[,KEY...] [--tag k=v]... [--prefix TEXT] [--json]
+saddlebag export FILE.saddlebag.json
+saddlebag import FILE [--replace] [--json]
 saddlebag guard install --user|--project
 ```
 
@@ -202,9 +205,9 @@ so colors, `-it` and progress bars keep working for a person at the keyboard.
 
 Masking catches the leak an agent makes by mistake, such as running
 `docker compose config` under `exec`. It does not stop a command written to leak, and
-it does not reach what the command writes to a file. Saddlebag itself never writes a
-value to disk. The agent's permission layer decides which commands it may run under
-`exec`.
+it does not reach what the command writes to a file. Saddlebag itself writes a value to
+disk only in a file the operator asked `export` for. The agent's permission layer
+decides which commands it may run under `exec`.
 
 ---
 
@@ -233,6 +236,50 @@ keys before it stay stored.
 
 ---
 
+## Moving a store
+
+`export FILE.saddlebag.json` writes every secret of the store the route picks to one
+JSON file, values included, so a store can move to another machine, be backed up, or be
+edited by hand. It runs only when stdin and stdout are a terminal, and asks
+`Write N secrets with their values in plaintext to FILE? [y/N]` first. An agent's tool
+call has no terminal, so it is refused before the store is read. The file is created
+owner-only (0600), never over an existing file, and its name must end in
+`.saddlebag.json` so the guard denies an agent's read of it.
+
+```json
+{
+  "format": "saddlebag-export",
+  "version": 1,
+  "secrets": [
+    {
+      "name": "normal_login",
+      "username": "gab",
+      "description": "Log in as a normal user",
+      "var": "LOGIN_PASSWORD",
+      "tags": [["environment", "local"], ["role", "user"]],
+      "metadata": {"phone": "+15555550100"},
+      "values": {"password": "…", "totp": ""}
+    }
+  ]
+}
+```
+
+Each secret has the shape `list --json` prints, with `values` in place of `fields`.
+`values` always carries `password` and `totp`, and `""` means no value. A value the
+catalogue lists and the keyring no longer holds exports as `""` too. Secrets are in
+name order, so export, import into an empty store and export again gives the same bytes.
+
+`import FILE` loads such a file into the store the route picks, which may be another
+kind than the one it came from: export from the macOS Keychain, import into Vault
+behind the daemon. It checks every secret first, with the same rules `secret create`
+and `secret set` apply, and a name already in the store is refused unless `--replace`
+is given. Every problem is reported at once and nothing is written. With `--replace`
+the file's version of a secret wins whole: a value the file leaves `""` is dropped. It
+prints `imported NAME` per secret and never a value. If the store fails partway, the
+error names the secrets imported before the failure.
+
+---
+
 ## The guard
 
 `saddlebag guard --hook` reads a Claude Code PreToolUse payload on stdin and prints a
@@ -243,7 +290,8 @@ redirected rather than stopped. It covers the Read, Grep, Write, Edit and Bash t
 It refuses `.env` and its variants other than `.env.example`, `.env.sample`,
 `.env.template` and `.env.dist`. It refuses `.pem`, `.key`, `.p12` and `.pfx` files and
 `id_rsa` and its siblings. It refuses `.netrc`, `.npmrc`, `.pypirc`, `.git-credentials`,
-`.vault-token`, `~/.aws/credentials` and `~/.docker/config.json`. In a shell command the
+`.vault-token`, `~/.aws/credentials` and `~/.docker/config.json`, and any file ending in
+`.saddlebag.json`, the name `export` gives its files. In a shell command the
 readers it knows are `cat`, `grep`, `sed`, `head`, `source`, `python`, `jq` and the rest of
 that family, behind wrappers such as `sudo`, `env`, `timeout` and `xargs`.
 
@@ -338,6 +386,7 @@ saddlebag/
 ├── shapes.py     # the secret rules a classified line can match: key-name, token-shape, url-userinfo
 ├── route.py      # how a command reaches the counter: the daemon's socket, or in-process over the keyring
 ├── verbs.py      # the verb handlers over one store, used in-process or behind the daemon
+├── transfer.py   # export and import: the whole store as one plaintext JSON document, and the import plan
 ├── store.py      # the SecretStore contract every verb talks to, and StoreUnavailable
 ├── custody.py    # the Vault token's three sources and the refusal
 ├── daemon.py     # `serve`: the socket accept loop over the verbs

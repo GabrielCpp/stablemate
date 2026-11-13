@@ -17,6 +17,7 @@ _SUFFIX_EXAMPLES = (".example", ".sample", ".template", ".dist")
 _KEY_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
 _KEY_NAMES = frozenset({"id_rsa", "id_ed25519", "id_ecdsa", "id_dsa"})
 _CREDENTIAL_NAMES = frozenset({".netrc", "_netrc", ".npmrc", ".pypirc", ".git-credentials", ".vault-token"})
+_EXPORT_SUFFIX = ".saddlebag.json"
 
 _READERS = frozenset(
     "cat tac less more head tail grep egrep fgrep rg ag sed awk cut sort uniq strings xxd od hexdump base64 bat nl wc tee source . "
@@ -29,6 +30,7 @@ _SUBSHELL = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 
 DOTENV_MESSAGE = "`{path}` holds secrets. Read it masked: `saddlebag env show {path}`; list its keys: `saddlebag env keys {path}`."
 FILE_MESSAGE = "`{path}` holds secrets. Store it: `saddlebag secret set NAME < {path}`, then run the consumer under `saddlebag exec --env VAR=NAME -- <command>`."
+EXPORT_MESSAGE = "`{path}` is a saddlebag export with every secret in plaintext. Load it: `saddlebag import {path}`; see what the store holds: `saddlebag list`."
 
 HOOK_SUFFIX = "guard --hook"
 
@@ -62,11 +64,13 @@ def _deny(reason: str) -> Verdict:
 
 
 def protected_kind(path: str) -> str | None:
-    """``dotenv`` or ``file`` when *path* names a file whose contents are secret, else None."""
+    """``dotenv``, ``export`` or ``file`` when *path* names a file whose contents are secret, else None."""
     name = posixpath.basename(path.rstrip("/"))
     parent = posixpath.basename(posixpath.dirname(path.rstrip("/")))
     if name == ".env" or name.startswith(".env.") or name.endswith(".env"):
         return None if name.endswith(_SUFFIX_EXAMPLES) else "dotenv"
+    if name.endswith(_EXPORT_SUFFIX):
+        return "export"
     if name.endswith(_KEY_SUFFIXES) or name in _KEY_NAMES or name in _CREDENTIAL_NAMES:
         return "file"
     if (name == "credentials" and parent == ".aws") or (name == "config.json" and parent == ".docker"):
@@ -78,7 +82,7 @@ def _file_reason(path: str) -> str | None:
     kind = protected_kind(path)
     if kind is None:
         return None
-    return (DOTENV_MESSAGE if kind == "dotenv" else FILE_MESSAGE).format(path=path)
+    return {"dotenv": DOTENV_MESSAGE, "export": EXPORT_MESSAGE}.get(kind, FILE_MESSAGE).format(path=path)
 
 
 def _split(command: str) -> list[str]:

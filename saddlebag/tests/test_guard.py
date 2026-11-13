@@ -34,6 +34,7 @@ DENIED_PATHS = [
     "/home/u/.netrc",
     "~/.npmrc",
     "x/.docker/config.json",
+    "/home/u/backup.saddlebag.json",
 ]
 ALLOWED_PATHS = [
     ".env.example",
@@ -59,6 +60,7 @@ DENIED_COMMANDS = [
     "sudo cat id_rsa",
     "echo hi && cat .env",
     "echo $(cat .env)",
+    "jq . backup.saddlebag.json",
 ]
 
 ALLOWED_COMMANDS = [
@@ -72,6 +74,7 @@ ALLOWED_COMMANDS = [
     "saddlebag exec --tag environment=local -- docker compose config",
     "saddlebag env show .env",
     "saddlebag env keys .env",
+    "saddlebag import backup.saddlebag.json --replace",
     "set -e",
     "export FOO=bar",
     "git commit -m 'fix; cat .env'",

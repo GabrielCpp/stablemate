@@ -377,6 +377,67 @@ def cmd_env_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _operator_present() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _confirmed(question: str) -> bool:
+    sys.stdout.write(f"{question} [y/N] ")
+    sys.stdout.flush()
+    return sys.stdin.readline().strip().lower() in ("y", "yes")
+
+
+def cmd_export(args: argparse.Namespace) -> int:
+    from saddlebag import transfer
+
+    path: Path = args.file
+    if not path.name.endswith(transfer.SUFFIX):
+        return _error(f"an export file's name ends in {transfer.SUFFIX}, so the guard keeps agents out of it: {path}", 2)
+    if not _operator_present():
+        return _error("export writes every secret in plaintext, so it runs only from a terminal a person answers", 2)
+    if os.path.lexists(path):
+        return _error(f"{path} exists; export never replaces a file", 1)
+    listed = _ask("list", {"tags": []})
+    if isinstance(listed, int):
+        return listed
+    total = len(listed.result.get("secrets") or [])
+    if not _confirmed(f"Write {total} secrets with their values in plaintext to {path}?"):
+        return _error("export cancelled", 1)
+    reply = _ask("export")
+    if isinstance(reply, int):
+        return reply
+    payload = reply.result.get("document")
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except OSError as exc:
+        return _error(f"cannot create {path}: {exc.strerror or exc}", 1)
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(transfer.render(payload))
+    print(f"exported {transfer.count(payload)} secrets to {path}")
+    return 0
+
+
+def cmd_import(args: argparse.Namespace) -> int:
+    try:
+        text = args.file.read_text(encoding="utf-8")
+    except OSError as exc:
+        return _error(f"cannot read {args.file}: {exc.strerror or exc}", 1)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return _error(f"{args.file} is not JSON: {exc.msg} at line {exc.lineno} column {exc.colno}", 2)
+    reply = _ask("import", {"document": payload, "replace": args.replace})
+    if isinstance(reply, int):
+        return reply
+    names = reply.result.get("imported") or []
+    if args.json:
+        _emit({"file": str(args.file), "imported": names})
+    else:
+        for name in names:
+            print(f"imported {name}")
+    return 0
+
+
 def cmd_guard(args: argparse.Namespace) -> int:
     from saddlebag import guard
 
@@ -546,6 +607,16 @@ def build_parser() -> argparse.ArgumentParser:
     ei.add_argument("--prefix", default="", metavar="TEXT", help="put TEXT before each record name")
     ei.add_argument("--json", action="store_true")
     ei.set_defaults(func=cmd_env_import)
+
+    x = sub.add_parser("export", help="write every secret with its values to a plaintext JSON file; terminal only")
+    x.add_argument("file", type=Path, metavar="FILE.saddlebag.json", help="a new file; it must not exist")
+    x.set_defaults(func=cmd_export)
+
+    im = sub.add_parser("import", help="load a JSON file written by export into the store")
+    im.add_argument("file", type=Path, metavar="FILE", help="a file written by saddlebag export")
+    im.add_argument("--replace", action="store_true", help="overwrite secrets whose names are already in the store")
+    im.add_argument("--json", action="store_true")
+    im.set_defaults(func=cmd_import)
 
     g = sub.add_parser("guard", help="refuse agent actions that would print a secret")
     g.add_argument("--hook", action="store_true", help="act as a Claude Code PreToolUse hook: payload on stdin")

@@ -9,7 +9,7 @@ from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Any
 
-from saddlebag import browser, device, redact, shapes, totp
+from saddlebag import browser, device, redact, shapes, totp, transfer
 from saddlebag.models import (
     META_PREFIX,
     VALUE_FIELDS,
@@ -319,6 +319,22 @@ class Verbs:
                 rule = next((name for name, check in shapes.RULES if check(key, value)), None)
             verdicts.append({"key": key, "secret": rule is not None, "rule": rule})
         return {"verdicts": verdicts}
+
+    def verb_export(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = transfer.export(self.store)
+        logger.info("exported %d secrets", transfer.count(payload))
+        return {"document": payload}
+
+    def verb_import(self, args: dict[str, Any]) -> dict[str, Any]:
+        replace = args.get("replace", False)
+        if not isinstance(replace, bool):
+            raise RequestError("argument 'replace' must be a boolean")
+        try:
+            names = transfer.load(self.store, args.get("document"), replace=replace)
+        except (transfer.DocumentError, transfer.ImportInterrupted) as exc:
+            raise RequestError(str(exc)) from exc
+        logger.info("imported %d secrets", len(names))
+        return {"imported": names}
 
     def verb_doctor(self, args: dict[str, Any]) -> dict[str, Any]:
         health = self.store.health()

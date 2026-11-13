@@ -98,7 +98,8 @@ everything a same-user process can read without a debugger.
 
 ## The guarantees, by verb
 
-- **No verb returns a stored value to its caller, with one exception described below.**
+- **No verb returns a stored value to its caller, with two exceptions described below:
+  `exec` and `export`.**
   `set` reports a character count. `list` and `tags` print metadata. There is no
   lookup verb and no flag that adds one.
 - **A value is entered on stdin only.** `secret set` reads it there. A value on argv
@@ -131,9 +132,9 @@ everything a same-user process can read without a debugger.
   and the submit button, and use `type` for the value. Saddlebag has no verb for a native
   iOS field.
 - **A TOTP seed leaves the store only as a computed code**, and only by being typed or
-  bound into a command's environment. The seed itself is never filled anywhere.
-- **`exec` is the one path that carries values out, and it carries them to a child
-  process.** The client asks the daemon for the bound values, places them in the
+  bound into a command's environment. The seed itself is never filled anywhere. An
+  `export` file is the one place the seed is written as it is stored.
+- **`exec` carries values out to a child process.** The client asks the daemon for the bound values, places them in the
   child's environment, and never prints them. When its output is a pipe, as in an
   agent's tool call, the client stays as the child's parent and relays its stdout and
   stderr with every secret value masked: as written, `$`-doubled the way compose
@@ -145,6 +146,19 @@ everything a same-user process can read without a debugger.
   a value split by the command itself, or a value written to a file goes through.
   Which commands an agent may run under `exec` is the permission layer's decision,
   and the command line is visible to it in full.
+- **`export` writes every value to a plaintext file the operator asked for.** It exists
+  so a person can move, back up or hand-edit a store, and it is fenced three ways. The
+  command refuses unless its stdin and stdout are a terminal, and asks `[y/N]` before the
+  store is read, so an agent's tool call, which has no terminal, gets nothing. The file
+  is created mode 0600 with `O_EXCL`, so it never replaces another file. Its name must
+  end in `.saddlebag.json`, which the guard denies an agent's read of. The terminal check
+  runs in the client, so a same-user process that sends the `export` request over the
+  socket itself receives every value, as it would by sending the `env` request once per
+  secret (below). Once written, the file is the operator's to keep or delete: saddlebag
+  does not encrypt it or track it.
+- **`import` reads values from an export file and writes them to the store.** It prints
+  the names it imported and never a value. Its errors name secrets, fields and rules,
+  never a value, and an unreadable file is reported by line and column.
 - **`env show`, `keys` and `classify` read a dotenv and print no secret value.** The
   client sends the file's key and value pairs to the store's `classify` request, which
   marks a pair secret when the store holds its value, when the value is a URL with
@@ -158,13 +172,14 @@ everything a same-user process can read without a debugger.
   requested key is absent or empty.
 - **The guard refuses a secret file's read before a value is read.** `guard --hook` sees
   a tool call's arguments, not its output, and denies the ones that would read a dotenv,
-  key or credentials file. A denial carries the saddlebag line that gets the same job done.
+  key, credentials or export file. A denial carries the saddlebag line that gets the same job done.
 - **The daemon logs no value.** Its log carries verbs, names, selectors and counts.
 - **There is no plaintext path.** If Vault is unreachable or the token is not
   authenticated, the daemon does not start. A locked or absent keyring stops the
   command. Neither store falls back to the other on its own: `SADDLEBAG_BACKEND=daemon`
   or a set `SADDLEBAG_SOCKET` with no daemon answering is an error, and only an unset
-  route lets a command take the keyring when no daemon answers.
+  route lets a command take the keyring when no daemon answers. The only plaintext copy
+  saddlebag writes is an `export` file.
 
 ## What this does not protect
 
