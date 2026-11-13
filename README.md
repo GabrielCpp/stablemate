@@ -68,7 +68,7 @@ flowchart LR
     story["story (intent)"]
     code["code (the diff)"]
     skills["skills library<br/>(engineering standards)"]
-    okf["feature book<br/>(normalized docs graph)"]
+    okf["service book<br/>(executable model)"]
     live["live environment"]
 
     story --> A["A — test<br/>does the code do what was asked?"]
@@ -76,7 +76,7 @@ flowchart LR
     code --> B["B — review<br/>does it hold to the standards?"]
     story --> B
     skills --> B
-    okf --> C["C — QA<br/>does the running app keep<br/>the promises the docs make?"]
+    okf --> C["C — QA<br/>does the running app keep<br/>the promises the book makes?"]
     live --> C
 ```
 
@@ -85,14 +85,12 @@ flowchart LR
 - **B — review** (code + story + skills): the diff is reviewed against the engineering
   knowledge in the [base library](base-library/)'s skills — a fresh context whose job is
   to hold the code to the standards, not to defend the choices that produced it.
-- **C — QA** (feature book + live environment): after review, coder's Docs phase writes
-  the story's behaviour into the repo's **feature book** — a normalized knowledge graph
-  in the [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md),
-  tended by [ostler](ostler/). QA then exercises the *running application* against what
-  that book promises, with the code deliberately not in the room: `ostler qa context`
-  maps the diff to the book's obligations, the generated scenarios bind their assertions
-  to those obligations, and an evidence gate reads the recorded execution rather than a
-  claimed pass. A story cannot pass by testing only what its implementer thought to
+- **C — QA** (service book + live environment): after review, coder's Docs phase writes
+  the story's behaviour into the repo's **service book** — the Python model of each service
+  under `services/`, tended by [ostler](ostler/). QA then exercises the *running application*
+  against what that book promises, with the code deliberately not in the room: `ostler book run`
+  plays the book against the app, the QA plan covers the claims no call of a book can show,
+  and an evidence gate reads the recorded execution rather than a claimed pass. A story cannot pass by testing only what its implementer thought to
   mention.
 
 Same model, three different rooms: the independence is in the *inputs*, not the judge.
@@ -109,10 +107,10 @@ written to prevent. Writing that book from source, and keeping it true of a code
 keeps changing under it, is the open problem this repo is working on. Three things exist
 for it, and none of them is finished:
 
-- **Detection.** `ostler doctor` reports structural findings, source units no node
-  covers, and declarations that changed behind an existing citation. A clean report is
+- **Detection.** `ostler book check` reports a `source=` pointer that names code that does not exist,
+  and `ostler book run` reports where the book and the app disagree. A clean report is
   the floor, not the proof: structural validity, an accurate description and a check that
-  can tell success from failure are three different properties, and doctor sees one.
+  can tell success from failure are three different properties, and check sees one.
 - **Repair that cannot excuse itself.** coder's Docs phase clears
   findings in checkpointed passes, and a finding that will not clear is adjudicated —
   book error, code defect or intent conflict — rather than retried forever or waived: a

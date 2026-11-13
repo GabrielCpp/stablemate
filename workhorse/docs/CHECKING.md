@@ -16,9 +16,9 @@ Three helpers render a named skill:
 
 | Helper | Renders |
 |---|---|
-| `skill_link("ostler-okf")` | a Markdown link to the installed `SKILL.md` |
-| `skill_path("ostler-okf", "references/x.md")` | the path of the skill's file, or of `SKILL.md` with no second argument |
-| `skill_command("ostler-okf")` | the line that loads the skill in the running harness: `/acme-ostler-okf` on Claude Code, `$acme-ostler-okf` on Codex, and `Read \`<path>\` and follow its instructions` elsewhere |
+| `skill_link("ostler-book")` | a Markdown link to the installed `SKILL.md` |
+| `skill_path("ostler-book", "references/x.md")` | the path of the skill's file, or of `SKILL.md` with no second argument |
+| `skill_command("ostler-book")` | the line that loads the skill in the running harness: `/acme-ostler-book` on Claude Code, `$acme-ostler-book` on Codex, and `Read \`<path>\` and follow its instructions` elsewhere |
 
 A turn looks a name up in the skills its harness loads. The search starts at the turn's
 `cwd` and walks up to the repo root, then reads the turn's `add_dirs`, then the home

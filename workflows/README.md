@@ -30,9 +30,9 @@ shipped and is now kept only for its reasoning.
   tool-loop and lets it run to completion. It is the install check.
 - **`author`** — turns an approved milestone into the plan: epics, stories
   with acceptance criteria, seeds and coverage, as a normalized planning graph ostler
-  validates. The feature book is read-only to it.
+  validates. The service book is read-only to it.
 - **`coder`** — implements stories from that plan and, after review and before QA,
-  writes what it built into the repo's feature book (its Docs phase). It then examines
+  writes what it built into the repo's service book (its Docs phase). It then examines
   each story from three independent evidence bases — tests against the story's intent,
   review against the skills' engineering standards, QA of the live app against the book
   with the code not in the room. The reasoning is in the workspace README's
@@ -63,7 +63,7 @@ passing one.
 Author is allowed to define previously unspecified behavior when the epic and story put that
 behavior in scope. Explicit, observable Acceptance Criteria become the authority for those new
 choices; the PM's review angles check consistency, verifiability, existing documented behavior,
-and scope rather than demanding that a greenfield detail already exist in the OKF book. A conflict
+and scope rather than demanding that a greenfield detail already exist in the book. A conflict
 with an existing source or a required scope expansion still goes to the operator.
 
 Epic authoring consumes the one approved milestone folder, `docs/milestones/<slug>/milestone.md`:
@@ -133,7 +133,7 @@ findings back to the plan refiner: every active seed remains covered, dependenci
 and acyclic, the requested add/remove is satisfied, and every changed story needing new prose is
 in the affected worklist. Only then does Ostler apply structural mutations, the model revise epic
 prose and affected story bodies, and coverage/integrity gates permit closing the picked record as `promoted` and the commit.
-Design turns may write `mockup.html` only inside the current story directory. The feature book is
+Design turns may write `mockup.html` only inside the current story directory. The service book is
 read-only: author never creates an inventory or registers a mockup outside its story.
 
 Removing the last story does not silently strand scope. Its plan must also remove the last
@@ -143,7 +143,7 @@ are deleted. The complete behavior is recorded in the epic edit and story edit f
 
 ## Coder documentation convergence
 
-QA's scenarios are generated from the feature book and judged on recorded evidence from
+QA's scenarios are generated from the service book and judged on recorded evidence from
 the running product, so QA sees exactly the defects the book lets it see: a promise the
 book never made, or a check that cannot tell success from failure, is invisible to it.
 Building that contract and keeping it true of the code is where the work is right now.
@@ -151,7 +151,7 @@ Docs checks grounding and repairs findings, but a book that validates
 and cites its sources is not thereby a complete or a correct one.
 
 Coder documents a story after implementation and review, before QA. A clean QA pass then
-commits without repeating that agent flow. Any QA state that may edit code, setup, or OKF
+commits without repeating that agent flow. Any QA state that may edit code, setup, or book
 grounding sets a checkpointed `docs_recheck_required` taint. The nested backlog-fix drain
 preserves the incoming taint: Fix owns documentation and commits for each drained item.
 Tainted stories must pass Docs again before commit.
@@ -233,14 +233,14 @@ make check-no-env    # from the repo root, on its own
 ## A workflow does not spell a doc path (load-bearing)
 
 **Where a document lives is ostler's answer.** The epics root, the epic folder, the story
-folder, the epics index, the feature book and its waivers and screenshots
+folder, the epics index, the book
 all come from `ostler.path`; no module under `src/workhorse_workflows/` writes
-`docs/epics` or `docs/services` as a literal.
+`docs/epics` as a literal.
 
 The reason is that epic directories are **numbered**
 (`0001-checkout-flow`) while every queue entry, prompt and operator names them by bare
 slug. A hand-built join gets both wrong, and gets them wrong *silently*: the run writes
-into a directory nothing reads, and `ostler doctor` reports a book that is not there. Two
+into a directory nothing reads, and `ostler doctor` reports an epic that is not there. Two
 derivations of the same location is the failure the rule exists for; the second one never
 learns the numbering.
 
@@ -290,8 +290,8 @@ dropped the unresolvable names while the prose around it still enumerated them.
 `tests/coder/test_prompt_stack_neutrality.py` renders every coder prompt against a
 one-stack skill catalog and holds that line.
 
-A skill the workflow itself needs in every repo, such as the `ostler-okf` format a docs turn
-writes to, is named outright with `{% raw %}{{ skill_command("ostler-okf") }}{% endraw %}`. A
+A skill the workflow itself needs in every repo, such as the `ostler-book` format a docs turn
+writes to, is named outright with `{% raw %}{{ skill_command("ostler-book") }}{% endraw %}`. A
 repo without it fails the turn, and the run warns about it before the first state.
 
 The vocabulary the coder prompts query is `runbook`, `standards`, `tests`, `qa` and
