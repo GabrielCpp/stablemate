@@ -30,7 +30,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaResult,
 )
 from workhorse_workflows.coder.shared.stack import ensure_stack, hold_copy, stack_target
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import find_book_root, find_docs_root
 from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
 
@@ -80,6 +80,7 @@ class BookQa(QaOwner):
             "story_id": self.ctx.story_id,
             "epic": self.epic,
             "docs_root": str(find_docs_root(self.repo_dir)),
+            "book_root": str(find_book_root(self.repo_dir)),
             "target_env": self.target_env,
             "services": self.output(covered_services).services,
         }

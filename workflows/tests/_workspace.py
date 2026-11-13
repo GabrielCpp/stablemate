@@ -53,6 +53,16 @@ def name_members(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, workspace: Wor
     monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
 
 
+def cut_run_worktrees(workspace: Workspace, where: Path, branch: str, git: Git) -> Workspace:
+    """The run's linked worktrees of the artifacts repo and both members on *branch*, as a Workspace of the worktree folders."""
+    cut = []
+    for name, folder in (("artifacts", workspace.artifacts), ("api", workspace.api), ("web", workspace.web)):
+        target = where / f"{name}-{branch.replace('/', '-')}"
+        git(folder, "worktree", "add", "-q", "-b", branch, str(target))
+        cut.append(target.resolve())
+    return Workspace(*cut)
+
+
 def lay_out(tmp_path: Path, git: Git) -> Workspace:
     artifacts = core_config.ensure_artifacts_repo()
     git(artifacts, "add", ".gitignore")

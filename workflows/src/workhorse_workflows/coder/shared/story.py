@@ -7,7 +7,7 @@ from pathlib import Path
 from ostler import Ostler, markdown, path as okf_path, registry
 from ostler.model import Epic, Story
 from workhorse.pyflow import Workflow, WorkflowFailed
-from workhorse_workflows.kit import commit_paths, find_docs_root
+from workhorse_workflows.kit import commit_paths, find_book_root, find_docs_root
 from workhorse_workflows.coder.shared import commits, stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.story import (
@@ -129,8 +129,10 @@ def resolve_workspace_dirs(
     docs_root = find_docs_root(repo_dir)
     repos = resolve_workspace(workspace, repo_dir)
     dirs = [r["path"] for r in repos.values() if Path(r["path"]).is_dir()]
-    if str(docs_root) not in dirs:
-        dirs = [str(docs_root), *dirs]
+    book_root = find_book_root(repo_dir)
+    for root in dict.fromkeys([docs_root, book_root]):
+        if str(root) not in dirs:
+            dirs = [str(root), *dirs]
     logger.info("resolved %d workspace dir(s)", len(dirs))
     return WorkspaceDirs(dirs=dirs)
 

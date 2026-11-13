@@ -98,7 +98,7 @@ from workhorse_workflows.coder.shared.story_commit import (
     leftover_text,
 )
 from workhorse_workflows.coder.shared.walk import acceptance_walk
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import find_book_root, find_docs_root
 from workhorse_workflows.kit.qa.runner import copy_lease
 from workhorse_workflows.kit.telemetry import counter_labels
 
@@ -190,6 +190,7 @@ class Dev(Workflow):
             "book_services": covered,
             "decisions_dir": str(decisions_dir(self.repo_dir)),
             "docs_root": str(find_docs_root(self.repo_dir)),
+            "book_root": str(find_book_root(self.repo_dir)),
         }
 
     def start(self) -> Continue:

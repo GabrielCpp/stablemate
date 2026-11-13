@@ -7,7 +7,7 @@ from pathlib import Path
 
 from git.exc import GitError
 from workhorse._vendor.stablemate_core import config as core_config
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import find_book_root, find_repo_root
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.worktree import DirtyAtStart
@@ -51,9 +51,9 @@ def snapshot_worktree_state(
     repo_dir: str = "",
     roots: list[str] | None = None,
 ) -> DirtyAtStart:
-    """Record what was already dirty before this story's first dev turn, in the docs root or in each of *roots*."""
+    """Record what was already dirty before this story's first dev turn, in the book root or in each of *roots*."""
     if roots is None:
-        checkouts = [(Path(find_docs_root(repo_dir)).resolve(), "")]
+        checkouts = [(Path(find_book_root(repo_dir)).resolve(), "")]
     else:
         checkouts = [(resolved, str(resolved)) for resolved in (Path(r).resolve() for r in roots)]
     entries: list[str] = []
@@ -83,8 +83,11 @@ def snapshot_owner_baseline(
 
 
 def not_product_roots(repo_dir: str) -> list[Path]:
-    """The resolved folders no proof is reopened by: the artifacts dir."""
-    return [core_config.resolve_artifacts_dir().resolve()]
+    """The resolved folders no proof is reopened by: the artifacts dir, and the book root of a workspace run."""
+    artifacts = core_config.resolve_artifacts_dir().resolve()
+    if core_config.docs_home(find_repo_root(repo_dir)) is None:
+        return [artifacts]
+    return list(dict.fromkeys([artifacts, find_book_root(repo_dir).resolve()]))
 
 
 def is_product(repo: Path, rel: str, excluded: list[Path]) -> bool:

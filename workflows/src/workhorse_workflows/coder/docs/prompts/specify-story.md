@@ -19,6 +19,7 @@ workflow's report or an operator's answer.
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
 - Docs root: `{{ workhorse_var('docs_root') }}`
+- Book root: `{{ workhorse_var('book_root') }}`
 - Parent epic with authoritative user journeys: `{{ workhorse_var('epic_path') }}`
 {% if report %}
 
@@ -42,9 +43,9 @@ assumption in the story, the model or the book. Do not raise the same block agai
 
 ## The decisions the executable books keep
 
-These services have an executable book at `{{ workhorse_var('docs_root') }}/services/<name>/`, with a
-`service.py`: {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}. For each one, read `{{ workhorse_var('docs_root') }}/services/<name>/decisions/*.md` and
-`{{ workhorse_var('docs_root') }}/services/<name>/DISAGREEMENTS.md` before you model. A decision says why the service behaves as
+These services have an executable book at `{{ workhorse_var('book_root') }}/services/<name>/`, with a
+`service.py`: {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}. For each one, read `{{ workhorse_var('book_root') }}/services/<name>/decisions/*.md` and
+`{{ workhorse_var('book_root') }}/services/<name>/DISAGREEMENTS.md` before you model. A decision says why the service behaves as
 it does and which story settled it. Where the story changes a behaviour a decision explains,
 name the decision in the model and say whether the story keeps it or overturns it.
 
@@ -98,8 +99,9 @@ Write the story's claims into each covered service's book as intent, before any 
   `notes`.
 
 You do not run the app, and you do not play the book. The new claims are expected to fail against
-the current app until the build. Edit only under `{{ workhorse_var('docs_root') }}/services/<name>/` and the spec dir.
+the current app until the build. Edit only under `{{ workhorse_var('book_root') }}/services/<name>/` and the spec dir.
 
+Run every `ostler book` and `ostler env` command from `{{ workhorse_var('book_root') }}`.
 Run `ostler book check services.<name>` for each service until it exits 0. It builds
 everything the book declares with no stack, so a claim the format cannot read fails there. The
 workflow reads the changed book paths from the tree.

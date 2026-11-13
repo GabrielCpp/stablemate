@@ -24,7 +24,14 @@ from workhorse_workflows.coder.shared.schemas.qa import QaFinding
 from workhorse_workflows.coder.shared.schemas.queue import StoryCommitted
 from workhorse_workflows.coder.shared.story_commit import uncommitted_paths
 from workhorse_workflows.coder.shared.worktree import is_product, not_product_roots, untouched_since
-from workhorse_workflows.kit import GitError, commit_paths, find_docs_root, find_repo_root, open_repo
+from workhorse_workflows.kit import (
+    GitError,
+    commit_paths,
+    find_book_root,
+    find_docs_root,
+    find_repo_root,
+    open_repo,
+)
 from workhorse_workflows.kit.tools import run_tool
 
 TAIL_LINES = 200
@@ -69,7 +76,7 @@ def covered_services(
     logger: logging.Logger, services: list[str] | None = None, repo_dir: str = ""
 ) -> CoveredServices:
     """The story's services that have an executable book under the book root."""
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     covered = [name for name in services or [] if book_modules(root, name)]
     logger.info("%d of %d story service(s) have an executable book", len(covered), len(services or []))
     return CoveredServices(services=covered)
@@ -78,7 +85,7 @@ def covered_services(
 @blueprint.node
 def book_check(logger: logging.Logger, service: str, repo_dir: str = "") -> BookPlay:
     """Build everything each module of the service's book declares, with no stack, and return the first red exit code and output tail."""
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     app = str(find_repo_root(repo_dir))
     play = BookPlay(exit_code=0, output="")
     for module in book_modules(root, service):
@@ -97,7 +104,7 @@ def verify_book_spec(
     repo_dir: str = "",
 ) -> DocumentationGate:
     """Gate the spec pass of covered services: it ends when `ostler book check` exits 0 for each. A claim red against the app is expected before the build and is not read here."""
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     app = str(find_repo_root(repo_dir))
     problems: list[str] = []
     failures: list[str] = []
@@ -127,7 +134,7 @@ def changed_book_paths(
     repo_dir: str = "",
 ) -> BookPaths:
     """The uncommitted paths under each covered service's book folder, less what was dirty before the story."""
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     excused = untouched_since(root, tuple(preexisting or ()))
     prefixes = tuple(book_dir(name) + "/" for name in services)
     found = [
@@ -187,7 +194,7 @@ def book_scope(
     repo_dir: str = "",
 ) -> BookScope:
     """Decide whether the play of a service's book is the whole book: it is when this pass changed a shared part of it."""
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     excused = untouched_since(root, tuple(preexisting or ()))
     prefix = book_dir(service) + "/"
     changed = {
@@ -215,7 +222,7 @@ def book_run(
     repo_dir: str = "",
 ) -> BookPlay:
     """Play the named calls of the service's book against the run's copy of the stack, or the whole book when `only` is empty. A finding of an endpoint outside `outside` goes to the book's register of underspecified fields. The play has no time bound."""
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     modules = book_modules(root, service) or (f"services.{service}",)
     if len(modules) == 1:
         play = _play(_run_argv(modules[0], only, outside, copy, out_dir), root)
@@ -315,7 +322,7 @@ def commit_service_book(
 ) -> StoryCommitted:
     """Commit the changed paths under each covered service's book. A product path the seat changed outside those folders is returned in `refused`, and nothing is committed."""
     slug = story_slug or "story"
-    book = find_docs_root(repo_dir)
+    book = find_book_root(repo_dir)
     code = find_repo_root(repo_dir)
     folders = [(book / book_dir(name)).resolve() for name in services]
     excluded = not_product_roots(repo_dir)
@@ -347,7 +354,7 @@ def commit_service_book(
         return StoryCommitted()
     message = commits.message(
         "test",
-        commits.scope(book.name),
+        commits.scope(find_docs_root(repo_dir).name),
         f"play {slug} in the service book",
         epic=epic,
         story=story_id or slug,

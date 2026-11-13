@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from _workspace import lay_out, run_git
+from _workspace import cut_run_worktrees, lay_out, run_git
 from ostler.environments import leases, runtime
 from ostler.qa import addresses, runbook
 from ostler.qa.outcome import QaOutcome
@@ -252,3 +252,50 @@ def test_in_a_workspace_the_stack_target_is_the_artifacts_book(tmp_path: Path, m
     target = stack_target(LOG, "S", "l", repo_dir=str(laid.api), services=["api"])
 
     assert target.near == str(laid.artifacts / "services" / "api")
+
+
+def _name_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv(runtime.HOME_ENV, str(tmp_path / "env-home"))
+    laid = lay_out(tmp_path, run_git)
+    config = tmp_path / "home-config.toml"
+    config.write_text(f'[workspaces]\nacme = ["{laid.api}", "{laid.web}"]\n', encoding="utf-8")
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    return laid, cut_run_worktrees(laid, tmp_path / "trees", "run/coder-t", run_git)
+
+
+def test_in_a_worktree_run_the_stack_is_read_from_the_artifacts_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    laid, trees = _name_workspace(tmp_path, monkeypatch)
+    stack = trees.artifacts / "services" / "api" / "ops" / "stack.yml"
+    stack.parent.mkdir(parents=True)
+    stack.write_text(yaml.safe_dump({"services": {}}), encoding="utf-8")
+
+    target = stack_target(LOG, "S", "l", repo_dir=str(trees.api), services=["api"])
+
+    assert target.near == str(trees.artifacts / "services" / "api")
+
+
+def test_run_qa_plan_reads_specs_from_the_docs_root_and_the_lease_from_the_book_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    laid, trees = _name_workspace(tmp_path, monkeypatch)
+    seen: dict[str, Path] = {}
+
+    class _Ostler:
+        def __init__(self, root: Path) -> None:
+            seen["specs"] = root
+
+        def qa_run(self, *_args: object, **_kw: object) -> QaOutcome:
+            return QaOutcome(True, "passed", {"status": "passed"})
+
+    def stack_env(root: Path, **_kw: object) -> dict[str, str]:
+        seen["lease"] = root
+        return {}
+
+    monkeypatch.setattr(runner, "Ostler", _Ostler)
+    monkeypatch.setattr(runner, "stack_env", stack_env)
+
+    runner.run_qa_plan(LOG, spec_dir="specs/story-1", repo_dir=str(trees.api), near="", lease="l")
+
+    assert seen == {"specs": laid.artifacts, "lease": trees.artifacts}

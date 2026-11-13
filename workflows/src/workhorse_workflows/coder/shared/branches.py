@@ -16,7 +16,9 @@ from workhorse_workflows.kit import (
     checkout,
     current_branch,
     default_branch,
+    find_book_root,
     find_docs_root,
+    find_repo_root,
     local_branch_exists,
     resolve_workspace,
 )
@@ -80,6 +82,10 @@ def cut_run_branch(
 ) -> RunBranch:
     """Put the docs repo on `feat/<name>`, the one branch every item of the run lands on."""
     docs_root = find_docs_root(repo_dir)
+    if find_book_root(repo_dir) != docs_root:
+        branch = current_branch(find_repo_root(repo_dir))
+        logger.info("a worktree run keeps its branch %s; nothing is cut", branch)
+        return RunBranch(base_branch=_resolve_base(logger, docs_root), branch=branch)
     base = _resolve_base(logger, docs_root)
     branch = epic_branch(name)
     if _branch_repo(docs_root, docs_root.name, branch, logger) == "skipped":

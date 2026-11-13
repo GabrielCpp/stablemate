@@ -34,6 +34,13 @@ def agents_repo_root(repo_dir: str | Path = "") -> Path:
     return docs_home_or(here)
 
 
+def find_book_root(repo_dir: str | Path = "") -> Path:
+    """The book root: the run's artifacts checkout while a workspace is active, else the repo root."""
+    root = find_repo_root(repo_dir)
+    home = core_config.book_home(root)
+    return home if home is not None else root
+
+
 def find_docs_root(repo_dir: str | Path = "") -> Path:
     """The docs root: the artifacts repo while a workspace is active, else the repo root."""
     return docs_home_or(find_repo_root(repo_dir))

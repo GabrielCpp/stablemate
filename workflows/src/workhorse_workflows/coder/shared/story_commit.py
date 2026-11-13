@@ -27,6 +27,7 @@ from workhorse_workflows.kit.agent_files import render_agent_files_returning_fai
 from workhorse_workflows.kit import (
     GitError,
     commit_paths,
+    find_book_root,
     find_docs_root,
     find_repo_root,
     open_repo,
@@ -172,7 +173,9 @@ def check_repos_clean(
     if skip_artifacts:
         excluded = not_product_roots(repo_dir)
         kept = [
-            item for item in found if not (item[1] / item[2]).resolve().is_relative_to(excluded[0])
+            item
+            for item in found
+            if not any((item[1] / item[2]).resolve().is_relative_to(root) for root in excluded)
         ]
         if len(kept) < len(found):
             logger.info(
@@ -345,7 +348,7 @@ def commit_book_delta(
 ) -> StoryCommitted:
     """Commit the book files the spec pass left uncommitted, so an owner's clean-repo check never counts the book as its leftovers. A service's book is committed by its `services/<name>/` folder."""
     slug = story_slug or "story"
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     folders = [(root / "services" / name).resolve() for name in book_services or []]
     excused = untouched_since(root, tuple(preexisting or ()))
     rels = [
@@ -362,7 +365,7 @@ def commit_book_delta(
         return StoryCommitted(committed=False)
     message = commits.message(
         "docs",
-        commits.scope(root.name),
+        commits.scope(find_docs_root(repo_dir).name),
         f"specify {slug} in the book",
         epic=registry.epic_slug(epic) or epic,
         story=story_id or slug,
@@ -387,7 +390,7 @@ def stamp_story_passed(
 ) -> StoryStamped:
     """Record the story's passing outcome, and commit that one line."""
     slug = story_slug or "story"
-    root = find_repo_root(repo_dir)
+    root = find_docs_root(repo_dir)
     stamped, superseded = _stamp_status(logger, root, epic, slug, story_id, story_path)
     return StoryStamped(stamped=stamped, superseded_outcome=superseded)
 
@@ -442,7 +445,7 @@ def commit_story(
     root = find_repo_root(repo_dir)
 
     epic_name = registry.epic_slug(epic) or epic
-    description = commits.story_description(root, story_path, slug)
+    description = commits.story_description(find_docs_root(repo_dir), story_path, slug)
 
     def _story_message(package: str) -> str:
         return commits.message(

@@ -65,6 +65,7 @@ _NAMES: dict[str, str] = {
 } | {
     name: "workhorse_workflows.kit.paths"
     for name in (
+        "find_book_root",
         "find_docs_root",
         "find_repo_root",
     )
@@ -148,6 +149,7 @@ if TYPE_CHECKING:
         load_jsonc,
     )
     from workhorse_workflows.kit.paths import (  # noqa: F401
+        find_book_root,
         find_docs_root,
         find_repo_root,
     )

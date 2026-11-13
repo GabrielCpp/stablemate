@@ -9,7 +9,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from _workspace import Workspace
+from _epics import epics_root
+from _workspace import Workspace, cut_run_worktrees
 from workhorse_workflows.coder.shared import story_commit
 from workhorse_workflows.coder.shared.schemas.queue import ProofScope
 from workhorse_workflows.coder.shared.worktree import digest
@@ -447,3 +448,61 @@ def test_a_book_root_with_no_git_commits_nothing_and_does_not_raise(
     )
 
     assert not result.committed
+
+
+def test_commit_book_delta_commits_in_the_artifacts_worktree_of_the_run(
+    workspace: Workspace,
+    tmp_path: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    write(workspace.artifacts / "services" / "api" / "service.py", "SERVICE = 1\n")
+    git(workspace.artifacts, "add", "-A")
+    git(workspace.artifacts, "commit", "-qm", "the api book")
+    trees = cut_run_worktrees(workspace, tmp_path / "trees", "run/coder-t", git)
+    main_head = git(workspace.artifacts, "rev-parse", "HEAD").stdout
+    write(trees.artifacts / "services" / "api" / "journeys" / "fresh.py", "JOURNEY = 1\n")
+
+    result = story_commit.commit_book_delta(
+        logger, story_slug=SLUG, repo_dir=str(trees.api), book_services=["api"]
+    )
+
+    assert result.committed
+    landed = git(trees.artifacts, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
+    assert landed[0].startswith("docs(") and "run-coder" not in landed[0], landed
+    assert [line for line in landed[1:] if line] == ["services/api/journeys/fresh.py"]
+    assert git(workspace.artifacts, "rev-parse", "HEAD").stdout == main_head
+
+
+STORY_FILE = """---
+id: STORY-1
+type: story
+services: [api]
+---
+
+# Story One
+
+## Implementation Status
+
+- **Status**: Done
+"""
+
+
+def test_stamp_story_passed_in_mode_b_marks_the_story_in_the_docs_root(
+    workspace: Workspace,
+    tmp_path: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    story = write(epics_root() / EPIC / "stories" / SLUG / "story.md", STORY_FILE)
+    write(epics_root() / EPIC / "epic.md", f"---\ntitle: Epic One\nstatus: active\n---\n\n# Epic One\n\n## Stories\n\n### {SLUG}\n\n- title: Story One\n")
+    trees = cut_run_worktrees(workspace, tmp_path / "trees", "run/coder-t", git)
+
+    result = story_commit.stamp_story_passed(
+        logger, epic=EPIC, story_slug=SLUG, story_id=SLUG, repo_dir=str(trees.artifacts)
+    )
+
+    assert result.stamped
+    assert "QA passed" in story.read_text()

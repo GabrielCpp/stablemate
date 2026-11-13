@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 from _epics import epics_root
 from _books import TODO_BOOK, write_todo_book
-from _workspace import Workspace
+from _workspace import Workspace, cut_run_worktrees
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.blueprint import NODE_ATTR, node_spec
@@ -652,6 +652,71 @@ def test_in_a_workspace_a_code_edit_by_the_book_seat_is_refused(
 
     assert "`app.py`" in agent.args[1]["report"], agent.args[1]["report"]
     assert not any("play " in c for c in _commits(workspace_lane.artifacts, git))
+
+
+@pytest.fixture
+def run_trees(
+    workspace_lane: Workspace,
+    tmp_path: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    monkeypatch: pytest.MonkeyPatch,
+) -> Workspace:
+    """The workspace's run worktrees on one branch, with the test standing in the api one."""
+    trees = cut_run_worktrees(workspace_lane, tmp_path / "trees", "run/coder-t", git)
+    monkeypatch.chdir(trees.api)
+    return trees
+
+
+def test_in_a_worktree_run_the_book_plays_from_the_artifacts_worktree(
+    run_trees: Workspace,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book()
+
+    result = drive_flow(_flow(), env(), _Agent(run_trees.artifacts))
+
+    assert result.status == "passed", result
+    assert scripted.cwds and {Path(cwd) for cwd in scripted.cwds} == {run_trees.artifacts}
+    [argv] = scripted.argv["check"][:1]
+    assert argv[argv.index("--app") + 1] == str(run_trees.api), argv
+
+
+def test_in_a_worktree_run_the_book_change_commits_on_the_run_branch_of_the_artifacts_worktree(
+    workspace_lane: Workspace,
+    run_trees: Workspace,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    main_head = git(workspace_lane.artifacts, "rev-parse", "HEAD").stdout
+    book()
+
+    drive_flow(_flow(), env(), _Agent(run_trees.artifacts))
+
+    assert git(workspace_lane.artifacts, "rev-parse", "HEAD").stdout == main_head
+    landed = git(run_trees.artifacts, "show", "--name-only", "--format=%s", "HEAD").stdout
+    assert landed.startswith("test("), landed
+    assert "services/api/journeys/added.py" in landed, landed
+
+
+def test_in_a_worktree_run_a_book_path_outside_the_covered_services_is_not_a_stray_code_edit(
+    run_trees: Workspace,
+    write: Callable[[Path, str], Path],
+) -> None:
+    write(run_trees.artifacts / "services" / "other" / "x.py", "x\n")
+    write(run_trees.artifacts / "services" / "api" / "journeys" / "added.py", "y\n")
+
+    result = book_nodes.commit_service_book(
+        logging.getLogger("test"), ["api"], repo_dir=str(run_trees.api)
+    )
+
+    assert result.refused == "", result.refused
+    assert result.committed
 
 
 def test_a_book_root_with_no_git_lands_nothing_and_does_not_raise(

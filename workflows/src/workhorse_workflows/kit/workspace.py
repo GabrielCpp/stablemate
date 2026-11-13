@@ -26,8 +26,9 @@ def resolve_workspace(
 ) -> dict[str, dict]:
     """Build {repo_name: {path, ...}} from the named workspace, or from ``repo_dir`` alone."""
     if workspace:
+        checkouts = core_config.workspace_checkouts(paths_kit.find_repo_root(repo_dir))
         folders = [
-            (member.name, member.path.resolve())
+            (member.name, checkouts.get(member.name, member.path.resolve()))
             for member in core_config.resolve_workspace(workspace)
         ]
     else:

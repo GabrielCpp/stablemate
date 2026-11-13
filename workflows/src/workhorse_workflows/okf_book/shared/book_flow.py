@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Transition, Workflow
 from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.kit import commit_returning_refusal
-from workhorse_workflows.kit.paths import docs_home_or
+from workhorse_workflows.kit.paths import find_book_root
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 
@@ -53,7 +53,7 @@ class BookFlow(Workflow):
 
     @property
     def root(self) -> Path:
-        return docs_home_or(Path(self.repo_dir).resolve())
+        return find_book_root(self.repo_dir)
 
     @property
     def records_dir(self) -> Path:

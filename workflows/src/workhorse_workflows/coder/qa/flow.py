@@ -7,7 +7,7 @@ from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done
 
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import find_book_root, find_docs_root
 from workhorse_workflows.coder.book_qa.nodes import read_book_record, write_unreached_claims
 from workhorse_workflows.coder.qa.nodes import (
     QA_SCRATCH_DIRNAME,
@@ -136,6 +136,7 @@ class Qa(QaOwner):
             "qa_dir": self.ctx.qa_dir,
             "qa_scratch_dir": QA_SCRATCH_DIRNAME,
             "docs_root": str(find_docs_root(self.repo_dir)),
+            "book_root": str(find_book_root(self.repo_dir)),
             "target_env": self.target_env,
             "runtime_python": sys.executable,
             "verification_setup": impl.verification_setup,

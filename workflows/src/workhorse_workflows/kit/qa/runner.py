@@ -15,7 +15,7 @@ from ostler.qa import runbook, stack
 from ostler.qa.outcome import QaOutcome
 
 from workhorse_workflows.kit.qa.schemas import QaPlanRun, QaStatus, StackStatus
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import find_book_root, find_docs_root
 from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.kit.qa.support import QA_PLAN_FILE, notes_for
 
@@ -54,7 +54,7 @@ def release_copy(
     lease: str = "",
 ) -> QaOutcome | None:
     """Tear down the copy *lease* holds of a per-run stack, or None when the stack is shared and stays serving."""
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     near_path = Path(near) if near else None
     if not lease or not leases.books_near(root, near_path):
         return None
@@ -63,7 +63,7 @@ def release_copy(
 
 def teardown_stack(logger: logging.Logger, repo_dir: str = "") -> QaOutcome:
     """Tear down the shared stack the run brought up: its `stack.yml` copy."""
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     copied = leases.down(root)
     if copied is not None:
         return copied
@@ -74,7 +74,7 @@ def hold_copy(repo_dir: str = "", lease: str = "") -> bool:
     """Name this process as the holder of the run's copy, so a resumed run keeps what it leased."""
     if not lease:
         return False
-    return runtime.hold(find_docs_root(repo_dir), lease, os.getpid())
+    return runtime.hold(find_book_root(repo_dir), lease, os.getpid())
 
 
 def ensure_stack(
@@ -84,7 +84,7 @@ def ensure_stack(
     lease: str = "",
 ) -> StackStatus:
     """Bring the durable QA stack up (or adopt one already serving) before the runner."""
-    root = find_docs_root(repo_dir)
+    root = find_book_root(repo_dir)
     near_path = Path(near) if near else None
     copied = leases.up(root, lease=lease, near=near_path, holder=os.getpid())
     if copied is None:
@@ -199,7 +199,7 @@ def run_qa_plan(
     """Execute the QA plan through ostler and normalize its four-state outcome."""
     docs_root = find_docs_root(repo_dir)
     plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
-    leased = stack_env(docs_root, near=near, lease=lease)
+    leased = stack_env(find_book_root(repo_dir), near=near, lease=lease)
     before = _untracked(docs_root)
     with scoped_envs(leased):
         outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir, only=only, label=label)

@@ -6,7 +6,7 @@ agent: agent
 
 You own the service-book pass of one story, in this one turn. You read the story, play the
 calls its claims bear on, bring each covered service's book up to the claims, and play the
-calls again. The turn ends with the book edited under `{{ workhorse_var('docs_root') }}/services/<name>/`, a targeted run
+calls again. The turn ends with the book edited under `{{ workhorse_var('book_root') }}/services/<name>/`, a targeted run
 that exits 0 for every covered service, and the JSON result below. You spawn no subagent.
 
 QA never fixes the product. A claim the app does not meet is a finding you return, and the
@@ -20,8 +20,9 @@ turn.
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
 - Docs root: `{{ workhorse_var('docs_root') }}`
+- Book root: `{{ workhorse_var('book_root') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
-- Covered services, each with an executable book at `{{ workhorse_var('docs_root') }}/services/<name>/`:
+- Covered services, each with an executable book at `{{ workhorse_var('book_root') }}/services/<name>/`:
 {% for name in services %}  - `{{ name }}`
 {% endfor %}
 Work **only** the story at that path.
@@ -57,7 +58,8 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    `qa-evidence.json`, `qa/`). Your judgement must not come from another QA's
    work.
 3. **Play the base.** For each covered service, name the calls the story's claims bear on,
-   and play them before any edit: `ostler book run services.<name> --only <calls>`. A red
+   and play them before any edit: `ostler book run services.<name> --only <calls>`. Run every
+   `ostler book` and `ostler env` command from `{{ workhorse_var('book_root') }}`. A red
    base is not yours to repair. Report `blocked` with the output.
 4. **List the claims.** List every claim the story makes that a call to the service can
    show. For each, find the record that states and checks it, or add it the way the skill
@@ -87,11 +89,11 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
 8. **Run until green.** Run `ostler book check`, then the targeted run, until the run exits
    0. Never run the whole book yourself: the workflow plays it when your pass needs it. Run one at a time. Exit 3 means the environment is not
    healthy. Report `blocked` and repair nothing.
-9. **Stay in the book.** Edit only under `{{ workhorse_var('docs_root') }}/services/<name>/` of the covered services. Put no
+9. **Stay in the book.** Edit only under `{{ workhorse_var('book_root') }}/services/<name>/` of the covered services. Put no
    sleep, timer or retry loop in the book.
    No document pass runs after this turn, so you keep every touched endpoint's `source=` pointers and
    `index.tsv` current with the code the story changed.
-10. **Leave the register alone.** `{{ workhorse_var('docs_root') }}/services/<name>/UNDERSPECIFIED.md` is the product owner's list of
+10. **Leave the register alone.** `{{ workhorse_var('book_root') }}/services/<name>/UNDERSPECIFIED.md` is the product owner's list of
     fields the book models no dimension for. The whole-book play adds a finding there when it lies
     outside the calls you named, and reports it as known. A finding on a call you named is yours:
     model the dimension or return a finding. Never edit or delete an entry, and never declare

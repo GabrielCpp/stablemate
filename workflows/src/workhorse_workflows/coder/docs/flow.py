@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import find_book_root, find_docs_root
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.book_qa.nodes import covered_services, verify_book_spec
@@ -102,7 +102,7 @@ class Docs(Workflow):
                 "there is nothing to document."
             )
         if self._unbooked:
-            raise WorkflowFailed(unbooked_message(self._unbooked, find_docs_root(self.repo_dir)))
+            raise WorkflowFailed(unbooked_message(self._unbooked, find_book_root(self.repo_dir)))
         if not self.ctx.story_services:
             return self._ends(
                 DocsResult(
@@ -149,6 +149,7 @@ class Docs(Workflow):
             "story_id": self.ctx.story_id,
             "epic": self.epic,
             "docs_root": str(find_docs_root(self.repo_dir)),
+            "book_root": str(find_book_root(self.repo_dir)),
             "epic_path": self._epic_path,
         }
 
