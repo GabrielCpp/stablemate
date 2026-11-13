@@ -104,5 +104,8 @@ def reorder(graph: Graph, order: list[str]) -> Result:
     if unknown:
         return Result(False, f"not in queue: {', '.join(unknown)}")
     front = [q for _, q in resolved if q is not None]
+    repeated = next((q for i, q in enumerate(front) if q in front[:i]), None)
+    if repeated is not None:
+        return Result(False, f"epic '{repeated}' named more than once")
     tail = [n for n in current if n not in front]
     return Result(True, "reordered epics queue", [_write(graph, front + tail)])
