@@ -229,6 +229,9 @@ A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` t
 The front matter holds `description` and optionally `read_only`, and the text below it is the prompt.
 The record names no model. Farrier reads the model from `[profiles.<harness>.delegates.<name>]` and
 writes `~/.claude/agents/<name>.md`, `~/.codex/agents/<name>.toml` or `~/.config/opencode/agents/<name>.md`.
+`delegates` lists the agents this one may start. On Claude it adds `Agent(<names>)` to the tools,
+so a session run with `claude --agent <name>` can start only those agents. Codex and OpenCode refuse
+a record with `delegates`.
 
 ## `packs/<pack>.yml` — bundles
 

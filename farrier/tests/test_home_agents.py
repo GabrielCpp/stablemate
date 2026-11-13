@@ -144,3 +144,51 @@ def test_a_dropped_agent_goes_away_and_a_pack_selects_one(home: Path, library: P
     assert (home / ".codex/agents/lookup.toml").is_file()
     assert not (home / ".codex/agents/worker.toml").exists()
     assert not (home / ".claude/agents/lookup.md").exists()
+
+
+def write_orchestrator(library: Path) -> None:
+    (library / "library/agents/orchestrator.md").write_text(
+        "---\ndescription: Plans and delegates.\nread_only: true\ndelegates: [lookup, worker]\n---\n\n"
+        "You coordinate.\n",
+        encoding="utf-8",
+    )
+
+
+def test_delegates_grant_the_agent_tool_for_only_those_agents_on_claude(
+    home: Path, library: Path
+) -> None:
+    write_orchestrator(library)
+    config = (
+        PROFILES
+        + '[profiles.claude.delegates.orchestrator]\nmodel = "opus-x"\n\n'
+        + '[user_library.claude]\nagents = ["lookup", "worker", "orchestrator"]\n'
+    )
+    assert install(home, library, config) == 0
+    head = claude_head(home / ".claude/agents/orchestrator.md")
+    assert head["tools"] == "Read, Grep, Glob, Bash, Agent(lookup, worker)"
+    assert head["model"] == "opus-x"
+    assert "Agent" not in claude_head(home / ".claude/agents/worker.md")["tools"]
+
+
+def test_a_delegating_agent_on_codex_stops_the_install(home: Path, library: Path) -> None:
+    write_orchestrator(library)
+    config = (
+        PROFILES
+        + '[profiles.codex.delegates.orchestrator]\nmodel = "terra"\n\n'
+        + '[user_library.codex]\nagents = ["orchestrator"]\n'
+    )
+    with pytest.raises(SystemExit, match="delegates.*only for claude"):
+        install(home, library, config)
+
+
+def test_delegates_must_name_agents(home: Path, library: Path) -> None:
+    (library / "library/agents/orchestrator.md").write_text(
+        "---\ndescription: x\ndelegates: worker\n---\n\nprompt\n", encoding="utf-8"
+    )
+    config = (
+        PROFILES
+        + '[profiles.claude.delegates.orchestrator]\nmodel = "opus-x"\n\n'
+        + '[user_library.claude]\nagents = ["orchestrator"]\n'
+    )
+    with pytest.raises(SystemExit, match="`delegates` must list agent names"):
+        install(home, library, config)
