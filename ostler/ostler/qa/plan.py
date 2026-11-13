@@ -2,35 +2,19 @@
 
 from __future__ import annotations
 
-import ast
-import json
 import os
 import re
 import shutil
 import sys
 from collections.abc import Mapping
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlsplit
 
-from ostler import checks
 from ostler import path as path_mod
 from ostler.manifest import read_manifest
-from ostler.model import load as load_graph
-from ostler.qa.compile import book_digest
-from ostler.qa.context import book_files, story_file_record
-from ostler.qa.obligation_frame import RepeatContract
 from ostler.qa.harness_host import default_interpreter, describe, load_harness_module
 from ostler.untyped import is_mapping
-from ostler.vet import placement
-
-_BOOK_DRIFT_NAME_LIMIT = 20
-_REGENERATE = (
-    "run `ostler qa context --refresh --spec <spec>` to rebuild it from the base, story file, "
-    "source roots and excluded paths it recorded. A rebuild from a new `--base` drops that scope"
-)
 
 _plan_harness = load_harness_module("ostler_qa")
 COMPUTED: str = _plan_harness.COMPUTED
@@ -52,7 +36,6 @@ class PlanDocument:
     spec_dir: Path
     root: Path
     data: dict[str, Any]
-    context: dict[str, Any]
 
     @property
     def run_id(self) -> str:
@@ -78,83 +61,10 @@ def load_plan(plan_file: Path, spec_dir: Path, root: Path) -> tuple[PlanDocument
     resolved_plan = resolved_plan.resolve()
     if resolved_plan.suffix != ".py":
         return None, [RETIRED_YAML]
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        reading = pool.submit(_read_context, spec_dir / "qa-okf-context.json")
-        data, problems = _describe_python_plan(resolved_plan, root)
-        context = reading.result()
+    data, problems = _describe_python_plan(resolved_plan, root)
     if data is None:
         return None, problems
-    if isinstance(context, str):
-        return None, [context]
-    data["obligationDocuments"] = _obligation_documents(context)
-    return PlanDocument(resolved_plan, spec_dir, root, data, context), problems
-
-
-def scenario_covers(plan_file: Path) -> dict[str, list[str]]:
-    """Each scenario id of a `qa_plan.py` → the ids its `covers=` and its checks' `covers=` bind, read from the source without running it."""
-    try:
-        source = plan_file.read_text(encoding="utf-8")
-        tree = ast.parse(source)
-    except (OSError, SyntaxError, ValueError):
-        return {}
-    check_covers = _plan_harness.extract_check_covers(source)
-    found: dict[str, list[str]] = {}
-    for node in tree.body:
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            continue
-        for decorator in node.decorator_list:
-            if not isinstance(decorator, ast.Call) or _decorator_name(decorator) != "scenario":
-                continue
-            keywords = {kw.arg: kw.value for kw in decorator.keywords if kw.arg}
-            written = keywords.get("id")
-            scenario_id = (
-                written.value
-                if isinstance(written, ast.Constant) and isinstance(written.value, str)
-                else node.name.replace("_", "-")
-            )
-            ids = _literal_strings(keywords.get("covers")) + check_covers.get(node.name, [])
-            found[scenario_id] = list(dict.fromkeys(i for i in ids if i != COMPUTED))
-    return found
-
-
-def _decorator_name(call: ast.Call) -> str:
-    """The bare name a decorator call is written under: `scenario` for `scenario(...)` and `qa.scenario(...)`."""
-    if isinstance(call.func, ast.Name):
-        return call.func.id
-    if isinstance(call.func, ast.Attribute):
-        return call.func.attr
-    return ""
-
-
-def _literal_strings(node: ast.expr | None) -> list[str]:
-    """The string literals a list or tuple expression holds, skipping every element that is not one."""
-    if not isinstance(node, (ast.List, ast.Tuple)):
-        return []
-    return [
-        element.value
-        for element in node.elts
-        if isinstance(element, ast.Constant) and isinstance(element.value, str)
-    ]
-
-
-def _read_context(context_path: Path) -> dict[str, Any] | str:
-    """The packet at *context_path*, read while the plan's describe runs: empty when absent, or the problem that makes it unreadable."""
-    if not context_path.is_file():
-        return {}
-    try:
-        loaded = json.loads(context_path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        return f"qa-okf-context.json is invalid JSON: {exc}"
-    return loaded if isinstance(loaded, dict) else {}
-
-
-def _obligation_documents(context: dict[str, Any]) -> dict[str, list[str]]:
-    """Which documents each packet obligation occupies, keyed by its id."""
-    return {
-        str(obligation["id"]): list(obligation.get("occurrenceDocuments") or [])
-        for obligation in context.get("obligations", [])
-        if is_mapping(obligation) and obligation.get("id")
-    }
+    return PlanDocument(resolved_plan, spec_dir, root, data), problems
 
 
 def _describe_python_plan(plan_file: Path, root: Path) -> tuple[dict[str, Any] | None, list[str]]:
@@ -172,119 +82,14 @@ def _describe_python_plan(plan_file: Path, root: Path) -> tuple[dict[str, Any] |
     return data, problems
 
 
-def _book_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
-    """`stale-context:` problems for a packet whose recorded `bookFiles` disagree with the tree."""
-    recorded = context.get("bookFiles")
-    if recorded is None:
-        return [
-            "stale-context: qa-okf-context.json predates the book-drift guard "
-            f"(no bookFiles) — {_REGENERATE}"
-        ]
-    if not isinstance(recorded, list):
-        return ["stale-context: qa-okf-context.json 'bookFiles' must be a list"]
-    recorded_by_path = {
-        str(entry["path"]): str(entry["sha256"])
-        for entry in recorded
-        if is_mapping(entry) and "path" in entry and "sha256" in entry
-    }
-    services_root = path_mod.resolve_services_root(context.get("servicesRoot"), root)
-    current_by_path = {entry["path"]: entry["sha256"] for entry in book_files(root, services_root)}
-    changed = sorted(
-        path
-        for path in recorded_by_path.keys() & current_by_path.keys()
-        if recorded_by_path[path] != current_by_path[path]
-    )
-    removed = sorted(recorded_by_path.keys() - current_by_path.keys())
-    added = sorted(current_by_path.keys() - recorded_by_path.keys())
-    if not changed and not removed and not added:
-        return []
-
-    def _named(label: str, paths: list[str]) -> str:
-        shown = paths[:_BOOK_DRIFT_NAME_LIMIT]
-        names = ", ".join(shown)
-        remainder = len(paths) - len(shown)
-        if remainder > 0:
-            names += f" (+{remainder} more)"
-        return f"{label}: {names}"
-
-    parts = [
-        _named(label, paths)
-        for label, paths in (("changed", changed), ("removed", removed), ("added", added))
-        if paths
-    ]
-    return [
-        "stale-context: the book has changed since this packet was generated — "
-        + "; ".join(parts)
-        + f" — {_REGENERATE}"
-    ]
-
-
-def _story_drift_problems(context: dict[str, Any], root: Path) -> list[str]:
-    """`stale-context:` problems for a packet whose recorded `storyFile` disagrees with the tree."""
-    if "storyFile" not in context:
-        return [
-            "stale-context: qa-okf-context.json predates the story-drift guard "
-            f"(no storyFile) — {_REGENERATE}"
-        ]
-    recorded = context["storyFile"]
-    if recorded is None:
-        return []
-    if not is_mapping(recorded) or "path" not in recorded or "sha256" not in recorded:
-        return [
-            "stale-context: qa-okf-context.json 'storyFile' must be a mapping with "
-            "'path' and 'sha256'"
-        ]
-    recorded_path = str(recorded["path"])
-    recorded_sha256 = str(recorded["sha256"])
-    story_path = Path(recorded_path)
-    resolved = story_path if story_path.is_absolute() else root / recorded_path
-    current = story_file_record(root, resolved)
-    if current is None:
-        return [
-            f"stale-context: the story file this packet was generated from is gone "
-            f"({recorded_path}) — {_REGENERATE}"
-        ]
-    if current["sha256"] != recorded_sha256:
-        return [
-            f"stale-context: the story file has changed since this packet was generated "
-            f"({recorded_path}) — {_REGENERATE}"
-        ]
-    return []
-
-
-def validate_v2(document: PlanDocument, *, require_coverage: bool = True) -> list[str]:  # noqa: C901
+def validate_v2(document: PlanDocument) -> list[str]:  # noqa: C901
     plan, spec_dir = document.data, document.spec_dir
     problems: list[str] = []
-    if not document.context:
-        problems.append("qa-okf-context.json is required")
-    elif document.context.get("version") != 1:
-        problems.append("qa-okf-context.json version must be 1")
-    for finding in document.context.get("healthFindings", []):
-        if isinstance(finding, dict) and finding.get("severity") == "error":
-            problems.append(
-                f"OKF health finding blocks execution: {finding.get('kind', 'unknown')} "
-                f"{finding.get('path', '')}".rstrip()
-            )
     if plan.get("version") != 3:
         problems.append("'version' must be 3")
     for field in ("run_id", "story"):
         if not isinstance(plan.get(field), str) or not plan[field].strip():
             problems.append(f"'{field}' is required and must be non-empty")
-    book = plan.get("book")
-    if isinstance(book, str) and book and document.context:
-        current = book_digest(document.context)
-        if book != current:
-            problems.append(
-                "stale-plan: this plan's book= names a different set of owed obligations "
-                f"than qa-okf-context.json (book={book[:12]}, current={current}). The packet "
-                "is current: reconcile the plan's covers= with "
-                "`ostler qa context-show --spec <spec> --required`, then set "
-                f'book="{current}"'
-            )
-    if document.context:
-        problems.extend(_book_drift_problems(document.context, document.root))
-        problems.extend(_story_drift_problems(document.context, document.root))
-
     name = document.path.name
     try:
         document.path.relative_to(spec_dir)
@@ -346,164 +151,21 @@ def validate_v2(document: PlanDocument, *, require_coverage: bool = True) -> lis
 
     problems.extend(_validate_background(plan.get("background", []), root=document.root))
 
-    scenario_problems, asserted_coverage = _validate_python_scenarios(document, targets)
-    problems.extend(scenario_problems)
-    problems.extend(_validate_instances(document))
-
-    for obligation in document.context.get("obligations", []):
-        if not isinstance(obligation, dict) or not obligation.get("id"):
-            continue
-        if obligation.get("required", True) is False:
-            continue
-        if isinstance(obligation.get("deferred"), dict):
-            continue
-        if obligation["id"] not in asserted_coverage:
-            problems.append(f"required OKF obligation '{obligation['id']}' is not covered by an asserted scenario")
-    problems.extend(_validate_declared_checks(document, asserted_coverage))
-    required_acs = document.context.get("acceptanceCriteria", [])
-    for criterion in required_acs if require_coverage and isinstance(required_acs, list) else []:
-        criterion_id = criterion.get("id") if isinstance(criterion, dict) else criterion
-        if criterion_id and criterion_id not in asserted_coverage:
-            problems.append(f"required acceptance criterion '{criterion_id}' is not covered by an asserted scenario")
-    problems.extend(_overplanning_problems(document))
+    problems.extend(_validate_python_scenarios(document, targets))
     return problems
 
-
-
-def _invoked_checks(document: PlanDocument) -> tuple[dict[str, dict[str, checks.CheckCall]], list[str]]:
-    """Every named check the plan invokes, keyed by the obligation the invocation binds."""
-    invoked: dict[str, dict[str, checks.CheckCall]] = {}
-    problems: list[str] = []
-    for scenario in document.data.get("scenarios", []):
-        if not is_mapping(scenario):
-            continue
-        scenario_id = str(scenario.get("id") or "?")
-        for call in scenario.get("check_calls", []) or []:
-            if not is_mapping(call):
-                continue
-            bound = checks.bind(str(call.get("check", "")), call.get("args") or {})
-            if isinstance(bound, checks.Refusal):
-                problems.append(
-                    f"scenario '{scenario_id}' calls qa.verify with {bound.message}")
-                continue
-            for obligation_id in call.get("covers") or []:
-                invoked.setdefault(str(obligation_id), {})[bound.text()] = bound
-    return invoked, problems
-
-
-def _argument_diff(declared: checks.CheckCall, written: checks.CheckCall) -> tuple[int, int, str]:
-    """How many arguments agree, how many differ, and the sentence naming the differences."""
-    spec = checks.CHECK_BY_NAME[declared.name]
-    agreeing, differing = 0, []
-    for param in spec.params:
-        want, got = declared.args.get(param.name), written.args.get(param.name)
-        if want == got:
-            agreeing += want is not None
-            continue
-        shown_want = checks.literal(want) if want is not None else "nothing"
-        shown_got = checks.literal(got) if got is not None else "nothing"
-        differing.append(f"`{param.name}` (declared {shown_want}, invoked {shown_got})")
-    return agreeing, len(differing), ", ".join(differing)
-
-
-def _near_miss(
-    call: str,
-    obligation_ids: list[str],
-    invoked: dict[str, dict[str, checks.CheckCall]],
-) -> str:
-    """The call the plan wrote *instead*, when it wrote one that all but matches."""
-    elsewhere = sorted(
-        obligation_id for obligation_id, calls in invoked.items() if call in calls
-    )
-    if elsewhere:
-        others = f" and {len(elsewhere) - 1} other(s)" if len(elsewhere) > 1 else ""
-        return (
-            f" The plan already invokes that exact call, bound to '{elsewhere[0]}'{others} "
-            f"— widen that call's covers= instead of writing a second one."
-        )
-    declared = checks.parse_check(call)
-    if isinstance(declared, checks.Refusal):
-        return ""
-    closest: tuple[int, str, str] | None = None
-    for obligation_id in obligation_ids:
-        for text, written in (invoked.get(obligation_id) or {}).items():
-            if written.name != declared.name:
-                continue
-            agreeing, count, difference = _argument_diff(declared, written)
-            if not difference or not agreeing:
-                continue
-            if closest is None or count < closest[0]:
-                closest = (count, text, difference)
-    if closest is None:
-        return ""
-    return (
-        f" The plan invokes `{closest[1]}` against this obligation, differing in "
-        f"{closest[2]} — the declared arguments are the claim, so reshape what the scenario "
-        f"observes until they hold, rather than restating the call to match the observation."
-    )
-
-
-def _validate_declared_checks(document: PlanDocument, asserted: set[str]) -> list[str]:
-    """Hold each claimed obligation to the observation its `verify:` bullets declare."""
-    invoked, problems = _invoked_checks(document)
-    missing: dict[str, list[str]] = {}
-    named: dict[str, str] = {}
-    for obligation in document.context.get("obligations", []):
-        if not is_mapping(obligation) or not obligation.get("id"):
-            continue
-        obligation_id = str(obligation["id"])
-        if obligation_id not in asserted:
-            continue
-        for declared in obligation.get("checksDeclared") or []:
-            if not is_mapping(declared) or not declared.get("call"):
-                continue
-            call = str(declared["call"])
-            if call in invoked.get(obligation_id, {}):
-                continue
-            missing.setdefault(call, []).append(obligation_id)
-            named.setdefault(call, str(declared.get("name", "")))
-    for call, obligation_ids in missing.items():
-        spec = checks.CHECK_BY_NAME.get(named[call])
-        excludes = f" It excludes {spec.excludes}." if spec else ""
-        covers = ", ".join(f"'{obligation_id}'" for obligation_id in obligation_ids)
-        near = _near_miss(call, obligation_ids, invoked)
-        if len(obligation_ids) == 1:
-            problems.append(
-                f"obligation {covers} declares `{call}` in its `verify:` bullet, and "
-                f"no assertion invokes it — call qa.verify with that name and those arguments, "
-                f"bound with covers=[{covers}].{near}{excludes}"
-            )
-            continue
-        problems.append(
-            f"{len(obligation_ids)} obligations declare `{call}` in their `verify:` bullets, "
-            f"and no assertion invokes it — one qa.verify with that name and those arguments, "
-            f"bound with covers=[{covers}], satisfies all of them.{near}{excludes}"
-        )
-    return problems
-
-
-def _documented_locators(document: PlanDocument) -> dict[str, dict[str, Any]]:
-    """The `role`/`name`/`selector`/`route` the book gives for each obligation in the packet."""
-    return {
-        obligation["id"]: obligation.get("locators") or {}
-        for obligation in document.context.get("obligations", [])
-        if is_mapping(obligation) and obligation.get("id")
-    }
 
 
 def _validate_python_scenarios(
     document: PlanDocument, targets: dict[str, Any]
-) -> tuple[list[str], set[str]]:
-    """Check what a `qa_plan.py` declared, and which coverage its assertions can carry."""
+) -> list[str]:
+    """Check what a `qa_plan.py` declared."""
     problems: list[str] = []
-    asserted_coverage: set[str] = set()
     scenarios = document.data.get("scenarios")
     if not isinstance(scenarios, list) or not scenarios:
         return [
             "the plan declares no scenario — decorate at least one function with @scenario"
-        ], asserted_coverage
-    all_coverage = _known_coverage(document.context)
-    documented = _documented_locators(document)
+        ]
     seen: set[str] = set()
     for index, scenario in enumerate(scenarios):
         if not is_mapping(scenario):
@@ -533,12 +195,6 @@ def _validate_python_scenarios(
         if not isinstance(covers, list) or not all(isinstance(item, str) for item in covers):
             problems.append(f"scenario '{scenario_id}'.covers must be a list of IDs")
             covers = []
-        for cover in covers:
-            if cover not in all_coverage:
-                problems.append(
-                    f"scenario '{scenario_id}' "
-                    f"{_uncoverable(cover, document.context, all_coverage)}"
-                )
         checks = scenario.get("checks")
         claimed = scenario.get("check_covers")
         claimed_ids: set[str] = set()
@@ -570,186 +226,8 @@ def _validate_python_scenarios(
                     "counts. Without this, deleting the assertion that proves an obligation "
                     "leaves the obligation credited to whatever unrelated check still passes"
                 )
-            asserted_coverage.update(claimed_ids & set(covers))
         if "restart" in scenario:
             problems.extend(_validate_restart(scenario_id, scenario["restart"], document))
-        driver = targets[scenario["target"]].get("driver")
-        if driver == "playwright":
-            found = scenario.get("locators")
-            problems.extend(
-                _validate_book_locators(
-                    scenario_id, list(covers), found if isinstance(found, list) else [], documented
-                )
-            )
-        if driver in UI_DRIVERS:
-            vetted = scenario.get("vets")
-            documented_screens = _documented_screens(document)
-            if not any(cover.startswith("okf:") for cover in covers):
-                documented_screens |= _book_screens(document)
-            problems.extend(
-                _validate_vets(
-                    scenario_id,
-                    vetted if isinstance(vetted, list) else [],
-                    documented_screens,
-                )
-            )
-    return problems, asserted_coverage
-
-
-def _located_templates(scenario: Mapping[str, Any]) -> set[str]:
-    """The name templates a scenario locates a control by, each one addressing whichever member of its family is rendered."""
-    actions = scenario.get("locators")
-    return {
-        action["locator"]["template"]
-        for action in (actions if isinstance(actions, list) else [])
-        if is_mapping(action) and is_mapping(action.get("locator"))
-        and isinstance(action["locator"].get("template"), str) and action["locator"]["template"] != COMPUTED
-    }
-
-
-def _validate_instances(document: PlanDocument) -> list[str]:
-    """Hold every scenario covering a repeated obligation to concrete, named instances."""
-    repeats: dict[str, RepeatContract] = {}
-    problems: list[str] = []
-    for obligation in document.context.get("obligations", []):
-        if is_mapping(obligation) and obligation.get("id") and is_mapping(obligation.get("repeat")):
-            try:
-                repeats[str(obligation["id"])] = RepeatContract.parse(obligation["repeat"])
-            except ValueError as error:
-                problems.append(f"obligation '{obligation['id']}' carries an unreadable repeat contract: {error}")
-    scenarios = document.data.get("scenarios")
-    if not repeats or not isinstance(scenarios, list):
-        return problems
-    for index, scenario in enumerate(scenarios):
-        if not is_mapping(scenario):
-            continue
-        scenario_id = str(scenario.get("id") or f"scenarios[{index}]")
-        raw_covers = scenario.get("covers")
-        covers = (
-            [item for item in raw_covers if isinstance(item, str)]
-            if isinstance(raw_covers, list)
-            else []
-        )
-        raw_instances = scenario.get("instances")
-        declared = raw_instances if isinstance(raw_instances, list) else []
-        templates = _located_templates(scenario)
-        by_obligation: dict[str, list[dict[str, Any]]] = {}
-        for instance in declared:
-            if not is_mapping(instance):
-                continue
-            obligation_id = str(instance.get("obligation") or COMPUTED)
-            repeat = repeats.get(obligation_id)
-            if repeat is None:
-                problems.append(
-                    f"scenario '{scenario_id}' declares qa.instance for '{obligation_id}', "
-                    "which is not a repeated obligation in this packet — the id must be "
-                    "written literally and name an obligation whose node declares `one-per:`"
-                )
-                continue
-            if obligation_id not in covers:
-                problems.append(
-                    f"scenario '{scenario_id}' declares qa.instance for '{obligation_id}' "
-                    "without covering it — an instance narrows a coverage claim, so add the "
-                    "obligation to the scenario's covers or drop the declaration"
-                )
-                continue
-            bindings = instance.get("bindings")
-            if not is_mapping(bindings):
-                problems.append(
-                    f"scenario '{scenario_id}' declares an unreadable qa.instance for "
-                    f"'{obligation_id}' — write the bindings as a literal dict of written "
-                    "strings; a computed mapping declares nothing validation can check"
-                )
-                continue
-            variants = repeat.variants
-            allowed = set(repeat.binds) | ({variants.path} if variants else set())
-            for key in sorted(set(repeat.binds) - set(bindings)):
-                problems.append(
-                    f"scenario '{scenario_id}' instance for '{obligation_id}' does not bind "
-                    f"'{key}' — the template interpolates it, so a concrete instance must say "
-                    "what it holds"
-                )
-            for key in sorted(set(map(str, bindings)) - allowed):
-                problems.append(
-                    f"scenario '{scenario_id}' instance for '{obligation_id}' binds unknown "
-                    f"key '{key}' — the family defines {sorted(allowed) or '(nothing bindable)'}"
-                )
-            for key in sorted(map(str, bindings)):
-                if bindings[key] == COMPUTED:
-                    problems.append(
-                        f"scenario '{scenario_id}' instance for '{obligation_id}' binds "
-                        f"'{key}' to a computed value — write the string literally, so the "
-                        "declared instance and the driven one are the same one"
-                    )
-            by_obligation.setdefault(obligation_id, []).append(dict(bindings))
-        for obligation_id in covers:
-            repeat = repeats.get(obligation_id)
-            if repeat is None:
-                continue
-            variants = repeat.variants
-            if not repeat.binds and not variants:
-                continue
-            instances = by_obligation.get(obligation_id, [])
-            if not instances and not variants and repeat.template and repeat.template.template in templates:
-                continue
-            if not instances:
-                problems.append(
-                    f"scenario '{scenario_id}' covers repeated obligation '{obligation_id}' "
-                    "but declares no qa.instance(...) — a family is only proven through a "
-                    "named member, so declare which one this scenario drives"
-                )
-                continue
-            if variants:
-                path = variants.path
-                sampled = {str(bound[path]) for bound in instances if path in bound}
-                for value in variants.values:
-                    if value not in sampled:
-                        problems.append(
-                            f"scenario '{scenario_id}' covers '{obligation_id}' but no "
-                            f"instance samples variant `{path} = {value}` — the book "
-                            "enumerates the axis, so every value needs an instance (or the "
-                            "book's `variants:` bullet is wrong)"
-                        )
-    return problems
-
-
-def _documented_screens(document: PlanDocument) -> set[str]:
-    """Every document the story's packet puts an obligation on."""
-    return {
-        str(obligation["source"])
-        for obligation in document.context.get("obligations", [])
-        if is_mapping(obligation) and obligation.get("source")
-    }
-
-
-def _book_screens(document: PlanDocument) -> set[str]:
-    """Every screen the book can vet, for acceptance-criteria-only UI scenarios."""
-    try:
-        return set(placement.screen_components(load_graph(document.root)))
-    except Exception:
-        return set()
-
-
-def _validate_vets(scenario_id: str, vetted: list[Any], documented: set[str]) -> list[str]:
-    """A UI scenario proves what its screens looked like, against a screen the packet names."""
-    if not vetted:
-        return [
-            f"scenario '{scenario_id}' drives a UI and vets no screen — call "
-            "qa.vet('<screen doc path>') on each documented state it reaches, so what "
-            "rendered is registered against where the book places it"
-        ]
-    problems: list[str] = []
-    for screen in vetted:
-        if screen == COMPUTED:
-            problems.append(
-                f"scenario '{scenario_id}' vets a computed screen path; write the document "
-                "literally so validation can check it before the run"
-            )
-        elif screen not in documented:
-            problems.append(
-                f"scenario '{scenario_id}' vets '{screen}', which this story's OKF packet "
-                f"does not name — vetted screens come from {sorted(documented)}"
-            )
     return problems
 
 
@@ -992,82 +470,6 @@ def check_runtime_requirements(
     return problems
 
 
-def _known_coverage(context: dict[str, Any]) -> set[str]:
-    known = {
-        str(item["id"])
-        for item in context.get("obligations", [])
-        if isinstance(item, dict) and item.get("id")
-    }
-    for item in context.get("acceptanceCriteria", []):
-        value = item.get("id") if isinstance(item, dict) else item
-        if value:
-            known.add(str(value))
-    return known
-
-
-def _scenario_allowance(budget: int) -> int:
-    """How many scenarios a plan may declare for *budget* coverable ids."""
-    return budget + max(1, budget // 2)
-
-
-def _overplanning_problems(document: PlanDocument) -> list[str]:
-    """Reject a plan that verifies more than this change owes."""
-    coverable = _known_coverage(document.context)
-    if not coverable:
-        return []
-    scenarios = document.data.get("scenarios")
-    if not isinstance(scenarios, list):
-        return []
-    problems = []
-    for index, scenario in enumerate(scenarios):
-        if not is_mapping(scenario):
-            continue
-        covers = scenario.get("covers")
-        claimed = [item for item in covers if isinstance(item, str)] if isinstance(covers, list) else []
-        if any(item in coverable for item in claimed):
-            continue
-        scenario_id = str(scenario.get("id") or f"scenarios[{index}]")
-        problems.append(
-            f"scenario '{scenario_id}' covers no obligation and no acceptance criterion of "
-            "this change — delete it, or point its `covers=` at what the change owes. Every "
-            "scenario is re-validated, dry-run, run, fixed and audited on every lap, so one "
-            "that proves nothing this story is responsible for is paid for on all of them"
-        )
-    budget = len(coverable)
-    allowance = _scenario_allowance(budget)
-    if len(scenarios) > allowance:
-        problems.append(
-            f"the plan declares {len(scenarios)} scenarios for {budget} coverable "
-            f"obligation(s) and acceptance criterion(s) — at most {allowance} may be planned. "
-            "Merge the scenarios that prove the same requirement into one, and keep a second "
-            "only where a distinct branch of that requirement needs its own run"
-        )
-    return problems
-
-
-def _uncoverable(cover: str, context: dict[str, Any], known: set[str]) -> str:
-    """Say *why* `covers: [cover]` is not coverable, and what to write instead."""
-    node = cover.split(":", 2)[1] if cover.startswith("okf:") else ""
-    documented = {
-        *(str(item) for item in context.get("contracts", [])),
-        *(str(item) for item in context.get("journeyNodes", [])),
-        *(str(item.get("node", "")) for item in context.get("directNodes", [])
-          if isinstance(item, dict)),
-    }
-    coverable = ", ".join(sorted(known)[:12]) or "(none — this change carries no obligations)"
-    if node and node in documented:
-        return (
-            f"covers '{cover}', which is a documented node but not an obligation of this "
-            f"change — nothing in the diff is owned by it, so there is no requirement here "
-            f"to verify. Drop the scenario, or point it at what this change does owe: "
-            f"{coverable}"
-        )
-    return (
-        f"covers unknown ID '{cover}' — it is neither an obligation of this change nor one "
-        f"of its acceptance criteria. Coverable here: {coverable}"
-    )
-
-
 def _contained_path(base: Path, raw: Any) -> Path | None:
     candidate = Path(str(raw))
     resolved = (candidate if candidate.is_absolute() else base / candidate).resolve()
@@ -1076,91 +478,6 @@ def _contained_path(base: Path, raw: Any) -> Path | None:
     except ValueError:
         return None
     return resolved
-
-
-_BULLET_TOKEN_RE = re.compile(r"^[\s`\"']*([^\s—,;(`\"']+)")
-
-_ABSENT_BULLET = frozenset({"n/a", "na", "none", "-", "—"})
-
-
-def _bullet_tokens(values: Any) -> set[str]:
-    tokens: set[str] = set()
-    for value in values if isinstance(values, list) else [values]:
-        match = _BULLET_TOKEN_RE.match(str(value or ""))
-        token = match.group(1).strip().lower() if match else ""
-        if token and token not in _ABSENT_BULLET:
-            tokens.add(token)
-    return tokens
-
-
-def _route_matches(route: str, url: str) -> bool:
-    """Whether a planned `goto` lands on a route the book documents."""
-    planned = urlsplit(url).path or "/"
-    documented = urlsplit(route).path or "/"
-    left = [part for part in planned.strip("/").split("/") if part]
-    right = [part for part in documented.strip("/").split("/") if part]
-    if len(left) != len(right):
-        return False
-    return all(
-        part.startswith((":", "{")) or other.startswith((":", "{")) or part == other
-        for part, other in zip(left, right, strict=True)
-    )
-
-
-def _validate_book_locators(
-    scenario_id: str,
-    covers: list[str],
-    actions: list[Any],
-    documented: dict[str, dict[str, Any]],
-) -> list[str]:
-    """A browser scenario is addressed the way the book says, or it does not validate."""
-    roles: set[str] = set()
-    named_roles: set[str] = set()
-    routes: set[str] = set()
-    addressable = bool(covers)
-    for cover in covers:
-        locators = documented.get(cover) or {}
-        node_roles = _bullet_tokens(locators.get("role"))
-        addressable = addressable and bool(node_roles or _bullet_tokens(locators.get("selector")))
-        roles |= node_roles
-        if node_roles and (("name" not in locators) or _bullet_tokens(locators.get("name"))):
-            named_roles |= node_roles
-        routes |= {route for route in _bullet_tokens(locators.get("route")) if route.startswith("/")}
-
-    used_roles: set[str] = set()
-    text_actions: list[str] = []
-    goto_urls: list[str] = []
-    for index, action in enumerate(actions):
-        if not is_mapping(action):
-            continue
-        locator = action.get("locator")
-        if is_mapping(locator):
-            if "role" in locator:
-                used_roles |= _bullet_tokens(locator.get("role"))
-            if "text" in locator:
-                text_actions.append(f"action {index + 1}")
-        if action.get("do") == "goto" and action.get("url"):
-            goto_urls.append(str(action["url"]))
-
-    problems: list[str] = []
-    if roles and addressable:
-        for where in text_actions:
-            problems.append(
-                f"scenario '{scenario_id}' {where} uses a text locator while the covered "
-                f"OKF node documents role(s) {sorted(roles)} — address it by role and name"
-            )
-    if named_roles and not used_roles:
-        problems.append(
-            f"scenario '{scenario_id}' covers OKF node(s) documenting role(s) {sorted(named_roles)} "
-            "that no Playwright locator addresses by role"
-        )
-    for url in goto_urls:
-        if routes and not any(_route_matches(route, url) for route in sorted(routes)):
-            problems.append(
-                f"scenario '{scenario_id}' navigates to {url!r}, which is not a route "
-                f"documented by the covered OKF node(s): {sorted(routes)}"
-            )
-    return problems
 
 
 def _recording_exemptions(root: Path) -> set[str]:

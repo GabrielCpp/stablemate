@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler import registry
-from ostler.qa.evidence_map import EvidenceMapError, build_evidence_map, read_json, read_log
+from ostler.qa import run_log
 from ostler.qa.session import QA_DIRNAME, RUN_LOG, scratch_dirname
 from ostler.util import is_mapping
 
@@ -28,6 +28,16 @@ _CELL_LIMIT = 120
 
 class ReportError(RuntimeError):
     """The ledger is missing or unreadable — there is no run to report on."""
+
+
+def read_log(path: Path) -> list[dict[str, Any]]:
+    """The run ledger, one record per line."""
+    if not path.exists():
+        raise ReportError(f"the run log is missing at {path} — has this spec been run?")
+    records, problems = run_log.read_records(path)
+    if problems:
+        raise ReportError(f"{path}: {problems[0]}")
+    return records
 
 
 def _qa_dirname(label: str | None, qa_dirname: str | None) -> str:
@@ -55,24 +65,7 @@ def build_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | 
     label = _label_of(qa_dirname)
     qa_dir = spec_dir / qa_dirname
     warnings: list[str] = []
-    try:
-        log = read_log(qa_dir / RUN_LOG)
-    except EvidenceMapError as exc:
-        raise ReportError(str(exc)) from exc
-
-    context_path = spec_dir / "qa-okf-context.json"
-    context: dict[str, Any] = {}
-    if context_path.is_file():
-        try:
-            loaded = read_json(context_path, what="the context packet")
-            context = dict(loaded) if is_mapping(loaded) else {}
-        except EvidenceMapError as exc:
-            warnings.append(str(exc))
-    else:
-        warnings.append(
-            "qa-okf-context.json is missing — the acceptance criteria and obligations this "
-            "run owed are unknown, so only what the ledger says is reported."
-        )
+    log = read_log(qa_dir / RUN_LOG)
 
     start = next((record for record in log if record.get("kind") == "session_start"), {})
     stop = next((record for record in reversed(log) if record.get("kind") == "session_stop"), None)
@@ -102,55 +95,13 @@ def build_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | 
     asserts = [record for record in log if record.get("kind") == "assert"]
     aborted = {scenario["id"] for scenario in scenarios if scenario["aborted"]}
 
-    criteria_source = [
-        item for item in context.get("acceptanceCriteria", []) or [] if is_mapping(item) and item.get("id")
-    ]
-    obligations_source = [
-        item
-        for item in context.get("obligations", []) or []
-        if is_mapping(item) and item.get("id") and item.get("required", True)
-    ]
-    context_only = sum(
-        1
-        for item in context.get("obligations", []) or []
-        if is_mapping(item) and item.get("id") and not item.get("required", True)
+    criteria_source = list(
+        dict.fromkeys(cover for record in asserts for cover in record.get("covers") or [] if cover)
     )
-
     criteria = [
-        _subject(str(item["id"]), item, scenarios=scenarios, asserts=asserts, aborted=aborted)
-        for item in criteria_source
+        _subject(str(cover), {"id": cover}, scenarios=scenarios, asserts=asserts, aborted=aborted)
+        for cover in criteria_source
     ]
-
-    statuses: dict[str, dict[str, Any]] = {}
-    if obligations_source:
-        try:
-            for row in build_evidence_map(spec_dir, label=label)["obligations"]:
-                statuses[str(row["id"])] = row
-        except EvidenceMapError as exc:
-            warnings.append(f"the obligation evidence map could not be computed: {exc}")
-    obligations = []
-    for item in obligations_source:
-        subject = _subject(str(item["id"]), item, scenarios=scenarios, asserts=asserts, aborted=aborted)
-        row = statuses.get(subject["id"])
-        subject["source"] = str(item.get("source", ""))
-        subject["evidenceRequired"] = str(item.get("evidenceRequired", ""))
-        subject["checksDeclared"] = [
-            str(entry["call"])
-            for entry in item.get("checksDeclared") or []
-            if is_mapping(entry) and entry.get("call")
-        ]
-        if row is not None:
-            subject["status"] = str(row.get("status", ""))
-            subject["why"] = str(row.get("why", ""))
-            subject["checksMissing"] = list(row.get("checksMissing", []))
-            subject["checksInsensitive"] = list(row.get("checksInsensitive", []))
-        obligations.append(subject)
-
-    known_ids = {subject["id"] for subject in [*criteria, *obligations]} | {
-        str(item["id"])
-        for item in context.get("obligations", []) or []
-        if is_mapping(item) and item.get("id")
-    }
     runner_errors = [
         str(record.get("message", ""))
         + (": " + "; ".join(str(item) for item in record.get("problems", [])) if record.get("problems") else "")
@@ -179,15 +130,13 @@ def build_report(spec_dir: Path, *, label: str | None = None, qa_dirname: str | 
             "scenariosFailed": sum(1 for scenario in scenarios if scenario["status"] != "passed"),
             "aborted": len(aborted),
         },
-        "contextOnly": context_only,
         "criteria": criteria,
-        "obligations": obligations,
         "scenarios": scenarios,
         "recordings": recordings,
         "runnerErrors": runner_errors,
         "warnings": warnings,
     }
-    data["warnings"].extend(_warnings(data, known_ids=known_ids, context_known=bool(context)))
+    data["warnings"].extend(_warnings(data))
     return data
 
 
@@ -379,7 +328,7 @@ def _subject(
     asserts: list[dict[str, Any]],
     aborted: set[str],
 ) -> dict[str, Any]:
-    """One criterion or obligation: its verdict and the steps that earned it."""
+    """One criterion: its verdict and the steps that earned it."""
     bound = [record for record in asserts if subject_id in (record.get("covers") or [])]
     passing = [r for r in bound if r.get("result") == "PASS" and str(r.get("scenario", "")) not in aborted]
     failing = [r for r in bound if r.get("result") != "PASS" and not r.get("sentinel")]
@@ -441,20 +390,14 @@ def _subject(
     }
 
 
-def _warnings(data: dict[str, Any], *, known_ids: set[str], context_known: bool) -> list[str]:
+def _warnings(data: dict[str, Any]) -> list[str]:
     """What a reviewer should distrust — the list that answers "was this rubber-stamped?"."""
     out: list[str] = []
     for subject in data["criteria"]:
         if subject["verdict"] == "UNPROVEN":
             out.append(f"`{subject['id']}` is UNPROVEN: {subject['why']}.")
-    for subject in data["obligations"]:
-        status = subject.get("status") or subject["verdict"]
-        if status not in ("covered", "PASS"):
-            why = subject.get("why") or subject["why"]
-            out.append(f"obligation `{subject['id']}` is {status}: {why}")
     uncovered_asserts: list[str] = []
     no_actual: list[str] = []
-    unknown: dict[str, set[str]] = {}
     for scenario in data["scenarios"]:
         if scenario["aborted"]:
             reason = scenario["message"] or "it did not run to completion"
@@ -468,26 +411,15 @@ def _warnings(data: dict[str, Any], *, known_ids: set[str], context_known: bool)
                 uncovered_asserts.append(view["id"])
             if not view["hasActual"] or view["actual"] is None:
                 no_actual.append(view["id"])
-            for cover in view["covers"]:
-                if context_known and cover not in known_ids:
-                    unknown.setdefault(cover, set()).add(view["id"])
-        for cover in scenario["covers"]:
-            if context_known and cover not in known_ids:
-                unknown.setdefault(cover, set()).add(scenario["id"])
     if uncovered_asserts:
         out.append(
             f"{len(uncovered_asserts)} assertion(s) declare no `covers`, so they prove nothing "
-            f"for any criterion or obligation: {', '.join(f'`{i}`' for i in uncovered_asserts)}"
+            f"for any criterion: {', '.join(f'`{i}`' for i in uncovered_asserts)}"
         )
     if no_actual:
         out.append(
             f"{len(no_actual)} assertion(s) recorded no `actual` value — the report can show "
             f"their verdict but not what was observed: {', '.join(f'`{i}`' for i in no_actual)}"
-        )
-    for cover, sources in sorted(unknown.items()):
-        out.append(
-            f"`{cover}` is covered by {', '.join(f'`{s}`' for s in sorted(sources))} but "
-            "qa-okf-context.json does not list it — a claim about nothing the story owes."
         )
     if data["scenarios"] and not any(s["stamped"] for s in data["scenarios"]) and any(
         s["steps"] and (s["outside"]["asserts"] or s["outside"]["artifacts"]) for s in data["scenarios"]
@@ -569,24 +501,8 @@ def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> s
                 f"{_cell(', '.join(f'`{s}`' for s in subject['scenarios']) or '—')} | {subject['passing']} | {subject['failing']} |"
             )
     else:
-        lines.append("_No acceptance criteria in `qa-okf-context.json`._")
+        lines.append("_No criterion is covered by an assertion._")
     lines.append("")
-    lines.append("### OKF obligations")
-    lines.append("")
-    if data["obligations"]:
-        lines.append("| id | status | requirement | claimed by | ✓ | ✗ |")
-        lines.append("|---|---|---|---|---|---|")
-        for subject in data["obligations"]:
-            status_text = subject.get("status") or subject["verdict"]
-            lines.append(
-                f"| `{subject['id']}` | {_badge(status_text)} | {_cell(_first_sentence(subject['requirement']))} | "
-                f"{_cell(', '.join(f'`{s}`' for s in subject['scenarios']) or '—')} | {subject['passing']} | {subject['failing']} |"
-            )
-    else:
-        lines.append("_No OKF obligations in scope — `qa-okf-context.json` lists none this change owes evidence for._")
-    if data.get("contextOnly"):
-        lines.append("")
-        lines.append(f"_{data['contextOnly']} further obligation(s) are in scope for reading only and owe no evidence._")
     lines.append("")
 
     lines.append("## Acceptance criteria")
@@ -596,24 +512,6 @@ def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> s
         lines.append("")
     for subject in data["criteria"]:
         lines.extend(_render_subject(subject, spec_dir, heading=f"{subject['id']} — {subject['verdict']}"))
-
-    lines.append("## OKF obligations")
-    lines.append("")
-    if not data["obligations"]:
-        lines.append("_None owed._")
-        lines.append("")
-    for subject in data["obligations"]:
-        heading = f"`{subject['id']}` — {subject.get('status') or subject['verdict']}"
-        extra: list[str] = []
-        if subject.get("source"):
-            extra.append(f"Source: `{subject['source']}`" + (f" · evidence required: {subject['evidenceRequired']}" if subject.get("evidenceRequired") else ""))
-        if subject.get("checksDeclared"):
-            extra.append("Declared checks: " + ", ".join(f"`{call}`" for call in subject["checksDeclared"]))
-        if subject.get("checksMissing"):
-            extra.append("Declared but never observed passing: " + ", ".join(f"`{call}`" for call in subject["checksMissing"]))
-        if subject.get("checksInsensitive"):
-            extra.append("Insensitive (cannot go red): " + ", ".join(f"`{call}`" for call in subject["checksInsensitive"]))
-        lines.extend(_render_subject(subject, spec_dir, heading=heading, extra=extra))
 
     lines.append("## Scenarios, step by step")
     lines.append("")
@@ -628,7 +526,7 @@ def render_report(data: Mapping[str, Any], *, spec_dir: Path | None = None) -> s
     if data["warnings"]:
         lines.extend(f"- {warning}" for warning in data["warnings"])
     else:
-        lines.append("_None — every criterion and obligation has a passing assertion, every assertion names what it covers, and every scenario ran to completion._")
+        lines.append("_None — every criterion has a passing assertion, every assertion names what it covers, and every scenario ran to completion._")
     lines.append("")
     return "\n".join(lines)
 

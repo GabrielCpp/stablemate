@@ -6,12 +6,10 @@ import json
 import os
 import shutil
 import signal
-import string
 import subprocess
 import sys
 import threading
 import time
-import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,12 +17,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from ostler import path as path_mod
-from ostler.model import load as load_graph
-from ostler.routes import arrived_at, is_comparable, vet_routes
 from ostler.untyped import JsonValue
 from ostler.qa import android
-from ostler.qa import book_fixtures as qa_book_fixtures
 from ostler.qa.android import ScreenRecording
 from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, CheckEvidence, CommandEnding, attribute
 from ostler.qa import fixtures as qa_fixtures
@@ -40,8 +34,6 @@ from ostler.qa.harness_host import (
 )
 from ostler.qa.maestro_sessions import SESSION_STORE, retire_dead_sessions
 from ostler.qa.session import QaSession, _redact_bytes
-from ostler.vet import placement
-from ostler.vet.regions import RegionList
 
 
 KILL_GRACE_S = 10.0
@@ -59,34 +51,6 @@ def _declared(record: Mapping[str, Any]) -> tuple[str, Mapping[str, Any]] | None
         return None
     args = record.get("check_args")
     return name, args if isinstance(args, Mapping) else {}
-
-
-def _document(item_id: str) -> str:
-    """The book file an id names, or `""` for an id that names no document."""
-    head = item_id.split("#", 1)[0].removeprefix("okf:")
-    return head if "#" in item_id and head.endswith(".md") else ""
-
-
-def _covers_in(
-    covers: list[str], node_id: str, obligation_documents: Mapping[str, list[str]]
-) -> list[str]:
-    """The entries of `covers` a placement verdict about `node_id` can speak to."""
-    document = _document(node_id)
-    kept = []
-    for item in covers:
-        if _document(item) == "":
-            kept.append(item)
-            continue
-        documents = obligation_documents.get(item)
-        if documents is None:
-            raise DriverBlocked(
-                f"'{item}' in scenario covers has no occurrenceDocuments entry in the "
-                "compiled plan — qa-okf-context.json is stale or missing; re-run `ostler qa "
-                "context` and re-plan"
-            )
-        if document in documents:
-            kept.append(item)
-    return kept
 
 
 DEFAULT_VIEWPORT = {"width": 1440, "height": 900}
@@ -144,16 +108,6 @@ class FailedCheck:
         return f"{self.label}: expected {self.expected}, observed {self.actual}"[:SAMPLE_CHARS]
 
 
-@dataclass(frozen=True)
-class FixtureBuild:
-    """One book fixture a scenario built rather than reused: its page, its lifetime and how long building it took."""
-
-    name: str
-    page: str
-    lifetime: str
-    seconds: float
-
-
 @dataclass
 class _Tally:
     """What grading one scenario's records has counted so far."""
@@ -162,8 +116,6 @@ class _Tally:
     failures: int = 0
     failed_checks: list[FailedCheck] = field(default_factory=list)
     verdicts: dict[str, Verdict] = field(default_factory=dict)
-    vet_trouble: bool = False
-    fixture_builds: list[FixtureBuild] = field(default_factory=list)
 
     def count_assertion(self) -> int:
         """Count one more assertion and return its number, which is the action it is recorded under."""
@@ -190,7 +142,6 @@ class ScenarioResult:
     failed_checks: list[FailedCheck] = field(default_factory=list)
     unreached: list[str] = field(default_factory=list)
     verdicts: dict[str, Verdict] = field(default_factory=dict)
-    fixture_builds: list[FixtureBuild] = field(default_factory=list)
 
 
 class DriverBlocked(RuntimeError):
@@ -206,14 +157,12 @@ class QaDriver:
         *,
         root: Path,
         variables: dict[str, str],
-        obligation_documents: Mapping[str, list[str]] | None = None,
     ) -> None:
         self.session = session
         self.target_id = target_id
         self.target = target
         self.root = root
         self.variables = variables
-        self.obligation_documents: Mapping[str, list[str]] = obligation_documents or {}
 
     def start(self) -> None:
         return None
@@ -234,11 +183,6 @@ class PythonDriver(QaDriver):
         self._window_recorder: DisplayRecorder | None = None
         self._device_recorder: DeviceRecorder | None = None
         self.launch_env: dict[str, str] = {}
-        self._screens: dict[str, list[placement.VettedComponent]] | None = None
-        self._routes: dict[str, str] = {}
-        self._book_problem: str | None = None
-        self._book_fixtures_cache: dict[str, dict[str, Any]] | None = None
-        self._resources_cache: dict[str, dict[str, Any]] = {}
 
     def start(self) -> None:
         self.launcher.preflight(self)
@@ -246,10 +190,6 @@ class PythonDriver(QaDriver):
             *qa_tools.preflight_errors(self.root),
             *qa_fixtures.preflight_errors(self.root),
         ]
-        try:
-            self._resolved_book_fixtures()
-        except DriverBlocked as exc:
-            problems.append(str(exc))
         if problems:
             raise DriverBlocked("; ".join(problems))
         driver = str(self.target.get("driver", "python"))
@@ -333,20 +273,6 @@ class PythonDriver(QaDriver):
             if self._window_recorder is not None:
                 self._window_recorder.stop()
 
-    def _resolved_book_fixtures(self) -> dict[str, dict[str, Any]]:
-        if self._book_fixtures_cache is None:
-            services_root, problem = self._packet_services_root()
-            if problem is not None:
-                raise DriverBlocked(problem)
-            graph = load_graph(self.root, root_overrides={"services": services_root})
-            self._book_fixtures_cache = qa_book_fixtures.resolved(graph)
-            self._resources_cache = qa_book_fixtures.resolved_resources(graph)
-        return self._book_fixtures_cache
-
-    def _resolved_resources(self) -> dict[str, dict[str, Any]]:
-        self._resolved_book_fixtures()
-        return self._resources_cache
-
     def interpreter(self) -> Path:
         declared = self.target.get("interpreter")
         if not declared:
@@ -376,12 +302,9 @@ class PythonDriver(QaDriver):
             "root": str(self.root),
             "spec_dir": str(self.session.spec_dir),
             "qa_dir": str(self.session.qa_dir),
-            "lap_dir": self.variables.get("lap_dir", ""),
             "offset_ms": self.session.offset_ms(),
             "tools": qa_tools.resolved_commands(self.root),
             "fixtures": qa_fixtures.resolved(self.root),
-            "book_fixtures": self._resolved_book_fixtures(),
-            "resources": self._resolved_resources(),
         }
         return self.launcher.execute(self, scenario_id, timeout, context)
 
@@ -413,7 +336,6 @@ class PythonDriver(QaDriver):
         problems: list[str] = []
         open_steps: list[tuple[str, str]] = []
         step_started: dict[str, int] = {}
-        painted = self._scenario_painted(records)
         for record in records:
             kind = record.get("type")
             step = open_steps[-1] if open_steps else None
@@ -449,23 +371,8 @@ class PythonDriver(QaDriver):
                 if step:
                     capture["step"], capture["step_label"] = step
                 self.session.append(capture)
-            elif kind == "instance":
-                self.session.append(
-                    {
-                        "kind": "instance",
-                        "scenario": scenario_id,
-                        "obligation": str(record.get("obligation", "")),
-                        "bindings": record.get("bindings") or {},
-                    }
-                )
             elif kind == "artifact":
-                problems.extend(self._register(scenario_id, record, step=step, painted=painted))
-            elif kind == "vet":
-                problems.extend(self._grade_vet_and_list_problems(tally, scenario_id, covers, record, step))
-            elif kind == "fixture" and record.get("page") and not record.get("reused"):
-                tally.fixture_builds.append(FixtureBuild(
-                    str(record.get("name", "")), str(record["page"]), str(record.get("lifetime", "lap")),
-                    float(record.get("seconds") or 0.0)))
+                problems.extend(self._register(scenario_id, record, step=step))
             elif kind == "scenario":
                 terminal = record
 
@@ -525,8 +432,6 @@ class PythonDriver(QaDriver):
             tally.judge(covers, True)
         elif unreached or not tally.failed_checks:
             stopped_by = attribute(_evidence((terminal or {}).get("stop") or {}))
-            if stopped_by.cause is Cause.UNATTRIBUTED and tally.vet_trouble:
-                stopped_by = Attribution(Cause.BOOK)
             if unreached:
                 judge(tally.verdicts, unreached, Verdict.GAPPED if stopped_by.gap else Verdict.UNREACHED)
             else:
@@ -552,7 +457,6 @@ class PythonDriver(QaDriver):
             failed_checks=tally.failed_checks,
             unreached=unreached,
             verdicts=tally.verdicts,
-            fixture_builds=tally.fixture_builds,
         )
 
     def _grade_assert(
@@ -588,46 +492,6 @@ class PythonDriver(QaDriver):
             str(record.get("label", "")), record.get("expected"), record.get("actual"),
             evidence.command_ending, covers, attribution, seen=evidence.seen))
 
-    def _grade_vet_and_list_problems(
-        self,
-        tally: _Tally,
-        scenario_id: str,
-        covers: list[str],
-        record: dict[str, Any],
-        step: tuple[str, str] | None,
-    ) -> list[str]:
-        """Record each verdict of one harness `vet` in the session, and return what kept the screen from being vetted."""
-        try:
-            verdicts, trouble = self._vet(scenario_id, record, step=step)
-        except ValueError as exc:
-            verdicts, trouble = [], [f"scenario '{scenario_id}' vet failed: {exc}"]
-        tally.vet_trouble = tally.vet_trouble or bool(trouble)
-        for verdict in verdicts:
-            action = tally.count_assertion()
-            verdict_covers = _covers_in(covers, verdict.node_id, self.obligation_documents)
-            passed, _ = self.session.run_assert(
-                f"{scenario_id}-{action}",
-                verdict.sentence(),
-                "scenario_check",
-                {
-                    "passed": verdict.ok,
-                    "actual": verdict.observed(),
-                    "expected": verdict.expected,
-                },
-                root=self.root,
-                scenario=scenario_id,
-                driver="python",
-                action=action,
-                covers=verdict_covers,
-                step=step,
-            )
-            tally.judge(verdict_covers, passed)
-            if not passed:
-                tally.count_failure(FailedCheck.of(
-                    verdict.sentence(), verdict.expected, verdict.observed(),
-                    covers=(f"okf:{verdict.node_id}",), attribution=Attribution(Cause.BOOK)))
-        return trouble
-
     def _step_record(
         self,
         scenario_id: str,
@@ -659,29 +523,12 @@ class PythonDriver(QaDriver):
             record["ended_offset_ms"] = ended_offset_ms
         self.session.append(record)
 
-    def _scenario_painted(self, records: list[dict[str, Any]]) -> bool:
-        """Whether any of this scenario's `vet` records scanned a region with real extent."""
-        for vet_record in records:
-            if vet_record.get("type") != "vet":
-                continue
-            regions_path = Path(str(vet_record.get("regions", "")))
-            if not regions_path.is_file():
-                continue
-            try:
-                regions = RegionList.validate_json(regions_path.read_bytes())
-            except ValueError:
-                continue
-            if any(region.bbox.area > 0 for region in regions):
-                return True
-        return False
-
     def _register(
         self,
         scenario_id: str,
         record: dict[str, Any],
         *,
         step: tuple[str, str] | None = None,
-        painted: bool = False,
     ) -> list[str]:
         """File one artifact the scenario produced, holding a recording to the target's shape."""
         path = Path(str(record["path"]))
@@ -719,7 +566,7 @@ class PythonDriver(QaDriver):
                     f"{measured.get('width')}x{measured.get('height')}, "
                     f"not the target's {width}x{height}"
                 )
-            if _is_static(path, measured.get("durationSeconds", 0)) and not painted:
+            if _is_static(path, measured.get("durationSeconds", 0)):
                 problems.append(
                     f"scenario '{scenario_id}' recording never changes — the page under test "
                     "painted nothing for the whole recording"
@@ -742,125 +589,6 @@ class PythonDriver(QaDriver):
         except ValueError as exc:
             return [f"scenario '{scenario_id}' produced an unusable artifact: {exc}"]
         return []
-
-
-    def _packet_services_root(self) -> tuple[str, str | None]:
-        """The frame a `qa.vet` argument is spelled in — the packet's `servicesRoot` — or the reason there is none."""
-        packet = self.session.spec_dir / "qa-okf-context.json"
-        if not packet.is_file():
-            return "", (
-                f"no QA context packet at {packet} — a compiled plan's `qa.vet` arguments "
-                "are spelled against the book the packet's `servicesRoot` names, and with "
-                "no packet there is no root to resolve them against; run `ostler qa "
-                "context` for this spec before `qa run`, or pass `--spec` at a directory "
-                "it wrote"
-            )
-        try:
-            data = json.loads(packet.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            return "", f"QA context packet at {packet} is unreadable: {exc}"
-        services_root = path_mod.resolve_services_root(data.get("servicesRoot"), self.root)
-        return services_root, None
-
-    def _book(self) -> dict[str, list[placement.VettedComponent]]:
-        """The documented screens, read once per target and kept, keyed the way a compiled plan spells its `qa.vet` arguments — see `_packet_services_root`."""
-        if self._screens is None:
-            self._screens = {}
-            services_root, self._book_problem = self._packet_services_root()
-            if self._book_problem is None:
-                graph = load_graph(self.root, root_overrides={"services": services_root})
-                self._screens = placement.screen_components(graph)
-                self._routes = vet_routes(graph)
-        return self._screens
-
-    def _arrival(self, scenario_id: str, screen: str, record: dict[str, Any]) -> str | None:
-        """Why this photograph is not of *screen*, or None when it is."""
-        self._book()
-        route = self._routes.get(screen, "")
-        url = str(record.get("url", ""))
-        if not url or not is_comparable(route):
-            return None
-        if arrived_at(url, route, self._routes.values()):
-            return None
-        return (
-            f"scenario '{scenario_id}' vets '{screen}', documented at route '{route}', but "
-            f"the page it photographed was at '{url}' — the walk did not arrive, so every "
-            "placement verdict would be about a screen the book does not describe. When the app "
-            "sent the walk elsewhere, as a guarded route sends a visitor who is not signed in, "
-            f"link the fixture that sets up what the route needs under the `requires:` of '{screen}', "
-            "and every claim on that screen arranges it"
-        )
-
-    def _vet(
-        self, scenario_id: str, record: dict[str, Any], *, step: tuple[str, str] | None = None
-    ) -> tuple[list[placement.ComponentVerdict], list[str]]:
-        """Register one photographed screen against the screen the book documents."""
-        screen = str(record.get("screen", ""))
-        shot = Path(str(record.get("screenshot", "")))
-        regions_path = Path(str(record.get("regions", "")))
-        layout_path = shot.with_suffix(".layout.json")
-        components = self._book().get(screen)
-        if self._book_problem is not None:
-            return [], [self._book_problem]
-        if components is None and screen in self._routes:
-            components = []
-        if components is None:
-            return [], [
-                f"scenario '{scenario_id}' vets '{screen}', which the book does not document "
-                "as a screen with components — name the screen file the state belongs to"
-            ]
-        if not regions_path.is_file() or not layout_path.is_file():
-            return [], [
-                f"scenario '{scenario_id}' vetted '{screen}' but produced no scan beside "
-                f"{shot.name} — the page was gone by the time it was measured"
-            ]
-        elsewhere = self._arrival(scenario_id, screen, record)
-        if elsewhere is not None:
-            return [], [elsewhere]
-        requested = record.get("components", [])
-        if requested:
-            components = [
-                component
-                for component in components
-                if component.node_id.rsplit("#", 1)[-1] in requested
-            ]
-            missing = sorted(set(requested) - {component.node_id.rsplit("#", 1)[-1] for component in components})
-            if missing:
-                return [], [
-                    f"scenario '{scenario_id}' vetted '{screen}' with undocumented component(s): {missing}"
-                ]
-        layout = json.loads(layout_path.read_text(encoding="utf-8"))
-        frame = layout["viewport"]
-        viewport = placement.Viewport(width=frame["width"], height=frame["height"])
-        regions = RegionList.validate_json(regions_path.read_bytes())
-        verdicts = placement.check(
-            components, regions, viewport, device=layout.get("schema") == "device-layout/1")
-
-        report = {
-            "schema": "vet-placement/1",
-            "screen": screen,
-            "state": str(record.get("state", "")),
-            "screenshot": shot.name,
-            "viewport": {"width": viewport.width, "height": viewport.height},
-            "regionCount": len(regions),
-            "arrival": (
-                "confirmed"
-                if record.get("url") and is_comparable(self._routes.get(screen, ""))
-                else ("unobserved" if not record.get("url") else "unstated")
-            ),
-            "url": str(record.get("url", "")),
-            "verdicts": [verdict.model_dump(mode="json") for verdict in verdicts],
-        }
-        report_path = shot.with_suffix(".vet.json")
-        report_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-        self.session.register_artifact(
-            report_path,
-            kind="vet",
-            scenario=scenario_id,
-            target=self.target_id,
-            **({"metadata": {"step": step[0], "step_label": step[1]}} if step else {}),
-        )
-        return verdicts, []
 
 
 class Launcher:
@@ -960,9 +688,6 @@ class LocalLauncher(Launcher):
                 timed_out = True
                 break
         reader.join(timeout=5)
-        if timed_out or not any(record.get("type") == "scenario" for record in records):
-            stop_servers(records)
-            run_pending_releases(records, context.get("resources", {}), env)
         safe = _redact_bytes(output_raw or b"", driver.session.secret_values.values())
         return records, safe.decode("utf-8", errors="replace"), process.returncode, timed_out
 
@@ -1002,43 +727,6 @@ def _drain(read_fd: int, records: list[dict[str, Any]], progress: _Progress | No
                 records.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
-
-
-def stop_servers(records: list[dict[str, Any]]) -> None:
-    """SIGKILL each process group a `serve` step started, which a scenario that never finished left running."""
-    for record in records:
-        if record.get("type") != "serve":
-            continue
-        try:
-            os.killpg(int(record["pgid"]), signal.SIGKILL)
-        except (ProcessLookupError, PermissionError):
-            continue
-
-
-def run_pending_releases(
-    records: list[dict[str, Any]], resources: Mapping[str, Mapping[str, Any]], environ: Mapping[str, str],
-) -> None:
-    """Send each release a scenario announced and never reported, so a run that died holding a borrowed resource still gives it back."""
-    reported = {(record.get("fixture"), record.get("step")) for record in records if record.get("type") == "release"}
-    for record in reversed(records):
-        if record.get("type") != "release-pending" or (record.get("fixture"), record.get("step")) in reported:
-            continue
-        spec = resources.get(str(record.get("resource")), {})
-        if spec.get("reach") != "http":
-            continue
-        base = string.Template(str(spec.get("base", ""))).safe_substitute(environ).rstrip("/")
-        headers: dict[str, str] = {}
-        credential = spec.get("credential")
-        if credential and credential.get("secret") in environ:
-            headers[credential["header"]] = f"{credential.get('scheme', '')} {environ[credential['secret']]}".strip()
-        if not base or "$" in base or "$" in str(record.get("path", "")):
-            continue
-        request = urllib.request.Request(  # noqa: S310
-            base + str(record["path"]), method=str(record["method"]), headers=headers)
-        try:
-            urllib.request.urlopen(request, timeout=30).close()  # noqa: S310
-        except (OSError, ValueError):
-            continue
 
 
 def _kill_group(process: subprocess.Popen[bytes], grace: float) -> None:
@@ -1303,7 +991,6 @@ def create_driver(
     *,
     root: Path,
     variables: dict[str, str],
-    obligation_documents: Mapping[str, list[str]] | None = None,
 ) -> QaDriver:
     """Build the one driver there is."""
     return PythonDriver(
@@ -1312,7 +999,6 @@ def create_driver(
         target,
         root=root,
         variables=variables,
-        obligation_documents=obligation_documents,
     )
 
 

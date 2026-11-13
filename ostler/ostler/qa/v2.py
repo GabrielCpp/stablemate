@@ -4,21 +4,17 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from collections.abc import Callable, Mapping
 from typing import Any
 
 from ostler.qa.attribution import signatures
-from ostler.qa.assessment import ASSESSMENT_SCHEMA_VERSION, contract_fingerprint
 from ostler.qa.drivers import DriverBlocked, QaDriver, ScenarioResult, create_driver
 from ostler.qa import run_log
 from ostler.qa.plan import PlanDocument, check_runtime_requirements
 from ostler.qa.session import QA_DIRNAME, QaSession, clear_ledger
 from ostler.qa.verdict import Verdict, judge, merged
-from ostler.qa.quarantine import FixtureQuarantine
-from ostler.qa.repeats import watch_for
 from ostler.qa.report import REPORT_FILE, ReportError, write_report
 
 
@@ -41,18 +37,6 @@ def _result_fields(result: ScenarioResult) -> dict[str, Any]:
     }
 
 
-def _fixture_builds(results: Mapping[str, ScenarioResult]) -> list[dict[str, Any]]:
-    """Each book fixture the run built, with how many times and how long in all, slowest first."""
-    totals: dict[str, dict[str, Any]] = {}
-    for result in results.values():
-        for build in result.fixture_builds:
-            total = totals.setdefault(build.page, {"name": build.name, "page": build.page, "lifetime": build.lifetime,
-                                                   "builds": 0, "seconds": 0.0})
-            total["builds"] += 1
-            total["seconds"] = round(total["seconds"] + build.seconds, 3)
-    return sorted(totals.values(), key=lambda total: (-total["seconds"], total["page"]))
-
-
 def run_plan(
     document: PlanDocument,
     *,
@@ -60,35 +44,14 @@ def run_plan(
     stop_on_fail: bool = False,
     only: list[str] | None = None,
     qa_dirname: str = QA_DIRNAME,
-    lap: Path | None = None,
     stack_check: Callable[[], str] | None = None,
-    stop_on_repeat: int = 0,
-    quarantine_after: int = 0,
 ) -> tuple[str, str, dict[str, Any]]:
     """Execute a validated plan and return ``(status, message, summary)``.
 
     An *only* list runs those scenarios in its own order, so a caller decides what a stopped run
-    reached. Each precondition is built once per lap and kept in the lap record under *lap*, so a caller
-    that runs one lap in several calls hands each the same directory. Without one, this call is
-    the lap. *stack_check* runs before each scenario and says why the app stopped serving, which
+    reached. *stack_check* runs before each scenario and says why the app stopped serving, which
     blocks the run there, since every scenario after it would fail on the app's absence.
-
-    A positive *stop_on_repeat* stops the run once that many scenarios on several pages failed on
-    one observation, since one cause no page holds would fail every scenario after them the same way.
-    The summary says why under `stopped_on_repeat`, apart from its `runner_errors`, since the
-    scenarios it ran measured the book and their failures are the book's to fix. It names the
-    observation itself under `stopped_on_observation`, so a later run can tell the same stop apart.
-
-    A positive *quarantine_after* holds back each scenario that needs a book fixture once that
-    fixture failed to build in that many scenarios with no good build between them. The held
-    scenario fails against the fixture's page without running, since running it would only wait
-    out the same failure again, and the rest of the plan still runs.
     """
-    if lap is None:
-        with tempfile.TemporaryDirectory(prefix="ostler-lap-") as scratch:
-            return run_plan(document, root=root, stop_on_fail=stop_on_fail, only=only, qa_dirname=qa_dirname,
-                            lap=Path(scratch), stack_check=stack_check, stop_on_repeat=stop_on_repeat,
-                            quarantine_after=quarantine_after)
     plan = document.data
     spec_dir = document.spec_dir
     scored = qa_dirname == QA_DIRNAME
@@ -122,7 +85,6 @@ def run_plan(
         for name, path in plan.get("inputs", {}).items()
     }
     variables["qa_dir"] = str(qa_dir.resolve())
-    variables["lap_dir"] = str(lap.resolve())
     session = QaSession.create(
         spec_dir,
         document.run_id,
@@ -137,9 +99,6 @@ def run_plan(
     status = "passed"
     cleanup_errors: list[str] = []
     runner_errors: list[str] = []
-    stopped_on_repeat = ""
-    watch = watch_for(stop_on_repeat, selected, scoped=only is not None)
-    quarantine = FixtureQuarantine(quarantine_after)
     summary: dict[str, Any] = {}
     evidence: Path | None = None
     try:
@@ -156,7 +115,6 @@ def run_plan(
                 target,
                 root=root,
                 variables=variables,
-                obligation_documents=plan.get("obligationDocuments", {}),
             )
             drivers[target_id] = driver
             driver.start()
@@ -188,8 +146,7 @@ def run_plan(
                     "covers": scenario.get("covers", []),
                 }
             )
-            held = quarantine.held(scenario)
-            result = held or drivers[target_id].run(scenario)
+            result = drivers[target_id].run(scenario)
             results[scenario_id] = result
             session.append(
                 {
@@ -204,15 +161,6 @@ def run_plan(
                 status = result.status
                 if stop_on_fail:
                     break
-            if held is not None:
-                continue
-            quarantined = quarantine.observe(scenario, result)
-            if quarantined:
-                session.append({"kind": "fixture_quarantine", "scenario": scenario_id, "message": quarantined})
-            stopped_on_repeat = watch.observe(scenario_id, scenario.get("covers", []), result)
-            if stopped_on_repeat:
-                session.append({"kind": "repeat_stop", "status": status, "message": stopped_on_repeat})
-                break
     except DriverBlocked as exc:
         status = "blocked"
         runner_errors.append(str(exc))
@@ -277,7 +225,6 @@ def run_plan(
                 for name, result in results.items()
             },
             "verdicts": _run_verdicts(selected, results),
-            "fixture_builds": _fixture_builds(results),
             "signatures": [
                 asdict(signature)
                 for signature in signatures(
@@ -292,16 +239,12 @@ def run_plan(
         summary["cleanup_errors"] = cleanup_errors
     if runner_errors:
         summary["runner_errors"] = runner_errors
-    if stopped_on_repeat:
-        summary["stopped_on_repeat"] = stopped_on_repeat
-        summary["stopped_on_observation"] = watch.stopped_on
     message = (
         f"QA run {status.upper()}: {summary.get('pass_count', 0)} assertions passed, "
         f"{summary.get('fail_count', 0)} failed, {len(results)} scenarios"
     )
-    stops = [*runner_errors, stopped_on_repeat] if stopped_on_repeat else runner_errors
-    if stops:
-        message += f" — {'; '.join(stops)}"
+    if runner_errors:
+        message += f" — {'; '.join(runner_errors)}"
     return status, message, summary
 
 
@@ -329,7 +272,7 @@ def _write_evidence(
             artifacts_by_scenario.setdefault(str(scenario), []).append(str(artifact["path"]))
 
     def row(item: Any) -> dict[str, Any]:
-        """One criterion or obligation, judged against *every* assertion covering it."""
+        """One criterion, judged against *every* assertion covering it."""
         source = item if isinstance(item, dict) else {"id": str(item)}
         item_id = str(source["id"])
         records = [record for record in log_records if item_id in record.get("covers", [])]
@@ -367,20 +310,14 @@ def _write_evidence(
             ]
         return row_data
 
-    criteria = []
-    for item in document.context.get("acceptanceCriteria", []):
-        criterion = row(item)
-        criterion["kind"] = (
-            str(item.get("kind", "behavioral")) if isinstance(item, dict) else "behavioral"
-        )
-        criteria.append(criterion)
-    obligations = [row(item) for item in document.context.get("obligations", [])]
+    criteria = [
+        row(cid) | {"kind": "behavioral"}
+        for cid in dict.fromkeys(c for s in document.data["scenarios"] for c in s.get("covers", []))
+    ]
     data = {
         "runId": document.run_id,
         "qa_run_log": "qa/qa-run.ndjson",
         "report": REPORT_FILE,
-        "contractFingerprint": contract_fingerprint(document.context),
-        "fingerprintVersion": ASSESSMENT_SCHEMA_VERSION,
         "overall": {
             "passed": "Pass",
             "failed": "Fail",
@@ -388,7 +325,6 @@ def _write_evidence(
             "invalid": "Invalid",
         }[status],
         "criteria": criteria,
-        "obligations": obligations,
     }
     path = document.spec_dir / "qa-evidence.json"
     path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

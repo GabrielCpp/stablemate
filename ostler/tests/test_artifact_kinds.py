@@ -309,7 +309,7 @@ def test_qa_evidence_empty_with_no_run_log_still_rejected(tmp_path: Path):
     spec = _spec(tmp_path)
     data = {"overall": "Pass", "criteria": [], "obligations": []}
     problems = _qa_evidence_vet(data, spec, tmp_path)
-    assert problems and "at least one criterion or OKF obligation" in problems[0]
+    assert problems and "at least one criterion" in problems[0]
 
 
 def test_qa_evidence_empty_with_a_failing_run_log_rejected(tmp_path: Path):

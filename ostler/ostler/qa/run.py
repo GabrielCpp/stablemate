@@ -332,7 +332,6 @@ def cmd_validate(
     spec_dir: Path | None = None,
     *,
     root: Path | None = None,
-    require_coverage: bool = True,
 ) -> QaOutcome:
     """Validate a `qa_plan.py` without executing it."""
     located = lint_mod.locate_plan(plan_file, root)
@@ -357,21 +356,16 @@ def cmd_validate(
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
     document, problems = load_plan(resolved_plan, resolved_spec, root)
     if document is not None and not problems:
-        problems = validate_v2(document, require_coverage=require_coverage)
-    deferred = [
-        {"id": o["id"], **o["deferred"]}
-        for o in (document.context.get("obligations", []) if document is not None else [])
-        if isinstance(o, dict) and o.get("id") and isinstance(o.get("deferred"), dict)
-    ]
+        problems = validate_v2(document)
     if problems:
         msg = "Plan validation failed:\n" + "\n".join(f"  - {p}" for p in problems)
         return QaOutcome(
             ok=False,
             message=msg,
-            data={"problems": problems, "deferred": deferred},
+            data={"problems": problems},
             status="invalid",
         )
-    return QaOutcome(ok=True, message="Plan is valid.", data={"deferred": deferred})
+    return QaOutcome(ok=True, message="Plan is valid.", data={})
 
 
 
@@ -398,9 +392,7 @@ def cmd_run(
             )
     resolved_plan = plan_file if plan_file.is_absolute() else root / plan_file
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
-    validate_result = cmd_validate(
-        resolved_plan, resolved_spec, root=root, require_coverage=label is None
-    )
+    validate_result = cmd_validate(resolved_plan, resolved_spec, root=root)
     if not validate_result.ok:
         return validate_result
 

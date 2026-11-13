@@ -91,26 +91,6 @@ def _stub_measurement(monkeypatch: pytest.MonkeyPatch, *, static: bool) -> None:
     monkeypatch.setattr("ostler.qa.drivers._is_static", lambda path, duration: static)
 
 
-def test_a_still_but_rendered_page_is_not_reported_as_blank(
-    repo: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The regression: a scenario whose page painted, but never moved, used to abort."""
-    _book(repo)
-    shot = _shot(repo, [_region("article", "article.prose", (0, 88, 1400, 760))])
-    _stub_measurement(monkeypatch, static=True)
-    driver = _driver(repo)
-    records = [
-        _vet_record(shot),
-        _video_record(repo),
-        {"type": "scenario", "id": "s-1", "status": "passed", "assertions": 0, "failures": 0},
-    ]
-
-    result = driver._grade("s-1", [], records, "", 0, timed_out=False)
-
-    assert "painted nothing" not in result.message
-    assert not result.aborted
-
-
 def test_a_genuinely_blank_recording_is_still_flagged(
     repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

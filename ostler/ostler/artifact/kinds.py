@@ -125,7 +125,6 @@ def _qa_evidence_scaffold() -> dict:
             }
         ],
         "visual_fidelity": [],
-        "obligations": [],
     }
 
 
@@ -135,19 +134,16 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
     problems: list[str] = []
 
     criteria = data.get("criteria")
-    obligations = data.get("obligations", [])
     if not isinstance(criteria, list):
         return [
             "no 'criteria' array "
             f"(found keys: {sorted(data.keys())}) — one entry per acceptance criterion with "
             "{'id', 'kind', 'verdict', 'evidence'} is required."
         ]
-    if not isinstance(obligations, list):
-        return ["'obligations' must be an array when present."]
-    if not criteria and not obligations:
+    if not criteria:
         passed, failed = run_log.run_log_tally(spec_dir)
         if passed == 0 or failed > 0:
-            return ["qa-evidence must contain at least one criterion or OKF obligation "
+            return ["qa-evidence must contain at least one criterion "
                     "(or, for an un-modeled infra/CLI surface, a run log with passing "
                     f"assertions and no failures — found {passed} pass / {failed} fail)."]
 
@@ -312,7 +308,7 @@ def _qa_evidence_vet(data: Any, spec_dir: Path, root: Path) -> list[str]:  # noq
                 if not terminal or terminal[-1].get("run_id") != run_id:
                     problems.append("qa_run_log has no matching terminal session_stop record.")
 
-                for row in [*criteria, *obligations]:
+                for row in criteria:
                     if not isinstance(row, dict) or str(row.get("verdict", "")).strip().lower() != "pass":
                         continue
                     item_id = str(row.get("id") or row.get("title") or "?")

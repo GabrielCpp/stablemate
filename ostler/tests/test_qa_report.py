@@ -8,7 +8,6 @@ from typing import Any
 
 import pytest
 
-from ostler.qa.evidence_map import build_evidence_map
 from ostler.qa.report import (
     REPORT_FILE,
     ReportError,
@@ -19,47 +18,16 @@ from ostler.qa.report import (
     write_report,
 )
 
-CONTRACT = "okf:docs/services/orders/publish.md:contract"
-DECLARED = 'conflict_on_stale(subject="manifest", token="etag")'
-
-
-def _spec(
-    tmp_path: Path,
-    *,
-    log: list[dict[str, Any]],
-    criteria: list[dict[str, Any]] | None = None,
-    obligations: list[dict[str, Any]] | None = None,
-    context: bool = True,
-    evidence: dict[str, Any] | None = None,
-    qa_dirname: str = "qa",
-) -> Path:
+def _spec(tmp_path: Path, *, log: list[dict[str, Any]], qa_dirname: str = "qa") -> Path:
     spec = tmp_path / "docs/specs/story-1"
     (spec / qa_dirname).mkdir(parents=True, exist_ok=True)
-    if context:
-        (spec / "qa-okf-context.json").write_text(
-            json.dumps(
-                {
-                    "version": 1,
-                    "available": True,
-                    "acceptanceCriteria": criteria or [],
-                    "obligations": obligations or [],
-                }
-            ),
-            encoding="utf-8",
-        )
     (spec / qa_dirname / "qa-run.ndjson").write_text(
         "".join(json.dumps(record) + "\n" for record in log), encoding="utf-8"
     )
     (spec / qa_dirname / "run-manifest.json").write_text(
         json.dumps({"runId": "qa-run-1", "artifacts": []}), encoding="utf-8"
     )
-    if evidence is not None:
-        (spec / "qa-evidence.json").write_text(json.dumps(evidence), encoding="utf-8")
     return spec
-
-
-def _criterion(identifier: str, requirement: str) -> dict[str, Any]:
-    return {"id": identifier, "requirement": requirement, "kind": "behavioral"}
 
 
 def _start(run_id: str = "qa-run-1") -> dict[str, Any]:
@@ -176,7 +144,7 @@ def _recorded_log() -> list[dict[str, Any]]:
 
 
 def test_a_criterion_is_pass_when_an_assertion_covering_it_passed(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_stamped_log(), criteria=[_criterion("ac:1", "Sign in works."), _criterion("ac:2", "Tree loads.")])
+    spec = _spec(tmp_path, log=_stamped_log())
     data = build_report(spec)
     by_id = {row["id"]: row for row in data["criteria"]}
     assert by_id["ac:1"]["verdict"] == "PASS"
@@ -198,30 +166,12 @@ def test_a_criterion_is_fail_when_any_assertion_covering_it_failed(tmp_path: Pat
         _scenario_stop("s", "failed", assertions=2, failures=1),
         _stop("failed"),
     ]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     data = build_report(spec)
     assert data["criteria"][0]["verdict"] == "FAIL"
     text = render_report(data)
     assert "### ac:1 — FAIL" in text
     assert "| `500` | `200` | ✗ FAIL |" in text
-
-
-def test_a_criterion_nothing_covers_is_unproven_and_warned(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_stamped_log(), criteria=[_criterion("ac:9", "Nobody looked.")])
-    data = build_report(spec)
-    assert data["criteria"][0]["verdict"] == "UNPROVEN"
-    assert "not tested" in data["criteria"][0]["why"]
-    text = render_report(data)
-    assert "### ac:9 — UNPROVEN" in text
-    assert any("`ac:9` is UNPROVEN" in warning for warning in data["warnings"])
-
-
-def test_a_criterion_a_scenario_claims_but_never_asserts_is_unproven(tmp_path: Path) -> None:
-    log = [_start(), _scenario_start("s", "ac:1"), _assert("s", 1, "looked at nothing in particular"), _scenario_stop("s"), _stop()]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
-    row = build_report(spec)["criteria"][0]
-    assert row["verdict"] == "UNPROVEN"
-    assert "no assertion declares `covers`" in row["why"]
 
 
 def test_an_aborted_scenario_proves_nothing_for_what_it_covered(tmp_path: Path) -> None:
@@ -232,7 +182,7 @@ def test_an_aborted_scenario_proves_nothing_for_what_it_covered(tmp_path: Path) 
         _scenario_stop("s", "failed", aborted=True, message="Timeout 30000ms exceeded"),
         _stop("failed"),
     ]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     data = build_report(spec)
     assert data["criteria"][0]["verdict"] == "UNPROVEN"
     assert "stopped early" in data["criteria"][0]["why"]
@@ -249,7 +199,7 @@ def test_a_sentinel_failure_does_not_fail_the_criterion(tmp_path: Path) -> None:
         _scenario_stop("s"),
         _stop(),
     ]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     data = build_report(spec)
     assert data["criteria"][0]["verdict"] == "PASS"
     assert data["counts"]["assertions"] == 2
@@ -262,7 +212,7 @@ def test_a_sentinel_failure_does_not_fail_the_criterion(tmp_path: Path) -> None:
 
 
 def test_assertions_and_screenshots_sit_under_the_step_that_recorded_them(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_stamped_log(), criteria=[_criterion("ac:1", "Sign in works."), _criterion("ac:2", "Tree loads.")])
+    spec = _spec(tmp_path, log=_stamped_log())
     data = build_report(spec)
     scenario = data["scenarios"][0]
     assert scenario["stamped"] is True
@@ -295,7 +245,7 @@ def test_a_captured_value_is_a_row_under_the_step_it_ran_in(tmp_path: Path) -> N
         _scenario_stop("s", assertions=1, failures=0),
         _stop(),
     ]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     data = build_report(spec)
     scenario = data["scenarios"][0]
     assert [(view["key"], view["value"]) for view in scenario["steps"][0]["captures"]] == [("session_id", "sess-7f3")]
@@ -317,7 +267,7 @@ def test_a_step_the_ledger_never_closed_is_marked_unfinished(tmp_path: Path) -> 
         _scenario_stop("s", "failed", aborted=True),
         _stop("failed"),
     ]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     data = build_report(spec)
     assert data["scenarios"][0]["steps"][0]["unfinished"] is True
     text = render_report(data)
@@ -327,7 +277,7 @@ def test_a_step_the_ledger_never_closed_is_marked_unfinished(tmp_path: Path) -> 
 
 def test_a_step_stamped_but_never_recorded_is_also_unfinished(tmp_path: Path) -> None:
     log = [_start(), _scenario_start("s", "ac:1"), _assert("s", 1, "first look", "ac:1", step=STEP_ONE), _scenario_stop("s", "failed", aborted=True), _stop("failed")]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     step = build_report(spec)["scenarios"][0]["steps"][0]
     assert step["label"] == STEP_ONE[1]
     assert step["unfinished"] is True
@@ -344,7 +294,7 @@ def test_a_ledger_without_stamps_lists_assertions_per_scenario_and_says_so(tmp_p
         _scenario_stop("s"),
         _stop(),
     ]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     data = build_report(spec)
     scenario = data["scenarios"][0]
     assert scenario["stamped"] is False
@@ -356,65 +306,26 @@ def test_a_ledger_without_stamps_lists_assertions_per_scenario_and_says_so(tmp_p
 
 
 
-def test_an_obligation_s_status_is_the_evidence_map_s(tmp_path: Path) -> None:
-    obligation = {
-        "id": CONTRACT, "kind": "contract", "node": "publish",
-        "source": "docs/services/orders/publish.md",
-        "requirement": "a stale manifest write is refused", "evidenceRequired": "live", "reasons": [],
-        "checksDeclared": [{"call": DECLARED, "name": "conflict_on_stale", "args": {}}],
-    }
-    log = [
-        _start(),
-        _scenario_start("s", CONTRACT),
-        _assert("s", 1, "a stale write is refused", CONTRACT, declared=DECLARED),
-        _scenario_stop("s"),
-        _stop(),
-    ]
-    evidence = {"runId": "qa-run-1", "obligations": [{"id": CONTRACT, "verdict": "pass", "log_refs": ["s-1"], "evidence": []}]}
-    spec = _spec(tmp_path, log=log, obligations=[obligation], evidence=evidence)
-    data = build_report(spec)
-    expected = build_evidence_map(spec)["obligations"][0]["status"]
-    assert data["obligations"][0]["status"] == expected
-    assert data["obligations"][0]["checksDeclared"] == [DECLARED]
-    text = render_report(data)
-    assert f"| `{CONTRACT}` |" in text
-    assert "Declared checks: `" + DECLARED + "`" in text
-
-
-def test_a_context_only_obligation_owes_nothing_and_is_not_a_row(tmp_path: Path) -> None:
-    obligation = {"id": CONTRACT, "kind": "contract", "source": "x", "requirement": "r", "required": False, "evidenceRequired": "context"}
-    spec = _spec(tmp_path, log=_stamped_log(), obligations=[obligation])
-    data = build_report(spec)
-    assert data["obligations"] == []
-    assert data["contextOnly"] == 1
-    assert "No OKF obligations in scope" in render_report(data)
-
-
-
-
 def test_the_warnings_name_what_a_reviewer_should_distrust(tmp_path: Path) -> None:
     log = [
         _start(),
         _scenario_start("s", "ac:1", "ac:77"),
         _assert("s", 1, "covers nothing"),
         _assert("s", 2, "no actual", "ac:1", actual=None),
-        _assert("s", 3, "covers a ghost", "ac:78"),
         {"kind": "runner_error", "status": "invalid", "message": "driver cleanup failed", "problems": ["web: boom"]},
         _scenario_stop("s"),
         _stop(),
     ]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     warnings = "\n".join(build_report(spec)["warnings"])
     assert "1 assertion(s) declare no `covers`" in warnings and "`s-1`" in warnings
     assert "recorded no `actual` value" in warnings and "`s-2`" in warnings
-    assert "`ac:77` is covered by `s`" in warnings
-    assert "`ac:78` is covered by `s-3`" in warnings
     assert "runner error: driver cleanup failed: web: boom" in warnings
 
 
 def test_a_clean_run_has_no_warnings(tmp_path: Path) -> None:
     log = [_start(), _scenario_start("s", "ac:1"), _assert("s", 1, "looked", "ac:1", step=STEP_ONE), _step("s", *STEP_ONE), _scenario_stop("s"), _stop()]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     data = build_report(spec)
     assert data["warnings"] == []
     assert "_None — every criterion" in render_report(data)
@@ -422,19 +333,12 @@ def test_a_clean_run_has_no_warnings(tmp_path: Path) -> None:
 
 def test_a_run_that_never_closed_is_reported_incomplete(tmp_path: Path) -> None:
     log = [_start(), _scenario_start("s", "ac:1"), _assert("s", 1, "looked", "ac:1")]
-    spec = _spec(tmp_path, log=log, criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=log)
     data = build_report(spec)
     assert data["status"] == "incomplete"
     assert any("no session_stop" in w for w in data["warnings"])
     assert any("`s` never stopped" in w for w in data["warnings"])
     assert "**INCOMPLETE**" in render_report(data)
-
-
-def test_a_missing_context_packet_is_a_warning_not_a_refusal(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_stamped_log(), context=False)
-    data = build_report(spec)
-    assert data["criteria"] == []
-    assert any("qa-okf-context.json is missing" in w for w in data["warnings"])
 
 
 def test_a_missing_ledger_is_a_refusal(tmp_path: Path) -> None:
@@ -447,7 +351,7 @@ def test_a_missing_ledger_is_a_refusal(tmp_path: Path) -> None:
 
 
 def test_the_scored_report_is_a_typed_spec_doc_carrying_its_run_id(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_stamped_log(), criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=_stamped_log())
     path = write_report(spec)
     assert path == spec / REPORT_FILE == report_path(spec)
     text = path.read_text(encoding="utf-8")
@@ -459,7 +363,7 @@ def test_the_scored_report_is_a_typed_spec_doc_carrying_its_run_id(tmp_path: Pat
 
 
 def test_a_dry_run_s_report_sits_beside_its_own_ledger_untyped(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_stamped_log(), criteria=[_criterion("ac:1", "Sign in works.")], qa_dirname="qa/try-1")
+    spec = _spec(tmp_path, log=_stamped_log(), qa_dirname="qa/try-1")
     path = write_report(spec, label="try-1")
     assert path == spec / "qa/try-1/report.md"
     text = path.read_text(encoding="utf-8")
@@ -473,7 +377,7 @@ def test_a_dry_run_s_report_sits_beside_its_own_ledger_untyped(tmp_path: Path) -
 
 
 def test_a_screenshot_s_vet_verdict_is_read_off_its_sidecar(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_stamped_log(), criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=_stamped_log())
     (spec / "qa/screenshots").mkdir(parents=True)
     (spec / "qa/screenshots/after-sign-in.vet.json").write_text(
         json.dumps({
@@ -492,14 +396,14 @@ def test_a_screenshot_s_vet_verdict_is_read_off_its_sidecar(tmp_path: Path) -> N
 
 
 def test_rendering_is_deterministic(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_stamped_log(), criteria=[_criterion("ac:1", "Sign in works.")])
+    spec = _spec(tmp_path, log=_stamped_log())
     assert write_report(spec).read_text() == write_report(spec).read_text()
 
 
 
 
 def test_a_stamped_step_is_placed_in_the_recording_of_its_target(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_recorded_log(), criteria=[_criterion("ac:1", "Tree loads.")])
+    spec = _spec(tmp_path, log=_recorded_log())
     data = build_report(spec)
     steps = data["scenarios"][0]["steps"]
     assert steps[0]["video"] == {"path": "qa/videos/web.mp4", "at": 2.4, "until": 4.9}

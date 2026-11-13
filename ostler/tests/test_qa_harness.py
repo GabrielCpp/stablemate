@@ -11,7 +11,6 @@ from typing import Any
 
 import pytest
 
-from ostler.qa.compile_http import HTTP_METHODS
 from ostler.qa.harness_host import load_harness_module
 
 HARNESS_DIR = Path(__file__).resolve().parents[1] / "ostler" / "qa" / "harness"
@@ -28,7 +27,7 @@ background("stack", argv=["./scripts/teststack.sh", "up"], ready_url="http://loc
 ADMIN = secret("ADMIN_TOKEN", from_env="QA_ADMIN_TOKEN")
 
 
-@scenario(target=api, mechanism="live", covers=["ac:1", "okf:docs/a.md#publish:does:1"])
+@scenario(target=api, mechanism="live", covers=["ac:1", "publish-does-1"])
 def publish_records_the_real_author(qa: Qa) -> None:
     """Publish ignores a spoofed author."""
     qa.capture("uid", "u-123")
@@ -100,8 +99,8 @@ def _run(module: Path, scenario_id: str, tmp_path: Path) -> tuple[int, list[dict
     return code, records
 
 
-@pytest.mark.parametrize("verb", HTTP_METHODS)
-def test_the_http_client_sends_every_verb_the_compiler_emits(verb: str) -> None:
+@pytest.mark.parametrize("verb", ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"))
+def test_the_http_client_sends_every_http_verb(verb: str) -> None:
     harness = load_harness_module("ostler_qa")
     assert callable(getattr(harness.Http, verb.lower(), None))
 
@@ -159,7 +158,7 @@ def test_describe_carries_covers_and_the_docstring_objective(tmp_path: Path) -> 
     assert first["id"] == "publish-records-the-real-author"
     assert first["target"] == "api"
     assert first["mechanism"] == "live"
-    assert first["covers"] == ["ac:1", "okf:docs/a.md#publish:does:1"]
+    assert first["covers"] == ["ac:1", "publish-does-1"]
     assert first["objective"] == "Publish ignores a spoofed author."
     assert described["scenarios"][1]["checkpoints"] == ["the banner shows"]
 
@@ -179,36 +178,6 @@ def test_describe_counts_the_assertions_statically(tmp_path: Path) -> None:
         "banner-is-visible": 0,
         "the-page-is-addressed-by-role": 1,
     }
-
-
-def test_describe_recovers_the_screens_a_scenario_vets(tmp_path: Path) -> None:
-    module = _write(
-        tmp_path,
-        PLAN.replace(
-            '    qa.check("published", True)',
-            '    qa.vet("docs/services/demo/screen.md", name="loaded")\n'
-            "    qa.vet(SCREEN)\n"
-            '    qa.check("published", True)',
-        ).replace(
-            'plan(run_id="qa-04-publish", story="04-publish")',
-            'SCREEN = "docs/services/demo/other.md"\n\nplan(run_id="qa-04-publish", story="04-publish")',
-        ),
-    )
-
-    vets = {s["id"]: s["vets"] for s in _describe(module)["scenarios"]}
-    assert vets["the-page-is-addressed-by-role"] == ["docs/services/demo/screen.md", "*"]
-    assert vets["publish-records-the-real-author"] == []
-
-
-def test_describe_recovers_the_locators_a_browser_scenario_writes(tmp_path: Path) -> None:
-    described = _describe(_write(tmp_path))
-    found = {s["id"]: s["locators"] for s in described["scenarios"]}
-    assert found["the-page-is-addressed-by-role"] == [
-        {"do": "goto", "url": "/docs"},
-        {"locator": {"role": "button", "name": "Publish"}},
-        {"locator": {"text": "done"}},
-    ]
-    assert found["publish-records-the-real-author"] == []
 
 
 def test_describe_runs_nothing(tmp_path: Path) -> None:
@@ -289,27 +258,6 @@ def test_require_stops_the_scenario(tmp_path: Path) -> None:
     labels = [r["label"] for r in records if r["type"] == "assert"]
     assert labels == ["author is the token uid"]
     assert records[-1]["failures"] == 1
-
-
-def test_a_ui_scenario_that_vets_nothing_fails_at_run_time(tmp_path: Path) -> None:
-    """The static gate reads the plan; this one counts the calls that actually ran, so a scenario cannot reach the ledger green having proved only that its elements exist."""
-    module = _write(
-        tmp_path,
-        "from ostler_qa import Qa, plan, scenario, target\n\n"
-        'plan(run_id="qa-04-publish", story="04-publish")\n\n'
-        'phone = target("phone", driver="maestro")\n\n\n'
-        '@scenario(target=phone, mechanism="live", covers=["ac:1"])\n'
-        "def the_list_is_shown(qa: Qa) -> None:\n"
-        '    """The list renders."""\n'
-        '    qa.check("the list is shown", True)\n',
-    )
-
-    code, records = _run(module, "the-list-is-shown", tmp_path)
-
-    assert code == 1
-    assert records[-1]["status"] == "failed"
-    assert "vetted no screen" in records[-1]["error"]
-
 
 
 EVENTUALLY_PLAN = '''\
@@ -453,7 +401,7 @@ def test_describe_counts_eventually_as_an_assertion_and_binds_its_covers(
 
 
 def test_every_extractor_shares_one_parse_of_a_plan(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A describe reads the plan through six extractors, and a compiled book's plan costs seconds per parse, so one plan source is parsed once for all six."""
+    """A describe reads the plan through three extractors, and a large plan costs seconds per parse, so one plan source is parsed once for all three."""
     harness = load_harness_module("ostler_qa")
     parses: list[str] = []
     parse = harness.ast.parse
@@ -467,10 +415,7 @@ def test_every_extractor_shares_one_parse_of_a_plan(monkeypatch: pytest.MonkeyPa
     extractors = (
         harness.count_checks,
         harness.extract_check_covers,
-        harness.extract_check_calls,
-        harness.extract_locators,
-        harness.extract_vets,
-        harness.extract_instances,
+        harness.extract_fixtures,
     )
     for extract in extractors:
         _ = extract(source)
@@ -499,7 +444,7 @@ class Always201(BaseHTTPRequestHandler):
         pass
 
 
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:concurrency:1"])
+@scenario(target=api, mechanism="live", covers=["confirm-concurrency-1"])
 def a_stale_confirm_is_refused(qa: Qa) -> None:
     """A confirmation quoting an old version is refused."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
@@ -520,7 +465,7 @@ def test_an_unmet_expect_status_is_recorded_before_it_raises(tmp_path: Path) -> 
     assert asserted[0]["passed"] is False
     assert asserted[0]["actual"] == 201
     assert asserted[0]["expected"] == [409]
-    assert asserted[0]["covers"] == ["okf:docs/a.md#confirm:concurrency:1"]
+    assert asserted[0]["covers"] == ["confirm-concurrency-1"]
     assert records[-1]["status"] == "errored"
 
 
@@ -535,14 +480,14 @@ def test_an_unmet_expect_status_keeps_the_request_it_answered(tmp_path: Path) ->
 
 
 INVENTED_PLAN = STATUS_PLAN.split("@scenario")[0] + '''\
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:does:1"])
+@scenario(target=api, mechanism="live", covers=["confirm-does-1"])
 def an_id_nothing_produced(qa: Qa) -> None:
     """A request whose path carries a captured id and whose body carries one the book wrote."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
     qa.capture("seat", "11F1BCE709F79FE38E716E4A1BA7C16F")
-    with qa.claim(["okf:docs/a.md#confirm:does:1"]):
+    with qa.claim(["confirm-does-1"]):
         qa.http.post(
             "/api/seats/11f1bce709f79fe38e716e4a1ba7c16f/booking",
             json_body={"row": "0123456789abcdef01234567", "note": "A2"},
@@ -559,14 +504,14 @@ def test_a_request_keeps_the_ids_nothing_the_scenario_ran_produced(tmp_path: Pat
 
 
 UNREACHABLE_PLAN = STATUS_PLAN.split("@scenario")[0] + '''\
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:does:1"])
+@scenario(target=api, mechanism="live", covers=["confirm-does-1"])
 def nothing_listens(qa: Qa) -> None:
     """A request to a port nothing listens on."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
     port = server.server_address[1]
     server.server_close()
     qa.http.base_url = "http://127.0.0.1:%d" % port
-    with qa.claim(["okf:docs/a.md#confirm:does:1"]):
+    with qa.claim(["confirm-does-1"]):
         qa.http.get("/api/seats", expect_status=200)
 '''
 
@@ -602,20 +547,20 @@ def test_an_unmet_expect_status_keeps_what_the_app_replied(tmp_path: Path) -> No
 
 
 CLAIM_PLAN = STATUS_PLAN.split("@scenario")[0] + '''\
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:does:1", "okf:docs/a.md#confirm:does:2", "okf:docs/a.md#confirm:does:3"])
+@scenario(target=api, mechanism="live", covers=["confirm-does-1", "confirm-does-2", "confirm-does-3"])
 def each_claim_is_its_own(qa: Qa) -> None:
     """Three claims of one page, the first two refused."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
-    with qa.claim(["okf:docs/a.md#confirm:does:1"]):
+    with qa.claim(["confirm-does-1"]):
         qa.http.post("/api/seats/A2/booking", expect_status=409)
         qa.check("unreached", True)
-    with qa.claim(["okf:docs/a.md#confirm:does:2"]):
+    with qa.claim(["confirm-does-2"]):
         qa.http.get("/api/seats/A2/booking")
-    with qa.claim(["okf:docs/a.md#confirm:does:3"]):
+    with qa.claim(["confirm-does-3"]):
         qa.http.post("/api/seats/A2/booking", expect_status=201)
-        qa.check("reached", True, covers=["okf:docs/a.md#confirm:does:3"])
+        qa.check("reached", True, covers=["confirm-does-3"])
 '''
 
 
@@ -626,23 +571,23 @@ def test_a_refused_claim_is_recorded_against_it_and_the_scenario_goes_on(tmp_pat
     assert code == 1
     asserted = _asserts(records)
     assert [(record["covers"], record["passed"]) for record in asserted] == [
-        (["okf:docs/a.md#confirm:does:1"], False),
-        (["okf:docs/a.md#confirm:does:2"], False),
-        (["okf:docs/a.md#confirm:does:3"], True),
+        (["confirm-does-1"], False),
+        (["confirm-does-2"], False),
+        (["confirm-does-3"], True),
     ]
     assert "returned 501" in asserted[1]["actual"]
     assert records[-1]["status"] == "failed"
 
 
 STOP_PLAN = STATUS_PLAN.split("@scenario")[0].replace("send_response(201)", "send_response(500)") + '''\
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#confirm:does:1"])
+@scenario(target=api, mechanism="live", covers=["confirm-does-1"])
 def a_setup_step_fails(qa: Qa) -> None:
     """The request before the claimed one answers 500."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), Always201)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     qa.http.base_url = "http://127.0.0.1:%d" % server.server_address[1]
     qa.http.post("/api/seats")
-    qa.check("unreached", True, covers=["okf:docs/a.md#confirm:does:1"])
+    qa.check("unreached", True, covers=["confirm-does-1"])
 '''
 
 
@@ -670,7 +615,7 @@ api = target("api")
 DOCUMENT = {"item": {"id": "abc"}, "items": [{"id": "def"}]}
 
 
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#import:does:1"])
+@scenario(target=api, mechanism="live", covers=["import-does-1"])
 def a_rooted_path_reads_the_same_field(qa: Qa) -> None:
     """A `$`-rooted json_path names the same field as the bare one."""
     qa.verify("json_path", DOCUMENT, path="$.item.id", equals="abc")
@@ -702,7 +647,7 @@ api = target("api")
 DOCUMENT = {"items": [{"id": "def"}, {"id": "ghi", "n": 2}]}
 
 
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#import:does:1"])
+@scenario(target=api, mechanism="live", covers=["import-does-1"])
 def a_filter_selects_by_what_an_entry_holds(qa: Qa) -> None:
     """A filter segment names the entry by a field it holds, not by its position."""
     qa.verify("json_path", DOCUMENT, path="$.items[?(@.id=='ghi')].n", equals=2)
@@ -738,7 +683,7 @@ def test_a_browser_problem_is_a_failing_assertion_bound_to_the_scenario_covers(
         root=tmp_path,
         spec_dir=tmp_path,
         qa_dir=tmp_path / "qa",
-        covers=["ac:1", "okf:docs/a.md#list:does:1"],
+        covers=["ac:1", "list-does-1"],
         recorder=recorder,
     )
 
@@ -755,7 +700,7 @@ def test_a_browser_problem_is_a_failing_assertion_bound_to_the_scenario_covers(
             "passed": False,
             "actual": problem,
             "expected": harness.BROWSER_CLEAN_EXPECTED,
-            "covers": ["ac:1", "okf:docs/a.md#list:does:1"],
+            "covers": ["ac:1", "list-does-1"],
             "origin": "browser",
         }
     ]
@@ -970,7 +915,7 @@ class AccountThenEcho(BaseHTTPRequestHandler):
         pass
 
 
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#accounts:does:1"])
+@scenario(target=api, mechanism="live", covers=["accounts-does-1"])
 def an_account_id_captured_from_one_response_addresses_the_next(qa: Qa) -> None:
     """An id captured from an API response substitutes into a later request's body."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), AccountThenEcho)
@@ -1012,7 +957,7 @@ plan(run_id="qa-09-capture-miss", story="09-capture-miss")
 api = target("api")
 
 
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#accounts:does:1"])
+@scenario(target=api, mechanism="live", covers=["accounts-does-1"])
 def a_capture_path_that_finds_nothing_is_a_defect(qa: Qa) -> None:
     """A declared capture whose path is absent from the response is a book/code defect."""
     qa.capture_field("missing_id", {"account_id": "acme-42"}, "no_such_field")
@@ -1149,7 +1094,7 @@ class Echo(BaseHTTPRequestHandler):
         pass
 
 
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#pay:does:1"])
+@scenario(target=api, mechanism="live", covers=["pay-does-1"])
 def a_literal_at_and_dollar_are_never_treated_as_references(qa: Qa) -> None:
     """A body carrying an `@`/`$` literal reaches the server verbatim, unresolved."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), Echo)
@@ -1332,7 +1277,7 @@ class Bills(BaseHTTPRequestHandler):
         pass
 
 
-@scenario(target=api, mechanism="live", covers=["okf:docs/a.md#rename:ok"])
+@scenario(target=api, mechanism="live", covers=["rename-ok"])
 def a_three_step_walk(qa: Qa) -> None:
     """Three reads, each checked before the next is sent."""
     server = ThreadingHTTPServer(("127.0.0.1", 0), Bills)
@@ -1341,9 +1286,9 @@ def a_three_step_walk(qa: Qa) -> None:
     for number, node in enumerate(NODES, start=1):
         observed = qa.http.get("/step-%d" % number)
         with qa.at_node(node):
-            qa.verify("http_status", observed, code=200, covers=["okf:docs/a.md#rename:ok"])
+            qa.verify("http_status", observed, code=200, covers=["rename-ok"])
             qa.verify("json_path", observed.json(), path="$.state", equals="@WANT@" if number == 2 else "@STATE@",
-                      covers=["okf:docs/a.md#rename:ok"])
+                      covers=["rename-ok"])
 '''
 
 
@@ -1384,7 +1329,7 @@ api = target("api")
 SEEN = "@SEEN@"
 OTHER = "@OTHER@"
 HIDDEN = "docs/a.md#hidden-from-others"
-COVERS = ["okf:docs/a.md#hidden-from-others:errors:1"]
+COVERS = ["hidden-from-others-errors-1"]
 
 
 class Bills(BaseHTTPRequestHandler):

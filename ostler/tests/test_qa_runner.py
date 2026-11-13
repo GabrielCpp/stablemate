@@ -15,14 +15,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from ostler.artifact.kinds import _qa_evidence_vet
-from ostler.qa.context import book_files
 from ostler.qa.plan import RETIRED_YAML, _validate_background, load_plan, validate_v2
-from ostler.qa.evidence_map import build_evidence_map
 from ostler.qa.run import cmd_run, cmd_validate
 from ostler.qa import session
 from ostler.qa.session import _kill_pid
 
-OBLIGATION = "okf:docs/services/demo/item.md:contract"
+OBLIGATION = "ac-1"
 
 
 @pytest.fixture(autouse=True)
@@ -57,31 +55,6 @@ def api_contract(qa: Qa) -> None:
 def _spec(tmp_path: Path) -> Path:
     spec = tmp_path / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
-    (spec / "qa-okf-context.json").write_text(
-        json.dumps(
-            {
-                "version": 1,
-                "available": True,
-                "contracts": [],
-                "acceptanceCriteria": [],
-                "healthFindings": [],
-                "obligations": [
-                    {
-                        "id": OBLIGATION,
-                        "kind": "contract",
-                        "node": "item",
-                        "source": "docs/services/demo/item.md",
-                        "requirement": "item is emitted",
-                        "evidenceRequired": "live",
-                        "reasons": [],
-                    }
-                ],
-                "bookFiles": book_files(tmp_path, "docs/services"),
-                "storyFile": None,
-            }
-        ),
-        encoding="utf-8",
-    )
     return spec
 
 
@@ -206,7 +179,7 @@ def test_a_run_owns_the_log_the_manifest_and_the_evidence(tmp_path: Path) -> Non
         assert artifact_path.is_file()
         assert hashlib.sha256(artifact_path.read_bytes()).hexdigest() == artifact["sha256"]
     evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
-    assert evidence["obligations"][0]["verdict"] == "Pass"
+    assert evidence["criteria"][0]["verdict"] == "Pass"
     assert _qa_evidence_vet(evidence, spec, tmp_path) == []
 
 
@@ -223,7 +196,7 @@ def test_a_scenario_that_stops_early_claims_nothing_it_covered(tmp_path: Path) -
     assert outcome.status == "failed"
     evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
     assert evidence["overall"] == "Fail"
-    row = evidence["obligations"][0]
+    row = evidence["criteria"][0]
     assert row["verdict"] == "Fail"
     assert row["aborted_log_refs"] == ["api-contract:assert:1", "api-contract:assert:2"]
     assert row.get("failing_log_refs", []) == []
@@ -240,15 +213,12 @@ def test_a_scenario_that_stops_early_claims_nothing_it_covered(tmp_path: Path) -
     assert [record["covers"] for record in synthesized] == [[OBLIGATION]]
     assert [record.get("sentinel") for record in synthesized] == [True]
 
-    mapped = build_evidence_map(spec)
-    assert [row["status"] for row in mapped["obligations"]] == ["unproven"]
-
     tampered = json.loads(json.dumps(evidence))
-    tampered["obligations"][0] = {
+    tampered["criteria"][0] = {
         "id": OBLIGATION,
         "verdict": "Pass",
         "log_refs": ["api-contract:assert:1"],
-        "evidence": evidence["obligations"][0]["evidence"] or ["qa/qa-run.ndjson"],
+        "evidence": evidence["criteria"][0]["evidence"] or ["qa/qa-run.ndjson"],
     }
     problems = _qa_evidence_vet(tampered, spec, tmp_path)
     assert any("did not run to completion" in problem for problem in problems), problems
@@ -270,18 +240,18 @@ def test_one_failing_assertion_sinks_the_item_it_covers(tmp_path: Path) -> None:
     assert outcome.status == "failed"
     evidence = json.loads((spec / "qa-evidence.json").read_text(encoding="utf-8"))
     assert evidence["overall"] == "Fail"
-    row = evidence["obligations"][0]
+    row = evidence["criteria"][0]
     assert row["verdict"] == "Fail"
     assert row["failing_log_refs"] == ["api-contract:assert:2"]
     assert row["log_refs"] == ["api-contract:assert:1", "api-contract:assert:2"]
     assert _qa_evidence_vet(evidence, spec, tmp_path) == []
 
     tampered = json.loads(json.dumps(evidence))
-    tampered["obligations"][0] = {
+    tampered["criteria"][0] = {
         "id": OBLIGATION,
         "verdict": "Pass",
         "log_refs": ["api-contract:assert:1"],
-        "evidence": evidence["obligations"][0]["evidence"] or ["qa/qa-run.ndjson"],
+        "evidence": evidence["criteria"][0]["evidence"] or ["qa/qa-run.ndjson"],
     }
     problems = _qa_evidence_vet(tampered, spec, tmp_path)
     assert any(
@@ -427,49 +397,6 @@ def test_a_missing_secret_file_blocks_the_run(tmp_path: Path) -> None:
     assert "secret 'db' requires a non-empty file .qa-secrets/db-password" in outcome.message
 
 
-
-
-def test_a_documented_node_is_separated_from_a_genuinely_unknown_id(tmp_path: Path) -> None:
-    """A node the diff does not touch is not "unknown" — and saying so costs a rework lap."""
-    spec = _spec(tmp_path)
-    context = json.loads((spec / "qa-okf-context.json").read_text(encoding="utf-8"))
-    context["contracts"] = ["docs/services/demo/api.md#tooling"]
-    (spec / "qa-okf-context.json").write_text(json.dumps(context), encoding="utf-8")
-    module = _plan(
-        spec,
-        PLAN.replace(
-            'covers=["{obligation}"]',
-            'covers=[\n'
-            '    "{obligation}",\n'
-            '    "okf:docs/services/demo/api.md#tooling:contract",  # documented, not owed here\n'
-            '    "okf:docs/services/demo/api.md#tooling:raises:2",  # ditto, one bullet value\n'
-            '    "okf:docs/services/demo/invented.md:contract",     # not in the book at all\n'
-            ']',
-        ),
-    )
-
-    document, load_problems = load_plan(module, spec, tmp_path)
-    assert not load_problems and document is not None
-    problems = validate_v2(document)
-    documented = next(p for p in problems if "#tooling:contract" in p)
-    valued = next(p for p in problems if "#tooling:raises:2" in p)
-    unknown = next(p for p in problems if "invented.md" in p)
-
-    assert "not an obligation of this change" in documented
-    assert "unknown ID" not in documented
-    assert "not an obligation of this change" in valued
-    assert "unknown ID" not in valued
-    assert OBLIGATION in documented
-    assert OBLIGATION in unknown
-    assert "unknown ID" in unknown
-
-
-def test_validation_requires_the_okf_context(tmp_path: Path) -> None:
-    spec = tmp_path / "docs/specs/story-1"
-    spec.mkdir(parents=True)
-    document, problems = load_plan(_plan(spec), spec, tmp_path)
-    assert not problems and document is not None
-    assert any("qa-okf-context.json is required" in item for item in validate_v2(document))
 
 
 def test_an_input_under_disposable_qa_is_rejected(tmp_path: Path) -> None:

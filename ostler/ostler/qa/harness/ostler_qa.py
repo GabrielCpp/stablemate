@@ -10,8 +10,6 @@ import linecache
 import os
 import re
 import shutil
-import signal
-import string
 import subprocess
 import sys
 import time
@@ -34,9 +32,7 @@ import ostler_qa_transfer
 from ostler_qa_elements import choose, maestro_pattern, name_pattern, template_pattern
 from ostler_qa_files import checkout_files
 from ostler_qa_grpc import Caller, Grpc, GrpcError, GrpcurlCaller
-from ostler_qa_lap import Arranged, LapRecord
 from ostler_qa_paths import is_projection, path_steps, resolve_path
-from ostler_qa_resources import Observed, PendingRelease, ResourceDesk
 from ostler_qa_responses import reply_excerpt
 from ostler_qa_settle import ANNOUNCED_ROLES, PageScreen, Screen, announced, settle_screen
 from ostler_qa_verifiers import (
@@ -68,22 +64,6 @@ RECORD_FD_ENV = "OSTLER_QA_RECORD_FD"
 RECORD_PATH_ENV = "OSTLER_QA_RECORD_PATH"
 
 _SHELL = shutil.which("bash") or "/bin/sh"
-
-PROBE_STEP = "probe"
-
-SERVE_STEP = "serve"
-
-BORROW_STEP = "borrow"
-
-RELEASE_STEP = "release"
-
-WRITING_STEPS = frozenset({"run", "seed"})
-
-_SERVE_SETTLE_S = 0.5
-
-SERVE_STOP_GRACE_S = 10
-
-_BACKGROUNDED = re.compile(r"(?<![&|])&\s*$")
 
 _NODE_REF = re.compile(r"(?<![\w.])@([a-zA-Z0-9][a-zA-Z0-9_-]*)\.([a-zA-Z0-9][a-zA-Z0-9_-]*)")
 _CAPTURE_REF = re.compile(r"(?<![\w.])\$([a-zA-Z0-9][a-zA-Z0-9_-]*)")
@@ -461,25 +441,6 @@ def _definition_line(func: Callable[..., None]) -> int:
     return code.co_firstlineno
 
 
-def stop_server_group(server: subprocess.Popen[Any]) -> None:
-    """SIGTERM a `serve` step's process group, wait `SERVE_STOP_GRACE_S` for its leader, then SIGKILL what is left: what its shell started outlives the shell otherwise."""
-    try:
-        os.killpg(server.pid, signal.SIGTERM)
-        server.wait(timeout=SERVE_STOP_GRACE_S)
-    except subprocess.TimeoutExpired:
-        pass
-    except (ProcessLookupError, PermissionError):
-        return
-    try:
-        os.killpg(server.pid, signal.SIGKILL)
-    except (ProcessLookupError, PermissionError):
-        return
-    try:
-        server.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        return
-
-
 class _Recorder:
     """Writes JSONL records to a path, to `RECORD_FD`, or nowhere."""
 
@@ -700,21 +661,6 @@ def _not_yet(exc: BaseException) -> bool:
     ] == "playwright"
 
 
-def _facts_of_step(declared: Sequence[Mapping[str, str]], step_id: str, stdout: str) -> dict[str, str]:
-    """The provided facts a fixture's step `step_id` printed, which the fixture's later steps read from their environment."""
-    try:
-        payload = json.loads(stdout)
-    except json.JSONDecodeError:
-        return {}
-    facts: dict[str, str] = {}
-    for entry in declared:
-        if entry.get("from") == step_id and not entry.get("is"):
-            hit = resolve_path(payload, entry.get("read") or entry["key"])
-            if hit.found:
-                facts[entry["key"]] = str(hit.value)
-    return facts
-
-
 def _sampled(actual: Any) -> Any:
     """Read an `actual=` that may be a callable, after the poll loop has settled."""
     if not callable(actual):
@@ -832,14 +778,6 @@ class _Missing:
 MISSING = _Missing()
 
 
-def _fixture_page(name: str, spec: Mapping[str, Any]) -> str:
-    """The book page that declares fixture `name`, refused when the context does not carry it as text."""
-    page = spec.get("page")
-    if not isinstance(page, str) or not page:
-        raise ValueError(f"book fixture {name!r} names no page it is declared on: {page!r}")
-    return page
-
-
 @dataclass
 class FixtureFault:
     """One book-fixture step that could not prove its state, classified per Q38."""
@@ -867,10 +805,7 @@ class Qa:
         offset_base_ms: int = 0,
         tools: Mapping[str, str] | None = None,
         fixtures: Mapping[str, Mapping[str, Any]] | None = None,
-        book_fixtures: Mapping[str, Mapping[str, Any]] | None = None,
-        resources: Mapping[str, Mapping[str, Any]] | None = None,
         tool_env: Sequence[str] = (),
-        lap_dir: Path | None = None,
         ceiling_s: float = CEILING_S,
         grpc_caller: Caller | None = None,
     ) -> None:
@@ -883,17 +818,9 @@ class Qa:
         self.covers = list(covers)
         self._tool_commands = dict(tools or {})
         self._fixtures = {name: dict(spec) for name, spec in (fixtures or {}).items()}
-        self._book_fixtures = {name: dict(spec) for name, spec in (book_fixtures or {}).items()}
-        self._fixture_pages = {name: _fixture_page(name, spec) for name, spec in self._book_fixtures.items()}
-        self._resources = ResourceDesk(dict(resources or {}), self._fault, recorder.emit, scenario_id)
-        self._fixture_pages.update({stem: str(spec.get("page", "")) for stem, spec in self._resources.resources.items()})
-        self._book_fixture_memo: dict[tuple[str, tuple[tuple[str, str], ...]], ToolResult] = {}
         self._node_facts: dict[str, dict[str, str]] = {}
         self._node_structures: dict[str, dict[str, Any]] = {}
-        self._node_sessions: dict[str, dict[str, Any]] = {}
-        self._lap = LapRecord(lap_dir) if lap_dir is not None else None
         self._last_fault: FixtureFault | None = None
-        self._servers: list[subprocess.Popen[bytes]] = []
         self._tool_env_allowed = frozenset(tool_env)
         self._recorder = recorder
         self._captures: dict[str, str] = {}
@@ -908,7 +835,6 @@ class Qa:
         self._index = 0
         self.assertions = 0
         self.failures = 0
-        self.vets = 0
         self.offset_base_ms = offset_base_ms
         self.page: Any = None
         self.diagnostics: Any = None
@@ -984,8 +910,6 @@ class Qa:
 
     def fixture(self, name: str, *args: str) -> "ToolResult":
         """Put the product into a state this repo declared, and write down that it happened."""
-        if name in self._book_fixtures:
-            return self._exec_book_fixture(name, self._parse_fixture_args(args))
         spec = self._fixtures.get(name)
         if spec is None:
             declared = ", ".join(sorted(self._fixtures)) or "(none declared)"
@@ -1014,14 +938,6 @@ class Qa:
             )
         return result
 
-
-    @staticmethod
-    def _parse_fixture_args(args: Sequence[str]) -> dict[str, str]:
-        parsed: dict[str, str] = {}
-        for tok in args:
-            key, _, value = tok.partition("=")
-            parsed[key] = value
-        return parsed
 
     def _resolve_ref(self, owner: str, value: str) -> str:
         """*value*, with every embedded `@node.key` and `$name` reference substituted."""
@@ -1101,7 +1017,7 @@ class Qa:
         )
         self._recorder.emit({"type": "fixture_fault", **asdict(fault)})
         self._last_fault = fault
-        self._claim_fault = ClaimFault(fault_class, fixture, self._fixture_pages.get(fixture, ""))
+        self._claim_fault = ClaimFault(fault_class, fixture, "")
 
     def scenario_env(self, env: Mapping[str, str]) -> dict[str, str]:
         """*env* with each `$NAME` expanded from this process and each relative path resolved against the checkout.
@@ -1123,460 +1039,6 @@ class Qa:
             entries.append(entry)
         return os.pathsep.join(entries)
 
-    def _run_book_step(
-        self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
-    ) -> "ToolResult":
-        kind = str(step.get("kind", ""))
-        command = str(step.get("command", ""))
-        cwd = self._step_cwd(fixture, index, step)
-        timeout = float(step["timeout"])
-        if _BACKGROUNDED.search(command):
-            detail = ("backgrounds its command with `&`, so the step never finishes; "
-                      "a process the scenario talks to is a `kind: serve` step")
-            self._fault(fixture, index, kind, "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) {detail}")
-        argv = [_SHELL, "-c", command]
-        overlay = {**os.environ, **env}
-        try:
-            done = subprocess.run(  # noqa: S603 - fixed shell invocation of a book-declared recipe
-                argv, cwd=cwd, env=overlay, capture_output=True, text=True, timeout=timeout, check=False,
-            )
-        except OSError as exc:
-            self._fault(fixture, index, kind, "environment", str(exc))
-            raise RuntimeError(
-                f"qa fixture {fixture!r} step {index} ({kind}) could not start: {exc}"
-            ) from exc
-        except subprocess.TimeoutExpired as exc:
-            self._fault(fixture, index, kind, "defect", f"timed out after {timeout}s")
-            raise RuntimeError(
-                f"qa fixture {fixture!r} step {index} ({kind}) timed out after {timeout}s"
-            ) from exc
-        result = ToolResult(command=argv, stdout=done.stdout, stderr=done.stderr, exit_code=done.returncode)
-        if not result.ok:
-            body = (result.stderr or result.stdout).strip()[-500:]
-            prefix = (
-                f"command not found (exit {result.exit_code})"
-                if result.exit_code in (126, 127)
-                else f"exit {result.exit_code}"
-            )
-            detail = f"{prefix}: {body}"
-            fault_class = "capability" if kind == PROBE_STEP else "defect"
-            self._fault(fixture, index, kind, fault_class, detail)
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})")
-        return result
-
-    def _with_resource(self, step: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, str]:
-        """*env* with the secrets of the resource a `run:` step is `on:`, after the resource has answered its probe."""
-        stem = str(step["on"])
-        self._resources.ensure_reachable(stem)
-        return {**env, **self._resources.secrets_of(stem)}
-
-    def _bound_request_text(self, fixture: str, index: int, kind: str, text: str, env: Mapping[str, str]) -> str:
-        """A request's path or body with `$NAME` bound from the fixture's facts and `@fixture.key` from the ones it needs."""
-        try:
-            bound = string.Template(text).substitute(env)
-        except (KeyError, ValueError) as exc:
-            named = f"${exc.args[0]}" if isinstance(exc, KeyError) else "a `$` that names nothing"
-            detail = f"names {named}, which no arg, secret, need or provided fact binds"
-            self._fault(fixture, index, kind, "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) {detail}") from exc
-        return self._resolve_ref(fixture, bound) if _NODE_REF.search(bound) else bound
-
-    def _request_book_step(
-        self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
-    ) -> "ToolResult":
-        """Send a `request:` step to the resource it is `on:`. Only the method and URL are logged."""
-        kind, stem = str(step.get("kind", "")), str(step["on"])
-        self._resources.ensure_reachable(stem)
-        method = step["request"]["method"]
-        path = self._bound_request_text(fixture, index, kind, step["request"]["path"], env)
-        body = self._bound_request_text(fixture, index, kind, step["body"], env) if step.get("body") else None
-        url = self._resources.base_of(stem) + path
-        try:
-            reply = self._resources.send(stem, method, path, body, float(step["timeout"]))
-        except OSError as exc:
-            self._fault(fixture, index, kind, "defect", f"{method} {url} could not connect: {exc}")
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) could not reach {url}: {exc}") from exc
-        if not reply.ok:
-            detail = f"{method} {url} answered {reply.status}: {reply.body.strip()[:300]}"
-            self._fault(fixture, index, kind, "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})")
-        return ToolResult(command=[method, url], stdout=reply.body, stderr="", exit_code=0)
-
-    def _owe_releases(self, fixture: str, steps: Sequence[Mapping[str, Any]], borrowed: int, env: dict[str, str]) -> None:
-        """After a borrow succeeds, owe every `release` step that follows it, to be sent however the scenario ends."""
-        secrets = [*self._book_fixtures[fixture].get("secrets", [])]
-        for index in range(borrowed + 1, len(steps)):
-            step = steps[index]
-            if step.get("kind") != RELEASE_STEP or "request" not in step:
-                continue
-            self._resources.register_release(
-                PendingRelease(fixture, index, str(step["on"]), step["request"]["method"], step["request"]["path"],
-                               step.get("body"), env, float(step["timeout"])),
-                secrets)
-
-    def release_all(self) -> list[str]:
-        """Give back everything the scenario borrowed. Never raises: the problems come back for the verdict."""
-        return self._resources.release_all()
-
-    def observe(
-        self, resource: str, observation: str, *, within: float = 0, until: Sequence[tuple[str, Mapping[str, Any]]] = (),
-    ) -> Observed:
-        """Read a resource's observation, re-reading for up to *within* seconds until every check in *until* holds, and return the last read."""
-        spec = self._resources.known(resource)
-        step = (spec.get("observations") or {}).get(observation) or {}
-        if spec.get("reach") == "cli":
-            target = self.resolve(str(step.get("command", "")))
-        else:
-            target = self.resolve(str((step.get("request") or {}).get("path", "")))
-        waiting = [(VERIFIERS[name], args) for name, args in until]
-
-        def holds(observed: Observed) -> bool:
-            document = observed.json()
-            return all(verifier(document, args).passed for verifier, args in waiting)
-
-        return self._resources.observe(resource, observation, target, within=float(within), holds=holds)
-
-    def _step_cwd(self, fixture: str, index: int, step: Mapping[str, Any]) -> str:
-        kind = str(step.get("kind", ""))
-        cwd = str(step.get("cwd") or self.root)
-        if not Path(cwd).is_dir():
-            self._fault(fixture, index, kind, "environment", f"cwd {cwd!r} does not exist")
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}): cwd {cwd!r} does not exist")
-        return cwd
-
-    def _serve_book_step(
-        self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
-    ) -> "ToolResult":
-        """Start a `serve` step's command in its own process group, which lives until the scenario ends."""
-        if self._book_fixtures[fixture].get("lifetime") != "scenario":
-            detail = ("serves a process, which ends with the scenario that started it; "
-                      "declare `lifetime: scenario` so each scenario starts its own")
-            self._fault(fixture, index, SERVE_STEP, "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({SERVE_STEP}) {detail}")
-        cwd = self._step_cwd(fixture, index, step)
-        argv = [_SHELL, "-c", str(step.get("command", ""))]
-        log_path = self.dir / f"serve-{self.scenario_id}-{fixture}-{index}.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            with log_path.open("wb") as log:
-                server = subprocess.Popen(  # noqa: S603 - fixed shell invocation of a book-declared recipe
-                    argv, cwd=cwd, env={**os.environ, **env}, stdin=subprocess.DEVNULL,
-                    stdout=log, stderr=subprocess.STDOUT, process_group=0,
-                )
-        except OSError as exc:
-            self._fault(fixture, index, SERVE_STEP, "environment", str(exc))
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({SERVE_STEP}) could not start: {exc}") from exc
-        self._servers.append(server)
-        self._recorder.emit({"type": "serve", "scenario": self.scenario_id, "fixture": fixture, "pgid": server.pid})
-        try:
-            code = server.wait(timeout=_SERVE_SETTLE_S)
-        except subprocess.TimeoutExpired:
-            code = 0
-        if code != 0:
-            tail = log_path.read_text(encoding="utf-8", errors="replace").strip()[-500:]
-            detail = f"exited {code} as it started: {tail}"
-            self._fault(fixture, index, SERVE_STEP, "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({SERVE_STEP}) {detail}")
-        return ToolResult(command=argv, stdout="", stderr="", exit_code=0)
-
-    def stop_servers(self) -> None:
-        """Stop every process group a `serve` step started, so the next scenario finds its port free."""
-        for server in self._servers:
-            stop_server_group(server)
-        self._servers.clear()
-
-    def _arranging_browser(self, fixture: str, index: int, kind: str) -> Any:
-        if self.diagnostics is None:
-            detail = (f"signs a browser in, but target '{self.target.name}' declares driver "
-                      f"'{self.target.driver}' — only a scenario on a browser target can use it")
-            self._fault(fixture, index, kind, "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} {detail}")
-        return self.diagnostics
-
-    def _bound_action(self, action: Mapping[str, Any], env: Mapping[str, str]) -> dict[str, Any]:
-        bound: dict[str, Any] = {}
-        for key, value in action.items():
-            if key == "locator":
-                bound[key] = {part: string.Template(text).substitute(env) for part, text in value.items()}
-            elif key == "open":
-                bound[key] = self.http.url_for(string.Template(str(value)).substitute(env))
-            elif key == "value" and action.get("act") == "upload":
-                bound[key] = str(self.root / string.Template(str(value)).substitute(env))
-            elif key == "value":
-                bound[key] = string.Template(str(value)).substitute(env)
-            else:
-                bound[key] = value
-        return bound
-
-    def _run_browser_step(
-        self, fixture: str, index: int, step: Mapping[str, Any], env: Mapping[str, str],
-    ) -> "ToolResult":
-        kind = str(step.get("kind", ""))
-        browser = self._arranging_browser(fixture, index, kind)
-        try:
-            actions = [self._bound_action(action, env) for action in step["browser"]]
-        except (KeyError, ValueError) as exc:
-            detail = f"names {exc}, which no arg, secret, need or provided fact binds"
-            self._fault(fixture, index, kind, "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) {detail}") from exc
-        try:
-            browser.arrange(actions, on_page=self._book_fixtures[fixture].get("lifetime") == "scenario")
-        except Exception as exc:  # noqa: BLE001 - every driver error is this step failing, recorded as a fault
-            detail = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:500]
-            self._fault(fixture, index, kind, "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} step {index} ({kind}) failed ({detail})") from exc
-        performed = [json.dumps(action, sort_keys=True) for action in step["browser"]]
-        return ToolResult(command=["browser", *performed], stdout="", stderr="", exit_code=0)
-
-    def _settled_session(self, fixture: str, index: int) -> dict[str, Any]:
-        browser = self._arranging_browser(fixture, index, "session")
-        try:
-            return browser.session(self.target.base_url)
-        except Exception as exc:  # noqa: BLE001 - a page that never comes back is the fixture failing
-            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:500]
-            detail = f"the browser did not settle back on {self.target.base_url}: {first}"
-            self._fault(fixture, index, "session", "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} {detail}") from exc
-
-    def _shown_written(self, fixture: str, index: int) -> None:
-        """Reload the scenario's page, so the data *fixture* wrote outside the browser shows on the screen it left open."""
-        try:
-            self.diagnostics.reload(self.target.base_url)
-        except Exception as exc:
-            first = (str(exc).strip().splitlines() or [type(exc).__name__])[0][:500]
-            detail = f"the page did not load again after the fixture wrote its data: {first}"
-            self._fault(fixture, index, "reload", "defect", detail)
-            raise RuntimeError(f"qa fixture {fixture!r} {detail}") from exc
-
-    def _asserted_facts(
-        self, fixture: str, declared: Sequence[Mapping[str, str]], env: Mapping[str, str],
-    ) -> dict[str, str]:
-        """Each `is:` fact as the step environment carries it: a value holding `$` is a shell expression bash expands once, in the fixture's own environment, so `$(uuidgen)` is fresh per build."""
-        facts: dict[str, str] = {}
-        for entry in declared:
-            asserted = entry.get("is") or ""
-            if not asserted or entry.get("from"):
-                continue
-            if "$" not in asserted:
-                facts[entry["key"]] = asserted
-                continue
-            argv = [_SHELL, "-c", f'set -e\nvalue="{asserted}"\nprintf "%s" "$value"']
-            done = subprocess.run(  # noqa: S603 - fixed shell invocation of a book-declared value
-                argv, env={**os.environ, **env}, capture_output=True, text=True, timeout=60, check=False,
-            )
-            if done.returncode != 0:
-                detail = f"`is: {asserted}` failed to expand (exit {done.returncode}): {done.stderr.strip()[-500:]}"
-                self._fault(fixture, -1, "provides", "defect", detail)
-                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
-            facts[entry["key"]] = done.stdout
-        return facts
-
-    def _extract_provides(
-        self,
-        fixture: str,
-        declared: Sequence[Mapping[str, str]],
-        step_results: Mapping[str, "ToolResult"],
-        last_index: int,
-        asserted_facts: Mapping[str, str],
-    ) -> dict[str, str]:
-        """Bind each declared `provides:` fact the way its own entry says the fact comes to be."""
-        facts: dict[str, str] = {}
-        for entry in declared:
-            key = entry["key"]
-            step_id = entry.get("from") or ""
-            asserted = entry.get("is") or ""
-            if asserted and step_id:
-                detail = (f"declares provides {key!r} both `from:` step {step_id!r} and `is:` "
-                          f"{asserted!r} — a fact is observed or asserted, not both")
-                self._fault(fixture, last_index, "provides", "defect", detail)
-                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
-            if asserted:
-                facts[key] = asserted_facts[key]
-                continue
-            if not step_id:
-                detail = (f"declares provides {key!r} with neither `from:` nor `is:` — the book "
-                          f"does not say whether this fact is observed from a step or asserted "
-                          f"by the fixture's own construction")
-                self._fault(fixture, last_index, "provides", "defect", detail)
-                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
-            if step_id not in step_results:
-                detail = f"declares provides {key!r} from step {step_id!r}, which is not one of its own steps"
-                self._fault(fixture, last_index, "provides", "defect", detail)
-                raise RuntimeError(f"qa fixture {fixture!r} {detail}")
-            stdout = step_results[step_id].stdout
-            try:
-                payload = json.loads(stdout)
-            except json.JSONDecodeError as exc:
-                detail = f"declares provides {key!r} but its source step's stdout is not JSON"
-                self._fault(fixture, last_index, "provides", "defect", detail)
-                raise RuntimeError(f"qa fixture {fixture!r} {detail}") from exc
-            path = entry.get("read") or key
-            hit = resolve_path(payload, path)
-            if not hit.found:
-                self._fault(fixture, last_index, "provides", "defect", f"declared provides {key!r} absent")
-                raise RuntimeError(f"qa fixture {fixture!r} does not provide {key!r} at {path!r}")
-            if isinstance(hit.value, (dict, list)):
-                self._node_structures.setdefault(fixture, {})[key] = hit.value
-                facts[key] = json.dumps(hit.value)
-            else:
-                facts[key] = str(hit.value)
-        return facts
-
-    def _exec_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
-        """Arrange one book `fixture` node, built once per lap when the run keeps a lap record, and memoized on `(name, frozen args)` per scenario."""
-        memo_key = (name, tuple(sorted(args.items())))
-        cached = self._book_fixture_memo.get(memo_key)
-        if cached is not None:
-            return cached
-        spec = self._book_fixtures[name]
-        shared = self._lap if spec.get("lifetime") != "scenario" else None
-        arranged = shared.built(name, args) if shared is not None else None
-        started = time.monotonic()
-        result = self._build_book_fixture(name, args) if arranged is None else self._reuse_book_fixture(name, arranged)
-        self._book_fixture_memo[memo_key] = result
-        self._recorder.emit(
-            {
-                "type": "fixture",
-                "scenario": self.scenario_id,
-                "name": name,
-                "page": spec.get("page", ""),
-                "lifetime": spec.get("lifetime", "lap"),
-                "provides": ",".join(entry["key"] for entry in spec.get("provides", [])),
-                "command": result.command,
-                "exit_code": result.exit_code,
-                "ok": result.ok,
-                "reused": arranged is not None,
-                "seconds": round(time.monotonic() - started, 3),
-            }
-        )
-        return result
-
-    def _build_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
-        """Run *name*'s steps, and keep what they left, or the fault that stopped them, in the lap record unless each scenario builds its own."""
-        self._last_fault = None
-        lap = self._lap if self._book_fixtures[name].get("lifetime") != "scenario" else None
-        try:
-            result = self._run_book_fixture(name, args)
-        except RuntimeError as exc:
-            if lap is not None and self._last_fault is not None:
-                lap.keep(name, args, Arranged(fault=asdict(self._last_fault), error=str(exc)))
-            raise
-        if lap is not None:
-            lap.keep(name, args, Arranged(
-                facts=self._node_facts[name], structures=self._node_structures.get(name, {}), command=list(result.command),
-                stdout=result.stdout, stderr=result.stderr, exit_code=result.exit_code,
-                browser=self._node_sessions.get(name)))
-        return result
-
-    def _reuse_book_fixture(self, name: str, arranged: Arranged) -> "ToolResult":
-        """*name* as an earlier scenario of this lap built it: its facts and its needs', or the fault that stopped it."""
-        if arranged.fault is not None:
-            self._fault(**arranged.fault)
-            raise RuntimeError(arranged.error)
-        for need in self._book_fixtures[name].get("needs", []):
-            if need.get("fixture") is not None:
-                self._exec_book_fixture(str(need["fixture"]), {})
-        if arranged.browser is not None:
-            self._arranging_browser(name, -1, "session").restore(arranged.browser)
-        self._node_facts[name] = dict(arranged.facts)
-        if arranged.structures:
-            self._node_structures[name] = dict(arranged.structures)
-        return ToolResult(command=arranged.command, stdout=arranged.stdout, stderr=arranged.stderr, exit_code=arranged.exit_code)
-
-    def _run_book_fixture(self, name: str, args: Mapping[str, str]) -> "ToolResult":
-        """Run one book `fixture` node's steps, its needs first, and bind the facts it provides."""
-        spec = self._book_fixtures[name]
-        env: dict[str, str] = {}
-        secrets = spec.get("secrets", [])
-        for need in spec.get("needs", []):
-            if need.get("fixture") is None:
-                detail = f"needs a fixture link that does not resolve ({need.get('unresolved')!r})"
-                self._fault(name, -1, "needs", "defect", detail)
-                raise RuntimeError(f"qa fixture {name!r} {detail}")
-            self._exec_book_fixture(str(need["fixture"]), {})
-            for key, value in need.get("args", {}).items():
-                env[key] = self._resolve_ref(name, value)
-        for secret_name in secrets:
-            value = os.environ.get(secret_name)
-            if value is None:
-                self._fault(name, -1, "secret", "capability",
-                            f"secret {secret_name!r} is not set in the harness's own environment")
-                raise RuntimeError(
-                    f"qa fixture {name!r} needs secret {secret_name!r}, which is not set — the "
-                    "harness resolves secret values from its own environment, never the book"
-                )
-            env[secret_name] = value
-        for arg_name in spec.get("args", []):
-            if arg_name in args:
-                if arg_name in secrets:
-                    detail = f"arg {arg_name!r} collides with a declared secret name of the same name"
-                    self._fault(name, -1, "args", "defect", detail)
-                    raise RuntimeError(f"qa fixture {name!r} {detail}")
-                env[arg_name] = args[arg_name]
-        steps = spec.get("steps", [])
-        provides = spec.get("provides", [])
-        asserted_facts = self._asserted_facts(name, provides, env)
-        for key, value in asserted_facts.items():
-            env.setdefault(key, value)
-        result: ToolResult | None = None
-        step_results: dict[str, ToolResult] = {}
-        signed_in = False
-        wrote = False
-        for index, step in enumerate(steps):
-            if step.get("missing_run"):
-                detail = "step has no `run:` command"
-                self._fault(name, index, str(step.get("kind", "")), "defect", detail)
-                raise RuntimeError(f"qa fixture {name!r} step {index}: {detail}")
-            if step.get("unperformable"):
-                detail = f"a browser cannot perform this step: {step['unperformable']}"
-                self._fault(name, index, str(step.get("kind", "")), "defect", detail)
-                raise RuntimeError(f"qa fixture {name!r} step {index}: {detail}")
-            if step.get("kind") == RELEASE_STEP and "request" in step:
-                continue
-            if "browser" in step:
-                result = self._run_browser_step(name, index, step, env)
-                signed_in = True
-            elif "request" in step:
-                result = self._request_book_step(name, index, step, env)
-            elif step.get("on") and step.get("kind") != SERVE_STEP:
-                result = self._run_book_step(name, index, step, self._with_resource(step, env))
-                wrote = wrote or step.get("kind") in WRITING_STEPS
-            elif step.get("kind") == SERVE_STEP:
-                result = self._serve_book_step(name, index, step, env)
-            else:
-                result = self._run_book_step(name, index, step, env)
-                wrote = wrote or step.get("kind") in WRITING_STEPS
-            step_id = step.get("id")
-            if step_id:
-                step_results[step_id] = result
-                for key, value in _facts_of_step(provides, step_id, result.stdout).items():
-                    env.setdefault(key, value)
-            if step.get("kind") == BORROW_STEP:
-                self._owe_releases(name, steps, index, env)
-        if signed_in:
-            self._node_sessions[name] = self._settled_session(name, len(steps) - 1)
-        if wrote and self.diagnostics is not None:
-            self._shown_written(name, len(steps) - 1)
-        self._node_facts[name] = self._extract_provides(
-            name, provides, step_results, len(steps) - 1, asserted_facts,
-        )
-        if result is None:
-            result = ToolResult(command=[], stdout="", stderr="", exit_code=0)
-        return result
-
-    def instance(self, obligation: str, bindings: dict[str, object]) -> None:
-        """Declare which concrete member of a repeated family this scenario exercises."""
-        self._recorder.emit(
-            {
-                "type": "instance",
-                "scenario": self.scenario_id,
-                "obligation": str(obligation),
-                "bindings": {str(key): str(value) for key, value in bindings.items()},
-            }
-        )
-
-
     def _saw_exchange(self, exchange: Exchange) -> None:
         """Keep what the last request asked and got, and which precondition issued the credential it sent, never the credential itself."""
         sent = [value for key, value in exchange.headers.items() if key.lower() in _CREDENTIAL_HEADERS and value.strip()]
@@ -1586,7 +1048,7 @@ class Qa:
             status=exchange.status,
             expected=exchange.expected,
             credential_sent=bool(sent),
-            precondition=self._issuer_of(sent),
+            precondition="",
             invented=self._invented_ids(exchange),
         )
 
@@ -1600,13 +1062,6 @@ class Qa:
         split = urllib.parse.urlsplit(exchange.url)
         sent = f"{split.path}?{split.query} " + (exchange.body or b"").decode("utf-8", errors="replace")
         return list(dict.fromkeys(token for token in _ID_TOKEN.findall(sent) if token.lower() not in known))
-
-    def _issuer_of(self, sent: Sequence[str]) -> str:
-        """The page of the precondition whose fact appears in a credential header value, or ``""`` when none does."""
-        for name, facts in self._node_facts.items():
-            if any(len(fact) >= _CREDENTIAL_FACT_MIN_CHARS and fact in value for fact in facts.values() for value in sent):
-                return self._fixture_pages[name]
-        return ""
 
     def _status_mismatch(
         self, method: str, url: str, status: int, allowed: Sequence[int], reply: str
@@ -2185,36 +1640,6 @@ class Qa:
         except Exception:
             return
 
-    def vet(self, screen: str, name: str = "", components: list[str] | None = None, arrives: str = "") -> Path:
-        """Photograph a screen and hand ostler the screen it is supposed to be. *arrives* is the address to wait for first.
-
-        Each vet files its photograph under its own ordinal: the grader reads the regions back by path once the scenario is over, so a shared name would judge every vet on the last screen photographed."""
-        state = name or "vet"
-        artifact = f"{state}-{self.vets + 1}"
-        if self.target.driver == "playwright":
-            if arrives:
-                self._settle(arrives)
-            path = self.screenshot(artifact)
-        elif self.target.driver == "maestro":
-            path = self.device_screenshot(artifact)
-        else:
-            raise RuntimeError(
-                f"scenario {self.scenario_id!r} vets '{screen}' on a '{self.target.driver}' "
-                "target, which renders nothing to vet — declare the target with "
-                "driver='playwright' for a browser or driver='maestro' for a device"
-            )
-        self.vets += 1
-        self._recorder.emit({
-            "type": "vet",
-            "screen": screen,
-            "state": state,
-            "screenshot": str(path),
-            "regions": str(path.with_suffix(".regions.json")),
-            "components": components or [],
-            "url": str(self.page.url) if self.target.driver == "playwright" else "",
-        })
-        return path
-
     @property
     def browser_page(self) -> Any:
         if self.page is None:
@@ -2474,7 +1899,6 @@ class Convert:
 
 CHECK_METHODS = frozenset({"check", "require", "eventually", "require_eventually", "verify", "settle", "holds"})
 
-VET_METHOD = "vet"
 ARRIVAL_WAIT_S = 10.0
 SETTLE_WAIT_MS = 5000
 
@@ -2619,128 +2043,7 @@ def _module_constants(tree: ast.Module) -> dict[str, Any]:
     return constants
 
 
-VERIFY_METHOD = "verify"
-HOLDS_METHOD = "holds"
-
-
-def extract_check_calls(source: str) -> dict[str, list[dict[str, Any]]]:
-    """Which named checks each scenario invokes, with the arguments it wrote and what it binds."""
-    parsed = _parsed(source)
-    constants = parsed.constants
-    found: dict[str, list[dict[str, Any]]] = {}
-    for function, reachable in parsed.reachable.items():
-        calls: list[dict[str, Any]] = []
-        for call in reachable:
-            if isinstance(call.func, ast.Attribute) and call.func.attr == HOLDS_METHOD:
-                calls.extend(_held_check_calls(call, constants))
-            if not isinstance(call.func, ast.Attribute) or call.func.attr != VERIFY_METHOD:
-                continue
-            name = _resolve(call.args[0], constants) if call.args else None
-            args: dict[str, Any] = {}
-            covers: list[str] = []
-            for keyword in call.keywords:
-                if keyword.arg is None:
-                    continue
-                if keyword.arg == "covers":
-                    covers = _covers_ids(keyword.value, constants)
-                elif keyword.arg != "label":
-                    value = _check_argument(keyword.value, constants)
-                    args[keyword.arg] = value if value is not None else COMPUTED
-            calls.append(
-                {
-                    "check": name if isinstance(name, str) else COMPUTED,
-                    "args": args,
-                    "covers": covers,
-                }
-            )
-        found[function] = calls
-    return found
-
-
-def _held_check_calls(call: ast.Call, constants: dict[str, Any]) -> list[dict[str, Any]]:
-    """The named checks a `qa.holds` evaluates: the rows it writes for the state it holds, bound to what it covers."""
-    covers = next((_covers_ids(keyword.value, constants) for keyword in call.keywords if keyword.arg == "covers"), [])
-    if len(call.args) < 2 or not isinstance(call.args[1], ast.Dict):
-        return []
-    state = _resolve(call.args[0], constants)
-    rows = next((value for key, value in zip(call.args[1].keys, call.args[1].values, strict=True)
-                 if key is not None and _resolve(key, constants) == state), None)
-    if not isinstance(rows, ast.List):
-        return []
-    found: list[dict[str, Any]] = []
-    for row in rows.elts:
-        if not isinstance(row, ast.Tuple) or len(row.elts) != 3 or not isinstance(row.elts[2], ast.Dict):
-            continue
-        name = _resolve(row.elts[0], constants)
-        args: dict[str, Any] = {}
-        for key, value in zip(row.elts[2].keys, row.elts[2].values, strict=True):
-            argument = _resolve(key, constants) if key is not None else None
-            if isinstance(argument, str):
-                written = _check_argument(value, constants)
-                args[argument] = written if written is not None else COMPUTED
-        found.append({"check": name if isinstance(name, str) else COMPUTED, "args": args, "covers": covers})
-    return found
-
-
-LOCATOR_METHODS = {
-    "by_role": "role",
-    "get_by_role": "role",
-    "by_label": "label",
-    "get_by_label": "label",
-    "by_test_id": "test_id",
-    "get_by_test_id": "test_id",
-    "by_text": "text",
-    "get_by_text": "text",
-    "by_css": "css",
-    "locator": "css",
-}
-
 COMPUTED = "*"
-
-
-def extract_locators(source: str) -> dict[str, list[dict[str, Any]]]:
-    """The locators and navigations each scenario writes, in the shape `validate` reads."""
-    found: dict[str, list[dict[str, Any]]] = {}
-    for name, calls in _parsed(source).reachable.items():
-        actions: list[dict[str, Any]] = []
-        for call in calls:
-            if not isinstance(call.func, ast.Attribute):
-                continue
-            action = _locator_action(call, call.func.attr)
-            if action is not None:
-                actions.append(action)
-        found[name] = actions
-    return found
-
-
-def _locator_action(call: ast.Call, method: str) -> dict[str, Any] | None:
-    if method == "goto":
-        url = _literal(call.args[0]) if call.args else None
-        return {"do": "goto", "url": url} if isinstance(url, str) else None
-    strategy = LOCATOR_METHODS.get(method)
-    if strategy is None:
-        return None
-    value = _literal(call.args[0]) if call.args else None
-    locator: dict[str, Any] = {strategy: value if isinstance(value, str) else COMPUTED}
-    for keyword in call.keywords:
-        if keyword.arg in {"name", "template"} and strategy == "role":
-            named = _literal(keyword.value)
-            locator[keyword.arg] = named if isinstance(named, str) else COMPUTED
-    return {"locator": locator}
-
-
-def extract_vets(source: str) -> dict[str, list[str]]:
-    """Which screens each scenario hands to the book, as written."""
-    found: dict[str, list[str]] = {}
-    for name, calls in _parsed(source).reachable.items():
-        screens: list[str] = []
-        for call in calls:
-            if not isinstance(call.func, ast.Attribute) or call.func.attr != VET_METHOD:
-                continue
-            screen = _literal(call.args[0]) if call.args else None
-            screens.append(screen if isinstance(screen, str) else COMPUTED)
-        found[name] = screens
-    return found
 
 
 FIXTURE_METHOD = "fixture"
@@ -2761,51 +2064,6 @@ def extract_fixtures(source: str) -> dict[str, list[str]]:
     return found
 
 
-INSTANCE_METHOD = "instance"
-
-
-def extract_instances(source: str) -> dict[str, list[dict[str, Any]]]:
-    """The concrete instances each scenario declares for repeated obligations, as written."""
-    parsed = _parsed(source)
-    constants = parsed.constants
-    found: dict[str, list[dict[str, Any]]] = {}
-    for function, reachable in parsed.reachable.items():
-        instances: list[dict[str, Any]] = []
-        for call in reachable:
-            if not isinstance(call.func, ast.Attribute) or call.func.attr != INSTANCE_METHOD:
-                continue
-            obligation = _resolve(call.args[0], constants) if call.args else None
-            bindings_node = call.args[1] if len(call.args) > 1 else None
-            for keyword in call.keywords:
-                if keyword.arg == "bindings":
-                    bindings_node = keyword.value
-            bindings: dict[str, Any] | None = None
-            if isinstance(bindings_node, ast.Dict):
-                bindings = {}
-                for key_node, value_node in zip(bindings_node.keys, bindings_node.values):
-                    key = _resolve(key_node, constants) if key_node is not None else None
-                    if not isinstance(key, str):
-                        bindings = None
-                        break
-                    value = _resolve(value_node, constants)
-                    bindings[key] = value if isinstance(value, str) else COMPUTED
-            elif bindings_node is not None:
-                written = _resolve(bindings_node, constants)
-                if isinstance(written, dict):
-                    bindings = {
-                        str(key): value if isinstance(value, str) else COMPUTED
-                        for key, value in written.items()
-                    }
-            instances.append(
-                {
-                    "obligation": obligation if isinstance(obligation, str) else COMPUTED,
-                    "bindings": bindings,
-                }
-            )
-        found[function] = instances
-    return found
-
-
 def _literal(node: ast.expr) -> Any:
     try:
         return ast.literal_eval(node)
@@ -2819,19 +2077,11 @@ def _describe(module_path: Path) -> dict[str, Any]:
     data = REGISTRY.as_json()
     counts = count_checks(source)
     check_covers = extract_check_covers(source)
-    check_calls = extract_check_calls(source)
-    locators = extract_locators(source)
-    vets = extract_vets(source)
     fixtures = extract_fixtures(source)
-    instances = extract_instances(source)
     for declared in data["scenarios"]:
         declared["checks"] = counts.get(declared["function"], 0)
         declared["check_covers"] = check_covers.get(declared["function"], [])
-        declared["check_calls"] = check_calls.get(declared["function"], [])
-        declared["locators"] = locators.get(declared["function"], [])
-        declared["vets"] = vets.get(declared["function"], [])
         declared["fixtures"] = fixtures.get(declared["function"], [])
-        declared["instances"] = instances.get(declared["function"], [])
     return data
 
 
@@ -2937,10 +2187,7 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         offset_base_ms=int(context.get("offset_ms", 0)),
         tools=context.get("tools", {}),
         fixtures=context.get("fixtures", {}),
-        book_fixtures=context.get("book_fixtures", {}),
-        resources=context.get("resources", {}),
         tool_env=REGISTRY.tool_env,
-        lap_dir=Path(context["lap_dir"]) if context.get("lap_dir") else None,
     )
     browser = None
     status, error = "passed", None
@@ -2959,28 +2206,14 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         status, error = "errored", stop_reason(exc, getattr(getattr(declared.func, "__code__", None), "co_filename", ""))
         stop = qa.stop_evidence(exc)
         print(traceback.format_exc(), file=sys.stdout)
-    released: list[str] = []
-    try:
-        if browser is not None:
-            unclean = _bind_browser_unclean(qa, browser.unclean())
-            problems = [*unclean, *browser.close(failed=status != "passed" or bool(unclean))]
-            if problems:
-                status = "failed" if status == "passed" else status
-                error = "; ".join([part for part in [error, *problems] if part])
-    finally:
-        released = qa.release_all()
-        qa.stop_servers()
-    if released:
-        status = "failed" if status == "passed" else status
-        error = "; ".join([part for part in [error, *released] if part])
+    if browser is not None:
+        unclean = _bind_browser_unclean(qa, browser.unclean())
+        problems = [*unclean, *browser.close(failed=status != "passed" or bool(unclean))]
+        if problems:
+            status = "failed" if status == "passed" else status
+            error = "; ".join([part for part in [error, *problems] if part])
     if qa.failures:
         status = "failed" if status == "passed" else status
-    if status == "passed" and target_decl.driver in UI_DRIVER_NAMES and qa.vets == 0:
-        status = "failed"
-        error = (
-            f"scenario {declared.id!r} runs against a {target_decl.driver} target and vetted "
-            "no screen — call qa.vet('<screen doc>') on each documented state it reaches"
-        )
     if status == "passed" and qa.assertions == 0 and declared.covers:
         status = "failed"
         error = (
