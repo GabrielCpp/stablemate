@@ -79,7 +79,7 @@ ostler edit settle-review <story-id> [--write]
 ostler book search <term> [--service services.<name>] [--kind rule|endpoint|action|journey|screen|decision]
 ostler book explain services.<name> <ClassName>   # everything the book says of one element
 ostler book decisions services.<name> [--story ID]
-ostler book check services.<name> --app <app root>
+ostler book check services.<name> --app <code repo root>   # a pointer into another repository is repo://<member>/<path>
 ostler book run services.<name>                   # play the book against the running app
 ```
 

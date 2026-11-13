@@ -5,7 +5,8 @@ description: "The standing rule for a repository that keeps a service book under
 
 ## The book comes first
 
-Each service of this repository has a book under `services/<name>/`. The book is
+Each service has a book under `services/<name>/` under the book root: the repository
+root in a monorepo, the artifacts folder in a multi-repo workspace. The book is
 the current spec of the service. Its Python states what every endpoint, screen
 and command does, which rule refuses a call, and which journeys a user lives
 through. Ostler plays it against the running app. Its `decisions/` folder holds,
@@ -29,7 +30,9 @@ touches before they write.
 ## A story is done when the book plays it
 
 A story is a delta. The book is the whole. The story is finished when the delta
-is in the book in the same change as the code, which means all of:
+is in the book in the same change as the code. In a multi-repo workspace that
+change is two commits: the book's in the artifacts folder, the code's in its
+repository. Finished means all of:
 
 - Every record, rule, action, endpoint, screen and journey the story changed
   states the new current behaviour. Restructure the book when the story needs
@@ -39,7 +42,8 @@ is in the book in the same change as the code, which means all of:
   decision that already covers it. A decision that lives only in a chat or a
   story file is lost to the next reader.
 - Every `source=` pointer names code that exists:
-  `ostler book check services.<name> --app <app root>` passes.
+  `ostler book check services.<name> --app <code repo root>` passes. A pointer into
+  another repository is `repo://<member>/<path>`.
 - `ostler book run services.<name>` is green on the story's code. A claim no
   call and no screen can observe is checked by the story's QA and stays out of
   the book.

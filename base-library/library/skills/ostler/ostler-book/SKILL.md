@@ -36,6 +36,8 @@ case in front of you.
 
 ## The package
 
+A service's book is `services/<name>/` under the book root: the repository root in a monorepo, the artifacts folder in a multi-repo workspace. A `source` pointer into another repository of the workspace is `repo://<member>/<path>::<symbol>`. A stack or a process that starts the app from a member repository takes the member's folder from `checkout("<member>")`.
+
 | Path | Holds |
 | --- | --- |
 | `service.py` | the `Service` ostler loads: environments, refusal keys, `records`, `outside` events, `unseen`, `diverges`, and `watch`, the list reads the runtime makes after each step to compare rows |
@@ -142,7 +144,7 @@ element is an existing endpoint or record to replay. Each changed file or functi
 names is a route or a rule to add, or a `source` pointer to extend down to it; code that holds
 no behaviour goes in the app's `ignore` as `path` or `path::function`. Each decision listed is
 one to reread. Work them through "Adding a route", then `verified` records the app's HEAD. Done
-when `stale` lists nothing.
+when `stale` lists nothing. In a workspace `--app` names one member. A pointer into another member is listed as `not traced`.
 
 When the commit answers a story, the story is the intent: read its model, plan and review
 answers before the diff, and write the delta from them. The latest decision wins. A review

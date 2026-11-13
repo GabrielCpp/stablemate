@@ -76,6 +76,7 @@ A `define` template renders to one compose service block. It sees these values:
 | `project` | the compose project, `<repo>-<copy>` |
 | `shared` | `true` for the shared copy |
 | `repo` | the checkout root, for a build context or a bind mount |
+| `repos` | the workspace's repositories by member name, `{{ repos["todo-api"] }}` being the folder of `todo-api`, for a build context in a book kept in the artifacts folder; empty outside a workspace |
 | `ops_dir` | the `ops/` folder `stack.yml` sits in |
 | `dir` | this service's folder in the copy, where its `files` land |
 | `env_dir` | the copy's folder |
