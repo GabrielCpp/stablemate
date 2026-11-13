@@ -67,7 +67,7 @@ def validate_authored_epic(
         for seed in found.seeds:
             errors.extend(
                 f"seed '{seed.id}' names the service `{name}`, which is no book under "
-                f"`docs/services/`: `services:` lists book names"
+                f"`services/`: `services:` lists book names"
                 for name in seed.services
                 if name not in books
             )

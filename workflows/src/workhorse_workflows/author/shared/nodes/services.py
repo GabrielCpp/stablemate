@@ -11,11 +11,11 @@ def service_errors(okf: Ostler, subject: str, services: Sequence[str]) -> list[s
     if not services:
         return [
             f"{subject} lists no `services:`, so no book is named as the one it changes: give "
-            "every seed it covers a `services:` tag naming books under `docs/services/`"
+            "every seed it covers a `services:` tag naming books under `services/`"
         ]
     books = okf.service_books()
     return [
-        f"{subject} names the service `{name}`, which is no book under `docs/services/`"
+        f"{subject} names the service `{name}`, which is no book under `services/`"
         for name in services
         if name not in books
     ]

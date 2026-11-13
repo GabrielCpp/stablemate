@@ -65,7 +65,7 @@ Return exactly one JSON object matching this shape:
     "legacy_surface": "",
     "backing": "",
     "prerequisites": "none",
-    "services": ["book names under docs/services/ this seed changes"],
+    "services": ["book names under services/ this seed changes"],
     "source_record": "id of the register record this seed comes from, or empty",
     "disposition": "retain" | "drop",
     "reason": ""

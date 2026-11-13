@@ -4,4 +4,4 @@ Judge whether each story names the services it changes.
 - A seed split into one story per platform gives each story only its own platform's books. A story that lists fewer books than its seeds is correct when it changes fewer.
 - A story that changes a web or mobile app lists that app's book, because the mockup requirement follows from it. Name a story that changes a screen but lists no UI book.
 - A story that needs a book none of its seeds lists is a finding against the seed, naming the book it should list. The derivation replaces a list that leaves the seeds' union.
-- A book name must be a directory under `docs/services/`. The deterministic gate checks the spelling. You check the meaning.
+- A book name must be a directory under `services/` that holds a `service.py`. The deterministic gate checks the spelling. You check the meaning.
