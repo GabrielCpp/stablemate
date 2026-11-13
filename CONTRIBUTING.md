@@ -141,10 +141,9 @@ Every subproject has a README; read it before changing that component. Workflows
 Python distributions whose states and nodes live under `workflows/src/`.
 
 - [`workhorse/docs/AUTHORING.md`](workhorse/docs/AUTHORING.md) — writing a workflow
-- [`docs/services/`](docs/services/) — this repo's own OKF book: the tools' feature docs
-  as an ostler-tended knowledge graph. There is no index page by design — browse it with
-  `uv run ostler search <term>` / `uv run ostler trace <id>` rather than by directory
-  listing
+- [`services/`](services/): this repo's own service books. Each one states in Python what
+  a tool does and holds its decisions in markdown beside it. Browse a book with
+  `uv run ostler book search <term>` and `uv run ostler book explain services.<name> <Class>`
 
 ## Reporting a vulnerability
 
