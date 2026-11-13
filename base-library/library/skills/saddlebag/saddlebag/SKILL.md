@@ -1,6 +1,6 @@
 ---
 name: saddlebag
-description: "saddlebag: where the password, token or TOTP for a test login lives. Load it before you type a password, search seed, fixture or config files for test credentials, ask the user for a login, or read a `.env` to sign in. saddlebag hands the secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers signing in with `fill` (username, password, TOTP), typing into an Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, the `secrets: saddlebag:` source in a stack.yml, the PreToolUse guard that refuses a read of a dotenv, key or credentials file, registering a secret, and reading errors. Also load when a command needs a password or token in its environment, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
+description: "saddlebag: where the password, token or TOTP for a test login lives. Load it before you type a password, search seed, fixture or config files for test credentials, ask the user for a login, or read a `.env` to sign in. saddlebag hands the secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers signing in with `fill` (username, password, TOTP), typing into an Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, loading a whole-store export with `import`, the `secrets: saddlebag:` source in a stack.yml, the PreToolUse guard that refuses a read of a dotenv, key or credentials file, registering a secret, and reading errors. Also load when a command needs a password or token in its environment, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
 tags: [cli, tests, qa]
 ---
 
@@ -186,6 +186,12 @@ Each record takes the key as its `var`, the tags you pass, and the name
 prints `stored STRIPE_KEY as local-stripe-key` per key. A key the file lacks, or one with
 an empty value, stops it before anything is written.
 
+A whole store moves as one `*.saddlebag.json` file. The operator writes it with
+`saddlebag export FILE.saddlebag.json`, which runs only from their own terminal, and the
+guard denies your read of it. You may load one with
+`saddlebag import FILE [--replace]`: it prints `imported NAME` per secret and never a
+value. A name already in the store stops it before any write unless `--replace` is given.
+
 ## An ostler stack
 
 A repo's `services/ops/stack.yml` names one secret source. With saddlebag it is a
@@ -207,7 +213,7 @@ variable's name. The fix is a secret with that `var` and that tag, registered as
 `saddlebag guard --hook` is a Claude Code PreToolUse hook. It denies a read of `.env` and
 its variants (`.env.example` and the like excepted), private keys and `id_*` files,
 `.netrc`, `.npmrc`, `.pypirc`, `.git-credentials`, `.vault-token`, `~/.aws/credentials`
-and `~/.docker/config.json`, through the file tools or a shell
+and `~/.docker/config.json`, and a `*.saddlebag.json` export, through the file tools or a shell
 reader such as `cat`, `grep`, `sed`, `source` or `python`. Its denial names the saddlebag
 line that gets the same job done. It covers Read, Grep, Write, Edit and Bash.
 
