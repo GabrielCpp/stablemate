@@ -176,7 +176,7 @@ work and the bar for each element.
 A service with no `services/<name>/service.py` has no book. Write one from its
 source with the okf-book workflow, `workhorse-okf-book run python_book`, or by
 hand with the `ostler-book` skill. The book is the only form of spec this
-repository keeps. No page under `docs/services/` is read or written.
+repository keeps.
 
 ---
 
