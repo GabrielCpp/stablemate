@@ -71,9 +71,16 @@ class ReorderArgs(Fixture):
     first: str | None = None
     then: str | None = None
 
+    @property
+    def repeated(self) -> str:
+        """The epic both names stand for, as the queue spells it."""
+        return directory_of(self.first or "")
+
     @classmethod
     def examples(cls, state: Any, by: Actor | None) -> Iterable[ReorderArgs]:
-        return (todo_reorder("second"), todo_reorder("0002-second", "0001-first"), todo_reorder("0001-first", "0003-third"))
+        return (todo_reorder("second"), todo_reorder("0002-second", "0001-first"), todo_reorder("0001-first", "0003-third"),
+                todo_reorder("0002-second", "0002-second"), todo_reorder("second", "0002-second"),
+                todo_reorder("0001-first", "first"), todo_reorder("0009-nope", "0009-nope"))
 
 
 @dataclass

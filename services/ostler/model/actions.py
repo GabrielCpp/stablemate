@@ -49,7 +49,7 @@ class PruneEpic(Action[PruneArgs, Plan]):
 
 class ReorderEpics(Action[ReorderArgs, Plan]):
     accept = ReorderArgs
-    rules = (rules.both_missing, rules.first_missing, rules.then_missing)
+    rules = (rules.both_missing, rules.first_missing, rules.then_missing, rules.named_twice)
 
     @staticmethod
     def reduce(a: ReorderArgs, s: Plan, by: Actor | None) -> Transaction:

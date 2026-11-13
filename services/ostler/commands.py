@@ -45,7 +45,8 @@ class TodoPrune(Command):
 
 
 class TodoReorder(Command):
-    does = "Move the named epics to the front of the queue in the order given; the rest keep their order after them."
+    does = ("Move the named epics to the front of the queue in the order given; the rest keep their order after them. "
+            "An epic named twice, by the same name or by its number and its slug, is refused.")
     program = "ostler"
     argv = ("--full-ids", "todo", "reorder", Positional("first"), Positional("then"))
     args = Object(
@@ -55,7 +56,9 @@ class TodoReorder(Command):
     )
     answers = (
         Exit(0, Lines(), "the queue is reordered"),
-        Exit(1, Lines(), "the queue does not hold a named epic; the message lists those it lacks, as typed"),
+        Exit(1, Lines(), "the queue does not hold a named epic, and the message lists those it lacks, as typed; or two names "
+                         "stand for the same queued epic, and the message names it as the queue spells it. "
+                         "The queue file is left as it was. A missing epic is refused before a repeat"),
     )
     carries = ReorderEpics
     source = ("ostler/ostler/todo.py::reorder",)

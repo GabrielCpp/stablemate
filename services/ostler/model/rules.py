@@ -47,6 +47,10 @@ def _then_lost(a: ReorderArgs, s: Plan, by: Actor | None) -> bool:
     return a.then is not None and _lost(a, s) == (a.then,)
 
 
+def _twice(a: ReorderArgs, s: Plan, by: Actor | None) -> bool:
+    return a.first is not None and a.then is not None and slug_of(a.first) == slug_of(a.then)
+
+
 def _no_epic(a: SeedAddArgs | SeedRemoveArgs, s: Plan, by: Actor | None) -> bool:
     return a.epic not in EPICS
 
@@ -82,6 +86,10 @@ not_in_queue = Rule[PruneArgs, Plan]("epic '{name}' not in the queue", _not_queu
 both_missing = Rule[ReorderArgs, Plan]("not in queue: {first}, {then}", _both_lost, FAILED)
 first_missing = Rule[ReorderArgs, Plan]("not in queue: {first}", _first_lost, FAILED)
 then_missing = Rule[ReorderArgs, Plan]("not in queue: {then}", _then_lost, FAILED)
+named_twice = Rule[ReorderArgs, Plan](
+    "epic '{repeated}' named more than once", _twice, FAILED,
+    why="a repeated name is most often a typo for another epic, so the reorder says which name repeats and writes "
+        "nothing, where dropping the repeat would reorder the queue on a guess.")
 no_epic_to_add_to = Rule[SeedAddArgs, Plan]("no epic '{epic}'", _no_epic, FAILED)
 invalid_status = Rule[SeedAddArgs, Plan](
     "invalid status '{status}' (one of backlog, researched, covered, resolved, dropped, deferred)", _bad_status, FAILED)
