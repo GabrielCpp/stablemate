@@ -8,9 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 from urllib.parse import unquote
 
-from ostler import graph as graph_mod
-from ostler import links as links_mod
-from ostler import markdown, reach, registry
+from ostler import markdown, registry
 from ostler.finding import Finding
 from ostler.model import Graph, Milestone, read_doc, required_section_problems
 
@@ -39,16 +37,12 @@ def journey_slug(title: str) -> str:
 
 
 def service_books(graph: Graph) -> set[str]:
-    """The names of the service books: each folder under `services/` that holds a `service.py`, and each folder of pages."""
-    names = set(_book_homes(graph))
-    pages = graph.doc_roots.get("services")
-    if pages is not None and pages.is_dir():
-        names |= {d.name for d in pages.iterdir() if d.is_dir()}
-    return names
+    """The names of the service books: each folder under `services/` that holds a `service.py`."""
+    return set(_book_homes(graph))
 
 
-def ui_services(graph: Graph, names: Iterable[str], dump: dict | None = None) -> set[str]:
-    """The books among *names* a person sees: a book with screens, or pages whose runbook driver is `web` or `mobile`."""
+def ui_services(graph: Graph, names: Iterable[str]) -> set[str]:
+    """The books among *names* that have screens."""
     wanted = set(names)
     if not wanted:
         return set()
@@ -56,7 +50,7 @@ def ui_services(graph: Graph, names: Iterable[str], dump: dict | None = None) ->
         name for name, homes in _book_homes(graph).items()
         if any((home / SCREENS_DIR).is_dir() or (home / f"{SCREENS_DIR}.py").is_file() for home in homes)
     }
-    return wanted & (screened | _ui_books(graph, dump))
+    return wanted & screened
 
 
 def approved_milestones(graph: Graph) -> list[Milestone]:
@@ -219,17 +213,6 @@ def _book_homes(graph: Graph) -> dict[str, list[Path]]:
         if homes:
             found[folder.name] = homes
     return found
-
-
-def _ui_books(graph: Graph, dump: dict | None) -> set[str]:
-    """The books whose runbook driver is `web` or `mobile`."""
-    if dump is None:
-        try:
-            dump = graph_mod.build(graph, resolver=links_mod.LinkResolver(graph))
-        except (OSError, ValueError, RuntimeError, KeyError):
-            return set()
-    surfaces = {n["surface"] for n in dump["nodes"] if n["surface"]}
-    return {s for s in surfaces if reach.surface_driver(dump, s) in reach.SCREEN_DRIVERS}
 
 
 def _rel(graph: Graph, path: Path) -> str:

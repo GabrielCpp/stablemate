@@ -35,20 +35,13 @@ def milestone_md(status: str = "approved", *, journeys: str = JOURNEY, omit: tup
 def put(repo: Path, slug: str = "sign-in", **kwargs) -> Path:
     path = repo / f"docs/milestones/{slug}/milestone.md"
     write(path, milestone_md(**kwargs))
+    write(repo / "services/area/service.py", "")
     return path
 
 
-def add_mobile_book(repo: Path) -> None:
-    screens = "docs/services/mobile-app/gui/screens"
-    write(repo / screens / "widget-list.md", (
-        "---\ntype: screen\nslug: widget-list\ntitle: Widgets\n---\n# Widgets\n\n"
-        "- route: `WidgetList`\n- requires: none\n- params: none\n"
-    ))
-    write(repo / "docs/services/mobile-app/ops/stack.md", (
-        "---\ntype: runbook\nslug: stack\ntitle: Stack\n---\n# Stack\n\n"
-        "- driver: mobile\n- surfaces: [widget-list](../gui/screens/widget-list.md)\n\n"
-        "## Steps\n\n### serve\n- kind: service\n- run: `metro`\n"
-    ))
+def add_ui_book(repo: Path) -> None:
+    write(repo / "services/mobile-app/service.py", "")
+    write(repo / "services/mobile-app/screens/__init__.py", "")
 
 
 def findings(repo: Path, code: str | None = None) -> list:
@@ -208,7 +201,7 @@ def test_a_journey_through_known_books_does_not_fire_the_services_check(repo: Pa
 
 
 def test_a_ui_journey_without_a_mockup_produces_no_finding(repo: Path):
-    add_mobile_book(repo)
+    add_ui_book(repo)
     put(repo, journeys=UI_JOURNEY)
 
     assert findings(repo) == []
@@ -255,7 +248,7 @@ def test_the_api_returns_the_readiness_findings_of_one_milestone(repo: Path):
 
 
 def test_grills_and_artifacts_and_html_mockups_produce_no_finding(repo: Path):
-    add_mobile_book(repo)
+    add_ui_book(repo)
     put(repo, journeys=UI_JOURNEY)
     write(repo / "docs/milestones/sign-in/mockups/sign-in-with-a-code.html", "<html></html>")
     write(repo / "docs/milestones/sign-in/grills/auth.md", "# Auth grill\n\n1. Which provider?\n")

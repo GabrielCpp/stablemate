@@ -262,7 +262,7 @@ class Ostler:
         return milestones_mod.service_books(self.graph)
 
     def ui_services(self, names: Iterable[str]) -> builtins.set[str]:
-        """The books among *names* whose driver is ``web`` or ``mobile`` (a story with one needs a mockup)."""
+        """The books among *names* with screens (a story with one needs a mockup)."""
         return milestones_mod.ui_services(self.graph, names)
 
     def search(self, q: str, *, etype: str | None = None) -> builtins.list[dict]:

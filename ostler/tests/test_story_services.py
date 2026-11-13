@@ -7,7 +7,6 @@ from ostler import Ostler, doctor
 from ostler.model import load
 
 from conftest import FOO_ID, present, write
-from test_milestones import add_mobile_book
 
 
 def _services(repo: Path, line: str) -> None:
@@ -56,18 +55,8 @@ def test_the_schema_rejects_services_that_is_not_a_list(repo: Path):
     assert _schema_findings(repo)
 
 
-def test_the_books_are_the_directories_under_services(repo: Path):
-    assert Ostler(repo).service_books() == {"area"}
-
-
-def test_only_a_web_or_mobile_book_is_a_ui_service(repo: Path):
-    add_mobile_book(repo)
-    write(repo / "docs/services/api/rec.md", "---\ntype: feature\nslug: rec\ntitle: Rec\n---\n# Rec\n")
-
-    okf = Ostler(repo)
-
-    assert okf.ui_services(["mobile-app", "api", "area"]) == {"mobile-app"}
-    assert okf.ui_services([]) == set()
+def test_a_page_folder_is_no_book(repo: Path):
+    assert Ostler(repo).service_books() == set()
 
 
 def test_a_python_book_is_a_book_with_no_page_folder(repo: Path):
@@ -75,7 +64,7 @@ def test_a_python_book_is_a_book_with_no_page_folder(repo: Path):
     write(repo / "services/desk/web/service.py", "")
     write(repo / "services/ops/stack.yml", "services: {}\n")
 
-    assert Ostler(repo).service_books() == {"area", "billing", "desk"}
+    assert Ostler(repo).service_books() == {"billing", "desk"}
 
 
 def test_a_book_with_screens_is_a_ui_service(repo: Path):
