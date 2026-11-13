@@ -68,3 +68,21 @@ def test_only_a_web_or_mobile_book_is_a_ui_service(repo: Path):
 
     assert okf.ui_services(["mobile-app", "api", "area"]) == {"mobile-app"}
     assert okf.ui_services([]) == set()
+
+
+def test_a_python_book_is_a_book_with_no_page_folder(repo: Path):
+    write(repo / "services/billing/service.py", "")
+    write(repo / "services/desk/web/service.py", "")
+    write(repo / "services/ops/stack.yml", "services: {}\n")
+
+    assert Ostler(repo).service_books() == {"area", "billing", "desk"}
+
+
+def test_a_book_with_screens_is_a_ui_service(repo: Path):
+    write(repo / "services/web-app/service.py", "")
+    write(repo / "services/web-app/screens/__init__.py", "")
+    write(repo / "services/desk/web/service.py", "")
+    write(repo / "services/desk/web/screens.py", "")
+    write(repo / "services/billing/service.py", "")
+
+    assert Ostler(repo).ui_services(["web-app", "desk", "billing"]) == {"web-app", "desk"}

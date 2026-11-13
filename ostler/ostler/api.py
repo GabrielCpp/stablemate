@@ -258,7 +258,7 @@ class Ostler:
         return milestones_mod.check_milestone(self.graph, milestone)
 
     def service_books(self) -> builtins.set[str]:
-        """The names of the books under ``docs/services/`` (a story's ``services`` name these)."""
+        """The names of the service books under ``services/`` (a story's ``services`` name these)."""
         return milestones_mod.service_books(self.graph)
 
     def ui_services(self, names: Iterable[str]) -> builtins.set[str]:

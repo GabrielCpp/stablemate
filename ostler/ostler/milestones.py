@@ -21,6 +21,9 @@ SKIPPED_STATUSES = frozenset({"superseded"})
 JOURNEY_LEVEL = 3
 SERVICES_LABEL = "services"
 MOCKUPS_DIR = "mockups"
+BOOKS_DIR = "services"
+BOOK_FILE = "service.py"
+SCREENS_DIR = "screens"
 
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 _URL_SCHEME = re.compile(r"^[a-z][a-z0-9+.-]*:", re.IGNORECASE)
@@ -36,19 +39,24 @@ def journey_slug(title: str) -> str:
 
 
 def service_books(graph: Graph) -> set[str]:
-    """The names of the books under `docs/services/`."""
-    services_root = graph.doc_roots.get("services")
-    if services_root is None or not services_root.is_dir():
-        return set()
-    return {d.name for d in services_root.iterdir() if d.is_dir()}
+    """The names of the service books: each folder under `services/` that holds a `service.py`, and each folder of pages."""
+    names = set(_book_homes(graph))
+    pages = graph.doc_roots.get("services")
+    if pages is not None and pages.is_dir():
+        names |= {d.name for d in pages.iterdir() if d.is_dir()}
+    return names
 
 
 def ui_services(graph: Graph, names: Iterable[str], dump: dict | None = None) -> set[str]:
-    """The books among *names* whose runbook driver is `web` or `mobile`."""
+    """The books among *names* a person sees: a book with screens, or pages whose runbook driver is `web` or `mobile`."""
     wanted = set(names)
     if not wanted:
         return set()
-    return wanted & _ui_books(graph, dump)
+    screened = {
+        name for name, homes in _book_homes(graph).items()
+        if any((home / SCREENS_DIR).is_dir() or (home / f"{SCREENS_DIR}.py").is_file() for home in homes)
+    }
+    return wanted & (screened | _ui_books(graph, dump))
 
 
 def approved_milestones(graph: Graph) -> list[Milestone]:
@@ -191,13 +199,26 @@ def _journey_findings(graph: Graph, milestone: Milestone, doc: markdown.Markdown
             found.append(Finding(
                 "error", "milestone-journey-services",
                 f"{rel}: the journey `{title}` names the book `{book}`, which does not exist "
-                f"under docs/services",
+                f"under {BOOKS_DIR}/",
                 path=rel, line=line, ref=slug))
     return found
 
 
 def _books_of(value: str) -> list[str]:
     return [b for b in (part.strip().strip("`").strip() for part in value.split(",")) if b]
+
+
+def _book_homes(graph: Graph) -> dict[str, list[Path]]:
+    """Each service book under `services/` by name, with every folder that holds one of its `service.py` files."""
+    base = graph.root / BOOKS_DIR
+    if not base.is_dir():
+        return {}
+    found: dict[str, list[Path]] = {}
+    for folder in sorted(d for d in base.iterdir() if d.is_dir()):
+        homes = [folder] if (folder / BOOK_FILE).is_file() else sorted(f.parent for f in folder.glob(f"*/{BOOK_FILE}"))
+        if homes:
+            found[folder.name] = homes
+    return found
 
 
 def _ui_books(graph: Graph, dump: dict | None) -> set[str]:
