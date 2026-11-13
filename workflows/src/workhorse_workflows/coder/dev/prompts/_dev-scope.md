@@ -52,17 +52,11 @@ Some things read like follow-ups and are not. A remark about docs, or about the 
 `story.md` or a plan file, is not one. A note about the toolchain is not one. Each is a run
 finding for the operator, and it goes in `notes`.
 
-## The book
+{% if book_services %}## The book
 
-{% if book_services %}The story's claims for {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} live in its executable book under `services/<name>/`, written before you started. The book lane
+The story's claims for {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} live in its executable book under `services/<name>/`, written before you started. The book lane
 updates the book after review, so the plan lists no edit under `services/<name>/`, and the build and
 review phases change nothing there. A claim in it you cannot meet is a block that names the claim.
-{% endif %}{% if markdown_services or not book_services %}The run's docs phase merges this story into the repo's book under `docs/services/` after
-review, and QA reads its obligations from that merge. A rule in the repo's instruction files
-that the book changes with the code is met there. So the plan lists no book edits, and the
-build and review phases write, stamp and doctor nothing under `docs/services/`. Read the book
-to learn what the product does. A page this change will make wrong is a note for the docs
-phase, and it goes in `notes`.
 {% endif %}
 
 ## Blocked

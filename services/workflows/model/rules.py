@@ -29,10 +29,6 @@ def _unreadable(skills: str) -> str:
     return f"[workhorse] WARNING: {block}\n[workhorse] ERROR: {block}"
 
 
-CODER_SKILLS = (
-    "  - skill 'ostler-okf' (referenced in docs/prompts/document-story.md)\n"
-    "  - skill 'ostler-okf' (referenced in docs/prompts/specify-story.md)"
-)
 OKF_BOOK_SKILLS = "  - skill 'ostler-book' (referenced in main/prompts/write-python-book.md)"
 
 
@@ -77,7 +73,5 @@ already_there = Rule[NewArgs, Workspace](
     "error: {target} already exists; pick another name or remove it", _target_exists, REFUSED,
     why="scaffolding never overwrites a distribution a person may have edited.")
 
-coder_needs_its_skills = Rule[DryRunArgs, Workspace](_unreadable(CODER_SKILLS), _skills_missing, REFUSED,
-    why="the dry run resolves every skill a prompt names, and refuses when the repo and home hold none of them.")
 okf_book_needs_its_skills = Rule[DryRunArgs, Workspace](_unreadable(OKF_BOOK_SKILLS), _skills_missing, REFUSED,
     why="the dry run resolves every skill a prompt names, and refuses when the repo and home hold none of them.")

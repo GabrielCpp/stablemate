@@ -5,24 +5,25 @@ enforce it.
 
 ### What you owe
 
-Every service of this story has an executable book, and the book's own play judged the
+{% if book_services %}Every service of this story has an executable book, and the book's own play judged the
 story. The claims listed above are the ones no call of a book can show, so they are the
 whole scope of this plan. Each claim is a criterion named `claim:<n>`, and the plan covers
-each one with an executable assertion. A claim the story's own words make universal (`every`,
+each one with an executable assertion.{% else %}No service book judged this story, so the story's Acceptance Criteria are the whole
+scope of this plan. Each Acceptance Criterion is a criterion named `ac:<n>`, numbered from 1 in
+the order the story lists them, and the plan covers each one with an executable assertion.{% endif %} A {% if book_services %}claim{% else %}criterion{% endif %} the story's own words make universal (`every`,
 `all`, `each`, `throughout`, a parenthesized category list) needs a coverage inventory first:
 list each named category in `qa-plan.md` and map each to an assertion. A representative
 sample proves only the category it exercises.
 
-Read the story for the wording of each claim. Write no scenario against anything the claims
-do not name. The validation refuses a scenario whose `covers=` names nothing owed, and a plan
-that leaves a claim uncovered.
+Read the story for the wording of each {% if book_services %}claim{% else %}criterion{% endif %}. Write no scenario against anything the {% if book_services %}claims{% else %}criteria{% endif %}
+do not name, and leave no {% if book_services %}claim{% else %}criterion{% endif %} uncovered.
 
 ### The two files
 
 Write both directly under the spec dir:
 
 1. `qa_plan.py`, mandatory.
-2. `qa-plan.md`, the rationale and the claim-to-scenario map. Create it with
+2. `qa-plan.md`, the rationale and the {% if book_services %}claim{% else %}criterion{% endif %}-to-scenario map. Create it with
    `timeout 30 ostler create spec <story-id> qa-plan.md`, where `<story-id>` is the story's id
    (the spec dir's folder name, passed in as `story_id`). That stamps the frontmatter. Write
    below the `---` block and leave it in place.
@@ -67,7 +68,7 @@ def publish_records_the_real_author(qa: Qa) -> None:
 
 Declare only the targets the story needs. Every scenario has a target, a mechanism, an
 objective (its docstring), preconditions, checkpoints, `covers`, and at least one `qa.check`
-that names the same ids in its own `covers=`. `covers=` holds only `claim:<n>` ids.
+that names the same ids in its own `covers=`. `covers=` holds only {% if book_services %}`claim:<n>`{% else %}`ac:<n>`{% endif %} ids.
 
 A target's `base_url` names the service as `{name}`, such as `{gateway}`, the name
 `ostler env address` takes. The run resolves it from its copy's address book as the plan
@@ -158,7 +159,7 @@ on what the slice sends is a finding. The story fixes it.
 ### What `qa-plan.md` explains
 
 - Preflight, targets, credentials by symbolic name, and health checks.
-- One section per claim in the order listed above.
+- One section per {% if book_services %}claim in the order listed above{% else %}Acceptance Criterion in the order the story lists them{% endif %}.
 - Each scenario's objective, preconditions, checkpoints, forbidden bypasses, the arrangement
   detail that makes each bypass observable, and its terminal proof.
 

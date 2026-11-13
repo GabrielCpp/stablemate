@@ -6,7 +6,6 @@ from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush
 from workhorse_workflows.coder.qa.nodes.qa import (
     QA_SCRATCH_DIRNAME,
     clear_qa_evidence,
-    compile_story_plan,
     ensure_stack,
     hold_copy,
     lint_qa_plan,
@@ -15,7 +14,6 @@ from workhorse_workflows.coder.qa.nodes.qa import (
     run_qa_plan,
     stack_target,
     teardown_stack,
-    validate_qa_plan,
 )
 from workhorse_workflows.coder.qa.nodes.regression import (
     detect_regression_suites,
@@ -26,7 +24,6 @@ __all__ = [
     "QA_SCRATCH_DIRNAME",
     "check_sentinel_ids",
     "clear_qa_evidence",
-    "compile_story_plan",
     "detect_regression_suites",
     "ensure_stack",
     "hold_copy",
@@ -38,6 +35,5 @@ __all__ = [
     "run_regression_suite",
     "stack_target",
     "teardown_stack",
-    "validate_qa_plan",
     "verify_qa_evidence",
 ]

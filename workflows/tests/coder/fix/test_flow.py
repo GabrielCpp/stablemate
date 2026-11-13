@@ -5,16 +5,10 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 from ostler import Ostler
-from workhorse.artifacts import ArtifactWriter
-from workhorse.pyflow import WorkflowFailed
-from workhorse.pyflow import park as pyflow_park
-from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
-from workhorse.records import parse_checkpoint
 
 from coder.fix.scripted import (
     RECORD,
@@ -23,7 +17,6 @@ from coder.fix.scripted import (
     STORY_REL,
     TEXT,
     ScriptedAgent,
-    answers,
     assert_agent_story_commit,
     branch_of,
     dirty_paths,
@@ -51,10 +44,7 @@ def test_one_item_is_seeded_fixed_checked_committed_and_closed(
     assert result.has_fix is False, result
     assert "no open qa record" in result.reason, result
 
-    assert agent.counts() == {
-        "fix-item": 1,
-        "document-story": 1,
-    }, agent.counts()
+    assert agent.counts() == {"fix-item": 1}, agent.counts()
 
     story = (epics_root() / STORY_REL / "story.md").read_text(encoding="utf-8")
     assert f"- {TEXT}" in story, story
@@ -148,9 +138,10 @@ def test_a_fix_that_changed_nothing_fails_the_drain_and_leaves_the_record_open(
 ) -> None:
     agent = ScriptedAgent(workspace, change=False)
 
-    with pytest.raises(WorkflowFailed, match="no commit carries an exact Story trailer"):
-        drive_flow(Fix(), env(), agent)
+    result = drive_flow(Fix(), env(), agent)
 
+    assert result.has_fix is False, result
+    assert "no commit landed" in result.reason, result
     assert record_of(docs).status == "open", record_of(docs)
     assert not any(line.startswith("fix(") for line in log_of(workspace["api"]))
 
@@ -241,70 +232,6 @@ def test_the_commits_land_on_the_branch_the_repos_were_already_on(
     assert branch_of(workspace["api"]) == "main"
     assert branch_of(docs) == "main"
     assert_agent_story_commit(workspace["api"], agent)
-
-
-def test_the_docs_sub_flow_runs_for_real_and_its_verdict_gates_the_commit(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """`document` is a handoff, so the whole `docs` flow runs per drained item."""
-    agent = ScriptedAgent(workspace)
-
-    drive_flow(Fix(), env(), agent)
-
-    assert agent.counts()["document-story"] == 1, agent.counts()
-    assert agent.args_for("document-story")[0]["story_path"].endswith("story.md")
-    assert_agent_story_commit(workspace["api"], agent)
-
-
-def test_documentation_that_blocks_parks_and_keeps_the_agent_commit(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """A blocked docs owner parks the drain, and the answer resumes it onto the same commit."""
-    agent = ScriptedAgent(workspace, docs_blocks=1)
-    seen: list[str] = []
-
-    with patch.object(pyflow_park, "wait_for_answer", answers(seen)):
-        result = drive_flow(Fix(), env(), agent)
-
-    assert result.has_fix is False, result
-    (gate,) = seen
-    assert "cannot be described as built" in gate, gate
-    assert agent.counts()["document-story"] == 2, agent.counts()
-    assert_agent_story_commit(workspace["api"], agent)
-    assert record_of(docs).status == "done", record_of(docs)
-
-
-def test_a_run_killed_after_the_owner_turn_does_not_run_it_again(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The checkpoint is written before a state runs, so the drawn item survives the kill."""
-    run_env = env()
-    run_dir = run_env.writer.run_dir
-
-    with pytest.raises(RuntimeError, match="killed during document-story"):
-        drive_flow(Fix(), run_env, ScriptedAgent(workspace, explode={"document-story"}))
-
-    checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
-    resume = read_resume(checkpoint)
-    assert resume.state == "document", resume
-    assert resume.flow == "Fix", resume
-
-    agent = ScriptedAgent(workspace)
-    result = drive_flow(Fix(**resume.inputs), env(run_dir=run_dir), agent, resume)
-
-    assert result.has_fix is False, result
-    assert "fix-item" not in agent.counts(), agent.counts()
-    assert agent.counts()["document-story"] == 1, agent.counts()
-    assert record_of(docs).status == "done", record_of(docs)
 
 
 def test_a_turn_gets_its_tool_output_back_and_the_commit_leaves_what_was_dirty_before(

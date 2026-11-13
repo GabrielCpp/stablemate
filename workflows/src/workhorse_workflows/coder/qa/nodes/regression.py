@@ -6,18 +6,17 @@ import re
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.service_gates import gate_command
 from workhorse_workflows.coder.shared.plan import load_plan_context
 from workhorse_workflows.coder.shared.schemas.qa import (
-    FailureAttribution,
     RegressionRun,
     RegressionSuite,
     RegressionSuites,
 )
-from workhorse_workflows.kit import find_repo_root, load_json, resolve_workspace
+from workhorse_workflows.kit import find_repo_root, resolve_workspace
 
 REGRESSION_GATE = "regression"
 
@@ -165,59 +164,6 @@ def _merge_results(results: list[RegressionRun]) -> RegressionRun:
     )
 
 
-def _same_test_path(left: str, right: str) -> bool:
-    """Whether two test paths name the same file, either being repo- or service-relative."""
-    left = left.removeprefix("./")
-    right = right.removeprefix("./")
-    return left == right or left.endswith(f"/{right}") or right.endswith(f"/{left}")
-
-
-def _verification_index(spec_path: Path, spec_dir: str, logger: logging.Logger) -> list:
-    """The whole-book verify table, from its sidecar file."""
-    if not spec_dir:
-        return []
-    sidecar = load_json(
-        spec_path / "qa-okf-verification-index.json", "qa-okf-verification-index.json", logger
-    )
-    if isinstance(sidecar, list):
-        return sidecar
-    context = load_json(spec_path / "qa-okf-context.json", "qa-okf-context.json", logger)
-    index = context.get("verificationIndex", [])
-    return index if isinstance(index, list) else []
-
-
-def _attribute_failures(result: RegressionRun, index: list) -> RegressionRun:
-    """Attach the OKF `tests:` owner of each failing test — diagnosis, never a downgrade."""
-    if result.status != "failed" or not result.failing_tests:
-        return result
-    attribution = []
-    for failure in result.failing_tests:
-        test_path = failure.split(": ", 1)[0]
-        owners = [
-            item
-            for item in index
-            if isinstance(item, dict)
-            and item.get("path")
-            and _same_test_path(test_path, str(item["path"]))
-        ]
-        classification: Literal["impacted", "outside-impact", "unattributed"]
-        if any(item.get("impacted") is True for item in owners):
-            classification = "impacted"
-        elif owners:
-            classification = "outside-impact"
-        else:
-            classification = "unattributed"
-        attribution.append(
-            FailureAttribution(
-                test=failure,
-                path=test_path,
-                classification=classification,
-                nodes=sorted({str(item.get("node", "")) for item in owners}),
-            )
-        )
-    return result.model_copy(update={"failure_attribution": attribution})
-
-
 @blueprint.node
 def detect_regression_suites(
     logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace: str = ""
@@ -263,8 +209,6 @@ def run_regression_suite(
     else:
         result = _merge_results([_run_one(suite, qa_dir, logger) for suite in resolved])
 
-    spec_path = find_repo_root(repo_dir) / spec_dir
-    result = _attribute_failures(result, _verification_index(spec_path, spec_dir, logger))
     logger.info("regression run status=%s (%d failing)", result.status, len(result.failing_tests))
     return result
 

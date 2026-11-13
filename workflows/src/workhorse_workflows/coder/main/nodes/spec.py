@@ -1,23 +1,21 @@
-"""The spec pass's hand-over: which book nodes and book paths it wrote, kept for the lanes after it."""
+"""The spec pass's hand-over: which book paths it wrote, kept for the lanes after it."""
 from __future__ import annotations
 
 import logging
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.schemas.docs import SpecNodes
+from workhorse_workflows.coder.shared.schemas.docs import SpecBookPaths
 
 
 @blueprint.node
-def record_spec_nodes(
+def record_spec_book_paths(
     logger: logging.Logger,
-    nodes: list[str] | None = None,
     book_paths: list[str] | None = None,
-) -> SpecNodes:
-    """Record the markdown nodes and the executable-book paths the spec pass wrote, so dev and the build pass can read them back."""
-    kept = list(dict.fromkeys(nodes or []))
-    kept_paths = list(dict.fromkeys(book_paths or []))
-    logger.info("the spec pass wrote %d node(s) and %d book path(s)", len(kept), len(kept_paths))
-    return SpecNodes(nodes=kept, book_paths=kept_paths)
+) -> SpecBookPaths:
+    """Record the executable-book paths the spec pass wrote, so dev can read them back."""
+    kept = list(dict.fromkeys(book_paths or []))
+    logger.info("the spec pass wrote %d book path(s)", len(kept))
+    return SpecBookPaths(book_paths=kept)
 
 
-__all__ = ["record_spec_nodes"]
+__all__ = ["record_spec_book_paths"]

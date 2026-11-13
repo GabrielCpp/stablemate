@@ -131,7 +131,6 @@ class Dev(Workflow):
     note: str = ""
     preexisting: tuple[str, ...] = ()
     worklist_dir: str = ""
-    spec_nodes: tuple[str, ...] = ()
     spec_book_paths: tuple[str, ...] = ()
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
@@ -186,10 +185,8 @@ class Dev(Workflow):
             "story_services": self.ctx.story_services,
             "spec_dir": self.ctx.spec_dir,
             "branch": self.branch,
-            "spec_nodes": list(self.spec_nodes),
             "spec_book_paths": list(self.spec_book_paths),
             "book_services": covered,
-            "markdown_services": [n for n in self.ctx.story_services if n not in covered],
             "decisions_dir": str(decisions_dir(self.repo_dir)),
         }
 

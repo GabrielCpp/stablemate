@@ -95,26 +95,13 @@ SLUG = "STORY-1"
 STORY_FOLDER = "stories/EPIC-1/STORY-1"
 SPEC = "specs/STORY-1"
 
-SERVER_PAGE = """---
-type: cli
-slug: server
-title: the server
----
-# the server
-
-Serves things.
-
-- binary: server
-- code: src/server.py::run
-"""
-
 PLAN = """
 from ostler_qa import Qa, scenario, target
 
 app = target("app")
 
 
-@scenario(target=app, mechanism="live", covers=["okf:docs/services/app/server.md:contract"], id="serves")
+@scenario(target=app, mechanism="live", covers=["claim:1"], id="serves")
 def serves(qa: Qa) -> None:
     qa.check("it serves", True)
 """
@@ -130,7 +117,7 @@ def _book(
     """A one-repo book with a cited file, a story folder and a plan, all committed; returns the spec dir."""
     spec = tmp_path / "artifacts" / SPEC
     write(spec / "qa_plan.py", PLAN)
-    write(repo / "docs" / "services" / "app" / "server.md", SERVER_PAGE)
+    write(repo / "services" / "app" / "service.py", "SERVICE = 1\n")
     write(repo / "src" / "server.py", "def run():\n    return 1\n")
     write(repo / STORY_FOLDER / "story.md", "# story\n")
     git(repo, "add", "-A")
@@ -197,7 +184,7 @@ def test_a_leftover_edited_after_qa_passed_reopens_the_proof(
 
     result = _scope(logger, repo, spec, dirty, proven)
 
-    assert (result.kind, result.scenarios) == ("claims", ["serves"]), result
+    assert result.kind == "whole", result
 
 
 def test_a_backlog_record_and_a_spec_file_in_an_artifacts_dir_inside_the_repo_are_inert(
@@ -237,37 +224,7 @@ def test_a_story_markdown_leftover_is_inert(
     assert result.kind == "inert"
 
 
-def test_a_cited_product_file_reruns_the_scenarios_covering_its_page(
-    repo: Path,
-    logger: logging.Logger,
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    spec = _book(repo, write, git, monkeypatch, tmp_path)
-
-    result = _scope(logger, repo, spec, [f"{repo.name}:src/server.py"])
-
-    assert (result.kind, result.scenarios) == ("claims", ["serves"]), result
-
-
-def test_an_edited_book_page_reruns_its_scenarios(
-    repo: Path,
-    logger: logging.Logger,
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    spec = _book(repo, write, git, monkeypatch, tmp_path)
-
-    result = _scope(logger, repo, spec, [f"{repo.name}:docs/services/app/server.md"])
-
-    assert (result.kind, result.scenarios) == ("claims", ["serves"]), result
-
-
-def test_an_uncited_file_or_another_repos_path_reruns_the_whole_plan(
+def test_any_product_leftover_or_another_repos_path_reruns_the_whole_plan(
     repo: Path,
     logger: logging.Logger,
     write: Callable[[Path, str], Path],
@@ -327,7 +284,7 @@ def test_the_leftovers_commit_has_nothing_to_land_when_nothing_is_dirty(
     assert not result.committed
 
 
-def test_the_book_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_rest(
+def test_the_book_delta_commit_lands_new_and_edited_book_files_and_leaves_the_rest(
     repo: Path,
     logger: logging.Logger,
     write: Callable[[Path, str], Path],
@@ -336,13 +293,13 @@ def test_the_book_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_re
     tmp_path: Path,
 ) -> None:
     spec = _book(repo, write, git, monkeypatch, tmp_path)
-    write(repo / "docs" / "services" / "app" / "stale.md", "# stale\n")
+    write(repo / "services" / "app" / "stale.py", "STALE = 1\n")
     git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "stale page")
-    write(repo / "docs" / "services" / "app" / "stale.md", "# stale, edited before the story\n")
-    snapshot = [f"docs/services/app/stale.md\0{digest(repo, 'docs/services/app/stale.md')}"]
-    write(repo / "docs" / "services" / "app" / "server.md", SERVER_PAGE + "\nMore.\n")
-    write(repo / "docs" / "services" / "app" / "fresh.md", "# fresh\n")
+    git(repo, "commit", "-qm", "stale file")
+    write(repo / "services" / "app" / "stale.py", "STALE = 2\n")
+    snapshot = [f"services/app/stale.py\0{digest(repo, 'services/app/stale.py')}"]
+    write(repo / "services" / "app" / "service.py", "SERVICE = 2\n")
+    write(repo / "services" / "app" / "journeys" / "fresh.py", "JOURNEY = 1\n")
     write(repo / "src" / "server.py", "def run():\n    return 2\n")
 
     result = story_commit.commit_book_delta(
@@ -352,51 +309,20 @@ def test_the_book_delta_commit_lands_new_and_edited_book_pages_and_leaves_the_re
         spec_dir=spec,
         preexisting=snapshot,
         repo_dir=str(repo),
+        book_services=["app"],
     )
 
     assert result.committed
     landed = git(repo, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
     assert landed[0].startswith("docs(acme): specify STORY-1 in the book"), landed
     assert sorted(line for line in landed[1:] if line) == [
-        "docs/services/app/fresh.md",
-        "docs/services/app/server.md",
+        "services/app/journeys/fresh.py",
+        "services/app/service.py",
     ]
     assert sorted(git(repo, "status", "--porcelain").stdout.splitlines()) == [
-        " M docs/services/app/stale.md",
+        " M services/app/stale.py",
         " M src/server.py",
     ]
-
-
-def test_the_build_book_delta_commit_lands_book_pages_as_a_document_commit(
-    repo: Path,
-    logger: logging.Logger,
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    spec = _book(repo, write, git, monkeypatch, tmp_path)
-    write(repo / "docs" / "services" / "app" / "server.md", SERVER_PAGE + "\nMore.\n")
-    write(repo / "docs" / "services" / "app" / "fresh.md", "# fresh\n")
-    write(repo / "src" / "server.py", "def run():\n    return 2\n")
-
-    result = story_commit.commit_book_delta(
-        logger,
-        epic=EPIC,
-        story_slug=SLUG,
-        spec_dir=spec,
-        repo_dir=str(repo),
-        phase="build",
-    )
-
-    assert result.committed
-    landed = git(repo, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
-    assert landed[0].startswith("docs(acme): document STORY-1 in the book"), landed
-    assert sorted(line for line in landed[1:] if line) == [
-        "docs/services/app/fresh.md",
-        "docs/services/app/server.md",
-    ]
-    assert git(repo, "status", "--porcelain").stdout.strip() == "M src/server.py"
 
 
 def test_the_clean_check_skips_the_artifacts_dir_only_when_asked(
@@ -459,7 +385,7 @@ def test_a_covered_services_spec_delta_commit_holds_only_its_book_folder(
     git(repo, "commit", "-qm", "the api book")
     write(repo / "services" / "api" / "journeys" / "publish.py", "JOURNEY = 1\n")
     write(repo / "services" / "api" / "service.py", "SERVICE = 2\n")
-    write(repo / "docs" / "services" / "app" / "fresh.md", "# fresh\n")
+    write(repo / "docs" / "notes" / "fresh.md", "# fresh\n")
     write(repo / "src" / "server.py", "def run():\n    return 2\n")
 
     result = story_commit.commit_book_delta(
@@ -469,7 +395,6 @@ def test_a_covered_services_spec_delta_commit_holds_only_its_book_folder(
         spec_dir=spec,
         repo_dir=str(repo),
         book_services=["api"],
-        markdown=False,
     )
 
     assert result.committed
@@ -480,34 +405,5 @@ def test_a_covered_services_spec_delta_commit_holds_only_its_book_folder(
     ]
     assert sorted(git(repo, "status", "--porcelain").stdout.splitlines()) == [
         " M src/server.py",
-        "?? docs/services/app/fresh.md",
-    ]
-
-
-def test_a_mixed_story_commits_the_markdown_pages_beside_the_covered_book(
-    repo: Path,
-    logger: logging.Logger,
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    spec = _book(repo, write, git, monkeypatch, tmp_path)
-    write(repo / "services" / "api" / "journeys" / "publish.py", "JOURNEY = 1\n")
-    write(repo / "docs" / "services" / "app" / "fresh.md", "# fresh\n")
-
-    story_commit.commit_book_delta(
-        logger,
-        epic=EPIC,
-        story_slug=SLUG,
-        spec_dir=spec,
-        repo_dir=str(repo),
-        book_services=["api"],
-        markdown=True,
-    )
-
-    landed = git(repo, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
-    assert sorted(line for line in landed[1:] if line) == [
-        "docs/services/app/fresh.md",
-        "services/api/journeys/publish.py",
+        "?? docs/",
     ]

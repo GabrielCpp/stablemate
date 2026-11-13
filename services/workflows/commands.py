@@ -74,11 +74,9 @@ class DryRunCoder(Command):
     args = NONE
     answers = (
         Exit(0, Lines(), "the run name and the directory holding its artifacts are printed"),
-        Exit(1, Lines(), "a skill its prompts name is installed neither in the repository nor at home"),
     )
     carries = RunCoder
-    source = ("workflows/src/workhorse_workflows/coder/workflow.py::main", ENTRY, ENGINE,
-              "workhorse/workhorse/references.py::missing_references")
+    source = ("workflows/src/workhorse_workflows/coder/workflow.py::main", ENTRY, ENGINE)
 
 
 class DryRunOkfBook(Command):

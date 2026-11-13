@@ -13,7 +13,7 @@ from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 
 PROMPT = (
-    Path(workhorse_workflows.__file__).parent / "coder" / "qa" / "prompts" / "_qa-plan-contract.md"
+    Path(workhorse_workflows.__file__).parent / "coder" / "qa" / "prompts" / "_qa-claims-contract.md"
 )
 
 _PYTHON_BLOCK = re.compile(r"```python\n(.*?)```", re.DOTALL)
@@ -22,7 +22,7 @@ _PYTHON_BLOCK = re.compile(r"```python\n(.*?)```", re.DOTALL)
 def _example_source() -> str:
     """The first ```python block in the prompt — the plan skeleton itself."""
     blocks = _PYTHON_BLOCK.findall(PROMPT.read_text())
-    assert blocks, "_qa-plan-contract.md no longer carries a ```python example"
+    assert blocks, "_qa-claims-contract.md no longer carries a ```python example"
     return blocks[0]
 
 
@@ -45,7 +45,7 @@ def test_the_example_imports_only_names_the_harness_exports():
     }
     assert imported, "the example no longer imports from ostler_qa"
     unknown = imported - set(harness.__all__)
-    assert not unknown, f"_qa-plan-contract.md imports {sorted(unknown)}, which ostler_qa does not export"
+    assert not unknown, f"_qa-claims-contract.md imports {sorted(unknown)}, which ostler_qa does not export"
 
 
 def _qa_attributes() -> set[str]:
@@ -79,7 +79,7 @@ def test_the_example_only_calls_qa_attributes_that_exist():
     }
     assert used, "the example no longer touches `qa`"
     unknown = used - _qa_attributes()
-    assert not unknown, f"_qa-plan-contract.md calls qa.{sorted(unknown)}, which the harness does not have"
+    assert not unknown, f"_qa-claims-contract.md calls qa.{sorted(unknown)}, which the harness does not have"
 
 
 def test_the_example_scenario_would_survive_the_substantiveness_gate():
@@ -95,11 +95,11 @@ def test_the_prose_names_only_mechanisms_and_drivers_ostler_accepts():
     text = PROMPT.read_text()
     for label, vocabulary in (("mechanism", harness.MECHANISMS), ("driver", harness.DRIVER_NAMES)):
         clause = re.search(rf"`{label}` is \w+: (.*?\.)\s", text, re.DOTALL)
-        assert clause, f"_qa-plan-contract.md no longer enumerates the {label} vocabulary"
+        assert clause, f"_qa-claims-contract.md no longer enumerates the {label} vocabulary"
         named = set(re.findall(r"`([a-z_]+)`", clause.group(1)))
         assert named, f"the {label} clause lists nothing"
         unknown = named - set(vocabulary)
-        assert not unknown, f"_qa-plan-contract.md offers {label} {sorted(unknown)}, which ostler rejects"
+        assert not unknown, f"_qa-claims-contract.md offers {label} {sorted(unknown)}, which ostler rejects"
 
 
 PLAN_PROMPTS = (PROMPT, PROMPT.parent / "qa-story.md")
@@ -174,20 +174,17 @@ if __name__ == "__main__":
     raise SystemExit(1 if failed else 0)
 
 
-def test_the_owner_prompt_is_one_lean_turn_over_the_compiled_plan():
-    """The owner selects, runs, debugs and records alone: no seat, no audit, no dry-run ledger."""
+def test_the_owner_prompt_is_one_lean_turn_over_a_hand_written_plan():
+    """The owner selects, runs, debugs and records alone: no seat, no audit, no dry-run ledger, no compile."""
     prompt = PROMPT.parent
     text = (prompt / "qa-story.md").read_text()
-    assert "ostler qa compile-plan" in text
-    assert "--select" in text
-    assert "--cover ac:N=" in text
-    assert "Do not rewrite the compiled plan" in text
-    assert "--replace" in text
+    assert "Write `qa_plan.py` by hand" in text
+    assert "ostler qa compile-plan" not in text
     assert "jira-comment.md" in text
     assert not (prompt / "_qa-audit-brief.md").exists()
     for retired in ("Independent Audit", "_qa-audit-brief", "proved_scenarios", "| Seat |", "strongest"):
         assert retired not in text, f"qa-story.md still carries {retired!r}"
-    assert "proved_scenarios" not in (prompt / "_qa-plan-contract.md").read_text()
+    assert "proved_scenarios" not in (prompt / "_qa-claims-contract.md").read_text()
 
 
 def test_no_coder_prompt_or_readme_routes_a_seat_to_the_strongest_model():

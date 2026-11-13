@@ -37,9 +37,7 @@ def qa_only_arg(spec_dir: str) -> list[dict[str, Any]]:
 
 def stack_failures(stack: StackStatus) -> list[str]:
     """The QA stack as a failure the owner repairs; empty when it serves or is not needed."""
-    if stack.ready == "none":
-        reason = "The book serves a surface but declares no stack runbook."
-    elif stack.ready == "no":
+    if stack.ready == "no":
         reason = f"The stack did not come up at step `{stack.failed_step}`."
     else:
         return []

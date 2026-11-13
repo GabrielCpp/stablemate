@@ -51,7 +51,7 @@ class QaPlanRun(QaResult):
 class StackStatus(QaBaseResult):
     """`ensure_stack`'s account of the durable QA stack: up, adopted, undeclared, or broken."""
 
-    ready: Literal["yes", "no", "none", "unneeded"] = "no"
+    ready: Literal["yes", "no", "unneeded"] = "no"
     app_pid: str = ""
     app_pgid: str = ""
     entry_url: str = ""

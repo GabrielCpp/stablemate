@@ -1,3 +1,3 @@
 # docs
 
-The docs lane of the coder workflow. One owner agent folds a finished story into the as-built OKF book through its subagents, and the run checks that claim against the diff.
+The spec pass of the coder workflow. One owner agent writes a story's behaviour model and the claims it implies into the service's Python book before any code exists, and the run checks the book with `ostler book check`. A story that names a service with no book stops here, and a story that names no service skips the pass.

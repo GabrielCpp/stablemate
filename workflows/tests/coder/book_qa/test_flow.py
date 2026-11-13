@@ -120,7 +120,7 @@ class _Stack:
         self.targets = 0
         self.services: list[str] = []
         self.held: list[str] = []
-        self.ready: Literal["yes", "no", "none", "unneeded"] = "yes"
+        self.ready: Literal["yes", "no", "unneeded"] = "yes"
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Stack:
         def stack_target(logger: Any, story: str = "", lease: str = "", repo_dir: str = "", services: list[str] | None = None) -> StackTarget:
@@ -242,7 +242,7 @@ def test_a_story_with_no_covered_service_passes_with_no_seat_and_no_stack(
 
     result = drive_flow(_flow(), env(), agent)
 
-    assert (result.status, result.findings, result.docs_recheck_required) == ("passed", [], False)
+    assert (result.status, result.findings) == ("passed", [])
     assert agent.calls == [], agent.calls
     assert (stack.targets, stack.ensured, stack.released) == (0, 0, 0)
     assert scripted.argv == {"check": [], "run": []}
@@ -262,7 +262,7 @@ def test_a_green_pass_plays_the_named_calls_records_them_and_lands_the_book(
 
     result = drive_flow(_flow(), env(), agent)
 
-    assert (result.status, result.findings, result.docs_recheck_required) == ("passed", [], False)
+    assert (result.status, result.findings) == ("passed", [])
     assert agent.counts() == {"qa-book": 1}, agent.counts()
     [argv] = scripted.argv["run"]
     assert argv[argv.index("--only") + 1] == "ListX,BuildX", argv

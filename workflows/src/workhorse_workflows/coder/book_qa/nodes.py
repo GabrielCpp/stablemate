@@ -11,7 +11,6 @@ from ostler.book.index import parse as parse_index
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.book_qa import (
-    BookDeferral,
     BookPaths,
     BookPlay,
     BookQaRecord,
@@ -31,8 +30,6 @@ from workhorse_workflows.kit.tools import run_tool
 TAIL_LINES = 200
 RECORD_FILE = "book-qa.json"
 BOOK_OUT = Path("qa") / "book"
-BOOK_PAGES = "docs/services"
-DEFERRALS_FILE = "qa-deferrals.json"
 UNREACHED_FILE = "qa-unreached.json"
 
 
@@ -132,11 +129,6 @@ def changed_book_paths(
     ]
     logger.info("the spec pass changed %d book path(s)", len(found))
     return BookPaths(paths=found)
-
-
-def without_covered_roots(source_roots: tuple[str, ...], covered: list[str]) -> tuple[str, ...]:
-    """The `surface=path` source roots whose surface is not a covered service."""
-    return tuple(r for r in source_roots if r.partition("=")[0].strip() not in covered)
 
 
 SHARED_EXEMPT_FILES = frozenset({"index.tsv", "DISAGREEMENTS.md", "WALLS.md", "UNDERSPECIFIED.md", "VERIFIED"})
@@ -290,42 +282,18 @@ def write_book_record(
 
 
 @blueprint.node
-def defer_book_judged(logger: logging.Logger, spec_dir: str, repo_dir: str = "") -> BookDeferral:
-    """Write `qa-deferrals.json` beside the QA context packet: one entry per service a clean book record names, so every build of the packet defers that service's book pages to its book. No record, or a record with findings, writes an empty list."""
-    root = find_docs_root(repo_dir)
-    spec = root / spec_dir
-    record = _load_record(spec)
-    services = [] if record.findings else [entry.service for entry in record.services]
-    entries = [
-        {
-            "prefix": f"{BOOK_PAGES}/{name}/",
-            "kind": "book",
-            "detail": f"judged by the executable book of {name}",
-        }
-        for name in services
-    ]
-    spec.mkdir(parents=True, exist_ok=True)
-    (spec / DEFERRALS_FILE).write_text(json.dumps(entries, indent=2) + "\n", encoding="utf-8")
-    logger.info("deferred the book pages of %d service(s) to their books", len(services))
-    return BookDeferral(services=services)
-
-
-@blueprint.node
 def write_unreached_claims(
-    logger: logging.Logger, spec_dir: str, book_only: bool = False, repo_dir: str = ""
+    logger: logging.Logger, spec_dir: str, repo_dir: str = ""
 ) -> UnreachedClaims:
-    """Write `qa-unreached.json` beside the QA context packet for a story whose services all have a book: the claims a clean book record could not state, which are all the scenario seat owes. Any other story removes the file."""
+    """Write `qa-unreached.json` in the spec dir: the claims a clean book record could not state, which are all the scenario seat owes."""
     root = find_docs_root(repo_dir)
     spec = root / spec_dir
     target = spec / UNREACHED_FILE
-    if not book_only:
-        target.unlink(missing_ok=True)
-        return UnreachedClaims()
     record = _load_record(spec)
     claims = [] if record.findings else list(record.unreached)
     spec.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(claims, indent=2) + "\n", encoding="utf-8")
-    logger.info("the scenario seat owes %d unreached claim(s) of this book-only story", len(claims))
+    logger.info("the scenario seat owes %d unreached claim(s)", len(claims))
     return UnreachedClaims(claims=claims)
 
 
@@ -344,7 +312,7 @@ def commit_service_book(
     root = find_repo_root(repo_dir)
     folders = [(root / book_dir(name)).resolve() for name in services]
     excused = untouched_since(root, tuple(preexisting or ()))
-    excluded = not_product_roots(repo_dir, book=False)
+    excluded = not_product_roots(repo_dir)
     inside: list[str] = []
     stray: list[str] = []
     for rel in uncommitted_paths(root):
@@ -383,19 +351,16 @@ def commit_service_book(
 
 __all__ = [
     "BOOK_OUT",
-    "DEFERRALS_FILE",
     "RECORD_FILE",
     "UNREACHED_FILE",
     "book_check",
     "book_dir",
     "changed_book_paths",
     "verify_book_spec",
-    "without_covered_roots",
     "book_modules",
     "book_run",
     "book_scope",
     "commit_service_book",
-    "defer_book_judged",
     "covered_services",
     "read_book_record",
     "shared_book_paths",

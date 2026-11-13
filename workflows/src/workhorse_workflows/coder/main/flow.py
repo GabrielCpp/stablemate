@@ -34,7 +34,7 @@ from workhorse_workflows.coder.shared.judge import (
 from workhorse_workflows.coder.shared.schemas.judge import Ruling
 from workhorse_workflows.coder.shared.worktree import snapshot_worktree_state
 from workhorse_workflows.coder.main.nodes.pr import open_run_prs
-from workhorse_workflows.coder.main.nodes.spec import record_spec_nodes
+from workhorse_workflows.coder.main.nodes.spec import record_spec_book_paths
 from workhorse_workflows.coder.shared.queue import (
     ALL_EPICS,
     begin_run,
@@ -130,13 +130,15 @@ class Coder(Workflow):
 
     def specify(self) -> Continue:
         """Write the story's behaviour model and book delta before any code, or replan when the operator scoped its block to the epic."""
-        result = self._document(phase="spec")
+        result = self._specify()
         if not _documented(result):
             return Continue(result, self.replan, notes=result.notes)
+        if result.status == "not_applicable":
+            return Continue(result, self.dev)
         story = self._story
         covered = self.call(covered_services, list(story.story_services)).services
-        book = self.call(changed_book_paths, covered, list(self._preexisting())).paths if covered else []
-        self.call(record_spec_nodes, list(result.authored_nodes), book)
+        book = self.call(changed_book_paths, covered, list(self._preexisting())).paths
+        self.call(record_spec_book_paths, book)
         self.call(
             commit_book_delta,
             self._epic,
@@ -144,9 +146,7 @@ class Coder(Workflow):
             story.spec_dir,
             list(self._preexisting()),
             story_id=story.story_id,
-            phase="spec",
             book_services=covered,
-            markdown=len(covered) < len(story.story_services) or not covered,
         )
         return Continue(result, self.dev)
 
@@ -167,28 +167,10 @@ class Coder(Workflow):
             note=note,
             preexisting=self._preexisting(),
             worklist_dir=str(self.run_dir),
-            spec_nodes=self._spec_nodes(),
             spec_book_paths=self._spec_book_paths(),
         )
         if result.status == "replan":
             return Continue(result, self.replan, notes=result.operator_notes)
-        return Continue(result, self.document)
-
-    def document(self) -> Continue:
-        """Fold the story into the OKF book, or replan when the operator scoped its block to the epic."""
-        result = self._document()
-        if not _documented(result):
-            return Continue(result, self.replan, notes=result.notes)
-        story = self._story
-        self.call(
-            commit_book_delta,
-            self._epic,
-            story.story_slug,
-            story.spec_dir,
-            list(self._preexisting()),
-            story_id=story.story_id,
-            phase="build",
-        )
         return Continue(result, self.qa)
 
     def qa(self) -> Continue:
@@ -220,11 +202,7 @@ class Coder(Workflow):
         if sent_back is not None:
             return sent_back
         self._snapshot_proven()
-        return Continue(
-            result,
-            self.drain,
-            docs_recheck_required=result.docs_recheck_required,
-        )
+        return Continue(result, self.drain)
 
     def _sent_back(self, result: QaFlowResult) -> Continue | None:
         """Where a QA verdict that is not a pass goes: the replan, or the dev owner with its findings."""
@@ -276,24 +254,13 @@ class Coder(Workflow):
         self.logger.info("re-filed %d stories of %s after the replan", len(filed), epic)
         return Continue(result, self.route)
 
-    def drain(self, docs_recheck_required: bool = True) -> Continue:
+    def drain(self) -> Continue:
         """Hand the backlog to the `fix` flow, which drains it to dry and returns."""
         result = self.handoff(
             Fix,
             target_env=self.target_env,
             operator_mode=self.operator_mode,
         )
-        return Continue(
-            result,
-            self.finalize,
-            docs_recheck_required=docs_recheck_required,
-        )
-
-    def finalize(self, docs_recheck_required: bool = True) -> Continue:
-        """Recheck documentation after a mutation, then commit the story."""
-        result = self._document() if docs_recheck_required else None
-        if result is not None and not _documented(result):
-            return Continue(result, self.replan, notes=result.notes)
         return Continue(result, self.commit)
 
     def commit(self) -> Continue:
@@ -314,7 +281,7 @@ class Coder(Workflow):
                 proven=list(self._proven()),
             )
             if scope.kind != "inert":
-                return Continue(scope, self.reprove, dirty=state.dirty, scenarios=scope.scenarios)
+                return Continue(scope, self.reprove, dirty=state.dirty)
             self.call(
                 commit_leftovers,
                 self._epic,
@@ -333,9 +300,7 @@ class Coder(Workflow):
             )
         return Continue(state, self.standing)
 
-    def reprove(
-        self, dirty: list[str] | None = None, scenarios: list[str] | None = None
-    ) -> Continue:
+    def reprove(self, dirty: list[str] | None = None) -> Continue:
         """Rerun the proof the leftovers reopen, then commit them, or send what failed back to the dev owner."""
         story = self._story
         result = self.handoff(
@@ -346,7 +311,6 @@ class Coder(Workflow):
             target_env=self.target_env,
             preexisting=self._preexisting(),
             rerun=True,
-            scope=tuple(scenarios or ()),
         )
         sent_back = self._sent_back(result)
         if sent_back is not None:
@@ -404,8 +368,8 @@ class Coder(Workflow):
         self.call(teardown_stack)
         return Done(shipped)
 
-    def _document(self, phase: Literal["spec", "build"] = "build") -> DocsResult:
-        """The `Docs` handoff: the spec pass before dev, the build pass at the two points after it."""
+    def _specify(self) -> DocsResult:
+        """The `Docs` handoff: the spec pass before dev."""
         return self.handoff(
             Docs,
             story=self._story.story_id,
@@ -413,8 +377,6 @@ class Coder(Workflow):
             target_env=self.target_env,
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
-            phase=phase,
-            spec_nodes=self._spec_nodes() if phase == "build" else (),
         )
 
     def _snapshot_proven(self) -> None:
@@ -431,17 +393,10 @@ class Coder(Workflow):
         except NodeNotRunError:
             return ()
 
-    def _spec_nodes(self) -> tuple[str, ...]:
-        """The nodes the spec pass wrote for this story, or nothing when it never ran."""
-        try:
-            return tuple(self.output(record_spec_nodes).nodes)
-        except NodeNotRunError:
-            return ()
-
     def _spec_book_paths(self) -> tuple[str, ...]:
         """The executable-book paths the spec pass wrote for this story, or nothing when it never ran."""
         try:
-            return tuple(self.output(record_spec_nodes).book_paths)
+            return tuple(self.output(record_spec_book_paths).book_paths)
         except NodeNotRunError:
             return ()
 

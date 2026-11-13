@@ -1,22 +1,17 @@
 """End-to-end tests for the `qa` flow: the owner turn, the check that reruns it, and the operator."""
 from __future__ import annotations
 
-import copy
 import json
 import logging
-import os
 import subprocess
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
 import pytest
 from workhorse import inbox
-from ostler.environments import commands as env_commands
-from ostler.environments.render import SHARED as SHARED_COPY
-from ostler.qa import stack as qa_stack
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.artifacts import ArtifactWriter
 from workhorse.cli.inbox import INBOX_FILE
@@ -26,10 +21,10 @@ from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
-from ostler import Ostler, model as ostler_model
+from ostler import Ostler
+from ostler.environments import commands as env_commands
+from ostler.environments.render import SHARED as SHARED_COPY
 from ostler.qa import QaOutcome
-from ostler.qa.compile import COMPILED_BANNER, Plan, apply_deferrals
-from ostler.qa.source_context import SourceRepository
 
 from workhorse_workflows.coder.shared.plan import resolve_impl_context
 from workhorse_workflows.coder.shared import qa_owner
@@ -37,7 +32,6 @@ from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import qa as qa_nodes
 from workhorse_workflows.coder.qa.nodes import regression as regression_nodes
 from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
-from workhorse_workflows.coder.shared import okf as okf_nodes
 from workhorse_workflows.kit.qa import evidence as qa_evidence_mod
 from workhorse_workflows.kit.qa import runner as qa_runner_mod
 from _epics import epics_root
@@ -81,6 +75,7 @@ status: active
 STORY_MD = """---
 id: STORY-1
 type: story
+services: [app]
 ---
 
 # Story One
@@ -145,31 +140,6 @@ def the_thing_exists(qa: Qa) -> None:
 
 
 
-RUNBOOK_REL = "docs/services/app/ops/qa-stack.md"
-
-RUNBOOK_MD = """---
-type: runbook
-title: QA stack
----
-
-# QA stack
-
-- driver: web
-
-## Steps
-
-### serve
-
-- kind: service
-- run: true
-- health: true
-"""
-
-SERVER_REL = "docs/services/app/server.md"
-
-SERVER_MD = "---\ntype: server\ntitle: App server\n---\n\n# App server\n"
-
-
 @pytest.fixture
 def docs(
     repo: Path,
@@ -179,8 +149,7 @@ def docs(
     """The docs repo: one epic, one built story, and the plan the dev phase left behind."""
     write(epics_root() / EPIC / "epic.md", EPIC_MD)
     write(epics_root() / STORY_REL / "story.md", STORY_MD)
-    write(repo / RUNBOOK_REL, RUNBOOK_MD)
-    write(repo / SERVER_REL, SERVER_MD)
+    write(repo / "services" / "app" / "service.py", "SERVICE = 1\n")
     write_json(
         repo / spec_dir() / "plan-context.json", {"story": STORY, "services": [API_SERVICE]}
     )
@@ -215,13 +184,12 @@ def web(
 
 
 class _Ostler:
-    """ostler's four QA subcommands and its artifact vetter, scripted at the process edge."""
+    """ostler's QA lint and run subcommands and its artifact vetter, scripted at the process edge."""
 
     def __init__(
         self,
         *,
         fail_runs: int = 0,
-        context_invalid: int = 0,
         plan_invalid: int = 0,
         plan_invalid_passes: tuple[int, ...] = (),
         plan_invalid_stuck: bool = False,
@@ -229,30 +197,23 @@ class _Ostler:
         blocked_problems: list[str] | None = None,
         block_runs: int = 0,
         scenarios: tuple[dict[str, Any], ...] = (),
-        context: dict[str, Any] | None = None,
     ) -> None:
-        self.context = context or {}
         self.fail_runs = fail_runs
         self.block_runs = block_runs
         self.scenarios = scenarios
         self.blocked_problems = blocked_problems
-        self.context_invalid = context_invalid
         self.plan_invalid = plan_invalid
         self.plan_invalid_passes = plan_invalid_passes
         self.plan_invalid_stuck = plan_invalid_stuck
         self.vet_problems = vet_problems or []
         self.runs = 0
-        self.contexts = 0
-        self.context_validations = 0
-        self.plan_validations = 0
+        self.plan_lints = 0
         self.vets = 0
-        self.context_args: list[dict[str, Any]] = []
-        self.deferrals_seen: list[str | None] = []
         self.only: list[list[str] | None] = []
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Ostler:
         """Stand in for the `Ostler` the nodes construct, in every module that does."""
-        for module in (okf_nodes, qa_nodes, qa_runner_mod, qa_evidence_mod):
+        for module in (qa_nodes, qa_runner_mod, qa_evidence_mod):
             monkeypatch.setattr(module, "Ostler", self._session)
         return self
 
@@ -322,69 +283,21 @@ class _Session(Ostler):
         self.script = script
 
 
-    def qa_context(
-        self,
-        *,
-        base: str,
-        spec: str | Path,
-        head: str = "WORKTREE",
-        source_roots: dict[str, list[str]] | None = None,
-        services_root: str = "",
-        story_file: str | Path | None = None,
-        exclude_paths: Iterable[str] = (),
-        repositories: Iterable[SourceRepository] = (),
-    ) -> QaOutcome:
-        self.script.contexts += 1
-        self.script.context_args.append(
-            {
-                "base": base,
-                "head": head,
-                "story_file": str(story_file or ""),
-                "source_roots": dict(source_roots or {}),
-                "exclude_paths": list(exclude_paths),
-            }
-        )
-        spec_dir = Path(spec)
-        spec_dir.mkdir(parents=True, exist_ok=True)
-        self.script.deferrals_seen.append(
-            (spec_dir / "qa-deferrals.json").read_text(encoding="utf-8")
-            if (spec_dir / "qa-deferrals.json").is_file()
-            else None
-        )
-        packet = {"status": "passed", "obligations": [], "verificationIndex": [], **copy.deepcopy(self.script.context)}
-        apply_deferrals(packet, spec_dir)
-        (spec_dir / "qa-okf-context.json").write_text(json.dumps(packet), encoding="utf-8")
-        return QaOutcome(ok=True, message=f"wrote {spec_dir}", data={"status": "passed"})
-
-    def qa_context_validate(self, *, spec: str | Path) -> QaOutcome:
-        self.script.context_validations += 1
-        if self.script.context_validations <= self.script.context_invalid:
-            return QaOutcome(
-                ok=False,
-                message="context is invalid",
-                status="invalid",
-                data={"notes": "two changed files map to no feature node"},
-            )
-        return QaOutcome(ok=True, message="Context is valid.", data={"problems": []})
-
-
-    def qa_validate(
-        self, plan_file: str | Path, *, spec: str | Path | None = None
-    ) -> QaOutcome:
-        self.script.plan_validations += 1
+    def qa_lint(self, plan_file: str | Path) -> QaOutcome:
+        self.script.plan_lints += 1
         assert Path(plan_file).is_file(), f"the plan turn wrote no {plan_file}"
         if (
-            self.script.plan_validations <= self.script.plan_invalid
-            or self.script.plan_validations in self.script.plan_invalid_passes
+            self.script.plan_lints <= self.script.plan_invalid
+            or self.script.plan_lints in self.script.plan_invalid_passes
         ):
-            step = 3 if self.script.plan_invalid_stuck else self.script.plan_validations
+            step = 3 if self.script.plan_invalid_stuck else self.script.plan_lints
             return QaOutcome(
                 ok=False,
-                message="plan is invalid",
+                message="plan lint failed",
                 status="invalid",
                 data={"notes": f"step {step} names no assertion"},
             )
-        return QaOutcome(ok=True, message="Plan is valid.", data={})
+        return QaOutcome(ok=True, message="QA plan lint passed.", data={})
 
 
     def qa_run(
@@ -619,43 +532,9 @@ def test_one_clean_pass_spends_one_owner_turn(
     assert agent.calls == ["qa-story"], agent.calls
     assert agent.args[0]["standing_plan"] is False
     assert agent.args[0]["report"] == ""
-    assert (okf.contexts, okf.runs, okf.vets) == (2, 1, 1)
+    assert (okf.runs, okf.vets) == (1, 1)
     assert (docs / spec_dir() / "qa-evidence.json").is_file()
     assert (docs / spec_dir() / "qa" / "qa-run.ndjson").is_file()
-
-
-def test_a_passed_run_files_a_deferred_book_page_on_the_register_of_its_workspace_repo(
-    docs: Path,
-    web: Path,
-    ostler: Callable[..., _Ostler],
-    monkeypatch: pytest.MonkeyPatch,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The workspace the run was started with reaches the filer, so the page is shelved under that workspace's repo."""
-    monkeypatch.setattr(regression_nodes, "_run", _Suite())
-    page = "docs/services/web/gui/screens/reports.md"
-    ostler(
-        context={
-            "servicesRoot": "docs/services",
-            "story": {"id": STORY, "externalKey": "", "slug": ""},
-            "obligations": [
-                {
-                    "node": f"{page}#export",
-                    "source": page,
-                    "required": True,
-                    "deferred": {"kind": "no-verify-declared", "detail": "the book declares no check"},
-                }
-            ],
-        }
-    )
-
-    result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
-
-    assert result.status == "passed", result
-    [record] = Ostler(docs).records().records
-    assert (record.repo, record.area, record.filed_by) == ("web", "book", "qa-deferred")
-    assert record.symbols == ["web/gui/screens/reports.md"]
 
 
 def test_a_backlog_item_an_open_qa_record_holds_is_dropped_and_a_new_one_is_filed(
@@ -668,7 +547,7 @@ def test_a_backlog_item_an_open_qa_record_holds_is_dropped_and_a_new_one_is_file
 ) -> None:
     """The judge reads one item as the open `qa` record and the other as new, so only the new one lands, shelved under the workspace repo the item names."""
     monkeypatch.setattr(regression_nodes, "_run", _Suite())
-    ostler(context={"story": {"id": STORY, "externalKey": "", "slug": ""}})
+    ostler()
     held = Ostler(docs).file_record(
         repo="web", area="reports", pattern="clear-state", filed_by="qa",
         summary="Sign-out leaves the saved report snapshots in the browser.",
@@ -718,7 +597,7 @@ def test_a_story_that_cannot_be_resolved_fails_the_run_without_spending_a_turn(
         drive_flow(Qa(story=""), env(), agent)
 
     assert agent.calls == []
-    assert (okf.contexts, okf.runs) == (0, 0)
+    assert okf.runs == 0
 
 
 def test_the_owner_turn_is_granted_only_the_repos_the_plan_touches(
@@ -763,69 +642,6 @@ def test_the_owner_is_told_the_plan_s_shared_packages_then_the_check_set_s_witho
         dict.fromkeys([*impl["shared_packages"], "acme::packages/shared/auth", "acme::lib"])
     ), turn["shared_packages"]
     assert turn["shared_packages"][-2:] == ["acme::packages/shared/auth", "acme::lib"]
-
-
-def test_an_unmappable_packet_reaches_the_owner_and_is_rebuilt_by_the_check(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The owner's first report carries the packet failure, and the check rebuilds the packet."""
-    okf = ostler(context_invalid=1)
-    agent = _Agent(docs)
-
-    result = drive_flow(Qa(story=STORY), env(), agent)
-
-    assert result.status == "passed", result
-    assert agent.calls == ["qa-story"], agent.calls
-    assert "no feature node" in agent.args[0]["report"]
-    assert okf.contexts == 2, okf.contexts
-
-
-def test_the_packet_maps_the_story_s_commits_and_not_only_what_is_uncommitted(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    git: Callable[..., subprocess.CompletedProcess],
-) -> None:
-    """The coder commits its work before QA, so a packet diffed from HEAD maps nothing and asks for no evidence."""
-    trunk = git(docs, "rev-parse", "HEAD").stdout.strip()
-    git(docs, "checkout", "-qb", "story")
-    git(docs, "add", "-A")
-    git(docs, "commit", "-qm", f"the story\n\nStory: {STORY}")
-    okf = ostler()
-
-    drive_flow(Qa(story=STORY), env(), _Agent(docs))
-
-    assert okf.context_args[0]["base"] == trunk
-
-
-def test_a_packet_that_stays_unmappable_blocks_after_the_lap_budget(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """Every lap rebuilds and fails the packet, so the block names the repair turns it spent."""
-    okf = ostler(context_invalid=99)
-    agent = _Agent(docs, escalate=True)
-    seen: list[str] = []
-
-    with (
-        patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)),
-        pytest.raises(_Parked),
-    ):
-        drive_flow(Qa(story=STORY), env(), agent)
-
-    assert agent.counts() == {
-        "qa-story": qa_owner.MAX_LAPS + 1,
-        "resolve-operator": 1,
-    }, agent.counts()
-    assert okf.runs == 0, "the packet never validated, so nothing should have run"
-    assert len(seen) == 1, seen
-    assert "repair turn(s)" in seen[0] and "no feature node" in seen[0], seen
 
 
 def test_a_blocked_owner_is_answered_and_resumes_with_the_answer(
@@ -981,233 +797,10 @@ def test_findings_beside_a_passing_run_go_back_as_unproved(
     assert okf.runs == 2, okf.runs
 
 
-def test_an_empty_manifest_splits_on_whether_the_book_serves_anything(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """`ensure_stack` reads the topology, not just the manifest, before calling it a gap."""
-    log = logging.getLogger("test")
-    (docs / RUNBOOK_REL).unlink()
-    (docs / SERVER_REL).unlink()
-
-    status = qa_nodes.ensure_stack(log, str(docs))
-    assert status.ready == "unneeded", status
-    assert "serves nothing" in status.notes
-
-    write(docs / SERVER_REL, SERVER_MD)
-    status = qa_nodes.ensure_stack(log, str(docs))
-    assert status.ready == "none", status
-    assert "served surface" in status.notes
-
-
-def test_a_book_that_serves_nothing_needs_no_stack_beside_one_that_does(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """The served-surface question is asked of the book being run, not of the whole repository."""
-    log = logging.getLogger("test")
-    (docs / RUNBOOK_REL).unlink()
-    services = docs / "docs" / "services"
-    write(services / "tool" / "command.md", "---\ntype: concept\ntitle: Command\n---\n\n# Command\n")
-
-    beside = qa_runner_mod.ensure_stack(log, str(docs), near=str(services / "tool"))
-    served = qa_runner_mod.ensure_stack(log, str(docs), near=str(services / "app"))
-
-    assert beside.ready == "unneeded", beside
-    assert served.ready == "none", served
-
-
-def test_a_book_that_serves_nothing_brings_up_none_of_its_runbooks(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """A command-line book's service runbook documents a procedure; QA invokes the commands instead."""
-    log = logging.getLogger("test")
-    services = docs / "docs" / "services"
-    write(services / "tool" / "command.md", "---\ntype: concept\ntitle: Command\n---\n\n# Command\n")
-    write(services / "tool" / "ops" / "container-job.md",
-          "---\ntype: runbook\ntitle: Container job\n---\n\n# Container job\n\n- driver: cli\n\n"
-          "## Steps\n\n### serve\n\n- kind: service\n- run: false\n- health: false\n")
-
-    status = qa_runner_mod.ensure_stack(log, str(docs), near=str(services / "tool"))
-
-    assert status.ready == "unneeded", status
-
-
-def _stack_runbook(root: Path, write: Callable[[Path, str], Path], *, name: str, port: int,
-                   env_href: str = "") -> None:
-    """A second stack runbook under `app/ops`, distinct from the `docs` fixture's own."""
-    environment = f"- environment: [{env_href}]({env_href}.md)\n" if env_href else ""
-    write(
-        root / "docs" / "services" / "app" / "ops" / f"{name}.md",
-        f"---\ntype: runbook\ntitle: {name}\n---\n\n# {name}\n\n- driver: web\n"
-        f"- entry-url: http://localhost:{port}\n{environment}\n"
-        "## Steps\n\n### serve\n\n- kind: service\n- run: true\n- health: true\n",
-    )
-
-
-def test_a_refusal_says_what_the_book_declares_not_to_author_one(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """Several stack runbooks and no name given is a refusal, not an absence."""
-    log = logging.getLogger("test")
-    write(
-        docs / "docs" / "services" / "app" / "server.md",
-        "---\ntype: server\ntitle: App server\n---\n\n# App server\n",
-    )
-    _stack_runbook(docs, write, name="second-stack", port=2222)
-
-    status = qa_nodes.ensure_stack(log, str(docs))
-
-    assert status.ready == "none", status
-    assert "Author the runbook" not in status.notes
-    assert "qa-stack" in status.notes or "second-stack" in status.notes
-
-
-def test_a_shared_environment_brings_both_runbooks_up_together(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Two stack runbooks bound to one `environment:` node have a manifest each, not none."""
-    log = logging.getLogger("test")
-    write(
-        docs / "docs" / "services" / "app" / "server.md",
-        "---\ntype: server\ntitle: App server\n---\n\n# App server\n",
-    )
-    write(
-        docs / "docs" / "services" / "app" / "ops" / "local.md",
-        "---\ntype: environment\ntitle: local\n---\n\n# local\n\n- local-only: true\n",
-    )
-    write(
-        docs / RUNBOOK_REL,
-        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n- driver: web\n"
-        "- environment: [local](local.md)\n\n"
-        "## Steps\n\n### serve\n\n- kind: service\n- run: true\n- health: true\n",
-    )
-    _stack_runbook(docs, write, name="second-stack", port=2222, env_href="local")
-
-    calls: list[str] = []
-
-    def _up(manifest: dict[str, Any], *, repo_root: str, logger: logging.Logger) -> dict[str, Any]:
-        calls.append(manifest["source"])
-        return {"ready": "yes", "entry_url": manifest.get("entry_url", "http://x")}
-
-    monkeypatch.setattr(qa_stack, "ensure_stack", _up)
-
-    status = qa_nodes.ensure_stack(log, str(docs))
-
-    assert status.ready == "yes", status
-    assert len(calls) == 2, calls
-    assert "(2 services)" in status.notes, status.notes
-
-
-def _per_run_stack(docs: Path, write: Callable[[Path, str], Path]) -> None:
-    """The `docs` fixture's runbook, bound to an environment that gives each run its own copy."""
-    write(
-        docs / "docs" / "services" / "app" / "ops" / "copy.md",
-        "---\ntype: environment\ntitle: Copy\n---\n\n# Copy\n\n- sharing: per-run\n"
-        "- addresses:\n  - `gateway`: the browser's front door\n",
-    )
-    write(
-        docs / RUNBOOK_REL,
-        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n- driver: web\n"
-        "- environment: [Copy](copy.md)\n- entry-url: {gateway}\n- stop: make copy-down\n\n"
-        "## Steps\n\n### serve\n\n- kind: service\n- run: make copy\n"
-        "- health: curl -fsS {gateway}/health\n",
-    )
-
-
-def _cite(docs: Path, write: Callable[[Path, str], Path], *pages: str) -> None:
-    """The story, citing each of *pages* under `docs/services`."""
-    story = epics_root() / STORY_REL / "story.md"
-    links = "".join(
-        f"- [{page}]({os.path.relpath(docs / 'docs' / 'services' / page, story.parent)})\n" for page in pages
-    )
-    write(story, STORY_MD.replace("Users need a thing.\n", f"Users need a thing.\n\n{links}"))
-
-
 def test_a_run_names_its_copy_with_what_a_container_name_takes() -> None:
     """The story id and the run id, joined, lowercased, and stripped of anything Docker refuses."""
     assert qa_runner_mod.copy_lease("PRED-01X", "20261010-1-ab") == "pred-01x-20261010-1-ab"
     assert qa_runner_mod.copy_lease("", "_Run 1") == "run-1"
-
-
-def test_a_story_that_cites_one_book_brings_up_that_books_stack(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """Every ui page the story cites sits in `app`, so the run's stack is the one `app` serves."""
-    log = logging.getLogger("test")
-    _cite(docs, write, "app/server.md")
-
-    target = qa_nodes.stack_target(log, STORY, "story-1-run", str(docs))
-
-    assert Path(target.near) == docs / "docs" / "services" / "app", target
-    assert target.env == {"STABLEMATE_LEASE": "story-1-run"}, target
-
-
-def test_a_story_that_cites_two_books_names_no_book(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """Pages in two books leave the choice to the stack selection, which sees the whole tree."""
-    log = logging.getLogger("test")
-    write(docs / "docs" / "services" / "other" / "server.md", SERVER_MD)
-    _cite(docs, write, "app/server.md", "other/server.md")
-
-    assert qa_nodes.stack_target(log, STORY, "story-1-run", str(docs)).near == ""
-
-
-def _stack_beside(docs: Path, write: Callable[[Path, str], Path], *names: str) -> None:
-    for name in names:
-        write(docs / "services" / name / "ops" / "stack.yml", "services: {}\n")
-
-
-def test_a_story_citing_no_page_gets_the_book_of_its_one_service_with_a_stack(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """With no page to read, the one named service whose stack sits beside its book picks the stack."""
-    graph = ostler_model.load(docs)
-    _stack_beside(docs, write, "api")
-
-    assert qa_runner_mod.story_near(graph, STORY, ["api"]) == str(docs / "services" / "api")
-
-
-def test_a_story_citing_no_page_and_naming_two_stacked_services_names_no_book(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """Two services with a stack leave the choice to the stack selection."""
-    graph = ostler_model.load(docs)
-    _stack_beside(docs, write, "api", "web")
-
-    assert qa_runner_mod.story_near(graph, STORY, ["api", "web"]) == ""
-
-
-def test_a_story_citing_no_page_and_naming_a_service_without_a_stack_names_no_book(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """A service with no stack file beside its book gives nothing to pick."""
-    graph = ostler_model.load(docs)
-    write(docs / "services" / "api" / "service.py", "")
-
-    assert qa_runner_mod.story_near(graph, STORY, ["api"]) == ""
-
-
-def test_a_story_citing_one_books_pages_keeps_that_book_whatever_services_it_names(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-) -> None:
-    """The cited pages answer first, so a stacked service elsewhere does not move the choice."""
-    _cite(docs, write, "app/server.md")
-    _stack_beside(docs, write, "api")
-    graph = ostler_model.load(docs)
-
-    assert Path(qa_runner_mod.story_near(graph, STORY, ["api"])) == docs / "docs" / "services" / "app"
 
 
 def test_a_shared_stack_outlives_the_run(docs: Path) -> None:
@@ -1219,36 +812,14 @@ def test_a_shared_stack_outlives_the_run(docs: Path) -> None:
     assert released.torn_down == "skipped", released
 
 
-def test_a_per_run_copy_is_torn_down_under_its_lease(
+def test_the_run_end_tears_down_the_stack_yml_copy(
     docs: Path,
     write: Callable[[Path, str], Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The release runs the runbook's `stop:` with the run's lease, so it removes that copy only."""
+    """Bring-up starts the shared `stack.yml` copy, so the run's end takes that copy down."""
     log = logging.getLogger("test")
-    _per_run_stack(docs, write)
-    leases: list[str] = []
-
-    def _down(handles: dict[str, str], manifest: dict[str, Any], *, logger: logging.Logger) -> dict[str, str]:
-        leases.append(os.environ.get("STABLEMATE_LEASE", ""))
-        return {"torn_down": "yes"}
-
-    monkeypatch.setattr(qa_stack, "teardown_stack", _down)
-
-    released = qa_nodes.release_copy(log, str(docs), lease="story-1-run")
-
-    assert released.torn_down == "yes", released
-    assert leases == ["story-1-run"]
-
-
-def test_the_run_end_tears_down_the_stack_yml_copy_beside_a_runbook(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Bring-up starts the shared `stack.yml` copy even where a stack runbook stands, so the run's end takes that copy down and never runs the runbook's `stop:`."""
-    log = logging.getLogger("test")
-    write(docs / "docs" / "services" / "app" / "ops" / "stack.yml",
+    write(docs / "services" / "app" / "ops" / "stack.yml",
           "services:\n  web:\n    about: the web app\n    define: web.yml.j2\n    address: web\n    port: 80\n")
     copies: list[str] = []
 
@@ -1256,36 +827,12 @@ def test_the_run_end_tears_down_the_stack_yml_copy_beside_a_runbook(
         copies.append(copy_name)
         return env_commands.EnvOutcome(True, f"tore {copy_name} down", {"ok": True})
 
-    def _boom(*_a: Any, **_k: Any) -> dict[str, str]:
-        raise AssertionError("the runbook's stop recipe serves a stack this run never started")
-
     monkeypatch.setattr(env_commands, "cmd_down", _copy_down)
-    monkeypatch.setattr(qa_stack, "teardown_stack", _boom)
 
     torn = qa_nodes.teardown_stack(log, str(docs))
 
     assert torn.torn_down == "yes", torn
     assert copies == [SHARED_COPY]
-
-
-def test_a_per_run_stack_is_not_brought_up_without_a_lease(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A copy with no name could not be found to tear down, so the bring-up refuses it."""
-    log = logging.getLogger("test")
-    _per_run_stack(docs, write)
-
-    def _boom(*a: Any, **k: Any) -> dict[str, Any]:
-        raise AssertionError("a refused bring-up starts nothing")
-
-    monkeypatch.setattr(qa_stack, "ensure_stack", _boom)
-
-    status = qa_nodes.ensure_stack(log, str(docs))
-
-    assert status.ready == "no", status
-    assert "refused" in status.notes, status.notes
 
 
 def test_the_run_releases_the_copy_it_named_when_it_finishes(
@@ -1418,27 +965,6 @@ def test_a_failing_journey_suite_goes_back_to_the_owner_and_the_story_is_re_qad(
     assert _output(run_env, resolve_impl_context)["affected_repo_paths"] == [str(docs), str(web)]
 
 
-@pytest.mark.parametrize("touched", [False, True])
-def test_the_docs_are_rechecked_only_when_the_owner_moved_the_code(
-    docs: Path,
-    web: Path,
-    ostler: Callable[..., _Ostler],
-    monkeypatch: pytest.MonkeyPatch,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    touched: bool,
-) -> None:
-    """A repair a subagent made in a code repo can stale the docs, and a pass that made none cannot."""
-    ostler()
-    monkeypatch.setattr(regression_nodes, "_run", _Suite())
-    agent = _Agent(docs, touch=web / "fix.txt" if touched else None)
-
-    result = drive_flow(Qa(story=STORY), env(), agent)
-
-    assert result.status == "passed", result
-    assert result.docs_recheck_required is touched
-
-
 def test_a_stack_that_will_not_come_up_is_the_owners_to_repair(
     docs: Path,
     ostler: Callable[..., _Ostler],
@@ -1449,37 +975,29 @@ def test_a_stack_that_will_not_come_up_is_the_owners_to_repair(
     """The failing step's message reaches the owner, and the check brings the stack up again."""
     ostler()
     results = [
-        {"ready": "no", "failed_step": "health[0]", "error": "api-test container is not running"},
-        {"ready": "yes", "entry_url": "http://x"},
+        QaOutcome(ok=False, message="service api-test is not running"),
+        QaOutcome(ok=True, message="stack up", data={"entry_url": "http://x"}),
     ]
-    monkeypatch.setattr(qa_stack, "ensure_stack", lambda *a, **k: results.pop(0))
+    monkeypatch.setattr(qa_runner_mod.leases, "up", lambda *a, **k: results.pop(0))
     agent = _Agent(docs)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
 
     assert result.status == "passed", result
     assert agent.calls == ["qa-story"], agent.calls
-    assert "health[0]" in agent.args[0]["report"]
-    assert "api-test container is not running" in agent.args[0]["report"]
+    assert "stack.yml" in agent.args[0]["report"]
+    assert "service api-test is not running" in agent.args[0]["report"]
     assert results == [], "the stack was never brought up a second time"
 
 
-def test_a_book_that_serves_nothing_runs_qa_without_a_stack(
+def test_no_stack_file_is_unneeded_not_a_runbook_refusal(
     docs: Path,
     ostler: Callable[..., _Ostler],
-    monkeypatch: pytest.MonkeyPatch,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """An artifact-only book reaches the owner with nothing to repair and nothing to boot."""
+    """A book with no `ops/stack.yml` reaches the owner with nothing to repair and nothing to boot."""
     ostler()
-    (docs / RUNBOOK_REL).unlink()
-    (docs / SERVER_REL).unlink()
-
-    def _boom(*a: Any, **k: Any) -> dict[str, Any]:
-        raise AssertionError("there is no manifest, so nothing may try to bring one up")
-
-    monkeypatch.setattr(qa_stack, "ensure_stack", _boom)
     agent = _Agent(docs)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
@@ -1496,7 +1014,7 @@ def test_a_standing_valid_plan_is_handed_to_the_owner_to_adopt(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A `qa_plan.py` that lints and validates is the plan, and the owner is told so."""
+    """A `qa_plan.py` that lints is the plan, and the owner is told so."""
     ostler()
     write(docs / spec_dir() / "qa_plan.py", QA_PLAN)
     agent = _Agent(docs)
@@ -1505,134 +1023,9 @@ def test_a_standing_valid_plan_is_handed_to_the_owner_to_adopt(
 
     assert result.status == "passed", result
     assert agent.args[0]["standing_plan"] is True
-    assert agent.args[0]["hand_written_plan"] is True
-    assert agent.args[0]["compiled_plan_file"] == "qa_plan.compiled.py"
 
 
 BOOK_CALLS = [{"service": "api", "calls": ["ListX"]}]
-
-OBLIGATIONS = [
-    {"id": "ob-api", "node": "docs/services/api/lists.md#share", "required": True},
-    {"id": "ob-api-optional", "node": "docs/services/api/lists.md#nice", "required": False},
-    {
-        "id": "ob-api-held",
-        "node": "docs/services/api/lists.md#held",
-        "required": True,
-        "deferred": {"kind": "no-check", "detail": "no runnable check"},
-    },
-    {"id": "ob-web", "node": "docs/services/web/pages.md#home", "required": True},
-]
-
-
-def _stopped_at_the_gate(drive_flow: Callable[..., Any], run_env: RunEnv, agent: _Agent) -> None:
-    """Drive the lane to the first operator gate, since the scripted run proves none of the packet's obligations."""
-    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
-        drive_flow(Qa(story=STORY), run_env, agent)
-
-
-def _packet(docs: Path) -> dict[str, Any]:
-    return json.loads((docs / spec_dir() / "qa-okf-context.json").read_text(encoding="utf-8"))
-
-
-def _deferred(docs: Path) -> dict[str, Any]:
-    return {o["id"]: o.get("deferred") for o in _packet(docs)["obligations"]}
-
-
-def test_a_service_the_book_judged_clean_defers_its_required_obligations(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """Only the required, not yet deferred obligations under the recorded service's pages are left to the book."""
-    ostler(context={"obligations": OBLIGATIONS})
-    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
-
-    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
-
-    assert _deferred(docs) == {
-        "ob-api": {"kind": "book", "detail": "judged by the executable book of api"},
-        "ob-api-optional": None,
-        "ob-api-held": {"kind": "no-check", "detail": "no runnable check"},
-        "ob-web": None,
-    }
-
-
-def test_the_deferrals_file_is_written_before_the_packet_is_built(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """Every build of the packet, the seat's rebuilds included, must find the marks already on disk."""
-    okf = ostler(context={"obligations": OBLIGATIONS})
-    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
-
-    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
-
-    seen = json.loads(okf.deferrals_seen[0] or "null")
-    assert seen == [
-        {
-            "prefix": "docs/services/api/",
-            "kind": "book",
-            "detail": "judged by the executable book of api",
-        }
-    ], okf.deferrals_seen
-
-
-def test_a_book_record_with_findings_writes_an_empty_deferral_list(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """A stale list from an earlier clean record must lose its effect."""
-    okf = ostler(context={"obligations": OBLIGATIONS})
-    finding = {"id": "f", "target": "acme/x:1", "issue": "the list drops the token", "repair": "keep it"}
-    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "findings": [finding]})
-    write_json(docs / spec_dir() / "qa-deferrals.json", [{"prefix": "docs/services/api/", "kind": "book"}])
-
-    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
-
-    assert json.loads(okf.deferrals_seen[0] or "null") == []
-
-
-def test_no_book_record_defers_nothing(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """A story with no book pass keeps every obligation for the scenario lane."""
-    ostler(context={"obligations": OBLIGATIONS})
-
-    _stopped_at_the_gate(drive_flow, env(), _Agent(docs))
-
-    assert [d for d in _deferred(docs).values() if d and d["kind"] == "book"] == []
-
-
-def test_a_book_record_with_findings_defers_nothing(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """A service whose book found a defect is not judged, so the scenario lane keeps its obligations."""
-    ostler(context={"obligations": OBLIGATIONS})
-    finding = {"id": "f", "target": "acme/x:1", "issue": "the list drops the token", "repair": "keep it"}
-    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "findings": [finding]})
-    agent = _Agent(docs)
-
-    _stopped_at_the_gate(drive_flow, env(), agent)
-
-    assert [d for d in _deferred(docs).values() if d and d["kind"] == "book"] == []
-    assert agent.args[0]["book_services"] == []
-    assert agent.args[0]["book_unreached"] == []
-
 
 def test_the_owner_is_told_which_books_judged_and_which_claims_they_left(
     docs: Path,
@@ -1642,23 +1035,18 @@ def test_the_owner_is_told_which_books_judged_and_which_claims_they_left(
     drive_flow: Callable[..., Any],
 ) -> None:
     """The seat covers each unreached claim by a scenario or reports it out of reach."""
-    ostler(context={"obligations": OBLIGATIONS})
+    ostler()
     unreached = ["no request reaches the report service"]
     write_json(
         docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "unreached": unreached}
     )
     agent = _Agent(docs)
 
-    _stopped_at_the_gate(drive_flow, env(), agent)
+    drive_flow(Qa(story=STORY), env(), agent)
 
     assert agent.args[0]["book_services"] == ["api"]
     assert agent.args[0]["book_unreached"] == unreached
 
-
-ALL_BOOK_OBLIGATIONS = [
-    {"id": "ob-api", "node": "docs/services/api/lists.md#share", "required": True},
-    {"id": "ob-api-optional", "node": "docs/services/web/pages.md#nice", "required": False},
-]
 
 JUDGED_NOTE = "every obligation of this story was judged by a service book"
 
@@ -1671,7 +1059,7 @@ def test_a_story_every_obligation_of_which_a_book_judged_passes_with_no_seat_tur
     drive_flow: Callable[..., Any],
 ) -> None:
     """With nothing left for a scenario to prove, a seat turn buys nothing."""
-    okf = ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
+    okf = ostler()
     write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
     agent = _Agent(docs)
 
@@ -1693,7 +1081,7 @@ def test_a_reprove_of_a_fully_book_judged_story_passes_with_no_plan_and_no_lint(
     drive_flow: Callable[..., Any],
 ) -> None:
     """The rerun that follows leftovers must not need a plan file the first visit never wrote."""
-    okf = ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
+    okf = ostler()
     write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
     linted: list[str] = []
     original = _Session.qa_lint if hasattr(_Session, "qa_lint") else Ostler.qa_lint
@@ -1713,23 +1101,6 @@ def test_a_reprove_of_a_fully_book_judged_story_passes_with_no_plan_and_no_lint(
     assert okf.runs == 0
 
 
-def test_one_undeferred_required_obligation_keeps_the_seat_turn(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """A page no recorded book covers is still the scenario lane's."""
-    ostler(context={"obligations": [*ALL_BOOK_OBLIGATIONS, OBLIGATIONS[3] | {"id": "ob-other"}]})
-    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
-    agent = _Agent(docs)
-
-    _stopped_at_the_gate(drive_flow, env(), agent)
-
-    assert agent.calls, agent.calls
-
-
 def test_one_unreached_claim_keeps_the_seat_turn(
     docs: Path,
     ostler: Callable[..., _Ostler],
@@ -1738,7 +1109,7 @@ def test_one_unreached_claim_keeps_the_seat_turn(
     drive_flow: Callable[..., Any],
 ) -> None:
     """A claim the book could not state is the scenario lane's even when every obligation is deferred."""
-    ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
+    ostler()
     write_json(
         docs / spec_dir() / "book-qa.json",
         {"services": BOOK_CALLS, "unreached": ["no request reaches the report service"]},
@@ -1751,27 +1122,6 @@ def test_one_unreached_claim_keeps_the_seat_turn(
     assert agent.calls == ["qa-story"], agent.calls
 
 
-def test_a_book_that_compiles_hands_the_owner_its_plan_as_the_standing_one(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    monkeypatch: pytest.MonkeyPatch,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """With no plan in the spec dir, the first owner turn already finds the compiled one."""
-    ostler()
-    compiled = f"{COMPILED_BANNER}\n{QA_PLAN}"
-    monkeypatch.setattr(qa_nodes, "compile_packet", lambda *a, **k: Plan(compiled, []))
-    agent = _Agent(docs)
-
-    result = drive_flow(Qa(story=STORY), env(), agent)
-
-    assert result.status == "passed", result
-    assert agent.args[0]["standing_plan"] is True
-    assert agent.args[0]["hand_written_plan"] is False
-    assert (docs / spec_dir() / "qa_plan.py").read_text(encoding="utf-8") == compiled
-
-
 def test_the_lane_runs_standalone_with_no_plan_context(
     docs: Path,
     ostler: Callable[..., _Ostler],
@@ -1782,9 +1132,6 @@ def test_the_lane_runs_standalone_with_no_plan_context(
     """QA against someone else's checkout: no dev lane ran, so there is no `plan-context.json`."""
     (docs / spec_dir() / "plan-context.json").unlink()
     ostler()
-    monkeypatch.setattr(
-        qa_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
-    )
     agent = _Agent(docs)
 
     result = drive_flow(Qa(story=STORY), env(), agent)
@@ -1866,9 +1213,6 @@ def test_stop_at_first_verdict_still_repairs_the_environment(
 ) -> None:
     """A blocked run is a verdict about the harness, never about the product."""
     okf = ostler(block_runs=1)
-    monkeypatch.setattr(
-        qa_stack, "ensure_stack", lambda *a, **k: {"ready": "yes", "entry_url": "http://x"}
-    )
     agent = _Agent(docs)
 
     result = drive_flow(Qa(story=STORY, stop_at_first_verdict=True), env(), agent)
@@ -1897,26 +1241,6 @@ def test_a_rerun_of_the_whole_plan_spends_no_owner_turn(
     assert okf.only == [None], okf.only
     assert (okf.runs, okf.vets) == (1, 1)
     assert (docs / spec_dir() / "qa-evidence.json").is_file()
-
-
-def test_a_scoped_rerun_runs_only_the_named_scenarios_and_keeps_the_evidence(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """The earlier run's evidence stays for the scenarios the rerun does not touch."""
-    okf = ostler()
-    agent = _Agent(docs)
-    spec = docs / spec_dir()
-    (spec / "qa_plan.py").write_text(QA_PLAN, encoding="utf-8")
-    (spec / "qa-evidence.json").write_text('{"kept": true}', encoding="utf-8")
-
-    result = drive_flow(Qa(story=STORY, rerun=True, scope=("copy-link",)), env(), agent)
-
-    assert result.status == "passed", result
-    assert agent.calls == [], agent.calls
-    assert okf.only == [["copy-link"]], okf.only
 
 
 def test_a_red_rerun_goes_back_as_a_refix_without_an_owner_turn(
@@ -2095,26 +1419,14 @@ def test_a_red_rerun_on_the_book_side_takes_an_owner_turn(
 UNREACHED_CLAIMS = ["no request reaches the report service", "the audit line names the actor"]
 
 
-def _covered_story(docs: Path, write: Callable[[Path, str], Path], covered: bool = True) -> None:
-    write(
-        epics_root() / STORY_REL / "story.md",
-        STORY_MD.replace("type: story\n", "type: story\nservices:\n  - api\n", 1),
-    )
-    if covered:
-        write(docs / "services" / "api" / "service.py", "SERVICE = 1\n")
-
-
 def test_a_story_whose_services_all_have_a_book_owes_the_scenario_seat_only_the_unreached_claims(
     docs: Path,
     ostler: Callable[..., _Ostler],
-    write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The seat gets the unreached claims and no packet, and a pass needs no packet to stand."""
-    ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
-    _covered_story(docs, write)
+    ostler()
     write_json(
         docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "unreached": UNREACHED_CLAIMS}
     )
@@ -2123,40 +1435,18 @@ def test_a_story_whose_services_all_have_a_book_owes_the_scenario_seat_only_the_
     drive_flow(Qa(story=STORY), env(), agent)
 
     assert json.loads((docs / spec_dir() / "qa-unreached.json").read_text(encoding="utf-8")) == UNREACHED_CLAIMS
-    assert agent.args[0]["book_only"] is True
     assert agent.args[0]["lease"]
     assert agent.args[0]["book_unreached"] == UNREACHED_CLAIMS
-
-
-def test_a_story_with_an_uncovered_service_writes_no_claims_file_and_removes_a_stale_one(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write: Callable[[Path, str], Path],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    ostler(context={"obligations": OBLIGATIONS})
-    _covered_story(docs, write, covered=False)
-    write_json(docs / spec_dir() / "qa-unreached.json", ["a stale claim"])
-    agent = _Agent(docs)
-
-    _stopped_at_the_gate(drive_flow, env(), agent)
-
-    assert not (docs / spec_dir() / "qa-unreached.json").exists()
-    assert agent.args[0]["book_only"] is False
 
 
 def test_the_claims_file_of_a_book_judged_story_with_a_defect_holds_no_claim(
     docs: Path,
     ostler: Callable[..., _Ostler],
-    write: Callable[[Path, str], Path],
     write_json: Callable[[Path, Any], Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    ostler(context={"obligations": ALL_BOOK_OBLIGATIONS})
-    _covered_story(docs, write)
+    ostler()
     finding = {"id": "f", "target": "acme/x:1", "issue": "the list drops the token", "repair": "keep it"}
     write_json(
         docs / spec_dir() / "book-qa.json",
@@ -2166,3 +1456,37 @@ def test_the_claims_file_of_a_book_judged_story_with_a_defect_holds_no_claim(
     drive_flow(Qa(story=STORY), env(), _Agent(docs))
 
     assert json.loads((docs / spec_dir() / "qa-unreached.json").read_text(encoding="utf-8")) == []
+
+
+def test_a_story_naming_no_service_gets_a_seat_turn_and_an_empty_claims_file(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    write: Callable[[Path, str], Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    ostler()
+    write(epics_root() / STORY_REL / "story.md", STORY_MD.replace("services: [app]\n", ""))
+    agent = _Agent(docs)
+
+    result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.calls == ["qa-story"], agent.calls
+    assert agent.args[0]["book_services"] == []
+    assert json.loads((docs / spec_dir() / "qa-unreached.json").read_text(encoding="utf-8")) == []
+
+
+def test_a_qa_run_never_creates_docs_services(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    ostler()
+
+    result = drive_flow(Qa(story=STORY), env(), _Agent(docs))
+
+    assert result.status == "passed", result
+    assert not (docs / "docs" / "services").exists()
+    assert not (docs / spec_dir() / "qa-okf-context.json").exists()

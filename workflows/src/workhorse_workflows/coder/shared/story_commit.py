@@ -2,14 +2,9 @@
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
-from typing import Literal
 
-from ostler import coverage, model, registry
-from ostler import path as okf_path
-from ostler import graph as graph_mod
-from ostler.qa.plan import scenario_covers
+from ostler import registry
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -32,15 +27,12 @@ from workhorse_workflows.kit.agent_files import render_agent_files_returning_fai
 from workhorse_workflows.kit import (
     GitError,
     commit_paths,
-    find_docs_root,
     find_repo_root,
     open_repo,
     resolve_workspace,
 )
 
 DONE_STATUS = "QA passed"
-
-_COVERED_PAGE = re.compile(r"^okf:(.+?\.md)(?::|$)")
 
 
 def _stamp_status(
@@ -177,7 +169,7 @@ def check_repos_clean(
     """Did the agent commit its own work in every repo the story touched? With *skip_artifacts*, the artifacts dir does not count, because workflow lanes write there."""
     found, names = _leftovers(logger, spec_dir, preexisting, repo_dir, workspace, roots)
     if skip_artifacts:
-        excluded = not_product_roots(repo_dir, book=False)
+        excluded = not_product_roots(repo_dir)
         kept = [
             item for item in found if not (item[1] / item[2]).resolve().is_relative_to(excluded[0])
         ]
@@ -243,30 +235,6 @@ def _key_of(roots: list[tuple[str, Path]], absolute: Path) -> str | None:
     return f"{name}:{absolute.relative_to(repo_path).as_posix()}"
 
 
-def _page_key(roots: list[tuple[str, Path]], docs_root: Path, page: str) -> str:
-    """The key of a book page named by its docs-root-relative path."""
-    return _key_of(roots, (docs_root / page).resolve()) or f"{docs_root.name}:{page}"
-
-
-def _citations_by_key(
-    roots: list[tuple[str, Path]], docs_root: Path
-) -> tuple[dict[str, set[str]], set[str]]:
-    """The book's code citations and its pages, both in the key form `check_repos_clean` reports."""
-    graph = model.load(docs_root)
-    cited: dict[str, set[str]] = {}
-    for target, nodes in coverage.citations(graph).items():
-        key = _key_of(roots, (docs_root / target.partition("::")[0]).resolve())
-        if key is not None:
-            cited.setdefault(key, set()).update(
-                _page_key(roots, docs_root, node.partition("#")[0]) for node in nodes
-            )
-    pages = {
-        _page_key(roots, docs_root, str(node["id"]).partition("#")[0])
-        for node in graph_mod.build(graph)["nodes"]
-    }
-    return cited, pages
-
-
 @blueprint.node
 def proof_scope(
     logger: logging.Logger,
@@ -295,7 +263,7 @@ def proof_scope(
         }
     inert: set[str] = set(seen)
     unproduct: set[str] = set()
-    excluded = not_product_roots(repo_dir, book=False)
+    excluded = not_product_roots(repo_dir)
     for name, repo_path in roots:
         unproduct |= inert_paths(name, repo_path, story_path, changed, excluded)
     inert |= unproduct
@@ -305,22 +273,11 @@ def proof_scope(
         len(seen),
         len(unproduct - seen),
     )
-    docs_root = find_docs_root(repo_dir)
-    cited: dict[str, set[str]] = {}
-    pages: set[str] = set()
-    if any(path not in inert for path in changed):
-        cited, pages = _citations_by_key(roots, docs_root)
-    plan = root / spec_dir / "qa_plan.py"
-    covers: dict[str, set[str]] = {}
-    for scenario_id, ids in scenario_covers(plan).items():
-        matched = (_COVERED_PAGE.match(text) for text in ids)
-        covers[scenario_id] = {_page_key(roots, docs_root, m.group(1)) for m in matched if m}
-    decided = scope(changed, inert, cited, covers, pages)
+    decided = scope(changed, inert)
     logger.info(
-        "%s: the leftovers reopen %s of the proof (%d scenario(s))%s",
+        "%s: the leftovers reopen %s of the proof%s",
         story_slug or "story",
         decided.kind,
-        len(decided.scenarios),
         "".join(f"\n  {reason}" for reason in decided.reasons),
     )
     return decided
@@ -384,23 +341,14 @@ def commit_book_delta(
     repo_dir: str = "",
     workspace: str = "",
     story_id: str = "",
-    phase: Literal["spec", "build"] = "spec",
     book_services: list[str] | None = None,
-    markdown: bool = True,
 ) -> StoryCommitted:
-    """Commit the book pages the *phase* docs pass left uncommitted, so an owner's clean-repo check never counts the book as its leftovers. A covered service's executable book is committed by its `services/<name>/` folder; the markdown pages only when `markdown` is true."""
+    """Commit the book files the spec pass left uncommitted, so an owner's clean-repo check never counts the book as its leftovers. A service's book is committed by its `services/<name>/` folder."""
     slug = story_slug or "story"
-    verb = "specify" if phase == "spec" else "document"
     root = find_repo_root(repo_dir)
-    docs_root = find_docs_root(repo_dir)
-    book = okf_path.services_root_in(docs_root).resolve()
     folders = [(root / "services" / name).resolve() for name in book_services or []]
     snapshot = tuple(preexisting or ())
     held = _affected_roots(logger, root, spec_dir, workspace, repo_dir)
-    if not any(repo_path.resolve() == docs_root.resolve() for _, repo_path in held) and (
-        docs_root / ".git"
-    ).exists():
-        held.append((docs_root.name, docs_root))
     if folders and not any(repo_path.resolve() == root.resolve() for _, repo_path in held):
         held.append((root.name, root))
     committed = False
@@ -410,17 +358,14 @@ def commit_book_delta(
             rel
             for rel in uncommitted_paths(repo_path)
             if rel not in excused
-            and (
-                (markdown and (repo_path / rel).resolve().is_relative_to(book))
-                or any((repo_path / rel).resolve().is_relative_to(folder) for folder in folders)
-            )
+            and any((repo_path / rel).resolve().is_relative_to(folder) for folder in folders)
         ]
         if not rels:
             continue
         message = commits.message(
             "docs",
             commits.scope(name),
-            f"{verb} {slug} in the book",
+            f"specify {slug} in the book",
             epic=registry.epic_slug(epic) or epic,
             story=story_id or slug,
         )
@@ -431,10 +376,10 @@ def commit_book_delta(
                 f"git refused the commit for {slug} in {repo_path}: {exc}"
             ) from exc
         if landed:
-            logger.info("committed %d book path(s) the %s pass wrote in %s", len(rels), phase, name)
+            logger.info("committed %d book path(s) the spec pass wrote in %s", len(rels), name)
         committed = committed or landed
     if not committed:
-        logger.info("the %s pass left no uncommitted book path for %s", phase, slug)
+        logger.info("the spec pass left no uncommitted book path for %s", slug)
     return StoryCommitted(committed=committed)
 
 
@@ -512,7 +457,7 @@ def commit_story(
         )
 
     snapshot = tuple(preexisting or ())
-    excluded = not_product_roots(repo_dir, book=False)
+    excluded = not_product_roots(repo_dir)
     refusals: list[str] = []
 
     def _commit_in(repo_path: Path, package: str) -> bool:

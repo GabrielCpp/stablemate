@@ -30,7 +30,6 @@ ROLES: dict[str, str] = {
     "qa-book": "bring a story's service books up to its claims and name the calls it touches in one turn",
     "fix-item": "own one drained backlog item: fix it and QA it, through subagents",
     "specify-story": "write the story's behaviour model and the book delta it implies, before any code",
-    "document-story": "fold the story into the as-built book: write, review and fix it, through subagents",
     "fix-ci": "repair a red CI run",
     "replan-epic": "replan an epic whose stories no longer fit",
 }

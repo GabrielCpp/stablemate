@@ -11,9 +11,6 @@ read it again at any point in the turn.
 - Story path: `{{ workhorse_var('story_path') }}`
 {% if story_services and not opening_brief %}
 - Services this story changes: {% for name in story_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}
-{% if markdown_services %}
-- Of those, the services whose book is a markdown page under `docs/services/`: {% for name in markdown_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}
-{% endif %}
 {% endif %}
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
 {% if branch and not opening_brief %}
@@ -65,24 +62,6 @@ build. Plan from the model's cells, use the names the book gives each endpoint a
 make every claim pass before you hand off. A claim you cannot meet is a block that names the
 claim, not a change you make silently. You do not edit these paths. The book lane plays them after
 you and keeps their `source=` pointers and index current.
-{% endif %}
-{% if spec_nodes and not opening_brief and not follow_up_title %}
-
-## The book is this story's spec
-
-Before you started, the spec pass wrote the story's behaviour model to
-`{{ workhorse_var('spec_dir') }}/model.md` and folded it into these book nodes:
-
-{% for node in workhorse_var('spec_nodes') %}
-- `{{ node }}`
-{% endfor %}
-
-Build to them. Each `does:`, `raises:` and `states:` bullet is behaviour the story owes, and
-the `verify:` under it is the check QA's scored run makes. Plan from the model's cells, use
-the names the nodes give each element, endpoint and field, and make every check pass before
-you hand off. A cell you find wrong or impossible to build is a block that names the cell, not
-a change you make silently. You do not edit these nodes. The docs pass after you grounds them
-in your code.
 {% endif %}
 {% if follow_up_title and not opening_brief %}
 

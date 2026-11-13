@@ -1,7 +1,7 @@
-"""How much of a story's proof a leftover change reopens: none, the claims that cite it, or all of it."""
+"""How much of a story's proof a leftover change reopens: none, or all of it."""
 from __future__ import annotations
 
-from collections.abc import Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable
 from pathlib import Path
 
 from workhorse_workflows.coder.shared.schemas.queue import ProofScope
@@ -33,33 +33,15 @@ def inert_paths(
     return inert
 
 
-def scope(
-    changed: Iterable[str],
-    inert: Collection[str],
-    cited: Mapping[str, Collection[str]],
-    covers: Mapping[str, Collection[str]],
-    pages: Collection[str] = (),
-) -> ProofScope:
-    """Decide what a change reruns from the book's citations and the plan's coverage, asking no model."""
+def scope(changed: Iterable[str], inert: Collection[str]) -> ProofScope:
+    """Decide what a change reruns: nothing when every path is inert, else the whole proof."""
     rest = [path for path in changed if path not in inert]
     if not rest:
         return ProofScope(kind="inert")
-    claim_pages: set[str] = set()
-    reasons: list[str] = []
-    for path in rest:
-        owned = set(cited.get(path, ()))
-        if path in pages:
-            owned.add(path)
-        if not owned:
-            reasons.append(f"{path}: no book page cites it")
-            continue
-        claim_pages |= owned
-        if not any(owned & set(covered) for covered in covers.values()):
-            reasons.append(f"{path}: no scenario covers the pages that cite it")
-    if reasons:
-        return ProofScope(kind="whole", reasons=reasons)
-    scenarios = sorted(sid for sid, covered in covers.items() if claim_pages & set(covered))
-    return ProofScope(kind="claims", scenarios=scenarios)
+    return ProofScope(
+        kind="whole",
+        reasons=[f"{path}: changed after the passing QA saw it" for path in rest],
+    )
 
 
 __all__ = ["inert_paths", "scope"]

@@ -15,16 +15,13 @@ from workhorse_workflows.coder.docs import flow as docs_flow
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared import qa_owner
-from workhorse_workflows.coder.qa import flow as qa_flow
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import stack_target
 from workhorse_workflows.coder.shared.owner import UNBOUNDED, owner_profile
 from workhorse_workflows.coder.book_qa.nodes import covered_services
-from workhorse_workflows.coder.shared.docs import detect_okf_docs
 from workhorse_workflows.coder.shared.schemas.book_qa import CoveredServices
-from workhorse_workflows.coder.shared.schemas.docs import DocsResult, OkfDetection
+from workhorse_workflows.coder.shared.schemas.docs import DocsResult
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaPlanRun, StackTarget, StackTornDown
-from workhorse_workflows.coder.shared.worktree import snapshot_code_state
 
 STORY = "STORY-1"
 
@@ -42,16 +39,12 @@ class _Spy:
         self.open_chains: set[str] | None = None
 
     def output(self, node: Any) -> Any:
-        """What `Workflow.output` resolves to here: the QA entry snapshot, a book that is there, and a stack target holding no copy."""
+        """What `Workflow.output` resolves to here: a book that is there, and a stack target holding no copy."""
         if node is stack_target:
             return StackTarget()
-        if node is detect_okf_docs:
-            return OkfDetection(has_okf="yes")
         if node is covered_services:
             return CoveredServices()
-        if node is not snapshot_code_state:
-            raise NodeNotRunError(f"{node} has not run")
-        return SimpleNamespace(status="")
+        raise NodeNotRunError(f"{node} has not run")
 
     def session_id(self, key: str) -> str:
         """What `chain_session(key)` reports: the chain name itself stands in for an id."""
@@ -97,12 +90,8 @@ def spy(monkeypatch: pytest.MonkeyPatch) -> _Spy:
         monkeypatch.setattr(flow, "_require_engine", fake_require_engine)
     monkeypatch.setattr(Qa, "_dirs", lambda _: [])
     monkeypatch.setattr(docs_flow, "workspace_dirs", lambda _: [])
-    monkeypatch.setattr(Docs, "_brief", lambda *a, **k: {})
     monkeypatch.setattr(Docs, "_spec_brief", lambda *a, **k: {})
     monkeypatch.setattr(Qa, "_owner_args", lambda *a, **k: {})
-    monkeypatch.setattr(
-        qa_flow, "code_changed", lambda _log, **_k: SimpleNamespace(changed=False)
-    )
     monkeypatch.setattr(qa_owner, "release_copy", lambda _log, *_a, **_k: StackTornDown(torn_down="skipped"))
     return seen
 
@@ -124,23 +113,13 @@ def _qa() -> Qa:
 def test_every_docs_turn_continues_the_story_s_own_owner_conversation(spy: _Spy) -> None:
     """Keyed per story: a repair turn already knows what the last turn wrote, and two stories in one run are editing different parts of the book."""
     with pytest.raises(_Reached):
-        _docs().work(report="one symbol is not directly grounded", laps=1)
+        _docs().work(report="`ostler book check services.api` exited 1", laps=1)
 
     turn = spy.turns[0]
-    assert turn["session"] == f"docs:{STORY}"
+    assert turn["session"] == f"docs-spec:{STORY}"
     assert turn["power"] == "high"
     assert turn["profile"] == owner_profile("docs")
     assert spy.resets == []
-
-
-def test_the_spec_pass_has_its_own_owner_conversation(spy: _Spy) -> None:
-    """The spec pass and the build pass see different books, so they never share a conversation."""
-    flow = Docs(story=STORY, phase="spec")
-    flow._ctx = SimpleNamespace(story_slug=STORY, story_id="", story_path="", spec_dir="", qa_dir="", story_services=[])
-    with pytest.raises(_Reached):
-        flow.work()
-
-    assert spy.turns[0]["session"] == f"docs-spec:{STORY}"
 
 
 def test_entering_the_docs_flow_starts_a_fresh_owner_conversation(spy: _Spy) -> None:
@@ -148,7 +127,7 @@ def test_entering_the_docs_flow_starts_a_fresh_owner_conversation(spy: _Spy) -> 
     with pytest.raises(WorkflowFailed):
         _docs().start()
 
-    assert spy.resets == [f"docs:{STORY}"]
+    assert spy.resets == [f"docs-spec:{STORY}"]
 
 
 def test_ending_the_docs_flow_ends_its_chain(spy: _Spy) -> None:
@@ -156,7 +135,7 @@ def test_ending_the_docs_flow_ends_its_chain(spy: _Spy) -> None:
     done = _docs()._ends(DocsResult(status="passed"))
 
     assert isinstance(done.result, DocsResult) and done.result.status == "passed"
-    assert spy.resets == [f"docs:{STORY}"]
+    assert spy.resets == [f"docs-spec:{STORY}"]
     assert f"story:{STORY}" not in spy.resets
 
 
@@ -181,9 +160,7 @@ def test_every_lane_names_the_same_conversation_without_being_handed_anything(
         monkeypatch.setattr(
             flow_cls,
             "call",
-            lambda _self, node, *a, **k: (
-                OkfDetection(has_okf="yes") if node is detect_okf_docs else ctx
-            ),
+            lambda _self, node, *a, **k: ctx,
         )
 
     for flow, chain in (

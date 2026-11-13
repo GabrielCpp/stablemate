@@ -13,7 +13,7 @@ from workhorse._vendor.stablemate_core.base_cache import cache_root
 from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.okf import story_base
+from workhorse_workflows.coder.shared.provenance import story_base
 from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import CopyCheck
 

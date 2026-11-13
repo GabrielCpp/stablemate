@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -12,13 +11,11 @@ from typing import Any
 
 from ostler import Ostler, ids, markdown
 from ostler.register import Record
-from ostler.path import book_prefix_in
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.kit import find_docs_root, open_repo
 from workhorse_workflows.kit.workspace import resolve_workspace
 from workhorse_workflows.coder.shared import causes, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 from workhorse_workflows.coder.shared.judge import Judge
 from workhorse_workflows.coder.shared.schemas.backlog import (
     FiledBacklog,
@@ -112,15 +109,6 @@ def unfiled(
     return [rid for rid, hit in same.items() if hit == causes.NEW]
 
 
-def _story_of(root: Path, spec_dir: str) -> str:
-    """The story id the spec dir's QA context names, or empty when it names none."""
-    context_path = root / spec_dir.strip() / CONTEXT_FILE
-    try:
-        return _story_id(json.loads(context_path.read_text(encoding="utf-8")))
-    except (json.JSONDecodeError, OSError):
-        return ""
-
-
 @blueprint.node
 def file_backlog_items(
     logger: logging.Logger,
@@ -128,6 +116,7 @@ def file_backlog_items(
     repo_dir: str = "",
     workspace: str = "",
     drop: list[str] | None = None,
+    story_id: str = "",
 ) -> BacklogDrain:
     """File this story's leftover items as `qa` records on the register, less the ones in `drop`, de-duplicated,, then clear them."""
     root = find_docs_root(repo_dir)
@@ -141,9 +130,8 @@ def file_backlog_items(
         logger.info("no backlog items to file at %s", items_path)
         return BacklogDrain(notes="no backlog items to file")
 
-    okf = Ostler(root)
+    facade = Ostler(root)
     repos = resolve_workspace(workspace, repo_dir)
-    story = _story_of(root, spec_dir)
     held: dict[str, set[str]] = {}
     new_paths: list[Path] = []
     dropped = set(drop or [])
@@ -163,7 +151,7 @@ def file_backlog_items(
             continue
         if repo not in held:
             held[repo] = {
-                norm_desc(r.summary) for r in okf.open_records(repo) if r.filed_by == "qa"
+                norm_desc(r.summary) for r in facade.open_records(repo) if r.filed_by == "qa"
             }
         key = norm_desc(desc)
         if key in held[repo]:
@@ -171,14 +159,14 @@ def file_backlog_items(
             skipped += 1
             continue
         full = str(item.get("description") or "").strip()
-        filing = okf.file_record(
+        filing = facade.file_record(
             repo=repo,
             area=_segment(item.get("area")),
             pattern=_segment(item.get("pattern")),
             summary=next((line.strip() for line in full.splitlines() if line.strip()), desc),
             filed_by="qa",
             symbols=[str(s) for s in item.get("symbols") or [] if isinstance(s, str)],
-            source_story=story,
+            source_story=story_id,
             body=full if "\n" in full else "",
         )
         if filing.record is None or filing.path is None:
@@ -235,7 +223,7 @@ def file_follow_up_backlog(
     workspace: str = "",
 ) -> BacklogDrain:
     """File a dev turn's follow-ups as records on the debt register."""
-    okf = Ostler(find_docs_root(repo_dir))
+    facade = Ostler(find_docs_root(repo_dir))
     repos = resolve_workspace(workspace, repo_dir)
     open_by_repo: dict[str, list[BacklogBullet]] = {}
     new_paths: list[Path] = []
@@ -261,14 +249,14 @@ def file_follow_up_backlog(
             continue
         if repo not in open_by_repo:
             open_by_repo[repo] = [
-                BacklogBullet(0, record.id, record.summary) for record in okf.open_records(repo)
+                BacklogBullet(0, record.id, record.summary) for record in facade.open_records(repo)
             ]
         filed = _filed_as(open_by_repo[repo], title, reason)
         if filed:
             logger.info("follow-up %r is already on the register as [%s]", title, filed)
             skipped += 1
             continue
-        filing = okf.file_record(
+        filing = facade.file_record(
             repo=repo, area=entry.area.strip(), pattern=entry.pattern.strip(), summary=title,
             filed_by="coder", symbols=entry.symbols, source_story=parent, body=reason,
         )
@@ -280,123 +268,6 @@ def file_follow_up_backlog(
         new_paths.append(filing.path)
     appended = len(new_paths)
     note = f"filed {appended} follow-up(s) of {parent} to the register, skipped {skipped}"
-    logger.info(note)
-    return BacklogDrain(appended=appended, skipped=skipped, notes=note)
-
-
-def _deferred_pages(context: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
-    """The required obligations ostler deferred, grouped by the book page that owes their check."""
-    pages: dict[str, list[dict[str, Any]]] = {}
-    for obligation in context.get("obligations") or []:
-        if not isinstance(obligation, dict) or obligation.get("required", True) is False:
-            continue
-        deferred = obligation.get("deferred")
-        if not isinstance(deferred, dict) or deferred.get("kind") == "book":
-            continue
-        node = str(obligation.get("node") or "")
-        page = str(obligation.get("source") or node.partition("#")[0])
-        if page:
-            pages.setdefault(page, []).append(obligation)
-    return pages
-
-
-def _deferred_text(page: str, obligations: list[dict[str, Any]]) -> str:
-    """One backlog line for a page: the claims QA skipped, and what the book has to add."""
-    anchors: list[str] = []
-    details: list[str] = []
-    for obligation in obligations:
-        node = str(obligation.get("node") or page)
-        anchor = node.partition("#")[2]
-        anchors.append(f"`#{anchor}`" if anchor else "the page itself")
-        detail = str(obligation["deferred"].get("detail") or "").replace(f"`{node}`", "a section")
-        detail = " ".join(detail.split())
-        if detail:
-            details.append(detail[0].upper() + detail[1:] + ("" if detail.endswith(".") else "."))
-    claims = ", ".join(dict.fromkeys(anchors))
-    head = (
-        f"Book page `{page}` gives QA no check it can run for {claims}, "
-        "so a story that changes its code ships them unproved."
-    )
-    return " ".join([head, *dict.fromkeys(details)])
-
-
-def _feature_path(page: str, services: str, root: Path) -> Path:
-    """A book page's path under the services root, which the context may give as an absolute path."""
-    base = Path(services)
-    if base.is_absolute():
-        base = Path(os.path.relpath(base, root))
-    path = Path(page)
-    return path.relative_to(base) if services and path.is_relative_to(base) else path
-
-
-def _book_repo(page: str, services: str, root: Path) -> str:
-    """The repository name a book page points at: its book's prefix under *root*, else its own first path segment."""
-    base = Path(services)
-    relative = Path(os.path.relpath(base, root)) if base.is_absolute() else base
-    prefix = book_prefix_in(root, relative.as_posix()) if services else ""
-    path = Path(page)
-    placed = Path(os.path.relpath(path, root)) if path.is_absolute() else path
-    return (Path(prefix).parts or placed.parts or ("",))[0]
-
-
-def _story_id(context: object) -> str:
-    """The id of the story the QA context packet names, or empty when it names none."""
-    story = context.get("story") if isinstance(context, dict) else None
-    return str(story.get("id") or "") if isinstance(story, dict) else ""
-
-
-@blueprint.node
-def file_deferred_obligations(
-    logger: logging.Logger, spec_dir: str = "", repo_dir: str = "", workspace: str = ""
-) -> BacklogDrain:
-    """File each book page that owes QA a check it could not run as a record on the register."""
-    root = find_docs_root(repo_dir)
-    spec = spec_dir.strip()
-    context_path = root / spec / CONTEXT_FILE
-    if not spec or not context_path.is_file():
-        return BacklogDrain(notes="no QA context to read deferred obligations from")
-    try:
-        context = json.loads(context_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("QA context unreadable: %s", exc)
-        return BacklogDrain(notes=f"QA context unreadable: {exc}")
-    pages = _deferred_pages(context) if isinstance(context, dict) else {}
-    services = str(context.get("servicesRoot") or "") if isinstance(context, dict) else ""
-    source_story = _story_id(context)
-    okf = Ostler(root)
-    repos = resolve_workspace(workspace, repo_dir)
-    open_by_repo: dict[str, list[Any]] = {}
-    new_paths: list[Path] = []
-    skipped = 0
-    for page, obligations in pages.items():
-        rel = _feature_path(page, services, root).as_posix()
-        repo = _workspace_repo(_book_repo(page, services, root), repos)
-        if not repo:
-            logger.info(
-                "book page %r belongs to no repository of the workspace (%s), so it is not filed",
-                page, ", ".join(repos),
-            )
-            skipped += 1
-            continue
-        if repo not in open_by_repo:
-            open_by_repo[repo] = okf.open_records(repo)
-        if any(r.filed_by == "qa-deferred" and rel in r.symbols for r in open_by_repo[repo]):
-            logger.info("book page %r already has an open record, so it is not filed again", page)
-            skipped += 1
-            continue
-        filing = okf.file_record(
-            repo=repo, area="book", pattern="add-runnable-check",
-            summary=f"Book page `{page}` gives QA no check it can run", filed_by="qa-deferred",
-            symbols=[rel], source_story=source_story, body=_deferred_text(page, obligations),
-        )
-        if filing.record is None or filing.path is None:
-            logger.info("book page %r was not filed: %s", page, filing.message)
-            skipped += 1
-            continue
-        open_by_repo[repo].append(filing.record)
-        new_paths.append(filing.path)
-    appended = len(new_paths)
-    note = f"filed {appended} book page(s) with deferred checks to the register, skipped {skipped}"
     logger.info(note)
     return BacklogDrain(appended=appended, skipped=skipped, notes=note)
 
@@ -467,12 +338,12 @@ def seed_fix_story(
         )
 
     root = find_docs_root(repo_dir)
-    okf = Ostler(root)
+    facade = Ostler(root)
     where = (repo, area, body.strip())
-    bucket = _ensure_fixes_epic(okf, bucket)
+    bucket = _ensure_fixes_epic(facade, bucket)
     epic_dir_rel = paths.epic_dir_rel(root, bucket, epics_dir)
 
-    for story in okf.list("story", epic=bucket):
+    for story in facade.list("story", epic=bucket):
         if record_id not in (story.get("covers") or []):
             continue
         slug = str(story.get("slug", ""))
@@ -490,7 +361,7 @@ def seed_fix_story(
             reason=f"story '{slug}' already covers '{record_id}' — reusing (idempotent)",
         )
 
-    okf.add_seed(
+    facade.add_seed(
         bucket,
         record_id,
         status="researched",
@@ -499,7 +370,7 @@ def seed_fix_story(
     )
 
     slug = _fix_slug(summary)
-    result = okf.create_story(bucket, slug, summary, covers=[record_id])
+    result = facade.create_story(bucket, slug, summary, covers=[record_id])
     if not result.ok:
         raise WorkflowFailed(
             f"could not create fix story '{slug}' in '{bucket}': {result.message}"
@@ -534,16 +405,16 @@ def _fix_slug(text: str, *, max_len: int = 60) -> str:
     return slug or "fix"
 
 
-def _ensure_fixes_epic(okf: Ostler, epic: str) -> str:
+def _ensure_fixes_epic(facade: Ostler, epic: str) -> str:
     """Create the fixes bucket if it is missing; return the directory name it actually has."""
-    name = Path(okf.epic_path(epic)).name
-    if (okf.root / okf.epic_path(epic) / "epic.md").is_file():
+    name = Path(facade.epic_path(epic)).name
+    if (facade.root / facade.epic_path(epic) / "epic.md").is_file():
         return name
-    result = okf.create_epic(epic, "Coder-filed fixes", followups=True)
+    result = facade.create_epic(epic, "Coder-filed fixes", followups=True)
     if result.ok:
         return result.entity_name or name
-    name = Path(okf.reload().epic_path(epic)).name
-    if (okf.root / okf.epic_path(epic) / "epic.md").is_file():
+    name = Path(facade.reload().epic_path(epic)).name
+    if (facade.root / facade.epic_path(epic) / "epic.md").is_file():
         return name
     raise WorkflowFailed(
         f"could not self-create the '{epic}' epic bucket: {result.message}"
@@ -680,7 +551,6 @@ __all__ = [
     "already_fixed",
     "close_fix_item",
     "file_backlog_items",
-    "file_deferred_obligations",
     "file_follow_up_backlog",
     "filed_backlog",
     "id_token_set",

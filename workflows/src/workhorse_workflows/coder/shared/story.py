@@ -19,23 +19,23 @@ from workhorse_workflows.coder.shared.schemas.story import (
 from workhorse_workflows.kit import resolve_workspace
 
 
-def _resolve(okf: Ostler, ref: str) -> tuple[Epic, Story]:
+def _resolve(facade: Ostler, ref: str) -> tuple[Epic, Story]:
     """The story a launch handle names: its id, or the slug a worklist or fix seed carries."""
     try:
-        found = okf.graph.find_story(ref) or okf.graph.story_by_slug(ref)
+        found = facade.graph.find_story(ref) or facade.graph.story_by_slug(ref)
         if found is None:
-            raise WorkflowFailed(okf.graph.no_story(ref))
+            raise WorkflowFailed(facade.graph.no_story(ref))
         if not found[1].eid:
-            raise WorkflowFailed(okf.graph.no_story(found[1].slug))
+            raise WorkflowFailed(facade.graph.no_story(found[1].slug))
     except (OSError, ValueError, RuntimeError) as exc:
         raise WorkflowFailed(str(exc)) from exc
     return found
 
 
-def _spec_dir(okf: Ostler, story_id: str) -> Path:
+def _spec_dir(facade: Ostler, story_id: str) -> Path:
     """Where this story's specs live (absolute, outside the repo by default), through ostler."""
     try:
-        return Path(okf.spec_path(story_id))
+        return Path(facade.spec_path(story_id))
     except ValueError as exc:
         raise WorkflowFailed(str(exc)) from exc
 
@@ -92,17 +92,17 @@ def prepare_story(
         return StoryPaths()
 
     docs_root = find_docs_root(repo_dir)
-    okf = Ostler(docs_root)
-    found_epic, found = _resolve(okf, story)
+    facade = Ostler(docs_root)
+    found_epic, found = _resolve(facade, story)
     slug = found.slug
     story_id = found.eid
     epic = epic or found_epic.name
     _guard_authored(found_epic, found, logger)
 
-    spec_dir = str(_spec_dir(okf, story_id).resolve())
+    spec_dir = str(_spec_dir(facade, story_id).resolve())
 
     try:
-        story_path_rel = okf.story_path(story_id)
+        story_path_rel = facade.story_path(story_id)
     except (OSError, ValueError, RuntimeError):
         story_path_rel = ""
     story_path = str(
@@ -150,15 +150,15 @@ def stamp_specs(
         return SpecsStamped()
 
     docs_root = find_docs_root(repo_dir)
-    okf = Ostler(docs_root)
-    spec_dir = _spec_dir(okf, story_id)
+    facade = Ostler(docs_root)
+    spec_dir = _spec_dir(facade, story_id)
     if not spec_dir.is_dir():
         logger.info("no spec dir at %s — nothing to stamp", spec_dir)
         return SpecsStamped()
 
     stamped = 0
     for path in sorted(spec_dir.glob("*.md")):
-        res = okf.create_spec(story_id, path.name)
+        res = facade.create_spec(story_id, path.name)
         if not res.ok:
             logger.info("skipped %s: %s", path.name, res.message)
             continue
@@ -186,9 +186,9 @@ def sync_story_fixtures(
     """State under the story's `## Fixtures` the fixtures its `qa_plan.py` uses, and commit it."""
     if not story_id:
         return FixturesSynced()
-    okf = Ostler(find_docs_root(repo_dir))
-    found = okf.graph.find_story(story_id)
-    res = okf.sync_story_fixtures(story_id)
+    facade = Ostler(find_docs_root(repo_dir))
+    found = facade.graph.find_story(story_id)
+    res = facade.sync_story_fixtures(story_id)
     if not res.ok:
         raise WorkflowFailed(res.message)
     logger.info("%s", res.message)

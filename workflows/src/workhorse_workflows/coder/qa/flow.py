@@ -1,21 +1,18 @@
 """One QA owner selects, runs, debugs and records a story's QA, and the run checks it."""
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
-from ostler.qa.compile import compiled_from_the_book
-from workhorse.pyflow import Await, Continue, Done, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done
 
 from workhorse_workflows.kit import find_docs_root
-from workhorse_workflows.coder.book_qa.nodes import defer_book_judged, read_book_record, write_unreached_claims
+from workhorse_workflows.coder.book_qa.nodes import read_book_record, write_unreached_claims
 from workhorse_workflows.coder.qa.nodes import (
     QA_SCRATCH_DIRNAME,
     check_sentinel_ids,
     clear_qa_evidence,
-    compile_story_plan,
     detect_regression_suites,
     ensure_stack,
     flush_root_screenshots,
@@ -25,10 +22,9 @@ from workhorse_workflows.coder.qa.nodes import (
     run_qa_plan,
     run_regression_suite,
     stack_target,
-    validate_qa_plan,
     verify_qa_evidence,
 )
-from workhorse_workflows.coder.shared.qa_support import QA_COMPILED_PLAN_FILE, QA_PLAN_FILE
+from workhorse_workflows.coder.shared.qa_support import QA_PLAN_FILE
 from workhorse_workflows.coder.qa.report import (
     book_failure,
     environment_failure,
@@ -48,16 +44,11 @@ from workhorse_workflows.coder.qa.sides import run_sides
 from workhorse_workflows.coder.shared import causes, roles
 from workhorse_workflows.coder.shared.backlog import (
     file_backlog_items,
-    file_deferred_obligations,
     filed_backlog,
     unfiled,
 )
-from workhorse_workflows.coder.book_qa.nodes import covered_services, without_covered_roots
-from workhorse_workflows.coder.shared.docs import CONTEXT_FILE, detect_okf_docs, services_root
-from workhorse_workflows.coder.shared.okf import TRUNK, build_okf_context, validate_okf_context
 from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_context
 from workhorse_workflows.coder.shared.qa_owner import QaOwner
-from workhorse_workflows.coder.shared.provenance import resolve_story_sources
 from workhorse_workflows.coder.shared.reach import resolve_check_set
 from workhorse_workflows.coder.shared.review import check_feedback
 from workhorse_workflows.coder.shared.schemas.qa import (
@@ -72,7 +63,6 @@ from workhorse_workflows.coder.shared.story import (
     stamp_specs,
     sync_story_fixtures,
 )
-from workhorse_workflows.coder.shared.worktree import code_changed, snapshot_code_state
 from workhorse_workflows.kit.credentials import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
 
@@ -85,7 +75,6 @@ class Qa(QaOwner):
 
     stop_at_first_verdict: bool = False
     rerun: bool = False
-    scope: tuple[str, ...] = ()
 
     LABEL_PREFIX: ClassVar[str] = "qa"
 
@@ -94,105 +83,37 @@ class Qa(QaOwner):
         pending = self.call(filed_backlog, self.ctx.spec_dir)
         keep = set(unfiled(causes.cause_judge(self, "low"), self.logger, pending.items, pending.filed))
         drop = [item_id for item_id in pending.items if item_id not in keep]
-        self.call(file_backlog_items, self.ctx.spec_dir, drop=drop)
+        self.call(file_backlog_items, self.ctx.spec_dir, drop=drop, story_id=self.ctx.story_id)
 
     def start(self) -> Continue | Done:
-        """Clear the last run's evidence, decode what the story touched, and check its context and stack."""
-        self.call(snapshot_code_state)
-        if not (self.rerun and self.scope):
-            self.call(clear_qa_evidence, self.ctx.spec_dir)
-        impl = self.call(resolve_impl_context, self.ctx.spec_dir)
-        if self._sourced:
-            sources = self.call(
-                resolve_story_sources,
-                tuple(impl.dispatch_list),
-                self.ctx.story_slug,
-                self.ctx.story_id,
-            )
-            if sources.status != "valid":
-                raise WorkflowFailed(
-                    "story source provenance could not be resolved: " + "; ".join(sources.errors)
-                )
-        okf = self.call(detect_okf_docs)
+        """Clear the last run's evidence, decode what the story touched, and check its stack."""
+        self.call(clear_qa_evidence, self.ctx.spec_dir)
+        self.call(resolve_impl_context, self.ctx.spec_dir)
         lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id)
-        self.call(stack_target, self.ctx.story_slug, lease, services=list(self.ctx.story_services))
+        target = self.call(stack_target, self.ctx.story_slug, lease, services=list(self.ctx.story_services))
         if self.rerun:
-            return Continue(okf, self.recheck)
+            return Continue(target, self.recheck)
         failures = self._preflight()
         if self._all_judged_by_books():
             return self._finish_judged()
-        return Continue(okf, self.work, report="\n\n".join(failures))
+        return Continue(target, self.work, report="\n\n".join(failures))
 
     def _all_judged_by_books(self) -> bool:
-        """Does a clean book record name services and hold no unreached claim, with every service booked or the packet left no required obligation undeferred?"""
+        """Does a clean book record name services and hold no unreached claim?"""
         record = self.call(read_book_record, self.ctx.spec_dir)
-        if not record.services or record.findings or record.unreached:
-            return False
-        if self._book_only(self._covered()):
-            return True
-        if self.output(validate_okf_context).status != "passed":
-            return False
-        context = Path(self.ctx.spec_dir) / CONTEXT_FILE
-        if not context.is_file():
-            return False
-        obligations = json.loads(context.read_text(encoding="utf-8")).get("obligations") or []
-        return not any(
-            isinstance(o, dict) and o.get("required", True) is not False and not isinstance(o.get("deferred"), dict)
-            for o in obligations
-        )
+        return bool(record.services) and not record.findings and not record.unreached
 
     def _finish_judged(self) -> Done:
         """Pass a story whose every obligation a service book judged, with no seat turn and no plan."""
         self.logger.info("QA passed for %s without a plan: its books judged it", self.ctx.story_slug)
         return self._finish("passed", QaPlanRun(status="passed", notes=JUDGED_NOTE))
 
-    @property
-    def _sourced(self) -> bool:
-        return bool(self.workspace and self.ctx.story_id)
-
     def _preflight(self) -> list[str]:
-        """The OKF context packet, for a story a service book does not cover whole, and the QA stack, as failures the owner repairs."""
-        covered = self._covered()
-        book_only = self._book_only(covered)
-        self.call(write_unreached_claims, self.ctx.spec_dir, book_only)
-        failures = [] if book_only else self._packet_failures(covered)
+        """The unreached-claims file and the QA stack, as failures the owner repairs."""
+        self.call(write_unreached_claims, self.ctx.spec_dir)
         target = self.output(stack_target)
         stack = self.call(ensure_stack, near=target.near, lease=target.lease)
-        return failures + stack_failures(stack)
-
-    def _packet_failures(self, covered: list[str]) -> list[str]:
-        """Build and validate the OKF context packet, and compile the plan from it when it passes."""
-        impl = self.output(resolve_impl_context)
-        self.call(defer_book_judged, self.ctx.spec_dir)
-        build = self.call(
-            build_okf_context,
-            self.ctx.spec_dir,
-            self.ctx.story_path,
-            services_root(self),
-            without_covered_roots(tuple(impl.qa_source_roots), covered)
-            if covered
-            else tuple(impl.qa_source_roots),
-            TRUNK,
-            "WORKTREE",
-            preexisting=tuple(self.preexisting),
-            story_sources=self.output(resolve_story_sources).sources if self._sourced else (),
-            story_refs=tuple(
-                dict.fromkeys(ref for ref in (self.ctx.story_id, self.ctx.story_slug) if ref)
-            ),
-        )
-        context = self.call(validate_okf_context, self.ctx.spec_dir, build.status)
-        if context.status != "passed":
-            return [gate_text("the OKF context packet", context.notes)]
-        self.call(compile_story_plan, self.ctx.spec_dir, self.ctx.story_id or self.ctx.story_slug)
-        return []
-
-    def _covered(self) -> list[str]:
-        """The story's services that have an executable book."""
-        return self.call(covered_services, list(self.ctx.story_services)).services
-
-    def _book_only(self, covered: list[str]) -> bool:
-        """Does every service of the story have an executable book?"""
-        return bool(covered) and len(covered) == len(set(self.ctx.story_services))
+        return stack_failures(stack)
 
     def _owner_args(self) -> dict[str, Any]:
         """What the owner reads about its story, its plan and the tools it may drive."""
@@ -206,7 +127,6 @@ class Qa(QaOwner):
         spec_dir = self.ctx.spec_dir
         record = self.call(read_book_record, spec_dir)
         judged = not record.findings
-        covered = self._covered()
         return {
             "story_path": self.ctx.story_path,
             "spec_dir": spec_dir,
@@ -226,32 +146,17 @@ class Qa(QaOwner):
             "qa_only_scenarios": qa_only_arg(spec_dir),
             "qa_tools": self.call(qa_tools_catalog).tools,
             "standing_plan": self._standing_plan(),
-            "hand_written_plan": self._hand_written_plan(),
-            "compiled_plan_file": QA_COMPILED_PLAN_FILE,
             "book_services": [s.service for s in record.services] if judged else [],
             "book_unreached": list(record.unreached) if judged else [],
-            "book_only": self._book_only(covered),
             "lease": self.output(stack_target).lease,
         }
 
     def _standing_plan(self) -> bool:
-        """Does a `qa_plan.py` already stand that lints, and validates against the packet when the story has one?"""
+        """Does a `qa_plan.py` already stand that lints?"""
         spec_dir = self.ctx.spec_dir
         if not spec_dir or not (Path(spec_dir) / QA_PLAN_FILE).is_file():
             return False
-        if self.call(lint_qa_plan, spec_dir).status != "passed":
-            return False
-        if self._book_only(self._covered()):
-            return True
-        return self.call(validate_qa_plan, spec_dir).status == "passed"
-
-    def _hand_written_plan(self) -> bool:
-        """Does the standing `qa_plan.py` lack the banner `compile-plan` writes, so its `covers=` are its author's and the book compiled beside it?"""
-        spec_dir = self.ctx.spec_dir
-        plan = Path(spec_dir) / QA_PLAN_FILE if spec_dir else None
-        if plan is None or not plan.is_file():
-            return False
-        return not compiled_from_the_book(plan.read_text(encoding="utf-8"))
+        return self.call(lint_qa_plan, spec_dir).status == "passed"
 
     def work(
         self,
@@ -291,7 +196,7 @@ class Qa(QaOwner):
         )
 
     def recheck(self) -> Continue | Await | Done:
-        """Rerun the standing plan, or the scenarios of `scope`, with no owner turn unless the stack or plan broke."""
+        """Rerun the standing plan with no owner turn unless the stack or plan broke."""
         preflight = self._preflight()
         if self._all_judged_by_books():
             return self._finish_judged()
@@ -306,7 +211,6 @@ class Qa(QaOwner):
             self.ctx.spec_dir,
             near=target.near,
             lease=target.lease,
-            only=list(self.scope) or None,
         )
         self._file_backlog()
         self.call(stamp_specs, self.ctx.story_id)
@@ -314,7 +218,7 @@ class Qa(QaOwner):
             return self._red(run, [], 0, 0, owner_classifies=False)
         if run.status != "passed":
             return self._lap(run, [unfinished_run(run)], 0, 0)
-        failures = ([] if self.scope else self._evidence_failures(run)) or self._standing_failures()
+        failures = self._evidence_failures(run) or self._standing_failures()
         if failures:
             notes = "\n\n".join(failures)
             return self._finish("refix", run, [fallback_finding(self.ctx.qa_dir, notes)])
@@ -358,15 +262,10 @@ class Qa(QaOwner):
         return self._lap(run, failures, laps, blocks)
 
     def _plan_failures(self) -> list[str]:
-        """The plan's lint, and its validation against the packet when the story has one."""
+        """The plan's lint."""
         lint = self.call(lint_qa_plan, self.ctx.spec_dir)
         if lint.status != "passed":
             return [gate_text("qa_plan.py lint", lint.notes)]
-        if self._book_only(self._covered()):
-            return []
-        validation = self.call(validate_qa_plan, self.ctx.spec_dir)
-        if validation.status != "passed":
-            return [gate_text("qa_plan.py validation", validation.notes)]
         return []
 
     def _pass_failures(self, run: QaPlanRun) -> list[str]:
@@ -375,8 +274,7 @@ class Qa(QaOwner):
 
     def _evidence_failures(self, run: QaPlanRun) -> list[str]:
         """The evidence gate, which reads every scenario's recording."""
-        book_only = self._book_only(self._covered())
-        evidence = self.call(verify_qa_evidence, self.ctx.spec_dir, run.status, run.notes, book_only=book_only)
+        evidence = self.call(verify_qa_evidence, self.ctx.spec_dir, run.status, run.notes)
         if evidence.status != "passed":
             return [gate_text("the QA evidence", evidence.notes)]
         return []
@@ -441,17 +339,12 @@ class Qa(QaOwner):
     def _finish(
         self, status: QaFlowStatus, run: QaPlanRun, findings: list[QaFinding] | None = None
     ) -> Done:
-        before = self.output(snapshot_code_state).status
-        changed = self.call(code_changed, before=before)
-        if status == "passed":
-            self.call(file_deferred_obligations, self.ctx.spec_dir)
         self._retire(status)
         return Done(
             QaFlowResult(
                 status=status,
                 qa=QaResult(status=run.status, notes=run.notes),
                 findings=findings or [],
-                docs_recheck_required=changed.changed,
             )
         )
 

@@ -86,7 +86,6 @@ class RunAuthor(Action[DryRunArgs, Workspace]):
 
 class RunCoder(Action[DryRunArgs, Workspace]):
     accept = DryRunArgs
-    rules = (rules.coder_needs_its_skills,)
 
     @staticmethod
     def reduce(a: DryRunArgs, s: Workspace, by: Actor | None) -> Transaction:

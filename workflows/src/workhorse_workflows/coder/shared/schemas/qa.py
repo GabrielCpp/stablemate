@@ -58,15 +58,6 @@ class QaCleared(CoderResult):
     cleared: bool = False
 
 
-class CompiledPlan(CoderResult):
-    """`compile_story_plan` — whether the book compiled into the story's `qa_plan.py`, or beside a hand-written one, and how many scenarios it holds."""
-
-    compiled: bool = False
-    beside: bool = False
-    scenarios: int = 0
-    gaps: int = 0
-
-
 class StackTornDown(CoderResult):
     """`teardown_stack` — the run is over, so the stack it started need not outlive it."""
 
@@ -118,15 +109,6 @@ class RegressionSuites(CoderResult):
     suites: list[RegressionSuite] = []
 
 
-class FailureAttribution(CoderResult):
-    """Which OKF node, if any, claims to verify a failing regression test."""
-
-    test: str = ""
-    path: str = ""
-    classification: Literal["impacted", "outside-impact", "unattributed"] = "unattributed"
-    nodes: list[str] = []
-
-
 class RegressionRun(CoderResult):
     """`run_regression_suite` — the committed journey suites' own verdict."""
 
@@ -134,7 +116,6 @@ class RegressionRun(CoderResult):
     failing_tests: list[str] = []
     log_path: str = ""
     notes: str = ""
-    failure_attribution: list[FailureAttribution] = []
 
     def as_qa_result(self) -> QaResult:
         """The story's running verdict, in the four states everything downstream routes on."""
@@ -190,15 +171,12 @@ class QaFlowResult(CoderResult):
     status: QaFlowStatus = "passed"
     qa: QaResult = QaResult()
     operator_notes: str = ""
-    docs_recheck_required: bool = True
     findings: list[QaFinding] = []
 
 
 __all__ = [
     "BacklogDrain",
-    "CompiledPlan",
     "FailedScenarios",
-    "FailureAttribution",
     "QaCleared",
     "QaFinding",
     "QaFlowResult",

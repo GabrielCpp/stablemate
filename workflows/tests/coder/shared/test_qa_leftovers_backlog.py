@@ -13,7 +13,6 @@ from ostler.register import Record
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow.blueprint import node_spec
 from workhorse_workflows.coder.shared.backlog import file_backlog_items, filed_backlog
-from workhorse_workflows.coder.shared.docs import CONTEXT_FILE
 
 ITEMS = "backlog-items.json"
 
@@ -21,7 +20,6 @@ ITEMS = "backlog-items.json"
 def _spec(tmp_path: Path, *items: dict, story: str = "ACME-1") -> str:
     spec = tmp_path / "specs" / story
     spec.mkdir(parents=True, exist_ok=True)
-    (spec / CONTEXT_FILE).write_text(json.dumps({"story": {"id": story}}), encoding="utf-8")
     (spec / ITEMS).write_text(json.dumps(list(items)), encoding="utf-8")
     return str(spec)
 
@@ -75,6 +73,16 @@ def test_the_leftovers_are_nodes_a_flow_can_call() -> None:
     assert node_spec(file_backlog_items)
 
 
+def test_a_filed_item_names_the_story_it_was_filed_for(
+    repo: Path, tmp_path: Path, artifacts: Path, logger: logging.Logger
+) -> None:
+    spec = _spec(tmp_path, _item("a", "The cart total overflows."))
+
+    file_backlog_items(logger, spec_dir=spec, repo_dir=str(repo), story_id="S-1")
+
+    assert [r.source_story for r in _records(repo)] == ["S-1"]
+
+
 def test_each_item_becomes_a_qa_record_in_one_artifacts_commit(
     repo: Path, tmp_path: Path, artifacts: Path, logger: logging.Logger, git: Callable[..., subprocess.CompletedProcess]
 ) -> None:
@@ -91,7 +99,7 @@ def test_each_item_becomes_a_qa_record_in_one_artifacts_commit(
         ),
     )
 
-    drained = file_backlog_items(logger, spec_dir=spec, repo_dir=str(repo))
+    drained = file_backlog_items(logger, spec_dir=spec, repo_dir=str(repo), story_id="ACME-1")
 
     assert (drained.appended, drained.skipped) == (2, 0), drained
     by_summary = {r.summary: r for r in _records(repo)}

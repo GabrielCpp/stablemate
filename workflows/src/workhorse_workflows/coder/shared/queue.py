@@ -44,9 +44,9 @@ def begin_run(logger: logging.Logger, run_dir: str = "") -> RunScope:
     return RunScope(cleared=cleared)
 
 
-def _queue_from_ostler(okf: Ostler) -> list[str] | None:
+def _queue_from_ostler(facade: Ostler) -> list[str] | None:
     try:
-        return [str(x) for x in okf.todo()]
+        return [str(x) for x in facade.todo()]
     except (OSError, ValueError, RuntimeError):
         return None
 
@@ -63,9 +63,9 @@ def _queue_from_json(root: Path) -> list[str] | None:
     return [str(x) for x in data] if isinstance(data, list) else None
 
 
-def _queued_epics(root: Path, okf: Ostler) -> list[str]:
+def _queued_epics(root: Path, facade: Ostler) -> list[str]:
     """The epics queue, front-first, from ostler or the legacy JSON file."""
-    epics = _queue_from_ostler(okf)
+    epics = _queue_from_ostler(facade)
     if not epics:
         epics = _queue_from_json(root) or epics
     if epics is None:
@@ -73,9 +73,9 @@ def _queued_epics(root: Path, okf: Ostler) -> list[str]:
     return epics
 
 
-def _open_entries(okf: Ostler, epic: str) -> list[dict]:
+def _open_entries(facade: Ostler, epic: str) -> list[dict]:
     try:
-        return okf.open_stories(epic)
+        return facade.open_stories(epic)
     except ValueError as exc:
         raise WorkflowFailed(f"epic {epic!r} cannot be launched: {exc}") from exc
 
@@ -94,13 +94,13 @@ def resolve_launch(
             f"the launch names both story={story!r} and epic={epic!r}: name one of them"
         )
     root = find_docs_root(repo_dir)
-    okf = Ostler(root)
+    facade = Ostler(root)
     if story:
-        entry = okf.story(story)
+        entry = facade.story(story)
         if entry is None:
-            slugged = okf.graph.story_by_slug(story)
+            slugged = facade.graph.story_by_slug(story)
             if slugged is not None and slugged[1].eid:
-                entry = okf.story(slugged[1].eid)
+                entry = facade.story(slugged[1].eid)
         if entry is None:
             raise WorkflowFailed(f"no story {story!r} in the book at {root}")
         logger.info("launch: story %s of epic %s", entry["slug"], entry["epic"])
@@ -108,8 +108,8 @@ def resolve_launch(
             mode="story",
             entries=[LaunchEntry(slug=entry["slug"], id=entry["id"] or "", epic=entry["epic"])],
         )
-    epics = _queued_epics(root, okf) if grain == ALL_EPICS else [grain]
-    found = [(name, entry) for name in epics for entry in _open_entries(okf, name)]
+    epics = _queued_epics(root, facade) if grain == ALL_EPICS else [grain]
+    found = [(name, entry) for name in epics for entry in _open_entries(facade, name)]
     launched = {ref for _, entry in found for ref in (entry["slug"], entry["id"]) if ref}
     outside = [
         f"{entry['slug']} needs {dep}"

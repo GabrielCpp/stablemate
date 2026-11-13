@@ -1,15 +1,12 @@
-"""A story whose services all have an executable book reads and writes no markdown book page."""
+"""A story reads and writes only the Python book, and no markdown book page."""
 from __future__ import annotations
 
-import logging
-from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from workhorse.templates import render
 
 from workhorse_workflows.coder.shared import roles
-from workhorse_workflows.coder.shared.okf import build_okf_context
 
 CODER = Path(roles.__file__).resolve().parent.parent
 PROMPTS = (
@@ -34,8 +31,6 @@ def _rendered(prompt: str, tmp_path: Path, with_skill: bool, **args: object) -> 
         "services": ["api"],
         "story_services": ["api"],
         "book_services": ["api"],
-        "markdown_services": [],
-        "spec_nodes": [],
         "spec_book_paths": BOOK_PATHS,
         "opening_brief": "",
         "follow_up_title": "",
@@ -67,6 +62,14 @@ def test_the_spec_prompt_ends_on_the_book_check_and_says_the_claims_are_red_unti
     assert "Write no markdown page" not in text
 
 
+def test_the_dev_scope_names_the_book_only_when_a_service_has_one(tmp_path: Path) -> None:
+    booked = _rendered("dev/prompts/_dev-scope.md", tmp_path / "booked", True)
+    unbooked = _rendered("dev/prompts/_dev-scope.md", tmp_path / "unbooked", False, book_services=[])
+
+    assert "## The book" in booked
+    assert "## The book" not in unbooked
+
+
 def test_the_dev_prompt_lists_the_book_paths_as_the_spec(tmp_path: Path) -> None:
     text = _rendered("dev/prompts/_dev-inputs.md", tmp_path, True)
 
@@ -78,57 +81,6 @@ def test_the_book_seat_keeps_source_pointers_and_the_index_current(tmp_path: Pat
     text = _rendered("book_qa/prompts/qa-book.md", tmp_path, True)
 
     assert "`source=` pointers and\n   `index.tsv` current" in text
-
-
-def test_a_mixed_story_keeps_the_markdown_instructions_for_the_uncovered_service(
-    tmp_path: Path,
-) -> None:
-    text = _rendered(
-        "dev/prompts/_dev-scope.md", tmp_path, True, story_services=["api", "web"], markdown_services=["web"]
-    )
-
-    assert "executable book under `services/<name>/`" in text
-    assert "under `docs/services/`" in text
-
-
-def test_a_story_with_no_covered_service_keeps_the_markdown_instructions(tmp_path: Path) -> None:
-    text = _rendered(
-        "dev/prompts/_dev-scope.md", tmp_path, True, book_services=[], markdown_services=["web"], spec_book_paths=[]
-    )
-
-    assert "under `docs/services/`" in text
-    assert "executable book under" not in text
-
-
-def test_the_scenario_packet_of_an_all_covered_story_passes_with_no_obligation(
-    repo: Path,
-    write: Callable[[Path, str], Path],
-    git: Callable[..., object],
-) -> None:
-    logger = logging.getLogger("test")
-    write(repo / "services" / "api" / "service.py", "SERVICE = 1\n")
-    write(repo / "app" / "a.py", "x = 1\n")
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "the app")
-    write(repo / "app" / "a.py", "x = 2\n")
-
-    def packet(book_only: bool):
-        return build_okf_context(
-            logger,
-            str(repo / "specs" / "S1"),
-            "",
-            str(repo / "docs" / "services"),
-            ("api=app",),
-            "HEAD",
-            "WORKTREE",
-            repo_dir=str(repo),
-            book_only=book_only,
-        )
-
-    assert packet(False).status == "invalid"
-    covered = packet(True)
-    assert covered.status == "passed", covered
-    assert "executable book" in covered.notes
 
 
 QA_PROMPTS = ("qa/prompts/qa-story.md",)
@@ -151,11 +103,8 @@ QA_ARGS = {
     "qa_only_scenarios": [],
     "qa_tools": [],
     "standing_plan": False,
-    "hand_written_plan": False,
-    "compiled_plan_file": "qa_plan.compiled.py",
     "book_services": ["api"],
     "book_unreached": UNREACHED,
-    "book_only": True,
     "lease": "story-1-run",
     "result_schema": "{}",
     "failed_scenarios": [],
@@ -197,11 +146,12 @@ def test_the_scenario_prompt_of_an_all_covered_story_brings_the_stack_up_from_th
     assert "ostler env address <service> --copy story-1-run" in text
 
 
-def test_the_scenario_prompt_of_a_story_with_an_uncovered_service_keeps_the_markdown_instructions(
+def test_the_scenario_prompt_of_a_story_with_no_service_book_covers_every_acceptance_criterion(
     tmp_path: Path,
 ) -> None:
-    text = _qa_rendered(tmp_path, True, book_only=False)
+    text = _qa_rendered(tmp_path, True, book_services=[], book_unreached=[])
 
-    assert "docs/services/<service>/ops/qa-stack.md" in text
-    assert "ostler qa compile-plan" in text
-    assert "ostler env up" not in text
+    assert "No service book judged this story. The plan covers every Acceptance Criterion." in text
+    assert 'covers=["ac:<n>"]' in text
+    assert "criterion named `ac:<n>`" in text
+    assert "`claim:1`" not in text

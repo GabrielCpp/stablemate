@@ -143,10 +143,10 @@ def settle_findings(
     root = find_docs_root(repo_dir)
     ids = list(filed or [])
     code = [repo for repo in (repos or []) if Path(repo).is_dir()]
-    okf = Ostler(root)
-    ledger = okf.settle_answers(story_id, ids, write=True)
+    facade = Ostler(root)
+    ledger = facade.settle_answers(story_id, ids, write=True)
     message = commits.message("docs", commits.scope(root.name), f"record the review settlement of {story_slug}")
-    settlement = Path(okf.spec_path(story_id)) / SETTLEMENT_FILE
+    settlement = Path(facade.spec_path(story_id)) / SETTLEMENT_FILE
     if settlement.resolve().is_relative_to(root.resolve()):
         commit_paths(root, message, str(settlement.resolve().relative_to(root.resolve())), verify=False)
     changed = _changed(logger, code, story_slug, story_id)

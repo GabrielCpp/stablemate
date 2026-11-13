@@ -92,14 +92,9 @@ class BookQaRecord(CoderResult):
 
 
 class UnreachedClaims(CoderResult):
-    """`write_unreached_claims`: the claims `qa-unreached.json` now holds for the scenario seat, empty when the story has a service with no book."""
+    """`write_unreached_claims`: the claims `qa-unreached.json` now holds for the scenario seat."""
 
     claims: list[str] = []
 
 
-class BookDeferral(CoderResult):
-    """`defer_book_judged`: the services whose book pages `qa-deferrals.json` now defers."""
-
-    services: list[str] = []
-
-__all__ = ["BookDeferral", "BookPaths", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "BookScope", "CoveredServices", "ServiceCalls", "UnreachedClaims"]
+__all__ = ["BookPaths", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "BookScope", "CoveredServices", "ServiceCalls", "UnreachedClaims"]

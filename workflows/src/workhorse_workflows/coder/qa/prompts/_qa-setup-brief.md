@@ -1,33 +1,40 @@
 ## The stack and setup brief
 
-Repair the stack and its setup yourself. The goal is a stack the workflow can bring up, so
-the next `ostler qa stack up` stands it up from cold. Never start a service and leave it
-running.
+Repair the stack and its setup yourself. The goal is a stack the workflow can bring up from
+cold. Never start a service and leave it running.
+
+### How the stack comes up
+
+The environment of this story's services declares the stack, and the workflow runs its copy
+for this run under the lease `{{ lease }}`. Use the same two commands:
+
+```bash
+ostler env up --copy {{ lease }}
+ostler env address <service> --copy {{ lease }}
+```
+
+`ostler env up` brings the copy up and waits until every service is ready. `ostler env address`
+prints the URL the copy publishes a service at, and the plan's targets name that service as
+`{<service>}`. `ostler env ls` lists the services and the copies running them. A command run
+inside a service of the copy goes through `ostler env compose --copy {{ lease }} -- <args>`.
+
+The stack is declared in `services/<name>/ops/stack.yml`, one per service book.
+`ostler env check` checks that every `stack.yml` fits together; run it after you change one.
 
 ### What to repair
 
-- **The book's runbook node**, `docs/services/<service>/ops/qa-stack.md`, which the workflow
-  reads through `ostler qa stack up`. `ostler doctor` reports `runbook-missing` when it is
-  absent, and `ostler scaffold runbook qa-stack --service <service>` writes the stub. Its
-  bullets are `driver`, `entry-url`, `health-path`, `identity`, `reuse`/`fresh`,
-  `boot-timeout`, `health-timeout` and an optional `stop`. Its `## Steps` section holds the
-  ordered boot steps, each a `### <id>` with `kind: prepare | service | seed | health` and a
-  `run:`.{% if has_skill("ostler-cli") %} The full spec is
-  `{{ skill_path("ostler-cli", "references/okf-runbook.md") }}`.{% endif %} A recipe written
-  anywhere else is invisible to the workflow.
-- **A stale build.** The `service` step must rebuild from the working tree. The default
-  `reuse: if-fresh` with no `fresh` probe never adopts a serving stack. Mark `reuse: always`
-  only for a code-independent stack: a stock database or emulator with fixtures.
+- **A stale build.** The copy must build from the working tree. Bring it up again after a
+  change to the product, and use `ostler env up --fresh` only when the data itself is the
+  problem.
 - **Missing tooling**: the repo's dependency install, a browser or device runtime a driver
-  needs, a QA tool the runbook names. Installing an absent tool is setup, never a block. A
-  tool the stack needs every run is a `prepare` step.
+  needs, a QA tool the plan names. Installing an absent tool is setup, never a block.
 - **Broken local config**: a missing env file, a wrong backend URL or emulator host, a stale
   generated client, a port collision, an unapplied migration.
-- **The baseline seed**: idempotent `kind: seed` steps, including the test user for sign-in.
+- **The baseline seed**: the fixture sets the environment loads. Name them with
+  `--fixtures` when a claim needs one the default leaves out.
 
-The commands come from `AGENTS.md` and the repo's local-stack runbook, not from improvising.
-`qa-plan.md`'s preflight is the checklist of what the stack must serve. The touched layers'
-QA skills say how each layer comes up:
+The commands come from `AGENTS.md` and the repo's local-stack notes, not from improvising.
+The touched layers' QA skills say how each layer comes up:
 {% if qa_run_plan %}
 {%- for r in qa_run_plan %}
 - **{{ r.label }}**: {{ find_by_tags("qa", r.type) | default("(none installed)", true) }}
@@ -47,25 +54,18 @@ ffmpeg, ffprobe, maestro or adb, comes from the QA runner's own preflight. The w
 that runner inside its own interpreter, `{{ workhorse_var('runtime_python') }}`, so that is
 the environment to repair. Check it the way the preflight does:
 `{{ workhorse_var('runtime_python') }} -c "import playwright.sync_api"`.
-`uv tool install --force 'ostler[qa]'`, a `pip install` under a bare interpreter, and an
-install in the project's venv each repair a different copy, and each can succeed while the
-block comes back unchanged. The ffmpeg, ffprobe, maestro and adb requirements are `PATH`
-lookups from the workflow's process. Rerun the import or `which` check after installing, and
-quote its output.
+The ffmpeg, ffprobe, maestro and adb requirements are `PATH` lookups from the workflow's
+process. Rerun the import or `which` check after installing, and quote its output.
 
 ### Boundaries
 
-- Never background a long-lived process. Durable services go in the runbook node, and a
-  service scoped to one QA run goes in the plan's `background(...)`. A bring-up command may
-  run to completion under a timeout to prove the recipe.
+- Never background a long-lived process. A service scoped to one QA run goes in the plan's
+  `background(...)`.
 - Never modify product source. A broken or missing feature is a finding, not setup.
-- Never disrupt unrelated services or destroy data. Bring up only this repo's stack, and
-  resolve a port collision by configuring this repo's port.
+- Never disrupt unrelated services or destroy data. Bring up only this repo's stack.
 - Provision no cloud or paid infrastructure.
 
 ### Proof
 
-`ostler qa stack up` runs what the workflow will run, off the node as written, so it is the
-check: it reports the stack serving or names the step that failed. Run `ostler doctor` too.
-Quote both outputs. A blocker only a human can clear (a real secret, hardware) is a
-`blocked`.
+`ostler env check` passes after a change to a `stack.yml`. `ostler env up --copy {{ lease }}` reports the copy serving or names the service that failed.
+Quote its output. A blocker only a human can clear (a real secret, hardware) is a `blocked`.

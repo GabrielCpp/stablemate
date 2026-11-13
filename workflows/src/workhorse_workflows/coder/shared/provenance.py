@@ -5,15 +5,39 @@ import logging
 import subprocess
 from pathlib import Path
 
-from ostler.provenance import story_commits
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import (
     ChangedFiles,
-    DispatchEntry,
-    StorySource,
-    StorySources,
 )
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import open_repo, trunk_base
+
+
+def _story_trailers(message: str) -> set[str]:
+    return {
+        line.removeprefix("Story:").strip()
+        for line in message.splitlines()
+        if line.startswith("Story:")
+    }
+
+
+def trunk_story_base(root: Path, base: str, refs: tuple[str, ...]) -> str:
+    """On trunk itself, the parent of this story's earliest commit; elsewhere ``base`` unchanged."""
+    repo = open_repo(root)
+    if repo.git.rev_parse(base) != repo.git.rev_parse("HEAD"):
+        return base
+    grep = [f"--grep={ref}" for ref in refs]
+    log = repo.git.log("--reverse", "--fixed-strings", *grep, "--format=%x1e%P%x00%B", "HEAD")
+    wanted = set(refs)
+    for record in log.split("\x1e")[1:]:
+        parents, _, message = record.partition("\x00")
+        if _story_trailers(message) & wanted and parents.split():
+            return parents.split()[0]
+    return base
+
+
+def story_base(root: Path, refs: tuple[str, ...]) -> str:
+    """The commit a story's own work is measured from in `root`."""
+    return trunk_story_base(root, trunk_base(root), refs)
 
 
 @blueprint.node
@@ -43,79 +67,4 @@ def changed_files(
     return ChangedFiles(paths=sorted(set(found)))
 
 
-def _story_base(cwd: str, refs: tuple[str, ...]) -> str:
-    matching = story_commits(Path(cwd), refs)
-    if not matching:
-        raise ValueError("no commit carries an exact Story trailer for this story")
-    parent = matching[0].get("parent")
-    if not parent:
-        raise ValueError("the story's earliest commit is the repository root")
-    return str(parent)
-
-
-@blueprint.node
-def resolve_story_sources(
-    logger: logging.Logger,
-    dispatch: tuple[DispatchEntry, ...],
-    story_slug: str = "",
-    story_id: str = "",
-    repo_dir: str = "",
-) -> StorySources:
-    """Resolve each implementation repository to the parent before this story began."""
-    docs_root = Path(find_docs_root(repo_dir)).resolve()
-    dispatch_roots = {
-        Path(entry.cwd).resolve() for entry in dispatch if entry.cwd
-    }
-    if not dispatch_roots or dispatch_roots == {docs_root}:
-        return StorySources()
-    refs = tuple(dict.fromkeys(ref for ref in (story_id, story_slug) if ref))
-    if not refs:
-        return StorySources(status="invalid", errors=("the story has no identity",))
-    bases: dict[str, tuple[str, str]] = {}
-    sources: list[StorySource] = []
-    errors: list[str] = []
-    seen: set[tuple[str, str, str]] = set()
-    for entry in dispatch:
-        cwd = str(Path(entry.cwd).resolve()) if entry.cwd else ""
-        repo_name = (entry.repo or Path(cwd).name).strip()
-        surface = (entry.repo or entry.service).strip()
-        root = entry.service_path.strip().replace("\\", "/").strip("/") or "."
-        if not cwd or not repo_name or not surface:
-            errors.append(f"implementation entry {entry.service!r} has no source repository")
-            continue
-        existing = bases.get(repo_name)
-        if existing is not None and existing[0] != cwd:
-            errors.append(f"source repository {repo_name!r} resolves to multiple checkouts")
-            continue
-        if existing is None:
-            try:
-                base = _story_base(cwd, refs)
-            except (OSError, ValueError) as exc:
-                errors.append(f"source repository {repo_name!r}: {exc}")
-                continue
-            bases[repo_name] = (cwd, base)
-        else:
-            base = existing[1]
-        key = (repo_name, surface, root)
-        if key in seen:
-            continue
-        seen.add(key)
-        sources.append(
-            StorySource(
-                repo=repo_name,
-                checkout=cwd,
-                surface=surface,
-                root=root,
-                base=base,
-            )
-        )
-    if errors:
-        logger.warning("story source provenance is invalid: %s", "; ".join(errors))
-        return StorySources(status="invalid", errors=tuple(errors))
-    return StorySources(sources=tuple(sources))
-
-
-__all__ = [
-    "changed_files",
-    "resolve_story_sources",
-]
+__all__ = ["changed_files", "story_base", "trunk_story_base"]

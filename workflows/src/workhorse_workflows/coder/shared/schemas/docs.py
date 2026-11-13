@@ -1,4 +1,4 @@
-"""The docs flow's models: the OKF pre-gate, the context classifier, the author, the gates."""
+"""The docs flow's models: the spec author, the book gate, the verdict."""
 from __future__ import annotations
 
 from typing import Literal
@@ -9,64 +9,16 @@ from workhorse.pyflow import dry_run
 from workhorse_workflows.coder.shared.schemas._base import CoderResult
 
 
-@dry_run(has_okf="yes", services_root="/dry-run/docs/services", reason="dry run")
-class OkfDetection(CoderResult):
-    """`detect-okf-docs.py` — does this repo have an OKF book root that loads?"""
-
-    has_okf: Literal["yes", "invalid"] = "invalid"
-    services_root: str = ""
-    reason: str = ""
-
-
-class ContextClassification(CoderResult):
-    """`classify-documentation-context.py` — deterministic diff mapping, or semantic review?"""
-
-    mode: Literal["local", "semantic", "error"] = "semantic"
-    source_roots: list[str] = []
-    notes: str = ""
-
-
-@dry_run(status="documented")
-class DocumentationResult(CoderResult):
-    """`docs/prompts/document-story.md` — the story folded into the as-built OKF book."""
-
-    status: Literal["documented", "not_required", "blocked"] = Field(
-        description="`documented` when the current contracts are updated and `doctor` "
-        "reports no error on the affected nodes. `not_required` needs both a precise "
-        "explanation of why no observable contract changed and that every changed "
-        "production file was already directly grounded — a grounding bullet you had to add "
-        "makes the answer `documented`. `blocked` when the book cannot be made true of "
-        "this code without a decision that is not yours.",
-    )
-    nodes: list[str] = Field(
-        default=[],
-        description="Every OKF node you edited, by exact graph identity with its section "
-        "anchor preserved. Empty for `not_required`.",
-    )
-    notes: str = Field(
-        default="",
-        description="What you changed and why, in one or two sentences. Report unrelated "
-        "pre-existing doctor findings here rather than rewriting unrelated books.",
-    )
-
-
 @dry_run(status="documented")
 class SpecResult(CoderResult):
     """`docs/prompts/specify-story.md` — the story's behaviour model and the book delta it implies, before any code."""
 
     status: Literal["documented", "not_required", "blocked"] = Field(
-        description="`documented` when model.md is written, every decided cell is a bullet "
-        "with a `verify:` in the book, `doctor` reports no error on the touched markdown "
-        "nodes, and `ostler book check` exits 0 for every covered service. "
+        description="`documented` when model.md is written and `ostler book check` exits 0 for every service "
+        "of the story. "
         "`not_required` when the story changes no observable behaviour, with the reason in "
         "`notes`. `blocked` when a cell needs a product decision that is not yours, named in "
         "`notes`.",
-    )
-    nodes: list[str] = Field(
-        default=[],
-        description="Every markdown OKF node you edited, by exact graph identity with its "
-        "section anchor preserved. Empty for a covered service, whose claims live in its "
-        "executable book.",
     )
     notes: str = Field(
         default="",
@@ -75,10 +27,9 @@ class SpecResult(CoderResult):
     )
 
 
-class SpecNodes(CoderResult):
-    """`record_spec_nodes` — the nodes and book paths the spec pass wrote, kept for the lanes after it."""
+class SpecBookPaths(CoderResult):
+    """`record_spec_book_paths` — the book paths the spec pass wrote, kept for the lanes after it."""
 
-    nodes: list[str] = []
     book_paths: list[str] = []
 
 
@@ -88,22 +39,7 @@ class DocumentationGate(CoderResult):
 
     status: Literal["passed", "invalid"] = "invalid"
     notes: str = ""
-    changed_code_count: int = 0
-    doctor_error_count: int = 0
     failures: list[str] = []
-
-
-class CompileGaps(CoderResult):
-    """`compile_gaps` — the defect gaps the book's QA compile reports on the pages the story touched."""
-
-    gaps: list[str] = []
-
-
-class DocumentationObligations(CoderResult):
-    """`documentation_obligations` — the grounding worklist handed to the author up front."""
-
-    refs: list[str] = []
-    notes: str = ""
 
 
 DocsStatus = Literal["passed", "not_applicable", "blocked", "failed"]
@@ -114,17 +50,12 @@ class DocsResult(CoderResult):
 
     status: DocsStatus = "failed"
     notes: str = ""
-    authored_nodes: list[str] = []
 
 
 __all__ = [
-    "CompileGaps",
-    "ContextClassification",
     "DocsStatus",
     "DocsResult",
     "DocumentationGate",
-    "DocumentationResult",
-    "OkfDetection",
-    "SpecNodes",
+    "SpecBookPaths",
     "SpecResult",
 ]

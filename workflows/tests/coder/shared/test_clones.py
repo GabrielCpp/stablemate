@@ -10,7 +10,7 @@ import pytest
 from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.coder.shared.clones import check_copies, check_script
-from workhorse_workflows.coder.shared.okf import story_base
+from workhorse_workflows.coder.shared.provenance import story_base
 
 SCRIPT_DIR = "library/skills/architecture/code-structure/scripts"
 

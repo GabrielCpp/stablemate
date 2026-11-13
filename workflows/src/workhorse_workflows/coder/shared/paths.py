@@ -65,10 +65,6 @@ def epic_dir_rel(root: Path, epic: str, configured: str = "") -> str:
     return _rel(root, okf_path.epic_dir_under(root / epics_dir(root, configured), epic))
 
 
-def services_dir(root: Path, configured: str = "") -> str:
-    """The OKF feature book, repo-relative: what the run was told, else ostler's."""
-    return configured.strip().rstrip("/") or _rel(root, okf_path.services_root_in(root))
-
 
 def epics_index(root: Path) -> str:
     """The epic queue, repo-relative: `index.md` in whichever directory holds the epics."""
@@ -120,7 +116,6 @@ __all__ = [
     "epics_dir",
     "epics_index",
     "epics_repo_root",
-    "services_dir",
     "is_gate_context",
     "is_tool_output",
     "launch_repo_root",

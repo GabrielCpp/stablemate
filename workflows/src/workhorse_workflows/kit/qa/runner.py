@@ -1,4 +1,4 @@
-"""Bring a book's stack up and run its compiled plan through ostler — family-neutral."""
+"""Bring a book's stack up and run its plan through ostler — family-neutral."""
 from __future__ import annotations
 
 import logging
@@ -9,9 +9,8 @@ import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
-from ostler import Ostler, graph as graph_mod, model, path as path_mod, query as query_mod
+from ostler import Ostler
 from ostler.environments import leases, runtime, spec
-from ostler.model import Graph, UINode
 from ostler.qa import runbook, stack
 from ostler.qa.outcome import QaOutcome
 
@@ -27,63 +26,14 @@ RUN_STATUSES: dict[str, QaStatus] = {
     "invalid": "invalid",
 }
 
-SECRET_MINT_TIMEOUT_S = 60.0
-
-
-def _entry_result(
-    results: list[dict],
-    runbooks: tuple[UINode, ...],
-    near: str,
-    graph: Graph,
-) -> dict:
-    """Of a successful bring-up, the result the caller actually needs to drive."""
-    if near and len(results) > 1:
-        near_path = Path(near)
-        services_root = path_mod.services_root(graph)
-        near_abs = near_path if near_path.is_absolute() else graph.root / near_path
-        target_surface = graph_mod.surface_of(near_abs, services_root)
-        if target_surface:
-            for result, node in zip(results, runbooks, strict=False):
-                if graph_mod.surface_of(node.path, services_root) == target_surface:
-                    return result
-    return results[-1]
-
-
-def _merge_secrets(manifests: list[dict]) -> tuple[dict[str, str], str]:
-    """Every manifest's mint recipes in one namespace, or the reason there cannot be one."""
-    secrets: dict[str, str] = {}
-    sources: dict[str, str] = {}
-    for manifest in manifests:
-        source = manifest.get("source", "?")
-        for name, recipe in (manifest.get("secrets") or {}).items():
-            if name in secrets and secrets[name] != recipe:
-                return {}, (
-                    f"The stack declares secret {name!r} twice with different mint "
-                    f"recipes: {sources[name]} and {source}. A QA run substitutes "
-                    "secrets by name into one environment, so it cannot hold both. "
-                    "Give them distinct names, or declare one recipe both services use.")
-            secrets[name] = recipe
-            sources.setdefault(name, source)
-    return secrets, ""
-
-
-def story_near(graph: Graph, story: str, services: Sequence[str] = ()) -> str:
-    """The one book a story cites pages in, else the one named service with a stack file beside its book."""
-    pages = path_mod.services_root(graph)
-    books = {
-        graph_mod.surface_of(graph.root / str(row["path"]).partition("#")[0], pages)
-        for row in query_mod.query(graph, "surfaces-referenced-by-story", story)
-        if row.get("kind") == "ui"
-    }
-    books.discard("")
-    if books:
-        return str(pages / books.pop()) if len(books) == 1 else ""
+def story_near(root: Path, services: Sequence[str] = ()) -> str:
+    """The one named service whose book has a stack file beside it, else nothing."""
     beside = [
         name
         for name in dict.fromkeys(services)
-        if (graph.root / spec.BOOKS_DIR / name / spec.OPS_DIR / spec.STACK_FILE).is_file()
+        if (root / spec.BOOKS_DIR / name / spec.OPS_DIR / spec.STACK_FILE).is_file()
     ]
-    return str(graph.root / spec.BOOKS_DIR / beside[0]) if len(beside) == 1 else ""
+    return str(root / spec.BOOKS_DIR / beside[0]) if len(beside) == 1 else ""
 
 
 def copy_lease(*parts: str) -> str:
@@ -92,15 +42,9 @@ def copy_lease(*parts: str) -> str:
     return re.sub(r"[^a-z0-9_-]+", "-", joined).lstrip("-_")
 
 
-def stack_env(logger: logging.Logger, graph: Graph, near: str = "", lease: str = "") -> dict[str, str]:
+def stack_env(root: Path, near: str = "", lease: str = "") -> dict[str, str]:
     """What a command run against the stack *near* selects finds in its environment: the lease and its book."""
-    copied = leases.run_env(graph.root, lease, Path(near) if near else None, holder=os.getpid())
-    if copied is not None:
-        return copied
-    _manifests, selection = runbook.load_stacks(graph, near=Path(near) if near else None,
-                                                leased=bool(lease), logger=logger)
-    held = runbook.stack_lease(graph, selection, lease)
-    return {} if isinstance(held, QaOutcome) else held.env
+    return leases.run_env(root, lease, Path(near) if near else None, holder=os.getpid()) or {}
 
 
 def release_copy(
@@ -112,24 +56,18 @@ def release_copy(
     """Tear down the copy *lease* holds of a per-run stack, or None when the stack is shared and stays serving."""
     root = find_docs_root(repo_dir)
     near_path = Path(near) if near else None
-    if leases.books_near(root, near_path):
-        return leases.down(root, lease=lease, near=near_path) if lease else None
-    graph = model.load(root)
-    _manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
-                                                logger=logger)
-    held = runbook.stack_lease(graph, selection, lease)
-    if isinstance(held, QaOutcome) or not held.per_run:
+    if not lease or not leases.books_near(root, near_path):
         return None
-    return runbook.cmd_stack_down(root, near=near_path, lease=lease, logger=logger)
+    return leases.down(root, lease=lease, near=near_path)
 
 
 def teardown_stack(logger: logging.Logger, repo_dir: str = "") -> QaOutcome:
-    """Tear down the shared stack the run brought up: its `stack.yml` copy, or else its runbook's `stop:` recipe."""
+    """Tear down the shared stack the run brought up: its `stack.yml` copy."""
     root = find_docs_root(repo_dir)
     copied = leases.down(root)
     if copied is not None:
         return copied
-    return runbook.cmd_stack_down(root, logger=logger)
+    return QaOutcome(True, "no book declares a stack", {"torn_down": "skipped"})
 
 
 def hold_copy(repo_dir: str = "", lease: str = "") -> bool:
@@ -149,100 +87,25 @@ def ensure_stack(
     root = find_docs_root(repo_dir)
     near_path = Path(near) if near else None
     copied = leases.up(root, lease=lease, near=near_path, holder=os.getpid())
-    graph = model.load(root)
-    if copied is None and not runbook.has_served_surface(graph, near_path):
+    if copied is None:
         return StackStatus(
             ready="unneeded",
-            notes=("The book serves nothing — no `screen`, no `server` — so it has no stack "
-                   "to bring up, whatever runbooks it documents. QA scenarios invoke the "
-                   "repo's commands directly."),
+            notes=("No service book declares `ops/stack.yml` near this story, so there is no "
+                   "stack to bring up."),
         )
-    if copied is not None:
-        if not copied.ok:
-            return _copy_status(copied)
-        devices = runbook.bring_up_devices(
-            graph, near=near_path,
-            env=leases.run_env(root, lease, near_path, holder=os.getpid()), logger=logger)
-        if devices and devices[-1].get("ready") != "yes":
-            last = devices[-1]
-            return StackStatus(
-                ready="no", failed_step=last.get("failed_step", ""),
-                notes=device_failure(
-                    last.get("failed_step", "unknown"), (last.get("error") or "").strip(),
-                    (last.get("manifest") or {}).get("stack_file") or last.get("source", "")))
+    if not copied.ok:
         return _copy_status(copied)
-    try:
-        manifests, selection = runbook.load_stacks(graph, near=near_path, leased=bool(lease),
-                                                   logger=logger)
-    except runbook.WorkingDirectoryError as refused:
-        return StackStatus(ready="no", notes=f"Stack bring-up refused: {refused}.")
-    if not manifests:
-        if selection.reason == "ambiguous":
-            return StackStatus(
-                ready="none",
-                notes=(f"The book declares {len(selection.candidates)} stack runbooks "
-                       "across several environments and names none, so bring-up would "
-                       "have to guess which system to start: "
-                       f"{', '.join(selection.candidates)}. Bind the ones that serve one "
-                       "system to a shared `environment:` node, or say which one to bring "
-                       "up — there is no missing runbook to author here."),
-            )
+    devices = runbook.bring_up_book_devices(
+        root, near=near_path,
+        env=leases.run_env(root, lease, near_path, holder=os.getpid()), logger=logger)
+    if devices and devices[-1].get("ready") != "yes":
+        last = devices[-1]
         return StackStatus(
-            ready="none",
-            notes=("The book describes a served surface but declares no stack — no stack "
-                   "`runbook` node and no `server` node — so QA would run "
-                   "against nothing. Author the runbook that brings it up; `ostler doctor` "
-                   "reports this as `runbook-missing`."),
-        )
-
-    held = runbook.stack_lease(graph, selection, lease)
-    if isinstance(held, QaOutcome):
-        return StackStatus(ready="no", notes=f"Stack bring-up refused: {held.message}.")
-    with held.holding():
-        results = runbook.bring_up_stacks(manifests, repo_root=str(root), logger=logger)
-        problems = held.problems() if results[-1].get("ready") == "yes" else []
-    last = results[-1]
-    owned = tuple(
-        r["app_pgid"] for r in results
-        if r.get("app_pgid") and r.get("adopted") != "yes" and r["app_pgid"].isdigit() and _group_running(int(r["app_pgid"])))
-    app_logs = tuple(r["app_log"] for r in results if r.get("app_log"))
-    if problems:
-        return StackStatus(
-            ready="no", owned_pgids=owned, app_logs=app_logs,
-            notes=(f"The stack came up, but the address book it left at {held.book} "
-                   f"{'; '.join(problems)}. Its bring-up recipe must write every address "
-                   "the environment page names before it reports ready."))
-    if last.get("ready") == "yes":
-        chosen = _entry_result(results, selection.runbooks, near, graph)
-        common = {
-            "app_pid": chosen.get("app_pid", ""),
-            "app_pgid": chosen.get("app_pgid", ""),
-            "entry_url": chosen.get("entry_url", ""),
-            "failed_step": chosen.get("failed_step", ""),
-        }
-        how = "adopted" if chosen.get("adopted") == "yes" else "brought up"
-        where = ", ".join(r.get("entry_url") or "(no entry url)" for r in results)
-        plural = "" if len(results) == 1 else f" ({len(results)} services)"
-        return StackStatus(
-            ready="yes", notes=f"Stack {how} and healthy at {where}{plural}.",
-            owned_pgids=owned, app_logs=app_logs, **common)
-
-    common = {
-        "app_pid": last.get("app_pid", ""),
-        "app_pgid": last.get("app_pgid", ""),
-        "entry_url": last.get("entry_url", ""),
-        "failed_step": last.get("failed_step", ""),
-    }
-    manifest = last.get("manifest") or {}
-    return StackStatus(
-        ready="no",
-        notes=bring_up_failure(
-            last.get("failed_step", "unknown"), (last.get("error") or "").strip(),
-            manifest.get("source", "")),
-        owned_pgids=owned,
-        app_logs=app_logs,
-        **common,
-    )
+            ready="no", failed_step=last.get("failed_step", ""),
+            notes=device_failure(
+                last.get("failed_step", "unknown"), (last.get("error") or "").strip(),
+                (last.get("manifest") or {}).get("stack_file") or last.get("source", "")))
+    return _copy_status(copied)
 
 
 def _copy_status(outcome: QaOutcome) -> StackStatus:
@@ -285,7 +148,7 @@ def stack_stopped(owned_pgids: tuple[str, ...]) -> str:
     for pgid in owned_pgids:
         if pgid.isdigit() and not _group_running(int(pgid)):
             return (f"the server the stack's bring-up launched (process group {pgid}) exited during the run, "
-                    "so the app stopped serving and no later scenario could reach it; the runbook step that "
+                    "so the app stopped serving and no later scenario could reach it; the step that "
                     "launches it must start a server that keeps serving until the run stops it, with no "
                     "time limit of its own")
     return ""
@@ -295,51 +158,6 @@ def device_failure(step: str, error: str, stack_file: str) -> str:
     """Why a device step failed, and the book's stack file whose step repairs it."""
     failed = f"Device step '{step}' failed" + (f": {error}" if error else "")
     return f"{failed}. Repair that step under `device:` in `{stack_file}`."
-
-
-def bring_up_failure(step: str, error: str, source: str) -> str:
-    """Why bring-up failed, and which side repairs it: the runbook, or the app when it serves no health route."""
-    failed = f"Stack bring-up failed at step '{step}'" + (f": {error}" if error else "")
-    if stack.ROUTE_MISSING in error:
-        return (
-            f"{failed} Point `health-path` in the runbook at `{source}` at the health route "
-            "the app serves. If the app serves none, the app is what is missing a feature: "
-            "it must implement a health route before its book can run."
-        )
-    return (
-        f"{failed}. Repair the runbook at `{source}` or its seed recipe "
-        "(never background the stack in the agent shell)."
-    )
-
-
-def _mint_qa_secrets(
-    secrets: dict[str, str], root: Path, logger: logging.Logger
-) -> tuple[dict[str, str], str]:
-    """Run the runbook's `secrets:` recipes; return ``({NAME: token}, error)``."""
-    minted: dict[str, str] = {}
-    cwd = str(root.resolve())
-    for name, recipe in secrets.items():
-        if not name or not recipe:
-            return {}, f"secret `{name or '(unnamed)'}` declares no mint recipe"
-        try:
-            result = subprocess.run(  # noqa: S602 (documented repo-owned recipe)
-                recipe, shell=True, cwd=cwd, capture_output=True, text=True,
-                timeout=SECRET_MINT_TIMEOUT_S, check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            return {}, f"mint command for {name} could not be run: {exc}"
-        if result.returncode != 0:
-            return {}, (
-                f"mint command for {name} exited {result.returncode}: "
-                f"{result.stderr.strip()[:500]}"
-            )
-        token = result.stdout.strip()
-        if not token:
-            return {}, f"mint command for {name} produced no output"
-        minted[name] = token
-    if minted:
-        logger.info("minted fresh QA secrets for %s", ", ".join(minted))
-    return minted, ""
 
 
 def _untracked(root: Path) -> set[str]:
@@ -381,22 +199,11 @@ def run_qa_plan(
     """Execute the QA plan through ostler and normalize its four-state outcome."""
     docs_root = find_docs_root(repo_dir)
     plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
-    docs_graph = model.load(docs_root)
-    manifests, _selection = runbook.load_stacks(
-        docs_graph, near=Path(near) if near else None, leased=bool(lease), logger=logger)
-    leased = stack_env(logger, docs_graph, near=near, lease=lease)
-    secrets, collision = _merge_secrets(manifests)
-    if collision:
-        return QaPlanRun(status="blocked", notes=collision)
-    minted, error = _mint_qa_secrets(secrets, docs_root, logger)
-    if error:
-        logger.warning("QA secret refresh failed: %s", error)
-        return QaPlanRun(status="blocked", notes=f"QA secret refresh failed: {error}")
-    root = Path(docs_graph.root)
-    before = _untracked(root)
-    with scoped_envs(leased | minted):
+    leased = stack_env(docs_root, near=near, lease=lease)
+    before = _untracked(docs_root)
+    with scoped_envs(leased):
         outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir, only=only, label=label)
-    _remove_files_left_since(root, before, (root / spec_dir).resolve(), logger)
+    _remove_files_left_since(docs_root, before, (docs_root / spec_dir).resolve(), logger)
     status = RUN_STATUSES.get(outcome.status.lower(), "invalid")
     notes = notes_for(outcome, f"Ostler QA run returned {status}.")
     logger.info("ostler qa run for %s returned status=%s", spec_dir, status)

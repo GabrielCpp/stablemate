@@ -1007,26 +1007,26 @@ class _Stack:
     def __init__(
         self,
         status: Literal["passed", "failed", "invalid"] = "passed",
-        ready: Literal["yes", "no", "none", "unneeded"] = "yes",
+        ready: Literal["yes", "no", "unneeded"] = "yes",
         failed: tuple[str, ...] = (),
         red: int = 0,
     ) -> None:
         self.status: Literal["passed", "failed", "invalid"] = status
         self.red = red
-        self.ready: Literal["yes", "no", "none", "unneeded"] = ready
+        self.ready: Literal["yes", "no", "unneeded"] = ready
         self.failed = failed
         self.calls: list[str] = []
         self.leases: list[str] = []
         self.only: list[str] = []
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(qa_runner, "story_near", lambda _graph, _story, _services=(): "book")
+        monkeypatch.setattr(qa_runner, "story_near", lambda _root, _services=(): "book")
         monkeypatch.setattr(qa_runner, "stack_env", self.env)
         monkeypatch.setattr(qa_runner, "ensure_stack", self.ensure)
         monkeypatch.setattr(qa_runner, "run_qa_plan", self.run)
         monkeypatch.setattr(qa_runner, "release_copy", self.release)
 
-    def env(self, _log: Any, _graph: Any, near: str = "", lease: str = "") -> dict[str, str]:
+    def env(self, _root: Any, near: str = "", lease: str = "") -> dict[str, str]:
         self.calls.append("stack_target")
         self.leases.append(lease)
         return {}
@@ -1392,22 +1392,6 @@ def test_the_plan_turn_on_a_fresh_conversation_carries_the_full_rules(
     text = Path(str(plan["brief_path"])).read_text(encoding="utf-8")
     assert "## Story Status" in text, text
     assert "## Commit Identity" in text, text
-
-
-def test_the_opening_brief_leaves_the_book_merge_to_the_docs_phase(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    agent = _Agent(workspace, session=lambda n: "sess-1")
-
-    drive_flow(_dev(docs), env(), agent)
-
-    (plan,) = agent.args_for("dev-plan")
-    text = Path(str(plan["brief_path"])).read_text(encoding="utf-8")
-    assert "## The book" in text, text
-    assert "write, stamp and doctor nothing under `docs/services/`" in " ".join(text.split()), text
 
 
 def test_the_opening_brief_records_an_operator_answer_where_the_resolver_reads_decisions(

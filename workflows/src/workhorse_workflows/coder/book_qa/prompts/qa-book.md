@@ -54,7 +54,7 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    `blocked` and say that the `ostler-book` skill is missing.{% endif %}
 2. **Read the story.** Read the story, its plan files and its review answers in the spec
    dir. Do not open the scenario QA's files there (`qa_plan.py`, `qa-report.md`,
-   `qa-evidence.json`, `qa-okf-*`, `qa/`). Your judgement must not come from another QA's
+   `qa-evidence.json`, `qa/`). Your judgement must not come from another QA's
    work.
 3. **Play the base.** For each covered service, name the calls the story's claims bear on,
    and play them before any edit: `ostler book run services.<name> --only <calls>`. A red

@@ -5,11 +5,10 @@ agent: agent
 # Specify The Story In The Book
 
 No code for this story exists yet. You write what it will do, before anyone builds it. The
-dev owner builds to what you write, and QA compiles its scored plan from your `verify:`
-checks. A behaviour you leave out is one nobody builds on purpose and nobody checks. This turn
-ends with the story's behaviour model written, the book delta derived from it, {% if markdown_services or not book_services %}`ostler doctor`
-green on the markdown nodes you touched, {% endif %}{% if book_services %}`ostler book check` exiting 0 for
-{% if markdown_services or not book_services %}every covered service{% else %}every service{% endif %}, {% endif %}and the JSON result below.
+dev owner builds to what you write, and the book lane plays the claims you write. A behaviour
+you leave out is one nobody builds on purpose and nobody checks. This turn ends with the
+story's behaviour model written, the book delta derived from it, `ostler book check` exiting 0
+for every service, and the JSON result below.
 
 Your session is resumable. A later turn on this story continues this conversation with the
 workflow's report or an operator's answer.
@@ -20,18 +19,16 @@ workflow's report or an operator's answer.
 - Story path: `{{ workhorse_var('story_path') }}`
 - Spec dir: `{{ workhorse_var('spec_dir') }}`
 - Docs root: `{{ workhorse_var('docs_root') }}`
-{% if markdown_services or not book_services %}- OKF services root: `{{ workhorse_var('services_root') }}`
-{% endif %}- Parent epic with authoritative user journeys: `{{ workhorse_var('epic_path') }}`
+- Parent epic with authoritative user journeys: `{{ workhorse_var('epic_path') }}`
 {% if report %}
 
 ## The checks failed
 
-The workflow checked your last turn, and {% if markdown_services or not book_services %}`ostler doctor` or {% endif %}`ostler book check` did not hold. Its report:
+The workflow checked your last turn, and `ostler book check` did not hold. Its report:
 
 {{ workhorse_var('report') }}
 
-This turn repairs what the report names, and runs no new review.{% if markdown_services or not book_services %} If the report points at a
-`doctor-errors.txt`, read that file.{% endif %} Every node and file the report does not name stays as it is.
+This turn repairs what the report names, and runs no new review. Every file the report does not name stays as it is.
 {% endif %}
 {% if operator_context %}
 
@@ -45,9 +42,8 @@ assumption in the story, the model or the book. Do not raise the same block agai
 
 ## The decisions the executable books keep
 
-{% if book_services %}These services have an executable book at `services/<name>/` under the repo root, with a
-`service.py`: {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}.{% else %}A service of this story may have an executable book at `services/<name>/` under the repo root,
-with a `service.py`.{% endif %} For each one, read `services/<name>/decisions/*.md` and
+These services have an executable book at `services/<name>/` under the repo root, with a
+`service.py`: {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}. For each one, read `services/<name>/decisions/*.md` and
 `services/<name>/DISAGREEMENTS.md` before you model. A decision says why the service behaves as
 it does and which story settled it. Where the story changes a behaviour a decision explains,
 name the decision in the model and say whether the story keeps it or overturns it.
@@ -83,11 +79,9 @@ in `notes`.
 
 ## 2. The book delta
 
-{% if book_services %}
 ### The executable books
 
-{% if markdown_services or not book_services %}For {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} the book is Python under `services/<name>/`. Write no markdown page for them.
-{% endif %}{% if has_skill("ostler-book") %}Load the skill and follow it: {{ skill_command("ostler-book") }}
+{% if has_skill("ostler-book") %}Load the skill and follow it: {{ skill_command("ostler-book") }}
 {% else %}This repo does not install the skill that holds the book's format, so nothing tells you how to write a claim the run reads. Return `blocked` and say that the `ostler-book` skill is missing.
 {% endif %}
 Write the story's claims into each covered service's book as intent, before any code exists:
@@ -106,44 +100,16 @@ Write the story's claims into each covered service's book as intent, before any 
 You do not run the app, and you do not play the book. The new claims are expected to fail against
 the current app until the build. Edit only under `services/<name>/` and the spec dir.
 
-Run `ostler book check services.<name>` for each covered service until it exits 0. It builds
-everything the book declares with no stack, so a claim the format cannot read fails there. List
-nothing for these services in `nodes`: the workflow reads the changed book paths from the tree.
-{% endif %}
-{% if markdown_services or not book_services %}
-{% if book_services %}### The markdown books
-
-For {% for name in markdown_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} the book is markdown.
-{% endif %}
-Load the skill and follow it: {{ skill_command("ostler-okf") }}
-
-Fold the model into the book as the current spec, with the scaffold, author, fmt and doctor
-loop the skill carries:
-
-- Every surface, element, behaviour, concept, format or flow the story adds gets its node,
-  scaffolded with `ostler scaffold` when it is missing. A node the story changes is rewritten to
-  the new behaviour, never annotated with what the story adds.
-- Every decided cell becomes a normative bullet (`does:`, `raises:`, `states:`) on the node of
-  the surface that reaches it, with a `verify:` under it that goes red on the defect the cell
-  forbids. The empty value, the bound and the refusal each get their check, not only the happy
-  path.
-- A journey slice the story implements becomes a `flow` with its `start:`, linked `steps:`,
-  `end:` and `verify:`.
-- Write no `code:` and no `tests:` bullet for behaviour the story adds. The build pass grounds
-  them after dev. Existing `code:` bullets stay as they are.
-- Name a UI element by the role and accessible name the story, the epic or a mockup gives it,
-  and an endpoint by the method and path the epic or the book's existing conventions give it.
-  Where nothing names it, choose the name and state it in the node. Dev builds to that name.
-- Run `ostler checks` before writing a check call not yet written this run. A guessed argument
-  is a blocking `unparsed-check`.
-{% endif %}
+Run `ostler book check services.<name>` for each service until it exits 0. It builds
+everything the book declares with no stack, so a claim the format cannot read fails there. The
+workflow reads the changed book paths from the tree.
 
 {% include "shared/prompts/_step-cost.md" %}
 
 ## Seats
 
 You write the model and the book yourself. Then hand one reviewer, started fresh on a strong
-model, the story path, the epic path, `model.md` and the list of nodes and book paths you touched, never your
+model, the story path, the epic path, `model.md` and the list of book paths you touched, never your
 notes. It answers two questions and changes nothing:
 
 1. Which acceptance criterion or journey step has no cell in the model, and which bound or
@@ -159,13 +125,8 @@ reviewer to `worker`.
 
 ## Converge
 
-{% if book_services %}Run `ostler book check services.<name>` for each covered service. Fix, re-run and repeat until
+Run `ostler book check services.<name>` for each service. Fix, re-run and repeat until
 each exits 0.
-{% endif %}{% if markdown_services or not book_services %}Run `ostler fmt <the docs you touched>`, then `ostler doctor` from the docs root (`-C` if
-needed). Fix, re-run and repeat until `doctor` reports zero errors for the touched nodes.
-`ostler doctor --json 2>/dev/null` emits `{org, profile, epics, errors, warnings, findings}`.
-Keep stderr out of the pipe.
-{% endif %}
 
 ## Blocked
 

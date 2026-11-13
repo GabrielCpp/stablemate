@@ -39,31 +39,15 @@ def _exists(ref: Any, root: Path, spec_dir: Path) -> bool:
     )
 
 
-def _artifact_problems(spec_dir: Path, data: dict, book_only: bool = False) -> tuple[list[str], dict, dict]:
-    """The machine-owned files exist and parse, and the evidence points at the log. A book-only
-    story has no context packet, so its absence is no problem there."""
+def _artifact_problems(spec_dir: Path, data: dict) -> tuple[list[str], dict]:
+    """The machine-owned files exist and parse, and the evidence points at the log."""
     problems: list[str] = []
     plan_path = spec_dir / QA_PLAN_FILE
-    context_path = spec_dir / "qa-okf-context.json"
     log_path = spec_dir / "qa" / "qa-run.ndjson"
     manifest_path = spec_dir / "qa" / "run-manifest.json"
 
     if not plan_path.is_file() or not plan_path.read_text(encoding="utf-8").strip():
         problems.append(f"{QA_PLAN_FILE} is missing or empty.")
-
-    context: dict = {}
-    if not context_path.is_file():
-        if not book_only:
-            problems.append("qa-okf-context.json is missing.")
-    else:
-        try:
-            parsed_context = json.loads(context_path.read_text(encoding="utf-8"))
-            if isinstance(parsed_context, dict):
-                context = parsed_context
-            else:
-                problems.append("qa-okf-context.json is not a JSON object.")
-        except Exception as exc:
-            problems.append(f"qa-okf-context.json is not valid JSON ({exc}).")
 
     if not log_path.is_file() or not log_path.read_text(encoding="utf-8").strip():
         problems.append("qa/qa-run.ndjson is missing or empty.")
@@ -84,35 +68,7 @@ def _artifact_problems(spec_dir: Path, data: dict, book_only: bool = False) -> t
     if str(data.get("qa_run_log", "")).strip() != "qa/qa-run.ndjson":
         problems.append("qa-evidence.json must reference qa_run_log='qa/qa-run.ndjson'.")
 
-    return problems, context, manifest
-
-
-def _obligation_problems(context: dict, data: dict) -> list[str]:
-    """Every obligation the OKF context *required* has a passing verdict with executed logs."""
-    problems: list[str] = []
-    evidence_obligations = data.get("obligations") if isinstance(data, dict) else None
-    obligation_by_id = {
-        str(item.get("id")): item
-        for item in evidence_obligations or []
-        if isinstance(item, dict) and item.get("id")
-    }
-    for obligation in context.get("obligations") or []:
-        if not isinstance(obligation, dict) or not obligation.get("id"):
-            continue
-        if obligation.get("required", True) is False:
-            continue
-        if isinstance(obligation.get("deferred"), dict):
-            continue
-        obligation_id = str(obligation["id"])
-        recorded = obligation_by_id.get(obligation_id)
-        if not recorded:
-            problems.append(f"{obligation_id}: required OKF obligation has no evidence verdict.")
-            continue
-        if str(recorded.get("verdict", "")).strip().lower() != "pass":
-            problems.append(f"{obligation_id}: required OKF obligation did not pass.")
-        if not recorded.get("log_refs"):
-            problems.append(f"{obligation_id}: required OKF obligation has no executed log_refs.")
-    return problems
+    return problems, manifest
 
 
 def _parity_problems(cid: str, criterion: dict, root: Path, spec_dir: Path) -> list[str]:
@@ -395,10 +351,8 @@ def verify_qa_evidence(
     claimed_status: str = "",
     claimed_notes: str = "",
     repo_dir: str = "",
-    book_only: bool = False,
 ) -> QaResult:
-    """Check a claimed QA pass against the proof on disk; downgrade to `invalid` if it lies.
-    A book-only story is judged by its books, so it owes no context packet and no obligations."""
+    """Check a claimed QA pass against the proof on disk; downgrade to `invalid` if it lies."""
     claimed = claimed_status.strip().lower()
 
     if claimed != "passed":
@@ -460,12 +414,12 @@ def verify_qa_evidence(
                 ),
             )
         logger.info(
-            "un-modeled surface (no OKF criteria/obligations): accepting on %d passing run-log "
+            "no criteria or obligations: accepting on %d passing run-log "
             "assertion(s), 0 failures",
             passed,
         )
 
-    problems, context, manifest = _artifact_problems(spec_path, data, book_only)
+    problems, manifest = _artifact_problems(spec_path, data)
 
     vetted = Ostler(root).artifact_vet("qa-evidence", spec_dir)
     if vetted.data.get("error"):
@@ -480,8 +434,6 @@ def verify_qa_evidence(
             f"overall is '{data.get('overall')}' but the runner reported passed — inconsistent."
         )
 
-    if not book_only:
-        problems.extend(_obligation_problems(context, data))
     problems.extend(_criteria_problems(criteria, root, spec_path))
     problems.extend(_unsupported_pass_problems(criteria, spec_path))
     fidelity_problems, vet_notes = _visual_fidelity_problems(data, root, spec_path)

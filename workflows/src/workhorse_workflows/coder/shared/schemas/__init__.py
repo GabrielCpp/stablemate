@@ -32,12 +32,9 @@ from workhorse_workflows.coder.shared.schemas.dev import (
     QaRunEntry,
 )
 from workhorse_workflows.coder.shared.schemas.docs import (
-    ContextClassification,
     DocsResult,
     DocumentationGate,
-    DocumentationResult,
-    OkfDetection,
-    SpecNodes,
+    SpecBookPaths,
     SpecResult,
 )
 from workhorse_workflows.coder.shared.schemas.genesis import (
@@ -49,7 +46,6 @@ from workhorse_workflows.coder.shared.schemas.genesis import (
     TargetClassification,
 )
 from workhorse_workflows.coder.shared.schemas.judge import Ruling
-from workhorse_workflows.coder.shared.schemas.okf import OkfContextResult
 from workhorse_workflows.coder.shared.schemas.pr import (
     MergeFixResult,
     MergeFlagged,
@@ -58,7 +54,6 @@ from workhorse_workflows.coder.shared.schemas.pr import (
 )
 from workhorse_workflows.coder.shared.schemas.qa import (
     BacklogDrain,
-    FailureAttribution,
     QaCleared,
     QaFlowResult,
     QaPlanRun,
@@ -96,17 +91,14 @@ __all__ = [
     "ChangedFiles",
     "CiRepoPick",
     "CoderResult",
-    "ContextClassification",
     "DispatchEntry",
     "DocsResult",
     "DocumentationGate",
-    "DocumentationResult",
-    "SpecNodes",
+    "SpecBookPaths",
     "SpecResult",
     "EpicPruned",
     "LaunchEntry",
     "LaunchSet",
-    "FailureAttribution",
     "FailureReport",
     "FarrierInstall",
     "Feedback",
@@ -124,8 +116,6 @@ __all__ = [
     "MergeFixResult",
     "MergeFlagged",
     "MergeOutcome",
-    "OkfContextResult",
-    "OkfDetection",
     "OperatorAnswer",
     "OperatorResolution",
     "PlanFields",

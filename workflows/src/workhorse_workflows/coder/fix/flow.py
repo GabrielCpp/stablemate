@@ -5,9 +5,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, WorkflowFailed
+from workhorse.pyflow import Await, Continue, Done, NodeNotRunError
 from workhorse_workflows.coder.shared import roles
-from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.backlog import (
     already_fixed,
     close_fix_item,
@@ -142,30 +141,13 @@ class Fix(Gated):
             reports.append(leftover_text(state.dirty))
         if not reports:
             self.logger.info("gates are clean for %s", self._story.story_slug)
-            return Continue(state, self.document, laps=laps, blocks=blocks)
+            return Continue(state, self.commit, laps=laps, blocks=blocks)
         text = "\n\n".join(reports)
         found = failures[0] if failures else state
         if laps >= MAX_LAPS:
             notes = f"{text}\n\nThe gates still fail after {laps} repair turn(s)."
             return self._block(found, notes, "the gates on the fix-drain item", blocks)
         return Continue(found, self.work, report=text, laps=laps + 1, blocks=blocks)
-
-    def document(self, laps: int = 0, blocks: int = 0) -> Continue:
-        """Fold the drained item into the OKF book, by handing off to the `docs` flow."""
-        seed = self.output(seed_fix_story)
-        result = self.handoff(
-            Docs,
-            story=self._story.story_id,
-            epic=seed.epic,
-            target_env=self.target_env,
-            preexisting=tuple(self._dirty_at(snapshot_worktree_state)),
-        )
-        if result.status not in ("passed", "not_applicable"):
-            raise WorkflowFailed(
-                f"documenting the drained fix {self._story.story_slug!r} failed: "
-                f"{result.notes or 'no notes'}"
-            )
-        return Continue(result, self.commit, laps=laps, blocks=blocks)
 
     def commit(self, laps: int = 0, blocks: int = 0) -> Continue | Done | Await:
         """Commit this one item onto the current branch, close its record, then draw the next. A refused commit goes back to the owner."""

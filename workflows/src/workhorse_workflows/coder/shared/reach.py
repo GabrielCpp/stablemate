@@ -16,7 +16,7 @@ from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.contract import declared_service_paths, normalize_service_path
-from workhorse_workflows.coder.shared.okf import story_base
+from workhorse_workflows.coder.shared.provenance import story_base
 from workhorse_workflows.coder.shared.schemas.dev import CheckSet, DispatchEntry
 from workhorse_workflows.kit import resolve_workspace
 

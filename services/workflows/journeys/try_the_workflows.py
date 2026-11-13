@@ -12,8 +12,8 @@ from ..fixtures import dry_run
 
 class TryTheWorkflows(Journey):
     """A person checks every workflow in a fresh repository before using it. The loop-runner, research, author and
-    review-debt dry runs pass. The coder and okf-book dry runs are refused until the skills their prompts name are
-    installed, and pass once they are. A dry run repeated writes the same run directory again."""
+    review-debt and coder dry runs pass. The okf-book dry run is refused until the skill its prompt names is
+    installed, and passes once it is. A dry run repeated writes the same run directory again."""
 
     alone = True
 

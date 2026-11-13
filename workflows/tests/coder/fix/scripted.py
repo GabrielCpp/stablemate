@@ -28,7 +28,7 @@ REFUSED = "copied.go"
 
 
 class ScriptedAgent:
-    """The owner prompt, the resolver and the `docs` sub-flow's prompts, scripted on their arms."""
+    """The owner prompt and the resolver, scripted on their arms."""
 
     def __init__(
         self,
@@ -36,7 +36,6 @@ class ScriptedAgent:
         *,
         impl_blocked: int = 0,
         gate_red: int = 0,
-        docs_blocks: int = 0,
         screenshots: int = 0,
         refused_commits: int = 0,
         change: bool = True,
@@ -45,9 +44,9 @@ class ScriptedAgent:
         self.workspace = workspace
         self.impl_blocked = impl_blocked
         self.gate_red = gate_red
-        self.docs_blocks = docs_blocks
         self.screenshots = screenshots
         self.refused_commits = refused_commits
+        self.renders = 0
         self.change = change
         self.explode = explode or set()
         self.calls: list[str] = []
@@ -105,26 +104,12 @@ class ScriptedAgent:
             screenshot.write_bytes(b"\x89PNG failure")
         return {"status": "done", "notes": f"paginated the widget list on pass {nth}"}
 
-    def _document_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        if nth <= self.docs_blocks:
-            return {"status": "blocked", "notes": "this change cannot be described as built"}
-        cited = ["pagination.go"]
-        if nth <= self.refused_commits:
-            (self.workspace["api"] / REFUSED).write_text("// a copy\n", encoding="utf-8")
-            cited.append(REFUSED)
-        docs_dir = Path.cwd() / "docs"
-        feature = docs_dir / "services/api/concepts/widget.md"
-        feature.parent.mkdir(parents=True, exist_ok=True)
-        feature.write_text(
-            "---\ntype: concept\nslug: widget\ntitle: Widget\n---\n"
-            "# Widget\n\n" + "".join(f"- code: `repo://api/{name}`\n" for name in cited),
-            encoding="utf-8",
-        )
-        return {
-            "status": "documented",
-            "nodes": ["docs/services/api/concepts/widget.md"],
-            "notes": f"documented on pass {nth}",
-        }
+    def render(self, repo: Path) -> str:
+        """Stand-in for the agent-file render, which leaves a copy the repo's hook refuses while `refused_commits` lasts."""
+        self.renders += 1
+        if repo.resolve() == self.workspace["api"].resolve() and self.renders <= self.refused_commits:
+            (repo / REFUSED).write_text("// a copy\n", encoding="utf-8")
+        return ""
 
     def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         """The resolver's say on a block, which this fake declines to give."""

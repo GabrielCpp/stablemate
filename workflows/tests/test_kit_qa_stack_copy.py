@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ostler import model
 from ostler.environments import leases, runtime
 from ostler.qa import addresses, runbook
 from ostler.qa.outcome import QaOutcome
@@ -25,7 +24,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv(runtime.HOME_ENV, str(tmp_path / "env-home"))
     root = tmp_path / "acme"
     (root / ".git").mkdir(parents=True)
-    book = root / "docs" / "services" / "web"
+    book = root / "services" / "web"
     (book / "ops").mkdir(parents=True)
     (book / "ops" / "web.yml.j2").write_text("image: nginx\n", encoding="utf-8")
     (book / "ops" / "stack.yml").write_text(yaml.safe_dump({"services": {
@@ -35,8 +34,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_a_command_against_the_copy_reads_the_copys_address_book(repo: Path) -> None:
-    env = runner.stack_env(LOG, model.load(repo), near=str(repo / "docs" / "services" / "web"),
-                           lease="story-1")
+    env = runner.stack_env(repo, near=str(repo / "services" / "web"), lease="story-1")
     assert env[addresses.LEASE_ENV] == "story-1"
     assert env[addresses.BOOK_ENV].endswith(f"acme-story-1/{runtime.ADDRESSES}")
 
@@ -48,7 +46,6 @@ def test_a_run_copy_is_released_and_the_shared_copy_stays(repo: Path) -> None:
 
 
 def test_bring_up_reports_the_copys_front_address(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(runbook, "has_served_surface", lambda *_args: True)
     monkeypatch.setattr(leases, "up", lambda *_args, **_kw: QaOutcome(
         True, "stack brought up and healthy at http://localhost:49200",
         {"entry_url": "http://localhost:49200"}))
@@ -72,11 +69,10 @@ def test_the_scored_run_reads_the_address_book_the_copy_wrote(
             return QaOutcome(True, "passed", {"status": "passed"})
 
     monkeypatch.setattr(runner, "Ostler", _Ostler)
-    near = str(repo / "docs" / "services" / "web")
-    runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), near=near,
+    near = str(repo / "services" / "web")
+    runner.run_qa_plan(LOG, spec_dir="specs/story-1", repo_dir=str(repo), near=near,
                        lease="story-1")
-    assert seen["book"] == runner.stack_env(LOG, model.load(repo), near=near,
-                                            lease="story-1")[addresses.BOOK_ENV]
+    assert seen["book"] == runner.stack_env(repo, near=near, lease="story-1")[addresses.BOOK_ENV]
     assert seen["book"].endswith(f"acme-story-1/{runtime.ADDRESSES}")
 
 
@@ -94,31 +90,30 @@ def test_a_story_that_spans_books_scores_against_the_copy_its_bring_up_started(
             return QaOutcome(True, "passed", {"status": "passed"})
 
     monkeypatch.setattr(runner, "Ostler", _Ostler)
-    runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), lease="story-1")
-    assert seen["book"] == runner.stack_env(LOG, model.load(repo), lease="story-1")[addresses.BOOK_ENV]
+    runner.run_qa_plan(LOG, spec_dir="specs/story-1", repo_dir=str(repo), lease="story-1")
+    assert seen["book"] == runner.stack_env(repo, lease="story-1")[addresses.BOOK_ENV]
     assert seen["book"].endswith(f"acme-story-1/{runtime.ADDRESSES}")
 
 def test_bring_up_boots_the_device_beside_the_copy_and_reports_a_failed_install(
     repo: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(runbook, "has_served_surface", lambda *_args: True)
     monkeypatch.setattr(leases, "up", lambda *_args, **_kw: QaOutcome(
         True, "stack brought up and healthy at http://localhost:49200",
         {"entry_url": "http://localhost:49200", "address_book": "/copy/addresses.json"}))
     seen: list[object] = []
 
-    def devices(_graph: object, *, env: dict[str, str], **_kw: object) -> list[dict[str, object]]:
+    def devices(_root: object, *, env: dict[str, str], **_kw: object) -> list[dict[str, object]]:
         seen.append((env["STABLEMATE_LEASE"], Path(env["STABLEMATE_ADDRESS_BOOK"]).name))
         return [{"ready": "no", "failed_step": "install-app", "error": "adb: no devices",
-                 "source": "app", "manifest": {"stack_file": "docs/services/app/ops/stack.yml"}}]
+                 "source": "app", "manifest": {"stack_file": "services/app/ops/stack.yml"}}]
 
-    monkeypatch.setattr(runbook, "bring_up_devices", devices)
+    monkeypatch.setattr(runbook, "bring_up_book_devices", devices)
     status = runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1")
     assert seen == [("story-1", "addresses.json")]
     assert (status.ready, status.failed_step) == ("no", "install-app")
     assert status.notes == ("Device step 'install-app' failed: adb: no devices. Repair that step "
-                            "under `device:` in `docs/services/app/ops/stack.yml`.")
-    monkeypatch.setattr(runbook, "bring_up_devices", lambda *_a, **_kw: [{"ready": "yes"}])
+                            "under `device:` in `services/app/ops/stack.yml`.")
+    monkeypatch.setattr(runbook, "bring_up_book_devices", lambda *_a, **_kw: [{"ready": "yes"}])
     assert runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1").ready == "yes"
 
 
@@ -134,8 +129,8 @@ def test_a_label_reaches_the_ostler_run(repo: Path, monkeypatch: pytest.MonkeyPa
             return QaOutcome(True, "passed", {"status": "passed"})
 
     monkeypatch.setattr(runner, "Ostler", _Ostler)
-    runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), lease="story-1")
-    runner.run_qa_plan(LOG, spec_dir="docs/specs/story-1", repo_dir=str(repo), lease="story-1",
+    runner.run_qa_plan(LOG, spec_dir="specs/story-1", repo_dir=str(repo), lease="story-1")
+    runner.run_qa_plan(LOG, spec_dir="specs/story-1", repo_dir=str(repo), lease="story-1",
                        label="docs-exercise")
     assert seen == [None, "docs-exercise"]
 
@@ -181,7 +176,7 @@ def test_a_plan_run_removes_the_files_it_left_and_keeps_the_rest(
     assert (spec / "qa" / "qa-run.ndjson").is_file()
 
 
-def test_a_book_with_no_markdown_pages_brings_its_stack_copy_up(
+def test_a_book_with_a_stack_file_brings_its_stack_copy_up(
     repo: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     leased: list[str] = []
@@ -194,3 +189,48 @@ def test_a_book_with_no_markdown_pages_brings_its_stack_copy_up(
     monkeypatch.setattr(leases, "up", up)
     status = runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1")
     assert (status.ready, status.entry_url, leased) == ("yes", "http://localhost:49200", ["story-1"])
+
+
+def _stack_beside(root: Path, *names: str) -> None:
+    for name in names:
+        stack = root / "services" / name / "ops" / "stack.yml"
+        stack.parent.mkdir(parents=True, exist_ok=True)
+        stack.write_text("services: {}\n", encoding="utf-8")
+
+
+def test_the_one_named_service_with_a_stack_file_picks_its_book(tmp_path: Path) -> None:
+    _stack_beside(tmp_path, "api")
+
+    assert runner.story_near(tmp_path, ["api"]) == str(tmp_path / "services" / "api")
+
+
+def test_two_named_services_with_stack_files_pick_no_book(tmp_path: Path) -> None:
+    _stack_beside(tmp_path, "api", "web")
+
+    assert runner.story_near(tmp_path, ["api", "web"]) == ""
+
+
+def test_no_named_service_picks_no_book(tmp_path: Path) -> None:
+    _stack_beside(tmp_path, "api")
+
+    assert runner.story_near(tmp_path, []) == ""
+
+
+def test_a_named_service_without_a_stack_file_picks_no_book(tmp_path: Path) -> None:
+    (tmp_path / "services" / "api").mkdir(parents=True)
+    (tmp_path / "services" / "api" / "service.py").write_text("SERVICE = 1\n", encoding="utf-8")
+
+    assert runner.story_near(tmp_path, ["api"]) == ""
+
+
+def test_no_stack_file_is_unneeded_not_a_runbook_refusal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(runtime.HOME_ENV, str(tmp_path / "env-home"))
+    root = tmp_path / "acme"
+    (root / ".git").mkdir(parents=True)
+    (root / "services" / "api").mkdir(parents=True)
+    (root / "services" / "api" / "service.py").write_text("SERVICE = 1\n", encoding="utf-8")
+
+    status = runner.ensure_stack(LOG, repo_dir=str(root), lease="story-1")
+
+    assert status.ready == "unneeded", status
+    assert "ops/stack.yml" in status.notes

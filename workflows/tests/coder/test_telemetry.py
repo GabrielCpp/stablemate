@@ -9,7 +9,6 @@ from workhorse.pyflow.driver import drive
 from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.author.epic_edit.flow import EpicEdit
-from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import (
     counter_labels,
@@ -32,10 +31,6 @@ def test_a_counter_the_state_does_not_carry_is_absent_not_zero():
 def test_a_bool_is_not_an_attempt_count():
     """`bool` is an `int` subclass in Python, and a state can carry flags beside counters."""
     assert counter_labels({"bonus_used": True}, "qa", ("bonus_used",)) == {}
-
-
-def test_missing_documentation_taint_fails_closed():
-    assert QaFlowResult(status="passed").docs_recheck_required is True
 
 
 def test_verdicts_skip_the_gate_that_has_not_run():
