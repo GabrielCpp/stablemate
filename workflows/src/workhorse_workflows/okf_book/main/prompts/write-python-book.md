@@ -13,9 +13,23 @@ The service is reached by more than one surface, so the book is one shared model
 `{{ package }}/model/` and one service per surface, each at `{{ package }}/<surface>/service.py`
 with its own surface, journeys and `index.tsv`. A record or a rule lives once, in the model.
 {% endif %}
+{% if references %}
 
-`services/farrier/` is a finished book for a command-line tool. Read it for the shape of each
-file, and take nothing of farrier's own behaviour into this book.
+This repository already holds finished books:
+{% for reference in references -%}
+- `{{ reference }}/`
+{% endfor %}
+
+Read one that is reached the way this service is, for the shape of each file. Take nothing of
+its own behaviour into this book.
+{% endif %}
+{% if stack_copy %}
+
+The app already runs on this machine, as the stack copy `{{ stack_copy }}`. Start nothing and
+stop nothing. The book writes each host as `ostler:` with no copy name after it, and every
+command that reaches the app takes `--copy {{ stack_copy }}`. `ostler env ls` lists the
+services that copy runs.
+{% endif %}
 
 Some of the book may already be there. Keep what is right, fix what is wrong, and add what is
 missing. A book that turns out shaped wrong for the app gets restructured: move the model,
@@ -34,7 +48,7 @@ You are done when every `check` and `run` below exits 0, from the repository roo
 ```
 {% for module in modules %}
 python -m ostler.book check {{ module }}
-python -m ostler.book run {{ module }}
+python -m ostler.book run {{ module }}{% if stack_copy %} --copy {{ stack_copy }}{% endif %}
 python -m ostler.book index {{ module }}
 {% endfor %}
 ```

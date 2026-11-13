@@ -135,6 +135,30 @@ def test_a_green_check_plays_the_book_into_the_run_dir(tmp_path: Path, monkeypat
     assert seen[1][3:] == ["run", "services.ledger", "--out", str(flow.run_dir / "book-run" / "services.ledger")]
 
 
+def test_a_run_that_names_a_stack_copy_plays_the_book_on_it_and_tells_the_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _book_exits(monkeypatch)
+    flow, _runner = _flow(tmp_path)
+    flow.stack_copy = "evening"
+
+    flow.check(lap=1)
+    flow.play(lap=1)
+    rendered = _rendered(flow, tmp_path, monkeypatch)
+
+    assert seen[0][3:] == ["check", "services.ledger"]
+    assert seen[1][-2:] == ["--copy", "evening"]
+    assert "python -m ostler.book run services.ledger --copy evening\n" in rendered
+    assert "as the stack copy `evening`" in rendered
+
+
+def test_a_run_that_names_no_stack_copy_leaves_the_copy_to_the_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner = _flow(tmp_path)
+
+    rendered = _rendered(flow, tmp_path, monkeypatch)
+
+    assert "--copy" not in rendered
+    assert "stack copy" not in rendered
+
+
 def test_a_green_book_commits_only_its_package(tmp_path: Path) -> None:
     flow, _runner = _flow(tmp_path)
     repo = flow.root
@@ -154,16 +178,43 @@ def test_a_green_book_commits_only_its_package(tmp_path: Path) -> None:
     assert "scratch.txt" in git(repo, "status", "--porcelain")
 
 
-def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _rendered(flow: WritePythonBook, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     home = tmp_path / "home"
     skill = home / ".claude/skills/ostler-book/SKILL.md"
     skill.parent.mkdir(parents=True)
     skill.write_text("---\nname: ostler-book\nmetadata:\n  name: ostler-book\n---\n", encoding="utf-8")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("AGENT_CLI", "claude")
+    return templates.render(python_book_flow.WRITE_PROMPT, flow._prompt_args(""), Path(okf_book.__file__).parent)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_the_owner_is_pointed_at_the_other_books_of_the_repo_for_shape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner = _flow(tmp_path)
+    for book in ("ledger/service.py", "billing/service.py", "desk/http/service.py", "desk/web/service.py", "notes/README.md"):
+        path = flow.root / "services" / book
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+
+    rendered = _rendered(flow, tmp_path, monkeypatch)
+
+    assert flow._prompt_args("")["references"] == ["services/billing", "services/desk"]  # pyright: ignore[reportPrivateUsage]
+    assert "- `services/billing/`\n- `services/desk/`\n" in rendered
+    assert "services/ledger/`\n" not in rendered
+    assert "notes" not in rendered
+
+
+def test_a_repo_with_no_other_book_names_no_reference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner = _flow(tmp_path)
+
+    rendered = _rendered(flow, tmp_path, monkeypatch)
+
+    assert "finished books" not in rendered
+
+
+def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow, _runner = _flow(tmp_path, kind="http,web")
 
-    rendered = templates.render(python_book_flow.WRITE_PROMPT, flow._prompt_args(""), Path(okf_book.__file__).parent)  # pyright: ignore[reportPrivateUsage]
+    rendered = _rendered(flow, tmp_path, monkeypatch)
 
     assert "reached by: http, web" in rendered
     assert "`services/ledger/model/`" in rendered
