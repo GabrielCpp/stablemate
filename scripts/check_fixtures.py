@@ -7,7 +7,6 @@ import json
 import sys
 from pathlib import Path
 
-from ostler.model import load
 from ostler.qa.fixtures import declared, preflight_errors, referenced
 from paddock import loader, paths
 from workhorse_workflows.coder.shared.schemas.dev import lift_fixture
@@ -27,7 +26,7 @@ def _check_app(root: Path) -> list[str]:
     problems = [f"{_label(root)}: {message}" for message in preflight_errors(root)]
 
     specs, _errors = declared(root)
-    names = set(specs) | {Path(node.id).stem for node in load(root).ui_nodes_of_type("fixture")}
+    names = set(specs)
     problems.extend(_story_declaration_problems(root, spec_root, names))
     for plan in sorted(spec_root.glob("*/qa_plan.py")):
         story = plan.parent.name

@@ -55,7 +55,7 @@ def staged_pin(run, flow: str) -> tuple[replay.Pin, str, str, str]:
     """A pin on every member that has moved since its first commit, and the commits it names."""
     api = advance(run.stage / "api-service", "app.py", "api = 2\n")
     web = advance(run.stage / "web-app", "app.py", "web = 2\n")
-    book = advance(run.stage / DOCS, "docs/services/book.md", "# book, later\n")
+    book = advance(run.stage / DOCS, "services/book/service.py", '"""The book, later."""\n')
     return replay.Pin(STORY, {flow: {"api-service": api, DOCS: book}}), api, web, book
 
 
@@ -105,7 +105,7 @@ def test_a_folder_dev_replay_rewinds_every_pinned_member_and_finds_the_story(tmp
 
     assert (dest / "api-service" / "app.py").read_text(encoding="utf-8") == "api = 1\n"
     assert (dest / "web-app" / "app.py").read_text(encoding="utf-8") == "web = 2\n"
-    assert (dest / DOCS / "docs" / "services" / "book.md").read_text(encoding="utf-8") == "# book\n"
+    assert (dest / DOCS / "services" / "book" / "service.py").read_text(encoding="utf-8") == '"""The book."""\n'
 
 
 def test_a_folder_docs_replay_rewinds_the_book_in_the_docs_home(tmp_path: Path) -> None:
@@ -116,7 +116,7 @@ def test_a_folder_docs_replay_rewinds_the_book_in_the_docs_home(tmp_path: Path) 
         run, replay.Fixture(app="x", pins=(pin,)), pin, "docs", tmp_path / "trial" / "x", lambda _repo: None
     )
 
-    assert (dest / DOCS / "docs" / "services" / "book.md").read_text(encoding="utf-8") == "# book\n"
+    assert (dest / DOCS / "services" / "book" / "service.py").read_text(encoding="utf-8") == '"""The book."""\n'
 
 
 def test_a_plain_commit_on_a_folder_stage_is_refused_at_checkout(tmp_path: Path) -> None:

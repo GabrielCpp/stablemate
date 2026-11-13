@@ -102,7 +102,8 @@ def folder_run(tmp_path: Path) -> Run:
         {
             "epics/e1/epic.md": EPIC_MD,
             f"epics/e1/stories/{STORY}/story.md": STORY_MD,
-            "docs/services/book.md": "# book\n",
+            "docs/index.md": "# docs\n",
+            "services/book/service.py": '"""The book."""\n',
             f"specs/{STORY}/qa-plan.yml": "stale\n",
         },
     )

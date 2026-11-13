@@ -13,10 +13,63 @@ from typing import Any
 from paddock.tasks import forensics as fx
 from paddock.tasks import stablemate as sm
 from paddock.tasks import tree
-from paddock.tasks.frozenapp import QA_OUTPUTS, capture_witness
+from paddock.tasks.stablemate import trial_artifacts
 from paddock.runner import CommandResult, Run
 from paddock.registry import Score
 from paddock.tasks import inputs
+
+QA_OUTPUTS = (
+    "qa-plan.yml", "qa-plan.md", "qa.md", "qa-evidence.json",
+    "qa",
+    "qa-smoke-proof.txt",
+)
+
+WITNESS_CONFIGS = ("agents.yml", ".agents.yml", "ostler.yml", "ostler.yaml")
+
+
+def capture_witness(
+    repo: Path, dest: Path, extra: tuple[str, ...] = (), *, run: Run | None = None
+) -> Path:
+    """Copy the part of a finished trial tree the score reads, into the staged result.
+
+    A folder of repos keeps each member's configs under its name, and the docs home's `docs/` and `specs/` where they sit in the tree.
+    """
+    dest.mkdir(parents=True, exist_ok=True)
+    member_names = tree.stage_members(run) if run is not None else ()
+    if run is not None and member_names:
+        home = tree.docs_home(run, repo)
+        shelf = tree.docs_home(run, dest)
+        for name in ("docs", "specs"):
+            if (home / name).is_dir():
+                shutil.copytree(home / name, shelf / name, dirs_exist_ok=True)
+        for member, source in tree.repos_at(repo, member_names).items():
+            for name in WITNESS_CONFIGS:
+                if (source / name).is_file():
+                    (dest / member).mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source / name, dest / member / name)
+    else:
+        if (repo / "docs").is_dir():
+            shutil.copytree(repo / "docs", dest / "docs", dirs_exist_ok=True)
+        if (trial_artifacts(repo) / "specs").is_dir():
+            shutil.copytree(
+                trial_artifacts(repo) / "specs", trial_artifacts(dest) / "specs", dirs_exist_ok=True
+            )
+        for name in WITNESS_CONFIGS:
+            if (repo / name).is_file():
+                shutil.copyfile(repo / name, dest / name)
+    for rel in extra:
+        source = repo / rel
+        if source.is_dir():
+            shutil.copytree(
+                source,
+                dest / rel,
+                dirs_exist_ok=True,
+                ignore=shutil.ignore_patterns(".git", "__pycache__", "node_modules"),
+            )
+        elif source.is_file():
+            (dest / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, dest / rel)
+    return dest
 
 KNOWN_FLOWS = ("qa", "docs", "dev", "story")
 
@@ -82,7 +135,7 @@ class Fixture:
     app: str
     pins: tuple[Pin, ...]
     flows: tuple[str, ...] = KNOWN_FLOWS
-    book: str = "docs/services"
+    book: str = "services"
     budget_s: float = BUDGET_S
     packs: tuple[str, ...] = ()
     harness: tuple[str, ...] = ()

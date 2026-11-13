@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from fakes import DOCS, PRODUCTS, fake_run, folder_run
 
+from ostler.milestones import BOOKS_DIR
 from paddock.runner import CommandResult, RoundInterrupted, Run
 from paddock.tasks import greenfield
 from paddock.tasks.stablemate import TrialError, uv_run
@@ -37,7 +38,7 @@ def test_the_milestone_is_copied_from_beside_the_tasks_module(tmp_path: Path) ->
     greenfield.seed_milestone(run, FIXTURE)
 
     assert (run.stage / greenfield.MILESTONES_DIR / "m1" / greenfield.MILESTONE_FILE).is_file()
-    assert (run.stage / greenfield.SERVICES_DIR / "api").is_dir()
+    assert (run.stage / BOOKS_DIR / "api").is_dir()
 
 
 def test_a_missing_milestone_is_named(tmp_path: Path) -> None:
@@ -107,7 +108,7 @@ def test_genesis_scaffolds_each_surface_in_its_member(tmp_path: Path, monkeypatc
         assert json.loads(argv[argv.index("--params") + 1])["target"] == str(cwd)
     home = run.stage / DOCS
     assert (home / greenfield.MILESTONES_DIR / "m1" / greenfield.MILESTONE_FILE).is_file()
-    assert (home / greenfield.SERVICES_DIR / "web").is_dir()
+    assert (home / BOOKS_DIR / "web").is_dir()
     assert (home / "docs" / "decisions" / "0001.md").is_file()
     assert not (run.stage / PRODUCTS[0] / greenfield.MILESTONES_DIR).exists()
 

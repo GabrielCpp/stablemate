@@ -21,7 +21,7 @@ from paddock.tasks import tree
 from paddock.tasks.judge import Judge, call_agent, render
 from paddock.tasks.stablemate import TrialError, effective, no_leaks, pin_held, stablemate_checkout, uv_run
 from ostler import markdown, registry
-from ostler.milestones import JOURNEY_LEVEL, SERVICES_LABEL, journey_slug
+from ostler.milestones import BOOKS_DIR, JOURNEY_LEVEL, SERVICES_LABEL, journey_slug
 from paddock.runner import CommandResult, RoundInterrupted, Run
 from paddock.registry import Score
 from paddock.tasks import inputs
@@ -43,8 +43,6 @@ MAX_LEVEL = 3
 
 
 MILESTONES_DIR = "docs/milestones"
-
-SERVICES_DIR = "docs/services"
 
 MILESTONE_FILE = "milestone.md"
 
@@ -292,7 +290,7 @@ def run_genesis(run: Run, fixture: Fixture) -> None:
 def seed_milestone(run: Run, fixture: Fixture) -> None:
     """Copy the approved milestone into the produced repo, and open an empty book per surface.
 
-    The milestone's journeys name the books under `docs/services/`, the author's ready gate
+    The milestone's journeys name the books under `services/`, the author's ready gate
     requires each named book to exist, and genesis makes none, so the round opens an empty
     book per surface for the author to fill.
     """
@@ -304,7 +302,9 @@ def seed_milestone(run: Run, fixture: Fixture) -> None:
         raise TrialError(f"no {home / 'docs'} — genesis did not scaffold the docs tree")
     shutil.copytree(source, home / MILESTONES_DIR / fixture.slug, dirs_exist_ok=True)
     for surface in fixture.surfaces:
-        (home / SERVICES_DIR / surface.service).mkdir(parents=True, exist_ok=True)
+        book = home / BOOKS_DIR / surface.service
+        book.mkdir(parents=True, exist_ok=True)
+        (book / "service.py").write_text(f'"""The {surface.service} book."""\n', encoding="utf-8")
 
 
 def seed_decision_records(run: Run, fixture: Fixture) -> None:

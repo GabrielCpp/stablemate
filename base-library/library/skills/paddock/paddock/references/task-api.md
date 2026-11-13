@@ -51,18 +51,15 @@ nothing leaks into the next benchmark.
 | Module | Reach for it to |
 |---|---|
 | `paddock.tasks.stablemate` (drives the workhorse CLIs) | pin the effective config (`pin_config`), render the agents layer into the stage (`install_agents`), build the `uv run` prefix for the pinned checkout (`uv_run`), point a trial at its own artifacts dir (`trial_env`, `spec_dir`), and fail the round on a toolchain leak (`no_leaks`) |
-| `paddock.tasks.frozenapp` | materialize a story's tree, seed a defect from an answer key, run QA on it, and score detection |
-| `paddock.tasks.mutants` | seed a curated behavior change and score the pin rate |
 | `paddock.tasks.replay` | replay one lane of the coder workflow cold, on a tree that already ran it |
 | `paddock.tasks.greenfield` | build a repo from an approved milestone, then judge each journey |
 | `paddock.tasks.tree` | the shared shape of a trial tree that is one repo or a folder of repos: its members, workspace, config and docs home |
 | `paddock.tasks.forensics` | read nodes entered, repair loops, churn, hangs, cap waits and cost back off a run dir |
-| `paddock.tasks.leverage` | measure how far a QA plan used what the book documents |
 | `paddock.tasks.judge` | run one agent turn that waits out usage caps, and fill a rubric |
 | `paddock.tasks.operator_gates` | watch for a gate nothing answered and park the round on it |
 | `paddock.tasks.inputs` | typed reads of the task's inputs |
 
-`frozenapp`, `mutants`, `replay` and `greenfield` are ready-made rounds for the shipped
+`replay` and `greenfield` are ready-made rounds for the shipped
 workhorse coder and author workflows. Write plain steps for a workflow of your own.
 
 The round modules expose a `Fixture` plus `run_round(run, fixture)` and
