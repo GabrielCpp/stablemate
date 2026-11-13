@@ -785,7 +785,6 @@ def test_two_follow_ups_of_a_workspace_run_land_as_records_on_the_untracked_shel
 ) -> None:
     """The register keys each follow-up by repository and area, commits nothing, and files a repeated title never again."""
     artifacts = core_config.ensure_artifacts_repo()
-    subprocess.run(["git", "-C", str(artifacts), "commit", "-q", "--allow-empty", "-m", "init"], check=True)
     followed = (
         _follow_up("Paginate the audit log", "it loads every row", repo="api-service", symbols=["audit/log.go"]),
         _follow_up("Cache the rate card", "it is read on every call", repo="api-service", area="pricing", pattern="add-cache"),

@@ -24,6 +24,9 @@ def artifacts() -> Path:
     return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve()
 
 
+START = "chore: start the artifacts repo"
+
+
 def subjects() -> list[str]:
     if not (artifacts() / ".git").exists():
         return []
@@ -31,7 +34,7 @@ def subjects() -> list[str]:
         ["git", "-C", str(artifacts()), "log", "--format=%s"],
         capture_output=True, text=True, check=False, timeout=30,
     )
-    return done.stdout.splitlines()
+    return [line for line in done.stdout.splitlines() if line != START]
 
 
 def shelve(tmp_path: Path, record_id: str = "acme-1") -> Path:

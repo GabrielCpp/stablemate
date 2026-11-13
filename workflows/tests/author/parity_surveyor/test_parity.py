@@ -333,9 +333,10 @@ def _filed(repo: Path) -> list[Record]:
 
 
 def _subjects(artifacts: Path) -> list[str]:
-    return subprocess.run(
+    lines = subprocess.run(
         ["git", "-C", str(artifacts), "log", "--format=%s"], capture_output=True, text=True, check=True
     ).stdout.splitlines()
+    return [line for line in lines if line != "chore: start the artifacts repo"]
 
 
 def test_emit_files_one_parity_record_per_uncovered_surface(

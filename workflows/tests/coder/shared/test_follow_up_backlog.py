@@ -43,9 +43,10 @@ def artifacts() -> Path:
 
 
 def _subjects(root: Path) -> list[str]:
-    return subprocess.run(
+    lines = subprocess.run(
         ["git", "-C", str(root), "log", "--format=%s"], capture_output=True, text=True, check=True
     ).stdout.splitlines()
+    return [line for line in lines if line != "chore: start the artifacts repo"]
 
 
 def _folders(artifacts: Path) -> list[str]:

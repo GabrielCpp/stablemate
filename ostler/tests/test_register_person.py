@@ -33,11 +33,14 @@ def git(*argv: str) -> str:
     return done.stdout
 
 
+START = "chore: start the artifacts repo"
+
+
 def subjects() -> list[str]:
     if not (artifacts() / ".git").exists():
         return []
     try:
-        return git("log", "--format=%s").splitlines()
+        return [line for line in git("log", "--format=%s").splitlines() if line != START]
     except subprocess.CalledProcessError:
         return []
 

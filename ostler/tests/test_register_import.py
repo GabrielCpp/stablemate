@@ -74,6 +74,9 @@ def artifacts() -> Path:
     return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve()
 
 
+START = "chore: start the artifacts repo"
+
+
 def commit_subjects() -> list[str]:
     if not (artifacts() / ".git").exists():
         return []
@@ -81,7 +84,7 @@ def commit_subjects() -> list[str]:
         ["git", "-C", str(artifacts()), "log", "--format=%s"],
         capture_output=True, text=True, check=False, timeout=30,
     )
-    return done.stdout.splitlines()
+    return [line for line in done.stdout.splitlines() if line != START]
 
 
 def source(repo: Path, text: str, name: str = "docs/backlog.md") -> Path:

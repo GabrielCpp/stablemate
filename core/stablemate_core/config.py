@@ -703,11 +703,14 @@ def _normal_url(url: str) -> str:
     return text.removesuffix(".git").rstrip("/")
 
 
-def _matching_member(identity: RepositoryIdentity) -> WorkspaceMember | None:
+def _matching_member(
+    identity: RepositoryIdentity, members: list[WorkspaceMember] | None = None
+) -> WorkspaceMember | None:
     folders = {identity.folder, identity.main_folder}
     origin = _normal_url(identity.origin_url)
-    members = _all_members()
-    _bind(members)
+    if members is None:
+        members = _all_members()
+        _bind(members)
     for member in members:
         if member.path.resolve() in folders:
             return member
@@ -728,13 +731,95 @@ def repository_name(start: Path) -> str:
     return member.name if member is not None else member_name(identity.main_folder)
 
 
+def _artifacts_toplevel() -> Path | None:
+    """The folder of the repository that tracks the artifacts dir, or None when no repository does."""
+    root = resolve_artifacts_dir()
+    if not root.exists() or _git(root, "rev-parse", "--is-inside-work-tree") != "true":
+        return None
+    return repository_identity(root).main_folder
+
+
+def _in_artifacts_worktree(identity: RepositoryIdentity) -> bool:
+    """Whether the checkout is a linked worktree of the repository holding the artifacts dir."""
+    return identity.folder != identity.main_folder and identity.main_folder == _artifacts_toplevel()
+
+
 def docs_home(start: Path) -> Path | None:
-    """The artifacts dir when the repository holding ``start`` is in any workspace, else None so the caller walks up from ``start``."""
+    """The artifacts dir when ``start`` is in a repository of any workspace or in a linked worktree of the artifacts repo, else None so the caller walks up from ``start``."""
     if not _all_members():
         return None
-    if is_workspace_member(repository_identity(start)):
+    identity = repository_identity(start)
+    if is_workspace_member(identity) or _in_artifacts_worktree(identity):
         return resolve_artifacts_dir()
     return None
+
+
+def run_branch(start: Path) -> str | None:
+    """The branch of the run the folder belongs to: the branch of its linked worktree when that worktree is of a workspace member or of the artifacts repo, else None."""
+    identity = repository_identity(start)
+    if identity.folder == identity.main_folder:
+        return None
+    if not _all_members():
+        return None
+    if _matching_member(identity) is None and identity.main_folder != _artifacts_toplevel():
+        return None
+    return _git(identity.folder, "symbolic-ref", "--quiet", "--short", "HEAD") or None
+
+
+def checkout_on(folder: Path, branch: str) -> Path:
+    """The linked worktree of *folder*'s repository checked out on *branch*, else *folder*."""
+    listing = _git(folder, "worktree", "list", "--porcelain")
+    if not listing:
+        return folder
+    for block in listing.split("\n\n"):
+        lines = block.splitlines()
+        if f"branch refs/heads/{branch}" in lines:
+            for line in lines:
+                if line.startswith("worktree "):
+                    return Path(line.removeprefix("worktree ")).resolve()
+    return folder
+
+
+def workspace_checkouts(start: Path) -> dict[str, Path]:
+    """Every member as `{name: folder}` by the branch rule: the member's worktree on the run's branch when one exists, else its configured folder."""
+    members = workspace_members()
+    branch = run_branch(start)
+    if branch is None:
+        return members
+    return {name: checkout_on(path, branch) for name, path in members.items()}
+
+
+def book_home(start: Path) -> Path | None:
+    """The book root: None outside a workspace, else the artifacts checkout of the run's branch."""
+    home = docs_home(start)
+    if home is None:
+        return None
+    branch = run_branch(start)
+    if branch is None:
+        return home
+    top = _artifacts_toplevel()
+    if top is None:
+        return home
+    return checkout_on(top, branch) / home.relative_to(top)
+
+
+def run_workspace(start: Path, named: str = "") -> str:
+    """The workspace a run launched from *start* works in: *named* when given, else the one workspace holding *start*'s repository; "" when it is in none."""
+    if named:
+        resolve_workspace(named)
+        return named
+    identity = repository_identity(start)
+    home = load_home_config()
+    holding = [
+        name for name in home.workspaces if _matching_member(identity, _members_in(home, name)) is not None
+    ]
+    if not holding and identity.main_folder == _artifacts_toplevel():
+        holding = sorted(home.workspaces)
+    if not holding:
+        return ""
+    if len(holding) > 1:
+        raise ValueError(f"{identity.folder} is in workspaces {', '.join(holding)}; name one with --workspace")
+    return holding[0]
 
 
 ARTIFACTS_IGNORED = ("backlogs/", "epics/", "specs/", "researches/", "benchmarks/", "scratch/")
@@ -754,6 +839,7 @@ def ensure_artifacts_repo() -> Path:
     """Create the artifacts dir as a git repository that ignores the session-owned folders; never adds a remote.
 
     An artifacts dir inside another repository's work tree is that repository's to track, so it is left as it is.
+    A repository with no commit gets a first one holding only the ``.gitignore``, so a worktree can be cut from it.
     """
     root = resolve_artifacts_dir()
     root.mkdir(parents=True, exist_ok=True)
@@ -768,4 +854,16 @@ def ensure_artifacts_repo() -> Path:
     if missing:
         head = existing if not existing or existing.endswith("\n") else existing + "\n"
         ignore.write_text(head + "".join(f"{line}\n" for line in missing), encoding="utf-8")
+    if _git(root, "rev-parse", "--verify", "--quiet", "HEAD") is None:
+        identity = (
+            ["-c", "user.name=stablemate", "-c", "user.email=stablemate@localhost"]
+            if _git(root, "config", "user.email") is None
+            else []
+        )
+        subprocess.run(["git", "-C", str(root), "add", "--", ".gitignore"], check=True, timeout=30)
+        subprocess.run(
+            ["git", "-C", str(root), *identity, "commit", "--quiet", "-m", "chore: start the artifacts repo", "--", ".gitignore"],
+            check=True,
+            timeout=30,
+        )
     return root
