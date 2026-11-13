@@ -132,6 +132,24 @@ def test_unmerged_commit_stays(repo: Path):
     assert path.is_dir()
 
 
+def test_an_unlanded_book_branch_in_the_worktree_dir_is_kept(tmp_path: Path):
+    artifacts = _repo(tmp_path / "artifacts")
+    linked = tmp_path / "linked"
+    book = linked / "artifacts-run-coder-t"
+    _git(artifacts, "worktree", "add", "-q", "-b", "run/coder-t", str(book))
+    (book / "service.md").write_text("book\n")
+    _git(book, "add", "service.md")
+    _git(book, "commit", "-q", "-m", "book")
+    _age(book)
+
+    assert discover_repos([], linked) == [artifacts.resolve()]
+    action, reason = _sweep(artifacts, apply=True)["artifacts-run-coder-t"]
+
+    assert action == "keep"
+    assert "neither merged into 'main' nor pushed" in reason
+    assert book.is_dir()
+
+
 def test_worktree_a_process_holds_stays(repo: Path):
     path = _worktree(repo, "busy")
 
