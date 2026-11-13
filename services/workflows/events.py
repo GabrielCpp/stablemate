@@ -9,7 +9,7 @@ from .model.files import SKILL_NAME, SKILLS
 
 
 class InstallSkills(Outside):
-    does = "A person installs the ostler-okf and ostler-book skills into the repository, as `farrier install` would."
+    does = "A person installs the ostler-book skill into the repository, as `farrier install` would."
     carries = InstallSkillsByHand
 
     def happen(self, sandbox: Sandbox) -> None:

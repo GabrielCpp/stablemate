@@ -1,6 +1,6 @@
 ---
 name: ostler-cli
-description: "The ostler tool — the system-of-record for a repo's docs/ knowledge graph (epics, stories, seeds, features and the OKF UI profile's typed nodes): the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process, epic.md grammar, short handles, the coverage model, id allocation, profiles and templates, the QA control plane, and when a workflow agent should call it. Load it to *drive* ostler; the format it enforces under docs/services/ is ostler-okf."
+description: "Drive the ostler tool: a repo's planning graph of epics, stories, seeds, the register and decisions, short handles and id allocation, templates, the QA run of a hand-written qa_plan.py, local stacks with `ostler env`, and the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process. Load it to read or change the planning graph, to run or repair a QA plan, to bring up a stack, or to call ostler from a workflow node. The service book under services/ is written with ostler-book."
 tags: [cli, python, docs]
 commit_checks:
   - run: scripts/check_staged_files.py
@@ -10,8 +10,8 @@ commit_checks:
 # Ostler
 
 Load this skill when a workflow node, script, or prompt needs to read or mutate a repo's planning
-docs (`docs/epics`, `docs/services`, and the story spec folders) — or when authoring a new
-`workhorse` workflow that should integrate with the doc graph instead of hand-rolling its own
+docs (`docs/epics` and the story spec folders) — or when authoring a new
+`workhorse` workflow that should integrate with the planning graph instead of hand-rolling its own
 JSON state files.
 
 `ostler` is a standalone, repo-agnostic tool (`pipx install ostler` / `pip install ostler`) that
@@ -25,9 +25,9 @@ scraping its JSON. Each face has its own reference below.
 
 ## Core model
 
-Everything under `docs/` is markdown: an OKF (Open Knowledge Format) **Concept** is one `.md` file
-with a YAML frontmatter block (only hard requirement: non-empty `type`) plus a markdown body.
-**Identity is the path** — a Concept's id is its bundle-relative path minus `.md`.
+Everything under `docs/` is markdown: a **Concept** is one `.md` file with a YAML frontmatter
+block (only hard requirement: non-empty `type`) plus a markdown body. **Identity is the path**:
+a Concept's id is its bundle-relative path minus `.md`.
 
 There is **no** `seed.json`, `dependencies.json`, `inventory.json`, or `epics-todo.json`. An epic's
 seeds and its story dependency-DAG live entirely inside that epic's own `epic.md`.
@@ -36,7 +36,6 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 |---|---|---|---|
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
-| `feature` | `docs/services/<area>/<slug>.md` (or flat `docs/services/<slug>.md`) | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.plan` / `spec.review` / `spec.qa` | `<artifacts_dir>/specs/<story id>/*.md` | path | `type` |
 
 Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story-id>` prints the folder.
@@ -87,28 +86,20 @@ The first paragraph after the metadata bullets is the seed summary; further pros
 Both faces drive the same functional core, and neither is a wrapper over the other.
 
 - **[references/command-interface.md](references/command-interface.md)** — the CLI. Every
-  command with its flags and JSON shape: `doctor`, `trace`, `list`/`search`/`query`,
-  `graph`, `next-epic`/`next-story`, `path`, the `create`/`update`/`seed`/`backlog`/`todo`
-  mutators, `edit` repair, `scaffold`/`fmt`, `vet`, the `qa` control plane and its
+  command with its flags and JSON shape: `doctor`, `list`/`search`/`query`,
+  `next-epic`/`next-story`, `path`, the `create`/`update`/`seed`/`backlog`/`todo`
+  mutators, `edit` repair, `vet`, the `ostler book` group, the `qa` control plane and its
   browser-diagnostics manifest, and `artifact`. Read it when you are writing a shell step,
   a gate, or a prompt that runs ostler from a terminal.
 - **[references/stack.md](references/stack.md)** — the book's `stack.yml`: every key, the
-  template values, the copies and the `ostler env` commands that run them, plus the
-  `environment` page's `variables:` and the `ostler env exec`, `dotenv` and `import-dotenv`
-  verbs that read it. Read it when you are writing or repairing a stack file, or when a
-  command needs the environment's variables.
+  template values, and the copies and `ostler env` commands that run them. Read it when you
+  are writing or repairing a stack file, or when a command needs the environment's variables.
 - **[references/python-api.md](references/python-api.md)** — `from ostler import Ostler`,
   the CLI-to-method table, `ostler.path` for deriving a doc path without loading a graph,
   and the snapshot/caching semantics. Read it when you are writing a `workhorse` node,
   script, or test.
 
 A third reference is neither face — it is the format ostler *executes*:
-
-- **[references/okf-runbook.md](references/okf-runbook.md)** — the `ops`-context
-  `runbook`/`environment`/`step` triple that declares how a system is brought up: the bullets,
-  the `kind:` vocabulary, `secrets:`, the scaffold→doctor→`ostler qa stack up` loop and the
-  `runbook-*` findings. Read it when a repo has no declared QA stack, or the one it has will
-  not come up.
 
 - **[references/qa-plan-authoring.md](references/qa-plan-authoring.md)** — a story's
   `qa_plan.py`: the `plan`/`target`/`background`/`secret`/`input_file` declarations, the `@scenario`
@@ -117,9 +108,8 @@ A third reference is neither face — it is the format ostler *executes*:
 - **[references/qa-harness-reference.md](references/qa-harness-reference.md)** — each `qa.*`
   call's arguments, return value and failure: `qa.http`, `qa.fixture`, `@node.key` and `$name`
   references, the address book behind `{name}` in a `base_url`, `qa.window()`,
-  `qa.diagnostics`, `qa.tree`, and how the validator matches a `qa.verify` call to the
-  book's declaration. With `ostler checks <name>`, it is the whole harness contract. Read it
-  before a plan calls anything the authoring guide does not show.
+  `qa.diagnostics` and `qa.tree`. Read it before a plan calls anything the authoring guide
+  does not show.
 
 **[scripts/check_staged_files.py](scripts/check_staged_files.py)** is the commit check half of
 that format: a run writes traces, videos and a ledger under `<spec>/qa/`, and this refuses to
@@ -133,20 +123,13 @@ shortest unambiguous `<PREFIX>-<6+ chars>`. Human output prints handles, `--json
 ids, and a handle is accepted wherever a command takes an id. Never write a handle into a
 document — it lengthens as soon as a colliding id is minted.
 
-## The coverage model
+## Planning graph checks
 
 ```
 story (epic.md ## Stories)  ->  covers: seed (epic.md ## Seeds)
-docs/services OKF nodes     ->  code:/links:/reachability/coverage obligations
 ```
 
-Open questions and missing behavioral coverage belong in `docs/services/` as OKF nodes, links, and
-coverage/reachability obligations, or in the epic/story planning graph as seeds and stories.
-`ostler qa context` then maps a story's diff back onto those nodes through their owning bullets
-(`code:` everywhere, `openapi:` on a server/endpoint, `file:` on a format) — a changed production
-file no node owns is an `unmapped-change` error in the packet, so every file a story touches needs
-an owner in the book.
-`ostler doctor` checks OKF conformance (every Concept has a non-empty `type`) plus the typed
+`ostler doctor` checks the planning graph (every Concept has a non-empty `type`) plus the typed
 referential-integrity contract:
 
 - **cross-epic references** — an id/slug used inside epic E that only resolves in another epic
@@ -157,34 +140,24 @@ It exits non-zero when any error-level finding is present (safe to gate a workfl
 Warning-level findings (`story-covers-no-seed`, `ungrounded-surface`) are reported but don't fail
 the check.
 
+**The service book.** A service's behaviour lives in the book under `services/<name>/`, written
+with [[ostler-book]] and read with `ostler book search|explain|decisions`.
+
 ## Id allocation, profiles, templates
 
-- `create epic|story|feature` allocates an id,
+- `create epic|story` allocates an id,
   scaffolds the markdown, and (for stories) inserts the `### <slug>` block into the epic's
   `## Stories`. There is no external id allocator.
   The prefix is `repo.id_prefix` in the `agents.yml` at the graph root; a mint refuses while it is unset.
 - An id is `<PREFIX>-<ULID>`: the repo prefix plus 26 Crockford-Base32 chars (ms timestamp + 80 bits
   of randomness). It sorts by mint time and needs no coordination, so parallel worktrees can't
   collide. Older `<prefix>-<n>` counter ids keep resolving — an id is an opaque string.
-- Profile is inferred from the tree: `full` when `docs/epics` exists (the epic/story/seed/knowledge
-  coverage graph), `exploration` otherwise (knowledge/docs only, no coverage graph). Override via an
+- Profile is inferred from the tree: `full` when `docs/epics` exists (the epic/story/seed
+  coverage graph), `exploration` otherwise (docs only, no coverage graph). Override via an
   `organization:` block in `agents.yml` (the legacy `ostler.yml` name still loads).
-- For a documentation shape outside epic/story/knowledge/feature/spec, declare custom Concept kinds
+- For a documentation shape outside epic/story/spec, declare custom Concept kinds
   in `.agents/templates.yml` (`ostler template new/edit/find/delete/apply`), then operate on
   instances with the generic `ostler new/find/set/remove <kind> <name>` verbs.
-
-## The OKF UI profile — surfaces, elements, behaviors
-
-A profile of OKF that describes UIs, CLIs, HTTP/WS servers and the concepts they serve as a
-navigable graph of typed nodes (`screen`/`cli`/`server`, `component`/`command`/`endpoint`,
-`interaction`/`invocation`, `method`/`field`, `flow`, `concept`, `format`) — first-class to
-`list`, `search`, `trace`, `scaffold`, `fmt`, `graph`, and to a **hard `doctor` gate**.
-
-That branch is a skill of its own: **[[ostler-okf]]** carries the format and the craft — a
-reference per node type, the bullet grammar, the check vocabulary behind `verify:`, every
-`doctor` code, the link and placement rules, and the scaffold→author→fmt→doctor loop. Load it
-when authoring or linting anything under `docs/services/`; the planning graph above needs none
-of it, and it is the authority wherever the two disagree.
 
 ## When to reach for it
 
@@ -199,7 +172,3 @@ of it, and it is the authority wherever the two disagree.
 - Any resolver prompt that fixes a graph problem (dangling references, orphan seed, cross-epic
   contamination) → `ostler edit relink/rename`, `ostler seed`, or `set-status`, never a raw edit of
   `epic.md`'s generated sections.
-- Any node that documents a UI/CLI/server surface or a domain/code concept → the OKF UI profile
-  (`scaffold`/`fmt`/`doctor`) above, and load [[ostler-okf]] — it covers all three entries: the
-  one-story merge after a story lands, the bulk build of a whole service's graph, and the
-  prose-only `feature` doc.

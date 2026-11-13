@@ -20,9 +20,8 @@ skill for the stack you're in:
 Accessibility is the actual goal — screen-reader users, keyboard-only users, and low-vision users
 must be able to operate the thing. **Machine-legibility is a free consequence, not the reason.** A
 control that a screen reader can name and operate is exactly a control that a deterministic tool can
-find and drive: a `getByRole(role, {name})` locator, an axe scan, and the OKF `role:`/`name:`/
-`keyboard:` bullets an `ostler graph` node carries all read the *same* DOM signals. A control with
-no role or accessible name is simultaneously an a11y failure and a documentation gap — the two are
+find and drive: a `getByRole(role, {name})` locator, an axe scan, and the locators a screen book's interactions use all read the *same* DOM signals. A control with
+no role or accessible name is simultaneously an a11y failure and a gap in what the book can drive — the two are
 the same fact. Do it because it's right; the tooling falls out for free.
 
 ## The five obligations
@@ -95,7 +94,7 @@ Every piece of UI you touch owes all five. None is optional, none substitutes fo
 ## Done means
 
 - Every element that carries meaning has a **role** and an **accessible name** a screen reader (or a
-  test's `getByRole`, or an `ostler graph` node's `role:`/`name:` bullet) can discover.
+  test's `getByRole`, or a screen book's locator) can discover.
 - The touched surface is **fully operable with the keyboard alone**, and every control's purpose is
   clear from focus alone.
 - **Focus is always deliberate** — never dropped to `<body>`; moved on modal open/close, context

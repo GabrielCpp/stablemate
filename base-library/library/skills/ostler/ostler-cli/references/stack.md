@@ -3,10 +3,7 @@
 A book that boots something says what it is made of in one file, `stack.yml`, in the `ops/`
 folder beside its service book, at `services/<book>/ops/stack.yml`. The file at
 `services/ops/stack.yml` is the stack root. It is also a book, and takes the repo
-directory's name in lowercase. Ostler still reads the older place, beside the pages, at
-`docs/services/<book>/ops/stack.yml` and `docs/services/ops/stack.yml`. A book with a file in both
-places loads the one under `services/` and reports the other. A file at an old place, `docs/services/<book>/stack.yml` or
-`docs/services/stack.yml`, is an error that names where to move it.
+directory's name in lowercase.
 
 `ostler env` reads every book's file together and runs the product on this machine from them,
 one compose project per copy. The file replaces a hand-kept compose file, the make targets that
@@ -46,7 +43,7 @@ services:
 | `outputs` | service | for a `once` job, the environment names it writes to `$STABLEMATE_OUTPUTS`. The services that need the job read them as `${NAME}` |
 | `files` | service | files placed in the service's folder of the copy, target to source. A `.j2` source is rendered, any other file is copied byte for byte, a folder is walked |
 | `fixtures` | service | fixture sets by name, each a list of files the service loads. A fixture file must exist only when its set is loaded, so a set no bring-up names may point at a file this checkout lacks, such as a database dump kept out of git. In a git worktree, a fixture file absent there is read from the main checkout |
-| `address` | service | the name a run reads this service's URL by, the same name a runbook writes as `{gateway}` |
+| `address` | service | the name a run reads this service's URL by, the same name a QA plan writes as `{gateway}` |
 | `port` | service | the container port the address publishes. An address needs one |
 | `host-port` | service | the host port the shared copy keeps. Every other copy takes a free one |
 | `scheme` | service | the address's URL scheme, `http` unless stated |
@@ -58,7 +55,7 @@ the rows above.
 ## What `ops/` is for
 
 A book's `ops/` folder holds everything it takes to run the book on a machine: `stack.yml`, the
-templates and plain files it places, and the `environment` and `runbook` pages that describe it.
+templates and plain files it places.
 Nothing in `ops/` is product. The stack root, `services/ops/stack.yml`, is the file of a
 one-book repo as well.
 
@@ -142,7 +139,7 @@ secrets:
 
 ```yaml
 secrets:
-  decrypt: sops --decrypt docs/services/ops/secrets.enc.env
+  decrypt: sops --decrypt services/ops/secrets.enc.env
 ```
 
 ```yaml
@@ -164,49 +161,6 @@ secrets:
 
 The copy's manifest records the env files and the `saddlebag exec` prefix `up` used, so
 `ostler env compose` runs the same way.
-
-## Environment pages and `ostler env exec`
-
-The stack's secret source feeds compose. The variables a command outside compose needs,
-such as a test runner or a migration, live on the `environment` page under `variables:`:
-
-```markdown
-- variables:
-  - LOG_LEVEL: info
-  - APP_PORT: 8080
-  - DATABASE_URL: secret
-```
-
-`NAME: value` is a literal the page states and any reader may see. `NAME: secret` is a
-value saddlebag holds, in a record created with `--var NAME --tag environment=<slug>`,
-where `<slug>` is the page's `slug:`. No real secret value is ever written on the page:
-`ostler doctor` raises `environment-variable-secret` on a literal that reads as one, and
-`environment-variable-name` on a name that is not a variable name.
-
-```bash
-ostler env exec <slug> -- CMD [ARGS...]              # run CMD with the page's variables
-ostler env dotenv <slug> [--to PATH]                 # render the page as a dotenv, held names blank
-ostler env import-dotenv FILE --environment <slug>   # move a dotenv onto the page
-```
-
-- `exec` lays the literals over the process environment, then wraps the command in
-  `saddlebag exec --env NAME=<record>` for each held name and replaces itself with it. It
-  fails before running anything when a held name has no record tagged for the page or has
-  two, and the message carries the `saddlebag secret create` line that fixes it.
-- `dotenv` writes `# rendered by ostler env dotenv from <id>; edit the page, not this file`
-  then one `NAME=value` per entry in page order, `NAME=` for a held one. The default path is
-  `.env` at the repo root. A path inside the repo is added to `.gitignore` unless a line
-  already names it. It prints `wrote <path> (<n> variables, <h> held)`.
-- `import-dotenv` reads an existing dotenv, asks `saddlebag env classify` which lines are
-  secret, prints the diff it will make to the page and writes it: each file key replaces the
-  entry of the same name or is appended in file order, a secret key as `NAME: secret`. Then it
-  runs `saddlebag env import FILE --keys ... --tag environment=<slug> --prefix <slug>-` for
-  the secret keys no record with that `var` and tag holds yet, and prints
-  `<n> lines: <h> held, <l> literal`, `<k> already held` when any were, and a `next:` line
-  naming the page to commit. It refuses before any write a key the page cannot name and a
-  literal whose value is the word `secret`. A saddlebag failure after the page was written is
-  reported as such: the page already names the keys as held, and the `secret create` line
-  finishes the job.
 
 Every `$NAME`, `${NAME}` and `${NAME:?msg}` a rendered template uses must be a name the source defines, or a job it needs writes.
 `$NAME` without braces is checked too. `${NAME:-default}` has a default and is not checked, nor
@@ -273,8 +227,7 @@ lists the services that did load. `--json` keeps the `copies` rows and adds a `s
 
 A QA run needs none of these by hand. `ostler qa stack up --lease story-12` brings the book up
 from its `stack.yml` as that copy, and the coder workflow does the same under the run's lease.
-A call without a lease keeps the stack the book's runbook declares, and takes the shared copy
-only where no runbook declares one.
+A call without a lease takes the shared copy.
 
 Each bring-up of a copy that is already up does the same work:
 
@@ -311,19 +264,3 @@ directory name, so a `docker ps` filter on the lease alone finds it only unancho
 A run killed before its teardown does not leave its copy up for good. The next leased bring-up
 on the machine tears down every copy whose run is gone, and says which. A copy brought up by
 hand, outside any run, has no holder and stays until `ostler env down` removes it.
-
-## Runbook prepare steps
-
-This file describes `stack.yml`. A runbook page declares its own stack, and its `kind: prepare`
-steps run on the host, each through `bash -c`, in document order and before the service starts.
-A step that does not return within 600 seconds is killed and fails the bring-up. A step raises
-its own ceiling with a `timeout:` bullet, in seconds. A stack the run adopts, because it already
-serves, skips the prepare steps and the launch, and still runs the seed and health steps. The
-mobile example in
-[the runbook reference](../../ostler-okf/references/node-types/runbook.md) boots an emulator
-and installs the app in prepare steps.
-
-## Doctor codes it can trip
-
-`stack-invalid`, one finding per problem, on the file it was found in. See
-[doctor-codes.md](doctor-codes.md).

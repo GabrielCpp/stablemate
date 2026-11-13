@@ -14,43 +14,20 @@ markdown in place.
 `<PREFIX>-<6+ chars>` — the shortest slice unambiguous in this repo. Human output prints handles by
 default, `--json` prints full ids (a program wants the identity that never changes); `--handles` /
 `--full-ids` override either. A handle is accepted **wherever a command takes an id**, in either
-mode — `trace`, `query`, `create story --covers`, `seed add/remove`, `backlog prune` — so a token copied out of one command goes into the next. Never write a handle
+mode — `query`, `create story --covers`, `seed add/remove`, `backlog prune` — so a token copied out of one command goes into the next. Never write a handle
 into a document: it lengthens as soon as a colliding id is minted. From Python, `okf.handle(id)` /
 `okf.handles()` render and `okf.expand(token)` resolves.
 
 **Inspect**
 ```bash
-ostler doctor [--epic SLUG] [--json] [--no-schema]   # conformance + referential integrity; non-zero on a break
-ostler trace  <id|surface|path>                      # walk the graph from any node
+ostler doctor [--epic SLUG] [--json] [--no-schema]   # checks epics, stories, milestones, the register and decisions; non-zero on a break
 ```
 
 **Retrieve**
 ```bash
-ostler list   --type epic|story|knowledge|feature|spec|seed [--epic E] [--status S] [--json]
+ostler list   --type epic|story|spec|seed [--epic E] [--status S] [--json]
 ostler search <query> [--type T] [--json]                         # full-text match over node prose
 ostler query  stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
-ostler graph  [selectors…] [--tree|--ids|--json]     # query the node/edge/bullet graph
-```
-
-`ostler graph` is the **structural** query `search` can't do — it walks the *typed, nested* node
-tree (every node carries its `- key: value` bullets, its resolved out-edges, and its
-`title_path`/`type_path` hierarchy), so you filter precisely instead of by prose, **without `jq`**.
-Selectors compose (AND); output is `--tree` (default), `--ids`, or `--json`:
-
-```bash
-ostler graph --surface SVC                       # the whole service, as an outline tree
-ostler graph --path 'concept:agent / field:timeout'   # relative hierarchy query (/ =descendant, > =direct)
-ostler graph --type field --under <id> --depth 1 # a node's direct children of a type
-ostler graph --bullet 'code=mod.py::Sym' --ids   # dedup: is this symbol already grounded?
-ostler graph --has-bullet code                   # coverage: every grounded node
-ostler graph --orphans                           # nodes no edge points to (unreachable)
-```
-
-- **dedup before you scaffold** — `--bullet 'code=<symbol>'`: if a node already grounds it, enrich
-  that node, don't make a second one. (`--path` for "does *this* nested node already exist?")
-- **inventory coverage** — `--has-bullet code` lists every grounded node; diff against source symbols.
-- **orphans** — `--orphans` is unreachable nodes, first-class (no `jq` walk).
-```bash
 ostler next-epic [--json]                            # next queued epic with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
 ostler path epic <epic> | spec <story-id> | story <story-id> | branch <story-id> [--epic] [--is_epic emits feat/<slug>]
@@ -68,8 +45,7 @@ A story is addressed by its id. The slug names the story's folder and its `### <
 ostler create epic    <name>  --title T [--json]
 ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--json]
 ostler update story   <story-id> --title T --covers a,b --depends a,b
-ostler create feature <slug>  --title T [--area A] [--route R] [--json]
-ostler delete epic <name> | story <story-id> | feature <slug>
+ostler delete epic <name> | story <story-id>
 
 ostler seed add    <epic> <id> [--status S] [--summary …] [--surface …] \
                                [--legacy-surface …] [--backing …] [--prerequisites …]
@@ -98,10 +74,13 @@ ostler edit rename    <old-slug> <new-slug> [--write]
 ostler edit settle-review <story-id> [--write]
 ```
 
-**OKF UI profile** (surfaces / elements / behaviors — see "The OKF UI profile" below)
+**The service book** (written with the `ostler-book` skill)
 ```bash
-ostler scaffold <type> <name> [--service SVC] [--in FILE] [--title T] [--json]  # new node, canonically placed
-ostler fmt [PATH…] [--check]              # canonicalize frontmatter/bullets/headings; --check = no writes, exit 1 if unclean
+ostler book search <term> [--service services.<name>] [--kind rule|endpoint|action|journey|screen|decision]
+ostler book explain services.<name> <ClassName>   # everything the book says of one element
+ostler book decisions services.<name> [--story ID]
+ostler book check services.<name> --app <app root>
+ostler book run services.<name>                   # play the book against the running app
 ```
 
 **Visual-fidelity check** (used by `coder`'s QA gates — see [[coder-workflow]])
@@ -109,22 +88,16 @@ ostler fmt [PATH…] [--check]              # canonicalize frontmatter/bullets/h
 ostler vet <screenshot> --manifest M (--cdp-url U | --regions FILE) --story ID [--state s] [--iou-threshold 0.5] [--json]
 ```
 
-**QA context and execution control plane**
+**QA execution control plane**
 ```bash
-ostler qa context --base REV [--head REV|WORKTREE] --spec DIR \
-  --source-root SURFACE=PATH [--source-root SURFACE=PATH ...] \
-  [--story-file PATH] --json
-ostler qa context-validate --spec DIR --json
 ostler qa validate DIR/qa_plan.py --spec DIR --json
 ostler qa run DIR/qa_plan.py --spec DIR --json
 ```
 
-`qa context` writes `qa-okf-context.json` and its Markdown rendering beside the plan.
-Blocking unmapped production changes use a nonzero process exit but still produce JSON;
-workflow adapters must route that as `invalid`, not crash. Plan validation reports
-`passed|invalid`. Execution reports `passed|failed|blocked|invalid` and owns deletion and
-recreation of `qa/`, service/driver cleanup, `qa-run.ndjson`, `run-manifest.json`, and
-evidence. `qa_plan.py` and static `qa-inputs/` remain outside disposable `qa/`.
+Plan validation reports `passed|invalid`. Execution reports `passed|failed|blocked|invalid` and
+owns deletion and recreation of `qa/`, service/driver cleanup, `qa-run.ndjson`,
+`run-manifest.json`, and evidence. `qa_plan.py` and static `qa-inputs/` remain outside
+disposable `qa/`.
 
 A browser scenario also leaves `qa/traces/<scenario>-diagnostics.json` (manifest kind
 `browser-diagnostics`) — the whole console and the whole network for that scenario, at the

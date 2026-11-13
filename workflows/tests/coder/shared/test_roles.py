@@ -60,9 +60,9 @@ def test_every_prompt_is_a_role_or_declared_mechanics(directory: Path):
 @pytest.mark.parametrize("directory", PROMPT_DIRS, ids=[d.parent.name for d in PROMPT_DIRS])
 def test_every_prompt_renders_with_its_partials(directory: Path, tmp_path: Path):
     repo = tmp_path / "repo"
-    skill = repo / ".claude/skills/ostler-okf/SKILL.md"
+    skill = repo / ".claude/skills/ostler-book/SKILL.md"
     skill.parent.mkdir(parents=True)
-    _ = skill.write_text("---\nname: ostler-okf\n---\n", encoding="utf-8")
+    _ = skill.write_text("---\nname: ostler-book\n---\n", encoding="utf-8")
     (repo / ".git").mkdir()
     for stem in sorted(_stems(directory)):
         relative = (directory / f"{stem}.md").relative_to(CODER).as_posix()

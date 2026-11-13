@@ -403,11 +403,11 @@ on `kit.git` / `kit.github` / `kit.workspace`, the idempotent branch and commit 
 submodule, not the `kit` facade), and the working-directory rule. Read it before writing a
 node that touches a repo, a branch, a PR or a workspace file.
 
-## OKF graph (ostler) — the in-process `ostler` API, never subprocess
+## Planning graph (ostler) — the in-process `ostler` API, never subprocess
 
 Don't shell out to the `ostler` CLI — no `subprocess.run(["ostler", …])`, no
 `kit.run_tool(["ostler", …])`, no local helper scraping `--json` out of stdout. `ostler` is a
-dependency of the workflow distribution, so a node commands the doc graph **as a library**
+dependency of the workflow distribution, so a node commands the planning graph **as a library**
 through the `Ostler` facade, which returns plain Python objects and which an in-process test
 fakes by patching the class.
 

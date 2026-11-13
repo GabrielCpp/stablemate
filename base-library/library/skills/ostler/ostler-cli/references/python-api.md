@@ -25,13 +25,12 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 | `todo list` | `okf.todo() -> list[str]` |
 | `backlog list` | `okf.record_listing(repo, status) -> list[str]` · `okf.records()` · `okf.open_records(repo)` |
 | `doctor [--epic E] --json` | `okf.doctor(epic=…) -> QaOutcome` (`.data` is the report `.as_dict()`) |
-| `coverage --inventory F [--surface S]` | `okf.coverage(inventory=…, surface=…, waivers=…) -> QaOutcome` (`.data` is the join) |
 | `path epic E` / `path spec ID` / `path story ID` / `path branch ID` | `okf.epic_path("E")` / `okf.spec_path("ID")` / `okf.story_path("ID")` / `okf.branch("ID", epic=False)` |
 | `--handles` rendering | `okf.handle(id) -> str` / `okf.handles() -> dict[str, str]` · `okf.expand(token) -> str` |
 | `create epic/story` · `update story` · `delete epic/story` · `seed add` · `set-status` · `conflict` | `okf.create_epic(…)` / `okf.create_story(…)` · `okf.update_story(story_id, title=…, covers=…, depends=…)` · `okf.delete_epic(…)` / `okf.delete_story(…)` · `okf.add_seed(epic, id, status=…, meta={…})` · `okf.set_status(story_id, status)` · `okf.set_conflict(story_id, text)` (`""` clears) → `Result` |
 | `backlog add` · `backlog adopt` | `okf.backlog_add(summary, repo=, area=, …)` → `Result` (a committed record) · `okf.backlog_import(file, repo=)` → `Imported` |
 | `backlog prune` · `todo add/prune/reorder` | `okf.close_record(id, status, reason)` (commits the close in the artifacts repo) · `okf.todo_add/todo_prune/todo_reorder` → `Result` |
-| `qa context` · `qa context-validate` · `qa validate` · `qa run` | `okf.qa_context(base=…, spec=…, …)` · `okf.qa_context_validate(spec=…)` · `okf.qa_validate(plan, spec=…)` · `okf.qa_run(plan, spec=…)` |
+| `qa validate` · `qa run` | `okf.qa_validate(plan, spec=…)` · `okf.qa_run(plan, spec=…)` |
 | `artifact vet KIND --spec DIR` | `okf.artifact_vet("KIND", spec) -> QaOutcome` |
 | `qa tools list` | `okf.qa_tools_catalog() -> QaOutcome` (`.data` = `{"tools": …, "errors": …}`) |
 | `edit settle-review ID --write` | `okf.settle_review(story_id, write=True) -> EditPlan` (`.error`, per-finding ledger) |
@@ -39,22 +38,22 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 ### `QaOutcome` — a check that answers instead of raising
 
 Every method in the table above that returns a `QaOutcome` — the whole qa/artifact family,
-plus `doctor` and `coverage` — answers a *data*-shaped failure rather than raising it. An
-unreadable inventory, a malformed plan, a context file that will not parse, a book that will
+plus `doctor` — answers a *data*-shaped failure rather than raising it. An
+malformed plan, a spec file that will not parse, a graph that will
 not load: each comes back as a failed outcome, so a caller branches on fields instead of
 wrapping every call in `except (OSError, ValueError, RuntimeError)`.
 
 ```python
-outcome = okf.coverage(inventory=path)
-outcome.ok        # the verdict — the join is complete / the check holds
+outcome = okf.doctor()
+outcome.ok        # the verdict — the check holds
 outcome.status    # "passed" | "failed" | "invalid" | whatever the check names
 outcome.message   # one line, the same text the CLI prints
 outcome.data      # the payload the CLI would `--json` — always carries "status"
 ```
 
 `status == "invalid"` is the one worth branching on separately: it means the check never ran,
-which is not the same as running and finding nothing. Zero uncovered units because the
-inventory would not parse must not read as "everything is covered".
+which is not the same as running and finding nothing. Zero findings because the
+graph would not load must not read as "everything is clean".
 
 A **call-site** mistake still raises, and should: an unknown `etype`, a `need` that is neither
 `"build"` nor `"author"`, a bad argument type. That is a bug where it was made, and returning
@@ -76,7 +75,6 @@ okf_path.epics_index_in(root)                    # the epic queue's index.md
 okf_path.services_root_in(root, service)         # the book, whole or per-service
 okf_path.epic_dir_in(root, "checkout-flow")      # → .../0001-checkout-flow, from the bare slug
 okf_path.story_dir_in(root, epic, slug)          # the story folder; join your own story.md
-okf_path.waivers_path_in(root)                   # coverage-waivers.json, inside the book
 okf_path.screenshots_dir_in(root)                # <book>/gui/screenshots
 ```
 
@@ -91,7 +89,7 @@ Every derivation comes in up to three spellings, chosen by what the caller alrea
 `_under` is what keeps an override from becoming a second, dumber derivation: ostler's rules
 still apply *inside* the directory you passed, so an epic is matched by number-or-slug there
 too. **This module is the only place a doc-tree path is derived** — no workflow, node or
-script writes `docs/epics` or `docs/services` as a literal; see "A
+script writes `docs/epics` as a literal; see "A
 workflow does not spell a doc path" in `workflows/README.md`.
 
 The loaded graph is a **snapshot**: reads reuse one cached load; a mutation applies

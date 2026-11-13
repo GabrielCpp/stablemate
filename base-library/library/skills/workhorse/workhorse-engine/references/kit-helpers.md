@@ -3,7 +3,7 @@
 The helper branch of [`workhorse-engine`](../SKILL.md): every seam a node uses instead of
 a subprocess — git, GitHub, workspace resolution, `find_repo_root`, `find_docs_root`,
 `load_json`, `load_jsonc`, `run_tool` — with the patch target each one needs under test.
-Reached when a node touches a repo, a branch, a PR or a workspace file. For the doc graph,
+Reached when a node touches a repo, a branch, a PR or a workspace file. For the planning graph,
 [ostler-api.md](ostler-api.md) instead.
 
 Everything a node reuses lives in the **workflow** distribution, not the engine: git,

@@ -1,6 +1,6 @@
 ---
 name: service-book
-description: "The standing rule for a repository that keeps a service book under services/: the book is read before the code for any what, why or how-do-I-reach-it question, through `ostler book search`, `explain` and `decisions` rather than grep, and a story is not done until the book states its behaviour, the decisions it settled are files beside the book, `ostler book check` passes and the book plays green on the story's code. A service that has no book yet keeps its markdown pages under docs/services/ until its book exists."
+description: "The standing rule for a repository that keeps a service book under services/: the book is read before the code for any what, why or how-do-I-reach-it question, through `ostler book search`, `explain` and `decisions` rather than grep, and a story is not done until the book states its behaviour, the decisions it settled are files beside the book, `ostler book check` passes and the book plays green on the story's code. A service that has no book yet gets one, written with the ostler-book skill."
 ---
 
 ## The book comes first
@@ -52,4 +52,4 @@ work and the bar for each element.
 A service with no `services/<name>/service.py` has no book. Write one from its
 source with the okf-book workflow, `workhorse-okf-book run python_book`, or by
 hand with the `ostler-book` skill. The book is the only form of spec this
-repository keeps. No page under `docs/services/` is read or written.
+repository keeps.

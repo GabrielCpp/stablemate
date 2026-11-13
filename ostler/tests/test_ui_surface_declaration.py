@@ -1,7 +1,6 @@
 """``exercised: false`` on a surface index — a whole surface's obligations declared out of scope."""
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from ostler import doctor
@@ -81,24 +80,6 @@ def test_a_declaration_on_a_surface_with_no_node_is_stale(repo: Path):
     assert finding.severity == "error"
     assert finding.path == "docs/services/legacy/index.md"
     assert "delete" in finding.suggestion
-
-
-def test_the_documented_obligation_class_is_the_one_the_gate_applies():
-    """The class is spelled twice — a frozenset here, a sentence in `doctor-codes.md`."""
-    ref = Path(__file__).resolve().parents[2] / (
-        "base-library/library/skills/ostler/ostler-okf/references/doctor-codes.md")
-    sentence = re.search(r"`exercised: false`.*?obligation-class findings under that "
-                         r"surface\s*—(.*?)\.\s", ref.read_text(), re.S)
-    assert sentence is not None, "doctor-codes.md no longer describes the class in prose"
-    assert set(re.findall(r"`([a-z0-9-]+)`", sentence.group(1))) == doctor.OBLIGATION_CODES
-
-
-def test_the_documented_code_fault_class_is_the_one_the_gate_applies():
-    ref = Path(__file__).resolve().parents[2] / (
-        "base-library/library/skills/ostler/ostler-okf/references/doctor-codes.md")
-    sentence = re.search(r"drops the\s+code-fault findings:(.*?)\.\s", ref.read_text(), re.S)
-    assert sentence is not None, "doctor-codes.md no longer describes the class in prose"
-    assert set(re.findall(r"`([a-z0-9-]+)`", sentence.group(1))) == doctor.CODE_FAULT_CODES
 
 
 def test_not_exercised_drops_unnamed_controls_and_their_collision(repo: Path):

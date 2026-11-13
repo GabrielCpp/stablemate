@@ -30,11 +30,11 @@ recommendation, because the milestone is theirs.
 
 ### 1. Ground
 
-Read the milestone, its grills, every design note it links and its journey mockups. Search the
-book with `ostler search` and `ostler trace` for each surface a journey changes, then read the
-source behind those surfaces.
+Read the milestone, its grills, every design note it links and its journey mockups. Read the
+book with `ostler book search`, `explain` and `decisions` for each surface a journey changes,
+then read the source behind those surfaces.
 
-Done when every journey step has a book node it changes and the source symbols that serve it.
+Done when every journey step has a book element it changes and the source symbols that serve it.
 
 ### 2. Split into epics
 

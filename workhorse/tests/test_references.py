@@ -106,7 +106,7 @@ def test_unrelated_call_is_ignored() -> None:
 
 
 def test_a_retired_helper_is_reported_whatever_its_arguments() -> None:
-    source = "{{ skill_load_ref('ostler-okf', skill_dir() + '/x') }}{{ isUsingInstruction(n) }}"
+    source = "{{ skill_load_ref('ostler-book', skill_dir() + '/x') }}{{ isUsingInstruction(n) }}"
     assert referenced_names(source) == {
         ("retired", "skill_load_ref"),
         ("retired", "skill_dir"),

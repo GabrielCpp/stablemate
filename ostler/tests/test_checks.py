@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import re
-from pathlib import Path
 
 import pytest
 
@@ -513,15 +511,6 @@ def test_a_relocation_the_nodes_type_does_hold_is_offered() -> None:
     concept_keys = registry.declared_keys("concept")
     assert "tests" in concept_keys
     assert refused.bullet("verify", concept_keys) == "- tests: e2e/dash_test.go::TestDash"
-
-
-def test_the_reference_page_prints_the_signatures_the_tool_prints() -> None:
-    """The page hard-codes all sixteen as headings and calls this module the authority on them, and until now nothing joined the two: the headings kept the annotation spelling for as long as the code had it, and then for one commit longer."""
-    page = Path(__file__).resolve().parents[2] / (
-        "base-library/library/skills/ostler/ostler-okf/references/check-vocabulary.md")
-    headings = re.findall(r"^### `(.+)`$", page.read_text(), re.M)
-    assert headings, "check-vocabulary.md no longer lists the checks as headings"
-    assert headings == [spec.signature() for spec in checks.CHECKS]
 
 
 @pytest.mark.parametrize("spec", [s for s in checks.CHECKS if s.cli_reads], ids=lambda s: s.name)

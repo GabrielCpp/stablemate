@@ -1,6 +1,6 @@
-# The OKF graph from a node — the in-process `ostler` API
+# The planning graph from a node — the in-process `ostler` API
 
-The doc-graph branch of [`workhorse-engine`](../SKILL.md): why a node commands ostler as a
+The planning-graph branch of [`workhorse-engine`](../SKILL.md): why a node commands ostler as a
 library rather than a subprocess, the facade calls a node actually makes, the snapshot and
 cache semantics that decide what a read sees after a mutation, and the lazy-imported QA /
 artifact / edit subsystems. Reached when a node reads or mutates anything under `docs/`. The
@@ -9,7 +9,7 @@ full verb→method reference is the [[ostler-cli]] skill.
 Don't shell out to the `ostler` CLI — no `subprocess.run(["ostler", …])`, no
 `kit.run_tool(["ostler", …])`, no local `ostler_json`/`ostler_run` helper scraping
 `--json` out of stdout with `raw_decode`. `ostler` is a dependency of the workflow
-distribution, so command the doc graph **as a library** through the `Ostler` facade — it
+distribution, so command the planning graph **as a library** through the `Ostler` facade — it
 returns plain Python objects (`dict`/`list`/`str` and `Result`), and an in-process test
 fakes it by patching the class:
 
@@ -38,12 +38,11 @@ fallback (e.g. a JSON sidecar). Don't paper over an empty result as "unavailable
 an empty queue, a raise means unreadable.
 
 QA / artifact / edit subsystems live on the same facade, **lazy-imported** so the read path
-never loads the QA/vet machinery: `okf.qa_context(...)`, `okf.qa_validate(plan, spec=…)`,
-`okf.qa_run(plan, spec=…)`, `okf.qa_context_validate(spec=…)`, `okf.artifact_vet(kind, spec)`,
+never loads the QA/vet machinery: `okf.qa_validate(plan, spec=…)`,
+`okf.qa_run(plan, spec=…)`, `okf.artifact_vet(kind, spec)`,
 `okf.settle_review(slug, write=True)`.
 
-**A check answers, it does not raise.** Those methods — plus `okf.doctor()` and
-`okf.coverage(...)`, which report the book rather than a story — all return a `QaOutcome`:
+**A check answers, it does not raise.** Those methods — plus `okf.doctor()`, which reports the graph rather than a story — all return a `QaOutcome`:
 `.ok` (the verdict), `.status`, `.message` (the line the CLI prints), `.data` (the payload the
 CLI would `--json`, including an unloadable book). So a node calls the method and branches on
 a field; there is no adapter in between and nothing to wrap in

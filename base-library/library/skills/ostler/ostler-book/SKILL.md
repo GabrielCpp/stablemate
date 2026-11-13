@@ -20,6 +20,20 @@ format could not express".
 
 This release covers HTTP, gRPC, web, mobile and command-line books.
 
+## The bar
+
+A book is held to four properties at once. Fall back on them when no rule below covers the
+case in front of you.
+
+- **True.** Every claim is one the running app is asked to show. A claim no call and no
+  screen can observe stays out of the book.
+- **Complete.** Everything the service does is in the book. Every endpoint, screen and
+  command sits on a journey or a cell the runtime plays.
+- **Sufficient.** A reader holding only the book can bring the stack up, reach any screen
+  and make any call.
+- **Intelligible.** The book says why a behaviour is so. Each decision is a file under
+  `decisions/` that names the elements it explains.
+
 ## The package
 
 | Path | Holds |

@@ -41,7 +41,7 @@ decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-nee
 decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:7	Before it starts, the engine resolves each name against the repository's .claude/skills and the home directory,
 decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:8	prints the unresolved ones as a WARNING and again as an ERROR on standard output, and exits 1. The other
 decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:9	workflows name no unguarded skill, so their dry run passes in a bare directory. The sandbox home is empty, so a skill is
-decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:10	installed only when the scene puts it under .claude/skills. The book plays both skills installed or neither.
+decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:10	installed only when the scene puts it under .claude/skills. The book plays the skill installed or not.
 decision	the-sandbox-environment	decisions/the-sandbox-environment.md:5	The surface sets HOME to the sandbox's home folder, AGENT_REPO_DIR to the sandbox and AGENT_CLI to claude, so a
 decision	the-sandbox-environment	decisions/the-sandbox-environment.md:6	dry run reads no skill, config or run from the machine it happens to run on. The sandbox path is written
 decision	the-sandbox-environment	decisions/the-sandbox-environment.md:7	<sandbox> in everything printed, so the run directory a dry run names is the same text in every world.

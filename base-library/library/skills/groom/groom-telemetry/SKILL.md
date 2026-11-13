@@ -250,11 +250,10 @@ evidence:
 groom status                                   # which run, which node, how long it has been there
 groom transcript ls --run <id>                 # what the node visit was told and what it answered
 groom loops                                    # the review→rework lap that failed to converge
-ostler qa context --base <rev> --spec <dir> --json   # the obligations the story actually owes
-ostler qa validate <dir>/qa-plan.yml --spec <dir> --json
+ostler qa validate <dir>/qa_plan.py --spec <dir> --json
 ```
 
-The red signal is usually already there: an obligation with no step, a plan that fails
+The red signal is usually already there: a claim no scenario covers, a plan that fails
 validation, or a scenario whose `qa/traces/<scenario>-diagnostics.json` carries the console
 error or the 5xx nobody asserted on. Turn it into a command **you** can run before proposing a
 fix. `ostler qa run` on the repaired plan is a legitimate Phase 1 loop. A `give_up` that is

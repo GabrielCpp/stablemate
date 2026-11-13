@@ -20,7 +20,7 @@ class Workspace(State):
 
 
 def skills_installed(model: Workspace) -> bool:
-    return ".claude/skills/ostler-okf/SKILL.md" in model.files
+    return ".claude/skills/ostler-book/SKILL.md" in model.files
 
 
 def scaffolded(model: Workspace) -> bool:

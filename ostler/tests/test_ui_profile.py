@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -118,43 +117,6 @@ def test_is_known_type():
     assert registry.is_known_type("feature")
     assert not registry.is_known_type("bogus")
     assert not registry.is_known_type("")
-
-
-NODE_TYPE_PAGES = Path(__file__).resolve().parents[2] / (
-    "base-library/library/skills/ostler/ostler-okf/references/node-types")
-
-
-def _example_bullets(block: str) -> list[tuple[str, str, int]]:
-    """A fenced example's top-level `key: value` bullets, in the shape `bullet_order` has."""
-    order: list[tuple[str, str, int]] = []
-    for line in block.split("\n"):
-        matched = re.match(r"^- ([a-z-]+):\s*(.*)$", line)
-        if matched is not None:
-            order.append((matched.group(1), matched.group(2), len(order)))
-    return order
-
-
-def test_a_reference_example_binds_each_check_to_its_own_claim():
-    """A page's example is a book, and until now no checker read one."""
-    misbound: list[str] = []
-    for page in sorted(NODE_TYPE_PAGES.glob("*.md")):
-        uitype = registry.ui_type(page.stem)
-        if uitype is None:
-            continue
-        for block in re.findall(r"```markdown\n(.*?)```", page.read_text(), re.S):
-            order = _example_bullets(block)
-            _, per_claim = registry.attributed_checks(uitype.name, order, {})
-            claims = registry.normative_claims(uitype.name, order)
-            uncovered = [claim for claim in claims if claim not in per_claim]
-            crowded = [claim for claim, found in per_claim.items() if len(found) > 1]
-            if uncovered and crowded:
-                misbound.append(
-                    f"{page.name}: {crowded} each carry several checks while {uncovered} "
-                    f"carry none")
-    assert not misbound, (
-        "a node-type page's example binds two checks to one claim and none to another — "
-        "the example is what an author copies, so it teaches the misbinding:\n  "
-        + "\n  ".join(misbound))
 
 
 def test_ui_type_lookup_by_base():

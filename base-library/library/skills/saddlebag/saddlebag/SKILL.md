@@ -1,6 +1,6 @@
 ---
 name: saddlebag
-description: "saddlebag: where the password, token or TOTP for a test login lives. Load it before you type a password, search seed, fixture or config files for test credentials, ask the user for a login, or read a `.env` to sign in. saddlebag hands the secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers signing in with `fill` (username, password, TOTP), typing into an Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, the ostler environment page and `ostler env exec|dotenv|import-dotenv`, the `secrets: saddlebag:` source in a stack.yml, the PreToolUse guard that refuses a read of a dotenv, key or credentials file, registering a secret, and reading errors. Also load when a command needs a password or token in its environment, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
+description: "saddlebag: where the password, token or TOTP for a test login lives. Load it before you type a password, search seed, fixture or config files for test credentials, ask the user for a login, or read a `.env` to sign in. saddlebag hands the secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers signing in with `fill` (username, password, TOTP), typing into an Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, the `secrets: saddlebag:` source in a stack.yml, the PreToolUse guard that refuses a read of a dotenv, key or credentials file, registering a secret, and reading errors. Also load when a command needs a password or token in its environment, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
 tags: [cli, tests, qa]
 ---
 
@@ -60,9 +60,8 @@ every secret has a stored value. Otherwise it exits 1 and names what is missing.
 Tags are `key=value` pairs, and they are the whole query vocabulary. Two conventions
 carry meaning across tools:
 
-- `environment=<slug>` names the environment a secret belongs to. In a repo with an
-  ostler book, the slug is the `environment` page's `slug:`, so the stack, its runbook
-  and `ostler env exec` find the same secrets.
+- `environment=<slug>` names the environment a secret belongs to. The stack's
+  `secrets: saddlebag:` query and `saddlebag exec --tag` find the same secrets.
 - `role=<name>` separates the identities within one environment (`role=admin`,
   `role=user`).
 
@@ -185,49 +184,7 @@ saddlebag env import .env --keys DATABASE_URL,STRIPE_KEY --tag environment=local
 Each record takes the key as its `var`, the tags you pass, and the name
 `<prefix><key lowercased, _ to ->`, so `STRIPE_KEY` becomes `local-stripe-key`. It
 prints `stored STRIPE_KEY as local-stripe-key` per key. A key the file lacks, or one with
-an empty value, stops it before anything is written. In a repo with an ostler book,
-`ostler env import-dotenv` below runs this for you and writes the literals onto the
-page in the same move.
-
-## An ostler environment page
-
-In a repo with an ostler book, the non-secret variables of an environment live on its
-`environment` page, under `variables:`. A held value is marked, never written:
-
-```markdown
-- variables:
-  - LOG_LEVEL: info
-  - DATABASE_URL: secret
-```
-
-`NAME: secret` says saddlebag holds the value, in a record with `--var NAME` and
-`--tag environment=<slug>`. Three `ostler env` verbs read the page, and they are the
-only way the two halves meet:
-
-```bash
-ostler env exec local -- make smoke             # literals over the process env, held values through saddlebag exec
-ostler env dotenv local --to .env               # a .env for a tool that insists on one; held names are left blank
-ostler env import-dotenv .env --environment local   # literals onto the page, secrets into saddlebag
-```
-
-- `exec` composes the page's literals over the process environment and wraps the
-  command in `saddlebag exec --env NAME=<record>` for each held name. A held name with
-  no record tagged for the page, or with two, is an error that names the fix. Reach for
-  it instead of `saddlebag exec --tag` whenever the environment has a page.
-- `dotenv` writes the page as a file, every held name as `NAME=` with nothing after it,
-  and adds the path to `.gitignore` when it is inside the repo. The file is a render of
-  the page: edit the page, not the file.
-- `import-dotenv` is the migration. It asks `saddlebag env classify` which lines are
-  secret, prints the page diff, writes the page (literals in file order, `secret` for
-  each secret key), then runs `saddlebag env import` for the secret keys with
-  `--tag environment=<slug> --prefix <slug>-`. A key already held is skipped and
-  counted. It ends with `<n> lines: <h> held, <l> literal` and the `next:` line. It
-  refuses, before any write, a key the page cannot name and a literal whose value is
-  the word `secret`.
-
-`ostler doctor` then holds the page: a literal that matches a secret rule is an error
-(`environment-variable-secret`) whose message carries the `secret create` line that
-fixes it.
+an empty value, stops it before anything is written.
 
 ## An ostler stack
 

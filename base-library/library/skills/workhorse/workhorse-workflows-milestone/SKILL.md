@@ -122,7 +122,7 @@ Use one `###` section per journey. Each journey starts with a services bullet:
 - services: web-app, api-service
 ```
 
-The bullet lists the books under `docs/services/` that the journey goes through. Doctor
+The bullet lists the books under `services/` that the journey goes through. Doctor
 rejects a journey with no bullet and a book that does not exist.
 
 Each journey also names:

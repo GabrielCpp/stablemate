@@ -68,7 +68,7 @@ SCHEMA_VOCABULARY = re.compile(r"`[a-z0-9-]+`|\"[a-z0-9-]+\"")
 
 def _context(stack: str, root: Path) -> dict[str, object]:
     """A repo holding exactly one stack's skills and the docs skill, and nothing else's."""
-    skills: dict[str, tuple[str, ...]] = {**STACKS[stack]["skills"], "ostler-okf": ("docs",)}
+    skills: dict[str, tuple[str, ...]] = {**STACKS[stack]["skills"], "ostler-book": ("docs",)}
     (root / ".git").mkdir(parents=True)
     for name, tags in skills.items():
         skill = root / ".claude/skills" / f"acme-{name}" / "SKILL.md"

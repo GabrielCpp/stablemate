@@ -955,34 +955,6 @@ def _emitted_codes() -> dict[str, str]:
     return {code: next(iter(sevs)) for code, sevs in emitted.items()}
 
 
-def _documented_codes() -> dict[str, str]:
-    page = Path(__file__).resolve().parents[2] / (
-        "base-library/library/skills/ostler/ostler-okf/references/doctor-codes.md")
-    rows = re.findall(r"^\| `([a-z0-9-]+)` \| (error|warn) \|", page.read_text(), re.M)
-    documented = dict(rows)
-    assert len(rows) == len(documented), "doctor-codes.md documents one code twice"
-    return documented
-
-
-def test_the_reference_page_lists_every_code_doctor_can_raise():
-    """`doctor-codes.md` calls itself the list of every finding, and until now nothing joined it to the findings."""
-    emitted, documented = _emitted_codes(), _documented_codes()
-    assert set(emitted) == set(documented), {
-        "raised with no row": sorted(set(emitted) - set(documented)),
-        "documented and never raised": sorted(set(documented) - set(emitted)),
-    }
-
-
-def test_the_reference_page_states_the_severity_each_code_is_raised_at():
-    """The severity is the half of a row a reader acts on — an error gates a story and a warn does not — and it was wrong for `malformed-variants` and `runbook-missing` in opposite directions, each for as long as nobody re-read the code beside the row."""
-    emitted, documented = _emitted_codes(), _documented_codes()
-    mismatched = {
-        code: {"doctor.py": emitted[code], "doctor-codes.md": documented[code]}
-        for code in set(emitted) & set(documented) if emitted[code] != documented[code]
-    }
-    assert not mismatched, mismatched
-
-
 def test_a_docs_features_directory_is_flagged_as_the_moved_books_root(repo: Path):
     write(repo / "docs/features/area/old.md", "---\ntype: concept\ntitle: Old\n---\n# Old\n")
 

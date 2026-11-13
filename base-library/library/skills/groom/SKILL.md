@@ -133,8 +133,7 @@ The mechanics that do apply are small enough to state here:
   `#statusbar` and the detail head (`role="status"`), and `#toasts` (`role="alert"`,
   `aria-live="assertive"`) are static elements the islands render *into*. Keep it that way: a live
   region that is itself re-created by a render is never announced. Adding a fourth `role="status"`
-  to this page needs a distinguishing `aria-label` — the ambiguity is real and `ostler locators`
-  will catch it.
+  to this page needs a distinguishing `aria-label` — the ambiguity is real.
 - **Every island's roots and names are the accessibility contract.** Rows are keyed so Preact
   reconciles rather than replaces; a key change that swaps a row's DOM node moves focus off it.
 - **State is never colour alone.** The connection chip and `.ws-dot` pair the dot

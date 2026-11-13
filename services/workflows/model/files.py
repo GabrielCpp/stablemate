@@ -12,7 +12,7 @@ from ostler.book import Mark
 NAMES = ("loop-runner", "research", "author", "coder", "okf-book", "review-debt")
 RUN = '"workflow": "{}"'
 SUBFLOWS = ("Finalize", "BookQa", "Dev", "Docs", "Fix", "Qa")
-SKILLS = ("ostler-okf", "ostler-book")
+SKILLS = ("ostler-book",)
 SKILL_NAME = "name: {}"
 CHECKS = ("pytest -q", "make test")
 

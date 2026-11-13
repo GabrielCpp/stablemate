@@ -23,21 +23,6 @@ def test_the_runbook_lists_every_driver_value_drivers_declares() -> None:
     assert set(parsed) == set(drivers.DRIVERS)
 
 
-def _node_type_page_row_values() -> list[str]:
-    """The backtick-quoted values of the `driver` row on the `runbook` node-type page."""
-    page = (Path(__file__).resolve().parents[2]
-            / "base-library/library/skills/ostler/ostler-okf/references/node-types/runbook.md")
-    [row] = re.findall(r"^\| `driver` \|(.+)\|$", page.read_text(), re.M)
-    return re.findall(r"`([a-z]+)`", row)
-
-
-def test_the_node_type_page_lists_every_driver_value_drivers_declares() -> None:
-    """The `runbook` node-type page states the vocabulary a fourth time, and it is the copy a book author actually reads — the §4.1 table is ostler's own runbook, and the skill page is what ships to the agent writing the book."""
-    parsed = _node_type_page_row_values()
-    assert parsed, "the node-type page's `driver` row parsed no values at all"
-    assert set(parsed) == set(drivers.DRIVERS)
-
-
 def test_route_grammar_names_every_driver() -> None:
     """A §4.1 value `ROUTE_GRAMMAR` does not name falls through to the path-addressed default — the wrong answer for a driver that has in fact declared it addresses nothing by path."""
     assert set(routes.ROUTE_GRAMMAR) == set(drivers.DRIVERS)
