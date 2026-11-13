@@ -815,7 +815,7 @@ def test_secrets_in_a_book_file_is_refused_and_a_saddlebag_name_names_the_new_sh
     errors = spec.load(root).errors
     assert any(
         error.startswith("docs/services/web/ops/stack.yml: `secrets:` belongs in the stack root, "
-                         "docs/services/ops/stack.yml: one repo has one secret source")
+                         "services/ops/stack.yml: one repo has one secret source")
         and "`saddlebag: \"<key>=<value>\"`" in error for error in errors)
 
 
@@ -830,6 +830,81 @@ def test_the_stack_root_refuses_a_saddlebag_name_and_two_sources(tmp_path: Path)
                for error in spec.load(root).errors)
     _root_stack(root, {"file": ".env"})
     assert spec.load(root).secrets == spec.SecretSpec(file=".env")
+
+
+def _beside_repo(tmp_path: Path) -> Path:
+    root = tmp_path / "acme"
+    (root / ".git").mkdir(parents=True)
+    _file(root, "services/billing/ops/services/ledger.yml.j2", "image: ledger\n")
+    _file(root, "services/billing/ops/stack.yml", yaml.safe_dump({"services": {
+        "ledger": {"about": "the ledger", "define": "services/ledger.yml.j2"}}}))
+    return root
+
+
+def test_a_stack_file_beside_the_service_book_is_loaded(tmp_path: Path) -> None:
+    root = _beside_repo(tmp_path)
+    catalog = spec.load(root)
+    assert catalog.errors == []
+    book = catalog.books["billing"]
+    assert book.directory == root / "services" / "billing"
+    assert book.ops_dir == root / "services" / "billing" / "ops"
+    assert catalog.services["billing:ledger"].define == book.ops_dir / "services" / "ledger.yml.j2"
+
+
+def test_the_stack_root_beside_the_service_books_holds_secrets(tmp_path: Path) -> None:
+    root = _beside_repo(tmp_path)
+    _file(root, "services/ops/services/cache.yml.j2", "image: redis:7\n")
+    _file(root, "services/ops/stack.yml", yaml.safe_dump({
+        "secrets": {"file": ".env"},
+        "services": {"cache": {"about": "the cache", "define": "services/cache.yml.j2"}}}))
+    catalog = spec.load(root)
+    assert catalog.errors == []
+    assert catalog.secrets == spec.SecretSpec(file=".env")
+    assert catalog.books["acme"].directory == root / "services"
+    assert "acme:cache" in catalog.services
+
+
+def test_a_book_beside_the_service_book_needs_a_book_in_the_pages(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _file(root, "services/billing/ops/services/ledger.yml.j2", "image: ledger\n")
+    _file(root, "services/billing/ops/stack.yml", yaml.safe_dump({
+        "needs": ["api"],
+        "services": {"ledger": {"about": "the ledger", "define": "services/ledger.yml.j2"}}}))
+    catalog = spec.load(root)
+    assert catalog.errors == []
+    assert "api:api" in catalog.services["billing:ledger"].needs
+
+
+def test_a_book_with_a_stack_file_in_both_places_loads_the_one_beside_the_book(
+    tmp_path: Path,
+) -> None:
+    root = _repo(tmp_path)
+    _file(root, "services/api/ops/services/other.yml.j2", "image: other\n")
+    _file(root, "services/api/ops/stack.yml", yaml.safe_dump({"services": {
+        "other": {"about": "the other", "define": "services/other.yml.j2"}}}))
+    catalog = spec.load(root)
+    duplicates = [error for error in catalog.errors if "already has" in error]
+    assert duplicates == [
+        "docs/services/api/ops/stack.yml: the book `api` already has "
+        "services/api/ops/stack.yml: delete this one"]
+    assert list(catalog.books["api"].services) == ["api:other"]
+
+
+def test_the_stack_root_in_both_places_gives_one_error(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _file(root, "services/ops/stack.yml", "services: {}\n")
+    _file(root, f"{SERVICES}/ops/stack.yml", "services: {}\n")
+    assert spec.load(root).errors == [
+        "docs/services/ops/stack.yml: the book `acme` already has "
+        "services/ops/stack.yml: delete this one"]
+
+
+def test_the_book_near_a_file_beside_the_service_book_is_the_one_brought_up(
+    tmp_path: Path,
+) -> None:
+    root = _beside_repo(tmp_path)
+    near = root / "services" / "billing" / "some" / "file"
+    assert leases.books_near(root, near=near) == ["billing"]
 
 
 def test_the_reference_tables_the_root_level_for_secrets() -> None:

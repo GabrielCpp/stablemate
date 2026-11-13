@@ -19,6 +19,7 @@ from ostler.qa import addresses
 STACK_FILE = "stack.yml"
 _OUTPUT_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 OPS_DIR = "ops"
+BOOKS_DIR = "services"
 
 
 @dataclass(frozen=True)
@@ -59,7 +60,7 @@ KEYS: tuple[Key, ...] = (
         "the one source of `${VAR}` values: `file:` a dotenv file, `decrypt:` a command "
         "whose stdout is dotenv, or `saddlebag:` the `key=value` tags that select secrets in "
         "saddlebag, under which every compose command runs. Valid only in the stack root, "
-        "docs/services/ops/stack.yml"),
+        "services/ops/stack.yml"),
     Key("book", "needs", _STRINGS,
         "the books whose every service this book's services need, so they come up first"),
     Key("book", "default-fixtures", _STRINGS,
@@ -203,14 +204,21 @@ class Catalog:
     errors: list[str] = field(default_factory=list)
 
 
+def stack_roots(root: Path) -> list[Path]:
+    """The folders a book's `ops/stack.yml` is looked for under: the service books, then the pages."""
+    return list(dict.fromkeys([root / BOOKS_DIR, path_mod.services_root_in(root)]))
+
+
 def stack_files(root: Path) -> list[Path]:
-    """The `ops/stack.yml` of the book at the services root and of each book one level below it."""
-    base = path_mod.services_root_in(root)
-    if not base.is_dir():
-        return []
-    found = [base / OPS_DIR / STACK_FILE] if (base / OPS_DIR / STACK_FILE).is_file() else []
-    found += sorted(child / OPS_DIR / STACK_FILE for child in base.iterdir()
-                    if (child / OPS_DIR / STACK_FILE).is_file())
+    """The `ops/stack.yml` of the book at each stack root and of each book one level below it."""
+    found: list[Path] = []
+    for base in stack_roots(root):
+        if not base.is_dir():
+            continue
+        if (base / OPS_DIR / STACK_FILE).is_file():
+            found.append(base / OPS_DIR / STACK_FILE)
+        found += sorted(child / OPS_DIR / STACK_FILE for child in base.iterdir()
+                        if (child / OPS_DIR / STACK_FILE).is_file())
     return found
 
 
@@ -233,7 +241,7 @@ def book_dir(stack_file: Path) -> Path:
 def book_name(root: Path, stack_file: Path) -> str:
     """The name other books reference *stack_file*'s services by."""
     directory = book_dir(stack_file)
-    return root.name.lower() if directory == path_mod.services_root_in(root) else directory.name
+    return root.name.lower() if directory in stack_roots(root) else directory.name
 
 
 def load(root: Path) -> Catalog:
@@ -244,8 +252,16 @@ def load(root: Path) -> Catalog:
         catalog.errors.append(
             f"{shown(root, old)}: is the old place: move it to {shown(root, new)}, "
             f"whose paths are read from {OPS_DIR}/")
+    first_file: dict[str, Path] = {}
     for stack_file in stack_files(root):
-        _read_book(catalog, root, book_name(root, stack_file), stack_file)
+        name = book_name(root, stack_file)
+        if name in first_file:
+            catalog.errors.append(
+                f"{shown(root, stack_file)}: the book `{name}` already has "
+                f"{shown(root, first_file[name])}: delete this one")
+            continue
+        first_file[name] = stack_file
+        _read_book(catalog, root, name, stack_file)
     _expand_book_needs(catalog, root)
     _check_needs(catalog)
     _check_cycles(catalog)
@@ -261,8 +277,8 @@ def shown(root: Path, stack_file: Path) -> str:
 
 def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> None:
     where = shown(root, stack_file)
-    is_root = book_dir(stack_file) == path_mod.services_root_in(root)
-    root_file = shown(root, path_mod.services_root_in(root) / OPS_DIR / STACK_FILE)
+    is_root = book_dir(stack_file) in stack_roots(root)
+    root_file = shown(root, root / BOOKS_DIR / OPS_DIR / STACK_FILE)
     try:
         raw = yaml.load(stack_file.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
     except yaml.YAMLError as exc:
