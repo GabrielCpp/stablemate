@@ -35,6 +35,8 @@ This release covers HTTP, gRPC, web, mobile and command-line books.
 | `fixtures/*.py` | what a caller sends: one base factory per fixture and variants that fill one thing in |
 | `journeys/*.py` | stories a user lives through, one class per file |
 | `DISAGREEMENTS.md` | numbered entries where the source, the openapi and the app disagree |
+| `decisions/<slug>.md` | why one behaviour is so: three header lines, `story:`, `date:` and `elements:` with the class names it explains, a blank line, then prose. A decision no story settled, as in a backfill, writes `story: none` |
+| `ops/stack.yml` | the containers `ostler env` runs for this service, with their templates beside it |
 
 Each package has an `ALL` (endpoints, journeys) or `__all__` (fixtures) that registers what
 it defines. A class nothing registers does not exist for ostler.
