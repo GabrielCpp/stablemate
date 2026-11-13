@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 from _workspace import Workspace, cut_run_worktrees
-from workhorse_workflows.coder.shared import story, story_commit
+from workhorse_workflows.coder.shared import story, story_commit, worktree
 from workhorse_workflows.kit import find_book_root, find_docs_root, resolve_workspace
 
 BRANCH = "run/coder-t"
@@ -82,3 +82,34 @@ def test_a_story_commit_in_mode_b_commits_in_the_member_worktree(
     assert git(trees.api, "show", "--name-only", "--format=", "HEAD").stdout.split() == ["feature.py"]
     assert git(workspace.api, "rev-parse", "HEAD").stdout == main_head
 
+
+@pytest.mark.parametrize("start", ["api", "artifacts"])
+def test_a_file_already_untracked_in_a_member_repo_is_not_the_storys_leftover(
+    workspace: Workspace, logger: logging.Logger, start: str
+) -> None:
+    """The snapshot read the book root only, so the review of a workspace story looped on files it never wrote."""
+    (workspace.api / "notes.txt").write_text("the operator's own\n", encoding="utf-8")
+    repo_dir = str(getattr(workspace, start))
+
+    dirty = worktree.snapshot_worktree_state(logger, repo_dir=repo_dir, workspace="acme")
+    clean = story_commit.check_repos_clean(
+        logger,
+        preexisting=dirty.entries,
+        repo_dir=repo_dir,
+        workspace="acme",
+        roots=[str(workspace.api)],
+    )
+
+    assert clean.clean, clean.dirty
+
+
+def test_in_one_repo_the_snapshot_names_no_checkout(tmp_path: Path, git: Git, logger: logging.Logger) -> None:
+    """An entry of a single repository carries no owner, so every lane that reads it by path still matches."""
+    repo = tmp_path / "solo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    (repo / "scratch.py").write_text("x = 1\n", encoding="utf-8")
+
+    dirty = worktree.snapshot_worktree_state(logger, repo_dir=str(repo))
+
+    assert [entry.count("\0") for entry in dirty.entries] == [1], dirty.entries
