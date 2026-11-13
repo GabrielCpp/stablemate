@@ -69,21 +69,23 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     run.add_argument("--seed", type=int, default=0, help="the seed of a shuffled order")
     run.add_argument("--partial", action="store_true",
                      help="a run of some journeys only: unseen answers and unmet defects do not fail it")
-    run.add_argument("--only", action="append", default=[], metavar="ENDPOINT",
-                     help="play only the journeys that call these endpoints, their declared cells and their input classes; "
-                          "repeatable or comma-separated")
+    run.add_argument("--only", action="append", default=[], metavar="CALL",
+                     help="play only the journeys that call these endpoints, or these interactions in a screen book, "
+                          "their declared cells and their input classes; repeatable or comma-separated")
     run.add_argument("--register", action="store_true",
                      help="add the underspecified findings the register lacks to the service's UNDERSPECIFIED.md, and do not fail on them")
-    run.add_argument("--register-outside", action="append", default=[], metavar="ENDPOINT",
-                     help="add only the findings of endpoints outside these calls to the register; repeatable or comma-separated")
+    run.add_argument("--register-outside", action="append", default=[], metavar="CALL",
+                     help="add only the findings of endpoints and interactions outside these calls to the register; "
+                          "repeatable or comma-separated")
     explorer = sub.add_parser("explore", help="walk the model's state graph, then play every state, action and input class once")
     explorer.add_argument("service")
     explorer.add_argument("--depth", type=int, default=4)
     explorer.add_argument("--out", default="results")
     explorer.add_argument("--no-stack", action="store_true")
     explorer.add_argument("--seed-only", action="store_true", help="walk and list the cells without touching the app")
-    explorer.add_argument("--only", action="append", default=[], metavar="ENDPOINT",
-                          help="play the cells of these endpoints only, repeatable or comma-separated; the walk stays whole")
+    explorer.add_argument("--only", action="append", default=[], metavar="CALL",
+                          help="play the cells of these endpoints or interactions only, repeatable or comma-separated; "
+                               "the walk stays whole")
     live = sub.add_parser("walk", help="arrange one matrix scene on the live service, then take one action there")
     live.add_argument("service")
     live.add_argument("--record", help="the record whose matrix is meant; omitted, the service's first")
@@ -352,6 +354,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         return 2
     if broken(service, args.service):
         return 1
+    names = named(service, args.only)
+    named(service, args.register_outside)
     begun = made_ready(service, args)
     if isinstance(begun, int):
         return begun
@@ -361,7 +365,6 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         record_to(os.path.join(args.out, "videos"))
         os.makedirs(os.path.join(args.out, "videos"), exist_ok=True)
     results: list[JourneyResult] = []
-    names = named(service, args.only)
     journeys = [j for j in service.journeys
                 if (not args.journey or j.title() in args.journey) and (not names or touches(service, j, names))]
     if names:
@@ -494,6 +497,7 @@ def cmd_explore(service: Service[Any], args: argparse.Namespace) -> int:
             print(cell.text)
         report_exploration(service, args, walked, cells, walk_took, None, 0.0, unreached(service, date.today(), walked), picked)
         return 0
+    named(service, args.only)
     begun = made_ready(service, args)
     if isinstance(begun, int):
         return begun
@@ -522,12 +526,14 @@ def cmd_explore(service: Service[Any], args: argparse.Namespace) -> int:
 
 
 def named(service: Service[Any], only: list[str]) -> frozenset[str]:
-    """The endpoint names `--only` gives, each one checked against the service."""
+    """The endpoint and interaction names `--only` gives, each one checked against the service."""
     names = frozenset(n.strip() for item in only for n in item.split(",") if n.strip())
-    known = {e.__name__ for e in service.endpoints}
+    known = {e.__name__ for e in (*service.endpoints, *service.interactions)}
     unknown = sorted(names - known)
     if unknown:
-        raise SystemExit(f"--only names no endpoint of {service.name}: {', '.join(unknown)}; known: {', '.join(sorted(known))}")
+        raise SystemExit(
+            f"--only names no endpoint or interaction of {service.name}: {', '.join(unknown)}; known: {', '.join(sorted(known))}"
+        )
     return names
 
 

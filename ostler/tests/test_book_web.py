@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import socket
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -266,3 +267,24 @@ def test_a_page_that_sends_the_date_from_a_local_midnight_is_underspecified(tmp_
     assert done.returncode == 1, done.stdout + done.stderr
     assert "Underspecified (fails the run)" in done.stdout
     assert "- AddTodo screen due_on midnight" in done.stdout
+
+
+def test_only_takes_the_interactions_of_a_screen_book(todo_web, tmp_path: Path):
+    api, page = todo_web
+    arguments = ["run", "services.web", "--no-stack", "--only", "RemoveTodo", "--out", str(tmp_path / "out")]
+    done = run_book(arguments, api.port, web=page.port)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "only what calls RemoveTodo" in done.stdout
+    assert "0 fail" in done.stdout
+
+
+def test_a_name_only_cannot_place_is_refused_before_the_stack_starts(tmp_path: Path):
+    with socket.socket() as taken:
+        taken.bind(("127.0.0.1", 0))
+        port = taken.getsockname()[1]
+    done = run_book(["run", "services.web", "--only", "ClearTheList", "--out", str(tmp_path / "out")], port, web=port + 1)
+    assert done.returncode != 0
+    assert "--only names no endpoint or interaction of web: ClearTheList" in done.stderr
+    assert "RemoveTodo" in done.stderr
+    with socket.socket() as probe:
+        assert probe.connect_ex(("127.0.0.1", port)) != 0
