@@ -36,7 +36,8 @@ Three pieces, all data:
   not make the weakest one the easiest to try.
 - **grader** — the workflow's *own* deterministic gate, named by node id in
   `evals/<workflow>.yml`. `write_story` is graded by `validate_story` and
-  `check_story_grounding`, the same two scripts production runs. Not a rubric, not a
+  `check_story_grounding`, the same two scripts production runs. The second holds a story's
+  claimed seeds to its epic. Not a rubric, not a
   judge: tightening `validate_story` tightens the eval in the same commit, and the two
   can never drift into different opinions of "done".
 
