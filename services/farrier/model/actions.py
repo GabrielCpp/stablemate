@@ -51,6 +51,7 @@ class RunInstall(Action[InstallArgs, Repo]):
             write(s, ".agents/agents-context.json", '"prefix": "acme"'),
             write(s, ".agents/agents-context.claude.json", '"prefix": "acme"'),
             write(s, ".agents/hooks/pre-commit", "No installed skill declares a pre-commit hook."),
+            write(s, ".agents/hooks/commit-msg", "No installed skill declares a commit-msg hook."),
             write(s, ".githooks/pre-commit", "make farrier-run-hook"),
             write(s, ".gitignore", ".agents/agents.mk"),
             write(s, "Makefile", "-include .agents/agents.mk"),
@@ -59,7 +60,7 @@ class RunInstall(Action[InstallArgs, Repo]):
             changes.append(write(s, SKILL, "name: acme-demo", "generated_by: farrier"))
         elif SKILL in s.files:
             changes.append(Delete(s.files, SKILL))
-        generated = 4 + int(picked) + int("Makefile" not in s.files)
+        generated = 5 + int(picked) + int("Makefile" not in s.files)
         return Transaction(*changes, says=(f"Installed {generated} generated files into <sandbox>",))
 
 

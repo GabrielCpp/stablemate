@@ -24,6 +24,7 @@ MARKS = (
     Mark(".agents/agents-context.json", CONTEXT),
     Mark(".agents/agents-context.claude.json", CONTEXT),
     Mark(".agents/hooks/pre-commit", "No installed skill declares a pre-commit hook."),
+    Mark(".agents/hooks/commit-msg", "No installed skill declares a commit-msg hook."),
     Mark(".claude/skills/*/SKILL.md", "name: acme-demo", "generated_by: farrier"),
     Mark("*/.gitignore", "node_modules"),
 )
