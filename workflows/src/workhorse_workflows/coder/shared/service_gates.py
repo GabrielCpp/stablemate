@@ -40,10 +40,12 @@ def service_keys(service: str = "", service_type: str = "") -> list[str]:
 
 
 def service_declaration(
-    service: str = "", service_type: str = "", repo_dir: str = ""
+    service: str = "", service_type: str = "", repo_dir: str = "", checkout: str = ""
 ) -> dict:
-    """One service's declared block, looked up by its path, then by service name, then by type."""
+    """One service's declared block, looked up by its path, then by service name, then by type, in the run's repo and then in the service's own *checkout*, whose entries win."""
     block = _services_config(repo_dir)
+    if checkout:
+        block = {**block, **_services_config(checkout)}
     path = service.partition("::")[2]
     if path.strip():
         wanted = normalize_service_path(path)
@@ -91,10 +93,10 @@ def _has_make_target(cwd: Path, target: str) -> bool:
 
 
 def gate_command(
-    gate: str, service: str, service_type: str, cwd: Path, repo_dir: str = ""
+    gate: str, service: str, service_type: str, cwd: Path, repo_dir: str = "", checkout: str = ""
 ) -> str:
     """The command this service declares for one gate, or `""` when it declares none."""
-    declared = service_declaration(service, service_type, repo_dir).get(gate)
+    declared = service_declaration(service, service_type, repo_dir, checkout).get(gate)
     if isinstance(declared, str) and declared.strip():
         return declared.strip()
     if gate == "lint":
@@ -119,7 +121,7 @@ def declared_gates(
         return GateList()
     where = service_dir(cwd, service)
     commands = {
-        gate: gate_command(gate, service, service_type, where, repo_dir)
+        gate: gate_command(gate, service, service_type, where, repo_dir, cwd)
         for gate in GATE_ORDER
     }
     declared = {gate: cmd for gate, cmd in commands.items() if cmd}
@@ -176,7 +178,7 @@ def run_gate(
         return GateOutcome(gate=gate, status="skipped", reason=f"cwd does not exist: {cwd}")
 
     where = service_dir(cwd, service)
-    command = gate_command(gate, service, service_type, where, repo_dir)
+    command = gate_command(gate, service, service_type, where, repo_dir, cwd)
     if not command:
         logger.info("%s declares no %s command in %s — skipping", service, gate, where)
         return GateOutcome(

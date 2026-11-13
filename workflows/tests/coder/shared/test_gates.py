@@ -332,3 +332,34 @@ def test_an_entry_with_no_path_is_matched_as_the_repo_root(repo: Path) -> None:
 
     assert service_declaration("acme::.", "", str(repo))["test"] == "make root"
     assert service_declaration("acme::app/api", "", str(repo))["test"] == "make api"
+
+
+def test_a_service_of_a_member_repo_runs_the_gate_its_own_repo_declares(tmp_path: Path) -> None:
+    """The gate command was read from the run's repo only, so a workspace story's code passed with no lint and no test run."""
+    artifacts = tmp_path / "artifacts"
+    member = tmp_path / "api"
+    for folder in (artifacts, member):
+        (folder / ".git").mkdir(parents=True)
+    _agents(artifacts, "repo: {name: artifacts}\n")
+    _agents(member, "services:\n  api: {path: ., lint: 'true', test: 'exit 3'}\n")
+
+    told = _call(declared_gates, cwd=str(member), service="api::.", repo_dir=str(artifacts))
+    lint = _call(run_gate, cwd=str(member), service="api::.", gate="lint", repo_dir=str(artifacts))
+    test = _call(run_gate, cwd=str(member), service="api::.", gate="test", repo_dir=str(artifacts))
+
+    assert told.gates == ["lint", "test"], told
+    assert lint.status == "clean", lint
+    assert test.status == "dirty", test
+
+
+def test_the_run_repos_declaration_still_serves_a_service_its_own_repo_does_not_declare(tmp_path: Path) -> None:
+    """A member with no services block keeps the gate the run's repo declares for it."""
+    artifacts = tmp_path / "artifacts"
+    member = tmp_path / "api"
+    for folder in (artifacts, member):
+        (folder / ".git").mkdir(parents=True)
+    _agents(artifacts, "services:\n  go: {lint: 'true'}\n")
+
+    lint = _call(run_gate, cwd=str(member), service="api::.", gate="lint", service_type="go", repo_dir=str(artifacts))
+
+    assert lint.status == "clean", lint
