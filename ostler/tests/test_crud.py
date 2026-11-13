@@ -133,6 +133,67 @@ def test_set_status_updates_frontmatter_and_line(repo: Path):
     assert story.status == "QA passed"
 
 
+FOO_STORY = "epic-a/stories/01-foo/story.md"
+
+
+def _status_lines(repo: Path) -> tuple[str, str]:
+    """The frontmatter ``status:`` line and the Implementation Status bullet of the Foo story."""
+    text = (epics_root() / FOO_STORY).read_text(encoding="utf-8").splitlines()
+    return (next(ln for ln in text if ln.startswith("status:")),
+            next(ln for ln in text if ln.startswith("- **Status**:")))
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t", "  \t "])
+def test_set_status_refuses_an_empty_or_blank_status_and_writes_nothing(repo: Path, blank: str):
+    story_md = epics_root() / FOO_STORY
+    before = story_md.read_bytes()
+
+    res = crud.set_status(load(repo), FOO_ID, blank)
+
+    assert not res.ok
+    assert res.message == f"status of '{FOO_ID}' cannot be empty"
+    assert res.paths == []
+    assert story_md.read_bytes() == before
+
+
+@pytest.mark.parametrize("text", ["In progress", "Done", "Blocked: waiting"])
+def test_set_status_writes_other_text_as_typed(repo: Path, text: str):
+    res = crud.set_status(load(repo), FOO_ID, text)
+
+    assert res.ok
+    assert res.message == f"status of '{FOO_ID}' → {text}"
+    assert present(load(repo).find_story(FOO_ID))[1].status == text
+    assert _status_lines(repo)[1] == f"- **Status**: {text}"
+
+
+@pytest.mark.parametrize("padded", [" Done ", "\tDone\t"])
+def test_set_status_drops_the_whitespace_around_a_status(repo: Path, padded: str):
+    res = crud.set_status(load(repo), FOO_ID, padded)
+
+    assert res.ok
+    assert res.message == f"status of '{FOO_ID}' → Done"
+    assert present(load(repo).find_story(FOO_ID))[1].status == "Done"
+    assert _status_lines(repo) == ("status: Done", "- **Status**: Done")
+
+
+@pytest.mark.parametrize("status", ["", "in-progress"])
+def test_set_status_on_an_unknown_story_is_refused_for_the_story(repo: Path, status: str):
+    graph = load(repo)
+
+    res = crud.set_status(graph, "NOPE", status)
+
+    assert not res.ok
+    assert res.message == graph.no_story("NOPE")
+    assert "cannot be empty" not in res.message
+
+
+def test_set_status_recovers_after_a_refusal(repo: Path):
+    assert not crud.set_status(load(repo), FOO_ID, "").ok
+
+    assert crud.set_status(load(repo), FOO_ID, "In progress").ok
+    assert _status_lines(repo) == ("status: In progress", "- **Status**: In progress")
+
+
 def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
     """A story may legitimately write about status and about QA passing."""
     g = load(tmp_path)

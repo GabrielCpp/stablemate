@@ -76,6 +76,17 @@ def test_mutation_invalidates_the_snapshot(repo: Path):
     assert okf.next_story_report("epic-a")["state"] == "done"
 
 
+def test_set_status_refuses_an_empty_status_and_writes_nothing(repo: Path):
+    story_md = epics_root() / "epic-a/stories/01-foo/story.md"
+    before = story_md.read_bytes()
+
+    res = Ostler(repo).set_status(FOO_ID, "")
+
+    assert res.ok is False
+    assert res.message == f"status of '{FOO_ID}' cannot be empty"
+    assert story_md.read_bytes() == before
+
+
 def test_create_story_is_visible_to_the_next_read(repo: Path):
     okf = Ostler(repo)
     res = okf.create_story("epic-a", "02-baz", "Baz")

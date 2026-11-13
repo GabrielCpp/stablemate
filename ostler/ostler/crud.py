@@ -455,17 +455,20 @@ def set_status(graph: Graph, slug: str, status: str) -> Result:
     if isinstance(located, Result):
         return located
     path, doc, fm = located
-    fm["status"] = status
+    text = status.strip()
+    if not text:
+        return Result(False, f"status of '{slug}' cannot be empty")
+    fm["status"] = text
     doc.raw_frontmatter = dump_frontmatter(fm)
     bullet = model.status_bullet(doc)
     if bullet is not None:
         lines = doc.body.split("\n")
         head, sep, _ = lines[bullet.line_start].partition(":")
         if sep:
-            lines[bullet.line_start] = f"{head}: {status}"
+            lines[bullet.line_start] = f"{head}: {text}"
             doc.replace_body(lines)
     path.write_text(doc.render(), encoding="utf-8")
-    return Result(True, f"status of '{slug}' → {status}", [path])
+    return Result(True, f"status of '{slug}' → {text}", [path])
 
 
 def set_conflict(graph: Graph, slug: str, conflict: str) -> Result:
