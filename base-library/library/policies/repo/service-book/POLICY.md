@@ -49,9 +49,7 @@ work and the bar for each element.
 
 ## A service with no book yet
 
-A service that has pages under `docs/services/<name>/` and no
-`services/<name>/service.py` keeps those pages as its spec until its book
-exists. Read them with `ostler search` and `ostler trace`, and write them
-through `ostler scaffold`, `ostler fmt` and `ostler doctor` with the
-`ostler-okf` skill. A service that has a book gets its whole delta in the book
-and no page under `docs/services/`.
+A service with no `services/<name>/service.py` has no book. Write one from its
+source with the okf-book workflow, `workhorse-okf-book run python_book`, or by
+hand with the `ostler-book` skill. The book is the only form of spec this
+repository keeps. No page under `docs/services/` is read or written.
