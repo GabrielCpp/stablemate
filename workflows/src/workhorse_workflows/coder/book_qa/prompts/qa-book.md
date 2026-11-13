@@ -58,7 +58,9 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    `qa-evidence.json`, `qa/`). Your judgement must not come from another QA's
    work.
 3. **Play the base.** For each covered service, name the calls the story's claims bear on,
-   and play them before any edit: `ostler book run services.<name> --only <calls>`. Run every
+   and play them before any edit: `ostler book run services.<name> --only <calls>`. A call is
+   an endpoint class of the book, or an interaction class in a screen book. A journey is not a
+   call. `ostler book search <term> --kind endpoint` or `--kind interaction` lists them. Run every
    `ostler book` and `ostler env` command from `{{ workhorse_var('book_root') }}`. A red
    base is not yours to repair. Report `blocked` with the output.
 4. **List the claims.** List every claim the story makes that a call to the service can
@@ -79,8 +81,8 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    book after a pass that changes a shared part of it, so a restructure that breaks another
    journey comes back to this seat.
 7. **Name what no call reaches.** `unreached` is only for a claim no call or backstage step can
-   observe, such as a browser screen, a source-level test, a count of internal calls or a request
-   between two other services. A claim left out because the world could not be arranged is not
+   observe, such as a screen of an app with no screen book, a source-level test, a count of
+   internal calls or a request between two other services. A claim left out because the world could not be arranged is not
    `unreached`: restructure the book for it. Put a claim that is out of reach in `notes` with the
    reason. Also list it in `unreached`, one entry per claim in the story's words, for
    example "no request reaches the report service". The scenario QA skips every page of a

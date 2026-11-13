@@ -927,9 +927,9 @@ def _two_surfaces(
     repo: Path, git: Callable[..., subprocess.CompletedProcess[str]], write: Callable[[Path, str], Path]
 ) -> None:
     (repo / "services" / "api" / "service.py").unlink()
-    for surface, call in (("http", "ListX"), ("web", "BuildX")):
+    for surface, kind, call in (("http", "endpoint", "ListX"), ("web", "interaction", "BuildX")):
         write(repo / "services" / "api" / surface / "service.py", f"# the api {surface} surface\n")
-        write(repo / "services" / "api" / surface / "index.tsv", f"endpoint\t{call}\tx:{call}\td\n")
+        write(repo / "services" / "api" / surface / "index.tsv", f"{kind}\t{call}\tx:{call}\td\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "chore: split the api book by surface")
 

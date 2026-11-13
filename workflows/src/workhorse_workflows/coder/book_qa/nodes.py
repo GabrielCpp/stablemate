@@ -228,7 +228,7 @@ def book_run(
         play = _play(_run_argv(modules[0], only, outside, copy, out_dir), root)
         logger.info("book run of %s over %s exited %d", service, f"{len(only)} call(s)" if only else "the whole book", play.exit_code)
         return play
-    claims = _endpoints_by_module(root, modules)
+    claims = _calls_by_module(root, modules)
     outputs: list[str] = []
     for module in modules:
         named = [call for call in only if call in claims[module] or (module == modules[0] and not any(call in held for held in claims.values()))]
@@ -255,12 +255,12 @@ def _run_argv(module: str, only: list[str], outside: list[str] | None, copy: str
     return argv + ["--copy", copy, "--out", out_dir]
 
 
-def _endpoints_by_module(root: Path, modules: tuple[str, ...]) -> dict[str, frozenset[str]]:
+def _calls_by_module(root: Path, modules: tuple[str, ...]) -> dict[str, frozenset[str]]:
     held: dict[str, frozenset[str]] = {}
     for module in modules:
         index = root / Path(*module.split(".")) / INDEX_FILE
         text = index.read_text(encoding="utf-8") if index.is_file() else ""
-        held[module] = frozenset(entry.name for entry in parse_index(text) if entry.kind == "endpoint")
+        held[module] = frozenset(entry.name for entry in parse_index(text) if entry.kind in ("endpoint", "interaction"))
     return held
 
 
