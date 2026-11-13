@@ -231,7 +231,7 @@ fixes it.
 
 ## An ostler stack
 
-A repo's `docs/services/ops/stack.yml` names one secret source. With saddlebag it is a
+A repo's `services/ops/stack.yml` names one secret source. With saddlebag it is a
 tag query:
 
 ```yaml

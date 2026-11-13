@@ -298,15 +298,17 @@ artifact contracts are in
 ### Local environments
 
 `ostler env` runs the product on this machine from what the books say it is made of. Each book
-that boots something keeps a `stack.yml` in the `ops/` folder beside its pages, at
-`docs/services/<book>/ops/stack.yml`. The file at `docs/services/ops/stack.yml` is the stack root,
-and is also a book. A `stack.yml` at the old place, outside `ops/`, is refused with the path to move
+that boots something keeps a `stack.yml` in the `ops/` folder beside its service book, at
+`services/<book>/ops/stack.yml`. The file at `services/ops/stack.yml` is the stack root, and is also
+a book. Ostler still reads the older place, beside the pages, at `docs/services/<book>/ops/stack.yml`
+and `docs/services/ops/stack.yml`. A book with a file in both places loads the one under `services/`
+and reports the other. A `stack.yml` at the old place, outside `ops/`, is refused with the path to move
 it to. The file names the book's services, the compose fragment that defines each one, and what each
 one needs. A need may sit in another book, so the web book names `api:api` and the api book
 defines it once. Two books never define the same service. One names it, and the other needs it.
 
 ```yaml
-# docs/services/web/ops/stack.yml
+# services/web/ops/stack.yml
 default-fixtures: [schema]
 services:
   web:
@@ -345,7 +347,7 @@ ostler env down --copy story-12      # data and rendered files go too, unless --
 ```
 
 The copy defaults to `$STABLEMATE_LEASE`, so a workflow run that holds a lease brings up its own
-copy without naming it. The stack root, `docs/services/ops/stack.yml`, holds the repo's one secret source: `secrets: {file:
+copy without naming it. The stack root, `services/ops/stack.yml`, holds the repo's one secret source: `secrets: {file:
 .env}` for a dotenv file, `secrets: {decrypt: <command>}` for a command whose stdout is dotenv,
 or `secrets: {saddlebag: "environment=local"}` for the saddlebag secrets carrying those tags.
 With saddlebag, every `docker compose` command runs under `saddlebag exec`, and no secrets file
