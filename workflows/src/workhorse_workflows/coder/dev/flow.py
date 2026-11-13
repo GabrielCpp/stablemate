@@ -573,7 +573,7 @@ class Dev(Workflow):
         if not ids:
             return []
         lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id, "dev")
-        target = self.call(stack_target, self.ctx.story_slug, lease)
+        target = self.call(stack_target, self.ctx.story_slug, lease, services=list(self.ctx.story_services))
         started = time.monotonic()
         try:
             return self._rerun(ids, target.near, target.lease, rechecked)

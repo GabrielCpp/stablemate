@@ -6,10 +6,11 @@ import os
 import re
 import shutil
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 from ostler import Ostler, graph as graph_mod, model, path as path_mod, query as query_mod
-from ostler.environments import leases, runtime
+from ostler.environments import leases, runtime, spec
 from ostler.model import Graph, UINode
 from ostler.qa import runbook, stack
 from ostler.qa.outcome import QaOutcome
@@ -66,16 +67,23 @@ def _merge_secrets(manifests: list[dict]) -> tuple[dict[str, str], str]:
     return secrets, ""
 
 
-def story_near(graph: Graph, story: str) -> str:
-    """The feature book a story cites, when every book page it cites sits in that one book."""
-    services = path_mod.services_root(graph)
+def story_near(graph: Graph, story: str, services: Sequence[str] = ()) -> str:
+    """The one book a story cites pages in, else the one named service with a stack file beside its book."""
+    pages = path_mod.services_root(graph)
     books = {
-        graph_mod.surface_of(graph.root / str(row["path"]).partition("#")[0], services)
+        graph_mod.surface_of(graph.root / str(row["path"]).partition("#")[0], pages)
         for row in query_mod.query(graph, "surfaces-referenced-by-story", story)
         if row.get("kind") == "ui"
     }
     books.discard("")
-    return str(services / books.pop()) if len(books) == 1 else ""
+    if books:
+        return str(pages / books.pop()) if len(books) == 1 else ""
+    beside = [
+        name
+        for name in dict.fromkeys(services)
+        if (graph.root / spec.BOOKS_DIR / name / spec.OPS_DIR / spec.STACK_FILE).is_file()
+    ]
+    return str(graph.root / spec.BOOKS_DIR / beside[0]) if len(beside) == 1 else ""
 
 
 def copy_lease(*parts: str) -> str:

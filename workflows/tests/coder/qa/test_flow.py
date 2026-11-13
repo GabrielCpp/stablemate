@@ -26,7 +26,7 @@ from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
 
-from ostler import Ostler
+from ostler import Ostler, model as ostler_model
 from ostler.qa import QaOutcome
 from ostler.qa.compile import COMPILED_BANNER, Plan, apply_deferrals
 from ostler.qa.source_context import SourceRepository
@@ -1158,6 +1158,56 @@ def test_a_story_that_cites_two_books_names_no_book(
     _cite(docs, write, "app/server.md", "other/server.md")
 
     assert qa_nodes.stack_target(log, STORY, "story-1-run", str(docs)).near == ""
+
+
+def _stack_beside(docs: Path, write: Callable[[Path, str], Path], *names: str) -> None:
+    for name in names:
+        write(docs / "services" / name / "ops" / "stack.yml", "services: {}\n")
+
+
+def test_a_story_citing_no_page_gets_the_book_of_its_one_service_with_a_stack(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """With no page to read, the one named service whose stack sits beside its book picks the stack."""
+    graph = ostler_model.load(docs)
+    _stack_beside(docs, write, "api")
+
+    assert qa_runner_mod.story_near(graph, STORY, ["api"]) == str(docs / "services" / "api")
+
+
+def test_a_story_citing_no_page_and_naming_two_stacked_services_names_no_book(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """Two services with a stack leave the choice to the stack selection."""
+    graph = ostler_model.load(docs)
+    _stack_beside(docs, write, "api", "web")
+
+    assert qa_runner_mod.story_near(graph, STORY, ["api", "web"]) == ""
+
+
+def test_a_story_citing_no_page_and_naming_a_service_without_a_stack_names_no_book(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """A service with no stack file beside its book gives nothing to pick."""
+    graph = ostler_model.load(docs)
+    write(docs / "services" / "api" / "service.py", "")
+
+    assert qa_runner_mod.story_near(graph, STORY, ["api"]) == ""
+
+
+def test_a_story_citing_one_books_pages_keeps_that_book_whatever_services_it_names(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+) -> None:
+    """The cited pages answer first, so a stacked service elsewhere does not move the choice."""
+    _cite(docs, write, "app/server.md")
+    _stack_beside(docs, write, "api")
+    graph = ostler_model.load(docs)
+
+    assert Path(qa_runner_mod.story_near(graph, STORY, ["api"])) == docs / "docs" / "services" / "app"
 
 
 def test_a_shared_stack_outlives_the_run(docs: Path) -> None:

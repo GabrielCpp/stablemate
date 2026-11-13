@@ -118,12 +118,14 @@ class _Stack:
         self.ensured = 0
         self.released = 0
         self.targets = 0
+        self.services: list[str] = []
         self.held: list[str] = []
         self.ready: Literal["yes", "no", "none", "unneeded"] = "yes"
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> _Stack:
-        def stack_target(logger: Any, story: str = "", lease: str = "", repo_dir: str = "") -> StackTarget:
+        def stack_target(logger: Any, story: str = "", lease: str = "", repo_dir: str = "", services: list[str] | None = None) -> StackTarget:
             self.targets += 1
+            self.services = list(services or [])
             return StackTarget(near="api", lease=lease)
 
         def ensure_stack(
@@ -429,6 +431,21 @@ def test_a_stack_that_did_not_come_up_asks_the_operator_before_the_seat_starts(
 
     assert agent.calls == [], agent.calls
     assert "the QA environment" in seen[0] and "`serve`" in seen[0], seen
+
+
+def test_the_lane_passes_the_storys_services_to_the_stack_target(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The stack target picks a book by the services the story names, so the lane must hand them over."""
+    book()
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    assert stack.services == ["api"], stack.services
 
 
 def test_a_second_visit_replays_the_recorded_calls_with_no_seat(

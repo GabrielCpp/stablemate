@@ -28,10 +28,11 @@ def stack_target(
     story: str = "",
     lease: str = "",
     repo_dir: str = "",
+    services: list[str] | None = None,
 ) -> StackTarget:
     """The book whose stack this story's QA runs against, and the copy *lease* names there."""
     graph = model.load(find_docs_root(repo_dir))
-    near = _qa_runner.story_near(graph, story) if story else ""
+    near = _qa_runner.story_near(graph, story, services or ()) if story else ""
     env = _qa_runner.stack_env(logger, graph, near=near, lease=lease)
     logger.info("QA stack for %s: near=%s lease=%s", story, near or "(none)", lease or "(none)")
     return StackTarget(near=near, lease=lease, env=env)

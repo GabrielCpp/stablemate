@@ -115,7 +115,7 @@ class Qa(QaOwner):
                 )
         okf = self.call(detect_okf_docs)
         lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id)
-        self.call(stack_target, self.ctx.story_slug, lease)
+        self.call(stack_target, self.ctx.story_slug, lease, services=list(self.ctx.story_services))
         if self.rerun:
             return Continue(okf, self.recheck)
         failures = self._preflight()

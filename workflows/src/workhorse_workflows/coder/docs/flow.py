@@ -418,7 +418,7 @@ class Docs(Workflow):
             self.logger.info("exercise skipped: the book compiled no QA plan")
             return gate
         lease = copy_lease(story, self.run_id, "docs")
-        target = self.call(stack_target, self.ctx.story_slug, lease)
+        target = self.call(stack_target, self.ctx.story_slug, lease, services=list(self.ctx.story_services))
         started = time.monotonic()
         try:
             return self._exercise(gate, exercised, target.near, target.lease)
