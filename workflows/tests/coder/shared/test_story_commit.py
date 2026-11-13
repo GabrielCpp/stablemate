@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from _workspace import Workspace
 from workhorse_workflows.coder.shared import story_commit
 from workhorse_workflows.coder.shared.schemas.queue import ProofScope
 from workhorse_workflows.coder.shared.worktree import digest
@@ -407,3 +409,41 @@ def test_a_covered_services_spec_delta_commit_holds_only_its_book_folder(
         " M src/server.py",
         "?? docs/",
     ]
+
+
+def test_in_a_workspace_the_spec_delta_commits_in_the_artifacts_repo(
+    workspace: Workspace,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+) -> None:
+    write(workspace.artifacts / "services" / "api" / "service.py", "SERVICE = 1\n")
+    git(workspace.artifacts, "add", "-A")
+    git(workspace.artifacts, "commit", "-qm", "the api book")
+    api_head = git(workspace.api, "rev-parse", "HEAD").stdout
+    write(workspace.artifacts / "services" / "api" / "journeys" / "fresh.py", "JOURNEY = 1\n")
+
+    result = story_commit.commit_book_delta(
+        logger, story_slug=SLUG, repo_dir=str(workspace.api), book_services=["api"]
+    )
+
+    assert result.committed
+    landed = git(workspace.artifacts, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
+    assert landed[0].startswith("docs("), landed
+    assert [line for line in landed[1:] if line] == ["services/api/journeys/fresh.py"]
+    assert git(workspace.api, "rev-parse", "HEAD").stdout == api_head
+
+
+def test_a_book_root_with_no_git_commits_nothing_and_does_not_raise(
+    workspace: Workspace,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+) -> None:
+    shutil.rmtree(workspace.artifacts / ".git")
+    write(workspace.artifacts / "services" / "api" / "service.py", "SERVICE = 1\n")
+
+    result = story_commit.commit_book_delta(
+        logger, story_slug=SLUG, repo_dir=str(workspace.api), book_services=["api"]
+    )
+
+    assert not result.committed

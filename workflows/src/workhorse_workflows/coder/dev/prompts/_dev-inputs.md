@@ -39,9 +39,9 @@ from that path before you act.
 
 ## The decisions the executable books keep
 
-A service of this story may have an executable book at `services/<name>/` under the repo root,
-with a `service.py`. For each one, read `services/<name>/decisions/*.md` and
-`services/<name>/DISAGREEMENTS.md` before you plan. A decision says why the service behaves as
+A service of this story may have an executable book at `{{ workhorse_var('docs_root') }}/services/<name>/`,
+with a `service.py`. For each one, read `{{ workhorse_var('docs_root') }}/services/<name>/decisions/*.md` and
+`{{ workhorse_var('docs_root') }}/services/<name>/DISAGREEMENTS.md` before you plan. A decision says why the service behaves as
 it does and which story settled it. Where your plan changes a behaviour a decision explains,
 cite the decision in the plan and say whether the story keeps it or overturns it.
 {% endif %}
@@ -51,7 +51,7 @@ cite the decision in the plan and say whether the story keeps it or overturns it
 
 Before you started, the spec pass wrote the story's behaviour model to
 `{{ workhorse_var('spec_dir') }}/model.md` and its claims into the executable book of
-{% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}. These are the paths it changed:
+{% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}. These are the paths it changed, relative to `{{ workhorse_var('docs_root') }}`:
 
 {% for path in workhorse_var('spec_book_paths') %}
 - `{{ path }}`

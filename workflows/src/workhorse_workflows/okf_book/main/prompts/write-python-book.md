@@ -1,8 +1,8 @@
-Write the Python book for this repository's `{{ service }}` service, reached by: {{ kind }}.
+Write the Python book for the `{{ service }}` service, reached by: {{ kind }}.
 
-The book is the package `{{ package }}/` under the repository root, `{{ repo_root }}`. Write only
-there. The app's source is the repository's `{{ source_folder }}/`. Its tests, test doubles and
-fixtures are no part of the book, so read none of them.
+The book is the package `{{ package }}/` under the book root, `{{ book_root }}`. Write only
+there. The app's source is `{{ source_root }}/`. Its tests, test doubles and fixtures are no part
+of the book, so read none of them.
 
 The format is the `ostler-book` skill. Load it first, then open the reference it names for each
 of those surfaces, and hold the book to its bar:
@@ -21,7 +21,7 @@ module of the book imports its siblings relatively, as `from .model import ...` 
 {% endif %}
 {% if references %}
 
-This repository already holds finished books:
+The book root already holds finished books:
 {% for reference in references -%}
 - `{{ reference }}/`
 {% endfor %}
@@ -48,7 +48,7 @@ The last lap ended on this:
 {{ gate }}
 {% endif %}
 
-You are done when every `check` and `run` below exits 0, from the repository root, and each
+You are done when every `check` and `run` below exits 0, from the book root, and each
 `index` has rewritten its `index.tsv`:
 
 ```

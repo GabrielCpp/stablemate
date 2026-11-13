@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from _fakes import StubRunner
+from _workspace import Workspace, lay_out
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import Workflow
@@ -128,6 +129,20 @@ def name_workspace(
         ambient["workspace"] = "acme"
 
     return _name
+
+
+@pytest.fixture
+def workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    git: Callable[..., subprocess.CompletedProcess],
+    name_workspace: Callable[[dict[str, Path]], None],
+) -> Workspace:
+    """A named workspace: the artifacts repo, `api` and `web`, with the test standing in `api`."""
+    laid = lay_out(tmp_path, git)
+    name_workspace({"api": laid.api, "web": laid.web})
+    monkeypatch.chdir(laid.api)
+    return laid
 
 
 @pytest.fixture

@@ -18,7 +18,7 @@ prints the URL the copy publishes a service at, and the plan's targets name that
 `{<service>}`. `ostler env ls` lists the services and the copies running them. A command run
 inside a service of the copy goes through `ostler env compose --copy {{ lease }} -- <args>`.
 
-The stack is declared in `services/<name>/ops/stack.yml`, one per service book.
+The stack is declared in `{{ workhorse_var('docs_root') }}/services/<name>/ops/stack.yml`, one per service book.
 `ostler env check` checks that every `stack.yml` fits together; run it after you change one.
 
 ### What to repair

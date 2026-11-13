@@ -34,13 +34,13 @@ from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
-def unbooked_message(names: list[str]) -> str:
+def unbooked_message(names: list[str], book_root: Path) -> str:
     """The refusal for a story that names a service with no executable book."""
     named = ", ".join(f"`{name}`" for name in names)
     return (
-        f"{named} has no book: no `services/<name>/service.py` and no "
-        "`services/<name>/*/service.py`. Write it with `workhorse-okf-book run python_book`, "
-        "then run the story again."
+        f"{named} has no book: no `{book_root}/services/<name>/service.py` and no "
+        f"`{book_root}/services/<name>/*/service.py`. Write it with "
+        "`workhorse-okf-book run python_book`, then run the story again."
     )
 
 
@@ -102,7 +102,7 @@ class Docs(Workflow):
                 "there is nothing to document."
             )
         if self._unbooked:
-            raise WorkflowFailed(unbooked_message(self._unbooked))
+            raise WorkflowFailed(unbooked_message(self._unbooked, find_docs_root(self.repo_dir)))
         if not self.ctx.story_services:
             return self._ends(
                 DocsResult(

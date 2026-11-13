@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import shutil
 import subprocess
 from collections import Counter
 from collections.abc import Callable
@@ -12,6 +14,8 @@ from unittest.mock import patch
 
 import pytest
 from _epics import epics_root
+from _books import TODO_BOOK, write_todo_book
+from _workspace import Workspace
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.blueprint import NODE_ATTR, node_spec
@@ -100,12 +104,14 @@ class _Book:
     def __init__(self, check: tuple[int, ...] = (0,), run: tuple[int, ...] = (0,)) -> None:
         self.script = {"check": check, "run": run}
         self.argv: dict[str, list[list[str]]] = {"check": [], "run": []}
+        self.cwds: list[Any] = []
 
     def __call__(
         self, argv: list[str], cwd: Any = None, *, check: bool = False, logger: Any = None
     ) -> subprocess.CompletedProcess[str]:
         verb = argv[argv.index("ostler.book") + 1]
         self.argv[verb].append(argv)
+        self.cwds.append(cwd)
         codes = self.script[verb]
         code = codes[min(len(self.argv[verb]), len(codes)) - 1]
         return subprocess.CompletedProcess(argv, code, f"{verb} said exit {code}\n", "")
@@ -567,6 +573,127 @@ def test_a_product_edit_outside_the_book_is_refused_and_sent_back_unlanded(
     assert "`README.md`" in agent.args[1]["report"], agent.args[1]["report"]
     assert not any("play " in c for c in _commits(lane, git)), _commits(lane, git)
     assert not (_spec_dir() / "book-qa.json").exists()
+
+
+@pytest.fixture
+def workspace_lane(
+    workspace: Workspace,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+) -> Workspace:
+    """A workspace whose artifacts repo holds one story that lists `api` and the committed book of `api`."""
+    write(epics_root() / EPIC / "epic.md", EPIC_MD)
+    write(epics_root() / EPIC / "stories" / STORY / "story.md", STORY_MD)
+    write(_spec_dir() / "plan-context.json", json.dumps({"story": STORY, "services": []}))
+    write(workspace.artifacts / "services" / "api" / "service.py", "# the api book\n")
+    write(workspace.artifacts / "services" / "api" / "journeys" / "existing.py", "# base\n")
+    git(workspace.artifacts, "add", "-A")
+    git(workspace.artifacts, "commit", "-qm", "chore: add the api book")
+    return workspace
+
+
+def test_in_a_workspace_the_lane_finds_the_book_in_the_artifacts_folder(workspace_lane: Workspace) -> None:
+    covered = book_nodes.covered_services(
+        logging.getLogger("test"), ["api"], repo_dir=str(workspace_lane.api)
+    )
+
+    assert covered.services == ["api"]
+
+
+def test_in_a_workspace_the_book_plays_from_the_artifacts_folder(
+    workspace_lane: Workspace,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book()
+
+    result = drive_flow(_flow(), env(), _Agent(workspace_lane.artifacts))
+
+    assert result.status == "passed", result
+    assert scripted.cwds and {Path(cwd) for cwd in scripted.cwds} == {workspace_lane.artifacts}
+    [argv] = scripted.argv["check"][:1]
+    assert argv[argv.index("--app") + 1] == str(workspace_lane.api), argv
+
+
+def test_in_a_workspace_the_book_change_commits_in_the_artifacts_repo(
+    workspace_lane: Workspace,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    api_head = git(workspace_lane.api, "rev-parse", "HEAD").stdout
+    book()
+
+    drive_flow(_flow(), env(), _Agent(workspace_lane.artifacts))
+
+    landed = git(workspace_lane.artifacts, "show", "--name-only", "--format=%s", "HEAD").stdout
+    assert landed.startswith("test("), landed
+    assert "services/api/journeys/added.py" in landed, landed
+    assert git(workspace_lane.api, "rev-parse", "HEAD").stdout == api_head
+
+
+def test_in_a_workspace_a_code_edit_by_the_book_seat_is_refused(
+    workspace_lane: Workspace,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book()
+    agent = _Agent(workspace_lane.artifacts, stray=str(workspace_lane.api / "app.py"))
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert "`app.py`" in agent.args[1]["report"], agent.args[1]["report"]
+    assert not any("play " in c for c in _commits(workspace_lane.artifacts, git))
+
+
+def test_a_book_root_with_no_git_lands_nothing_and_does_not_raise(
+    workspace_lane: Workspace, tmp_path: Path
+) -> None:
+    shutil.rmtree(workspace_lane.artifacts / ".git")
+    (workspace_lane.artifacts / "services" / "api" / "journeys" / "added.py").write_text("x\n", encoding="utf-8")
+
+    result = book_nodes.commit_service_book(
+        logging.getLogger("test"), ["api"], repo_dir=str(workspace_lane.api)
+    )
+
+    assert result.committed is False and result.refused == ""
+
+
+def test_a_book_pointer_to_a_missing_file_fails_the_check(repo: Path) -> None:
+    write_todo_book(repo)
+
+    played = book_nodes.book_check(logging.getLogger("test"), "api", repo_dir=str(repo))
+
+    assert played.exit_code != 0
+    assert "does not exist under" in played.output
+
+
+def test_a_book_pointer_to_a_missing_file_fails_the_spec_gate(repo: Path) -> None:
+    write_todo_book(repo)
+
+    gate = book_nodes.verify_book_spec(
+        logging.getLogger("test"), ["api"], "documented", repo_dir=str(repo)
+    )
+
+    assert gate.status == "invalid"
+    assert "does not exist under" in gate.notes
+
+
+def test_a_book_whose_pointers_exist_passes_the_check(repo: Path) -> None:
+    write_todo_book(repo)
+    shutil.copy(TODO_BOOK / "app.py", repo / "app.py")
+
+    played = book_nodes.book_check(logging.getLogger("test"), "api", repo_dir=str(repo))
+
+    assert played.exit_code == 0, played.output
 
 
 def _played_whole(argv: list[str]) -> bool:

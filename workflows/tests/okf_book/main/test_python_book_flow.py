@@ -1,11 +1,15 @@
 """The owner writes the Python book a lap at a time, the book's own check and run judge each lap, and a green book is committed."""
 from __future__ import annotations
 
+import logging
+import shutil
 import subprocess
 from pathlib import Path
 from typing import cast
 
 import pytest
+from _books import TODO_BOOK, write_todo_book
+from _workspace import Workspace, lay_out, name_members, run_git
 from okf_book.support import Reply, ScriptedRunner, git, run_env
 from workhorse.pyflow import Await, Continue, Done
 from workhorse import templates
@@ -144,7 +148,7 @@ def test_a_run_that_names_a_stack_copy_plays_the_book_on_it_and_tells_the_owner(
     flow.play(lap=1)
     rendered = _rendered(flow, tmp_path, monkeypatch)
 
-    assert seen[0][3:] == ["check", "services.ledger"]
+    assert seen[0][3:] == ["check", "services.ledger", "--app", str(flow.code_root)]
     assert seen[1][-2:] == ["--copy", "evening"]
     assert "python -m ostler.book run services.ledger --copy evening\n" in rendered
     assert "as the stack copy `evening`" in rendered
@@ -231,3 +235,67 @@ def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_pat
     for module in ("services.ledger.http", "services.ledger.web"):
         for verb in ("check", "run", "index"):
             assert f"python -m ostler.book {verb} {module}\n" in rendered
+
+
+def _workspace_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replies: dict[str, Reply] | None = None) -> tuple[WritePythonBook, ScriptedRunner, Workspace]:
+    laid = lay_out(tmp_path, run_git)
+    name_members(tmp_path, monkeypatch, laid)
+    runner = ScriptedRunner(replies or {})
+    flow = WritePythonBook(repo_dir=str(laid.api), service="ledger", kind="cli", source_folder="ledger")
+    flow._bind(Engine(run_env(tmp_path / "runs", runner)))  # pyright: ignore[reportPrivateUsage]
+    return flow, runner, laid
+
+
+def test_in_a_workspace_the_book_is_written_and_committed_in_the_artifacts_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner, laid = _workspace_flow(tmp_path, monkeypatch)
+    api_head = git(laid.api, "rev-parse", "HEAD")
+    (laid.artifacts / "services/ledger").mkdir(parents=True)
+    (laid.artifacts / "services/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
+
+    step = flow.commit(lap=1)
+
+    assert flow.root == laid.artifacts.resolve()
+    assert isinstance(step, Done)
+    assert git(laid.artifacts, "show", "--name-only", "--format=", "HEAD").split() == ["services/ledger/service.py"]
+    assert git(laid.api, "rev-parse", "HEAD") == api_head
+
+
+def test_in_a_workspace_the_owner_is_told_both_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner, laid = _workspace_flow(tmp_path, monkeypatch)
+
+    rendered = _rendered(flow, tmp_path, monkeypatch)
+
+    assert f"under the book root, `{laid.artifacts.resolve()}`" in rendered
+    assert f"{laid.api.resolve()}/ledger/" in rendered
+
+
+def test_in_a_workspace_the_owner_may_read_the_code_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, runner, laid = _workspace_flow(tmp_path, monkeypatch, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}})
+
+    flow.write(gate="", lap=1)
+
+    sent = runner.nodes[0]
+    assert sent.cwd == str(laid.artifacts.resolve())
+    assert sent.add_dirs == [str(laid.api.resolve())]
+
+
+def test_a_book_whose_pointer_names_a_missing_file_fails_the_check(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    write_todo_book(root)
+    app = tmp_path / "app-without-its-file"
+    app.mkdir()
+
+    gate = python_book_flow.python_book_check(logging.getLogger("test"), root, "services.api", app)
+
+    assert gate.exit_code != 0
+    assert "does not exist under" in gate.output
+
+
+def test_a_book_whose_pointers_all_exist_passes_the_check(tmp_path: Path) -> None:
+    root = tmp_path / "repo"
+    write_todo_book(root)
+    shutil.copy(TODO_BOOK / "app.py", root / "app.py")
+
+    gate = python_book_flow.python_book_check(logging.getLogger("test"), root, "services.api", root)
+
+    assert gate.exit_code == 0, gate.output

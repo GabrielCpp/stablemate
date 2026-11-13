@@ -34,7 +34,7 @@ UNREACHED_FILE = "qa-unreached.json"
 
 
 def book_dir(service: str) -> str:
-    """The folder a service's executable book lives in, relative to the repo root."""
+    """The folder a service's executable book lives in, relative to the book root."""
     return f"services/{service}"
 
 
@@ -60,12 +60,16 @@ def _play(argv: list[str], cwd: Path) -> BookPlay:
     return BookPlay(exit_code=done.returncode, output=_tail(done.stdout + done.stderr))
 
 
+def _check_argv(module: str, app: str) -> list[str]:
+    return [sys.executable, "-m", "ostler.book", "check", module, "--app", app]
+
+
 @blueprint.node
 def covered_services(
     logger: logging.Logger, services: list[str] | None = None, repo_dir: str = ""
 ) -> CoveredServices:
-    """The story's services that have an executable book under the repo root."""
-    root = find_repo_root(repo_dir)
+    """The story's services that have an executable book under the book root."""
+    root = find_docs_root(repo_dir)
     covered = [name for name in services or [] if book_modules(root, name)]
     logger.info("%d of %d story service(s) have an executable book", len(covered), len(services or []))
     return CoveredServices(services=covered)
@@ -74,10 +78,11 @@ def covered_services(
 @blueprint.node
 def book_check(logger: logging.Logger, service: str, repo_dir: str = "") -> BookPlay:
     """Build everything each module of the service's book declares, with no stack, and return the first red exit code and output tail."""
-    root = find_repo_root(repo_dir)
+    root = find_docs_root(repo_dir)
+    app = str(find_repo_root(repo_dir))
     play = BookPlay(exit_code=0, output="")
     for module in book_modules(root, service):
-        play = _play([sys.executable, "-m", "ostler.book", "check", module], root)
+        play = _play(_check_argv(module, app), root)
         logger.info("book check of %s exited %d", module, play.exit_code)
         if play.exit_code != 0:
             return BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
@@ -92,7 +97,8 @@ def verify_book_spec(
     repo_dir: str = "",
 ) -> DocumentationGate:
     """Gate the spec pass of covered services: it ends when `ostler book check` exits 0 for each. A claim red against the app is expected before the build and is not read here."""
-    root = find_repo_root(repo_dir)
+    root = find_docs_root(repo_dir)
+    app = str(find_repo_root(repo_dir))
     problems: list[str] = []
     failures: list[str] = []
     if author_status not in {"documented", "not_required"}:
@@ -100,7 +106,7 @@ def verify_book_spec(
         failures.append("S:author-status")
     for name in services:
         for module in book_modules(root, name):
-            play = _play([sys.executable, "-m", "ostler.book", "check", module], root)
+            play = _play(_check_argv(module, app), root)
             logger.info("book check of %s exited %d", module, play.exit_code)
             if play.exit_code != 0:
                 problems.append(f"`ostler book check {module}` exited {play.exit_code}:\n{play.output}")
@@ -121,7 +127,7 @@ def changed_book_paths(
     repo_dir: str = "",
 ) -> BookPaths:
     """The uncommitted paths under each covered service's book folder, less what was dirty before the story."""
-    root = find_repo_root(repo_dir)
+    root = find_docs_root(repo_dir)
     excused = untouched_since(root, tuple(preexisting or ()))
     prefixes = tuple(book_dir(name) + "/" for name in services)
     found = [
@@ -181,7 +187,7 @@ def book_scope(
     repo_dir: str = "",
 ) -> BookScope:
     """Decide whether the play of a service's book is the whole book: it is when this pass changed a shared part of it."""
-    root = find_repo_root(repo_dir)
+    root = find_docs_root(repo_dir)
     excused = untouched_since(root, tuple(preexisting or ()))
     prefix = book_dir(service) + "/"
     changed = {
@@ -209,7 +215,7 @@ def book_run(
     repo_dir: str = "",
 ) -> BookPlay:
     """Play the named calls of the service's book against the run's copy of the stack, or the whole book when `only` is empty. A finding of an endpoint outside `outside` goes to the book's register of underspecified fields. The play has no time bound."""
-    root = find_repo_root(repo_dir)
+    root = find_docs_root(repo_dir)
     modules = book_modules(root, service) or (f"services.{service}",)
     if len(modules) == 1:
         play = _play(_run_argv(modules[0], only, outside, copy, out_dir), root)
@@ -309,19 +315,21 @@ def commit_service_book(
 ) -> StoryCommitted:
     """Commit the changed paths under each covered service's book. A product path the seat changed outside those folders is returned in `refused`, and nothing is committed."""
     slug = story_slug or "story"
-    root = find_repo_root(repo_dir)
-    folders = [(root / book_dir(name)).resolve() for name in services]
-    excused = untouched_since(root, tuple(preexisting or ()))
+    book = find_docs_root(repo_dir)
+    code = find_repo_root(repo_dir)
+    folders = [(book / book_dir(name)).resolve() for name in services]
     excluded = not_product_roots(repo_dir)
     inside: list[str] = []
     stray: list[str] = []
-    for rel in uncommitted_paths(root):
-        if rel in excused or paths.is_gate_context(rel):
-            continue
-        if any((root / rel).resolve().is_relative_to(folder) for folder in folders):
-            inside.append(rel)
-        elif is_product(root, rel, excluded):
-            stray.append(rel)
+    for root in dict.fromkeys((book, code)):
+        excused = untouched_since(root, tuple(preexisting or ()))
+        for rel in uncommitted_paths(root):
+            if rel in excused or paths.is_gate_context(rel):
+                continue
+            if root == book and any((root / rel).resolve().is_relative_to(folder) for folder in folders):
+                inside.append(rel)
+            elif is_product(root, rel, excluded):
+                stray.append(rel)
     if stray:
         listing = "\n".join(f"- `{rel}`" for rel in stray)
         return StoryCommitted(
@@ -334,17 +342,20 @@ def commit_service_book(
     if not inside:
         logger.info("the book pass left no uncommitted book path for %s", slug)
         return StoryCommitted()
+    if not (book / ".git").exists():
+        logger.info("no .git at %s, nothing to commit", book)
+        return StoryCommitted()
     message = commits.message(
         "test",
-        commits.scope(root.name),
+        commits.scope(book.name),
         f"play {slug} in the service book",
         epic=epic,
         story=story_id or slug,
     )
     try:
-        landed = commit_paths(root, message, *inside, verify=False)
+        landed = commit_paths(book, message, *inside, verify=False)
     except GitError as exc:
-        return StoryCommitted(refused=f"git refused the commit for {slug} in {root}: {exc}")
+        return StoryCommitted(refused=f"git refused the commit for {slug} in {book}: {exc}")
     logger.info("committed %d service book path(s) for %s", len(inside), slug)
     return StoryCommitted(committed=landed)
 

@@ -5,10 +5,13 @@ from pathlib import Path
 
 import pytest
 from _books import write_book
+from _workspace import lay_out, name_members, run_git
 from _epics import epics_root
 from ostler import Ostler
 
+from workhorse_workflows.author.shared.nodes.services import service_errors
 from workhorse_workflows.author.shared.nodes.stories import validate_story
+from workhorse_workflows.author.shared.paths import survey_repo_root
 
 
 def _authored_story(
@@ -187,3 +190,27 @@ def test_a_marker_in_capitals_or_before_a_colon_is_an_open_question(
 
     assert result.ok is False
     assert "unresolved decision" in result.errors
+
+
+def test_in_a_workspace_a_story_naming_an_artifacts_book_is_accepted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    laid = lay_out(tmp_path, run_git)
+    name_members(tmp_path, monkeypatch, laid)
+    write_book(laid.artifacts, "api-service")
+
+    errors = service_errors(Ostler(survey_repo_root(str(laid.api))), "the story", ["api-service"])
+
+    assert errors == []
+
+
+def test_in_a_workspace_a_book_only_in_a_member_repo_is_no_book(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    laid = lay_out(tmp_path, run_git)
+    name_members(tmp_path, monkeypatch, laid)
+    write_book(laid.api, "web-app")
+
+    errors = service_errors(Ostler(survey_repo_root(str(laid.api))), "the story", ["web-app"])
+
+    assert len(errors) == 1 and "web-app" in errors[0]

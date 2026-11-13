@@ -72,15 +72,15 @@ def _tail(text: str) -> str:
 
 
 @blueprint.node(stub=_green)
-def python_book_check(logger: logging.Logger, root: Path, module: str) -> BookGate:
-    """Run the check of one of the book's modules from the repo root, and keep the tail of what it printed."""
-    done = run_tool(book_command("check", module), cwd=root, logger=logger)
+def python_book_check(logger: logging.Logger, root: Path, module: str, app: Path) -> BookGate:
+    """Run the check of one of the book's modules from the book root, with the source pointers read under the app's root, and keep the tail of what it printed."""
+    done = run_tool(book_command("check", module, "--app", str(app)), cwd=root, logger=logger)
     return BookGate(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()))
 
 
 @blueprint.node(stub=_green)
 def python_book_run(logger: logging.Logger, root: Path, module: str, out_dir: Path, stack_copy: str = "") -> BookGate:
-    """Play one of the book's modules against the live app from the repo root, on the stack copy the run names, and keep the tail of what it printed."""
+    """Play one of the book's modules against the live app from the book root, on the stack copy the run names, and keep the tail of what it printed."""
     on_copy = ("--copy", stack_copy) if stack_copy else ()
     done = run_tool(book_command("run", module, "--out", str(out_dir), *on_copy), cwd=root, logger=logger)
     return BookGate(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()))
@@ -107,8 +107,12 @@ class WritePythonBook(BookFlow):
     stack_copy: str = ""
 
     @property
-    def root(self) -> Path:
+    def code_root(self) -> Path:
         return Path(self.repo_dir).resolve()
+
+    @property
+    def source_root(self) -> Path:
+        return self.code_root / self.source_folder
 
     @property
     def package(self) -> str:
@@ -140,6 +144,7 @@ class WritePythonBook(BookFlow):
                 timeout=float("inf"),
                 args=self._prompt_args(gate),
                 cwd=self.root,
+                add_dirs=[self.code_root] if self.code_root != self.root else None,
                 session=owner_chain(self.service),
             )
         except (OutputParseError, AgentTurnFailed, AgentTimeout) as ended:
@@ -162,7 +167,8 @@ class WritePythonBook(BookFlow):
             "package": self.package,
             "modules": list(self.modules),
             "source_folder": self.source_folder,
-            "repo_root": self.root.as_posix(),
+            "book_root": self.root.as_posix(),
+            "source_root": self.source_root.as_posix(),
             "references": finished_books(self.root, self.service),
             "stack_copy": self.stack_copy,
             "gate": gate,
@@ -179,7 +185,7 @@ class WritePythonBook(BookFlow):
         """Run the check of each of the book's modules. A pass plays the book, and the first fail sends the owner another lap."""
         gate = BookGate(exit_code=0)
         for module in self.modules:
-            gate = self.call(python_book_check, self.root, module)
+            gate = self.call(python_book_check, self.root, module, self.code_root)
             if gate.exit_code != 0:
                 return self._judged("check", module, gate, lap, self.check)
         return Continue(gate, self.play, lap=lap).because("the check passes")

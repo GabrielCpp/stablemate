@@ -24,6 +24,7 @@ from workhorse_workflows.coder.docs.flow import Docs
 from workhorse_workflows.coder.shared.owner import MAX_BLOCKS, MAX_LAPS
 from workhorse_workflows.coder.shared.schemas.book_qa import BookPlay
 from _epics import epics_root
+from _workspace import Workspace
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
@@ -280,6 +281,42 @@ def test_a_story_naming_a_service_without_a_book_stops_before_the_spec_turn(
     assert agent.counts() == {}, agent.counts()
 
 
+def test_in_a_workspace_a_story_whose_book_is_in_the_artifacts_folder_is_not_refused(
+    workspace: Workspace,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write(epics_root() / EPIC / "epic.md", EPIC_MD)
+    write(spec_dir() / "plan-context.json", json.dumps(_plan_context("api"), indent=2))
+    _served_by(workspace.artifacts, write, "api", covered=("api",))
+    monkeypatch.setattr(book_nodes, "_play", _Checks())
+
+    result = drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
+
+    assert result.status == "passed", result
+
+
+def test_a_story_whose_book_is_missing_is_refused_naming_where_the_book_goes(
+    workspace: Workspace,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    write: Callable[[Path, str], Path],
+) -> None:
+    write(epics_root() / EPIC / "epic.md", EPIC_MD)
+    write(spec_dir() / "plan-context.json", json.dumps(_plan_context("api"), indent=2))
+    write(
+        epics_root() / STORY_REL / "story.md",
+        STORY_MD.replace("type: story\n", "type: story\nservices: [api]\n"),
+    )
+
+    with pytest.raises(WorkflowFailed) as refused:
+        drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
+
+    assert f"{workspace.artifacts}/services/<name>/service.py" in str(refused.value), refused.value
+
+
 def test_a_surface_book_under_a_service_is_a_book(
     docs: Path,
     alongside: Path,
@@ -314,6 +351,7 @@ def test_a_story_naming_no_service_is_not_applicable_with_no_turn(
 
 
 def test_the_spec_pass_writes_the_book_before_any_diff_exists(
+    docs: Path,
     booked: _Checks,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
@@ -323,7 +361,9 @@ def test_the_spec_pass_writes_the_book_before_any_diff_exists(
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert result.status == "passed", result
-    assert [argv[2:] for argv in booked.argv] == [["ostler.book", "check", "services.api"]]
+    assert [argv[2:] for argv in booked.argv] == [
+        ["ostler.book", "check", "services.api", "--app", str(docs)]
+    ]
     assert agent.counts() == {"specify-story": 1}
     brief = agent.author_args()[0]
     assert brief["epic_path"].endswith(f"{EPIC}/epic.md"), brief

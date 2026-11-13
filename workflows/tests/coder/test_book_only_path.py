@@ -92,7 +92,7 @@ QA_ARGS = {
     "epic": "E-1",
     "qa_dir": "qa",
     "qa_scratch_dir": "qa",
-    "docs_root": "docs",
+    "docs_root": "/work/acme",
     "target_env": "local",
     "runtime_python": "python",
     "verification_setup": None,

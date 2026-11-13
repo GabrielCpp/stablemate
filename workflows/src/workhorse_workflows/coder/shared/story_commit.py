@@ -27,6 +27,7 @@ from workhorse_workflows.kit.agent_files import render_agent_files_returning_fai
 from workhorse_workflows.kit import (
     GitError,
     commit_paths,
+    find_docs_root,
     find_repo_root,
     open_repo,
     resolve_workspace,
@@ -339,48 +340,40 @@ def commit_book_delta(
     spec_dir: str = "",
     preexisting: list[str] | None = None,
     repo_dir: str = "",
-    workspace: str = "",
     story_id: str = "",
     book_services: list[str] | None = None,
 ) -> StoryCommitted:
     """Commit the book files the spec pass left uncommitted, so an owner's clean-repo check never counts the book as its leftovers. A service's book is committed by its `services/<name>/` folder."""
     slug = story_slug or "story"
-    root = find_repo_root(repo_dir)
+    root = find_docs_root(repo_dir)
     folders = [(root / "services" / name).resolve() for name in book_services or []]
-    snapshot = tuple(preexisting or ())
-    held = _affected_roots(logger, root, spec_dir, workspace, repo_dir)
-    if folders and not any(repo_path.resolve() == root.resolve() for _, repo_path in held):
-        held.append((root.name, root))
-    committed = False
-    for name, repo_path in held:
-        excused = untouched_since(repo_path, snapshot)
-        rels = [
-            rel
-            for rel in uncommitted_paths(repo_path)
-            if rel not in excused
-            and any((repo_path / rel).resolve().is_relative_to(folder) for folder in folders)
-        ]
-        if not rels:
-            continue
-        message = commits.message(
-            "docs",
-            commits.scope(name),
-            f"specify {slug} in the book",
-            epic=registry.epic_slug(epic) or epic,
-            story=story_id or slug,
-        )
-        try:
-            landed = commit_paths(repo_path, message, *rels, verify=False)
-        except GitError as exc:
-            raise WorkflowFailed(
-                f"git refused the commit for {slug} in {repo_path}: {exc}"
-            ) from exc
-        if landed:
-            logger.info("committed %d book path(s) the spec pass wrote in %s", len(rels), name)
-        committed = committed or landed
-    if not committed:
+    excused = untouched_since(root, tuple(preexisting or ()))
+    rels = [
+        rel
+        for rel in uncommitted_paths(root)
+        if rel not in excused
+        and any((root / rel).resolve().is_relative_to(folder) for folder in folders)
+    ]
+    if not rels:
         logger.info("the spec pass left no uncommitted book path for %s", slug)
-    return StoryCommitted(committed=committed)
+        return StoryCommitted(committed=False)
+    if not (root / ".git").exists():
+        logger.info("no .git at %s, nothing to commit", root)
+        return StoryCommitted(committed=False)
+    message = commits.message(
+        "docs",
+        commits.scope(root.name),
+        f"specify {slug} in the book",
+        epic=registry.epic_slug(epic) or epic,
+        story=story_id or slug,
+    )
+    try:
+        landed = commit_paths(root, message, *rels, verify=False)
+    except GitError as exc:
+        raise WorkflowFailed(f"git refused the commit for {slug} in {root}: {exc}") from exc
+    if landed:
+        logger.info("committed %d book path(s) the spec pass wrote in %s", len(rels), root.name)
+    return StoryCommitted(committed=landed)
 
 
 @blueprint.node

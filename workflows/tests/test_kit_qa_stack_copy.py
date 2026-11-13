@@ -10,10 +10,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+from _workspace import lay_out, run_git
 from ostler.environments import leases, runtime
 from ostler.qa import addresses, runbook
 from ostler.qa.outcome import QaOutcome
 
+from workhorse_workflows.coder.shared.stack import stack_target
 from workhorse_workflows.kit.qa import runner
 
 LOG = logging.getLogger(__name__)
@@ -234,3 +236,19 @@ def test_no_stack_file_is_unneeded_not_a_runbook_refusal(tmp_path: Path, monkeyp
 
     assert status.ready == "unneeded", status
     assert "ops/stack.yml" in status.notes
+
+
+def test_in_a_workspace_the_stack_target_is_the_artifacts_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(runtime.HOME_ENV, str(tmp_path / "env-home"))
+    laid = lay_out(tmp_path, run_git)
+    config = tmp_path / "home-config.toml"
+    config.write_text(f'[workspaces]\nacme = ["{laid.api}", "{laid.web}"]\n', encoding="utf-8")
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    for base in (laid.artifacts, laid.api):
+        stack = base / "services" / "api" / "ops" / "stack.yml"
+        stack.parent.mkdir(parents=True)
+        stack.write_text(yaml.safe_dump({"services": {}}), encoding="utf-8")
+
+    target = stack_target(LOG, "S", "l", repo_dir=str(laid.api), services=["api"])
+
+    assert target.near == str(laid.artifacts / "services" / "api")
