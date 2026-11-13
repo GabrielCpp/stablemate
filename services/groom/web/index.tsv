@@ -1,3 +1,10 @@
+interaction	ReportProgress	services.groom.web.interactions:ReportProgress	ReportProgress on outside the screens takes Push a workflow reports progress to groom from its container while the dashboard is open, and the page shows the run
+interaction	ReportGate	services.groom.web.interactions:ReportGate	ReportGate on outside the screens takes Push a workflow reports a gate waiting on an operator while the dashboard is open, and the page shows the run as blocked
+interaction	ReportExit	services.groom.web.interactions:ReportExit	ReportExit on outside the screens takes Push a workflow reports that it exited while the dashboard is open, and the page shows the run as ended
+interaction	FilterTheList	services.groom.web.interactions:FilterTheList	FilterTheList on Runs takes Query types in the filter box above the run list; an empty box shows every run
+interaction	OpenSettings	services.groom.web.interactions:OpenSettings	OpenSettings on Settings takes nothing presses Settings in the left bar
+interaction	OpenRuns	services.groom.web.interactions:OpenRuns	OpenRuns on Runs takes nothing presses Runs in the left bar
+interaction	SwitchTheAttendant	services.groom.web.interactions:SwitchTheAttendant	SwitchTheAttendant on Settings takes Settings ticks or clears the attendant checkbox in the settings pane
 action	PushProgress	services.groom.model.actions:PushProgress	PushProgress
 action	PushBlocked	services.groom.model.actions:PushBlocked	PushBlocked
 action	PushExited	services.groom.model.actions:PushExited	PushExited

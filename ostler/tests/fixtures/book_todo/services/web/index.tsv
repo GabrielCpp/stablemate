@@ -1,3 +1,10 @@
+interaction	AddTodo	services.web.interactions:AddTodo	AddTodo on AddForm takes Todo fills the add form and presses Save
+interaction	EditTodo	services.web.interactions:EditTodo	EditTodo on EditForm takes Todo opens the row's edit form, changes what differs and presses Save
+interaction	RemoveTodo	services.web.interactions:RemoveTodo	RemoveTodo on RemoveDialog takes Todo presses Remove on the row and confirms
+interaction	Filter	services.web.interactions:Filter	Filter on ListPage takes Query types and picks the filters above the list, reads it, then clears them
+interaction	DayPasses	services.web.interactions:DayPasses	DayPasses on outside the screens takes Clock the clock moves and the list is opened again
+interaction	SetStore	services.web.interactions:SetStore	SetStore on outside the screens takes Switch the store behind the API goes down or comes back
+interaction	SetNetwork	services.web.interactions:SetNetwork	SetNetwork on outside the screens takes Network the browser loses or regains the network
 action	Add	services.web.model.actions:Add	Add
 rule	Add	services.web.model.actions:Add	400 Title is required
 rule	Add	services.web.model.actions:Add	400 Title is too long

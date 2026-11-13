@@ -16,7 +16,7 @@ from ostler.book.http import identity_lines
 from ostler.book.model import Defect, Rule
 from ostler.book.service import Service
 
-KINDS = ("rule", "defect", "endpoint", "action", "journey", "screen", "scene", "decision")
+KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "scene", "decision")
 
 
 @dataclass(frozen=True)
@@ -69,6 +69,8 @@ def items(service: Service[Any], module: str) -> list[Item]:
     out: list[Item] = []
     for endpoint in service.endpoints:
         out.append(Item("endpoint", address(endpoint), endpoint.__name__, tuple(endpoint.describe().splitlines())))
+    for interaction in service.interactions:
+        out.append(Item("interaction", address(interaction), interaction.__name__, (" ".join(interaction.describe().split()),)))
     for action in actions_of(service, module):
         doc = tuple((action.__doc__ or "").strip().splitlines())
         out.append(Item("action", address(action), action.__name__, (action.__name__, *doc)))
