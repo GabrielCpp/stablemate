@@ -1145,3 +1145,31 @@ def test_device_steps_near_another_book_still_come_up(tmp_path: Path) -> None:
     (tmp_path / "docs" / "services" / "web" / "ops" / "stack.yml").write_text("services: {}\n")
     results = rb.bring_up_devices(model.load(tmp_path), near=Path("docs/services/web"))
     assert [r["source"] for r in results] == ["app"]
+
+
+def test_bring_up_book_devices_reads_the_books_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".git").mkdir()
+    stack = tmp_path / "services" / "app" / "ops" / "stack.yml"
+    stack.parent.mkdir(parents=True)
+    stack.write_text(
+        "services: {}\n"
+        "device:\n"
+        "  - name: boot\n"
+        "    run: echo \"$STABLEMATE_LEASE\" > booted.marker\n", encoding="utf-8")
+
+    def forbidden(*args: object, **kwargs: object) -> None:
+        raise AssertionError("bring_up_book_devices loads no page graph")
+
+    monkeypatch.setattr(model, "load", forbidden)
+    results = rb.bring_up_book_devices(tmp_path, env={"STABLEMATE_LEASE": "story-1"})
+    assert [(r["source"], r["ready"]) for r in results] == [("app", "yes")]
+    assert (tmp_path / "booted.marker").read_text().strip() == "story-1"
+
+
+def test_bring_up_book_devices_is_empty_when_no_book_declares_device_steps(tmp_path: Path) -> None:
+    stack = tmp_path / "services" / "web" / "ops" / "stack.yml"
+    stack.parent.mkdir(parents=True)
+    stack.write_text("services: {}\n", encoding="utf-8")
+    assert rb.bring_up_book_devices(tmp_path) == []

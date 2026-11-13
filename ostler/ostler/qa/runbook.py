@@ -646,6 +646,17 @@ def bring_up_devices(graph: Graph, *, near: Path | None = None,
         return bring_up_stacks(manifests, repo_root=str(root), logger=logger)
 
 
+def bring_up_book_devices(root: Path, *, near: Path | None = None,
+                          env: Mapping[str, str] | None = None,
+                          logger: logging.Logger | None = None) -> list[dict[str, Any]]:
+    """Boot the device and install the app for each book whose `stack.yml` declares `device:` steps, read from the books alone."""
+    manifests = _device_manifests(root, near)
+    if not manifests:
+        return []
+    with addresses.leased(env or {}):
+        return bring_up_stacks(manifests, repo_root=str(root), logger=logger)
+
+
 def _device_manifests(root: Path, near: Path | None) -> list[dict[str, Any]]:
     books = [book for book in spec_mod.load(root).books.values() if book.device]
     if near is not None:
@@ -771,6 +782,7 @@ __all__ = [
     "REUSE_POLICIES",
     "STEP_KINDS",
     "STEP_PHASES",
+    "bring_up_book_devices",
     "bring_up_devices",
     "bring_up_stacks",
     "bullet_value",
