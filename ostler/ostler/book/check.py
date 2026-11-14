@@ -30,7 +30,7 @@ from ostler.book.status import succeeded
 from ostler.book.screen import Component, Interaction, as_label
 from ostler.book.search import actions_of, items, states_of
 from ostler.book.service import Service
-from ostler.book.sources import missing
+from ostler.book.sources import elements, missing
 
 
 @dataclass(frozen=True)
@@ -143,7 +143,7 @@ def input_faults(service: Service[Any]) -> list[Finding]:
 
 
 def source_faults(service: Service[Any], app: str | None) -> list[Finding]:
-    found = [Finding(e.__name__, "no source pointer", blocks=False) for e in (*service.endpoints, *service.records) if not cast(Any, e).source]
+    found = [Finding(e.__name__, "no source pointer", blocks=False) for e in elements(service) if not cast(Any, e).source]
     members = core_config.workspace_members()
     for name, path in missing(service, app):
         member = path.removeprefix("repo://").partition("/")[0] if path.startswith("repo://") else ""

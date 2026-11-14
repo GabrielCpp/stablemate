@@ -17,6 +17,7 @@ from book_todo import FIXTURE, runtime
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book import checkout
 from ostler.book.check import source_faults
+from ostler.book import App
 from ostler.book.service import Service
 from ostler.book.sources import missing, stale
 
@@ -112,7 +113,7 @@ class _Cls:
 
 
 def _service(*source: str) -> Service[Any]:
-    return cast("Service[Any]", SimpleNamespace(endpoints=(_Cls(*source),), records=(), app=None))
+    return cast("Service[Any]", SimpleNamespace(endpoints=(_Cls(*source),), records=(), screens=(), interactions=(), app=None))
 
 
 def test_a_qualified_pointer_to_an_existing_member_file_is_no_finding(workspace):
@@ -189,3 +190,35 @@ def test_stale_names_the_member_from_its_worktree(workspace, tmp_path):
     report = stale(service, str(api), str(book))
     assert report.untraced == ["repo://todo-web/README::y"]
     assert report.missing == []
+
+
+def _screen_service(*source: str, app: App | None = None) -> Service[Any]:
+    screen = _Cls(*source)
+    screen.__name__ = "Dashboard"
+    return cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(screen,), interactions=(), app=app))
+
+
+def test_a_screen_whose_source_does_not_exist_is_a_finding_under_app(workspace):
+    found = source_faults(_screen_service("web/gone.tsx"), str(workspace.api))
+    assert [(f.name, f.problem) for f in found] == [("Dashboard", f"source web/gone.tsx does not exist under {workspace.api}")]
+
+
+def test_a_screen_with_no_source_is_a_warning_not_a_block(workspace):
+    found = source_faults(_screen_service(), None)
+    assert [(f.name, f.problem, f.blocks) for f in found] == [("Dashboard", "no source pointer", False)]
+
+
+def test_stale_lists_a_screen_when_the_file_it_names_changed_since_verified(workspace):
+    page = workspace.api / "page.tsx"
+    page.write_text("one\n")
+    (workspace.artifacts / "VERIFIED").write_text("")
+    _git(workspace.api, "add", "page.tsx")
+    _git(workspace.api, "commit", "--quiet", "-m", "page")
+    verified = subprocess.run(["git", "-C", str(workspace.api), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+    (workspace.artifacts / "VERIFIED").write_text(verified)
+    page.write_text("two\n")
+    _git(workspace.api, "commit", "--quiet", "-am", "edit")
+    service = _screen_service("page.tsx", app=App(roots=(".",), verified="VERIFIED", ignore=()))
+    report = stale(service, str(workspace.api), str(workspace.artifacts))
+    assert list(report.stale) == ["Dashboard"]
+    assert report.unnamed == {}

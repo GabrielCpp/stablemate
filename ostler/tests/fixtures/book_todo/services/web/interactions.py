@@ -12,40 +12,47 @@ from .screens import AddForm, EditForm, ListPage, RemoveDialog
 
 
 class AddTodo(Interaction[Todo]):
+    source = ("web/app.js",)
     screen = AddForm
     does = "fills the add form and presses Save"
     carries = Add
 
 
 class EditTodo(Interaction[Todo]):
+    source = ("web/app.js",)
     screen = EditForm
     does = "opens the row's edit form, changes what differs and presses Save"
     carries = Edit
 
 
 class RemoveTodo(Interaction[Todo]):
+    source = ("web/app.js",)
     screen = RemoveDialog
     does = "presses Remove on the row and confirms"
     carries = Remove
 
 
 class Filter(Interaction[Query]):
+    source = ("web/app.js",)
     screen = ListPage
     does = "types and picks the filters above the list, reads it, then clears them"
     carries = Find
 
 
 class DayPasses(Interaction[Clock]):
+    source = ("web/app.js",)
     does = "the clock moves and the list is opened again"
     carries = MoveClock
 
 
 class SetStore(Interaction[Switch]):
+    source = ("app.py",)
     does = "the store behind the API goes down or comes back"
     carries = SwitchStore
 
 
 class SetNetwork(Interaction[Network]):
+    source = ("web/app.js",)
     does = "the browser loses or regains the network"
     carries = SwitchNetwork
 

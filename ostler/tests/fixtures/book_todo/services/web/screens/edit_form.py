@@ -22,6 +22,7 @@ refused = Phase("refused", shows=(error,), because="the fields keep what was typ
 
 
 class EditForm(Screen):
+    source = ("web/index.html", "web/app.js")
     api = "/todos"
     sends = (request("PUT", "/todos"),)
     name = T(en="Edit todo", fr="Modifier la tâche")

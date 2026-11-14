@@ -20,6 +20,7 @@ refused = Phase("refused", shows=(error,), because="the fields keep what was typ
 
 
 class AddForm(Screen):
+    source = ("web/index.html", "web/app.js")
     api = "/todos"
     sends = (request("POST", "/todos"),)
     name = T(en="Add a todo", fr="Ajouter une tâche")

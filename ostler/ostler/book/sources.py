@@ -42,7 +42,7 @@ def symbol_of(pointer: str) -> str | None:
 
 
 def elements(service: Service[Any]) -> tuple[type, ...]:
-    return (*service.endpoints, *service.records)
+    return (*service.endpoints, *service.records, *service.screens, *service.interactions)
 
 
 def raw(service: Service[Any]) -> dict[str, tuple[str, ...]]:

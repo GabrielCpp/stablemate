@@ -204,6 +204,7 @@ class Screen:
     transitions: tuple[Transition, ...] = ()
     sends: tuple[Callable[[Any], bool], ...] = ()
     api: str = ""
+    source: ClassVar[tuple[str, ...]] = ()
 
     @classmethod
     def components(cls) -> list[Component]:
@@ -270,6 +271,7 @@ class Interaction(Generic[F]):
     screen: ClassVar[type[Screen] | None] = None
     does: ClassVar[str] = ""
     carries: ClassVar[type[Action[Any, Any]] | None] = None
+    source: ClassVar[tuple[str, ...]] = ()
 
     def __init_subclass__(cls) -> None:
         if cls.carries is None and cls.screen is None:

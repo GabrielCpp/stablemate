@@ -10,6 +10,7 @@ removing = Phase("removing", disabled=(confirm, keep))
 
 
 class RemoveDialog(Screen):
+    source = ("web/index.html", "web/app.js")
     api = "/todos"
     sends = (request("DELETE", "/todos"),)
     name = T(en="Remove this todo?", fr="Supprimer cette tâche ?")

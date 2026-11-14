@@ -28,6 +28,7 @@ offline_phase = Phase("offline", shows=(offline, rows), disabled=(remove,),
 
 
 class ListPage(Screen):
+    source = ("web/index.html", "web/app.js")
     api = "/todos"
     sends = (request("GET", "/todos"),)
     route = "/"
