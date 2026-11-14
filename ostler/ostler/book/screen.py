@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, ClassVar, Generic, TypeVar, cast
 
 from ostler.book.cast import KEEP, SOLE, Actor
-from ostler.book.domain import Action
+from ostler.book.domain import Action, Fixture
 from ostler.book.errors import BookError
 from ostler.book.http import Field as Wire
 
@@ -352,8 +352,12 @@ class Interaction(Generic[F]):
 
     @classmethod
     def typed(cls) -> list[Component]:
-        """The components of its screen that declare the shape of the fixture field they take."""
-        return [c for c in cls.screen.components() if c.holds is not None] if cls.screen is not None else []
+        """The components of its screen that declare the shape of a field of the fixture this interaction takes."""
+        accept = cls.carries.accept if cls.carries is not None else None
+        if cls.screen is None or not (isinstance(accept, type) and issubclass(accept, Fixture)):
+            return []
+        held = accept.field_names()
+        return [c for c in cls.screen.components() if c.holds is not None and c.takes in held]
 
     @classmethod
     def describe(cls) -> str:

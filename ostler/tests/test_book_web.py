@@ -282,6 +282,21 @@ def test_the_fixture_web_book_states_a_shape_for_every_field_a_person_fills():
     assert bare == []
 
 
+def test_an_interaction_gets_only_the_typed_fields_its_fixture_has():
+    from ostler.book.inputs import has_inputs, input_fields
+    from ostler.book.screen import Interaction
+
+    interactions = module("services.web.interactions")
+    actions = module("services.web.model.actions")
+    hooks = module("services.web.fixtures.hooks")
+    peek = type("PeekAtTheForm", (Interaction,), {"screen": interactions.AddTodo.screen, "carries": actions.MoveClock,
+                                                  "source": ("web/app.js",), "does": "looks at the add form as a day passes"})
+    assert [c.takes for c in interactions.AddTodo.typed()] == ["title", "description", "due_on"]
+    assert peek.typed() == []
+    assert not has_inputs(peek)
+    assert list(input_fields(peek(hooks.Clock(today="2026-01-01")))) == []
+
+
 def _faults_of(**components):
     import dataclasses
 
