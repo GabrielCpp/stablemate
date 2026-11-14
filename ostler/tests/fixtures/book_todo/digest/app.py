@@ -20,14 +20,17 @@ class Digest:
         self.todo_url = todo_url.rstrip("/")
         self.bug = bug
 
-    def ask(self, path: str, headers: Any) -> tuple[int, Any]:
+    def ask(self, path: str, headers: Any, method: str = "GET") -> tuple[int, Any]:
         forwarded = {name: headers[name] for name in FORWARDED if headers.get(name) is not None}
         try:
-            with urlopen(Request(self.todo_url + path, headers=forwarded), timeout=10) as reply:
+            with urlopen(Request(self.todo_url + path, headers=forwarded, method=method), timeout=10) as reply:
                 return reply.status, json.loads(reply.read() or "null")
         except HTTPError as reply:
             raw = reply.read()
-            return reply.code, json.loads(raw) if raw else None
+            body = json.loads(raw) if raw else None
+            if self.bug == "digest-hides-missing" and reply.code == 404:
+                return 500, {"error": "Internal Server Error"}
+            return reply.code, body
 
     def kept(self, todo: dict[str, Any]) -> bool:
         if self.bug == "digest-keeps-scheduled":
@@ -46,6 +49,11 @@ class Digest:
         if status != 200:
             return status, body
         return 200, {"id": body["id"], "label": body["title"], "late": body["status"] == "overdue"}
+
+    def done(self, ident: str, headers: Any) -> tuple[int, Any]:
+        if self.bug == "digest-drops-done":
+            return 204, None
+        return self.ask("/todos/" + ident, headers, "DELETE")
 
 
 class DigestServer:
@@ -68,6 +76,18 @@ class DigestServer:
                     status, payload = digest.entry(path.removeprefix("/digest/"), self.headers)
                 else:
                     status, payload = 404, {"error": "Not found"}
+                self.answer(status, payload)
+
+            def do_POST(self) -> None:
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+                path = self.path.split("?", 1)[0]
+                if path.startswith("/digest/") and path.endswith("/done"):
+                    status, payload = digest.done(path.removeprefix("/digest/").removesuffix("/done"), self.headers)
+                else:
+                    status, payload = 404, {"error": "Not found"}
+                self.answer(status, payload)
+
+            def answer(self, status: int, payload: Any) -> None:
                 raw = b"" if payload is None else json.dumps(payload).encode()
                 self.send_response(status)
                 if raw:

@@ -1,4 +1,5 @@
+from .an_overdue_todo_is_finished_from_the_digest import AnOverdueTodoIsFinishedFromTheDigest
 from .an_overdue_todo_is_in_the_digest import AnOverdueTodoIsInTheDigest
 from .the_todo_api_turns_a_caller_away import TheTodoApiTurnsACallerAway
 
-ALL = (AnOverdueTodoIsInTheDigest, TheTodoApiTurnsACallerAway)
+ALL = (AnOverdueTodoIsFinishedFromTheDigest, AnOverdueTodoIsInTheDigest, TheTodoApiTurnsACallerAway)

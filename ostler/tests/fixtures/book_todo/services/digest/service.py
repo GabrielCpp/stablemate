@@ -5,7 +5,7 @@ import sys
 
 from ostler.book import App, Environment, Process, Service, Stack
 
-from .endpoints import ReadDigest, ReadDigestEntry
+from .endpoints import FinishFromDigest, ReadDigest, ReadDigestEntry
 from .journeys import ALL as JOURNEYS
 from .model import Digesting
 from .surface import DigestApi
@@ -36,6 +36,6 @@ service = Service[Digesting](
     journeys=JOURNEYS,
     stack=stack,
     app=App(roots=("digest",), verified="VERIFIED", ignore=()),
-    endpoints=(ReadDigest, ReadDigestEntry),
-    words={"ReadDigest": ReadDigest, "ReadDigestEntry": ReadDigestEntry},
+    endpoints=(ReadDigest, ReadDigestEntry, FinishFromDigest),
+    words={"ReadDigest": ReadDigest, "ReadDigestEntry": ReadDigestEntry, "FinishFromDigest": FinishFromDigest},
 )

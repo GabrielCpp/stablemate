@@ -10,6 +10,8 @@ from ..api.model.todo import TodoRecord
 
 TODO = Foreign(TodoRecord, owner="services.api", reads=("id", "title", "status"))
 
+AS_IS = {401: 401, 404: 404}
+
 
 def late_only(listed: Any) -> dict[str, Any]:
     """the overdue todos the owner lists, each under its id and its title as a label"""

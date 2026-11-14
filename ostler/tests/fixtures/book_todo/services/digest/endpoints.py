@@ -1,10 +1,10 @@
-"""The digest's two reads. Neither carries an action: the todo API's answer is what each one is judged against."""
+"""The digest's two reads and its one write. None carries an action: the todo API's answer is what each read is judged against, and the todo API's call is what the write must reach."""
 
-from ostler.book import Answer, ApiKey, Bearer, Endpoint, Bool, Field, Int, List, Object, Passes, Str
+from ostler.book import Answer, ApiKey, Bearer, Endpoint, Bool, Field, Int, List, Object, Passes, Reaches, Str
 
-from ..api.endpoints import FindTodos, ReadTodo
+from ..api.endpoints import FindTodos, ReadTodo, RemoveTodo
 
-from .foreign import late_only, one_entry
+from .foreign import AS_IS, late_only, one_entry
 
 CREDENTIALS = (Bearer(), ApiKey())
 ERROR = Object("Error", error=Field(Str(), does="the reason, as the todo API gave it"))
@@ -39,7 +39,7 @@ class ReadDigest(Endpoint):
     source = ("digest/app.py::digest",)
     does = "Lists the overdue todos the todo API holds."
     carries = None
-    passes = Passes(asks=lambda step: FindTodos(), derived=late_only)
+    passes = Passes(asks=lambda step: FindTodos(), derived=late_only, refused=AS_IS)
 
 
 class ReadDigestEntry(Endpoint):
@@ -51,4 +51,16 @@ class ReadDigestEntry(Endpoint):
     source = ("digest/app.py::entry",)
     does = "Reads one todo and says whether it is late."
     carries = None
-    passes = Passes(asks=lambda step: ReadTodo(step.of), derived=one_entry)
+    passes = Passes(asks=lambda step: ReadTodo(step.of), derived=one_entry, refused=AS_IS)
+
+
+class FinishFromDigest(Endpoint):
+    method = "POST"
+    path = "/digest/{id}/done"
+    auth = CREDENTIALS
+    params = Object(id=Field(Str(), does="the todo's id"))
+    answers = (Answer(204, None, "the todo API finished the todo"), NOT_FOUND, NO_CREDENTIAL)
+    source = ("digest/app.py::done",)
+    does = "Finishes one todo, which the todo API does by removing it."
+    carries = None
+    reaches = Reaches(lambda step: RemoveTodo(step.of), refused=AS_IS)
