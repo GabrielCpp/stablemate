@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any
 
 from ostler.book import Answer, Endpoint, Screen, T
 from ostler.book.screen import Button
 from ostler.book.domain import State
-from ostler.book.search import items, search
+from ostler.book.search import cmd_search, items, search
 
 from test_book_web import _service
 
@@ -35,6 +36,17 @@ class Ping(Endpoint):
 class Silent(Endpoint):
     path = "/silent"
     answers = (Answer(200, None, "quiet"),)
+
+
+class Editor(Screen):
+    name = "Editor"
+    commit = Button(None, "Save changes")
+
+
+class Store(Endpoint):
+    path = "/store"
+    answers = (Answer(200, None, "stored"),)
+    does = "Saves the settings."
 
 
 def _book(*screens: type[Screen], endpoints: tuple[type[Endpoint], ...] = (), languages: tuple[str, ...] = ("fr",)) -> Any:
@@ -70,3 +82,35 @@ def test_an_element_with_no_source_has_no_source_line(module: str):
     service = _book(endpoints=(Silent,))
     [endpoint] = [item for item in items(service, module) if item.kind == "endpoint"]
     assert not [line for line in endpoint.lines if line.startswith("source:")]
+
+
+def test_two_words_that_sit_apart_on_one_screen_find_it_when_no_phrase_matches(module: str):
+    service = _book(Greeting, Plain, languages=("fr", "es"))
+    assert _found(service, "enregistrer aller", mod=module) == ["Greeting"]
+
+
+def test_a_phrase_that_matches_keeps_its_result_and_adds_no_loose_match(module: str):
+    service = _book(Editor, Plain, languages=("en",))
+    assert _found(service, "save changes", mod=module) == ["Editor"]
+
+
+def test_loose_words_that_are_not_all_on_one_item_find_nothing_and_exit_one(module: str, capsys):
+    service = _book(Greeting, Plain, languages=("fr",))
+    args = SimpleNamespace(service=module, term="aller settings", kind=None)
+    assert cmd_search(service, args) == 1
+    assert capsys.readouterr().out == "nothing in mini says 'aller settings'\n"
+
+
+def test_kind_narrows_a_loose_match(module: str):
+    service = _book(Plain, endpoints=(Store,), languages=("en",))
+    assert sorted(_found(service, "save settings", mod=module)) == ["Plain", "Store"]
+    assert _found(service, "save settings", "endpoint", module) == ["Store"]
+    assert _found(service, "save settings", "screen", module) == ["Plain"]
+
+
+def test_a_loose_match_prints_only_the_lines_that_hold_a_word(module: str, capsys):
+    service = _book(Greeting, languages=("fr", "es"))
+    args = SimpleNamespace(service=module, term="enregistrer aller", kind=None)
+    assert cmd_search(service, args) == 0
+    printed = [line.strip() for line in capsys.readouterr().out.splitlines()[1:]]
+    assert printed and all("aller" in line.lower() or "enregistrer" in line.lower() for line in printed)

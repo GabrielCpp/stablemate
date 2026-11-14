@@ -7,7 +7,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Iterator
+from typing import Any, Iterator, Protocol
 
 from ostler.book import decisions, questions
 from ostler.book.domain import Action, State
@@ -18,6 +18,14 @@ from ostler.book.screen import Screen
 from ostler.book.service import Service
 
 KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "scene", "decision")
+
+
+class Row(Protocol):
+    @property
+    def kind(self) -> str: ...
+
+    @property
+    def lines(self) -> tuple[str, ...]: ...
 
 
 @dataclass(frozen=True)
@@ -111,16 +119,35 @@ def items(service: Service[Any], module: str) -> list[Item]:
     return out
 
 
-def search(service: Service[Any], module: str, term: str, kind: str | None = None) -> list[tuple[Item, list[str]]]:
+def phrase_hits[E: Row](rows: list[E], term: str, kind: str | None) -> list[tuple[E, list[str]]]:
     wanted = term.lower()
-    hits = []
-    for item in items(service, module):
-        if kind is not None and item.kind != kind:
+    found = []
+    for row in rows:
+        if kind is not None and row.kind != kind:
             continue
-        lines = [line.strip() for line in item.lines if wanted in line.lower()]
+        lines = [line.strip() for line in row.lines if wanted in line.lower()]
         if lines:
-            hits.append((item, lines))
-    return hits
+            found.append((row, lines))
+    return found
+
+
+def loose_hits[E: Row](rows: list[E], term: str, kind: str | None) -> list[tuple[E, list[str]]]:
+    words = term.lower().split()
+    found = []
+    if not words:
+        return found
+    for row in rows:
+        if kind is not None and row.kind != kind:
+            continue
+        lowered = [line.lower() for line in row.lines]
+        if all(any(word in line for line in lowered) for word in words):
+            found.append((row, [line.strip() for line, low in zip(row.lines, lowered) if any(word in low for word in words)]))
+    return found
+
+
+def search(service: Service[Any], module: str, term: str, kind: str | None = None) -> list[tuple[Item, list[str]]]:
+    rows = items(service, module)
+    return phrase_hits(rows, term, kind) or loose_hits(rows, term, kind)
 
 
 def cmd_search(service: Service[Any], args: Any) -> int:

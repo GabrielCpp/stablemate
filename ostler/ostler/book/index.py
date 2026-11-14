@@ -12,7 +12,7 @@ from typing import Any
 
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book import decisions
-from ostler.book.search import Item, items
+from ostler.book.search import Item, items, loose_hits, phrase_hits
 
 FILE = "index.tsv"
 
@@ -140,18 +140,6 @@ def services_of(root: str) -> list[str]:
     return [f"services.{n}" for n in sorted(os.listdir(base)) if os.path.isdir(os.path.join(base, n)) and not n.startswith((".", "_"))]
 
 
-def hits(entries: list[Entry], term: str, kind: str | None) -> list[tuple[Entry, list[str]]]:
-    wanted = term.lower()
-    found = []
-    for entry in entries:
-        if kind is not None and entry.kind != kind:
-            continue
-        lines = [line.strip() for line in entry.lines if wanted in line.lower()]
-        if lines:
-            found.append((entry, lines))
-    return found
-
-
 def cmd_index(service: Any, args: Any) -> int:
     path, changed = write(service, args.service)
     print(f"{path}: {'changed' if changed else 'unchanged'}")
@@ -163,17 +151,21 @@ def cmd_search_book(args: Any) -> int:
     if root is None:
         raise SystemExit("no services directory above the current directory")
     names = [args.service] if args.service else services_of(root)
-    found = False
     for name in names:
         if not os.path.isdir(os.path.join(root, *name.split("."))):
             raise SystemExit(f"no service {name!r} under {root}")
-        matched = hits(entries_of(root, name), args.term, args.kind)
-        if not matched:
+    books = {name: entries_of(root, name) for name in names}
+    matched = {name: phrase_hits(entries, args.term, args.kind) for name, entries in books.items()}
+    if not any(matched.values()):
+        matched = {name: loose_hits(entries, args.term, args.kind) for name, entries in books.items()}
+    found = False
+    for name, rows in matched.items():
+        if not rows:
             continue
         found = True
         if not args.service:
             print(f"== {name}")
-        for entry, lines in matched:
+        for entry, lines in rows:
             print(f"{entry.kind:9} {entry.address}")
             for line in lines:
                 print(f"    {line}")
