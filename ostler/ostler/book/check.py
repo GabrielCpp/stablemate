@@ -143,7 +143,8 @@ def input_faults(service: Service[Any]) -> list[Finding]:
 
 
 def source_faults(service: Service[Any], app: str | None) -> list[Finding]:
-    found = [Finding(e.__name__, "no source pointer", blocks=False) for e in elements(service) if not cast(Any, e).source]
+    found = [Finding(e.__name__, "no source pointer", blocks=False) for e in elements(service)
+             if not cast(Any, e).source and not (e in service.interactions and cast(Any, e).screen is None)]
     members = core_config.workspace_members()
     for name, path in missing(service, app):
         member = path.removeprefix("repo://").partition("/")[0] if path.startswith("repo://") else ""

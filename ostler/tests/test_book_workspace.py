@@ -222,3 +222,11 @@ def test_stale_lists_a_screen_when_the_file_it_names_changed_since_verified(work
     report = stale(service, str(workspace.api), str(workspace.artifacts))
     assert list(report.stale) == ["Dashboard"]
     assert report.unnamed == {}
+
+
+def test_an_interaction_outside_the_screens_owes_no_source_pointer(workspace):
+    outside = SimpleNamespace(__name__="ClockMoves", source=(), screen=None)
+    bound = SimpleNamespace(__name__="PressSave", source=(), screen=object())
+    service = cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(), interactions=(outside, bound), app=None))
+    found = source_faults(service, None)
+    assert [(f.name, f.problem) for f in found] == [("PressSave", "no source pointer")]
