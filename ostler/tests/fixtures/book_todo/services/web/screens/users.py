@@ -16,5 +16,5 @@ def owners(model, by):
     return sorted({t.assignee for t in model.todos if t.assignee})
 
 
-FILTER = Lists(head=(ANYONE,), given=RECEIVED, derived=by_name, holds=owners)
+FILTER = Lists(head=(ANYONE,), given=RECEIVED, derived=by_name, always=owners)
 FORM = Lists(head=(NOBODY,), given=RECEIVED, derived=by_name)

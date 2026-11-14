@@ -73,7 +73,7 @@ def not_me(model, by):
 
 assignee = Select("list-assignee", ASSIGNEE, "filters by owner",
                   lists=Lists(head=(ANYONE,), given=request("GET", "/users"), derived=by_name,
-                              holds=owners, never=not_me))
+                              always=owners, never=not_me))
 ```
 
 The run judges the list when a journey picks in it: it reads the labels the select shows and
@@ -81,7 +81,7 @@ compares them with the `head` labels followed by `derived` applied to the last a
 received to `given`. A difference fails the step and the note names both orders. The report
 names the lists a pick judged, the stated ones no pick reached and the selects nobody stated.
 
-`holds` names who must be offered and `never` who must not, each a read of the model for the
+`always` names who must be offered and `never` who must not, each a read of the model for the
 person looking, taken before the step. Entries neither names are ignored, so the claim holds
 on an environment that keeps other people's records. A derivation follows the data the page
 was given, and these two do not, so a list a backend fills wrongly needs them. A list may

@@ -474,7 +474,7 @@ def test_a_list_that_states_nothing_is_refused_where_it_is_declared():
         Lists(head=("Anyone",))
 
 
-@pytest.mark.parametrize("claim", ["holds", "never"])
+@pytest.mark.parametrize("claim", ["always", "never"])
 def test_a_claim_about_who_belongs_with_no_docstring_is_refused_where_it_is_declared(claim: str):
     with pytest.raises(BookError, match=f"the {claim} function .* has no docstring"):
         Lists(**cast(dict, {claim: lambda model, by: []}))
@@ -510,18 +510,18 @@ def not_me(model, by):
 
 
 class Members(Screen):
-    who = Select("who", "Who", lists=Lists(head=("Anyone",), holds=owners, never=not_me))
+    who = Select("who", "Who", lists=Lists(head=("Anyone",), always=owners, never=not_me))
 
 
 def test_the_description_of_a_screen_says_who_belongs_in_a_list_and_who_never_does():
     class Owners(Screen):
         who = Select("who", T(en="Who", fr="Qui"), "filters by owner",
                      lists=Lists(head=(T(en="Anyone", fr="Tous"),), given=request("GET", "/users"), derived=by_name,
-                                 holds=owners, never=not_me))
+                                 always=owners, never=not_me))
 
-    assert ("lists: 'Anyone', the users received, by name; holds everyone a todo the list holds is assigned to; "
+    assert ("lists: 'Anyone', the users received, by name; always everyone a todo the list holds is assigned to; "
             "never the person looking") in Owners.describe("en")
-    assert "lists: 'Tous', the users received, by name; holds everyone" in Owners.describe("fr")
+    assert "lists: 'Tous', the users received, by name; always everyone" in Owners.describe("fr")
 
 
 @contextmanager
@@ -581,8 +581,8 @@ def test_a_pick_in_a_derived_list_fails_when_the_page_shows_the_users_in_the_ord
             "the list People.who shows ['Anyone', 'bo', 'ana'], the book derives ['Anyone', 'ana', 'bo']"]
 
 
-def _expects(holds: list[str], never: list[str]) -> dict:
-    return {"Members.who": (holds, never)}
+def _expects(always: list[str], never: list[str]) -> dict:
+    return {"Members.who": (always, never)}
 
 
 def test_a_pick_passes_when_everyone_who_belongs_is_offered_among_entries_the_book_never_named():
@@ -616,7 +616,7 @@ def test_a_pick_fails_when_someone_who_must_never_be_in_the_list_is_offered_and_
 def test_a_list_picked_in_outside_a_step_is_judged_on_its_derived_claim_alone():
     class Both(Screen):
         who = Select("who", "Who", lists=Lists(head=("Anyone",), given=request("GET", "/users"), derived=by_name,
-                                                holds=owners, never=not_me))
+                                                always=owners, never=not_me))
 
     with _people_page(sort=False, screens=(Both,)) as browser:
         browser.open("/")
@@ -627,7 +627,7 @@ def test_a_list_picked_in_outside_a_step_is_judged_on_its_derived_claim_alone():
 
 
 class Look(Screen):
-    who = Select("who", "Who", lists=Lists(holds=owners, never=not_me))
+    who = Select("who", "Who", lists=Lists(always=owners, never=not_me))
 
 
 class Looks:

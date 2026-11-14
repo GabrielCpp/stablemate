@@ -244,11 +244,11 @@ def expectations(request: object, model: Model) -> dict[str, tuple[list[str], li
     wanted: dict[str, tuple[list[str], list[str]]] = {}
     for attribute, component in screen.attributes():
         lists = component.lists
-        if lists is None or (lists.holds is None and lists.never is None):
+        if lists is None or (lists.always is None and lists.never is None):
             continue
         where = f"{screen.__name__}.{attribute}"
         try:
-            belong = list(lists.holds(model, by)) if lists.holds is not None else []
+            belong = list(lists.always(model, by)) if lists.always is not None else []
             never = list(lists.never(model, by)) if lists.never is not None else []
         except Exception as crash:
             raise BookError(f"the list {where} cannot say who belongs: {type(crash).__name__}: {crash}") from None
