@@ -314,6 +314,8 @@ class Browser:
     def _pick_in_popup(self, component: Component, found: Any, value: str) -> None:
         listbox = self._open(found)
         entries = self._entries(listbox)
+        if component.lists is not None:
+            self._judge(component, [label for _, label in entries])
         values = [entry for entry, _ in entries]
         labels = [label for _, label in entries]
         if value in values:

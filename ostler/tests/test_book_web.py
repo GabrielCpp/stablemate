@@ -649,3 +649,16 @@ def test_offered_on_a_popup_returns_its_values_and_leaves_it_closed():
         assert browser.labels(Chooser.who) == ["Anyone", "ana", "bo"]
         assert browser.page.get_attribute("#who", "aria-expanded") == "false"
 
+
+def test_a_derived_list_drawn_as_a_popup_passes_when_the_page_shows_what_the_book_derives():
+    with _popup_page() as browser:
+        browser.fill(Popup.who, "ana")
+        assert browser.list_faults() == []
+        assert browser.lists_read() == {"Popup.who"}
+
+
+def test_a_derived_list_drawn_as_a_popup_fails_the_step_when_the_page_shows_another_order():
+    with _popup_page(sort=False) as browser:
+        browser.fill(Popup.who, "ana")
+        assert browser.list_faults() == [
+            "the list Popup.who shows ['Anyone', 'bo', 'ana'], the book derives ['Anyone', 'ana', 'bo']"]
