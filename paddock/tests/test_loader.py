@@ -100,11 +100,13 @@ def test_every_benchmark_under_gold_is_listed(make_benchmark: MakeBenchmark, roo
     make_benchmark()
     make_benchmark(SMOKE_TASKS.replace('name="smoke"', 'name="other"'), name="second")
     assert loader.benchmark_names(root) == ["second", "smoke"]
-    assert [item.tasks[0].name for item in loader.load_all(root)] == ["other", "smoke"]
+    loaded, broken = loader.load_all(root)
+    assert [item.tasks[0].name for item in loaded] == ["other", "smoke"]
+    assert broken == {}
 
 
 def test_an_empty_root_lists_nothing(root: Path) -> None:
-    assert loader.load_all(root) == []
+    assert loader.load_all(root) == ([], {})
 
 
 def test_an_unknown_benchmark_names_the_ones_that_exist(make_benchmark: MakeBenchmark, root: Path) -> None:

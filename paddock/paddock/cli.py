@@ -155,14 +155,16 @@ def _report(result: RunResult) -> int:
 def cmd_list(args: argparse.Namespace) -> int:
     del args
     root = paths.root()
-    benchmarks = loader.load_all(root)
-    if not benchmarks:
+    benchmarks, broken = loader.load_all(root)
+    if not benchmarks and not broken:
         print(f"no benchmarks in {paths.gold_dir(root)}")
         return 0
     for benchmark in benchmarks:
         for task in benchmark.tasks:
             print(f"{benchmark.name}  {task.describe()}")
-    return 0
+    for name, why in broken.items():
+        print(f"{name}  cannot load: {why}", file=sys.stderr)
+    return 1 if broken else 0
 
 
 def cmd_sandbox_build(args: argparse.Namespace) -> int:

@@ -71,6 +71,20 @@ def test_list_prints_one_line_per_task(
     ]
 
 
+def test_list_goes_on_past_a_benchmark_that_cannot_load(
+    make_benchmark: MakeBenchmark, root: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    make_benchmark(name="broken")
+    (root / "gold" / "broken" / "tasks.py").write_text("from paddock.tasks import gone_helper\n", encoding="utf-8")
+    make_benchmark()
+    with pytest.raises(SystemExit) as stopped:
+        main(["list"])
+    said = capsys.readouterr()
+    assert stopped.value.code == 1
+    assert said.out.splitlines() == ["smoke  smoke  1 steps  scored"]
+    assert "broken  cannot load: ImportError" in said.err
+
+
 def test_run_picks_the_task_by_name(
     make_benchmark: MakeBenchmark, capsys: pytest.CaptureFixture[str]
 ) -> None:

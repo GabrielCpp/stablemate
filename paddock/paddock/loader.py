@@ -102,8 +102,16 @@ def load_benchmark(root: Path, name: str) -> Benchmark:
     return Benchmark(name=name, directory=directory, tasks=load_path(directory / paths.TASKS))
 
 
-def load_all(root: Path) -> list[Benchmark]:
-    return [load_benchmark(root, name) for name in benchmark_names(root)]
+def load_all(root: Path) -> tuple[list[Benchmark], dict[str, str]]:
+    """Every benchmark under *root* that loads, and why each other one does not."""
+    loaded: list[Benchmark] = []
+    broken: dict[str, str] = {}
+    for name in benchmark_names(root):
+        try:
+            loaded.append(load_benchmark(root, name))
+        except Exception as crash:
+            broken[name] = f"{type(crash).__name__}: {crash}"
+    return loaded, broken
 
 
 def load_task(root: Path, benchmark: str, task: str) -> tuple[Benchmark, Task]:
