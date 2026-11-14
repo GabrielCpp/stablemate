@@ -7,8 +7,9 @@ import re
 import shutil
 import stat
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 import yaml
@@ -18,7 +19,7 @@ from ostler.environments import checkout, cli, commands, leases, runtime, secret
 from ostler.environments import render as render_mod
 from ostler.qa import addresses
 
-SERVICES = Path("docs/services")
+SERVICES = Path("services")
 
 
 @pytest.fixture(autouse=True)
@@ -378,7 +379,7 @@ def test_a_book_only_the_worktree_has_mounts_a_dump_of_the_main_checkout(tmp_pat
     shutil.rmtree(root / SERVICES / "api")
     _rewrite_stack(tree, "api", {"db": {
         "about": "the database", "define": "services/db.yml.j2",
-        "fixtures": {"schema": ["fixtures/schema.sql"], "dump": ["../../../../dumps/dump.sql"]}}})
+        "fixtures": {"schema": ["fixtures/schema.sql"], "dump": ["../../../dumps/dump.sql"]}}})
     _file(root, "dumps/dump.sql", "insert into t values (9);\n")
     outcome = commands.cmd_render(tree, ["api"], copy_name="c1", fixtures=["dump"])
     assert outcome.ok, outcome.message
@@ -625,7 +626,7 @@ def _worktree(root: Path) -> Path:
     gitdir.mkdir(parents=True)
     _file(gitdir, "commondir", "../..\n")
     tree = root.parent / "worktrees" / "acme-story-1"
-    shutil.copytree(root / "docs", tree / "docs")
+    shutil.copytree(root / "services", tree / "services")
     _file(tree, ".git", f"gitdir: {gitdir}\n")
     return tree
 
@@ -652,19 +653,6 @@ def test_the_stack_root_is_a_book_named_after_the_repo(tmp_path: Path) -> None:
     assert "acme:cache" in catalog.services
 
 
-@pytest.mark.parametrize("book", ["", "web"])
-def test_a_stack_file_at_the_old_place_names_where_it_moves_to(tmp_path: Path, book: str) -> None:
-    root = _repo(tmp_path)
-    folder = root / SERVICES / book if book else root / SERVICES
-    old = folder / spec.STACK_FILE
-    old.write_text("services: {}\n", encoding="utf-8")
-    shown = old.relative_to(root).as_posix()
-    moved = (folder / "ops" / spec.STACK_FILE).relative_to(root).as_posix()
-    assert (f"{shown}: is the old place: move it to {moved}, whose paths are read from ops/"
-            in spec.load(root).errors)
-    assert old not in spec.stack_files(root)
-
-
 def test_a_template_sees_ops_dir_and_no_longer_book_dir(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     _file(root, f"{SERVICES}/web/ops/services/web.yml.j2",
@@ -683,7 +671,7 @@ def test_a_template_sees_ops_dir_and_no_longer_book_dir(tmp_path: Path) -> None:
 def test_a_service_with_no_about_is_refused_by_name(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     _rewrite_stack(root, "web", {"web": {"define": "services/web.yml.j2"}})
-    assert ("docs/services/web/ops/stack.yml: service `web`: names no `about:`, "
+    assert ("services/web/ops/stack.yml: service `web`: names no `about:`, "
             "the line `ostler env ls` shows for it") in spec.load(root).errors
 
 
@@ -825,7 +813,7 @@ def test_secrets_in_a_book_file_is_refused_and_a_saddlebag_name_names_the_new_sh
     _book_stack(root, "web", {"secrets": "web-local"})
     errors = spec.load(root).errors
     assert any(
-        error.startswith("docs/services/web/ops/stack.yml: `secrets:` belongs in the stack root, "
+        error.startswith("services/web/ops/stack.yml: `secrets:` belongs in the stack root, "
                          "services/ops/stack.yml: one repo has one secret source")
         and "`saddlebag: \"<key>=<value>\"`" in error for error in errors)
 
@@ -873,41 +861,6 @@ def test_the_stack_root_beside_the_service_books_holds_secrets(tmp_path: Path) -
     assert catalog.secrets == spec.SecretSpec(file=".env")
     assert catalog.books["acme"].directory == root / "services"
     assert "acme:cache" in catalog.services
-
-
-def test_a_book_beside_the_service_book_needs_a_book_in_the_pages(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    _file(root, "services/billing/ops/services/ledger.yml.j2", "image: ledger\n")
-    _file(root, "services/billing/ops/stack.yml", yaml.safe_dump({
-        "needs": ["api"],
-        "services": {"ledger": {"about": "the ledger", "define": "services/ledger.yml.j2"}}}))
-    catalog = spec.load(root)
-    assert catalog.errors == []
-    assert "api:api" in catalog.services["billing:ledger"].needs
-
-
-def test_a_book_with_a_stack_file_in_both_places_loads_the_one_beside_the_book(
-    tmp_path: Path,
-) -> None:
-    root = _repo(tmp_path)
-    _file(root, "services/api/ops/services/other.yml.j2", "image: other\n")
-    _file(root, "services/api/ops/stack.yml", yaml.safe_dump({"services": {
-        "other": {"about": "the other", "define": "services/other.yml.j2"}}}))
-    catalog = spec.load(root)
-    duplicates = [error for error in catalog.errors if "already has" in error]
-    assert duplicates == [
-        "docs/services/api/ops/stack.yml: the book `api` already has "
-        "services/api/ops/stack.yml: delete this one"]
-    assert list(catalog.books["api"].services) == ["api:other"]
-
-
-def test_the_stack_root_in_both_places_gives_one_error(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    _file(root, "services/ops/stack.yml", "services: {}\n")
-    _file(root, f"{SERVICES}/ops/stack.yml", "services: {}\n")
-    assert spec.load(root).errors == [
-        "docs/services/ops/stack.yml: the book `acme` already has "
-        "services/ops/stack.yml: delete this one"]
 
 
 def test_the_book_near_a_file_beside_the_service_book_is_the_one_brought_up(
@@ -1142,9 +1095,9 @@ def test_a_book_needing_an_unknown_book_or_itself_is_refused(tmp_path: Path) -> 
     root = _repo(tmp_path)
     _book_stack(root, "web", {"needs": ["queue", "web"]})
     errors = spec.load(root).errors
-    assert ("docs/services/web/ops/stack.yml: `needs:` names the book `queue`, which no "
+    assert ("services/web/ops/stack.yml: `needs:` names the book `queue`, which no "
             "stack.yml defines") in errors
-    assert "docs/services/web/ops/stack.yml: book `web` lists itself in `needs:`" in errors
+    assert "services/web/ops/stack.yml: book `web` lists itself in `needs:`" in errors
 
 
 def test_books_that_need_each_other_form_a_cycle_naming_the_services(tmp_path: Path) -> None:
@@ -1402,3 +1355,48 @@ def test_a_device_step_with_no_command_is_refused(tmp_path: Path) -> None:
     errors = spec.load(root).errors
     assert any("device step `boot`: `run` is not a string" in error for error in errors)
     assert any("device step `boot`: `timeout` is not a positive number of seconds" in error for error in errors)
+
+
+class Executed(Exception):
+    def __init__(self, argv: list[str], env: Mapping[str, str]) -> None:
+        super().__init__(argv)
+        self.argv = argv
+        self.env = env
+
+
+def _execute(argv: list[str], env: Mapping[str, str]) -> NoReturn:
+    raise Executed(argv, env)
+
+
+def test_exec_under_a_saddlebag_source_runs_the_command_behind_its_prefix(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _root_stack(root, {"saddlebag": "environment=local"})
+    with pytest.raises(Executed) as run:
+        commands.cmd_exec(root, ["env"], runner=FakeSaddlebag(), execute=_execute, base={"HOME": "/h"})
+    assert run.value.argv == ["saddlebag", "exec", "--tag", "environment=local", "--", "env"]
+    assert run.value.env == {"HOME": "/h"}
+
+
+def test_exec_under_a_dotenv_file_sources_it_before_the_command(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _root_stack(root, {"file": ".env"})
+    _file(root, ".env", "TOKEN=abc\n")
+    with pytest.raises(Executed) as run:
+        commands.cmd_exec(root, ["env", "-0"], execute=_execute, base={})
+    assert run.value.argv == [
+        "sh", "-c", 'set -a; . "$1"; set +a; shift; exec "$@"', "sh", str(root / ".env"), "env", "-0"]
+
+
+def test_exec_with_no_secret_source_runs_the_bare_command(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    with pytest.raises(Executed) as run:
+        commands.cmd_exec(root, ["env"], execute=_execute, base={})
+    assert run.value.argv == ["env"]
+
+
+def test_exec_of_a_missing_dotenv_file_fails_naming_it(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _root_stack(root, {"file": ".env"})
+    outcome = commands.cmd_exec(root, ["env"], execute=_execute, base={})
+    assert not outcome.ok
+    assert str(root / ".env") in outcome.message

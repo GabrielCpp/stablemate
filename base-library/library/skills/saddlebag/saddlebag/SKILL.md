@@ -329,8 +329,6 @@ permanent, so ask the operator before you run it.
 | `<path> holds secrets. Read it masked: ...` (guard) | A dotenv. Run the `saddlebag env show` or `env keys` line it names. |
 | `<path> holds secrets. Store it: ...` (guard) | A key or credentials file. Hand the operator the `secret set NAME < <path>` line, then run the consumer under `exec --env`. |
 | `<file> has no <KEY>` / `<KEY> has an empty value in <file>` | `env import` stopped before any write. Fix `--keys` or the file. |
-| `the held mark <NAME> on <page> has no saddlebag record tagged environment=<slug> ...` | `ostler env exec` found a `NAME: secret` with no record. Create one with the `secret create` line in the message, then hand the operator its `secret set`. |
-| `<NAME> on <page> is held by N saddlebag records tagged environment=<slug>: ...` | Two records carry the same `var` and tag. Ask the operator which to keep, then `secret untag` or `secret remove` the other. |
 
 ## Install
 

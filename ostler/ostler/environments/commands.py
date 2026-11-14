@@ -3,15 +3,12 @@
 from __future__ import annotations
 
 import os
-import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, NoReturn
 
-from ostler import model
-from ostler.environments import inject, page
 from ostler.environments import render as render_mod
 from ostler.environments import runtime, secrets
 from ostler.environments import spec
@@ -476,36 +473,21 @@ def replace_process(argv: list[str], env: Mapping[str, str]) -> NoReturn:
 
 
 def cmd_exec(
-    root: Path, token: str, command: Sequence[str], *, runner: Runner = run_command,
+    root: Path, command: Sequence[str], *, copy_name: str = SHARED, runner: Runner = run_command,
     execute: Callable[[list[str], Mapping[str, str]], NoReturn] = replace_process,
     base: Mapping[str, str] | None = None,
 ) -> EnvOutcome:
-    """Replace this process with *command*, run under the environment page *token* names."""
+    """Replace this process with *command*, run under the secrets the stack root names."""
+    catalog = spec.load(root)
+    if catalog.errors:
+        return _fail("the stack files do not fit together:\n- " + "\n- ".join(catalog.errors),
+                     errors=catalog.errors)
+    source = secrets.source_for(catalog, root, runner)
     try:
-        node = page.find_environment(model.load(root), token)
-        resolved = inject.resolve(node, runner)
-        argv = inject.exec_argv(resolved, list(command))
-        env = inject.composed_environment(resolved, os.environ if base is None else base)
-    except (LookupError, page.VariableError, inject.ResolutionError) as exc:
+        files = source.files(runtime.copy_for(root, copy_name))
+    except secrets.SecretError as exc:
         return _fail(str(exc))
-    execute(argv, env)
-
-
-def cmd_dotenv(root: Path, token: str, to: str = ".env") -> EnvOutcome:
-    """Write the environment page *token* names as a dotenv file, the held names blank."""
-    try:
-        node = page.find_environment(model.load(root), token)
-        variables = page.read_variables(node)
-    except (LookupError, page.VariableError) as exc:
-        return _fail(str(exc))
-    target = Path(to) if Path(to).is_absolute() else root / to
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(inject.render_dotenv(variables, node.id), encoding="utf-8")
-    lines = [f"wrote {target} ({len(variables.entries)} variables, {len(variables.held)} held)"]
-    if target.resolve().is_relative_to(root.resolve()):
-        relative = target.resolve().relative_to(root.resolve()).as_posix()
-        if inject.ensure_ignored(root, relative):
-            lines.append(f"added {relative} to .gitignore")
-    else:
-        print(f"{target} is outside {root}; .gitignore left alone", file=sys.stderr)
-    return EnvOutcome(True, "\n".join(lines), {"ok": True, "path": str(target)})
+    wrapper = (
+        ["sh", "-c", 'set -a; . "$1"; set +a; shift; exec "$@"', "sh", str(files[0])] if files else []
+    )
+    execute([*source.exec_prefix(), *wrapper, *command], dict(os.environ if base is None else base))

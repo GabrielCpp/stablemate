@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from ostler.environments import commands, migrate, spec
+from ostler.environments import commands, spec
 from ostler.environments.render import SHARED
 from ostler.qa import addresses
 
@@ -58,22 +58,9 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     address.add_argument("--json", action="store_true")
 
     execute = ops.add_parser(
-        "exec", help="run a command under an environment page: its literals plus the held values")
-    execute.add_argument("environment", metavar="ENVIRONMENT", help="an environment page, by slug or id")
+        "exec", help="run a command under the secrets the stack root's `secrets:` names")
+    copy_flag(execute)
     execute.add_argument("argv", nargs=argparse.REMAINDER, metavar="-- COMMAND")
-
-    dotenv = ops.add_parser(
-        "dotenv", help="write an environment page as a dotenv file, the held names blank")
-    dotenv.add_argument("environment", metavar="ENVIRONMENT", help="an environment page, by slug or id")
-    dotenv.add_argument("--to", default=".env", metavar="PATH",
-                        help="where to write it (default: .env at the repo root)")
-
-    importer = ops.add_parser(
-        "import-dotenv",
-        help="move a dotenv onto an environment page: literals onto it, secrets into saddlebag")
-    importer.add_argument("file", metavar="FILE", help="the dotenv file to move")
-    importer.add_argument("--environment", required=True, metavar="ENVIRONMENT",
-                          help="the environment page the file belongs to, by slug or id")
 
     ops.add_parser("schema", help="print the JSON Schema of a stack.yml")
 
@@ -100,19 +87,11 @@ def run(args: argparse.Namespace, root: Path) -> int:
     if op == "exec":
         rest = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
         if not rest:
-            print("usage: ostler env exec ENVIRONMENT [--] COMMAND...", file=sys.stderr)
+            print("usage: ostler env exec [--copy NAME] [--] COMMAND...", file=sys.stderr)
             return 2
-        outcome = commands.cmd_exec(root, args.environment, rest)
+        outcome = commands.cmd_exec(root, rest, copy_name=copy_name)
         print(outcome.message, file=sys.stderr)
         return 1
-    if op == "dotenv":
-        outcome = commands.cmd_dotenv(root, args.environment, args.to)
-        print(outcome.message, file=sys.stdout if outcome.ok else sys.stderr)
-        return 0 if outcome.ok else 1
-    if op == "import-dotenv":
-        outcome = migrate.cmd_import_dotenv(root, Path(args.file), args.environment)
-        print(outcome.message, file=sys.stdout if outcome.ok else sys.stderr)
-        return 0 if outcome.ok else 1
     if op == "schema":
         print(json.dumps(spec.schema(), indent=2))
         return 0

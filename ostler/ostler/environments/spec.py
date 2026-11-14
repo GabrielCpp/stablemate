@@ -12,7 +12,6 @@ import yaml
 from yaml.constructor import ConstructorError
 from yaml.resolver import BaseResolver
 
-from ostler import path as path_mod
 from ostler.environments.checkout import locate
 from ostler.qa import addresses
 
@@ -205,8 +204,8 @@ class Catalog:
 
 
 def stack_roots(root: Path) -> list[Path]:
-    """The folders a book's `ops/stack.yml` is looked for under: the service books, then the pages."""
-    return list(dict.fromkeys([root / BOOKS_DIR, path_mod.services_root_in(root)]))
+    """The folder a book's `ops/stack.yml` is looked for under: the service books."""
+    return [root / BOOKS_DIR]
 
 
 def stack_files(root: Path) -> list[Path]:
@@ -219,17 +218,6 @@ def stack_files(root: Path) -> list[Path]:
             found.append(base / OPS_DIR / STACK_FILE)
         found += sorted(child / OPS_DIR / STACK_FILE for child in base.iterdir()
                         if (child / OPS_DIR / STACK_FILE).is_file())
-    return found
-
-
-def old_stack_files(root: Path) -> list[Path]:
-    """The `stack.yml` files that sit where books kept them before `ops/`."""
-    base = path_mod.services_root_in(root)
-    if not base.is_dir():
-        return []
-    found = [base / STACK_FILE] if (base / STACK_FILE).is_file() else []
-    found += sorted(child / STACK_FILE for child in base.iterdir()
-                    if child.name != OPS_DIR and (child / STACK_FILE).is_file())
     return found
 
 
@@ -247,11 +235,6 @@ def book_name(root: Path, stack_file: Path) -> str:
 def load(root: Path) -> Catalog:
     """The catalog of every book under *root*, with each problem found in it."""
     catalog = Catalog()
-    for old in old_stack_files(root):
-        new = old.parent / OPS_DIR / STACK_FILE
-        catalog.errors.append(
-            f"{shown(root, old)}: is the old place: move it to {shown(root, new)}, "
-            f"whose paths are read from {OPS_DIR}/")
     first_file: dict[str, Path] = {}
     for stack_file in stack_files(root):
         name = book_name(root, stack_file)
