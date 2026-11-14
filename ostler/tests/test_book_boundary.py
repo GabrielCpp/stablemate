@@ -223,7 +223,7 @@ def test_a_claim_that_the_owner_refuses_fails_when_the_map_names_no_such_status(
     assert "404" in done.stdout and "names no such status" in done.stdout and "401" in done.stdout
 
 
-def test_a_claim_that_the_owner_refuses_on_a_step_that_passes_nothing_on_is_refused_where_it_is_taken(
+def test_a_claim_that_the_owner_refuses_on_a_step_that_passes_nothing_on_stops_the_run_at_the_check(
         todo_app, digest_app, tmp_path: Path):
     copy = copied(tmp_path)
     journey = "services/digest/journeys/the_todo_api_turns_a_caller_away.py"
@@ -231,8 +231,8 @@ def test_a_claim_that_the_owner_refuses_on_a_step_that_passes_nothing_on_is_refu
     edited(copy, journey, "from ..endpoints import", "from ..endpoints import ReadTodo\nfrom ..endpoints import")
     done = play(todo_app, digest_app, tmp_path / "out", "--journey", REFUSALS, "--partial", cwd=copy)
     assert done.returncode == 1, done.stdout + done.stderr
-    assert "the book contradicts itself" in done.stdout
-    assert "ReadTodo passes nothing on" in done.stdout
+    assert "CHECK  journey TheTodoApiTurnsACallerAway" in done.stdout
+    assert "services.digest sends ReadTodo, a call of services.api's book" in done.stdout
 
 
 def test_a_write_that_reaches_the_owners_call_passes_and_the_owners_book_then_expects_the_todo_done(
@@ -274,7 +274,7 @@ def test_a_needed_state_that_two_records_of_the_owner_have_is_taken_from_the_nam
     assert done.returncode == 0, done.stdout + done.stderr
 
 
-def test_a_call_that_is_no_endpoint_of_its_book_is_refused(todo_app, digest_app, tmp_path: Path):
+def test_a_call_that_is_no_endpoint_of_its_book_stops_the_run_at_the_check(todo_app, digest_app, tmp_path: Path):
     copy = copied(tmp_path)
     stray = (
         "\n\nclass Stray(Endpoint):\n    method = \"GET\"\n    path = \"/strays/{id}\"\n    auth = CREDENTIALS\n    params = BY_ID\n"
@@ -286,7 +286,7 @@ def test_a_call_that_is_no_endpoint_of_its_book_is_refused(todo_app, digest_app,
     edited(copy, "services/digest/endpoints.py", "ReadTodo(step.of)", "Stray(step.of)")
     done = play(todo_app, digest_app, tmp_path / "out", "--journey", "AnOverdueTodoIsInTheDigest", "--partial", cwd=copy)
     assert done.returncode == 1, done.stdout + done.stderr
-    assert "Stray is no endpoint of services.api" in done.stdout
+    assert "Stray of services.api, and it is no endpoint of services.api's book" in done.stdout
 
 
 def test_walking_a_scene_of_the_digest_book_arranges_the_records_it_needs(todo_app, digest_app, tmp_path: Path):

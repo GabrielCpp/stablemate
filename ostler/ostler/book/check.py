@@ -22,7 +22,7 @@ from ostler.book.explore import _overrides, attempts, moves
 from ostler.book.graph import dot
 from ostler.book.boundary import Foreign, Needs
 from ostler.book.http import Endpoint, List, Object, bare_ids
-from ostler.book.journey import Given, Journey, Refused
+from ostler.book.journey import Given, Journey, OwnerRefused, Refused
 from ostler.book.model import Rule
 from ostler.book.inputs import bases, classes, expected, has_inputs, predicted, refusals_for, vary
 from ostler.book.errors import BookError
@@ -38,9 +38,16 @@ from ostler.book.sources import elements, file_of, missing, pointer_missing
 
 @dataclass(frozen=True)
 class Finding:
+    """One thing the check says of a book. `blocks` stops a run. `told` only informs: the check prints it as a note and still passes."""
+
     name: str
     problem: str
     blocks: bool = True
+    told: bool = False
+
+    def __post_init__(self) -> None:
+        if self.told and self.blocks:
+            object.__setattr__(self, "blocks", False)
 
     def __str__(self) -> str:
         return f"{self.name}: {self.problem}"
@@ -318,7 +325,7 @@ def walked(service: Service[Any]) -> list[tuple[type[Journey], object]]:
         try:
             model = given_model(service, journey)
             for step in journey().steps(model.today):
-                step = step.step if isinstance(step, Refused) else step
+                step = step.step if isinstance(step, (Refused, OwnerRefused)) else step
                 out.append((journey, step))
                 if isinstance(step, Endpoint) and step.carries is not None:
                     try:
@@ -331,17 +338,20 @@ def walked(service: Service[Any]) -> list[tuple[type[Journey], object]]:
 
 
 def passed_on(service: Service[Any]) -> list[tuple[type[Endpoint], Any]]:
-    """The call of another book each step that passes an answer on builds, once per endpoint and call class."""
+    """The call of another book each step that passes an answer on or reaches a call builds, once per endpoint and call class."""
     out: dict[tuple[type[Endpoint], type], tuple[type[Endpoint], Any]] = {}
     for _, step in walked(service):
-        if not isinstance(step, Endpoint) or step.passes is None:
+        if not isinstance(step, Endpoint):
             continue
         endpoint = type(step)
-        try:
-            call = step.passes.asks(step)
-        except Exception:
-            continue
-        out.setdefault((endpoint, type(call)), (endpoint, call))
+        for build in (step.passes.asks if step.passes is not None else None, step.reaches.call if step.reaches is not None else None):
+            if build is None:
+                continue
+            try:
+                call = build(step)
+            except Exception:
+                continue
+            out.setdefault((endpoint, type(call)), (endpoint, call))
     return list(out.values())
 
 
@@ -374,11 +384,11 @@ def reference_faults(module: str, found: dict[str, Service[Any]], skipped: dict[
     refs = {name: references(name, book) for name, book in found.items()}
     out: list[Finding] = []
     for name, book in found.items():
-        calls = passed_on(book) if any(e.passes is not None for e in book.endpoints) else []
+        calls = passed_on(book) if any(e.passes is not None or e.reaches is not None for e in book.endpoints) else []
         for endpoint, call in calls:
             callee = book_of(call)
             if callee in found and type(call) not in found[callee].endpoints and module in (name, callee):
-                out.append(Finding(f"endpoint {endpoint.__name__}", f"{name} passes {type(call).__name__} of {callee} on, and it is no endpoint "
+                out.append(Finding(f"endpoint {endpoint.__name__}", f"{name} passes on or reaches {type(call).__name__} of {callee}, and it is no endpoint "
                                    f"of {callee}'s book: it was removed or moved out of the service's endpoints"))
         for ref in refs[name]:
             owner, record = ref.owner, ref.record.__name__
@@ -394,7 +404,7 @@ def reference_faults(module: str, found: dict[str, Service[Any]], skipped: dict[
             if owner in found:
                 out.append(Finding(f"foreign {record}", f"{name} names {record} by a word, and {owner} has a book: name the record class of that book"))
             elif owner not in skipped:
-                out.append(Finding(f"foreign {record}", f"{name} names {record} by a word, and its owner {owner} has no book under the root yet", blocks=False))
+                out.append(Finding(f"foreign {record}", f"{name} names {record} by a word, and its owner {owner} has no book under the root yet", told=True))
         for journey in book.journeys:
             for given in journey.given:
                 if not isinstance(given, Needs) or given.foreign.owner not in found or module not in (name, given.foreign.owner):
@@ -412,12 +422,14 @@ def answers_calls(service: Service[Any]) -> bool:
 
 
 def trespass_faults(module: str, service: Service[Any], found: dict[str, Service[Any]]) -> list[Finding]:
-    """A record or a call of another book this book holds a life for. A book that states a `Foreign` is blocked, and one written before the
-    design is only told. A screen book keeps its own model of what its user sees, and a command book keeps the files its commands
-    work on and names no host, so only a book that reaches a service by a host is compared with another."""
+    """A record or a call of another book this book holds a life for. A record this book itself names as a `Foreign` and a call sent by
+    a book that states a `Foreign` block. A record that only shares its name with another book's is a note and the check passes: two
+    services may each store a record of that name, and a book written before a book could refer to another is not failed by it. A screen book keeps its own model of what its user sees, and a command book keeps the files
+    its commands work on and names no host, so only a book that reaches a service by a host is compared with another."""
     if not answers_calls(service):
         return []
-    stated = bool(references(module, service))
+    foreign = {ref.record.__name__ for ref in references(module, service)}
+    stated = bool(foreign)
     said = ("the book that does not store the record refers to it with Foreign and asks for a state with Needs, "
             "and the book that stores it arranges it")
     out: list[Finding] = []
@@ -426,7 +438,7 @@ def trespass_faults(module: str, service: Service[Any], found: dict[str, Service
         if name == module or not answers_calls(book):
             continue
         theirs = {ref.record.__name__ for ref in references(name, book) if ref.owner == module}
-        out += [Finding(f"record {record}", f"{module} and {name} both hold {record}: {said}", blocks=stated)
+        out += [Finding(f"record {record}", f"{module} and {name} both hold {record}: if it is one record, {said}", told=record not in foreign)
                 for record in sorted((mine & held_records(book)) - theirs)]
     sent: set[tuple[str, type]] = set()
     for journey, step in walked(service):
@@ -435,7 +447,7 @@ def trespass_faults(module: str, service: Service[Any], found: dict[str, Service
         for name, book in found.items():
             if name != module and type(step) in book.endpoints and (name, type(step)) not in sent:
                 sent.add((name, type(step)))
-                out.append(Finding(f"journey {journey.__name__}", f"{module} sends {type(step).__name__}, a call of {name}'s book: {said}", blocks=stated))
+                out.append(Finding(f"journey {journey.__name__}", f"{module} sends {type(step).__name__}, a call of {name}'s book: {said}", told=not stated))
     return out
 
 
@@ -577,8 +589,9 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
 
 def report(found: list[Finding]) -> None:
     for finding in found:
-        print(f"CHECK  {finding}")
-    print(f"check: {len(found)} finding{'s' if len(found) != 1 else ''}")
+        print(f"{'NOTE ' if finding.told else 'CHECK'}  {finding}")
+    failing, notes = sum(not f.told for f in found), sum(f.told for f in found)
+    print(f"check: {failing} finding{'s' if failing != 1 else ''}" + (f", {notes} note{'s' if notes != 1 else ''}" if notes else ""))
 
 
 def broken(service: Service[Any], module: str) -> bool:
@@ -616,4 +629,4 @@ def cmd_check(service: Service[Any], args: argparse.Namespace) -> int:
     attempt(found, "secrets", lambda: found.extend(secret_faults(service, args.env)) or "done")
     found.extend(indexed)
     report(found)
-    return 1 if found else 0
+    return 1 if any(not f.told for f in found) else 0

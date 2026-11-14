@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import importlib
 import shutil
+import subprocess
+import sys
 from pathlib import Path
 from typing import Iterator
 
@@ -67,11 +69,12 @@ def test_the_same_removal_is_named_on_the_owners_check_with_the_neighbours_name(
 def test_a_state_the_owners_matrices_no_longer_have_is_named_on_both_checks(root: Path):
     _edit(root, "api", "model/lifecycle.py", 'Scene("overdue"', 'Scene("late"')
     for module in ("services.digest", "services.api"):
-        [found] = _boundary(module)
-        assert found.blocks
-        assert found.name == "journey AnOverdueTodoIsInTheDigest"
-        assert "overdue" in found.problem and "services.api" in found.problem and "services.digest" in found.problem
-        assert "late" in found.problem and "unscheduled" in found.problem
+        every = _boundary(module)
+        assert {found.name for found in every} == {"journey AnOverdueTodoIsInTheDigest", "journey AnOverdueTodoIsFinishedFromTheDigest"}
+        for found in every:
+            assert found.blocks
+            assert "overdue" in found.problem and "services.api" in found.problem and "services.digest" in found.problem
+            assert "late" in found.problem and "unscheduled" in found.problem
 
 
 def test_a_call_that_is_no_endpoint_of_its_book_is_named(root: Path):
@@ -86,7 +89,7 @@ def test_a_reference_by_a_word_to_an_owner_with_no_book_is_noted_and_does_not_bl
     with (root / "services" / "digest" / "foreign.py").open("a") as handle:
         handle.write('\nTICKET = Foreign("Ticket", owner="services.ticket", reads=("id",))\n')
     [found] = _boundary("services.digest")
-    assert not found.blocks
+    assert found.told and not found.blocks
     assert "Ticket" in found.name + found.problem and "services.ticket" in found.problem
 
 
@@ -145,18 +148,43 @@ def test_a_book_that_refers_to_a_neighbour_and_also_holds_a_record_of_the_same_n
     assert "Foreign" in found.problem and "Needs" in found.problem
 
 
+def test_a_book_that_refers_to_one_record_and_holds_another_a_neighbour_also_holds_is_noted_and_does_not_block(root: Path):
+    _edit(root, "digest", "model.py", "from ostler.book import State\n",
+          "from dataclasses import dataclass\n\nfrom ostler.book import Collection, State, Unique\n\n\n"
+          "@dataclass(frozen=True)\nclass chore:\n    id: str\n")
+    _edit(root, "digest", "model.py", "class Digesting(State):\n",
+          'class Digesting(State):\n    chores = Collection(chore, Unique("id"))\n\n')
+    [found] = _boundary("services.digest")
+    assert found.told and not found.blocks
+    assert found.name == "record chore" and "if it is one record" in found.problem
+
+
+def test_a_note_is_printed_apart_and_the_check_still_passes(root: Path, capsys: pytest.CaptureFixture[str]):
+    from ostler.book.check import report
+
+    _other(root)
+    found = _boundary("services.other")
+    report(found)
+    printed = capsys.readouterr().out
+    assert printed.startswith("NOTE   record TodoRecord: ")
+    assert printed.rstrip().endswith("check: 0 findings, 1 note")
+    done = subprocess.run([sys.executable, "-m", "ostler.book", "check", "services.api"], cwd=root, capture_output=True, text=True, check=False)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "NOTE   record TodoRecord: services.api and services.other both hold TodoRecord" in done.stdout
+
+
 def test_a_book_that_states_no_reference_and_holds_a_record_another_book_holds_is_noted_and_does_not_block(root: Path):
     _other(root)
     [found] = _boundary("services.other")
-    assert not found.blocks
+    assert found.told and not found.blocks
     assert "services.other" in found.problem and "services.api" in found.problem and "TodoRecord" in found.problem
 
 
 def test_a_journey_that_sends_another_books_call_is_named(root: Path):
-    _edit(root, "digest", "journeys/the_todo_api_turns_a_caller_away.py", "from ..endpoints import ReadDigest, ReadDigestEntry\n",
-          "from ...api.endpoints import FindTodos\nfrom ..endpoints import ReadDigest, ReadDigestEntry\n")
-    _edit(root, "digest", "journeys/the_todo_api_turns_a_caller_away.py", "        yield Refused(ReadDigest(by=None)",
-          "        yield FindTodos()\n        yield Refused(ReadDigest(by=None)")
+    _edit(root, "digest", "journeys/the_todo_api_turns_a_caller_away.py", "from ..endpoints import FinishFromDigest, ReadDigest, ReadDigestEntry\n",
+          "from ...api.endpoints import FindTodos\nfrom ..endpoints import FinishFromDigest, ReadDigest, ReadDigestEntry\n")
+    _edit(root, "digest", "journeys/the_todo_api_turns_a_caller_away.py", "        yield OwnerRefused(ReadDigest(by=None))",
+          "        yield FindTodos()\n        yield OwnerRefused(ReadDigest(by=None))")
     [found] = _boundary("services.digest")
     assert found.blocks
     assert found.name == "journey TheTodoApiTurnsACallerAway"
