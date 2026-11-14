@@ -63,14 +63,29 @@ def by_name(users):
     """the users received, by name"""
     return sorted(u["name"] for u in users)
 
+def owners(model, by):
+    """everyone a todo the list holds is assigned to"""
+    return sorted({t.assignee for t in model.todos if t.assignee})
+
+def not_me(model, by):
+    """the person looking"""
+    return [by.handle]
+
 assignee = Select("list-assignee", ASSIGNEE, "filters by owner",
-                  lists=Lists(head=(ANYONE,), given=request("GET", "/users"), derived=by_name))
+                  lists=Lists(head=(ANYONE,), given=request("GET", "/users"), derived=by_name,
+                              holds=owners, never=not_me))
 ```
 
 The run judges the list when a journey picks in it: it reads the labels the select shows and
 compares them with the `head` labels followed by `derived` applied to the last answer the page
 received to `given`. A difference fails the step and the note names both orders. The report
 names the lists a pick judged, the stated ones no pick reached and the selects nobody stated.
+
+`holds` names who must be offered and `never` who must not, each a read of the model for the
+person looking, taken before the step. Entries neither names are ignored, so the claim holds
+on an environment that keeps other people's records. A derivation follows the data the page
+was given, and these two do not, so a list a backend fills wrongly needs them. A list may
+state any of the three claims alone.
 
 ## An interaction
 
