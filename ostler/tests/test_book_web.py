@@ -167,6 +167,21 @@ def test_a_page_that_shows_the_users_in_the_order_received_fails_the_step_that_p
     assert "the list AddForm.assignee shows ['Nobody', 'bo', 'ana'], the book derives ['Nobody', 'ana', 'bo']" in done.stdout
 
 
+def test_a_page_that_leaves_a_user_out_fails_the_step_that_picks_in_the_filter_and_names_the_user(tmp_path: Path):
+    stack = _stack("missing-user")
+    try:
+        done = _run(stack, tmp_path, "AWeekOfChores")
+    finally:
+        _stop(stack)
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "the list ListPage.assignee misses ['bo'], which belong in it" in done.stdout
+
+
+def test_a_page_that_leaves_no_user_out_passes_the_step_that_picks_in_the_filter(todo_web, tmp_path: Path):
+    done = _run(todo_web, tmp_path, "AWeekOfChores")
+    assert done.returncode == 0, done.stdout + done.stderr
+
+
 def test_the_report_of_a_run_names_the_lists_a_journey_picked_in(todo_web, tmp_path: Path):
     done = _run(todo_web, tmp_path)
     assert done.returncode == 0, done.stdout + done.stderr

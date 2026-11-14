@@ -67,7 +67,8 @@ const userSelects = [];
 
 function fillUsers(select, first) {
   const kept = select.value;
-  select.replaceChildren(h("option", { value: "" }, first), ...people.map((name) => h("option", { value: name }, name)));
+  const offered = window.BUG === "missing-user" && select.id === "list-assignee" ? people.slice(0, -1) : people;
+  select.replaceChildren(h("option", { value: "" }, first), ...offered.map((name) => h("option", { value: name }, name)));
   select.value = kept;
 }
 

@@ -47,7 +47,7 @@ class TodoWeb(PageSurface):
             with self._listed():
                 self.browser.open(ListPage.route)
         self.browser.page.wait_for_function(
-            "n => document.querySelector('[data-testid=\"list-assignee\"]').options.length === n", arg=len(users.json()) + 1)
+            "n => n === 1 || document.querySelector('[data-testid=\"list-assignee\"]').options.length > 1", arg=len(users.json()) + 1)
 
     def today(self) -> date:
         return self.backend.today()
