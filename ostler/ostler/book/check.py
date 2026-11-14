@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable, Iterator, cast
 
 from ostler._vendor.stablemate_core import config as core_config
-from ostler.book import decisions
+from ostler.book import decisions, questions
 from ostler.book.arrange import Arrange
 from ostler.book.explore import _overrides, attempts, moves
 from ostler.book.graph import dot
@@ -196,6 +196,12 @@ def decision_faults(service: Service[Any], module: str, app: str | None = None) 
     return found
 
 
+def question_faults(service: Service[Any], module: str) -> list[Finding]:
+    known = decisions.resolve(service, module)
+    return [Finding(f"question line {q.line}", f"element {q.element} resolves to no element of the book", blocks=False)
+            for q in questions.load(module) if q.element not in known]
+
+
 def defined(module: str, base: type) -> list[type]:
     """Every subclass of `base` a loaded module of the book package defines."""
     return [cls for name, loaded in list(sys.modules.items()) if name == module or name.startswith(module + ".")
@@ -348,6 +354,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
     attempt(found, "sources", lambda: found.extend(source_faults(service, app)) or "done")
     attempt(found, "decisions", lambda: found.extend(decision_faults(service, module, app)) or "done")
+    attempt(found, "questions", lambda: found.extend(question_faults(service, module)) or "done")
     attempt(found, "registration", lambda: found.extend(registration_faults(service, module)) or "done")
     attempt(found, "matrices", lambda: found.extend(matrix_faults(service)) or "done")
     return found

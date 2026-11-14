@@ -11,7 +11,8 @@ from typing import Any, Iterator, cast
 import pytest
 
 from ostler.book import decisions
-from ostler.book.check import decision_faults
+from ostler.book.check import decision_faults, question_faults
+from ostler.book.search import cmd_explain
 from ostler.book.service import Service
 
 
@@ -26,6 +27,12 @@ class Onboarding: ...
 
 
 class Cart: ...
+
+
+class Landing:
+    @classmethod
+    def describe(cls, lang: str) -> str:
+        return "the landing page"
 
 
 class Pay: ...
@@ -158,3 +165,24 @@ def test_unexplained_with_a_story_is_refused_by_the_parser():
     with pytest.raises(SystemExit) as stop:
         main(["decisions", "services.shop", "--unexplained", "--story", "S-1"])
     assert stop.value.code == 2
+
+
+def _asked(module: str, tmp_path: Path, line: str) -> list[str]:
+    (tmp_path / "shop_book" / "QUESTIONS.md").write_text(f"Open questions\n\n{line}\n")
+    return [f"{f.name}: {f.problem}" for f in question_faults(_service(), module)]
+
+
+def test_a_question_naming_an_element_of_the_book_brings_no_finding(module, tmp_path):
+    assert _asked(module, tmp_path, "- Home: why does it greet twice?") == []
+
+
+def test_a_question_naming_no_element_of_the_book_brings_the_finding(module, tmp_path):
+    assert _asked(module, tmp_path, "- Missing: why?") == ["question line 3: element Missing resolves to no element of the book"]
+
+
+def test_explain_shows_the_open_questions_of_an_element(module, tmp_path, capsys):
+    (tmp_path / "shop_book" / "QUESTIONS.md").write_text("- Landing: why does it greet twice?\n- Cart: other\n")
+    service = cast("Service[Any]", SimpleNamespace(
+        name="shop", endpoints=(), records=(), screens=(Landing,), interactions=(), journeys=(), language="en"))
+    assert cmd_explain(service, SimpleNamespace(service=module, name="Landing")) == 0
+    assert capsys.readouterr().out.endswith("\nOpen questions\n- why does it greet twice?\n")

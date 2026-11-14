@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Iterator
 
-from ostler.book import decisions
+from ostler.book import decisions, questions
 from ostler.book.domain import Action, State
 from ostler.book.errors import BookError
 from ostler.book.http import identity_lines
@@ -153,6 +153,11 @@ def cmd_explain(service: Service[Any], args: Any) -> int:
         print("\nDecisions")
         for d in named:
             print(d.line())
+    asked = [q for q in questions.load(args.service) if q.element == args.name]
+    if asked:
+        print("\nOpen questions")
+        for q in asked:
+            print(f"- {q.text}")
     return 0
 
 
