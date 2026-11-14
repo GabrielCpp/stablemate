@@ -65,6 +65,8 @@ scene	replied	runs:replied	- **replied**: the open message of the parked run was
 scene	rewound	runs:rewound	- **rewound**: the parked run was moved back to its start. Reached by: ParkARun ParkArgs(); workhorse-loop-runner control rewind --to start.
 scene	finished	runs:finished	- **finished**: the parked run is joined by a run that ended. Reached by: ParkARun ParkArgs(); FinishARun FinishArgs().
 scene	dry-run	runs:dry-run	- **dry-run**: a dry run walked the loop to its end. Reached by: workhorse-loop-runner run --dry-run.
+outside	ParkARun	services.workhorse.events:ParkARun	A run of the loop runner stops at a gate with two messages for its operator, one of them already answered.\ncarries: ParkByHand
+outside	FinishARun	services.workhorse.events:FinishARun	A run of the loop runner ends, so its run record says it is terminal.\ncarries: FinishByHand
 decision	a-params-text-is-parsed-by-the-model	decisions/a-params-text-is-parsed-by-the-model.md:1	story: workhorse-book
 decision	a-params-text-is-parsed-by-the-model	decisions/a-params-text-is-parsed-by-the-model.md:3	elements: Run
 decision	a-params-text-is-parsed-by-the-model	decisions/a-params-text-is-parsed-by-the-model.md:5	The text of `--params` is judged as the runner judges it, by Python's JSON parser, so the refusal quotes the position of the first fault (`line 1 column 3 (char 2)`) and differs with leading spaces. `RunArgs.json_problem` carries the parser's own words. Text that parses to anything but an object is refused with the object message.
