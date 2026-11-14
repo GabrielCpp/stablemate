@@ -7,10 +7,12 @@ from __future__ import annotations
 import argparse
 import importlib
 import pkgutil
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Any, Callable, Iterator, cast
 
 from ostler._vendor.stablemate_core import config as core_config
@@ -30,7 +32,7 @@ from ostler.book.status import succeeded
 from ostler.book.screen import Component, Interaction, as_label
 from ostler.book.search import actions_of, items, states_of
 from ostler.book.service import Service
-from ostler.book.sources import elements, missing
+from ostler.book.sources import elements, file_of, missing, pointer_missing
 
 
 @dataclass(frozen=True)
@@ -157,8 +159,26 @@ def source_faults(service: Service[Any], app: str | None) -> list[Finding]:
     return found
 
 
-def decision_faults(service: Service[Any], module: str) -> list[Finding]:
+COMMIT = re.compile(r"[0-9a-f]{7,40}")
+COMMIT_FILE = re.compile(r"([0-9a-f]{7,40}):(.+)")
+
+
+def commit_has(app: str, spec: str) -> bool:
+    return subprocess.run(["git", "-C", app, "cat-file", "-e", spec], capture_output=True).returncode == 0
+
+
+def source_is_there(pointer: str, app: str, members: dict[str, Path]) -> bool:
+    if COMMIT.fullmatch(pointer):
+        return commit_has(app, f"{pointer}^{{commit}}")
+    named = COMMIT_FILE.fullmatch(pointer)
+    if named:
+        return commit_has(app, pointer)
+    return not pointer_missing(file_of(pointer), app, members)
+
+
+def decision_faults(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
     found: list[Finding] = []
+    members = core_config.workspace_checkouts(Path(app)) if app else {}
     known = decisions.resolve(service, module)
     for d in decisions.load(module):
         name = f"decision {d.slug}"
@@ -170,6 +190,9 @@ def decision_faults(service: Service[Any], module: str) -> list[Finding]:
             found.append(Finding(name, "names no element", blocks=False))
         found += [Finding(name, f"element {e} resolves to no element of the book", blocks=False)
                   for e in d.elements if e not in known]
+        if app is not None:
+            found += [Finding(name, f"source {s} is not there", blocks=False)
+                      for s in d.sources if not source_is_there(s, app, members)]
     return found
 
 
@@ -324,7 +347,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "headers", lambda: found.extend(header_faults(service)) or "done")
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
     attempt(found, "sources", lambda: found.extend(source_faults(service, app)) or "done")
-    attempt(found, "decisions", lambda: found.extend(decision_faults(service, module)) or "done")
+    attempt(found, "decisions", lambda: found.extend(decision_faults(service, module, app)) or "done")
     attempt(found, "registration", lambda: found.extend(registration_faults(service, module)) or "done")
     attempt(found, "matrices", lambda: found.extend(matrix_faults(service)) or "done")
     return found

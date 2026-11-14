@@ -11,7 +11,7 @@ from typing import Any
 
 from ostler.book.service import Service
 
-HEADER = ("story", "date", "elements")
+HEADER = ("story", "date", "elements", "sources")
 MODEL_MODULES = ("rules", "lifecycle", "cast")
 
 
@@ -24,6 +24,7 @@ class Decision:
     body: str
     path: str
     offset: int = 0
+    sources: tuple[str, ...] = ()
 
     def first(self) -> str:
         text = " ".join(self.body.split())
@@ -52,8 +53,9 @@ def parse(path: str) -> Decision:
         n += 1
     body = "\n".join(rows[n + 1:]).strip("\n")
     elements = tuple(e.strip() for e in fields.get("elements", "").split(",") if e.strip())
+    sources = tuple(e.strip() for e in fields.get("sources", "").split(",") if e.strip())
     return Decision(os.path.basename(path).removesuffix(".md"), fields.get("story", ""), fields.get("date", ""),
-                    elements, body, path, n + 1)
+                    elements, body, path, n + 1, sources)
 
 
 def load(module: str) -> list[Decision]:

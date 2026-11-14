@@ -49,21 +49,23 @@ def raw(service: Service[Any]) -> dict[str, tuple[str, ...]]:
     return {e.__name__: tuple(cast(Any, e).source) for e in elements(service)}
 
 
+def pointer_missing(pointer: str, app_root: str | None, members: dict[str, Path]) -> bool:
+    try:
+        ref = parse_code_ref(pointer)
+    except ValueError:
+        return True
+    if ref.repository:
+        member = members.get(ref.repository)
+        return member is None or not os.path.exists(os.path.join(member, ref.path))
+    return app_root is not None and not os.path.exists(os.path.join(app_root, ref.path))
+
+
 def missing(service: Service[Any], app_root: str | None) -> list[tuple[str, str]]:
     members = core_config.workspace_checkouts(Path(app_root) if app_root else Path.cwd())
     found: list[tuple[str, str]] = []
     for name, found_pointers in raw(service).items():
         for pointer in dict.fromkeys(file_of(p) for p in found_pointers):
-            try:
-                ref = parse_code_ref(pointer)
-            except ValueError:
-                found.append((name, pointer))
-                continue
-            if ref.repository:
-                member = members.get(ref.repository)
-                if member is None or not os.path.exists(os.path.join(member, ref.path)):
-                    found.append((name, pointer))
-            elif app_root is not None and not os.path.exists(os.path.join(app_root, ref.path)):
+            if pointer_missing(pointer, app_root, members):
                 found.append((name, pointer))
     return found
 
