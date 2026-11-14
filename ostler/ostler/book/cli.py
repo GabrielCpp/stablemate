@@ -121,6 +121,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     absent.add_argument("service")
     absent.add_argument("--app", required=True, help="the app's root")
     absent.add_argument("--under", action="append", default=[], help="a folder of the app to answer for instead of the service's roots; repeatable")
+    absent.add_argument("--files", action="store_true", help="list each left-out file under its pattern instead of counting them")
     listing = sub.add_parser("decisions", help="list the decisions the service settled")
     listing.add_argument("service")
     listing.add_argument("--story")
@@ -876,12 +877,18 @@ def cmd_missing(service: Service[Any], args: argparse.Namespace) -> int:
         print(f'{service.name} declares no app: give Service app=App(roots=(...), verified="VERIFIED")')
         return 2
     found = missing_files(service, args.app, tuple(args.under))
-    print("## Files no element names")
+    print("## What the book names")
+    for path, namers in found.named.items():
+        print(f"- {path}: " + ", ".join(f"{name} ({kind})" for name, kind in namers))
+    print("\n## Files no element names")
     for path in found.unnamed:
         print(f"- {path}")
     print("\n## Left out by the book")
-    for pattern, count in found.left_out.items():
-        print(f"- {pattern}: {count} files")
+    for pattern, paths in found.left_out.items():
+        print(f"- {pattern}: {len(paths)} files")
+        if args.files:
+            for path in paths:
+                print(f"    {path}")
     print(f"\n{len(found.unnamed)} of {found.total} files are in no element and under no ignore pattern")
     if found.unnamed:
         return 1
