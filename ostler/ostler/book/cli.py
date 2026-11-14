@@ -245,7 +245,16 @@ def made_ready(service: Service[Any], args: argparse.Namespace) -> tuple[Surface
     if why:
         show_skips(args.environment, [why])
         return 0
+    Owners.begin(args.environment, lambda owner: _surface(owner, args.environment), fresh)
     return surface, stack
+
+
+def stopped(surface: Surface, stack: Stack, args: argparse.Namespace) -> None:
+    """Ends what `made_ready` began: the owners' surfaces, the surface and the stack."""
+    Owners.close()
+    surface.stop()
+    if not args.no_stack:
+        stack.stop()
 
 
 def cmd_walk(service: Service[Any], args: argparse.Namespace) -> int:
@@ -286,9 +295,7 @@ def cmd_walk(service: Service[Any], args: argparse.Namespace) -> int:
         print(f"now: {axes.told_apart(model)}")
         print(model.describe())
     finally:
-        surface.stop()
-        if not args.no_stack:
-            stack.stop()
+        stopped(surface, stack, args)
     show_skips(args.environment, [t.skipped for t in taken if t.skipped])
     return 0 if all(t.ok for t in taken) else 1
 
@@ -374,7 +381,6 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     if isinstance(begun, int):
         return begun
     surface, stack = begun
-    Owners.begin(args.environment, lambda owner: _surface(owner, args.environment), fresh)
     record_to = getattr(surface, "record_to", None)
     if callable(record_to):
         record_to(os.path.join(args.out, "videos"))
@@ -455,10 +461,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         print(f"what ran before it is no verdict: {len(results)} journeys")
         return 3
     finally:
-        Owners.close()
-        surface.stop()
-        if not args.no_stack:
-            stack.stop()
+        stopped(surface, stack, args)
     skips = [r.skipped for r in results if r.skipped] + [c.skipped for c in played.cells if c.skipped] \
         + [s.skipped for s in tried.sent if s.skipped] + [t.skipped for t in tried.twins if t.skipped]
     partial = args.partial or bool(skips) or bool(names)
@@ -536,9 +539,7 @@ def cmd_explore(service: Service[Any], args: argparse.Namespace) -> int:
         played = play_cells(service, picked, surface, lambda: fresh(service, surface))
         play_took = time.time() - began
     finally:
-        surface.stop()
-        if not args.no_stack:
-            stack.stop()
+        stopped(surface, stack, args)
     report_exploration(service, args, walked, cells, walk_took, played, play_took, unreached(service, start.today, walked), picked)
     show_skips(args.environment, played.skips)
     return 0 if played.ok else 1
