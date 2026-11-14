@@ -10,8 +10,10 @@ does on it. The runtime drives a headless Chromium through Playwright, which com
 
 One `Screen` subclass per page, form or dialog, one file each under `screens/`. Its
 components are class attributes. A component is found as a user finds it, by role and
-accessible name, so the app needs no test ids. Declare `None` for the id and give the label in
-every language the app speaks.
+accessible name, so the app needs no test ids. Declare `None` for the id. The service declares
+its `languages`, and a label gives one text per declared language by name. A bare string is a
+label that reads the same in every language, so an app with one language writes bare strings
+and `languages=("en",)`.
 
 ```python
 from ostler.book import Screen, T, request
@@ -21,14 +23,19 @@ class AddForm(Screen):
     api = "/todos"
     sends = (request("POST", "/todos"),)
     root = Text("add-form", does="the form element")
-    title = Field(None, T("Title", "Titre"))
-    save = Button(None, T("Save", "Enregistrer"))
+    name = T(en="Add a todo", fr="Ajouter une tâche")
+    title = Field(None, T(en="Title", fr="Titre"))
+    save = Button(None, T(en="Save", fr="Enregistrer"))
+```
+
+```python
+Heading("#pane h2", "Settings")
 ```
 
 | Factory | Found as |
 | --- | --- |
 | `Field`, `TextArea`, `DateField` | role `textbox` named by the label |
-| `Select` | role `combobox`, with its options as `T` labels |
+| `Select` | role `combobox`, with its options as labels |
 | `Button`, `Check`, `Heading`, `MenuItem`, `Link`, `Option` | the role of the same name |
 | `Banner`, `Spinner` | role `alert`, `progressbar` |
 | `Text` | by its text, or by `data-testid` when it has an id |
@@ -41,8 +48,9 @@ screen to one element, so two forms with a `Save` do not collide. `per_row=True`
 component that repeats in each row of a list.
 
 A screen also declares what the page does: `stored` values, `phases` (what is shown, hidden
-or disabled, and why) and `transitions` between them. `describe()` prints all of it in both
-languages, and `check` builds it.
+or disabled, and why) and `transitions` between them. `describe(lang)` prints all of it in
+one language. `check` builds it in each declared language and refuses a label that misses
+one or names an undeclared one.
 
 ## An interaction
 
@@ -63,7 +71,8 @@ types or picks, never the record: the app mints the id and the surface learns it
 ## A journey
 
 A journey is the same class as in an HTTP book, and its steps are interactions. `lang = "fr"`
-opens the app in French for that journey. A `Check` step runs a probe the surface offers for
+opens the app in French for that journey. With no `lang`, the journey plays in the first
+language the service declares. A `Check` step runs a probe the surface offers for
 what no row shows: a button disabled while saving, a label in the wrong language.
 
 ## The surface
@@ -75,6 +84,9 @@ Subclass `PageSurface` and write only what is the app's own. It gives the book `
 - `open()`: open the first screen and wait until it shows what it fetched.
 - `perform(step)`: one branch per interaction, returning `Done(rows)` or a `Refusal`.
 - `rows()`: read the list the page shows into the model's row type.
+
+A surface that needs a regional browser locale sets `locales = {"fr": "fr-CA"}` once. With no
+entry the browser locale is the language name itself.
 
 Everything else goes through `self.browser`:
 
@@ -102,7 +114,7 @@ finds the row by the id the app gave it and not by its text, which two rows may 
 Each step runs on the model and in the page, and the rows the page then shows are compared
 with the model's. A refusal is the message the page shows, so the model's rule carries the
 app's words. After each step the runtime fails the step if the page sent a request under `api`
-that no screen's `sends` declares. `check` builds every screen in each language and every
+that no screen's `sends` declares. `check` builds every screen in each declared language and every
 interaction. `run` plays the journeys, then the lifecycle cells.
 
 A web run records a video of each journey and each cell arrangement under `<out>/videos`. It keeps
