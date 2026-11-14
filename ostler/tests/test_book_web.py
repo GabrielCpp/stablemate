@@ -556,3 +556,96 @@ def test_a_book_with_no_select_gets_no_account_of_lists():
     from ostler.book.listing import account
 
     assert account((Home,), frozenset()) == []
+
+
+class Chooser(Screen):
+    who = Select("who", "Who")
+
+
+class Popup(Screen):
+    who = Select("who", "Who", lists=Lists(head=("Anyone",), given=request("GET", "/users"), derived=by_name))
+
+
+@contextmanager
+def _popup_page(sort: bool = True, ids: bool = False) -> Iterator[Browser]:
+    ordered = "us.sort((a, b) => a.name.localeCompare(b.name));" if sort else ""
+    shown = "'u-' + u.name" if ids else "null"
+    body = (
+        '<!doctype html><html><body>'
+        '<button id="who" data-testid="who" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="lb">Anyone</button>'
+        '<ul id="lb" role="listbox" hidden></ul><p id="picked"></p>'
+        "<script>"
+        "const box = document.getElementById('who'), lb = document.getElementById('lb');"
+        "const shut = () => { lb.hidden = true; box.setAttribute('aria-expanded', 'false'); };"
+        "function add(value, text) {"
+        "  const li = document.createElement('li'); li.setAttribute('role', 'option'); li.textContent = text;"
+        "  if (value !== null) li.setAttribute('data-value', value);"
+        "  li.addEventListener('click', () => { document.getElementById('picked').textContent = value === null ? text : value;"
+        "    box.textContent = text; shut(); });"
+        "  lb.append(li);"
+        "}"
+        "add('', ' Anyone ');"
+        "fetch('/users').then(r => r.json()).then(us => {" + ordered +
+        "for (const u of us) add(" + shown + ", u.name); lb.dataset.ready = 'yes'; });"
+        "box.addEventListener('click', () => { lb.hidden = false; box.setAttribute('aria-expanded', 'true'); });"
+        "document.addEventListener('keydown', (e) => { if (e.key === 'Escape') shut(); });"
+        "</script></body></html>").encode()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+        def do_GET(self) -> None:
+            users = self.path == "/users"
+            payload = b'[{"name": "bo"}, {"name": "ana"}]' if users else body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json" if users else "text/html")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    found = Browser(f"http://127.0.0.1:{server.server_address[1]}", "en", lang_query=None)
+    found.feeding((Popup,))
+    found.start()
+    try:
+        found.open("/")
+        found.page.wait_for_selector("#lb[data-ready=yes]", state="attached")
+        yield found
+    finally:
+        found.stop()
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_pick_in_a_popup_dropdown_selects_the_entry_with_that_value():
+    with _popup_page(ids=True) as browser:
+        browser.fill(Chooser.who, "u-ana")
+        assert browser.page.inner_text("#picked") == "u-ana"
+        assert browser.page.get_by_role("listbox").count() == 0
+
+
+def test_a_pick_by_label_selects_the_entry_when_no_entry_has_that_value():
+    with _popup_page(ids=True) as browser:
+        browser.fill(Chooser.who, "bo")
+        assert browser.page.inner_text("#picked") == "u-bo"
+
+
+def test_a_popup_that_does_not_offer_the_value_is_closed_again_and_cannot_be_reached():
+    from ostler.book import CannotReach
+
+    with _popup_page() as browser:
+        with pytest.raises(CannotReach, match=r"offers only \['', 'ana', 'bo'\]"):
+            browser.fill(Chooser.who, "zed")
+        assert browser.page.get_attribute("#who", "aria-expanded") == "false"
+        assert browser.page.inner_text("#picked") == ""
+
+
+def test_offered_on_a_popup_returns_its_values_and_leaves_it_closed():
+    with _popup_page(ids=True) as browser:
+        assert browser.offered(Chooser.who) == ["", "u-ana", "u-bo"]
+        assert browser.page.get_attribute("#who", "aria-expanded") == "false"
+        assert browser.labels(Chooser.who) == ["Anyone", "ana", "bo"]
+        assert browser.page.get_attribute("#who", "aria-expanded") == "false"
+

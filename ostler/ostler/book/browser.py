@@ -197,7 +197,7 @@ class Browser:
                     return f"{screen.__name__}.{name}"
         return component.found_by(self.lang)
 
-    def _judge(self, component: Component, found: Any) -> None:
+    def _judge(self, component: Component, shown: list[str]) -> None:
         lists = component.lists
         assert lists is not None and lists.given is not None and lists.derived is not None
         name = self._named(component)
@@ -208,7 +208,6 @@ class Browser:
                                 f"before the pick in {name}")
             return
         derived = [*lists.labels(self.lang), *lists.derived(kept.json())]
-        shown = self.labels(found)
         if shown != derived:
             self._faults.append(f"the list {name} shows {shown}, the book derives {derived}")
 
@@ -251,8 +250,8 @@ class Browser:
         return smallest.filter(has_text=containing).first
 
     def fill(self, component: Component, value: str, within: Component | None = None) -> None:
-        """Types `value` into a field, text area or date, or picks it in a select; a select that does not offer
-        it is a `CannotReach`."""
+        """Types `value` into a field, text area or date, or picks it in a select, native or a popup of options;
+        a select that does not offer it is a `CannotReach`."""
         found = self.locate(component, within=within)
         if component.kind != "select":
             try:
@@ -262,8 +261,11 @@ class Browser:
                     raise
                 raise CannotReach(f"{component.found_by(self.lang)} does not take {value!r}") from None
             return
+        if not self._native(found):
+            self._pick_in_popup(component, found, value)
+            return
         if component.lists is not None:
-            self._judge(component, found)
+            self._judge(component, self._texts(found))
         offered = found.evaluate("el => [...el.options].map(o => o.value)")
         if value not in offered:
             raise CannotReach(f"{component.found_by(self.lang)} offers only {offered}")
@@ -279,12 +281,70 @@ class Browser:
         return self.locate(component, within=within).input_value()
 
     @staticmethod
-    def labels(found: Any) -> list[str]:
-        """The texts a native select shows, in order."""
+    def _native(found: Any) -> bool:
+        return bool(found.evaluate("el => el.tagName === 'SELECT'"))
+
+    @staticmethod
+    def _texts(found: Any) -> list[str]:
         return found.evaluate("el => [...el.options].map(o => o.text)")
 
+    def _open(self, found: Any) -> Any:
+        found.click()
+        controlled = found.get_attribute("aria-controls") or found.get_attribute("aria-owns")
+        if controlled:
+            listbox = self.page.locator(f'[id="{controlled}"]')
+        else:
+            listbox = self.page.get_by_role("listbox").first
+        listbox.wait_for(state="visible")
+        return listbox
+
+    def _close(self, listbox: Any) -> None:
+        self.page.keyboard.press("Escape")
+        listbox.wait_for(state="hidden")
+
+    @staticmethod
+    def _entries(listbox: Any) -> list[tuple[str, str]]:
+        return [tuple(entry) for entry in listbox.evaluate(
+            """el => [...el.querySelectorAll('[role=option]')].map(o => {
+                const label = o.innerText.trim();
+                const value = o.getAttribute('data-value');
+                return [value === null ? label : value, label];
+            })""")]
+
+    def _pick_in_popup(self, component: Component, found: Any, value: str) -> None:
+        listbox = self._open(found)
+        entries = self._entries(listbox)
+        values = [entry for entry, _ in entries]
+        labels = [label for _, label in entries]
+        if value in values:
+            index = values.index(value)
+        elif value in labels:
+            index = labels.index(value)
+        else:
+            self._close(listbox)
+            raise CannotReach(f"{component.found_by(self.lang)} offers only {values}")
+        listbox.locator("[role=option]").nth(index).click()
+        listbox.wait_for(state="hidden")
+
+    def labels(self, component: Component, within: Component | None = None) -> list[str]:
+        """The texts a select shows, in order. A popup is opened to read them and closed again."""
+        found = self.locate(component, within=within)
+        if self._native(found):
+            return self._texts(found)
+        listbox = self._open(found)
+        shown = [label for _, label in self._entries(listbox)]
+        self._close(listbox)
+        return shown
+
     def offered(self, component: Component, within: Component | None = None) -> list[str]:
-        return self.locate(component, within=within).evaluate("el => [...el.options].map(o => o.value)")
+        """The values a select offers, in order. A popup is opened to read them and closed again."""
+        found = self.locate(component, within=within)
+        if self._native(found):
+            return found.evaluate("el => [...el.options].map(o => o.value)")
+        listbox = self._open(found)
+        values = [value for value, _ in self._entries(listbox)]
+        self._close(listbox)
+        return values
 
     def disabled(self, component: Component, within: Component | None = None) -> bool:
         return self.locate(component, within=within).is_disabled()
