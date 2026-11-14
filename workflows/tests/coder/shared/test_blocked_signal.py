@@ -10,7 +10,7 @@ from workhorse_workflows.coder.shared.schemas._base import (
     Finding,
 )
 from workhorse_workflows.coder.shared.schemas.qa import QaFinding, QaOwnerResult
-from workhorse_workflows.coder.shared.schemas.render import schema_block
+from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.coder.shared.schemas.review import ReviewFinding
 from workhorse_workflows.coder.shared.schemas.dev_story import DevResult
 

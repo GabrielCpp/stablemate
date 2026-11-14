@@ -8,7 +8,7 @@ from workhorse.pyflow import Workflow
 
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
-from workhorse_workflows.coder.shared.schemas.render import schema_block
+from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit import find_docs_root
 

@@ -10,7 +10,7 @@ import pytest
 from pydantic import BaseModel
 
 import workhorse_workflows
-from workhorse_workflows.coder.shared.schemas import render
+from workhorse_workflows.kit import schema as render
 
 CODER = Path(workhorse_workflows.__file__).parent / "coder"
 

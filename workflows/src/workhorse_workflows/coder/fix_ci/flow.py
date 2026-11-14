@@ -28,7 +28,7 @@ from workhorse_workflows.coder.shared.story import resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiLoop, FixCiResult
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.pr import MergeFixResult
-from workhorse_workflows.coder.shared.schemas.render import schema_block
+from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths, WorkspaceDirs
 from workhorse_workflows.kit import find_docs_root
 

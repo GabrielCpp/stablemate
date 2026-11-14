@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from workhorse._vendor.stablemate_core.config import ConfigError
 from workhorse.pyflow import WorkflowFailed, resolves_prompt
 from workhorse.templates import BODY_PREFIX
-from workhorse_workflows.coder.shared.schemas.render import schema_block
+from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.kit.manifest import read_manifest
 

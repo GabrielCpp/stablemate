@@ -10,7 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, Transition, dry_run
 from workhorse.runner.failure import OutputParseError
-from workhorse_workflows.coder.shared.schemas.render import schema_block
+from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.kit.answer import answer_below
 from workhorse_workflows.kit.tools import run_tool
 from workhorse_workflows.okf_book.shared.blockers import Phase
