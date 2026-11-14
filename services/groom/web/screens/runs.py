@@ -3,6 +3,7 @@ from ostler.book.screen import Button, Field, Heading, Screen, Text
 
 
 class Runs(Screen):
+    source = ("groom/groom/templates/dashboard.html", "groom/groom/assets/dashboard.js")
     route = "/"
     name = "Runs"
     first = True

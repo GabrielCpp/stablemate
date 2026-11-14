@@ -3,6 +3,7 @@ from ostler.book.screen import Button, Check, Heading, Screen, Text
 
 
 class Settings(Screen):
+    source = ("groom/groom/templates/dashboard.html", "groom/groom/assets/dashboard.js", "groom/groom/settings.py")
     route = "/"
     name = "Settings"
     api = "/api"
