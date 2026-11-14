@@ -64,11 +64,15 @@ ROLES = {
 @dataclass(frozen=True)
 class Lists:
     """What a list filled from data holds: `given` matches the request whose answer fills it, `derived` turns the
-    decoded body of that answer into the texts the list shows, in order, and `head` are the labels shown before them."""
+    decoded body of that answer into the texts the list shows, in order, and `head` are the labels shown before them.
+    `holds` and `never` read the model, for the person looking, and return the texts the list must show and the
+    texts it must not; entries neither names are ignored."""
 
     head: tuple[T | str, ...] = ()
     given: Callable[[Any], bool] | None = None
     derived: Callable[[Any], list[str]] | None = None
+    holds: Callable[[Any, Any], list[str]] | None = None
+    never: Callable[[Any, Any], list[str]] | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.head, (str, T)):
@@ -77,16 +81,23 @@ class Lists:
         if (self.given is None) != (self.derived is None):
             missing, present = ("derived", "given") if self.derived is None else ("given", "derived")
             raise BookError(f"a list states what it holds with both given and derived; it has {present} and no {missing}")
-        if self.derived is not None and not (self.derived.__doc__ or "").strip():
-            raise BookError(f"the derived function {getattr(self.derived, '__name__', 'derived')} has no docstring: "
-                            "its first line says what the list holds, and search and explain show it")
+        if self.derived is None and self.holds is None and self.never is None:
+            raise BookError("a list states nothing: give it given and derived, holds, or never")
+        for claim in ("derived", "holds", "never"):
+            function = getattr(self, claim)
+            if function is not None and not (function.__doc__ or "").strip():
+                raise BookError(f"the {claim} function {getattr(function, '__name__', claim)} has no docstring: "
+                                "its first line says what the list holds, and search and explain show it")
 
     def labels(self, lang: str) -> list[str]:
         return [(T(h) if isinstance(h, str) else h)[lang] for h in self.head]
 
     def says(self, lang: str) -> str:
         said = (self.derived.__doc__ or "").strip().splitlines()[0] if self.derived is not None else ""
-        return ", ".join([repr(label) for label in self.labels(lang)] + ([said] if said else []))
+        shown = ", ".join([repr(label) for label in self.labels(lang)] + ([said] if said else []))
+        claims = [f"{claim} {function.__doc__.strip().splitlines()[0]}"
+                  for claim, function in (("holds", self.holds), ("never", self.never)) if function is not None and function.__doc__]
+        return "; ".join(([shown] if shown else []) + claims)
 
 
 @dataclass(frozen=True)

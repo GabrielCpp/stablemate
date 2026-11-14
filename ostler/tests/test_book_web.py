@@ -454,6 +454,17 @@ def test_a_derivation_with_no_docstring_is_refused_where_it_is_declared():
         Lists(given=request("GET", "/users"), derived=lambda users: [u["name"] for u in users])
 
 
+def test_a_list_that_states_nothing_is_refused_where_it_is_declared():
+    with pytest.raises(BookError, match="states nothing"):
+        Lists(head=("Anyone",))
+
+
+@pytest.mark.parametrize("claim", ["holds", "never"])
+def test_a_claim_about_who_belongs_with_no_docstring_is_refused_where_it_is_declared(claim: str):
+    with pytest.raises(BookError, match=f"the {claim} function .* has no docstring"):
+        Lists(**cast(dict, {claim: lambda model, by: []}))
+
+
 def test_a_select_given_both_fixed_options_and_a_derived_list_is_refused():
     derived = Lists(given=request("GET", "/users"), derived=by_name)
     with pytest.raises(BookError, match="not both"):
@@ -473,8 +484,29 @@ class People(Screen):
     who = Select("who", "Who", lists=Lists(head=("Anyone",), given=request("GET", "/users"), derived=by_name))
 
 
+def owners(model, by):
+    """everyone a todo the list holds is assigned to"""
+    return sorted({t.assignee for t in model.todos if t.assignee})
+
+
+def not_me(model, by):
+    """the person looking"""
+    return [by.handle]
+
+
+def test_the_description_of_a_screen_says_who_belongs_in_a_list_and_who_never_does():
+    class Owners(Screen):
+        who = Select("who", T(en="Who", fr="Qui"), "filters by owner",
+                     lists=Lists(head=(T(en="Anyone", fr="Tous"),), given=request("GET", "/users"), derived=by_name,
+                                 holds=owners, never=not_me))
+
+    assert ("lists: 'Anyone', the users received, by name; holds everyone a todo the list holds is assigned to; "
+            "never the person looking") in Owners.describe("en")
+    assert "lists: 'Tous', the users received, by name; holds everyone" in Owners.describe("fr")
+
+
 @contextmanager
-def _people_page(sort: bool = True) -> Iterator[Browser]:
+def _people_page(sort: bool = True, screens: tuple[type[Screen], ...] = (People,)) -> Iterator[Browser]:
     ordered = "us.sort((a, b) => a.name.localeCompare(b.name));" if sort else ""
     body = (
         '<!doctype html><html><body><select id="who" data-testid="who"><option value="">Anyone</option></select>'
@@ -498,7 +530,7 @@ def _people_page(sort: bool = True) -> Iterator[Browser]:
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     found = Browser(f"http://127.0.0.1:{server.server_address[1]}", "en", lang_query=None)
-    found.feeding((People,))
+    found.feeding(screens)
     found.start()
     try:
         yield found
