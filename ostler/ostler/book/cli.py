@@ -34,6 +34,7 @@ from ostler.book.index import book_root, cmd_index, cmd_search_book
 from ostler.book.http import Endpoint, identity_lines, named_shapes
 from ostler.book.inputs import Tried, play as play_inputs
 from ostler.book.journey import JourneyResult
+from ostler.book.listing import account, read_by
 from ostler.book.matrix import matrix
 from ostler.book.model import Model
 from ostler.book.planner import plan
@@ -443,6 +444,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             inputs_took = time.time() - began
         settled = settle_register(service, args, tried)
         seen = witnessed(service, surface)
+        kept = account(service.screens, read_by(surface))
         if names:
             seen = dataclasses.replace(seen, gaps=[g for g in seen.gaps if g.endpoint.__name__ in names],
                                        unseen=tuple(u for u in seen.unseen if u.endpoint.__name__ in names))
@@ -458,7 +460,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         + [s.skipped for s in tried.sent if s.skipped] + [t.skipped for t in tried.twins if t.skipped]
     partial = args.partial or bool(skips) or bool(names)
     found = declared(service, args.service)
-    report(service, results, args.out, order, found, not partial, played, tried)
+    report(service, results, args.out, order, found, not partial, played, tried, kept)
     for line in video_lines(results, played):
         print(line)
     print(tally(results))
@@ -490,6 +492,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     everything = [*results, played, tried]
     stale = never_met(found, met(everything))
     for line in section(everything, found, not partial):
+        print(line)
+    for line in kept:
         print(line)
     show_witness(service, seen, args.out, not partial)
     show_skips(args.environment, skips)
@@ -751,7 +755,7 @@ def twin_tally(tried: Tried) -> str:
 
 def report(service: Service[Any], results: list[JourneyResult], out: str, order: str = "declared",
            found: list[tuple[type, Any]] | None = None, complete: bool = True, played: Played | None = None,
-           tried: Tried | None = None) -> None:
+           tried: Tried | None = None, kept: list[str] | None = None) -> None:
     os.makedirs(out, exist_ok=True)
     lines = [f"# {service.name}", "", f"{tally(results)}.",
              "", f"Journeys taken in {order} order on one long-lived account.", ""]
@@ -799,6 +803,8 @@ def report(service: Service[Any], results: list[JourneyResult], out: str, order:
         said = underspecified_lines(tried)
         if said:
             lines += ["## Underspecified", "", *said[1:], ""]
+    if kept:
+        lines += ["## " + kept[0], "", *kept[1:], ""]
     with open(os.path.join(out, f"{service.name}.md"), "w") as f:
         f.write("\n".join(lines))
 

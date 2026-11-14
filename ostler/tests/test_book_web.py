@@ -167,6 +167,14 @@ def test_a_page_that_shows_the_users_in_the_order_received_fails_the_step_that_p
     assert "the list AddForm.assignee shows ['Nobody', 'bo', 'ana'], the book derives ['Nobody', 'ana', 'bo']" in done.stdout
 
 
+def test_the_report_of_a_run_names_the_lists_a_journey_picked_in(todo_web, tmp_path: Path):
+    done = _run(todo_web, tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+    listed = "Lists\nstated and read:\n- ListPage.assignee\n- AddForm.assignee\n- EditForm.assignee\nstated and never read:\n- none\nnamed only:\n- none\n"
+    assert listed in done.stdout
+    assert "## Lists\n\nstated and read:\n- ListPage.assignee" in (tmp_path / "out" / "web.md").read_text()
+
+
 def test_a_failing_journey_keeps_its_video_and_the_report_names_it_with_an_offset(tmp_path: Path):
     stack = _stack("wrong-assignee")
     try:
@@ -529,3 +537,22 @@ def test_a_pick_made_before_the_page_received_the_answer_is_a_fault_that_says_so
             browser.fill(People.who, "")
             assert browser.list_faults() == [
                 "the page received no answer to GET /users before the pick in People.who"]
+
+
+def test_the_account_of_lists_names_a_stated_list_as_read_and_a_select_with_nothing_stated_as_named_only():
+    from ostler.book.listing import account
+
+    class Pickers(Screen):
+        fixed = Select("fixed", "Fixed", options=("a",))
+        who = People.who
+        free = Select("free", "Free")
+        idle = Select("idle", "Idle", lists=Lists(given=request("GET", "/users"), derived=by_name))
+
+    assert account((Pickers,), frozenset({"Pickers.who"})) == [
+        "Lists", "stated and read:", "- Pickers.who", "stated and never read:", "- Pickers.idle", "named only:", "- Pickers.free"]
+
+
+def test_a_book_with_no_select_gets_no_account_of_lists():
+    from ostler.book.listing import account
+
+    assert account((Home,), frozenset()) == []
