@@ -230,7 +230,7 @@ def test_a_screen_input_with_a_shape_gets_input_classes():
     add, found = _todo_base()
     base = found[add]
     labels = [c.label for c in classes(base.call, base.before, None)]
-    assert labels == ["due_on malformed date"]
+    assert labels == ["title blank", "title too long", "title missing", "description too long", "due_on malformed date"]
 
 
 def _classes_of(shape, place: str, required: bool = True) -> list[str]:
@@ -275,6 +275,13 @@ def test_a_browser_that_rejects_text_in_a_number_makes_the_class_unreachable(bro
         browser.fill(Form.qty, "not a number")
 
 
+def test_the_fixture_web_book_states_a_shape_for_every_field_a_person_fills():
+    service = module("services.web.service").service
+    bare = [f"{screen.__name__}.{name}" for screen in service.screens for name, c in screen.attributes()
+            if c.kind in ("field", "textarea", "date") and c.holds is None]
+    assert bare == []
+
+
 def test_a_declared_divergence_on_a_screen_input_names_a_class_the_check_knows():
     import dataclasses
 
@@ -284,10 +291,10 @@ def test_a_declared_divergence_on_a_screen_input_names_a_class_the_check_knows()
     add, _ = _todo_base()
     service = module("services.web.service").service
     known = Diverges(add, "due_on malformed date", why="the page keeps any text it is given")
-    unknown = Diverges(add, "title missing", why="the page keeps an empty title")
+    unknown = Diverges(add, "title null", why="the page keeps an empty title")
     found = input_faults(dataclasses.replace(service, diverges=(known, unknown)))
     assert [(f.name, f.problem) for f in found if f.name.startswith("diverges")] == [
-        ("diverges AddTodo title missing", "no input class of the endpoint has this label")]
+        ("diverges AddTodo title null", "no input class of the endpoint has this label")]
 
 
 def test_a_screen_input_with_a_shape_gets_twins_on_either_side_of_midnight():
@@ -298,7 +305,7 @@ def test_a_screen_input_with_a_shape_gets_twins_on_either_side_of_midnight():
     add, found = _todo_base()
     base = found[add]
     today = base.before.today
-    pairs = [(t.place, t.name, t.dimension, t.left, t.right, t.ignored) for t in twin_classes(base.call, base.before)]
+    pairs = [(t.place, t.name, t.dimension, t.left, t.right, t.ignored) for t in twin_classes(base.call, base.before) if t.name == "due_on"]
     assert pairs == [("screen", "due_on", "midnight", today.isoformat(), (today + timedelta(days=1)).isoformat(), False)]
 
 
@@ -310,7 +317,7 @@ def test_the_midnight_twins_count_days_on_the_app_clock_not_the_machine_clock():
     service = module("services.web.service").service
     add = module("services.web.interactions").AddTodo
     base = bases(service, date(2030, 1, 5))[add]
-    assert [(t.left, t.right) for t in twin_classes(base.call, base.before)] == [("2030-01-05", "2030-01-06")]
+    assert [(t.left, t.right) for t in twin_classes(base.call, base.before) if t.name == "due_on"] == [("2030-01-05", "2030-01-06")]
 
 
 def test_a_screen_input_that_ignores_a_dimension_skips_its_twins(monkeypatch: pytest.MonkeyPatch):
@@ -324,7 +331,7 @@ def test_a_screen_input_that_ignores_a_dimension_skips_its_twins(monkeypatch: py
     due = dataclasses.replace(form.due, holds=Wire(Str(format="date"), required=False, ignores=("midnight",), why="the product keeps a day"))
     monkeypatch.setattr(form, "due", due)
     base = found[add]
-    assert [t.ignored for t in twin_classes(base.call, base.before)] == [True]
+    assert [t.ignored for t in twin_classes(base.call, base.before) if t.name == "due_on"] == [True]
 
 
 def test_a_screen_input_must_name_the_fixture_field_it_holds():
@@ -339,6 +346,13 @@ def test_the_twins_of_a_date_pass_when_the_page_keeps_the_day(todo_web, tmp_path
     assert done.returncode == 0, done.stdout + done.stderr
     assert re.search(r"twins: [1-9]\d* pairs played, .*, 0 underspecified", done.stdout), done.stdout
     assert "Underspecified" not in done.stdout
+
+
+def test_the_run_of_the_web_book_plays_the_input_classes_its_forms_state(todo_web, tmp_path: Path):
+    done = _run(todo_web, tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+    played = re.search(r"inputs: (\d+) played, \d+ diverge as declared, 0 fail", done.stdout)
+    assert played and int(played.group(1)) > 2, done.stdout
 
 
 def test_a_page_that_sends_the_date_from_a_local_midnight_is_underspecified(tmp_path: Path):

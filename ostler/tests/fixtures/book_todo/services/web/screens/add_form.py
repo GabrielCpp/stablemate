@@ -7,8 +7,9 @@ from .labels import ASSIGNEE, DESCRIPTION, DUE, SAVE, TITLE
 from .users import FORM, RECEIVED
 
 form = Text("add-form", does="the form element, role=form")
-title = Field(None, TITLE)
-description = TextArea("todo-description", DESCRIPTION)
+title = Field(None, TITLE, takes="title", holds=Wire(Str(max_len=120)))
+description = TextArea("todo-description", DESCRIPTION, takes="description",
+                       holds=Wire(Str(max_len=2000), required=False, nullable=True))
 due = DateField("todo-due", DUE, takes="due_on", holds=Wire(Str(format="date"), required=False))
 assignee = Select(None, ASSIGNEE, lists=FORM)
 save = Button(None, SAVE, "POST /todos with the non-empty fields")
