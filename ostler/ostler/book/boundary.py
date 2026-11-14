@@ -4,7 +4,6 @@ makes the record and the owner's app answers about it; the book here only names 
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
@@ -12,20 +11,32 @@ from ostler.book.errors import BookError
 from ostler.book.status import Status
 
 
+class Word:
+    """The name of a record whose owner has no book yet: it reads like a record class where only the name is asked."""
+
+    def __init__(self, name: str):
+        self.__name__ = name
+
+    def __repr__(self) -> str:
+        return f"Word({self.__name__!r})"
+
+
 @dataclass(frozen=True)
 class Foreign:
-    """A record `owner`, the module name of its book, stores. `reads` lists the fields of the record this
-    service reads."""
+    """A record `owner`, the module name of its book, stores. `reads` lists the fields of the owner's answers this
+    service reads. `record` is the record class of the owner's book, or its name while that book is not written."""
 
-    record: type
+    record: Any
     owner: str
     reads: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        held = {f.name for f in dataclasses.fields(self.record)} if dataclasses.is_dataclass(self.record) else set()
-        lacking = [name for name in self.reads if name not in held and not hasattr(self.record, name)]
-        if lacking:
-            raise BookError(f"Foreign {self.record.__name__} reads {', '.join(lacking)}, which the record does not have")
+        if isinstance(self.record, str):
+            object.__setattr__(self, "record", Word(self.record))
+
+    @property
+    def named(self) -> bool:
+        return isinstance(self.record, Word)
 
 
 class Needs:
@@ -34,6 +45,9 @@ class Needs:
     model entity."""
 
     def __init__(self, foreign: Foreign, state: str):
+        if foreign.named:
+            raise BookError(f"{foreign.owner} has no book to arrange {foreign.record.__name__} in {state}: "
+                            "name the record class of its book once it has one")
         self.foreign = foreign
         self.state = state
         self.held: tuple[str, object] | None = None

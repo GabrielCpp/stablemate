@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib
 import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Iterator
 from types import ModuleType
 
 FIXTURE = Path(__file__).parent / "fixtures" / "book_todo"
@@ -36,3 +38,23 @@ def run_book(arguments: list[str], port: int, cwd: Path = FIXTURE, web: int | No
     """`python -m ostler.book` from the fixture's root, with the app on `port`, its page on `web` and the digest service on `digest`."""
     return subprocess.run([sys.executable, "-m", "ostler.book", *arguments], cwd=cwd, env=runtime(port, web, digest),
                           capture_output=True, text=True, check=False)
+
+
+@contextlib.contextmanager
+def services_from(path: Path) -> Iterator[None]:
+    """The `services` package of the books under `path` in place of any loaded one, put back on leaving."""
+    def loaded() -> dict[str, ModuleType]:
+        return {name: held for name, held in sys.modules.items() if name == "services" or name.startswith("services.")}
+
+    saved = loaded()
+    for name in saved:
+        del sys.modules[name]
+    sys.path.insert(0, str(path))
+    importlib.invalidate_caches()
+    try:
+        yield
+    finally:
+        sys.path.remove(str(path))
+        for name in loaded():
+            del sys.modules[name]
+        sys.modules.update(saved)

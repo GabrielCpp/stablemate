@@ -64,14 +64,6 @@ def copied(into: Path) -> Path:
     return copy
 
 
-def test_a_foreign_record_that_reads_a_field_its_record_lacks_is_refused_where_it_is_declared():
-    from ostler.book import BookError, Foreign
-
-    record = module("services.api.model.todo").TodoRecord
-    with pytest.raises(BookError, match="nickname"):
-        Foreign(record, owner="services.api", reads=("id", "nickname"))
-
-
 def test_a_derivation_with_no_docstring_is_refused_where_it_is_declared():
     from ostler.book import BookError, Passes
 
