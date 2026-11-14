@@ -240,8 +240,8 @@ A host written `ostler:` in an environment is a copy of the stack that `ostler e
 runner's to name: `--copy NAME`, else the lease the run holds, else the name the book wrote after `ostler:`,
 else `shared`. Write no copy name the book cannot keep for every runner.
 
-`search <term>` and `explain <Endpoint|Journey|Action>` answer what the book already says
+`search <term>` and `explain <Endpoint|Journey|Action|Event>` answer what the book already says
 before you read any source. A search term may be a label in any of the book's languages, a source file or a part
 of its path, or several words in any order. It also reaches a decision by its story id, the classes it explains or
-the sources it cites, and an open question by its words with `--kind question`. While authoring, `explore` against the app always takes `--only`: the full replay is the
+the sources it cites, and an open question by its words with `--kind question`. An event's name finds the event, the actions that emit it and the outside events that hear it, across every book under the root; `--kind event` or `--kind outside` keeps one side. While authoring, `explore` against the app always takes `--only`: the full replay is the
 gate's job. The seed-only walk needs no app and runs as often as you like.

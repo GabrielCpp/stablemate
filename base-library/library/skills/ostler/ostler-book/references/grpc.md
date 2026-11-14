@@ -161,6 +161,32 @@ reads until it has landed.
       carries = actions.TicketOpened
   ```
 
+  An outside event also names the event it is heard as and the fields its handler reads.
+  The emitter's book declares that event once, in `events.py`, and its action says
+  `emits`. `ostler book search <event name>` then follows the event across books: its
+  contract, each action that emits it and each outside event that hears it.
+
+  ```python
+  class TicketChanged(Event):
+      """A ticket's stored record changed."""
+      name = "ticket.changed"
+      source = "zeta.dynamostream"
+      detail = Object(ticket_id=Field(Id(Ticket)), actor=Field(Str()), snapshot=Field(Snapshot))
+
+  class Transition(Action[TicketFixture, Ticket]):
+      emits = (TicketChanged,)
+
+  class Opens(Arrange[Ticket]):
+      does = "A customer opens a ticket. Both of its timers start."
+      carries = actions.TicketOpened
+      heard = TicketChanged
+      reads = ("ticket_id", "snapshot.priority")
+  ```
+
+  List the event in `Service(events=(TicketChanged,))`. A listener whose event has no book
+  under the root declares the event itself with `owner = "<who emits it>"` and lists it too.
+  `check` fails a `reads` path the event's detail does not declare.
+
 - **The surface performs it by sending the other service's own call**, imported from that
   service's book, `services/ticket/endpoints`. A call that book lacks is declared there,
   never here. The call must succeed, so the surface raises `BookError` on a refusal: the

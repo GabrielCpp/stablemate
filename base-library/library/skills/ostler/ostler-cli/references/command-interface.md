@@ -76,7 +76,7 @@ ostler edit settle-review <story-id> [--write]
 
 **The service book** (written with the `ostler-book` skill)
 ```bash
-ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|question]
+ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|question|event|outside]
 ostler book explain services.<name> <ClassName>   # everything the book says of one element
 ostler book decisions services.<name> [--story ID]
 ostler book check services.<name> --app <code repo root>   # a pointer into another repository is repo://<member>/<path>
