@@ -146,6 +146,11 @@ no behaviour goes in the app's `ignore` as `path` or `path::function`. Each deci
 one to reread. Work them through "Adding a route", then `verified` records the app's HEAD. Done
 when `stale` lists nothing. In a workspace `--app` names one member. A pointer into another member is listed as `not traced`.
 
+A first pass over a service works the `missing` list to empty instead: each tracked file under
+the app's roots that no element names gets an element with that file in its `source`, or a
+pattern in `App(ignore=...)` when it holds no behaviour a user reaches. A screen and an
+interaction carry `source` like an endpoint does.
+
 When the commit answers a story, the story is the intent: read its model, plan and review
 answers before the diff, and write the delta from them. The latest decision wins. A review
 answer or the commit message that changes what the model said is the intent now, and the
@@ -221,6 +226,7 @@ one is live.
 | `ostler book run services.<name> --no-stack` | tens of minutes | every journey, every declared cell and every input class; the book's gate, run when a backfill ends and nightly, never per batch |
 | `ostler book index services.<name>` | seconds | rewrites `index.tsv`, which `search` reads |
 | `ostler book stale services.<name> --app <root>` | seconds, no app | the elements whose source changed since the verified commit, changed files no element names, decisions they touch |
+| `ostler book missing services.<name> --app <root> [--under <folder>] [--files]` | seconds, no app | every tracked file under the app's roots that no element names; prints the map of each named file to its elements, the unnamed files, and a count per ignore pattern (`--files` lists them); the batch a backfill works through |
 | `ostler book verified services.<name> --app <root>` | seconds | records the app's HEAD once `stale` is worked |
 
 `--only` takes endpoint class names, or interaction class names in a screen book, never journey names. A wrong name is refused before anything starts. `explore` and `run` print nothing until they end, and a long one may outlive the shell's

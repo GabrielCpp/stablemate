@@ -21,6 +21,7 @@ from ostler.book.screen import Button, Field, Select, Text
 
 class AddForm(Screen):
     api = "/todos"
+    source = ("web/add_form.tsx",)
     sends = (request("POST", "/todos"),)
     root = Text("add-form", does="the form element")
     name = T(en="Add a todo", fr="Ajouter une tâche")
@@ -60,6 +61,7 @@ how the surface performs it.
 ```python
 class AddTodo(Interaction[Todo]):
     screen = AddForm
+    source = ("web/add_form.tsx",)
     does = "fills the add form and presses Save"
     carries = Add
 ```
