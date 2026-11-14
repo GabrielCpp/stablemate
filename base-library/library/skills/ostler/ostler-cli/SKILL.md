@@ -141,7 +141,9 @@ Warning-level findings (`story-covers-no-seed`, `ungrounded-surface`) are report
 the check.
 
 **The service book.** A service's behaviour lives in the book under `services/<name>/`, written
-with [[ostler-book]] and read with `ostler book search|explain|decisions`.
+with [[ostler-book]] and read with `ostler book search|explain|decisions`. A search term may be a label in any of the book's
+languages, a source file or a part of its path, or several words in any order, and `--kind question`
+finds an open question.
 
 ## Id allocation, profiles, templates
 

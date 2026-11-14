@@ -241,5 +241,7 @@ runner's to name: `--copy NAME`, else the lease the run holds, else the name the
 else `shared`. Write no copy name the book cannot keep for every runner.
 
 `search <term>` and `explain <Endpoint|Journey|Action>` answer what the book already says
-before you read any source. While authoring, `explore` against the app always takes `--only`: the full replay is the
+before you read any source. A search term may be a label in any of the book's languages, a source file or a part
+of its path, or several words in any order. It also reaches a decision by its story id, the classes it explains or
+the sources it cites, and an open question by its words with `--kind question`. While authoring, `explore` against the app always takes `--only`: the full replay is the
 gate's job. The seed-only walk needs no app and runs as often as you like.
