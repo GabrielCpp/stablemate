@@ -161,15 +161,19 @@ lists each failed or known step with the video path and the offset to seek to.
 
 ## Typed inputs
 
-A field, text area, date field or select may declare the shape of the fixture field it takes.
-The shape is the HTTP `Field`, so `ignores=` and `why=` work as on an endpoint.
+A field, text area or date field a person fills declares the shape of the fixture field it takes,
+and the check names one that does not. A select states its options, what its list holds, or a
+shape. The shape is the HTTP `Field`, so `ignores=` and `why=` work as on an endpoint.
 
 ```python
-from ostler.book import Field as Wire, Str
+from ostler.book import Field as Wire, Int, Str
 
+title = Field("todo-title", TITLE, takes="title", holds=Wire(Str(max_len=120)))
+quantity = Field("todo-quantity", QUANTITY, takes="quantity", holds=Wire(Int(), required=False))
 due = DateField("todo-due", DUE, takes="due_on", holds=Wire(Str(format="date"), required=False))
 ```
 
+A required text is also tried blank, and a number is also tried with text.
 `takes` and `holds` come together. The interaction on that screen then gets input classes,
 and twins for each typed input. A date also gets a pair either side of the clock's midnight,
 `today` and the day after. When the model reads a pair alike and the page answers it apart
