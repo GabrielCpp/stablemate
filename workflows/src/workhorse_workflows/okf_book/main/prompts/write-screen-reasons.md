@@ -48,8 +48,8 @@ Then write one decision file per reason under `{{ module_dir }}/decisions/`:
   reason.
 
 A behaviour whose reason nothing written gives gets no decision. It gets one line in
-`{{ module_dir }}/QUESTIONS.md`: the screen's class name, a colon, and the question its owner
-would answer in a sentence.
+`{{ module_dir }}/QUESTIONS.md`, in the form `- <Screen>: <question>`: a dash, the screen's class
+name, a colon, and the question its owner would answer in a sentence.
 
 Write only under `{{ module_dir }}/decisions/` and in `{{ module_dir }}/QUESTIONS.md`. Do not
 commit.
