@@ -25,6 +25,12 @@ class Checkout:
 class Onboarding: ...
 
 
+class Cart: ...
+
+
+class Pay: ...
+
+
 @pytest.fixture
 def module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     package = tmp_path / "shop_book"
@@ -122,3 +128,33 @@ def test_a_source_that_names_a_sha_no_commit_has_is_a_finding(module, tmp_path, 
 
 def test_without_an_app_no_source_is_opened(module, tmp_path):
     assert _sourced(module, tmp_path, "deadbee, gone.py", None) == []
+
+
+def _listed(module: str, tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: str | None = None) -> list[str]:
+    _write(tmp_path)
+    service = cast("Service[Any]", SimpleNamespace(
+        name="shop", endpoints=(Pay,), records=(), screens=(Home, Cart), interactions=()))
+    args = SimpleNamespace(service=module, story=None, element=None, unexplained=True, kind=kind)
+    assert decisions.cmd_decisions(service, args) == 0
+    return capsys.readouterr().out.splitlines()
+
+
+def test_unexplained_lists_the_screens_no_decision_names_and_leaves_out_the_named_one(module, tmp_path, capsys):
+    assert _listed(module, tmp_path, capsys, "screen") == ["Cart"]
+
+
+def test_unexplained_kind_screen_leaves_out_an_unexplained_endpoint(module, tmp_path, capsys):
+    listed = _listed(module, tmp_path, capsys, "screen")
+    assert "Cart" in listed and "Pay" not in listed
+
+
+def test_unexplained_without_a_kind_lists_every_kind_in_the_order_the_service_lists_them(module, tmp_path, capsys):
+    assert _listed(module, tmp_path, capsys) == ["Pay", "Cart"]
+
+
+def test_unexplained_with_a_story_is_refused_by_the_parser():
+    from ostler.book.cli import main
+
+    with pytest.raises(SystemExit) as stop:
+        main(["decisions", "services.shop", "--unexplained", "--story", "S-1"])
+    assert stop.value.code == 2

@@ -126,6 +126,8 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     listing.add_argument("service")
     listing.add_argument("--story")
     listing.add_argument("--element")
+    listing.add_argument("--unexplained", action="store_true", help="list the endpoints, records, screens and interactions no decision names")
+    listing.add_argument("--kind", choices=("endpoint", "record", "screen", "interaction"), help="with --unexplained, keep one kind")
     graph = sub.add_parser("graph", help="draw each record's state graph and table from the matrix, as dot and svg")
     graph.add_argument("service")
     graph.add_argument("--record", help="one record; omitted, every matrix")
@@ -150,6 +152,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.reconfigure(line_buffering=True)
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "decisions" and args.unexplained and (args.story or args.element):
+        parser.error("--unexplained cannot be combined with --story or --element")
     root = book_root(os.getcwd())
     if root is not None:
         sys.path.insert(0, root)

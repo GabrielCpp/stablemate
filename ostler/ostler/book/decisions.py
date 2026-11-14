@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from ostler.book.service import Service
+from ostler.book.sources import kinds
 
 HEADER = ("story", "date", "elements", "sources")
 MODEL_MODULES = ("rules", "lifecycle", "cast")
@@ -102,7 +103,15 @@ def select(decisions: list[Decision], story: str | None = None, element: str | N
     return [d for d in decisions if (story is None or d.story == story) and (element is None or element in d.elements)]
 
 
+def unexplained(service: Service[Any], module: str, kind: str | None = None) -> list[str]:
+    named = {e for d in load(module) for e in d.elements}
+    return [e.__name__ for k, e in kinds(service) if kind in (None, k) and e.__name__ not in named]
+
+
 def cmd_decisions(service: Service[Any], args: Any) -> int:
+    if args.unexplained:
+        print("\n".join(unexplained(service, args.service, args.kind)))
+        return 0
     for d in select(load(args.service), args.story, args.element):
         print(d.line())
     return 0
