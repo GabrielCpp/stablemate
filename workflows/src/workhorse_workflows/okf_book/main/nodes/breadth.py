@@ -18,7 +18,7 @@ class Skeletons(BaseModel):
 
     written: list[str] = Field(default_factory=list, description="The name of each Screen class written.")
     left: list[str] = Field(default_factory=list, description="One line per entry file that got no screen: the file, a colon, and why.")
-    odd: list[str] = Field(default_factory=list, description="One line per thing a user would find wrong: the file, a colon, and what is wrong.")
+    odd: list[str] = Field(default_factory=list, description="One line per thing a user would find wrong in what you read, such as a text in the wrong language, a typo, a control that does nothing or two screens that name one thing differently: the file, a colon, and what is wrong.")
 
 
 def _no_files_handed(_logger: logging.Logger, *_args: object) -> list[str]:

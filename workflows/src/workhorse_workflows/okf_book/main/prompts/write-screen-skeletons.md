@@ -54,10 +54,6 @@ python -m ostler.book check {{ module }} --app {{ app_root }}
 python -m ostler.book missing {{ module }} --app {{ app_root }}
 ```
 
-Reply with one JSON object and nothing else. `written` holds the name of each `Screen` class.
-`left` holds one line per entry file that got no screen: the file, a colon, and why. `odd` holds
-one line per thing a user would find wrong in what you read, such as a text in the wrong
-language, a typo, a control that does nothing or two screens that name one thing differently:
-the file, a colon, and what is wrong:
+Reply with one JSON object and nothing else.
 
 {{ result_schema }}

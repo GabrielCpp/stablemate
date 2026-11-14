@@ -55,7 +55,7 @@ class BookEntries(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    entries: list[str] = Field(default_factory=list, description="Each entry file, spelled exactly as the list of unnamed files spells it.")
+    entries: list[str] = Field(default_factory=list, description="Each entry file, spelled exactly as the list above spells it.")
     how: str = Field(default="", description="The file of the app that declares its pages.")
 
 

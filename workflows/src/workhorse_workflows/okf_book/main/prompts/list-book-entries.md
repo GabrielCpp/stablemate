@@ -16,7 +16,6 @@ Find where the app declares its pages: its route table, its navigation graph or 
 folder. Read it whole. Each page it declares has an entry file. Keep every one that is in the
 list above, a page that only redirects included.
 
-Reply with one JSON object and nothing else. `entries` holds each entry file exactly as the list
-above spells it. `how` names the file that declares the pages:
+Reply with one JSON object and nothing else.
 
 {{ result_schema }}
