@@ -10,14 +10,16 @@ from datetime import date
 from typing import Any, Iterator, Protocol
 
 from ostler.book import decisions, questions
+from ostler.book.arrange import Arrange
 from ostler.book.domain import Action, State
 from ostler.book.errors import BookError
+from ostler.book.event import Event
 from ostler.book.http import identity_lines
 from ostler.book.model import Defect, Rule
 from ostler.book.screen import Screen
 from ostler.book.service import Service
 
-KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "scene", "decision", "question")
+KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "scene", "decision", "question", "event", "outside")
 
 
 class Row(Protocol):
@@ -78,6 +80,20 @@ def source_lines(element: Any) -> tuple[str, ...]:
     return tuple(f"source: {pointer}" for pointer in element.source)
 
 
+def event_lines(event: type[Event]) -> tuple[str, ...]:
+    summary = (event.__doc__ or "").strip().splitlines()[0]
+    fields = event.detail.fields.items() if event.detail is not None else ()
+    return (event.name, *((f"source: {event.source}",) if event.source else ()), summary,
+            *(f"{key}: {spec.shape.describe()}" for key, spec in fields),
+            *((f"owner: {event.owner}",) if event.owner else ()))
+
+
+def outside_lines(outside: type[Arrange[Any]]) -> tuple[str, ...]:
+    return (outside.does, *((f"carries: {outside.carries.__name__}",) if outside.carries is not None else ()),
+            *((f"heard: {outside.heard.name}",) if outside.heard is not None else ()),
+            *(f"reads: {path}" for path in outside.reads))
+
+
 def screen_lines(service: Service[Any], screen: type[Screen]) -> tuple[str, ...]:
     lines = screen.describe(service.language).splitlines()
     sourced = source_lines(screen)
@@ -98,7 +114,7 @@ def items(service: Service[Any], module: str) -> list[Item]:
         out.append(Item("interaction", address(interaction), interaction.__name__, (" ".join(interaction.describe().split()), *source_lines(interaction))))
     for action in actions_of(service, module):
         doc = tuple((action.__doc__ or "").strip().splitlines())
-        out.append(Item("action", address(action), action.__name__, (action.__name__, *doc)))
+        out.append(Item("action", address(action), action.__name__, (action.__name__, *doc, *(f"emits: {e.name}" for e in action.emits))))
         for rule in action.rules:
             out.append(Item("rule", address(action), action.__name__, rule_lines(rule)))
         for defect in action.defects:
@@ -113,6 +129,10 @@ def items(service: Service[Any], module: str) -> list[Item]:
     for axes in service.matrices:
         for scene in axes.scenes:
             out.append(Item("scene", f"{axes.record}:{scene.name}", scene.name, (scene.describe(axes.today),)))
+    for event in service.events:
+        out.append(Item("event", address(event), event.__name__, event_lines(event)))
+    for outside in service.outside:
+        out.append(Item("outside", address(outside), outside.__name__, outside_lines(outside)))
     for decision in decisions.load(module):
         for number, text in decision.searchable():
             out.append(Item("decision", f"decisions/{decision.slug}.md:{number}", decision.slug, (text,)))
@@ -169,7 +189,7 @@ def journeys_naming(service: Service[Any], cls: type) -> list[type]:
 
 def cmd_explain(service: Service[Any], args: Any) -> int:
     known = [*service.endpoints, *actions_of(service, args.service), *service.screens, *service.journeys, *service.interactions]
-    found = [c for c in known if c.__name__ == args.name]
+    found = [c for c in known if c.__name__ == args.name] or [e for e in service.events if e.__name__ == args.name]
     if not found:
         raise SystemExit(f"nothing in {service.name} is called {args.name!r}; try `search {args.service} {args.name}`")
     cls: Any = found[0]
@@ -184,6 +204,8 @@ def cmd_explain(service: Service[Any], args: Any) -> int:
         print(cls.story())
         for given in cls.given:
             print(f"given: {given}")
+    elif issubclass(cls, Event):
+        _explain_event(service, args.service, cls)
     elif cls in service.interactions:
         print(cls.describe())
         if cls.carries is not None:
@@ -205,6 +227,26 @@ def cmd_explain(service: Service[Any], args: Any) -> int:
         for q in asked:
             print(f"- {q.text}")
     return 0
+
+
+def _explain_event(service: Service[Any], module: str, event: type[Event]) -> None:
+    from ostler.book.eventmap import books, emitters, hearers
+
+    print("\n".join(event_lines(event)))
+    emitting = emitters({module: service}, event)
+    found, _ = books(module, service)
+    listening = hearers(found, event)
+    print("emitted by")
+    for name, action in emitting:
+        print(f"    {name}.{action.__name__}: {_first(action.__doc__)}")
+    print("heard by")
+    for name, outside in listening:
+        print(f"    {name}.{outside.__name__}: {outside.does}")
+
+
+def _first(doc: str | None) -> str:
+    lines = (doc or "").strip().splitlines()
+    return lines[0] if lines else ""
 
 
 def _print_list(title: str, names: list[str]) -> None:
