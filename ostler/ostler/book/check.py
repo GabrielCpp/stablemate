@@ -407,13 +407,45 @@ def reference_faults(module: str, found: dict[str, Service[Any]], skipped: dict[
     return out
 
 
+def answers_calls(service: Service[Any]) -> bool:
+    return not service.screens and any(environment.hosts for environment in service.environments.values())
+
+
+def trespass_faults(module: str, service: Service[Any], found: dict[str, Service[Any]]) -> list[Finding]:
+    """A record or a call of another book this book holds a life for. A book that states a `Foreign` is blocked, and one written before the
+    design is only told. A screen book keeps its own model of what its user sees, and a command book keeps the files its commands
+    work on and names no host, so only a book that reaches a service by a host is compared with another."""
+    if not answers_calls(service):
+        return []
+    stated = bool(references(module, service))
+    said = ("the book that does not store the record refers to it with Foreign and asks for a state with Needs, "
+            "and the book that stores it arranges it")
+    out: list[Finding] = []
+    mine = held_records(service)
+    for name, book in found.items():
+        if name == module or not answers_calls(book):
+            continue
+        theirs = {ref.record.__name__ for ref in references(name, book) if ref.owner == module}
+        out += [Finding(f"record {record}", f"{module} and {name} both hold {record}: {said}", blocks=stated)
+                for record in sorted((mine & held_records(book)) - theirs)]
+    sent: set[tuple[str, type]] = set()
+    for journey, step in walked(service):
+        if not isinstance(step, Endpoint) or type(step) in service.endpoints:
+            continue
+        for name, book in found.items():
+            if name != module and type(step) in book.endpoints and (name, type(step)) not in sent:
+                sent.add((name, type(step)))
+                out.append(Finding(f"journey {journey.__name__}", f"{module} sends {type(step).__name__}, a call of {name}'s book: {said}", blocks=stated))
+    return out
+
+
 def boundary_faults(service: Service[Any], module: str) -> list[Finding]:
     """What this book's references to other books' records, or other books' references to its own, say that the other book no longer answers."""
     from ostler.book.eventmap import books
 
     found, skipped = books(module, service)
     out = [Finding(f"book {name}", f"cannot be loaded, so its boundary is not read: {why}", blocks=False) for name, why in skipped.items()]
-    return out + reference_faults(module, found, skipped)
+    return out + reference_faults(module, found, skipped) + trespass_faults(module, service, found)
 
 
 def matrix_faults(service: Service[Any]) -> list[Finding]:

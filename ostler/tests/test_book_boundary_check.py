@@ -96,3 +96,75 @@ def test_a_reference_by_a_word_to_an_owner_that_has_a_book_blocks_and_says_to_na
     [found] = _boundary("services.digest")
     assert found.blocks
     assert "name the record class" in found.problem and "services.api" in found.problem
+
+
+OTHER_SERVICE = '''
+from dataclasses import dataclass
+
+from ostler.book import Answer, Collection, Endpoint, Environment, Service, Stack, State, Unique
+
+
+@dataclass(frozen=True)
+class TodoRecord:
+    id: str
+
+
+class Ping(Endpoint):
+    path = "/ping"
+    answers = (Answer(200, None, "pong"),)
+    does = "Answers pong."
+
+
+class Other(State):
+    todos = Collection(TodoRecord, Unique("id"))
+
+
+LOCAL = Environment("local", {"other": "http://127.0.0.1:1"})
+
+service = Service(name="other", environments={"local": LOCAL}, default_environment="local", new_model=Other, surface=lambda environment: None, journeys=(),
+                  stack=lambda directory: Stack((), directory), endpoints=(Ping,))
+'''
+
+
+def _other(root: Path) -> None:
+    book = root / "services" / "other"
+    book.mkdir()
+    (book / "__init__.py").write_text("")
+    (book / "service.py").write_text(OTHER_SERVICE)
+
+
+def test_a_book_that_refers_to_a_neighbour_and_also_holds_a_record_of_the_same_name_is_named_and_blocks(root: Path):
+    _edit(root, "digest", "model.py", "from ostler.book import State\n",
+          "from dataclasses import dataclass\n\nfrom ostler.book import Collection, State, Unique\n\n\n"
+          "@dataclass(frozen=True)\nclass TodoRecord:\n    id: str\n")
+    _edit(root, "digest", "model.py", "class Digesting(State):\n",
+          'class Digesting(State):\n    todos = Collection(TodoRecord, Unique("id"))\n\n')
+    [found] = _boundary("services.digest")
+    assert found.blocks
+    assert "services.digest" in found.problem and "services.api" in found.problem and "TodoRecord" in found.problem
+    assert "Foreign" in found.problem and "Needs" in found.problem
+
+
+def test_a_book_that_states_no_reference_and_holds_a_record_another_book_holds_is_noted_and_does_not_block(root: Path):
+    _other(root)
+    [found] = _boundary("services.other")
+    assert not found.blocks
+    assert "services.other" in found.problem and "services.api" in found.problem and "TodoRecord" in found.problem
+
+
+def test_a_journey_that_sends_another_books_call_is_named(root: Path):
+    _edit(root, "digest", "journeys/the_todo_api_turns_a_caller_away.py", "from ..endpoints import ReadDigest, ReadDigestEntry\n",
+          "from ...api.endpoints import FindTodos\nfrom ..endpoints import ReadDigest, ReadDigestEntry\n")
+    _edit(root, "digest", "journeys/the_todo_api_turns_a_caller_away.py", "        yield Refused(ReadDigest(by=None)",
+          "        yield FindTodos()\n        yield Refused(ReadDigest(by=None)")
+    [found] = _boundary("services.digest")
+    assert found.blocks
+    assert found.name == "journey TheTodoApiTurnsACallerAway"
+    assert "FindTodos" in found.problem and "services.api" in found.problem and "Foreign" in found.problem
+
+
+def test_a_book_alone_under_its_root_gets_no_boundary_finding(root: Path):
+    for book in ("api", "web", "digest"):
+        shutil.rmtree(root / "services" / book)
+    _other(root)
+    assert _boundary("services.other") == []

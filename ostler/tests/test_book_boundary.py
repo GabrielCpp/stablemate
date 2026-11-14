@@ -132,14 +132,14 @@ def test_the_owners_book_changes_how_its_scene_is_reached_and_the_digest_book_un
     assert done.returncode == 0, done.stdout + done.stderr
 
 
-def test_a_state_the_owners_matrices_do_not_have_fails_the_given_and_names_the_states_they_have(
+def test_a_state_the_owners_matrices_do_not_have_stops_the_run_at_the_check_and_names_the_states_they_have(
         todo_app, digest_app, tmp_path: Path):
     copy = copied(tmp_path)
     journey = copy / "services" / "digest" / "journeys" / "an_overdue_todo_is_in_the_digest.py"
     journey.write_text(journey.read_text().replace('Needs(TODO, "overdue")', 'Needs(TODO, "archived")'))
     done = play(todo_app, digest_app, tmp_path / "out", "--journey", "AnOverdueTodoIsInTheDigest", "--partial", cwd=copy)
     assert done.returncode == 1, done.stdout + done.stderr
-    assert "FAIL  AnOverdueTodoIsInTheDigest" in done.stdout
+    assert "CHECK  journey AnOverdueTodoIsInTheDigest" in done.stdout
     assert "services.api" in done.stdout and "archived" in done.stdout
     for known in ("(none)", "unscheduled", "scheduled", "overdue", "Serving", "StoreDown"):
         assert known in done.stdout
