@@ -36,7 +36,7 @@ Heading("#pane h2", "Settings")
 | Factory | Found as |
 | --- | --- |
 | `Field`, `TextArea`, `DateField` | role `textbox` named by the label |
-| `Select` | role `combobox`, with its options as labels |
+| `Select` | role `combobox`. A fixed list of choices goes in `options=(...)`, as labels. A list filled from data gives none |
 | `Button`, `Check`, `Heading`, `MenuItem`, `Link`, `Option` | the role of the same name |
 | `Banner`, `Spinner` | role `alert`, `progressbar` |
 | `Text` | by its text, or by `data-testid` when it has an id |
