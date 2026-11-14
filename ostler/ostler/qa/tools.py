@@ -6,10 +6,9 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from ostler._vendor.stablemate_core.config import config_path, load_home_config
+from ostler._vendor.stablemate_core.config import config_path, load_home_config, workspace_checkouts
 from ostler._vendor.stablemate_core.schema import HomeConfig, QaTool
 from ostler.manifest import MANIFEST_FILENAMES, read_manifest
-from ostler.provenance import effective_checkouts
 from ostler.qa.outcome import QaOutcome
 
 BUILTIN_TOOLS: dict[str, str] = {
@@ -26,7 +25,7 @@ def config_files(root: Path) -> tuple[Path, ...]:
 def opted_in_tools(root: Path) -> set[str]:
     """The tool names *root*'s `qa:` block lists under `tools:`, plus each active workspace member's."""
     names: set[str] = set()
-    for repo in (root, *effective_checkouts(None).values()):
+    for repo in (root, *workspace_checkouts(root).values()):
         manifest = read_manifest(repo)
         if manifest is not None:
             names.update(manifest.qa.tools)

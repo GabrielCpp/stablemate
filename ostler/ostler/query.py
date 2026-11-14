@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from ostler import crud_generic, provenance, registry, textindex
-from ostler.model import Graph, UINode
+from ostler import crud_generic, registry, textindex
+from ostler.model import Graph
 
 
 def _story_row(graph: Graph, epic, story) -> dict:
@@ -18,15 +16,6 @@ def _story_row(graph: Graph, epic, story) -> dict:
         "authored": story.authored, "unwrittenSections": list(story.unwritten_sections),
         "hasStoryMd": story.story_md is not None,
     }
-
-
-def _ui_row(graph: Graph, node: UINode) -> dict:
-    """A UI node as a JSON row."""
-    row = {"type": node.type, "kind": node.kind, "id": node.id, "title": node.title,
-           "path": node.path.relative_to(graph.root).as_posix(), "line": node.line}
-    if node.kind == "section":
-        row["anchor"] = node.anchor
-    return row
 
 
 def _seed_row(epic, seed) -> dict:
@@ -64,13 +53,6 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
         for e in graph.epics:
             for s in e.seeds:
                 rows.append(_seed_row(e, s))
-    elif etype == "feature":
-        for f in graph.features:
-            rows.append({"type": "feature", "slug": f.slug, "area": f.area, "title": f.title,
-                         "route": f.data.get("route", ""),
-                         "path": f.path.relative_to(graph.root).as_posix()})
-    elif etype in registry.UI_TYPES_BY_NAME:
-        rows = [_ui_row(graph, n) for n in graph.ui_nodes_of_type(etype)]
     else:
         rows = crud_generic.find_instance(graph, etype)
 
@@ -87,56 +69,11 @@ def search(graph: Graph, q: str, etype: str | None = None, **kw) -> list[dict]:
     return textindex.search(graph, q, etype=etype, **kw)
 
 
-def query(
-    graph: Graph,
-    name: str,
-    arg: str,
-    checkouts: dict[str, Path] | None = None,
-) -> list[dict]:
-    source_checkouts = provenance.effective_checkouts(checkouts)
-    if name == "story-provenance":
-        return provenance.story_provenance(graph, arg, source_checkouts)
-    if name == "commit-story":
-        return provenance.commit_story(graph, arg, source_checkouts)
-    if name == "node-provenance":
-        return provenance.node_provenance(graph, arg, source_checkouts)
-    if name == "story-for-node":
-        return provenance.story_for_node(graph, arg, source_checkouts)
+def query(graph: Graph, name: str, arg: str) -> list[dict]:
     if name == "stories-covering-seed":
         return [_story_row(graph, e, s) for e in graph.epics for s in e.stories
                 if arg in s.seed_items]
-    if name == "surfaces-referenced-by-story":
-        found = graph.find_story(arg)
-        if not found:
-            return []
-        return _surfaces_referenced(graph, found[1])
     return []
 
 
-def _surfaces_referenced(graph: Graph, story) -> list[dict]:
-    """Every surface a story points at through OKF book nodes."""
-    rows: list[dict] = []
-    seen: set[str] = set()
-    for href in story.doc_refs:
-        ident = graph.resolve_doc_ref(href, origin=story.story_md)
-        if not ident or ident in seen:
-            continue
-        seen.add(ident)
-        node = graph.find_ui_node(ident)
-        path_part, _, anchor = ident.partition("#")
-        if node:
-            rows.append({"path": ident, "kind": "ui", "type": node.type, "title": node.title})
-        elif anchor and graph.find_ui_node(path_part):
-            rows.append({"path": ident, "kind": "missing"})
-        elif (graph.root / path_part).is_file():
-            rows.append({"path": ident, "kind": "file"})
-        else:
-            rows.append({"path": ident, "kind": "missing"})
-    return rows
-
-
-QUERIES = (
-    "stories-covering-seed",
-    "surfaces-referenced-by-story",
-    *provenance.PROVENANCE_QUERIES,
-)
+QUERIES = ("stories-covering-seed",)

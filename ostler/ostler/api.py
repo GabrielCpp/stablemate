@@ -1,4 +1,4 @@
-"""Programmatic (in-process) entry point to a repository's OKF graph."""
+"""Programmatic (in-process) entry point to a repository's planning graph."""
 
 from __future__ import annotations
 
@@ -9,12 +9,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ostler import adr as adr_mod
-from ostler import book_reach
-from ostler import coverage as coverage_mod
 from ostler import crud, doctor
 from ostler import decisions as decisions_mod
 from ostler import milestones as milestones_mod
-from ostler import fmt as fmt_mod
 from ostler import ids as ids_mod
 from ostler import index as index_mod
 from ostler import path as path_mod
@@ -129,7 +126,7 @@ def _unreadable(check: str, exc: Exception) -> QaOutcome:
 
 
 class Ostler:
-    """A loaded OKF graph plus the operations the ``ostler`` CLI exposes."""
+    """A loaded planning graph plus the operations the ``ostler`` CLI exposes."""
 
     def __init__(
         self,
@@ -265,20 +262,9 @@ class Ostler:
         """Ranked full-text search over the current book and decisions (``ostler search``)."""
         return query_mod.search(self.graph, q, etype)
 
-    def query(
-        self,
-        name: str,
-        arg: str,
-        *,
-        checkouts: dict[str, str | Path] | None = None,
-    ) -> builtins.list[dict]:
-        """A named reverse-index query (``ostler query``) — ``arg`` may be a short handle."""
-        return query_mod.query(
-            self.graph,
-            name,
-            ids_mod.resolve(self.graph, arg),
-            {name: Path(value) for name, value in (checkouts or {}).items()},
-        )
+    def query(self, name: str, arg: str) -> builtins.list[dict]:
+        """A named reverse-index query (``ostler query``); ``arg`` may be a short handle."""
+        return query_mod.query(self.graph, name, ids_mod.resolve(self.graph, arg))
 
     def next_epic(self) -> dict | None:
         """The next epic with unfinished work, or ``None`` (``ostler next-epic``)."""
@@ -379,29 +365,6 @@ class Ostler:
             return _unreadable("doctor", exc)
         return doctor.cmd_doctor(graph, epic=epic, check_schema=check_schema)
 
-    def fmt(self, *paths: str | Path, check: bool = False) -> builtins.list[str]:
-        """Canonicalize the book's shape; the repo-relative paths that were not already so."""
-        result = fmt_mod.run_fmt(self.graph, [str(p) for p in paths], check=check)
-        return [path_mod.display_path(self.graph.root, p) for p in result.changed]
-
-    def gc(self, *, write: bool = False) -> builtins.list[str]:
-        """The pages no link path from their service's entries page reaches, deleted when *write* (``ostler gc``)."""
-        dead = book_reach.dead_pages(self.graph)
-        if write and dead:
-            book_reach.delete_pages(dead)
-            self._graph = None
-        return [page.rel for page in dead]
-
-    def coverage(self, *, inventory: str | Path, surface: str | None = None,
-                 waivers: str | Path | None = None) -> QaOutcome:
-        """The coverage join (``ostler coverage``); ``data`` is ``{covered, total, waived, missing, errors, ...}``."""
-        try:
-            graph = self.graph
-        except (OSError, ValueError, RuntimeError) as exc:
-            return _unreadable("coverage", exc)
-        return coverage_mod.cmd_coverage(graph, surface=surface, inventory=inventory,
-                                         waivers=waivers)
-
     def spec_path(self, story: str) -> str:
         """Absolute spec directory for a story id (``ostler path spec``); ``ValueError`` for an unknown id."""
         return path_mod.resolve_spec(self.graph, story)
@@ -433,18 +396,6 @@ class Ostler:
     def story_dir(self, epic: str, slug: str) -> Path:
         """The folder of story *slug* in *epic* — join a filename onto this, not a path."""
         return path_mod.story_dir(self.graph, epic, slug)
-
-    def services_dir(self, service: str = "") -> Path:
-        """The feature book, scoped to one *service* in a multi-service workspace."""
-        return path_mod.services_root(self.graph, service)
-
-    def waivers_file(self, service: str = "") -> Path:
-        """A book's ``coverage-waivers.json`` — what :meth:`coverage` takes as ``waivers``."""
-        return path_mod.waivers_path(self.graph, service)
-
-    def screenshots_dir(self, service: str = "") -> Path:
-        """Where a walkthrough's registered screenshots live under a book."""
-        return path_mod.screenshots_dir(self.graph, service)
 
     def handle(self, identifier: str) -> str:
         """The short handle for *identifier* — what to show a person, never what to store."""

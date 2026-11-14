@@ -27,7 +27,7 @@ ostler doctor [--epic SLUG] [--json] [--no-schema]   # checks epics, stories, mi
 ```bash
 ostler list   --type epic|story|spec|seed [--epic E] [--status S] [--json]
 ostler search <query> [--type T] [--json]                         # full-text match over node prose
-ostler query  stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
+ostler query  stories-covering-seed <arg> [--json]
 ostler next-epic [--json]                            # next queued epic with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
 ostler path epic <epic> | spec <story-id> | story <story-id> | branch <story-id> [--epic] [--is_epic emits feat/<slug>]

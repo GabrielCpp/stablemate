@@ -75,7 +75,6 @@ okf_path.epics_index_in(root)                    # the epic queue's index.md
 okf_path.services_root_in(root, service)         # the book, whole or per-service
 okf_path.epic_dir_in(root, "checkout-flow")      # → .../0001-checkout-flow, from the bare slug
 okf_path.story_dir_in(root, epic, slug)          # the story folder; join your own story.md
-okf_path.screenshots_dir_in(root)                # <book>/gui/screenshots
 ```
 
 Every derivation comes in up to three spellings, chosen by what the caller already holds:

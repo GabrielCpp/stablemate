@@ -12,31 +12,20 @@ from pathlib import Path
 
 import yaml
 
-from ostler import autofix as autofix_mod, coverage, crud, crud_generic, decisions as decisions_mod, doctor, edit, fmt as fmt_mod, graph as graph_mod, ids as ids_mod, layout as layout_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
-from ostler import explain
+from ostler import crud, crud_generic, decisions as decisions_mod, doctor, edit, ids as ids_mod, layout as layout_mod, path as path_mod, query as query_mod, register as register_mod, register_import, registry, select, templates as templates_mod, todo as todo_mod
 from ostler import checks as checks_mod
-from ostler import carve as carve_mod
-from ostler import fragment_carve
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
 from ostler import index as index_mod
 from ostler import textindex as textindex_mod
-from ostler import source_snapshots
-from ostler import stamp as stamp_mod
-from ostler import behavior_cli
 from ostler.environments import cli as env_cli
-from ostler import book_reach
 from ostler.book import cli as book_cli
 from ostler._vendor.stablemate_core import config as core_config
 from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.model import find_root, load
 
-_TYPES = (
-    tuple(t.name for t in registry.REGISTRY)
-    + ("seed",)
-    + tuple(t.name for t in registry.UI_TYPES)
-)
+_TYPES = tuple(t.name for t in registry.REGISTRY if t.name != "feature") + ("seed",)
 
 
 _INDEXLESS_COMMANDS = frozenset({"checks", "cache", "book"})
@@ -110,73 +99,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="run doctor with the index and without it and diff the two reports; "
              "exit non-zero on any disagreement (one command, for CI)",
     )
-    ck = sub.add_parser("checks", help="the `verify:` check vocabulary and its signatures")
+    ck = sub.add_parser("checks", help="the named checks `qa.verify` takes, and their signatures")
     ck.add_argument("name", nargs="?", help="one check, instead of all of them")
     ck.add_argument("--json", action="store_true")
-
-    ex = sub.add_parser("explain", help="what a resource page says, what borrows it and which claims depend on it")
-    ex.add_argument("name", help="a resource's name, or the path of its page")
-
-    audit = sub.add_parser("audit", help="prepare bounded two-way source/book review packets (no semantic decisions)")
-    audit.add_argument("paths", nargs="+", help="explicit repo-relative source files or directories")
-    audit.add_argument("--max-items", type=int, default=80, help="maximum claims plus candidates per packet")
-    audit.add_argument("--max-chars", type=int, default=60000, help="maximum serialized characters per packet; never truncate")
-    audit.add_argument("--tier", choices=("1", "all"), default="1",
-                       help="1 (default): candidates the book cites or the language exports; all: every candidate")
-    audit.add_argument("--json", action="store_true")
-
-    t = sub.add_parser("trace", help="walk the graph from a node")
-    t.add_argument("token", help="seed id, story id, surface or doc path")
-
-    st = sub.add_parser(
-        "stamp", help="write a content-hash @digest onto each cited file's `code:` bullets"
-    )
-    st.add_argument(
-        "--node", action="append", default=[], metavar="ID",
-        help="a node id to stamp (repeatable); only the `code:` bullets in that node's own "
-             "section are restamped, leaving the rest of the page untouched",
-    )
-    st.add_argument(
-        "--file", action="append", default=[], metavar="PATH",
-        help="paired with --node at the same position (repeatable): restamp only the `code:` "
-             "target citing this file within that node, leaving the node's other citations "
-             "untouched. Omit entirely to restamp every citation in the given --node(s), as "
-             "before. A node may recur across several --node/--file pairs to assign it more "
-             "than one target file.",
-    )
-    st.add_argument(
-        "--path", action="append", default=[], metavar="PATH",
-        help="a book page to stamp (repeatable); requires --whole-page",
-    )
-    st.add_argument(
-        "--whole-page", action="store_true",
-        help="with --path, restamp every `code:` bullet on the page, not just edited nodes' â€” "
-             "it exists for catalog migration and one-off repair",
-    )
-    st.add_argument(
-        "--from-catalog", action="store_true",
-        help="one-time migration: stamp every `code:` bullet with the digest the whole-book "
-             "sources.json catalog already recorded for its file (not the file's current "
-             "bytes, so drift already on disk shows stale-citation immediately), then delete "
-             "the catalog. Scoped by --path when given, the whole book otherwise. Mutually "
-             "exclusive with --node.",
-    )
-    st.add_argument(
-        "--keep-catalog", action="store_true",
-        help="with --from-catalog and no --path (whole-book mode), stamp every page but "
-             "leave sources.json in place instead of deleting it -- for a staged "
-             "migration. With --path, the catalog is always left in place regardless of "
-             "this flag.",
-    )
-    st.add_argument(
-        "--checkout",
-        action="append",
-        default=[],
-        metavar="REPOSITORY=PATH",
-        help="local checkout a repo://-qualified code: target resolves against; repeat per "
-             "repository. A target naming a repository not given here is left unstamped.",
-    )
-    st.add_argument("--json", action="store_true", help="emit a per-page summary as JSON")
 
     ls = sub.add_parser("list", help="list Concepts of a type")
     ls.add_argument(
@@ -192,7 +117,7 @@ def _build_parser() -> argparse.ArgumentParser:
     se = sub.add_parser("search", help="ranked full-text search over the current book and decisions")
     se.add_argument("q")
     se.add_argument("--type", dest="etype", help="a frontmatter type, such as concept or flow")
-    se.add_argument("--root", help="a document root: services, decisions, adrs, epics, milestones, specs, register, or all")
+    se.add_argument("--root", help="a document root: decisions, adrs, epics, milestones, specs, register, or all")
     se.add_argument("--limit", type=int, default=10, help="most hits to return")
     se.add_argument(
         "--match", action="store_true",
@@ -208,93 +133,7 @@ def _build_parser() -> argparse.ArgumentParser:
     qy = sub.add_parser("query", help="reverse-index queries")
     qy.add_argument("name", choices=query_mod.QUERIES)
     qy.add_argument("arg")
-    qy.add_argument(
-        "--checkout",
-        action="append",
-        default=[],
-        metavar="REPOSITORY=PATH",
-        help="source checkout used for exact Story trailer queries; repeat per repository",
-    )
     qy.add_argument("--json", action="store_true")
-
-    rc = sub.add_parser(
-        "reach",
-        help="derive the documented click-path to a screen (or audit what has none)",
-    )
-    rc.add_argument(
-        "target",
-        nargs="?",
-        help="screen node id to route to; omit to audit every screen on the surface",
-    )
-    rc.add_argument(
-        "--from",
-        dest="start",
-        metavar="ID",
-        help="screen node id the walk starts on (default: the surface's root screen â€” the one "
-             "whose `route:` is the path of its server's `entry-url:`, or `/`)",
-    )
-    rc.add_argument("--surface", help="scope to one service (docs/services/<surface>)")
-    rc.add_argument("--json", action="store_true")
-
-    lc = sub.add_parser(
-        "locators",
-        help="the Playwright locator for every documented control (and where it is ambiguous)",
-    )
-    lc.add_argument("screen", nargs="?", help="screen slug or node id; omit for every screen")
-    lc.add_argument("--surface", help="scope to one service (docs/services/<surface>)")
-    lc.add_argument("--json", action="store_true")
-
-    gp = sub.add_parser(
-        "graph", help="query the node/edge/bullet graph (nested + typed)"
-    )
-    gp.add_argument("--surface", help="scope to one service (docs/services/<surface>)")
-    gp.add_argument(
-        "--type", dest="etype", help="nodes of this type (concept, field, method, â€¦)"
-    )
-    gp.add_argument("--title", help="title contains this text")
-    gp.add_argument(
-        "--path",
-        help="hierarchy path, e.g. 'concept:agent / field:timeout' (/ = "
-        "descendant, > = direct child; each segment is type:title)",
-    )
-    gp.add_argument(
-        "--under", metavar="ID", help="only nodes contained under this node id"
-    )
-    gp.add_argument("--depth", type=int, help="with --under: cap descent to N levels")
-    gp.add_argument(
-        "--has-bullet",
-        dest="has_bullet",
-        metavar="KEY",
-        help="nodes that declare this bullet",
-    )
-    gp.add_argument(
-        "--bullet", metavar="KEY=VAL", help="nodes whose KEY bullet contains VAL"
-    )
-    gp.add_argument(
-        "--links-to",
-        dest="links_to",
-        metavar="ID",
-        help="nodes with an out-edge to this node",
-    )
-    gp.add_argument("--orphans", action="store_true", help="pages no edge reaches, on the page or any heading in it")
-    out = gp.add_mutually_exclusive_group()
-    out.add_argument("--tree", action="store_true", help="indented outline (default)")
-    out.add_argument("--ids", action="store_true", help="bare node ids, one per line")
-    out.add_argument("--json", action="store_true", help="filtered {nodes, edges}")
-
-    cv = sub.add_parser(
-        "coverage", help="join a book's `code:` citations against a source inventory"
-    )
-    cv.add_argument("--surface", help="scope to one book (docs/services/<surface>)")
-    cv.add_argument(
-        "--inventory", required=True, metavar="PATH",
-        help="the source inventory to diff against",
-    )
-    cv.add_argument(
-        "--waivers", metavar="PATH",
-        help="adjudicated non-units, keyed by `code:` target; a waived unit counts as covered",
-    )
-    cv.add_argument("--json", action="store_true", help="{covered, total, waived, missing}")
 
     ne = sub.add_parser("next-epic", help="the next epic with unfinished work")
     ne.add_argument("--json", action="store_true")
@@ -324,23 +163,16 @@ def _build_parser() -> argparse.ArgumentParser:
                      help="sibling slugs that block this story; written as `- Blocked by:` "
                           "bullets in the story's own `## Dependencies` section")
     crt.add_argument("--json", action="store_true")
-    crf = crs.add_parser("feature")
-    crf.add_argument("slug")
-    crf.add_argument("--title", required=True)
-    crf.add_argument("--area", default="")
-    crf.add_argument("--route", default="")
-    crf.add_argument("--json", action="store_true")
     crp = crs.add_parser("spec", help="create/stamp a spec doc (idempotent; safe after the write)")
     crp.add_argument("story", help="the story id (its spec folder is `ostler path spec <id>`)")
     crp.add_argument("doc", help="file name, e.g. plan.md, qa.md, review.md, executive.md")
     crp.add_argument("--title", default="", help="H1 for a newly created doc")
     crp.add_argument("--json", action="store_true")
 
-    dl = sub.add_parser("delete", help="delete an epic/story/feature")
+    dl = sub.add_parser("delete", help="delete an epic or a story")
     dls = dl.add_subparsers(dest="what", required=True)
     dls.add_parser("epic").add_argument("name")
     dls.add_parser("story").add_argument("story", help="the story id")
-    dls.add_parser("feature").add_argument("slug")
 
     up = sub.add_parser("update", help="update built-in planning entity metadata")
     ups = up.add_subparsers(dest="what", required=True)
@@ -504,14 +336,6 @@ def _build_parser() -> argparse.ArgumentParser:
     rn = esub.add_parser("rename", parents=[write_parent])
     rn.add_argument("old_slug")
     rn.add_argument("new_slug")
-    mc = esub.add_parser(
-        "migrate-context",
-        parents=[write_parent],
-        help="move a UI-profile node type's files for a service into its registry "
-        "context folder, rewriting every link the move touches",
-    )
-    mc.add_argument("node_type")
-    mc.add_argument("service")
     sr = esub.add_parser(
         "settle-review",
         parents=[write_parent],
@@ -519,69 +343,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "gated on the artifacts/assertions the verdict cites",
     )
     sr.add_argument("story", help="the story id")
-    ce = esub.add_parser(
-        "carve-endpoints",
-        parents=[write_parent],
-        help="move each endpoint of a server page to its own page beside it, "
-        "with the invocations that call it, rewriting every link the move touches",
-    )
-    ce.add_argument("server", help="the server page, relative to the repo or to docs/services")
-    cf = esub.add_parser(
-        "carve-fragments",
-        parents=[write_parent],
-        help="move the subsections of a page's largest sections onto fragment pages beside it "
-        "until it fits the page size limit, rewriting every link the move touches",
-    )
-    cf.add_argument("page", help="the page, relative to the repo or to docs/services")
-
-    sc = sub.add_parser(
-        "scaffold", help="create a UI-profile node in the right place (Â§9)"
-    )
-    sc.add_argument("type", choices=registry.UI_TYPES_BY_NAME, help=f"one of {', '.join(registry.UI_TYPES_BY_NAME)}")
-    sc.add_argument("name")
-    sc.add_argument(
-        "--service", help="file-level types: the service subtree (docs/services/<svc>/)"
-    )
-    sc.add_argument(
-        "--in",
-        dest="in_file",
-        help="section-level types: the surface doc to insert the `### id` into",
-    )
-    sc.add_argument("--title")
-    sc.add_argument("--json", action="store_true")
-
-    fm = sub.add_parser(
-        "fmt", help="canonicalize UI-profile docs (frontmatter/bullets/headings)"
-    )
-    fm.add_argument(
-        "paths", nargs="*", help="files to format (default: all docs/services/**/*.md)"
-    )
-    fm.add_argument(
-        "--check",
-        action="store_true",
-        help="don't write; exit 1 if any file is not already canonical",
-    )
-
-    af = sub.add_parser(
-        "autofix", help="fix shape-detectable format drift (e.g. verify: holding test ids)"
-    )
-    af.add_argument(
-        "paths", nargs="*", help="files to fix (default: all docs/services/**/*.md)"
-    )
-    af.add_argument(
-        "--check",
-        action="store_true",
-        help="don't write; exit 1 if any file carries a fixable drift",
-    )
-
-    gc = sub.add_parser(
-        "gc",
-        parents=[write_parent],
-        help="list the book pages no link path from their service's entries page reaches, "
-        "and delete them with --write",
-    )
-    gc.add_argument("--json", action="store_true")
-
     pa = sub.add_parser("path", help="resolve a story id or epic name to its canonical path")
     pas = pa.add_subparsers(dest="what", required=True)
     pa_spec = pas.add_parser("spec", help="spec dir for a story id")
@@ -876,18 +637,6 @@ def _use_handles(graph, args) -> None:
     _HANDLES = ids_mod.table(ids_mod.known(graph)) if _HANDLES_ON else {}
 
 
-def _parse_checkouts(raw_checkouts: list[str]) -> dict[str, Path] | None:
-    """Parse repeated ``--checkout REPOSITORY=PATH`` flags, or ``None`` on a malformed one."""
-    checkouts: dict[str, Path] = {}
-    for raw in raw_checkouts:
-        repository, separator, checkout = raw.partition("=")
-        if not separator or not repository or not checkout:
-            print(f"error: --checkout must be REPOSITORY=PATH, got {raw!r}", file=sys.stderr)
-            return None
-        checkouts[repository] = Path(checkout).expanduser().resolve()
-    return checkouts
-
-
 def _out(value="") -> None:
     """Print, abbreviating any full id in what is printed when this run renders handles."""
     print(ids_mod.shorten(value, _HANDLES) if _HANDLES_ON else value)
@@ -956,51 +705,6 @@ def _result(res, as_json: bool = False) -> int:
     return 0 if res.ok else 1
 
 
-def _surface_driver(dump: dict, surface: str | None) -> str | None:
-    """The driver whose route grammar this surface is addressed in, or ``None`` when it states none."""
-    if surface is None:
-        return None
-    return reach.surface_driver(dump, surface)
-
-
-def _cmd_reach(graph, args) -> int:
-    """Route to one screen, or audit the whole surface when no target is given."""
-    dump = graph_mod.build(graph)
-    data = graph_mod.subset(dump, args.surface) if args.surface else dump
-    driver = _surface_driver(dump, args.surface)
-    try:
-        start = reach.resolve_start(data, args.start, driver, surface=args.surface)
-    except reach.NoScreens as exc:
-        _out(json.dumps({"start": None, "message": str(exc)}) if args.json else str(exc))
-        return 0
-    except reach.UnknownStart as exc:
-        _out(json.dumps({"error": str(exc)}) if args.json else f"error: {exc}")
-        return 2
-    if args.target:
-        by_id = {n["id"]: n for n in data["nodes"]}
-        path = reach.route(reach.navigation_edges(data), start, args.target, by_id)
-        if args.json:
-            _out(json.dumps({"start": start, "target": args.target, "route": path}))
-        elif path is None:
-            _out(f"no documented route from {start} to {args.target}")
-        else:
-            _out(reach.render_route(path, start, args.target))
-        return 1 if path is None else 0
-
-    report = reach.reachability(graph, surface=args.surface, start=start, driver=driver)
-    _out(json.dumps(report) if args.json else reach.render_reachability(report))
-    return 1 if report["unreachable"] else 0
-
-
-def _cmd_locators(graph, args) -> int:
-    """Emit the derived locators, exiting non-zero when the one-to-one mapping is broken."""
-    data = locators.build(graph, surface=args.surface, screen=args.screen)
-    _out(locators.render_json(data) if args.json else locators.render(data))
-    broken = (data["collisions"] or data["unnamed"] or data["invalid_roles"]
-              or data["counts"]["unlocatable"])
-    return 1 if broken else 0
-
-
 def _repo_relative(graph, path: str) -> str | None:
     """*path* as the repo-relative spelling a finding carries, or None when it is not the book's."""
     root = graph.root.resolve()
@@ -1012,130 +716,6 @@ def _repo_relative(graph, path: str) -> str | None:
     if not any(candidate.is_relative_to(r.resolve()) for r in graph.doc_roots.values()):
         return None
     return candidate.relative_to(root).as_posix()
-
-
-def _book_pages(graph, paths: list[str]) -> list[str] | None:
-    """The repo-relative form of each of *paths*, or `None` after naming those outside the book."""
-    scope = [_repo_relative(graph, p) for p in paths]
-    outside = [p for p, rel in zip(paths, scope, strict=True) if rel is None]
-    if outside:
-        print(f"ostler stamp: --path {', '.join(outside)} is not a file of this book",
-              file=sys.stderr)
-        return None
-    return [rel for rel in scope if rel is not None]
-
-
-def _print_stamp_results(results: list[stamp_mod.StampResult], args) -> None:
-    if args.json:
-        _out(json.dumps(
-            [{"page": r.page, "stamped": r.stamped, "unresolved": r.unresolved,
-              "changed": r.changed} for r in results],
-            indent=2,
-        ))
-    else:
-        for r in results:
-            _out(f"{r.page}: {r.stamped} stamped" + (" (unchanged)" if not r.changed else ""))
-            for target in r.unresolved:
-                _out(f"  unresolved: {target}")
-
-
-def _cmd_stamp_from_catalog(graph, args) -> int:
-    try:
-        catalog = source_snapshots.load_catalog(graph.root)
-    except (OSError, ValueError) as exc:
-        print(f"ostler stamp --from-catalog: unreadable sources.json: {exc}", file=sys.stderr)
-        return 2
-    if catalog is None:
-        print("ostler stamp --from-catalog: no docs/services/sources.json to migrate from",
-              file=sys.stderr)
-        return 2
-    if args.path:
-        scope = _book_pages(graph, args.path)
-        if scope is None:
-            return 2
-        pages = sorted(set(scope))
-    else:
-        pages = sorted({node.path.relative_to(graph.root).as_posix() for node in graph.ui_nodes})
-    results = [stamp_mod.stamp_page_from_catalog(graph.root, page, catalog) for page in pages]
-    catalog_path = source_snapshots.catalog_path(graph.root)
-    deleted = not args.path and not args.keep_catalog
-    if deleted:
-        catalog_path.unlink(missing_ok=True)
-    _print_stamp_results(results, args)
-    if not args.json:
-        if deleted:
-            _out(f"deleted {catalog_path.relative_to(graph.root)}")
-        else:
-            _out(f"kept {catalog_path.relative_to(graph.root)}")
-    return 0
-
-
-def _cmd_stamp(graph, args) -> int:
-    if args.from_catalog and args.node:
-        print("ostler stamp: --from-catalog and --node are mutually exclusive", file=sys.stderr)
-        return 2
-    if args.from_catalog:
-        return _cmd_stamp_from_catalog(graph, args)
-    if args.node and args.path:
-        print("ostler stamp: --node and --path are mutually exclusive", file=sys.stderr)
-        return 2
-    if args.path and not args.whole_page:
-        print("ostler stamp: --path requires --whole-page (stamp --node to scope to a node)",
-              file=sys.stderr)
-        return 2
-    if args.node and args.whole_page:
-        print("ostler stamp: --whole-page only applies to --path", file=sys.stderr)
-        return 2
-    if args.file and not args.node:
-        print("ostler stamp: --file requires --node (paired at the same position)",
-              file=sys.stderr)
-        return 2
-    if args.file and len(args.file) != len(args.node):
-        print("ostler stamp: --file must be repeated exactly once per --node", file=sys.stderr)
-        return 2
-    if not args.node and not args.path:
-        print("ostler stamp: pass --node or --path --whole-page", file=sys.stderr)
-        return 2
-    checkouts = _parse_checkouts(args.checkout)
-    if checkouts is None:
-        return 2
-    services_root = path_mod.services_root(graph)
-
-    if args.node:
-        pages: dict[str, list[tuple[int, int]]] = {}
-        only_targets: dict[str, dict[tuple[int, int], set[str]]] = {}
-        for i, ident in enumerate(args.node):
-            node = graph.find_ui_node(ident)
-            if node is None:
-                print(f"ostler stamp: --node {ident} is not a node of this book", file=sys.stderr)
-                return 2
-            rel = node.path.relative_to(graph.root).as_posix()
-            node_range = stamp_mod.node_line_range(graph, node)
-            pages.setdefault(rel, []).append(node_range)
-            if args.file:
-                file_target = _repo_relative(graph, args.file[i]) or args.file[i]
-                only_targets.setdefault(rel, {}).setdefault(node_range, set()).add(file_target)
-        results = [
-            stamp_mod.stamp_page(
-                graph.root, services_root, rel, line_ranges=ranges,
-                only_targets=(
-                    {r: frozenset(t) for r, t in only_targets[rel].items()}
-                    if rel in only_targets else None
-                ),
-                checkouts=checkouts,
-            )
-            for rel, ranges in pages.items()
-        ]
-    else:
-        scope = _book_pages(graph, args.path)
-        if scope is None:
-            return 2
-        results = [
-            stamp_mod.stamp_page(graph.root, services_root, rel, checkouts=checkouts)
-            for rel in scope
-        ]
-    _print_stamp_results(results, args)
-    return 1 if any(r.unresolved for r in results) else 0
 
 
 def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
@@ -1253,65 +833,11 @@ def _cmd_index(graph, args) -> int:
     return 0
 
 
-def _report_changed(graph, result, args, *, would: str, did: str, clean: str, drift: str) -> int:
-    for path in result.changed:
-        rel = (
-            path.relative_to(graph.root).as_posix()
-            if path.is_relative_to(graph.root)
-            else path.as_posix()
-        )
-        _out(f"{would if args.check else did}: {rel}")
-    if not result.changed:
-        _out(clean)
-        return 0
-    if args.check:
-        _out(f"\n{len(result.changed)} file(s) {drift}")
-        return 1
-    _out(f"\n{did} {len(result.changed)} file(s)")
-    return 0
-
-
-def _cmd_fmt(graph, args) -> int:
-    result = fmt_mod.run_fmt(graph, args.paths, check=args.check)
-    return _report_changed(
-        graph, result, args, would="would reformat", did="reformatted",
-        clean="all files already canonical",
-        drift="not canonical (run `ostler fmt` to fix)")
-
-
-def _cmd_autofix(graph, args) -> int:
-    result = autofix_mod.run_autofix(graph, args.paths, check=args.check)
-    return _report_changed(
-        graph, result, args, would="would fix", did="fixed", clean="no fixable drift found",
-        drift="carry fixable drift (run `ostler autofix` to fix)")
-
-
-def _cmd_gc(graph, args) -> int:
-    write = getattr(args, "write", False)
-    dead = book_reach.dead_pages(graph)
-    if write:
-        book_reach.delete_pages(dead)
-    if args.json:
-        _out(json.dumps({"deleted": write, "pages": [page.rel for page in dead]}, indent=2))
-        return 0
-    verb = "deleted" if write else "would delete"
-    for page in dead:
-        _out(f"{verb}: {page.rel}")
-    _out(f"\n{len(dead)} unreachable page(s) {verb}" if dead else "every page is reachable")
-    return 0
-
-
 def _cmd_edit(graph, args) -> int:
     if args.op == "relink":
         plan = edit.relink(graph, args.old_path, args.new_path)
     elif args.op == "settle-review":
         plan = edit.settle_review(graph, args.story)
-    elif args.op == "migrate-context":
-        plan = edit.migrate_context(graph, args.node_type, args.service)
-    elif args.op == "carve-endpoints":
-        plan = carve_mod.carve_endpoints(graph, args.server)
-    elif args.op == "carve-fragments":
-        plan = fragment_carve.carve_fragments(graph, args.page)
     else:
         plan = edit.rename(graph, args.old_slug, args.new_slug)
     _out(plan.render())
@@ -1386,14 +912,6 @@ def _cmd_artifact(graph, args) -> int:
             for problem in outcome.problems:
                 _out(f"  - {problem}")
     return 0 if outcome.status == "clean" else 1
-
-
-def _context_outcome(result, args) -> int:
-    if result.status == "invalid":
-        _out(json.dumps(result.data, indent=2) if args.json else f"error: {result.message}")
-        return 1
-    _out(json.dumps(result.data, indent=2) if args.json else result.message)
-    return 0 if result.ok else 1
 
 
 def _cmd_qa(graph, args) -> int:  # noqa: C901 â€” flat QA subcommand dispatch
@@ -1599,7 +1117,7 @@ def _cmd_template(graph, args) -> int:
 
 
 def _cmd_checks(args: argparse.Namespace) -> int:
-    """Print the `verify:` vocabulary, so a signature can be read rather than guessed."""
+    """Print the named checks `qa.verify` takes, so a signature can be read rather than guessed."""
     specs = list(checks_mod.CHECKS)
     if args.name:
         spec = checks_mod.CHECK_BY_NAME.get(args.name)
@@ -1697,64 +1215,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
 
     if c == "doctor":
         return _cmd_doctor(graph, args, store)
-    if c == "stamp":
-        return _cmd_stamp(graph, args)
-    if c == "audit":
-        return behavior_cli.run(graph, args)
-    if c == "explain":
-        text = explain.run(graph, args.name)
-        if text is None:
-            print(f"no resource named '{args.name}'; ostler search {args.name} lists what the book holds",
-                  file=sys.stderr)
-            return 1
-        _out(text)
-        return 0
-    if c == "trace":
-        lines, found = trace.run(graph, ids_mod.resolve(graph, args.token))
-        _out("\n".join(lines))
-        return 0 if found else 1
-    if c == "reach":
-        return _cmd_reach(graph, args)
-    if c == "locators":
-        return _cmd_locators(graph, args)
-    if c == "graph":
-        data = graph_mod.build(graph, surface=args.surface)
-        sel = graph_mod.select(
-            data,
-            node_type=args.etype,
-            title=args.title,
-            path=args.path,
-            under=args.under,
-            depth=args.depth,
-            has_bullet=args.has_bullet,
-            bullet=args.bullet,
-            links_to=args.links_to,
-            orphans=args.orphans,
-        )
-        if args.json:
-            ids = {n["id"] for n in sel}
-            _out(
-                json.dumps(
-                    {
-                        "counts": {"nodes": len(sel)},
-                        "nodes": sel,
-                        "edges": [e for e in data["edges"] if e["from"] in ids],
-                    }
-                )
-            )
-        elif args.ids:
-            _out(graph_mod.render_ids(sel))
-        else:
-            _out(graph_mod.render_tree(sel))
-        return 0
-    if c == "coverage":
-        result = coverage.cmd_coverage(graph, surface=args.surface, inventory=args.inventory,
-                                       waivers=args.waivers)
-        if result.status == "invalid":
-            print(f"ostler coverage: {result.message}", file=sys.stderr)
-            return 2
-        _out(json.dumps(result.data, indent=2) if args.json else result.message)
-        return 0 if result.ok else 1
     if c == "list":
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
         if args.etype is not None and args.etype not in valid_types:
@@ -1773,23 +1233,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
     if c == "index":
         return _cmd_index(graph, args)
     if c == "query":
-        checkouts: dict[str, Path] = {}
-        for raw in args.checkout:
-            if "=" not in raw:
-                _out(f"error: --checkout must be REPOSITORY=PATH, got {raw!r}")
-                return 2
-            repository, checkout = raw.split("=", 1)
-            if not repository or not checkout:
-                _out(f"error: --checkout must be REPOSITORY=PATH, got {raw!r}")
-                return 2
-            checkouts[repository] = Path(checkout).expanduser().resolve()
         return _emit(
-            query_mod.query(
-                graph,
-                args.name,
-                ids_mod.resolve(graph, args.arg),
-                checkouts,
-            ),
+            query_mod.query(graph, args.name, ids_mod.resolve(graph, args.arg)),
             args.json,
         )
     if c == "next-epic":
@@ -1817,21 +1262,17 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
                 [ids_mod.resolve(graph, s) for s in _split(args.covers)],
                 _split(args.depends),
             )
-        elif args.what == "spec":
+        else:
             try:
                 key = Path(path_mod.resolve_spec(graph, args.story)).name
             except ValueError as exc:
                 return _result(crud.Result(False, str(exc)), getattr(args, "json", False))
             res = crud.create_spec(graph.doc_roots["specs"], key, args.doc, args.title)
-        else:
-            res = crud.create_feature(graph, args.slug, args.title, args.area, args.route)
         return _result(res, getattr(args, "json", False))
     if c == "delete":
         if args.what == "epic":
             return _result(crud.delete_epic(graph, args.name))
-        if args.what == "story":
-            return _result(crud.delete_story(graph, args.story))
-        return _result(crud.delete_feature(graph, args.slug))
+        return _result(crud.delete_story(graph, args.story))
     if c == "update":
         return _result(
             crud.update_story(
@@ -1925,26 +1366,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             _out(f"error: {exc}")
             return 1
         return 0
-    if c == "scaffold":
-        return _result(
-            scaffold_mod.scaffold(
-                graph,
-                args.type,
-                args.name,
-                service=args.service,
-                in_file=args.in_file,
-                title=args.title,
-            ),
-            getattr(args, "json", False),
-        )
-    if c == "fmt":
-        return _cmd_fmt(graph, args)
-    if c == "autofix":
-        return _cmd_autofix(graph, args)
     if c == "edit":
         return _cmd_edit(graph, args)
-    if c == "gc":
-        return _cmd_gc(graph, args)
     if c == "vet":
         return _cmd_vet(graph, args)
     if c == "artifact":

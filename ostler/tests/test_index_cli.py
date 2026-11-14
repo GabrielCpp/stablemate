@@ -15,12 +15,8 @@ from ostler.cli import _build_parser, main
 
 GRAPH_COMMANDS: dict[str, list[str]] = {
     "doctor": ["doctor"],
-    "trace": ["trace", "seed-a1"],
     "list": ["list", "--type", "story"],
     "search": ["search", "Foo"],
-    "graph": ["graph"],
-    "reach": ["reach", "--from", "screen/home"],
-    "locators": ["locators"],
     "next-epic": ["next-epic"],
     "next-story": ["next-story", "epic-a"],
     "find": ["find", "program"],

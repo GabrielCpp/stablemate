@@ -21,7 +21,6 @@ def test_list_by_type(repo: Path):
     assert {r["name"] for r in query.list_entities(g, "epic")} == {"epic-a", "epic-b"}
     assert {r["slug"] for r in query.list_entities(g, "story")} == {"01-foo", "01-bar"}
     assert {r["id"] for r in query.list_entities(g, "seed")} == {"seed-a1", "seed-a2", "seed-b1"}
-    assert {r["slug"] for r in query.list_entities(g, "feature")} == {"rec", "rec2"}
 
 
 def test_list_filters(repo: Path):
@@ -42,8 +41,6 @@ def test_query_reverse_indexes(repo: Path):
     g = load(repo)
     covers = query.query(g, "stories-covering-seed", "seed-a1")
     assert {x["slug"] for x in covers} == {"01-foo"}
-    refs = query.query(g, "surfaces-referenced-by-story", FOO_ID)
-    assert any("rec.md" in x["path"] for x in refs)
 
 
 def test_next_epic_and_story(repo: Path):

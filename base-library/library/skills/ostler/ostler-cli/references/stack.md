@@ -226,7 +226,7 @@ address and host port it publishes, and the copies that run it. A copy docker do
 running shows its status in parentheses. It exits 1 when the stack files have errors, after it
 lists the services that did load. `--json` keeps the `copies` rows and adds a `services` list.
 
-A QA run needs none of these by hand. `ostler qa stack up --lease story-12` brings the book up
+A QA run needs none of these by hand. `ostler env up --copy story-12` brings the book up
 from its `stack.yml` as that copy, and the coder workflow does the same under the run's lease.
 A call without a lease takes the shared copy.
 
@@ -247,7 +247,7 @@ Each bring-up of a copy that is already up does the same work:
 - It keeps the copy's volumes. `ostler env up --fresh` drops them first, so the fixtures load
   again.
 
-`ostler env down` and `ostler qa stack down --lease` drop the copy's volumes with it.
+`ostler env down` and `ostler env down --copy` drop the copy's volumes with it.
 `ostler env down --keep-data` keeps them for the next `up`.
 
 A fixture or a step that runs a command inside a service reaches it through `ostler env
