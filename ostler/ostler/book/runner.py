@@ -12,7 +12,7 @@ from ostler.book.backstage import CannotArrange
 from ostler.book.boundary import Needs
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.http import Endpoint, OffShape, Undeclared
-from ostler.book.journey import (Check, Given, Journey, JourneyResult, Listed, Refused, Relates, Same, Seen, Shows,
+from ostler.book.journey import (Check, Given, Journey, JourneyResult, Listed, OwnerRefused, Refused, Relates, Same, Seen, Shows,
                                  StepResult, Undo, difference, masked)
 from ostler.book.model import Defect, Model
 from ostler.book.owners import Owners
@@ -136,6 +136,8 @@ def take(step: object, model: Model, surface: Surface, baseline: tuple[object, .
         return relation(step, model, seen)
     if isinstance(step, Refused):
         return refused(step, model, surface)
+    if isinstance(step, OwnerRefused):
+        return owner_refused(step, model, surface)
     if isinstance(step, Check):
         probed = step.probe(surface)
         return StepResult(step, None, None, model.rows(), (), probed is None, probed or "")
@@ -161,6 +163,8 @@ def remember(step: object, surface: Surface, rows: tuple[object, ...], seen: dic
 
 def read(step: object, model: Model, surface: Surface, seen: dict[int, Seen]) -> StepResult:
     """A read the model does not compute: the surface alone answers, and only a refusal fails it."""
+    if getattr(type(step), "reaches", None) is not None:
+        Owners.prepare(cast(Endpoint, step))
     try:
         outcome = surface.perform(step)
     except CannotReach as blocked:
@@ -171,6 +175,9 @@ def read(step: object, model: Model, surface: Surface, seen: dict[int, Seen]) ->
     note = "" if ok else f"app said {outcome}"
     if ok and getattr(type(step), "passes", None) is not None:
         note = Owners.judge(cast(Endpoint, step))
+        ok = not note
+    if ok and getattr(type(step), "reaches", None) is not None:
+        note = Owners.reach(cast(Endpoint, step), listing)
         ok = not note
     return StepResult(step, None, outcome, model.rows(), rows, ok, note)
 
@@ -188,6 +195,25 @@ def refused(step: Refused, model: Model, surface: Surface) -> StepResult:
           and (step.message is None or outcome.message == step.message))
     claimed = f"{step.status}" + (f" {step.message}" if step.message else "")
     return StepResult(step, None, outcome, model.rows(), (), ok, "" if ok else f"claimed {claimed}, app said {outcome}")
+
+
+def owner_refused(step: OwnerRefused, model: Model, surface: Surface) -> StepResult:
+    """A refusal of the owner claimed to come back as the book maps it: the step goes to the neighbour, the owner's
+    call goes to the owner as the same actor, and the two answers are judged against the map."""
+    inner = step.step
+    kind = type(inner)
+    if getattr(kind, "passes", None) is None and getattr(kind, "reaches", None) is None:
+        raise BookError(f"{kind.__name__} passes nothing on and reaches nothing: claim its own refusals with Refused")
+    try:
+        outcome: Outcome = surface.perform(inner)
+        reply = getattr(inner, "reply", None)
+        app = reply.status if reply is not None else 0
+    except CannotReach as blocked:
+        return StepResult(step, None, Unreachable(blocked.reason), model.rows(), (), False, f"the surface never offers this: {blocked.reason}")
+    except Undeclared as outside:
+        outcome, app = Refusal(str(outside), outside.status), outside.status
+    note = Owners.refused(cast(Endpoint, inner), app)
+    return StepResult(step, None, outcome, model.rows(), (), not note, note)
 
 
 def recorded(step: object, seen: dict[int, Seen]) -> Seen:

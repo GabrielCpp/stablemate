@@ -10,18 +10,22 @@ from typing import TYPE_CHECKING, Any, Callable, cast
 
 from ostler.book.backstage import CannotArrange
 from ostler.book.boundary import Needs
+from ostler.book.domain import Fixture
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError
 from ostler.book.http import Endpoint, Reply
 from ostler.book.journey import StepResult, difference
 from ostler.book.model import Model
+from ostler.book.outcome import Done, Refusal
 from ostler.book.state import Axes
+from ostler.book.status import Status, refused as turned_away
 from ostler.book.surface import Surface
 
 if TYPE_CHECKING:
     from ostler.book.service import Service
 
 Play = Callable[[object, Model, Surface], StepResult]
+Listing = Callable[[Surface, Model], tuple[object, ...]]
 
 
 def book_of(call: object) -> str:
@@ -104,20 +108,21 @@ class Owners:
         """The given taken: the owner's book makes the record in the state, and the journey is handed it."""
         owner, state = needed.foreign.owner, needed.state
         service, surface = cls.owner(owner)
-        axes = next((a for a in service.matrices if any(s.name == state for s in a.scenes)), None)
-        if axes is None:
-            states = ", ".join(dict.fromkeys(s.name for a in service.matrices for s in a.scenes))
+        named = [a for a in service.matrices if any(sc.name == state for sc in a.scenes)]
+        if not named:
+            states = ", ".join(dict.fromkeys(sc.name for a in service.matrices for sc in a.scenes))
             return failed(needed, model, f"{owner} has no state {state!r}; its matrices have {states}")
+        axes = cls.matrix_of(service, needed.foreign.record, state, named)
+        if axes is None:
+            names = ", ".join(a.record for a in named)
+            return failed(needed, model, f"{owner} {state}: no matrix of {names} makes a {needed.foreign.record.__name__} in that state")
         if axes.entities is None or axes.state_of is None:
             return failed(needed, model, f"{owner} {state}: the matrix {axes.record!r} says no entity is in a state")
         client = getattr(surface, "client", None)
         ids = getattr(client, "ids", None)
         if ids is None:
             raise BookError(f"{owner} has no HTTP client to read an issued id from: a needed record takes an HTTP owner in this slice")
-        owned = cls.models.get(owner)
-        if owned is None:
-            assert cls.fresh is not None
-            owned = cls.models[owner] = cls.fresh(service, surface)
+        owned = cls.model_of(owner, service, surface)
         for step in axes.scene(state).reached_by(owned.today):
             done = play(step, owned, surface)
             if done.skipped:
@@ -125,6 +130,21 @@ class Owners:
             if not done.ok:
                 return failed(needed, model, f"{owner} {state}: {done.text}: {done.note}")
         return cls.hand(needed, model, owner, state, axes, owned, ids)
+
+    @classmethod
+    def matrix_of(cls, service: Service[Any], record: type, state: str, named: list[Axes[Any]]) -> Axes[Any] | None:
+        """The first matrix whose scene `state`, arranged on a fresh model alone, leaves an entity of `record` in
+        that state."""
+        for axes in named:
+            if axes.entities is None or axes.state_of is None:
+                continue
+            try:
+                twin = axes.scene(state).arrange(service.new_model(axes.today))
+                if any(isinstance(e, record) and axes.state_of(twin, e) == state for e in axes.entities(twin)):
+                    return axes
+            except Exception:
+                continue
+        return None
 
     @classmethod
     def hand(cls, needed: Needs, model: Model, owner: str, state: str, axes: Axes[Any], owned: Model, ids: Any) -> StepResult:
@@ -143,6 +163,31 @@ class Owners:
         return StepResult(needed, None, None, model.rows(), (), True)
 
     @classmethod
+    def model_of(cls, owner: str, service: Service[Any], surface: Surface) -> Model:
+        owned = cls.models.get(owner)
+        if owned is None:
+            assert cls.fresh is not None
+            owned = cls.models[owner] = cls.fresh(service, surface)
+        return owned
+
+    @classmethod
+    def asked(cls, call: object) -> tuple[str, Service[Any], Surface]:
+        """The owner a call of a neighbour's book names, its book and its surface. The call must be one of the
+        endpoints that book declares."""
+        owner = book_of(call)
+        service, surface = cls.owner(owner)
+        if type(call) not in service.endpoints:
+            raise BookError(f"{type(call).__name__} is no endpoint of {owner}: a call a book passes on or reaches is one of the owner's endpoints")
+        return owner, service, surface
+
+    @classmethod
+    def sender(cls, owner: str, surface: Surface, what: str) -> Callable[[Endpoint], Reply]:
+        send = cast("Callable[[Endpoint], Reply] | None", getattr(surface, "send", None))
+        if not callable(send):
+            raise BookError(f"{owner} has no HTTP surface to ask: {what} takes an HTTP owner in this slice")
+        return send
+
+    @classmethod
     def judge(cls, step: Endpoint) -> str:
         """Why the neighbour's answer to a step that passes the owner's on is not what the book derives from the
         owner's answer, or an empty string."""
@@ -153,11 +198,8 @@ class Owners:
         if reply is None:
             raise BookError(f"{type(step).__name__} has no answer to judge against the owner's")
         call = passes.asks(step)
-        owner = book_of(call)
-        _, surface = cls.owner(owner)
-        send = cast("Callable[[Endpoint], Reply] | None", getattr(surface, "send", None))
-        if not callable(send):
-            raise BookError(f"{owner} has no HTTP surface to ask: a read that passes an answer on takes an HTTP owner in this slice")
+        owner, _, surface = cls.asked(call)
+        send = cls.sender(owner, surface, "a read that passes an answer on")
         call.by = step.by
         asked = send(call)
         if asked.refusal is not None:
@@ -168,6 +210,84 @@ class Owners:
             return ""
         return (f"{type(step).__name__} passes {owner}'s answer on as '{passes.says()}': the owner answered {dump(asked.body)}, "
                 f"which derives {dump(expected)}, and the app answered {dump(reply.body)}: {found}")
+
+    @classmethod
+    def refused(cls, step: Endpoint, app: Status) -> str:
+        """Why the owner's refusal of the call `step` passes on or reaches, and the `app` status the neighbour
+        answered, are not what the book's map says, or an empty string."""
+        kind = type(step)
+        if kind.passes is not None:
+            call, claim = kind.passes.asks(step), kind.passes
+        elif kind.reaches is not None:
+            call, claim = kind.reaches.call(step), kind.reaches
+        else:
+            raise BookError(f"{kind.__name__} passes nothing on and reaches nothing: claim its own refusals with Refused")
+        owner, _, surface = cls.asked(call)
+        send = cls.sender(owner, surface, "a claim that the owner refuses")
+        call.by = step.by
+        asked = send(call)
+        if asked.refusal is None:
+            return f"{kind.__name__} claims the owner {owner} refuses {call}, and the owner answered {asked.status} and did not refuse"
+        if not turned_away(app):
+            return (f"{kind.__name__} claims the owner {owner} refuses {call}: the owner refused with {asked.status} "
+                    f"and the app answered {app} and did not refuse")
+        if asked.status not in claim.refused:
+            held = ", ".join(str(k) for k in claim.refused) or "none"
+            return (f"{kind.__name__}: the owner {owner} refused {call} with {asked.status} and the map names no such status: "
+                    f"it holds {held}")
+        mapped = claim.refused[asked.status]
+        if mapped != app:
+            return (f"{kind.__name__}: the owner {owner} refused {call} with {asked.status}, the book maps it to {mapped}, "
+                    f"and the app answered {app}")
+        return ""
+
+    @classmethod
+    def prepare(cls, step: Endpoint) -> None:
+        """A step that reaches the owner's call is about to be sent: the owner has a model before the app moves."""
+        reaches = type(step).reaches
+        assert reaches is not None
+        owner, service, surface = cls.asked(reaches.call(step))
+        cls.model_of(owner, service, surface)
+
+    @classmethod
+    def reach(cls, step: Endpoint, listing: Listing) -> str:
+        """Why the owner's app, after the neighbour answered a step that reaches the owner's call, does not hold
+        what the owner's book expects of that call, or an empty string."""
+        reaches = type(step).reaches
+        if reaches is None:
+            raise BookError(f"{type(step).__name__} reaches nothing")
+        call = reaches.call(step)
+        owner, service, surface = cls.asked(call)
+        action = type(call).carries
+        if action is None:
+            raise BookError(f"{type(call).__name__} carries no action on {owner}'s model: a read is nothing for a write to reach")
+        call.by = step.by
+        owned = cls.model_of(owner, service, surface)
+        outcome = owned.perform(cls.modelled(call, action))
+        where = f"{type(step).__name__} reaches {call}"
+        if isinstance(outcome, Refusal):
+            return (f"{where}: the owner's book expects a refusal there ({outcome}), and the app answered the step: "
+                    "claim the refusal with OwnerRefused")
+        if not isinstance(outcome, Done):
+            return f"{where}: the owner's book says {outcome}"
+        expected, found = listing(surface, owned), surface.rows()
+        if expected == found:
+            return ""
+        return (f"{where}: {owner}'s app holds {[str(r) for r in found]} where the owner's book expects "
+                f"{[str(r) for r in expected]}")
+
+    @classmethod
+    def modelled(cls, call: Endpoint, action: type) -> Endpoint:
+        """The call as the owner's model takes it: a needed record is the model's own entity, not the id the
+        owner's app issued."""
+        of = call.of
+        if not isinstance(of, Needs):
+            return call
+        entity = of.record
+        accepts = getattr(action, "accept", None)
+        if isinstance(accepts, type) and issubclass(accepts, Fixture) and not isinstance(entity, accepts):
+            entity = accepts.of(entity)
+        return call.varied(of=entity)
 
 
 def dump(body: Any) -> str:

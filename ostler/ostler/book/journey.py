@@ -184,6 +184,18 @@ class Refused:
         return f"refused: {self.step} answers {self.status}" + (f" {self.message}" if self.message else "")
 
 
+@dataclass(frozen=True)
+class OwnerRefused:
+    """The author's claim that the owner refuses the call this step passes on or reaches, and that the app
+    answers with the status its book maps the owner's refusal to. It holds no status of its own: the endpoint's
+    `passes` or `reaches` states the map."""
+
+    step: object
+
+    def __str__(self) -> str:
+        return f"owner refused: {self.step} answers as the book maps the owner's refusal"
+
+
 class Journey:
     """Subclass per journey. The docstring is the story. `steps` yields the
     surface's actions and the author's claims; `given` names the conditions in

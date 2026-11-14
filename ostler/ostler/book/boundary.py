@@ -5,10 +5,11 @@ makes the record and the owner's app answers about it; the book here only names 
 from __future__ import annotations
 
 import dataclasses
-from dataclasses import dataclass
-from typing import Any, Callable
+from dataclasses import dataclass, field
+from typing import Any, Callable, Mapping
 
 from ostler.book.errors import BookError
+from ostler.book.status import Status
 
 
 @dataclass(frozen=True)
@@ -63,10 +64,12 @@ class Needs:
 @dataclass(frozen=True)
 class Passes:
     """On an endpoint that carries no action: `asks` builds the owner's call from the step, and `derived`
-    turns the owner's answer body into the body this endpoint must answer."""
+    turns the owner's answer body into the body this endpoint must answer. `refused` maps each status the
+    owner refuses with to the status this endpoint answers with."""
 
     asks: Callable[[Any], Any]
     derived: Callable[[Any], Any]
+    refused: Mapping[Any, Status] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not (self.derived.__doc__ or "").strip():
@@ -75,3 +78,13 @@ class Passes:
 
     def says(self) -> str:
         return (self.derived.__doc__ or "").strip().splitlines()[0]
+
+
+@dataclass(frozen=True)
+class Reaches:
+    """On an endpoint that carries no action: a call of this service arrives at the owner's call `call` builds
+    from the step. The owner's book states what that call does; `refused` maps each status the owner refuses
+    it with to the status this endpoint answers with."""
+
+    call: Callable[[Any], Any]
+    refused: Mapping[Any, Status] = field(default_factory=dict)

@@ -9,7 +9,7 @@ lists what a state refuses.
 
 from ostler.book.arrange import Arrange
 from ostler.book.backstage import Backstage, CannotArrange
-from ostler.book.boundary import Foreign, Needs, Passes
+from ostler.book.boundary import Foreign, Needs, Passes, Reaches
 from ostler.book.browser import Browser, Received, answer, refusal, request
 from ostler.book.cast import SOLE, Actor
 from ostler.book.domain import (Action, App, Become, Change, Collection, Create, Delete, Entry, Fixture, Heard, Index, MoveToday,
@@ -20,7 +20,7 @@ from ostler.book.errors import BookError, Unhealthy
 from ostler.book.event import Event
 from ostler.book.http import (Answer, ApiKey, Bearer, Bool, Bytes, Client, Endpoint, Enum, Field, Id, Int, List, Map, Num, Object,
                               OffShape, On, Reference, Str, Undeclared, error_field, problem)
-from ostler.book.journey import Check, Given, Journey, Listed, Refused, Relates, Same, Seen, Shows, Undo, masked, pluck
+from ostler.book.journey import Check, Given, Journey, Listed, OwnerRefused, Refused, Relates, Same, Seen, Shows, Undo, masked, pluck
 from ostler.book.inputs import Diverges
 from ostler.book.model import Defect, Model, Rule
 from ostler.book.pagesurface import PageSurface
@@ -45,7 +45,7 @@ __all__ = [
     "Show", "State", "Total", "Transaction", "Unique", "Update",
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",
     "Endpoint", "Enum", "Field", "Foreign", "Given", "Id", "Impossible", "Int", "Interaction", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",
-    "Needs", "Num", "On", "Passes", "Phase", "Process", "Reference", "Refusal", "Refusals", "Refused", "Relates", "Rule", "Same", "Scene", "Screen", "Seen", "Service", "Shows", "Stack", "Stored", "Str", "Surface",
+    "Needs", "Num", "On", "OwnerRefused", "Passes", "Phase", "Process", "Reaches", "Reference", "Refusal", "Refusals", "Refused", "Relates", "Rule", "Same", "Scene", "Screen", "Seen", "Service", "Shows", "Stack", "Stored", "Str", "Surface",
     "Command", "CommandSurface", "Exit", "Files", "Flag", "Lines", "Mark", "Outside", "Positional", "STDERR", "Sandbox", "Seed", "Switch",
     "Code", "Exited", "GrpcClient", "GrpcSurface", "HttpSurface", "Rpc", "STATUS", "refused", "succeeded",
     "T", "Transition", "Undeclared", "Undo", "Unreachable", "Unseen", "Because", "When", "error_field", "masked", "pluck", "problem",
