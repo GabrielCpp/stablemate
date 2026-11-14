@@ -44,7 +44,7 @@ from ostler.book.search import KINDS, cmd_explain, cmd_search
 from ostler.book.witness import WitnessReport, witnessed
 from ostler.book.service import Service
 from ostler.book.stack import Stack
-from ostler.book.sources import head_of, stale
+from ostler.book.sources import head_of, missing_files, stale
 from ostler.qa.report import video_clock
 from ostler.book.surface import Surface
 
@@ -117,6 +117,10 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
         p = sub.add_parser(name, help=text)
         p.add_argument("service")
         p.add_argument("--app", required=True, help="the app's root")
+    absent = sub.add_parser("missing", help="list the tracked source files of the app that no element names and no ignore pattern covers")
+    absent.add_argument("service")
+    absent.add_argument("--app", required=True, help="the app's root")
+    absent.add_argument("--under", action="append", default=[], help="a folder of the app to answer for instead of the service's roots; repeatable")
     listing = sub.add_parser("decisions", help="list the decisions the service settled")
     listing.add_argument("service")
     listing.add_argument("--story")
@@ -867,6 +871,24 @@ def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_missing(service: Service[Any], args: argparse.Namespace) -> int:
+    if service.app is None:
+        print(f'{service.name} declares no app: give Service app=App(roots=(...), verified="VERIFIED")')
+        return 2
+    found = missing_files(service, args.app, tuple(args.under))
+    print("## Files no element names")
+    for path in found.unnamed:
+        print(f"- {path}")
+    print("\n## Left out by the book")
+    for pattern, count in found.left_out.items():
+        print(f"- {pattern}: {count} files")
+    print(f"\n{len(found.unnamed)} of {found.total} files are in no element and under no ignore pattern")
+    if found.unnamed:
+        return 1
+    print("nothing missing")
+    return 0
+
+
 def cmd_verified(service: Service[Any], args: argparse.Namespace) -> int:
     found = traced(service, args)
     if found is None or service.app is None:
@@ -881,7 +903,7 @@ def cmd_verified(service: Service[Any], args: argparse.Namespace) -> int:
     return 0
 
 
-COMMANDS = {"stale": cmd_stale, "decisions": cmd_decisions, "verified": cmd_verified, "check": cmd_check, "explore": cmd_explore, "search": cmd_search, "index": cmd_index, "explain": cmd_explain, "run": cmd_run, "walk": cmd_walk, "endpoints": cmd_endpoints, "screens": cmd_screens, "matrix": cmd_matrix,
+COMMANDS = {"stale": cmd_stale, "missing": cmd_missing, "decisions": cmd_decisions, "verified": cmd_verified, "check": cmd_check, "explore": cmd_explore, "search": cmd_search, "index": cmd_index, "explain": cmd_explain, "run": cmd_run, "walk": cmd_walk, "endpoints": cmd_endpoints, "screens": cmd_screens, "matrix": cmd_matrix,
             "denied": cmd_denied, "plan": cmd_plan, "graph": cmd_graph}
 
 

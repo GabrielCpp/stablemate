@@ -97,7 +97,40 @@ def head_of(app_root: str) -> str:
 
 
 def ignored(path: str, patterns: tuple[str, ...]) -> bool:
-    return any(fnmatch.fnmatch(path, p) or fnmatch.fnmatch(path, f"*/{p}") for p in patterns)
+    return any(matches(path, p) for p in patterns)
+
+
+def matches(path: str, pattern: str) -> bool:
+    return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(path, f"*/{pattern}")
+
+
+@dataclass
+class Missing:
+    unnamed: list[str]
+    left_out: dict[str, int]
+    total: int
+
+
+def missing_files(service: Service[Any], app_root: str, under: tuple[str, ...] = ()) -> Missing:
+    assert service.app is not None
+    folders = under or service.app.roots
+    tracked = [line for line in git(app_root, "ls-files", "--", *folders).splitlines() if line]
+    member = core_config.repository_name(Path(app_root))
+    named = {
+        file_of(t)
+        for found in raw(service).values()
+        for p in found
+        if (t := traced_in(p, member)) is not None
+    }
+    left_out: dict[str, int] = {}
+    unnamed: list[str] = []
+    for path in tracked:
+        pattern = next((p for p in service.app.ignore if matches(path, p)), None)
+        if pattern is not None:
+            left_out[pattern] = left_out.get(pattern, 0) + 1
+        elif path not in named:
+            unnamed.append(path)
+    return Missing(unnamed, left_out, len(tracked))
 
 
 DEFINITIONS = (
