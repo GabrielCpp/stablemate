@@ -28,7 +28,9 @@ def _typed(due: date | str | None) -> str | None:
 
 
 class TodoWeb(PageSurface):
-    def __init__(self, environment: Environment, lang: str = "en"):
+    locales = {"en": "en-US", "fr": "fr-CA"}
+
+    def __init__(self, environment: Environment, lang: str = ""):
         super().__init__(environment, SCREENS, lang)
         self.backend = Backend(environment.address("api"))
         self._shown: dict[str, Todo] = {}

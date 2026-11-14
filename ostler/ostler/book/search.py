@@ -84,7 +84,7 @@ def items(service: Service[Any], module: str) -> list[Item]:
     for journey in service.journeys:
         out.append(Item("journey", address(journey), journey.__name__, (journey.__name__, *journey.story().splitlines())))
     for screen in service.screens:
-        out.append(Item("screen", address(screen), screen.__name__, tuple(screen.describe("en").splitlines())))
+        out.append(Item("screen", address(screen), screen.__name__, tuple(screen.describe(service.language).splitlines())))
     for axes in service.matrices:
         for scene in axes.scenes:
             out.append(Item("scene", f"{axes.record}:{scene.name}", scene.name, (scene.describe(axes.today),)))
@@ -133,7 +133,7 @@ def cmd_explain(service: Service[Any], args: Any) -> int:
         print("\n".join(identity_lines(service.endpoints, cls)))
         _print_list("journeys that call it", [j.__name__ for j in journeys_naming(service, cls)])
     elif cls in service.screens:
-        print(cls.describe("en"))
+        print(cls.describe(service.language))
     elif cls in service.journeys:
         print(cls.story())
         for given in cls.given:

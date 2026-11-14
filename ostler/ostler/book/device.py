@@ -84,7 +84,7 @@ class Device:
     """Same verbs as `Browser`, aimed at an app on an Android device. `app_id` is the bundle id the app installs as;
     `serial` picks the device when several are attached."""
 
-    def __init__(self, app_id: str, lang: str = "en", serial: str = "", timeout: float = 20.0):
+    def __init__(self, app_id: str, lang: str = "", serial: str = "", timeout: float = 20.0):
         self.app_id = app_id
         self.lang = lang
         self.serial = serial

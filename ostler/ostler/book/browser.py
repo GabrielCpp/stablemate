@@ -11,7 +11,7 @@ import re
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator
+from typing import Any, Callable, Iterator, Mapping
 from urllib.parse import parse_qsl, urlsplit
 
 from ostler.book.errors import BookError
@@ -63,14 +63,16 @@ class Browser:
     def __init__(
         self,
         base: str,
-        lang: str = "en",
+        lang: str = "",
         selector: str = '[data-testid="{id}"]',
         headless: bool = True,
         lang_query: str | None = "lang",
         timeout: float = 10_000,
+        locales: Mapping[str, str] | None = None,
     ):
         self.base = base.rstrip("/")
         self.lang = lang
+        self.locales = locales or {}
         self.lang_query = lang_query
         self.selector = selector
         self.headless = headless
@@ -103,7 +105,9 @@ class Browser:
             self._pw = None
 
     def _make(self, record: bool = False) -> None:
-        options: dict[str, Any] = {"locale": "fr-CA" if self.lang == "fr" else "en-US"}
+        options: dict[str, Any] = {}
+        if self.lang:
+            options["locale"] = self.locales.get(self.lang, self.lang)
         if record and self.video_dir is not None:
             options["record_video_dir"] = self.video_dir
         self.context = self._browser.new_context(**options)
@@ -158,7 +162,7 @@ class Browser:
         return seen
 
     def open(self, route: str) -> None:
-        query = "" if self.lang_query is None else f"?{self.lang_query}={self.lang}"
+        query = "" if self.lang_query is None or not self.lang else f"?{self.lang_query}={self.lang}"
         self.page.goto(f"{self.base}{route}{query}")
 
     def _scope(self, within: Component | None) -> Any:

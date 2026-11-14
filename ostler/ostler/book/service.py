@@ -51,6 +51,14 @@ class Service(Generic[S]):
     records: tuple[type, ...] = ()
     environments: dict[str, Environment] = field(default_factory=dict)
     default_environment: str = ""
+    languages: tuple[str, ...] = ()
+
+    @property
+    def language(self) -> str:
+        """The first language the service declares, which a journey plays in unless it names another."""
+        if not self.languages:
+            raise BookError(f"{self.name} declares no languages: give Service languages=(...), the first being the one a journey plays in")
+        return self.languages[0]
 
     def environment(self, name: str | None = None) -> Environment:
         chosen = name or self.default_environment

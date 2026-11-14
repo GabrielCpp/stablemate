@@ -8,12 +8,16 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, cast
 
 import pytest
 
 from book_todo import run_book, module
-from ostler.book import Browser, BookError, Screen, T
+from ostler.book import Browser, BookError, Journey, Screen, Service, T
+from ostler.book.check import spoken
+from ostler.book.model import Model
+from ostler.book.stack import Stack
+from ostler.book.surface import Surface
 from ostler.book.screen import Button, Check, Field, Select, Text
 
 PAGE = b"""<!doctype html><html><body>
@@ -29,12 +33,12 @@ PAGE = b"""<!doctype html><html><body>
 
 
 class Form(Screen):
-    nick = Field(None, T("Name", "Nom"))
-    who = Select(None, T("Who", "Qui"), (T("Nobody", "Personne"), T("ana", "ana")))
-    go = Button(None, T("Go", "Aller"))
-    agree = Check(None, T("Agree", "D'accord"))
+    nick = Field(None, T(en="Name", fr="Nom"))
+    who = Select(None, T(en="Who", fr="Qui"), (T(en="Nobody", fr="Personne"), "ana"))
+    go = Button(None, T(en="Go", fr="Aller"))
+    agree = Check(None, T(en="Agree", fr="D'accord"))
     echo = Text("echo")
-    pick = Button(None, T("Pick", "Choisir"), per_row=True)
+    pick = Button(None, T(en="Pick", fr="Choisir"), per_row=True)
 
 
 @pytest.fixture
@@ -59,7 +63,7 @@ def page() -> Iterator[str]:
 
 @pytest.fixture
 def browser(page: str) -> Iterator[Browser]:
-    found = Browser(page, lang_query=None)
+    found = Browser(page, "en", lang_query=None)
     found.start()
     found.open("/")
     yield found
@@ -248,7 +252,7 @@ def test_a_screen_input_must_name_the_fixture_field_it_holds():
     from ostler.book import Field as Wire, Str
 
     with pytest.raises(BookError, match="takes"):
-        Field("x", T("X", "X"), holds=Wire(Str()))
+        Field("x", "X", holds=Wire(Str()))
 
 
 def test_the_twins_of_a_date_pass_when_the_page_keeps_the_day(todo_web, tmp_path: Path):
@@ -288,3 +292,126 @@ def test_a_name_only_cannot_place_is_refused_before_the_stack_starts(tmp_path: P
     assert "RemoveTodo" in done.stderr
     with socket.socket() as probe:
         assert probe.connect_ex(("127.0.0.1", port)) != 0
+
+
+def test_a_label_that_gives_two_bare_texts_is_refused():
+    with pytest.raises(BookError, match="a label names each language"):
+        T("Save", "Enregistrer")
+
+
+def test_a_label_gives_its_text_in_a_language_it_names():
+    label = T(fr="Enregistrer", es="Guardar")
+    assert label["es"] == "Guardar"
+    with pytest.raises(BookError, match="'en'"):
+        label["en"]
+    assert T("ana")["es"] == "ana"
+
+
+def test_a_label_is_the_same_label_whatever_order_its_languages_come_in():
+    assert T(en="a", fr="b") == T(fr="b", en="a")
+    assert hash(T(en="a", fr="b")) == hash(T(fr="b", en="a"))
+
+
+class Home(Screen):
+    name = T(fr="Accueil", es="Inicio")
+    go = Button(None, T(fr="Aller", es="Ir"))
+
+
+def _service(*screens: type[Screen], languages: tuple[str, ...] = (), journeys: tuple[type[Journey], ...] = ()) -> Service[Model]:
+    return Service(name="mini", new_model=Model, surface=lambda environment: cast(Surface, None), journeys=journeys,
+                   stack=lambda log_dir: cast(Stack, None), screens=screens, languages=languages)
+
+
+def test_a_service_with_screens_and_no_languages_is_a_finding():
+    found = spoken(_service(Home))
+    assert [f.name for f in found] == ["service"]
+    assert "declares no languages" in found[0].problem
+
+
+def test_a_label_that_misses_a_declared_language_or_names_another_is_a_finding():
+    class Words(Screen):
+        yes = Button(None, T(fr="Oui"))
+        both = Button(None, T(fr="Oui", es="Sí", en="Yes"))
+
+    found = [str(f) for f in spoken(_service(Words, languages=("fr", "es")))]
+    assert found == [
+        "screen Words.yes: the label 'Oui' has no text in es",
+        "screen Words.both: the label 'Yes' names en, which the service does not declare; it declares fr, es",
+    ]
+
+
+def test_a_book_of_one_language_writes_bare_strings():
+    class Settings(Screen):
+        name = "Settings"
+        save = Button(None, "Save")
+
+    assert spoken(_service(Settings, languages=("en",))) == []
+    assert "'Save'" in Settings.describe("en")
+    assert Settings.describe("en").startswith("# Settings")
+
+
+def test_a_journey_in_a_language_the_service_does_not_declare_is_a_finding():
+    class German(Journey):
+        lang = "de"
+
+    found = spoken(_service(Home, languages=("fr", "es"), journeys=(German,)))
+    assert [str(f) for f in found] == [
+        "journey German: plays in 'de', which the service does not declare; it declares fr, es"]
+
+
+def _locale_of(page: str, lang: str = "", locales: dict[str, str] | None = None) -> tuple[str, str, dict]:
+    found = Browser(page, lang, locales=locales)
+    found.start()
+    options: list[dict] = []
+    made = found._browser.new_context
+
+    def spy(**given: object) -> object:
+        options.append(given)
+        return made(**given)
+
+    found._browser.new_context = spy
+    try:
+        found._make()
+        found.open("/")
+        return found.page.evaluate("navigator.language"), found.page.url, options[0]
+    finally:
+        found.stop()
+
+
+def test_a_browser_opens_in_the_language_it_was_given(page: str):
+    language, url, _ = _locale_of(page, lang="es")
+    assert language == "es"
+    assert url.endswith("/?lang=es")
+
+
+def test_a_browser_opens_in_the_locale_its_surface_names_for_the_language(page: str):
+    language, _, _ = _locale_of(page, lang="fr", locales={"fr": "fr-CA"})
+    assert language == "fr-CA"
+
+
+def test_a_browser_with_no_language_sets_no_locale_and_no_query(page: str):
+    _, url, options = _locale_of(page)
+    assert "locale" not in options
+    assert "?" not in url
+
+
+def test_screens_without_lang_prints_the_first_language_of_the_service(tmp_path: Path):
+    book = tmp_path / "services" / "mini"
+    book.mkdir(parents=True)
+    (book / "__init__.py").write_text("")
+    (book / "service.py").write_text(
+        "from ostler.book import Service, Screen, T\n"
+        "from ostler.book.screen import Button\n"
+        "class Home(Screen):\n"
+        "    name = T(fr='Accueil', es='Inicio')\n"
+        "    go = Button(None, T(fr='Aller', es='Ir'))\n"
+        "service = Service(name='mini', new_model=lambda today: None, surface=lambda e: None, journeys=(),\n"
+        "                  stack=lambda d: None, screens=(Home,), languages=('fr', 'es'))\n")
+    done = run_book(["screens", "services.mini"], 0, cwd=tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "# Accueil" in done.stdout and "'Aller'" in done.stdout
+    chosen = run_book(["screens", "services.mini", "--lang", "es"], 0, cwd=tmp_path)
+    assert "# Inicio" in chosen.stdout
+    refused = run_book(["screens", "services.mini", "--lang", "en"], 0, cwd=tmp_path)
+    assert refused.returncode != 0
+    assert "fr, es" in refused.stdout + refused.stderr

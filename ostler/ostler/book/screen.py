@@ -13,15 +13,36 @@ from ostler.book.errors import BookError
 from ostler.book.http import Field as Wire
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class T:
-    """A label in every language the app speaks."""
+    """A label: one text per language the app speaks, or one text that reads the same in each."""
 
-    en: str
-    fr: str
+    same: str | None
+    texts: tuple[tuple[str, str], ...]
+
+    def __init__(self, *same: str, **texts: str) -> None:
+        if len(same) > 1:
+            raise BookError(f"a label names each language, as in T(<language>={same[0]!r}, ...); it got {len(same)} bare texts")
+        if bool(same) == bool(texts):
+            raise BookError("a label is one bare text, or one text per language by name")
+        object.__setattr__(self, "same", same[0] if same else None)
+        object.__setattr__(self, "texts", tuple(sorted(texts.items())))
 
     def __getitem__(self, lang: str) -> str:
-        return getattr(self, lang)
+        if self.same is not None:
+            return self.same
+        for name, text in self.texts:
+            if name == lang:
+                return text
+        raise BookError(f"the label {self.texts[0][1]!r} has no text in {lang!r}")
+
+    def languages(self) -> frozenset[str] | None:
+        """The languages it names, or None when it reads the same in each."""
+        return None if self.same is not None else frozenset(name for name, _ in self.texts)
+
+
+def as_label(text: T | str | None) -> T | None:
+    return T(text) if isinstance(text, str) else text
 
 
 ROLES = {
@@ -61,7 +82,7 @@ class Component:
         if (self.holds is None) != (not self.takes):
             raise BookError(f"a {self.kind} component holds a shape only with the fixture field it takes, and the reverse")
 
-    def found_by(self, lang: str = "en") -> str:
+    def found_by(self, lang: str) -> str:
         """How a driver finds this component: its id, or its role and name."""
         if self.id is not None:
             return self.id
@@ -71,56 +92,56 @@ class Component:
         return f"text {name!r}" if role is None else f"{role} {name!r}"
 
 
-def Field(id: str | None, label: T, does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
-    return Component(id, "field", label, does, takes=takes, holds=holds)
+def Field(id: str | None, label: T | str, does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
+    return Component(id, "field", as_label(label), does, takes=takes, holds=holds)
 
 
-def TextArea(id: str | None, label: T, does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
-    return Component(id, "textarea", label, does, takes=takes, holds=holds)
+def TextArea(id: str | None, label: T | str, does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
+    return Component(id, "textarea", as_label(label), does, takes=takes, holds=holds)
 
 
-def DateField(id: str | None, label: T, does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
-    return Component(id, "date", label, does, takes=takes, holds=holds)
+def DateField(id: str | None, label: T | str, does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
+    return Component(id, "date", as_label(label), does, takes=takes, holds=holds)
 
 
-def Select(id: str | None, label: T, options: tuple[T, ...], does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
-    return Component(id, "select", label, does, options, takes=takes, holds=holds)
+def Select(id: str | None, label: T | str, options: tuple[T | str, ...], does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
+    return Component(id, "select", as_label(label), does, tuple(T(o) if isinstance(o, str) else o for o in options), takes=takes, holds=holds)
 
 
-def Button(id: str | None, label: T | None = None, does: str = "", per_row: bool = False) -> Component:
-    return Component(id, "button", label, does, per_row=per_row)
+def Button(id: str | None, label: T | str | None = None, does: str = "", per_row: bool = False) -> Component:
+    return Component(id, "button", as_label(label), does, per_row=per_row)
 
 
-def Text(id: str | None, label: T | None = None, does: str = "", per_row: bool = False) -> Component:
-    return Component(id, "text", label, does, per_row=per_row)
+def Text(id: str | None, label: T | str | None = None, does: str = "", per_row: bool = False) -> Component:
+    return Component(id, "text", as_label(label), does, per_row=per_row)
 
 
-def Spinner(id: str | None, does: str = "", label: T | None = None) -> Component:
-    return Component(id, "spinner", label, does)
+def Spinner(id: str | None, does: str = "", label: T | str | None = None) -> Component:
+    return Component(id, "spinner", as_label(label), does)
 
 
-def Banner(id: str | None, label: T, does: str = "") -> Component:
-    return Component(id, "banner", label, does)
+def Banner(id: str | None, label: T | str, does: str = "") -> Component:
+    return Component(id, "banner", as_label(label), does)
 
 
-def Check(id: str | None, label: T, does: str = "") -> Component:
-    return Component(id, "check", label, does)
+def Check(id: str | None, label: T | str, does: str = "") -> Component:
+    return Component(id, "check", as_label(label), does)
 
 
-def Heading(id: str | None, label: T, does: str = "") -> Component:
-    return Component(id, "heading", label, does)
+def Heading(id: str | None, label: T | str, does: str = "") -> Component:
+    return Component(id, "heading", as_label(label), does)
 
 
-def MenuItem(id: str | None, label: T, does: str = "") -> Component:
-    return Component(id, "menuitem", label, does)
+def MenuItem(id: str | None, label: T | str, does: str = "") -> Component:
+    return Component(id, "menuitem", as_label(label), does)
 
 
-def Link(id: str | None, label: T, does: str = "") -> Component:
-    return Component(id, "link", label, does)
+def Link(id: str | None, label: T | str, does: str = "") -> Component:
+    return Component(id, "link", as_label(label), does)
 
 
-def Option(id: str | None, label: T, does: str = "") -> Component:
-    return Component(id, "option", label, does)
+def Option(id: str | None, label: T | str, does: str = "") -> Component:
+    return Component(id, "option", as_label(label), does)
 
 
 @dataclass(frozen=True)
@@ -151,8 +172,8 @@ class When:
     what: str
     on: Component | None = None
 
-    def __str__(self) -> str:
-        return f"{self.what} {self.on.found_by()}" if self.on else self.what
+    def text(self, lang: str) -> str:
+        return f"{self.what} {self.on.found_by(lang)}" if self.on else self.what
 
 
 @dataclass(frozen=True)
@@ -163,10 +184,10 @@ class Transition:
     only_if: str = ""
     then: str = ""
 
-    def __str__(self) -> str:
+    def text(self, lang: str) -> str:
         guard = f" only if {self.only_if}" if self.only_if else ""
         effect = f"; {self.then}" if self.then else ""
-        return f"{self.start.name} --[{self.when}{guard}]--> {self.end.name}{effect}"
+        return f"{self.start.name} --[{self.when.text(lang)}{guard}]--> {self.end.name}{effect}"
 
 
 class Screen:
@@ -174,7 +195,7 @@ class Screen:
     class attributes so a reader and `describe()` see one declaration."""
 
     route: str = ""
-    name: T = T("", "")
+    name: T | str = ""
     root: Component | None = None
     first: bool = False
     reached_from: str = ""
@@ -189,8 +210,9 @@ class Screen:
         return [v for v in vars(cls).values() if isinstance(v, Component) and v is not cls.root]
 
     @classmethod
-    def describe(cls, lang: str = "en") -> str:
-        lines = [f"# {cls.name[lang] or cls.__name__}" + (f"  ({cls.route})" if cls.route else "")]
+    def describe(cls, lang: str) -> str:
+        title = as_label(cls.name)
+        lines = [f"# {(title[lang] if title else '') or cls.__name__}" + (f"  ({cls.route})" if cls.route else "")]
         if cls.root is not None:
             lines.append(f"inside: {cls.root.found_by(lang)}")
         if cls.first:
@@ -232,7 +254,7 @@ class Screen:
             lines.append("")
             lines.append("transitions:")
             for t in cls.transitions:
-                lines.append(f"  {t}")
+                lines.append(f"  {t.text(lang)}")
         return "\n".join(lines)
 
 

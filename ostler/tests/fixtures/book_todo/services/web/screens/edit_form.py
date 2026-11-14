@@ -9,10 +9,10 @@ form = Text("edit-form", does="the form element that replaces the row")
 title = Field("todo-title", TITLE)
 description = TextArea("todo-description", DESCRIPTION)
 due = DateField("todo-due", DUE, takes="due_on", holds=Wire(Str(format="date"), required=False))
-clear_due = Button("todo-due-clear", T("Clear due date", "Effacer l'échéance"), "empties the date and marks it cleared")
-assignee = Select("todo-assignee", ASSIGNEE, (NOBODY, T("ana", "ana"), T("bo", "bo")))
+clear_due = Button("todo-due-clear", T(en="Clear due date", fr="Effacer l'échéance"), "empties the date and marks it cleared")
+assignee = Select("todo-assignee", ASSIGNEE, (NOBODY, "ana", "bo"))
 save = Button("todo-save", SAVE, "PATCH /todos/{id} with the changed fields only; a cleared date is null")
-cancel = Button("todo-cancel", T("Cancel", "Annuler"), "the row comes back unchanged")
+cancel = Button("todo-cancel", T(en="Cancel", fr="Annuler"), "the row comes back unchanged")
 saving = Spinner("todo-saving")
 error = Text("todo-error", does="the API's error text, role=alert")
 
@@ -24,7 +24,7 @@ refused = Phase("refused", shows=(error,), because="the fields keep what was typ
 class EditForm(Screen):
     api = "/todos"
     sends = (request("PUT", "/todos"),)
-    name = T("Edit todo", "Modifier la tâche")
+    name = T(en="Edit todo", fr="Modifier la tâche")
     reached_from = "ListPage.row-edit"
     root = form
     title = title

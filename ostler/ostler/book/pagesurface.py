@@ -15,19 +15,21 @@ from ostler.book.screen import Screen
 class PageSurface:
     """Subclass per web app. `host` names the environment host that serves the
     pages. The screens say which requests the page may send, so a request no
-    screen declares fails the step that made it."""
+    screen declares fails the step that made it. `locales` gives the browser
+    locale of a language whose name alone is not enough."""
 
     name = "web"
     host = "web"
+    locales: dict[str, str] = {}
 
-    def __init__(self, environment: Environment, screens: tuple[type[Screen], ...], lang: str = "en"):
+    def __init__(self, environment: Environment, screens: tuple[type[Screen], ...], lang: str = ""):
         self.screens = screens
         self.lang = lang
         self.browser = self.drive(environment, lang)
 
     def drive(self, environment: Environment, lang: str) -> Any:
         """What the surface drives: a browser on the host's pages. A mobile surface drives a device instead."""
-        return Browser(environment.address(self.host), lang)
+        return Browser(environment.address(self.host), lang, locales=self.locales)
 
     def start(self) -> None:
         self.browser.start()

@@ -27,7 +27,7 @@ from ostler.book.matrix import cell, matrix
 from ostler.book.state import Impossible
 from ostler.book.outcome import Done
 from ostler.book.status import succeeded
-from ostler.book.screen import Interaction
+from ostler.book.screen import Component, Interaction, as_label
 from ostler.book.search import actions_of, items, states_of
 from ostler.book.service import Service
 from ostler.book.sources import missing
@@ -238,14 +238,50 @@ def matrix_faults(service: Service[Any]) -> list[Finding]:
             for e in service.endpoints if e not in named]
 
 
-def check(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
+def spoken(service: Service[Any]) -> list[Finding]:
+    """Every label that misses a language the service declares or names one it does not, and every journey that plays in a language the service does not declare."""
+    if not service.languages:
+        if not service.screens:
+            return []
+        try:
+            service.language
+        except BookError as crash:
+            return [Finding("service", str(crash))]
+    declared = set(service.languages)
+    listed = ", ".join(service.languages)
     found: list[Finding] = []
+    for screen in service.screens:
+        labelled = [("name", as_label(screen.name))]
+        if screen.root is not None:
+            labelled.append(("root", screen.root.label))
+        for attribute, value in vars(screen).items():
+            if isinstance(value, Component):
+                labelled.append((attribute, value.label))
+                labelled += [(attribute, option) for option in value.options]
+        for attribute, label in labelled:
+            named = label.languages() if label is not None else None
+            if label is None or named is None or named == declared:
+                continue
+            text = label.texts[0][1]
+            where = f"screen {screen.__name__}.{attribute}"
+            if declared - named:
+                found.append(Finding(where, f"the label {text!r} has no text in {', '.join(sorted(declared - named))}"))
+            if named - declared:
+                found.append(Finding(where, f"the label {text!r} names {', '.join(sorted(named - declared))}, which the service does not declare; it declares {listed}"))
+    for journey in service.journeys:
+        if journey.lang and journey.lang not in declared:
+            found.append(Finding(f"journey {journey.__name__}", f"plays in {journey.lang!r}, which the service does not declare; it declares {listed}"))
+    return found
+
+
+def check(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
+    found: list[Finding] = spoken(service)
     today = date.today()
     for endpoint in service.endpoints:
         attempt(found, f"endpoint {endpoint.__name__}", endpoint.describe, required=True)
         attempt(found, f"endpoint {endpoint.__name__} does", lambda e=endpoint: e.does, required=True)
     for screen in service.screens:
-        for lang in ("en", "fr"):
+        for lang in service.languages:
             attempt(found, f"screen {screen.__name__} ({lang})", lambda s=screen, g=lang: s.describe(g), required=True)
     for interaction in service.interactions:
         attempt(found, f"interaction {interaction.__name__}", interaction.describe, required=True)

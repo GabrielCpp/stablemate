@@ -34,6 +34,7 @@ service = Service[TodoApp](
     name="web",
     environments={"local": LOCAL},
     default_environment="local",
+    languages=("en", "fr"),
     new_model=Online,
     surface=TodoWeb,
     journeys=JOURNEYS,

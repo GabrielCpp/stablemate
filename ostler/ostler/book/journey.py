@@ -192,7 +192,7 @@ class Journey:
     dependency down or counts across the whole account."""
 
     given: tuple[Given, ...] = ()
-    lang: str = "en"
+    lang: str = ""
     alone: bool = False
 
     def steps(self, today: date) -> Iterable[object]:

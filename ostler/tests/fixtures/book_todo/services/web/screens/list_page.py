@@ -6,19 +6,19 @@ from ostler.book.screen import Banner, Button, Select, Spinner, Text
 
 from .labels import ANYONE, ASSIGNEE, STATUS, STATUSES
 
-search = Text("list-search", T("Search", "Rechercher"), "filters by title or description as you type")
-assignee = Select("list-assignee", ASSIGNEE, (ANYONE, T("ana", "ana"), T("bo", "bo")), "filters by owner")
-status = Select("list-status", STATUS, (T("Any", "Tous"),) + STATUSES, "filters by derived status")
+search = Text("list-search", T(en="Search", fr="Rechercher"), "filters by title or description as you type")
+assignee = Select("list-assignee", ASSIGNEE, (ANYONE, "ana", "bo"), "filters by owner")
+status = Select("list-status", STATUS, (T(en="Any", fr="Tous"),) + STATUSES, "filters by derived status")
 loading = Spinner("list-loading", "the first fetch is out")
-empty = Text("list-empty", T("Nothing to do", "Rien à faire"), "the fetch returned no row")
+empty = Text("list-empty", T(en="Nothing to do", fr="Rien à faire"), "the fetch returned no row")
 rows = Text("todo-list", does="one row per todo, in the API's order")
 row_title = Text("row-title", per_row=True)
 row_assignee = Text("row-assignee", per_row=True)
 row_due = Text("row-due", per_row=True)
 row_status = Text("row-status", per_row=True, does="one of the three status labels")
-edit = Button("row-edit", T("Edit", "Modifier"), "replaces this row with the edit form", per_row=True)
-remove = Button("row-remove", T("Remove", "Supprimer"), "opens the remove dialog for this row", per_row=True)
-offline = Banner("offline-banner", T("You're offline", "Vous êtes hors ligne"), "navigator.onLine is false")
+edit = Button("row-edit", T(en="Edit", fr="Modifier"), "replaces this row with the edit form", per_row=True)
+remove = Button("row-remove", T(en="Remove", fr="Supprimer"), "opens the remove dialog for this row", per_row=True)
+offline = Banner("offline-banner", T(en="You're offline", fr="Vous êtes hors ligne"), "navigator.onLine is false")
 
 loading_phase = Phase("loading", shows=(loading,), hides=(rows, empty))
 empty_phase = Phase("empty", shows=(empty,), hides=(loading, rows))
@@ -31,9 +31,9 @@ class ListPage(Screen):
     api = "/todos"
     sends = (request("GET", "/todos"),)
     route = "/"
-    name = T("Todos", "Tâches")
+    name = T(en="Todos", fr="Tâches")
     first = True
-    title = Text("list-title", T("Todos", "Tâches"))
+    title = Text("list-title", T(en="Todos", fr="Tâches"))
     search = search
     assignee = assignee
     status = status

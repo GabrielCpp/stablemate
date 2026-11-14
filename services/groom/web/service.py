@@ -20,6 +20,7 @@ service = Service[Dashboard](
     name="web",
     environments={"local": LOCAL},
     default_environment="local",
+    languages=("en",),
     new_model=DashboardOff,
     surface=GroomDashboard,
     journeys=JOURNEYS,

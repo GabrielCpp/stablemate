@@ -9,7 +9,7 @@ form = Text("add-form", does="the form element, role=form")
 title = Field(None, TITLE)
 description = TextArea("todo-description", DESCRIPTION)
 due = DateField("todo-due", DUE, takes="due_on", holds=Wire(Str(format="date"), required=False))
-assignee = Select(None, ASSIGNEE, (NOBODY, T("ana", "ana"), T("bo", "bo")))
+assignee = Select(None, ASSIGNEE, (NOBODY, "ana", "bo"))
 save = Button(None, SAVE, "POST /todos with the non-empty fields")
 saving = Spinner("todo-saving", "the request is out")
 error = Text("todo-error", does="the API's error text, role=alert")
@@ -22,7 +22,7 @@ refused = Phase("refused", shows=(error,), because="the fields keep what was typ
 class AddForm(Screen):
     api = "/todos"
     sends = (request("POST", "/todos"),)
-    name = T("Add a todo", "Ajouter une tâche")
+    name = T(en="Add a todo", fr="Ajouter une tâche")
     reached_from = "ListPage: always shown above the list"
     root = form
     title = title

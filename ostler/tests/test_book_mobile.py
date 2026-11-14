@@ -32,9 +32,9 @@ HIERARCHY = json.dumps({"attributes": {}, "children": [
 
 class Profile(Screen):
     root = Text("form")
-    who = Field("field.name", T("Enter your name", "Votre nom"))
-    save = Button(None, T("Save Changes", "Enregistrer"))
-    ghost = Text(None, T("Nothing drawn", "Rien"))
+    who = Field("field.name", T(en="Enter your name", fr="Votre nom"))
+    save = Button(None, T(en="Save Changes", fr="Enregistrer"))
+    ghost = Text(None, T(en="Nothing drawn", fr="Rien"))
 
 
 class Calls:
@@ -69,7 +69,7 @@ def calls(monkeypatch: pytest.MonkeyPatch) -> Calls:
 
 
 def page(video_dir: str | None = None) -> Device:
-    device = Device("com.example.app", timeout=0.0)
+    device = Device("com.example.app", "en", timeout=0.0)
     device.video_dir = video_dir
     return device
 
@@ -167,7 +167,7 @@ def test_a_screen_read_that_fails_to_inspect_is_read_again(calls: Calls) -> None
 
 def test_the_first_of_several_components_to_show_is_returned(calls: Calls) -> None:
     device = page()
-    ghost = Text("never.there", T("Never", "Jamais"))
+    ghost = Text("never.there", T(en="Never", fr="Jamais"))
 
     assert device.await_first(ghost, Profile.who) is Profile.who
     with pytest.raises(BookError, match="none of never.there appeared"):
@@ -200,7 +200,7 @@ def test_a_text_the_keyboard_cannot_type_is_unreachable(calls: Calls) -> None:
 
 
 def test_a_device_is_driven_through_the_serial_it_was_given(calls: Calls) -> None:
-    device = Device("com.example.app", serial="emulator-5580")
+    device = Device("com.example.app", "en", serial="emulator-5580")
 
     device.clear()
 

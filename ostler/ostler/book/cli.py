@@ -129,7 +129,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
         p = sub.add_parser(name)
         p.add_argument("service")
         if name == "screens":
-            p.add_argument("--lang", default="en")
+            p.add_argument("--lang", default=None)
         if name in ("denied", "plan"):
             p.add_argument("--given", action="append", default=[], help="a request to perform first, as an expression")
         if name == "plan":
@@ -181,8 +181,11 @@ def cmd_endpoints(service: Service[Any], args: argparse.Namespace) -> int:
 
 
 def cmd_screens(service: Service[Any], args: argparse.Namespace) -> int:
+    lang = args.lang or service.language
+    if lang not in service.languages:
+        raise SystemExit(f"{service.name} declares the languages {', '.join(service.languages)}, not {lang!r}")
     for screen in service.screens:
-        print(screen.describe(args.lang))
+        print(screen.describe(lang))
         print()
     if service.interactions:
         print("interactions:")
@@ -245,7 +248,7 @@ def cmd_walk(service: Service[Any], args: argparse.Namespace) -> int:
         return begun
     surface, stack = begun
     try:
-        _set_lang(surface, "en")
+        _speak(service, surface)
         try:
             surface.reset()
         except CannotArrange as cannot:
@@ -384,7 +387,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         model, why = renewed(service, surface)
         for journey in journeys:
             started = time.time()
-            _set_lang(surface, journey.lang)
+            _speak(service, surface, journey.lang)
             if journey.alone or model is None:
                 model, why = renewed(service, surface)
             record = getattr(surface, "record", None)
@@ -412,7 +415,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         journeys_took = time.time() - began
         played = Played()
         if not args.journey and service.matrices:
-            _set_lang(surface, "en")
+            _speak(service, surface)
             print(f"journeys took {journeys_took:.0f}s; playing the cells")
             began = time.time()
             played = play(service.matrices, surface, lambda: fresh(service, surface),
@@ -503,7 +506,7 @@ def cmd_explore(service: Service[Any], args: argparse.Namespace) -> int:
         return begun
     surface, stack = begun
     try:
-        _set_lang(surface, "en")
+        _speak(service, surface)
         try:
             start = fresh(service, surface)
         except CannotArrange as cannot:
@@ -884,16 +887,17 @@ COMMANDS = {"stale": cmd_stale, "decisions": cmd_decisions, "verified": cmd_veri
 
 def _surface(service: Service[Any], environment: Environment) -> Surface:
     surface = service.surface(environment)
+    _speak(service, surface)
     follow = getattr(surface, "follow", None)
     if callable(follow):
         follow(service.watch)
     return surface
 
 
-def _set_lang(surface: Surface, lang: str) -> None:
+def _speak(service: Service[Any], surface: Surface, lang: str = "") -> None:
     speak = getattr(surface, "set_lang", None)
     if callable(speak):
-        speak(lang)
+        speak(lang or service.language)
 
 
 def _today(surface: Surface) -> date:
