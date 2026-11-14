@@ -66,23 +66,28 @@ def defect_lines(defect: Defect[Any, Any]) -> tuple[str, ...]:
     return (f"{defect.status} {defect.message}", *((f"why: {defect.why}",) if defect.why else ()))
 
 
+def source_lines(element: Any) -> tuple[str, ...]:
+    return tuple(f"source: {pointer}" for pointer in element.source)
+
+
 def screen_lines(service: Service[Any], screen: type[Screen]) -> tuple[str, ...]:
     lines = screen.describe(service.language).splitlines()
+    sourced = source_lines(screen)
     seen = set(lines)
     for language in service.languages[1:]:
         for line in screen.describe(language).splitlines():
             if line not in seen:
                 seen.add(line)
                 lines.append(line)
-    return tuple(lines)
+    return (*lines, *sourced)
 
 
 def items(service: Service[Any], module: str) -> list[Item]:
     out: list[Item] = []
     for endpoint in service.endpoints:
-        out.append(Item("endpoint", address(endpoint), endpoint.__name__, tuple(endpoint.describe().splitlines())))
+        out.append(Item("endpoint", address(endpoint), endpoint.__name__, (*endpoint.describe().splitlines(), *source_lines(endpoint))))
     for interaction in service.interactions:
-        out.append(Item("interaction", address(interaction), interaction.__name__, (" ".join(interaction.describe().split()),)))
+        out.append(Item("interaction", address(interaction), interaction.__name__, (" ".join(interaction.describe().split()), *source_lines(interaction))))
     for action in actions_of(service, module):
         doc = tuple((action.__doc__ or "").strip().splitlines())
         out.append(Item("action", address(action), action.__name__, (action.__name__, *doc)))

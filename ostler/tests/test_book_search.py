@@ -54,3 +54,19 @@ def test_the_items_of_a_one_language_book_are_the_lines_of_its_first_language(mo
     service = _book(Plain, languages=("en",))
     [screen] = [item for item in items(service, module) if item.kind == "screen"]
     assert screen.lines == tuple(Plain.describe("en").splitlines())
+
+
+def test_a_source_file_name_finds_the_screen_written_from_it(module: str):
+    service = _book(Greeting, Plain, languages=("fr",))
+    assert _found(service, "greeting.tsx", mod=module) == ["Greeting"]
+
+
+def test_a_part_of_a_source_path_finds_the_endpoint_written_from_it(module: str):
+    service = _book(endpoints=(Ping, Silent))
+    assert _found(service, "api/handlers", mod=module) == ["Ping"]
+
+
+def test_an_element_with_no_source_has_no_source_line(module: str):
+    service = _book(endpoints=(Silent,))
+    [endpoint] = [item for item in items(service, module) if item.kind == "endpoint"]
+    assert not [line for line in endpoint.lines if line.startswith("source:")]
