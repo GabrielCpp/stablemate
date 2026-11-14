@@ -36,7 +36,7 @@ Heading("#pane h2", "Settings")
 | Factory | Found as |
 | --- | --- |
 | `Field`, `TextArea`, `DateField` | role `textbox` named by the label |
-| `Select` | role `combobox`. A fixed list of choices goes in `options=(...)`, as labels. A list filled from data states what it holds with `lists=` |
+| `Select` | role `combobox`. A native select or a popup of options (a combobox that opens a `listbox` of `option` entries), driven the same way. A fixed list of choices goes in `options=(...)`, as labels. A list filled from data states what it holds with `lists=` |
 | `Button`, `Check`, `Heading`, `MenuItem`, `Link`, `Option` | the role of the same name |
 | `Banner`, `Spinner` | role `alert`, `progressbar` |
 | `Text` | by its text, or by `data-testid` when it has an id |
@@ -115,8 +115,8 @@ Everything else goes through `self.browser`:
 
 | Call | Does |
 | --- | --- |
-| `fill(component, value, within)` | types, or picks in a select; `CannotReach` when the select does not offer it |
-| `press`, `text`, `value`, `offered`, `disabled`, `visible` | click, read, read an input, list a select's options |
+| `fill(component, value, within)` | types, or picks in a select, native or a popup; `CannotReach` when the select does not offer it |
+| `press`, `text`, `value`, `offered`, `disabled`, `visible` | click, read, read an input, list a select's options (`offered` works on a native select and on a popup) |
 | `wait_for(component, state, within)` | waits for `visible`, `hidden`, `attached` or `detached` |
 | `locate(component, row)`, `in_row(row, component)` | the component, or the one in the row that holds the text |
 | `answered(*matchers)` | runs the body, then waits for the first answer one of them matches |
