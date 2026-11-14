@@ -20,8 +20,9 @@ from ostler.book import decisions, questions
 from ostler.book.arrange import Arrange
 from ostler.book.explore import _overrides, attempts, moves
 from ostler.book.graph import dot
-from ostler.book.http import Endpoint, bare_ids
-from ostler.book.journey import Given, Journey
+from ostler.book.boundary import Foreign, Needs
+from ostler.book.http import Endpoint, List, Object, bare_ids
+from ostler.book.journey import Given, Journey, Refused
 from ostler.book.model import Rule
 from ostler.book.inputs import bases, classes, expected, has_inputs, predicted, refusals_for, vary
 from ostler.book.errors import BookError
@@ -56,15 +57,21 @@ def attempt(found: list[Finding], name: str, build: Callable[[], Any], required:
         found.append(Finding(name, "empty text"))
 
 
+def given_model(service: Service[Any], journey: type[Journey]) -> Any:
+    """A new model with the journey's `Given` requests performed on it."""
+    model = service.new_model(date.today())
+    for given in journey.given:
+        if isinstance(given, Given):
+            model.perform(given.request)
+    return model
+
+
 def exercised(service: Service[Any]) -> Iterator[tuple[str, Any, list[str], Any]]:
     """Every endpoint call the journeys make, replayed on the model alone: where
     it is, the call, the ids it sends where another kind is typed, and what the
     model answered."""
     for journey in service.journeys:
-        model = service.new_model(date.today())
-        for given in journey.given:
-            if isinstance(given, Given):
-                model.perform(given.request)
+        model = given_model(service, journey)
         for step in journey().steps(model.today):
             if isinstance(step, Endpoint) and step.carries is not None:
                 faults = step.id_faults(model)
@@ -289,6 +296,126 @@ def event_faults(service: Service[Any], module: str) -> list[Finding]:
     return out
 
 
+def references(module: str, service: Service[Any]) -> list[Foreign]:
+    """Every `Foreign` a book states: one a module of the book holds, and one a journey needs."""
+    found: dict[int, Foreign] = {}
+    for name, loaded in list(sys.modules.items()):
+        if name == module or name.startswith(module + "."):
+            for value in list(vars(loaded).values()):
+                if isinstance(value, Foreign):
+                    found[id(value)] = value
+    for journey in service.journeys:
+        for given in journey.given:
+            if isinstance(given, Needs):
+                found[id(given.foreign)] = given.foreign
+    return list(found.values())
+
+
+def walked(service: Service[Any]) -> list[tuple[type[Journey], object]]:
+    """Every step the journeys take, built on a model with no send: a step the model carries is performed on it, as `exercised` does."""
+    out: list[tuple[type[Journey], object]] = []
+    for journey in service.journeys:
+        try:
+            model = given_model(service, journey)
+            for step in journey().steps(model.today):
+                step = step.step if isinstance(step, Refused) else step
+                out.append((journey, step))
+                if isinstance(step, Endpoint) and step.carries is not None:
+                    try:
+                        model.perform(step)
+                    except Exception:
+                        break
+        except Exception:
+            continue
+    return out
+
+
+def passed_on(service: Service[Any]) -> list[tuple[type[Endpoint], Any]]:
+    """The call of another book each step that passes an answer on builds, once per endpoint and call class."""
+    out: dict[tuple[type[Endpoint], type], tuple[type[Endpoint], Any]] = {}
+    for _, step in walked(service):
+        if not isinstance(step, Endpoint) or step.passes is None:
+            continue
+        endpoint = type(step)
+        try:
+            call = step.passes.asks(step)
+        except Exception:
+            continue
+        out.setdefault((endpoint, type(call)), (endpoint, call))
+    return list(out.values())
+
+
+def answered(call: type[Endpoint]) -> set[str]:
+    """The field names of the success answers of a call: the answer's object, or the entry's object of a list."""
+    out: set[str] = set()
+    for answer in call.answers:
+        shape = answer.body.of if isinstance(answer.body, List) else answer.body
+        if succeeded(answer.status) and isinstance(shape, Object):
+            out |= set(shape.fields)
+    return out
+
+
+def held_records(service: Service[Any]) -> set[str]:
+    """The record names a book's model and matrices state: the entity class of each collection of the model, the label of each matrix, and the
+    records the book lists. A record kept in a plain attribute, or in a collection of a state the model reaches only by `Become`, is not seen."""
+    names = {axes.record for axes in service.matrices} | {record.__name__ for record in service.records}
+    try:
+        collections = getattr(type(service.new_model(date.today())), "collections", None)
+        names |= {c.of.__name__ for c in collections().values()} if collections is not None else set()
+    except Exception:
+        pass
+    return names
+
+
+def reference_faults(module: str, found: dict[str, Service[Any]], skipped: dict[str, str]) -> list[Finding]:
+    """What a neighbour's reference to an owner says that the owner's book no longer answers, for the book `module` as neighbour or owner."""
+    from ostler.book.owners import book_of
+
+    refs = {name: references(name, book) for name, book in found.items()}
+    out: list[Finding] = []
+    for name, book in found.items():
+        calls = passed_on(book) if any(e.passes is not None for e in book.endpoints) else []
+        for endpoint, call in calls:
+            callee = book_of(call)
+            if callee in found and type(call) not in found[callee].endpoints and module in (name, callee):
+                out.append(Finding(f"endpoint {endpoint.__name__}", f"{name} passes {type(call).__name__} of {callee} on, and it is no endpoint "
+                                   f"of {callee}'s book: it was removed or moved out of the service's endpoints"))
+        for ref in refs[name]:
+            owner, record = ref.owner, ref.record.__name__
+            if module not in (name, owner):
+                continue
+            asked = {type(call) for _, call in calls if book_of(call) == owner}
+            seen = set().union(*(answered(c) for c in asked)) if asked else set()
+            where = ", ".join(sorted(c.__name__ for c in asked))
+            out += [Finding(f"foreign {record}", f"{name} reads {field} of {record} of {owner}, and no success answer of {where} has it")
+                    for field in ref.reads if asked and field not in seen]
+            if not ref.named:
+                continue
+            if owner in found:
+                out.append(Finding(f"foreign {record}", f"{name} names {record} by a word, and {owner} has a book: name the record class of that book"))
+            elif owner not in skipped:
+                out.append(Finding(f"foreign {record}", f"{name} names {record} by a word, and its owner {owner} has no book under the root yet", blocks=False))
+        for journey in book.journeys:
+            for given in journey.given:
+                if not isinstance(given, Needs) or given.foreign.owner not in found or module not in (name, given.foreign.owner):
+                    continue
+                owner = given.foreign.owner
+                states = list(dict.fromkeys(scene.name for axes in found[owner].matrices for scene in axes.scenes))
+                if given.state not in states:
+                    out.append(Finding(f"journey {journey.__name__}", f"{name} needs {given.foreign.record.__name__} of {owner} in "
+                                       f"{given.state!r}, and no matrix of {owner} has that state: its states are {', '.join(states)}"))
+    return out
+
+
+def boundary_faults(service: Service[Any], module: str) -> list[Finding]:
+    """What this book's references to other books' records, or other books' references to its own, say that the other book no longer answers."""
+    from ostler.book.eventmap import books
+
+    found, skipped = books(module, service)
+    out = [Finding(f"book {name}", f"cannot be loaded, so its boundary is not read: {why}", blocks=False) for name, why in skipped.items()]
+    return out + reference_faults(module, found, skipped)
+
+
 def matrix_faults(service: Service[Any]) -> list[Finding]:
     """An endpoint no lifecycle matrix names has no record to scope its cells to,
     so the exploration plays it once in every state of every record."""
@@ -412,6 +539,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "registration", lambda: found.extend(registration_faults(service, module)) or "done")
     attempt(found, "matrices", lambda: found.extend(matrix_faults(service)) or "done")
     attempt(found, "events", lambda: found.extend(event_faults(service, module)) or "done")
+    attempt(found, "boundary", lambda: found.extend(f for f in boundary_faults(service, module) if f not in found) or "done")
     return found
 
 
