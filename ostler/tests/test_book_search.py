@@ -7,8 +7,10 @@ from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from ostler.book import Answer, Endpoint, Screen, T
-from ostler.book.screen import Button
+from ostler.book.screen import Button, Select
 from ostler.book import decisions
 from ostler.book.domain import State
 from ostler.book.search import cmd_search, items, search
@@ -148,3 +150,9 @@ def test_a_word_of_an_open_question_finds_it(module: str):
         f.write("# Open\n\n- Checkout: why does a refund wait a day?\n")
     [(item, lines)] = search(_book(languages=("en",)), module, "refund wait", "question")
     assert (item.address, item.name, lines) == ("QUESTIONS.md:3", "Checkout", ["Checkout: why does a refund wait a day?"])
+
+
+@pytest.mark.parametrize("options", ["ana", T(en="Ana", fr="Anne")])
+def test_a_select_handed_one_text_for_its_options_is_refused(options: Any):
+    with pytest.raises(TypeError, match="options takes a list of texts, not one text"):
+        Select(None, "Who", options)
