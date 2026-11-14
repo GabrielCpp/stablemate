@@ -500,7 +500,7 @@ def test_a_missing_file_is_a_miss(tmp_path):
     assert store(root, directory).get(root / "docs/services/area/gone.md") is None
 
 
-PRODUCT_MODULES = ("model.py", "links.py")
+PRODUCT_MODULES = ("model.py",)
 
 
 def test_every_parse_product_is_served_from_the_store():
@@ -515,18 +515,15 @@ def test_every_parse_product_is_served_from_the_store():
                 if not any(marker in text for marker in served)]
 
     assert not unserved, f"still parsing without the store: {unserved}"
-    assert "markdown.split" not in sources["links.py"], (
-        "links.py splits markdown for itself again instead of going through the accessor")
 
 
 def test_the_shape_digest_reaches_every_dataclass_a_production_caller_stores():
     """The roots are a list, and a list left behind is the failure the digest was built to end."""
-    from ostler import api, index, inventory, model
+    from ostler import api, index, model
 
-    reached = index._reachable_dataclasses(
-        (model.UINode, model._DocProducts, api.Snapshot, inventory._SymbolTable))
+    reached = index._reachable_dataclasses((model._DocProducts, api.Snapshot))
 
-    assert {api.Snapshot, inventory._SymbolTable, model.Graph, model.Entry} <= reached
+    assert {api.Snapshot} <= reached
     assert index._shape_material() == index.dataclass_shape_digest(*reached)
 
 

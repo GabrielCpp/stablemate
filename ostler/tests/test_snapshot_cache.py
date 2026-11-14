@@ -11,7 +11,7 @@ import pytest
 from ostler import api, model, index
 from ostler.api import Ostler
 
-from conftest import epic_md, feature_md, story_md, write, epics_root
+from conftest import epic_md, story_md, write, epics_root
 
 
 def loads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -90,24 +90,26 @@ def test_editing_a_story_invalidates(repo, index_home):
 def test_a_new_document_invalidates(repo, index_home):
     """The listing half: a per-file digest can only speak for files that already existed."""
     Ostler(repo).graph
-    write(repo / "docs/services/area/rec3.md", feature_md("rec3", "Rec 3", area="area"))
+    write(epics_root() / "epic-c/epic.md", epic_md(
+        "t-3", "epic-c", seeds=[("seed-c1", "researched", "see")],
+        stories=[("01-baz", "Baz", ["seed-c1"])]))
 
     okf = Ostler(repo)
-    features = {f.slug for f in okf.graph.features}
+    names = {e.name for e in okf.graph.epics}
 
     assert okf.snapshot_stats()["misses"] == 1
-    assert "rec3" in features
+    assert "epic-c" in names
 
 
 def test_a_deleted_document_invalidates(repo, index_home):
     Ostler(repo).graph
-    (repo / "docs/services/area/rec2.md").unlink()
+    (epics_root() / "epic-b/stories/01-bar/story.md").unlink()
 
     okf = Ostler(repo)
-    features = {f.slug for f in okf.graph.features}
+    story = next(s for e in okf.graph.epics if e.name == "epic-b" for s in e.stories)
 
     assert okf.snapshot_stats()["misses"] == 1
-    assert "rec2" not in features
+    assert story.story_md is None
 
 
 def test_a_story_file_appearing_where_none_was_invalidates(repo, index_home):
@@ -130,14 +132,13 @@ def test_a_story_file_appearing_where_none_was_invalidates(repo, index_home):
 
 def test_a_different_book_gets_a_different_snapshot(repo, tmp_path, index_home):
     other = tmp_path / "other"
-    write(other / "docs/services/area/only.md", feature_md("only", "Only", area="area"))
+    (other / ".git").mkdir(parents=True)
     Ostler(repo).graph
 
     okf = Ostler(other)
-    features = {f.slug for f in okf.graph.features}
+    _ = okf.graph
 
     assert okf.snapshot_stats()["misses"] == 1
-    assert features == {"only"}
 
 
 def test_a_corrupt_entry_is_a_miss_not_a_failure(repo, index_home):
@@ -211,11 +212,11 @@ def test_the_probe_order_matches_the_loader(repo, index_home):
     assert str(story.story_md) in snapshot.files
 
 
-def big_book(root: Path, features: int = 400, epics: int = 4, stories: int = 8) -> Path:
+def big_book(root: Path, milestones: int = 400, epics: int = 4, stories: int = 8) -> Path:
     """A book of a few hundred documents — the scale the saving is actually about."""
-    for i in range(features):
-        write(root / f"docs/services/area{i % 8}/rec{i}.md",
-              feature_md(f"rec{i}", f"Rec {i}", area=f"area{i % 8}"))
+    for i in range(milestones):
+        write(root / f"docs/milestones/m{i}/milestone.md",
+              f"---\ntype: milestone\nid: m{i}\ntitle: M {i}\nstatus: proposed\ndependsOn: []\nepics: []\n---\n# M {i}\n")
     for e in range(epics):
         write(epics_root() / f"epic-{e}/epic.md", epic_md(
             f"t-{e}", f"epic-{e}", seeds=[(f"seed-{e}", "researched", "s")],

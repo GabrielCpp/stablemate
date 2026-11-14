@@ -3,18 +3,13 @@
 from __future__ import annotations
 
 import ast
-import re
-import shlex
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ostler import registry
 from ostler._vendor.stablemate_core.config import ConfigError
-from ostler._vendor.stablemate_core.schema import HomeConfig
 from ostler.manifest import read_manifest
-from ostler.qa.outcome import QaOutcome
-from ostler.qa.tools import opted_in_tools, resolved_commands
+from ostler.qa.tools import opted_in_tools
 
 DEFAULT_TIMEOUT = 120.0
 
@@ -37,75 +32,6 @@ class FixtureSpec:
             "provides": self.provides,
             "timeout": self.timeout,
         }
-
-
-_PROVIDES_SEP = "\u2014"
-
-_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
-_LINK_RE = re.compile(r"^\[[^\]]*\]\(([^)\s]+)\)")
-
-
-def _head_tokens(head: str) -> list[str]:
-    """The fixture's name then its args, where a leading link to a fixture page names it by stem."""
-    link = _LINK_RE.match(head)
-    if link is None:
-        return shlex.split(head)
-    return [Path(link.group(1).partition("#")[0]).stem, *shlex.split(head[link.end() :])]
-
-
-@dataclass(frozen=True)
-class FixtureRef:
-    """One `fixture:` bullet in the book: the arrangement a claim is documented in."""
-
-    name: str
-    args: tuple[str, ...]
-    provides: str
-
-
-@dataclass(frozen=True)
-class NoArrangement:
-    """A `fixture:` bullet whose value states that this node arranges nothing, and why."""
-
-    reason: str
-
-
-def states_absence(text: str) -> bool:
-    """Whether a bullet value says there is nothing here: `none` alone, `none.`, or `none, because ...`."""
-    stripped = text.strip()
-    return registry.self_declared_empty(stripped) or stripped.rstrip(".").lower() in {"none", "nothing"}
-
-
-def declared_names(values: list[str]) -> list[str]:
-    """The names a fixture's `args:` or `secrets:` values declare. A value stating its absence declares none."""
-    names: list[str] = []
-    for value in values:
-        if states_absence(value):
-            continue
-        names.extend(value.split())
-    return names
-
-
-def parse_bullet(value: str) -> FixtureRef | NoArrangement | str:
-    """Parse one `fixture:` bullet, or return the sentence explaining why it is not one."""
-    text = " ".join(value.split())
-    if not text:
-        return "empty"
-    if registry.self_declared_empty(text):
-        return NoArrangement(reason=text)
-    head, _, provides = text.partition(_PROVIDES_SEP)
-    try:
-        tokens = _head_tokens(head.strip())
-    except ValueError as exc:
-        return f"unbalanced quoting: {exc}"
-    if not tokens:
-        return "names no fixture"
-    name, *args = tokens
-    if not _NAME_RE.match(name):
-        return (
-            f"`{name}` is not a fixture name — link the fixture page, write its file stem, or write "
-            f"the key `agents.yml` declares it under (lowercase, digits, `.`, `_`, `-`)"
-        )
-    return FixtureRef(name=name, args=tuple(args), provides=provides.strip())
 
 
 def declared(root: Path) -> tuple[dict[str, FixtureSpec], list[str]]:
@@ -137,92 +63,6 @@ def declared(root: Path) -> tuple[dict[str, FixtureSpec], list[str]]:
             timeout=float(entry.timeout),
         )
     return specs, errors
-
-
-def _title(name: str) -> str:
-    return name.replace("-", " ").replace("_", " ").strip().capitalize()
-
-
-def migrate(root: Path, out_dir: str, *, home: HomeConfig | None = None) -> QaOutcome:
-    """One-shot, mechanical migration of every `qa: {fixtures:}` entry into a fixture-node file."""
-    specs, errors = declared(root)
-    if errors:
-        return QaOutcome(ok=False, message="\n".join(errors))
-    if not specs:
-        return QaOutcome(ok=True, message="no qa: {fixtures:} declared — nothing to migrate")
-
-    commands = resolved_commands(root, home=home)
-    unresolved = sorted(name for name, spec in specs.items() if spec.tool not in commands)
-    if unresolved:
-        return QaOutcome(
-            ok=False,
-            message="\n".join(
-                f"qa fixture {name!r} names tool {specs[name].tool!r}, which is not in this "
-                "repo's resolved qa: {tools:} catalog"
-                for name in unresolved
-            ),
-        )
-
-    dest = Path(out_dir)
-    if not dest.is_absolute():
-        dest = root / dest
-    if not dest.resolve().is_relative_to(root.resolve()):
-        return QaOutcome(
-            ok=False,
-            message=f"--in {out_dir!r} resolves outside the repo root {root}",
-        )
-    collisions = sorted(name for name in specs if (dest / f"{name}.md").exists())
-    if collisions:
-        return QaOutcome(
-            ok=False,
-            message=f"already exist, refusing to overwrite: {', '.join(collisions)}",
-        )
-
-    dest.mkdir(parents=True, exist_ok=True)
-    written: list[str] = []
-    for name, spec in sorted(specs.items()):
-        run = shlex.join([commands[spec.tool], *spec.args])
-        title = _title(name)
-        body = (
-            f"---\ntype: fixture\ntitle: {title}\n---\n"
-            f"# {title}\n\n"
-            f"<!-- migrated from agents.yml's `qa: {{fixtures:}}` "
-            f"— original provides: {spec.provides!r} -->\n\n"
-            "## Steps\n\n"
-            "### run-it\n\n"
-            "- kind: run\n"
-            f"- run: {run}\n"
-        )
-        path = dest / f"{name}.md"
-        path.write_text(body, encoding="utf-8")
-        written.append(str(path.relative_to(root)))
-
-    owed = "\n".join(
-        f"  {path}: `provides:` did not survive — the original sentence is parked in an HTML "
-        f"comment at the top of the file; write it out as one child per fact "
-        f"(`<key> \u2014 <what it means>`), which is what a scenario's `preconditions:` are "
-        f"checked against. Its step is written `kind: run` for the same reason — nothing in "
-        f"an `agents.yml` entry says whether the command seeds state, so the migration "
-        f"writes the reading that claims nothing"
-        for path in written
-    )
-    return QaOutcome(
-        ok=True,
-        status="incomplete",
-        message=(
-            f"migrated {len(written)} qa fixture(s) into {dest.relative_to(root)}, none of them "
-            f"complete:\n{owed}"
-        ),
-        data={"paths": written, "provides_not_migrated": list(written)},
-    )
-
-
-def cmd_migrate(root: Path, out_dir: str, *, home: HomeConfig | None = None) -> QaOutcome:
-    """CLI-shaped wrapper: `migrate`'s errors, plus an on-disk write failure as one more."""
-    try:
-        return migrate(root, out_dir, home=home)
-    except OSError as exc:
-        return QaOutcome(ok=False, message=f"could not write migrated fixture node: {exc}")
 
 
 def preflight_errors(root: Path) -> list[str]:

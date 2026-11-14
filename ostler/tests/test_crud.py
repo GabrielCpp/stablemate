@@ -417,15 +417,6 @@ def test_seed_add_remove(repo: Path):
     assert not any(s.id == "new-seed" for s in load(repo).epics[0].seeds)
 
 
-def test_create_feature(tmp_path: Path):
-    res = crud.create_feature(load(tmp_path), "signin", "Sign in", area="auth",
-                              route="/signin")
-    assert res.ok
-    feats = load(tmp_path).features
-    assert any(f.slug == "signin" and f.area == "auth" for f in feats)
-
-
-
 def test_add_seed_is_update_or_create(repo: Path):
     assert crud.add_seed(load(repo), "epic-a", "dup-seed", status="researched",
                          summary="first").ok

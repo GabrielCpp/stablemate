@@ -1,4 +1,4 @@
-"""`ostler todo` — the epics queue as markdown (``docs/epics/index.md``, the OKF bundle index)."""
+"""`ostler todo`: the epics queue as markdown (``docs/epics/index.md``)."""
 
 from __future__ import annotations
 
@@ -61,7 +61,7 @@ def _title_of(graph: Graph, name: str) -> str:
 
 def _render(graph: Graph, names: list[str]) -> str:
     lines = ["# Epics", "",
-             "The ordered work queue for this repo (the OKF index of the epics bundle).", ""]
+             "The ordered work queue for this repo.", ""]
     for n in names:
         lines.append(f"- [{n}]({n}/epic.md) — {_title_of(graph, n)}")
     return "\n".join(lines) + "\n"

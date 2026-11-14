@@ -1,4 +1,4 @@
-"""ostler — define, validate, search and mutate a repository's markdown knowledge graph (OKF)."""
+"""ostler: define, validate, search and mutate a repository's planning graph."""
 
 from ostler.api import Ostler
 from ostler.model import Graph, load

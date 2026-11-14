@@ -12,7 +12,12 @@ from conftest import FOO_ID, specs_root, write, epics_root
 
 
 def _link(repo: Path, name: str) -> str:
-    return os.path.relpath(repo / "docs/services/area" / name, epics_root() / "epic-a/stories/01-foo")
+    return os.path.relpath(epics_root() / "epic-b" / name, epics_root() / "epic-a/stories/01-foo")
+
+
+def _cite(repo: Path, name: str) -> None:
+    story = epics_root() / "epic-a/stories/01-foo/story.md"
+    story.write_text(story.read_text() + f"\nSee [it]({_link(repo, name)}).\n", encoding="utf-8")
 
 
 def _story_status(repo: Path, epic: str, slug: str) -> str:
@@ -50,19 +55,21 @@ def test_rename_does_not_touch_unrelated_substrings(repo: Path):
 
 
 def test_relink_replaces_path_everywhere(repo: Path):
-    plan = edit.relink(load(repo), _link(repo, "rec.md"),
+    _cite(repo, "epic.md")
+    plan = edit.relink(load(repo), _link(repo, "epic.md"),
                        _link(repo, "renamed.md"))
     assert plan.changes
     plan.apply()
     story = (epics_root() / "epic-a/stories/01-foo/story.md").read_text()
     assert "renamed.md" in story
-    assert "rec.md" not in story
+    assert "epic-b/epic.md" not in story
 
 
 def test_edit_dry_run_writes_nothing(repo: Path):
+    _cite(repo, "epic.md")
     story = epics_root() / "epic-a/stories/01-foo/story.md"
     before = story.read_text()
-    plan = edit.relink(load(repo), _link(repo, "rec.md"), _link(repo, "renamed.md"))
+    plan = edit.relink(load(repo), _link(repo, "epic.md"), _link(repo, "renamed.md"))
     assert plan.changes
     assert story.read_text() == before
 

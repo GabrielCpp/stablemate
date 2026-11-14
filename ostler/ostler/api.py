@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 
 SNAPSHOT_NAMESPACE = "graph-snapshot/3"
 
-LOADED_DOC_ROOTS = ("services", "epics", "milestones")
+LOADED_DOC_ROOTS = ("epics", "milestones")
 
 
 def _file_sha(path: Path) -> str | None:
@@ -100,10 +100,6 @@ def _snapshot_of(graph: Graph, roots: Iterable[Path]) -> Snapshot:
         else:
             files[str(path)] = sha
 
-    for feature in graph.features:
-        record(feature.path)
-    for node in graph.ui_nodes:
-        record(node.path)
     for milestone in graph.milestones:
         record(milestone.path)
     for epic in graph.epics:

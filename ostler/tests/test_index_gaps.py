@@ -10,8 +10,7 @@ import pytest
 from ostler import index, markdown, model
 from ostler.cli import main
 
-from conftest import (entry_files, ostler_process, report_of, screen_md,
-                      warm_index, write)
+from conftest import (entry_files, epics_root, ostler_process, report_of, warm_index, write)
 
 def doctor_report(book: Path, *argv: str) -> dict:
     """One `doctor --json`, in a process of its own."""
@@ -32,59 +31,59 @@ def assert_agree(cached: dict, uncached: dict) -> None:
 
 
 @pytest.fixture
-def warm(ui_book: Path, tmp_path: Path, index_home: Path) -> Path:
-    """A populated index directory for `ui_book`, written by a process that has since exited."""
+def warm(repo: Path, tmp_path: Path, index_home: Path) -> Path:
+    """A populated index directory for `repo`, written by a process that has since exited."""
     directory = tmp_path / "index"
-    done = ostler_process(ui_book, "doctor", "--json", "--index-dir", str(directory))
+    done = ostler_process(repo, "doctor", "--json", "--index-dir", str(directory))
     assert done.returncode in (0, 1), done.stderr or done.stdout
     return directory
 
 
-def test_an_edited_config_file_abandons_every_entry(ui_book: Path, tmp_path: Path,
+def test_an_edited_config_file_abandons_every_entry(repo: Path, tmp_path: Path,
                                                     index_home: Path):
     directory = tmp_path / "index"
-    write(ui_book / "ostler.yml", "organization:\n  name: acme\n")
-    warm_index(ui_book, directory)
+    write(repo / "ostler.yml", "organization:\n  name: acme\n")
+    warm_index(repo, directory)
 
-    write(ui_book / "ostler.yml", "organization:\n  name: globex\n")
+    write(repo / "ostler.yml", "organization:\n  name: globex\n")
 
-    cached = doctor_report(ui_book, "--index-dir", str(directory))
-    uncached = doctor_report(ui_book, "--no-index")
+    cached = doctor_report(repo, "--index-dir", str(directory))
+    uncached = doctor_report(repo, "--no-index")
 
     assert cached["org"] == "globex"
     assert_agree(cached, uncached)
     assert cached["index"]["hits"] == 0 and cached["index"]["misses"] > 0
 
 
-def test_a_tool_version_bump_abandons_every_entry(ui_book: Path, warm: Path,
+def test_a_tool_version_bump_abandons_every_entry(repo: Path, warm: Path,
                                                   monkeypatch: pytest.MonkeyPatch, capsys):
     """The one global input with no file behind it — moved at the seam the store documents."""
     real = index.epoch_inputs
     monkeypatch.setattr(index, "epoch_inputs",
                         lambda root: {**real(root), "version": "99.0.0"})
 
-    main(["-C", str(ui_book), "doctor", "--json", "--index-dir", str(warm)])
+    main(["-C", str(repo), "doctor", "--json", "--index-dir", str(warm)])
     cached = report_of(capsys)
-    uncached = doctor_report(ui_book, "--no-index")
+    uncached = doctor_report(repo, "--no-index")
 
     assert_agree(cached, uncached)
     assert cached["index"]["hits"] == 0 and cached["index"]["misses"] > 0
 
 
-def test_verify_index_agrees_against_a_populated_index(ui_book: Path, warm: Path, capsys):
-    code = main(["-C", str(ui_book), "doctor", "--verify-index", "--index-dir", str(warm)])
+def test_verify_index_agrees_against_a_populated_index(repo: Path, warm: Path, capsys):
+    code = main(["-C", str(repo), "doctor", "--verify-index", "--index-dir", str(warm)])
     printed = capsys.readouterr().out
 
     assert code == 0 and "agree" in printed
     assert entry_files(warm), "verify ran against an index that has nothing in it"
 
 
-def test_verify_index_agrees_against_an_empty_index(ui_book: Path, tmp_path: Path,
+def test_verify_index_agrees_against_an_empty_index(repo: Path, tmp_path: Path,
                                                     index_home: Path, capsys):
     """The cold state — and the indexed half has to leave the index populated behind it."""
     directory = tmp_path / "index"
 
-    code = main(["-C", str(ui_book), "doctor", "--verify-index", "--index-dir", str(directory)])
+    code = main(["-C", str(repo), "doctor", "--verify-index", "--index-dir", str(directory)])
     printed = capsys.readouterr().out
 
     assert code == 0 and "agree" in printed
@@ -92,7 +91,7 @@ def test_verify_index_agrees_against_an_empty_index(ui_book: Path, tmp_path: Pat
 
 
 def test_verify_index_catches_a_store_that_round_trips_a_document_wrongly(
-    ui_book: Path, warm: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    repo: Path, warm: Path, monkeypatch: pytest.MonkeyPatch, capsys
 ):
     """The mode's whole purpose, and for the document products it was inert until it wasn't."""
     original = model._doc_from_products
@@ -105,20 +104,21 @@ def test_verify_index_catches_a_store_that_round_trips_a_document_wrongly(
 
     monkeypatch.setattr(model, "_doc_from_products", truncating)
 
-    code = main(["-C", str(ui_book), "doctor", "--verify-index", "--index-dir", str(warm)])
+    code = main(["-C", str(repo), "doctor", "--verify-index", "--index-dir", str(warm)])
     printed = capsys.readouterr().out
 
     assert code == 1, "verify-index passed while the store was handing back damaged documents"
     assert "disagree" in printed
 
 
-def test_verify_index_agrees_against_a_partially_stale_index(ui_book: Path, warm: Path, capsys):
+def test_verify_index_agrees_against_a_partially_stale_index(repo: Path, warm: Path, capsys):
     """One file edited, the rest warm — the state a working tree is in nearly all the time."""
     before = len(entry_files(warm))
-    write(ui_book / "docs" / "services" / "ui" / "detail.md",
-          screen_md("detail", "Detail", body="\nA line of prose the warm entry has never seen.\n"))
+    story = epics_root() / "epic-a/stories/01-foo/story.md"
+    story.write_text(story.read_text(encoding="utf-8") + "\nA line of prose the warm entry has never seen.\n",
+                     encoding="utf-8")
 
-    code = main(["-C", str(ui_book), "doctor", "--verify-index", "--index-dir", str(warm)])
+    code = main(["-C", str(repo), "doctor", "--verify-index", "--index-dir", str(warm)])
     printed = capsys.readouterr().out
 
     assert code == 0 and "agree" in printed

@@ -141,14 +141,13 @@ def decision_files(graph: Graph) -> list[Path]:
 
 
 def claimed(graph: Graph) -> set[str]:
-    """The ids that things hold as their own: epics, seeds, stories, milestones, features, the Register's records and decisions."""
+    """The ids that things hold as their own: epics, seeds, stories, milestones, the Register's records and decisions."""
     out: set[str] = set()
     for epic in graph.epics:
         out.add(epic.eid)
         out.update(s.id for s in epic.seeds)
         out.update(s.eid for s in epic.stories)
     out.update(m.eid for m in graph.milestones)
-    out.update(str(f.data.get("id") or "") for f in graph.features)
     out.update(shelf_ids(graph))
     out.update(p.parent.name for p in decision_files(graph))
     out.discard("")

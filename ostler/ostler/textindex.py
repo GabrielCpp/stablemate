@@ -26,7 +26,6 @@ CREATE VIRTUAL TABLE IF NOT EXISTS sections USING fts5(
 _TERM_RE = re.compile(r"\w+")
 _SPACE_RE = re.compile(r"\s+")
 _H1_RE = re.compile(r"^# +(.+?)\s*$", re.MULTILINE)
-_CHECK_BULLET_RE = re.compile(r"^(\s*)- (?:verify|run|fixture):")
 
 _SEARCH_SQL = """
 SELECT root, type, node, path, anchor, heading, title,
@@ -102,26 +101,10 @@ def _locate(graph: Graph, path: Path) -> tuple[str, str]:
     return rel.removesuffix(".md"), rel
 
 
-def _without_checks(lines: list[str]) -> list[str]:
-    kept: list[str] = []
-    bullet_indent: int | None = None
-    for line in lines:
-        indent = len(line) - len(line.lstrip())
-        if bullet_indent is not None and line.strip() and indent > bullet_indent:
-            continue
-        bullet_indent = None
-        check = _CHECK_BULLET_RE.match(line)
-        if check:
-            bullet_indent = len(check.group(1))
-            continue
-        kept.append(line)
-    return kept
-
-
 def _text(section: markdown.Section) -> str:
     start = section.line_start + (1 if section.level else 0)
     end = section.children[0].line_start if section.children else section.line_end
-    return _SPACE_RE.sub(" ", " ".join(_without_checks(section.body_lines[start:end]))).strip()
+    return _SPACE_RE.sub(" ", " ".join(section.body_lines[start:end])).strip()
 
 
 def _walk(

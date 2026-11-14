@@ -13,6 +13,8 @@ from ostler import api, doctor, index
 from ostler.api import Ostler
 from ostler.cli import _build_parser, main
 
+from conftest import epics_root
+
 GRAPH_COMMANDS: dict[str, list[str]] = {
     "doctor": ["doctor"],
     "list": ["list", "--type", "story"],
@@ -333,8 +335,8 @@ def test_the_library_face_loads_with_its_own_store_active(repo, tmp_path, index_
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(api, "load", spy)
         okf.graph
-        (repo / "docs/services/area/rec3.md").write_text(
-            "---\ntype: feature\nid: t-3\ntitle: Rec 3\n---\n\n# Rec 3\n", encoding="utf-8")
+        story = epics_root() / "epic-a/stories/01-foo/story.md"
+        story.write_text(story.read_text(encoding="utf-8") + "\nA later line.\n", encoding="utf-8")
         okf.reload().graph
 
     assert seen == [okf.index, okf.index]

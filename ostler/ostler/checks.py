@@ -1,4 +1,4 @@
-"""The observations a `verify:` bullet may declare, as named checks with typed arguments."""
+"""The named checks a plan's `qa.verify` calls, with typed arguments."""
 
 from __future__ import annotations
 

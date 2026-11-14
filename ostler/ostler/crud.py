@@ -598,23 +598,6 @@ def remove_seed(graph: Graph, epic_name: str, seed_id: str) -> Result:
     return Result(True, f"removed seed '{seed_id}' from epic '{epic_name}'", [epic_md])
 
 
-def create_feature(graph: Graph, slug: str, title: str, area: str = "",
-                   route: str = "") -> Result:
-    froot = graph.doc_roots["services"]
-    path = (froot / area / f"{slug}.md") if area else (froot / f"{slug}.md")
-    if path.exists():
-        return Result(False, f"feature '{slug}' already exists")
-    fid = ids.allocate(graph)
-    fm = {"type": "feature", "id": fid, "slug": slug, "title": title}
-    if area:
-        fm["area"] = area
-    if route:
-        fm["route"] = route
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(f"---\n{dump_frontmatter(fm)}---\n# {title}\n\n", encoding="utf-8")
-    return Result(True, f"created feature '{slug}' ({fid})", [path], entity_id=fid)
-
-
 def create_spec(specs_root: Path, story: str, doc: str, title: str = "") -> Result:
     """Create — or retro-stamp — a coder process artifact in the story's spec folder, ``<story id>/<doc>``."""
     name = doc if doc.endswith(".md") else f"{doc}.md"
@@ -639,10 +622,3 @@ def create_spec(specs_root: Path, story: str, doc: str, title: str = "") -> Resu
     path.write_text(f"---\n{dump_frontmatter({'type': type_value})}---\n{body}", encoding="utf-8")
     return Result(True, f"created spec '{story}/{name}' ({type_value})", [path])
 
-
-def delete_feature(graph: Graph, slug: str) -> Result:
-    for feat in graph.features:
-        if feat.slug == slug:
-            feat.path.unlink()
-            return Result(True, f"deleted feature '{slug}'", [feat.path])
-    return Result(False, f"no feature '{slug}'")

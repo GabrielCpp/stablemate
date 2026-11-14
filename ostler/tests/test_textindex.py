@@ -58,28 +58,30 @@ def test_rows_for_gives_preamble_and_section_rows(repo: Path):
 
 
 def test_title_match_outranks_body_match(repo: Path):
-    write(repo / "docs/services/area/a.md", _concept("a", "Zebra crossing", "nothing relevant"))
-    write(repo / "docs/services/area/b.md", _concept("b", "Other", "a zebra appears here"))
+    write(repo / "docs/adrs/area/a.md", _concept("a", "Zebra crossing", "nothing relevant"))
+    write(repo / "docs/adrs/area/b.md", _concept("b", "Other", "a zebra appears here"))
     hits = _search(repo, "zebra")
     assert [h["path"] for h in hits][:2] == [
-        "docs/services/area/a.md", "docs/services/area/b.md"]
+        "docs/adrs/area/a.md", "docs/adrs/area/b.md"]
     assert hits[0]["score"] > hits[1]["score"]
 
 
 def test_porter_stemming_finds_parallel(repo: Path):
-    write(repo / "docs/services/area/p.md", _concept("p", "Speed", "uses parallelism widely"))
+    write(repo / "docs/adrs/area/p.md", _concept("p", "Speed", "uses parallelism widely"))
     hits = _search(repo, "parallel")
-    assert any(h["path"] == "docs/services/area/p.md" for h in hits)
+    assert any(h["path"] == "docs/adrs/area/p.md" for h in hits)
 
 
 def test_refresh_is_incremental(repo: Path, index_home: Path):
+    write(repo / "docs/adrs/area/rec.md", _concept("rec", "Rec", "first text"))
+    write(repo / "docs/adrs/area/rec2.md", _concept("rec2", "Rec 2", "second text"))
     store = index.IndexStore(repo, directory=index_home)
     first = _refresh(repo, store)
     assert first.indexed == first.files > 0
     assert _refresh(repo, store).indexed == 0
-    write(repo / "docs/services/area/rec.md", _concept("rec", "Rec", "changed text"))
+    write(repo / "docs/adrs/area/rec.md", _concept("rec", "Rec", "changed text"))
     assert _refresh(repo, store).indexed == 1
-    (repo / "docs/services/area/rec2.md").unlink()
+    (repo / "docs/adrs/area/rec2.md").unlink()
     report = _refresh(repo, store)
     assert (report.indexed, report.removed) == (0, 1)
     graph = load(repo)
@@ -111,9 +113,10 @@ def test_second_refresh_reads_no_file(repo: Path, index_home: Path, monkeypatch)
 
 
 def test_touch_without_change_reindexes_nothing(repo: Path, index_home: Path):
+    page = repo / "docs/adrs/area/rec.md"
+    write(page, _concept("rec", "Rec", "some text"))
     store = index.IndexStore(repo, directory=index_home)
     _refresh(repo, store)
-    page = repo / "docs/services/area/rec.md"
     page.write_bytes(page.read_bytes())
     os.utime(page, ns=(1, 1))
     assert _refresh(repo, store).indexed == 0
@@ -155,59 +158,34 @@ def test_a_refresh_drops_the_rows_of_a_copy_below_a_spec(repo: Path, index_home:
 
 
 def test_type_and_root_filters(repo: Path):
-    write(repo / "docs/services/area/c.md", _concept("c", "Gizmo", "gizmo concept"))
-    write(repo / "docs/services/area/f.md",
+    write(repo / "docs/adrs/area/c.md", _concept("c", "Gizmo", "gizmo concept"))
+    write(repo / "docs/adrs/area/f.md",
           "---\ntype: flow\nslug: f\ntitle: Gizmo flow\n---\n\n# Gizmo flow\n\ngizmo steps\n")
     both = {h["type"] for h in _search(repo, "gizmo")}
     assert {"concept", "flow"} <= both
     assert {h["type"] for h in _search(repo, "gizmo", etype="flow")} == {"flow"}
     assert _search(repo, "gizmo", root="epics") == []
-    assert {h["root"] for h in _search(repo, "gizmo", root="services")} == {"services"}
+    assert {h["root"] for h in _search(repo, "gizmo", root="adrs")} == {"adrs"}
 
 
 def test_default_search_leaves_out_plans_and_history(repo: Path):
-    write(repo / "docs/services/demo/concepts/okapi.md", _concept("okapi", "Okapi", "okapi today"))
+    write(repo / "docs/adrs/demo/concepts/okapi.md", _concept("okapi", "Okapi", "okapi today"))
     specs = load(repo).doc_roots["specs"]
     write(specs / "STORY-1/plan.md", "---\ntype: spec.plan\n---\n\n# Plan\n\nThe okapi plan.\n")
-    assert {h["root"] for h in _search(repo, "okapi")} == {"services"}
+    assert {h["root"] for h in _search(repo, "okapi")} == {"adrs"}
     assert {h["root"] for h in _search(repo, "okapi", root="specs")} == {"specs"}
-    assert {h["root"] for h in _search(repo, "okapi", root="all")} == {"services", "specs"}
+    assert {h["root"] for h in _search(repo, "okapi", root="all")} == {"adrs", "specs"}
     assert {h["root"] for h in _search(repo, "okapi", etype="spec.plan")} == {"specs"}
-
-
-def test_a_fixture_page_stays_out_until_asked_for(repo: Path):
-    write(repo / "docs/services/demo/fixtures/okapi.md",
-          "---\ntype: fixture\nslug: okapi\ntitle: Okapi repo\n---\n\n# Okapi repo\n\nokapi setup\n")
-    assert _search(repo, "okapi") == []
-    assert _search(repo, "okapi", root="services") == []
-    assert {h["type"] for h in _search(repo, "okapi", etype="fixture")} == {"fixture"}
-    assert {h["type"] for h in _search(repo, "okapi", root="all")} == {"fixture"}
 
 
 def test_one_page_cannot_fill_the_hits(repo: Path):
     sections = "".join(f"## Part {n}\n\nokapi okapi okapi\n\n" for n in range(5))
-    write(repo / "docs/services/demo/concepts/many.md", _concept("many", "Okapi many", sections))
-    write(repo / "docs/services/demo/concepts/one.md", _concept("one", "One", "an okapi once"))
+    write(repo / "docs/adrs/demo/concepts/many.md", _concept("many", "Okapi many", sections))
+    write(repo / "docs/adrs/demo/concepts/one.md", _concept("one", "One", "an okapi once"))
     paths = [h["path"] for h in _search(repo, "okapi", limit=3)]
     assert len(paths) == 3
     assert sum(path.endswith("many.md") for path in paths) == 2
     assert paths[-1].endswith("one.md")
-
-
-def test_check_bullets_are_not_searched(repo: Path):
-    write(repo / "docs/services/demo/hello.md", (
-        "---\ntype: cli\nslug: hello\ntitle: Hello\n---\n# Hello\n\n## Commands\n\n### greet\n"
-        "- does:\n"
-        "  - Says hello.\n"
-        "    - fixture: okapi-repo\n"
-        "    - verify: stdout(matches=\"okapi\",\n"
-        "        timeout=\"wombat\")\n"
-        "- run: invoke(argv=[\"okapi\"])\n"
-        "- code: src/quokka.py::hello@abc\n"
-    ))
-    assert _search(repo, "okapi") == []
-    assert _search(repo, "wombat") == []
-    assert [h["path"].rsplit("/", 1)[-1] for h in _search(repo, "quokka")] == ["hello.md"]
 
 
 def test_disabled_index_searches_without_a_file(repo: Path, index_home: Path):

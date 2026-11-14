@@ -24,6 +24,7 @@ def test_the_default_specs_root_is_under_the_artifacts_dir(repo: Path):
 
 
 def test_a_repo_and_its_worktree_share_one_specs_root(repo: Path, tmp_path_factory):
+    (repo / "README.md").write_text("a book\n", encoding="utf-8")
     _git(repo, "init", "-q")
     _git(repo, "add", "-A")
     _git(repo, "commit", "-q", "-m", "init")

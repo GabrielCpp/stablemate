@@ -1,14 +1,12 @@
-"""The `verify:` check vocabulary: what parses, what is refused, and how it renders."""
+"""The named checks `qa.verify` takes: what parses, what is refused, and how it renders."""
 
 from __future__ import annotations
 
 
 import pytest
 
-from ostler import checks, registry
-from ostler.qa.compile_cli import compares_the_tree
+from ostler import checks
 from ostler.qa.harness_host import load_harness_module
-from ostler.qa.plan_source import ScenarioRefusal, operand_for
 
 
 def test_positional_and_keyword_arguments_bind_to_the_declared_params() -> None:
@@ -180,64 +178,6 @@ def test_every_declarable_check_is_observable_by_the_harness() -> None:
     """The two tables are spelled twice on purpose — `ostler.checks` says what may be declared, the stdlib-only harness says what observing it means — so nothing but a test stops them drifting."""
     harness = load_harness_module("ostler_qa")
     assert set(harness.VERIFIERS) == {spec.name for spec in checks.CHECKS}
-
-
-def test_verify_is_a_check_key_on_the_normative_types() -> None:
-    for node_type in ("flow", "interaction", "invocation", "method"):
-        assert registry.check_keys(node_type) == ("verify",)
-
-
-def test_every_type_that_states_claims_can_say_what_observing_one_looks_like() -> None:
-    """A type with claims and no check key is covered unconditionally: `checksDeclared` is empty by construction, so whatever the scenario happened to assert fulfils it."""
-    for node_type in registry.NORMATIVE_KEYS_BY_TYPE:
-        assert registry.check_keys(node_type) == ("verify",), node_type
-    assert registry.check_keys("environment") == ("verify",)
-
-
-def test_every_graded_key_is_a_declared_bullet() -> None:
-    """The drift this closes: `status:`/`errors:`/`auth:` were graded on an endpoint for as long as the mapper existed and declared nowhere, so `fmt` could not place them and a `verify:` written under one bound to the `does:` above."""
-    for node_type, keys in registry.NORMATIVE_KEYS_BY_TYPE.items():
-        declared = registry.UI_TYPES_BY_NAME[node_type].bullet_by_key
-        for key in keys:
-            assert key in declared, (node_type, key)
-            assert declared[key].normative, (node_type, key)
-
-
-def test_normative_table_is_derived_from_the_registry() -> None:
-    """One flag, not two tables: every `normative=True` bullet is graded, nothing else is."""
-    for uitype in registry.UI_TYPES:
-        flagged = tuple(b.key for b in uitype.bullet_keys if b.normative)
-        assert registry.NORMATIVE_KEYS_BY_TYPE.get(uitype.name, ()) == flagged, uitype.name
-        assert set(registry.normative_keys(uitype.name)) == (
-            set(flagged) | set(registry.SHARED_NORMATIVE_KEYS))
-        assert set(flagged) <= registry.declared_keys(uitype.name)
-    for node_type in ("endpoint", "invocation"):
-        assert {"status", "errors", "auth"} <= set(registry.NORMATIVE_KEYS_BY_TYPE[node_type])
-    assert {"errors", "exits"} <= set(registry.NORMATIVE_KEYS_BY_TYPE["command"])
-
-
-def test_a_load_bearing_key_is_one_some_type_instruments() -> None:
-    """`verify:` and `code:` are the keys an author expects machinery behind; `meaning:` is nobody's, and `parent:`/`detail:` are resolved on every type alike with no locator use, so neither is in the set."""
-    assert {"verify", "code", "does", "status", "fixture", "on"} <= registry.LOAD_BEARING_KEYS
-    assert not {"meaning", "parent", "detail"} & registry.LOAD_BEARING_KEYS
-
-
-def test_an_alias_is_declared_but_never_stubbed() -> None:
-    endpoint = registry.UI_TYPES_BY_NAME["endpoint"].bullet_by_key
-    assert endpoint["error"].alias and endpoint["error"].normative
-    assert not endpoint["errors"].alias
-
-
-def test_no_alias_is_a_spelling_no_book_writes() -> None:
-    """An alias exists for the books that wrote it, so one nobody wrote is not an alias."""
-    for name in ("endpoint", "invocation"):
-        assert "statuses" not in registry.UI_TYPES_BY_NAME[name].bullet_by_key
-
-
-def test_a_runbook_step_verify_stays_a_reference() -> None:
-    """Same word, different job: a boot step's `verify:` says how to tell the *step* ran."""
-    assert registry.check_keys("step") == ()
-    assert registry.UI_TYPES_BY_NAME["step"].bullet_by_key["verify"].link
 
 
 @pytest.mark.parametrize(
@@ -421,21 +361,6 @@ def test_a_prose_argument_keeps_a_leading_sigil() -> None:
     assert call.args["subject"] == "$ spent"
 
 
-def test_owning_keys_include_code_on_every_type_and_only_the_flagged_others() -> None:
-    """`qa context` maps a diff through `owning_keys`; `code:` owns everywhere (a flow cites the code it is grounded in whether or not its profile lists the key), and the only other owners are the bullets the registry flags — a schema or a fixture file under its own name."""
-    for uitype in registry.UI_TYPES:
-        keys = registry.owning_keys(uitype.name)
-        assert keys[0] == "code", uitype.name
-        flagged = {b.key for b in uitype.bullet_keys if b.owns}
-        assert set(keys) == flagged | {"code"}, uitype.name
-        assert not {"tests", "binary"} & set(keys), uitype.name
-    assert "openapi" in registry.owning_keys("endpoint")
-    assert "openapi" in registry.owning_keys("server")
-    assert "file" in registry.owning_keys("format")
-    assert registry.owning_keys("untyped") == ("code",)
-
-
-
 def test_a_regex_argument_parses_without_a_python_escape_warning():
     import warnings
 
@@ -485,35 +410,3 @@ def test_the_message_never_names_a_destination_key() -> None:
     assert "tests:" not in refused.message
     assert "`ostler checks` lists the vocabulary" in refused.message
 
-
-def test_a_relocation_the_nodes_type_cannot_hold_falls_back_to_its_own_key() -> None:
-    """`screen` declares `verify:` and never `tests:` (`registry.declared_keys`), so a caller that hands the node's own keys to `bullet` must not be offered `- tests: …`, a key `screen` has no way to carry."""
-    refused = checks.parse_check("`e2e/dash_test.go::TestDash`")
-    assert isinstance(refused, checks.Refusal)
-    assert refused.kind == "misfiled-test-ref"
-    assert refused.relocates_to == "tests"
-
-    screen_keys = registry.declared_keys("screen")
-    assert "tests" not in screen_keys
-    offered = refused.bullet("verify", screen_keys)
-    assert offered.startswith("- verify: ")
-    assert "e2e/dash_test.go" not in offered
-    sentence = checks.parse_check("a sentence about the manifest")
-    assert isinstance(sentence, checks.Refusal)
-    assert offered == sentence.bullet("verify")
-
-
-def test_a_relocation_the_nodes_type_does_hold_is_offered() -> None:
-    """`concept` declares both `verify:` and `tests:`, so the same classification, handed `concept`'s own keys, still proposes the move — unaffected by the fallback the case above exercises."""
-    refused = checks.parse_check("`e2e/dash_test.go::TestDash`")
-    assert isinstance(refused, checks.Refusal)
-
-    concept_keys = registry.declared_keys("concept")
-    assert "tests" in concept_keys
-    assert refused.bullet("verify", concept_keys) == "- tests: e2e/dash_test.go::TestDash"
-
-
-@pytest.mark.parametrize("spec", [s for s in checks.CHECKS if s.cli_reads], ids=lambda s: s.name)
-def test_a_check_said_to_read_a_command_is_one_the_cli_compiler_hands_an_operand(spec) -> None:
-    operand = operand_for(spec.name, "observed", {})
-    assert compares_the_tree(spec.name) or not isinstance(operand, ScenarioRefusal)

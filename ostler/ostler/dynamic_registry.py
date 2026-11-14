@@ -1,4 +1,4 @@
-"""User-declared OKF hierarchies — per-repo ``.agents/templates.yml``."""
+"""User-declared document hierarchies: per-repo ``.agents/templates.yml``."""
 
 from __future__ import annotations
 

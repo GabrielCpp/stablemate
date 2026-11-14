@@ -283,12 +283,6 @@ def boot_app(
     health_path = health_path or "/"
     app_cwd = app_cwd or "."
     repo_root = repo_root or app_cwd
-    # No entry URL means there is no HTTP readiness probe — not a probe of "/". A runbook
-    # whose readiness proof is a `service` step's `health:` gate declares no `entry-url:`
-    # at all (`ostler/docs/okf-runbook.md` §7 only calls a runbook incomplete when it has
-    # *neither*), and joining an empty base onto the default path yielded the bare string
-    # "/", which urlopen rejects as "unknown url type" on every poll until the boot window
-    # ran out. Every stack of that shape was therefore unbootable, slowly.
     health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""
 
     if not launch_cmd:

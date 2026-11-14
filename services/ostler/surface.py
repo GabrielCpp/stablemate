@@ -34,7 +34,7 @@ def story_page(slug: str, ident: str) -> str:
 
 def index_page(names: tuple[str, ...]) -> str:
     rows = "".join(f"- [{n}]({n}/epic.md) — {TITLES[n]}\n" for n in names)
-    return f"# Epics\n\nThe ordered work queue for this repo (the OKF index of the epics bundle).\n\n{rows}"
+    return f"# Epics\n\nThe ordered work queue for this repo.\n\n{rows}"
 
 
 def files() -> dict[str, str]:

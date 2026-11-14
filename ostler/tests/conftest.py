@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from ostler import index, testing
+from ostler import index
 
 
 FOO_ID = "t-01foo"
@@ -109,62 +109,9 @@ def story_md(slug: str, title: str, status: str,
     return "\n".join(body) + "\n"
 
 
-def feature_md(slug: str, title: str, area: str = "", route: str = "") -> str:
-    out = ["---", "type: feature", f"slug: {slug}", f"title: {title}"]
-    if area:
-        out.append(f"area: {area}")
-    if route:
-        out.append(f"route: {route}")
-    out += ["---", f"# {title}", "", "feature prose", ""]
-    return "\n".join(out) + "\n"
-
-
-def screen_md(slug: str, title: str, *, entry: bool = False, body: str = "") -> str:
-    """A UI-profile screen carrying every bullet the linter makes mandatory."""
-    out = ["---", "type: screen", f"slug: {slug}", f"title: {title}", "---",
-           f"# {title}", ""]
-    out += [f"- route: `{'/' if entry else '/' + slug}`",
-           "- requires: none",
-           "- params: none",
-           ""]
-    return "\n".join(out) + (body or "") + "\n## Screen states\n\n### Loaded\n"
-
-
-UI_DASH_LINKS = """
-Sits next to [rec](../area/rec.md) and its [heading](../area/rec.md#rec).
-
-## Components
-
-### dash-detail-link
-
-- selector: `a[role="link"]`
-- role: link
-- name: Detail
-- leads-to: [Detail](detail.md)
-"""
-
-UI_DASH_UNLINKED = """
-Sits next to [rec](../area/rec.md) and its [heading](../area/rec.md#rec).
-"""
-
-
-@pytest.fixture
-def ui_book(repo: Path) -> Path:
-    """`repo` plus two screens — an entry screen that reaches a detail screen through a component."""
-    write(repo / "docs/services/ui/dash.md",
-          screen_md("dash", "Dash", entry=True, body=UI_DASH_LINKS))
-    write(repo / "docs/services/ui/detail.md", screen_md("detail", "Detail"))
-    write(repo / "docs/services/app/ops/qa-stack.md", (
-        "---\ntype: runbook\ntitle: QA stack\n---\n\n# QA stack\n\n"
-        "- driver: web\n- entry-url: http://localhost:18084\n\n"
-        "## Steps\n\n### serve\n\n- kind: service\n- run: ./serve.sh\n"
-    ))
-    return repo
-
-
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
-    """A clean two-epic repo with feature docs cited by story prose."""
+    """A clean two-epic repo."""
     root = tmp_path
 
     write(epics_root() / "epic-a/epic.md", epic_md(
@@ -173,7 +120,7 @@ def repo(tmp_path: Path) -> Path:
         stories=[("01-foo", "Foo", ["seed-a1"])],
     ))
     write(epics_root() / "epic-a/stories/01-foo/story.md",
-          story_md("01-foo", "Foo", "Not started", os.path.relpath(root / "docs/services/area/rec.md", epics_root() / "epic-a/stories/01-foo"), eid=FOO_ID))
+          story_md("01-foo", "Foo", "Not started", eid=FOO_ID))
 
     write(epics_root() / "epic-b/epic.md", epic_md(
         "t-2", "epic-b",
@@ -182,9 +129,6 @@ def repo(tmp_path: Path) -> Path:
     ))
     write(epics_root() / "epic-b/stories/01-bar/story.md",
           story_md("01-bar", "Bar", "Not started", eid=BAR_ID))
-
-    write(root / "docs/services/area/rec.md", feature_md("rec", "Rec", area="area"))
-    write(root / "docs/services/area/rec2.md", feature_md("rec2", "Rec 2", area="area"))
 
     return root
 
@@ -231,13 +175,6 @@ def warm_index(book: Path, directory: Path) -> None:
 
 
 
-UNKNOWN_BULLET_ALLOWED_TESTS = frozenset({
-    "tests/test_ui_doctor.py::test_an_undeclared_bullet_key_is_a_warning",
-    "tests/test_ui_doctor.py::test_a_claim_under_a_non_normative_key_is_reported",
-    "tests/test_ui_doctor.py::test_a_minting_node_is_still_asked_about_its_other_bullets",
-})
-
-
 @pytest.fixture(autouse=True)
 def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
     """Specs live in the user's artifacts folder, so no test may resolve to the real one."""
@@ -258,18 +195,3 @@ def _git_identity(monkeypatch):
         monkeypatch.setenv(f"GIT_{role}_NAME", "ostler tests")
         monkeypatch.setenv(f"GIT_{role}_EMAIL", "tests@example.com")
 
-
-@pytest.fixture(autouse=True)
-def _inline_books_are_legal_okf(request: pytest.FixtureRequest):
-    """Every `UINode` a test constructs must be one `doctor`'s `unknown-bullet` would not flag — unless the test is in `UNKNOWN_BULLET_ALLOWED_TESTS`, because it exists to prove that check fires."""
-    start = len(testing.CONSTRUCTED_UI_NODES)
-    yield
-    nodes = testing.CONSTRUCTED_UI_NODES[start:]
-    if not nodes or request.node.nodeid in UNKNOWN_BULLET_ALLOWED_TESTS:
-        return
-    violations = testing.unknown_bullet_violations(nodes)
-    assert not violations, (
-        f"{request.node.nodeid} builds a book `unknown-bullet` would flag on a real "
-        f"run — the fixture is written against a grammar these types no longer declare: "
-        f"{violations}"
-    )
