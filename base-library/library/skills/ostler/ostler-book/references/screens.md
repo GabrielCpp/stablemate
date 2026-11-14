@@ -36,7 +36,7 @@ Heading("#pane h2", "Settings")
 | Factory | Found as |
 | --- | --- |
 | `Field`, `TextArea`, `DateField` | role `textbox` named by the label |
-| `Select` | role `combobox`. A fixed list of choices goes in `options=(...)`, as labels. A list filled from data gives none |
+| `Select` | role `combobox`. A fixed list of choices goes in `options=(...)`, as labels. A list filled from data states what it holds with `lists=` |
 | `Button`, `Check`, `Heading`, `MenuItem`, `Link`, `Option` | the role of the same name |
 | `Banner`, `Spinner` | role `alert`, `progressbar` |
 | `Text` | by its text, or by `data-testid` when it has an id |
@@ -52,6 +52,25 @@ A screen also declares what the page does: `stored` values, `phases` (what is sh
 or disabled, and why) and `transitions` between them. `describe(lang)` prints all of it in
 one language. `check` builds it in each declared language and refuses a label that misses
 one or names an undeclared one.
+
+## A list filled from data
+
+```python
+from ostler.book import request
+from ostler.book.screen import Lists, Select
+
+def by_name(users):
+    """the users received, by name"""
+    return sorted(u["name"] for u in users)
+
+assignee = Select("list-assignee", ASSIGNEE, "filters by owner",
+                  lists=Lists(head=(ANYONE,), given=request("GET", "/users"), derived=by_name))
+```
+
+The run judges the list when a journey picks in it: it reads the labels the select shows and
+compares them with the `head` labels followed by `derived` applied to the last answer the page
+received to `given`. A difference fails the step and the note names both orders. The report
+names the lists a pick judged, the stated ones no pick reached and the selects nobody stated.
 
 ## An interaction
 
