@@ -22,6 +22,10 @@ Three facts of the domain shape the answer:
 - **A list is filled in one of four ways.** Its entries are fixed in the app's code. They
   come from an answer the page received. They come from data the page's own server fetched
   before sending the page. Or the page computes them from data it got one of those ways.
+  One app can mix them. A SvelteKit app has a gateway built into it: its server renders some
+  lists into the page and the browser fetches others through that gateway. The browser sees
+  what the gateway handed the page. It never sees what the gateway asked of the services
+  behind it.
 - **A run knows two things for sure.** It knows the records it made itself, with the ids the
   app gave them. It can know the data the page was given in this run, when it can see it.
 
@@ -139,10 +143,14 @@ Inside parts:
 
 - F1 gives the containing check its shape: compare on own records only. No mode says "this
   environment is clean". One behaviour holds everywhere, a clean stack included.
-- F2 and F3 make the feed a role with two variants. One takes the answer the page received,
-  named by the request it answers. The other asks the backend the same read as the same
-  person, through the backend's book, for a page whose server fetched the data or for a
-  phone. The list's statement chooses the variant.
+- F2 and F3 make the feed a role with three variants. The first takes the answer to a
+  request the page made, named by that request. The second takes the data the app's own
+  server handed the page with the page, named by the page's route. The run asks the app's
+  server for it again in the browser's own session, so it needs no second sign-in. The
+  third asks a backend the same read as the same person, through that backend's book, for a
+  phone. The list's statement chooses the variant. The derivation check always sits at the
+  edge the browser can see. What a gateway asked of the services behind it is judged by the
+  containing check, which goes through the whole chain.
 - F4 makes the reading a role with one variant per way a list is drawn. The component's kind
   chooses it.
 - F5 keeps the three claims independent and optional. A plain value with three optional
@@ -178,9 +186,15 @@ Revision log:
 - Section 6, slice order. L1 found that the client's web app draws its dropdowns as popups
   in 9 files and as native selects in 2. The popup slice moved from fourth to second.
 
+- Section 4, the feed, and section 6. L2 was answered by the operator: the apps at work are
+  SvelteKit apps that mix server rendering with requests the browser makes. The feed gained
+  a variant for data handed with the page, and its slice moved from fifth to fourth.
+
 Lookups resolved. L1: see the log. L2, for the client's web app: no page loads its data on
 the server, so every list there is fed by a request the browser makes. L2 for the apps at
-work stays open as A1.
+work: see the log. The SvelteKit documentation says a server load's data is serialized with
+devalue, rendered into the page on a first visit, and sent as one grouped response on a
+navigation inside the app.
 
 | Item | Verdict | Where |
 |---|---|---|
@@ -188,6 +202,7 @@ work stays open as A1.
 | Belonging, derivation, entry rule | New | A small value in `screen.py`, with each claim a named function whose first docstring line is what `describe`, `search` and `explain` print. |
 | Own records | Exists | The model, and the ids a surface learns from the app's answers. The HTTP runtime already drops list entries whose id it never learned (`http.py`, `canonical`). |
 | Feed, from the page's answer | Reshape | The browser records requests (`taken`) and can wait for one answer (`answered`). It does not keep the last answer to a request named ahead of time. |
+| Feed, handed with the page | New | No fixture or book in reach is a SvelteKit app. The web runtime has run on a plain page and on a React app that fetches in the browser. |
 | Feed, by asking the backend | New | A web book can already import a backend book's calls, as it does for an outside event. |
 | Reading | Reshape | `offered` reads a native select only, and by option value. The client's surface clicks popup options by hand. A phone run has no reader for a list. |
 | Containing, derivation and rule checks | New | Beside the row comparison in `runner.py`. |
@@ -257,22 +272,28 @@ user received except the caller".
    the containing check, with what belongs taken before the model moves. Done when the
    fixture shows a made record offered, a removed one gone, and another person's never
    offered, with rows the run did not make present in the list.
-4. **Rules over every entry, and the lists nobody stated.** Order, no repeat, first pick.
+4. **Data the app's own server hands the page.** A small SvelteKit app joins the fixtures,
+   with one list rendered on its server and one the browser fetches through its gateway. Its
+   book states both. Done when a wrong derivation of either turns the run red, on a first
+   visit and after a navigation inside the app, and when the book's waits and its check for
+   undeclared requests hold on that app.
+5. **Rules over every entry, and the lists nobody stated.** Order, no repeat, first pick.
    `check` names each list a screen declares with no claim. Done when each rule has a red
    and a green run and `check` prints the names without failing.
-5. **Data the browser never saw, and the phone.** The feed asked of the backend through its
-   book. A reader for a list on a phone. Done on a server-rendered page of the client's app
-   and on one list of the mobile book.
-6. **The fields of a generated form.** An entry is a field with its label and its kind. Done
+6. **The phone.** A reader for a list on a phone, and the feed asked of a backend through
+   its book. Done on one list of the mobile book.
+7. **The fields of a generated form.** An entry is a field with its label and its kind. Done
    on the client's staged form.
-7. **The writers.** The skill and the book workflow's breadth pass state a list's claims
+8. **The writers.** The skill and the book workflow's breadth pass state a list's claims
    from the app's source. Done when a workflow run on the client's web book writes them.
 
 ## 7. Assumptions
 
-- A1. **Assumption:** most lists are filled by a request the browser makes. **Decided:**
-  the feed read from the page's answer comes first, and asking the backend waits for slice 5.
-  **Basis:** none for the apps at work. **If wrong:** slice 5 moves ahead of slice 2.
+- A1. **Assumption:** a run can ask a SvelteKit server again, in the browser's session, for
+  the data it handed a page, and decode it. **Decided:** the second feed variant, in slice 4.
+  **Basis:** the SvelteKit documentation on server loads. Not tried. **If wrong:** a list
+  rendered on the server keeps belonging and rules only, and its derivation is checked in
+  the app's own tests.
 - A2. **Assumption:** a run can tell its own records apart in a list, by the id the list
   exposes or by a label only the run uses. **Decided:** F6. **Basis:** the web surfaces
   already find a row by the id the app gave. **If wrong:** belonging is unreadable for lists
@@ -282,7 +303,7 @@ user received except the caller".
   wrong:** coverage names many lists as never read, and a walk becomes its own slice.
 - A4. **Assumption:** an opened list renders all its entries. **Decided:** long lists that
   render on scroll are out of scope. **Basis:** none. **If wrong:** the reading must search
-  or scroll, in slices 2 and 5.
+  or scroll, in slices 2 and 6.
 - A5. **Assumption:** stating a page's computation again in the book is acceptable, since it
   is what the user should see. **Decided:** the derivation is a function in the book.
   **Basis:** the model already restates the backend's rules the same way.
