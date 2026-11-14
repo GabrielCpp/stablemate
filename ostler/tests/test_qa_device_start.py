@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import subprocess
 import threading
 from pathlib import Path
@@ -23,7 +22,6 @@ def _fake_tool(directory: Path, name: str, script: str) -> None:
 def _device_driver(repo: Path) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
-    (spec / "qa-okf-context.json").write_text(json.dumps({"servicesRoot": "docs/services"}), encoding="utf-8")
     session = QaSession.create(spec, "qa-device-start-1", "story-1", {})
     target = {"driver": "maestro", "device": "android", "app_id": APP_ID, "recording": {"required": False}}
     return PythonDriver(session, "acme", target, root=repo, variables={})

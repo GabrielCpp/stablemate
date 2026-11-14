@@ -358,7 +358,7 @@ def test_the_scored_report_is_a_typed_spec_doc_carrying_its_run_id(tmp_path: Pat
     assert text.startswith("---\ntype: spec.qa-report\n---\n")
     assert "<!-- run: qa-run-1 status: passed -->" in text
     assert run_id_of(path) == "qa-run-1"
-    assert run_id_of(spec / "qa-okf-context.json") is None
+    assert run_id_of(spec / "qa-context.json") is None
     assert run_id_of(spec / "nope.md") is None
 
 
@@ -374,25 +374,6 @@ def test_a_dry_run_s_report_sits_beside_its_own_ledger_untyped(tmp_path: Path) -
     assert write_report(spec, qa_dirname="qa/try-1") == path
     with pytest.raises(ValueError):
         write_report(spec, label="try-2", qa_dirname="qa/try-1")
-
-
-def test_a_screenshot_s_vet_verdict_is_read_off_its_sidecar(tmp_path: Path) -> None:
-    spec = _spec(tmp_path, log=_stamped_log())
-    (spec / "qa/screenshots").mkdir(parents=True)
-    (spec / "qa/screenshots/after-sign-in.vet.json").write_text(
-        json.dumps({
-            "schema": "vet-placement/1", "screen": "docs/services/web/gui/screens/tree.md", "state": "",
-            "screenshot": "qa/screenshots/after-sign-in.png", "regionCount": 4,
-            "verdicts": [
-                {"node_id": "tree-root", "status": "matched", "detail": [], "bbox": None},
-                {"node_id": "sign-out", "status": "missing", "detail": ["not found"], "bbox": None},
-            ],
-        }),
-        encoding="utf-8",
-    )
-    text = render_report(build_report(spec), spec_dir=spec)
-    assert "vet: screen `docs/services/web/gui/screens/tree.md`, 1 finding(s): sign-out missing" in text
-    assert "vet:" not in render_report(build_report(spec))
 
 
 def test_rendering_is_deterministic(tmp_path: Path) -> None:

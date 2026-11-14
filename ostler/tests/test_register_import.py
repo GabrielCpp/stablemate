@@ -177,7 +177,7 @@ def test_the_known_section_titles_set_who_filed_the_record(tmp_path: Path) -> No
         "# Backlog\n\n"
         "## Filed by coder\n\n- Fix the stale cart total. Seen while on the checkout story.\n\n"
         "## deferred by CODER\n\n- Extract the tax rules.\n\n"
-        "## Book checks QA could not run\n\n- Book page `docs/services/cart.md` gives QA no check.\n\n"
+        "## Book checks QA could not run\n\n- Book page `docs/specs/cart.md` gives QA no check.\n\n"
         "## Survey findings\n\n- The cart module owns three concerns.\n\n"
         "## Legacy surfaces missing from the new app\n\n- The old invoice export screen.\n\n"
         "## Planned\n\n- Something a person wrote.\n"
@@ -190,7 +190,7 @@ def test_the_known_section_titles_set_who_filed_the_record(tmp_path: Path) -> No
     assert got == {
         "Fix the stale cart total.": ("qa", "untriaged"),
         "Extract the tax rules.": ("coder", "untriaged"),
-        "Book page `docs/services/cart.md` gives QA no check.": ("qa-deferred", "book"),
+        "Book page `docs/specs/cart.md` gives QA no check.": ("qa-deferred", "book"),
         "The cart module owns three concerns.": ("survey", "untriaged"),
         "The old invoice export screen.": ("parity", "untriaged"),
         "Something a person wrote.": ("person", "planned"),

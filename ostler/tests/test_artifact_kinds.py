@@ -296,7 +296,7 @@ def _run_log(spec: Path, *, passes: int, fails: int = 0, run_id: str = "qa-run-1
 
 
 def test_qa_evidence_unmodeled_surface_passes_on_run_log(tmp_path: Path):
-    """An infra/CLI story's changed code has no OKF feature-node owner, so the diff→OKF mapper produces no obligations and _write_evidence records empty criteria+obligations even for a genuine pass."""
+    """An infra/CLI story's scenarios cover no id, so _write_evidence records empty criteria even for a genuine pass."""
     spec = _spec(tmp_path)
     _run_log(spec, passes=12)
     data = {"runId": "qa-run-1", "qa_run_log": "qa/qa-run.ndjson",

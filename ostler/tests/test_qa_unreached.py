@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from ostler.qa.attribution import Cause
@@ -11,14 +10,13 @@ from ostler.qa.v2 import _run_verdicts
 from ostler.qa.session import QaSession
 from ostler.qa.verdict import Verdict, merged
 
-CLAIMS = ["okf:docs/a.md#orders:does:1", "okf:docs/a.md#orders:does:2", "okf:docs/a.md#orders:does:3"]
+CLAIMS = ["orders-does-1", "orders-does-2", "orders-does-3"]
 GAP_FAULT = {"fault_class": "capability", "fixture": "payment-provider", "page": "docs/fixtures/payment-provider.md"}
 
 
 def _driver(repo: Path) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
-    (spec / "qa-okf-context.json").write_text(json.dumps({"servicesRoot": "docs/services"}), encoding="utf-8")
     session = QaSession.create(spec, "qa-unreached-1", "story-1", {})
     return PythonDriver(session, "cli", {"driver": "cli"}, root=repo, variables={})
 

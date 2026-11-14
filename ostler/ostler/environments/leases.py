@@ -1,8 +1,7 @@
 """A QA run's copy of the stack: the books near what it tests, up under the run's lease.
 
-`ostler qa stack` and the workflows bring a stack up through a runbook page. A book with a
-`stack.yml` is brought up from it instead, and each function here answers None for a place no
-`stack.yml` covers, so its caller keeps the runbook path there.
+A book's `stack.yml` is brought up as a copy, and each function here answers None for a place no
+`stack.yml` covers.
 """
 
 from __future__ import annotations

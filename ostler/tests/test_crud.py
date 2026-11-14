@@ -468,7 +468,7 @@ def test_create_story_existing_slug_is_a_noop(repo: Path):
 
 
 def test_story_frontmatter_carries_the_allocated_id(repo: Path):
-    """A story.md is read on its own constantly — by the coder workflow picking up work, by `ostler trace`, by a human opening the file."""
+    """A story.md is read on its own constantly — by the coder workflow picking up work, by `ostler list`, by a human opening the file."""
     crud.add_seed(load(repo), "epic-a", "s1", status="researched")
     res = crud.create_story(load(repo), "epic-a", "01-ided", "Has an id", covers=["s1"])
     assert res.ok and res.entity_id

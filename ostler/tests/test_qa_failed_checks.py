@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -15,7 +14,6 @@ from ostler.qa.session import QaSession
 def _driver(repo: Path) -> PythonDriver:
     spec = repo / "docs/specs/story-1"
     spec.mkdir(parents=True, exist_ok=True)
-    (spec / "qa-okf-context.json").write_text(json.dumps({"servicesRoot": "docs/services"}), encoding="utf-8")
     session = QaSession.create(spec, "qa-failed-1", "story-1", {})
     return PythonDriver(session, "cli", {"driver": "cli"}, root=repo, variables={})
 

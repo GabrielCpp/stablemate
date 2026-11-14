@@ -55,15 +55,9 @@ def text() -> str:
 
 
 
-def test_readme_names_both_cached_products(text: str) -> None:
-    """Two products ship, and a reader who knows only about the markdown one will not understand why touching a *source* file slows the next doctor down."""
+def test_readme_names_the_cached_product(text: str) -> None:
+    """A reader needs to know what the index holds before the content key makes sense."""
     assert near(text, "parse products", "index"), "the README never names the parse products"
-    assert any_near(
-        text,
-        ("code grounding", "code-grounding"),
-        ("symbol table", "symbol tables"),
-        ("sha", "digest", "content"),
-    ), "the README never says code-grounding symbol tables are cached too"
 
 
 def test_readme_states_findings_are_not_cached(text: str) -> None:

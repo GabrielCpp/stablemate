@@ -430,12 +430,6 @@ def test_recording_cannot_be_disabled_by_the_plan_itself(tmp_path: Path) -> None
             'api = target("api")',
             'api = target("web", driver="playwright", base_url="http://localhost:3000",\n'
             "             recording={{'required': False}})",
-        ).replace(
-            '    qa.check("the value is ok", True, actual="ok", expected="ok",'
-            ' covers=["{obligation}"])',
-            '    qa.vet("docs/services/demo/item.md", name="loaded")\n'
-            '    qa.check("the value is ok", True, actual="ok", expected="ok",\n'
-            '             covers=["{obligation}"])',
         ),
     )
 

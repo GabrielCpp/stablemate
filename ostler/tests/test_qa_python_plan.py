@@ -243,7 +243,7 @@ def test_a_computed_covers_list_claims_nothing(tmp_path: Path) -> None:
 
 
 def test_a_covers_list_of_module_constants_binds(tmp_path: Path) -> None:
-    """A module-level `NAME = "okf:…"` is in the parse tree, so the gate can read it."""
+    """A module-level `NAME = "ac-1"` is in the parse tree, so the gate can read it."""
     spec = _spec(tmp_path)
     named = f'CLAIM = "{OBLIGATION}"\n' + PLAN.replace(
         'expected="abc", covers=["{obligation}"])',
@@ -258,7 +258,7 @@ def test_a_covers_list_of_module_constants_binds(tmp_path: Path) -> None:
 def test_a_rebound_module_constant_claims_nothing(tmp_path: Path) -> None:
     """Which value reached the call is a question the parse genuinely cannot answer."""
     spec = _spec(tmp_path)
-    rebound = f'CLAIM = "{OBLIGATION}"\nCLAIM = "okf:docs/services/demo/item.md:does:1"\n' + PLAN.replace(
+    rebound = f'CLAIM = "{OBLIGATION}"\nCLAIM = "ac-2"\n' + PLAN.replace(
         'expected="abc", covers=["{obligation}"])',
         "expected=\"abc\", covers=[CLAIM])",
     )

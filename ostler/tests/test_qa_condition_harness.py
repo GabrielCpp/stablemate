@@ -20,7 +20,7 @@ def _qa(tmp_path: Path, emitted: list[dict[str, Any]]) -> Any:
         root=tmp_path,
         spec_dir=tmp_path,
         qa_dir=tmp_path / "qa",
-        covers=["okf:docs/a.md#shown:states:1"],
+        covers=["shown-states-1"],
         recorder=recorder,
     )
 

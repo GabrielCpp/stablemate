@@ -102,7 +102,7 @@ def _settle(scenario: _Scenario) -> bool:
         busy=BUSY,
         states=STATES,
         expect="loaded",
-        covers=["okf:gui/screens/results.md#loaded:contract"],
+        covers=["loaded-contract"],
     )
 
 
@@ -132,7 +132,7 @@ def silent(chromium: Any) -> Iterator[_Scenario]:
 
 def test_a_screen_that_answers_at_once_settles_on_the_named_state(at_once: _Scenario) -> None:
     assert _settle(at_once)
-    assert at_once.checks[0][2] == ["okf:gui/screens/results.md#loaded:contract"]
+    assert at_once.checks[0][2] == ["loaded-contract"]
 
 
 def test_a_screen_that_answers_within_the_ceiling_settles_on_the_named_state(after_a_second: _Scenario) -> None:
@@ -185,7 +185,7 @@ def _settle_with_extras(chromium: Any, fetches: str, requests: list[tuple[str, s
         page.goto("http://fixture.test/results")
         return harness.Qa.settle(
             scenario, NODE, since=since, requests=requests, busy=BUSY, states=STATES, expect="loaded",
-            covers=["okf:gui/screens/results.md#loaded:contract"], origins=["http://other.test"],
+            covers=["loaded-contract"], origins=["http://other.test"],
         ), scenario
     finally:
         page.close()

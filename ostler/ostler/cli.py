@@ -215,7 +215,7 @@ def _build_parser() -> argparse.ArgumentParser:
     gr.add_argument("--json", action="store_true")
 
     tp = sub.add_parser(
-        "template", help="define/apply OKF hierarchies (.agents/templates.yml)"
+        "template", help="define/apply document hierarchies (.agents/templates.yml)"
     )
     tps = tp.add_subparsers(dest="op", required=True)
     tpn = tps.add_parser(

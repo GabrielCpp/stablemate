@@ -41,7 +41,7 @@ def _refresh(repo: Path, store: index.IndexStore | None) -> textindex.RefreshRep
 
 
 def test_rows_for_gives_preamble_and_section_rows(repo: Path):
-    page = repo / "docs/services/area/guide.md"
+    page = repo / "docs/specs/area/guide.md"
     write(page, "---\ntype: concept\nslug: guide\ntitle: Guide\n---\n\nLead words.\n\n"
                 "# Guide\n\n## Setup\n\n### Install\n\nrun the installer\n\n- a bullet here\n")
     rows = textindex.rows_for("services", page, load(repo))
@@ -50,8 +50,8 @@ def test_rows_for_gives_preamble_and_section_rows(repo: Path):
     assert rows[0].body == "Lead words."
     assert "run the installer" in rows[1].body
     assert "a bullet here" in rows[1].body
-    assert rows[1].node == "docs/services/area/guide"
-    assert rows[1].path == "docs/services/area/guide.md"
+    assert rows[1].node == "docs/specs/area/guide"
+    assert rows[1].path == "docs/specs/area/guide.md"
     assert rows[1].type == "concept"
     assert rows[1].slug == "guide"
     assert rows[1].title == "Guide"
@@ -134,7 +134,7 @@ def test_a_scenario_checkout_under_a_spec_is_not_searched(repo: Path):
     specs = load(repo).doc_roots["specs"]
     write(specs / "STORY-1/plan.md", "---\ntype: spec.plan\n---\n\n# Plan\n\nThe zebra ledger plan.\n")
     write(specs / "STORY-1/qa/scenario/AGENTS.md", "# Agents\n\nThe zebra ledger rules.\n")
-    write(specs / "STORY-1/qa/scenario/docs/services/copy.md", _concept("copy", "Copy", "A zebra ledger page."))
+    write(specs / "STORY-1/qa/scenario/docs/specs/copy.md", _concept("copy", "Copy", "A zebra ledger page."))
     paths = [hit["path"] for hit in _search(repo, "zebra ledger", root="specs")]
     assert len(paths) == 1
     assert paths[0].endswith("STORY-1/plan.md")

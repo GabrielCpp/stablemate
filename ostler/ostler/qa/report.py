@@ -604,7 +604,7 @@ def _artifact_lines(views: list[dict[str, Any]], spec_dir: Path | None) -> list[
     for view in views:
         if view["kind"] == "screenshot":
             lines.append(f"![{Path(view['path']).name}]({view['path']})  ")
-            lines.append(f"Screenshot `{view['path']}`" + _vet_summary(view["path"], spec_dir) + "  ")
+            lines.append(f"Screenshot `{view['path']}`" + "  ")
         else:
             lines.append(f"Artifact ({view['kind']}): [{view['path']}]({view['path']})  ")
     if lines:
@@ -667,36 +667,10 @@ def _step_items(
         lines.append(f"{indent}- captured {_code(view['key'])} = {_code(view['value'])}")
     for view in artifacts:
         if view["kind"] == "screenshot":
-            lines.append(f"{indent}- 📷 [{Path(view['path']).name}]({view['path']}){_vet_summary(view['path'], spec_dir)}")
+            lines.append(f"{indent}- 📷 [{Path(view['path']).name}]({view['path']})")
         else:
             lines.append(f"{indent}- 📎 {view['kind']}: [{view['path']}]({view['path']})")
     return lines
-
-
-def _vet_summary(screenshot: str, spec_dir: Path | None) -> str:
-    """` — vet: …` for a screenshot that was registered against the book, else nothing."""
-    if spec_dir is None:
-        return ""
-    vet_path = (spec_dir / screenshot).with_suffix(".vet.json")
-    if not vet_path.is_file():
-        return ""
-    try:
-        vet = json.loads(vet_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return " — vet: (unreadable)"
-    if not is_mapping(vet):
-        return " — vet: (unreadable)"
-    verdicts = [item for item in vet.get("verdicts", []) or [] if is_mapping(item)]
-    findings = [item for item in verdicts if item.get("status") != "matched"]
-    where = f"screen `{vet.get('screen', '?')}`" + (f" state `{vet['state']}`" if vet.get("state") else "")
-    if findings:
-        detail = "; ".join(
-            f"{item.get('node_id', '?')} {item.get('status', '?')}" for item in findings
-        )
-        return f" — vet: {where}, {len(findings)} finding(s): {_cell(detail)}"
-    if not verdicts:
-        return f" — vet: {where}, the book places no component on it to check ({vet.get('regionCount', '?')} regions scanned)"
-    return f" — vet: {where}, all {len(verdicts)} component(s) where the book places them ({vet.get('regionCount', '?')} regions scanned)"
 
 
 def _kind_title(kind: str) -> str:
