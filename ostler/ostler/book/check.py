@@ -198,8 +198,10 @@ def decision_faults(service: Service[Any], module: str, app: str | None = None) 
 
 def question_faults(service: Service[Any], module: str) -> list[Finding]:
     known = decisions.resolve(service, module)
-    return [Finding(f"question line {q.line}", f"element {q.element} resolves to no element of the book", blocks=False)
-            for q in questions.load(module) if q.element not in known]
+    unread = [Finding(f"question line {n}", "is no entry, write it as `- <Element>: <question>`", blocks=False)
+              for n in questions.unread(module)]
+    return unread + [Finding(f"question line {q.line}", f"element {q.element} resolves to no element of the book", blocks=False)
+                     for q in questions.load(module) if q.element not in known]
 
 
 def defined(module: str, base: type) -> list[type]:

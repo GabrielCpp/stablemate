@@ -169,6 +169,10 @@ def test_a_question_naming_no_element_of_the_book_brings_the_finding(module, tmp
     assert _asked(module, tmp_path, "- Missing: why?") == ["question line 3: element Missing resolves to no element of the book"]
 
 
+def test_a_question_written_without_its_dash_brings_the_finding(module, tmp_path):
+    assert _asked(module, tmp_path, "Home: why does it greet twice?") == ["question line 3: is no entry, write it as `- <Element>: <question>`"]
+
+
 def test_explain_shows_the_open_questions_of_an_element(module, tmp_path, capsys):
     (tmp_path / "shop_book" / "QUESTIONS.md").write_text("- Landing: why does it greet twice?\n- Cart: other\n")
     service = cast("Service[Any]", SimpleNamespace(
