@@ -282,6 +282,44 @@ def test_the_fixture_web_book_states_a_shape_for_every_field_a_person_fills():
     assert bare == []
 
 
+def _faults_of(**components):
+    import dataclasses
+
+    from ostler.book.check import shape_faults
+
+    service = module("services.web.service").service
+    screen = type("Bare", (Screen,), components)
+    return [(f.name, f.problem, f.blocks) for f in shape_faults(dataclasses.replace(service, screens=(screen,)))]
+
+
+def test_the_check_names_a_field_that_states_no_shape():
+    problem = "a person fills it and it states no shape, so no input is tried on it: give it takes= and holds="
+    from ostler.book.screen import DateField, TextArea
+
+    found = _faults_of(name=Field(None, "Name"), notes=TextArea(None, "Notes"), day=DateField(None, "Day"))
+    assert found == [("screen Bare.name", problem, True), ("screen Bare.notes", problem, True), ("screen Bare.day", problem, True)]
+
+
+def test_the_check_names_a_select_that_states_no_options_no_list_and_no_shape():
+    found = _faults_of(who=Select(None, "Who"))
+    assert found == [("screen Bare.who", "a person picks in it and it states neither its options, what its list holds, nor a shape", True)]
+
+
+def test_a_select_that_states_its_options_gets_no_finding():
+    from ostler.book import Str
+
+    assert _faults_of(who=Select(None, "Who", options=("ana",)), size=Select(None, "Size", takes="size", holds=Wire(Str())),
+                      nick=Field(None, "Nick", takes="nick", holds=Wire(Str()))) == []
+
+
+def test_a_select_that_states_what_its_list_holds_gets_no_finding():
+    def nobody(model, by):
+        """no one"""
+        return []
+
+    assert _faults_of(who=Select(None, "Who", lists=Lists(never=nobody))) == []
+
+
 def test_a_declared_divergence_on_a_screen_input_names_a_class_the_check_knows():
     import dataclasses
 

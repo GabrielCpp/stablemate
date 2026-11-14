@@ -343,6 +343,20 @@ def spoken(service: Service[Any]) -> list[Finding]:
     return found
 
 
+def shape_faults(service: Service[Any]) -> list[Finding]:
+    """Every component a person fills that states nothing a run could try: a field, text area or date with no shape, and a
+    select with no shape, no options and no list."""
+    found: list[Finding] = []
+    for screen in service.screens:
+        for attribute, component in screen.attributes():
+            where = f"screen {screen.__name__}.{attribute}"
+            if component.kind in ("field", "textarea", "date") and component.holds is None:
+                found.append(Finding(where, "a person fills it and it states no shape, so no input is tried on it: give it takes= and holds="))
+            elif component.kind == "select" and component.holds is None and not component.options and component.lists is None:
+                found.append(Finding(where, "a person picks in it and it states neither its options, what its list holds, nor a shape"))
+    return found
+
+
 def check(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
     found: list[Finding] = spoken(service)
     today = date.today()
@@ -391,6 +405,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "identities", lambda: found.extend(identity_faults(service)) or "done")
     attempt(found, "headers", lambda: found.extend(header_faults(service)) or "done")
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
+    attempt(found, "screen shapes", lambda: found.extend(shape_faults(service)) or "done")
     attempt(found, "sources", lambda: found.extend(source_faults(service, app)) or "done")
     attempt(found, "decisions", lambda: found.extend(decision_faults(service, module, app)) or "done")
     attempt(found, "questions", lambda: found.extend(question_faults(service, module)) or "done")

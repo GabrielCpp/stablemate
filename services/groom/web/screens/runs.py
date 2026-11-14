@@ -1,4 +1,4 @@
-from ostler.book import request
+from ostler.book import Field as Wire, Str, request
 from ostler.book.screen import Button, Field, Heading, Screen, Text
 
 
@@ -12,7 +12,8 @@ class Runs(Screen):
     reached_from = "the page opens on it; the Runs button of the left bar returns to it"
     root = Text("#runs-pane", does="the run list pane")
     heading = Heading("#runs-pane h2", "Runs", does="the pane's title")
-    filter = Field("#runs-pane input[name=q]", "Filter runs", does="narrows the list to the runs whose name, repo, node, task or id holds the text typed")
+    filter = Field("#runs-pane input[name=q]", "Filter runs", does="narrows the list to the runs whose name, repo, node, task or id holds the text typed",
+                takes="q", holds=Wire(Str(), required=False, nullable=True))
     run = Button("#runs-list button.row", "run", does="one run: its state, repo and branch, short id, what it is doing", per_row=True)
     state = Text("#runs-list button.row .dot", "state", does="the run's state, on the row's data-state", per_row=True)
     repo = Text("#runs-list button.row .repo-branch", "repo", does="the repo and branch the run works on, or a dash when it did not say", per_row=True)
