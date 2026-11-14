@@ -20,6 +20,7 @@ from typing import Any, Callable, ClassVar, Generic, Hashable, Iterable, Iterato
 
 from ostler.book.cast import SOLE, Actor
 from ostler.book.errors import BookError
+from ostler.book.event import Event
 from ostler.book.outcome import Done, Flawed, Refusal
 from ostler.book.model import A, Defect, Flaw, Model, Refused, Rule, S
 
@@ -355,6 +356,13 @@ class Action(Generic[A, S]):
     hears: ClassVar[bool] = False
     rules: ClassVar[tuple[Rule[Any, Any], ...]] = ()
     defects: ClassVar[tuple[Defect[Any, Any], ...]] = ()
+    emits: ClassVar[tuple[type[Event], ...]] = ()
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        for emitted in cls.emits:
+            if not (isinstance(emitted, type) and issubclass(emitted, Event)):
+                raise BookError(f"{cls.__name__} emits {emitted!r}, which is not an Event: write emits = (<an Event class>,)")
 
     @staticmethod
     def reduce(a: A, s: S, by: Actor | None) -> Reduced:

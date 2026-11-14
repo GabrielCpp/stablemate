@@ -14,6 +14,7 @@ from ostler.book.cast import SOLE, Actor
 from ostler.book.domain import App
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError
+from ostler.book.event import Event
 from ostler.book.http import Endpoint
 from ostler.book.inputs import Diverges
 from ostler.book.journey import Journey
@@ -47,6 +48,7 @@ class Service(Generic[S]):
     refusals: Refusals = Refusals()
     diverges: tuple[Diverges, ...] = ()
     outside: tuple[type[Arrange[Any]], ...] = ()
+    events: tuple[type[Event], ...] = ()
     app: App | None = None
     records: tuple[type, ...] = ()
     environments: dict[str, Environment] = field(default_factory=dict)

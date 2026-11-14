@@ -8,6 +8,8 @@ from __future__ import annotations
 from typing import Any, ClassVar, Generic, TypeVar
 
 from ostler.book.domain import Action
+from ostler.book.errors import BookError
+from ostler.book.event import Event
 
 F = TypeVar("F")
 
@@ -20,6 +22,13 @@ class Arrange(Generic[F]):
     does: ClassVar[str] = ""
     carries: ClassVar[type[Action[Any, Any]] | None] = None
     by: None = None
+    heard: ClassVar[type[Event] | None] = None
+    reads: ClassVar[tuple[str, ...]] = ()
+
+    def __init_subclass__(cls) -> None:
+        super().__init_subclass__()
+        if cls.reads and cls.heard is None:
+            raise BookError(f"{cls.__name__} reads {list(cls.reads)} but hears no event: set heard = <the Event class> or drop reads")
 
     def __init__(self, of: F | None = None):
         self.of = of

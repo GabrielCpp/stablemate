@@ -16,6 +16,7 @@ from ostler.book.domain import (Action, App, Become, Change, Collection, Create,
 from ostler.book.command import STDERR, Command, CommandSurface, Exit, Files, Flag, Lines, Mark, Outside, Positional, Sandbox, Seed, Switch
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError, Unhealthy
+from ostler.book.event import Event
 from ostler.book.http import (Answer, ApiKey, Bearer, Bool, Bytes, Client, Endpoint, Enum, Field, Id, Int, List, Map, Num, Object,
                               OffShape, On, Reference, Str, Undeclared, error_field, problem)
 from ostler.book.journey import Check, Given, Journey, Listed, Refused, Relates, Same, Seen, Shows, Undo, masked, pluck
@@ -39,7 +40,7 @@ from ostler.book.witness import Because, Unseen
 __all__ = [
     "Actor", "Arrange", "Backstage", "CannotArrange", "Environment", "SOLE",
     "checkout", "Browser", "Device", "MobileSurface", "PageSurface", "Received", "answer", "refusal", "request",
-    "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Fixture", "Heard", "Index", "MoveToday", "Select",
+    "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Event", "Fixture", "Heard", "Index", "MoveToday", "Select",
     "Show", "State", "Total", "Transaction", "Unique", "Update",
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",
     "Endpoint", "Enum", "Field", "Given", "Id", "Impossible", "Int", "Interaction", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",
