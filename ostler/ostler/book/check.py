@@ -21,7 +21,7 @@ from ostler.book.arrange import Arrange
 from ostler.book.explore import _overrides, attempts, moves
 from ostler.book.graph import dot
 from ostler.book.http import Endpoint, bare_ids
-from ostler.book.journey import Journey
+from ostler.book.journey import Given, Journey
 from ostler.book.model import Rule
 from ostler.book.inputs import bases, classes, expected, has_inputs, predicted, refusals_for, vary
 from ostler.book.errors import BookError
@@ -63,7 +63,8 @@ def exercised(service: Service[Any]) -> Iterator[tuple[str, Any, list[str], Any]
     for journey in service.journeys:
         model = service.new_model(date.today())
         for given in journey.given:
-            model.perform(given.request)
+            if isinstance(given, Given):
+                model.perform(given.request)
         for step in journey().steps(model.today):
             if isinstance(step, Endpoint) and step.carries is not None:
                 faults = step.id_faults(model)
@@ -303,7 +304,7 @@ def matrix_faults(service: Service[Any]) -> list[Finding]:
                     named.add(type(call))
                     break
     return [Finding(f"endpoint {e.__name__}", "no lifecycle matrix names it, so exploration plays it in every state of every record: give it a column in the matrix of the record it reads or writes")
-            for e in service.endpoints if e not in named]
+            for e in service.endpoints if e not in named and e.passes is None]
 
 
 def spoken(service: Service[Any]) -> list[Finding]:

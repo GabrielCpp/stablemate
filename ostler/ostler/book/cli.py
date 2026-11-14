@@ -37,6 +37,7 @@ from ostler.book.journey import JourneyResult
 from ostler.book.listing import account, read_by
 from ostler.book.matrix import matrix
 from ostler.book.model import Model
+from ostler.book.owners import Owners
 from ostler.book.planner import plan
 from ostler.book.register import Settled, load as load_register, path as register_path, save as save_register, settle
 from ostler.book.runner import attempt, blocked, walk
@@ -373,6 +374,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     if isinstance(begun, int):
         return begun
     surface, stack = begun
+    Owners.begin(args.environment, lambda owner: _surface(owner, args.environment), fresh)
     record_to = getattr(surface, "record_to", None)
     if callable(record_to):
         record_to(os.path.join(args.out, "videos"))
@@ -453,6 +455,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         print(f"what ran before it is no verdict: {len(results)} journeys")
         return 3
     finally:
+        Owners.close()
         surface.stop()
         if not args.no_stack:
             stack.stop()

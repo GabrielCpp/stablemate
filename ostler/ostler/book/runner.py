@@ -9,11 +9,13 @@ from typing import Any, Callable, Iterable, cast
 
 from ostler.book.arrange import Arrange
 from ostler.book.backstage import CannotArrange
+from ostler.book.boundary import Needs
 from ostler.book.errors import BookError, Unhealthy
-from ostler.book.http import OffShape, Undeclared
+from ostler.book.http import Endpoint, OffShape, Undeclared
 from ostler.book.journey import (Check, Given, Journey, JourneyResult, Listed, Refused, Relates, Same, Seen, Shows,
                                  StepResult, Undo, difference, masked)
 from ostler.book.model import Defect, Model
+from ostler.book.owners import Owners
 from ostler.book.outcome import CannotReach, Done, Flawed, Outcome, Refusal, Unreachable
 from ostler.book.status import refused as turned_away
 from ostler.book.surface import Surface
@@ -38,6 +40,7 @@ def walk(journey: type[Journey], model: Model, surface: Surface) -> JourneyResul
     result = JourneyResult(journey, surface.name)
     baseline = model.rows()
     seen: dict[int, Seen] = {}
+    Owners.journey()
     for given in journey.given:
         result.steps.append(attempt(given, model, surface, baseline, seen))
         if result.steps[-1].skipped:
@@ -51,7 +54,7 @@ def walk(journey: type[Journey], model: Model, surface: Surface) -> JourneyResul
     finally:
         if not result.skipped:
             for given in reversed(journey.given):
-                if given.undo is not None:
+                if isinstance(given, Given) and given.undo is not None:
                     attempt(Undo(given), model, surface, baseline)
     result.state = model.describe()
     return result
@@ -140,6 +143,8 @@ def take(step: object, model: Model, surface: Surface, baseline: tuple[object, .
         return perform(step, step.given.undo, model, surface)
     if isinstance(step, Given):
         return perform(step, step.request, model, surface)
+    if isinstance(step, Needs):
+        return Owners.arrange(step, model, attempt)
     if isinstance(step, Listed):
         return listed(step, model, surface, baseline)
     if getattr(step, "carries", True) is None:
@@ -163,7 +168,11 @@ def read(step: object, model: Model, surface: Surface, seen: dict[int, Seen]) ->
     ok = isinstance(outcome, Done)
     rows = outcome.rows if isinstance(outcome, Done) else ()
     remember(step, surface, rows, seen)
-    return StepResult(step, None, outcome, model.rows(), rows, ok, "" if ok else f"app said {outcome}")
+    note = "" if ok else f"app said {outcome}"
+    if ok and getattr(type(step), "passes", None) is not None:
+        note = Owners.judge(cast(Endpoint, step))
+        ok = not note
+    return StepResult(step, None, outcome, model.rows(), rows, ok, note)
 
 
 def refused(step: Refused, model: Model, surface: Surface) -> StepResult:

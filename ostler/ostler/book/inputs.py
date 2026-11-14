@@ -23,7 +23,7 @@ from ostler.book.domain import Fixture
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.http import (Bool, Client, Endpoint, Enum, Field, Id, Identities, Int, List, Object, OffShape, Str, Undeclared,
                               blind, twins, unknown_value)
-from ostler.book.journey import StepResult, difference
+from ostler.book.journey import Given, StepResult, difference
 from ostler.book.model import Defect, Model
 from ostler.book.outcome import Done, Flawed, Outcome, Refusal, Refusals
 from ostler.book.runner import agree, attempt, listing
@@ -354,7 +354,8 @@ def bases(service: Service[Any], today: date | None = None) -> dict[type[Any], B
         model = service.new_model(today or date.today())
         try:
             for given in journey.given:
-                model.perform(given.request)
+                if isinstance(given, Given):
+                    model.perform(given.request)
             for k, step in enumerate(journey().steps(model.today)):
                 if not _carried(step):
                     continue
