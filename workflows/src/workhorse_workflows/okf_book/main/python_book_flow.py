@@ -1,4 +1,4 @@
-"""One service's Python book written by one owner turn per lap: the turn writes `services/<service>/`, the run judges it with the book's own check and run, and a green book is committed."""
+"""One service's Python book. A book reached by a screen surface first gets a breadth pass, one skeleton screen per entry file the book names nowhere. Then one owner turn per lap writes `services/<service>/`, the run judges it with the book's own check and run, and a green book is committed."""
 from __future__ import annotations
 
 import logging
@@ -7,18 +7,25 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, Transition, dry_run
 from workhorse.runner.failure import OutputParseError
+from workhorse_workflows.coder.shared.schemas.render import schema_block
 from workhorse_workflows.kit.answer import answer_below
 from workhorse_workflows.kit.tools import run_tool
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.main.nodes.breadth import BREADTH_DIR, Skeletons, breadth_handed, record_breadth
 from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
 
 WRITE_PROMPT = "main/prompts/write-python-book.md"
+INVENTORY_PROMPT = "main/prompts/list-book-entries.md"
+SKELETON_PROMPT = "main/prompts/write-screen-skeletons.md"
+SCREEN_KINDS = frozenset({"web", "mobile"})
+BATCH_SIZE = 8
+UNNAMED_HEADING = "## Files no element names"
 MAX_LAPS = 3
 GATE_TAIL_LINES = 200
 ANSWER_LIMIT_CHARS = 8000
@@ -35,6 +42,21 @@ class BookGate(BaseModel):
 
     exit_code: int
     output: str = ""
+
+
+class MissingList(BookGate):
+    """What the book's missing said, with the files no element names."""
+
+    unnamed: tuple[str, ...] = ()
+
+
+class BookEntries(BaseModel):
+    """The entry files of the app that the book does not describe yet."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    entries: list[str] = Field(default_factory=list, description="Each entry file, spelled exactly as the list of unnamed files spells it.")
+    how: str = Field(default="", description="The file of the app that declares its pages.")
 
 
 class PythonBookReply(BaseModel):
@@ -71,6 +93,23 @@ def _tail(text: str) -> str:
     return "\n".join(text.splitlines()[-GATE_TAIL_LINES:])
 
 
+def _unnamed(stdout: str) -> tuple[str, ...]:
+    found: list[str] = []
+    inside = False
+    for line in stdout.splitlines():
+        if line == UNNAMED_HEADING:
+            inside = True
+        elif line.startswith("## "):
+            inside = False
+        elif inside and line.startswith("- "):
+            found.append(line[2:])
+    return tuple(found)
+
+
+def _missing_green(_logger: logging.Logger, *_args: object) -> MissingList:
+    return MissingList(exit_code=0, output="dry run")
+
+
 @blueprint.node(stub=_green)
 def python_book_check(logger: logging.Logger, root: Path, module: str, app: Path) -> BookGate:
     """Run the check of one of the book's modules from the book root, with the source pointers read under the app's root, and keep the tail of what it printed."""
@@ -78,12 +117,12 @@ def python_book_check(logger: logging.Logger, root: Path, module: str, app: Path
     return BookGate(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()))
 
 
-@blueprint.node(stub=_green)
-def python_book_missing(logger: logging.Logger, root: Path, module: str, app: Path, under: str) -> BookGate:
+@blueprint.node(stub=_missing_green)
+def python_book_missing(logger: logging.Logger, root: Path, module: str, app: Path, under: str) -> MissingList:
     """List the tracked source files of the app, under the folder the run names, that no element of one of the book's modules names, and keep the tail of what it printed."""
     where = ("--under", under) if under else ()
     done = run_tool(book_command("missing", module, "--app", str(app), *where), cwd=root, logger=logger)
-    return BookGate(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()))
+    return MissingList(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()), unnamed=_unnamed(done.stdout))
 
 
 @blueprint.node(stub=_green)
@@ -107,7 +146,7 @@ def finished_books(root: Path, service: str) -> list[str]:
 
 @dry_run(service="dry-run")
 class WritePythonBook(BookFlow):
-    """Sends a service's book owner until the book's check and run both pass and no source file is left unnamed, then commits the book's package."""
+    """Surveys the entry files a screen-reached book names nowhere and has a skeleton screen written for each, eight to a turn. Then sends the book's owner until the book's check and run both pass and no source file is left unnamed, and commits the book's package. A missing list still red on a screen-reached book goes through the survey again before the owner."""
 
     service: str = ""
     kind: str = "cli"
@@ -136,30 +175,107 @@ class WritePythonBook(BookFlow):
         base = book_module(self.service)
         return (base,) if len(self.kinds) <= 1 else tuple(f"{base}.{kind}" for kind in self.kinds)
 
+    @property
+    def screen_modules(self) -> tuple[str, ...]:
+        """The modules whose surface is a screen."""
+        if len(self.kinds) <= 1:
+            return self.modules if SCREEN_KINDS & set(self.kinds) else ()
+        base = book_module(self.service)
+        return tuple(f"{base}.{kind}" for kind in self.kinds if kind in SCREEN_KINDS)
+
     def start(self) -> Continue[...]:
-        """Send the owner its first lap."""
+        """Survey a book reached by a screen surface, and send the owner its first lap otherwise."""
+        if self.screen_modules:
+            return Continue(None, self.survey, gate="", lap=0).because("survey the screens")
         return Continue(None, self.write, gate="", lap=1).because("send the owner")
+
+    def survey(self, gate: str, lap: int) -> Continue[...]:
+        """List the entry files each screen module names nowhere. The first module with entries not yet handed to a skeleton turn gets them, and none left sends the owner."""
+        for module in self.screen_modules:
+            missing = self.call(python_book_missing, self.root, module, self.code_root, self.source_folder)
+            if missing.exit_code != 1:
+                continue
+            entries = self._entries(module, missing.unnamed)
+            if entries:
+                return Continue(None, self.skeleton, module=module, entries=entries, gate=gate, lap=lap).because("write the skeletons")
+        return Continue(None, self.write, gate=self._noted(gate), lap=lap + 1).because("send the owner")
+
+    def _entries(self, module: str, unnamed: tuple[str, ...]) -> list[str]:
+        if not unnamed:
+            return []
+        args = {**self._turn_args(module), "unnamed": list(unnamed), "result_schema": schema_block(BookEntries)}
+        reply = self._timed(
+            INVENTORY_PROMPT,
+            BookEntries(),
+            lambda: self.agent(INVENTORY_PROMPT, returns=BookEntries, power="medium", timeout=float("inf"), args=args, cwd=self.root, add_dirs=self._add_dirs()),
+        )
+        found = reply.entries
+        handed = set(self.call(breadth_handed, self.run_dir))
+        return [entry for entry in found if entry in unnamed and entry not in handed]
+
+    def _noted(self, gate: str) -> str:
+        if not (self.run_dir / BREADTH_DIR).is_dir():
+            return gate
+        note = f"The breadth pass left its notes on the entry files it tried under {self.run_dir / BREADTH_DIR}/."
+        return f"{gate}\n\n{note}" if gate else note
+
+    def skeleton(self, module: str, entries: list[str], gate: str, lap: int) -> Continue[...]:
+        """One turn writes a skeleton screen for each of the next eight entry files. The batch is recorded as handed, and the files left go to another turn."""
+        batch, rest = entries[:BATCH_SIZE], entries[BATCH_SIZE:]
+        args = {**self._turn_args(module), "files": batch, "result_schema": schema_block(Skeletons)}
+        reply = self._timed(
+            SKELETON_PROMPT,
+            Skeletons(),
+            lambda: self.agent(SKELETON_PROMPT, returns=Skeletons, power="medium", timeout=float("inf"), args=args, cwd=self.root, add_dirs=self._add_dirs()),
+        )
+        self.call(record_breadth, self.run_dir, batch, reply)
+        if rest:
+            return Continue(reply, self.skeleton, module=module, entries=rest, gate=gate, lap=lap).because("write the next batch")
+        return Continue(reply, self.check, lap=lap).because("check the book")
+
+    def _turn_args(self, module: str) -> dict[str, object]:
+        return {
+            "service": self.service,
+            "package": self.package,
+            "module": module,
+            "book_root": self.root.as_posix(),
+            "source_root": self.source_root.as_posix(),
+            "app_root": self.code_root.as_posix(),
+        }
+
+    def _timed[M: BaseModel](self, prompt: str, empty: M, ask: Callable[[], M], session: str | None = None) -> M:
+        started = time.monotonic()
+        reply = empty
+        try:
+            reply = ask()
+        except (OutputParseError, AgentTurnFailed, AgentTimeout) as ended:
+            self.logger.warning("the turn %s on %s ended without a reply: %s", prompt, self.service, ended)
+            if session:
+                self.reset_session(session)
+        node = Path(prompt).stem
+        record_turn(self.records_dir, turn_metric(Phase.WRITE, node, (self.service,), (time.monotonic() - started) / 60, self.turn_usage(node)))
+        return reply
+
+    def _add_dirs(self) -> list[Path] | None:
+        return [self.code_root] if self.code_root != self.root else None
 
     def write(self, gate: str, lap: int) -> Continue[...] | Await[...]:
         """One owner turn writes the book's package until its check and run pass, opening on what the last gate printed. A turn that ends without a reply starts the next one fresh, and the gates judge what it left."""
-        started = time.monotonic()
-        reply = PythonBookReply()
-        try:
-            reply = self.agent(
+        reply = self._timed(
+            WRITE_PROMPT,
+            PythonBookReply(),
+            lambda: self.agent(
                 WRITE_PROMPT,
                 returns=PythonBookReply,
                 power="high",
                 timeout=float("inf"),
                 args=self._prompt_args(gate),
                 cwd=self.root,
-                add_dirs=[self.code_root] if self.code_root != self.root else None,
+                add_dirs=self._add_dirs(),
                 session=owner_chain(self.service),
-            )
-        except (OutputParseError, AgentTurnFailed, AgentTimeout) as ended:
-            self.logger.warning("the owner's turn on %s ended without a reply: %s", self.service, ended)
-            self.reset_session(owner_chain(self.service))
-        node = Path(WRITE_PROMPT).stem
-        record_turn(self.records_dir, turn_metric(Phase.WRITE, node, (self.service,), (time.monotonic() - started) / 60, self.turn_usage(node)))
+            ),
+            session=owner_chain(self.service),
+        )
         if reply.blocked:
             question = f"The owner of the {self.service} book stopped:\n\n{reply.blocked}\n\nAnswer here, and the owner reads your answer on its next turn."
             return Await(self.run_dir / BLOCKED_GATE, question, self.heard, question=question, gate_name=BLOCKED_GATE, lap=lap).because(
@@ -209,16 +325,22 @@ class WritePythonBook(BookFlow):
         return Continue(gate, self.account, lap=lap).because("the book plays green")
 
     def account(self, lap: int) -> Continue[...] | Await[...]:
-        """List the app's source files each of the book's modules names nowhere. An empty list renders the book, and the first module with a file left sends the owner another lap."""
+        """List the app's source files each of the book's modules names nowhere. An empty list renders the book, and the first module with a file left sends a screen-reached book through the survey again, or any other book the owner, for another lap."""
         gate = BookGate(exit_code=0)
         for module in self.modules:
             gate = self.call(python_book_missing, self.root, module, self.code_root, self.source_folder)
+            if gate.exit_code == 1 and self.screen_modules and lap < MAX_LAPS:
+                return Continue(gate, self.survey, gate=self._said("missing", module, gate), lap=lap).because("survey the files left")
             if gate.exit_code != 0:
                 return self._judged("missing", module, gate, lap, self.account)
         return Continue(gate, self.render, lap=lap).because("no source file is left unnamed")
 
+    @staticmethod
+    def _said(verb: str, module: str, gate: BookGate) -> str:
+        return f"`python -m ostler.book {verb} {module}` exited {gate.exit_code}:\n\n{gate.output}"
+
     def _judged(self, verb: str, module: str, gate: BookGate, lap: int, retry: Callable[..., Transition]) -> Continue[...] | Await[...]:
-        said = f"`python -m ostler.book {verb} {module}` exited {gate.exit_code}:\n\n{gate.output}"
+        said = self._said(verb, module, gate)
         if gate.exit_code == COULD_NOT_JUDGE:
             question = f"The book's {verb} could not judge the {self.service} book, which is the environment's side:\n\n{said}\n\nFix the environment, then answer here to {verb} again."
             return Await(self.run_dir / ENVIRONMENT_GATE, question, retry, lap=lap).because("the book could not be judged")

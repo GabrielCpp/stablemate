@@ -3,13 +3,13 @@ from __future__ import annotations
 
 import logging
 import shutil
-import subprocess
 from pathlib import Path
 from typing import cast
 
 import pytest
 from _books import TODO_BOOK, write_todo_book
 from _workspace import Workspace, cut_run_worktrees, lay_out, name_members, run_git
+from okf_book.main.flows import book_exits, build_flow
 from okf_book.support import Reply, ScriptedRunner, git, run_env
 from workhorse.pyflow import Await, Continue, Done
 from workhorse import templates
@@ -22,31 +22,8 @@ from workhorse_workflows.okf_book.main.python_book_flow import PythonBookOutcome
 WRITE = "write-python-book"
 
 
-def _flow(tmp_path: Path, replies: dict[str, Reply] | None = None, kind: str = "cli") -> tuple[WritePythonBook, ScriptedRunner]:
-    runner = ScriptedRunner(replies or {})
-    env = run_env(tmp_path / "runs", runner)
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    flow = WritePythonBook(repo_dir=str(repo), service="ledger", kind=kind, source_folder="ledger")
-    flow._bind(Engine(env))  # pyright: ignore[reportPrivateUsage]
-    return flow, runner
-
-
-def _book_exits(monkeypatch: pytest.MonkeyPatch, red_module: str = "", **codes: int) -> list[list[str]]:
-    seen: list[list[str]] = []
-
-    def _run(argv: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
-        seen.append(argv)
-        verb, module = argv[3], argv[4]
-        code = codes.get(verb, 0) if module == red_module or not red_module else 0
-        return subprocess.CompletedProcess(argv, code, stdout=f"{verb} said cell 7 differs", stderr="")
-
-    monkeypatch.setattr(python_book_flow, "run_tool", _run)
-    return seen
-
-
 def test_the_owner_turn_names_the_package_and_the_commands_that_judge_it(tmp_path: Path) -> None:
-    flow, runner = _flow(tmp_path, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}})
+    flow, runner = build_flow(tmp_path, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}})
 
     step = flow.write(gate="", lap=1)
 
@@ -58,7 +35,7 @@ def test_the_owner_turn_names_the_package_and_the_commands_that_judge_it(tmp_pat
 
 
 def test_a_service_reached_by_two_surfaces_gets_one_module_per_surface(tmp_path: Path) -> None:
-    flow, runner = _flow(tmp_path, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}}, kind="http, web")
+    flow, runner = build_flow(tmp_path, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}}, kind="http, web")
 
     flow.write(gate="", lap=1)
 
@@ -68,8 +45,8 @@ def test_a_service_reached_by_two_surfaces_gets_one_module_per_surface(tmp_path:
 
 
 def test_the_second_surface_red_sends_the_owner_another_lap_naming_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _book_exits(monkeypatch, red_module="services.ledger.web", run=1)
-    flow, _runner = _flow(tmp_path, kind="http,web")
+    seen = book_exits(monkeypatch, red_module="services.ledger.web", run=1)
+    flow, _runner = build_flow(tmp_path, kind="http,web")
 
     step = flow.play(lap=1)
 
@@ -80,7 +57,7 @@ def test_the_second_surface_red_sends_the_owner_another_lap_naming_it(tmp_path: 
 
 
 def test_a_blocked_owner_waits_for_the_operator_and_hears_the_answer_next_lap(tmp_path: Path) -> None:
-    flow, _runner = _flow(tmp_path, {WRITE: lambda _args: {"done": "", "blocked": "which clock does the ledger close on"}})
+    flow, _runner = build_flow(tmp_path, {WRITE: lambda _args: {"done": "", "blocked": "which clock does the ledger close on"}})
 
     step = flow.write(gate="", lap=2)
 
@@ -95,8 +72,8 @@ def test_a_blocked_owner_waits_for_the_operator_and_hears_the_answer_next_lap(tm
 
 
 def test_a_red_check_sends_the_owner_another_lap_with_what_it_printed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _book_exits(monkeypatch, check=1)
-    flow, _runner = _flow(tmp_path)
+    book_exits(monkeypatch, check=1)
+    flow, _runner = build_flow(tmp_path)
 
     step = flow.check(lap=1)
 
@@ -106,8 +83,8 @@ def test_a_red_check_sends_the_owner_another_lap_with_what_it_printed(tmp_path: 
 
 
 def test_a_book_still_red_after_the_last_lap_waits_for_the_operator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _book_exits(monkeypatch, run=1)
-    flow, _runner = _flow(tmp_path)
+    book_exits(monkeypatch, run=1)
+    flow, _runner = build_flow(tmp_path)
 
     step = flow.play(lap=python_book_flow.MAX_LAPS)
 
@@ -117,8 +94,8 @@ def test_a_book_still_red_after_the_last_lap_waits_for_the_operator(tmp_path: Pa
 
 
 def test_a_run_that_could_not_judge_waits_and_runs_again_without_a_lap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _book_exits(monkeypatch, run=python_book_flow.COULD_NOT_JUDGE)
-    flow, runner = _flow(tmp_path)
+    book_exits(monkeypatch, run=python_book_flow.COULD_NOT_JUDGE)
+    flow, runner = build_flow(tmp_path)
 
     step = flow.play(lap=1)
 
@@ -128,8 +105,8 @@ def test_a_run_that_could_not_judge_waits_and_runs_again_without_a_lap(tmp_path:
 
 
 def test_a_green_check_plays_the_book_into_the_run_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _book_exits(monkeypatch)
-    flow, _runner = _flow(tmp_path)
+    seen = book_exits(monkeypatch)
+    flow, _runner = build_flow(tmp_path)
 
     checked = flow.check(lap=1)
     played = flow.play(lap=1)
@@ -140,8 +117,8 @@ def test_a_green_check_plays_the_book_into_the_run_dir(tmp_path: Path, monkeypat
 
 
 def test_a_missing_list_that_is_not_empty_sends_the_owner_another_lap_with_the_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _book_exits(monkeypatch, missing=1)
-    flow, _runner = _flow(tmp_path)
+    seen = book_exits(monkeypatch, missing=1)
+    flow, _runner = build_flow(tmp_path)
 
     step = flow.account(lap=1)
 
@@ -153,8 +130,8 @@ def test_a_missing_list_that_is_not_empty_sends_the_owner_another_lap_with_the_l
 
 
 def test_an_empty_missing_list_renders_the_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _book_exits(monkeypatch)
-    flow, _runner = _flow(tmp_path)
+    book_exits(monkeypatch)
+    flow, _runner = build_flow(tmp_path)
 
     step = flow.account(lap=1)
 
@@ -162,8 +139,8 @@ def test_an_empty_missing_list_renders_the_book(tmp_path: Path, monkeypatch: pyt
 
 
 def test_a_missing_list_still_full_after_the_last_lap_waits_for_the_operator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _book_exits(monkeypatch, missing=1)
-    flow, _runner = _flow(tmp_path)
+    book_exits(monkeypatch, missing=1)
+    flow, _runner = build_flow(tmp_path)
 
     step = flow.account(lap=python_book_flow.MAX_LAPS)
 
@@ -172,8 +149,8 @@ def test_a_missing_list_still_full_after_the_last_lap_waits_for_the_operator(tmp
 
 
 def test_a_run_with_no_source_folder_asks_missing_for_the_roots_of_the_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _book_exits(monkeypatch)
-    flow, _runner = _flow(tmp_path)
+    seen = book_exits(monkeypatch)
+    flow, _runner = build_flow(tmp_path)
     flow.source_folder = ""
 
     flow.account(lap=1)
@@ -185,7 +162,7 @@ def test_a_run_with_no_source_folder_asks_missing_for_the_roots_of_the_book(tmp_
 
 
 def test_the_prompt_makes_the_owner_answer_for_every_file_of_the_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner = _flow(tmp_path)
+    flow, _runner = build_flow(tmp_path)
 
     rendered = _rendered(flow, tmp_path, monkeypatch)
 
@@ -195,8 +172,8 @@ def test_the_prompt_makes_the_owner_answer_for_every_file_of_the_source(tmp_path
 
 
 def test_a_run_that_names_a_stack_copy_plays_the_book_on_it_and_tells_the_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _book_exits(monkeypatch)
-    flow, _runner = _flow(tmp_path)
+    seen = book_exits(monkeypatch)
+    flow, _runner = build_flow(tmp_path)
     flow.stack_copy = "evening"
 
     flow.check(lap=1)
@@ -210,7 +187,7 @@ def test_a_run_that_names_a_stack_copy_plays_the_book_on_it_and_tells_the_owner(
 
 
 def test_a_run_that_names_no_stack_copy_leaves_the_copy_to_the_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner = _flow(tmp_path)
+    flow, _runner = build_flow(tmp_path)
 
     rendered = _rendered(flow, tmp_path, monkeypatch)
 
@@ -219,7 +196,7 @@ def test_a_run_that_names_no_stack_copy_leaves_the_copy_to_the_book(tmp_path: Pa
 
 
 def test_a_service_named_with_a_hyphen_is_told_to_import_its_own_modules_relatively(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    plain, _runner = _flow(tmp_path)
+    plain, _runner = build_flow(tmp_path)
     hyphened = plain.model_copy(update={"service": "ledger-api"})
 
     assert "imports its siblings relatively" not in _rendered(plain, tmp_path, monkeypatch)
@@ -229,7 +206,7 @@ def test_a_service_named_with_a_hyphen_is_told_to_import_its_own_modules_relativ
 
 
 def test_a_green_book_commits_only_its_package(tmp_path: Path) -> None:
-    flow, _runner = _flow(tmp_path)
+    flow, _runner = build_flow(tmp_path)
     repo = flow.root
     git(repo, "init", "-q", "-b", "main")
     (repo / "README.md").write_text("app\n", encoding="utf-8")
@@ -258,7 +235,7 @@ def _rendered(flow: WritePythonBook, tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_the_owner_is_pointed_at_the_other_books_of_the_repo_for_shape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner = _flow(tmp_path)
+    flow, _runner = build_flow(tmp_path)
     for book in ("ledger/service.py", "billing/service.py", "desk/http/service.py", "desk/web/service.py", "notes/README.md"):
         path = flow.root / "services" / book
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -273,7 +250,7 @@ def test_the_owner_is_pointed_at_the_other_books_of_the_repo_for_shape(tmp_path:
 
 
 def test_a_repo_with_no_other_book_names_no_reference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner = _flow(tmp_path)
+    flow, _runner = build_flow(tmp_path)
 
     rendered = _rendered(flow, tmp_path, monkeypatch)
 
@@ -281,7 +258,7 @@ def test_a_repo_with_no_other_book_names_no_reference(tmp_path: Path, monkeypatc
 
 
 def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner = _flow(tmp_path, kind="http,web")
+    flow, _runner = build_flow(tmp_path, kind="http,web")
 
     rendered = _rendered(flow, tmp_path, monkeypatch)
 
@@ -292,7 +269,7 @@ def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_pat
             assert f"python -m ostler.book {verb} {module}\n" in rendered
 
 
-def _workspace_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replies: dict[str, Reply] | None = None) -> tuple[WritePythonBook, ScriptedRunner, Workspace]:
+def _workspacebuild_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replies: dict[str, Reply] | None = None) -> tuple[WritePythonBook, ScriptedRunner, Workspace]:
     laid = lay_out(tmp_path, run_git)
     name_members(tmp_path, monkeypatch, laid)
     runner = ScriptedRunner(replies or {})
@@ -302,7 +279,7 @@ def _workspace_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replies: di
 
 
 def test_in_a_workspace_the_book_is_written_and_committed_in_the_artifacts_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner, laid = _workspace_flow(tmp_path, monkeypatch)
+    flow, _runner, laid = _workspacebuild_flow(tmp_path, monkeypatch)
     api_head = git(laid.api, "rev-parse", "HEAD")
     (laid.artifacts / "services/ledger").mkdir(parents=True)
     (laid.artifacts / "services/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
@@ -334,7 +311,7 @@ def test_in_a_worktree_run_the_book_is_written_and_committed_in_the_artifacts_wo
 
 
 def test_in_a_workspace_the_owner_is_told_both_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner, laid = _workspace_flow(tmp_path, monkeypatch)
+    flow, _runner, laid = _workspacebuild_flow(tmp_path, monkeypatch)
 
     rendered = _rendered(flow, tmp_path, monkeypatch)
 
@@ -343,7 +320,7 @@ def test_in_a_workspace_the_owner_is_told_both_roots(tmp_path: Path, monkeypatch
 
 
 def test_in_a_workspace_the_owner_may_read_the_code_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, runner, laid = _workspace_flow(tmp_path, monkeypatch, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}})
+    flow, runner, laid = _workspacebuild_flow(tmp_path, monkeypatch, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}})
 
     flow.write(gate="", lap=1)
 
@@ -372,3 +349,4 @@ def test_a_book_whose_pointers_all_exist_passes_the_check(tmp_path: Path) -> Non
     gate = python_book_flow.python_book_check(logging.getLogger("test"), root, "services.api", root)
 
     assert gate.exit_code == 0, gate.output
+
