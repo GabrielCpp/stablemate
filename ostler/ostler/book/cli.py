@@ -877,6 +877,9 @@ def cmd_missing(service: Service[Any], args: argparse.Namespace) -> int:
         print(f'{service.name} declares no app: give Service app=App(roots=(...), verified="VERIFIED")')
         return 2
     found = missing_files(service, args.app, tuple(args.under))
+    if not found.total:
+        print(f"no tracked file under {', '.join(args.under or service.app.roots)} in {args.app}: name a folder of the app that git tracks")
+        return 2
     print("## What the book names")
     for path, namers in found.named.items():
         print(f"- {path}: " + ", ".join(f"{name} ({kind})" for name, kind in namers))

@@ -80,6 +80,13 @@ def test_a_service_with_no_app_exits_2_and_says_how_to_declare_one(app, capsys):
     assert 'give Service app=App(roots=(...), verified="VERIFIED")' in capsys.readouterr().out
 
 
+def test_a_folder_that_holds_no_tracked_file_exits_2_and_names_the_folder(app, capsys):
+    assert _run(_service("web/routes/home.tsx"), app, "wbe") == 2
+    out = capsys.readouterr().out
+    assert "no tracked file under wbe" in out
+    assert "nothing missing" not in out
+
+
 def test_an_untracked_file_is_not_listed(app, capsys):
     (app / "web" / "routes" / "draft.tsx").write_text("x\n")
     _run(_service("web/routes/home.tsx", "web/routes/about.tsx", ignore=("*.test.tsx", "*.css")), app)
