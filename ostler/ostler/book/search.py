@@ -14,6 +14,7 @@ from ostler.book.domain import Action, State
 from ostler.book.errors import BookError
 from ostler.book.http import identity_lines
 from ostler.book.model import Defect, Rule
+from ostler.book.screen import Screen
 from ostler.book.service import Service
 
 KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "scene", "decision")
@@ -65,6 +66,17 @@ def defect_lines(defect: Defect[Any, Any]) -> tuple[str, ...]:
     return (f"{defect.status} {defect.message}", *((f"why: {defect.why}",) if defect.why else ()))
 
 
+def screen_lines(service: Service[Any], screen: type[Screen]) -> tuple[str, ...]:
+    lines = screen.describe(service.language).splitlines()
+    seen = set(lines)
+    for language in service.languages[1:]:
+        for line in screen.describe(language).splitlines():
+            if line not in seen:
+                seen.add(line)
+                lines.append(line)
+    return tuple(lines)
+
+
 def items(service: Service[Any], module: str) -> list[Item]:
     out: list[Item] = []
     for endpoint in service.endpoints:
@@ -84,7 +96,7 @@ def items(service: Service[Any], module: str) -> list[Item]:
     for journey in service.journeys:
         out.append(Item("journey", address(journey), journey.__name__, (journey.__name__, *journey.story().splitlines())))
     for screen in service.screens:
-        out.append(Item("screen", address(screen), screen.__name__, tuple(screen.describe(service.language).splitlines())))
+        out.append(Item("screen", address(screen), screen.__name__, screen_lines(service, screen)))
     for axes in service.matrices:
         for scene in axes.scenes:
             out.append(Item("scene", f"{axes.record}:{scene.name}", scene.name, (scene.describe(axes.today),)))

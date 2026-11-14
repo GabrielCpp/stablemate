@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -195,3 +196,12 @@ def _git_identity(monkeypatch):
         monkeypatch.setenv(f"GIT_{role}_NAME", "ostler tests")
         monkeypatch.setenv(f"GIT_{role}_EMAIL", "tests@example.com")
 
+
+@pytest.fixture
+def module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
+    package = tmp_path / "shop_book"
+    (package / "decisions").mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    yield "shop_book"
+    sys.modules.pop("shop_book", None)
