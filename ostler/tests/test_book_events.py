@@ -13,6 +13,7 @@ from typing import Any, Iterator, cast
 import pytest
 
 from ostler.book import Action, Answer, Arrange, BookError, Endpoint, Event, Field, Object, Str
+from ostler.book.check import Finding, check
 from ostler.book.domain import State
 from ostler.book.index import cmd_search_book
 from ostler.book.search import cmd_explain, items
@@ -235,3 +236,48 @@ def test_a_book_with_no_event_keeps_the_index_it_had(module: str):
     kinds = {item.kind for item in items(service, module)}
     assert kinds.isdisjoint({"event", "outside"})
     assert not [line for item in items(service, module) for line in item.lines if line.startswith("emits:")]
+
+
+def _checked(module: str) -> list[Finding]:
+    service = importlib.import_module(f"{module}.service").service
+    return [f for f in check(service, module) if f.name.startswith(("outside", "event", "book"))
+            and not f.problem.startswith("its fixture gives no examples")]
+
+
+def test_a_listener_that_reads_a_field_the_event_lacks_fails_check_and_names_both_books(root: Path):
+    _emitter(root)
+    _listener(root, reads='("ticket_id", "snapshot.severity")')
+    [found] = _checked("services.listener")
+    assert found.blocks
+    assert found.name == "outside services.listener.Opens"
+    assert found.problem == "reads snapshot.severity, which event ticket.changed of services.emitter does not declare"
+
+
+def test_a_listener_of_an_event_nothing_emits_gets_a_finding_that_does_not_fail_check(root: Path):
+    _emitter(root, actions=EMITTER_ACTIONS.replace("    emits = (TicketChanged,)\n", ""))
+    _listener(root)
+    [found] = _checked("services.listener")
+    assert not found.blocks
+    assert "hears ticket.changed, which no action under the root emits" in found.problem
+
+
+def test_a_foreign_event_its_listener_declares_itself_raises_no_such_finding(root: Path):
+    _listener(root, FOREIGN_LISTENER_SERVICE)
+    assert _checked("services.listener") == []
+
+
+def test_an_event_nobody_hears_gets_a_finding_that_does_not_fail_check(root: Path):
+    _emitter(root)
+    [found] = _checked("services.emitter")
+    assert not found.blocks
+    assert found.problem == "is owned by services.emitter and no outside event under the root hears it"
+
+
+def test_two_different_events_of_one_name_fail_check(root: Path):
+    _emitter(root)
+    _listener(root, FOREIGN_LISTENER_SERVICE)
+    [found] = _checked("services.listener")
+    assert found.blocks
+    assert found.name == "event ticket.changed"
+    assert "services.emitter.events.TicketChanged" in found.problem
+    assert "services.listener.service.TicketChanged" in found.problem

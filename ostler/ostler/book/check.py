@@ -252,6 +252,42 @@ def registration_faults(service: Service[Any], module: str) -> list[Finding]:
     return found
 
 
+def event_faults(service: Service[Any], module: str) -> list[Finding]:
+    """What this book's events and outside events say that another book under the root contradicts or leaves unanswered."""
+    from ostler.book.event import bare
+    from ostler.book.eventmap import books, hearers, owner_of
+
+    if not service.events and not any(o.heard is not None for o in service.outside):
+        return []
+    found, skipped = books(module, service)
+    out = [Finding(f"book {name}", f"cannot be loaded, so its events are not read: {why}", blocks=False) for name, why in skipped.items()]
+    declared: dict[str, dict[type, set[str]]] = {}
+    for name, book in found.items():
+        for event in (*book.events, *(o.heard for o in book.outside if o.heard is not None)):
+            declared.setdefault(event.name, {}).setdefault(event, set()).add(name)
+    for event_name, rivals in declared.items():
+        if len(rivals) > 1 and any(module in named for named in rivals.values()):
+            where = " and ".join(f"{cls.__module__}.{cls.__qualname__} ({', '.join(sorted(named))})" for cls, named in rivals.items())
+            out.append(Finding(f"event {event_name}", f"is declared as {len(rivals)} different classes, {where}: import the emitter's class instead of declaring it again"))
+    emitted = {e.name for name, book in found.items() for action in actions_of(book, name) for e in action.emits}
+    for outside in service.outside:
+        event = outside.heard
+        if event is None:
+            continue
+        for path in outside.reads:
+            if bare(path) not in event.paths():
+                out.append(Finding(f"outside {module}.{outside.__name__}",
+                                   f"reads {path}, which event {event.name} of {owner_of(found, event)} does not declare"))
+        if event.name not in emitted and not event.owner:
+            out.append(Finding(f"outside {module}.{outside.__name__}",
+                               f"hears {event.name}, which no action under the root emits: add emits to the action that results in it, "
+                               "or declare the event in this book with owner = <who emits it>", blocks=False))
+    for event in service.events:
+        if not event.owner and not hearers(found, event):
+            out.append(Finding(f"event {event.name}", f"is owned by {module} and no outside event under the root hears it", blocks=False))
+    return out
+
+
 def matrix_faults(service: Service[Any]) -> list[Finding]:
     """An endpoint no lifecycle matrix names has no record to scope its cells to,
     so the exploration plays it once in every state of every record."""
@@ -359,6 +395,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "questions", lambda: found.extend(question_faults(service, module)) or "done")
     attempt(found, "registration", lambda: found.extend(registration_faults(service, module)) or "done")
     attempt(found, "matrices", lambda: found.extend(matrix_faults(service)) or "done")
+    attempt(found, "events", lambda: found.extend(event_faults(service, module)) or "done")
     return found
 
 
