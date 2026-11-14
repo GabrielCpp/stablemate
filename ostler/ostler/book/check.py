@@ -168,7 +168,7 @@ def decision_faults(service: Service[Any], module: str) -> list[Finding]:
             found.append(Finding(name, "no date", blocks=False))
         if not d.elements:
             found.append(Finding(name, "names no element", blocks=False))
-        found += [Finding(name, f"element {e} resolves to no endpoint, record or model name", blocks=False)
+        found += [Finding(name, f"element {e} resolves to no element of the book", blocks=False)
                   for e in d.elements if e not in known]
     return found
 

@@ -77,11 +77,18 @@ def model_names(module: str) -> dict[str, str]:
 
 
 def resolve(service: Service[Any], module: str) -> dict[str, str]:
-    """Each name a decision may cite, and where it lives: an endpoint of the service, one of
-    its records, or a module-level name of the model's rules, lifecycle or cast modules."""
+    """Each name a decision may cite, and where it lives: an endpoint, record, screen, interaction,
+    journey or action of the service, or a module-level name of the model's rules, lifecycle or
+    cast modules. These are the names `explain` finds, plus the records and model names."""
+    from ostler.book.search import actions_of
+
     found = model_names(module)
     found.update({r.__name__: "record" for r in service.records})
+    found.update({a.__name__: "action" for a in actions_of(service, module)})
     found.update({e.__name__: "endpoint" for e in service.endpoints})
+    found.update({i.__name__: "interaction" for i in service.interactions})
+    found.update({j.__name__: "journey" for j in service.journeys})
+    found.update({s.__name__: "screen" for s in service.screens})
     return found
 
 
