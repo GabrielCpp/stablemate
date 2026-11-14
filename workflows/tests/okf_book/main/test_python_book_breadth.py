@@ -51,7 +51,7 @@ def test_a_book_reached_by_no_screen_surface_starts_with_the_owner(tmp_path: Pat
 
 
 def test_a_survey_whose_missing_list_is_empty_sends_the_owner_its_first_lap_with_an_empty_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    book_exits(monkeypatch, unnamed=[])
+    book_exits(monkeypatch, unnamed=[], unexplained=[])
     flow, runner = build_flow(tmp_path, kind="web")
 
     step = flow.survey(gate="", lap=0)
@@ -86,7 +86,7 @@ def test_a_survey_drops_an_entry_the_missing_list_does_not_hold(tmp_path: Path, 
 
 
 def test_a_survey_drops_an_entry_a_skeleton_turn_was_already_handed_and_with_none_left_sends_the_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    book_exits(monkeypatch, unnamed=PAGES, missing=1)
+    book_exits(monkeypatch, unnamed=PAGES, missing=1, unexplained=[])
     flow, _runner = build_flow(tmp_path, {INVENTORY: _inventory(PAGES[0], PAGES[1])}, kind="web")
     _handed(flow, PAGES[0], PAGES[1])
 
@@ -97,7 +97,7 @@ def test_a_survey_drops_an_entry_a_skeleton_turn_was_already_handed_and_with_non
 
 
 def test_a_survey_that_sends_the_owner_after_a_breadth_pass_points_the_gate_at_the_notes_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    book_exits(monkeypatch, unnamed=PAGES, missing=1)
+    book_exits(monkeypatch, unnamed=PAGES, missing=1, unexplained=[])
     flow, _runner = build_flow(tmp_path, {INVENTORY: _inventory()}, kind="web")
     _handed(flow, PAGES[0])
     notes = f"The breadth pass left its notes on the entry files it tried under {flow.run_dir / 'breadth'}/."
@@ -110,7 +110,7 @@ def test_a_survey_that_sends_the_owner_after_a_breadth_pass_points_the_gate_at_t
 
 
 def test_a_failed_inventory_turn_sends_the_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    book_exits(monkeypatch, unnamed=PAGES, missing=1)
+    book_exits(monkeypatch, unnamed=PAGES, missing=1, unexplained=[])
     flow, runner = build_flow(tmp_path, {INVENTORY: _no_reply}, kind="web")
 
     step = flow.survey(gate="", lap=0)
@@ -134,7 +134,8 @@ def test_the_skeleton_state_hands_eight_files_to_one_turn_and_comes_back_for_the
     assert (flow.run_dir / "breadth/handed.txt").read_text(encoding="utf-8").split() == sorted(files[:8])
 
 
-def test_the_last_batch_goes_to_the_check_with_the_lap_it_came_with(tmp_path: Path) -> None:
+def test_the_last_batch_goes_to_the_check_with_the_lap_it_came_with(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    book_exits(monkeypatch, unexplained=[])
     flow, _runner = build_flow(tmp_path, {SKELETON: lambda _args: {"written": [], "left": [], "odd": []}}, kind="web")
 
     step = flow.skeleton(module="services.ledger", entries=PAGES, gate="", lap=2)
@@ -160,7 +161,8 @@ def test_a_skeleton_turns_written_left_and_odd_lines_land_in_the_notes_folder_an
     assert (folder / "handed.txt").read_text(encoding="utf-8").split() == sorted(["ledger/pages/old.tsx", *PAGES[:2]])
 
 
-def test_a_skeleton_turn_that_ends_without_a_reply_still_records_its_batch_as_handed(tmp_path: Path) -> None:
+def test_a_skeleton_turn_that_ends_without_a_reply_still_records_its_batch_as_handed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    book_exits(monkeypatch, unexplained=[])
     flow, _runner = build_flow(tmp_path, {SKELETON: _no_reply}, kind="web")
 
     step = flow.skeleton(module="services.ledger", entries=PAGES, gate="", lap=0)

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 
 BREADTH_DIR = "breadth"
+REASONS_DIR = "reasons"
 
 
 class Skeletons(BaseModel):
@@ -19,6 +20,15 @@ class Skeletons(BaseModel):
     written: list[str] = Field(default_factory=list, description="The name of each Screen class written.")
     left: list[str] = Field(default_factory=list, description="One line per entry file that got no screen: the file, a colon, and why.")
     odd: list[str] = Field(default_factory=list, description="One line per thing a user would find wrong in what you read, such as a text in the wrong language, a typo, a control that does nothing or two screens that name one thing differently: the file, a colon, and what is wrong.")
+
+
+class Reasons(BaseModel):
+    """What a reasons turn wrote and what it could not settle."""
+
+    model_config = ConfigDict(frozen=True, extra="ignore")
+
+    written: list[str] = Field(default_factory=list, description="The slug of each decision file written.")
+    open: list[str] = Field(default_factory=list, description="One line per question added to QUESTIONS.md: the screen's class name, a colon, and the question.")
 
 
 def _no_files_handed(_logger: logging.Logger, *_args: object) -> list[str]:

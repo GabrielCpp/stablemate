@@ -28,7 +28,9 @@ def missing_printed(unnamed: list[str]) -> str:
     return f"{named}\n## Files no element names\n" + "".join(f"- {path}\n" for path in unnamed) + left + f"\n{len(unnamed)} of 9 files are in no element and under no ignore pattern\n"
 
 
-def book_exits(monkeypatch: pytest.MonkeyPatch, red_module: str = "", unnamed: list[str] | None = None, **codes: int) -> list[list[str]]:
+def book_exits(
+    monkeypatch: pytest.MonkeyPatch, red_module: str = "", unnamed: list[str] | None = None, unexplained: list[str] | None = None, **codes: int
+) -> list[list[str]]:
     seen: list[list[str]] = []
 
     def _run(argv: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
@@ -36,6 +38,8 @@ def book_exits(monkeypatch: pytest.MonkeyPatch, red_module: str = "", unnamed: l
         verb, module = argv[3], argv[4]
         code = codes.get(verb, 0) if module == red_module or not red_module else 0
         said = missing_printed(unnamed) if verb == "missing" and unnamed is not None else f"{verb} said cell 7 differs"
+        if verb == "decisions" and unexplained is not None:
+            said = "".join(f"{name}\n" for name in unexplained)
         return subprocess.CompletedProcess(argv, code, stdout=said, stderr="")
 
     monkeypatch.setattr(python_book_flow, "run_tool", _run)
