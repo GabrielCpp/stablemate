@@ -275,15 +275,40 @@ const search = h("input", {
 });
 const assignee = h("select", { id: "list-assignee", "data-testid": "list-assignee", onchange: () => { state.assignee = assignee.value; load(); } });
 users(assignee, t("anyone"));
-const status = h("select", { id: "list-status", "data-testid": "list-status", onchange: () => { state.status = status.value; load(); } });
-status.append(h("option", { value: "" }, t("any")), ...["unscheduled", "scheduled", "overdue"].map((s) => h("option", { value: s }, t(s))));
+const STATUS_CHOICES = [["", t("any")], ...["unscheduled", "scheduled", "overdue"].map((s) => [s, t(s)])];
+const statusList = h("ul", { id: "list-status-options", role: "listbox", "aria-label": t("status"), hidden: true });
+const status = h("button", {
+  type: "button", id: "list-status", "data-testid": "list-status", role: "combobox",
+  "aria-haspopup": "listbox", "aria-expanded": "false", "aria-controls": "list-status-options",
+  onclick: () => setStatusOpen(statusList.hidden),
+}, t("any"));
+
+function setStatusOpen(open) {
+  statusList.hidden = !open;
+  status.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+for (const [value, text] of STATUS_CHOICES) {
+  statusList.append(h("li", {
+    role: "option", "data-value": value,
+    onclick: () => {
+      status.textContent = text;
+      setStatusOpen(false);
+      state.status = value;
+      load();
+    },
+  }, text));
+}
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") setStatusOpen(false);
+});
 
 const adding = form("add", {}, load, () => {});
 main.append(
   h("h1", { "data-testid": "list-title" }, t("title")), banner, adding,
   h("div", {}, h("label", { for: "list-search" }, t("search")), search,
     h("label", { for: "list-assignee" }, t("assignee")), assignee,
-    h("label", { for: "list-status" }, t("status")), status),
+    h("label", { for: "list-status" }, t("status")), status, statusList),
   loading, empty, list, dialogs);
 
 window.addEventListener("online", () => { state.online = true; load(); render(); });
