@@ -62,6 +62,34 @@ ROLES = {
 
 
 @dataclass(frozen=True)
+class Lists:
+    """What a list filled from data holds: `given` matches the request whose answer fills it, `derived` turns the
+    decoded body of that answer into the texts the list shows, in order, and `head` are the labels shown before them."""
+
+    head: tuple[T | str, ...] = ()
+    given: Callable[[Any], bool] | None = None
+    derived: Callable[[Any], list[str]] | None = None
+
+    def __post_init__(self) -> None:
+        if isinstance(self.head, (str, T)):
+            raise BookError("head takes a tuple of labels, not one label")
+        object.__setattr__(self, "head", tuple(T(h) if isinstance(h, str) else h for h in self.head))
+        if (self.given is None) != (self.derived is None):
+            missing, present = ("derived", "given") if self.derived is None else ("given", "derived")
+            raise BookError(f"a list states what it holds with both given and derived; it has {present} and no {missing}")
+        if self.derived is not None and not (self.derived.__doc__ or "").strip():
+            raise BookError(f"the derived function {getattr(self.derived, '__name__', 'derived')} has no docstring: "
+                            "its first line says what the list holds, and search and explain show it")
+
+    def labels(self, lang: str) -> list[str]:
+        return [(T(h) if isinstance(h, str) else h)[lang] for h in self.head]
+
+    def says(self, lang: str) -> str:
+        said = (self.derived.__doc__ or "").strip().splitlines()[0] if self.derived is not None else ""
+        return ", ".join([repr(label) for label in self.labels(lang)] + ([said] if said else []))
+
+
+@dataclass(frozen=True)
 class Component:
     """One thing on a screen. `id` is the accessibility handle a driver finds it
     by (data-testid on the web, a semantics identifier in Flutter). Without an
@@ -75,6 +103,7 @@ class Component:
     per_row: bool = False
     takes: str = ""
     holds: Wire | None = None
+    lists: Lists | None = None
 
     def __post_init__(self) -> None:
         if self.id is None and self.label is None:
@@ -105,12 +134,16 @@ def DateField(id: str | None, label: T | str, does: str = "", takes: str = "", h
 
 
 def Select(id: str | None, label: T | str, does: str = "", takes: str = "", holds: Wire | None = None, *,
-           options: tuple[T | str, ...] = ()) -> Component:
+           options: tuple[T | str, ...] = (), lists: Lists | None = None) -> Component:
     if not isinstance(does, str):
         raise TypeError("options are given by name: Select(id, label, does, options=(...))")
     if isinstance(options, (str, T)):
         raise TypeError("options takes a list of texts, not one text")
-    return Component(id, "select", as_label(label), does, tuple(T(o) if isinstance(o, str) else o for o in options), takes=takes, holds=holds)
+    if options and lists is not None:
+        raise BookError(f"a select with fixed options cannot also derive its list: write options=(...) for a fixed list "
+                        f"or lists=Lists(...) for one filled from data, not both ({id or label})")
+    return Component(id, "select", as_label(label), does, tuple(T(o) if isinstance(o, str) else o for o in options),
+                     takes=takes, holds=holds, lists=lists)
 
 
 def Button(id: str | None, label: T | str | None = None, does: str = "", per_row: bool = False) -> Component:
@@ -230,6 +263,7 @@ class Screen:
         for c in cls.components():
             label = f" {c.label[lang]!r}" if c.label else ""
             opts = "  options: " + ", ".join(o[lang] for o in c.options) if c.options else ""
+            opts = f"  lists: {c.lists.says(lang)}" if c.lists is not None else opts
             row = " (per row)" if c.per_row else ""
             holds = f"  holds {c.holds.describe()} as {c.takes}" if c.holds is not None else ""
             lines.append(f"  {c.found_by(lang):18} {c.kind:9}{label}{row}  {c.does}{opts}{holds}".rstrip())

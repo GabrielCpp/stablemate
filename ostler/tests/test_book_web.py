@@ -18,7 +18,8 @@ from ostler.book.check import spoken
 from ostler.book.model import Model
 from ostler.book.stack import Stack
 from ostler.book.surface import Surface
-from ostler.book.screen import Button, Check, Field, Select, Text
+from ostler.book.browser import request
+from ostler.book.screen import Button, Check, Field, Lists, Select, Text
 
 PAGE = b"""<!doctype html><html><body>
 <h1 id="hello">Hello</h1>
@@ -415,3 +416,35 @@ def test_screens_without_lang_prints_the_first_language_of_the_service(tmp_path:
     refused = run_book(["screens", "services.mini", "--lang", "en"], 0, cwd=tmp_path)
     assert refused.returncode != 0
     assert "fr, es" in refused.stdout + refused.stderr
+
+
+def by_name(users):
+    """the users received, by name"""
+    return sorted(u["name"] for u in users)
+
+
+def test_a_select_given_a_feed_without_a_derivation_is_refused_where_it_is_declared():
+    with pytest.raises(BookError, match="both given and derived.*no derived"):
+        Lists(given=request("GET", "/users"))
+    with pytest.raises(BookError, match="both given and derived.*no given"):
+        Lists(derived=by_name)
+
+
+def test_a_derivation_with_no_docstring_is_refused_where_it_is_declared():
+    with pytest.raises(BookError, match="has no docstring"):
+        Lists(given=request("GET", "/users"), derived=lambda users: [u["name"] for u in users])
+
+
+def test_a_select_given_both_fixed_options_and_a_derived_list_is_refused():
+    derived = Lists(given=request("GET", "/users"), derived=by_name)
+    with pytest.raises(BookError, match="not both"):
+        Select("who", "Who", options=("ana",), lists=derived)
+
+
+def test_the_description_of_a_screen_says_what_a_derived_list_holds():
+    class People(Screen):
+        who = Select("who", T(en="Who", fr="Qui"), "filters by owner",
+                     lists=Lists(head=(T(en="Anyone", fr="Tous"),), given=request("GET", "/users"), derived=by_name))
+
+    assert "lists: 'Anyone', the users received, by name" in People.describe("en")
+    assert "lists: 'Tous', the users received, by name" in People.describe("fr")
