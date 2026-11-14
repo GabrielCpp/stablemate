@@ -66,6 +66,8 @@ class AddTodo(Interaction[Todo]):
     carries = Add
 ```
 
+An interaction that belongs to no screen names no source.
+
 A change that reaches the app from outside its screens, such as the clock moving or the
 network dropping, is an interaction with no `screen`. The fixture it takes is what the user
 types or picks, never the record: the app mints the id and the surface learns it.
