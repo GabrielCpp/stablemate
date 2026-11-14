@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 import pytest
@@ -39,35 +38,6 @@ def warm(ui_book: Path, tmp_path: Path, index_home: Path) -> Path:
     done = ostler_process(ui_book, "doctor", "--json", "--index-dir", str(directory))
     assert done.returncode in (0, 1), done.stderr or done.stdout
     return directory
-
-
-def test_a_deleted_file_still_dangles_every_link_into_it(ui_book: Path, warm: Path):
-    (ui_book / "docs" / "services" / "area" / "rec.md").unlink()
-
-    cached = doctor_report(ui_book, "--index-dir", str(warm))
-    uncached = doctor_report(ui_book, "--no-index")
-
-    dangling = [f for f in cached["findings"] if f["code"] == "dangling-link"]
-    assert {f["ref"] for f in dangling} == {
-        "docs/services/ui/dash.md:12:../area/rec.md",
-        "docs/services/ui/dash.md:12:../area/rec.md#rec"}
-    assert_agree(cached, uncached)
-    assert cached["index"]["hits"] > 0, "the files that did not change are still served warm"
-
-
-def test_a_renamed_file_is_not_served_under_its_old_path(ui_book: Path, warm: Path):
-    """Same bytes, new path: a key on content alone would answer for both."""
-    area = ui_book / "docs" / "services" / "area"
-    shutil.move(area / "rec.md", area / "moved.md")
-
-    cached = doctor_report(ui_book, "--index-dir", str(warm))
-    uncached = doctor_report(ui_book, "--no-index")
-
-    assert {f["ref"] for f in cached["findings"] if f["code"] == "dangling-link"} == {
-        "docs/services/ui/dash.md:12:../area/rec.md",
-        "docs/services/ui/dash.md:12:../area/rec.md#rec"}
-    assert_agree(cached, uncached)
-    assert cached["index"]["hits"] > 0
 
 
 def test_an_edited_config_file_abandons_every_entry(ui_book: Path, tmp_path: Path,

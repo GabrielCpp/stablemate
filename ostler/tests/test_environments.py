@@ -13,11 +13,9 @@ from pathlib import Path
 import pytest
 import yaml
 
-from ostler import doctor
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.environments import checkout, cli, commands, leases, runtime, secrets, spec
 from ostler.environments import render as render_mod
-from ostler.model import load
 from ostler.qa import addresses
 
 SERVICES = Path("docs/services")
@@ -148,19 +146,6 @@ def test_a_misspelt_key_and_a_port_less_address_are_refused(tmp_path: Path) -> N
     errors = spec.load(root).errors
     assert any("`need` is not a service key" in error for error in errors)
     assert any("publishes `site` but names no `port:`" in error for error in errors)
-
-
-def test_doctor_reports_each_stack_problem_on_the_file_it_was_found_in(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    assert not [f for f in doctor.run(load(root)).findings if f.code == "stack-invalid"]
-    _rewrite_stack(root, "web", {"web": {"about": "x", "define": "services/web.yml.j2", "need": ["x"],
-                                         "needs": ["api:queue"]}})
-    found = [(f.path, f.message) for f in doctor.run(load(root)).findings
-             if f.code == "stack-invalid"]
-    assert any(path == "docs/services/web/ops/stack.yml"
-               and message.startswith("service `web`: `need` is not a service key")
-               for path, message in found)
-    assert ("", "web:web needs `api:queue`, which no book defines") in found
 
 
 def test_the_render_names_orders_and_publishes_each_service(tmp_path: Path) -> None:
@@ -678,16 +663,6 @@ def test_a_stack_file_at_the_old_place_names_where_it_moves_to(tmp_path: Path, b
     assert (f"{shown}: is the old place: move it to {moved}, whose paths are read from ops/"
             in spec.load(root).errors)
     assert old not in spec.stack_files(root)
-
-
-def test_doctor_attaches_an_old_place_error_to_the_old_file(tmp_path: Path) -> None:
-    root = _repo(tmp_path)
-    _file(root, f"{SERVICES}/web/stack.yml", "services: {}\n")
-    found = [f for f in doctor.run(load(root)).findings if f.code == "stack-invalid"]
-    assert [(f.path, f.message) for f in found] == [(
-        "docs/services/web/stack.yml",
-        "is the old place: move it to docs/services/web/ops/stack.yml, whose paths are read "
-        "from ops/")]
 
 
 def test_a_template_sees_ops_dir_and_no_longer_book_dir(tmp_path: Path) -> None:

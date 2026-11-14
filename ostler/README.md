@@ -500,23 +500,6 @@ read-only ones** (`graph`, `list`, `trace`, `reach`, `coverage`, …). Incidenta
 thing keeping a host cache warm between refreshes, and a read-only command that left it cold
 would make the next `doctor` pay full price for no reason.
 
-### Reproducing the timings
-
-A speed claim nobody can re-derive is not evidence, so the profiling that steered this work is
-committed as a harness:
-
-```bash
-make bench-doctor DOCS=/path/to/repo-holding-the-book        # human table
-make bench-doctor DOCS=/path/to/repo-holding-the-book JSON=1 # a before/after diff
-```
-
-`DOCS=` names the repo holding the book and is **required — there is no default**: the measured
-book lives outside this repo, and a baked-in path would measure whatever happened to be
-underfoot. The harness reports cold and warm `model.load` and `doctor.run`, the per-check split,
-the components inside `_check_ui`, and the book's shape (file count, bytes, UI nodes, feature
-docs, link targets) alongside them, because a timing without the shape it was taken against is
-not comparable to anything.
-
 ## Python API
 
 The major graph and workflow-facing operations are available in-process through the

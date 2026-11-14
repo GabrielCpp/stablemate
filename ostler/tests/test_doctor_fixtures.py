@@ -52,7 +52,7 @@ def test_an_undeclared_name_the_plan_asks_for_is_told_to_declare_it(repo: Path) 
 
     [found] = _findings(repo, "unknown-story-fixture")
 
-    assert "add a fixture node" in (found.suggestion or "")
+    assert "agents.yml" in (found.suggestion or "")
     assert _findings(repo, "unused-story-fixture") == []
 
 
@@ -130,79 +130,3 @@ def test_a_story_missing_the_section_entirely_reads_as_unwritten(repo: Path) -> 
     assert [f.severity for f in found] == ["error"]
     assert "Fixtures (missing)" in found[0].message
 
-
-BOOK = """\
----
-type: server
-title: Claims
----
-# Claims
-
-## Endpoints
-
-### list-claims
-- method: GET
-- path: /api/claims
-- fixture: {bullet}
-- authorization: an adjuster reads every claim on file.
-"""
-
-BOOK_PATH = "docs/services/area/claims.md"
-
-
-def test_a_book_fixture_the_repo_never_declared_is_an_error(repo: Path) -> None:
-    """The same bar a story's `## Fixtures` is held to, applied where the arrangement now lives."""
-    _declare(repo)
-    write(repo / BOOK_PATH, BOOK.format(bullet="no-such — a state nobody declared"))
-    found = _findings(repo, "unknown-book-fixture")
-    assert [(f.severity, f.ref) for f in found] == [("error", "no-such")]
-    assert "seeded-accounts" in found[0].message
-
-
-def test_a_declared_book_fixture_is_clean(repo: Path) -> None:
-    _declare(repo)
-    write(repo / BOOK_PATH, BOOK.format(bullet="seeded-accounts 2 — two claims on file"))
-    assert _findings(repo, "unknown-book-fixture") == []
-    assert _findings(repo, "qa-fixture-bullet") == []
-
-
-def test_a_hand_written_fixture_with_no_book_node_behind_it_is_a_warning(repo: Path) -> None:
-    """The retirement nudge: a `qa: {fixtures:}` entry is still the permanent fallback tier, but one with no book fixture node behind it is a candidate `ostler qa fixtures migrate` has not yet been run on."""
-    _declare(repo)
-    found = _findings(repo, "unmigrated-fixture-declaration")
-    assert [(f.severity, f.ref) for f in found] == [("warn", "seeded-accounts")]
-
-
-def test_a_hand_written_fixture_with_a_book_node_behind_it_is_clean(repo: Path) -> None:
-    _declare(repo)
-    write(repo / BOOK_PATH, BOOK.format(bullet="seeded-accounts 2 — two claims on file"))
-    write(
-        repo / "docs/services/area/fixtures/seeded-accounts.md",
-        "---\ntype: fixture\ntitle: Seeded accounts\n---\n"
-        "# Seeded accounts\n\n"
-        "- provides:\n"
-        "  - id — the adjuster's id\n\n"
-        "## Steps\n\n"
-        "### seed-it\n\n"
-        "- kind: seed\n"
-        "- run: ./scripts/seed-accounts.sh\n",
-    )
-    assert _findings(repo, "unmigrated-fixture-declaration") == []
-
-
-def test_a_book_fixture_that_is_not_a_reference_is_an_error(repo: Path) -> None:
-    """`Seeded Accounts` could not be a key under `qa: {fixtures:}`, so it names no arrangement."""
-    _declare(repo)
-    write(repo / BOOK_PATH, BOOK.format(bullet="Seeded Accounts"))
-    found = _findings(repo, "qa-fixture-bullet")
-    assert [f.severity for f in found] == ["error"]
-    assert "is not a fixture name" in found[0].message
-
-
-def test_a_book_fixture_bullet_stating_its_own_emptiness_is_clean(repo: Path) -> None:
-    """There is no name here to resolve, so neither code applies."""
-    _declare(repo)
-    write(repo / BOOK_PATH,
-          BOOK.format(bullet="none, because the route is documented against an empty store"))
-    assert _findings(repo, "qa-fixture-bullet") == []
-    assert _findings(repo, "unknown-book-fixture") == []

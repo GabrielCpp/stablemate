@@ -78,19 +78,7 @@ dev = [
     "basedpyright>=1.31",
     "playwright>=1.40",
     "pillow>=10.0",
-    # `scripts/bench_ostler_doctor.py` imports ostler directly — it measures the library,
-    # not the CLI. A bare `uv run` syncs this root and its dev group only, so without the
-    # declaration below the harness resolves ostler purely by accident: it works in a
-    # clone that has run `uv sync --all-packages` and dies with ModuleNotFoundError in a
-    # fresh checkout that has not. Declaring it is what makes `uv run python
-    # scripts/bench_ostler_doctor.py` mean the same thing everywhere.
-    "ostler",
 ]
-
-[tool.uv.sources]
-# The workspace member, not the published wheel — the harness must measure the tree it
-# is committed next to, or an increment's before/after is a diff of two different ostlers.
-ostler = { workspace = true }
 
 # One ruleset for every subproject — ruff is run from this root (`ruff check .`),
 # so member packages deliberately carry no [tool.ruff] of their own.

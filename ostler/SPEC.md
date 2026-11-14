@@ -209,7 +209,7 @@ a colliding id is later minted, **only the full id is ever written into a docume
 ## 7. Conformance and validation (`ostler doctor`)
 
 A bundle is **OKF-conformant** when every non-reserved `.md` parses as frontmatter + body with a
-non-empty `type` (`okf-missing-type` otherwise). On top of conformance, ostler enforces the typed
+non-empty `type` (`missing-type` otherwise). On top of conformance, ostler enforces the typed
 referential-integrity contract over the graph parsed from the markdown:
 
 `cross-epic-seed`, `dangling-seed`, `cross-epic-dependency`, `dangling-dependency`,

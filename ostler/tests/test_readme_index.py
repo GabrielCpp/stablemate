@@ -165,13 +165,3 @@ def test_readme_states_read_only_commands_populate_the_index_too(text: str) -> N
 
 
 
-
-def test_readme_points_at_the_benchmark_harness_and_its_required_book(text: str) -> None:
-    """A speed claim nobody can re-derive is not evidence — and the harness stops rather than measure a default book, so the required argument has to be documented with it."""
-    assert "bench-doctor" in text, "the README never points at `make bench-doctor`"
-    assert near(text, "bench-doctor", "docs="), (
-        "the README does not show the required DOCS= book argument"
-    )
-    assert any_near(text, "bench-doctor", ("required", "no default", "has no default")), (
-        "the README does not say the book argument is required with no default"
-    )

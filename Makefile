@@ -99,21 +99,6 @@ test: ## Run lint and every package suite, exactly as CI does (the check-* guard
 	$(MAKE) test-release
 	$(MAKE) -C paddock test
 
-.PHONY: bench-doctor
-bench-doctor: ## Measure `ostler doctor` against a book: make bench-doctor DOCS=<path> [JSON=1]
-	# The baseline the parse-cache increments are checked against. Every timing steering
-	# that work came from ad-hoc profiling nobody else can reproduce; this target is that
-	# profiling, committed, so a before/after is a diff rather than a paragraph.
-	#
-	# DOCS is required and has no default. The measured book lives outside this repo, so a
-	# baked-in path would measure whatever happened to be underfoot and report a number
-	# nobody can place — stopping is the cheaper failure.
-	@test -n "$(DOCS)" || { \
-	  echo "make bench-doctor: DOCS=<path to the repo holding the book> is required;" >&2; \
-	  echo "  there is no default — the measured book lives outside this repo." >&2; \
-	  exit 2; }
-	uv run python scripts/bench_ostler_doctor.py $(DOCS) $(if $(JSON),--json,)
-
 .PHONY: test-scripts
 test-scripts: ## Run the repo-level guard scripts' own tests
 	# The guards in `scripts/` are the only code here with no package to be tested by, and

@@ -262,7 +262,7 @@ def test_grills_and_artifacts_and_html_mockups_produce_no_finding(repo: Path):
     noise = [f for f in report.findings
              if "docs/milestones/sign-in/" in f.path and f.path != "docs/milestones/sign-in/milestone.md"]
     assert noise == []
-    assert "okf-missing-type" not in {f.code for f in report.findings}
+    assert "missing-type" not in {f.code for f in report.findings}
     assert findings(repo) == []
 
 

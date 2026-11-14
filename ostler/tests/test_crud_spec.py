@@ -111,13 +111,13 @@ def test_stamped_specs_clear_the_doctor_error(repo: Path):
     write(specs_root() / "01-fix-login/plan.md", "# Plan\n")
     write(specs_root() / "01-fix-login/executive.md", "# Executive\n")
     before = doctor.run(load(repo))
-    assert "okf-missing-type" in {f.code for f in before.findings if f.severity == "error"}
+    assert "missing-type" in {f.code for f in before.findings if f.severity == "error"}
 
     for doc in ("plan.md", "executive.md"):
         assert crud.create_spec(specs_root_in(repo), "01-fix-login", doc).ok
 
     after = doctor.run(load(repo))
-    assert "okf-missing-type" not in {f.code for f in after.findings if f.severity == "error"}
+    assert "missing-type" not in {f.code for f in after.findings if f.severity == "error"}
     assert after.errors == 0, [f.message for f in after.findings if f.severity == "error"]
 
 

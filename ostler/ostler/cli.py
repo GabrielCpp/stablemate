@@ -12,12 +12,11 @@ from pathlib import Path
 
 import yaml
 
-from ostler import autofix as autofix_mod, backfill as backfill_mod, coverage, crud, crud_generic, decisions as decisions_mod, doctor, edit, fmt as fmt_mod, graph as graph_mod, ids as ids_mod, layout as layout_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
+from ostler import autofix as autofix_mod, coverage, crud, crud_generic, decisions as decisions_mod, doctor, edit, fmt as fmt_mod, graph as graph_mod, ids as ids_mod, layout as layout_mod, locators, path as path_mod, query as query_mod, reach, register as register_mod, register_import, registry, scaffold as scaffold_mod, select, templates as templates_mod, todo as todo_mod, trace
 from ostler import explain
 from ostler import checks as checks_mod
 from ostler import carve as carve_mod
 from ostler import fragment_carve
-from ostler import census
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
@@ -107,25 +106,10 @@ def _build_parser() -> argparse.ArgumentParser:
         "--no-schema", action="store_true", help="skip JSON Schema validation"
     )
     d.add_argument(
-        "--census", action="store_true",
-        help="classify every doctor code as fired, dormant-clean or dormant-unreachable "
-             "and exit non-zero on an unreachable code with no recorded reason",
-    )
-    d.add_argument(
         "--verify-index", action="store_true", dest="verify_index",
         help="run doctor with the index and without it and diff the two reports; "
              "exit non-zero on any disagreement (one command, for CI)",
     )
-    d.add_argument(
-        "--checkout",
-        action="append",
-        default=[],
-        metavar="REPOSITORY=PATH",
-        help="local checkout a repo://-qualified code: target is checked against; repeat "
-             "per repository. A target naming a repository not given here is reported as "
-             "unreachable-citation rather than checked.",
-    )
-
     ck = sub.add_parser("checks", help="the `verify:` check vocabulary and its signatures")
     ck.add_argument("name", nargs="?", help="one check, instead of all of them")
     ck.add_argument("--json", action="store_true")
@@ -312,30 +296,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     cv.add_argument("--json", action="store_true", help="{covered, total, waived, missing}")
 
-    bf = sub.add_parser(
-        "backfill",
-        help="what the book owes the code: new symbols, changed citations, moved ones",
-    )
-    bfs = bf.add_subparsers(dest="op", required=True)
-    bfp = bfs.add_parser(
-        "plan",
-        help="the stale set — uncovered, drifted, moved and dangling `code:` targets",
-    )
-    bfp.add_argument("--surface", help="scope to one book (docs/services/<surface>)")
-    bfp.add_argument(
-        "--inventory", required=True, metavar="PATH",
-        help="the source inventory to diff against — the same artifact `ostler coverage` reads",
-    )
-    bfp.add_argument("--waivers", metavar="PATH", help="adjudicated non-units, as `coverage`")
-    bfp.add_argument(
-        "--scope", action="append", default=[], metavar="PATH",
-        help="narrow to a subtree; repeatable",
-    )
-    bfp.add_argument("--json", action="store_true", help="{counts, units, errors}")
-    bfp.add_argument(
-        "--check", action="store_true",
-        help="exit non-zero on a non-empty stale set — the CI gate",
-    )
     ne = sub.add_parser("next-epic", help="the next epic with unfinished work")
     ne.add_argument("--json", action="store_true")
     ns = sub.add_parser("next-story", help="the next runnable story in an epic")
@@ -1189,21 +1149,7 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
               f"(its doc roots: {roots})", file=sys.stderr)
         return 2
     wanted = [rel for rel in scope if rel is not None]
-    checkouts = _parse_checkouts(args.checkout)
-    if checkouts is None:
-        return 2
-    def _run_doctor():
-        return doctor.run(
-            graph, epic_filter=args.epic, check_schema=not args.no_schema,
-            checkouts=checkouts,
-        )
-
-    if args.census:
-        result = census.take_census(_run_doctor)
-        _out(census.render(result))
-        return 0
-
-    report = _run_doctor()
+    report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema)
     if wanted:
         report = doctor.scope_to_paths(report, wanted)
     if args.json:
@@ -1232,27 +1178,6 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
             _out(f"  {mark} {fnd.code}: {scope}{fnd.message}")
     _out(f"\n{report.errors} error(s), {report.warnings} warning(s)")
     return 1 if report.errors else 0
-
-
-def _cmd_backfill(graph, args) -> int:
-    """`ostler backfill plan`."""
-    try:
-        data = coverage.load_inventory(args.inventory)
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
-        print(f"ostler backfill: {exc}", file=sys.stderr)
-        return 2
-
-    report = doctor.run(graph, check_schema=False)
-    result = backfill_mod.plan(
-        graph, data,
-        surface=args.surface,
-        waivers=coverage.load_waivers(args.waivers),
-        findings=report.findings,
-        scope=tuple(args.scope),
-    )
-    _out(json.dumps(result.as_dict(), indent=2) if args.json
-         else backfill_mod.render(result))
-    return 1 if (args.check and not result.is_clean) else 0
 
 
 def _cmd_verify_index(cwd: Path | None, args) -> int:
@@ -1830,8 +1755,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 �
             return 2
         _out(json.dumps(result.data, indent=2) if args.json else result.message)
         return 0 if result.ok else 1
-    if c == "backfill":
-        return _cmd_backfill(graph, args)
     if c == "list":
         valid_types = _TYPES + tuple(k.name for k in graph.template_kinds)
         if args.etype is not None and args.etype not in valid_types:
