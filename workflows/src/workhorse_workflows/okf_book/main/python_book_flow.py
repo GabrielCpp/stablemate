@@ -17,7 +17,7 @@ from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.main.nodes.breadth import BREADTH_DIR, Skeletons, breadth_handed, record_breadth
+from workhorse_workflows.okf_book.main.nodes.passes import BREADTH_DIR, Skeletons, pass_handed, record_pass
 from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
 
 WRITE_PROMPT = "main/prompts/write-python-book.md"
@@ -210,7 +210,7 @@ class WritePythonBook(BookFlow):
             lambda: self.agent(INVENTORY_PROMPT, returns=BookEntries, power="medium", timeout=float("inf"), args=args, cwd=self.root, add_dirs=self._add_dirs()),
         )
         found = reply.entries
-        handed = set(self.call(breadth_handed, self.run_dir))
+        handed = set(self.call(pass_handed, self.run_dir, BREADTH_DIR))
         return [entry for entry in found if entry in unnamed and entry not in handed]
 
     def _noted(self, gate: str) -> str:
@@ -228,7 +228,8 @@ class WritePythonBook(BookFlow):
             Skeletons(),
             lambda: self.agent(SKELETON_PROMPT, returns=Skeletons, power="medium", timeout=float("inf"), args=args, cwd=self.root, add_dirs=self._add_dirs()),
         )
-        self.call(record_breadth, self.run_dir, batch, reply)
+        sections = {"Written": reply.written, "Left": reply.left, "Odd for a user": reply.odd}
+        self.call(record_pass, self.run_dir, BREADTH_DIR, batch, sections)
         if rest:
             return Continue(reply, self.skeleton, module=module, entries=rest, gate=gate, lap=lap).because("write the next batch")
         return Continue(reply, self.check, lap=lap).because("check the book")

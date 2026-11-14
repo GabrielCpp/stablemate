@@ -1,4 +1,4 @@
-"""The breadth pass's record on disk: the files a skeleton turn was handed, and the notes of each turn."""
+"""A pass's record on disk: what its turns were handed, and the notes of each turn."""
 from __future__ import annotations
 
 import logging
@@ -25,29 +25,28 @@ def _no_files_handed(_logger: logging.Logger, *_args: object) -> list[str]:
     return []
 
 
-def _batch_handed(_logger: logging.Logger, _run_dir: Path, batch: list[str], *_args: object) -> list[str]:
+def _batch_handed(_logger: logging.Logger, _run_dir: Path, _folder: str, batch: list[str], *_args: object) -> list[str]:
     return sorted(batch)
 
 
-@blueprint.node(stub=_no_files_handed)
-def breadth_handed(logger: logging.Logger, run_dir: Path) -> list[str]:
-    """The files a skeleton turn was already handed, read from the run's breadth folder."""
+@blueprint.node(stub=_no_files_handed, aliases=("breadth_handed",))
+def pass_handed(logger: logging.Logger, run_dir: Path, folder: str) -> list[str]:
+    """What a pass's turns were already handed, read from the pass's folder under the run."""
     del logger
-    handed = run_dir / BREADTH_DIR / "handed.txt"
+    handed = run_dir / folder / "handed.txt"
     if not handed.is_file():
         return []
     return [line for line in handed.read_text(encoding="utf-8").splitlines() if line]
 
 
-@blueprint.node(stub=_batch_handed)
-def record_breadth(logger: logging.Logger, run_dir: Path, batch: list[str], reply: Skeletons) -> list[str]:
-    """Record a batch as handed and write the notes of its skeleton turn under the run's breadth folder."""
-    folder = run_dir / BREADTH_DIR
-    folder.mkdir(parents=True, exist_ok=True)
-    handed = sorted({*breadth_handed(logger, run_dir), *batch})
-    (folder / "handed.txt").write_text("".join(f"{path}\n" for path in handed), encoding="utf-8")
+@blueprint.node(stub=_batch_handed, aliases=("record_breadth",))
+def record_pass(logger: logging.Logger, run_dir: Path, folder: str, batch: list[str], sections: dict[str, list[str]]) -> list[str]:
+    """Record a batch as handed and write the notes of its turn under the pass's folder."""
+    path = run_dir / folder
+    path.mkdir(parents=True, exist_ok=True)
+    handed = sorted({*pass_handed(logger, run_dir, folder), *batch})
+    (path / "handed.txt").write_text("".join(f"{item}\n" for item in handed), encoding="utf-8")
     slug = re.sub(r"[^A-Za-z0-9]", "-", batch[0]) if batch else "empty"
-    sections = (("Written", reply.written), ("Left", reply.left), ("Odd for a user", reply.odd))
-    note = "\n".join(f"## {heading}\n" + "".join(f"- {item}\n" for item in items) for heading, items in sections)
-    (folder / f"{slug}.md").write_text(note, encoding="utf-8")
+    note = "\n".join(f"## {heading}\n" + "".join(f"- {item}\n" for item in items) for heading, items in sections.items())
+    (path / f"{slug}.md").write_text(note, encoding="utf-8")
     return handed
