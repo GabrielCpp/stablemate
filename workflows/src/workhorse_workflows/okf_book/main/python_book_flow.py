@@ -79,6 +79,14 @@ def python_book_check(logger: logging.Logger, root: Path, module: str, app: Path
 
 
 @blueprint.node(stub=_green)
+def python_book_missing(logger: logging.Logger, root: Path, module: str, app: Path, under: str) -> BookGate:
+    """List the tracked source files of the app, under the folder the run names, that no element of one of the book's modules names, and keep the tail of what it printed."""
+    where = ("--under", under) if under else ()
+    done = run_tool(book_command("missing", module, "--app", str(app), *where), cwd=root, logger=logger)
+    return BookGate(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()))
+
+
+@blueprint.node(stub=_green)
 def python_book_run(logger: logging.Logger, root: Path, module: str, out_dir: Path, stack_copy: str = "") -> BookGate:
     """Play one of the book's modules against the live app from the book root, on the stack copy the run names, and keep the tail of what it printed."""
     on_copy = ("--copy", stack_copy) if stack_copy else ()
@@ -99,7 +107,7 @@ def finished_books(root: Path, service: str) -> list[str]:
 
 @dry_run(service="dry-run")
 class WritePythonBook(BookFlow):
-    """Sends a service's book owner until the book's check and run both pass, then commits the book's package."""
+    """Sends a service's book owner until the book's check and run both pass and no source file is left unnamed, then commits the book's package."""
 
     service: str = ""
     kind: str = "cli"
@@ -169,6 +177,7 @@ class WritePythonBook(BookFlow):
             "source_folder": self.source_folder,
             "book_root": self.root.as_posix(),
             "source_root": self.source_root.as_posix(),
+            "app_root": self.code_root.as_posix(),
             "references": finished_books(self.root, self.service),
             "stack_copy": self.stack_copy,
             "gate": gate,
@@ -197,7 +206,16 @@ class WritePythonBook(BookFlow):
             gate = self.call(python_book_run, self.root, module, self.run_dir / "book-run" / module, self.stack_copy)
             if gate.exit_code != 0:
                 return self._judged("run", module, gate, lap, self.play)
-        return Continue(gate, self.render, lap=lap).because("the book plays green")
+        return Continue(gate, self.account, lap=lap).because("the book plays green")
+
+    def account(self, lap: int) -> Continue[...] | Await[...]:
+        """List the app's source files each of the book's modules names nowhere. An empty list renders the book, and the first module with a file left sends the owner another lap."""
+        gate = BookGate(exit_code=0)
+        for module in self.modules:
+            gate = self.call(python_book_missing, self.root, module, self.code_root, self.source_folder)
+            if gate.exit_code != 0:
+                return self._judged("missing", module, gate, lap, self.account)
+        return Continue(gate, self.render, lap=lap).because("no source file is left unnamed")
 
     def _judged(self, verb: str, module: str, gate: BookGate, lap: int, retry: Callable[..., Transition]) -> Continue[...] | Await[...]:
         said = f"`python -m ostler.book {verb} {module}` exited {gate.exit_code}:\n\n{gate.output}"

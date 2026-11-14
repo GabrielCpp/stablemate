@@ -48,13 +48,20 @@ The last lap ended on this:
 {{ gate }}
 {% endif %}
 
-You are done when every `check` and `run` below exits 0, from the book root, and each
+The book answers for every file under `{{ source_root }}/`. The `source` of the element that
+describes a file names it: a screen, an interaction, an endpoint or a record. A file that holds
+no behaviour a user reaches, such as a test, a generated file or a style sheet, is matched
+instead by a pattern in the service's `App(ignore=...)`. A file that holds a page, a route or a
+command is never ignored. It gets its element.
+
+You are done when every `check`, `run` and `missing` below exits 0, from the book root, and each
 `index` has rewritten its `index.tsv`:
 
 ```
 {% for module in modules %}
 python -m ostler.book check {{ module }}
 python -m ostler.book run {{ module }}{% if stack_copy %} --copy {{ stack_copy }}{% endif %}
+python -m ostler.book missing {{ module }} --app {{ app_root }}{% if source_folder %} --under {{ source_folder }}{% endif %}
 python -m ostler.book index {{ module }}
 {% endfor %}
 ```

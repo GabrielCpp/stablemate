@@ -135,8 +135,63 @@ def test_a_green_check_plays_the_book_into_the_run_dir(tmp_path: Path, monkeypat
     played = flow.play(lap=1)
 
     assert isinstance(checked, Continue) and checked.state == "play"
-    assert isinstance(played, Continue) and played.state == "render"
+    assert isinstance(played, Continue) and played.state == "account"
     assert seen[1][3:] == ["run", "services.ledger", "--out", str(flow.run_dir / "book-run" / "services.ledger")]
+
+
+def test_a_missing_list_that_is_not_empty_sends_the_owner_another_lap_with_the_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _book_exits(monkeypatch, missing=1)
+    flow, _runner = _flow(tmp_path)
+
+    step = flow.account(lap=1)
+
+    assert isinstance(step, Continue) and step.state == "write"
+    assert step.params["lap"] == 2
+    assert "`python -m ostler.book missing services.ledger` exited 1" in cast("str", step.params["gate"])
+    assert "missing said cell 7 differs" in cast("str", step.params["gate"])
+    assert seen[0][3:] == ["missing", "services.ledger", "--app", str(flow.code_root), "--under", "ledger"]
+
+
+def test_an_empty_missing_list_renders_the_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _book_exits(monkeypatch)
+    flow, _runner = _flow(tmp_path)
+
+    step = flow.account(lap=1)
+
+    assert isinstance(step, Continue) and step.state == "render"
+
+
+def test_a_missing_list_still_full_after_the_last_lap_waits_for_the_operator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _book_exits(monkeypatch, missing=1)
+    flow, _runner = _flow(tmp_path)
+
+    step = flow.account(lap=python_book_flow.MAX_LAPS)
+
+    assert isinstance(step, Await) and step.path == flow.run_dir / python_book_flow.RED_GATE
+    assert "missing said cell 7 differs" in step.questions
+
+
+def test_a_run_with_no_source_folder_asks_missing_for_the_roots_of_the_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _book_exits(monkeypatch)
+    flow, _runner = _flow(tmp_path)
+    flow.source_folder = ""
+
+    flow.account(lap=1)
+    rendered = _rendered(flow, tmp_path, monkeypatch)
+
+    assert "--under" not in seen[0]
+    assert f"python -m ostler.book missing services.ledger --app {flow.code_root}\n" in rendered
+    assert "--under" not in rendered
+
+
+def test_the_prompt_makes_the_owner_answer_for_every_file_of_the_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner = _flow(tmp_path)
+
+    rendered = _rendered(flow, tmp_path, monkeypatch)
+
+    assert f"answers for every file under `{flow.source_root}/`" in rendered
+    assert f"python -m ostler.book missing services.ledger --app {flow.code_root} --under ledger\n" in rendered
+    assert "never ignored" in rendered
 
 
 def test_a_run_that_names_a_stack_copy_plays_the_book_on_it_and_tells_the_owner(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
