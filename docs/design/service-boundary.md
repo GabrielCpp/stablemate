@@ -327,8 +327,10 @@ The second row has no check behind it. It becomes the measure of slice 5.
    Decided: the owner's book arranges the needed state on the shared environment. Basis:
    every book does this today for its own service. If wrong: the needed state concept.
 4. **A service tells few states of a foreign record apart (F5).** Decided: one situation
-   per class its code distinguishes. Basis: none measured. If wrong: the list of needed
-   states grows, and the price in row 2.
+   per class its code distinguishes. Basis, measured on the fixture's gateway: 981 lines of
+   code that branch on a foreign state in one place, a label per ticket status, and filter
+   on one, published articles. Its book restating the neighbours is 3,812 lines. If wrong
+   for another service: the list of needed states grows, and the price in row 2.
 5. **Arranging a state through the owner's book costs seconds.** Basis: the ticket book
    plays 406 situations in one run. Measured in slice 1.
 6. **Which services a service calls can be read from its code.** Basis: none. If wrong: the
