@@ -6,6 +6,7 @@ import re
 import socket
 import sys
 import threading
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Iterator, cast
@@ -448,3 +449,73 @@ def test_the_description_of_a_screen_says_what_a_derived_list_holds():
 
     assert "lists: 'Anyone', the users received, by name" in People.describe("en")
     assert "lists: 'Tous', the users received, by name" in People.describe("fr")
+
+
+class People(Screen):
+    who = Select("who", "Who", lists=Lists(head=("Anyone",), given=request("GET", "/users"), derived=by_name))
+
+
+@contextmanager
+def _people_page(sort: bool = True) -> Iterator[Browser]:
+    ordered = "us.sort((a, b) => a.name.localeCompare(b.name));" if sort else ""
+    body = (
+        '<!doctype html><html><body><select id="who" data-testid="who"><option value="">Anyone</option></select>'
+        "<script>fetch('/users').then(r => r.json()).then(us => {" + ordered +
+        "for (const u of us) document.getElementById('who').append(new Option(u.name, u.name));"
+        "});</script></body></html>").encode()
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: object) -> None:
+            return
+
+        def do_GET(self) -> None:
+            users = self.path == "/users"
+            payload = b'[{"name": "bo"}, {"name": "ana"}]' if users else body
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json" if users else "text/html")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    found = Browser(f"http://127.0.0.1:{server.server_address[1]}", "en", lang_query=None)
+    found.feeding((People,))
+    found.start()
+    try:
+        yield found
+    finally:
+        found.stop()
+        server.shutdown()
+        server.server_close()
+
+
+def _shows_the_users(browser: Browser) -> None:
+    browser.page.wait_for_function("document.getElementById('who').options.length === 3")
+
+
+def test_a_pick_in_a_derived_list_passes_when_the_page_shows_what_the_book_derives():
+    with _people_page() as browser:
+        browser.open("/")
+        _shows_the_users(browser)
+        browser.fill(People.who, "ana")
+        assert browser.list_faults() == []
+        assert browser.lists_read() == {"People.who"}
+
+
+def test_a_pick_in_a_derived_list_fails_when_the_page_shows_the_users_in_the_order_received():
+    with _people_page(sort=False) as browser:
+        browser.open("/")
+        _shows_the_users(browser)
+        browser.fill(People.who, "ana")
+        assert browser.list_faults() == [
+            "the list People.who shows ['Anyone', 'bo', 'ana'], the book derives ['Anyone', 'ana', 'bo']"]
+
+
+def test_a_pick_made_before_the_page_received_the_answer_is_a_fault_that_says_so():
+    with _people_page() as browser:
+        with browser.holding(request("GET", "/users")):
+            browser.open("/")
+            browser.fill(People.who, "")
+            assert browser.list_faults() == [
+                "the page received no answer to GET /users before the pick in People.who"]

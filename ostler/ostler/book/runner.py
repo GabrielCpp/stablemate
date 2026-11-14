@@ -82,6 +82,11 @@ def attempt(step: object, model: Model, surface: Surface, baseline: tuple[object
         note = "the page sent a request no screen declares: " + ", ".join(stray)
         result.note = f"{result.note}; {note}" if result.note else note
         result.ok = False
+    faults = list_faults(surface)
+    if faults and not result.skipped:
+        note = "; ".join(faults)
+        result.note = f"{result.note}; {note}" if result.note else note
+        result.ok = False
     return result
 
 
@@ -92,6 +97,11 @@ def offset(surface: Surface) -> float | None:
 
 def strays(surface: Surface) -> list[str]:
     ask = getattr(surface, "strays", None)
+    return list(cast(Callable[[], Iterable[str]], ask)()) if callable(ask) else []
+
+
+def list_faults(surface: Surface) -> list[str]:
+    ask = getattr(surface, "list_faults", None)
     return list(cast(Callable[[], Iterable[str]], ask)()) if callable(ask) else []
 
 

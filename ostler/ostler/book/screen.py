@@ -249,6 +249,11 @@ class Screen:
         return [v for v in vars(cls).values() if isinstance(v, Component) and v is not cls.root]
 
     @classmethod
+    def attributes(cls) -> list[tuple[str, Component]]:
+        """Each component with the attribute it sits on."""
+        return [(name, v) for name, v in vars(cls).items() if isinstance(v, Component) and v is not cls.root]
+
+    @classmethod
     def describe(cls, lang: str) -> str:
         title = as_label(cls.name)
         lines = [f"# {(title[lang] if title else '') or cls.__name__}" + (f"  ({cls.route})" if cls.route else "")]

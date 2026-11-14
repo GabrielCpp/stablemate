@@ -32,6 +32,7 @@ class PageSurface:
         return Browser(environment.address(self.host), lang, locales=self.locales)
 
     def start(self) -> None:
+        self.browser.feeding(self.screens)
         self.browser.start()
         api = next((screen.api for screen in self.screens if screen.api), "")
         if api:
@@ -84,6 +85,13 @@ class PageSurface:
         """The product API requests the page sent that no screen declares."""
         declared = [wanted for screen in self.screens for wanted in screen.sends]
         return [f"{r.method} {urlsplit(r.url).path}" for r in self.browser.taken() if not any(w(r) for w in declared)]
+
+    def list_faults(self) -> list[str]:
+        """The lists a pick found different from what the book derives."""
+        return self.browser.list_faults()
+
+    def lists_read(self) -> frozenset[str]:
+        return self.browser.lists_read()
 
     def wrong_labels(self, lang: str, screens: tuple[type[Screen], ...] | None = None) -> str | None:
         return self.browser.wrong_labels(lang, self.screens if screens is None else screens)

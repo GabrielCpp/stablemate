@@ -86,6 +86,11 @@ class Browser:
         self._prefix: str | None = None
         self._recording = ""
         self._began = 0.0
+        self._screens: tuple[type[Screen], ...] = ()
+        self._feeds: tuple[Wanted, ...] = ()
+        self._kept: dict[Wanted, Any] = {}
+        self._faults: list[str] = []
+        self._read: set[str] = set()
 
     def start(self) -> None:
         try:
@@ -116,6 +121,7 @@ class Browser:
         self._began = time.monotonic()
         if self._prefix is not None:
             self.watching(self._prefix)
+        self._listen()
 
     def begin(self, name: str) -> None:
         """Starts a recording named `name` in a fresh context, when a video directory is set. The page is blank."""
@@ -156,6 +162,56 @@ class Browser:
 
         self.context.on("request", note)
 
+    def feeding(self, screens: tuple[type[Screen], ...]) -> None:
+        """Keeps, for each request a list of these screens is given by, the last answer the page receives."""
+        self._screens = screens
+        self._feeds = tuple(c.lists.given for screen in screens for c in screen.components()
+                            if c.lists is not None and c.lists.given is not None)
+        if self.context is not None:
+            self._listen()
+
+    def _listen(self) -> None:
+        if not self._feeds:
+            return
+
+        def keep(response: Any) -> None:
+            for wanted in self._feeds:
+                if wanted(response.request):
+                    self._kept[wanted] = response
+
+        self.context.on("response", keep)
+
+    def list_faults(self) -> list[str]:
+        """The differences found between a list and what the book derives since the last time this was asked."""
+        faults, self._faults = self._faults, []
+        return faults
+
+    def lists_read(self) -> frozenset[str]:
+        """The lists, by screen and attribute, a pick has judged."""
+        return frozenset(self._read)
+
+    def _named(self, component: Component) -> str:
+        for screen in self._screens:
+            for name, found in screen.attributes():
+                if found is component:
+                    return f"{screen.__name__}.{name}"
+        return component.found_by(self.lang)
+
+    def _judge(self, component: Component, found: Any) -> None:
+        lists = component.lists
+        assert lists is not None and lists.given is not None and lists.derived is not None
+        name = self._named(component)
+        self._read.add(name)
+        kept = self._kept.get(lists.given)
+        if kept is None:
+            self._faults.append(f"the page received no answer to {getattr(lists.given, 'text', 'the request')} "
+                                f"before the pick in {name}")
+            return
+        derived = [*lists.labels(self.lang), *lists.derived(kept.json())]
+        shown = self.labels(found)
+        if shown != derived:
+            self._faults.append(f"the list {name} shows {shown}, the book derives {derived}")
+
     def taken(self) -> list[Any]:
         """The requests recorded since the last time this was asked."""
         seen, self._seen = self._seen, []
@@ -163,6 +219,7 @@ class Browser:
 
     def open(self, route: str) -> None:
         query = "" if self.lang_query is None or not self.lang else f"?{self.lang_query}={self.lang}"
+        self._kept.clear()
         self.page.goto(f"{self.base}{route}{query}")
 
     def _scope(self, within: Component | None) -> Any:
@@ -205,6 +262,8 @@ class Browser:
                     raise
                 raise CannotReach(f"{component.found_by(self.lang)} does not take {value!r}") from None
             return
+        if component.lists is not None:
+            self._judge(component, found)
         offered = found.evaluate("el => [...el.options].map(o => o.value)")
         if value not in offered:
             raise CannotReach(f"{component.found_by(self.lang)} offers only {offered}")
@@ -218,6 +277,11 @@ class Browser:
 
     def value(self, component: Component, within: Component | None = None) -> str:
         return self.locate(component, within=within).input_value()
+
+    @staticmethod
+    def labels(found: Any) -> list[str]:
+        """The texts a native select shows, in order."""
+        return found.evaluate("el => [...el.options].map(o => o.text)")
 
     def offered(self, component: Component, within: Component | None = None) -> list[str]:
         return self.locate(component, within=within).evaluate("el => [...el.options].map(o => o.value)")
