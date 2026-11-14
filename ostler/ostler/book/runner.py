@@ -234,7 +234,46 @@ def listed(step: Listed, model: Model, surface: Surface, baseline: tuple[object,
     return StepResult(step, None, None, model.rows(), rows, ok, note)
 
 
+def expectations(request: object, model: Model) -> dict[str, tuple[list[str], list[str]]]:
+    """For each list of the request's screen that states who belongs or who never does, what the model says before the
+    step moves it, for the person taking the step."""
+    screen = getattr(type(request), "screen", None)
+    if screen is None:
+        return {}
+    by = getattr(request, "by", None)
+    wanted: dict[str, tuple[list[str], list[str]]] = {}
+    for attribute, component in screen.attributes():
+        lists = component.lists
+        if lists is None or (lists.holds is None and lists.never is None):
+            continue
+        where = f"{screen.__name__}.{attribute}"
+        try:
+            belong = list(lists.holds(model, by)) if lists.holds is not None else []
+            never = list(lists.never(model, by)) if lists.never is not None else []
+        except Exception as crash:
+            raise BookError(f"the list {where} cannot say who belongs: {type(crash).__name__}: {crash}") from None
+        wanted[where] = (belong, never)
+    return wanted
+
+
+def hand_over(surface: Surface, wanted: dict[str, tuple[list[str], list[str]]]) -> None:
+    ask = getattr(surface, "expecting", None)
+    if callable(ask):
+        ask(wanted)
+
+
 def perform(step: object, request: object, model: Model, surface: Surface) -> StepResult:
+    wanted = expectations(request, model)
+    if wanted:
+        hand_over(surface, wanted)
+    try:
+        return move(step, request, model, surface)
+    finally:
+        if wanted:
+            hand_over(surface, {})
+
+
+def move(step: object, request: object, model: Model, surface: Surface) -> StepResult:
     model_outcome = spoken(surface, model.perform(request))
     reduced = trace(model)
     try:

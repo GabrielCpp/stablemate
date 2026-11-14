@@ -494,6 +494,10 @@ def not_me(model, by):
     return [by.handle]
 
 
+class Members(Screen):
+    who = Select("who", "Who", lists=Lists(head=("Anyone",), holds=owners, never=not_me))
+
+
 def test_the_description_of_a_screen_says_who_belongs_in_a_list_and_who_never_does():
     class Owners(Screen):
         who = Select("who", T(en="Who", fr="Qui"), "filters by owner",
@@ -560,6 +564,127 @@ def test_a_pick_in_a_derived_list_fails_when_the_page_shows_the_users_in_the_ord
         browser.fill(People.who, "ana")
         assert browser.list_faults() == [
             "the list People.who shows ['Anyone', 'bo', 'ana'], the book derives ['Anyone', 'ana', 'bo']"]
+
+
+def _expects(holds: list[str], never: list[str]) -> dict:
+    return {"Members.who": (holds, never)}
+
+
+def test_a_pick_passes_when_everyone_who_belongs_is_offered_among_entries_the_book_never_named():
+    with _people_page(screens=(Members,)) as browser:
+        browser.open("/")
+        _shows_the_users(browser)
+        browser.expecting(_expects(["ana"], ["zed"]))
+        browser.fill(Members.who, "ana")
+        assert browser.list_faults() == []
+        assert browser.lists_read() == {"Members.who"}
+
+
+def test_a_pick_fails_when_someone_who_belongs_is_missing_and_the_note_names_the_list_and_who():
+    with _people_page(screens=(Members,)) as browser:
+        browser.open("/")
+        _shows_the_users(browser)
+        browser.expecting(_expects(["ana", "cy"], []))
+        browser.fill(Members.who, "ana")
+        assert browser.list_faults() == ["the list Members.who misses ['cy'], which belong in it"]
+
+
+def test_a_pick_fails_when_someone_who_must_never_be_in_the_list_is_offered_and_the_note_names_who():
+    with _people_page(screens=(Members,)) as browser:
+        browser.open("/")
+        _shows_the_users(browser)
+        browser.expecting(_expects([], ["bo", "zed"]))
+        browser.fill(Members.who, "ana")
+        assert browser.list_faults() == ["the list Members.who shows ['bo'], which must never be in it"]
+
+
+def test_a_list_picked_in_outside_a_step_is_judged_on_its_derived_claim_alone():
+    class Both(Screen):
+        who = Select("who", "Who", lists=Lists(head=("Anyone",), given=request("GET", "/users"), derived=by_name,
+                                                holds=owners, never=not_me))
+
+    with _people_page(sort=False, screens=(Both,)) as browser:
+        browser.open("/")
+        _shows_the_users(browser)
+        browser.fill(Both.who, "ana")
+        assert browser.list_faults() == [
+            "the list Both.who shows ['Anyone', 'bo', 'ana'], the book derives ['Anyone', 'ana', 'bo']"]
+
+
+class Look(Screen):
+    who = Select("who", "Who", lists=Lists(holds=owners, never=not_me))
+
+
+class Looks:
+    screen = Look
+
+    def __init__(self, by: object) -> None:
+        self.by = by
+
+
+class Keeper:
+    def __init__(self) -> None:
+        self.todos = [type("Todo", (), {"assignee": "ana"})()]
+        self.today = None
+
+    def perform(self, request: object):
+        from ostler.book.outcome import Done
+
+        self.todos = []
+        return Done(())
+
+    def rows(self):
+        return ()
+
+
+class Watcher:
+    name = "stub"
+
+    def __init__(self) -> None:
+        self.handed: list[dict] = []
+
+    def expecting(self, expectations: dict) -> None:
+        self.handed.append(dict(expectations))
+
+    def perform(self, request: object):
+        from ostler.book.outcome import Done
+
+        return Done(())
+
+    def rows(self):
+        return ()
+
+
+def test_who_belongs_is_taken_from_the_model_before_the_step_changes_it():
+    from ostler.book.cast import Actor
+    from ostler.book.runner import perform
+
+    model, surface = Keeper(), Watcher()
+    perform("look", Looks(Actor("bo")), cast(Model, model), cast(Surface, surface))
+    assert surface.handed == [{"Look.who": (["ana"], ["bo"])}, {}]
+    assert model.todos == []
+
+
+def test_a_step_of_no_screen_hands_the_surface_nothing():
+    from ostler.book.runner import perform
+
+    class Elsewhere:
+        screen = None
+        by = None
+
+    surface = Watcher()
+    perform("elsewhere", Elsewhere(), cast(Model, Keeper()), cast(Surface, surface))
+    assert surface.handed == []
+
+
+def test_a_claim_that_raises_fails_the_step_before_the_model_moves_and_the_note_names_the_list_and_the_error():
+    from ostler.book.runner import attempt
+
+    model = Keeper()
+    done = attempt(Looks(None), cast(Model, model), cast(Surface, Watcher()))
+    assert not done.ok
+    assert "the list Look.who" in done.note and "AttributeError" in done.note
+    assert len(model.todos) == 1
 
 
 def test_a_pick_made_before_the_page_received_the_answer_is_a_fault_that_says_so():

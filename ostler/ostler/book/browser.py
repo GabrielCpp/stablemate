@@ -91,6 +91,7 @@ class Browser:
         self._kept: dict[Wanted, Any] = {}
         self._faults: list[str] = []
         self._read: set[str] = set()
+        self._expected: dict[str, tuple[list[str], list[str]]] = {}
 
     def start(self) -> None:
         try:
@@ -197,11 +198,29 @@ class Browser:
                     return f"{screen.__name__}.{name}"
         return component.found_by(self.lang)
 
+    def expecting(self, expectations: Mapping[str, tuple[list[str], list[str]]]) -> None:
+        """Hands over, for each list by screen and attribute, the texts it must show and the texts it must not, for the
+        picks that follow. An empty mapping drops them."""
+        self._expected = dict(expectations)
+
     def _judge(self, component: Component, shown: list[str]) -> None:
         lists = component.lists
-        assert lists is not None and lists.given is not None and lists.derived is not None
+        assert lists is not None
         name = self._named(component)
         self._read.add(name)
+        if lists.derived is not None:
+            self._judge_derived(component, name, shown)
+        belong, never = self._expected.get(name, ([], []))
+        missing = [text for text in dict.fromkeys(belong) if text not in shown]
+        if missing:
+            self._faults.append(f"the list {name} misses {missing}, which belong in it")
+        forbidden = [text for text in dict.fromkeys(never) if text in shown]
+        if forbidden:
+            self._faults.append(f"the list {name} shows {forbidden}, which must never be in it")
+
+    def _judge_derived(self, component: Component, name: str, shown: list[str]) -> None:
+        lists = component.lists
+        assert lists is not None and lists.given is not None and lists.derived is not None
         kept = self._kept.get(lists.given)
         if kept is None:
             self._faults.append(f"the page received no answer to {getattr(lists.given, 'text', 'the request')} "

@@ -4,7 +4,7 @@ is performed and what the rows read as."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 from urllib.parse import urlsplit
 
 from ostler.book.browser import Browser
@@ -89,6 +89,10 @@ class PageSurface:
     def list_faults(self) -> list[str]:
         """The lists a pick found different from what the book derives."""
         return self.browser.list_faults()
+
+    def expecting(self, expectations: Mapping[str, tuple[list[str], list[str]]]) -> None:
+        """Hands the browser, per list, who must be offered and who must not, for the picks of one step."""
+        self.browser.expecting(expectations)
 
     def lists_read(self) -> frozenset[str]:
         return self.browser.lists_read()
