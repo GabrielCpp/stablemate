@@ -4,10 +4,11 @@ row into the edit form or opens the remove dialog."""
 from ostler.book import Phase, Screen, Stored, T, Transition, When, request
 from ostler.book.screen import Banner, Button, Select, Spinner, Text
 
-from .labels import ANYONE, ASSIGNEE, STATUS, STATUSES
+from .labels import ASSIGNEE, STATUS, STATUSES
+from .users import FILTER, RECEIVED
 
 search = Text("list-search", T(en="Search", fr="Rechercher"), "filters by title or description as you type")
-assignee = Select("list-assignee", ASSIGNEE, "filters by owner", options=(ANYONE, "ana", "bo"))
+assignee = Select("list-assignee", ASSIGNEE, "filters by owner", lists=FILTER)
 status = Select("list-status", STATUS, "filters by derived status", options=(T(en="Any", fr="Tous"),) + STATUSES)
 loading = Spinner("list-loading", "the first fetch is out")
 empty = Text("list-empty", T(en="Nothing to do", fr="Rien à faire"), "the fetch returned no row")
@@ -30,7 +31,7 @@ offline_phase = Phase("offline", shows=(offline, rows), disabled=(remove,),
 class ListPage(Screen):
     source = ("web/index.html", "web/app.js")
     api = "/todos"
-    sends = (request("GET", "/todos"),)
+    sends = (request("GET", "/todos"), RECEIVED)
     route = "/"
     name = T(en="Todos", fr="Tâches")
     first = True

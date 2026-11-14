@@ -43,8 +43,11 @@ class TodoWeb(PageSurface):
         self._app_ids.clear()
 
     def open(self) -> None:
-        with self._listed():
-            self.browser.open(ListPage.route)
+        with self.browser.answered(answer("GET", "/users")) as users:
+            with self._listed():
+                self.browser.open(ListPage.route)
+        self.browser.page.wait_for_function(
+            "n => document.querySelector('[data-testid=\"list-assignee\"]').options.length === n", arg=len(users.json()) + 1)
 
     def today(self) -> date:
         return self.backend.today()

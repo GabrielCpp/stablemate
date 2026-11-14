@@ -3,14 +3,15 @@
 from ostler.book import Field as Wire, Phase, Screen, Str, Stored, T, Transition, When, request
 from ostler.book.screen import Button, DateField, Field, Select, Spinner, Text, TextArea
 
-from .labels import ASSIGNEE, DESCRIPTION, DUE, NOBODY, SAVE, TITLE
+from .labels import ASSIGNEE, DESCRIPTION, DUE, SAVE, TITLE
+from .users import FORM, RECEIVED
 
 form = Text("edit-form", does="the form element that replaces the row")
 title = Field("todo-title", TITLE)
 description = TextArea("todo-description", DESCRIPTION)
 due = DateField("todo-due", DUE, takes="due_on", holds=Wire(Str(format="date"), required=False))
 clear_due = Button("todo-due-clear", T(en="Clear due date", fr="Effacer l'échéance"), "empties the date and marks it cleared")
-assignee = Select("todo-assignee", ASSIGNEE, options=(NOBODY, "ana", "bo"))
+assignee = Select("todo-assignee", ASSIGNEE, lists=FORM)
 save = Button("todo-save", SAVE, "PATCH /todos/{id} with the changed fields only; a cleared date is null")
 cancel = Button("todo-cancel", T(en="Cancel", fr="Annuler"), "the row comes back unchanged")
 saving = Spinner("todo-saving")
@@ -24,7 +25,7 @@ refused = Phase("refused", shows=(error,), because="the fields keep what was typ
 class EditForm(Screen):
     source = ("web/index.html", "web/app.js")
     api = "/todos"
-    sends = (request("PUT", "/todos"),)
+    sends = (request("PUT", "/todos"), RECEIVED)
     name = T(en="Edit todo", fr="Modifier la tâche")
     reached_from = "ListPage.row-edit"
     root = form

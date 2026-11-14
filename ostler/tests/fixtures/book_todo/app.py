@@ -14,6 +14,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 USERS = ("ana", "bo")
+ROSTER = ("bo", "ana")
 STATUSES = ("overdue", "scheduled", "unscheduled")
 DATE_FORM = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
@@ -233,6 +234,13 @@ class TodoStore:
                 return (400, {"error": "Invalid JSON"}) if parsed is None else self.put_todo(ident, parsed)
             return 405, {"error": "Method not allowed"}
 
+    def users_handler(self, method: str, headers: Any) -> tuple[int, Any]:
+        if headers.get("Authorization") != f"Bearer {self.token}" and headers.get("X-Api-Key") != self.api_key:
+            return 401, {"error": "Unauthorized"}
+        if method != "GET":
+            return 405, {"error": "Method not allowed"}
+        return 200, [{"name": name} for name in ROSTER]
+
     def admin_handler(self, method: str, path: str, body: bytes) -> tuple[int, Any]:
         if path == "/admin/clock" and method == "GET":
             with self.lock:
@@ -323,6 +331,8 @@ class TodoServer:
                 if parts.path in ("/todos",) or parts.path.startswith("/todos/"):
                     status, payload = store.todos_handler(
                         self.command, parts.path, parse_qs(parts.query, keep_blank_values=True), self.headers, body)
+                elif parts.path == "/users":
+                    status, payload = store.users_handler(self.command, self.headers)
                 elif parts.path.startswith("/admin/"):
                     status, payload = store.admin_handler(self.command, parts.path, body)
                 else:

@@ -62,8 +62,28 @@ const root = document.getElementById("root");
 const main = h("main");
 root.append(main);
 
+let people = [];
+const userSelects = [];
+
+function fillUsers(select, first) {
+  const kept = select.value;
+  select.replaceChildren(h("option", { value: "" }, first), ...people.map((name) => h("option", { value: name }, name)));
+  select.value = kept;
+}
+
 function users(select, first) {
-  select.append(h("option", { value: "" }, first), h("option", { value: "ana" }, "ana"), h("option", { value: "bo" }, "bo"));
+  fillUsers(select, first);
+  userSelects.push([select, first]);
+}
+
+async function loadUsers() {
+  try {
+    people = (await (await call("/users")).json()).map((user) => user.name);
+    if (window.BUG !== "unsorted-users") people.sort();
+    for (const [select, first] of userSelects) fillUsers(select, first);
+  } catch {
+    people = [];
+  }
 }
 
 function fields(prefix, todo, onTouch) {
@@ -269,4 +289,5 @@ main.append(
 window.addEventListener("online", () => { state.online = true; load(); render(); });
 window.addEventListener("offline", () => { state.online = false; render(); });
 render();
+loadUsers();
 load();

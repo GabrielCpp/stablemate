@@ -3,13 +3,14 @@
 from ostler.book import Field as Wire, Phase, Screen, Str, Stored, T, Transition, When, request
 from ostler.book.screen import Button, DateField, Field, Select, Spinner, Text, TextArea
 
-from .labels import ASSIGNEE, DESCRIPTION, DUE, NOBODY, SAVE, TITLE
+from .labels import ASSIGNEE, DESCRIPTION, DUE, SAVE, TITLE
+from .users import FORM, RECEIVED
 
 form = Text("add-form", does="the form element, role=form")
 title = Field(None, TITLE)
 description = TextArea("todo-description", DESCRIPTION)
 due = DateField("todo-due", DUE, takes="due_on", holds=Wire(Str(format="date"), required=False))
-assignee = Select(None, ASSIGNEE, options=(NOBODY, "ana", "bo"))
+assignee = Select(None, ASSIGNEE, lists=FORM)
 save = Button(None, SAVE, "POST /todos with the non-empty fields")
 saving = Spinner("todo-saving", "the request is out")
 error = Text("todo-error", does="the API's error text, role=alert")
@@ -22,7 +23,7 @@ refused = Phase("refused", shows=(error,), because="the fields keep what was typ
 class AddForm(Screen):
     source = ("web/index.html", "web/app.js")
     api = "/todos"
-    sends = (request("POST", "/todos"),)
+    sends = (request("POST", "/todos"), RECEIVED)
     name = T(en="Add a todo", fr="Ajouter une tâche")
     reached_from = "ListPage: always shown above the list"
     root = form

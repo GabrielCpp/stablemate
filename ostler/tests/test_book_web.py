@@ -157,6 +157,16 @@ def test_a_planted_bug_in_the_page_turns_the_run_red(bug: str, journey: str, tmp
     assert f"FAIL  {journey}" in done.stdout
 
 
+def test_a_page_that_shows_the_users_in_the_order_received_fails_the_step_that_picks_in_the_list(tmp_path: Path):
+    stack = _stack("unsorted-users")
+    try:
+        done = _run(stack, tmp_path, "AWeekOfChores")
+    finally:
+        _stop(stack)
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "the list AddForm.assignee shows ['Nobody', 'bo', 'ana'], the book derives ['Nobody', 'ana', 'bo']" in done.stdout
+
+
 def test_a_failing_journey_keeps_its_video_and_the_report_names_it_with_an_offset(tmp_path: Path):
     stack = _stack("wrong-assignee")
     try:
