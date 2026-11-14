@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -155,4 +155,14 @@ def test_a_word_of_an_open_question_finds_it(module: str):
 @pytest.mark.parametrize("options", ["ana", T(en="Ana", fr="Anne")])
 def test_a_select_handed_one_text_for_its_options_is_refused(options: Any):
     with pytest.raises(TypeError, match="options takes a list of texts, not one text"):
-        Select(None, "Who", options)
+        Select(None, "Who", options=options)
+
+
+def test_a_selects_third_word_says_what_it_does_as_for_every_other_component():
+    picked = Select(None, "Who", "picks the owner")
+    assert (picked.does, picked.options) == ("picks the owner", ())
+
+
+def test_a_select_handed_its_options_by_position_is_refused():
+    with pytest.raises(TypeError, match="options are given by name"):
+        Select(None, "Who", cast(Any, ("ana", "bo")))

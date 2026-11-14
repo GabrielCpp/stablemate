@@ -7,8 +7,8 @@ from ostler.book.screen import Banner, Button, Select, Spinner, Text
 from .labels import ANYONE, ASSIGNEE, STATUS, STATUSES
 
 search = Text("list-search", T(en="Search", fr="Rechercher"), "filters by title or description as you type")
-assignee = Select("list-assignee", ASSIGNEE, (ANYONE, "ana", "bo"), "filters by owner")
-status = Select("list-status", STATUS, (T(en="Any", fr="Tous"),) + STATUSES, "filters by derived status")
+assignee = Select("list-assignee", ASSIGNEE, "filters by owner", options=(ANYONE, "ana", "bo"))
+status = Select("list-status", STATUS, "filters by derived status", options=(T(en="Any", fr="Tous"),) + STATUSES)
 loading = Spinner("list-loading", "the first fetch is out")
 empty = Text("list-empty", T(en="Nothing to do", fr="Rien à faire"), "the fetch returned no row")
 rows = Text("todo-list", does="one row per todo, in the API's order")

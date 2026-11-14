@@ -34,7 +34,7 @@ PAGE = b"""<!doctype html><html><body>
 
 class Form(Screen):
     nick = Field(None, T(en="Name", fr="Nom"))
-    who = Select(None, T(en="Who", fr="Qui"), (T(en="Nobody", fr="Personne"), "ana"))
+    who = Select(None, T(en="Who", fr="Qui"), options=(T(en="Nobody", fr="Personne"), "ana"))
     go = Button(None, T(en="Go", fr="Aller"))
     agree = Check(None, T(en="Agree", fr="D'accord"))
     echo = Text("echo")

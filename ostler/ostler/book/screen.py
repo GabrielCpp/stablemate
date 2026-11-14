@@ -104,7 +104,10 @@ def DateField(id: str | None, label: T | str, does: str = "", takes: str = "", h
     return Component(id, "date", as_label(label), does, takes=takes, holds=holds)
 
 
-def Select(id: str | None, label: T | str, options: tuple[T | str, ...], does: str = "", takes: str = "", holds: Wire | None = None) -> Component:
+def Select(id: str | None, label: T | str, does: str = "", takes: str = "", holds: Wire | None = None, *,
+           options: tuple[T | str, ...] = ()) -> Component:
+    if not isinstance(does, str):
+        raise TypeError("options are given by name: Select(id, label, does, options=(...))")
     if isinstance(options, (str, T)):
         raise TypeError("options takes a list of texts, not one text")
     return Component(id, "select", as_label(label), does, tuple(T(o) if isinstance(o, str) else o for o in options), takes=takes, holds=holds)
