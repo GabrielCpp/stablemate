@@ -63,6 +63,8 @@ def _lay_out_book(ws: Workspace, book: Path | None = None, api: Path | None = No
         text = path.read_text()
         if '"app.py::' in text:
             path.write_text(text.replace('"app.py::', '"repo://todo-api/app.py::'))
+    for path in (book / "services").rglob("index.tsv"):
+        path.write_text(path.read_text().replace("source: app.py::", "source: repo://todo-api/app.py::"))
     shutil.copy(FIXTURE / "app.py", api / "app.py")
     unrelated = api / "services" / "api"
     unrelated.mkdir(parents=True)
