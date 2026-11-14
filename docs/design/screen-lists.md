@@ -190,6 +190,11 @@ Revision log:
   SvelteKit apps that mix server rendering with requests the browser makes. The feed gained
   a variant for data handed with the page, and its slice moved from fifth to fourth.
 
+- Section 6, slices 2 and 3. Reading the client's send form showed that its page shows the
+  recipients as received and that the backend leaves the sender out. A derivation would
+  follow a backend that put the sender back, so that check moved from slice 2 to slice 3,
+  where the claim is about who belongs.
+
 Lookups resolved. L1: see the log. L2, for the client's web app: no page loads its data on
 the server, so every list there is fed by a request the browser makes. L2 for the apps at
 work: see the log. The SvelteKit documentation says a server load's data is serialized with
@@ -265,13 +270,13 @@ user received except the caller".
    The report names each list as stated and read, or named only. Touches: list, derivation,
    feed from the page's answer, reading of a native select, derivation check, coverage.
    Done when the red and green runs show it and every row of 5b holds.
-2. **A popup of options.** `fill` and the reading work on a list drawn as a popup. The
-   client's web book states the derivation of the lists its prose claims describe. Done when
-   the sender put back among the recipients turns that book's run red.
+2. **A popup of options.** `fill` and the reading work on a list drawn as a popup. Done when
+   a derived list drawn as a popup fails the step that picks in it on a wrong order.
 3. **A record the run made is offered, and gone when it should be.** Belonging, own records,
    the containing check, with what belongs taken before the model moves. Done when the
    fixture shows a made record offered, a removed one gone, and another person's never
-   offered, with rows the run did not make present in the list.
+   offered, with rows the run did not make present in the list, and when the sender put back
+   among the recipients of the client's send form turns that book's run red.
 4. **Data the app's own server hands the page.** A small SvelteKit app joins the fixtures,
    with one list rendered on its server and one the browser fetches through its gateway. Its
    book states both. Done when a wrong derivation of either turns the run red, on a first
