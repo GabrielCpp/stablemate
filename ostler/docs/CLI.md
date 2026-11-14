@@ -6,15 +6,14 @@ ostler is, how to install it, and the shortest path to a first epic; this file i
 exhaustive listing you come back to for a flag.
 
 Ostler operates relative to the **current working directory** — roots default to
-`<cwd>/docs/{milestones,epics,services,specs}`. Every read command accepts `--json`; every
+`<cwd>/docs/{milestones,epics,specs}`. Every read command accepts `--json`; every
 mutating command allocates ids as needed and writes canonical markdown in place.
 
-The commands fall into three surfaces that barely overlap:
+The commands fall into two surfaces that barely overlap:
 
 | Surface | Verbs | What it operates on |
 |---|---|---|
-| **The planning graph** | `doctor` `trace` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `path` | `docs/milestones/`, `docs/epics/`, `docs/specs/` |
-| **The feature graph** (UI profile) | `reach` `locators` `graph` `coverage` `scaffold` `fmt` `vet` | `docs/services/` — the node/edge book |
+| **The planning graph** | `doctor` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `path` `vet` | `docs/milestones/`, `docs/epics/`, `docs/specs/` |
 | **Verification** | `qa` `artifact` | a story's spec dir, and what a QA run produces |
 
 ## Global
@@ -32,7 +31,7 @@ Human-readable output prints handles by default and `--json` prints full ids: a 
 short token, a program wants the identity that never changes. The two flags override either
 default.
 
-Input is not modal. **A handle is accepted wherever a command takes an id** — `trace`, `query`,
+Input is not modal. **A handle is accepted wherever a command takes an id** — `query`,
 `create story --covers`, `seed add`/`seed remove`, `backlog prune` — no matter
 how the run prints, so a token copied out of one command goes straight into the next. Anything that
 is not a handle (a slug, a doc path) passes through untouched.
@@ -46,8 +45,6 @@ what gets written into a document is always the full id.
 ostler doctor [--epic SLUG] [--json] [--no-schema]
 #   conformance + referential integrity; non-zero on an error-level finding.
 #   --no-schema skips JSON Schema validation.
-ostler trace <token>
-#   walk the graph from any node — a seed id, story id, surface or doc path.
 ```
 
 ## Retrieve
@@ -56,9 +53,7 @@ ostler trace <token>
 ostler list  --type ETYPE [--epic E] [--status S] [--json]
 ostler search <query> [--type TYPE] [--root ROOT] [--limit N] [--match] [--json]
 ostler index build [--json]
-ostler query stories-covering-seed|surfaces-referenced-by-story <arg> [--json]
-ostler query story-provenance|commit-story|node-provenance <arg> \
-  [--checkout REPOSITORY=PATH ...] [--json]
+ostler query stories-covering-seed <arg> [--json]
 ostler next-epic [--json]                     # next queued epic with unfinished work
 ostler next-story <epic> [--json]             # next runnable story (deps satisfied, not done)
 ostler path epic <epic> | path spec <story-id> | path story <story-id> | path branch <story-id> [--epic]
@@ -77,10 +72,8 @@ A story is addressed by its id. The slug names the story's folder and its `### <
 `epic.md`, and no command looks a story up by it. A slug passed where an id belongs is refused, and
 the error names the id to use.
 
-`--type` accepts the planning types (`epic`, `story`, `feature`, `spec`,
-`seed`), every UI-profile node type (`screen`, `cli`, `server`, `concept`, `format`, `flow`,
-`runbook`, `environment`, `component`, `command`, `endpoint`, `interaction`, `invocation`,
-`method`, `field`, `step`, `untyped`), and any kind a repo declared in its own template.
+`--type` accepts the planning types (`epic`, `story`, `milestone`, `spec`, `seed`) and any kind
+a repo declared in its own template.
 
 ## Mutate
 
@@ -89,10 +82,9 @@ ostler create epic    <name> --title T [--json]
 ostler create milestone <name> --title T [--source-items id,id] [--json]
 ostler create backlog-item <text> [--section S] [--json]
 ostler create story   <epic> <slug> --title T [--covers a,b] [--depends a,b] [--json]
-ostler create feature <slug> --title T [--area A] [--route R] [--json]
 ostler create spec    <story-id> <doc> [--title T] [--json]   # idempotent; retro-stamps free-form docs
 ostler update story   <story-id> --title T --covers a,b --depends a,b
-ostler delete epic <name> | delete story <story-id> | delete feature <slug>
+ostler delete epic <name> | delete story <story-id>
 
 ostler seed add <epic> <id> [--status S] [--summary …] [--surface …] \
                             [--legacy-surface …] [--backing …] [--prerequisites …]
@@ -178,88 +170,13 @@ ostler remove <kind> <name> [--json]
 The schema, a worked 3-level nesting example, and the bundle-vs-leaf shape rules are in
 [SPEC.md §9](https://github.com/GabrielCpp/stablemate/blob/main/ostler/SPEC.md#9-templates-and-template-declared-kinds).
 
-## The feature graph (UI profile)
-
-These operate on `docs/services/` — the typed node/edge book describing a product's
-surfaces, not the epic/story planning graph. `--surface` scopes any of them to one service
-subtree (`docs/services/<surface>`).
-
-```bash
-ostler graph [--surface S] [--type T] [--title T] [--path 'concept:agent / field:timeout'] \
-             [--under ID] [--depth N] [--has-bullet KEY] [--bullet KEY=VAL] \
-             [--links-to ID] [--orphans] [--tree | --ids | --json]
-#   query the node/edge/bullet graph. --tree is the default; --orphans finds pages
-#   no edge reaches, on the page or any heading in it. In --path, `/` means descendant and `>` means direct child.
-
-ostler reach --from ID [target] [--surface S] [--json]
-#   derive the documented click-path from one screen to another. Omit `target` to
-#   audit every screen on the surface for reachability.
-
-ostler locators [screen] [--surface S] [--json]
-#   the Playwright locator for every documented control, and where it is ambiguous.
-
-ostler coverage --inventory PATH [--surface S] [--waivers PATH] [--json]
-#   join the book's `code:` citations against a source inventory; reports
-#   {covered, total, waived, missing}. A waived unit counts as covered.
-
-ostler scaffold <type> <name> [--service SVC] [--in FILE] [--title T] [--json]
-#   create a node in the right place. File-level types take --service; section-level
-#   types take --in, the surface doc to insert the `### id` into.
-
-ostler gc [--write] [--json]
-#   list every page under docs/services that no link path from its service's
-#   entries page reaches; --write deletes them. A service with no entries page is
-#   left alone. The pages doctor reports as unreachable-node.
-
-ostler fmt [paths ...] [--check]
-#   canonicalize frontmatter, bullets and headings. --check writes nothing and
-#   exits 1 if any file is not already canonical — the CI form.
-
-ostler vet <screenshot> --manifest M (--cdp-url URL | --regions FILE) --story ID \
-           [--state STATE] [--iou-threshold F] [--json] [--write]
-#   deterministic visual-fidelity check of a rendered screen against the book.
-```
-
-The vet contract is documented in
-[docs/VET.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/VET.md).
-
 ## Verification control plane
 
-`ostler qa` owns the bookkeeping for a QA run: what the change obliges you to verify, then
-the plan, then the ledger of what actually happened.
+`ostler qa` owns the bookkeeping for a QA run: the plan, then the ledger of what actually
+happened.
 
-**Scope.** `qa context` builds and validates a deterministic base/head impact and obligation
-scope for one story, and `context-validate` re-checks a scope already on disk:
-
-```bash
-ostler qa context --base <rev> [--head WORKTREE] --spec docs/specs/<story> \
-  [--services-root PATH] [--source-root SURFACE=PATH] [--story-file PATH] [--json]
-ostler qa context-validate --spec docs/specs/<story> [--json]
-```
-
-`--source-root` associates a production source root with an OKF surface and is repeatable —
-that mapping is what turns a diff into a set of obligations.
-
-A selected node that points `detail:` at a concept pulls that concept into the packet as
-judgment context: the concept lands under a `judgment-context` reason with `required: false`
-(never owed live evidence), and its `rule:`/`prefers:`/`deprecates:` bullets ride on the
-pointing node's node-level obligation as a `judgment` list. The node's own `unspecified:`
-bullets land beside it as `unspecified` — each `{text, citation}`, resolved by design rather
-than a coverage gap. Both are additive: they change nothing about which obligations exist or
-which are owed. `qa context-show` renders them under the obligation they annotate.
-
-Two kinds of changed file are dropped from that scope rather than turned into obligations.
-**Scaffolding** — build files, dependency manifests, tooling and infrastructure config — never
-runs and carries no user-observable behaviour. **Generated code** does run, but no person wrote
-it: files under `mocks/`, `__mocks__/`, `generated/`, `vendor/` or `node_modules/`, names like
-`*.gen.go`, `*.pb.go`, `*_pb2.py`, `*.g.dart`, `*.freezed.dart`, and anything carrying the
-canonical `Code generated … DO NOT EDIT` banner. Documenting either would mean writing
-Concepts for a code generator's internal error types; the contract a generated file encodes
-belongs to the thing it was generated from — the OpenAPI document, the proto, the mocked
-interface — which is in the same diff as a real unit.
-
-**Plans.** A version-2 plan declares command, Playwright and Maestro targets and maps every
-scenario to acceptance-criterion and OKF obligation ids:
+**Plans.** A plan declares command, Playwright and Maestro targets and maps every
+scenario to the ids it covers:
 
 ```bash
 ostler qa validate <qa_plan.py> [--spec SPEC] [--json]
@@ -267,7 +184,7 @@ ostler qa run      <qa_plan.py> [--spec SPEC] [--stop-on-fail] [--scenario ID] [
 ostler qa clean    --spec DIR [--yes] [--json]
 ```
 
-Validation rejects unknown coverage, unsupported actions and locators, disposable pre-run
+Validation rejects unsupported actions and locators, disposable pre-run
 inputs, literal secrets, and coverage without a machine assertion. Each run starts with an
 empty `qa/`, writes an append-only ledger and a content-hashed manifest, and returns
 `passed`, `failed`, `blocked` or `invalid`. Browser and mobile targets record continuously
@@ -302,9 +219,9 @@ and fail at `exec`. A daemon is therefore a server, not a command line, and
 [docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md).
 
 **Report.** Every `qa run` ends by rendering `<spec>/qa-report.md` from the ledger — one
-section per acceptance criterion and per obligation with its verdict, the step each covering
+section per covered id with its verdict, the step each covering
 assertion ran in, observed and expected values, and the screenshots behind it, then every
-scenario step by step and a list of warnings (criteria nothing covers, assertions with no
+scenario step by step and a list of warnings (assertions with no
 observed value, aborted scenarios). `qa report` re-renders it; `--out-dir LABEL` renders a dry
 run's to `qa/LABEL/report.md`; `--ledger` prints the flat listing instead. When the run
 recorded its target, each step in the report says where it sits in the video
@@ -318,56 +235,6 @@ instead (`--target` names which recording when several targets were recorded). O
 (default 1.0) lands in `<spec>/qa/frames/<step-id>/`, each named by its position in the
 recording (`0015.474s.png`), with an `index.md` listing them in order and marking the ones
 inside the step's own span. Needs ffmpeg, the same binary the recorder used.
-
-**Evidence.** After a run, `qa evidence-map` joins the obligation scope, the run ledger, the
-artifact manifest and the published verdict into one row per obligation:
-
-```bash
-ostler qa evidence-map --spec docs/specs/<story> [--out-dir LABEL] \
-  [--status {contradicted,unproven,uncovered,claimed-but-unasserted,insensitive,covered}] \
-  [--out PATH] [--json]
-```
-
-Each row carries the scenarios that claimed the obligation, the passing assertions bound to
-it, the checks its `verify:` bullets declared against the ones the run actually invoked, the
-artifacts those scenarios produced, and a status:
-
-| Status | Meaning | Whose defect |
-| --- | --- | --- |
-| `covered` | a passing assertion is bound to it, invoking every declared check | — |
-| `claimed-but-unasserted` | a scenario claims it, but asserted nothing — or not the declared check | the QA plan |
-| `uncovered` | no scenario claims it and no assertion is bound to it | the QA plan |
-| `contradicted` | an assertion bound to it failed, or `qa-evidence.json` publishes a verdict the ledger does not hold | the product, or the artifact |
-| `unproven` | the scenario that would have observed it did not run to completion | the QA plan |
-| `insensitive` | every declared check passed and none of them could have failed | the book's `verify:` bullets |
-
-`unproven` is the one that looks like `contradicted` and is not. An aborted scenario leaves a
-failing record bound to every obligation it claimed, but the record is the harness's note that
-the run stopped, not an observation of the product — and the usual cause is a defect in the
-plan: a misspelled field, a timeout, a step that raised. Reading it as a disproof accuses
-whatever tree was under it, a clean one included.
-
-`insensitive` is the other one that is not what it looks like, from the other side: the row is
-green everywhere a reader checks, and the checks it is green on are ones no observation of the
-product could have reddened. It is decided by `qa sensitivity`, below, and the repair is a
-`verify:` bullet that names what would be different if the claim were false.
-
-```bash
-ostler qa sensitivity [--node SUBSTR] [--json]
-```
-
-Every verifier is a pure function of what was observed, so each declared call is given a
-witness observation that satisfies it and then a family of mutations — the field the claim
-names missing or holding something else, a different route answering, the ledger the write was
-supposed to leave alone moved, the refusal carrying the credential it may not. A call is
-*sensitive* when at least one mutation turns it red, and the command exits non-zero when a
-claim's every declared call survives all of them. Nothing is executed, nothing is booted, and
-no run is needed: the question is about the declaration, not about this run of the product.
-
-The exit status is `0` only when every obligation is `covered`, so a caller can gate on the
-join without parsing it. A missing or malformed ledger is a refusal rather than a map full of
-`uncovered`: the two are indistinguishable in the output, and the wrong one of them reads as
-a finding about the QA plan when it is a finding about the arguments.
 
 ## Artifacts
 
@@ -399,9 +266,10 @@ ostler env ls     [--json]
 ostler env schema
 ostler env address NAME [--copy NAME] [--json]
 ostler env compose [--copy NAME] -- ARGS...
+ostler env exec [--copy NAME] -- COMMAND...
 ```
 
-`ls` prints each service with its `about`, its address and the copies that run it, and exits 1 when
+`exec` runs a command under the secrets the stack root's `secrets:` names. `ls` prints each service with its `about`, its address and the copies that run it, and exits 1 when
 the stack files have errors. `schema` prints a JSON Schema for `stack.yml`.
 
 `--fresh` drops the copy's volumes before it comes up, so its fixtures load again. `--fixtures`

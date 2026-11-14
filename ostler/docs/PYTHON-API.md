@@ -1,8 +1,7 @@
-# The Python API — `Ostler`, `ostler.markdown`, `ostler.syntax`
+# The Python API: `Ostler`, `ostler.markdown`
 
-This document is ostler's library face: the `Ostler` facade over the graph, the markdown
-parser every reader of the book goes through, and the tree-sitter front end that answers
-"what does this file declare?". For the command line, see [CLI.md](CLI.md); for what ostler
+This document is ostler's library face: the `Ostler` facade over the graph and the markdown
+parser every reader of the graph goes through. For the command line, see [CLI.md](CLI.md); for what ostler
 is at all, [README.md](../README.md).
 
 ## The `Ostler` facade
@@ -25,12 +24,7 @@ okf.list("story", epic="checkout-flow")   # [{"slug","status",…}]  (ostler lis
 okf.next_story("checkout-flow")       # {"slug": …} | None          (ostler next-story)
 okf.spec_path("01-cart")              # "docs/specs/01-cart"        (ostler path spec)
 okf.doctor()                          # QaOutcome; .data is the report (ostler doctor --json)
-okf.gc()                              # ["docs/services/acme/…"] dead pages   (ostler gc; write=True deletes)
-okf.query(
-    "story-provenance",
-    "TEAM-123",
-    checkouts={"api-service": "/workspace/api-service"},
-)                                     # exact trailers + qa-okf-context.json
+okf.query("stories-covering-seed", "seed-1")   # the stories that cover a seed  (ostler query)
 
 res = okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
 res.ok, res.entity_id                 # a Result, not parsed JSON   (ostler create story)
@@ -51,7 +45,7 @@ resolve from the discovered repository root. The loaded graph is a **snapshot**:
 against a fresh load and invalidates the cache, so the next read reflects it
 (`reload()` forces a refresh). A read never returns `None` — an unloadable graph
 *raises*. The QA/artifact/edit surface is on the same object
-(`qa_context`/`qa_validate`/`qa_run`/`qa_context_validate`, `qa_tools_catalog`,
+(`qa_validate`/`qa_run`, `qa_tools_catalog`,
 `artifact_vet`, `settle_review`, `settle_answers`), lazy-imported so a read-only caller never loads the QA/vet
 machinery. `settle_review(slug, status_write=False)` writes the settlement ledger and leaves
 `story.md` alone. `settle_answers(slug, filed)` settles a markdown Answer list against the finding
@@ -60,34 +54,28 @@ stories in dependency order, each with its `spec_dir`, `deps` and `open_deps`. `
 one story in that shape, or `None`. `from ostler import load` returns the bare `Graph` if you want the
 functional core directly.
 
-The provenance queries are derived reads, not a ledger. `story-provenance` joins exact Git
-`Story:` trailer lines to the story-scoped context packet; `commit-story` performs the reverse
-trailer lookup; `node-provenance` scans stored packets for direct, contract, and journey roles.
-External repository checkouts are supplied by logical repository id and are never written into
-the docs repository. Missing history or packets are returned as warnings rather than inferred.
-
 ## `QaOutcome` — the checks answer instead of raising
 
-Every check on the facade — the qa/artifact family above, plus `doctor` and `coverage` —
+Every check on the facade, the qa/artifact family above plus `doctor`,
 returns a `QaOutcome` rather than a raw dict that raises on the way to producing one:
 
 ```python
-outcome = okf.coverage(inventory="inventory.json")
+outcome = okf.doctor()
 outcome.ok        # the verdict: the join is complete / the check holds
 outcome.status    # "passed" | "failed" | "invalid" | a status the check names itself
 outcome.message   # one line — the same text the CLI prints
 outcome.data      # the `--json` payload, always carrying a "status" key
 ```
 
-A *data*-shaped failure is part of that answer: an unreadable inventory, a malformed plan, a
-context file that will not parse, a book that will not load. Each comes back as
+A *data*-shaped failure is part of that answer: a malformed plan, a
+book that will not load. Each comes back as
 `ok=False, status="invalid"`, so no caller wraps the call in
 `except (OSError, ValueError, RuntimeError)` — which is what `cli.py` and the coder
 workflow's now-deleted `ostler_qa` adapter were each doing independently.
 
 `status == "invalid"` is worth its own branch wherever an empty result would otherwise read
-as a pass: zero uncovered units because the inventory would not parse is not "everything is
-covered", and the CLI keeps a distinct exit code (2) for it.
+as a pass: a clean report because the book would not load is not "everything is
+fine", and the CLI keeps a distinct exit code (2) for it.
 
 A **call-site** mistake still raises, and should — an unknown `etype`, a `need` that is
 neither `"build"` nor `"author"`, a bad argument type is a bug where it was made, and an
@@ -119,25 +107,3 @@ for label, href, line in markdown.iter_links(text):
 A heading, bullet, table row or link inside a fenced code block is not one — that falls
 out of the token stream rather than being approximated. Line numbers on `Section` and
 `Table` are 0-indexed and body-relative; `doc.body_offset` converts to a file line.
-
-## `ostler.syntax` — the same rule, for source code
-
-The code side of the graph gets the same treatment: `ostler.inventory` answers "what does
-this file declare?" for the coverage join, `doctor`'s `code:` citation grounding and the QA
-diff mapper, and all three read a **parse**, never a line match. Python goes through the
-stdlib `ast`; Go, TypeScript/TSX, PHP and Twig go through `ostler.syntax`, which is
-tree-sitter behind a four-function surface (`parse` / `walk` / `text_of` / `lines_of`).
-
-tree-sitter rather than the target language's own toolchain, deliberately: ostler runs in
-agent containers and CI against repos it never builds, and coder's Docs phase reads working trees
-mid-edit. A `go build`-shaped parser would need Go installed and the tree compiling, and the
-fallback that absence forces is a second grammar disagreeing with the first — the exact
-failure this module exists to end. tree-sitter is a prebuilt wheel, needs nothing from the
-repo it reads, and recovers from a syntax error instead of refusing the file.
-
-What that buys, concretely: a commented-out `export function` is no longer a unit the book
-owes coverage for, a name inside a template literal no longer grounds a citation, and the
-shapes no pattern spelled — `export abstract class`, `export const {a, b} = …`, Go's grouped
-`type (…)` — are visible, so a correct citation stops failing with no way to fix it. Where a
-file is mid-edit, the region the parser could not read grounds any name it mentions;
-everywhere else stays exact.

@@ -2,28 +2,18 @@
 
 > Tend your documentation graph.
 
-`ostler` is the single system-of-record for a repository's `docs/` knowledge graph. It **defines,
-validates, searches and mutates** your planning docs — backlog items, milestones, epics, stories,
-seeds, features and specs —
-as plain markdown **Concepts** (a strict profile of the
-[Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)).
+`ostler` is the single system-of-record for a repository's `docs/` planning graph. It **defines,
+validates, searches and mutates** your planning docs (backlog items, milestones, epics, stories,
+seeds and specs) as plain markdown documents with YAML frontmatter.
 
 Everything is markdown. An epic's seeds and its story dependency-DAG live inside its `epic.md`; there
-is **no** `seed.json`, `dependencies.json`, `inventory.json` or `epics-todo.json`. Ostler owns id
-allocation and is the one tool that reads and writes the graph — so structure stays consistent while
+is **no** `seed.json`, `dependencies.json` or `epics-todo.json`. Ostler owns id
+allocation and is the one tool that reads and writes the graph, so structure stays consistent while
 humans (or agents) author the prose.
 
 It is a standalone, repo-agnostic CLI that operates relative to the **current working directory**:
-roots default to `<cwd>/docs/{epics,services}` and the organization name to the repo
+roots default to `<cwd>/docs/epics` and the organization name to the repo
 folder name. Specs default to `<artifacts dir>/specs` outside git. Point it at any repo with `-C/--chdir`.
-
-The feature graph is also a contract: it is what
-[coder's QA](https://github.com/GabrielCpp/stablemate/blob/main/workflows/README.md#coder-documentation-convergence)
-holds the running application to, promise by promise. Ostler's part in that is detection —
-structural findings, source units no node covers, citations whose declaration has changed
-underneath them — which is what gives a repair loop something to converge on. It is not a
-verdict that the behaviour worth documenting is documented, or that a declared check can
-tell success from failure: a clean `doctor` is the floor, not the proof.
 
 ## Install
 
@@ -83,13 +73,13 @@ ambiguity rather than letting graph order choose one.
 
 ## The hierarchy
 
-A repository's knowledge lives under `docs/` as OKF **bundles** (directories of markdown Concepts).
-A **Concept** is one `.md` file with a YAML **frontmatter** block (whose only hard requirement is a
-non-empty `type`) and a markdown **body** using conventional headings.
+A repository's planning documents live under `docs/` as directories of markdown files. A document
+is one `.md` file with a YAML **frontmatter** block (whose only hard requirement is a non-empty
+`type`) and a markdown **body** using conventional headings.
 
-**Identity is the path.** A Concept's id is its bundle-relative path without `.md`
-(`docs/services/profile/preference-summary.md` → `profile/preference-summary`). The reserved
-filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are not Concepts.
+**Identity is the path.** A document's id is its path under its document root, without `.md`.
+The reserved filenames `index.md` (an ordered listing of a root) and `log.md` (history) are not
+documents the graph reads.
 
 ### Entity types
 
@@ -98,7 +88,6 @@ filenames `index.md` (an ordered listing of a bundle) and `log.md` (history) are
 | `milestone` | `docs/milestones/<slug>/milestone.md` | folder name `<slug>`; optional `id` defaults to it | `type`, `title`, `status` |
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | opaque `id` (a ULID when ostler mints it); the `<slug>` names the folder and the `epic.md` heading | `type`, `slug`, `status` |
-| `feature` | `docs/services/<area>/<slug>.md` *(or flat `docs/services/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `<artifacts dir>/specs/<story-id>/*.md` (`ostler path spec <story-id>`) | path | `type` |
 
 **Epic directories carry their creation order** — `create epic checkout-flow` writes
@@ -108,10 +97,10 @@ changes), so the bare slug still names the epic in every command: `ostler todo a
 `--epic checkout-flow`, `create story checkout-flow …`. Use `ostler path epic <slug>` when you need
 the directory itself, and read `--json`'s `name` back after `create epic` rather than assuming one.
 
-`spec.*` Concepts are process artifacts: typed and conformance-checked, but ostler does not own their
+`spec.*` documents are process artifacts: typed and conformance-checked, but ostler does not own their
 internal schema. The subtype is the file's stem (`executive.md` → `spec.executive`); mint them with
 `ostler create spec <story-id> <doc>`, which is idempotent and also retro-stamps free-form docs.
-**Not Concepts** (managed markdown, left in place): `docs/epics/index.md` (the epics queue).
+**Not typed documents** (managed markdown, left in place): `docs/epics/index.md` (the epics queue).
 
 ### Planning intake identity
 
@@ -179,13 +168,12 @@ accepted as input either way).
 
 | Verbs | What they do |
 |---|---|
-| `doctor` `trace` | check conformance and referential integrity; walk the graph from any node |
+| `doctor` | check conformance and referential integrity |
 | `list` `search` `index` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
 | `create` `update` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, move the queue |
 | `edit` | repair a rename across the whole graph |
-| `gc` | delete the book pages no link path from their service's `entries` page reaches |
-| `template` `new` `find` `set` `remove` | declare a repo's own Concept kinds and operate on their instances |
-| `graph` `reach` `locators` `coverage` `scaffold` `fmt` `vet` `audit` | the `docs/services/` node/edge book — see below |
+| `template` `new` `find` `set` `remove` | declare a repo's own document kinds and operate on their instances |
+| `vet` | check a rendered screenshot against the regions a story declares |
 | `qa` `artifact` | the verification control plane — see below |
 | `env` | bring up a local copy of the stack the books declare, and tear it down — see below |
 | `book` | run a service book, the executable model of one HTTP or gRPC service, against the live service — see below |
@@ -198,97 +186,30 @@ happens; `create … --json` returns
 Every verb, with its real flags and what each one operates on, is in
 [docs/CLI.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/CLI.md).
 
-### The feature graph
-
-Alongside the epic/story planning graph, ostler tends `docs/services/` — a typed node/edge book
-describing a product's actual surfaces (screens, components, endpoints, flows). `graph` queries it,
-`reach` derives the documented click-path between two screens, `locators` emits the Playwright
-locator for every documented control, `coverage` joins the book's `code:` citations against a source
-inventory, and `vet` checks a rendered screenshot against what the book claims. The visual-fidelity
-contract is in
-[docs/VET.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/VET.md).
-
-`audit` prepares the two-way behavior review a reviewer then judges: file-local packets of
-source candidates (returns, raises, routes, defaults) beside the book's normative claims. It
-prepares, it never decides. Python is read with its own AST; Go, TypeScript, TSX and PHP
-are read with the tree-sitter grammars `ostler.syntax` already carries — Go by its own
-visitor, the others by one generic visitor driven from a per-language table in
-`ostler.behavior_tree` (functions, containers, fields, returns, throws, framework-like route
-and response calls, the branch headers that become a candidate's conditions, and the few
-grammar spellings that differ: the modifier node, the default-value field, the call's name
-path). Twig has no table and gets none: its grammar is flat — `{% endif %}` is a sibling of
-`{% if %}`, not its parent — so a visitor that reads enclosure from the tree has nothing to
-read, and a `.twig` file is reported `unsupported`. By default only **tier 1** candidates
-enter a packet — a symbol the book cites, one the language exports (Go: capitalized;
-Python: no leading underscore; TypeScript: the `export` keyword or a re-export clause, and
-a class member without a `private`/`protected` modifier or a `#`/`_` name; PHP: every
-top-level declaration, and a member without a `private`/`protected` modifier), or a
-module-level statement, which has no name to keep private. The rest is tier 2, counted as
-`deferred_candidates` and named in the file's packet limitations; `ostler audit --tier all`
-reviews it too. A workflow's audit covers tier 1: a private symbol's behavior reaches a caller
-through some tier-1 symbol, and that is where a claim about it is checked. A claim whose
-citations all name files that exist but were not selected is counted as `out_of_scope_claims`
-and left for the audit that selects them; a citation to a file that does not exist stays a
-reviewer's question. Each packet carries the book section around its claims, windowed to
-forty lines either side, and only the extraction limitations of its own file.
-
-Code in the documentation repository keeps the existing `path::symbol` spelling. A book that cites
-a separate source repository qualifies the same reference with its stable workspace name:
-`repo://api-service/internal/items.py::create_item`. `doctor` grounds those citations against the
-repository's live checkout, per the `SourceRepository` scopes multi-repository context generation
-declares.
-
 ### Verification control plane
 
-`ostler qa` owns the bookkeeping of a QA run. `qa context` turns a base/head diff into a
-deterministic obligation scope for one story; `qa validate` and `qa run` then execute a version-2
-plan that declares command, Playwright and Maestro targets and maps every scenario to
-acceptance-criterion and OKF obligation ids. Validation rejects unknown coverage, unsupported actions
-and locators, disposable pre-run inputs, literal secrets, and coverage without a machine assertion.
-Each run starts with an empty `qa/`, writes an append-only ledger and content-hashed manifest, and
-returns `passed`, `failed`, `blocked`, or `invalid`. `ostler artifact` schema-checks what a workflow
-produces (a plan, a review resolution, a QA outcome) against a registered contract.
+`ostler qa` owns the bookkeeping of a QA run. `qa validate` and `qa run` execute a hand-written
+`qa_plan.py` that declares command, Playwright and Maestro targets and maps every scenario to the
+ids it covers. Validation rejects unknown actions and locators, disposable pre-run inputs, literal
+secrets, and coverage without a machine assertion. Each run starts with an empty `qa/`, writes an
+append-only ledger and content-hashed manifest, and returns `passed`, `failed`, `blocked`, or
+`invalid`. `ostler artifact` schema-checks what a workflow produces (a plan, a review resolution, a
+QA outcome) against a registered contract.
 
 ```bash
-ostler qa context --base <rev> --head WORKTREE --spec $(ostler path spec <story>) \
-  --source-root web=web --source-root api=api --story-file docs/epics/.../story.md
 ostler qa validate $(ostler path spec <story>)/qa_plan.py --json
 ostler qa run      $(ostler path spec <story>)/qa_plan.py --json
 ostler qa report       --spec $(ostler path spec <story>)
 ostler qa frames       --spec $(ostler path spec <story>) --step <step-id>
-ostler qa evidence-map --spec $(ostler path spec <story>)
-ostler qa sensitivity
 ```
 
-Every run ends by rendering `<spec>/qa-report.md` from the ledger: one section per
-acceptance criterion and per obligation with its verdict, the step each covering assertion
-ran in, what it observed against what it expected, and the screenshots behind it — then every
-scenario step by step, then the warnings that would let a rubber stamp through (a criterion
-nothing covers, an assertion with no observed value, a scenario that stopped early). It is the
-one file a reviewer reads to decide whether the work is real, and `qa report` re-renders it.
+Every run ends by rendering `<spec>/qa-report.md` from the ledger: one section per covered id with
+its verdict, the step each covering assertion ran in, what it observed against what it expected,
+and the screenshots behind it. Then come the scenarios step by step, and the warnings that would let
+a rubber stamp through (an assertion with no observed value, a scenario that stopped early). It is
+the one file a reviewer reads to decide whether the work is real, and `qa report` re-renders it.
 When the target was recorded, every step in it says where it sits in the video, and
 `qa frames --step <step-id>` writes the frames around that moment as PNGs with an index.
-
-After the run, `qa evidence-map` joins those four artifacts — the obligation scope, the
-ledger, the manifest and the published verdict — into one row per obligation and a status:
-`covered`, `claimed-but-unasserted`, `uncovered`, `unproven`, `insensitive`, or
-`contradicted`. That last one is the
-case worth naming: `qa-evidence.json` is a summary of the ledger, and where it publishes a
-verdict the ledger does not hold, every consumer downstream reads the summary and none of
-them goes back to check. `unproven` is its neighbour and its opposite: a scenario that died
-mid-body observed nothing, so the obligation is unproven and the plan is what needs repairing —
-scoring it as a disproof accuses the product of a defect the run never looked for. The whole
-thing is a set difference, which is why it belongs in a command rather than in a reviewer's
-instructions.
-
-`insensitive` is the one status the set difference cannot see, and `qa sensitivity` is what
-decides it. Every verifier is a pure function of what was observed, so each declared call can be
-given a witness observation that satisfies it and then perturbed — the field the claim names
-missing or holding something else, a different route answering, the ledger the write was
-supposed to leave alone moved — with no app booted and no run required. A call no perturbation
-reddens passes whatever the product does, and an obligation whose every call is like that is
-green for a reason that has nothing to do with the product. The repair is the `verify:` bullet,
-which is why the command reads the book alone and is worth running before any plan exists.
 
 The run contract is in
 [docs/QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md); the
@@ -300,10 +221,7 @@ artifact contracts are in
 `ostler env` runs the product on this machine from what the books say it is made of. Each book
 that boots something keeps a `stack.yml` in the `ops/` folder beside its service book, at
 `services/<book>/ops/stack.yml`. The file at `services/ops/stack.yml` is the stack root, and is also
-a book. Ostler still reads the older place, beside the pages, at `docs/services/<book>/ops/stack.yml`
-and `docs/services/ops/stack.yml`. A book with a file in both places loads the one under `services/`
-and reports the other. A `stack.yml` at the old place, outside `ops/`, is refused with the path to move
-it to. The file names the book's services, the compose fragment that defines each one, and what each
+a book. The file names the book's services, the compose fragment that defines each one, and what each
 one needs. A need may sit in another book, so the web book names `api:api` and the api book
 defines it once. Two books never define the same service. One names it, and the other needs it.
 
@@ -351,7 +269,8 @@ copy without naming it. The stack root, `services/ops/stack.yml`, holds the repo
 .env}` for a dotenv file, `secrets: {decrypt: <command>}` for a command whose stdout is dotenv,
 or `secrets: {saddlebag: "environment=local"}` for the saddlebag secrets carrying those tags.
 With saddlebag, every `docker compose` command runs under `saddlebag exec`, and no secrets file
-is written.
+is written. `ostler env exec [--copy NAME] -- CMD` runs a command under the secrets the stack
+root's `secrets:` names.
 `ostler env check` and `up` fail by name when a template requires a `${NAME}` the source does not
 define. They never print a value.
 
@@ -410,24 +329,15 @@ Three products, and only three:
 | Product | Key |
 |---|---|
 | **Parse products** — a document's frontmatter, sections, bullets, links and tables | the repo-name-qualified repo-relative path + the file's content sha |
-| **Code-grounding symbol tables** — the symbol set extracted from a source file | the code file's content sha + the tree-sitter grammar version |
-| **Behavior verdicts** — one reviewer's verdict on one claim or one source candidate (`ostler.behavior_memo`) | the review contract's digest + the item's content digest + the digest of the counterparts it was judged against + the excerpts the reviewer read, none of it positional |
 
-All three are pure functions of bytes, which is what lets them be stored under a content key
+Parse products are a pure function of bytes, which is what lets them be stored under a content key
 with no invalidation rule beyond a single *epoch* hash over the global inputs (ostler's
 version, the bundled schemas, the dynamic kind registry, the config files). Change any of those and every entry is invalidated at once.
 
-The verdict memo is the one product that is not ostler's own computation: it is what a model
-said, stored so an audit never asks twice. Its key says what could have moved the
-answer — an edited claim drops its own verdict and every candidate's in its packet (their pool
-of claims changed), an edited source file drops everything in that file, a changed prompt or
-schema drops everything — and nothing else. A line shift hits; book evidence is stored relative
-to its node and rebased on recall. The two-week prune applies to it as to every entry.
-
 **Doctor's findings are not cached.** Nothing that a check *concluded* is ever served from the
 index — only the parse products a check reads. And the **graph-global checks are always
-recomputed**, on every run, never cached: reachability, the cross-epic seed and dependency
-constraints, milestones, and locators together cost around 0.06s, so
+recomputed**, on every run, never cached: the cross-epic seed and dependency
+constraints and milestones together cost a few milliseconds, so
 there is nothing to win by caching them and a whole class of transitive invalidation to lose.
 The hard half of the invalidation problem is the half that had nothing to gain.
 
@@ -496,7 +406,7 @@ never a run that answers from an out-of-date parse. Deleting the whole directory
 is safe for the same reason.
 
 This is also why **every command that loads a graph populates the index, including the
-read-only ones** (`graph`, `list`, `trace`, `reach`, `coverage`, …). Incidental use is the only
+read-only ones** (`list`, `search`, `query`, …). Incidental use is the only
 thing keeping a host cache warm between refreshes, and a read-only command that left it cold
 would make the next `doctor` pay full price for no reason.
 
@@ -516,41 +426,21 @@ okf.create_story("checkout-flow", "02-pay", "Payment", covers=["seed-1"])
 okf.doctor()                              # a QaOutcome; .data is the integrity report
 ```
 
-Every check on the facade — `doctor`, `coverage`, and the whole qa/artifact family — answers
+Every check on the facade, `doctor` and the whole qa/artifact family, answers
 in that same `QaOutcome` (`ok`, `status`, `message`, `data`) rather than raising: a data-shaped
-failure like an unreadable inventory or a book that will not load is *part of the answer*, not
+failure like a book that will not load is *part of the answer*, not
 an exception each caller re-catches. A call-site mistake still raises.
 
-Two public modules come with it, and they are the reason nothing here reads a document with
-a regex: **`ostler.markdown`** is the one markdown parser (frontmatter, sections, bullets,
-GFM tables, links — never one inside a fence), and **`ostler.syntax`** is the tree-sitter
-front end for Go, TypeScript/TSX, PHP and Twig that grounds `code:` citations and the
-coverage join.
+A public module comes with it, and it is the reason nothing here reads a document with a regex:
+**`ostler.markdown`** is the one markdown parser (frontmatter, sections, bullets, GFM tables,
+links, never one inside a fence).
 
-The facade's snapshot semantics, the full call surface, and why the code side is tree-sitter
-rather than each language's own toolchain are in
+The facade's snapshot semantics and the full call surface are in
 [docs/PYTHON-API.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/PYTHON-API.md).
-
-## The coverage model
-
-```
-story (epic.md ## Stories)  ->  covers: seed (epic.md ## Seeds)
-```
-
-`ostler doctor` checks OKF conformance (every Concept has a non-empty `type`) plus the typed
-referential-integrity contract:
-
-- **cross-epic references** — an id/slug used inside epic E that only resolves in another epic;
-- **orphan seeds** — an active seed no story covers;
-- **dangling references** — a knowledge path or sibling slug that resolves to nothing;
-
-It exits non-zero when any error-level finding is present, so it drops straight into CI or a pre-commit
-hook. Warning-level findings (e.g. `story-covers-no-seed`, `ungrounded-surface`) are reported but do
-not fail the check.
 
 ## Id allocation
 
-`create backlog-item|milestone|epic|story|feature` allocates an id,
+`create backlog-item|milestone|epic|story` allocates an id,
 scaffolds the canonical markdown, and (for stories) inserts the `### <slug>` block into the epic's
 `## Stories`. There is no external id allocator.
 
@@ -590,35 +480,17 @@ millisecond differ only in their low bits, and hashing decorrelates them so even
 to six characters. From Python, `okf.handle(id)` / `okf.handles()` render and `okf.expand(token)`
 resolves — though every ostler entry point already expands its own id arguments.
 
-## Story provenance
-
-Provenance queries join exact Git `Story:` trailers with the generated context packet under a
-story's spec directory. Git is authoritative for commits; `qa-okf-context.json` is authoritative
-for the changed-unit-to-OKF impact calculated for that story. No separate ledger is written.
-
-```bash
-ostler query story-provenance TEAM-123 \
-  --checkout api-service=/workspace/api-service --json
-ostler query commit-story api-service@abc123 \
-  --checkout api-service=/workspace/api-service --json
-ostler query node-provenance docs/services/billing/create.md \
-  --checkout api-service=/workspace/api-service --json
-```
-
-Checkout paths are inputs only and are never persisted. Missing checkouts or context packets are
-reported as warnings rather than guessed from branch names, subjects, or current graph shape.
-
 ## Profiles
 
-`ostler` infers a profile from the tree: **`full`** when `docs/epics` exists (the epic/story/seed/
-knowledge coverage graph), **`exploration`** otherwise (knowledge/docs only, no coverage graph).
+`ostler` infers a profile from the tree: **`full`** when `docs/epics` exists (the epic/story/seed
+planning graph), **`exploration`** otherwise (no planning graph).
 Override any default in an optional `organization:` block in `agents.yml` at the repo
 root (`ostler.yml` is the legacy name of the same file and still loads, with a warning).
 
 ## Templates (custom hierarchies)
 
-The built-in types above (epic/story/knowledge/feature/spec) are fixed. For a *different*
-documentation shape — your own Concept kinds, nesting, required fields, status enums — declare it
+The built-in types above (epic/story/milestone/spec) are fixed. For a *different*
+documentation shape — your own document kinds, nesting, required fields, status enums — declare it
 per-repo in **`.agents/templates.yml`** (git-tracked). A kind is live
 for `new`/`find`/`set`/`remove`/`doctor` the moment it's written — no separate activation step.
 
@@ -645,9 +517,8 @@ for the full YAML schema, a worked 3-level nesting example, and the bundle-vs-le
 
 ## Versioning
 
-The format is the OKF profile **v1.0**, versioned `<major>.<minor>`. Minor bumps add backward-compatible
-fields; major bumps may change required frontmatter or the `epic.md` grammar. A repo may record
-`okf_version` and `ostler_profile` in `docs/epics/index.md`.
+The format is versioned `<major>.<minor>`; the current version is **1.0**. Minor bumps add
+backward-compatible fields; major bumps may change required frontmatter or the `epic.md` grammar.
 
 ## License
 

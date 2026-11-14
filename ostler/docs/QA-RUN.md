@@ -148,22 +148,6 @@ Check types for `ostler qa assert`:
 - `no_duplicate` — counts events matching a filter; PASS if count == 1 (the "no double-publish"
   check).
 
-**`instance`** — which member of a repeated family the scenario drove
-
-```json
-{
-  "ts": "2026-07-10T17:18:03Z",
-  "kind": "instance",
-  "scenario": "a_stage_row_can_be_renamed",
-  "obligation": "okf:docs/services/acme/gui/screens/stages.md#stage-row:one-per:1",
-  "bindings": { "stage.name": "Foundations" }
-}
-```
-
-Written by `qa.instance(...)`. A declaration, like `fixture` — it grades nothing, but it
-puts on the ledger which concrete instance of a `one-per:` family a scenario exercised, so
-a reader of the run can see the sampled member instead of inferring it from a locator.
-
 **`capture`** — a value the scenario published
 
 ```json
@@ -268,7 +252,7 @@ ostler qa stop
 ostler qa report [--spec <spec-dir>] [--out-dir <label>] [--ledger]
 ostler qa frames --spec <spec-dir> (--step STEP-ID | --at SECONDS [--target T]) [--around S] [--fps N] [--out-dir <label>]
     Render `<spec-dir>/qa-report.md` from the ledger and print it: the per-criterion,
-    per-obligation account of the run a human reviews (see "The report" below).
+    account of the run a human reviews (see "The report" below).
     `qa run` renders it itself at the end of every run, whatever the status; this
     re-renders it. `--out-dir LABEL` renders a dry run's ledger to `qa/<LABEL>/report.md`.
     `--ledger` prints the flat time-ordered STEP/ASSERT listing instead.
@@ -295,17 +279,6 @@ ostler qa run <plan-file> [--spec <spec-dir>] [--scenario <id>] [--out-dir <labe
     old sibling layout put every rehearsal outside the ignore, and it shipped.
     A dry run writes no qa-evidence.json, and a scored run rmtrees qa/ before it
     writes, so no rehearsal survives into the run it was rehearsing for.
-
-ostler qa sensitivity [--node <substr>] [--json]
-    Ask, of the book alone, whether each claim's declared checks could have gone
-    red. Every verifier is a pure function of the observation, so each declared
-    call is given a witness observation that satisfies it and then a family of
-    perturbations — the field the claim names missing or holding something else,
-    a different route answering, the ledger the write was to leave alone moved,
-    the refusal carrying the credential it may not. Exits non-zero when some
-    claim's every declared call survives all of them: that claim is `covered`
-    whatever the product does, which is not coverage. Runs nothing and boots
-    nothing, so it is available before a plan exists.
 
 ostler qa clean --spec <dir> [--yes]
     List the legacy qa-* scratch directories the old sibling layout left beside a
@@ -366,7 +339,7 @@ PAYLOAD = input_file("payload", "qa-inputs/login-payload.json")
 
 @scenario(target=api, mechanism="live", covers=[
     "ac:1",
-    "okf:docs/services/links/http/links.md#create:does:1",
+    "ac-1",
 ])
 def create_records_the_real_author(qa: Qa) -> None:
     """Creating a link ignores a spoofed author and persists the token's own UID."""
@@ -387,13 +360,13 @@ def create_records_the_real_author(qa: Qa) -> None:
 # link survived the process, which a read through the session that wrote could never show.
 # `reset_paths` are not re-applied on a restart: the state is what it is there to keep.
 @scenario(target=api, mechanism="live", restart=["api-server"], covers=[
-    "okf:docs/services/links/http/links.md#create:persistence:1",
+    "ac-2",
 ])
 def a_link_survives_a_restart(qa: Qa) -> None:
     """The link created above is still served after the process came back."""
     stored = qa.http.get(f"/links/{qa.get('link_id')}")
     qa.check("the link is still there", stored.status == 200, actual=stored.status,
-             expected=200, covers=["okf:docs/services/links/http/links.md#create:persistence:1"])
+             expected=200, covers=["ac-2"])
 ```
 
 ### What a scenario is given
@@ -410,7 +383,6 @@ explicit attribute here, and the two that used to cost the most are the first tw
 | `qa.require(label, condition, …)`  | record one claim and stop the scenario when it does not hold            |
 | `qa.step(label)`                   | a context manager grouping a phase's work under one step record         |
 | `qa.capture(key, value)` / `qa.get` | publish a value into the ledger so a later report can name it          |
-| `qa.instance(obligation, bindings)` | declare which member of a repeated (`one-per:`) family this scenario drives — a literal mapping of the template's bindable holes (and the `variants:` path, when one exists) to the values used; a declaration, not an assertion |
 | `qa.artifact(path, kind=…)`        | register a file as evidence; a relative path resolves inside `qa.dir`. A directory is filed file by file — one manifest row per file under it, each carrying `directory` — and an empty directory is a problem |
 | `qa.secret(name)`                  | the runtime value of a declared secret — redacted everywhere it is written |
 | `qa.eventually(label, callable, …)` / `qa.require_eventually` | the retrying forms of `check`/`require`: a lambda, a bound method or a nested function is re-evaluated until it holds or the timeout passes — the replacement for a bare `wait_for*` settle statement, which plan lint refuses |
@@ -445,8 +417,7 @@ provision — install them the way this machine installs any CLI (e.g.
 `apt install tesseract-ocr imagemagick`, `brew install tesseract imagemagick`) before
 opting a repo into them.
 
-`covers=` on the decorator is the machine-checkable link to the obligations
-`qa-okf-context.json` lists, and it is what `qa-evidence.json` is aggregated over. A
+`covers=` on the decorator names the acceptance criteria the scenario proves, and `qa-evidence.json` is aggregated over them. A
 single `qa.check` may narrow it with its own `covers=`.
 
 **Do not defend against a wrong key — let it raise.** A missing field is a `KeyError` on
@@ -455,7 +426,7 @@ whole reason the format changed: `jq` answered a missing field with an empty str
 `[.responses[] | select(.status >= 500)] | length == 0` passed on every run including the
 ones serving 500s, and four separate reviews found that defect by reading.
 
-A scenario that raises fails, and its obligations are not credited. A scenario that
+A scenario that raises fails, and what it covers is not credited. A scenario that
 records no assertion at all fails validation before it ever runs — `covers` with nothing
 proving it is the defect the old `_exit_sentinel` regex was guessing at.
 
@@ -602,8 +573,8 @@ qa.check("the app never logged the raw error",
 
 Two conditions need no assertion at all: an uncaught page error and a response of status
 500 or higher each fail the scenario on their own, recorded as a failing assertion bound to
-the scenario's `covers` — so the evidence map reports every obligation the scenario claimed
-as `contradicted`, not merely the scenario as red.
+the scenario's `covers` — so the report fails every id the scenario claimed,
+not merely the scenario.
 
 Assert through `qa.diagnostics` rather than by reading the file: the diagnostics file is
 written *after* the scenario returns, so a scenario that reads it is reading the previous
@@ -635,14 +606,8 @@ under the target's interpreter and reads the declarations back, so it catches:
 - a plan that **cannot be imported at all** — a syntax error, a missing dependency, a typo
   in a project import. This is the check the YAML format could never offer: a broken plan
   used to surface an hour into a run, as a driver failure against a story that was fine.
-- a scenario that `covers` an obligation but **records no assertion**, found by an `ast`
+- a scenario that `covers` an id but **records no assertion**, found by an `ast`
   walk of its body for `qa.check` / `qa.require` calls.
-- an obligation this change owes that **no asserted scenario covers**, and a `covers` ID
-  that is not an obligation of this change — the message distinguishes an ID documented in
-  the book but not owed here from one the book does not know at all, and names what the
-  plan *could* cover either way.
-- a browser scenario addressing the page by text or CSS where the book documents a role,
-  or navigating to a route the book does not document.
 - a `recording` a target tried to waive itself; only `qa.recordingExemptTargets` in
   `agents.yml` may do that.
 - an input file under the disposable `qa/` directory, which is deleted before the run
@@ -658,12 +623,6 @@ under the target's interpreter and reads the declarations back, so it catches:
   `.write_text`, `open(...)` and a bare `page.wait_for_*(...)` are refused by plan lint —
   build files through an opted-in `qa.tool`, and wait with `qa.eventually(label, lambda: …)`.
   A lambda is admitted (and its body is still linted).
-- a scenario covering a **repeat obligation** (one minted from a `one-per:` node with
-  bindable holes or a `variants:` axis) that declares no `qa.instance(...)` for it; an
-  instance whose mapping is not a literal dict, supplies a computed value, misses a bindable
-  hole, or names a key outside the binds and the `variants:` path; and a `variants:` value no
-  scenario samples. A family with no binds and no variants asks for nothing here — doctor's
-  `static-template` owns that case.
 ---
 
 ## The durable stack (`ostler.qa.stack`)
@@ -762,24 +721,21 @@ decide whether the work was done, and it is written for that reader:
    which the workflow's evidence gate reads to refuse a pass whose report is from another
    run), start/finish, assertion tally (sentinel failures counted and named), scenarios run /
    passed / failed / aborted, the recording when there is one.
-2. **Summary** — one table row per acceptance criterion and per OKF obligation: verdict,
+2. **Summary** — one table row per covered id: verdict,
    requirement, the scenarios that prove it, ✓/✗ counts.
 3. **Acceptance criteria** — `### ac:N — PASS|FAIL|UNPROVEN`, the requirement, then per
    covering scenario and per *step* a table of the assertions bound to the criterion: label,
    check, observed value, expected value, result, the assertion file; screenshots taken in
-   that step are embedded with the verdict of their `.vet.json`. A criterion is FAIL when a
+   that step are embedded. A criterion is FAIL when a
    bound assertion failed, PASS when one passed in a scenario that finished, and UNPROVEN
    otherwise — with why: nothing covered it, or the scenario stopped before looking.
-4. **OKF obligations** — the same, with the status `qa evidence-map` computes (the report
-   calls it; the two never disagree) and the checks each `verify:` bullet declared.
-5. **Scenarios, step by step** — every step in order with ✓/✗ assertions, captured values,
+4. **Scenarios, step by step** — every step in order with ✓/✗ assertions, captured values,
    artifacts, the trace, diagnostics and non-empty stdout. When the target was recorded,
    each step also says where it sits in the video — `recording 0:14.9–0:16.8`, a link that
    seeks a browser player there — and carries the `ostler qa frames` command that pulls the
    frames around it.
-6. **Warnings** — what would let a rubber stamp through: UNPROVEN criteria, assertions with
-   no `covers` or no observed value, aborted scenarios, `covers` ids the context does not
-   know.
+5. **Warnings** — what would let a rubber stamp through: UNPROVEN criteria, assertions with
+   no `covers` or no observed value, aborted scenarios.
 
 Attribution is by the `step` stamp the python driver puts on every `assert`, `capture` and
 artifact record it writes while a `qa.step()` is open; an assertion or a capture made outside

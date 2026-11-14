@@ -76,7 +76,7 @@ ostler vet <screenshot.png> --manifest <expected.json> (--cdp-url <url> | --regi
   **one UI state**. Multi-state elements (dropdowns, expandables) are handled by the external
   driver calling `ostler vet` once per state with a different `--state` label, re-navigating or
   re-triggering state between calls — `ostler` never drives page interaction itself.
-- `<screenshot.png>` is archived as evidence and referenced in the report/Concept; `ostler` never
+- `<screenshot.png>` is archived as evidence and referenced in the report and the document; `ostler` never
   decodes or pixel-analyzes it (the optional `crop.py` step is the sole, optional exception).
 - Exit code `0` if clean, `1` if disagreements — mirrors `doctor`'s convention, and follows
   `ostler`'s existing dry-run-by-default `EditPlan`/`--write` pattern so a calling workflow can
@@ -104,7 +104,7 @@ live-CDP path.
 | `regions.py` | `RegionBox` + `merge()`: groups `ScannedElement`s sharing a (near-)identical rect, labels via role. `RegionList` (a `TypeAdapter`) is the single source of truth for `*-regions.json` (de)serialization. |
 | `register.py` | IoU greedy matching between manifest elements and regions: `matched` / `missing` (expected, no rendered region — broken/occluded render) / `unexpected` (rendered, not expected — stray overlay/z-index leak) / `unlabeled` (unexpected *and* `role is None` — held for optional VLM residual review). |
 | `crop.py` | Optional: lazily imports `Pillow` to crop `unlabeled` regions out of the screenshot into in-memory PNG bytes; no-ops cleanly if `Pillow` is absent. Never writes to disk itself — dry-run-by-default is enforced by the caller bundling the bytes into the plan. |
-| `report.py` | `VetReport`/`VetSummary` models and the `docs/specs/<story-id>/vet.md` Concept read-modify-write. |
+| `report.py` | `VetReport`/`VetSummary` models and the `docs/specs/<story-id>/vet.md` document read-modify-write. |
 | `run.py` | Orchestrates one invocation end to end and returns `(VetOutcome, VetPlan)`. |
 | `writes.py` | `VetPlan`/`VetFileWrite`: the dry-run-by-default file-write plan, supporting both text and binary content. |
 
@@ -115,7 +115,7 @@ Only manifest elements with `visible=True` participate. Candidate `(dom, region)
 `(i, j)` makes the match deterministic regardless of the order elements/regions were produced
 in, which matters because a live CDP scan has no guaranteed element order across runs.
 
-## Report shape and the `vet.md` Concept
+## Report shape and the `vet.md` document
 
 `VetReport` (`report.py`) is persisted via `model_dump_json(by_alias=True)` to
 `docs/specs/<story-id>/vet/<state>-report.json`. It carries `slug`, `state`, `screenshot`,
@@ -123,7 +123,7 @@ in, which matters because a live CDP scan has no guaranteed element order across
 `manifestErrors`, `config` (`iouThreshold`), a `summary` (`status: clean|disagreements` +
 counts), and the four `register.match()` buckets.
 
-`docs/specs/<story-id>/vet.md` is a new OKF Concept, `type: spec.vet`. It needs **zero registry
+`docs/specs/<story-id>/vet.md` is a new document of `type: spec.vet`. It needs **zero registry
 changes** — `registry.py`'s `spec` `EntityType` already globs `*/*.md` under the `specs` doc_root
 with `required=("type",)` and `schema=None`, so `spec.vet` conforms exactly like `spec.plan`/
 `spec.review`/`spec.qa` do. Frontmatter accumulates one entry per `--state` (`states.<state>`),

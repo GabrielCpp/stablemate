@@ -152,7 +152,7 @@ username and the metadata may print. The two values never do.
 Tags are the whole query vocabulary. `list --tag environment=local --tag role=admin`
 returns the secrets carrying both pairs. `tags` lists the distinct pairs in use. The
 convention the ostler integration relies on is that a secret for a QA environment
-carries `environment=<slug of the ostler environment page>`.
+carries `environment=<slug>`, the tag the stack root's `secrets: saddlebag:` names.
 
 ---
 
@@ -308,7 +308,7 @@ is allowed: it is a guard against the accidental read, not an access control.
 
 ## The ostler stack
 
-A repository's `docs/services/ops/stack.yml` names one secret source for its compose
+A repository's `services/ops/stack.yml` names one secret source for its compose
 stack. With saddlebag as that source, ostler asks `saddlebag list` for the variable
 names the matching secrets fill, checks them against the `${VAR}` references in the
 rendered compose file, and runs every `docker compose` command under `saddlebag exec`.
@@ -322,14 +322,7 @@ secrets:
 The value is one or more space-separated tag pairs. The ostler README documents the
 other two sources and the required-name check.
 
-The environment's non-secret variables live on its ostler `environment` page under
-`variables:`, with `NAME: secret` marking each value saddlebag holds in a record tagged
-`environment=<slug>` with `--var NAME`. `ostler env exec <slug> -- CMD` puts the page's
-literals in the command's environment and wraps it in `saddlebag exec --env` for the
-held names. `ostler env dotenv <slug>` renders the page as a `.env` with the held names
-blank, for a tool that wants a file. `ostler env import-dotenv FILE --environment <slug>`
-is the migration: the literals go onto the page and the secret lines go through
-`saddlebag env import` with `--tag environment=<slug> --prefix <slug>-`.
+`ostler env exec -- CMD` runs a command under the same tags.
 
 ---
 

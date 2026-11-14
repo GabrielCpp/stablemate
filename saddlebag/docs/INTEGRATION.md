@@ -8,7 +8,7 @@ covers install and the commands used below.
 
 ## The ostler stack
 
-A repository's `docs/services/ops/stack.yml` names one secret source. With saddlebag:
+A repository's `services/ops/stack.yml` names one secret source. With saddlebag:
 
 ```yaml
 secrets:
@@ -23,8 +23,7 @@ boot. Then every `docker compose` command for that copy runs as
 `saddlebag exec --tag environment=local -- docker compose ...`, and compose reads the
 values from its own process environment. No `stack.env` is written.
 
-The tag value is the `slug:` of the ostler `environment` page the runbook links to, the
-same slug `ostler env exec` resolves a held `NAME: secret` variable by. A secret created
+The tag value is the one the stack root's `secrets: saddlebag:` names. A secret created
 for that environment carries the same tag:
 
 ```bash

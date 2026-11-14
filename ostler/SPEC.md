@@ -1,42 +1,27 @@
-# The ostler knowledge format (OKF profile v1)
+# The ostler planning format
 
-This document is the authoritative definition of the `docs/` knowledge hierarchy that **ostler**
-owns: its on-disk layout, the entity types, their identity and frontmatter, the `epic.md` body
-grammar, and the conformance rules ostler enforces. It is a *strict profile* of the
-[Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
-(OKF): every knowledge document is an OKF **Concept** (a markdown file with YAML frontmatter whose
-only hard requirement is a non-empty `type`), and ostler layers typed schemas, referential
-integrity, retrieval, and CRUD on top — which OKF permits a consumer to do for `type`s it knows.
+This document defines the `docs/` planning hierarchy ostler reads and writes: epics, stories, seeds and milestones, each a markdown file with YAML frontmatter whose `type` names its kind. ostler adds typing, ids, referential integrity, retrieval and CRUD on top.
 
-There is **no legacy format**. `seed.json`, `dependencies.json`, `epics-todo.json`, and
-`features/inventory.json` do not exist in this format; everything is markdown, and ostler is the
-single tool that defines, validates, reads, and mutates it.
+## 1. Documents
 
-## 1. Bundles and Concepts
-
-A repository's knowledge lives under `docs/` as a set of OKF **bundles** (directories of markdown
-Concepts). A **Concept** is one `.md` file with:
+A repository's planning documents live under `docs/` as directories of markdown files. A document is one `.md` file with:
 
 - a YAML **frontmatter** block delimited by `---`, carrying a required `type` and any typed fields;
 - a markdown **body** using conventional section headings.
 
-**Identity is the path.** A Concept's id is its bundle-relative path without the `.md` suffix
-(`docs/services/profile/preference-summary.md` → `profile/preference-summary`). Cross-references
-are bundle-relative paths or plain markdown links.
+**Identity is the path.** A document's id is its path under its document root, without the `.md` suffix. Cross-references are relative paths or plain markdown links.
 
-Reserved filenames per bundle (OKF): **`index.md`** (an ordered listing of the bundle) and
-**`log.md`** (chronological history, newest first). All other `.md` files are Concepts.
+Reserved filenames per root: **`index.md`** (an ordered listing of the root) and **`log.md`** (chronological history, newest first). All other `.md` files are documents.
 
 ## 2. Entity types
 
-Every Concept declares `type`. Ostler knows these types (the machine registry is
+Every document declares `type`. Ostler knows these types (the machine registry is
 `ostler/registry.py`):
 
 | `type` | Location (glob, repo-relative) | Identity | Required frontmatter |
 |---|---|---|---|
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
-| `feature` | `docs/services/<area>/<slug>.md` *(or flat `docs/services/<slug>.md`)* | `<area>/<slug>` | `type`, `slug`, `title` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `docs/specs/<story-id>/*.md` | path | `type` |
 
 An epic's directory is minted `NNNN-<slug>` (four digits minimum, one past the highest number
@@ -170,27 +155,21 @@ contract position on request — the same operation for a story written last yea
 emptied, and one scaffolded a moment ago.
 
 The coverage edge (`covers`) is *not* here — it names seeds defined in the epic, so it lives in the
-epic's `## Stories` section (§3). Prose may link to `docs/services/…` OKF nodes with ordinary
-markdown links.
-
+epic's `## Stories` section (§3). 
 The `id` is an opaque string, canonical and immutable. Ostler mints a ULID on `create story`, and a
 tracker key such as `CASE-574` may be written as the id by hand. The slug names the story's folder and its `### <slug>` heading in the epic. Every command takes
 the id, and a slug passed to a command is refused with the id spelled out. A slug or id that
 identifies more than one story is a `story-key-collision` error, and the id recorded here must
 agree with the copy in the parent epic's `## Stories` block.
 
-## 5. The feature Concept and the epics index
+## 5. The epics index
 
-- **Feature** Concepts (`type: feature`) are per-surface markdown under `docs/services/`. The feature
-  **inventory** is *derived* from these via `ostler list --type feature`; there is no `inventory.json`.
-- **`docs/epics/index.md`** is the epics bundle's OKF index: an **ordered** list of the epics to be
-  worked (the former `epics-todo.json`). Ostler manages its order via `ostler todo`. The coder's
-  runtime queue sidecar (untracked) consumes this ordering.
+**`docs/epics/index.md`** is the **ordered** list of the epics to be worked (the former `epics-todo.json`). Ostler manages its order via `ostler todo`. The coder's runtime queue sidecar (untracked) consumes this ordering.
 
 ## 6. Id allocation
 
 `ostler create` allocates ids for backlog items,
-milestones, epics, stories, and features, scaffolds their canonical Markdown, and (for stories) adds
+milestones, epics and stories, scaffolds their canonical Markdown, and (for stories) adds
 the `### <slug>` block to the epic's `## Stories`. No external id allocator exists. The registry has
 no counter and no registry file. The prefix is `repo.id_prefix` in the `agents.yml` at the graph root, a letter then up to 15 letters, digits or underscores. A mint refuses while it is unset or malformed.
 
@@ -208,7 +187,7 @@ a colliding id is later minted, **only the full id is ever written into a docume
 
 ## 7. Conformance and validation (`ostler doctor`)
 
-A bundle is **OKF-conformant** when every non-reserved `.md` parses as frontmatter + body with a
+A document is conformant when it parses as frontmatter + body with a
 non-empty `type` (`missing-type` otherwise). On top of conformance, ostler enforces the typed
 referential-integrity contract over the graph parsed from the markdown:
 
@@ -219,15 +198,14 @@ plus `schema` (warn) for per-type frontmatter schema violations.
 
 ## 8. Versioning
 
-This profile is versioned `<major>.<minor>`; the current version is **1.0**. A repo may record
-`okf_version: "0.1"` (the base OKF version) and `ostler_profile: "1.0"` in `docs/epics/index.md`.
+This profile is versioned `<major>.<minor>`; the current version is **1.0**.
 Minor bumps add backward-compatible fields; major bumps may change required frontmatter or the
 `epic.md` grammar.
 
 ## 9. Templates and template-declared kinds
 
 The entity types in §2 are **built in** (`ostler/registry.py`) and fixed for every repo. A repo
-that needs a *different* OKF hierarchy — its own Concept kinds, nesting, required frontmatter,
+that needs a *different* hierarchy — its own Concept kinds, nesting, required frontmatter,
 and status enums — declares one in a **per-repo** file: `.agents/templates.yml`. This sits
 in `.agents/`, ostler's repo-local, non-`docs/` state, and
 `.agents/templates.yml` extends that same convention rather than a global `~/.config/` store.

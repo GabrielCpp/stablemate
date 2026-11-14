@@ -37,13 +37,7 @@ from a keyring item deleted behind it, and discards each one at once. The `class
 request behind `env` reads values the same way, to compare them against text, and
 answers with a verdict.
 
-A repository's non-secret configuration is not saddlebag's to hold. It lives on the
-ostler `environment` page under `variables:`, where `NAME: secret` marks the one kind of
-value the page may not carry. `ostler env exec` is the one place the two meet: it reads
-the page's literals itself and delegates the held names to `saddlebag exec --env`, so no
-file and no process other than the consumer ever holds both halves. `ostler env dotenv`
-renders the page as a file with every held name blank, and `ostler doctor` fails the page
-when a literal matches a secret rule.
+A repository's non-secret configuration lives in its `stack.yml`, not in saddlebag. `ostler env exec` and `ostler env compose` hand the held names to `saddlebag exec --tag`, so no file and no process other than the consumer holds a value.
 
 ## The OS keyring
 

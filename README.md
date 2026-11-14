@@ -68,7 +68,7 @@ flowchart LR
     story["story (intent)"]
     code["code (the diff)"]
     skills["skills library<br/>(engineering standards)"]
-    okf["service book<br/>(executable model)"]
+    book["service book<br/>(executable model)"]
     live["live environment"]
 
     story --> A["A — test<br/>does the code do what was asked?"]
@@ -76,7 +76,7 @@ flowchart LR
     code --> B["B — review<br/>does it hold to the standards?"]
     story --> B
     skills --> B
-    okf --> C["C — QA<br/>does the running app keep<br/>the promises the book makes?"]
+    book --> C["C — QA<br/>does the running app keep<br/>the promises the book makes?"]
     live --> C
 ```
 
