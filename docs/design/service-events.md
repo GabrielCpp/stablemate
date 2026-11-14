@@ -126,8 +126,8 @@ own handler to exercise each hearing.
 |---|---|
 | An event has one contract under a root. Every emission and hearing names it. | Event index |
 | A hearing carries an action of the model, and the handler is judged by the state the model predicts. | Hearing |
-| The run places an event only before the service its book is of. No other listener receives it. | Delivery |
-| The tap removes no event another reader needs, and judges only events about records the run made. | Tap |
+| The run places only events about records it made. Where an environment says the bus is not to be published on, no other listener receives them. | Delivery |
+| The tap is a queue the run made for itself, and it judges only events about records the run made. | Tap |
 | The run waits by reading again, never by a wait of fixed length. | Landing |
 | A book that declares no event behaves as it does today. | Event index |
 
@@ -154,9 +154,13 @@ Inside parts:
 - F2 makes the event's name the join. A listener under the same root refers to the emitter's
   own contract. A listener of another root's event declares a foreign event and names its
   owner.
-- F3 decides how a hearing is proven: the run writes the message to this service's own
-  queue, in the form the bus would have written it. It never publishes on the bus. F3 also
-  makes the tap a reader that deletes nothing.
+- F3 gives delivery two variants. The first publishes the event on the bus, as a person
+  doing QA by hand does, so the bus's own rule is exercised too. The second writes the
+  message to this service's own queue, in the form the bus would have written it, for an
+  environment where a published event would disturb others. The book's environment chooses.
+  Either way the event is about a record the run made. F3 also makes the tap a queue the
+  run creates for itself with a rule that catches the bus's events, and removes when it
+  stops, so two runs never read each other's queue.
 - F4 makes delivery and the tap one role with a variant per way of travelling. The book's
   environment chooses the variant and names the queue. The first variant is a bus that routes
   to queues.
@@ -174,7 +178,8 @@ Claims from 1b:
    longer the only way (F3, F7). It stays for a journey that wants the whole chain.
 2. Re-derived from F1.
 3. The named event and the emission are re-derived from F2 and F5. "Putting the event on the
-   bus" is rejected by F3.
+   bus" is kept as the first way to deliver, on the operator's word that it is common
+   practice in QA at work (see the revision log).
 
 SOLID check. A new way of travelling adds one variant and one line in an environment. A new
 event adds one contract. The hearing side never names an emitter. The proof names neither a
@@ -188,7 +193,13 @@ Open lookups:
 
 ## 5. Mapping onto the existing system
 
-Revision log: none yet.
+Revision log:
+
+- Section 3, the delivery and tap invariants, and section 4, F3. L1 was answered by the
+  operator: in QA at work an agent commonly publishes events on the bus by hand, and tools
+  commonly create a queue that catches every event on it. Publishing on the bus was
+  forbidden in the first draft and is now the first way to deliver. The tap is a queue the
+  run creates, where the first draft read a standing one without deleting.
 
 | Item | Verdict | Where |
 |---|---|---|
@@ -240,10 +251,12 @@ the other service's call. It is not waste. It proves the whole chain, and it sta
 |---|---|---|---|---|
 | A book with outside events made through another service's call | its cells play green | the gRPC book tests | pass | pass unchanged |
 | A book that declares no event | `check` exits 0, index unchanged | the index comparison | 0 findings on the fixture books | 0 findings, index byte-identical |
-| Other listeners on a shared bus | no event from any book run | nothing | none sent today | none sent, by the delivery invariant |
+| Other listeners on a shared bus | no event from any book run | nothing | none sent today | only events about records the run made, and none where the environment forbids publishing |
 | A person installing the tool without a bus | no AWS client needed | nothing | not a dependency | still optional |
 
 The third row is enforced by nothing today. It becomes the delivery invariant of section 3.
+The operator accepts the change: publishing test events on the bus is common practice in QA
+at work.
 
 ## 6. Slices
 
@@ -254,8 +267,8 @@ The third row is enforced by nothing today. It becomes the delivery invariant of
 2. **Two books that disagree are told.** A hearing that reads a field the contract lacks, or
    under another type, is a finding of `check` that names both books. An orphan is a
    finding that does not block. Done with one planted disagreement.
-3. **A handler is proven with no other service.** Delivery to the service's own queue, the
-   landing, and the second delivery. Done on one ticket-desk listener: green as it stands,
+3. **A handler is proven with no other service.** Delivery on the bus, the landing, and the
+   second delivery. Delivery to the service's own queue follows as the second variant. Done on one ticket-desk listener: green as it stands,
    red when the handler applies a second delivery again.
 4. **An emission is proven.** The tap. Done on the ticket-desk emitter: red when an action
    stops emitting, and red when a field's value differs from the book's.
@@ -264,11 +277,11 @@ The third row is enforced by nothing today. It becomes the delivery invariant of
 
 ## 7. Assumptions
 
-- A1. **Assumption:** in each environment a book runs on, the run may write a message to the
-  service's own queue and read a tap queue provided for it. **Decided:** F3. **Basis:** true
-  on the fixture's emulator. None for the environments at work. **If wrong:** there, a
-  hearing is proven only through the other service's call, as today, and an emission is not
-  proven. Slices 1 and 2 do not depend on it.
+- A1. **Assumption:** in each environment a book runs on, the run may publish on the bus,
+  and create a queue with a rule that catches the bus's events. **Decided:** F3. **Basis:**
+  the operator, 2026-11-14: both are common practice in QA at work. True on the fixture's
+  emulator. **If wrong for one environment:** there, delivery uses the service's own queue,
+  and an emission is not proven.
 - A2. **Assumption:** the books of an event's emitter and listener often sit under one root.
   **Decided:** the map reads one root, and a foreign event covers the rest. **Basis:** the
   operator's rule that the books of a workspace of several repositories sit together. None
