@@ -17,7 +17,7 @@ from ostler.book.model import Defect, Rule
 from ostler.book.screen import Screen
 from ostler.book.service import Service
 
-KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "scene", "decision")
+KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "scene", "decision", "question")
 
 
 class Row(Protocol):
@@ -114,8 +114,10 @@ def items(service: Service[Any], module: str) -> list[Item]:
         for scene in axes.scenes:
             out.append(Item("scene", f"{axes.record}:{scene.name}", scene.name, (scene.describe(axes.today),)))
     for decision in decisions.load(module):
-        for number, text in decision.lines():
+        for number, text in decision.searchable():
             out.append(Item("decision", f"decisions/{decision.slug}.md:{number}", decision.slug, (text,)))
+    for question in questions.load(module):
+        out.append(Item("question", f"QUESTIONS.md:{question.line}", question.element, (f"{question.element}: {question.text}",)))
     return out
 
 

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
 from ostler.book import Answer, Endpoint, Screen, T
 from ostler.book.screen import Button
+from ostler.book import decisions
 from ostler.book.domain import State
 from ostler.book.search import cmd_search, items, search
 
@@ -114,3 +116,35 @@ def test_a_loose_match_prints_only_the_lines_that_hold_a_word(module: str, capsy
     assert cmd_search(service, args) == 0
     printed = [line.strip() for line in capsys.readouterr().out.splitlines()[1:]]
     assert printed and all("aller" in line.lower() or "enregistrer" in line.lower() for line in printed)
+
+
+def _decided(module: str) -> None:
+    folder = decisions.directory(module)
+    with open(os.path.join(folder, "refund.md"), "w") as f:
+        f.write("story: SHOP-42\ndate: 2026-11-14\nelements: Checkout, Cart\nsources: app.py::refund\n\nA refund keeps the basket.\n")
+
+
+def test_a_story_id_finds_its_decision(module: str):
+    _decided(module)
+    [(item, lines)] = search(_book(languages=("en",)), module, "SHOP-42", "decision")
+    assert (item.kind, item.address, lines) == ("decision", "decisions/refund.md:1", ["story: SHOP-42"])
+
+
+def test_a_class_name_finds_the_decision_that_explains_it(module: str):
+    _decided(module)
+    [(item, lines)] = search(_book(languages=("en",)), module, "Cart", "decision")
+    assert (item.address, lines) == ("decisions/refund.md:3", ["elements: Checkout, Cart"])
+
+
+def test_a_cited_source_finds_its_decision(module: str):
+    _decided(module)
+    [(item, lines)] = search(_book(languages=("en",)), module, "app.py::refund", "decision")
+    assert (item.address, lines) == ("decisions/refund.md:4", ["sources: app.py::refund"])
+
+
+def test_a_word_of_an_open_question_finds_it(module: str):
+    questions = os.path.join(os.path.dirname(decisions.directory(module)), "QUESTIONS.md")
+    with open(questions, "w") as f:
+        f.write("# Open\n\n- Checkout: why does a refund wait a day?\n")
+    [(item, lines)] = search(_book(languages=("en",)), module, "refund wait", "question")
+    assert (item.address, item.name, lines) == ("QUESTIONS.md:3", "Checkout", ["Checkout: why does a refund wait a day?"])

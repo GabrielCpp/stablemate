@@ -117,7 +117,7 @@ def read_decisions(directory: str) -> list[Entry]:
     for name in sorted(os.listdir(root)):
         if name.endswith(".md"):
             decision = decisions.parse(os.path.join(root, name))
-            for number, text in decision.lines():
+            for number, text in decision.searchable():
                 out.append(Entry("decision", decision.slug, f"decisions/{decision.slug}.md:{number}", (text,)))
     return out
 

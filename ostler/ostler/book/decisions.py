@@ -13,6 +13,7 @@ from ostler.book.service import Service
 from ostler.book.sources import kinds
 
 HEADER = ("story", "date", "elements", "sources")
+SEARCHED = ("story", "elements", "sources")
 MODEL_MODULES = ("rules", "lifecycle", "cast")
 
 
@@ -26,6 +27,7 @@ class Decision:
     path: str
     offset: int = 0
     sources: tuple[str, ...] = ()
+    header: tuple[tuple[int, str], ...] = ()
 
     def first(self) -> str:
         text = " ".join(self.body.split())
@@ -38,6 +40,9 @@ class Decision:
     def lines(self) -> list[tuple[int, str]]:
         return [(self.offset + n, text) for n, text in enumerate(self.body.splitlines(), 1)]
 
+    def searchable(self) -> list[tuple[int, str]]:
+        return [*self.header, *self.lines()]
+
 
 def directory(module: str) -> str:
     return os.path.join(os.path.dirname(importlib.import_module(module).__file__ or ""), "decisions")
@@ -47,16 +52,19 @@ def parse(path: str) -> Decision:
     with open(path) as f:
         rows = f.read().splitlines()
     fields: dict[str, str] = {}
+    header: list[tuple[int, str]] = []
     n = 0
     while n < len(rows) and rows[n].strip():
         key, _, value = rows[n].partition(":")
         fields[key.strip()] = value.strip()
+        if key.strip() in SEARCHED:
+            header.append((n + 1, f"{key.strip()}: {value.strip()}"))
         n += 1
     body = "\n".join(rows[n + 1:]).strip("\n")
     elements = tuple(e.strip() for e in fields.get("elements", "").split(",") if e.strip())
     sources = tuple(e.strip() for e in fields.get("sources", "").split(",") if e.strip())
     return Decision(os.path.basename(path).removesuffix(".md"), fields.get("story", ""), fields.get("date", ""),
-                    elements, body, path, n + 1, sources)
+                    elements, body, path, n + 1, sources, tuple(header))
 
 
 def load(module: str) -> list[Decision]:
