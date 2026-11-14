@@ -14,7 +14,7 @@ from typing import Iterator, cast
 import pytest
 
 from book_todo import run_book, module
-from ostler.book import Browser, BookError, Journey, Screen, Service, T
+from ostler.book import Browser, BookError, Field as Wire, Int, Journey, Screen, Service, T
 from ostler.book.check import spoken
 from ostler.book.model import Model
 from ostler.book.stack import Stack
@@ -25,6 +25,7 @@ from ostler.book.screen import Button, Check, Field, Lists, Select, Text
 PAGE = b"""<!doctype html><html><body>
 <h1 id="hello">Hello</h1>
 <label for="name">Name</label><input id="name" oninput="document.getElementById('echo').textContent = this.value">
+<label for="qty">Quantity</label><input id="qty" data-testid="qty" type="number">
 <label for="who">Who</label><select id="who"><option value="">Nobody</option><option value="ana">ana</option></select>
 <button type="button" onclick="document.getElementById('echo').textContent = 'pressed'">Go</button>
 <input type="checkbox" id="ok"><label for="ok">Agree</label>
@@ -36,6 +37,7 @@ PAGE = b"""<!doctype html><html><body>
 
 class Form(Screen):
     nick = Field(None, T(en="Name", fr="Nom"))
+    qty = Field("qty", T(en="Quantity", fr="Quantité"), takes="qty", holds=Wire(Int()))
     who = Select(None, T(en="Who", fr="Qui"), options=(T(en="Nobody", fr="Personne"), "ana"))
     go = Button(None, T(en="Go", fr="Aller"))
     agree = Check(None, T(en="Agree", fr="D'accord"))
@@ -229,6 +231,48 @@ def test_a_screen_input_with_a_shape_gets_input_classes():
     base = found[add]
     labels = [c.label for c in classes(base.call, base.before, None)]
     assert labels == ["due_on malformed date"]
+
+
+def _classes_of(shape, place: str, required: bool = True) -> list[str]:
+    from ostler.book import Field as Wire
+    from ostler.book.inputs import field_classes
+
+    add, found = _todo_base()
+    return [c.label for c in field_classes(place, "x", Wire(shape, required=required), found[add].before, None)]
+
+
+def test_a_required_text_on_a_screen_is_tried_blank():
+    from ostler.book import Str
+
+    assert "x blank" in _classes_of(Str(max_len=5), "screen")
+
+
+def test_an_optional_text_on_a_screen_is_not_tried_blank():
+    from ostler.book import Str
+
+    assert "x blank" not in _classes_of(Str(max_len=5), "screen", required=False)
+
+
+def test_a_number_on_a_screen_is_tried_with_text():
+    from ostler.book import Int, Num
+
+    assert "x malformed number" in _classes_of(Int(), "screen")
+    assert "x malformed number" in _classes_of(Num(), "screen")
+
+
+def test_a_number_that_is_not_on_a_screen_is_not_tried_with_text():
+    from ostler.book import Int, Num
+
+    for place in ("path", "query", "body", "headers"):
+        assert "x malformed number" not in _classes_of(Int(), place)
+        assert "x malformed number" not in _classes_of(Num(), place)
+
+
+def test_a_browser_that_rejects_text_in_a_number_makes_the_class_unreachable(browser: Browser):
+    from ostler.book import CannotReach
+
+    with pytest.raises(CannotReach, match="does not take 'not a number'"):
+        browser.fill(Form.qty, "not a number")
 
 
 def test_a_declared_divergence_on_a_screen_input_names_a_class_the_check_knows():

@@ -21,7 +21,7 @@ from ostler.book.backstage import CannotArrange
 from ostler.book.cast import Actor
 from ostler.book.domain import Fixture
 from ostler.book.errors import BookError, Unhealthy
-from ostler.book.http import (Bool, Client, Endpoint, Enum, Field, Id, Identities, Int, List, Object, OffShape, Str, Undeclared,
+from ostler.book.http import (Bool, Client, Endpoint, Enum, Field, Id, Identities, Int, List, Num, Object, OffShape, Str, Undeclared,
                               blind, twins, unknown_value)
 from ostler.book.journey import Given, StepResult, difference
 from ostler.book.model import Defect, Model
@@ -178,12 +178,14 @@ def field_classes(place: str, name: str, spec: Field, model: Model, ids: Identit
             add(label, value, valid=True)
         if shape.format == "date":
             add("malformed date", "not a date", "malformed")
-        if place == "body" and spec.required:
+        if place in ("body", SCREEN) and spec.required:
             add("blank", "   ", "missing")
         if shape.max_len:
             add("too long", "x" * (shape.max_len + 1), "malformed")
     elif isinstance(shape, Enum):
         add("out of enum", "nobody", "malformed")
+    elif place == SCREEN and isinstance(shape, (Int, Num)):
+        add("malformed number", "not a number", "malformed")
     if place == "body":
         add("wrong type", _wrong_type(shape), "wrong_type")
     if place != "path" and spec.required:

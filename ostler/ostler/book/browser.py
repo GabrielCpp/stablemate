@@ -276,7 +276,7 @@ class Browser:
             try:
                 found.fill(value)
             except Exception as rejected:
-                if "Malformed value" not in str(rejected):
+                if "Malformed value" not in str(rejected) and "Cannot type text into" not in str(rejected):
                     raise
                 raise CannotReach(f"{component.found_by(self.lang)} does not take {value!r}") from None
             return
