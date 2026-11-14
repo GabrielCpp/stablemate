@@ -51,7 +51,8 @@ A service's book is `services/<name>/` under the book root: the repository root 
 | `fixtures/*.py` | what a caller sends: one base factory per fixture and variants that fill one thing in |
 | `journeys/*.py` | stories a user lives through, one class per file |
 | `DISAGREEMENTS.md` | numbered entries where the source, the openapi and the app disagree |
-| `decisions/<slug>.md` | why one behaviour is so: three header lines, `story:`, `date:` and `elements:` with the class names it explains, a blank line, then prose. A decision no story settled, as in a backfill, writes `story: none` |
+| `decisions/<slug>.md` | why one behaviour is so: three header lines, `story:`, `date:` and `elements:` with the class names it explains, a blank line, then prose. A decision no story settled, as in a backfill, writes `story: none`. The header may add `sources:`, a comma separated list of what the project wrote down, each one a commit sha, `<sha>:<path>` for a file as that commit held it, or an element's source pointer (`path`, `path::symbol`, `repo://<member>/<path>`), and `check --app` opens each |
+| `QUESTIONS.md` | one line per why nothing written settles, `- <Element>: <question>`; an answered question becomes a decision and its line is removed |
 | `ops/stack.yml` | the containers `ostler env` runs for this service, with their templates beside it |
 
 Each package has an `ALL` (endpoints, journeys) or `__all__` (fixtures) that registers what
@@ -227,6 +228,7 @@ one is live.
 | `ostler book index services.<name>` | seconds | rewrites `index.tsv`, which `search` reads |
 | `ostler book stale services.<name> --app <root>` | seconds, no app | the elements whose source changed since the verified commit, changed files no element names, decisions they touch |
 | `ostler book missing services.<name> --app <root> [--under <folder>] [--files]` | seconds, no app | every tracked file under the app's roots that no element names; prints the map of each named file to its elements, the unnamed files, and a count per ignore pattern (`--files` lists them); the batch a backfill works through |
+| `ostler book decisions services.<name> --unexplained [--kind KIND]` | seconds, no app | the class name of each endpoint, record, screen and interaction no decision names, one per line; `--kind` keeps `endpoint`, `record`, `screen` or `interaction` |
 | `ostler book verified services.<name> --app <root>` | seconds | records the app's HEAD once `stale` is worked |
 
 `--only` takes endpoint class names, or interaction class names in a screen book, never journey names. A wrong name is refused before anything starts. `explore` and `run` print nothing until they end, and a long one may outlive the shell's
