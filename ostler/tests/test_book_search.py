@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any, cast
@@ -13,6 +14,7 @@ from ostler.book import Answer, Endpoint, Screen, T
 from ostler.book.screen import Button, Select
 from ostler.book import decisions
 from ostler.book.domain import State
+from ostler.book.index import services_of
 from ostler.book.search import cmd_search, items, search
 
 from test_book_web import _service
@@ -166,3 +168,10 @@ def test_a_selects_third_word_says_what_it_does_as_for_every_other_component():
 def test_a_select_handed_its_options_by_position_is_refused():
     with pytest.raises(TypeError, match="options are given by name"):
         Select(None, "Who", cast(Any, ("ana", "bo")))
+
+
+def test_the_books_under_a_root_are_its_service_files_one_per_surface(tmp_path: Path):
+    for file in ("shop/service.py", "desk/http/service.py", "desk/web/service.py", "desk/model/state.py", "ops/stack.yml"):
+        (tmp_path / "services" / file).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "services" / file).write_text("")
+    assert services_of(str(tmp_path)) == ["services.desk.http", "services.desk.web", "services.shop"]

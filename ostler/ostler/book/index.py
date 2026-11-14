@@ -135,9 +135,21 @@ def entries_of(root: str, name: str) -> list[Entry]:
     return [e for e in found if e.kind != "decision"] + read_decisions(directory)
 
 
+def folders(base: str) -> list[str]:
+    return [n for n in sorted(os.listdir(base)) if os.path.isdir(os.path.join(base, n)) and not n.startswith((".", "_"))]
+
+
 def services_of(root: str) -> list[str]:
+    """Every book under the root: a service's package, or one package per surface it is reached by."""
     base = os.path.join(root, "services")
-    return [f"services.{n}" for n in sorted(os.listdir(base)) if os.path.isdir(os.path.join(base, n)) and not n.startswith((".", "_"))]
+    found: list[str] = []
+    for name in folders(base):
+        if os.path.isfile(os.path.join(base, name, "service.py")):
+            found.append(f"services.{name}")
+            continue
+        found += [f"services.{name}.{surface}" for surface in folders(os.path.join(base, name))
+                  if os.path.isfile(os.path.join(base, name, surface, "service.py"))]
+    return found
 
 
 def cmd_index(service: Any, args: Any) -> int:
