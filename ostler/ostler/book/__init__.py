@@ -9,6 +9,7 @@ lists what a state refuses.
 
 from ostler.book.arrange import Arrange
 from ostler.book.backstage import Backstage, CannotArrange
+from ostler.book.boundary import Foreign, Needs, Passes
 from ostler.book.browser import Browser, Received, answer, refusal, request
 from ostler.book.cast import SOLE, Actor
 from ostler.book.domain import (Action, App, Become, Change, Collection, Create, Delete, Entry, Fixture, Heard, Index, MoveToday,
@@ -43,8 +44,8 @@ __all__ = [
     "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Event", "Fixture", "Heard", "Index", "MoveToday", "Select",
     "Show", "State", "Total", "Transaction", "Unique", "Update",
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",
-    "Endpoint", "Enum", "Field", "Given", "Id", "Impossible", "Int", "Interaction", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",
-    "Num", "On", "Phase", "Process", "Reference", "Refusal", "Refusals", "Refused", "Relates", "Rule", "Same", "Scene", "Screen", "Seen", "Service", "Shows", "Stack", "Stored", "Str", "Surface",
+    "Endpoint", "Enum", "Field", "Foreign", "Given", "Id", "Impossible", "Int", "Interaction", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",
+    "Needs", "Num", "On", "Passes", "Phase", "Process", "Reference", "Refusal", "Refusals", "Refused", "Relates", "Rule", "Same", "Scene", "Screen", "Seen", "Service", "Shows", "Stack", "Stored", "Str", "Surface",
     "Command", "CommandSurface", "Exit", "Files", "Flag", "Lines", "Mark", "Outside", "Positional", "STDERR", "Sandbox", "Seed", "Switch",
     "Code", "Exited", "GrpcClient", "GrpcSurface", "HttpSurface", "Rpc", "STATUS", "refused", "succeeded",
     "T", "Transition", "Undeclared", "Undo", "Unreachable", "Unseen", "Because", "When", "error_field", "masked", "pluck", "problem",

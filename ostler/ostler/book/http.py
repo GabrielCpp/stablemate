@@ -23,6 +23,7 @@ from dataclasses import dataclass, field, is_dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, ClassVar, Iterable, Mapping, cast
 
+from ostler.book.boundary import Passes
 from ostler.book.cast import KEEP, SOLE, Actor
 from ostler.book.domain import Action, Fixture, Heard, On
 from ostler.book.errors import BookError, Unhealthy
@@ -783,6 +784,7 @@ class Endpoint:
     answers: ClassVar[tuple[Answer, ...]] = ()
     does: ClassVar[str] = ""
     carries: ClassVar[type[Action[Any, Any]] | None] = None
+    passes: ClassVar[Passes | None] = None
     source: ClassVar[tuple[str, ...]] = ()
     unauthenticated: ClassVar[Status] = 401
     typed_wire: ClassVar[bool] = False
@@ -805,6 +807,8 @@ class Endpoint:
         statuses = [a.status for a in cls.answers]
         if len(statuses) != len(set(statuses)):
             raise BookError(f"{name}: a status is declared twice")
+        if cls.passes is not None and cls.carries is not None:
+            raise BookError(f"{name}: passes the owner's answer on, so it carries no action of its own")
         if cls.auth and cls.unauthenticated not in statuses:
             raise BookError(f"{name}: accepts credentials but never answers {cls.unauthenticated}")
 

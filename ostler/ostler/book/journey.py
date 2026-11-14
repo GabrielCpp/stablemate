@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Callable, Iterable
 
+from ostler.book.boundary import Needs
 from ostler.book.outcome import Outcome
 from ostler.book.status import Status
 
@@ -191,7 +192,7 @@ class Journey:
     resets again after it: for a story that moves the clock, takes a
     dependency down or counts across the whole account."""
 
-    given: tuple[Given, ...] = ()
+    given: tuple[Given | Needs, ...] = ()
     lang: str = ""
     alone: bool = False
 
