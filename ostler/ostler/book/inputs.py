@@ -472,6 +472,14 @@ class Tried:
         return sum(1 for t in self.twins if t.ignored)
 
 
+def fields_tried(service: Service[Any], tried: Tried) -> tuple[int, int]:
+    """How many screen attributes state a shape, and how many of those the run played an input class or a pair of twins on."""
+    played = {(s.endpoint.screen, s.c.name) for s in tried.sent if not s.skipped and issubclass(s.endpoint, Interaction)}
+    played |= {(t.endpoint.screen, t.twin.name) for t in tried.twins if t.played and issubclass(t.endpoint, Interaction)}
+    stated = [(screen, c) for screen in service.screens for _, c in screen.attributes() if c.holds is not None]
+    return len(stated), sum(1 for screen, c in stated if (screen, c.takes) in played)
+
+
 def judge(service: Service[Any], call: Endpoint, c: InputClass, model: Model, surface: Surface) -> Sent:
     """Sends the varied call on the surface and the model, and compares them."""
     cls = type(call)

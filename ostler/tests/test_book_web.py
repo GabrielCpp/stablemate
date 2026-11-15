@@ -563,6 +563,14 @@ def test_the_run_of_the_web_book_plays_the_input_classes_its_forms_state(todo_we
     assert played and int(played.group(1)) > 2, done.stdout
 
 
+def test_the_run_of_the_web_book_prints_how_many_stated_fields_it_tried_and_tried_every_one(todo_web, tmp_path: Path):
+    done = _run(todo_web, tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+    said = re.search(r"^fields: (\d+) state a shape, (\d+) tried$", done.stdout, re.MULTILINE)
+    assert said and int(said.group(1)) > 0 and said.group(1) == said.group(2), done.stdout
+    assert done.stdout.index("twins:") < done.stdout.index("fields:")
+
+
 def test_a_page_that_sends_the_date_from_a_local_midnight_is_underspecified(tmp_path: Path):
     stack = _stack("utc-midnight")
     try:
