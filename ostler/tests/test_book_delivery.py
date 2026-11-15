@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from ostler.book import Arrange
+from ostler.book import Again, Arrange, BookError
 from ostler.book.runner import Deliveries, Landings, perform
 
 from book_desk import Desk, DeskSurface, TicketChanged, ToQueue
@@ -81,3 +81,55 @@ def test_a_detail_that_lacks_a_field_the_hearing_reads_fails_the_step_and_names_
     assert "detail.snapshot.team" in result.note
     assert delivery.placed == []
     assert desk.count == 0
+
+
+class Trails(Opens):
+    does = "A customer opens a ticket. Each delivery adds a line to the trail."
+    repeat = Again("each delivery adds a line to the trail, the trail is a log of deliveries")
+
+
+def test_a_second_delivery_that_changes_nothing_passes():
+    desk, surface, delivery = _desk()
+    step = Opens("T-4")
+    result = perform(step, step, Counter(DAY), surface)
+    assert result.ok, result.note
+    assert len(delivery.placed) == 2
+    assert delivery.placed[0] == delivery.placed[1]
+    assert desk.count == 1
+
+
+def test_a_second_delivery_the_handler_applies_again_fails_and_says_so():
+    desk, surface, delivery = _desk("applies-again")
+    step = Opens("T-5")
+    result = perform(step, step, Counter(DAY), surface)
+    assert not result.ok
+    assert "second delivery was applied again" in result.note
+    assert desk.count == 2
+
+
+def test_a_hearing_that_declares_its_second_delivery_applies_again_passes_when_it_does():
+    desk, surface, delivery = _desk("applies-again")
+    step = Trails("T-6")
+    result = perform(step, step, Counter(DAY), surface)
+    assert result.ok, result.note
+    assert len(delivery.placed) == 2
+    assert desk.count == 2
+
+
+def test_an_again_with_no_reason_is_refused_where_it_is_declared():
+    with pytest.raises(BookError, match="Again has no reason"):
+        Again("  ")
+
+
+def test_the_run_counts_its_second_deliveries_on_one_line():
+    desk, surface, delivery = _desk()
+    model = Counter(DAY)
+    for ticket in ("T-7", "T-8"):
+        step = Opens(ticket)
+        perform(step, step, model, surface)
+    assert Deliveries.line() == "repeats: 2 delivered, 0 applied again as declared, 0 fail"
+
+
+def test_a_run_that_delivered_no_hearing_prints_no_repeats_line():
+    _desk()
+    assert Deliveries.line() == ""

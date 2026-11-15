@@ -24,6 +24,7 @@ from ostler.book.surface import Surface
 
 RETAKES = 1000
 PATIENCE = 50
+REREADS = 3
 
 
 def agree(model: Outcome, app: Outcome) -> bool:
@@ -365,7 +366,40 @@ def move(step: object, request: object, model: Model, surface: Surface) -> StepR
             note += f"; the event had not landed after {reads} reads"
     elif isinstance(app_outcome, Unreachable):
         note = f"the surface never offers this: {app_outcome.reason}"
+    if hearing is not None and ok:
+        ok, note, model_rows, app_rows = repeated(hearing, detail, request, model, surface, model_rows, reads)
     return StepResult(step, model_outcome, app_outcome, model_rows, app_rows, ok, note, reduced)
+
+
+def repeated(hearing: Arrange[Any], detail: dict[str, Any], request: object, model: Model, surface: Surface,
+             held: tuple[object, ...], reads: int) -> tuple[bool, str, tuple[object, ...], tuple[object, ...]]:
+    """The same event placed again after it landed. By default the service ends where it was, so the watch is read as
+    many times as the first landing took, and at least `REREADS`, and every reading must show the rows the model had.
+    A hearing that declares it applies again has the model perform the action a second time and lands as the first did."""
+    assert Deliveries.role is not None and hearing.heard is not None
+    Deliveries.role.place(hearing.heard, detail)
+    Deliveries.delivered += 1
+    if hearing.repeat is None:
+        for _ in range(max(reads, REREADS)):
+            got = surface.rows()
+            if got != held:
+                Deliveries.failed += 1
+                return (False, "the second delivery was applied again: rows model " + str([str(r) for r in held])
+                        + " app " + str([str(r) for r in got]), held, got)
+        return True, "", held, held
+    outcome = model.perform(request)
+    if not isinstance(outcome, Done):
+        Deliveries.failed += 1
+        return False, f"the model said {outcome} to the second delivery", held, held
+    wanted = listing(surface, model)
+    got, took = landed(surface, wanted)
+    if got != wanted:
+        Deliveries.failed += 1
+        note = ("rows differ after the second delivery, which the hearing declares applies again: model "
+                + str([str(r) for r in wanted]) + " app " + str([str(r) for r in got]))
+        return False, note + (f"; the event had not landed after {took} reads" if took > 1 else ""), wanted, got
+    Deliveries.declared += 1
+    return True, "", wanted, got
 
 
 class Landings:
@@ -461,7 +495,18 @@ class Deliveries:
     run is one process."""
 
     role: Delivery | None = None
+    delivered = 0
+    declared = 0
+    failed = 0
 
     @classmethod
     def begin(cls, role: Delivery | None) -> None:
         cls.role = role
+        cls.delivered = cls.declared = cls.failed = 0
+
+    @classmethod
+    def line(cls) -> str:
+        """The run's second deliveries, or nothing when no hearing was delivered."""
+        if not cls.delivered:
+            return ""
+        return f"repeats: {cls.delivered} delivered, {cls.declared} applied again as declared, {cls.failed} fail"

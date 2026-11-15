@@ -487,6 +487,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             print(f"- {d}: {d.why}")
     print(f"inputs: {sum(1 for s in tried.sent if not s.skipped)} played, {len(tried.diverged)} diverge as declared, "
           f"{sum(1 for s in tried.sent if not s.ok)} fail")
+    if Deliveries.line():
+        print(Deliveries.line())
     for t in tried.twins:
         if not t.ok:
             print(f"FAIL  twin {t.text}\n      {t.note}")

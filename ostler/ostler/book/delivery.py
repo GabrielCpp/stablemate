@@ -3,8 +3,10 @@ handler, and the judging of the detail an occurrence carries against the event's
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, cast
 
+from ostler.book.errors import BookError
 from ostler.book.event import Event
 
 
@@ -14,6 +16,17 @@ class Delivery:
 
     def place(self, event: type[Event], detail: dict[str, Any]) -> None:
         raise NotImplementedError
+
+
+@dataclass(frozen=True)
+class Again:
+    """A hearing's statement that a second delivery of the same event applies again, with the reason the product does so."""
+
+    reason: str
+
+    def __post_init__(self) -> None:
+        if not self.reason.strip():
+            raise BookError("Again has no reason: say why a second delivery of the same event applies again, for example Again('each delivery adds a line to the trail')")
 
 
 def found(value: object, path: str) -> bool:

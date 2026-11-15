@@ -12,6 +12,7 @@ from ostler.book.backstage import Backstage, CannotArrange
 from ostler.book.boundary import Foreign, Needs, Passes, Reaches
 from ostler.book.browser import Browser, Received, answer, refusal, request
 from ostler.book.cast import SOLE, Actor
+from ostler.book.delivery import Again, Delivery
 from ostler.book.domain import (Action, App, Become, Change, Collection, Create, Delete, Entry, Fixture, Heard, Index, MoveToday,
                                 Select, Show, State, Total, Transaction, Unique, Update)
 from ostler.book.command import STDERR, Command, CommandSurface, Exit, Files, Flag, Lines, Mark, Outside, Positional, Sandbox, Seed, Switch
@@ -39,7 +40,7 @@ from ostler.book.workspace import checkout
 from ostler.book.witness import Because, Unseen
 
 __all__ = [
-    "Actor", "Arrange", "Backstage", "CannotArrange", "Environment", "SOLE",
+    "Actor", "Again", "Arrange", "Delivery", "Backstage", "CannotArrange", "Environment", "SOLE",
     "checkout", "Browser", "Device", "MobileSurface", "PageSurface", "Received", "answer", "refusal", "request",
     "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Event", "Fixture", "Heard", "Index", "MoveToday", "Select",
     "Show", "State", "Total", "Transaction", "Unique", "Update",

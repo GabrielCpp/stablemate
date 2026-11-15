@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Generic, TypeVar
 
+from ostler.book.delivery import Again
 from ostler.book.domain import Action
 from ostler.book.errors import BookError
 from ostler.book.event import Event
@@ -24,6 +25,7 @@ class Arrange(Generic[F]):
     by: None = None
     heard: ClassVar[type[Event] | None] = None
     reads: ClassVar[tuple[str, ...]] = ()
+    repeat: ClassVar[Again | None] = None
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
