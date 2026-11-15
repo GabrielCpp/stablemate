@@ -1,6 +1,20 @@
 [check-skills]
 skills = "base-library/library/skills"
 
+[check-no-env]
+package = "workflows/src/workhorse_workflows"
+
+[check-no-env.allow]
+"kit/leased_env.py" = """
+writes the process environment for the length of one block: a QA lease's variables, which the \
+plan's own commands read, and which are restored on exit. The values are leased for the run, \
+never a token and never a checkpointed --param"""
+
+"coder/shared/clones.py" = """
+hands the clone-check script its cache directory through STABLEMATE_CACHE_DIR, the only way the \
+script takes one, on top of a copy of the inherited environment its git calls need. The value is \
+a cache path, never a secret"""
+
 [[check-clones.coincidence]]
 files = ["services/workflows/model/files.py", "services/farrier/model/files.py"]
 reasons = [
