@@ -8,11 +8,14 @@ from typing import Any
 
 import pytest
 
-from ostler.book import Again, Arrange, BookError, Bus
+from ostler.book import Again, Arrange, BookError, Bus, Delivery, Environment, Service
+from ostler.book.check import Finding, event_faults
+from ostler.book.domain import State
 from ostler.book.runner import Deliveries, Landings, perform
 
 from book_desk import Desk, DeskSurface, TicketChanged, ToQueue
 from book_fakes import Counter as Tally
+from book_fakes import no_stack
 
 DAY = date(2026, 11, 14)
 
@@ -156,3 +159,32 @@ def test_the_bus_variant_says_which_extra_to_install_when_the_aws_client_is_miss
     monkeypatch.setitem(sys.modules, "boto3", None)
     with pytest.raises(BookError, match=r"install the aws extra of ostler"):
         Bus("zeta-bus").place(TicketChanged, {"ticket_id": "T-9"})
+
+
+def _book(*, outside: tuple[Any, ...], delivery: Delivery | None) -> Service[Any]:
+    environment = Environment("local", {}, delivery=delivery)
+    return Service(name="desk", new_model=State, surface=lambda environment: DeskSurface(Desk()), journeys=(),
+                   stack=no_stack, outside=outside, environments={"local": environment}, default_environment="local")
+
+
+def _told(service: Service[Any]) -> list[Finding]:
+    return [f for f in event_faults(service, "desk") if "delivery" in f.problem]
+
+
+def test_the_check_notes_a_hearing_with_a_detail_and_no_delivery_and_does_not_fail():
+    [found] = _told(_book(outside=(Opens, Told), delivery=None))
+    assert found.told
+    assert not found.blocks
+    assert found.name == "outside desk.Opens"
+    assert "performed by the surface until an environment names a delivery" in found.problem
+
+
+def test_the_check_notes_a_delivery_in_a_book_with_no_hearing_that_builds_a_detail():
+    [found] = _told(_book(outside=(Told,), delivery=Bus("zeta-bus", client=Stub())))
+    assert found.told
+    assert found.name == "environment local"
+    assert "no outside event builds a detail" in found.problem
+
+
+def test_the_check_says_nothing_of_delivery_when_the_book_uses_one_for_a_hearing_with_a_detail():
+    assert _told(_book(outside=(Opens,), delivery=Bus("zeta-bus", client=Stub()))) == []

@@ -267,15 +267,30 @@ def registration_faults(service: Service[Any], module: str) -> list[Finding]:
     return found
 
 
+def delivery_faults(service: Service[Any], module: str) -> list[Finding]:
+    """A hearing that builds a detail is delivered only where an environment names a delivery, and a delivery serves only such a hearing."""
+    building = [o for o in service.outside if o.delivers()]
+    delivering = [e for e in service.environments.values() if e.delivery is not None]
+    out: list[Finding] = []
+    if building and not delivering:
+        out += [Finding(f"outside {module}.{o.__name__}", "builds the detail of its event and no environment names a delivery: "
+                        "the hearing is performed by the surface until an environment names a delivery", told=True) for o in building]
+    if delivering and not building:
+        out += [Finding(f"environment {e.name}", "names a delivery and no outside event builds a detail: nothing is delivered "
+                        "until a hearing defines detail", told=True) for e in delivering]
+    return out
+
+
 def event_faults(service: Service[Any], module: str) -> list[Finding]:
     """What this book's events and outside events say that another book under the root contradicts or leaves unanswered."""
     from ostler.book.event import bare
     from ostler.book.eventmap import books, hearers, owner_of
 
+    out = delivery_faults(service, module)
     if not service.events and not any(o.heard is not None for o in service.outside):
-        return []
+        return out
     found, skipped = books(module, service)
-    out = [Finding(f"book {name}", f"cannot be loaded, so its events are not read: {why}", blocks=False) for name, why in skipped.items()]
+    out += [Finding(f"book {name}", f"cannot be loaded, so its events are not read: {why}", blocks=False) for name, why in skipped.items()]
     declared: dict[str, dict[type, set[str]]] = {}
     for name, book in found.items():
         for event in (*book.events, *(o.heard for o in book.outside if o.heard is not None)):
