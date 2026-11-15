@@ -95,13 +95,29 @@ def test_vars_merges_into_template_and_template_wins():
 
 def test_workflow_services_and_lint_fold_to_the_top_level():
     manifest = parse_manifest_text(
-        "workflow:\n  github_token_env: TOK\n  services:\n    api: {test: pytest}\n  lint:\n    api: ruff\n",
+        "workflow:\n  services:\n    api: {test: pytest}\n  lint:\n    api: ruff\n",
         _SRC,
     )
 
-    assert manifest.workflow.githubTokenEnv == "TOK"
     assert manifest.services["api"].test == "pytest"
     assert manifest.lint == {"api": "ruff"}
+
+
+def test_an_agents_yml_with_a_github_token_secret_reads_it():
+    manifest = parse_manifest_text("workflow:\n  githubTokenSecret: github-token\n", _SRC)
+
+    assert manifest.workflow.githubTokenSecret == "github-token"
+
+
+@pytest.mark.parametrize("key", ["githubTokenEnv", "github_token_env"])
+def test_an_agents_yml_with_a_github_token_env_is_refused(key: str):
+    with pytest.raises(ConfigError) as exc_info:
+        parse_manifest_text(f"workflow:\n  {key}: GH_TOKEN\n", _SRC)
+
+    assert (
+        "workflow.githubTokenEnv is gone: store the token in saddlebag and name the secret in "
+        "workflow.githubTokenSecret"
+    ) in str(exc_info.value)
 
 
 def test_the_top_level_services_table_beats_the_workflow_one():

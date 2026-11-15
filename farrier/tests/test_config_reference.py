@@ -61,7 +61,7 @@ def test_a_key_matches_whole_segments_only():
     with redirect_stderr(err), pytest.raises(SystemExit) as exit_info:
         cli.main(["config", "reference", "workflow.githubToken"])
 
-    assert "workflow.githubTokenEnv" in str(exit_info.value.code)
+    assert "workflow.githubTokenSecret" in str(exit_info.value.code)
 
 
 def test_file_home_prints_only_the_machine_config():

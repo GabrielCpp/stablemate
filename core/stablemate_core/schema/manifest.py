@@ -315,12 +315,11 @@ class ServiceEntry(Section):
 class WorkflowTable(Section):
     """Keys the installed workflows read for themselves."""
 
-    githubTokenEnv: str | None = setting(
+    githubTokenSecret: str | None = setting(
         None,
-        description="The name of the environment variable that carries the GitHub token for the coder workflow's pull request and CI steps. `GH_TOKEN` then `GITHUB_TOKEN` are tried after it.",
-        examples=["ACME_GH_TOKEN"],
+        description="The name of the saddlebag secret that holds the GitHub token for the coder workflow's pull request and CI steps. With it unset the workflow has no token and skips those steps. `githubTokenEnv` is gone and the manifest loader refuses it.",
+        examples=["github-token"],
         default_text="unset",
-        legacy="`github_token_env` is read as `githubTokenEnv`.",
     )
     prompts: dict[str, str] = setting(
         factory=dict,
@@ -492,7 +491,7 @@ class Manifest(Section):
     workflow: WorkflowTable = setting(
         factory=WorkflowTable,
         description="Keys the installed workflows read. Farrier itself reads nothing here.",
-        examples=[{"githubTokenEnv": "ACME_GH_TOKEN"}],
+        examples=[{"githubTokenSecret": "github-token"}],
         default_text="empty",
     )
     organization: OrganizationTable | None = setting(

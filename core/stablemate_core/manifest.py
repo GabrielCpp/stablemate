@@ -91,14 +91,16 @@ def _fold_vars(data: dict[str, Any], source: Path) -> None:
         data["template"] = {**cast("dict[str, Any]", legacy), **cast("dict[str, Any]", template)}
 
 
-def _fold_workflow(data: dict[str, Any]) -> None:
+def _fold_workflow(data: dict[str, Any], source: Path) -> None:
     workflow = data.get("workflow")
     if not isinstance(workflow, dict):
         return
     table = dict(cast("dict[str, Any]", workflow))
-    token = table.pop("github_token_env", None)
-    if token and not table.get("githubTokenEnv"):
-        table["githubTokenEnv"] = token
+    if "githubTokenEnv" in table or "github_token_env" in table:
+        raise ConfigError(
+            f"{source}: workflow.githubTokenEnv is gone: store the token in saddlebag "
+            "and name the secret in workflow.githubTokenSecret"
+        )
     for key in _WORKFLOW_FOLDS:
         legacy = table.pop(key, None)
         if legacy and not data.get(key):
@@ -138,7 +140,7 @@ def lifted(tree: Mapping[str, Any], source: Path) -> dict[str, Any]:
     """``tree`` with every older shape of the manifest folded into the current one, no I/O."""
     data = _unset_blanks(dict(tree))
     _fold_vars(data, source)
-    _fold_workflow(data)
+    _fold_workflow(data, source)
     _fold_prompts(data, source)
     _fold_agents(data)
     return data
