@@ -101,10 +101,19 @@ def _spec_dir() -> Path:
 class _Book:
     """`ostler book`, scripted at the process edge: the exit code each verb answers with, in order."""
 
-    def __init__(self, check: tuple[int, ...] = (0,), run: tuple[int, ...] = (0,)) -> None:
-        self.script = {"check": check, "run": run}
-        self.argv: dict[str, list[list[str]]] = {"check": [], "run": []}
+    def __init__(
+        self,
+        check: tuple[int, ...] = (0,),
+        run: tuple[int, ...] = (0,),
+        verified: tuple[int, ...] = (0,),
+        changed: dict[str, str] | None = None,
+        stamped: tuple[str, ...] = (),
+    ) -> None:
+        self.script = {"check": check, "run": run, "verified": verified}
+        self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": []}
         self.cwds: list[Any] = []
+        self.changed = changed or {}
+        self.stamped = set(stamped)
 
     def __call__(
         self, argv: list[str], cwd: Any = None, *, check: bool = False, logger: Any = None
@@ -112,9 +121,23 @@ class _Book:
         verb = argv[argv.index("ostler.book") + 1]
         self.argv[verb].append(argv)
         self.cwds.append(cwd)
+        if verb == "stale":
+            return self._stale(argv)
         codes = self.script[verb]
         code = codes[min(len(self.argv[verb]), len(codes)) - 1]
+        if verb == "verified" and code == 0:
+            self.stamped.add(argv[argv.index("verified") + 1])
         return subprocess.CompletedProcess(argv, code, f"{verb} said exit {code}\n", "")
+
+    def _stale(self, argv: list[str]) -> subprocess.CompletedProcess[str]:
+        module = argv[argv.index("stale") + 1]
+        if "--since" in argv:
+            report = self.changed.get(module, "")
+            code = 1 if report else 0
+            return subprocess.CompletedProcess(argv, code, f"since {argv[argv.index('--since') + 1]}, app at head\n{report}", "")
+        if module in self.stamped:
+            return subprocess.CompletedProcess(argv, 0, "verified at abc1234, app at abc1234\n\nnothing stale\n", "")
+        return subprocess.CompletedProcess(argv, 2, "not verified: write the commit with 'verified'\n", "")
 
 
 class _Stack:
@@ -251,7 +274,7 @@ def test_a_story_with_no_covered_service_passes_with_no_seat_and_no_stack(
     assert (result.status, result.findings) == ("passed", [])
     assert agent.calls == [], agent.calls
     assert (stack.targets, stack.ensured, stack.released) == (0, 0, 0)
-    assert scripted.argv == {"check": [], "run": []}
+    assert scripted.argv["check"] == [] and scripted.argv["run"] == []
 
 
 def test_a_green_pass_plays_the_named_calls_records_them_and_lands_the_book(
@@ -281,6 +304,79 @@ def test_a_green_pass_plays_the_named_calls_records_them_and_lands_the_book(
     assert git(lane, "status", "--porcelain").stdout == ""
     assert stack.released == 1, stack.released
     assert stack.held == [stack_lease(argv)], stack.held
+
+
+WEB_CHANGED = "## Stale elements\n- Home: web/page.tsx (1 commits: abc1234)\n"
+
+BOTH_CALLS = [*CALLS, {"service": "web", "calls": ["ShowHome"]}]
+
+
+def _add_web_book(lane: Path, git: Callable[..., subprocess.CompletedProcess[str]], write: Callable[[Path, str], Path]) -> None:
+    write(lane / "services" / "web" / "service.py", "# the web book\n")
+    git(lane, "add", "-A")
+    git(lane, "commit", "-qm", "chore: add the web book")
+
+
+def _module_of(argv: list[str]) -> str:
+    return next(arg for arg in argv if arg.startswith("services."))
+
+
+def test_a_story_that_declares_one_service_and_whose_diff_touches_another_books_source_covers_both(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The story named `api`, its commits changed the source `web`'s book points at, and a book left behind is never verified."""
+    _add_web_book(lane, git, write)
+    base = git(lane, "rev-parse", "HEAD").stdout.strip()
+    scripted = book(changed={"services.web": WEB_CHANGED})
+    agent = _Agent(lane, {"status": "passed", "calls": BOTH_CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.args[0]["services"] == ["api", "web"], agent.args[0]["services"]
+    assert [_module_of(argv) for argv in scripted.argv["check"]] == ["services.api", "services.web"]
+    assert {argv[argv.index("--since") + 1] for argv in scripted.argv["stale"] if "--since" in argv} == {base}
+    assert stack.services == ["api", "web"], stack.services
+
+
+def test_a_story_whose_diff_touches_no_book_source_covers_only_its_declared_services_with_a_book(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A book no commit of the story reached stays out of the lane, so it costs no check and no play."""
+    _add_web_book(lane, git, write)
+    scripted = book()
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.args[0]["services"] == ["api"], agent.args[0]["services"]
+    assert [_module_of(argv) for argv in scripted.argv["check"]] == ["services.api"]
+
+
+def test_a_declared_service_with_no_book_is_left_out(
+    lane: Path,
+    book: Callable[..., _Book],
+    logger: logging.Logger,
+) -> None:
+    """The lane cannot judge a service that has no executable book."""
+    book()
+
+    covered = book_nodes.covered_services(logger, ["api", "ghost"], repo_dir=str(lane))
+
+    assert covered.services == ["api"], covered
 
 
 def test_the_claims_the_seat_could_not_state_are_recorded_beside_its_calls(

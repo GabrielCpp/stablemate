@@ -25,6 +25,8 @@ turn.
 - Covered services, each with an executable book at `{{ workhorse_var('book_root') }}/services/<name>/`:
 {% for name in services %}  - `{{ name }}`
 {% endfor %}
+A service may be in this list because the story's commits changed the app source its book points at, though the story did not name it. Bring that book up to the diff all the same.
+
 Work **only** the story at that path.
 {% if report %}
 

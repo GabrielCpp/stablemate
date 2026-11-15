@@ -49,13 +49,15 @@ class BookQa(QaOwner):
 
     def start(self) -> Continue | Await | Done:
         """Find the story's covered services, bring a stack copy up for them, and replay the recorded calls or call the seat."""
-        covered = self.call(covered_services, self.ctx.story_services)
+        covered = self.call(
+            covered_services, self.ctx.story_services, story_slug=self.ctx.story_slug, story_id=self.ctx.story_id
+        )
         if not covered.services:
             self.logger.info("no service of %s has an executable book", self.ctx.story_slug)
             return Done(QaFlowResult(status="passed"))
         self.call(resolve_impl_context, self.ctx.spec_dir)
         lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id)
-        target = self.call(stack_target, self.ctx.story_slug, lease, services=list(self.ctx.story_services))
+        target = self.call(stack_target, self.ctx.story_slug, lease, services=list(covered.services))
         stack = self.call(ensure_stack, near=target.near, lease=target.lease)
         if stack.ready == "no":
             notes = _gate("the QA stack", f"The stack did not come up at step `{stack.failed_step}`.\n\n{stack.notes}")

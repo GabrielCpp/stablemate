@@ -10,6 +10,7 @@ from ostler.book.index import FILE as INDEX_FILE
 from ostler.book.index import parse as parse_index
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.provenance import story_base
 from workhorse_workflows.coder.shared.schemas.book_qa import (
     BookPaths,
     BookPlay,
@@ -35,6 +36,15 @@ from workhorse_workflows.kit import (
 from workhorse_workflows.kit.tools import run_tool
 
 TAIL_LINES = 200
+STALE_EXIT = 1
+CHANGE_SECTIONS = frozenset(
+    {
+        "## Stale elements",
+        "## Changed files no element names",
+        "## Changed functions no element names",
+        "## Changed beside the named symbols, functions not told apart",
+    }
+)
 RECORD_FILE = "book-qa.json"
 BOOK_OUT = Path("qa") / "book"
 UNREACHED_FILE = "qa-unreached.json"
@@ -71,14 +81,70 @@ def _check_argv(module: str, app: str) -> list[str]:
     return [sys.executable, "-m", "ostler.book", "check", module, "--app", app]
 
 
+def _stale_argv(module: str, app: str, since: str = "") -> list[str]:
+    argv = [sys.executable, "-m", "ostler.book", "stale", module, "--app", app]
+    return [*argv, "--since", since] if since else argv
+
+
+def _names_a_change(report: str) -> bool:
+    section = ""
+    for line in report.splitlines():
+        if line.startswith("## "):
+            section = line.strip()
+        elif section in CHANGE_SECTIONS and line.startswith("- "):
+            return True
+    return False
+
+
+def _booked_services(root: Path) -> list[str]:
+    folder = root / "services"
+    if not folder.is_dir():
+        return []
+    return [found.name for found in sorted(folder.iterdir()) if found.is_dir() and book_modules(root, found.name)]
+
+
+@blueprint.node
+def touched_services(logger: logging.Logger, base: str, repo_dir: str = "") -> CoveredServices:
+    """Every service with a book under the book root whose app source the commits since `base` changed, or added a file no element names."""
+    root = find_book_root(repo_dir)
+    app = str(find_repo_root(repo_dir))
+    touched: list[str] = []
+    for name in _booked_services(root):
+        for module in book_modules(root, name):
+            done = run_tool(_stale_argv(module, app, base), cwd=root)
+            if done.returncode == STALE_EXIT and _names_a_change(done.stdout):
+                touched.append(name)
+                break
+            if done.returncode not in (0, STALE_EXIT, 2):
+                logger.warning("book stale of %s exited %d: %s", module, done.returncode, _tail(done.stdout + done.stderr))
+    logger.info("the diff since %s reaches the book of %d service(s): %s", base, len(touched), ", ".join(touched))
+    return CoveredServices(services=touched)
+
+
 @blueprint.node
 def covered_services(
-    logger: logging.Logger, services: list[str] | None = None, repo_dir: str = ""
+    logger: logging.Logger,
+    services: list[str] | None = None,
+    repo_dir: str = "",
+    story_slug: str = "",
+    story_id: str = "",
 ) -> CoveredServices:
-    """The story's services that have an executable book under the book root."""
+    """The story's services that have an executable book under the book root, then every other service with a book whose app source the story's commits changed."""
     root = find_book_root(repo_dir)
     covered = [name for name in services or [] if book_modules(root, name)]
-    logger.info("%d of %d story service(s) have an executable book", len(covered), len(services or []))
+    declared = len(covered)
+    refs = tuple(dict.fromkeys(ref for ref in (story_id, story_slug) if ref))
+    if refs:
+        try:
+            base = story_base(find_repo_root(repo_dir), refs)
+        except (GitError, ValueError) as exc:
+            logger.info("no story base to read the touched books from: %s", exc)
+        else:
+            covered += [name for name in touched_services(logger, base, repo_dir).services if name not in covered]
+    logger.info(
+        "%d of %d story service(s) have an executable book, %d more reached by the diff",
+        declared, len(services or []), len(covered) - declared,
+    )
     return CoveredServices(services=covered)
 
 
@@ -382,6 +448,7 @@ __all__ = [
     "covered_services",
     "read_book_record",
     "shared_book_paths",
+    "touched_services",
     "write_book_record",
     "write_unreached_claims",
 ]
