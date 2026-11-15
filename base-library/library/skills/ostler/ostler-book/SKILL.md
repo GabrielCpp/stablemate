@@ -151,14 +151,15 @@ procedure. The book records the app commit it was verified at.
 
 `ostler book stale services.<name> --app <app root>` is the batch. Each stale
 element is an existing endpoint or record to replay. Each changed file or function no element
-names is a route or a rule to add, or a `source` pointer to extend down to it; code that holds
-no behaviour goes in the app's `ignore` as `path` or `path::function`. Each decision listed is
+names is a route or a rule to add, or a `source` pointer to extend down to it; code that no served
+request runs goes in the app's `ignore` as `path` or `path::function`, and code a served request
+runs, however pure, is named in a `source`. Each decision listed is
 one to reread. Work them through "Adding a route", then `verified` records the app's HEAD. Done
 when `stale` lists nothing. In a workspace `--app` names one member. A pointer into another member is listed as `not traced`.
 
 A first pass over a service works the `missing` list to empty instead: each tracked file under
 the app's roots that no element names gets an element with that file in its `source`, or a
-pattern in `App(ignore=...)` when it holds no behaviour a user reaches. A screen and an
+pattern in `App(ignore=...)` when no served request runs it. A screen and an
 interaction carry `source` like an endpoint does.
 
 When the commit answers a story, the story is the intent: read its model, plan and review
