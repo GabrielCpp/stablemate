@@ -37,6 +37,8 @@ from workhorse_workflows.kit.tools import run_tool
 
 TAIL_LINES = 200
 STALE_EXIT = 1
+UNVERIFIED_EXIT = 2
+DECISIONS_SECTION = "## Decisions touching stale elements"
 CHANGE_SECTIONS = frozenset(
     {
         "## Stale elements",
@@ -90,14 +92,23 @@ def _verified_argv(module: str, app: str) -> list[str]:
     return [sys.executable, "-m", "ostler.book", "verified", module, "--app", app]
 
 
-def _names_a_change(report: str) -> bool:
+def _bullets(report: str) -> list[tuple[str, str]]:
     section = ""
+    found: list[tuple[str, str]] = []
     for line in report.splitlines():
         if line.startswith("## "):
             section = line.strip()
-        elif section in CHANGE_SECTIONS and line.startswith("- "):
-            return True
-    return False
+        elif section and section != DECISIONS_SECTION and line.startswith("- "):
+            found.append((section, line.partition(" (")[0]))
+    return found
+
+
+def _names_a_change(report: str) -> bool:
+    return any(section in CHANGE_SECTIONS for section, _ in _bullets(report))
+
+
+def _entries(report: str) -> set[str]:
+    return {entry for _, entry in _bullets(report)}
 
 
 def _booked_services(root: Path) -> list[str]:
@@ -125,6 +136,18 @@ def touched_services(logger: logging.Logger, base: str, repo_dir: str = "") -> C
     return CoveredServices(services=touched)
 
 
+def _story_base(logger: logging.Logger, repo_dir: str, story_slug: str, story_id: str) -> str:
+    refs = tuple(dict.fromkeys(ref for ref in (story_id, story_slug) if ref))
+    if not refs:
+        logger.info("no story reference to find a base from")
+        return ""
+    try:
+        return story_base(find_repo_root(repo_dir), refs)
+    except (GitError, ValueError) as exc:
+        logger.info("no story base: %s", exc)
+        return ""
+
+
 @blueprint.node
 def covered_services(
     logger: logging.Logger,
@@ -137,14 +160,9 @@ def covered_services(
     root = find_book_root(repo_dir)
     covered = [name for name in services or [] if book_modules(root, name)]
     declared = len(covered)
-    refs = tuple(dict.fromkeys(ref for ref in (story_id, story_slug) if ref))
-    if refs:
-        try:
-            base = story_base(find_repo_root(repo_dir), refs)
-        except (GitError, ValueError) as exc:
-            logger.info("no story base to read the touched books from: %s", exc)
-        else:
-            covered += [name for name in touched_services(logger, base, repo_dir).services if name not in covered]
+    base = _story_base(logger, repo_dir, story_slug, story_id)
+    if base:
+        covered += [name for name in touched_services(logger, base, repo_dir).services if name not in covered]
     logger.info(
         "%d of %d story service(s) have an executable book, %d more reached by the diff",
         declared, len(services or []), len(covered) - declared,
@@ -167,27 +185,40 @@ def book_check(logger: logging.Logger, service: str, repo_dir: str = "") -> Book
 
 
 @blueprint.node
-def stamp_books_verified(logger: logging.Logger, services: list[str], repo_dir: str = "") -> BookPlay:
-    """Record the app's HEAD as the verified commit of each covered service's book, once: a book already verified at HEAD is left alone. The first refusal comes back with its output."""
+def stamp_books_verified(
+    logger: logging.Logger,
+    services: list[str],
+    story_slug: str = "",
+    story_id: str = "",
+    repo_dir: str = "",
+) -> BookPlay:
+    """Record the app's HEAD as the verified commit of each covered service's book that was current when the story started. A book already current, a book with no verified commit and a book behind before the story are left alone. The first refusal comes back with its output."""
     root = find_book_root(repo_dir)
     app = str(find_repo_root(repo_dir))
+    base = _story_base(logger, repo_dir, story_slug, story_id)
     for name in services:
         for module in book_modules(root, name):
-            if _verified_at_head(module, app, root):
-                logger.info("the book of %s is already verified at the app's HEAD", module)
+            pending = run_tool(_stale_argv(module, app), cwd=root)
+            if pending.returncode == 0:
+                logger.info("the book of %s is current, nothing to stamp", module)
+                continue
+            if pending.returncode == UNVERIFIED_EXIT and pending.stdout.startswith("not verified"):
+                logger.info("the book of %s has no verified commit and belongs to the book-writing flow", module)
+                continue
+            if pending.returncode != STALE_EXIT:
+                return BookPlay(exit_code=pending.returncode, output=f"{module}:\n{_tail(pending.stdout + pending.stderr)}")
+            if not base:
+                logger.info("the book of %s is not stamped: no story base to tell the story's commits from older ones", module)
+                continue
+            since = run_tool(_stale_argv(module, app, base), cwd=root)
+            if since.returncode not in (0, STALE_EXIT) or not _entries(pending.stdout) <= _entries(since.stdout):
+                logger.info("the book of %s was behind before the story and is left to the catch-up flow", module)
                 continue
             play = _play(_verified_argv(module, app), root)
             logger.info("book verified of %s exited %d", module, play.exit_code)
             if play.exit_code != 0:
                 return BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
     return BookPlay(exit_code=0, output="")
-
-
-def _verified_at_head(module: str, app: str, root: Path) -> bool:
-    done = run_tool(_stale_argv(module, app), cwd=root)
-    first = done.stdout.splitlines()[0] if done.stdout else ""
-    stamp, _, head = first.removeprefix("verified at ").partition(", app at ")
-    return first.startswith("verified at ") and bool(stamp) and stamp == head.strip()
 
 
 @blueprint.node

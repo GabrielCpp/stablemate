@@ -108,12 +108,16 @@ class _Book:
         verified: tuple[int, ...] = (0,),
         changed: dict[str, str] | None = None,
         stamped: tuple[str, ...] = (),
+        pending: dict[str, str] | None = None,
+        unverified: tuple[str, ...] = (),
     ) -> None:
         self.script = {"check": check, "run": run, "verified": verified}
         self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": []}
         self.cwds: list[Any] = []
         self.changed = changed or {}
         self.stamped = set(stamped)
+        self.pending = pending or {}
+        self.unverified = set(unverified)
 
     def __call__(
         self, argv: list[str], cwd: Any = None, *, check: bool = False, logger: Any = None
@@ -135,9 +139,10 @@ class _Book:
             report = self.changed.get(module, "")
             code = 1 if report else 0
             return subprocess.CompletedProcess(argv, code, f"since {argv[argv.index('--since') + 1]}, app at head\n{report}", "")
-        if module in self.stamped:
-            return subprocess.CompletedProcess(argv, 0, "verified at abc1234, app at abc1234\n\nnothing stale\n", "")
-        return subprocess.CompletedProcess(argv, 2, "not verified: write the commit with 'verified'\n", "")
+        if module in self.unverified:
+            return subprocess.CompletedProcess(argv, 2, "not verified: write the commit with 'verified'\n", "")
+        report = "" if module in self.stamped else self.pending.get(module, self.changed.get(module, ""))
+        return subprocess.CompletedProcess(argv, 1 if report else 0, f"verified at abc1234, app at def5678\n{report}", "")
 
 
 class _Stack:
@@ -308,6 +313,10 @@ def test_a_green_pass_plays_the_named_calls_records_them_and_lands_the_book(
 
 WEB_CHANGED = "## Stale elements\n- Home: web/page.tsx (1 commits: abc1234)\n"
 
+API_CHANGED = "## Changed files no element names\n- src/api.py (1 commits: abc1234)\n"
+
+WEB_BEHIND = WEB_CHANGED + "\n## Changed files no element names\n- web/older.tsx (2 commits: 1111111, 2222222)\n"
+
 BOTH_CALLS = [*CALLS, {"service": "web", "calls": ["ShowHome"]}]
 
 
@@ -379,7 +388,7 @@ def test_a_declared_service_with_no_book_is_left_out(
     assert covered.services == ["api"], covered
 
 
-def test_the_book_lane_stamps_every_covered_book_verified_after_a_pass(
+def test_a_book_current_at_the_story_base_is_stamped_verified_after_a_pass(
     lane: Path,
     git: Callable[..., subprocess.CompletedProcess[str]],
     write: Callable[[Path, str], Path],
@@ -388,9 +397,9 @@ def test_the_book_lane_stamps_every_covered_book_verified_after_a_pass(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """Only a judged book may say which commit it was judged at."""
+    """The story's commits are all that the book awaited, so the judged commit is the one to record."""
     _add_web_book(lane, git, write)
-    scripted = book(changed={"services.web": WEB_CHANGED})
+    scripted = book(changed={"services.api": API_CHANGED, "services.web": WEB_CHANGED})
     agent = _Agent(lane, {"status": "passed", "calls": BOTH_CALLS})
 
     result = drive_flow(_flow(), env(), agent)
@@ -433,7 +442,7 @@ def test_the_book_lane_stamps_nothing_while_the_seat_reports_a_finding(
     assert scripted.argv["verified"] == []
 
 
-def test_a_refused_stamp_goes_back_to_the_seat_with_the_commands_output(
+def test_a_refusal_on_the_storys_own_unnamed_file_goes_back_to_the_seat(
     lane: Path,
     book: Callable[..., _Book],
     stack: _Stack,
@@ -441,7 +450,7 @@ def test_a_refused_stamp_goes_back_to_the_seat_with_the_commands_output(
     drive_flow: Callable[..., Any],
 ) -> None:
     """`verified` refuses while a changed file is named by no element, and the seat is the one who names it."""
-    scripted = book(verified=(1, 0))
+    scripted = book(verified=(1, 0), changed={"services.api": API_CHANGED})
     agent = _Agent(lane)
 
     result = drive_flow(_flow(), env(), agent)
@@ -452,6 +461,53 @@ def test_a_refused_stamp_goes_back_to_the_seat_with_the_commands_output(
     assert len(scripted.argv["verified"]) == 2
 
 
+def test_a_book_behind_before_the_story_is_not_stamped_and_sends_no_lap(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Changes from other people's commits are the catch-up flow's to judge, so the stamp stays where it was."""
+    _add_web_book(lane, git, write)
+    scripted = book(
+        changed={"services.api": API_CHANGED, "services.web": WEB_CHANGED},
+        pending={"services.web": WEB_BEHIND},
+    )
+    agent = _Agent(lane, {"status": "passed", "calls": BOTH_CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"qa-book": 1}, agent.counts()
+    assert [_module_of(argv) for argv in scripted.argv["verified"]] == ["services.api"]
+
+
+def test_a_book_with_no_verified_commit_is_not_stamped(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A first book belongs to the book-writing flow."""
+    _add_web_book(lane, git, write)
+    scripted = book(
+        changed={"services.api": API_CHANGED, "services.web": WEB_CHANGED},
+        unverified=("services.web",),
+    )
+    agent = _Agent(lane, {"status": "passed", "calls": BOTH_CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert [_module_of(argv) for argv in scripted.argv["verified"]] == ["services.api"]
+
+
 def test_a_resumed_lane_that_already_stamped_does_not_stamp_again(
     lane: Path,
     write: Callable[[Path, str], Path],
@@ -460,9 +516,9 @@ def test_a_resumed_lane_that_already_stamped_does_not_stamp_again(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """A second visit at the same app commit would otherwise rewrite the stamp and land a second commit for it."""
+    """A book current at the app's HEAD owes no second stamp, so the replay lands no second commit for it."""
     write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS}))
-    scripted = book(stamped=("services.api",))
+    scripted = book(stamped=("services.api",), changed={"services.api": API_CHANGED})
 
     result = drive_flow(_flow(), env(), _Agent(lane))
 

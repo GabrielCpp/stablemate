@@ -175,7 +175,9 @@ class BookQa(QaOwner):
             if play.exit_code:
                 return self._lap(play, [_gate(f"ostler book run services.{name}", play.output)], laps, blocks)
         if not findings:
-            stamped = self.call(stamp_books_verified, services)
+            stamped = self.call(
+                stamp_books_verified, services, story_slug=self.ctx.story_slug, story_id=self.ctx.story_id
+            )
             if stamped.exit_code:
                 return self._lap(stamped, [_gate("ostler book verified", stamped.output)], laps, blocks)
         landed = self.call(
