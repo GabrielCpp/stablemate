@@ -45,6 +45,10 @@ class AnOverdueTodoIsInTheDigest(Journey):
 a fresh record and hands this journey the id the owner's app issued. Never perform the
 owner's calls here to reach a state: how a todo becomes overdue is the owner's to change.
 
+The run reaches the owner through the owner's own surface. So this book's environment lists
+the owner's hosts and secrets beside its own, under the names the owner's book gives them,
+and the run says which one is missing.
+
 ## What the service does with the owner's answer
 
 An endpoint that forwards carries no action. It states the owner's call it arrives at:
