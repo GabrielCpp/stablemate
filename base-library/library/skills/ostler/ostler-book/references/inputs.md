@@ -87,9 +87,10 @@ does not declare is a `check` finding.
 
 - Journeys: `Journey.lang`, else `Service.language`.
 - Cells: `Service.language`, set once before they play.
-- Input classes and twins: the run sets no language for them. The surface keeps the language it
-  held. When the service has matrices that is `Service.language`. With none, it is the language of
-  the last journey the run played.
+- Input classes and twins: `Service.language`, set once before they play, whatever language the
+  last journey played in. A base arranged by a journey of another language replays in that
+  journey's language, and the surface returns to `Service.language` before the class or the twin
+  is sent.
 - A refusal's words are compared as written: a `Rule` message is one string and equals the
   app's text, character for character, with the status unless the app's is 0. A book has no
   translation of a refusal, so a class whose refusal reads differently per language is
@@ -107,8 +108,9 @@ does not declare is a `check` finding.
 | `CannotReach(reason)`, raised | the run reads it as `Unreachable`. It agrees with a model refusal, and the class passes. Against a model `Done` it fails |
 
 A surface never returns `Flawed`: the model makes it, where a `Defect` shows.
-A class the model has no rule for is sent without that catch: a `CannotReach` there ends as
-`crashed: CannotReach: <reason>`, a failed class.
+A class the model has no rule for is read the same way: a `CannotReach` there is `Unreachable`.
+It agrees with the refusal the book expects, by a rule or by a default key, and the class passes.
+It fails where the book expects the input to save, as a `Diverges` does.
 
 ## What the run prints
 
