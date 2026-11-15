@@ -13,7 +13,7 @@ GIT_TOKEN_VAR = "GH_TOKEN"
 CREDENTIAL_HELPER = f'!f() {{ echo username=x-access-token; echo "password=${{{GIT_TOKEN_VAR}}}"; }}; f'
 
 
-def _configured_secret(root: Path) -> str | None:
+def configured_secret(root: Path) -> str | None:
     """The saddlebag secret named by agents.yml ``workflow.githubTokenSecret`` (or None)."""
     manifest = read_manifest(root)
     if manifest is None:
@@ -24,7 +24,11 @@ def _configured_secret(root: Path) -> str | None:
 
 def github_token(root: str | Path) -> str:
     """The GitHub token for the PR/CI steps, or ``""`` when no secret is configured."""
-    name = _configured_secret(Path(root).resolve())
+    return secret_token(configured_secret(Path(root).resolve()))
+
+
+def secret_token(name: str | None) -> str:
+    """The value of the saddlebag secret ``name``, or ``""`` when no name is given."""
     if not name:
         return ""
     try:

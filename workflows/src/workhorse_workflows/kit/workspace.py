@@ -127,7 +127,7 @@ def checkout_workspace(
     repo_url: str = "",
     repo_name: str = "repo",
     repo_branch: str = "main",
-    token_root: str | Path = "",
+    token_secret: str = "",
     source_mode: str = "clone",
     worktree_root: str | Path = "",
 ) -> None:
@@ -140,7 +140,7 @@ def checkout_workspace(
             f"unknown source mode {source_mode!r}; expected one of {', '.join(SOURCE_MODES)}"
         )
     tree_root = Path(worktree_root) if worktree_root else workspace_root
-    token = credentials.github_token(token_root) if token_root else ""
+    token = credentials.secret_token(token_secret)
 
     if workspace:
         folders = [
@@ -226,10 +226,9 @@ def _main(argv: list[str] | None = None) -> int:
                         help="Single-repo fallback when no workspace is given.")
     parser.add_argument("--repo-name", default="repo", metavar="NAME")
     parser.add_argument("--repo-branch", default="main", metavar="BRANCH")
-    parser.add_argument("--token-root", default="", metavar="DIR",
-                        help="A repository whose agents.yml workflow.githubTokenSecret names the "
-                             "saddlebag secret that holds the clone/fetch credential. "
-                             "Only the directory crosses the boundary; the value never does.")
+    parser.add_argument("--token-secret", default="", metavar="NAME",
+                        help="The saddlebag secret that holds the clone/fetch credential. "
+                             "Only the name crosses the boundary; the value never does.")
     parser.add_argument("--source-mode", default="clone", choices=SOURCE_MODES,
                         help="How each folder's working tree is materialised. "
                              "'clone' is a disposable copy; 'worktree' is one working "
@@ -246,7 +245,7 @@ def _main(argv: list[str] | None = None) -> int:
         repo_url=args.repo_url,
         repo_name=args.repo_name,
         repo_branch=args.repo_branch,
-        token_root=args.token_root,
+        token_secret=args.token_secret,
         source_mode=args.source_mode,
         worktree_root=args.worktree_root,
     )

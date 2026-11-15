@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import livesource
-from workhorse_workflows.kit import workspace
+from workhorse_workflows.kit import credentials, workspace
 
 log = logging.getLogger("supervisor")
 
@@ -161,6 +161,15 @@ def write_boundary_params(path: Path, params: Mapping[str, str]) -> Path:
     return path
 
 
+def token_secret(params: Mapping[str, str]) -> str:
+    """The saddlebag secret that holds the clone credential: the `token_secret` param, else the one the run repo's agents.yml names."""
+    named = params.get("token_secret", "")
+    if named:
+        return named
+    repo_dir = params.get("repo_dir", "")
+    return (credentials.configured_secret(Path(repo_dir)) or "") if repo_dir else ""
+
+
 def checkout(env: Mapping[str, str], params: Mapping[str, str]) -> None:
     """Materialise the working trees the run needs, before the engine starts."""
     workspace.checkout_workspace(
@@ -169,7 +178,7 @@ def checkout(env: Mapping[str, str], params: Mapping[str, str]) -> None:
         repo_url=env.get("REPO_URL", ""),
         repo_name=env.get("REPO_NAME") or "repo",
         repo_branch=env.get("REPO_BRANCH") or "main",
-        token_root=params.get("repo_dir", ""),
+        token_secret=token_secret(params),
         source_mode=env.get("AGENT_SOURCE_MODE") or "clone",
         worktree_root=env.get("AGENT_WORKTREE_ROOT") or "",
     )

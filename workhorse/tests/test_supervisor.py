@@ -444,10 +444,30 @@ def test_a_container_with_no_launcher_still_clones(monkeypatch):
     assert seen["worktree_root"] == ""
 
 
-def test_the_checkout_names_the_repo_whose_manifest_holds_the_token_secret(monkeypatch):
+def test_the_token_secret_comes_from_the_param(tmp_path):
+    (tmp_path / "agents.yml").write_text("workflow:\n  githubTokenSecret: from-manifest\n")
+    params = {"token_secret": "from-param", "repo_dir": str(tmp_path)}
+    assert supervisor.token_secret(params) == "from-param"
+
+
+def test_the_token_secret_falls_back_to_the_manifest_of_the_run_repo(tmp_path):
+    (tmp_path / "agents.yml").write_text("workflow:\n  githubTokenSecret: from-manifest\n")
+    assert supervisor.token_secret({"repo_dir": str(tmp_path)}) == "from-manifest"
+
+
+def test_the_token_secret_is_empty_with_neither_param_nor_manifest(tmp_path):
+    assert supervisor.token_secret({"repo_dir": str(tmp_path)}) == ""
+    assert supervisor.token_secret({}) == ""
+
+
+def test_the_agent_param_spelling_carries_the_token_secret():
+    assert supervisor.run_params({"AGENT_PARAM_TOKEN_SECRET": "github-token"}) == {"token_secret": "github-token"}
+
+
+def test_the_checkout_hands_the_picked_secret_to_the_workspace(monkeypatch):
     seen: dict[str, object] = {}
     monkeypatch.setattr(
         supervisor.workspace, "checkout_workspace", lambda ws, root, **kw: seen.update(kw)
     )
-    supervisor.checkout({}, {"repo_dir": "/workspace/acme"})
-    assert seen["token_root"] == "/workspace/acme"
+    supervisor.checkout({}, {"token_secret": "github-token"})
+    assert seen["token_secret"] == "github-token"

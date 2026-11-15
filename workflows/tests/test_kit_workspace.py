@@ -125,21 +125,22 @@ def test_the_clone_helper_needs_no_token_for_a_public_or_local_clone():
     assert "GH_TOKEN" not in _network_git("").environment()
 
 
-def test_a_clone_reads_the_token_from_the_configured_secret_and_leaves_the_process_environment_alone(
+def test_a_clone_reads_the_token_from_the_named_secret_and_leaves_the_process_environment_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     source = tmp_path / "source"
     source.mkdir()
     for args in (["init", "-q", "-b", "main"], ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "x"]):
         subprocess.run(["git", "-C", str(source), *args], check=True)
-    (tmp_path / "agents.yml").write_text("workflow:\n  githubTokenSecret: github-token\n")
-    monkeypatch.setattr(credentials, "secret_value", lambda name, field="password": "stored-token")
+    asked: list[str] = []
+    monkeypatch.setattr(credentials, "secret_value", lambda name, field="password": asked.append(name) or "stored-token")
     before = dict(os.environ)
 
     checkout_workspace(
-        workspace_root=tmp_path / "ws", repo_url=str(source), repo_name="acme", token_root=tmp_path
+        workspace_root=tmp_path / "ws", repo_url=str(source), repo_name="acme", token_secret="github-token"
     )
 
+    assert asked == ["github-token"]
     assert (tmp_path / "ws" / "acme" / ".git").exists()
     assert dict(os.environ) == before
 
