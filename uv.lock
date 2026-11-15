@@ -2387,6 +2387,7 @@ dependencies = [
     { name = "pygithub" },
     { name = "pyyaml" },
     { name = "ruamel-yaml" },
+    { name = "stablemate-saddlebag" },
     { name = "unidiff" },
     { name = "workhorse-agent" },
 ]
@@ -2405,6 +2406,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
+    { name = "stablemate-saddlebag", editable = "saddlebag" },
     { name = "unidiff", specifier = ">=0.7" },
     { name = "workhorse-agent", editable = "workhorse" },
 ]

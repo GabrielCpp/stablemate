@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from workhorse_workflows.kit import credentials
 from workhorse_workflows.kit.paths import find_docs_root
-from workhorse_workflows.kit.workspace import _git_network_command, resolve_workspace
+from workhorse_workflows.kit.workspace import _network_git, checkout_workspace, resolve_workspace
 
 
 def test_resolve_workspace_uses_the_repo_dir_argument_over_cwd():
@@ -105,25 +107,41 @@ def test_the_docs_root_is_the_artifacts_dir_while_a_workspace_is_active(
     assert Path(find_docs_root(str(repo))).resolve() == artifacts.resolve()
 
 
-def test_git_network_command_uses_configured_token_env():
-    with patch.dict(
-        os.environ,
-        {"WORKHORSE_GIT_TOKEN": "secret"},
-        clear=True,
-    ):
-        command = _git_network_command("clone", "https://github.com/example/private.git")
+def test_the_clone_helper_receives_the_token_through_gits_environment(tmp_path: Path):
+    before = dict(os.environ)
+    request = tmp_path / "request"
+    request.write_text("protocol=https\nhost=github.com\n\n")
 
-    assert command[0:2] == ["git", "-c"]
-    assert "credential.helper=" in command[2]
-    assert "secret" not in command[2]
-    assert "$WORKHORSE_GIT_TOKEN" in command[2]
-    assert command[-2:] == ["clone", "https://github.com/example/private.git"]
+    git = _network_git("secret")
+    with request.open() as stdin:
+        answer = git.credential("fill", istream=stdin)
 
-def test_git_network_command_needs_no_token_for_public_or_local_clone():
-    with patch.dict(os.environ, {}, clear=True):
-        command = _git_network_command("clone", "/mnt/repo-src")
+    assert "password=secret" in answer
+    assert git.environment()["GH_TOKEN"] == "secret"
+    assert dict(os.environ) == before
 
-    assert command == ["git", "clone", "/mnt/repo-src"]
+
+def test_the_clone_helper_needs_no_token_for_a_public_or_local_clone():
+    assert "GH_TOKEN" not in _network_git("").environment()
+
+
+def test_a_clone_reads_the_token_from_the_configured_secret_and_leaves_the_process_environment_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "source"
+    source.mkdir()
+    for args in (["init", "-q", "-b", "main"], ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "x"]):
+        subprocess.run(["git", "-C", str(source), *args], check=True)
+    (tmp_path / "agents.yml").write_text("workflow:\n  githubTokenSecret: github-token\n")
+    monkeypatch.setattr(credentials, "secret_value", lambda name, field="password": "stored-token")
+    before = dict(os.environ)
+
+    checkout_workspace(
+        workspace_root=tmp_path / "ws", repo_url=str(source), repo_name="acme", token_root=tmp_path
+    )
+
+    assert (tmp_path / "ws" / "acme" / ".git").exists()
+    assert dict(os.environ) == before
 
 
 def test_only_base_branch_of_the_repo_section_reaches_the_repo_info(tmp_path: Path) -> None:

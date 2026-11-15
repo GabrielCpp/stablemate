@@ -34,7 +34,7 @@ def merge_pr(
     token = resolve_github_token(root)
     if not token:
         logger.info(
-            "no GitHub token (set workflow.githubTokenEnv in agents.yml) — leaving %s unmerged",
+            "no GitHub token (set workflow.githubTokenSecret in agents.yml) — leaving %s unmerged",
             branch,
         )
         return MergeOutcome(merge_status="unavailable", base_branch=base_branch)

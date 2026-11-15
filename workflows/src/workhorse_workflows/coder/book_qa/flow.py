@@ -32,7 +32,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
 )
 from workhorse_workflows.coder.shared.stack import ensure_stack, hold_copy, stack_target
 from workhorse_workflows.kit import find_book_root, find_docs_root
-from workhorse_workflows.kit.credentials import scoped_envs
+from workhorse_workflows.kit.leased_env import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
 
 ENVIRONMENT_EXIT = 3

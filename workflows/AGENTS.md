@@ -31,8 +31,10 @@ different one) and in no telemetry, and `--params` cannot set it.
 
 The process boundary is where the environment belongs, and it is outside that package:
 `workhorse/cli/run.py` and `workhorse/supervisor.py` translate `$FOO` into `--params`
-once, on the way in. The one allowlisted module is `kit/credentials.py`, and for the
-opposite reason — a secret must *never* become a checkpointed `--param`.
+once, on the way in. Secrets follow the same rule: `kit/credentials.py` reads the GitHub token from the saddlebag
+secret that `workflow.githubTokenSecret` names, never from a variable, because a secret must
+*never* become a checkpointed `--param`. The allowlisted modules are `kit/leased_env.py` and
+`coder/shared/clones.py`, each with its reason in `.agent-checks.toml`.
 
 ```bash
 make check-no-env    # from the repo root, on its own

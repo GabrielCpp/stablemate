@@ -104,10 +104,10 @@ BLOCK_REASON = "the handler allows every origin when the allow-list is unset"
 
 
 @pytest.fixture(autouse=True)
-def _no_ambient_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Both variables `resolve_github_token` falls back to, unset for every test here."""
-    monkeypatch.delenv("GH_TOKEN", raising=False)
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+def _ambient_github_token_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A token in the developer's shell, which `resolve_github_token` must never pick up."""
+    monkeypatch.setenv("GH_TOKEN", "ambient-token")
+    monkeypatch.setenv("GITHUB_TOKEN", "ambient-token")
 
 
 @pytest.fixture

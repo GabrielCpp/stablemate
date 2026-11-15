@@ -63,7 +63,7 @@ from workhorse_workflows.coder.shared.story import (
     stamp_specs,
     sync_story_fixtures,
 )
-from workhorse_workflows.kit.credentials import scoped_envs
+from workhorse_workflows.kit.leased_env import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
 
 

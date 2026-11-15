@@ -91,7 +91,7 @@ def poll_pr_checks(
     token = resolve_github_token(root)
     if not token:
         logger.info(
-            "no GitHub token (set workflow.githubTokenEnv in agents.yml) — cannot query CI for %s",
+            "no GitHub token (set workflow.githubTokenSecret in agents.yml) — cannot query CI for %s",
             branch,
         )
         return CiChecks(status="unavailable", summary="no GitHub token")
@@ -243,7 +243,7 @@ def push_epic_branch(
     token = resolve_github_token(root)
     if not token:
         logger.info(
-            "no GitHub token (set workflow.githubTokenEnv in agents.yml) — leaving %s unpushed",
+            "no GitHub token (set workflow.githubTokenSecret in agents.yml) — leaving %s unpushed",
             branch,
         )
         return "unavailable"

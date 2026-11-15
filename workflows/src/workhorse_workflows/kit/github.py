@@ -27,9 +27,8 @@ def repo_full_name_from_url(url: str) -> str | None:
 
 def github_client(token: str | None = None):
     """Return an authenticated PyGithub ``Github`` client."""
-    tok = token or credentials.api_token()
-    if tok:
-        return Github(auth=Auth.Token(tok))
+    if token:
+        return Github(auth=Auth.Token(token))
     return Github()
 
 
@@ -63,9 +62,6 @@ def find_open_pr(gh_repo, branch: str):
     return None
 
 
-_PUSH_CRED_HELPER = '!f() { echo username=x-access-token; echo "password=${GH_TOKEN}"; }; f'
-
-
 def push_branch(
     path: str | Path, token: str, branch: str, *, verify: bool = True, slug: str | None = None
 ) -> bool:
@@ -80,8 +76,8 @@ def push_branch(
         git = git_kit.open_repo(path).git
     except GitError:
         return False
-    git.update_environment(GH_TOKEN=token)
-    cred = f"credential.helper={_PUSH_CRED_HELPER}"
+    git.update_environment(**{credentials.GIT_TOKEN_VAR: token})
+    cred = f"credential.helper={credentials.CREDENTIAL_HELPER}"
     try:
         git(c=cred).push(push_url, f"{branch}:{branch}")
     except GitError:
@@ -108,9 +104,9 @@ def sync_to_origin(path: str | Path, token: str, base: str) -> str | None:
         git = git_kit.open_repo(path).git
     except GitError:
         return None
-    git.update_environment(GH_TOKEN=token)
+    git.update_environment(**{credentials.GIT_TOKEN_VAR: token})
     try:
-        git(c=f"credential.helper={_PUSH_CRED_HELPER}").fetch(fetch_url, base)
+        git(c=f"credential.helper={credentials.CREDENTIAL_HELPER}").fetch(fetch_url, base)
         git.checkout("-B", base, "FETCH_HEAD")
         return git.rev_parse("--short", "HEAD").strip()
     except GitError:

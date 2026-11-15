@@ -36,10 +36,10 @@ OPERATOR_ANSWER = "The secret is rotated now. Re-run the job."
 
 
 @pytest.fixture(autouse=True)
-def _no_ambient_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    """No GitHub token from the developer's own shell."""
-    monkeypatch.delenv("GH_TOKEN", raising=False)
-    monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+def _ambient_token_is_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A GitHub token in the developer's own shell, which the run must never pick up."""
+    monkeypatch.setenv("GH_TOKEN", "ambient-token")
+    monkeypatch.setenv("GITHUB_TOKEN", "ambient-token")
 
 
 @pytest.fixture

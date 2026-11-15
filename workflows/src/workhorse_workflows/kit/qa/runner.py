@@ -16,7 +16,7 @@ from ostler.qa.outcome import QaOutcome
 
 from workhorse_workflows.kit.qa.schemas import QaPlanRun, QaStatus, StackStatus
 from workhorse_workflows.kit import find_book_root, find_docs_root
-from workhorse_workflows.kit.credentials import scoped_envs
+from workhorse_workflows.kit.leased_env import scoped_envs
 from workhorse_workflows.kit.qa.support import QA_PLAN_FILE, notes_for
 
 RUN_STATUSES: dict[str, QaStatus] = {

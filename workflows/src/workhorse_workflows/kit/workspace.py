@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from git import Git
 from workhorse._vendor.stablemate_core import config as core_config
 
 from workhorse_workflows.kit import credentials
@@ -69,16 +70,13 @@ def _has_unsynced_work(dest: Path, branch: str) -> bool:
     return ahead.stdout.strip() != "0"
 
 
-def _git_network_command(
-    *args: str, token_env: str = credentials.GIT_CREDENTIAL_ENV
-) -> list[str]:
-    """Build a Git command with transient credentials for clone/fetch."""
-    if not credentials.has_git_credential(token_env):
-        return ["git", *args]
-    credential_helper = (
-        f'!f() {{ echo username=x-access-token; echo "password=${token_env}"; }}; f'
-    )
-    return ["git", "-c", f"credential.helper={credential_helper}", *args]
+def _network_git(token: str, working_dir: Path | None = None) -> Git:
+    """A git command runner for clone/fetch whose own environment carries ``token`` for the credential helper."""
+    git = Git(working_dir)
+    if not token:
+        return git
+    git.update_environment(**{credentials.GIT_TOKEN_VAR: token})
+    return git(c=f"credential.helper={credentials.CREDENTIAL_HELPER}")
 
 
 def _set_origin_url(dest: Path, url: str) -> None:
@@ -129,7 +127,7 @@ def checkout_workspace(
     repo_url: str = "",
     repo_name: str = "repo",
     repo_branch: str = "main",
-    token_env: str = credentials.GIT_CREDENTIAL_ENV,
+    token_root: str | Path = "",
     source_mode: str = "clone",
     worktree_root: str | Path = "",
 ) -> None:
@@ -142,6 +140,7 @@ def checkout_workspace(
             f"unknown source mode {source_mode!r}; expected one of {', '.join(SOURCE_MODES)}"
         )
     tree_root = Path(worktree_root) if worktree_root else workspace_root
+    token = credentials.github_token(token_root) if token_root else ""
 
     if workspace:
         folders = [
@@ -175,12 +174,7 @@ def checkout_workspace(
 
         if (dest / ".git").exists():
             _set_origin_url(dest, url)
-            subprocess.run(
-                _git_network_command(
-                    "-C", str(dest), "fetch", "--quiet", "origin", token_env=token_env
-                ),
-                check=True, timeout=300,
-            )
+            _network_git(token, dest).fetch("--quiet", "origin", kill_after_timeout=300)
             if _has_unsynced_work(dest, branch):
                 logger.info(
                     "%s has uncommitted changes or commits not on origin/%s — "
@@ -199,12 +193,9 @@ def checkout_workspace(
             )
         else:
             logger.info("cloning %s from %s (%s)", name, url, branch)
-            subprocess.run(
-                _git_network_command(
-                    "clone", "--quiet", "--branch", branch, "--single-branch", url, str(dest),
-                    token_env=token_env,
-                ),
-                check=True, timeout=600,
+            _network_git(token).clone(
+                "--quiet", "--branch", branch, "--single-branch", url, str(dest),
+                kill_after_timeout=600,
             )
 
 
@@ -235,9 +226,10 @@ def _main(argv: list[str] | None = None) -> int:
                         help="Single-repo fallback when no workspace is given.")
     parser.add_argument("--repo-name", default="repo", metavar="NAME")
     parser.add_argument("--repo-branch", default="main", metavar="BRANCH")
-    parser.add_argument("--token-env", default=credentials.GIT_CREDENTIAL_ENV, metavar="VAR",
-                        help="Name of the variable holding a clone/fetch credential. "
-                             "Only the name crosses the boundary; git expands the value.")
+    parser.add_argument("--token-root", default="", metavar="DIR",
+                        help="A repository whose agents.yml workflow.githubTokenSecret names the "
+                             "saddlebag secret that holds the clone/fetch credential. "
+                             "Only the directory crosses the boundary; the value never does.")
     parser.add_argument("--source-mode", default="clone", choices=SOURCE_MODES,
                         help="How each folder's working tree is materialised. "
                              "'clone' is a disposable copy; 'worktree' is one working "
@@ -254,7 +246,7 @@ def _main(argv: list[str] | None = None) -> int:
         repo_url=args.repo_url,
         repo_name=args.repo_name,
         repo_branch=args.repo_branch,
-        token_env=args.token_env,
+        token_root=args.token_root,
         source_mode=args.source_mode,
         worktree_root=args.worktree_root,
     )

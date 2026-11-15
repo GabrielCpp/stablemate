@@ -67,6 +67,9 @@ dependencies = [
   # would round-trip it into a comment-free re-serialization, which is a config file
   # the operator no longer recognizes as theirs.
   "ruamel.yaml>=0.18",
+  # The GitHub token is a saddlebag secret that agents.yml names, so the workflows
+  # never read it from the environment. A workflow resolves it through `secret_value`.
+  "stablemate-saddlebag>=2",
 ]
 
 [project.optional-dependencies]
@@ -105,6 +108,7 @@ Issues = "https://github.com/GabrielCpp/stablemate/issues"
 [tool.uv.sources]
 workhorse-agent = { workspace = true }
 ostler = { workspace = true }
+stablemate-saddlebag = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

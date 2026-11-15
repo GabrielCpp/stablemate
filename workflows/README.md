@@ -217,12 +217,18 @@ fills them into any node or sub-flow that declares a parameter of the same name 
 not passed one. A callsite value always wins, and an empty field injects nothing, so the
 target's own default stands.
 
-One exception, and it is a security property rather than an exemption:
-`kit/credentials.py` resolves tokens from the environment **because** a secret must never
-become a `--param` — params are checkpointed to disk and echoed in logs and telemetry,
-which is precisely what a token must not be. A credential crosses into a subprocess by
-*name* (`_git_network_command` names the variable; git expands it), never by value.
-Keeping that in one auditable module is the point.
+A secret is the same rule from the other side: it must never become a `--param`, because
+params are checkpointed to disk and echoed in logs and telemetry. `kit/credentials.py`
+resolves the GitHub token through `saddlebag.secret_value`, from the secret that
+`workflow.githubTokenSecret` in `agents.yml` names. No token is read from `GH_TOKEN`,
+`GITHUB_TOKEN` or any other variable. With the key unset there is no token, and the
+steps that need one skip. With it set and saddlebag unable to produce the secret, the run
+fails with saddlebag's own message. A credential reaches git through the command's own
+environment (`kit/workspace._network_git`, `kit/github.push_branch`), never through
+`os.environ`.
+
+The one allowlisted module is `kit/leased_env.py`, which writes a QA lease's variables to
+the process environment for the length of a block.
 
 The rule is enforced, not just written down:
 

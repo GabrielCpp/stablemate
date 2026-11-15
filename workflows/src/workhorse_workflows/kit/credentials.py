@@ -1,71 +1,33 @@
-"""The one module in this package that reads the environment — and only for secrets."""
+"""Where a workflow gets its GitHub token: the saddlebag secret agents.yml names, and nothing else."""
 from __future__ import annotations
 
-import contextlib
-import os
-from collections.abc import Iterator, Mapping
 from pathlib import Path
+
+from saddlebag import SecretUnavailable, secret_value
+from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.kit.manifest import read_manifest
 
-GITHUB_FALLBACKS = ("GH_TOKEN", "GITHUB_TOKEN")
+GIT_TOKEN_VAR = "GH_TOKEN"
 
-GIT_CREDENTIAL_ENV = "WORKHORSE_GIT_TOKEN"
+CREDENTIAL_HELPER = f'!f() {{ echo username=x-access-token; echo "password=${{{GIT_TOKEN_VAR}}}"; }}; f'
 
 
-def _configured_token_env(root: Path) -> str | None:
-    """The env-var name configured in agents.yml ``workflow.githubTokenEnv`` (or None)."""
+def _configured_secret(root: Path) -> str | None:
+    """The saddlebag secret named by agents.yml ``workflow.githubTokenSecret`` (or None)."""
     manifest = read_manifest(root)
     if manifest is None:
         return None
-    name = manifest.workflow.githubTokenEnv
+    name = manifest.workflow.githubTokenSecret
     return name.strip() if name else None
 
 
 def github_token(root: str | Path) -> str:
-    """The GitHub token for the PR/CI steps, or ``""`` when none is set."""
-    names: list[str] = []
-    configured = _configured_token_env(Path(root).resolve())
-    if configured:
-        names.append(configured)
-    for fallback in GITHUB_FALLBACKS:
-        if fallback not in names:
-            names.append(fallback)
-    for name in names:
-        value = os.environ.get(name)
-        if value:
-            return value
-    return ""
-
-
-def api_token() -> str:
-    """The token an unconfigured API client falls back to: ``GH_TOKEN``, then the checkout credential."""
-    return os.environ.get("GH_TOKEN") or os.environ.get(GIT_CREDENTIAL_ENV) or ""
-
-
-@contextlib.contextmanager
-def scoped_env(name: str, value: str) -> Iterator[None]:
-    """Set ``name=value`` in the process environment for the block, then restore it."""
-    previous = os.environ.get(name)
-    os.environ[name] = value
+    """The GitHub token for the PR/CI steps, or ``""`` when no secret is configured."""
+    name = _configured_secret(Path(root).resolve())
+    if not name:
+        return ""
     try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop(name, None)
-        else:
-            os.environ[name] = previous
-
-
-@contextlib.contextmanager
-def scoped_envs(values: Mapping[str, str]) -> Iterator[None]:
-    """`scoped_env` over several names at once, restored in reverse on exit."""
-    with contextlib.ExitStack() as stack:
-        for name, value in values.items():
-            stack.enter_context(scoped_env(name, value))
-        yield
-
-
-def has_git_credential(name: str = GIT_CREDENTIAL_ENV) -> bool:
-    """Whether ``name`` holds a clone/fetch credential for git to pick up."""
-    return bool(os.environ.get(name, ""))
+        return secret_value(name)
+    except SecretUnavailable as exc:
+        raise WorkflowFailed(f"cannot read the GitHub token from saddlebag secret {name}: {exc}") from exc
