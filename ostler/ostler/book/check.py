@@ -543,6 +543,18 @@ def shape_faults(service: Service[Any]) -> list[Finding]:
     return found
 
 
+def fill_faults(service: Service[Any]) -> list[Finding]:
+    """Every component that states a shape on a screen where no interaction of the book fills it."""
+    found: list[Finding] = []
+    for screen in service.screens:
+        filled = {id(c) for i in service.interactions if i.screen is screen for c in i.typed()}
+        for attribute, component in screen.attributes():
+            if component.holds is not None and id(component) not in filled:
+                found.append(Finding(f"screen {screen.__name__}.{attribute}", "it states a shape and no interaction of the book fills it, "
+                                     f"so no input is tried on it: give an interaction of this screen a fixture that has {component.takes}"))
+    return found
+
+
 def check(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
     found: list[Finding] = spoken(service)
     today = date.today()
@@ -592,6 +604,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "headers", lambda: found.extend(header_faults(service)) or "done")
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
     attempt(found, "screen shapes", lambda: found.extend(shape_faults(service)) or "done")
+    attempt(found, "screen fills", lambda: found.extend(fill_faults(service)) or "done")
     attempt(found, "sources", lambda: found.extend(source_faults(service, app)) or "done")
     attempt(found, "decisions", lambda: found.extend(decision_faults(service, module, app)) or "done")
     attempt(found, "questions", lambda: found.extend(question_faults(service, module)) or "done")

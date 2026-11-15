@@ -412,6 +412,47 @@ def test_a_select_that_states_what_its_list_holds_gets_no_finding():
     assert _faults_of(who=Select(None, "Who", lists=Lists(never=nobody))) == []
 
 
+def _unfilled_of(filled_on_own_screen: bool, **components):
+    import dataclasses
+
+    from ostler.book.check import fill_faults
+    from ostler.book.screen import Interaction
+
+    service = module("services.web.service").service
+    actions = module("services.web.model.actions")
+    screen = type("Bare", (Screen,), components)
+    fills = type("FillsBare", (Interaction,), {"screen": screen if filled_on_own_screen else module("services.web.screens").ListPage,
+                                               "carries": actions.Add, "source": ("web/app.js",), "does": "fills a form"})
+    return [(f.name, f.problem, f.blocks) for f in fill_faults(dataclasses.replace(service, screens=(screen,), interactions=(fills,)))]
+
+
+def test_the_check_names_a_field_that_states_a_shape_and_that_no_interaction_fills():
+    from ostler.book import Str
+
+    found = _unfilled_of(False, title=Field(None, "Title", takes="title", holds=Wire(Str())))
+    assert found == [("screen Bare.title", "it states a shape and no interaction of the book fills it, so no input is tried on it: "
+                      "give an interaction of this screen a fixture that has title", True)]
+
+
+def test_a_field_that_an_interaction_of_its_screen_fills_gets_no_such_finding():
+    from ostler.book import Str
+
+    assert _unfilled_of(True, title=Field(None, "Title", takes="title", holds=Wire(Str()))) == []
+
+
+def test_a_field_that_only_an_interaction_of_another_screen_has_in_its_fixture_is_still_named():
+    from ostler.book import Str
+
+    found = _unfilled_of(False, title=Field(None, "Title", takes="title", holds=Wire(Str())), who=Select(None, "Who", options=("ana",)))
+    assert [name for name, _, _ in found] == ["screen Bare.title"]
+
+
+def test_the_fixture_web_book_has_no_stated_field_that_nothing_fills():
+    from ostler.book.check import fill_faults
+
+    assert fill_faults(module("services.web.service").service) == []
+
+
 def test_a_declared_divergence_on_a_screen_input_names_a_class_the_check_knows():
     import dataclasses
 
