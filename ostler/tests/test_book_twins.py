@@ -10,7 +10,7 @@ import pytest
 
 from ostler.book import Answer, BookError, Done, Endpoint, Environment, Field, Id, List, Model, Num, Object, Str, Enum
 from ostler.book.cli import fresh
-from ostler.book.http import twins
+from ostler.book.http import Reply, twins
 from ostler.book.inputs import Base, Tried, Twin, play, twin_classes, weigh
 
 from book_fakes import Quiet
@@ -236,6 +236,49 @@ def test_two_worlds_that_differ_in_the_row_the_call_wrote_still_split_the_pair()
     found = weigh(Remind, _twin(Remind, "offset"), _minting_base(surface), surface, lambda: Keeps(DAY))
     assert found.split
     assert "2026-11-05" in found.split and "2026-11-07" in found.split
+
+
+def _listing(unordered: str) -> type[Endpoint]:
+    item = Object("Item", id=Field(Id(dict)), name=Field(Str()))
+
+    class Listing(Remind):
+        answers = (Answer(200, List(item, unordered=unordered), "set"),)
+
+    return Listing
+
+
+class Lists(Quiet):
+    def __init__(self, endpoint: type[Endpoint], first: list[str], second: list[str]) -> None:
+        self.endpoint = endpoint
+        self.queue = [first, second]
+        self.sent = 0
+
+    def perform(self, step: Any) -> Done:
+        names = self.queue[self.sent]
+        self.sent += 1
+        step.reply = Reply(200, None, self.endpoint.answers[0])
+        return Done((), tuple({"id": f"world-{self.sent}-{n}", "name": n} for n in names))
+
+
+def _weigh_lists(unordered: str, first: list[str], second: list[str]) -> Any:
+    endpoint = _listing(unordered)
+    return weigh(endpoint, _twin(endpoint, "offset"), _base(endpoint, Keeps), Lists(endpoint, first, second), lambda: Keeps(DAY))
+
+
+def test_two_answers_holding_the_same_items_of_an_unordered_list_in_another_order_are_alike():
+    found = _weigh_lists("the product sets no order", ["a", "b", "c"], ["c", "a", "b"])
+    assert found.played
+    assert found.split == ""
+
+
+def test_two_answers_differing_in_an_item_of_an_unordered_list_are_told_apart():
+    found = _weigh_lists("the product sets no order", ["a", "b", "c"], ["c", "a", "d"])
+    assert found.split
+
+
+def test_a_list_not_declared_unordered_is_compared_by_position():
+    found = _weigh_lists("", ["a", "b", "c"], ["c", "a", "b"])
+    assert found.split
 
 
 @pytest.fixture

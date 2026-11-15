@@ -469,7 +469,10 @@ def blind(shape: Shape | None, value: Any) -> Any:
     if isinstance(shape, Id):
         return None if value is None else "<id>"
     if isinstance(shape, List) and isinstance(value, (list, tuple)):
-        return tuple(blind(shape.of, item) for item in cast("Iterable[Any]", value))
+        items = [blind(shape.of, item) for item in cast("Iterable[Any]", value)]
+        if shape.unordered:
+            items.sort(key=str)
+        return tuple(items)
     if isinstance(shape, Object) and isinstance(value, dict):
         return {k: blind(shape.fields[k].shape, v) if k in shape.fields else v for k, v in cast("dict[str, Any]", value).items()}
     return value
