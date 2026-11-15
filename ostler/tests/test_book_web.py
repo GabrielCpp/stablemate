@@ -982,3 +982,80 @@ def test_a_derived_list_drawn_as_a_popup_fails_the_step_when_the_page_shows_anot
         browser.fill(Popup.who, "ana")
         assert browser.list_faults() == [
             "the list Popup.who shows ['Anyone', 'bo', 'ana'], the book derives ['Anyone', 'ana', 'bo']"]
+
+
+class _Spoken:
+    """A stand-in page that records the language each step is performed in, and answers as the model does."""
+
+    name = "spoken"
+
+    def __init__(self, service, lang: str, today) -> None:
+        self.service, self.lang, self.today = service, lang, today
+        self.model = service.new_model(today)
+        self.sent: list[tuple[str, str]] = []
+
+    def start(self) -> None:
+        return None
+
+    def stop(self) -> None:
+        return None
+
+    def reset(self) -> None:
+        return None
+
+    def set_lang(self, lang: str) -> None:
+        self.lang = lang
+
+    def fresh(self):
+        self.model = self.service.new_model(self.today)
+        return self.service.new_model(self.today)
+
+    def perform(self, step):
+        self.sent.append((type(step).__name__, self.lang))
+        return self.model.perform(step)
+
+    def rows(self):
+        return self.model.rows()
+
+
+def _played_after_a_french_journey(monkeypatch: pytest.MonkeyPatch, silence: str, only: str):
+    from datetime import date
+
+    from ostler.book import inputs
+
+    service = module("services.web.service").service
+    assert service.language == "en"
+    page = _Spoken(service, "fr", date(2026, 1, 5))
+    if silence == "twins":
+        monkeypatch.setattr(inputs, "twin_classes", lambda call, model: [])
+    inputs.play(service, page, page.fresh, frozenset({only}), date(2026, 1, 5))
+    return page
+
+
+def test_the_input_classes_of_a_book_play_in_the_service_language_when_its_last_journey_played_in_another(monkeypatch: pytest.MonkeyPatch):
+    page = _played_after_a_french_journey(monkeypatch, "twins", "AddTodo")
+    assert page.sent
+    assert {lang for _, lang in page.sent} == {"en"}
+
+
+def test_the_twins_of_a_book_play_in_the_service_language_when_its_last_journey_played_in_another(monkeypatch: pytest.MonkeyPatch):
+    from ostler.book import inputs
+
+    monkeypatch.setattr(inputs, "one", lambda *args, **kwargs: (inputs.Sent(args[1], inputs.InputClass("", "", "", None, False), True), None))
+    page = _played_after_a_french_journey(monkeypatch, "classes", "AddTodo")
+    assert page.sent
+    assert {lang for _, lang in page.sent} == {"en"}
+
+
+def test_a_base_arranged_by_a_journey_of_another_language_ends_in_the_service_language():
+    from datetime import date
+
+    from ostler.book import inputs
+
+    service = module("services.web.service").service
+    french = next(j for j in service.journeys if j.lang == "fr")
+    page = _Spoken(service, "en", date(2026, 1, 5))
+    inputs._journey_base(french, 1, service.language)(page, page.fresh)
+    assert page.sent
+    assert {lang for _, lang in page.sent} == {"fr"}
+    assert page.lang == "en"

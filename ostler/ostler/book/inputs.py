@@ -313,16 +313,26 @@ def _carried(step: object) -> TypeGuard[Any]:
     return isinstance(step, (Endpoint, Interaction)) and step.carries is not None
 
 
-def _journey_base(journey: Any, k: int) -> Callable[[Surface, Callable[[], Model]], tuple[Model, Endpoint]]:
+def _speak(surface: Surface, lang: str) -> None:
+    speak = getattr(surface, "set_lang", None)
+    if callable(speak) and lang:
+        speak(lang)
+
+
+def _journey_base(journey: Any, k: int, home: str) -> Callable[[Surface, Callable[[], Model]], tuple[Model, Endpoint]]:
     def arrange(surface: Surface, fresh: Callable[[], Model]) -> tuple[Model, Endpoint]:
         model = fresh()
         baseline = model.rows()
         seen: dict[int, Any] = {}
-        for given in journey.given:
-            _ok(attempt(given, model, surface, baseline, seen))
-        steps = iter(journey().steps(model.today))
-        for step in itertools.islice(steps, k):
-            _ok(attempt(step, model, surface, baseline, seen))
+        _speak(surface, journey.lang or home)
+        try:
+            for given in journey.given:
+                _ok(attempt(given, model, surface, baseline, seen))
+            steps = iter(journey().steps(model.today))
+            for step in itertools.islice(steps, k):
+                _ok(attempt(step, model, surface, baseline, seen))
+        finally:
+            _speak(surface, home)
         return model, next(steps)
 
     return arrange
@@ -352,6 +362,7 @@ def bases(service: Service[Any], today: date | None = None) -> dict[type[Any], B
     """For each endpoint, the first call the journeys or the cells make that the
     model accepts, found on the model alone."""
     found: dict[type[Any], Base] = {}
+    home = service.languages[0] if service.languages else ""
     for journey in service.journeys:
         model = service.new_model(today or date.today())
         try:
@@ -364,7 +375,7 @@ def bases(service: Service[Any], today: date | None = None) -> dict[type[Any], B
                 before, kept = model.copy(), copy.deepcopy(step)
                 outcome = model.perform(step)
                 if isinstance(outcome, Done) and type(step) not in found:
-                    found[type(step)] = Base(f"journey {journey.__name__}, step {k + 1}", _journey_base(journey, k), before, kept)
+                    found[type(step)] = Base(f"journey {journey.__name__}, step {k + 1}", _journey_base(journey, k, home), before, kept)
         except Exception:
             continue
     for axes in service.matrices:
@@ -506,6 +517,7 @@ def play(
     today: date | None = None,
 ) -> Tried:
     tried = Tried()
+    _speak(surface, service.languages[0] if service.languages else "")
     found = bases(service, today)
     skipped = {u.endpoint for u in service.unseen if u.item == "inputs"}
     for endpoint in (*service.endpoints, *service.interactions):
