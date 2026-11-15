@@ -20,8 +20,11 @@ names nowhere. Reread each, and bring the book to what the diff says:
 
 - Update each changed element, and the journeys and cells that rely on it.
 - Add the route, screen, interaction or record that each unnamed file holds, with that file in
-  its `source`. A file that holds no behaviour a user reaches goes in the service's
-  `App(ignore=...)` instead.
+  its `source`. A file whose code runs when a route, screen or heard event of the book is served
+  is named in the `source` of each element that runs it, however deep in the call chain and
+  however pure, such as arithmetic, parsing or a query file. Only a file no served request runs
+  goes in the service's `App(ignore=...)`: build and tool configuration, generated code whose
+  source is named, command-line tools that are not the service, test support.
 - Write the decisions the change settles, and the entries of `DISAGREEMENTS.md` where the app
   breaks what the book intends. An entry in `UNDERSPECIFIED.md` is for a cell no source settles.
 - A pointer to a file that no longer exists is fixed or dropped with the element it belongs to.
@@ -66,7 +69,7 @@ The last lap ended on this:
 
 Name each endpoint or interaction you add in `added`, spelled as its class. The run plays the
 journeys of the changed elements and of those you name, so a name left out is a route that goes
-unplayed.
+unplayed. Name each pattern you added to `App(ignore=...)` in `ignored`, as written there.
 
 You are done when, for each module below, `check` exits 0 and `stale` prints nothing under
 `## Changed files no element names`, `## Changed functions no element names` and

@@ -64,6 +64,7 @@ class BookOutcome(BaseModel):
     laps: int = 0
     elements: list[str] = Field(default_factory=list)
     added: list[str] = Field(default_factory=list)
+    ignored: list[str] = Field(default_factory=list)
 
 
 class Filed(BaseModel):
@@ -84,6 +85,7 @@ class CatchUpReply(BaseModel):
     done: str = Field(default="", description="What the book now says that it did not, in a sentence or two.")
     blocked: str = Field(default="", description="Only when you could not finish: what an operator must decide or fix.")
     added: list[str] = Field(default_factory=list, description="The class name of each endpoint or interaction you added to the book, as the book spells it.")
+    ignored: list[str] = Field(default_factory=list, description="Each pattern you added to the service's `App(ignore=...)`, as written there.")
 
 
 class CatchUpOutcome(BaseModel):

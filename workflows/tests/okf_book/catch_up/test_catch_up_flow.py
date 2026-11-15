@@ -85,7 +85,7 @@ def test_the_owner_prompt_names_each_changed_element_each_new_file_and_the_diff(
     install_book_skill(tmp_path / "home", monkeypatch)
 
     walk(flow, flow.books(), "write")
-    flow.write(service="ledger", gate="", lap=1, added=[])
+    flow.write(service="ledger", gate="", lap=1, added=[], ignored=[])
     rendered = templates.render("catch_up/prompts/update-book.md", runner.args_of(UPDATE)[0], Path(okf_book.__file__).parent)
 
     assert "- `Ping`: ledger/ping.py" in rendered
@@ -99,7 +99,7 @@ def test_the_owner_plays_its_own_change_on_the_stack_copy_before_it_replies(tmp_
     flow, runner, _seen = stale_book(tmp_path, monkeypatch, DONE)
     install_book_skill(tmp_path / "home", monkeypatch)
     walk(flow, flow.books(), "write")
-    flow.write(service="ledger", gate="", lap=1, added=[])
+    flow.write(service="ledger", gate="", lap=1, added=[], ignored=[])
     args = runner.args_of(UPDATE)[0]
     root = Path(okf_book.__file__).parent
 
@@ -141,7 +141,7 @@ def test_a_book_whose_gates_pass_is_stamped_verified_and_committed(tmp_path: Pat
     assert sorted(git(flow.root, "show", "--name-only", "--format=", "HEAD").split()) == ["services/ledger/VERIFIED", "services/ledger/service.py"]
     assert "scratch.txt" in git(flow.root, "status", "--porcelain")
     done = walk(flow, step, "summarize")
-    assert summarized(flow).books == [BookOutcome(service="ledger", verdict="caught-up", laps=1, elements=["Entry", "Ping"], added=[])]
+    assert summarized(flow).books == [BookOutcome(service="ledger", verdict="caught-up", laps=1, elements=["Entry", "Ping"], added=[], ignored=[])]
     assert isinstance(done, Continue)
 
 
@@ -173,7 +173,7 @@ def test_a_book_that_reaches_the_lap_cap_parks_on_the_operator_gate_with_the_red
     head = git(flow.root, "rev-parse", "HEAD")
 
     walk(flow, flow.books(), "write")
-    step = flow.stamp(service="ledger", lap=MAX_LAPS, added=[])
+    step = flow.stamp(service="ledger", lap=MAX_LAPS, added=[], ignored=[])
 
     assert isinstance(step, Await) and step.state == "heard"
     assert step.path == flow.run_dir / RED_GATE
@@ -187,7 +187,7 @@ def test_the_operators_answer_resumes_that_same_book_and_reaches_the_owners_next
     flow, runner, _seen = stale_book(tmp_path, monkeypatch, DONE, verified=1)
     install_book_skill(tmp_path / "home", monkeypatch)
     walk(flow, flow.books(), "write")
-    parked = flow.stamp(service="ledger", lap=MAX_LAPS, added=["Pong"])
+    parked = flow.stamp(service="ledger", lap=MAX_LAPS, added=["Pong"], ignored=[])
     assert isinstance(parked, Await)
     question = cast("str", parked.params["question"])
     parked.path.write_text(f"{question}\n\nThe ledger closes on the business day, in UTC.\n", encoding="utf-8")
@@ -202,17 +202,17 @@ def test_the_operators_answer_resumes_that_same_book_and_reaches_the_owners_next
     assert "The operator answered" in rendered
     assert "The ledger closes on the business day, in UTC." in rendered
     assert runner.chains[-1][1] == "catchup:ledger"
-    again = flow.stamp(service="ledger", lap=MAX_LAPS, added=["Pong"])
+    again = flow.stamp(service="ledger", lap=MAX_LAPS, added=["Pong"], ignored=[])
     assert isinstance(again, Await) and again.path == flow.run_dir / RED_GATE
 
 
 def test_a_gate_that_could_not_judge_waits_and_judges_again_without_a_lap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow, runner, _seen = stale_book(tmp_path, monkeypatch, DONE, check=3)
 
-    step = flow.check(service="ledger", lap=1, added=[])
+    step = flow.check(service="ledger", lap=1, added=[], ignored=[])
 
     assert isinstance(step, Await) and step.state == "check"
-    assert step.params == {"service": "ledger", "lap": 1, "added": []}
+    assert step.params == {"service": "ledger", "lap": 1, "added": [], "ignored": []}
     assert runner.total == 0
 
 
@@ -270,7 +270,7 @@ def test_the_question_of_an_unreadable_stale_report_carries_the_exit_code_and_st
 def test_the_summary_never_names_a_failed_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow, _runner, _seen = stale_book(tmp_path, monkeypatch, DONE, verified=1)
     walk(flow, flow.books(), "write")
-    flow.stamp(service="ledger", lap=MAX_LAPS, added=[])
+    flow.stamp(service="ledger", lap=MAX_LAPS, added=[], ignored=[])
 
     done = summarized(flow)
 
@@ -315,3 +315,37 @@ def test_every_edge_of_the_catch_up_graph_has_a_reason() -> None:
 
     assert bare == []
     assert {"fill", "books", "take", "write", "check", "play", "stamp", "render", "commit", "summarize", "heard"} <= {node.name for node in graph.states}
+
+
+def test_the_owner_prompt_names_code_a_served_request_runs_in_a_source_and_does_not_ignore_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, runner, _seen = stale_book(tmp_path, monkeypatch, DONE)
+    install_book_skill(tmp_path / "home", monkeypatch)
+    walk(flow, flow.books(), "write")
+    flow.write(service="ledger", gate="", lap=1, added=[], ignored=[])
+    rendered = templates.render("catch_up/prompts/update-book.md", runner.args_of(UPDATE)[0], Path(okf_book.__file__).parent)
+
+    assert "runs when a route, screen or heard event of the book is served" in rendered
+    assert "however pure" in rendered
+    assert "holds no behaviour a user reaches" not in rendered
+    assert "`ignored`" in rendered
+
+
+def test_the_summary_of_a_caught_up_book_names_the_patterns_its_turns_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    replies: dict[str, Reply] = {UPDATE: lambda _args: {"done": "ok", "blocked": "", "added": [], "ignored": ["ledger/build.py", "ledger/tools/*"]}}
+    flow, _runner, _seen = stale_book(tmp_path, monkeypatch, replies)
+
+    step = walk(flow, flow.books(), "write")
+    step = walk(flow, advance(flow, step), "books")
+    walk(flow, step, "summarize")
+
+    assert summarized(flow).summary == "ledger: caught up in 1 laps, 2 elements changed, 0 endpoints added, 2 files ignored: ledger/build.py, ledger/tools/*"
+
+
+def test_the_summary_of_a_book_with_nothing_ignored_reads_as_before(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner, _seen = stale_book(tmp_path, monkeypatch, DONE)
+
+    step = walk(flow, flow.books(), "write")
+    step = walk(flow, advance(flow, step), "books")
+    walk(flow, step, "summarize")
+
+    assert summarized(flow).summary == "ledger: caught up in 1 laps, 2 elements changed, 0 endpoints added"
