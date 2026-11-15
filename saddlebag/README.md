@@ -368,6 +368,25 @@ in place and orphaned; the keyring store of 2.x reads only items under
 
 ---
 
+## From Python
+
+A Python program that consumes a secret in its own process asks for it by name. The
+call goes through the route a command would pick, so it reaches the daemon or the OS
+keyring the same way.
+
+```python
+from saddlebag import SecretUnavailable, secret_value
+
+token = secret_value("github-token")
+```
+
+`secret_value(name, field="password")` returns the stored value, and raises
+`SecretUnavailable` with saddlebag's own message when the route refuses or the secret
+or field is unknown. It never prints or logs the value, so what the caller does with it
+is the caller's to keep out of logs and checkpoints.
+
+---
+
 ## Package layout
 
 ```
@@ -380,6 +399,7 @@ saddlebag/
 ├── route.py      # how a command reaches the counter: the daemon's socket, or in-process over the keyring
 ├── verbs.py      # the verb handlers over one store, used in-process or behind the daemon
 ├── transfer.py   # export and import: the whole store as one plaintext JSON document, and the import plan
+├── lookup.py     # `secret_value`: a secret's value for Python code, and SecretUnavailable
 ├── store.py      # the SecretStore contract every verb talks to, and StoreUnavailable
 ├── custody.py    # the Vault token's three sources and the refusal
 ├── daemon.py     # `serve`: the socket accept loop over the verbs
