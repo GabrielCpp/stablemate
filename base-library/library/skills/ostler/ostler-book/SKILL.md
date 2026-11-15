@@ -1,6 +1,6 @@
 ---
 name: ostler-book
-description: "Write a service's book, the executable Python model of one HTTP or gRPC service that ostler replays against the running app: from its source or from a story, updating it for a commit or a coworker's shipped routes, settling a finding of check, explore or run, a gRPC service and the accounts and refusals services share, a service that calls another service and the records that service owns, a state another service makes (an outside event), and recording what the book cannot see or the app gets wrong. Covers the model of records and states, endpoints, lifecycle matrices, fixtures, journeys and the standing-account world every cell runs in. A web or mobile app is a screen book, written with screens and interactions in place of endpoints. Load when writing or repairing anything under a book's services/<name>/ package, when a check, explore or run finding needs fixing, or when backfilling routes a coworker shipped."
+description: "Write a service's book, the executable Python model of one HTTP or gRPC service that ostler replays against the running app: from its source or from a story, updating it for a commit or a coworker's shipped routes, settling a finding of check, explore or run, a gRPC service and the accounts and refusals services share, a service that calls another service and the records that service owns, a state another service makes (an outside event), which inputs and twins a run tries on a field, and recording what the book cannot see or the app gets wrong. Covers the model of records and states, endpoints, lifecycle matrices, fixtures, journeys and the standing-account world every cell runs in. A web or mobile app is a screen book, written with screens and interactions in place of endpoints. Load when writing or repairing anything under a book's services/<name>/ package, when a check, explore or run finding needs fixing, or when backfilling routes a coworker shipped."
 applyTo: "**/services/*/model/**/*.py, **/services/*/endpoints/**/*.py, **/services/*/fixtures/**/*.py, **/services/*/journeys/**/*.py, **/services/*/service.py, **/services/*/*/service.py, **/services/*/screens/**/*.py, **/services/*/interactions.py, **/services/*/surface.py"
 tags: [standards, docs]
 ---
@@ -71,6 +71,10 @@ record, rule or action for what its service does not store.
 A web app, driven through a browser, is written with [references/screens.md](references/screens.md)
 open: it covers `Screen`, components found by role and accessible name, `Interaction`,
 `PageSurface`, and how the run judges a page.
+
+A field's shape decides what a run types into it. [references/inputs.md](references/inputs.md) lists
+the input classes and twins of each shape, the language they play in and what the run's `inputs:` and
+`twins:` lines mean.
 
 A command-line tool is written with [references/commands.md](references/commands.md) open: it covers
 `Command`, the argv template, exits, the sandbox, the file watch and what the run compares.
