@@ -379,6 +379,97 @@ def test_a_declared_service_with_no_book_is_left_out(
     assert covered.services == ["api"], covered
 
 
+def test_the_book_lane_stamps_every_covered_book_verified_after_a_pass(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """Only a judged book may say which commit it was judged at."""
+    _add_web_book(lane, git, write)
+    scripted = book(changed={"services.web": WEB_CHANGED})
+    agent = _Agent(lane, {"status": "passed", "calls": BOTH_CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert [_module_of(argv) for argv in scripted.argv["verified"]] == ["services.api", "services.web"]
+
+
+def test_the_book_lane_stamps_nothing_after_a_red_play(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A stamp over a book that did not pass would hide the next catch-up from what is wrong."""
+    scripted = book(run=(1,))
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), _Agent(lane))
+
+    assert scripted.argv["verified"] == []
+
+
+def test_the_book_lane_stamps_nothing_while_the_seat_reports_a_finding(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The developer changes the app after a finding, so the commit judged now is not the one to record."""
+    scripted = book()
+    agent = _Agent(lane, {"status": "findings", "findings": [FINDING], "calls": CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "refix", result
+    assert scripted.argv["verified"] == []
+
+
+def test_a_refused_stamp_goes_back_to_the_seat_with_the_commands_output(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`verified` refuses while a changed file is named by no element, and the seat is the one who names it."""
+    scripted = book(verified=(1, 0))
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"qa-book": 2}, agent.counts()
+    assert "verified said exit 1" in agent.args[1]["report"], agent.args[1]["report"]
+    assert len(scripted.argv["verified"]) == 2
+
+
+def test_a_resumed_lane_that_already_stamped_does_not_stamp_again(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A second visit at the same app commit would otherwise rewrite the stamp and land a second commit for it."""
+    write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS}))
+    scripted = book(stamped=("services.api",))
+
+    result = drive_flow(_flow(), env(), _Agent(lane))
+
+    assert result.status == "passed", result
+    assert scripted.argv["verified"] == []
+
+
 def test_the_claims_the_seat_could_not_state_are_recorded_beside_its_calls(
     lane: Path,
     book: Callable[..., _Book],

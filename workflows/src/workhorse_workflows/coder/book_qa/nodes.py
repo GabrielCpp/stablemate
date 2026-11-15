@@ -86,6 +86,10 @@ def _stale_argv(module: str, app: str, since: str = "") -> list[str]:
     return [*argv, "--since", since] if since else argv
 
 
+def _verified_argv(module: str, app: str) -> list[str]:
+    return [sys.executable, "-m", "ostler.book", "verified", module, "--app", app]
+
+
 def _names_a_change(report: str) -> bool:
     section = ""
     for line in report.splitlines():
@@ -160,6 +164,30 @@ def book_check(logger: logging.Logger, service: str, repo_dir: str = "") -> Book
         if play.exit_code != 0:
             return BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
     return play
+
+
+@blueprint.node
+def stamp_books_verified(logger: logging.Logger, services: list[str], repo_dir: str = "") -> BookPlay:
+    """Record the app's HEAD as the verified commit of each covered service's book, once: a book already verified at HEAD is left alone. The first refusal comes back with its output."""
+    root = find_book_root(repo_dir)
+    app = str(find_repo_root(repo_dir))
+    for name in services:
+        for module in book_modules(root, name):
+            if _verified_at_head(module, app, root):
+                logger.info("the book of %s is already verified at the app's HEAD", module)
+                continue
+            play = _play(_verified_argv(module, app), root)
+            logger.info("book verified of %s exited %d", module, play.exit_code)
+            if play.exit_code != 0:
+                return BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
+    return BookPlay(exit_code=0, output="")
+
+
+def _verified_at_head(module: str, app: str, root: Path) -> bool:
+    done = run_tool(_stale_argv(module, app), cwd=root)
+    first = done.stdout.splitlines()[0] if done.stdout else ""
+    stamp, _, head = first.removeprefix("verified at ").partition(", app at ")
+    return first.startswith("verified at ") and bool(stamp) and stamp == head.strip()
 
 
 @blueprint.node
@@ -448,6 +476,7 @@ __all__ = [
     "covered_services",
     "read_book_record",
     "shared_book_paths",
+    "stamp_books_verified",
     "touched_services",
     "write_book_record",
     "write_unreached_claims",

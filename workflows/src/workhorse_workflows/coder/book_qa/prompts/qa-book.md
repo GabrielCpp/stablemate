@@ -108,7 +108,7 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
 
 The workflow runs `ostler book check` on each covered service, then plays the calls your
 result names, one service at a time. When your pass changed a shared part of a book, it plays
-the whole book of that service instead. Exit 0 on every service ends the pass. Exit 1 or 2
+the whole book of that service instead. Exit 0 on every service, with no finding, then runs `ostler book verified` on each. It refuses while a changed file or function of the app is named by no element or ignore pattern, and the refusal comes back to you. Exit 0 on every service ends the pass. Exit 1 or 2
 comes back to you in this session with the output. Exit 3 means the environment could not
 be judged, and it goes to an operator, never to you. A story does not pass while your result
 lists a finding, even when the run is green.

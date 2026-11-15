@@ -14,6 +14,7 @@ from workhorse_workflows.coder.book_qa.nodes import (
     commit_service_book,
     covered_services,
     read_book_record,
+    stamp_books_verified,
     write_book_record,
 )
 from workhorse_workflows.coder.shared import roles
@@ -173,6 +174,10 @@ class BookQa(QaOwner):
                 return self._ask(_gate(f"ostler book run services.{name}", play.output), "the QA environment", blocks)
             if play.exit_code:
                 return self._lap(play, [_gate(f"ostler book run services.{name}", play.output)], laps, blocks)
+        if not findings:
+            stamped = self.call(stamp_books_verified, services)
+            if stamped.exit_code:
+                return self._lap(stamped, [_gate("ostler book verified", stamped.output)], laps, blocks)
         landed = self.call(
             commit_service_book,
             services,
