@@ -31,6 +31,8 @@ class Arrange(Generic[F]):
         super().__init_subclass__()
         if cls.reads and cls.heard is None:
             raise BookError(f"{cls.__name__} reads {list(cls.reads)} but hears no event: set heard = <the Event class> or drop reads")
+        if cls.heard is None and cls.detail is not Arrange.detail:
+            raise BookError(f"{cls.__name__} builds a detail but hears no event: set heard = <the Event class> or drop detail")
 
     def __init__(self, of: F | None = None):
         self.of = of

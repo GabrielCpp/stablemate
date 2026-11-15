@@ -125,6 +125,11 @@ def test_an_again_with_no_reason_is_refused_where_it_is_declared():
         Again("  ")
 
 
+def test_a_detail_on_an_outside_event_that_hears_no_event_is_refused_where_it_is_declared():
+    with pytest.raises(BookError, match="builds a detail but hears no event"):
+        type("Deaf", (Arrange,), {"does": "Something happens.", "detail": lambda self, model: {}})
+
+
 def test_the_run_counts_its_second_deliveries_on_one_line():
     desk, surface, delivery = _desk()
     model = Counter(DAY)
