@@ -102,7 +102,7 @@ def test_the_targeted_run_names_the_elements_of_the_report_and_those_the_turn_ad
 
     step = walk(flow, flow.books(), "write")
     step = advance(flow, step)
-    walk(flow, step, "account")
+    walk(flow, step, "stamp")
 
     run = next(argv for argv in seen if argv[3:5] == ["run", "services.ledger"])
     assert run[5:] == ["--out", str(flow.run_dir / "book-run/services.ledger"), "--only", "Ping,Pong", "--copy", "evening"]
@@ -118,7 +118,7 @@ def test_a_book_whose_gates_pass_is_stamped_verified_and_committed(tmp_path: Pat
     step = walk(flow, advance(flow, step), "books")
 
     verbs = [argv[3] if argv[1] != "-c" else "calls" for argv in seen]
-    assert verbs == ["stale", "check", "calls", "run", "missing", "verified"]
+    assert verbs == ["stale", "check", "calls", "run", "verified"]
     assert seen[-1][3:] == ["verified", "services.ledger", "--app", str(flow.code_root)]
     assert git(flow.root, "rev-parse", "HEAD") != head
     assert git(flow.root, "log", "-1", "--format=%s") == "docs(ledger): catch the ledger book up with the app\n"
@@ -127,6 +127,17 @@ def test_a_book_whose_gates_pass_is_stamped_verified_and_committed(tmp_path: Pat
     done = walk(flow, step, "summarize")
     assert summarized(flow).books == [BookOutcome(service="ledger", verdict="caught-up", laps=1, elements=["Entry", "Ping"], added=[])]
     assert isinstance(done, Continue)
+
+
+def test_a_book_whose_whole_missing_list_is_not_empty_is_caught_up_when_its_changed_files_are_named(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner, seen = stale_book(tmp_path, monkeypatch, DONE, missing=1)
+
+    step = walk(flow, flow.books(), "write")
+    walk(flow, advance(flow, step), "books")
+
+    assert "missing" not in [argv[3] for argv in seen if argv[1] != "-c"]
+    assert git(flow.root, "log", "-1", "--format=%s") == "docs(ledger): catch the ledger book up with the app\n"
+    assert summarized(flow).books[0].verdict == "caught-up"
 
 
 def test_a_red_gate_starts_another_lap_with_the_gates_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -142,17 +153,17 @@ def test_a_red_gate_starts_another_lap_with_the_gates_output(tmp_path: Path, mon
 
 
 def test_a_red_gate_after_the_lap_cap_fails_the_book_and_goes_on_without_committing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner, _seen = stale_book(tmp_path, monkeypatch, DONE, missing=1)
+    flow, _runner, _seen = stale_book(tmp_path, monkeypatch, DONE, verified=1)
     head = git(flow.root, "rev-parse", "HEAD")
 
     walk(flow, flow.books(), "write")
-    step = flow.account(service="ledger", lap=MAX_LAPS, added=[])
+    step = flow.stamp(service="ledger", lap=MAX_LAPS, added=[])
 
     assert isinstance(step, Continue) and step.state == "books"
     assert git(flow.root, "rev-parse", "HEAD") == head
     outcome = summarized(flow).books[0]
     assert outcome.verdict == "failed" and outcome.laps == MAX_LAPS
-    assert "`python -m ostler.book missing services.ledger` exited 1" in outcome.gate
+    assert "`python -m ostler.book verified services.ledger` exited 1" in outcome.gate
     assert [item.status for item in flow.work_list.items("book")] == ["blocked"]
 
 
@@ -233,4 +244,4 @@ def test_every_edge_of_the_catch_up_graph_has_a_reason() -> None:
     bare = [(node.name, edge.target) for node in graph.states for edge in node.edges if not edge.reason]
 
     assert bare == []
-    assert {"fill", "books", "take", "write", "check", "play", "account", "stamp", "render", "commit", "summarize"} <= {node.name for node in graph.states}
+    assert {"fill", "books", "take", "write", "check", "play", "stamp", "render", "commit", "summarize"} <= {node.name for node in graph.states}

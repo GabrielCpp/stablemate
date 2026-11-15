@@ -1,4 +1,4 @@
-"""Every book the app has left behind. One book after another, an owner turn updates the book from what its stale report names and the diff of those files, the run judges it with the book's own check, a targeted run and missing, and a green book is stamped verified at the app's HEAD and committed."""
+"""Every book the app has left behind. One book after another, an owner turn updates the book from what its stale report names and the diff of those files, the run judges it with the book's own check and a targeted run, and a green book is stamped verified at the app's HEAD and committed."""
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -12,7 +12,7 @@ from workhorse_workflows.okf_book.catch_up.nodes import BOOK, catch_up_diff, cat
 from workhorse_workflows.okf_book.main.python_book_flow import COULD_NOT_JUDGE, MAX_LAPS
 from workhorse_workflows.okf_book.shared.book_commits import caught_up_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.shared.book_gates import BookGate, python_book_calls, python_book_check, python_book_missing, python_book_run, python_book_verified, run_flags
+from workhorse_workflows.okf_book.shared.book_gates import BookGate, python_book_calls, python_book_check, python_book_run, python_book_verified, run_flags
 
 UPDATE_PROMPT = "catch_up/prompts/update-book.md"
 ENVIRONMENT_GATE = "catch-up-environment.md"
@@ -31,7 +31,7 @@ def owner_chain(service: str) -> str:
 
 
 class CatchUpBooks(BookFlow):
-    """Files each book the app has changed since the commit it was verified at, and works them one at a time, with an owner turn per lap on a book and the book's own gates between laps. A book still red after three laps is failed and the next book goes on. The run ends on a line per book."""
+    """Files each book the app has changed since the commit it was verified at, and works them one at a time, with an owner turn per lap on a book and the book's own gates and the stamp between laps. A book still red after three laps is failed and the next book goes on. The run ends on a line per book."""
 
     stack_copy: str = ""
     services: list[str] = []
@@ -105,7 +105,7 @@ class CatchUpBooks(BookFlow):
         return Continue(gate, self.play, service=service, lap=lap, added=added).because("the check passes")
 
     def play(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
-        """Play, in each module, the journeys that call the endpoints and interactions the report named or the owner added. A pass lists the files left unnamed, and the first fail sends the owner another lap."""
+        """Play, in each module, the journeys that call the endpoints and interactions the report named or the owner added. A pass stamps the book, and the first fail sends the owner another lap."""
         report = self._report(service)
         gate = BookGate(exit_code=0)
         for module in report.modules:
@@ -116,19 +116,10 @@ class CatchUpBooks(BookFlow):
             gate = self.call(python_book_run, self.root, module.module, self.run_dir / "book-run" / module.module, run_flags(self.stack_copy, names))
             if gate.exit_code != 0:
                 return self._judged("run", module.module, gate, Lap(service, lap, added), self.play)
-        return Continue(gate, self.account, service=service, lap=lap, added=added).because("the targeted run is green")
-
-    def account(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
-        """List the app's source files each of the book's modules names nowhere. An empty list stamps the book, and a file left sends the owner another lap."""
-        gate = BookGate(exit_code=0)
-        for module in self._modules(service):
-            gate = self.call(python_book_missing, self.root, module, self.code_root, "")
-            if gate.exit_code != 0:
-                return self._judged("missing", module, gate, Lap(service, lap, added), self.account)
-        return Continue(gate, self.stamp, service=service, lap=lap, added=added).because("no source file is left unnamed")
+        return Continue(gate, self.stamp, service=service, lap=lap, added=added).because("the targeted run is green")
 
     def stamp(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
-        """Record the app's HEAD as the commit each of the book's modules is verified at. A module that refuses sends the owner another lap."""
+        """Record the app's HEAD as the commit each of the book's modules is verified at. A module that refuses, because a file or function changed since the verified commit is named by no element or a pointer names a file that is gone, sends the owner another lap with what it printed."""
         gate = BookGate(exit_code=0)
         for module in self._modules(service):
             gate = self.call(python_book_verified, self.root, module, self.code_root)

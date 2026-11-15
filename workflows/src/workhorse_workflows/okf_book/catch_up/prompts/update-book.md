@@ -68,12 +68,15 @@ Name each endpoint or interaction you add in `added`, spelled as its class. The 
 journeys of the changed elements and of those you name, so a name left out is a route that goes
 unplayed.
 
-You are done when every command below exits 0, from the book root:
+You are done when, for each module below, `check` exits 0 and `stale` prints nothing under
+`## Changed files no element names`, `## Changed functions no element names` and
+`## Pointers to files that no longer exist`, from the book root. `## Stale elements` stays
+listed until the run stamps the book, so it is no sign of work left:
 
 ```
 {% for module in modules %}
 python -m ostler.book check {{ module }} --app {{ app_root }}
-python -m ostler.book missing {{ module }} --app {{ app_root }}
+python -m ostler.book stale {{ module }} --app {{ app_root }}
 {% endfor %}
 ```
 
