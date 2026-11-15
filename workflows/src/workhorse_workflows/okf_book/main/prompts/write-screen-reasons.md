@@ -4,7 +4,11 @@ already says what each screen shows. You add the reasons, as decision files.
 The book is the package `{{ package }}/` under the book root, `{{ book_root }}`. The app's source
 is `{{ source_root }}/`, in the repository `{{ app_root }}`.
 
-The format is the `ostler-book` skill. Load it first and read what it says of `decisions/` and
+{% if gate %}The last attempt at these ended on this:
+
+{{ gate }}
+
+{% endif %}The format is the `ostler-book` skill. Load it first and read what it says of `decisions/` and
 of `QUESTIONS.md`:
 {{ skill_command("ostler-book") }}
 

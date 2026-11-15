@@ -6,11 +6,12 @@ import sys
 from collections import Counter
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import override
+from typing import cast, override
 
 import pytest
 
 from workhorse.artifacts import ArtifactWriter
+from workhorse.pyflow import Await, Continue
 from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
 from workhorse.pyflow.engine import RunEnv
@@ -36,6 +37,11 @@ def run_env(runs_dir: Path, runner: AgentRunner) -> RunEnv:
         nodes=workflow.nodes,
         agent_runner=runner,
     )
+
+
+def advance(flow: object, step: Continue[...] | Await[...]) -> Continue[...] | Await[...]:
+    """Run the state the transition names, with the parameters it hands it."""
+    return cast("Continue[...] | Await[...]", getattr(flow, step.state)(**step.params))  # pyright: ignore[reportAny]
 
 
 def git(repo: Path, *args: str) -> str:

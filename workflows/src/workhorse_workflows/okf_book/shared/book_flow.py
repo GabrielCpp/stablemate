@@ -24,6 +24,9 @@ FIX_COMMIT_TIMEOUT = 1800.0
 RED_GATE = "python-book-red.md"
 BLOCKED_GATE = "python-book-blocked.md"
 ENVIRONMENT_GATE = "python-book-environment.md"
+DECISIONS_GATE = "python-book-decisions.md"
+SKELETON_GATE = "python-book-skeleton.md"
+REASONS_GATE = "python-book-reasons.md"
 ANSWER_LIMIT_CHARS = 8000
 MAX_LAPS = 3
 COULD_NOT_JUDGE = 3
@@ -39,6 +42,15 @@ def red_question(service: str, lap: int, said: str) -> str:
 
 def environment_question(service: str, verb: str, said: str) -> str:
     return f"The book's {verb} could not judge the {service} book, which is the environment's side:\n\n{said}\n\nFix the environment, then answer here to {verb} again."
+
+
+def decisions_question(service: str, said: str) -> str:
+    return f"The {service} book's decisions could not be listed, so the screens no decision names are unknown:\n\n{said}\n\nFix it, then answer here to list them again."
+
+
+def no_reply_question(service: str, what: str, items: list[str]) -> str:
+    listed = "\n".join(f"- {item}" for item in items)
+    return f"A turn writing the {what} of the {service} book ended without a reply. Its batch:\n\n{listed}\n\nAnswer here, and the same batch goes to a new turn with your answer."
 
 
 def _nothing_refused_in_dry_run(_logger: logging.Logger, *_args: object) -> str:

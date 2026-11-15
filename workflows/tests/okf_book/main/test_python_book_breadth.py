@@ -7,7 +7,7 @@ from typing import cast
 
 import pytest
 from okf_book.main.flows import book_exits, build_flow
-from okf_book.support import Reply
+from okf_book.support import Reply, advance
 from workhorse.pyflow import AgentTurnFailed, Await, Continue
 
 from workhorse_workflows.okf_book.main import python_book_flow
@@ -161,14 +161,38 @@ def test_a_skeleton_turns_written_left_and_odd_lines_land_in_the_notes_folder_an
     assert (folder / "handed.txt").read_text(encoding="utf-8").split() == sorted(["ledger/pages/old.tsx", *PAGES[:2]])
 
 
-def test_a_skeleton_turn_that_ends_without_a_reply_still_records_its_batch_as_handed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    book_exits(monkeypatch, unexplained=[])
+def test_a_skeleton_turn_that_ends_without_a_reply_is_not_recorded_and_asks_the_operator(tmp_path: Path) -> None:
     flow, _runner = build_flow(tmp_path, {SKELETON: _no_reply}, kind="web")
 
     step = flow.skeleton(module="services.ledger", entries=PAGES, gate="", lap=0)
 
-    assert isinstance(step, Continue) and step.state == "check"
-    assert (flow.run_dir / "breadth/handed.txt").read_text(encoding="utf-8").split() == sorted(PAGES)
+    assert isinstance(step, Await) and step.path == flow.run_dir / python_book_flow.SKELETON_GATE
+    assert all(page in step.questions for page in PAGES)
+    assert "ended without a reply" in step.questions
+    assert not (flow.run_dir / "breadth").exists()
+
+
+def test_the_operators_answer_sends_the_same_skeleton_batch_again(tmp_path: Path) -> None:
+    written: dict[str, object] = {"written": ["PageA"], "left": [], "odd": []}
+    def _written(_args: dict[str, object]) -> dict[str, object]:
+        return written
+
+    answers = iter([_no_reply, _written])
+    flow, runner = build_flow(tmp_path, {SKELETON: lambda args: next(answers)(args)}, kind="web")
+    files = [f"ledger/pages/p{n}.tsx" for n in range(11)]
+    asked = flow.skeleton(module="services.ledger", entries=files, gate="g", lap=1)
+    assert isinstance(asked, Await)
+    question = cast("str", asked.params["question"])
+    asked.path.write_text(f"{question}\n\nThe pages folder was locked, try now.\n", encoding="utf-8")
+
+    heard = advance(flow, asked)
+    advance(flow, heard)
+
+    assert heard.state == "skeleton"
+    assert heard.params["entries"] == files
+    assert runner.args_of(SKELETON)[1]["files"] == files[:8]
+    assert "The pages folder was locked, try now." in cast("str", runner.args_of(SKELETON)[1]["gate"])
+    assert runner.args_of(SKELETON)[0]["gate"] == ""
 
 
 def test_a_red_missing_on_a_screen_book_goes_through_the_survey_with_the_same_lap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

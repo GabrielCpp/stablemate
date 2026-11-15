@@ -5,7 +5,11 @@ owner.
 The book is the package `{{ package }}/` under the book root, `{{ book_root }}`. The app's source
 is `{{ source_root }}/`.
 
-The format is the `ostler-book` skill. Load it first, then read its screens reference whole:
+{% if gate %}The last attempt at these ended on this:
+
+{{ gate }}
+
+{% endif %}The format is the `ostler-book` skill. Load it first, then read its screens reference whole:
 {{ skill_command("ostler-book") }}
 
 Read two screens the book already has, a small one and a large one, and the file that registers
