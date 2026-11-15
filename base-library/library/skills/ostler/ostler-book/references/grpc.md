@@ -151,6 +151,9 @@ A service that reacts to another one keeps states no call of its own reaches: a 
 starts when the ticket service announces a ticket. The book makes that change itself and
 reads until it has landed.
 
+This is for a state of a record this service stores. A record the other service stores is
+never modelled here: the book refers to it, as [neighbours.md](neighbours.md) says.
+
 - **The change is an outside event.** One `Arrange` subclass per thing a person does at the
   other service, in `outside.py`, listed in `Service(outside=...)`. Its `carries` is an
   action of this book's model: what this service does when it hears.

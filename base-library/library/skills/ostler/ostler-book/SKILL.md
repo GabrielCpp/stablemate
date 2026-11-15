@@ -1,6 +1,6 @@
 ---
 name: ostler-book
-description: "Write a service's book, the executable Python model of one HTTP or gRPC service that ostler replays against the running app: from its source or from a story, updating it for a commit or a coworker's shipped routes, settling a finding of check, explore or run, a gRPC service and the accounts and refusals services share, a state another service makes (an outside event), and recording what the book cannot see or the app gets wrong. Covers the model of records and states, endpoints, lifecycle matrices, fixtures, journeys and the standing-account world every cell runs in. A web or mobile app is a screen book, written with screens and interactions in place of endpoints. Load when writing or repairing anything under a book's services/<name>/ package, when a check, explore or run finding needs fixing, or when backfilling routes a coworker shipped."
+description: "Write a service's book, the executable Python model of one HTTP or gRPC service that ostler replays against the running app: from its source or from a story, updating it for a commit or a coworker's shipped routes, settling a finding of check, explore or run, a gRPC service and the accounts and refusals services share, a service that calls another service and the records that service owns, a state another service makes (an outside event), and recording what the book cannot see or the app gets wrong. Covers the model of records and states, endpoints, lifecycle matrices, fixtures, journeys and the standing-account world every cell runs in. A web or mobile app is a screen book, written with screens and interactions in place of endpoints. Load when writing or repairing anything under a book's services/<name>/ package, when a check, explore or run finding needs fixing, or when backfilling routes a coworker shipped."
 applyTo: "**/services/*/model/**/*.py, **/services/*/endpoints/**/*.py, **/services/*/fixtures/**/*.py, **/services/*/journeys/**/*.py, **/services/*/service.py, **/services/*/*/service.py, **/services/*/screens/**/*.py, **/services/*/interactions.py, **/services/*/surface.py"
 tags: [standards, docs]
 ---
@@ -62,6 +62,11 @@ A service that answers gRPC calls, or one of several services in a repo that sha
 and refusals, is written with [references/grpc.md](references/grpc.md) open: it covers the
 `Rpc` declaration, status codes by name, proto field names, the `services/shared/` package
 and a world of shared records that a cell cannot make its own copy of.
+
+A service that calls another service, such as a gateway or an API in front of a backend,
+is written with [references/neighbours.md](references/neighbours.md) open: it covers
+`Foreign`, `Needs`, `Passes`, `Reaches` and `OwnerRefused`, and the rule that a book holds no
+record, rule or action for what its service does not store.
 
 A web app, driven through a browser, is written with [references/screens.md](references/screens.md)
 open: it covers `Screen`, components found by role and accessible name, `Interaction`,
