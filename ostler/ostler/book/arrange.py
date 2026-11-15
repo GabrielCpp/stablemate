@@ -36,6 +36,16 @@ class Arrange(Generic[F]):
     def input(self) -> F | None:
         return self.of
 
+    def detail(self, model: Any) -> dict[str, Any] | None:
+        """The detail of this occurrence as the event carries it, built from the model as it stands before the
+        service hears it. A hearing that defines it is delivered to the service's handler, one that does not is
+        performed by the surface."""
+        return None
+
+    @classmethod
+    def delivers(cls) -> bool:
+        return cls.heard is not None and cls.detail is not Arrange.detail
+
     @classmethod
     def describe(cls) -> str:
         accept = cls.carries.accept if cls.carries is not None else None

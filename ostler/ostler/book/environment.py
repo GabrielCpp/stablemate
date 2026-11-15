@@ -8,11 +8,14 @@ from __future__ import annotations
 import os
 import subprocess
 from dataclasses import dataclass, field
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
 from ostler.book.errors import BookError
 from ostler.environments.render import SHARED
 from ostler.qa.addresses import LEASE_ENV
+
+if TYPE_CHECKING:
+    from ostler.book.delivery import Delivery
 
 OSTLER = "ostler:"
 PREFIX = "BOOK_SECRET_"
@@ -27,6 +30,7 @@ class Environment:
     backstage: type | None = None
     root: str = ""
     leased: str = ""
+    delivery: Delivery | None = None
 
     def address(self, host: str) -> str:
         if host not in self.hosts:

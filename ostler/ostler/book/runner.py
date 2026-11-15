@@ -10,6 +10,7 @@ from typing import Any, Callable, Iterable, cast
 from ostler.book.arrange import Arrange
 from ostler.book.backstage import CannotArrange
 from ostler.book.boundary import Needs
+from ostler.book.delivery import Delivery, faults as detail_faults
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.http import Endpoint, OffShape, Undeclared
 from ostler.book.journey import (Check, Given, Journey, JourneyResult, Listed, OwnerRefused, Refused, Relates, Same, Seen, Shows,
@@ -308,11 +309,37 @@ def perform(step: object, request: object, model: Model, surface: Surface) -> St
             hand_over(surface, {})
 
 
+def delivered(request: object) -> Arrange[Any] | None:
+    """The hearing this request is, when the environment names a way to place its event and the hearing builds the detail."""
+    if Deliveries.role is not None and isinstance(request, Arrange) and request.delivers():
+        return request
+    return None
+
+
+def occurrence(hearing: Arrange[Any], model: Model) -> tuple[dict[str, Any], str]:
+    """The detail of one occurrence of a hearing, and what it gets wrong against the contract of its event."""
+    detail = hearing.detail(model)
+    assert hearing.heard is not None
+    wrong = detail_faults(hearing.heard, detail, hearing.reads)
+    note = f"the detail of {type(hearing).__name__} is off the contract of event {hearing.heard.name}: " + "; ".join(wrong) if wrong else ""
+    return cast(dict[str, Any], detail), note
+
+
 def move(step: object, request: object, model: Model, surface: Surface) -> StepResult:
+    hearing = delivered(request)
+    detail: dict[str, Any] = {}
+    if hearing is not None:
+        detail, wrong = occurrence(hearing, model)
+        if wrong:
+            return StepResult(step, None, None, model.rows(), (), False, wrong)
     model_outcome = spoken(surface, model.perform(request))
     reduced = trace(model)
     try:
-        app_outcome = surface.perform(request)
+        if hearing is not None and Deliveries.role is not None and hearing.heard is not None:
+            Deliveries.role.place(hearing.heard, detail)
+            app_outcome: Outcome = Done()
+        else:
+            app_outcome = surface.perform(request)
     except CannotReach as blocked:
         app_outcome = Unreachable(blocked.reason)
     if isinstance(model_outcome, Flawed):
@@ -324,7 +351,7 @@ def move(step: object, request: object, model: Model, surface: Surface) -> StepR
         app_rows, reads = landed(surface, model_rows)
     else:
         app_rows, reads = surface.rows(), 1
-    if callable(express) and isinstance(model_outcome, Done) and isinstance(app_outcome, Done):
+    if callable(express) and hearing is None and isinstance(model_outcome, Done) and isinstance(app_outcome, Done):
         answered = difference(express(request, model_outcome), app_outcome.view) or ""
     ok = agree(model_outcome, app_outcome) and model_rows == app_rows and not answered
     note = ""
@@ -427,3 +454,14 @@ def flawed(step: object, model_outcome: Flawed, app_outcome: Outcome, model: Mod
         return StepResult(step, model_outcome, app_outcome, model_rows, app_rows, False, note, reduced)
     note = f"model said {model_outcome}, app said {app_outcome}"
     return StepResult(step, model_outcome, app_outcome, model_rows, app_rows, False, note, reduced)
+
+
+class Deliveries:
+    """The way events reach the service in this run, as the environment names it. Class state, like `Landings`: a
+    run is one process."""
+
+    role: Delivery | None = None
+
+    @classmethod
+    def begin(cls, role: Delivery | None) -> None:
+        cls.role = role

@@ -40,7 +40,7 @@ from ostler.book.model import Model
 from ostler.book.owners import Owners
 from ostler.book.planner import plan
 from ostler.book.register import Settled, load as load_register, path as register_path, save as save_register, settle
-from ostler.book.runner import attempt, blocked, walk
+from ostler.book.runner import Deliveries, attempt, blocked, walk
 from ostler.book.state import Impossible
 from ostler.book.search import KINDS, cmd_explain, cmd_search
 from ostler.book.witness import WitnessReport, witnessed
@@ -246,6 +246,7 @@ def made_ready(service: Service[Any], args: argparse.Namespace) -> tuple[Surface
         show_skips(args.environment, [why])
         return 0
     Owners.begin(args.environment, lambda owner: _surface(owner, args.environment), fresh)
+    Deliveries.begin(args.environment.delivery)
     return surface, stack
 
 
