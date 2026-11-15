@@ -80,6 +80,22 @@ python -m ostler.book stale {{ module }} --app {{ app_root }}
 {% endfor %}
 ```
 
+{% if stack_copy %}
+Before you reply, play the journeys of the endpoints and interactions among the changed elements
+and of those you added, with their names, comma separated, after `--only`, and repair the book
+until it reads 0 fail:
+
+```
+python -m ostler.book run <module> --only <names> --copy {{ stack_copy }} --out <a scratch folder>
+```
+
+A run that fails names the cell the app answered differently. Decide, from the source, whether
+the book or the app is wrong. A wrong book gets fixed. A wrong app gets an entry in the book's
+`DISAGREEMENTS.md` and the cell keeps what the source intends. A cell whose intent no source
+settles gets an entry in `UNDERSPECIFIED.md`. A run that exits 3 could not judge the environment.
+Do not repair the book for it. Say so in `blocked`.
+
+{% endif %}
 The run stamps the book itself, so do not run `verified`. Do not commit. Reply with one JSON
 object and nothing else.
 

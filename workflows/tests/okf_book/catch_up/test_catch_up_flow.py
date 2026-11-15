@@ -96,6 +96,23 @@ def test_the_owner_prompt_names_each_changed_element_each_new_file_and_the_diff(
     assert "as the stack copy `evening`" in rendered
 
 
+def test_the_owner_plays_its_own_change_on_the_stack_copy_before_it_replies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, runner, _seen = stale_book(tmp_path, monkeypatch, DONE)
+    install_book_skill(tmp_path / "home", monkeypatch)
+    walk(flow, flow.books(), "write")
+    flow.write(service="ledger", gate="", lap=1, added=[])
+    args = runner.args_of(UPDATE)[0]
+    root = Path(okf_book.__file__).parent
+
+    told = templates.render("catch_up/prompts/update-book.md", args, root)
+    bare = templates.render("catch_up/prompts/update-book.md", {**args, "stack_copy": ""}, root)
+
+    assert "python -m ostler.book run <module> --only <names> --copy evening --out <a scratch folder>" in told
+    assert "reads 0 fail" in told
+    assert "exits 3 could not judge the environment" in told
+    assert "--only" not in bare
+
+
 def test_the_targeted_run_names_the_elements_of_the_report_and_those_the_turn_added(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     replies: dict[str, Reply] = {UPDATE: lambda _args: {"done": "added", "blocked": "", "added": ["Pong", "Stray"]}}
     flow, _runner, seen = stale_book(tmp_path, monkeypatch, replies)
