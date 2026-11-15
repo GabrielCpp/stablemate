@@ -10,7 +10,7 @@ from workhorse_workflows.okf_book.main import python_book_flow
 from workhorse_workflows.okf_book.shared import book_gates
 from workhorse_workflows.okf_book.main.python_book_flow import WritePythonBook
 
-from okf_book.support import Reply, ScriptedRunner, run_env
+from okf_book.support import Reply, ScriptedRunner, git, run_env
 
 
 def build_flow(tmp_path: Path, replies: dict[str, Reply] | None = None, kind: str = "cli") -> tuple[WritePythonBook, ScriptedRunner]:
@@ -46,3 +46,16 @@ def book_exits(
     monkeypatch.setattr(python_book_flow, "run_tool", _run)
     monkeypatch.setattr(book_gates, "run_tool", _run)
     return seen
+
+
+def written_book(flow: WritePythonBook) -> Path:
+    """The flow's repo with one commit, the ledger book's service file and a scratch file beside it, both uncommitted."""
+    repo = flow.root
+    git(repo, "init", "-q", "-b", "main")
+    (repo / "README.md").write_text("app\n", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "commit", "-q", "-m", "chore: start")
+    (repo / "services/ledger").mkdir(parents=True)
+    (repo / "services/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
+    (repo / "scratch.txt").write_text("not the book\n", encoding="utf-8")
+    return repo

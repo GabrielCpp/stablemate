@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from collections import Counter
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -112,3 +113,24 @@ def install_book_skill(home: Path, monkeypatch: pytest.MonkeyPatch | None = None
     if monkeypatch is not None:
         monkeypatch.setenv("HOME", str(home))
         monkeypatch.setenv("AGENT_CLI", "claude")
+
+
+def dry_run_said(tmp_path: Path, flow: str) -> subprocess.CompletedProcess[str]:
+    """A `--dry-run` of the named flow from a one-commit repo under `tmp_path`."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    (repo / "kept.txt").write_text("kept\n", encoding="utf-8")
+    git(repo, "add", "kept.txt")
+    git(repo, "commit", "-q", "-m", "chore: start")
+    home = tmp_path / "home"
+    install_book_skill(home)
+    return subprocess.run(
+        [sys.executable, "-c", "from workhorse_workflows.okf_book.workflow import main; main()", "run", flow, "--dry-run", "--runs-dir", str(tmp_path / "runs")],
+        cwd=repo,
+        env={"HOME": str(home), "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )

@@ -1,14 +1,12 @@
 """The catch-up reads each book's stale report, has an owner update a stale book from its changed elements and their diff, judges it with the book's own gates, and stamps and commits a green one."""
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 from typing import cast
 
 import pytest
 from okf_book.catch_up.flows import UPDATE, advance, book_exits, build_flow, make_app, stale_book, stale_printed, summarized, walk
-from okf_book.support import Reply, git, install_book_skill
+from okf_book.support import Reply, dry_run_said, git, install_book_skill
 from workhorse import templates
 from workhorse.pyflow import Await, Continue
 from workhorse.pyflow.graph import state_graph
@@ -228,32 +226,13 @@ def test_a_resumed_run_continues_at_the_book_it_stopped_on(tmp_path: Path, monke
 
 
 def test_a_dry_run_walks_the_catch_up_to_a_green_end(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    git(repo, "init", "-q", "-b", "main")
-    (repo / "kept.txt").write_text("kept\n", encoding="utf-8")
-    git(repo, "add", "kept.txt")
-    git(repo, "commit", "-q", "-m", "chore: start")
-    home = tmp_path / "home"
-    install_book_skill(home)
-    env = {"HOME": str(home), "PATH": "/usr/bin:/bin"}
-
-    done = subprocess.run(
-        [sys.executable, "-c", "from workhorse_workflows.okf_book.workflow import main; main()", "run", "catch_up", "--dry-run", "--runs-dir", str(tmp_path / "runs")],
-        cwd=repo,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
+    done = dry_run_said(tmp_path, "catch_up")
 
     assert done.returncode == 0, done.stdout + done.stderr
     said = done.stdout + done.stderr
     assert "dry-run ok" in said
     assert "call   → commit_book_paths (dry-run)" in said
     assert "done   ← summarize" in said
-
 
 def test_every_edge_of_the_catch_up_graph_has_a_reason() -> None:
     graph = state_graph(CatchUpBooks, workflow_dir=Path(okf_book.__file__).parent)

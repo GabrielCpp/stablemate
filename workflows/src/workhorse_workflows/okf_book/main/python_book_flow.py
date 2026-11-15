@@ -11,7 +11,7 @@ from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.kit.answer import answer_below
 from workhorse_workflows.kit.tools import run_tool
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
-from workhorse_workflows.okf_book.shared.book_gates import BookGate, book_command, python_book_check, python_book_missing, python_book_run, run_flags
+from workhorse_workflows.okf_book.shared.book_gates import BookGate, book_command, python_book_check, python_book_missing, python_book_run, python_book_verified, run_flags
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
 from workhorse_workflows.okf_book.main.models import BookEntries, PythonBookOutcome, PythonBookReply
@@ -63,7 +63,7 @@ def finished_books(root: Path, service: str) -> list[str]:
 
 @dry_run(service="dry-run")
 class WritePythonBook(BookFlow):
-    """Surveys the entry files a screen-reached book names nowhere and has a skeleton screen written for each, eight to a turn. Then has the reasons written for each screen no decision names, five to a turn. Then sends the book's owner until the book's check and run both pass and no source file is left unnamed, and commits the book's package. A missing list still red on a screen-reached book goes through the survey again before the owner."""
+    """Surveys the entry files a screen-reached book names nowhere and has a skeleton screen written for each, eight to a turn. Then has the reasons written for each screen no decision names, five to a turn. Then sends the book's owner until the book's check and run both pass and no source file is left unnamed, stamps the book verified at the app's HEAD, and commits the book's package. A missing list still red on a screen-reached book goes through the survey again before the owner."""
 
     service: str = ""
     kind: str = "cli"
@@ -257,7 +257,7 @@ class WritePythonBook(BookFlow):
         return Continue(gate, self.account, lap=lap).because("the book plays green")
 
     def account(self, lap: int) -> Continue[...] | Await[...]:
-        """List the app's source files each of the book's modules names nowhere. An empty list renders the book, and the first module with a file left sends a screen-reached book through the survey again, or any other book the owner, for another lap."""
+        """List the app's source files each of the book's modules names nowhere. An empty list stamps the book, and the first module with a file left sends a screen-reached book through the survey again, or any other book the owner, for another lap."""
         gate = BookGate(exit_code=0)
         for module in self.modules:
             gate = self.call(python_book_missing, self.root, module, self.code_root, self.source_folder)
@@ -265,7 +265,16 @@ class WritePythonBook(BookFlow):
                 return Continue(gate, self.survey, gate=self._said("missing", module, gate), lap=lap).because("survey the files left")
             if gate.exit_code != 0:
                 return self._judged("missing", module, gate, lap, self.account)
-        return Continue(gate, self.render, lap=lap).because("no source file is left unnamed")
+        return Continue(gate, self.stamp, lap=lap).because("no source file is left unnamed")
+
+    def stamp(self, lap: int) -> Continue[...] | Await[...]:
+        """Record the app's HEAD as the commit each of the book's modules is verified at, so a later catch-up knows where the book was judged. A module that refuses sends the owner another lap with what it printed."""
+        gate = BookGate(exit_code=0)
+        for module in self.modules:
+            gate = self.call(python_book_verified, self.root, module, self.code_root)
+            if gate.exit_code != 0:
+                return self._judged("verified", module, gate, lap, self.stamp)
+        return Continue(gate, self.render, lap=lap).because("the book is stamped")
 
     @staticmethod
     def _said(verb: str, module: str, gate: BookGate) -> str:

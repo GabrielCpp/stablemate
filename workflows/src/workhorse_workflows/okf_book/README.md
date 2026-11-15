@@ -14,6 +14,8 @@ workhorse-okf-book run python_book --run-id book-api-1 --profile claude --params
 
 The owner writes lap after lap until three of the book's own commands exit 0, in this order: `check`, `run` and `missing`. `missing` lists the tracked files under `source_folder` that no element names through its `source` and no `App(ignore=...)` pattern covers, so a book cannot stop while the app holds a file it does not answer for.
 
+When the three pass, the run stamps each of the book's modules with `ostler book verified`, which records the app's HEAD as the commit the book was judged at. A refused stamp sends the owner another lap with what the command printed, under the same lap cap. The stamp file sits inside the book's package, so the commit of `services/<name>/` carries it, and a later `catch_up` finds the book verified instead of naming it a first book.
+
 `--profile` names the agent profile of the home config. `--dry-run` walks the graph with the agent turns stubbed.
 
 Attend a run through groom, never through its launch log: `groom wait --run <run-id> --until blocked,ended` returns at the next operator gate, and `workhorse-okf-book control --run <run-dir> questions|answer --text …|resume` answers it.

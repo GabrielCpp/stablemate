@@ -9,7 +9,7 @@ from typing import cast
 import pytest
 from _books import TODO_BOOK, write_todo_book
 from _workspace import Workspace, cut_run_worktrees, lay_out, name_members, run_git
-from okf_book.main.flows import book_exits, build_flow
+from okf_book.main.flows import book_exits, build_flow, written_book
 from okf_book.support import Reply, ScriptedRunner, git, install_book_skill, run_env
 from workhorse.pyflow import Await, Continue, Done
 from workhorse import templates
@@ -129,13 +129,13 @@ def test_a_missing_list_that_is_not_empty_sends_the_owner_another_lap_with_the_l
     assert seen[0][3:] == ["missing", "services.ledger", "--app", str(flow.code_root), "--under", "ledger"]
 
 
-def test_an_empty_missing_list_renders_the_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_an_empty_missing_list_stamps_the_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     book_exits(monkeypatch)
     flow, _runner = build_flow(tmp_path)
 
     step = flow.account(lap=1)
 
-    assert isinstance(step, Continue) and step.state == "render"
+    assert isinstance(step, Continue) and step.state == "stamp"
 
 
 def test_a_missing_list_still_full_after_the_last_lap_waits_for_the_operator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -207,14 +207,7 @@ def test_a_service_named_with_a_hyphen_is_told_to_import_its_own_modules_relativ
 
 def test_a_green_book_commits_only_its_package(tmp_path: Path) -> None:
     flow, _runner = build_flow(tmp_path)
-    repo = flow.root
-    git(repo, "init", "-q", "-b", "main")
-    (repo / "README.md").write_text("app\n", encoding="utf-8")
-    git(repo, "add", "README.md")
-    git(repo, "commit", "-q", "-m", "chore: start")
-    (repo / "services/ledger").mkdir(parents=True)
-    (repo / "services/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
-    (repo / "scratch.txt").write_text("not the book\n", encoding="utf-8")
+    repo = written_book(flow)
 
     step = flow.commit(lap=2)
 
