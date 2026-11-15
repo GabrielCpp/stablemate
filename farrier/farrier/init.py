@@ -65,7 +65,7 @@ packs: []
 # An opaque block farrier passes through untouched — the workflow distributions you
 # install read their own keys out of it.
 # workflow:
-#   githubTokenEnv: GH_TOKEN
+#   githubTokenSecret: github-token
 """)
 
 

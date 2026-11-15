@@ -184,9 +184,9 @@ template:
 # in it. `farrier config reference --file manifest` lists every key.
 # ---------------------------------------------------------------------------
 workflow:
-  # Name of the env var carrying the GitHub token for the coder workflow's PR
-  # and CI steps (falls back to GH_TOKEN then GITHUB_TOKEN).
-  githubTokenEnv: GH_TOKEN
+  # Name of the saddlebag secret holding the GitHub token for the coder
+  # workflow's PR and CI steps. Unset, those steps are skipped.
+  githubTokenSecret: github-token
 
   # Per-role prompt bodies that replace the library's, keyed by role. Each value
   # is a file path relative to the repo root.
