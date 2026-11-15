@@ -226,6 +226,78 @@ def test_stale_lists_a_screen_when_the_file_it_names_changed_since_verified(work
     assert report.unnamed == {}
 
 
+def _commit_page(ws: Workspace, text: str) -> str:
+    (ws.api / "page.tsx").write_text(text)
+    _git(ws.api, "add", "page.tsx")
+    _git(ws.api, "commit", "--quiet", "-m", "page")
+    return subprocess.run(["git", "-C", str(ws.api), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
+
+
+def test_stale_since_a_commit_lists_what_changed_after_it_in_a_book_with_no_verified_commit(workspace):
+    base = _commit_page(workspace, "one\n")
+    _commit_page(workspace, "two\n")
+    service = _screen_service("page.tsx", app=App(roots=(".",), verified="VERIFIED", ignore=()))
+    assert stale(service, str(workspace.api), str(workspace.artifacts)).stale == {}
+    report = stale(service, str(workspace.api), str(workspace.artifacts), since=base)
+    assert list(report.stale) == ["Dashboard"]
+    assert report.verified == base
+
+
+def test_stale_since_a_commit_is_judged_against_it_and_not_the_verified_commit(workspace):
+    base = _commit_page(workspace, "one\n")
+    head = _commit_page(workspace, "two\n")
+    (workspace.artifacts / "VERIFIED").write_text(head)
+    service = _screen_service("page.tsx", app=App(roots=(".",), verified="VERIFIED", ignore=()))
+    assert stale(service, str(workspace.api), str(workspace.artifacts)).stale == {}
+    assert list(stale(service, str(workspace.api), str(workspace.artifacts), since=base).stale) == ["Dashboard"]
+
+
+def test_stale_since_names_a_new_file_no_element_names(workspace):
+    base = _commit_page(workspace, "one\n")
+    (workspace.api / "extra.tsx").write_text("x\n")
+    _git(workspace.api, "add", "extra.tsx")
+    _git(workspace.api, "commit", "--quiet", "-m", "extra")
+    service = _screen_service("page.tsx", app=App(roots=(".",), verified="VERIFIED", ignore=()))
+    report = stale(service, str(workspace.api), str(workspace.artifacts), since=base)
+    assert list(report.unnamed) == ["extra.tsx"]
+
+
+def _stale_command(workspace, monkeypatch, service, since):
+    from ostler.book import cli
+    monkeypatch.setattr(cli, "_package_dir", lambda args: str(workspace.artifacts))
+    monkeypatch.setattr(cli, "load_decisions", lambda name: [])
+    import argparse
+    return cli.cmd_stale(service, argparse.Namespace(app=str(workspace.api), service="services.api", since=since))
+
+
+def test_the_stale_command_with_since_reports_a_book_with_no_verified_commit_and_exits_1(workspace, monkeypatch, capsys):
+    base = _commit_page(workspace, "one\n")
+    _commit_page(workspace, "two\n")
+    service = _screen_service("page.tsx", app=App(roots=(".",), verified="VERIFIED", ignore=()))
+    assert _stale_command(workspace, monkeypatch, service, base) == 1
+    out = capsys.readouterr().out
+    assert f"since {base}" in out
+    assert "- Dashboard: page.tsx" in out
+
+
+def test_the_stale_command_with_since_exits_0_when_nothing_changed_after_it(workspace, monkeypatch, capsys):
+    base = _commit_page(workspace, "one\n")
+    service = _screen_service("page.tsx", app=App(roots=(".",), verified="VERIFIED", ignore=()))
+    assert _stale_command(workspace, monkeypatch, service, base) == 0
+    assert "nothing stale" in capsys.readouterr().out
+
+
+def test_the_stale_command_without_since_still_exits_2_for_a_book_with_no_verified_commit(workspace, monkeypatch, capsys):
+    _commit_page(workspace, "one\n")
+    service = _screen_service("page.tsx", app=App(roots=(".",), verified="VERIFIED", ignore=()))
+    assert _stale_command(workspace, monkeypatch, service, None) == 2
+
+
+def test_the_stale_command_accepts_since():
+    from ostler.book.cli import build_parser
+    assert build_parser().parse_args(["stale", "services.api", "--app", "x", "--since", "abc"]).since == "abc"
+
+
 def test_an_interaction_outside_the_screens_owes_no_source_pointer(workspace):
     outside = SimpleNamespace(__name__="ClockMoves", source=(), screen=None)
     bound = SimpleNamespace(__name__="PressSave", source=(), screen=object())

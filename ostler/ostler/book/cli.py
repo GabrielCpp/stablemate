@@ -119,6 +119,8 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
         p = sub.add_parser(name, help=text)
         p.add_argument("service")
         p.add_argument("--app", required=True, help="the app's root")
+        if name == "stale":
+            p.add_argument("--since", help="judge against this commit instead of the verified one; a book with no verified commit still answers")
     absent = sub.add_parser("missing", help="list the tracked source files of the app that no element names and no ignore pattern covers")
     absent.add_argument("service")
     absent.add_argument("--app", required=True, help="the app's root")
@@ -848,7 +850,7 @@ def traced(service: Service[Any], args: argparse.Namespace) -> Any | None:
     if service.app is None:
         print(f"{service.name} declares no app")
         return None
-    return stale(service, args.app, _package_dir(args))
+    return stale(service, args.app, _package_dir(args), getattr(args, "since", None))
 
 
 def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
@@ -858,7 +860,8 @@ def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
     if found.verified is None:
         print("not verified: write the commit with 'verified'")
         return 2
-    print(f"verified at {found.verified}, app at {found.head}")
+    since = getattr(args, "since", None)
+    print(f"{'since' if since else 'verified at'} {found.verified}, app at {found.head}")
     print("\n## Stale elements")
     for element, paths in found.stale.items():
         for path, commits in paths.items():

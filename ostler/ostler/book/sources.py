@@ -206,8 +206,8 @@ def symbol_commits(app_root: str, commit: str, pointer: str) -> list[str] | None
     return None
 
 
-def stale(service: Service[Any], app_root: str, package_dir: str) -> Report:
-    verified = verified_at(service, package_dir)
+def stale(service: Service[Any], app_root: str, package_dir: str, since: str | None = None) -> Report:
+    verified = since or verified_at(service, package_dir)
     report = Report(verified, head_of(app_root), missing=missing(service, app_root))
     member = core_config.repository_name(Path(app_root))
     pointed: dict[str, tuple[str, ...]] = {}
