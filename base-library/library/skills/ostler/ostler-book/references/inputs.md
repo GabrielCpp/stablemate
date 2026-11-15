@@ -80,6 +80,7 @@ and `midnight`. A pair is dropped when either value fails the shape's own check,
   that differs only by echoing the typed value counts as alike.
 - The model predicts it alike: the run arranges the base twice, sends one value each time and
   compares the two app answers and the rows each call made, changed or removed.
+  A list the response shape declares `unordered` is compared without order.
 - The two answers differ: the pair is `underspecified`, and the run exits 1. The story answers it.
   The intent ignores the dimension and the app is wrong, or the book models it.
 - A field says the dimension does not matter with
