@@ -4,21 +4,6 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class BookGate(BaseModel):
-    """What one of the book's own commands said: its exit code and the tail of its output."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    exit_code: int
-    output: str = ""
-
-
-class MissingList(BookGate):
-    """What the book's missing said, with the files no element names."""
-
-    unnamed: tuple[str, ...] = ()
-
-
 class BookEntries(BaseModel):
     """The entry files of the app that the book does not describe yet."""
 

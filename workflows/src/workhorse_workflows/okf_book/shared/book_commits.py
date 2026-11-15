@@ -29,3 +29,8 @@ def repaired_book_commit_message(service: str, description: str = "", body: str 
     """
     subject = f"docs({service}): {description}" if description else repaired_book_commit_subject(service)
     return "\n\n".join(part for part in (subject, body.strip(), f"{BOOK_TRAILER}: {REPAIRED}") if part)
+
+
+def caught_up_book_commit_subject(service: str) -> str:
+    """The subject of a book this workflow's catch-up brought up to the app's HEAD."""
+    return f"docs({service}): catch the {service} book up with the app"

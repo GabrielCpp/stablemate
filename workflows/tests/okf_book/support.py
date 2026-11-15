@@ -7,6 +7,8 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import override
 
+import pytest
+
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.context import WorkflowContext
@@ -100,3 +102,13 @@ class ScriptedRunner(AgentRunner):
             reply = self.replies[node.id]({**args, "refused": str(refusal)})
             _ = validate(reply)
         return "scripted", reply
+
+
+def install_book_skill(home: Path, monkeypatch: pytest.MonkeyPatch | None = None) -> None:
+    """The `ostler-book` skill under `home`, which a prompt that references it needs to render. Given a monkeypatch, `home` becomes the home of the process."""
+    skill = home / ".claude/skills/ostler-book/SKILL.md"
+    skill.parent.mkdir(parents=True)
+    _ = skill.write_text("---\nname: ostler-book\nmetadata:\n  name: ostler-book\n---\n", encoding="utf-8")
+    if monkeypatch is not None:
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setenv("AGENT_CLI", "claude")

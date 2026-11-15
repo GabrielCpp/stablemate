@@ -1,0 +1,192 @@
+"""Every book the app has left behind. One book after another, an owner turn updates the book from what its stale report names and the diff of those files, the run judges it with the book's own check, a targeted run and missing, and a green book is stamped verified at the app's HEAD and committed."""
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import NamedTuple
+
+from workhorse.pyflow import Await, Continue, Done, Transition
+from workhorse.worklist import WorkItem
+from workhorse_workflows.kit.schema import schema_block
+from workhorse_workflows.okf_book.catch_up.models import FIRST_BOOK, BookOutcome, BookReport, CatchUpOutcome, CatchUpReply
+from workhorse_workflows.okf_book.catch_up.nodes import BOOK, catch_up_diff, catch_up_fill, catch_up_outcomes, catch_up_record
+from workhorse_workflows.okf_book.main.python_book_flow import COULD_NOT_JUDGE, MAX_LAPS
+from workhorse_workflows.okf_book.shared.book_commits import caught_up_book_commit_subject
+from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.shared.book_gates import BookGate, python_book_calls, python_book_check, python_book_missing, python_book_run, python_book_verified, run_flags
+
+UPDATE_PROMPT = "catch_up/prompts/update-book.md"
+ENVIRONMENT_GATE = "catch-up-environment.md"
+
+
+class Lap(NamedTuple):
+    """The book a gate judged, the lap it was judged on, and what the owner added so far."""
+
+    service: str
+    number: int
+    added: list[str]
+
+
+def owner_chain(service: str) -> str:
+    return f"catchup:{service}"
+
+
+class CatchUpBooks(BookFlow):
+    """Files each book the app has changed since the commit it was verified at, and works them one at a time, with an owner turn per lap on a book and the book's own gates between laps. A book still red after three laps is failed and the next book goes on. The run ends on a line per book."""
+
+    stack_copy: str = ""
+    services: list[str] = []
+
+    def start(self) -> Continue[...]:
+        """File the books that are behind."""
+        return Continue(None, self.fill).because("find the books that are behind")
+
+    def fill(self) -> Continue[...]:
+        """Read the stale report of each book not yet judged, file the stale ones on the work list and record the rest."""
+        filed = self.call(catch_up_fill, self.root, self.code_root, tuple(self.services), self.run_dir)
+        return Continue(filed, self.books).because("the books are filed")
+
+    def books(self) -> Transition:
+        """Take the next stale book, a resumed run taking first the one it stopped on, and end on the summary when none is left."""
+        return self.pipeline("book", to=self.take, n=1) or Continue(None, self.summarize).because("every book is judged")
+
+    def take(self, items: list[WorkItem]) -> Continue[...]:
+        """Send the owner the first lap of the book taken."""
+        return Continue(None, self.write, service=items[0].id, gate="", lap=1, added=[]).because("update the book")
+
+    def _report(self, service: str) -> BookReport:
+        item = next(item for item in self.work_list.items(BOOK) if item.id == service)
+        return BookReport.model_validate(item.payload)
+
+    def _sections(self, report: BookReport) -> list[dict[str, object]]:
+        return [
+            {
+                "module": module.module,
+                "verified": module.verified,
+                "elements": [{"name": name, "files": pointers} for name, pointers in sorted(module.elements.items())],
+                "new_files": module.new_files,
+                "gone": module.gone,
+                "diff": self.call(catch_up_diff, self.code_root, module.verified, tuple(module.files)),
+            }
+            for module in report.modules
+        ]
+
+    def write(self, service: str, gate: str, lap: int, added: list[str]) -> Continue[...]:
+        """One owner turn updates the book from its stale report and the diff, opening on what the last gate printed. A turn that ends without a reply starts the next one fresh, and the gates judge what it left."""
+        report = self._report(service)
+        args = {
+            "service": service,
+            "package": f"services/{service}",
+            "modules": [module.module for module in report.modules],
+            "book_root": self.root.as_posix(),
+            "app_root": self.code_root.as_posix(),
+            "stack_copy": self.stack_copy,
+            "sections": self._sections(report),
+            "gate": gate,
+            "result_schema": schema_block(CatchUpReply),
+        }
+        reply = self._timed_turn(
+            service,
+            UPDATE_PROMPT,
+            CatchUpReply(),
+            lambda: self.agent(UPDATE_PROMPT, returns=CatchUpReply, power="high", timeout=float("inf"), args=args, cwd=self.root, add_dirs=self._add_dirs(), session=owner_chain(service)),
+            session=owner_chain(service),
+        )
+        if reply.blocked:
+            return self._fail(service, lap, f"The owner stopped:\n\n{reply.blocked}")
+        return Continue(reply, self.check, service=service, lap=lap, added=sorted({*added, *reply.added})).because("check the book")
+
+    def check(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
+        """Run the check of each of the book's modules. A pass plays the targeted run, and the first fail sends the owner another lap."""
+        gate = BookGate(exit_code=0)
+        for module in self._modules(service):
+            gate = self.call(python_book_check, self.root, module, self.code_root)
+            if gate.exit_code != 0:
+                return self._judged("check", module, gate, Lap(service, lap, added), self.check)
+        return Continue(gate, self.play, service=service, lap=lap, added=added).because("the check passes")
+
+    def play(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
+        """Play, in each module, the journeys that call the endpoints and interactions the report named or the owner added. A pass lists the files left unnamed, and the first fail sends the owner another lap."""
+        report = self._report(service)
+        gate = BookGate(exit_code=0)
+        for module in report.modules:
+            known = self.call(python_book_calls, self.root, module.module)
+            names = tuple(sorted(set(known) & {*module.elements, *added}))
+            if not names:
+                continue
+            gate = self.call(python_book_run, self.root, module.module, self.run_dir / "book-run" / module.module, run_flags(self.stack_copy, names))
+            if gate.exit_code != 0:
+                return self._judged("run", module.module, gate, Lap(service, lap, added), self.play)
+        return Continue(gate, self.account, service=service, lap=lap, added=added).because("the targeted run is green")
+
+    def account(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
+        """List the app's source files each of the book's modules names nowhere. An empty list stamps the book, and a file left sends the owner another lap."""
+        gate = BookGate(exit_code=0)
+        for module in self._modules(service):
+            gate = self.call(python_book_missing, self.root, module, self.code_root, "")
+            if gate.exit_code != 0:
+                return self._judged("missing", module, gate, Lap(service, lap, added), self.account)
+        return Continue(gate, self.stamp, service=service, lap=lap, added=added).because("no source file is left unnamed")
+
+    def stamp(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
+        """Record the app's HEAD as the commit each of the book's modules is verified at. A module that refuses sends the owner another lap."""
+        gate = BookGate(exit_code=0)
+        for module in self._modules(service):
+            gate = self.call(python_book_verified, self.root, module, self.code_root)
+            if gate.exit_code != 0:
+                return self._judged("verified", module, gate, Lap(service, lap, added), self.stamp)
+        return Continue(gate, self.render, service=service, lap=lap, added=added).because("the book is stamped")
+
+    def render(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
+        """Render the repo's agent files before the book is committed. A failed render waits for the operator."""
+        waiting = self._render_agent_files_or_await(self.render, service=service, lap=lap, added=added)
+        if waiting:
+            return waiting
+        return Continue(lap, self.commit, service=service, lap=lap, added=added).because("commit the book")
+
+    def commit(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
+        """Commit the book's package and its stamp, and record the book as caught up. A retry after the commit landed finds nothing to commit."""
+        waiting = self._commit_or_await(caught_up_book_commit_subject(service), (f"services/{service}",), self.commit, service=service, lap=lap, added=added)
+        if waiting:
+            return waiting
+        outcome = BookOutcome(service=service, verdict="caught-up", laps=lap, elements=self._report(service).elements, added=added)
+        _ = self.call(catch_up_record, self.run_dir, outcome)
+        return Continue(outcome, self.books).because("the book is committed")
+
+    def _modules(self, service: str) -> list[str]:
+        return [module.module for module in self._report(service).modules]
+
+    @staticmethod
+    def _said(verb: str, module: str, gate: BookGate) -> str:
+        return f"`python -m ostler.book {verb} {module}` exited {gate.exit_code}:\n\n{gate.output}"
+
+    def _judged(self, verb: str, module: str, gate: BookGate, lap: Lap, retry: Callable[..., Transition]) -> Continue[...] | Await[...]:
+        said = self._said(verb, module, gate)
+        if gate.exit_code == COULD_NOT_JUDGE:
+            question = f"The book's {verb} could not judge the {lap.service} book, which is the environment's side:\n\n{said}\n\nFix the environment, then answer here to {verb} again."
+            return Await(self.run_dir / ENVIRONMENT_GATE, question, retry, service=lap.service, lap=lap.number, added=lap.added).because("the book could not be judged")
+        if lap.number >= MAX_LAPS:
+            return self._fail(lap.service, lap.number, said)
+        return Continue(said, self.write, service=lap.service, gate=said, lap=lap.number + 1, added=lap.added).because("the book is red")
+
+    def _fail(self, service: str, lap: int, said: str) -> Continue[...]:
+        """Leave the book uncommitted and unstamped, record the gate that stayed red, and go on to the next book."""
+        report = self._report(service)
+        _ = self.call(catch_up_record, self.run_dir, BookOutcome(service=service, verdict="failed", laps=lap, elements=report.elements, gate=said))
+        _ = self.work_list.mark(service, "blocked", BOOK, note=said)
+        return Continue(None, self.books).because("the book failed")
+
+    def summarize(self) -> Done:
+        """End on one line per book: current, caught up, a first book, or failed with the gate that stayed red."""
+        outcomes = self.call(catch_up_outcomes, self.run_dir)
+        lines = [_line(outcome) for outcome in outcomes]
+        return Done(CatchUpOutcome(books=outcomes, summary="\n".join(lines))).because("every book is judged")
+
+
+def _line(outcome: BookOutcome) -> str:
+    if outcome.verdict == "current":
+        return f"{outcome.service}: current"
+    if outcome.verdict == FIRST_BOOK:
+        return f"{outcome.service}: first book, write it with python_book"
+    if outcome.verdict == "caught-up":
+        return f"{outcome.service}: caught up in {outcome.laps} laps, {len(outcome.elements)} elements changed, {len(outcome.added)} endpoints added"
+    return f"{outcome.service}: failed after {outcome.laps} laps, red at: {outcome.gate}"

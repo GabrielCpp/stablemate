@@ -10,7 +10,7 @@ import pytest
 from _books import TODO_BOOK, write_todo_book
 from _workspace import Workspace, cut_run_worktrees, lay_out, name_members, run_git
 from okf_book.main.flows import book_exits, build_flow
-from okf_book.support import Reply, ScriptedRunner, git, run_env
+from okf_book.support import Reply, ScriptedRunner, git, install_book_skill, run_env
 from workhorse.pyflow import Await, Continue, Done
 from workhorse import templates
 from workhorse.pyflow.engine import Engine
@@ -225,12 +225,7 @@ def test_a_green_book_commits_only_its_package(tmp_path: Path) -> None:
 
 
 def _rendered(flow: WritePythonBook, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
-    home = tmp_path / "home"
-    skill = home / ".claude/skills/ostler-book/SKILL.md"
-    skill.parent.mkdir(parents=True)
-    skill.write_text("---\nname: ostler-book\nmetadata:\n  name: ostler-book\n---\n", encoding="utf-8")
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENT_CLI", "claude")
+    install_book_skill(tmp_path / "home", monkeypatch)
     return templates.render(python_book_flow.WRITE_PROMPT, flow._prompt_args(""), Path(okf_book.__file__).parent)  # pyright: ignore[reportPrivateUsage]
 
 

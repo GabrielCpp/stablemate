@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 from workhorse.pyflow.engine import Engine
 from workhorse_workflows.okf_book.main import python_book_flow
+from workhorse_workflows.okf_book.shared import book_gates
 from workhorse_workflows.okf_book.main.python_book_flow import WritePythonBook
 
 from okf_book.support import Reply, ScriptedRunner, run_env
@@ -43,4 +44,5 @@ def book_exits(
         return subprocess.CompletedProcess(argv, code, stdout=said, stderr="")
 
     monkeypatch.setattr(python_book_flow, "run_tool", _run)
+    monkeypatch.setattr(book_gates, "run_tool", _run)
     return seen

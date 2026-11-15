@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -11,7 +12,9 @@ from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.kit.paths import find_book_root
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
+from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
+from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
 
 COMMIT_GATE = "commit-refused.md"
 RENDER_GATE = "agent-files-unrendered.md"
@@ -58,6 +61,26 @@ class BookFlow(Workflow):
     @property
     def records_dir(self) -> Path:
         return Path(self.parent_records_dir) if self.parent_records_dir else self.run_dir
+
+    @property
+    def code_root(self) -> Path:
+        return Path(self.repo_dir).resolve()
+
+    def _add_dirs(self) -> list[Path] | None:
+        return [self.code_root] if self.code_root != self.root else None
+
+    def _timed_turn[M: BaseModel](self, service: str, prompt: str, empty: M, ask: Callable[[], M], session: str | None = None) -> M:
+        started = time.monotonic()
+        reply = empty
+        try:
+            reply = ask()
+        except (OutputParseError, AgentTurnFailed, AgentTimeout) as ended:
+            self.logger.warning("the turn %s on %s ended without a reply: %s", prompt, service, ended)
+            if session:
+                self.reset_session(session)
+        node = Path(prompt).stem
+        record_turn(self.records_dir, turn_metric(Phase.WRITE, node, (service,), (time.monotonic() - started) / 60, self.turn_usage(node)))
+        return reply
 
     def _render_agent_files_or_await[**P](self, retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs) -> Await[P] | None:
         """Render the repo's agent files before a book commit, so a skill the library changed does not refuse it. A failed render waits for the operator, whose answer renders again."""

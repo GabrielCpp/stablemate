@@ -3,14 +3,15 @@ from __future__ import annotations
 
 from workhorse.cli import console_script
 from workhorse.pyflow import Registry
+from workhorse_workflows.okf_book.catch_up.flow import CatchUpBooks
 from workhorse_workflows.okf_book.main.python_book_flow import WritePythonBook
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 
 workflow = (
     Registry("okf-book", package=__package__)
     .add_blueprints(blueprint)
-    .add_flows(python_book=WritePythonBook)
+    .add_flows(python_book=WritePythonBook, catch_up=CatchUpBooks)
 )
 main = console_script(workflow.entry_point(WritePythonBook))
 
-__all__ = ["WritePythonBook", "main", "workflow"]
+__all__ = ["CatchUpBooks", "WritePythonBook", "main", "workflow"]

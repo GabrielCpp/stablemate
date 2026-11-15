@@ -2,24 +2,20 @@
 from __future__ import annotations
 
 import logging
-import sys
-import time
 from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel
-from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Done, Transition, dry_run
-from workhorse.runner.failure import OutputParseError
+from workhorse.pyflow import Await, Continue, Done, Transition, dry_run
 from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.kit.answer import answer_below
 from workhorse_workflows.kit.tools import run_tool
-from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
+from workhorse_workflows.okf_book.shared.book_gates import BookGate, book_command, python_book_check, python_book_missing, python_book_run, run_flags
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BookFlow
-from workhorse_workflows.okf_book.main.models import BookEntries, BookGate, MissingList, PythonBookOutcome, PythonBookReply
+from workhorse_workflows.okf_book.main.models import BookEntries, PythonBookOutcome, PythonBookReply
 from workhorse_workflows.okf_book.main.nodes.passes import BREADTH_DIR, REASONS_DIR, Reasons, Skeletons, pass_handed, record_pass
-from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
 
 WRITE_PROMPT = "main/prompts/write-python-book.md"
 INVENTORY_PROMPT = "main/prompts/list-book-entries.md"
@@ -28,9 +24,7 @@ REASONS_PROMPT = "main/prompts/write-screen-reasons.md"
 SCREEN_KINDS = frozenset({"web", "mobile"})
 BATCH_SIZE = 8
 REASONS_BATCH = 5
-UNNAMED_HEADING = "## Files no element names"
 MAX_LAPS = 3
-GATE_TAIL_LINES = 200
 ANSWER_LIMIT_CHARS = 8000
 RED_GATE = "python-book-red.md"
 BLOCKED_GATE = "python-book-blocked.md"
@@ -40,50 +34,6 @@ COULD_NOT_JUDGE = 3
 
 def book_module(service: str) -> str:
     return f"services.{service}"
-
-
-def book_command(*verb: str) -> list[str]:
-    return [sys.executable, "-m", "ostler.book", *verb]
-
-
-def _green(_logger: logging.Logger, *_args: object) -> BookGate:
-    return BookGate(exit_code=0, output="dry run")
-
-
-def _tail(text: str) -> str:
-    return "\n".join(text.splitlines()[-GATE_TAIL_LINES:])
-
-
-def _unnamed(stdout: str) -> tuple[str, ...]:
-    found: list[str] = []
-    inside = False
-    for line in stdout.splitlines():
-        if line == UNNAMED_HEADING:
-            inside = True
-        elif line.startswith("## "):
-            inside = False
-        elif inside and line.startswith("- "):
-            found.append(line[2:])
-    return tuple(found)
-
-
-def _missing_green(_logger: logging.Logger, *_args: object) -> MissingList:
-    return MissingList(exit_code=0, output="dry run")
-
-
-@blueprint.node(stub=_green)
-def python_book_check(logger: logging.Logger, root: Path, module: str, app: Path) -> BookGate:
-    """Run the check of one of the book's modules from the book root, with the source pointers read under the app's root, and keep the tail of what it printed."""
-    done = run_tool(book_command("check", module, "--app", str(app)), cwd=root, logger=logger)
-    return BookGate(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()))
-
-
-@blueprint.node(stub=_missing_green)
-def python_book_missing(logger: logging.Logger, root: Path, module: str, app: Path, under: str) -> MissingList:
-    """List the tracked source files of the app, under the folder the run names, that no element of one of the book's modules names, and keep the tail of what it printed."""
-    where = ("--under", under) if under else ()
-    done = run_tool(book_command("missing", module, "--app", str(app), *where), cwd=root, logger=logger)
-    return MissingList(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()), unnamed=_unnamed(done.stdout))
 
 
 def _none_unexplained(_logger: logging.Logger, *_args: object) -> list[str]:
@@ -98,14 +48,6 @@ def python_book_unexplained(logger: logging.Logger, root: Path, module: str) -> 
         logger.warning("the book's decisions for %s exited %s: %s", module, done.returncode, done.stderr.strip())
         return []
     return [line.strip() for line in done.stdout.splitlines() if line.strip()]
-
-
-@blueprint.node(stub=_green)
-def python_book_run(logger: logging.Logger, root: Path, module: str, out_dir: Path, stack_copy: str = "") -> BookGate:
-    """Play one of the book's modules against the live app from the book root, on the stack copy the run names, and keep the tail of what it printed."""
-    on_copy = ("--copy", stack_copy) if stack_copy else ()
-    done = run_tool(book_command("run", module, "--out", str(out_dir), *on_copy), cwd=root, logger=logger)
-    return BookGate(exit_code=done.returncode, output=_tail(f"{done.stdout}\n{done.stderr}".strip()))
 
 
 def owner_chain(service: str) -> str:
@@ -127,10 +69,6 @@ class WritePythonBook(BookFlow):
     kind: str = "cli"
     source_folder: str = ""
     stack_copy: str = ""
-
-    @property
-    def code_root(self) -> Path:
-        return Path(self.repo_dir).resolve()
 
     @property
     def source_root(self) -> Path:
@@ -251,20 +189,7 @@ class WritePythonBook(BookFlow):
         }
 
     def _timed[M: BaseModel](self, prompt: str, empty: M, ask: Callable[[], M], session: str | None = None) -> M:
-        started = time.monotonic()
-        reply = empty
-        try:
-            reply = ask()
-        except (OutputParseError, AgentTurnFailed, AgentTimeout) as ended:
-            self.logger.warning("the turn %s on %s ended without a reply: %s", prompt, self.service, ended)
-            if session:
-                self.reset_session(session)
-        node = Path(prompt).stem
-        record_turn(self.records_dir, turn_metric(Phase.WRITE, node, (self.service,), (time.monotonic() - started) / 60, self.turn_usage(node)))
-        return reply
-
-    def _add_dirs(self) -> list[Path] | None:
-        return [self.code_root] if self.code_root != self.root else None
+        return self._timed_turn(self.service, prompt, empty, ask, session)
 
     def write(self, gate: str, lap: int) -> Continue[...] | Await[...]:
         """One owner turn writes the book's package until its check and run pass, opening on what the last gate printed. A turn that ends without a reply starts the next one fresh, and the gates judge what it left."""
@@ -326,7 +251,7 @@ class WritePythonBook(BookFlow):
         """Play each of the book's modules against the live app. A pass commits the book, and the first fail sends the owner another lap."""
         gate = BookGate(exit_code=0)
         for module in self.modules:
-            gate = self.call(python_book_run, self.root, module, self.run_dir / "book-run" / module, self.stack_copy)
+            gate = self.call(python_book_run, self.root, module, self.run_dir / "book-run" / module, run_flags(self.stack_copy))
             if gate.exit_code != 0:
                 return self._judged("run", module, gate, lap, self.play)
         return Continue(gate, self.account, lap=lap).because("the book plays green")

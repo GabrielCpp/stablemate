@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from okf_book.main.flows import book_exits, build_flow
-from okf_book.support import Reply, ScriptedRunner
+from okf_book.support import Reply, ScriptedRunner, install_book_skill
 from workhorse import templates
 from workhorse.pyflow import AgentTurnFailed, Continue
 
@@ -165,12 +165,7 @@ def test_the_reasons_prompt_renders_with_the_batch_the_module_folder_and_the_rep
     book_exits(monkeypatch, unexplained=[])
     flow, runner = _flow(tmp_path)
     flow.reasons(module="services.ledger", screens=SCREENS[:2], lap=0)
-    home = tmp_path / "home"
-    skill = home / ".claude/skills/ostler-book/SKILL.md"
-    skill.parent.mkdir(parents=True)
-    skill.write_text("---\nname: ostler-book\nmetadata:\n  name: ostler-book\n---\n", encoding="utf-8")
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("AGENT_CLI", "claude")
+    install_book_skill(tmp_path / "home", monkeypatch)
 
     rendered = templates.render(python_book_flow.REASONS_PROMPT, runner.args_of(REASONS)[0], Path(okf_book.__file__).parent)
 
