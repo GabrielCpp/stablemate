@@ -58,20 +58,20 @@ class BookOutcome(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     service: str
-    verdict: Literal["current", "caught-up", "first-book", "failed"]
+    verdict: Literal["current", "caught-up", "first-book"]
     laps: int = 0
     elements: list[str] = Field(default_factory=list)
     added: list[str] = Field(default_factory=list)
-    gate: str = ""
 
 
 class Filed(BaseModel):
-    """What the fill found, by service."""
+    """What the fill found, by service, and for each book whose stale report could not be read what the command printed."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     stale: list[str] = Field(default_factory=list)
     settled: list[str] = Field(default_factory=list)
+    unread: dict[str, str] = Field(default_factory=dict)
 
 
 class CatchUpReply(BaseModel):

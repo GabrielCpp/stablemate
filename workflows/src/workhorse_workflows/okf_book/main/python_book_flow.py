@@ -8,12 +8,11 @@ from pathlib import Path
 from pydantic import BaseModel
 from workhorse.pyflow import Await, Continue, Done, Transition, dry_run
 from workhorse_workflows.kit.schema import schema_block
-from workhorse_workflows.kit.answer import answer_below
 from workhorse_workflows.kit.tools import run_tool
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.book_gates import BookGate, book_command, python_book_check, python_book_missing, python_book_run, python_book_verified, run_flags
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
-from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.shared.book_flow import BLOCKED_GATE, COULD_NOT_JUDGE, ENVIRONMENT_GATE, MAX_LAPS, RED_GATE, BookFlow, blocked_question, environment_question, red_question
 from workhorse_workflows.okf_book.main.models import BookEntries, PythonBookOutcome, PythonBookReply
 from workhorse_workflows.okf_book.main.nodes.passes import BREADTH_DIR, REASONS_DIR, Reasons, Skeletons, pass_handed, record_pass
 
@@ -24,12 +23,6 @@ REASONS_PROMPT = "main/prompts/write-screen-reasons.md"
 SCREEN_KINDS = frozenset({"web", "mobile"})
 BATCH_SIZE = 8
 REASONS_BATCH = 5
-MAX_LAPS = 3
-ANSWER_LIMIT_CHARS = 8000
-RED_GATE = "python-book-red.md"
-BLOCKED_GATE = "python-book-blocked.md"
-ENVIRONMENT_GATE = "python-book-environment.md"
-COULD_NOT_JUDGE = 3
 
 
 def book_module(service: str) -> str:
@@ -209,7 +202,7 @@ class WritePythonBook(BookFlow):
             session=owner_chain(self.service),
         )
         if reply.blocked:
-            question = f"The owner of the {self.service} book stopped:\n\n{reply.blocked}\n\nAnswer here, and the owner reads your answer on its next turn."
+            question = blocked_question(self.service, reply.blocked)
             return Await(self.run_dir / BLOCKED_GATE, question, self.heard, question=question, gate_name=BLOCKED_GATE, lap=lap).because(
                 "the owner is blocked"
             )
@@ -233,10 +226,8 @@ class WritePythonBook(BookFlow):
 
     def heard(self, question: str, gate_name: str, lap: int) -> Continue[...]:
         """Hand the operator's answer to the owner's next turn."""
-        text = (self.run_dir / gate_name).read_text(encoding="utf-8") if (self.run_dir / gate_name).is_file() else ""
-        said = answer_below(text, question, ANSWER_LIMIT_CHARS)
-        gate = f"{question}\n\nThe operator answered:\n\n{said}" if said else question
-        return Continue(said, self.write, gate=gate, lap=lap).because("the operator answered")
+        gate = self._owner_gate(question, gate_name)
+        return Continue(gate, self.write, gate=gate, lap=lap).because("the operator answered")
 
     def check(self, lap: int) -> Continue[...] | Await[...]:
         """Run the check of each of the book's modules. A pass plays the book, and the first fail sends the owner another lap."""
@@ -283,10 +274,9 @@ class WritePythonBook(BookFlow):
     def _judged(self, verb: str, module: str, gate: BookGate, lap: int, retry: Callable[..., Transition]) -> Continue[...] | Await[...]:
         said = self._said(verb, module, gate)
         if gate.exit_code == COULD_NOT_JUDGE:
-            question = f"The book's {verb} could not judge the {self.service} book, which is the environment's side:\n\n{said}\n\nFix the environment, then answer here to {verb} again."
-            return Await(self.run_dir / ENVIRONMENT_GATE, question, retry, lap=lap).because("the book could not be judged")
+            return Await(self.run_dir / ENVIRONMENT_GATE, environment_question(self.service, verb, said), retry, lap=lap).because("the book could not be judged")
         if lap >= MAX_LAPS:
-            question = f"The {self.service} book is still red after {lap} laps:\n\n{said}\n\nAnswer here, and the owner takes one more lap with your answer."
+            question = red_question(self.service, lap, said)
             return Await(self.run_dir / RED_GATE, question, self.heard, question=question, gate_name=RED_GATE, lap=lap).because(
                 "the book is still red after the last lap"
             )

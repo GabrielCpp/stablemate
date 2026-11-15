@@ -7,7 +7,7 @@ from typing import cast
 
 from workhorse.worklist import WORK_FILE, JsonBackend, WorkItem, WorkList
 from workhorse_workflows.kit.git import open_repo
-from workhorse_workflows.okf_book.catch_up.models import CURRENT, FIRST_BOOK, STALE, BookOutcome, BookReport, Filed, ModuleReport
+from workhorse_workflows.okf_book.catch_up.models import CURRENT, STALE, UNJUDGED, BookOutcome, BookReport, Filed, ModuleReport
 from workhorse_workflows.okf_book.catch_up.report import read_stale
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.book_gates import run_stale
@@ -47,7 +47,7 @@ def _one_stale_book(_logger: logging.Logger, _root: Path, _app: Path, _services:
 
 @blueprint.node(stub=_one_stale_book)
 def catch_up_fill(logger: logging.Logger, root: Path, app: Path, services: tuple[str, ...], run_dir: Path) -> Filed:
-    """File each book with something stale on the run's work list, and record the books that need no turn: current, first books, and those whose stale report could not be read. A book filed or recorded by an earlier visit is left alone."""
+    """File each book with something stale on the run's work list, and record the books that need no turn: current and first books. A book whose stale report could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
     work = WorkList(JsonBackend(run_dir / WORK_FILE))
     modules = book_modules(root)
     names = list(services) if services else sorted(modules)
@@ -57,7 +57,9 @@ def catch_up_fill(logger: logging.Logger, root: Path, app: Path, services: tuple
         if service in done or outcome_path(run_dir, service).is_file():
             continue
         report = BookReport(service=service, modules=[_survey(logger, root, module, app) for module in modules.get(service, [])])
-        if not report.modules:
+        if report.verdict == UNJUDGED:
+            filed.unread[service] = "\n".join(module.output for module in report.modules if module.output)
+        elif not report.modules:
             write_outcome(run_dir, BookOutcome(service=service, verdict="first-book"))
             filed.settled.append(service)
         elif report.verdict == STALE:
@@ -66,7 +68,7 @@ def catch_up_fill(logger: logging.Logger, root: Path, app: Path, services: tuple
         else:
             write_outcome(run_dir, _settled(report))
             filed.settled.append(service)
-    logger.info("catch-up fill: %d stale, %d settled", len(filed.stale), len(filed.settled))
+    logger.info("catch-up fill: %d stale, %d settled, %d unread", len(filed.stale), len(filed.settled), len(filed.unread))
     return filed
 
 
@@ -78,10 +80,7 @@ def _survey(logger: logging.Logger, root: Path, module: str, app: Path) -> Modul
 def _settled(report: BookReport) -> BookOutcome:
     if report.verdict == CURRENT:
         return BookOutcome(service=report.service, verdict="current")
-    if report.verdict == FIRST_BOOK:
-        return BookOutcome(service=report.service, verdict="first-book")
-    said = "\n".join(module.output for module in report.modules if module.output)
-    return BookOutcome(service=report.service, verdict="failed", gate=f"stale could not be read:\n{said}")
+    return BookOutcome(service=report.service, verdict="first-book")
 
 
 def _empty_diff(_logger: logging.Logger, *_args: object) -> str:

@@ -7,15 +7,14 @@ from typing import NamedTuple
 from workhorse.pyflow import Await, Continue, Done, Transition
 from workhorse.worklist import WorkItem
 from workhorse_workflows.kit.schema import schema_block
-from workhorse_workflows.okf_book.catch_up.models import FIRST_BOOK, BookOutcome, BookReport, CatchUpOutcome, CatchUpReply
+from workhorse_workflows.okf_book.catch_up.models import BookOutcome, BookReport, CatchUpOutcome, CatchUpReply
 from workhorse_workflows.okf_book.catch_up.nodes import BOOK, catch_up_diff, catch_up_fill, catch_up_outcomes, catch_up_record
-from workhorse_workflows.okf_book.main.python_book_flow import COULD_NOT_JUDGE, MAX_LAPS
 from workhorse_workflows.okf_book.shared.book_commits import caught_up_book_commit_subject
-from workhorse_workflows.okf_book.shared.book_flow import BookFlow
+from workhorse_workflows.okf_book.shared.book_flow import BLOCKED_GATE, COULD_NOT_JUDGE, ENVIRONMENT_GATE, MAX_LAPS, RED_GATE, BookFlow, blocked_question, environment_question, red_question
 from workhorse_workflows.okf_book.shared.book_gates import BookGate, python_book_calls, python_book_check, python_book_run, python_book_verified, run_flags
 
 UPDATE_PROMPT = "catch_up/prompts/update-book.md"
-ENVIRONMENT_GATE = "catch-up-environment.md"
+STALE_GATE = "catch-up-stale.md"
 
 
 class Lap(NamedTuple):
@@ -31,7 +30,7 @@ def owner_chain(service: str) -> str:
 
 
 class CatchUpBooks(BookFlow):
-    """Files each book the app has changed since the commit it was verified at, and works them one at a time, with an owner turn per lap on a book and the book's own gates and the stamp between laps. A book still red after three laps is failed and the next book goes on. The run ends on a line per book."""
+    """Files each book the app has changed since the commit it was verified at, and works them one at a time, with an owner turn per lap on a book and the book's own gates and the stamp between laps. A book still red after three laps, an owner that replies blocked and a stale report that cannot be read each wait on an operator gate, and the answer goes to the owner's next turn on the same book or reads the report again. The run ends on a line per book."""
 
     stack_copy: str = ""
     services: list[str] = []
@@ -40,9 +39,13 @@ class CatchUpBooks(BookFlow):
         """File the books that are behind."""
         return Continue(None, self.fill).because("find the books that are behind")
 
-    def fill(self) -> Continue[...]:
-        """Read the stale report of each book not yet judged, file the stale ones on the work list and record the rest."""
+    def fill(self) -> Continue[...] | Await[...]:
+        """Read the stale report of each book not yet judged, file the stale ones on the work list and record the rest. A report that cannot be read waits for the operator, whose answer reads it again."""
         filed = self.call(catch_up_fill, self.root, self.code_root, tuple(self.services), self.run_dir)
+        if filed.unread:
+            books = "\n\n".join(f"{service}:\n{said}" for service, said in sorted(filed.unread.items()))
+            question = f"The stale report of these books could not be read:\n\n{books}\n\nFix what it names, then answer here to read them again."
+            return Await(self.run_dir / STALE_GATE, question, self.fill).because("a stale report could not be read")
         return Continue(filed, self.books).because("the books are filed")
 
     def books(self) -> Transition:
@@ -70,7 +73,7 @@ class CatchUpBooks(BookFlow):
             for module in report.modules
         ]
 
-    def write(self, service: str, gate: str, lap: int, added: list[str]) -> Continue[...]:
+    def write(self, service: str, gate: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
         """One owner turn updates the book from its stale report and the diff, opening on what the last gate printed. A turn that ends without a reply starts the next one fresh, and the gates judge what it left."""
         report = self._report(service)
         args = {
@@ -92,8 +95,16 @@ class CatchUpBooks(BookFlow):
             session=owner_chain(service),
         )
         if reply.blocked:
-            return self._fail(service, lap, f"The owner stopped:\n\n{reply.blocked}")
+            question = blocked_question(service, reply.blocked)
+            return Await(self.run_dir / BLOCKED_GATE, question, self.heard, question=question, gate_name=BLOCKED_GATE, service=service, lap=lap, added=sorted({*added, *reply.added})).because(
+                "the owner is blocked"
+            )
         return Continue(reply, self.check, service=service, lap=lap, added=sorted({*added, *reply.added})).because("check the book")
+
+    def heard(self, question: str, gate_name: str, service: str, lap: int, added: list[str]) -> Continue[...]:
+        """Hand the operator's answer to the owner's next turn on the same book."""
+        gate = self._owner_gate(question, gate_name)
+        return Continue(gate, self.write, service=service, gate=gate, lap=lap, added=added).because("the operator answered")
 
     def check(self, service: str, lap: int, added: list[str]) -> Continue[...] | Await[...]:
         """Run the check of each of the book's modules. A pass plays the targeted run, and the first fail sends the owner another lap."""
@@ -153,21 +164,16 @@ class CatchUpBooks(BookFlow):
     def _judged(self, verb: str, module: str, gate: BookGate, lap: Lap, retry: Callable[..., Transition]) -> Continue[...] | Await[...]:
         said = self._said(verb, module, gate)
         if gate.exit_code == COULD_NOT_JUDGE:
-            question = f"The book's {verb} could not judge the {lap.service} book, which is the environment's side:\n\n{said}\n\nFix the environment, then answer here to {verb} again."
-            return Await(self.run_dir / ENVIRONMENT_GATE, question, retry, service=lap.service, lap=lap.number, added=lap.added).because("the book could not be judged")
+            return Await(self.run_dir / ENVIRONMENT_GATE, environment_question(lap.service, verb, said), retry, service=lap.service, lap=lap.number, added=lap.added).because("the book could not be judged")
         if lap.number >= MAX_LAPS:
-            return self._fail(lap.service, lap.number, said)
+            question = red_question(lap.service, lap.number, said)
+            return Await(self.run_dir / RED_GATE, question, self.heard, question=question, gate_name=RED_GATE, service=lap.service, lap=lap.number, added=lap.added).because(
+                "the book is still red after the last lap"
+            )
         return Continue(said, self.write, service=lap.service, gate=said, lap=lap.number + 1, added=lap.added).because("the book is red")
 
-    def _fail(self, service: str, lap: int, said: str) -> Continue[...]:
-        """Leave the book uncommitted and unstamped, record the gate that stayed red, and go on to the next book."""
-        report = self._report(service)
-        _ = self.call(catch_up_record, self.run_dir, BookOutcome(service=service, verdict="failed", laps=lap, elements=report.elements, gate=said))
-        _ = self.work_list.mark(service, "blocked", BOOK, note=said)
-        return Continue(None, self.books).because("the book failed")
-
     def summarize(self) -> Done:
-        """End on one line per book: current, caught up, a first book, or failed with the gate that stayed red."""
+        """End on one line per book: current, caught up, or a first book."""
         outcomes = self.call(catch_up_outcomes, self.run_dir)
         lines = [_line(outcome) for outcome in outcomes]
         return Done(CatchUpOutcome(books=outcomes, summary="\n".join(lines))).because("every book is judged")
@@ -176,8 +182,6 @@ class CatchUpBooks(BookFlow):
 def _line(outcome: BookOutcome) -> str:
     if outcome.verdict == "current":
         return f"{outcome.service}: current"
-    if outcome.verdict == FIRST_BOOK:
+    if outcome.verdict == "first-book":
         return f"{outcome.service}: first book, write it with python_book"
-    if outcome.verdict == "caught-up":
-        return f"{outcome.service}: caught up in {outcome.laps} laps, {len(outcome.elements)} elements changed, {len(outcome.added)} endpoints added"
-    return f"{outcome.service}: failed after {outcome.laps} laps, red at: {outcome.gate}"
+    return f"{outcome.service}: caught up in {outcome.laps} laps, {len(outcome.elements)} elements changed, {len(outcome.added)} endpoints added"

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Transition, Workflow
 from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.kit import commit_returning_refusal
+from workhorse_workflows.kit.answer import answer_below
 from workhorse_workflows.kit.paths import find_book_root
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
 from workhorse_workflows.okf_book.shared.blockers import Phase
@@ -20,6 +21,24 @@ COMMIT_GATE = "commit-refused.md"
 RENDER_GATE = "agent-files-unrendered.md"
 PREFLIGHT_GATE = "preflight-gate.md"
 FIX_COMMIT_TIMEOUT = 1800.0
+RED_GATE = "python-book-red.md"
+BLOCKED_GATE = "python-book-blocked.md"
+ENVIRONMENT_GATE = "python-book-environment.md"
+ANSWER_LIMIT_CHARS = 8000
+MAX_LAPS = 3
+COULD_NOT_JUDGE = 3
+
+
+def blocked_question(service: str, blocked: str) -> str:
+    return f"The owner of the {service} book stopped:\n\n{blocked}\n\nAnswer here, and the owner reads your answer on its next turn."
+
+
+def red_question(service: str, lap: int, said: str) -> str:
+    return f"The {service} book is still red after {lap} laps:\n\n{said}\n\nAnswer here, and the owner takes one more lap with your answer."
+
+
+def environment_question(service: str, verb: str, said: str) -> str:
+    return f"The book's {verb} could not judge the {service} book, which is the environment's side:\n\n{said}\n\nFix the environment, then answer here to {verb} again."
 
 
 def _nothing_refused_in_dry_run(_logger: logging.Logger, *_args: object) -> str:
@@ -65,6 +84,12 @@ class BookFlow(Workflow):
     @property
     def code_root(self) -> Path:
         return Path(self.repo_dir).resolve()
+
+    def _owner_gate(self, question: str, gate_name: str) -> str:
+        """What the owner's next prompt opens on after an operator gate: the question, then the operator's answer when there is one."""
+        path = self.run_dir / gate_name
+        said = answer_below(path.read_text(encoding="utf-8") if path.is_file() else "", question, ANSWER_LIMIT_CHARS)
+        return f"{question}\n\nThe operator answered:\n\n{said}" if said else question
 
     def _add_dirs(self) -> list[Path] | None:
         return [self.code_root] if self.code_root != self.root else None

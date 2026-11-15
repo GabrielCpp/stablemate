@@ -15,7 +15,8 @@ from workhorse.worklist import WorkItem
 from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.catch_up.flow import CatchUpBooks
 from workhorse_workflows.okf_book.catch_up.models import BookOutcome
-from workhorse_workflows.okf_book.main.python_book_flow import MAX_LAPS
+from workhorse_workflows.okf_book.catch_up.flow import STALE_GATE
+from workhorse_workflows.okf_book.shared.book_flow import BLOCKED_GATE, MAX_LAPS, RED_GATE
 
 DONE: dict[str, Reply] = {UPDATE: lambda _args: {"done": "the ledger book", "blocked": "", "added": []}}
 
@@ -167,19 +168,42 @@ def test_a_red_gate_starts_another_lap_with_the_gates_output(tmp_path: Path, mon
     assert "run said cell 7 differs" in cast("str", step.params["gate"])
 
 
-def test_a_red_gate_after_the_lap_cap_fails_the_book_and_goes_on_without_committing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_book_that_reaches_the_lap_cap_parks_on_the_operator_gate_with_the_red_gates_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow, _runner, _seen = stale_book(tmp_path, monkeypatch, DONE, verified=1)
     head = git(flow.root, "rev-parse", "HEAD")
 
     walk(flow, flow.books(), "write")
     step = flow.stamp(service="ledger", lap=MAX_LAPS, added=[])
 
-    assert isinstance(step, Continue) and step.state == "books"
+    assert isinstance(step, Await) and step.state == "heard"
+    assert step.path == flow.run_dir / RED_GATE
+    assert "`python -m ostler.book verified services.ledger` exited 1" in step.questions
+    assert "verified said cell 7 differs" in step.questions
     assert git(flow.root, "rev-parse", "HEAD") == head
-    outcome = summarized(flow).books[0]
-    assert outcome.verdict == "failed" and outcome.laps == MAX_LAPS
-    assert "`python -m ostler.book verified services.ledger` exited 1" in outcome.gate
-    assert [item.status for item in flow.work_list.items("book")] == ["blocked"]
+    assert [item.status for item in flow.work_list.items("book")] == ["active"]
+
+
+def test_the_operators_answer_resumes_that_same_book_and_reaches_the_owners_next_prompt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, runner, _seen = stale_book(tmp_path, monkeypatch, DONE, verified=1)
+    install_book_skill(tmp_path / "home", monkeypatch)
+    walk(flow, flow.books(), "write")
+    parked = flow.stamp(service="ledger", lap=MAX_LAPS, added=["Pong"])
+    assert isinstance(parked, Await)
+    question = cast("str", parked.params["question"])
+    parked.path.write_text(f"{question}\n\nThe ledger closes on the business day, in UTC.\n", encoding="utf-8")
+
+    heard = advance(flow, parked)
+    advance(flow, heard)
+
+    assert heard.state == "write"
+    assert (heard.params["service"], heard.params["lap"], heard.params["added"]) == ("ledger", MAX_LAPS, ["Pong"])
+    sent = runner.args_of(UPDATE)[-1]
+    rendered = templates.render("catch_up/prompts/update-book.md", sent, Path(okf_book.__file__).parent)
+    assert "The operator answered" in rendered
+    assert "The ledger closes on the business day, in UTC." in rendered
+    assert runner.chains[-1][1] == "catchup:ledger"
+    again = flow.stamp(service="ledger", lap=MAX_LAPS, added=["Pong"])
+    assert isinstance(again, Await) and again.path == flow.run_dir / RED_GATE
 
 
 def test_a_gate_that_could_not_judge_waits_and_judges_again_without_a_lap(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -192,17 +216,54 @@ def test_a_gate_that_could_not_judge_waits_and_judges_again_without_a_lap(tmp_pa
     assert runner.total == 0
 
 
-def test_a_blocked_owner_fails_the_book_with_what_it_said(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    replies: dict[str, Reply] = {UPDATE: lambda _args: {"done": "", "blocked": "which clock does the ledger close on", "added": []}}
-    flow, _runner, _seen = stale_book(tmp_path, monkeypatch, replies)
+def test_a_blocked_owner_parks_on_the_operator_gate_and_its_answer_reaches_the_next_turn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    blocked: dict[str, Reply] = {UPDATE: lambda _args: {"done": "", "blocked": "which clock does the ledger close on", "added": []}}
+    flow, runner, _seen = stale_book(tmp_path, monkeypatch, blocked)
 
     step = walk(flow, flow.books(), "write")
-    step = advance(flow, step)
+    parked = advance(flow, step)
 
-    assert isinstance(step, Continue) and step.state == "books"
-    outcome = summarized(flow).books[0]
-    assert outcome.verdict == "failed"
-    assert "which clock does the ledger close on" in outcome.gate
+    assert isinstance(parked, Await) and parked.state == "heard"
+    assert parked.path == flow.run_dir / BLOCKED_GATE
+    assert "which clock does the ledger close on" in parked.questions
+    question = cast("str", parked.params["question"])
+    parked.path.write_text(f"{question}\n\nThe business day, in UTC.\n", encoding="utf-8")
+    heard = advance(flow, parked)
+    advance(flow, heard)
+    assert heard.state == "write" and heard.params["service"] == "ledger"
+    assert "The business day, in UTC." in cast("str", runner.args_of(UPDATE)[-1]["gate"])
+
+
+def test_a_stale_report_that_cannot_be_read_asks_the_operator_and_the_answer_reads_it_again(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, runner, _env = build_flow(tmp_path)
+    first = make_app(flow.root)
+    seen = book_exits(monkeypatch, stale={"services.ledger": (4, "the app is not a git checkout\n")})
+
+    step = flow.fill()
+
+    assert isinstance(step, Await) and step.state == "fill"
+    assert step.path == flow.run_dir / STALE_GATE
+    assert "the app is not a git checkout" in step.questions
+    assert flow.work_list.items("book") == []
+    said = stale_printed(first, {"Ping": "ledger/ping.py"}, [])
+    book_exits(monkeypatch, stale={"services.ledger": (1, said)})
+    again = flow.fill()
+    assert isinstance(again, Continue) and again.state == "books"
+    assert [item.id for item in flow.work_list.items("book")] == ["ledger"]
+    assert runner.total == 0
+    assert len(seen) == 1
+
+
+def test_the_summary_never_names_a_failed_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner, _seen = stale_book(tmp_path, monkeypatch, DONE, verified=1)
+    walk(flow, flow.books(), "write")
+    flow.stamp(service="ledger", lap=MAX_LAPS, added=[])
+
+    done = summarized(flow)
+
+    assert "failed" not in done.summary
+    assert done.books == []
+    assert "failed" not in BookOutcome.model_json_schema()["properties"]["verdict"]["enum"]
 
 
 def test_a_resumed_run_continues_at_the_book_it_stopped_on(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -240,4 +301,4 @@ def test_every_edge_of_the_catch_up_graph_has_a_reason() -> None:
     bare = [(node.name, edge.target) for node in graph.states for edge in node.edges if not edge.reason]
 
     assert bare == []
-    assert {"fill", "books", "take", "write", "check", "play", "stamp", "render", "commit", "summarize"} <= {node.name for node in graph.states}
+    assert {"fill", "books", "take", "write", "check", "play", "stamp", "render", "commit", "summarize", "heard"} <= {node.name for node in graph.states}
