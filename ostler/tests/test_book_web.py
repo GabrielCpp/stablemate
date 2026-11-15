@@ -13,6 +13,7 @@ from typing import Iterator, cast
 
 import pytest
 
+from book_fakes import Quiet
 from book_todo import run_book, module
 from ostler.book import Browser, BookError, Field as Wire, Int, Journey, Screen, Service, T
 from ostler.book.check import spoken
@@ -1059,3 +1060,54 @@ def test_a_base_arranged_by_a_journey_of_another_language_ends_in_the_service_la
     assert page.sent
     assert {lang for _, lang in page.sent} == {"fr"}
     assert page.lang == "en"
+
+
+def _unreachable_class():
+    import dataclasses
+
+    from ostler.book import Refusal, Refusals
+    from ostler.book.inputs import classes, vary
+
+    service = module("services.web.service").service
+    service = dataclasses.replace(service, refusals=Refusals(malformed=Refusal("malformed", 422)))
+    add, found = _todo_base()
+    base = found[add]
+    chosen = next(c for c in classes(base.call, base.before, None) if c.label == "due_on malformed date")
+    return service, base, chosen, vary(base.call, chosen)
+
+
+class _Refusing(Quiet):
+    def __init__(self, rows) -> None:
+        self.held = rows
+
+    def perform(self, step):
+        from ostler.book import CannotReach
+
+        raise CannotReach("the page does not take 'not a date'")
+
+    def rows(self):
+        return self.held
+
+
+def test_an_input_the_page_cannot_take_passes_as_unreachable_when_the_book_refuses_it_by_a_default_key(monkeypatch: pytest.MonkeyPatch):
+    from ostler.book import inputs
+    from ostler.book.inputs import judge
+
+    monkeypatch.setattr(inputs, "predicted", lambda call, model: None)
+    service, base, chosen, call = _unreachable_class()
+    sent = judge(service, call, chosen, base.before, _Refusing(base.before.rows()))
+    assert sent.ok, sent.note
+
+
+def test_the_same_input_still_fails_when_the_book_expects_it_to_save(monkeypatch: pytest.MonkeyPatch):
+    import dataclasses
+
+    from ostler.book import Diverges, inputs
+    from ostler.book.inputs import judge
+
+    monkeypatch.setattr(inputs, "predicted", lambda call, model: None)
+    service, base, chosen, call = _unreachable_class()
+    service = dataclasses.replace(service, refusals=type(service.refusals)(), diverges=(Diverges(type(call), chosen.label, why="the app takes any day"),))
+    sent = judge(service, call, chosen, base.before, _Refusing(base.before.rows()))
+    assert not sent.ok
+    assert not sent.diverged

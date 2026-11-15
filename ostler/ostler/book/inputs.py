@@ -25,7 +25,7 @@ from ostler.book.http import (Bool, Client, Endpoint, Enum, Field, Id, Identitie
                               blind, twins, unknown_value)
 from ostler.book.journey import Given, StepResult, difference
 from ostler.book.model import Defect, Model
-from ostler.book.outcome import Done, Flawed, Outcome, Refusal, Refusals
+from ostler.book.outcome import CannotReach, Done, Flawed, Outcome, Refusal, Refusals, Unreachable
 from ostler.book.runner import agree, attempt, listing
 from ostler.book.screen import Interaction
 from ostler.book.surface import Surface
@@ -490,16 +490,18 @@ def judge(service: Service[Any], call: Endpoint, c: InputClass, model: Model, su
         got = surface.perform(call)
     except (CannotArrange, Unhealthy):
         raise
+    except CannotReach as blocked:
+        got = Unreachable(blocked.reason)
     except (Undeclared, OffShape) as outside:
         return Sent(cls, c, False, f"the app answered outside the book: {outside}")
     except Exception as crash:
         return Sent(cls, c, False, f"crashed: {type(crash).__name__}: {str(crash).splitlines()[0]}")
     shown = f"{want} (the book's {c.default} refusal) / {got}" if want is not None else f"a refusal / {got}"
-    if want is not None and agree(want, got) and isinstance(got, Refusal):
+    if want is not None and agree(want, got) and isinstance(got, (Refusal, Unreachable)):
         if surface.rows() == listing(surface, model):
             return Sent(cls, c, True, outcome=shown, clean=True)
         return Sent(cls, c, False, "the refusal changed what is listed", shown)
-    if match is not None and not isinstance(got, Refusal):
+    if match is not None and not isinstance(got, (Refusal, Unreachable)):
         return Sent(cls, c, True, f"declared: {match.why}", shown, diverged=match)
     return Sent(cls, c, False, f"the book expects {want or 'a refusal'}, the app said {got}", shown)
 
