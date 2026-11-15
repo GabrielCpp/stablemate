@@ -183,6 +183,10 @@ failure. The surface must leave the screen as it found it when `fill` raises `Ca
 A select is weighed on what it offers, so it gets no twins of spelling, such as case or spaces.
 [inputs.md](inputs.md) lists the classes and twins each shape gets.
 
+A stated shape is tried only through an interaction of that screen whose fixture has the field,
+and the check names a stated field that no interaction fills. The run's `fields:` line says how
+many stated fields it tried.
+
 ## A mobile app is a screen book on a device
 
 A mobile book uses the same screens, components, interactions, typed inputs and recording as a web
