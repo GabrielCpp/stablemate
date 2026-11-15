@@ -442,3 +442,12 @@ def test_a_container_with_no_launcher_still_clones(monkeypatch):
     supervisor.checkout({}, {})
     assert seen["source_mode"] == "clone"
     assert seen["worktree_root"] == ""
+
+
+def test_the_checkout_names_the_repo_whose_manifest_holds_the_token_secret(monkeypatch):
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(
+        supervisor.workspace, "checkout_workspace", lambda ws, root, **kw: seen.update(kw)
+    )
+    supervisor.checkout({}, {"repo_dir": "/workspace/acme"})
+    assert seen["token_root"] == "/workspace/acme"

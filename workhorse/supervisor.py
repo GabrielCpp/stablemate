@@ -169,6 +169,7 @@ def checkout(env: Mapping[str, str], params: Mapping[str, str]) -> None:
         repo_url=env.get("REPO_URL", ""),
         repo_name=env.get("REPO_NAME") or "repo",
         repo_branch=env.get("REPO_BRANCH") or "main",
+        token_root=params.get("repo_dir", ""),
         source_mode=env.get("AGENT_SOURCE_MODE") or "clone",
         worktree_root=env.get("AGENT_WORKTREE_ROOT") or "",
     )
