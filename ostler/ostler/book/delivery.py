@@ -3,6 +3,8 @@ handler, and the judging of the detail an occurrence carries against the event's
 
 from __future__ import annotations
 
+import importlib
+import json
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -16,6 +18,31 @@ class Delivery:
 
     def place(self, event: type[Event], detail: dict[str, Any]) -> None:
         raise NotImplementedError
+
+
+class Bus(Delivery):
+    """Publishes on a bus that routes to queues, as a person doing QA by hand does: one entry whose source and detail type
+    are the event's own. The AWS client comes from `boto3`, an optional extra of the tool, or from the caller."""
+
+    def __init__(self, name: str, endpoint: str = "", region: str = "", client: Any = None) -> None:
+        self.name = name
+        self.endpoint = endpoint
+        self.region = region
+        self.client = client
+
+    def place(self, event: type[Event], detail: dict[str, Any]) -> None:
+        if self.client is None:
+            self.client = self.connect()
+        self.client.put_events(Entries=[{"Source": event.source, "DetailType": event.name, "Detail": json.dumps(detail),
+                                         "EventBusName": self.name}])
+
+    def connect(self) -> Any:
+        try:
+            boto3 = importlib.import_module("boto3")
+        except ImportError:
+            raise BookError(f"publishing on bus {self.name} needs the AWS client: install the aws extra of ostler, "
+                            "for example pip install 'ostler[aws]'") from None
+        return boto3.client("events", endpoint_url=self.endpoint or None, region_name=self.region or None)
 
 
 @dataclass(frozen=True)

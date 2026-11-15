@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import date
 from typing import Any
 
 import pytest
 
-from ostler.book import Again, Arrange, BookError
+from ostler.book import Again, Arrange, BookError, Bus
 from ostler.book.runner import Deliveries, Landings, perform
 
 from book_desk import Desk, DeskSurface, TicketChanged, ToQueue
@@ -133,3 +134,25 @@ def test_the_run_counts_its_second_deliveries_on_one_line():
 def test_a_run_that_delivered_no_hearing_prints_no_repeats_line():
     _desk()
     assert Deliveries.line() == ""
+
+
+class Stub:
+    def __init__(self) -> None:
+        self.entries: list[dict[str, Any]] = []
+
+    def put_events(self, Entries: list[dict[str, Any]]) -> dict[str, Any]:
+        self.entries += Entries
+        return {"FailedEntryCount": 0}
+
+
+def test_the_bus_variant_publishes_one_entry_with_the_events_source_name_detail_and_bus():
+    client = Stub()
+    Bus("zeta-bus", endpoint="http://localhost:4566", region="us-east-1", client=client).place(TicketChanged, {"ticket_id": "T-9", "by": "customer"})
+    assert client.entries == [{"Source": "zeta.dynamostream", "DetailType": "ticket.changed",
+                               "Detail": '{"ticket_id": "T-9", "by": "customer"}', "EventBusName": "zeta-bus"}]
+
+
+def test_the_bus_variant_says_which_extra_to_install_when_the_aws_client_is_missing(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setitem(sys.modules, "boto3", None)
+    with pytest.raises(BookError, match=r"install the aws extra of ostler"):
+        Bus("zeta-bus").place(TicketChanged, {"ticket_id": "T-9"})
