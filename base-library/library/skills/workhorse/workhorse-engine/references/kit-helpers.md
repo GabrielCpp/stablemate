@@ -61,7 +61,7 @@ For GitHub, go through the seams and reach for raw PyGithub objects past them wh
 structured responses (`gh_repo.get_workflow_runs(head_sha=…)`, `pr.merge(merge_method=…)`):
 
 ```python
-token = kit.github.resolve_github_token(root)     # agents.yml workflow.githubTokenEnv → GH_TOKEN → GITHUB_TOKEN
+token = kit.github.resolve_github_token(root)     # the saddlebag secret agents.yml workflow.githubTokenSecret names; "" when unset
 gh_repo, slug = kit.github.resolve_repo(root, token)
 if gh_repo is not None:
     pr = kit.github.find_open_pr(gh_repo, branch) or gh_repo.create_pull(

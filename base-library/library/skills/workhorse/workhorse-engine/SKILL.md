@@ -267,11 +267,12 @@ def collect(logger: Logger, repo_dir: str = "") -> Docs:
     root = kit.find_docs_root(repo_dir)
 ```
 
-One exception, and it is a security property rather than an exemption: `kit/credentials.py`
-resolves tokens from the environment **because** a secret must never become a `--param` —
-params are checkpointed to disk and echoed in logs and telemetry. A credential crosses into
-a subprocess by *name* (git expands the variable), never by value. Keep that in that one
-auditable module. The full rule is in `workflows/README.md`.
+A secret follows the same rule from the other side: it must never become a `--param`, because
+params are checkpointed to disk and echoed in logs and telemetry. `kit/credentials.py`
+resolves the GitHub token with `saddlebag.secret_value`, from the saddlebag secret that
+`workflow.githubTokenSecret` in `agents.yml` names, and never from a variable. A node that
+needs a secret asks saddlebag for it there. A token reaches a git subprocess in that
+command's own environment, never in `os.environ`. The full rule is in `workflows/README.md`.
 
 ## Idempotency, not just determinism
 

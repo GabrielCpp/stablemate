@@ -256,8 +256,8 @@ template:
 # default and meaning.
 # ─────────────────────────────────────────────────────────────────────────────
 # workflow:
-#   # Env var carrying the GitHub token for the coder workflow's PR and CI steps
-#   githubTokenEnv: GH_TOKEN
+#   # saddlebag secret holding the GitHub token for the coder workflow's PR and CI steps
+#   githubTokenSecret: github-token
 #
 #   # Per-role prompt bodies that replace the library's, keyed by role
 #   prompts:
