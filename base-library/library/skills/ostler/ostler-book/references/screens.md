@@ -180,6 +180,7 @@ and twins for each typed input. A date also gets a pair either side of the clock
 (the rows it shows, or its refusal), the run reports it `underspecified`. A browser that
 rejects a typed value, such as text in a date input, makes the class unreachable and not a
 failure. The surface must leave the screen as it found it when `fill` raises `CannotReach`.
+A select is weighed on what it offers, so it gets no twins of spelling, such as case or spaces.
 
 ## A mobile app is a screen book on a device
 
