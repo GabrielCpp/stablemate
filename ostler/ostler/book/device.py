@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler.book.errors import BookError
-from ostler.book.outcome import CannotReach
+from ostler.book.outcome import CannotReach, cut_by_limit
 from ostler.book.screen import ROLES, Component, Screen
 from ostler.qa import android
 from ostler.qa.android import ScreenRecording
@@ -232,7 +232,7 @@ class Device:
                 return
             if now == kept and value.startswith(now):
                 self.type_into(component, before, within)
-                raise CannotReach(f"{component.found_by(self.lang)} keeps only its first {len(now)} characters of {len(value)} typed")
+                raise CannotReach(cut_by_limit(component.found_by(self.lang), len(now), len(value)))
             kept = now
         raise BookError(f"{component.found_by(self.lang)} kept {kept!r} after being typed {value!r}")
 

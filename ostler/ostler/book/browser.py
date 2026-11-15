@@ -15,7 +15,7 @@ from typing import Any, Callable, Iterator, Mapping
 from urllib.parse import parse_qsl, urlsplit
 
 from ostler.book.errors import BookError
-from ostler.book.outcome import CannotReach
+from ostler.book.outcome import CannotReach, cut_by_limit
 from ostler.book.screen import ROLES, Component, Screen
 
 Wanted = Callable[[Any], bool]
@@ -279,6 +279,12 @@ class Browser:
                 if "Malformed value" not in str(rejected) and "Cannot type text into" not in str(rejected):
                     raise
                 raise CannotReach(f"{component.found_by(self.lang)} does not take {value!r}") from None
+            try:
+                kept = found.input_value()
+            except Exception:
+                return
+            if len(kept) < len(value) and value.startswith(kept):
+                raise CannotReach(cut_by_limit(component.found_by(self.lang), len(kept), len(value)))
             return
         if not self._native(found):
             self._pick_in_popup(component, found, value)

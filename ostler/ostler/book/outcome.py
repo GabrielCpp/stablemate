@@ -88,4 +88,8 @@ class CannotReach(Exception):
         self.reason = reason
 
 
+def cut_by_limit(label: str, kept: int, typed: int) -> str:
+    return f"{label} keeps only its first {kept} characters of {typed} typed"
+
+
 Outcome = Done | Refusal | Unreachable | Flawed

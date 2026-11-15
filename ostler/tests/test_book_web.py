@@ -9,7 +9,7 @@ import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Iterator, cast
+from typing import Any, Iterator, cast
 
 import pytest
 
@@ -18,6 +18,7 @@ from book_todo import run_book, module
 from ostler.book import Browser, BookError, Field as Wire, Int, Journey, Screen, Service, T
 from ostler.book.check import spoken
 from ostler.book.model import Model
+from ostler.book.outcome import Refusal, Refusals
 from ostler.book.stack import Stack
 from ostler.book.surface import Surface
 from ostler.book.browser import request
@@ -26,6 +27,7 @@ from ostler.book.screen import Button, Check, Field, Lists, Select, Text
 PAGE = b"""<!doctype html><html><body>
 <h1 id="hello">Hello</h1>
 <label for="name">Name</label><input id="name" oninput="document.getElementById('echo').textContent = this.value">
+<label for="short">Short</label><input id="short" data-testid="short" maxlength="5">
 <label for="qty">Quantity</label><input id="qty" data-testid="qty" type="number">
 <label for="who">Who</label><select id="who"><option value="">Nobody</option><option value="ana">ana</option></select>
 <button type="button" onclick="document.getElementById('echo').textContent = 'pressed'">Go</button>
@@ -38,6 +40,7 @@ PAGE = b"""<!doctype html><html><body>
 
 class Form(Screen):
     nick = Field(None, T(en="Name", fr="Nom"))
+    short = Field("short", T(en="Short", fr="Court"))
     qty = Field("qty", T(en="Quantity", fr="Quantité"), takes="qty", holds=Wire(Int()))
     who = Select(None, T(en="Who", fr="Qui"), options=(T(en="Nobody", fr="Personne"), "ana"))
     go = Button(None, T(en="Go", fr="Aller"))
@@ -85,6 +88,79 @@ def test_the_browser_finds_types_and_reads_by_role_and_name(browser: Browser):
     assert browser.offered(Form.who) == ["", "ana"]
     assert browser.visible(Form.agree)
     assert not browser.disabled(Form.go)
+
+
+def test_an_input_typed_one_character_past_its_limit_cannot_be_reached(browser: Browser):
+    from ostler.book import CannotReach
+
+    with pytest.raises(CannotReach, match="keeps only its first 5 characters of 6 typed"):
+        browser.fill(Form.short, "x" * 6)
+
+
+def test_an_input_typed_up_to_its_limit_is_typed_whole(browser: Browser):
+    browser.fill(Form.short, "x" * 5)
+    assert browser.value(Form.short) == "x" * 5
+
+
+def test_an_input_with_no_limit_is_typed_whole(browser: Browser):
+    browser.fill(Form.nick, "x" * 300)
+    assert browser.value(Form.nick) == "x" * 300
+
+
+def _too_long_at_the_limit(browser: Browser, by_a_rule: bool = False, refusals: Refusals | None = None):
+    from ostler.book import Answer, Done, Endpoint, Object, Str
+    from ostler.book import Field as Body
+    from ostler.book.inputs import InputClass, judge
+    from ostler.book.domain import Action
+    from ostler.book.model import Refused, Rule
+
+    class Open(Action):
+        pass
+
+    class Send(Endpoint):
+        carries = Open
+        method = "POST"
+        path = "/send"
+        body = Object("Send", short=Body(Str(max_len=5)))
+        answers = (Answer(200, None, "sent"),)
+
+    class Typing(Quiet):
+        def perform(self, step):
+            browser.fill(Form.short, step.body_value["short"])
+            return Done()
+
+    class Empty(Model):
+        def apply(self, request: Any):
+            if by_a_rule and len(request.body_value["short"]) > 5:
+                raise Refused(Rule("too long", lambda a, s, by: True))
+            return None
+
+        def rows(self):
+            return ()
+
+        def copy(self):
+            return Empty(self.today)
+
+    from datetime import date
+    from ostler.book.inputs import vary
+
+    chosen = InputClass("body", "short", "too long", "x" * 6, False, "malformed")
+    call = vary(Send({"short": "ab"}), chosen)
+    service = Service[Empty](name="x", new_model=Empty, surface=lambda environment: Typing(), journeys=(),
+                             stack=lambda directory: Stack((), directory), refusals=refusals or Refusals())
+    return judge(service, call, chosen, Empty(date(2026, 11, 4)), Typing())
+
+
+def test_a_too_long_class_at_an_input_that_stops_at_its_limit_passes_as_unreachable_by_a_default_key(browser: Browser):
+    sent = _too_long_at_the_limit(browser, refusals=Refusals(malformed=Refusal("too long", 400)))
+    assert sent.ok, sent.note
+    assert "keeps only its first 5 characters of 6 typed" in sent.outcome
+
+
+def test_a_too_long_class_at_an_input_that_stops_at_its_limit_passes_as_unreachable_by_a_rule(browser: Browser):
+    sent = _too_long_at_the_limit(browser, by_a_rule=True)
+    assert sent.ok, sent.note
+    assert "keeps only its first 5 characters of 6 typed" in sent.outcome
 
 
 def test_the_browser_finds_a_component_in_the_row_that_holds_a_text(browser: Browser):
