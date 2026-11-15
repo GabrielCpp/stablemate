@@ -26,8 +26,13 @@ The book root already holds finished books:
 - `{{ reference }}/`
 {% endfor %}
 
-Read one that is reached the way this service is, for the shape of each file. Take nothing of
-its own behaviour into this book.
+Read one that is reached the way this service is, for the shape of each file.
+
+A finished book is also the only place this book learns what another service does. Read no
+source outside `{{ source_root }}/`. Where this service calls a service whose book is in that
+list, this book refers to that service's records by name, as the skill's reference on
+neighbours says. Where it calls a service with no book in the list, the reference names the
+record by a word.
 {% endif %}
 {% if stack_copy %}
 

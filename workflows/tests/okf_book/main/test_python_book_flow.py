@@ -247,6 +247,10 @@ def test_the_owner_is_pointed_at_the_other_books_of_the_repo_for_shape(tmp_path:
     assert "- `services/billing/`\n- `services/desk/`\n" in rendered
     assert "services/ledger/`\n" not in rendered
     assert "notes" not in rendered
+    assert "Read one that is reached the way this service is, for the shape of each file.\n\nA finished book is also the only place" in rendered
+    assert f"Read no\nsource outside `{flow.source_root}/`." in rendered
+    assert "the reference names the\nrecord by a word." in rendered
+    assert "Take nothing of" not in rendered
 
 
 def test_a_repo_with_no_other_book_names_no_reference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
