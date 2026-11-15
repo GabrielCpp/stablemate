@@ -23,6 +23,8 @@ class ModuleReport(BaseModel):
     new_files: list[str] = Field(default_factory=list)
     gone: list[str] = Field(default_factory=list)
     output: str = ""
+    exit_code: int = 0
+    error: str = ""
 
     @property
     def files(self) -> list[str]:

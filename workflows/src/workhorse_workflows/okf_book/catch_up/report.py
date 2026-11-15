@@ -44,14 +44,14 @@ class _Read:
             self.gone.append(f"{pointer.group(1)}: {pointer.group(2)}")
 
 
-def read_stale(module: str, exit_code: int, stdout: str) -> ModuleReport:
+def read_stale(module: str, exit_code: int, stdout: str, stderr: str = "") -> ModuleReport:
     """The module's verdict from the stale command's exit code, and for a stale one the elements, files and pointers it printed."""
     if exit_code == NOTHING_STALE:
         return ModuleReport(module=module, verdict=CURRENT)
     if exit_code == COULD_NOT_READ and NOT_VERIFIED in stdout:
         return ModuleReport(module=module, verdict=FIRST_BOOK)
     if exit_code != SOME_STALE:
-        return ModuleReport(module=module, verdict=UNJUDGED, output=stdout.strip())
+        return ModuleReport(module=module, verdict=UNJUDGED, output=stdout.strip(), exit_code=exit_code, error=stderr.strip())
     read = _Read()
     section = ""
     for line in stdout.splitlines():

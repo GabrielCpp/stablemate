@@ -254,6 +254,19 @@ def test_a_stale_report_that_cannot_be_read_asks_the_operator_and_the_answer_rea
     assert len(seen) == 1
 
 
+def test_the_question_of_an_unreadable_stale_report_carries_the_exit_code_and_stderr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner, _env = build_flow(tmp_path)
+    make_app(flow.root)
+    book_exits(monkeypatch, stale={"services.ledger": (4, "", "fatal: not a git repository")})
+
+    step = flow.fill()
+
+    assert isinstance(step, Await)
+    assert "exited 4" in step.questions
+    assert "fatal: not a git repository" in step.questions
+    assert "stale services.ledger" in step.questions
+
+
 def test_the_summary_never_names_a_failed_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow, _runner, _seen = stale_book(tmp_path, monkeypatch, DONE, verified=1)
     walk(flow, flow.books(), "write")

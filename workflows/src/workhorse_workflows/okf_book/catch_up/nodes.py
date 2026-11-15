@@ -58,7 +58,7 @@ def catch_up_fill(logger: logging.Logger, root: Path, app: Path, services: tuple
             continue
         report = BookReport(service=service, modules=[_survey(logger, root, module, app) for module in modules.get(service, [])])
         if report.verdict == UNJUDGED:
-            filed.unread[service] = "\n".join(module.output for module in report.modules if module.output)
+            filed.unread[service] = "\n\n".join(_unread(module) for module in report.modules if module.verdict == UNJUDGED)
         elif not report.modules:
             write_outcome(run_dir, BookOutcome(service=service, verdict="first-book"))
             filed.settled.append(service)
@@ -74,7 +74,13 @@ def catch_up_fill(logger: logging.Logger, root: Path, app: Path, services: tuple
 
 def _survey(logger: logging.Logger, root: Path, module: str, app: Path) -> ModuleReport:
     said = run_stale(logger, root, module, app)
-    return read_stale(module, said.exit_code, said.output)
+    return read_stale(module, said.exit_code, said.output, said.error)
+
+
+def _unread(module: ModuleReport) -> str:
+    said = f"`python -m ostler.book stale {module.module}` exited {module.exit_code}"
+    printed = "\n\n".join(text for text in (module.output, module.error) if text)
+    return f"{said}:\n\n{printed}" if printed else f"{said} and printed nothing"
 
 
 def _settled(report: BookReport) -> BookOutcome:

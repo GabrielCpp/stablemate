@@ -58,7 +58,7 @@ def build_flow(tmp_path: Path, replies: dict[str, Reply] | None = None, services
 
 def book_exits(
     monkeypatch: pytest.MonkeyPatch,
-    stale: dict[str, tuple[int, str]] | None = None,
+    stale: dict[str, tuple[int, str] | tuple[int, str, str]] | None = None,
     calls: dict[str, list[str]] | None = None,
     **codes: int,
 ) -> list[list[str]]:
@@ -72,8 +72,8 @@ def book_exits(
             return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(calls.get(argv[3], [])), stderr="")
         verb, module = argv[3], argv[4]
         if verb == "stale":
-            code, said = stale.get(module, (0, "nothing stale\n"))
-            return subprocess.CompletedProcess(argv, code, stdout=said, stderr="")
+            code, said, *error = stale.get(module, (0, "nothing stale\n"))
+            return subprocess.CompletedProcess(argv, code, stdout=said, stderr="".join(error))
         return subprocess.CompletedProcess(argv, codes.get(verb, 0), stdout=f"{verb} said cell 7 differs", stderr="")
 
     monkeypatch.setattr(book_gates, "run_tool", _run)

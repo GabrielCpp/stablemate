@@ -115,7 +115,13 @@ def python_book_calls(logger: logging.Logger, root: Path, module: str) -> list[s
     return cast("list[str]", json.loads(done.stdout))
 
 
-def run_stale(logger: logging.Logger, root: Path, module: str, app: Path) -> BookGate:
+class StaleSaid(BookGate):
+    """What the book's stale said of one module: its exit code, its whole stdout and its stderr."""
+
+    error: str = ""
+
+
+def run_stale(logger: logging.Logger, root: Path, module: str, app: Path) -> StaleSaid:
     """What the book's stale said of one module, whole, since a cut report would hide an element."""
     done = run_tool(book_command("stale", module, "--app", str(app)), cwd=root, logger=logger)
-    return BookGate(exit_code=done.returncode, output=done.stdout)
+    return StaleSaid(exit_code=done.returncode, output=done.stdout, error=done.stderr)
