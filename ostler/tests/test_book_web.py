@@ -387,6 +387,43 @@ def test_a_screen_input_that_ignores_a_dimension_skips_its_twins(monkeypatch: py
     assert [t.ignored for t in twin_classes(base.call, base.before) if t.name == "due_on"] == [True]
 
 
+def _twin_dimensions(name: str, as_select: tuple[str, ...]) -> list[str]:
+    import dataclasses
+
+    from ostler.book.inputs import twin_classes
+
+    add, found = _todo_base()
+    form = add.screen
+    originals = {field: getattr(form, field) for field in as_select}
+    try:
+        for field, component in originals.items():
+            setattr(form, field, dataclasses.replace(component, kind="select"))
+        base = found[add]
+        return [t.dimension for t in twin_classes(base.call, base.before) if t.name == name]
+    finally:
+        for field, component in originals.items():
+            setattr(form, field, component)
+
+
+def test_a_select_that_states_a_shape_gets_no_case_or_space_twin():
+    assert _twin_dimensions("title", ()) == ["surrounding spaces", "case"]
+    assert _twin_dimensions("title", ("title",)) == []
+
+
+def test_a_text_field_of_the_same_shape_on_the_same_screen_still_gets_the_case_and_space_twins():
+    assert _twin_dimensions("description", ("title",)) == ["surrounding spaces", "case"]
+
+
+def test_a_date_typed_into_a_screen_keeps_its_midnight_twin_when_the_screen_has_a_select():
+    assert _twin_dimensions("due_on", ("title",)) == ["midnight"]
+
+
+def test_the_run_of_the_web_book_plays_the_same_pairs_as_before(todo_web, tmp_path: Path):
+    done = _run(todo_web, tmp_path)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "twins: 9 pairs played, 1 skipped because the model distinguished them, 0 underspecified" in done.stdout.splitlines()
+
+
 def test_a_screen_input_must_name_the_fixture_field_it_holds():
     from ostler.book import Field as Wire, Str
 

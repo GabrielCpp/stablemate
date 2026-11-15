@@ -598,8 +598,10 @@ def twin_classes(call: Endpoint, model: Model) -> list[Twin]:
     """The twin pairs of a call the model accepts as it stands."""
     if model.explain(call) is not None:
         return []
+    picked = {c.takes for c in type(call).typed() if c.kind == "select"} if isinstance(call, Interaction) else set()
     return [Twin(place, name, dimension, left, right, dimension in spec.ignores)
             for place, name, spec, current in input_fields(call)
+            if name not in picked
             for dimension, left, right in [*twins(spec.shape, current, model.today), *_midnight(place, spec.shape, model.today)]]
 
 
