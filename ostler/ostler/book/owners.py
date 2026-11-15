@@ -121,7 +121,7 @@ class Owners:
         client = getattr(surface, "client", None)
         ids = getattr(client, "ids", None)
         if ids is None:
-            raise BookError(f"{owner} has no HTTP client to read an issued id from: a needed record takes an HTTP owner in this slice")
+            raise BookError(f"{owner}'s surface keeps no client with the ids the app issued, which a needed record is handed")
         owned = cls.model_of(owner, service, surface)
         for step in axes.scene(state).reached_by(owned.today):
             done = play(step, owned, surface)
@@ -184,7 +184,7 @@ class Owners:
     def sender(cls, owner: str, surface: Surface, what: str) -> Callable[[Endpoint], Reply]:
         send = cast("Callable[[Endpoint], Reply] | None", getattr(surface, "send", None))
         if not callable(send):
-            raise BookError(f"{owner} has no HTTP surface to ask: {what} takes an HTTP owner in this slice")
+            raise BookError(f"{owner}'s surface cannot send one call and return its reply, which {what} needs")
         return send
 
     @classmethod
@@ -279,15 +279,20 @@ class Owners:
     @classmethod
     def modelled(cls, call: Endpoint, action: type) -> Endpoint:
         """The call as the owner's model takes it: a needed record is the model's own entity, not the id the
-        owner's app issued."""
-        of = call.of
-        if not isinstance(of, Needs):
-            return call
-        entity = of.record
+        owner's app issued. The record is the path's, or the request message's where the call has no path."""
+        if isinstance(call.of, Needs):
+            return call.varied(of=cls.entity(call.of, action))
+        if isinstance(call.body_value, Needs):
+            return call.varied(body=cls.entity(call.body_value, action))
+        return call
+
+    @classmethod
+    def entity(cls, needed: Needs, action: type) -> object:
+        entity = needed.record
         accepts = getattr(action, "accept", None)
         if isinstance(accepts, type) and issubclass(accepts, Fixture) and not isinstance(entity, accepts):
             entity = accepts.of(entity)
-        return call.varied(of=entity)
+        return entity
 
 
 def dump(body: Any) -> str:
