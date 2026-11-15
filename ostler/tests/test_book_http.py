@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from ostler.book import BookError, Field, Id, Int, List, Object, Str
-from ostler.book.http import Identities, canonical, real_id
+from ostler.book.http import Identities, _prepared, canonical, real_id
 
 
 @dataclass
@@ -130,3 +130,20 @@ def test_a_minted_name_in_another_case_is_the_same_value_in_that_case():
     assert real_id(MINTED, "DESK", ids, "body.team") == made.upper()
     assert real_id(MINTED, "desk", ids, "body.team") == made.lower()
     assert ids.model_of(Team, made.upper()) == "DESK"
+
+
+def test_a_number_sent_for_an_id_field_goes_on_the_wire_as_a_number():
+    body = Object("Send", team=Field(Id(Team, Str())))
+    assert _prepared(body, {"team": 123}, Identities(), None, "body") == {"team": 123}
+
+
+def test_a_number_sent_for_a_minted_id_field_goes_on_the_wire_as_a_number():
+    body = Object("Send", team=Field(MINTED))
+    assert _prepared(body, {"team": 123}, Identities(), None, "body") == {"team": 123}
+
+
+def test_a_text_value_of_a_minted_id_field_is_still_made_unique():
+    body = Object("Send", team=Field(MINTED))
+    sent = _prepared(body, {"team": "core"}, Identities(), None, "body")["team"]
+    assert sent.startswith("core-")
+    assert len(sent) == len("core-") + 8

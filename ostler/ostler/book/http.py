@@ -1344,7 +1344,9 @@ def _prepared(shape: Shape | None, value: Any, ids: Identities | None, know: Cal
     if isinstance(value, Reference):
         return _known(value, know)
     if isinstance(shape, Id):
-        return value if value is None else real_id(shape, value, ids, where)
+        if value is None or (isinstance(shape.of, Str) and not isinstance(value, str)):
+            return value
+        return real_id(shape, value, ids, where)
     if isinstance(value, dict):
         fields = shape.fields if isinstance(shape, Object) else {}
         return {k: _prepared(fields[k].shape if k in fields else (shape.of if isinstance(shape, Map) else None), v, ids, know, f"{where}.{k}")

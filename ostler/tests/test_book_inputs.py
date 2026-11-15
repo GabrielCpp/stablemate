@@ -5,8 +5,12 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-from ostler.book import Answer, Diverges, Done, Endpoint, Enum, Field, Id, Model, Object, Refusal, Service, Str
-from ostler.book.inputs import InputClass, classes, judge
+import json
+
+from ostler.book import Answer, Diverges, Done, Endpoint, Enum, Field, Id, Model, Object, Refusal, Refusals, Service, Str
+from ostler.book.http import Client
+from ostler.book.httpsurface import HttpSurface
+from ostler.book.inputs import InputClass, classes, judge, vary
 
 from book_fakes import Quiet, no_stack
 
@@ -111,3 +115,32 @@ def test_a_minted_id_gets_the_input_classes_of_plain_text():
 def test_a_minted_id_gets_none_of_the_id_classes():
     assert not {"unknown", "wrong kind", "another owner's"} & _classes_of(SendTeam)
     assert "malformed" not in _classes_of(SendTeam)
+
+
+class SendCheckedTeam(SendTeam):
+    answers = (Answer(200, None, "sent"), Answer(400, Object("Oops", error=Field(Str())), "refused"))
+
+
+class NumberRefuser(Client):
+    def transport(self, method: str, url: str, headers: dict[str, str], data: bytes | None) -> tuple[int, bytes]:
+        name = json.loads(data or b"{}").get("name")
+        if isinstance(name, str):
+            return 200, b""
+        return 400, b'{"error": "name must be text"}'
+
+
+class Strict(HttpSurface):
+    def restore(self) -> None:
+        return None
+
+    def rows(self) -> tuple[object, ...]:
+        return ()
+
+
+def test_the_wrong_type_class_of_a_minted_id_field_is_refused_by_a_service_that_refuses_a_number():
+    call = SendCheckedTeam({"name": "core"})
+    chosen = next(c for c in classes(call, Plain(DAY), None) if c.kind == "wrong type")
+    service = Service[Plain](name="x", new_model=Plain, surface=lambda environment: Strict(NumberRefuser("http://x")), journeys=(),
+                             stack=no_stack, refusals=Refusals(wrong_type=Refusal("name must be text", 400)))
+    sent = judge(service, vary(call, chosen), chosen, Plain(DAY), Strict(NumberRefuser("http://x")))
+    assert sent.ok, sent.note
