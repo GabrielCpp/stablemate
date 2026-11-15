@@ -431,7 +431,14 @@ def test_the_check_names_a_field_that_states_a_shape_and_that_no_interaction_fil
 
     found = _unfilled_of(False, title=Field(None, "Title", takes="title", holds=Wire(Str())))
     assert found == [("screen Bare.title", "it states a shape and no interaction of the book fills it, so no input is tried on it: "
-                      "give an interaction of this screen a fixture that has title", True)]
+                      "give an interaction of this screen a fixture that has title", False)]
+
+
+def test_a_stated_field_that_nothing_fills_fails_the_check_and_does_not_stop_a_run():
+    from ostler.book import Str
+
+    (_, _, blocks), = _unfilled_of(False, title=Field(None, "Title", takes="title", holds=Wire(Str())))
+    assert blocks is False
 
 
 def test_a_field_that_an_interaction_of_its_screen_fills_gets_no_such_finding():

@@ -551,7 +551,8 @@ def fill_faults(service: Service[Any]) -> list[Finding]:
         for attribute, component in screen.attributes():
             if component.holds is not None and id(component) not in filled:
                 found.append(Finding(f"screen {screen.__name__}.{attribute}", "it states a shape and no interaction of the book fills it, "
-                                     f"so no input is tried on it: give an interaction of this screen a fixture that has {component.takes}"))
+                                     f"so no input is tried on it: give an interaction of this screen a fixture that has {component.takes}",
+                                     blocks=False))
     return found
 
 
