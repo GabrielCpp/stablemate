@@ -29,7 +29,7 @@ Every field also gets the classes below, by where it goes and how it is declared
 | Class | Sent when | Refusal key |
 | --- | --- | --- |
 | `missing` | the field is required and is not in the path | `missing` |
-| `wrong type` | the field is in the body: `123`, `"many"` for an `Int`, `"yes"` for a `Bool` | `wrong_type`, else `malformed` |
+| `wrong type` | the field is in the body: `"yes"` for a `Bool`, `"many"` for an `Int`, the number `123` for every other shape, an id field included, minted or not | `wrong_type`, else `malformed` |
 | `null` | the field is in the body and not `nullable` | `missing` |
 
 The other default keys: `missing` for `blank`; `malformed` for `malformed`, `too long`, `malformed date`, `out of enum`,
@@ -57,6 +57,16 @@ The keys are in [surface.md](surface.md#refusal-keys).
 - The app answers otherwise: settle it as [findings.md](findings.md) says. An app that accepts
   what the book refuses is a `Diverges` on the label as the run prints it, such as
   `Diverges(AddTodo, "title too long", why="...")`.
+- A `Diverges` matches a class when its endpoint is the same class and its label equals
+  `<field> <class>`. Write both as the `FAIL  input <Endpoint> <field> <class>` line prints
+  them, the field of a list body as `[].name`. It is read only for a class the model has no rule
+  for and the book does not call valid, and it holds only when the app saves. It does not
+  match when the label differs by a character, when the endpoint is a subclass, or when the
+  app refuses or the surface raises `CannotReach`. The run then lists it under
+  `Declared divergences never met`, as `- <Endpoint> <label>: <why>`.
+- A fixture field left `None` is left out of a body built from the fixture, and out of a query.
+  A body written as a mapping sends `{"note": None}` as `null`: write the mapping to send null,
+  the fixture to leave the field out.
 
 ## Twins and `underspecified`
 
@@ -106,6 +116,7 @@ does not declare is a `check` finding.
 | `Done(rows, view)` | the app saved. Agrees with a model `Done`, and the rows are compared. A `Done` where the model refuses fails, unless a `Diverges` names the class |
 | `Refusal(message, status=400)` | agrees when the model refuses with the same message and status. A status of 0 matches any |
 | `CannotReach(reason)`, raised | the run reads it as `Unreachable`. It agrees with a model refusal, and the class passes. Against a model `Done` it fails |
+| an input that keeps only the first N characters typed | `fill` raises `CannotReach` "keeps only its first N characters of M typed", on a browser and on a device. A `too long` class there passes with the model's refusal, by a rule or by the default key, and the book declares no `Diverges` for it: one would be listed as never met. A reformatted value is not this case, and a browser component that cannot be read back is left alone |
 
 A surface never returns `Flawed`: the model makes it, where a `Defect` shows.
 A class the model has no rule for is read the same way: a `CannotReach` there is `Unreachable`.
