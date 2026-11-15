@@ -302,15 +302,29 @@ def test_an_up_that_names_one_book_keeps_the_services_of_the_others(tmp_path: Pa
     assert outcome.data["fixtures"] == ["users", "schema"]
 
 
-def test_an_up_replaces_the_services_of_the_books_it_names(tmp_path: Path) -> None:
+def test_an_up_that_names_one_service_keeps_the_other_services_of_its_book(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     _docs_book(root)
     commands.cmd_render(root, ["web"], copy_name="c1")
     commands.cmd_render(root, ["docs"], copy_name="c1")
-    narrowed = commands.cmd_render(root, ["web:web"], copy_name="c1")
-    assert "web:gateway" not in narrowed.data["services"]
-    assert "docs:docs" in narrowed.data["services"]
+    rebuilt = commands.cmd_render(root, ["web:web"], copy_name="c1")
+    assert "web:gateway" in rebuilt.data["services"]
+    assert "docs:docs" in rebuilt.data["services"]
 
+
+def test_an_up_that_names_one_service_of_a_book_the_copy_lacks_adds_that_service_alone(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _docs_book(root)
+    commands.cmd_render(root, ["docs"], copy_name="c1")
+    added = commands.cmd_render(root, ["web:web"], copy_name="c1")
+    assert "web:web" in added.data["services"]
+    assert "web:gateway" not in added.data["services"]
+
+
+def test_an_up_replaces_the_services_of_the_books_it_names(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _docs_book(root)
+    commands.cmd_render(root, ["web"], copy_name="c1")
     commands.cmd_render(root, ["docs"], copy_name="c1", fixtures=["users"])
     every = commands.cmd_render(root, copy_name="c1", cwd=root)
     assert every.data["services"] == [

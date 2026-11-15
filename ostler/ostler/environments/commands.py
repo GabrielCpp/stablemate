@@ -67,8 +67,9 @@ def prepare(
     copy = runtime.copy_for(root, copy_name)
     previous = runtime.read_manifest(copy.directory)
     try:
+        resolved = {target: spec.resolve_target(catalog, target) for target in chosen}
         named = {catalog.services[ref].book
-                 for target in chosen for ref in spec.resolve_target(catalog, target)}
+                 for target, refs in resolved.items() if ":" not in target for ref in refs}
         kept = [ref for ref in _listed(previous, "targets")
                 if ref in catalog.services and catalog.services[ref].book not in named]
         services = spec.closure(catalog, [*kept, *chosen])

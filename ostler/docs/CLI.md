@@ -257,6 +257,9 @@ copy, and drives docker compose against it. `TARGET` is a book or one `book:serv
 target, it is the book you stand in, or every book from the repo root. `--copy` defaults to
 `$STABLEMATE_LEASE`, then to `shared`.
 
+An up keeps every service the copy already holds. Naming a book replaces that book's services.
+Naming one `book:service` adds or rebuilds that service alone and keeps the rest of its book.
+
 ```bash
 ostler env check  [--json]
 ostler env render [TARGET...] [--copy NAME] [--fixtures SET[,SET]] [--json]
