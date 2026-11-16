@@ -16,6 +16,7 @@ import pytest
 from book_todo import module
 from ostler.book import BookError, Browser, Screen, T
 from ostler.book.entries import in_order, no_repeat
+from ostler.book.runner import expectations
 from ostler.book.screen import Lists, Select
 
 
@@ -208,6 +209,51 @@ def test_the_head_is_left_out_of_the_entries_a_rule_judges():
     with _page(["ana", "bo"], Native) as browser:
         browser.fill(Native.who, "bo")
         assert browser.list_faults() == []
+
+
+def test_a_head_label_that_sorts_after_the_entries_does_not_break_the_order():
+    with _page(["Aaron", "Bo"], Ordered) as browser:
+        browser.fill(Ordered.who, "Bo")
+        assert browser.list_faults() == []
+
+
+def test_nothing_is_left_out_of_the_entries_when_the_list_does_not_start_with_the_head():
+    class Elsewhere(Screen):
+        who = Select("who", "Who", lists=Lists(head=("Nobody",), entries=(no_repeat(),)))
+
+    with _page(["Anyone"], Elsewhere) as browser:
+        browser.fill(Elsewhere.who, "Anyone")
+        assert browser.list_faults() == ["the list Elsewhere.who breaks \"no repeat\": 'Anyone' is shown 2 times"]
+
+
+def test_a_rule_that_crashes_is_reported_as_a_fault_of_the_list():
+    def boom(entries):
+        """never crashes"""
+        raise ValueError("bad")
+
+    class Boom(Screen):
+        who = Select("who", "Who", lists=Lists(head=("Anyone",), entries=(boom,)))
+
+    with _page(["ana", "bo"], Boom) as browser:
+        browser.fill(Boom.who, "bo")
+        assert browser.list_faults() == ["the list Boom.who cannot judge \"never crashes\": ValueError: bad"]
+
+
+def test_the_expectations_of_a_step_carry_what_a_picked_function_returns_for_the_person_taking_it():
+    def first(model, by):
+        """the first user of the model"""
+        return f"{model}:{by}"
+
+    class Owners(Screen):
+        who = Select("who", "Who", lists=Lists(picked=first))
+
+    class Ask:
+        screen = Owners
+
+        def __init__(self, by: str) -> None:
+            self.by = by
+
+    assert expectations(Ask("ana"), cast(Any, "m")) == {"Owners.who": ([], [], "m:ana")}
 
 
 def test_picked_passes_when_the_head_is_selected_first():
