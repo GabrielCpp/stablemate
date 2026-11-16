@@ -406,12 +406,13 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         if sick:
             print(f"could not judge: {sick}")
             return 3
-        model, why = renewed(service, surface, resets)
+        model, why = renewed(service, surface, resets, unused=True)
         for journey in journeys:
             started = time.time()
             _speak(service, surface, journey.lang)
             if journey.alone or model is None:
-                model, why = renewed(service, surface, resets)
+                model, why = renewed(service, surface, resets, unused=True)
+            resets.clean = False
             record = getattr(surface, "record", None)
             if callable(record):
                 record(journey.title())
@@ -433,7 +434,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
                         print(f"      a known defect made a wrong change earlier in this journey: {defect.status} {defect.message}; "
                               "if the app no longer makes it, delete its declaration")
             if journey.alone or not result.ok or result.skipped:
-                model, why = renewed(service, surface, resets)
+                model, why = renewed(service, surface, resets, unused=True)
         journeys_took = time.time() - began
         played = Played()
         if not args.journey and service.matrices:
@@ -451,7 +452,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         if not args.journey and (service.endpoints or service.interactions):
             print("playing the input classes")
             began = time.time()
-            resets.reset(surface)
+            resets.ensure(surface)
             tried = play_inputs(service, surface, lambda: fresh(service, surface, resets), only=names, today=_today(surface))
             inputs_took = time.time() - began
         settled = settle_register(service, args, tried)
@@ -644,18 +645,25 @@ def unhealthy(service: Service[Any], surface: Surface, resets: Resets | None = N
 
 @dataclasses.dataclass
 class Resets:
-    """What the surface's resets cost in one run."""
+    """What the surface's resets cost in one run, and whether the world is still as the last reset left it."""
 
     count: int = 0
     seconds: float = 0.0
+    clean: bool = False
 
     def reset(self, surface: Surface) -> None:
         began = time.time()
+        self.clean = False
         try:
             surface.reset()
+            self.clean = True
         finally:
             self.count += 1
             self.seconds += time.time() - began
+
+    def ensure(self, surface: Surface) -> None:
+        if not self.clean:
+            self.reset(surface)
 
     def line(self) -> str:
         if not self.count:
@@ -663,9 +671,10 @@ class Resets:
         return f"resets {self.count}, {self.seconds:.1f} s ({self.seconds / self.count:.1f} s each)"
 
 
-def renewed(service: Service[Any], surface: Surface, resets: Resets | None = None) -> tuple[Model | None, str]:
+def renewed(service: Service[Any], surface: Surface, resets: Resets | None = None,
+            unused: bool = False) -> tuple[Model | None, str]:
     try:
-        return fresh(service, surface, resets), ""
+        return fresh(service, surface, resets, unused), ""
     except CannotArrange as cannot:
         return None, cannot.reason
 
@@ -745,12 +754,14 @@ def show_witness(service: Service[Any], seen: WitnessReport, out: str, fails: bo
     print(text)
 
 
-def fresh(service: Service[Any], surface: Surface, resets: Resets | None = None) -> Model:
-    """A reset surface and a new model of it, in step."""
+def fresh(service: Service[Any], surface: Surface, resets: Resets | None = None, unused: bool = False) -> Model:
+    """A reset surface and a new model of it, in step. With `resets`, a world no step has touched since
+    its last reset is kept, and `unused` says the caller takes the model without touching the world yet."""
     if resets is None:
         surface.reset()
     else:
-        resets.reset(surface)
+        resets.ensure(surface)
+        resets.clean = unused
     return service.new_model(_today(surface))
 
 
