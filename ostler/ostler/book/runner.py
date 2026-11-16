@@ -277,29 +277,31 @@ def listed(step: Listed, model: Model, surface: Surface, baseline: tuple[object,
     return StepResult(step, None, None, model.rows(), rows, ok, note)
 
 
-def expectations(request: object, model: Model) -> dict[str, tuple[list[str], list[str]]]:
-    """For each list of the request's screen that states who belongs or who never does, what the model says before the
-    step moves it, for the person taking the step."""
+def expectations(request: object, model: Model) -> dict[str, tuple[Any, ...]]:
+    """For each list of the request's screen that states who belongs, who never does or a picked entry given by a
+    function, what the model says before the step moves it, for the person taking the step."""
     screen = getattr(type(request), "screen", None)
     if screen is None:
         return {}
     by = getattr(request, "by", None)
-    wanted: dict[str, tuple[list[str], list[str]]] = {}
+    wanted: dict[str, tuple[Any, ...]] = {}
     for attribute, component in screen.attributes():
         lists = component.lists
-        if lists is None or (lists.always is None and lists.never is None):
+        chosen = lists.picked if lists is not None and callable(lists.picked) else None
+        if lists is None or (lists.always is None and lists.never is None and chosen is None):
             continue
         where = f"{screen.__name__}.{attribute}"
         try:
             belong = list(lists.always(model, by)) if lists.always is not None else []
             never = list(lists.never(model, by)) if lists.never is not None else []
+            picked = [chosen(model, by)] if chosen is not None else []
         except Exception as crash:
             raise BookError(f"the list {where} cannot say who belongs: {type(crash).__name__}: {crash}") from None
-        wanted[where] = (belong, never)
+        wanted[where] = (belong, never, *picked)
     return wanted
 
 
-def hand_over(surface: Surface, wanted: dict[str, tuple[list[str], list[str]]]) -> None:
+def hand_over(surface: Surface, wanted: dict[str, tuple[Any, ...]]) -> None:
     ask = getattr(surface, "expecting", None)
     if callable(ask):
         ask(wanted)

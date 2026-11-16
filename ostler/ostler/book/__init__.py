@@ -16,6 +16,7 @@ from ostler.book.delivery import Again, Bus, Delivery
 from ostler.book.domain import (Action, App, Become, Change, Collection, Create, Delete, Entry, Fixture, Heard, Index, MoveToday,
                                 Select, Show, State, Total, Transaction, Unique, Update)
 from ostler.book.command import STDERR, Command, CommandSurface, Exit, Files, Flag, Lines, Mark, Outside, Positional, Sandbox, Seed, Switch
+from ostler.book.entries import in_order, no_repeat
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.event import Event
@@ -41,7 +42,7 @@ from ostler.book.workspace import checkout
 from ostler.book.witness import Because, Unseen
 
 __all__ = [
-    "Actor", "Again", "Arrange", "Bus", "Delivery", "Backstage", "CannotArrange", "Environment", "SOLE",
+    "Actor", "Again", "Arrange", "Bus", "Delivery", "Backstage", "CannotArrange", "Environment", "SOLE", "in_order", "no_repeat",
     "checkout", "Browser", "Device", "MobileSurface", "PageSurface", "Received", "action", "answer", "handed", "refusal", "request",
     "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Event", "Fixture", "Heard", "Index", "MoveToday", "Select",
     "Show", "State", "Total", "Transaction", "Unique", "Update",

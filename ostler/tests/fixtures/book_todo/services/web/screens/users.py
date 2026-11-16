@@ -1,4 +1,5 @@
 from ostler.book import request
+from ostler.book import in_order, no_repeat
 from ostler.book.screen import Lists
 
 from .labels import ANYONE, NOBODY
@@ -16,5 +17,6 @@ def owners(model, by):
     return sorted({t.assignee for t in model.todos if t.assignee})
 
 
-FILTER = Lists(head=(ANYONE,), given=RECEIVED, derived=by_name, always=owners)
-FORM = Lists(head=(NOBODY,), given=RECEIVED, derived=by_name)
+FILTER = Lists(head=(ANYONE,), given=RECEIVED, derived=by_name, always=owners, entries=(in_order(), no_repeat()), picked=ANYONE)
+FORM = Lists(head=(NOBODY,), given=RECEIVED, derived=by_name, entries=(in_order(), no_repeat()), picked=NOBODY)
+EDIT = Lists(head=(NOBODY,), given=RECEIVED, derived=by_name, entries=(in_order(), no_repeat()))

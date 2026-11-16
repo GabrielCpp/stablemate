@@ -556,6 +556,13 @@ def fill_faults(service: Service[Any]) -> list[Finding]:
     return found
 
 
+def unstated_lists(service: Service[Any]) -> list[Finding]:
+    """Every select that states a shape and neither its options nor what its list holds."""
+    return [Finding(f"screen {screen.__name__}.{attribute}", "nothing states what its list holds: give it options=(...) or lists=Lists(...)", told=True)
+            for screen in service.screens for attribute, component in screen.attributes()
+            if component.kind == "select" and component.holds is not None and not component.options and component.lists is None]
+
+
 def check(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
     found: list[Finding] = spoken(service)
     today = date.today()
@@ -605,6 +612,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "headers", lambda: found.extend(header_faults(service)) or "done")
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
     attempt(found, "screen shapes", lambda: found.extend(shape_faults(service)) or "done")
+    attempt(found, "unstated lists", lambda: found.extend(unstated_lists(service)) or "done")
     attempt(found, "screen fills", lambda: found.extend(fill_faults(service)) or "done")
     attempt(found, "sources", lambda: found.extend(source_faults(service, app)) or "done")
     attempt(found, "decisions", lambda: found.extend(decision_faults(service, module, app)) or "done")

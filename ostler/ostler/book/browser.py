@@ -17,7 +17,7 @@ from urllib.parse import parse_qsl, urlsplit
 from ostler.book.errors import BookError
 from ostler.book.outcome import CannotReach, cut_by_limit
 from ostler.book.pagedata import Handed, decode, on_route
-from ostler.book.screen import ROLES, Component, Screen
+from ostler.book.screen import ROLES, Component, Lists, Screen
 
 Wanted = Callable[[Any], bool]
 
@@ -104,8 +104,9 @@ class Browser:
         self._feeds: tuple[Wanted, ...] = ()
         self._kept: dict[Wanted, Any] = {}
         self._faults: list[str] = []
-        self._read: set[str] = set()
-        self._expected: dict[str, tuple[list[str], list[str]]] = {}
+        self._read: dict[str, set[str]] = {}
+        self._picked: set[str] = set()
+        self._expected: dict[str, tuple[Any, ...]] = {}
 
     def start(self) -> None:
         try:
@@ -133,6 +134,7 @@ class Browser:
         self.context = self._browser.new_context(**options)
         self.page = self.context.new_page()
         self.page.set_default_timeout(self.timeout)
+        self.page.on("framenavigated", self._navigated)
         self._began = time.monotonic()
         if self._prefix is not None:
             self.watching(self._prefix)
@@ -205,6 +207,14 @@ class Browser:
         """The lists, by screen and attribute, a pick has judged."""
         return frozenset(self._read)
 
+    def claims_judged(self) -> dict[str, frozenset[str]]:
+        """For each list a pick has judged, the claims it judged: derived, always, never, entries, picked."""
+        return {name: frozenset(claims) for name, claims in self._read.items()}
+
+    def _navigated(self, frame: Any) -> None:
+        if frame == self.page.main_frame:
+            self._picked.clear()
+
     def _named(self, component: Component) -> str:
         for screen in self._screens:
             for name, found in screen.attributes():
@@ -212,25 +222,58 @@ class Browser:
                     return f"{screen.__name__}.{name}"
         return component.found_by(self.lang)
 
-    def expecting(self, expectations: Mapping[str, tuple[list[str], list[str]]]) -> None:
-        """Hands over, for each list by screen and attribute, the texts it must show and the texts it must not, for the
-        picks that follow. An empty mapping drops them."""
+    def expecting(self, expectations: Mapping[str, tuple[Any, ...]]) -> None:
+        """Hands over, for each list by screen and attribute, the texts it must show and the texts it must not, and
+        when the list's picked entry is a function, the label it returns, for the picks that follow. An empty mapping
+        drops them."""
         self._expected = dict(expectations)
 
-    def _judge(self, component: Component, shown: list[str]) -> None:
+    def _judge(self, component: Component, shown: list[str], selected: str) -> None:
         lists = component.lists
         assert lists is not None
         name = self._named(component)
-        self._read.add(name)
+        judged = self._read.setdefault(name, set())
         if lists.derived is not None:
+            judged.add("derived")
             self._judge_derived(component, name, shown)
-        belong, never = self._expected.get(name, ([], []))
+        self._judge_entries(lists, name, shown)
+        if lists.entries:
+            judged.add("entries")
+        self._judge_picked(lists, name, selected)
+        if name not in self._picked and (lists.picked is not None and (not callable(lists.picked) or len(self._expected.get(name, ())) > 2)):
+            judged.add("picked")
+        self._picked.add(name)
+        belong, never = self._expected.get(name, ([], []))[:2]
+        if lists.always is not None and name in self._expected:
+            judged.add("always")
+        if lists.never is not None and name in self._expected:
+            judged.add("never")
         missing = [text for text in dict.fromkeys(belong) if text not in shown]
         if missing:
             self._faults.append(f"the list {name} misses {missing}, which belong in it")
         forbidden = [text for text in dict.fromkeys(never) if text in shown]
         if forbidden:
             self._faults.append(f"the list {name} shows {forbidden}, which must never be in it")
+
+    def _judge_entries(self, lists: Lists, name: str, shown: list[str]) -> None:
+        head = lists.labels(self.lang)
+        entries = shown[len(head):] if shown[:len(head)] == head else shown
+        for rule in lists.entries:
+            said = (rule.__doc__ or "").strip().splitlines()[0]
+            try:
+                broken = rule(entries)
+            except Exception as crash:
+                self._faults.append(f"the list {name} cannot judge \"{said}\": {type(crash).__name__}: {crash}")
+                continue
+            self._faults += [f"the list {name} breaks \"{said}\": {why}" for why in broken]
+
+    def _judge_picked(self, lists: Lists, name: str, selected: str) -> None:
+        if name in self._picked or lists.picked is None:
+            return
+        expected = self._expected.get(name, ())
+        wanted = lists.label_picked(self.lang) if not callable(lists.picked) else expected[2] if len(expected) > 2 else None
+        if wanted is not None and selected != wanted:
+            self._faults.append(f"the list {name} has {selected!r} selected before the pick, the book says {wanted!r}")
 
     def _judge_derived(self, component: Component, name: str, shown: list[str]) -> None:
         lists = component.lists
@@ -328,7 +371,8 @@ class Browser:
             self._pick_in_popup(component, found, value)
             return
         if component.lists is not None:
-            self._judge(component, self._texts(found))
+            chosen = found.evaluate("el => el.selectedOptions.length ? el.selectedOptions[0].text : ''")
+            self._judge(component, self._texts(found), chosen)
         offered = found.evaluate("el => [...el.options].map(o => o.value)")
         if value not in offered:
             raise CannotReach(f"{component.found_by(self.lang)} offers only {offered}")
@@ -378,7 +422,9 @@ class Browser:
         listbox = self._open(found)
         entries = self._entries(listbox)
         if component.lists is not None:
-            self._judge(component, [label for _, label in entries])
+            marked = listbox.evaluate(
+                """el => { const o = el.querySelector('[role=option][aria-selected=true]'); return o ? o.innerText.trim() : null; }""")
+            self._judge(component, [label for _, label in entries], found.inner_text().strip() if marked is None else marked)
         values = [entry for entry, _ in entries]
         labels = [label for _, label in entries]
         if value in values:

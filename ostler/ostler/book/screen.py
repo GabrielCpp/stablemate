@@ -68,31 +68,47 @@ class Lists:
     data the app's server hands it with `handed(route)`, `derived` turns the decoded body of that answer, or that data,
     into the texts the list shows, in order, and `head` are the labels shown before them.
     `always` and `never` read the model, for the person looking, and return the texts the list must show and the
-    texts it must not; entries neither names are ignored."""
+    texts it must not; entries neither names are ignored.
+    `entries` are rules every entry shown must hold, such as `in_order()`, and `picked` is the label the list has
+    selected before a person picks, or a function of the model and the person looking that returns it."""
 
     head: tuple[T | str, ...] = ()
     given: Callable[[Any], bool] | Handed | None = None
     derived: Callable[[Any], list[str]] | None = None
     always: Callable[[Any, Any], list[str]] | None = None
     never: Callable[[Any, Any], list[str]] | None = None
+    entries: tuple[Callable[[list[Any]], list[str]], ...] = ()
+    picked: T | str | Callable[[Any, Any], str] | None = None
 
     def __post_init__(self) -> None:
         if isinstance(self.head, (str, T)):
             raise BookError("head takes a tuple of labels, not one label")
+        if callable(self.entries):
+            raise BookError("entries takes a tuple of rules, not one rule: write entries=(in_order(),)")
         object.__setattr__(self, "head", tuple(T(h) if isinstance(h, str) else h for h in self.head))
         if (self.given is None) != (self.derived is None):
             missing, present = ("derived", "given") if self.derived is None else ("given", "derived")
             raise BookError(f"a list states what it holds with both given and derived; it has {present} and no {missing}")
-        if self.derived is None and self.always is None and self.never is None:
-            raise BookError("a list states nothing: give it given and derived, always, or never")
-        for claim in ("derived", "always", "never"):
-            function = getattr(self, claim)
+        if self.derived is None and self.always is None and self.never is None and not self.entries and self.picked is None:
+            raise BookError("a list states nothing: give it given and derived, always, never, entries or picked")
+        for rule in self.entries:
+            if not (rule.__doc__ or "").strip():
+                raise BookError(f"the entries rule {getattr(rule, '__name__', 'rule')} has no docstring: "
+                                "its first line says what the entries hold, and search and explain show it")
+        picked = self.picked if callable(self.picked) else None
+        for claim, function in (("derived", self.derived), ("always", self.always), ("never", self.never), ("picked", picked)):
             if function is not None and not (function.__doc__ or "").strip():
                 raise BookError(f"the {claim} function {getattr(function, '__name__', claim)} has no docstring: "
                                 "its first line says what the list holds, and search and explain show it")
 
     def labels(self, lang: str) -> list[str]:
         return [(T(h) if isinstance(h, str) else h)[lang] for h in self.head]
+
+    def label_picked(self, lang: str) -> str | None:
+        """The label the list has selected first when the book states it fixed, else None."""
+        if self.picked is None or callable(self.picked):
+            return None
+        return self.picked[lang] if isinstance(self.picked, T) else self.picked
 
     def says(self, lang: str) -> str:
         said = (self.derived.__doc__ or "").strip().splitlines()[0] if self.derived is not None else ""
@@ -101,6 +117,12 @@ class Lists:
         shown = ", ".join([repr(label) for label in self.labels(lang)] + ([said] if said else []))
         claims = [f"{claim} {function.__doc__.strip().splitlines()[0]}"
                   for claim, function in (("always", self.always), ("never", self.never)) if function is not None and function.__doc__]
+        if self.entries:
+            claims.append("entries " + ", ".join(rule.__doc__.strip().splitlines()[0] for rule in self.entries if rule.__doc__))
+        if self.picked is not None:
+            fixed = self.label_picked(lang)
+            said_picked = (getattr(self.picked, "__doc__", "") or "").strip().splitlines()[0] if fixed is None else repr(fixed)
+            claims.append(f"picked {said_picked}")
         return "; ".join(([shown] if shown else []) + claims)
 
 

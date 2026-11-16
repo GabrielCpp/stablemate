@@ -70,6 +70,7 @@ function fillUsers(select, first) {
   const offered = window.BUG === "missing-user" && select.id === "list-assignee" ? people.slice(0, -1) : people;
   select.replaceChildren(h("option", { value: "" }, first), ...offered.map((name) => h("option", { value: name }, name)));
   select.value = kept;
+  if (window.BUG === "preselect-user" && !kept && offered.length) select.value = offered[0];
 }
 
 function users(select, first) {
@@ -81,6 +82,7 @@ async function loadUsers() {
   try {
     people = (await (await call("/users")).json()).map((user) => user.name);
     if (window.BUG !== "unsorted-users") people.sort();
+    if (window.BUG === "duplicate-user" && people.length) people.splice(1, 0, people[0]);
     for (const [select, first] of userSelects) fillUsers(select, first);
   } catch {
     people = [];

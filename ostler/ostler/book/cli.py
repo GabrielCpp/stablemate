@@ -35,7 +35,7 @@ from ostler.book.index import book_root, cmd_index, cmd_search_book
 from ostler.book.http import Endpoint, identity_lines, named_shapes
 from ostler.book.inputs import Tried, fields_tried, play as play_inputs
 from ostler.book.journey import JourneyResult
-from ostler.book.listing import account, read_by
+from ostler.book.listing import account, claims_by, read_by
 from ostler.book.matrix import matrix
 from ostler.book.model import Model
 from ostler.book.owners import Owners
@@ -456,7 +456,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             inputs_took = time.time() - began
         settled = settle_register(service, args, tried)
         seen = witnessed(service, surface)
-        kept = account(service.screens, read_by(surface))
+        kept = account(service.screens, read_by(surface), claims_by(surface))
         if names:
             seen = dataclasses.replace(seen, gaps=[g for g in seen.gaps if g.endpoint.__name__ in names],
                                        unseen=tuple(u for u in seen.unseen if u.endpoint.__name__ in names))

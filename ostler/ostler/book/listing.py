@@ -3,9 +3,12 @@ which state it and no pick reached, and which only name the select."""
 
 from __future__ import annotations
 
-from typing import Any, Callable, Iterable, cast
+from typing import Any, Callable, Iterable, Mapping, cast
 
 from ostler.book.screen import Screen
+
+
+CLAIMS = ("derived", "always", "never", "entries", "picked")
 
 
 def read_by(surface: Any) -> frozenset[str]:
@@ -14,8 +17,15 @@ def read_by(surface: Any) -> frozenset[str]:
     return frozenset(cast(Callable[[], Iterable[str]], ask)()) if callable(ask) else frozenset()
 
 
-def account(screens: tuple[type[Screen], ...], read: frozenset[str]) -> list[str]:
-    """The heading `Lists` and a line per select under three headings, or nothing when no screen has a select."""
+def claims_by(surface: Any) -> dict[str, frozenset[str]]:
+    """For each list a pick on the surface judged, the claims it judged."""
+    ask = getattr(surface, "claims_judged", None)
+    return dict(cast(Callable[[], Mapping[str, frozenset[str]]], ask)()) if callable(ask) else {}
+
+
+def account(screens: tuple[type[Screen], ...], read: frozenset[str], claims: Mapping[str, frozenset[str]] | None = None) -> list[str]:
+    """The heading `Lists` and a line per select under three headings, then the claims each read list had judged,
+    or nothing when no screen has a select."""
     judged: list[str] = []
     unread: list[str] = []
     named: list[str] = []
@@ -34,4 +44,5 @@ def account(screens: tuple[type[Screen], ...], read: frozenset[str]) -> list[str
     for heading, found in (("stated and read", judged), ("stated and never read", unread), ("named only", named)):
         out.append(f"{heading}:")
         out += [f"- {where}" for where in found] or ["- none"]
-    return out
+    said = [f"- {where}: {', '.join(c for c in CLAIMS if c in claims[where])}" for where in judged if claims and claims.get(where)]
+    return out + (["claims judged:", *said] if said else [])

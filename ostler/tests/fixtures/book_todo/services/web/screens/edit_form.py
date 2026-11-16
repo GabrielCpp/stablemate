@@ -4,7 +4,7 @@ from ostler.book import Field as Wire, Phase, Screen, Str, Stored, T, Transition
 from ostler.book.screen import Button, DateField, Field, Select, Spinner, Text, TextArea
 
 from .labels import ASSIGNEE, DESCRIPTION, DUE, SAVE, TITLE
-from .users import FORM, RECEIVED
+from .users import EDIT, RECEIVED
 
 form = Text("edit-form", does="the form element that replaces the row")
 title = Field("todo-title", TITLE, takes="title", holds=Wire(Str(max_len=120)))
@@ -12,7 +12,7 @@ description = TextArea("todo-description", DESCRIPTION, takes="description",
                        holds=Wire(Str(max_len=2000), required=False, nullable=True))
 due = DateField("todo-due", DUE, takes="due_on", holds=Wire(Str(format="date"), required=False))
 clear_due = Button("todo-due-clear", T(en="Clear due date", fr="Effacer l'échéance"), "empties the date and marks it cleared")
-assignee = Select("todo-assignee", ASSIGNEE, lists=FORM)
+assignee = Select("todo-assignee", ASSIGNEE, lists=EDIT)
 save = Button("todo-save", SAVE, "PATCH /todos/{id} with the changed fields only; a cleared date is null")
 cancel = Button("todo-cancel", T(en="Cancel", fr="Annuler"), "the row comes back unchanged")
 saving = Spinner("todo-saving")

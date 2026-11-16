@@ -97,6 +97,9 @@ class PageSurface:
     def lists_read(self) -> frozenset[str]:
         return self.browser.lists_read()
 
+    def claims_judged(self) -> dict[str, frozenset[str]]:
+        return self.browser.claims_judged()
+
     def wrong_labels(self, lang: str, screens: tuple[type[Screen], ...] | None = None) -> str | None:
         return self.browser.wrong_labels(lang, self.screens if screens is None else screens)
 
