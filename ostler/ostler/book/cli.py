@@ -48,7 +48,6 @@ from ostler.book.witness import WitnessReport, witnessed
 from ostler.book.service import Service
 from ostler.book.stack import Stack
 from ostler.book.sources import head_of, missing_files, stale
-from ostler.qa.report import video_clock
 from ostler.book.surface import Surface
 
 
@@ -860,6 +859,8 @@ def report(service: Service[Any], results: list[JourneyResult], out: str, order:
 
 def video_note(video: str, at: float | None) -> str:
     """Where to look in the recording of a step: the file and the clock a player shows."""
+    from ostler.qa.report import video_clock
+
     if not video:
         return ""
     return f"\n      video: {video}" + (f" at {video_clock(at)}" if at is not None else "")
@@ -867,6 +868,8 @@ def video_note(video: str, at: float | None) -> str:
 
 def video_lines(results: list[JourneyResult], played: Played) -> list[str]:
     """Each failed or known step of a journey or cell that kept a video, with the video and the offset in it."""
+    from ostler.qa.report import video_clock
+
     out: list[str] = []
     for result in results:
         for step in result.steps:
