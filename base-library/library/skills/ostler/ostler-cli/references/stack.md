@@ -259,8 +259,8 @@ timeout 60 ostler env compose -- exec -T api-db mysql -e 'select 1'
 timeout 30 ostler env compose -- ps --format '{{.Service}} {{.Name}}'
 ```
 
-A container's name is `<repo>-<copy>-<book>-<service>-1`. It starts with the checkout's
-directory name, so a `docker ps` filter on the lease alone finds it only unanchored.
+A container's name is `<repo>-<copy>-<book>-<service>-1`. It starts with the repository's
+main checkout directory name, which a `git worktree` of the repository shares, so a `docker ps` filter on the lease alone finds it only unanchored.
 
 A run killed before its teardown does not leave its copy up for good. The next leased bring-up
 on the machine tears down every copy whose run is gone, and says which. A copy brought up by

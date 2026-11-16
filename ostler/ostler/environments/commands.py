@@ -444,7 +444,7 @@ def _write(
     kept = previous.get("env_files", [])
     kept_prefix = previous.get("exec_prefix", [])
     written.append(runtime.write_manifest(prepared.copy, {
-        "repo": str(root),
+        "repo": str(runtime.checkout_home(root)),
         "copy": prepared.copy.name,
         "targets": [service.ref for service in prepared.services],
         "fixtures": prepared.fixtures,

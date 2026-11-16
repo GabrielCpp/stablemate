@@ -1414,3 +1414,52 @@ def test_exec_of_a_missing_dotenv_file_fails_naming_it(tmp_path: Path) -> None:
     outcome = commands.cmd_exec(root, ["env"], execute=_execute, base={})
     assert not outcome.ok
     assert str(root / ".env") in outcome.message
+
+
+def _git(cwd: Path, *argv: str) -> None:
+    subprocess.run(
+        ["git", "-c", "user.email=t@example.com", "-c", "user.name=t", *argv],
+        cwd=cwd, check=True, capture_output=True)
+
+
+def _repo_with_worktree(tmp_path: Path) -> tuple[Path, Path]:
+    root = _repo(tmp_path)
+    (root / ".git").rmdir()
+    _git(root, "init", "-q")
+    _git(root, "add", ".")
+    _git(root, "commit", "-q", "-m", "one")
+    worktree = tmp_path / "elsewhere" / "wt-1"
+    _git(root, "worktree", "add", "-q", str(worktree))
+    return root, worktree
+
+
+def test_a_worktree_and_its_main_checkout_name_the_same_copy(tmp_path: Path) -> None:
+    main, worktree = _repo_with_worktree(tmp_path)
+    from_worktree = runtime.copy_for(worktree, "evening")
+    from_main = runtime.copy_for(main, "evening")
+    assert from_worktree.project == from_main.project == "acme-evening"
+    assert from_worktree.directory == from_main.directory
+
+
+def test_a_worktree_lists_the_copies_its_main_checkout_wrote(tmp_path: Path) -> None:
+    main, worktree = _repo_with_worktree(tmp_path)
+    commands.cmd_up(main, ["web"], copy_name="story-1", runner=FakeDocker())
+    assert [copy.name for copy in runtime.copies(worktree)] == ["story-1"]
+
+
+def test_a_directory_with_no_git_keeps_its_own_name(tmp_path: Path) -> None:
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert runtime.checkout_home(plain) == plain
+    assert runtime.copy_for(plain, "evening").project == "plain-evening"
+
+
+def test_up_from_a_worktree_names_the_main_checkouts_project(tmp_path: Path) -> None:
+    main, worktree = _repo_with_worktree(tmp_path)
+    docker = FakeDocker()
+    up = commands.cmd_up(worktree, ["web"], copy_name="story-1", runner=docker)
+    assert up.ok
+    call = next(call for call in docker.calls if "up" in call)
+    assert call[call.index("--project-name") + 1] == "acme-story-1"
+    manifest = runtime.read_manifest(runtime.copy_for(main, "story-1").directory)
+    assert manifest["repo"] == str(main)

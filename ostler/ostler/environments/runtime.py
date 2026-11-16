@@ -51,15 +51,33 @@ def home() -> Path:
     return Path(user_state_dir("stablemate")) / "ostler" / "environments"
 
 
+def checkout_home(repo: Path) -> Path:
+    """The main checkout of the git repository rooted at *repo*, which every worktree of it shares."""
+    try:
+        dot_git = repo / ".git"
+        if dot_git.is_dir() or not dot_git.is_file():
+            return repo
+        text = dot_git.read_text(encoding="utf-8").strip()
+        if not text.startswith("gitdir:"):
+            return repo
+        gitdir = repo / text.removeprefix("gitdir:").strip()
+        common = gitdir / "commondir"
+        if not common.is_file():
+            return repo
+        return (gitdir / common.read_text(encoding="utf-8").strip()).resolve().parent
+    except OSError:
+        return repo
+
+
 def copy_for(repo: Path, name: str = SHARED) -> Copy:
     """The copy *name* of the stack the repo at *repo* declares."""
-    project = _PROJECT_CHARS.sub("-", f"{repo.name}-{name}".lower()).strip("-_")
+    project = _PROJECT_CHARS.sub("-", f"{checkout_home(repo).name}-{name}".lower()).strip("-_")
     return Copy(name=name, project=project, directory=home() / project)
 
 
 def copies(repo: Path) -> list[Copy]:
     """Every copy of *repo*'s stack this machine holds a directory for."""
-    return [copy for copy, manifest in held_copies() if manifest.get("repo") == str(repo)]
+    return [copy for copy, manifest in held_copies() if manifest.get("repo") == str(checkout_home(repo))]
 
 
 def read_manifest(directory: Path) -> dict[str, object]:
