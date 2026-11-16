@@ -1,14 +1,26 @@
 """What the catch-up flow reads from a book's stale report, what it records of each book, and what its owner turn says."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from workhorse_workflows.okf_book.shared.book_format import FormatDelta
 
 CURRENT = "current"
 FIRST_BOOK = "first-book"
 STALE = "stale"
 UNJUDGED = "unjudged"
+
+
+class Roots(BaseModel):
+    """Where the catch-up reads: the book root, the app, and the checkout that holds the book format's history, empty for the one the workflow runs from."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    book: Path
+    app: Path
+    history: str = ""
 
 
 class ModuleReport(BaseModel):
@@ -40,6 +52,11 @@ class BookReport(BaseModel):
 
     service: str
     modules: list[ModuleReport] = Field(default_factory=list)
+    format: FormatDelta | None = None
+
+    @property
+    def format_behind(self) -> bool:
+        return self.format is not None and self.format.behind
 
     @property
     def verdict(self) -> str:
@@ -65,16 +82,20 @@ class BookOutcome(BaseModel):
     elements: list[str] = Field(default_factory=list)
     added: list[str] = Field(default_factory=list)
     ignored: list[str] = Field(default_factory=list)
+    app: bool = True
+    moved: bool = False
+    format: list[str] = Field(default_factory=list)
 
 
 class Filed(BaseModel):
-    """What the fill found, by service, and for each book whose stale report could not be read what the command printed."""
+    """What the fill found, by service, and for each book whose stale report or format history could not be read what the command printed."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     stale: list[str] = Field(default_factory=list)
     settled: list[str] = Field(default_factory=list)
     unread: dict[str, str] = Field(default_factory=dict)
+    unformatted: dict[str, str] = Field(default_factory=dict)
 
 
 class CatchUpReply(BaseModel):
@@ -86,6 +107,7 @@ class CatchUpReply(BaseModel):
     blocked: str = Field(default="", description="Only when you could not finish: what an operator must decide or fix.")
     added: list[str] = Field(default_factory=list, description="The class name of each endpoint or interaction you added to the book, as the book spells it.")
     ignored: list[str] = Field(default_factory=list, description="Each pattern you added to the service's `App(ignore=...)`, as written there.")
+    format: list[str] = Field(default_factory=list, description="One line for each format change listed above, `<short sha> applied: <what you changed>` or `<short sha> not applicable: <why>`.")
 
 
 class CatchUpOutcome(BaseModel):

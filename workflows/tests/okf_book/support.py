@@ -20,6 +20,7 @@ from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
 from workhorse_workflows import okf_book
+from workhorse_workflows.okf_book.shared.book_format import SKILL_DIR
 from workhorse_workflows.okf_book.workflow import workflow
 
 FIX_COMMIT_NODE = "fix-refused-commit"
@@ -47,6 +48,28 @@ def advance(flow: object, step: Continue[...] | Await[...]) -> Continue[...] | A
 def git(repo: Path, *args: str) -> str:
     done = subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
     return done.stdout
+
+
+def commit_at(repo: Path, message: str, when: str, monkeypatch: pytest.MonkeyPatch) -> str:
+    """Commit what is staged with both dates set to *when*, and return the new commit's id."""
+    monkeypatch.setenv("GIT_COMMITTER_DATE", when)
+    monkeypatch.setenv("GIT_AUTHOR_DATE", when)
+    git(repo, "commit", "-q", "-m", message)
+    return git(repo, "rev-parse", "HEAD").strip()
+
+
+def skill_history(root: Path, monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """A repo with the skill folder and three commits to it, a day apart."""
+    root.mkdir(parents=True)
+    git(root, "init", "-q", "-b", "main")
+    shas: list[str] = []
+    for day, text in ((1, "one"), (3, "two"), (5, "three")):
+        skill = root / SKILL_DIR / "SKILL.md"
+        skill.parent.mkdir(parents=True, exist_ok=True)
+        _ = skill.write_text(f"{text}\n", encoding="utf-8")
+        git(root, "add", SKILL_DIR)
+        shas.append(commit_at(root, f"docs(base-library): teach {text}", f"2026-11-0{day}T12:00:00+00:00", monkeypatch))
+    return shas
 
 
 class ScriptedRunner(AgentRunner):

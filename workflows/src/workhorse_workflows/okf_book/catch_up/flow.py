@@ -7,14 +7,16 @@ from typing import NamedTuple
 from workhorse.pyflow import Await, Continue, Done, Transition
 from workhorse.worklist import WorkItem
 from workhorse_workflows.kit.schema import schema_block
-from workhorse_workflows.okf_book.catch_up.models import BookOutcome, BookReport, CatchUpOutcome, CatchUpReply
-from workhorse_workflows.okf_book.catch_up.nodes import BOOK, catch_up_diff, catch_up_fill, catch_up_outcomes, catch_up_record
-from workhorse_workflows.okf_book.shared.book_commits import caught_up_book_commit_subject
+from workhorse_workflows.okf_book.catch_up.models import STALE, BookOutcome, BookReport, CatchUpOutcome, CatchUpReply, Roots
+from workhorse_workflows.okf_book.catch_up.nodes import BOOK, catch_up_diff, catch_up_fill, catch_up_format_notes, catch_up_outcomes, catch_up_record
+from workhorse_workflows.okf_book.shared.book_commits import caught_up_book_commit_subject, format_book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import BLOCKED_GATE, COULD_NOT_JUDGE, ENVIRONMENT_GATE, MAX_LAPS, RED_GATE, BookFlow, blocked_question, environment_question, red_question
+from workhorse_workflows.okf_book.shared.book_format import mark_book_format
 from workhorse_workflows.okf_book.shared.book_gates import BookGate, python_book_calls, python_book_check, python_book_run, python_book_verified, run_flags
 
 UPDATE_PROMPT = "catch_up/prompts/update-book.md"
 STALE_GATE = "catch-up-stale.md"
+FORMAT_GATE = "catch-up-format.md"
 
 
 class Lap(NamedTuple):
@@ -35,14 +37,19 @@ class CatchUpBooks(BookFlow):
 
     stack_copy: str = ""
     services: list[str] = []
+    format_history: str = ""
 
     def start(self) -> Continue[...]:
         """File the books that are behind."""
         return Continue(None, self.fill).because("find the books that are behind")
 
     def fill(self) -> Continue[...] | Await[...]:
-        """Read the stale report of each book not yet judged, file the stale ones on the work list and record the rest. A report that cannot be read waits for the operator, whose answer reads it again."""
-        filed = self.call(catch_up_fill, self.root, self.code_root, tuple(self.services), self.run_dir)
+        """Read the stale report and the format history of each book not yet judged, file the books behind in either on the work list and record the rest. A report or a history that cannot be read waits for the operator, whose answer reads it again."""
+        filed = self.call(catch_up_fill, Roots(book=self.root, app=self.code_root, history=self.format_history), tuple(self.services), self.run_dir)
+        if filed.unformatted:
+            books = "\n\n".join(f"{service}:\n{said}" for service, said in sorted(filed.unformatted.items()))
+            question = f"What the book format changed could not be read for these books:\n\n{books}\n\nFix what it names, then answer here to read it again."
+            return Await(self.run_dir / FORMAT_GATE, question, self.fill).because("the format history could not be read")
         if filed.unread:
             books = "\n\n".join(f"{service}:\n{said}" for service, said in sorted(filed.unread.items()))
             question = f"The stale report of these books could not be read:\n\n{books}\n\nFix what it names, then answer here to read them again."
@@ -74,6 +81,12 @@ class CatchUpBooks(BookFlow):
             for module in report.modules
         ]
 
+    @staticmethod
+    def _format(report: BookReport) -> dict[str, object] | None:
+        if report.format is None or not report.format.behind:
+            return None
+        return {"commits": [{"sha": commit.sha, "short": commit.sha[:7], "subject": commit.subject} for commit in report.format.commits], "diff": report.format.diff}
+
     def write(self, service: str, gate: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
         """One owner turn updates the book from its stale report and the diff, opening on what the last gate printed. A turn that ends without a reply starts the next one fresh, and the gates judge what it left."""
         report = self._report(service)
@@ -84,7 +97,9 @@ class CatchUpBooks(BookFlow):
             "book_root": self.root.as_posix(),
             "app_root": self.code_root.as_posix(),
             "stack_copy": self.stack_copy,
+            "app_changed": report.verdict == STALE,
             "sections": self._sections(report),
+            "format": self._format(report),
             "gate": gate,
             "result_schema": schema_block(CatchUpReply),
         }
@@ -95,6 +110,7 @@ class CatchUpBooks(BookFlow):
             lambda: self.agent(UPDATE_PROMPT, returns=CatchUpReply, power="high", timeout=float("inf"), args=args, cwd=self.root, add_dirs=self._add_dirs(), session=owner_chain(service)),
             session=owner_chain(service),
         )
+        _ = self.call(catch_up_format_notes, self.run_dir, service, tuple(reply.format))
         if reply.blocked:
             question = blocked_question(service, reply.blocked)
             return Await(self.run_dir / BLOCKED_GATE, question, self.heard, question=question, gate_name=BLOCKED_GATE, service=service, lap=lap, kept={"added": sorted({*added, *reply.added}), "ignored": sorted({*ignored, *reply.ignored})}).because(
@@ -117,10 +133,15 @@ class CatchUpBooks(BookFlow):
         return Continue(gate, self.play, service=service, lap=lap, added=added, ignored=ignored).because("the check passes")
 
     def play(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
-        """Play, in each module, the journeys that call the endpoints and interactions the report named or the owner added. A pass stamps the book, and the first fail sends the owner another lap."""
+        """Play, in each module, the journeys that call the endpoints and interactions the report named or the owner added, or the whole module when the book format moved. A pass stamps the book, and the first fail sends the owner another lap."""
         report = self._report(service)
         gate = BookGate(exit_code=0)
         for module in report.modules:
+            if report.format_behind:
+                gate = self.call(python_book_run, self.root, module.module, self.run_dir / "book-run" / module.module, run_flags(self.stack_copy))
+                if gate.exit_code != 0:
+                    return self._judged("run", module.module, gate, Lap(service, lap, added, ignored), self.play)
+                continue
             known = self.call(python_book_calls, self.root, module.module)
             names = tuple(sorted(set(known) & {*module.elements, *added}))
             if not names:
@@ -128,15 +149,18 @@ class CatchUpBooks(BookFlow):
             gate = self.call(python_book_run, self.root, module.module, self.run_dir / "book-run" / module.module, run_flags(self.stack_copy, names))
             if gate.exit_code != 0:
                 return self._judged("run", module.module, gate, Lap(service, lap, added, ignored), self.play)
-        return Continue(gate, self.stamp, service=service, lap=lap, added=added, ignored=ignored).because("the targeted run is green")
+        return Continue(gate, self.stamp, service=service, lap=lap, added=added, ignored=ignored).because("the run is green")
 
     def stamp(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
-        """Record the app's HEAD as the commit each of the book's modules is verified at. A module that refuses, because a file or function changed since the verified commit is named by no element or a pointer names a file that is gone, sends the owner another lap with what it printed."""
+        """Record the app's HEAD as the commit each of the book's modules is verified at, when the app changed. A module that refuses, because a file or function changed since the verified commit is named by no element or a pointer names a file that is gone, sends the owner another lap with what it printed. A book that moved onto the format then records the commit of the instructions it was judged against."""
+        report = self._report(service)
         gate = BookGate(exit_code=0)
-        for module in self._modules(service):
+        for module in self._modules(service) if report.verdict == STALE else []:
             gate = self.call(python_book_verified, self.root, module, self.code_root)
             if gate.exit_code != 0:
                 return self._judged("verified", module, gate, Lap(service, lap, added, ignored), self.stamp)
+        if report.format is not None and report.format_behind:
+            _ = self.call(mark_book_format, self.root, service, report.format.head)
         return Continue(gate, self.render, service=service, lap=lap, added=added, ignored=ignored).because("the book is stamped")
 
     def render(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
@@ -148,10 +172,13 @@ class CatchUpBooks(BookFlow):
 
     def commit(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
         """Commit the book's package and its stamp, and record the book as caught up. A retry after the commit landed finds nothing to commit."""
-        waiting = self._commit_or_await(caught_up_book_commit_subject(service), (f"services/{service}",), self.commit, service=service, lap=lap, added=added, ignored=ignored)
+        report = self._report(service)
+        subject = caught_up_book_commit_subject(service) if report.verdict == STALE else format_book_commit_subject(service)
+        waiting = self._commit_or_await(subject, (f"services/{service}",), self.commit, service=service, lap=lap, added=added, ignored=ignored)
         if waiting:
             return waiting
-        outcome = BookOutcome(service=service, verdict="caught-up", laps=lap, elements=self._report(service).elements, added=added, ignored=ignored)
+        notes = self.call(catch_up_format_notes, self.run_dir, service, ())
+        outcome = BookOutcome(service=service, verdict="caught-up", laps=lap, elements=report.elements, added=added, ignored=ignored, app=report.verdict == STALE, moved=report.format_behind, format=notes if report.format_behind else [])
         _ = self.call(catch_up_record, self.run_dir, outcome)
         return Continue(outcome, self.books).because("the book is committed")
 
@@ -185,7 +212,14 @@ def _line(outcome: BookOutcome) -> str:
         return f"{outcome.service}: current"
     if outcome.verdict == "first-book":
         return f"{outcome.service}: first book, write it with python_book"
+    moved = f"moved onto the format, {_count(outcome, 'applied')} changes applied, {_count(outcome, 'not applicable')} not applicable"
+    if not outcome.app:
+        return f"{outcome.service}: {moved}"
     line = f"{outcome.service}: caught up in {outcome.laps} laps, {len(outcome.elements)} elements changed, {len(outcome.added)} endpoints added"
     if outcome.ignored:
         line += f", {len(outcome.ignored)} files ignored: {', '.join(outcome.ignored)}"
-    return line
+    return f"{line}, {moved}" if outcome.moved else line
+
+
+def _count(outcome: BookOutcome, kind: str) -> int:
+    return sum(1 for line in outcome.format if line.partition(" ")[2].startswith(kind))

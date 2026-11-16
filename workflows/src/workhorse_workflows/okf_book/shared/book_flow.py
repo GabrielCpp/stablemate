@@ -27,6 +27,7 @@ ENVIRONMENT_GATE = "python-book-environment.md"
 DECISIONS_GATE = "python-book-decisions.md"
 SKELETON_GATE = "python-book-skeleton.md"
 REASONS_GATE = "python-book-reasons.md"
+FORMAT_GATE = "python-book-format.md"
 ANSWER_LIMIT_CHARS = 8000
 MAX_LAPS = 3
 COULD_NOT_JUDGE = 3
@@ -42,6 +43,10 @@ def red_question(service: str, lap: int, said: str) -> str:
 
 def environment_question(service: str, verb: str, said: str) -> str:
     return f"The book's {verb} could not judge the {service} book, which is the environment's side:\n\n{said}\n\nFix the environment, then answer here to {verb} again."
+
+
+def format_question(service: str, said: str) -> str:
+    return f"What the book format changed could not be read for the {service} book:\n\n{said}\n\nFix what it names, then answer here to read it again."
 
 
 def decisions_question(service: str, said: str) -> str:

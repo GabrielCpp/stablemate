@@ -10,6 +10,7 @@ from workhorse.pyflow import Await, Continue, Done, Transition, dry_run
 from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.kit.tools import run_tool
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
+from workhorse_workflows.okf_book.shared.book_format import book_format_delta, mark_book_format
 from workhorse_workflows.okf_book.shared.book_gates import BookGate, book_command, tail, python_book_check, python_book_missing, python_book_run, python_book_verified, run_flags
 from workhorse_workflows.okf_book.shared.book_commits import book_commit_subject
 from workhorse_workflows.okf_book.shared.book_flow import (
@@ -17,6 +18,7 @@ from workhorse_workflows.okf_book.shared.book_flow import (
     COULD_NOT_JUDGE,
     DECISIONS_GATE,
     ENVIRONMENT_GATE,
+    FORMAT_GATE,
     MAX_LAPS,
     REASONS_GATE,
     RED_GATE,
@@ -25,6 +27,7 @@ from workhorse_workflows.okf_book.shared.book_flow import (
     blocked_question,
     decisions_question,
     environment_question,
+    format_question,
     no_reply_question,
     red_question,
 )
@@ -82,6 +85,7 @@ class WritePythonBook(BookFlow):
     kind: str = "cli"
     source_folder: str = ""
     stack_copy: str = ""
+    format_history: str = ""
 
     @property
     def source_root(self) -> Path:
@@ -109,8 +113,12 @@ class WritePythonBook(BookFlow):
         base = book_module(self.service)
         return tuple(f"{base}.{kind}" for kind in self.kinds if kind in SCREEN_KINDS)
 
-    def start(self) -> Continue[...]:
-        """Survey a book reached by a screen surface that already has a package, and send the owner its first lap otherwise."""
+    def start(self) -> Continue[...] | Await[...]:
+        """Read what the book format changed for a book whose package exists, and wait for the operator where that cannot be read. Survey a book reached by a screen surface that already has a package, and send the owner its first lap otherwise."""
+        if (self.root / self.package).is_dir():
+            delta = self.call(book_format_delta, self.root, self.service, self.format_history)
+            if delta.unreadable:
+                return Await(self.run_dir / FORMAT_GATE, format_question(self.service, delta.unreadable), self.start).because("the format history could not be read")
         if self.screen_modules and (self.root / self.package).is_dir():
             return Continue(None, self.survey, gate="", lap=0).because("survey the screens")
         return Continue(None, self.write, gate="", lap=1).because("send the owner")
@@ -265,6 +273,14 @@ class WritePythonBook(BookFlow):
             )
         return Continue(reply, self.check, lap=lap).because("check the book")
 
+    def _format(self) -> dict[str, object] | None:
+        if not (self.root / self.package).is_dir():
+            return None
+        delta = self.call(book_format_delta, self.root, self.service, self.format_history)
+        if not delta.behind:
+            return None
+        return {"commits": [{"short": commit.sha[:7], "subject": commit.subject} for commit in delta.commits], "diff": delta.diff}
+
     def _prompt_args(self, gate: str) -> dict[str, object]:
         return {
             "service": self.service,
@@ -278,6 +294,7 @@ class WritePythonBook(BookFlow):
             "app_root": self.code_root.as_posix(),
             "references": finished_books(self.root, self.service),
             "stack_copy": self.stack_copy,
+            "format": self._format(),
             "gate": gate,
         }
 
@@ -316,12 +333,17 @@ class WritePythonBook(BookFlow):
         return Continue(gate, self.stamp, lap=lap).because("no source file is left unnamed")
 
     def stamp(self, lap: int) -> Continue[...] | Await[...]:
-        """Record the app's HEAD as the commit each of the book's modules is verified at, so a later catch-up knows where the book was judged. A module that refuses sends the owner another lap with what it printed."""
+        """Record the app's HEAD as the commit each of the book's modules is verified at, so a later catch-up knows where the book was judged, and the commit of the writer's instructions it was written against. A module that refuses sends the owner another lap with what it printed. A format history that cannot be read waits for the operator."""
         gate = BookGate(exit_code=0)
         for module in self.modules:
             gate = self.call(python_book_verified, self.root, module, self.code_root)
             if gate.exit_code != 0:
                 return self._judged("verified", module, gate, lap, self.stamp)
+        delta = self.call(book_format_delta, self.root, self.service, self.format_history)
+        if delta.unreadable:
+            return Await(self.run_dir / FORMAT_GATE, format_question(self.service, delta.unreadable), self.stamp, lap=lap).because("the format history could not be read")
+        if delta.head:
+            _ = self.call(mark_book_format, self.root, self.service, delta.head)
         return Continue(gate, self.render, lap=lap).because("the book is stamped")
 
     @staticmethod

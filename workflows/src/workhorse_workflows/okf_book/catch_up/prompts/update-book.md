@@ -1,6 +1,6 @@
-# okf-book catch-up — update one book to the app's HEAD
+# okf-book catch-up — update one book to the app's HEAD and the book format
 
-Bring the `{{ service }}` book up to date with the app. The book is the package `{{ package }}/`
+Bring the `{{ service }}` book up to date. The book is the package `{{ package }}/`
 under the book root, `{{ book_root }}`. Write only there. The app's source is in `{{ app_root }}`.
 Its tests, test doubles and fixtures are no part of the book, so read none of them.
 
@@ -14,6 +14,7 @@ stop nothing. The book writes each host as `ostler:` with no copy name after it,
 command that reaches the app takes `--copy {{ stack_copy }}`.
 {% endif %}
 
+{% if app_changed %}
 The book was last verified against the commit below, and the app has changed since. Each
 element listed is one whose source changed. Each file listed as unnamed is a file the book
 names nowhere. Reread each, and bring the book to what the diff says:
@@ -60,6 +61,27 @@ The diff of those files since `{{ section.verified }}`:
 {{ section.diff }}
 ```
 {% endfor %}
+{% endif %}
+{% if format %}
+
+The book format changed since this book was last judged against it. For each change, apply it
+wherever this book uses the old form, following the current `ostler-book` skill, or say why it
+does not apply to this book. Keep every behaviour the book states. The changes, oldest first:
+
+{% for commit in format.commits %}
+- `{{ commit.short }}` {{ commit.subject }}
+{% endfor %}
+
+Their diff:
+
+```diff
+{{ format.diff }}
+```
+
+Name each change in `format`, one line each, spelled `<short sha> applied: <what you changed>` or
+`<short sha> not applicable: <why>`. The run plays the whole book after your turn, so a form left
+in the old shape fails there.
+{% endif %}
 {% if gate %}
 
 The last lap ended on this:
@@ -67,9 +89,9 @@ The last lap ended on this:
 {{ gate }}
 {% endif %}
 
-Name each endpoint or interaction you add in `added`, spelled as its class. The run plays the
+Name each endpoint or interaction you add in `added`, spelled as its class.{% if app_changed %} The run plays the
 journeys of the changed elements and of those you name, so a name left out is a route that goes
-unplayed. Name each pattern you added to `App(ignore=...)` in `ignored`, as written there.
+unplayed.{% endif %} Name each pattern you added to `App(ignore=...)` in `ignored`, as written there.
 
 You are done when, for each module below, `check` exits 0 and `stale` prints nothing under
 `## Changed files no element names`, `## Changed functions no element names` and
@@ -83,7 +105,7 @@ python -m ostler.book stale {{ module }} --app {{ app_root }}
 {% endfor %}
 ```
 
-{% if stack_copy %}
+{% if stack_copy and app_changed %}
 Before you reply, play the journeys of the endpoints and interactions among the changed elements
 and of those you added, with their names, comma separated, after `--only`, and repair the book
 until it reads 0 fail:

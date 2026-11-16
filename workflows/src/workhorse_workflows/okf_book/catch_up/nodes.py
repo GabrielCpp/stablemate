@@ -1,19 +1,22 @@
 """The catch-up's nodes: which books are behind, what changed in them, and how each book was left."""
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
 from typing import cast
 
 from workhorse.worklist import WORK_FILE, JsonBackend, WorkItem, WorkList
 from workhorse_workflows.kit.git import open_repo
-from workhorse_workflows.okf_book.catch_up.models import CURRENT, STALE, UNJUDGED, BookOutcome, BookReport, Filed, ModuleReport
+from workhorse_workflows.okf_book.catch_up.models import CURRENT, FIRST_BOOK, STALE, UNJUDGED, BookOutcome, BookReport, Filed, ModuleReport, Roots
 from workhorse_workflows.okf_book.catch_up.report import read_stale
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
+from workhorse_workflows.okf_book.shared.book_format import book_format_delta
 from workhorse_workflows.okf_book.shared.book_gates import run_stale
 
 BOOK = "book"
 OUTCOMES_DIR = "outcomes"
+NOTES_DIR = "format-notes"
 DIFF_LIMIT_CHARS = 60000
 
 
@@ -38,7 +41,7 @@ def write_outcome(run_dir: Path, outcome: BookOutcome) -> None:
     _ = path.write_text(outcome.model_dump_json(indent=2), encoding="utf-8")
 
 
-def _one_stale_book(_logger: logging.Logger, _root: Path, _app: Path, _services: tuple[str, ...], run_dir: Path) -> Filed:
+def _one_stale_book(_logger: logging.Logger, _roots: Roots, _services: tuple[str, ...], run_dir: Path) -> Filed:
     module = ModuleReport(module="services.ledger", verdict=STALE, verified="0" * 7, elements={"Ping": ["ledger/ping.py"]}, new_files=["ledger/new.py"])
     report = BookReport(service="ledger", modules=[module])
     WorkList(JsonBackend(run_dir / WORK_FILE)).add([WorkItem(id="ledger", kind=BOOK, order=0, payload=report.model_dump(mode="json"))])
@@ -46,9 +49,10 @@ def _one_stale_book(_logger: logging.Logger, _root: Path, _app: Path, _services:
 
 
 @blueprint.node(stub=_one_stale_book)
-def catch_up_fill(logger: logging.Logger, root: Path, app: Path, services: tuple[str, ...], run_dir: Path) -> Filed:
-    """File each book with something stale on the run's work list, and record the books that need no turn: current and first books. A book whose stale report could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
+def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...], run_dir: Path) -> Filed:
+    """File each book with something stale in the app or behind on the book format on the run's work list, and record the books that need no turn: current and first books. A book whose stale report or format history could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
     work = WorkList(JsonBackend(run_dir / WORK_FILE))
+    root = roots.book
     modules = book_modules(root)
     names = list(services) if services else sorted(modules)
     done = {item.id for item in work.items(BOOK)}
@@ -56,19 +60,27 @@ def catch_up_fill(logger: logging.Logger, root: Path, app: Path, services: tuple
     for order, service in enumerate(names):
         if service in done or outcome_path(run_dir, service).is_file():
             continue
-        report = BookReport(service=service, modules=[_survey(logger, root, module, app) for module in modules.get(service, [])])
+        report = BookReport(service=service, modules=[_survey(logger, root, module, roots.app) for module in modules.get(service, [])])
         if report.verdict == UNJUDGED:
             filed.unread[service] = "\n\n".join(_unread(module) for module in report.modules if module.verdict == UNJUDGED)
         elif not report.modules:
             write_outcome(run_dir, BookOutcome(service=service, verdict="first-book"))
             filed.settled.append(service)
-        elif report.verdict == STALE:
-            _ = work.add([WorkItem(id=service, kind=BOOK, order=order, payload=report.model_dump(mode="json"))])
-            filed.stale.append(service)
-        else:
+        elif report.verdict == FIRST_BOOK:
             write_outcome(run_dir, _settled(report))
             filed.settled.append(service)
-    logger.info("catch-up fill: %d stale, %d settled, %d unread", len(filed.stale), len(filed.settled), len(filed.unread))
+        else:
+            delta = book_format_delta(logger, root, service, roots.history)
+            if delta.unreadable:
+                filed.unformatted[service] = delta.unreadable
+            elif report.verdict == STALE or delta.behind:
+                report = report.model_copy(update={"format": delta})
+                _ = work.add([WorkItem(id=service, kind=BOOK, order=order, payload=report.model_dump(mode="json"))])
+                filed.stale.append(service)
+            else:
+                write_outcome(run_dir, _settled(report))
+                filed.settled.append(service)
+    logger.info("catch-up fill: %d filed, %d settled, %d unread, %d without format history", len(filed.stale), len(filed.settled), len(filed.unread), len(filed.unformatted))
     return filed
 
 
@@ -128,3 +140,21 @@ def catch_up_outcomes(logger: logging.Logger, run_dir: Path) -> list[BookOutcome
     if not folder.is_dir():
         return []
     return [BookOutcome.model_validate_json(path.read_text(encoding="utf-8")) for path in sorted(folder.glob("*.json"))]
+
+
+def _no_notes(_logger: logging.Logger, *_args: object) -> list[str]:
+    return []
+
+
+@blueprint.node(stub=_no_notes)
+def catch_up_format_notes(logger: logging.Logger, run_dir: Path, service: str, lines: tuple[str, ...]) -> list[str]:
+    """Merge the format lines an owner turn replied into the ones the book's earlier laps gave, a later line for a commit replacing an earlier one, and return them all."""
+    path = run_dir / NOTES_DIR / f"{service}.json"
+    kept = cast("dict[str, str]", json.loads(path.read_text(encoding="utf-8"))) if path.is_file() else {}
+    for line in (line for line in lines if line.strip()):
+        kept[line.split()[0]] = line
+    if any(line.strip() for line in lines):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(json.dumps(kept, indent=2), encoding="utf-8")
+    logger.info("%s: %d format lines", service, len(kept))
+    return list(kept.values())

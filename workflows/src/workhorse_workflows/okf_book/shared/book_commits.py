@@ -34,3 +34,16 @@ def repaired_book_commit_message(service: str, description: str = "", body: str 
 def caught_up_book_commit_subject(service: str) -> str:
     """The subject of a book this workflow's catch-up brought up to the app's HEAD."""
     return f"docs({service}): catch the {service} book up with the app"
+
+
+SUBJECT_LIMIT = 72
+
+
+def format_book_commit_subject(service: str) -> str:
+    """The subject of a book this workflow's catch-up moved onto the current book format, naming the book once and then shortening the rest where the service's name is long."""
+    options = (
+        f"docs({service}): move the {service} book onto the current book format",
+        f"docs({service}): move the book onto the current book format",
+        f"docs({service}): adopt the current book format",
+    )
+    return next((subject for subject in options if len(subject) <= SUBJECT_LIMIT), options[-1])

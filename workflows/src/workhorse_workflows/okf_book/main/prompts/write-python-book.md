@@ -46,6 +46,22 @@ Some of the book may already be there. Keep what is right, fix what is wrong, an
 missing. A book that turns out shaped wrong for the app gets restructured: move the model,
 split a matrix or merge two fixtures where that makes the app easier to read. The first
 version of a book is never the final one.
+{% if format %}
+
+The book format changed since this book was last judged against it. For each change, apply it
+wherever this book uses the old form, following the current `ostler-book` skill, or say why it
+does not apply to this book. Keep every behaviour the book states. The changes, oldest first:
+
+{% for commit in format.commits %}
+- `{{ commit.short }}` {{ commit.subject }}
+{% endfor %}
+
+Their diff:
+
+```diff
+{{ format.diff }}
+```
+{% endif %}
 {% if gate %}
 
 The last lap ended on this:

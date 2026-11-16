@@ -44,14 +44,14 @@ def make_app(repo: Path) -> str:
     return first
 
 
-def build_flow(tmp_path: Path, replies: dict[str, Reply] | None = None, services: list[str] | None = None, books: tuple[str, ...] = ("ledger",)) -> tuple[CatchUpBooks, ScriptedRunner, RunEnv]:
+def build_flow(tmp_path: Path, replies: dict[str, Reply] | None = None, services: list[str] | None = None, books: tuple[str, ...] = ("ledger",), history: str = "") -> tuple[CatchUpBooks, ScriptedRunner, RunEnv]:
     runner = ScriptedRunner(replies or {})
     env = run_env(tmp_path / "runs", runner)
     repo = tmp_path / "repo"
     repo.mkdir()
     for book in books:
         write_book(repo, book)
-    flow = CatchUpBooks(repo_dir=str(repo), stack_copy="evening", services=services or [])
+    flow = CatchUpBooks(repo_dir=str(repo), stack_copy="evening", services=services or [], format_history=history)
     flow._bind(Engine(env))  # pyright: ignore[reportPrivateUsage]
     return flow, runner, env
 

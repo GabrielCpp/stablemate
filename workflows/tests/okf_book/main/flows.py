@@ -13,12 +13,12 @@ from workhorse_workflows.okf_book.main.python_book_flow import WritePythonBook
 from okf_book.support import Reply, ScriptedRunner, git, run_env
 
 
-def build_flow(tmp_path: Path, replies: dict[str, Reply] | None = None, kind: str = "cli") -> tuple[WritePythonBook, ScriptedRunner]:
+def build_flow(tmp_path: Path, replies: dict[str, Reply] | None = None, kind: str = "cli", history: str = "") -> tuple[WritePythonBook, ScriptedRunner]:
     runner = ScriptedRunner(replies or {})
     env = run_env(tmp_path / "runs", runner)
     repo = tmp_path / "repo"
     repo.mkdir()
-    flow = WritePythonBook(repo_dir=str(repo), service="ledger", kind=kind, source_folder="ledger")
+    flow = WritePythonBook(repo_dir=str(repo), service="ledger", kind=kind, source_folder="ledger", format_history=history)
     flow._bind(Engine(env))  # pyright: ignore[reportPrivateUsage]
     return flow, runner
 
