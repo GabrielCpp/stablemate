@@ -190,6 +190,32 @@ never modelled here: the book refers to it, as [neighbours.md](neighbours.md) sa
   under the root declares the event itself with `owner = "<who emits it>"` and lists it too.
   `check` fails a `reads` path the event's detail does not declare.
 
+- **An action states what it announces.** The action's `announces(event, a, s, by)` is a
+  static method that returns the detail of the event as far as the model predicts it, built
+  from the state after the action. The first line of its docstring is what the book says the
+  emission carries. A path it leaves out is not judged, and the default returns nothing, so
+  the run only demands that the event arrives about a record it made.
+
+  ```python
+  class Transition(Action[TicketFixture, Ticket]):
+      emits = (TicketChanged,)
+
+      @staticmethod
+      def announces(event, a, s, by):
+          """The ticket, that it was updated, and the status it moved to."""
+          return {"ticket_id": a.id, "kind": "updated", "snapshot": {"status": s.tickets[a.id].status}}
+  ```
+
+- **The environment's `Bus` delivers and taps.** `Environment(..., delivery=Bus("<bus name>",
+  endpoint=..., region=...))` places the events of an outside event and reads the events the
+  actions emit. The first emitting step makes a queue for the run and a rule that sends every
+  event of the bus to it, and the run removes both when it ends, fails or is stopped. The run
+  judges only an event about a record it made, so another team's event on the shared bus is
+  ignored. A step fails when no such event arrives, or when a predicted path holds another value.
+  The run report ends with `emissions: <n> proven, <n> fail, <n> unproven`. An environment that
+  names no delivery, or one that cannot tap, leaves its emissions unproven: the steps pass and
+  the line says so.
+
 - **The surface performs it by sending the other service's own call**, imported from that
   service's book, `services/ticket/endpoints`. A call that book lacks is declared there,
   never here. The call must succeed, so the surface raises `BookError` on a refusal: the
