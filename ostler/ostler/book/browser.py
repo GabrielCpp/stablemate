@@ -355,9 +355,7 @@ class Browser(ListReader):
         if not self._native(found):
             self._pick_in_popup(component, found, value)
             return
-        if component.lists is not None:
-            chosen = found.evaluate("el => el.selectedOptions.length ? el.selectedOptions[0].text : ''")
-            self._judge(component, self._texts(found), chosen)
+        self._judge_native(component, found)
         offered = found.evaluate("el => [...el.options].map(o => o.value)")
         if value not in offered:
             raise CannotReach(f"{component.found_by(self.lang)} offers only {offered}")
@@ -403,13 +401,21 @@ class Browser(ListReader):
                 return [value === null ? label : value, label];
             })""")]
 
-    def _pick_in_popup(self, component: Component, found: Any, value: str) -> None:
-        listbox = self._open(found)
-        entries = self._entries(listbox)
+    def _judge_native(self, component: Component, found: Any) -> None:
+        if component.lists is not None:
+            chosen = found.evaluate("el => el.selectedOptions.length ? el.selectedOptions[0].text : ''")
+            self._judge(component, self._texts(found), chosen)
+
+    def _judge_popup(self, component: Component, found: Any, listbox: Any, entries: list[tuple[str, str]]) -> None:
         if component.lists is not None:
             marked = listbox.evaluate(
                 """el => { const o = el.querySelector('[role=option][aria-selected=true]'); return o ? o.innerText.trim() : null; }""")
             self._judge(component, [label for _, label in entries], found.inner_text().strip() if marked is None else marked)
+
+    def _pick_in_popup(self, component: Component, found: Any, value: str) -> None:
+        listbox = self._open(found)
+        entries = self._entries(listbox)
+        self._judge_popup(component, found, listbox, entries)
         values = [entry for entry, _ in entries]
         labels = [label for _, label in entries]
         if value in values:
@@ -431,17 +437,19 @@ class Browser(ListReader):
         return shown
 
     def labels(self, component: Component, within: Component | None = None) -> list[str]:
-        """The texts a select shows, in order. A popup is opened to read them and closed again. A form gives the
-        names of its fields, read and judged as `fields` does."""
+        """The texts a select shows, in order, judged against what the book states of its list. A popup is opened to
+        read them and closed again. A form gives the names of its fields, read and judged as `fields` does."""
         if component.kind == "form":
             return [label for label, _ in self.fields(component, within)]
         found = self.locate(component, within=within)
         if self._native(found):
+            self._judge_native(component, found)
             return self._texts(found)
         listbox = self._open(found)
-        shown = [label for _, label in self._entries(listbox)]
+        entries = self._entries(listbox)
+        self._judge_popup(component, found, listbox, entries)
         self._close(listbox)
-        return shown
+        return [label for _, label in entries]
 
     def offered(self, component: Component, within: Component | None = None) -> list[str]:
         """The values a select offers, in order. A popup is opened to read them and closed again."""

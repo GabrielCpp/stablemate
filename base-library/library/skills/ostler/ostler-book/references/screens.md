@@ -77,8 +77,8 @@ assignee = Select("list-assignee", ASSIGNEE, "filters by owner",
                               always=owners, never=not_me))
 ```
 
-The run judges the list when a journey picks in it: it reads the labels the select shows and
-compares them with the `head` labels followed by `derived` applied to the last answer the page
+The run judges the list when a journey picks in it or reads it with `labels(component)`: it reads
+the labels the select shows and compares them with the `head` labels followed by `derived` applied to the last answer the page
 received to `given`. `derived(body, url)` may take the URL of the request answered as a second
 argument, the page's URL for `handed`, and `''` for `asked`. A difference fails the step and the
 note names both orders. The report names the lists a pick judged, the stated ones no pick reached and the selects nobody stated.
@@ -305,7 +305,7 @@ the tap is the select's own text. A phone judges `derived` (from `asked` only), 
 `entries` and `picked` as the web does, then taps the entry whose text is the value. A value the list
 does not show closes it with Android back and is a `CannotReach` that names what it offers. A phone
 sees no request, so a list whose `given` is `request(...)` or `handed(...)` is a fault saying so.
-`labels(component)` opens a list, reads it and closes it. `picked` is judged again after `launch()`
+`labels(component)` opens a list, judges it as a pick does, and closes it. `picked` is judged again after `launch()`
 or `clear()`.
 
 `fill` types with `adb input text`, so text outside printable ASCII is a `CannotReach`. It reads

@@ -276,10 +276,16 @@ class Device(ListReader):
         self.adb("shell", "input", "keyevent", "4")
 
     def labels(self, component: Component, within: Component | None = None) -> list[str]:
-        """The texts a select shows, in order. The list is opened to read them and closed again."""
-        entries = self.opened(component, self.locate(component, within))
+        """The texts a select shows, in order, judged against what the book states of its list. The list is opened to
+        read them and closed again."""
+        node = self.locate(component, within)
+        selected = self.selected(component, node)
+        entries = self.opened(component, node)
         self.back()
-        return [entry.shown for entry in entries]
+        shown = [entry.shown for entry in entries]
+        if component.lists is not None:
+            self.lists.judge(component, shown, selected, self.lang, self.feed)
+        return shown
 
     def pick(self, component: Component, value: str, within: Component | None = None) -> None:
         node = self.locate(component, within)

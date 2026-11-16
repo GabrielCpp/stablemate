@@ -160,6 +160,14 @@ def test_the_labels_of_a_phone_list_are_read_top_to_bottom_and_the_list_is_close
     assert calls.shown == calls.closed
 
 
+def test_reading_the_labels_of_a_phone_list_judges_its_entry_rules(monkeypatch):
+    device, calls = phone(monkeypatch, Ordered, "Anyone", "bo", "ana")
+    calls.opened = view("Anyone", "bo", "ana", upside_down=True)
+
+    assert device.labels(Ordered.who) == ["Anyone", "bo", "ana"]
+    assert device.list_faults() == ["the list Ordered.who breaks \"in order\": 'ana' comes after 'bo'"]
+
+
 def test_a_phone_list_derived_from_the_asked_feed_passes_when_it_shows_what_the_book_derives(monkeypatch, backend):
     server, _ = backend
     add(server, "first")
