@@ -192,7 +192,7 @@ def test_a_journey_that_sends_another_books_call_is_named(root: Path):
 
 
 def test_a_book_alone_under_its_root_gets_no_boundary_finding(root: Path):
-    for book in ("api", "web", "digest"):
+    for book in ("api", "web", "digest", "kit"):
         shutil.rmtree(root / "services" / book)
     _other(root)
     assert _boundary("services.other") == []
