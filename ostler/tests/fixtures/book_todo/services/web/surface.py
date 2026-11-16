@@ -223,9 +223,10 @@ class TodoWeb(PageSurface):
         b = self.browser
         b.fill(AddForm.title, title, AddForm.root)
         save = b.locate(AddForm.save, within=AddForm.root)
-        with self._listed() as got, b.holding(request("POST", "/todos")):
+        with self._listed() as got, b.holding(request("POST", "/todos")) as held:
             with b.sent(request("POST", "/todos")):
                 save.click()
+            held.arrived()
             b.wait_for(AddForm.saving, within=AddForm.root)
             disabled = save.is_disabled()
             save.click(force=True, no_wait_after=True)

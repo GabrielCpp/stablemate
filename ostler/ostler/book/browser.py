@@ -107,6 +107,17 @@ def refusal(method: str, path: str) -> Wanted:
     return lambda response: wanted(response.request) and response.status >= 400
 
 
+class Held:
+    def __init__(self, page: Any, routes: list[Any]):
+        self.page = page
+        self.routes = routes
+
+    def arrived(self) -> None:
+        """Returns once a request is held, answering the browser's events until then."""
+        while not self.routes:
+            self.page.evaluate("0")
+
+
 @dataclass
 class Received:
     response: Any = None
@@ -128,6 +139,7 @@ class Browser(ListReader):
         headless: bool = True,
         lang_query: str | None = "lang",
         timeout: float = 10_000,
+        hang_guard: float = 600_000,
         locales: Mapping[str, str] | None = None,
     ):
         self.base = base.rstrip("/")
@@ -137,6 +149,7 @@ class Browser(ListReader):
         self.selector = selector
         self.headless = headless
         self.timeout = timeout
+        self.hang_guard = hang_guard
         self.video_dir: str | None = None
         self._pw: Any = None
         self._browser: Any = None
@@ -487,7 +500,7 @@ class Browser(ListReader):
         matches, body included. The answer is in the result; what the page
         does with it is the surface's to wait for."""
         received = Received()
-        with self.page.expect_response(lambda r: any(w(r) for w in wanted)) as info:
+        with self.page.expect_response(lambda r: any(w(r) for w in wanted), timeout=self.hang_guard) as info:
             yield received
         received.response = info.value
         received.response.body()
@@ -495,29 +508,31 @@ class Browser(ListReader):
     @contextmanager
     def sent(self, wanted: Wanted) -> Iterator[None]:
         """Runs the body, then waits for the request `wanted` to leave."""
-        with self.page.expect_request(wanted):
+        with self.page.expect_request(wanted, timeout=self.hang_guard):
             yield
 
     @contextmanager
-    def holding(self, wanted: Wanted) -> Iterator[None]:
+    def holding(self, wanted: Wanted) -> Iterator["Held"]:
         """Keeps every request `wanted` from reaching the server until the body
         ends, so a phase the app leaves as soon as the answer lands can be
-        observed."""
+        observed. A request that has left the page is not yet held: the body
+        calls `arrived()` on the result to wait until it is."""
         held: list[Any] = []
+        live = [True]
 
         def hold(route: Any) -> None:
-            if wanted(route.request):
+            if live[0] and wanted(route.request):
                 held.append(route)
             else:
                 route.continue_()
 
         self.page.route("**/*", hold)
         try:
-            yield
+            yield Held(self.page, held)
         finally:
+            live[0] = False
             for route in held:
                 route.continue_()
-            self.page.unroute("**/*", hold)
 
     def set_offline(self, offline: bool) -> None:
         self.context.set_offline(offline)
