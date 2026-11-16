@@ -86,6 +86,62 @@ def test_a_path_is_on_a_route_the_way_sveltekit_spells_it(route: str, path: str,
     assert on_route(route, path) is on
 
 
+def test_a_path_with_more_segments_than_its_route_is_not_on_it():
+    assert not on_route("/assign", "/assign/extra")
+
+
+def test_a_path_with_a_suffix_after_its_route_is_not_on_it():
+    assert not on_route("/assign", "/assignment")
+
+
+def test_a_route_parameter_takes_exactly_one_segment():
+    assert on_route("/tickets/[id]", "/tickets/7")
+    assert not on_route("/tickets/[id]", "/tickets/7/edit")
+
+
+def test_a_rest_parameter_takes_no_segment_as_well_as_several():
+    assert on_route("/docs/[...rest]", "/docs")
+    assert on_route("/docs/[...rest]", "/docs/a")
+    assert on_route("/docs/[...rest]", "/docs/a/b")
+
+
+def test_a_trailing_slash_leaves_a_path_on_its_route():
+    assert on_route("/assign", "/assign/")
+    assert on_route("/tickets/[id]", "/tickets/7/")
+
+
+class _Request:
+    def __init__(self, method: str, url: str):
+        self.method = method
+        self.url = url
+
+
+class _Response:
+    def __init__(self, method: str, url: str):
+        self.request = _Request(method, url)
+
+
+def test_a_form_action_matches_the_post_to_its_page_that_names_it():
+    assert action("/", "add")(_Response("POST", "http://app.test/?/add"))
+    assert action("/tickets/[id]", "close")(_Response("POST", "http://app.test/tickets/7?/close"))
+
+
+def test_a_form_action_matches_no_get_to_the_same_page():
+    assert not action("/", "add")(_Response("GET", "http://app.test/?/add"))
+
+
+def test_a_form_action_matches_no_post_to_another_page():
+    assert not action("/", "add")(_Response("POST", "http://app.test/other?/add"))
+
+
+def test_a_form_action_matches_no_post_that_names_another_action():
+    assert not action("/", "add")(_Response("POST", "http://app.test/?/remove"))
+
+
+def test_a_form_action_matches_no_post_that_names_no_action():
+    assert not action("/", "add")(_Response("POST", "http://app.test/"))
+
+
 def _free_port() -> int:
     with socket.socket() as taken:
         taken.bind(("127.0.0.1", 0))
