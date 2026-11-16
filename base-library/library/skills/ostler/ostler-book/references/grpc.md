@@ -276,11 +276,19 @@ or `"NOT_FOUND"` for a whole answer.
 
 An event the service publishes when time passes, such as a timer that breaches when its due time
 goes by, goes on an action that sets `clock = "<the moment>"` beside `emits`. No endpoint carries
-it and it hears nothing, and `check` fails both. A journey reaches it in two steps. An arrangement
-puts the record past the moment through the backstage, and a later step carries the clocked
-action from an `Arrange`. That step sends nothing to the app. The run reads the tap for the events
-the action declares, which the app's own scan publishes. It waits for the event and never for a
-time, so the book holds no sleep.
+it and it hears nothing, and `check` fails both. Declare every event the service publishes this
+way, whatever causes it and even when no run can reach the moment. An emission no run reaches is
+named in the book and counts unproven on the `emissions:` line. That is the honest outcome, and
+never a reason to leave the event out.
+
+A journey reaches the moment in two steps when it can. An arrangement puts the record past the
+moment, and a later step carries the clocked action from an `Arrange`. That step sends nothing to
+the app. The run reads the tap for the events the action declares, which the app's own scan
+publishes. It waits for the event and never for a time, so the book holds no sleep.
+
+Where no call of the product puts a record past its moment, the backstage writes the record into
+the service's own store, already past due. It runs the store's own command line in its container
+through `self.environment.exec(<store service>, [...])`, as for any state no call reaches.
 
 ```python
 class Breach(Action[TimerFixture, Timer]):
@@ -293,6 +301,10 @@ class Breach(Action[TimerFixture, Timer]):
 class Breaches(Arrange[TimerFixture]):
     does = "The clock takes a timer past its due time."
     carries = Breach
+
+
+def past_due(self, timer_id: str) -> None:
+    self.environment.exec("api-db", ["psql", "-U", "app"], stdin=f"UPDATE timers SET due_at = now() WHERE id = '{timer_id}'")
 ```
 
 With no delivery that taps, the emission counts unproven on the `emissions:` line.
