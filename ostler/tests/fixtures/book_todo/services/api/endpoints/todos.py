@@ -6,6 +6,7 @@ from ostler.book import Answer, ApiKey, Bearer, Endpoint, Enum, Field, Id, List,
 
 from .shapes import ERROR, TODO, TODO_INPUT
 from ..model import actions
+from ..model.lists import TODOS
 from ..model.todo import STATUSES, USERS, TodoRecord
 
 CREDENTIALS = (Bearer(), ApiKey())
@@ -83,7 +84,7 @@ class FindTodos(Endpoint):
         status=Field(Enum(STATUSES), required=False),
     )
     answers = (
-        Answer(200, List(TODO), "the matches: overdue soonest first, then scheduled soonest first, then unscheduled newest first"),
+        Answer(200, List(TODO, entries=TODOS), "the matches: overdue soonest first, then scheduled soonest first, then unscheduled newest first"),
         Answer(400, ERROR, "status is not one of the three"),
         NO_CREDENTIAL,
         STORE_DOWN,

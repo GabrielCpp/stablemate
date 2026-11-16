@@ -10,6 +10,8 @@ from keyword import iskeyword
 from typing import Any, Callable, Generic, Hashable, TypeVar
 
 from ostler.book.cast import Actor
+from ostler.book.entries import says
+from ostler.book.errors import BookError
 from ostler.book.outcome import Done, Flawed, Outcome, Refusal
 from ostler.book.status import Status
 
@@ -61,8 +63,11 @@ class Defect(Generic[A, S]):
     and `message` is then only the defect's name. `over` is the rule whose
     refusal the app gets wrong; without it the defect shows on a call the model
     accepts. `does` is the change the app makes when the defect shows, read like
-    an action's reduce; without it the app changes nothing. `why` says what is
-    wrong and since when, in the product's words."""
+    an action's reduce; without it the app changes nothing. `breaks` is the
+    entry rule a list in the call's answer breaks: the app answers what the model
+    says, except that the list does not hold that rule. It takes none of `over`,
+    `does` or a `status`. `why` says what is wrong and since when, in the
+    product's words."""
 
     message: str
     shows_when: Callable[[A, S, Actor | None], bool]
@@ -70,6 +75,17 @@ class Defect(Generic[A, S]):
     why: str = ""
     over: Rule[A, S] | None = None
     does: Callable[[A, S, Actor | None], Any] | None = None
+    breaks: Callable[[list[Any]], list[str]] | None = None
+
+    def __post_init__(self) -> None:
+        if self.breaks is None:
+            return
+        if self.over is not None or self.does is not None:
+            raise BookError(f"the defect {self.message!r} breaks a rule of a list: it takes no over and no does")
+        if self.status != 500:
+            raise BookError(f"the defect {self.message!r} breaks a rule of a list: it takes no status, the app answers what the model says")
+        if not says(self.breaks):
+            raise BookError(f"the defect {self.message!r} breaks a rule with no docstring: its first line says what the entries hold")
 
     @property
     def name(self) -> str:
@@ -143,6 +159,10 @@ class Model:
     def key(self) -> Hashable:
         """The state as the planner compares it."""
         return self.rows()
+
+    def breaking(self, request: object) -> list[Defect[Any, Any]]:
+        """The known defects that break the rule of a list for this call, those that show now."""
+        return []
 
     def copy(self) -> Model:
         raise NotImplementedError

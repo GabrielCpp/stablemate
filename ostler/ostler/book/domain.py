@@ -19,6 +19,7 @@ from datetime import date
 from typing import Any, Callable, ClassVar, Generic, Hashable, Iterable, Iterator, Mapping, Self, TypeVar, cast
 
 from ostler.book.cast import SOLE, Actor
+from ostler.book.entries import says
 from ostler.book.errors import BookError
 from ostler.book.event import Event
 from ostler.book.outcome import Done, Flawed, Refusal
@@ -411,7 +412,7 @@ class Action(Generic[A, S]):
                 raise
         reduced = cls.reduce(accepted, state, by)
         for defect in cls.defects:
-            if defect.over is None and defect.shows(accepted, state, by):
+            if defect.over is None and defect.breaks is None and defect.shows(accepted, state, by):
                 raise Flaw(defect, reduced, None, cls.wrong(defect, accepted, state, by))
         return reduced
 
@@ -429,6 +430,11 @@ class Action(Generic[A, S]):
             if rule.why:
                 lines.append(f"    why: {rule.why}")
         for defect in cls.defects:
+            if defect.breaks is not None:
+                lines.append(f"  known defect: breaks {says(defect.breaks)}: {defect.message!r}")
+                if defect.why:
+                    lines.append(f"    why: {defect.why}")
+                continue
             meant = f"where {defect.over.status} {defect.over.message!r} is meant" if defect.over else "where it means to succeed"
             lines.append(f"  known defect: answers {defect.status} {defect.message!r} {meant}")
             if defect.why:
@@ -516,6 +522,14 @@ class State(Model):
         if action is None:
             raise BookError(f"{kind.__name__} carries no action on the model")
         return action.perform(cast(Any, request).input(), self, by)
+
+    def breaking(self, request: object) -> list[Defect[Any, Any]]:
+        action: type[Action[Any, Any]] | None = getattr(type(request), "carries", None)
+        if action is None or not any(d.breaks is not None for d in action.defects):
+            return []
+        by: Actor | None = getattr(request, "by", SOLE)
+        accepted = action.take(cast(Any, request).input())
+        return [d for d in action.defects if d.breaks is not None and d.shows(accepted, self, by)]
 
     def meant(self, flaw: Flaw) -> Done | Refusal:
         if flaw.refused is not None:

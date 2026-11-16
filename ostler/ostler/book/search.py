@@ -12,6 +12,7 @@ from typing import Any, Iterator, Protocol
 from ostler.book import decisions, questions
 from ostler.book.arrange import Arrange
 from ostler.book.domain import Action, State
+from ostler.book.entries import says
 from ostler.book.errors import BookError
 from ostler.book.event import Event
 from ostler.book.http import identity_lines
@@ -73,7 +74,8 @@ def rule_lines(rule: Rule[Any, Any]) -> tuple[str, ...]:
 
 
 def defect_lines(defect: Defect[Any, Any]) -> tuple[str, ...]:
-    return (f"{defect.status} {defect.message}", *((f"why: {defect.why}",) if defect.why else ()))
+    head = f"breaks {says(defect.breaks)}: {defect.message}" if defect.breaks is not None else f"{defect.status} {defect.message}"
+    return (head, *((f"why: {defect.why}",) if defect.why else ()))
 
 
 def source_lines(element: Any) -> tuple[str, ...]:

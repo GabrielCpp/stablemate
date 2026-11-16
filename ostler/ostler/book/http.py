@@ -27,6 +27,7 @@ from ostler.book.boundary import Passes, Reaches
 from ostler.book.cast import KEEP, SOLE, Actor
 from ostler.book.contracts import STREAMING
 from ostler.book.domain import Action, Fixture, Heard, On
+from ostler.book.entries import says
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.model import attribute
 from ostler.book.outcome import Refusal, Refusals
@@ -390,6 +391,15 @@ class Object(Shape):
 class List(Shape):
     of: Shape
     unordered: str = ""
+    entries: tuple[Callable[[list[Any]], list[str]], ...] = ()
+
+    def __post_init__(self) -> None:
+        if callable(self.entries):
+            raise BookError("entries takes a tuple of rules, not one rule: write entries=(has(\"id\"),)")
+        for rule in self.entries:
+            if not says(rule):
+                raise BookError(f"the entries rule {getattr(rule, '__name__', 'rule')} has no docstring: "
+                                "its first line says what the entries hold, and search and explain show it")
 
     def check(self, value: object, where: str = "body") -> list[str]:
         if not isinstance(value, list):
@@ -405,7 +415,8 @@ class List(Shape):
         return [pack(item) if pack is not None else _wire(item) for item in items]
 
     def describe(self) -> str:
-        return f"[{self.of.describe()}]" + (f" (any order: {self.unordered})" if self.unordered else "")
+        held = ", ".join(say for say in (f"any order: {self.unordered}" if self.unordered else "", *(says(rule) for rule in self.entries)) if say)
+        return f"[{self.of.describe()}]" + (f" ({held})" if held else "")
 
 
 DIMENSIONS = ("time of day", "offset", "surrounding spaces", "case", "trailing zeros", "order", "duplicate", "midnight")
@@ -1150,7 +1161,10 @@ class Endpoint:
                 if rule.why:
                     lines.append(f"      why: {rule.why}")
             for defect in carried.defects:
-                lines.append(f"    known defect: answers {defect.status} {defect.message!r}")
+                if defect.breaks is not None:
+                    lines.append(f"    known defect: breaks {says(defect.breaks)}: {defect.message!r}")
+                else:
+                    lines.append(f"    known defect: answers {defect.status} {defect.message!r}")
                 if defect.why:
                     lines.append(f"      why: {defect.why}")
         return "\n".join(lines)
@@ -1265,6 +1279,29 @@ def canonical(shape: Shape | None, value: Any, *, app: bool, ids: Identities | N
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     return value
+
+
+def breaches(shape: Shape | None, value: Any, path: str = "") -> list[tuple[str, Callable[[list[Any]], list[str]], str]]:
+    """Each rule a list of the answer breaks, with the path of the list and what broke, judged on the entries the app
+    answered, whoever's they are."""
+    out: list[tuple[str, Callable[[list[Any]], list[str]], str]] = []
+    if isinstance(shape, List) and isinstance(value, list):
+        for rule in shape.entries:
+            try:
+                said = rule(value)
+            except Exception as crash:
+                said = [f"cannot be judged: {type(crash).__name__}: {crash}"]
+            out += [(path + "[]", rule, one) for one in said]
+        for item in value:
+            out += breaches(shape.of, item, path + "[]")
+    elif isinstance(shape, Object) and isinstance(value, dict):
+        for name, spec in shape.fields.items():
+            if value.get(name) is not None:
+                out += breaches(spec.shape, value[name], f"{path}.{name}" if path else name)
+    elif isinstance(shape, Map) and isinstance(value, dict):
+        for item in value.values():
+            out += breaches(shape.of, item, path + "{}")
+    return out
 
 
 SET = "<set, value not compared>"

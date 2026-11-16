@@ -93,6 +93,9 @@ class TodoStore:
             "remind_at": todo.remind_at, "remind_day": self.remind_day(todo.remind_at),
         }
 
+    def untitled(self) -> dict[str, Any]:
+        return self.view(Todo("6f1d8a52-3c4e-4b7a-9d20-1a2b3c4d5e6f", "", None, None, None, "2026-01-01T00:00:00Z", 0))
+
     def remind_day(self, remind_at: str | None) -> str | None:
         if remind_at is None:
             return None
@@ -194,7 +197,14 @@ class TodoStore:
                     continue
             found.append((todo, shown))
         found.sort(key=functools.cmp_to_key(self.order))
-        return 200, [shown for _, shown in found]
+        listed = [shown for _, shown in found]
+        if self.bug == "blank" and not (status or assignee or text):
+            listed.insert(0, self.untitled())
+        if self.bug == "stranger":
+            listed.append(self.untitled())
+        if self.bug == "repeat" and listed:
+            listed.append(listed[0])
+        return 200, listed
 
     @staticmethod
     def order(left: tuple[Todo, dict[str, Any]], right: tuple[Todo, dict[str, Any]]) -> int:

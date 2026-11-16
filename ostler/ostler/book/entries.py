@@ -10,6 +10,11 @@ from typing import Any, Callable
 Key = None | str | Callable[[Any], Any]
 
 
+def says(rule: Callable[[list[Any]], list[str]]) -> str:
+    """The first line of a rule's docstring: what a book says of it."""
+    return (rule.__doc__ or "").strip().splitlines()[0] if (rule.__doc__ or "").strip() else ""
+
+
 def _read(key: Key) -> Callable[[Any], Any]:
     if key is None:
         return lambda entry: entry
@@ -55,4 +60,26 @@ def no_repeat(key: Key = None) -> Callable[[list[Any]], list[str]]:
 
     named = _named(key)
     rule.__doc__ = f"no repeat of {named}" if named else "no repeat"
+    return rule
+
+
+def _short(entry: Any) -> str:
+    text = repr(entry)
+    return text if len(text) <= 120 else text[:120] + "..."
+
+
+def has(key: str) -> Callable[[list[Any]], list[str]]:
+    path = key.split(".")
+
+    def rule(entries: list[Any]) -> list[str]:
+        out: list[str] = []
+        for position, entry in enumerate(entries):
+            value = entry
+            for part in path:
+                value = value.get(part) if isinstance(value, dict) else None
+            if value is None or value == "" or value == [] or value == {}:
+                out.append(f"entry {position} has no {key}: {_short(entry)}")
+        return out
+
+    rule.__doc__ = f"every entry has {key}"
     return rule

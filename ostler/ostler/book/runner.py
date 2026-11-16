@@ -17,6 +17,7 @@ from ostler.book.cast import SOLE
 from ostler.book.delivery import Delivery, faults as detail_faults
 from ostler.book.domain import Action, State
 from ostler.book.event import Event
+from ostler.book.entries import says
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.http import Client, Endpoint, Id, Identities, List, Object, OffShape, Shape, Undeclared, canonical
 from ostler.book.journey import (Check, Given, Journey, JourneyResult, Listed, OwnerRefused, Refused, Relates, Same, Seen, Shows,
@@ -173,6 +174,8 @@ def read(step: object, model: Model, surface: Surface, seen: dict[int, Seen]) ->
     """A read the model does not compute: the surface alone answers, and only a refusal fails it."""
     if getattr(type(step), "reaches", None) is not None:
         Owners.prepare(cast(Endpoint, step))
+    clear_breaches(surface)
+    owed = model.breaking(step)
     try:
         outcome = surface.perform(step)
     except CannotReach as blocked:
@@ -187,7 +190,8 @@ def read(step: object, model: Model, surface: Surface, seen: dict[int, Seen]) ->
     if ok and getattr(type(step), "reaches", None) is not None:
         note = Owners.reach(cast(Endpoint, step), listing)
         ok = not note
-    return StepResult(step, None, outcome, model.rows(), rows, ok, note)
+    ok, note, known = settle(ok, note, *judged(step, owed, model, surface))
+    return StepResult(step, None, outcome, model.rows(), rows, ok, note, known=known)
 
 
 def refused(step: Refused, model: Model, surface: Surface) -> StepResult:
@@ -334,7 +338,43 @@ def occurrence(hearing: Arrange[Any], model: Model) -> tuple[dict[str, Any], str
     return cast(dict[str, Any], detail), note
 
 
+def clear_breaches(surface: Surface) -> None:
+    take = getattr(surface, "take_breaches", None)
+    if callable(take):
+        take()
+
+
+def judged(request: object, owed: list[Defect[Any, Any]], model: Model, surface: Surface) -> tuple[list[str], Defect[Any, Any] | None]:
+    """What the entry rules say of every list the surface read since the step began: a note for each rule broken that no
+    known defect covers, and the first known defect that covers one. A defect covers the rule for the call whose action
+    declares it, when it shows for that call: the step's own call by the state before the step, a watch read by the
+    state after it."""
+    take = cast("Callable[[], list[Any]] | None", getattr(surface, "take_breaches", None))
+    if not callable(take):
+        return [], None
+    notes: list[str] = []
+    known: Defect[Any, Any] | None = None
+    for breach in take():
+        covers = owed if breach.call is request else model.breaking(breach.call)
+        defect = next((d for d in covers if d.breaks is breach.rule), None)
+        if defect is None:
+            notes.append(f"{type(breach.call).__name__} answers a list that breaks {says(breach.rule)} at {breach.path}: {breach.said}")
+        elif known is None:
+            known = defect
+    return notes, known
+
+
+def settle(ok: bool, note: str, notes: list[str], known: Defect[Any, Any] | None) -> tuple[bool, str, Defect[Any, Any] | None]:
+    if notes:
+        return False, "; ".join(part for part in (note, *notes) if part), None
+    if known is not None and ok:
+        return ok, note or f"known defect: breaks {says(cast(Any, known.breaks))}: {known.message}", known
+    return ok, note, None
+
+
 def move(step: object, request: object, model: Model, surface: Surface) -> StepResult:
+    clear_breaches(surface)
+    owed = model.breaking(request)
     hearing = delivered(request)
     action = emitter(request)
     if action is not None:
@@ -382,7 +422,8 @@ def move(step: object, request: object, model: Model, surface: Surface) -> StepR
     if action is not None and ok and isinstance(app_outcome, Done):
         note = emissions(action, request, model, surface)
         ok = not note
-    return StepResult(step, model_outcome, app_outcome, model_rows, app_rows, ok, note, reduced)
+    ok, note, known = settle(ok, note, *judged(request, owed, model, surface))
+    return StepResult(step, model_outcome, app_outcome, model_rows, app_rows, ok, note, reduced, known=known)
 
 
 def repeated(hearing: Arrange[Any], detail: dict[str, Any], request: object, model: Model, surface: Surface,

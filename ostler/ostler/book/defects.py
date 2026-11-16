@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Protocol, Sequence
 
+from ostler.book.entries import says
 from ostler.book.journey import JourneyResult
 from ostler.book.model import Defect
 from ostler.book.search import actions_of
@@ -49,7 +50,8 @@ def tally(results: list[JourneyResult]) -> str:
 
 
 def describe(action: type, defect: Defect[Any, Any]) -> str:
-    return f"{defect.status} {defect.message} ({action.__name__})." + (f" {defect.why.rstrip('.')}." if defect.why else "")
+    said = f"breaks {says(defect.breaks)}: {defect.message}" if defect.breaks is not None else f"{defect.status} {defect.message}"
+    return f"{said} ({action.__name__})." + (f" {defect.why.rstrip('.')}." if defect.why else "")
 
 
 def section(results: Sequence[Reported], found: list[tuple[type, Defect[Any, Any]]], complete: bool = True) -> list[str]:

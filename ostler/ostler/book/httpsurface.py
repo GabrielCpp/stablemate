@@ -4,12 +4,23 @@ A book's surface keeps only what is specific to its app."""
 
 from __future__ import annotations
 
-from typing import Any, cast
+from dataclasses import dataclass
+from typing import Any, Callable, cast
 
 from ostler.book.errors import BookError
-from ostler.book.http import Answer, Client, Endpoint, List, Reply, Witness, canonical
+from ostler.book.http import Answer, Client, Endpoint, List, Reply, Witness, breaches, canonical
 from ostler.book.model import Model
 from ostler.book.outcome import Done, Outcome
+
+
+@dataclass(frozen=True, eq=False)
+class Breach:
+    """A rule a list of one app answer broke: the call that read it, the path of the list in the answer and what broke."""
+
+    call: Endpoint
+    path: str
+    rule: Callable[[list[Any]], list[str]]
+    said: str
 
 
 class HttpSurface:
@@ -18,6 +29,20 @@ class HttpSurface:
     def __init__(self, client: Client):
         self.client = client
         self.watch: tuple[Endpoint, ...] = ()
+        self.breached: dict[tuple[int, str, int, str], Breach] = {}
+
+    def judge(self, call: Endpoint, reply: Reply) -> None:
+        """The entry rules of every list the answer holds, judged on the entries the app answered."""
+        answer = reply.answer
+        if answer.body is None:
+            return
+        for path, rule, said in breaches(answer.body, reply.body):
+            self.breached.setdefault((id(call), path, id(rule), said), Breach(call, path, rule, said))
+
+    def take_breaches(self) -> list[Breach]:
+        taken = list(self.breached.values())
+        self.breached = {}
+        return taken
 
     def follow(self, watch: tuple[Endpoint, ...]) -> None:
         self.watch = watch
@@ -54,6 +79,7 @@ class HttpSurface:
             return reply.refusal
         answer = reply.answer
         self.learn(call, reply)
+        self.judge(call, reply)
         view: tuple[object, ...] = ()
         if answer.body is not None:
             found = canonical(answer.body, reply.body, app=True, ids=self.client.ids, where=type(call).__name__)
@@ -67,6 +93,7 @@ class HttpSurface:
             if reply.refusal:
                 return ()
             answer = reply.answer
+            self.judge(read, reply)
             found = canonical(answer.body, reply.body, app=True, ids=self.client.ids, where=type(read).__name__)
             out.extend(found if isinstance(answer.body, List) else [found])
         return tuple(out)
