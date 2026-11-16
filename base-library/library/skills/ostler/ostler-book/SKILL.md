@@ -53,6 +53,7 @@ A service's book is `services/<name>/` under the book root: the repository root 
 | `DISAGREEMENTS.md` | numbered entries where the source, the openapi and the app disagree |
 | `decisions/<slug>.md` | why one behaviour is so: three header lines, `story:`, `date:` and `elements:` with the class names it explains, a blank line, then prose. A decision no story settled, as in a backfill, writes `story: none`. The header may add `sources:`, a comma separated list of what the project wrote down, each one a commit sha, `<sha>:<path>` for a file as that commit held it, or an element's source pointer (`path`, `path::symbol`, `repo://<member>/<path>`), and `check --app` opens each |
 | `QUESTIONS.md` | one line per why nothing written settles, `- <Element>: <question>`; an answered question becomes a decision and its line is removed |
+| `FORMAT` | the commit of this skill's source the book was last judged against, one sha. The workflow writes it after the book's gates pass, and a writer never edits it |
 | `ops/stack.yml` | the containers `ostler env` runs for this service, with their templates beside it |
 
 Each package has an `ALL` (endpoints, journeys) or `__all__` (fixtures) that registers what
