@@ -197,7 +197,13 @@ A check honours one contract:
 `farrier checks --repo <repo>` prints one `command<TAB>budget` line per check. The
 first line is `farrier sync`, which reinstalls drifted agent files and stages them
 when `agents.yml` exists. The `commit-checks` home guard reads that listing and
-rewrites the agent's `git commit` command so the checks run first. Enable it by
+rewrites the agent's `git commit` command so the checks run first. In Codex and in
+Claude's auto mode, a rewrite needs an approval the harness review never gave. There
+the guard approves a plain commit itself: `cd`, `git add`, `git commit`, `git log` and
+`git status` joined by `&&`, with no environment prefix, no git option but `-C`, no
+`--output`, no command substitution beyond a quoted heredoc message, and no redirect
+but to `/dev/null`. Any other commit
+comes back refused, with the rewritten command for the agent to run. Enable it by
 naming `commit-checks` in the `hooks` list of each harness profile in the farrier
 config.
 
