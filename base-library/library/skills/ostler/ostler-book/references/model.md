@@ -113,7 +113,9 @@ defects = (Defect[Listing, Serving]("a blank asset heads the inventory", lambda 
 ```
 
 The run reports KNOWN while the rule breaks where the predicate holds. When the app is fixed
-the defect is never met and the run fails, naming it.
+the defect is never met and the run fails, naming it. An entry that alone breaks the rule is the
+defect's: the run judges nothing else of it, not even its shape, so the book's shape stays what
+the product intends. `check` refuses a defect whose rule no list of its action's answers states.
 
 A status under 400 is a success the app should not give, and the message is then the defect's
 name only. When the wrong answer also changes state, `does=` returns that change the way a
