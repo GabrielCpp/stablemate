@@ -9,9 +9,11 @@ commits:
 {{ skill_command("ostler-book") }}
 {% if stack_copy %}
 
-The app already runs on this machine, as the stack copy `{{ stack_copy }}`. Start nothing and
-stop nothing. The book writes each host as `ostler:` with no copy name after it, and every
-command that reaches the app takes `--copy {{ stack_copy }}`.
+The app already runs on this machine, as the stack copy `{{ stack_copy }}`. Stop nothing. The
+book writes each host as `ostler:` with no copy name after it, and every command that reaches
+the app takes `--copy {{ stack_copy }}`. A host the book reaches that the copy does not publish
+is a need the book's own stack leaves out: add it to `needs` in `{{ package }}/ops/stack.yml`,
+then `ostler env up {{ service }} --copy {{ stack_copy }}` adds it to the copy.
 {% endif %}
 
 {% if app_changed %}
