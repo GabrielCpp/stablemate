@@ -29,3 +29,4 @@ class PythonBookOutcome(BaseModel):
 
     service: str
     laps: int
+    unmarked: str = ""

@@ -7,9 +7,10 @@ import pytest
 from okf_book.main.flows import book_exits, build_flow, written_book
 from okf_book.support import commit_at, git, install_book_skill, skill_history
 from workhorse import templates
-from workhorse.pyflow import Await, Continue
+from workhorse.pyflow import Await, Continue, Done
 
 from workhorse_workflows import okf_book
+from workhorse_workflows.okf_book.main.python_book_flow import PythonBookOutcome
 from workhorse_workflows.okf_book.shared.book_flow import FORMAT_GATE
 
 WRITE = "write-python-book"
@@ -70,3 +71,36 @@ def test_a_format_history_that_cannot_be_read_waits_on_the_operator_before_the_o
     assert step.path == flow.run_dir / FORMAT_GATE
     assert "rev-list" in step.questions
     assert runner.total == 0
+
+
+def test_a_first_book_whose_format_history_cannot_be_read_ends_committed_with_no_format_mark(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "nowhere").mkdir()
+    book_exits(monkeypatch)
+    flow, _runner = build_flow(tmp_path, history=str(tmp_path / "nowhere"))
+    started = flow.start()
+    repo = written_book(flow)
+
+    stamped = flow.stamp(lap=1)
+    done = flow.commit(lap=1)
+
+    assert isinstance(started, Continue) and started.state == "write"
+    assert isinstance(stamped, Continue) and stamped.state == "render"
+    assert isinstance(done, Done)
+    assert not (repo / "services/ledger/FORMAT").exists()
+    assert git(repo, "show", "--name-only", "--format=", "HEAD").split() == ["services/ledger/service.py"]
+    assert isinstance(done.result, PythonBookOutcome)
+    assert "format mark was not written" in done.result.unmarked
+    assert "rev-list" in done.result.unmarked
+
+
+def test_an_existing_book_whose_format_history_cannot_be_read_still_waits_at_the_stamp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    (tmp_path / "nowhere").mkdir()
+    book_exits(monkeypatch)
+    flow, _runner = build_flow(tmp_path, history=str(tmp_path / "nowhere"))
+    written_book(flow)
+    flow.start()
+
+    step = flow.stamp(lap=1)
+
+    assert isinstance(step, Await) and step.state == "stamp"
+    assert step.path == flow.run_dir / FORMAT_GATE

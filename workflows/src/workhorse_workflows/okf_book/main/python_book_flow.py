@@ -77,6 +77,10 @@ def finished_books(root: Path, service: str) -> list[str]:
     return [f"services/{name}" for name in sorted(found - {service})]
 
 
+FIRST_BOOK_MARK = "first-book"
+FORMAT_UNMARKED = "format-unmarked.txt"
+
+
 @dry_run(service="dry-run")
 class WritePythonBook(BookFlow):
     """Surveys the entry files a screen-reached book names nowhere and has a skeleton screen written for each, eight to a turn. Then has the reasons written for each screen no decision names, five to a turn. A turn of either pass that ends without a reply, and a decisions listing that fails, each wait on an operator gate, and the answer sends the same batch again or lists again. Then sends the book's owner until the book's check and run both pass and no source file is left unnamed, stamps the book verified at the app's HEAD, and commits the book's package. A screen-reached book whose package exists first gets the breadth and reasons passes. One with no package starts with the owner, whose first lap writes the package. A missing list still red after a lap sends it through the survey."""
@@ -120,6 +124,9 @@ class WritePythonBook(BookFlow):
 
     def start(self) -> Continue[...] | Await[...]:
         """Read what the book format changed for a book whose package exists, and wait for the operator where that cannot be read. Survey a book reached by a screen surface that already has a package, and send the owner its first lap otherwise."""
+        if not self.written:
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+            (self.run_dir / FIRST_BOOK_MARK).write_text("", encoding="utf-8")
         if self.written:
             delta = self.call(book_format_delta, self.root, self.service, self.format_history)
             if delta.unreadable:
@@ -345,9 +352,11 @@ class WritePythonBook(BookFlow):
             if gate.exit_code != 0:
                 return self._judged("verified", module, gate, lap, self.stamp)
         delta = self.call(book_format_delta, self.root, self.service, self.format_history)
-        if delta.unreadable:
+        if delta.unreadable and (self.run_dir / FIRST_BOOK_MARK).is_file():
+            (self.run_dir / FORMAT_UNMARKED).write_text(delta.unreadable, encoding="utf-8")
+        elif delta.unreadable:
             return Await(self.run_dir / FORMAT_GATE, format_question(self.service, delta.unreadable), self.stamp, lap=lap).because("the format history could not be read")
-        if delta.head:
+        elif delta.head:
             _ = self.call(mark_book_format, self.root, self.service, delta.head)
         return Continue(gate, self.render, lap=lap).because("the book is stamped")
 
@@ -378,4 +387,7 @@ class WritePythonBook(BookFlow):
         waiting = self._commit_or_await(book_commit_subject(self.service), (self.package,), self.commit, lap=lap)
         if waiting:
             return waiting
-        return Done(PythonBookOutcome(service=self.service, laps=lap)).because("the book is committed")
+        unmarked = self.run_dir / FORMAT_UNMARKED
+        why = unmarked.read_text(encoding="utf-8") if unmarked.is_file() else ""
+        said = f"the format mark was not written, because the format history could not be read: {why}" if why else ""
+        return Done(PythonBookOutcome(service=self.service, laps=lap, unmarked=said)).because("the book is committed")
