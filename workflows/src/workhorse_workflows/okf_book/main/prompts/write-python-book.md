@@ -59,17 +59,23 @@ no behaviour a user reaches, such as a test, a generated file or a style sheet, 
 instead by a pattern in the service's `App(ignore=...)`. A file that holds a page, a route or a
 command is never ignored. It gets its element.
 
-You are done when every `check`, `run` and `missing` below exits 0, from the book root, and each
-`index` has rewritten its `index.tsv`:
+You are done when every `check` and `missing` below exits 0 from the book root, each `index` has
+rewritten its `index.tsv`, and a run `--only` the endpoints and interactions this turn added or
+changed exits 0. After the turn the flow plays the whole book once, and a failure comes back to
+you as the next lap's gate. Play nothing wider yourself.
 
 ```
 {% for module in modules %}
 python -m ostler.book check {{ module }}
-python -m ostler.book run {{ module }}{% if stack_copy %} --copy {{ stack_copy }}{% endif %}
+python -m ostler.book run {{ module }} --only <each endpoint or interaction this turn touched>{% if stack_copy %} --copy {{ stack_copy }}{% endif %}
 python -m ostler.book missing {{ module }} --app {{ app_root }}{% if source_folder %} --under {{ source_folder }}{% endif %}
 python -m ostler.book index {{ module }}
 {% endfor %}
 ```
+
+The app takes one play at a time, yours or a subagent's: start a play only when no other is
+running. A play can outlast a shell command's time limit, so start it in the background and wait
+on its exit.
 
 A run that fails names the cell the app answered differently. Decide, from the source, whether
 the book or the app is wrong. A wrong book gets fixed. A wrong app gets an entry in the book's

@@ -242,7 +242,7 @@ class WritePythonBook(BookFlow):
         return self._timed_turn(self.service, prompt, empty, ask, session)
 
     def write(self, gate: str, lap: int) -> Continue[...] | Await[...]:
-        """One owner turn writes the book's package until its check and run pass, opening on what the last gate printed. A turn that ends without a reply starts the next one fresh, and the gates judge what it left."""
+        """One owner turn writes the book's package until its check and a run of what it touched pass, opening on what the last gate printed. A turn that ends without a reply starts the next one fresh, and the gates judge what it left."""
         reply = self._timed(
             WRITE_PROMPT,
             PythonBookReply(),

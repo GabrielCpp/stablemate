@@ -182,7 +182,7 @@ def test_a_run_that_names_a_stack_copy_plays_the_book_on_it_and_tells_the_owner(
 
     assert seen[0][3:] == ["check", "services.ledger", "--app", str(flow.code_root)]
     assert seen[1][-2:] == ["--copy", "evening"]
-    assert "python -m ostler.book run services.ledger --copy evening\n" in rendered
+    assert "python -m ostler.book run services.ledger --only <each endpoint or interaction this turn touched> --copy evening\n" in rendered
     assert "as the stack copy `evening`" in rendered
 
 
@@ -257,8 +257,9 @@ def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_pat
     assert "reached by: http, web" in rendered
     assert "`services/ledger/model/`" in rendered
     for module in ("services.ledger.http", "services.ledger.web"):
-        for verb in ("check", "run", "index"):
+        for verb in ("check", "index"):
             assert f"python -m ostler.book {verb} {module}\n" in rendered
+        assert f"python -m ostler.book run {module} --only " in rendered
 
 
 def _workspacebuild_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replies: dict[str, Reply] | None = None) -> tuple[WritePythonBook, ScriptedRunner, Workspace]:
@@ -342,3 +343,15 @@ def test_a_book_whose_pointers_all_exist_passes_the_check(tmp_path: Path) -> Non
 
     assert gate.exit_code == 0, gate.output
 
+
+
+def test_the_owner_plays_only_what_it_touched_and_leaves_the_whole_book_to_the_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner = build_flow(tmp_path)
+
+    rendered = _rendered(flow, tmp_path, monkeypatch)
+
+    assert "python -m ostler.book run services.ledger --only " in rendered
+    assert "python -m ostler.book run services.ledger\n" not in rendered
+    assert "After the turn the flow plays the whole book once" in rendered
+    assert "The app takes one play at a time" in rendered
+    assert "start it in the background and wait\non its exit" in rendered
