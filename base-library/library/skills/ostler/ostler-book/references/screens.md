@@ -141,9 +141,11 @@ A list can also be asked of a backend through its book: `given=asked(ListTodos)`
 class of another book under the root. Before each step on the screen the run sends that call as the
 person taking the step, through the owner's surface, and derives the list from the answer exactly
 as from a received one. A call built with no input must be enough. An owner with no book, a refusal
-or a call that cannot be built is a fault on the list that names the call and why. `asked` is the
-only feed a phone can read, and it works on the web too. A list on a phone screen states
-`given=asked(<Endpoint>)`: find the call the app's client code makes to fill the list (the
+or a call that cannot be built is a fault on the list that names the call and why. `asked` works
+on the web too, and on a phone it is the fallback where the app cannot be pointed at a port ostler
+holds. A phone book that runs the app against a fixed host port declares `listens` (below), and its
+lists read the app's own request with `request(...)`. A list on a phone screen without `listens`
+states `given=asked(<Endpoint>)`: find the call the app's client code makes to fill the list (the
 repository or API client the screen's state reads), then take the `Endpoint` of the backend's book
 that declares that route. Find it with `ostler book search <path>` over the root. A backend that
 answers a moment after the page got its data gives the same data only for a list that changes
@@ -301,10 +303,19 @@ identifier (a Flutter `TestId`); one without an id is found by its visible text 
 
 `fill` on a `select` opens the list with a tap and reads the entries that appeared: the texts on the
 screen after the tap that were not on it before, top to bottom then left to right. The choice before
-the tap is the select's own text. A phone judges `derived` (from `asked` only), `always`, `never`,
+the tap is the select's own text. A phone judges `derived` (from `request(...)` through a `listens` proxy, or from `asked`), `always`, `never`,
 `entries` and `picked` as the web does, then taps the entry whose text is the value. A value the list
 does not show closes it with Android back and is a `CannotReach` that names what it offers. A phone
-sees no request, so a list whose `given` is `request(...)` or `handed(...)` is a fault saying so.
+with no `listens` sees no request, so a list whose `given` is `request(...)` or `handed(...)` is a fault
+saying so, and `handed(...)` is that fault on a phone with `listens` too.
+
+`listens = {19080: "api"}` on the `MobileSurface` maps a host port the app sends its requests to onto
+the environment host those requests are for. While the surface runs, ostler holds a recording reverse
+proxy on that port, forwarding to the copy's address of the host, so a plain HTTP target needs no
+certificate and the app needs no change. After a step starts, a list stated `request("GET", "/v1/items")`
+is judged from the first matching exchange the app sent through the proxy since the step began, else
+the last one before it, its body and URL. A port already held fails the start and names the holder. An app that reaches the
+backend through a bridge on that port (a `socat` step) leaves the port to ostler: drop the bridge.
 `labels(component)` opens a list, judges it as a pick does, and closes it. `picked` is judged again after `launch()`
 or `clear()`.
 

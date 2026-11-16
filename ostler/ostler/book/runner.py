@@ -351,6 +351,9 @@ def perform(step: object, request: object, model: Model, surface: Surface) -> St
     fed = asked_feeds(request)
     if wanted or fed:
         hand_over(surface, wanted, fed)
+    begin = getattr(surface, "stepping", None)
+    if callable(begin):
+        begin()
     try:
         return move(step, request, model, surface)
     finally:

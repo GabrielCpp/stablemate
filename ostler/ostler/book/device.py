@@ -16,11 +16,12 @@ import time
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, cast
 
 from ostler.book.errors import BookError
 from ostler.book.listjudge import ListJudge, ListReader, Unfed
 from ostler.book.outcome import CannotReach, cut_by_limit
+from ostler.book.proxy import Recording
 from ostler.book.screen import ROLES, Component, Screen
 from ostler.qa import android
 from ostler.qa.android import ScreenRecording
@@ -120,6 +121,8 @@ class Device(ListReader):
         self._began = 0.0
         self._screen = load_harness_module("ostler_qa_hierarchy")
         self.lists = ListJudge()
+        self.recording: Recording | None = None
+        self.marked = 0
 
     def start(self) -> None:
         for tool in ("adb", "maestro"):
@@ -249,8 +252,25 @@ class Device(ListReader):
         """Names the lists of these screens, so a judged list is reported by screen and attribute."""
         self.lists.feeding(screens)
 
+    def stepping(self) -> None:
+        """Marks where a step begins in the recording of the app's requests, if one is kept."""
+        if self.recording is not None:
+            self.marked = self.recording.mark()
+
     def feed(self, component: Component, name: str) -> tuple[Any, str]:
         given = component.lists.given if component.lists is not None else None
+        if self.recording is not None and callable(given):
+            wanted = cast(Callable[[Any], bool], given)
+            seen = self.recording.first(self.marked, wanted) or self.recording.last(self.marked, wanted) or self.recording.wait(self.marked, wanted, self.timeout)
+            said = f"the list {name} is {getattr(given, 'text', 'a request')}"
+            if seen is None:
+                raise Unfed(f"{said}, and the app sent no such request")
+            if not seen.framed:
+                raise Unfed(f"{said}, and its answer could not be framed, so it was left as raw bytes")
+            try:
+                return seen.json(), seen.url
+            except ValueError as unreadable:
+                raise Unfed(f"{said}, and its answer is not JSON: {unreadable}") from None
         raise Unfed(f"the list {name} is {getattr(given, 'text', 'a request')}, and a phone cannot see what the app received: "
                     "state the list as asked(<an endpoint of the backend's book>)")
 
