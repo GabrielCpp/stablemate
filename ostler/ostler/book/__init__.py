@@ -35,6 +35,7 @@ from ostler.book.httpsurface import HttpSurface
 from ostler.book.rpc import STATUS, GrpcClient, GrpcSurface, Rpc
 from ostler.book.screen import Component, Interaction, Phase, Screen, Stored, T, Transition, When
 from ostler.book.service import Service
+from ostler.book.signed import Signed
 from ostler.book.stack import Process, Stack
 from ostler.book.state import Axes, Impossible, Scene
 from ostler.book.status import Code, Exited, refused, succeeded
@@ -51,6 +52,6 @@ __all__ = [
     "Endpoint", "Enum", "Field", "Foreign", "Given", "Id", "Impossible", "Int", "Interaction", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",
     "Needs", "Num", "On", "OwnerRefused", "Passes", "Phase", "Process", "Reaches", "Reference", "Refusal", "Refusals", "Refused", "Relates", "Rule", "Same", "Scene", "Screen", "Seen", "Service", "Shows", "Stack", "Stored", "Str", "Surface",
     "Command", "CommandSurface", "Exit", "Files", "Flag", "Lines", "Mark", "Outside", "Positional", "STDERR", "Sandbox", "Seed", "Switch",
-    "Code", "Exited", "GrpcClient", "GrpcSurface", "HttpSurface", "Rpc", "STATUS", "refused", "succeeded",
+    "Code", "Exited", "GrpcClient", "GrpcSurface", "HttpSurface", "Rpc", "STATUS", "Signed", "refused", "succeeded",
     "T", "Transition", "Undeclared", "Undo", "Unreachable", "Unseen", "Because", "When", "error_field", "masked", "pluck", "problem",
 ]

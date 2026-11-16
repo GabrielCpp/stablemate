@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+import base64
 import functools
 import json
 import os
 import re
 import threading
+import time
 import uuid
 from datetime import date, datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
 USERS = ("ana", "bo")
 ROSTER = ("bo", "ana")
+TOKEN_LIFE = 3600
 STATUSES = ("overdue", "scheduled", "unscheduled")
 DATE_FORM = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
 
@@ -67,10 +70,14 @@ class Fields:
 class TodoStore:
     """The state of one service: the todos, the counter, the clock and the store switch."""
 
-    def __init__(self, token: str, api_key: str, bug: str | None) -> None:
+    def __init__(self, token: str, api_key: str, bug: str | None, sign_in: bool = False,
+                 clock: Callable[[], float] = time.time) -> None:
         self.token = token
         self.api_key = api_key
         self.bug = bug
+        self.sign_in = sign_in
+        self.clock = clock
+        self.issued: dict[str, float] = {}
         self.lock = threading.Lock()
         self.reset()
 
@@ -226,8 +233,27 @@ class TodoStore:
             return -1 if a["due_on"] < b["due_on"] else 1
         return -1 if left[0].seq < right[0].seq else 1
 
+    def authorised(self, headers: Any) -> bool:
+        if headers.get("Authorization") == f"Bearer {self.token}" or headers.get("X-Api-Key") == self.api_key:
+            return True
+        bearer = headers.get("Authorization", "").removeprefix("Bearer ")
+        with self.lock:
+            return self.sign_in and self.issued.get(bearer, 0.0) > self.clock()
+
+    def sign_in_handler(self, method: str) -> tuple[int, Any]:
+        if not self.sign_in or method != "POST":
+            return 404, {"error": "Not found"}
+        with self.lock:
+            expires = int(self.clock()) + TOKEN_LIFE
+            claims = {"exp": expires, "jti": len(self.issued)}
+            parts = [base64.urlsafe_b64encode(json.dumps(part).encode()).rstrip(b"=").decode()
+                     for part in ({"alg": "none"}, claims)]
+            token = ".".join([*parts, "signature"])
+            self.issued[token] = float(expires)
+        return 200, {"token": token}
+
     def todos_handler(self, method: str, path: str, query: dict[str, list[str]], headers: Any, body: bytes) -> tuple[int, Any]:
-        if headers.get("Authorization") != f"Bearer {self.token}" and headers.get("X-Api-Key") != self.api_key:
+        if not self.authorised(headers):
             return 401, {"error": "Unauthorized"}
         with self.lock:
             if self.down:
@@ -251,7 +277,7 @@ class TodoStore:
             return 405, {"error": "Method not allowed"}
 
     def users_handler(self, method: str, headers: Any) -> tuple[int, Any]:
-        if headers.get("Authorization") != f"Bearer {self.token}" and headers.get("X-Api-Key") != self.api_key:
+        if not self.authorised(headers):
             return 401, {"error": "Unauthorized"}
         if method != "GET":
             return 405, {"error": "Method not allowed"}
@@ -309,8 +335,9 @@ def read_object(body: bytes) -> dict[str, Any] | None:
 class TodoServer:
     """The service on a loopback port: `start` serves it on a thread, `stop` ends it."""
 
-    def __init__(self, token: str = "test-token", api_key: str = "test-key", bug: str | None = None, port: int = 0) -> None:
-        self.store = TodoStore(token, api_key, bug)
+    def __init__(self, token: str = "test-token", api_key: str = "test-key", bug: str | None = None, port: int = 0,
+                 sign_in: bool = False, clock: Callable[[], float] = time.time) -> None:
+        self.store = TodoStore(token, api_key, bug, sign_in, clock)
         store = self.store
 
         class Handler(BaseHTTPRequestHandler):
@@ -347,6 +374,8 @@ class TodoServer:
                 if parts.path in ("/todos",) or parts.path.startswith("/todos/"):
                     status, payload = store.todos_handler(
                         self.command, parts.path, parse_qs(parts.query, keep_blank_values=True), self.headers, body)
+                elif parts.path == "/sign-in":
+                    status, payload = store.sign_in_handler(self.command)
                 elif parts.path == "/users":
                     status, payload = store.users_handler(self.command, self.headers)
                 elif parts.path.startswith("/admin/"):

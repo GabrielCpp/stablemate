@@ -31,6 +31,7 @@ from ostler.book.entries import says
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.model import attribute
 from ostler.book.outcome import Refusal, Refusals
+from ostler.book.signed import Signed
 from ostler.book.status import Code, Status, refused, succeeded
 
 __all__ = ["BookError"]
@@ -725,12 +726,12 @@ class Client:
     """Where the service listens and the credentials each caller holds, one per
     scheme. `credentials` are the sole caller's. `send` is the one way through."""
 
-    def __init__(self, base: str, credentials: Mapping[Auth, str] | None = None, timeout: float = 10,
+    def __init__(self, base: str, credentials: Mapping[Auth, str | Signed] | None = None, timeout: float = 10,
                  message_of: Callable[[object], str] = error_field, hosts: Mapping[str, str] | None = None):
         self.base = base.rstrip("/")
         self.message_of = message_of
         self.hosts = {name: address.rstrip("/") for name, address in (hosts or {}).items()}
-        self.held: dict[tuple[Actor, Auth], str] = {(SOLE, auth): value for auth, value in (credentials or {}).items()}
+        self.held: dict[tuple[Actor, Auth], str | Signed] = {(SOLE, auth): value for auth, value in (credentials or {}).items()}
         self.timeout = timeout
         self.ids = Identities()
         self.witness = Witness()
@@ -751,7 +752,7 @@ class Client:
             self.resolved[reference.name] = cast(Callable[[], Any], value)() if callable(value) else value
         return self.resolved[reference.name]
 
-    def hold(self, actor: Actor, auth: Auth, credential: str) -> None:
+    def hold(self, actor: Actor, auth: Auth, credential: str | Signed) -> None:
         """Keep the credential `actor` presents under `auth`."""
         self.held[(actor, auth)] = credential
 
@@ -1036,7 +1037,7 @@ class Endpoint:
             credential = client.held.get((self.by, self.auth_used))
             if credential is None:
                 raise BookError(f"the client holds no {self.auth_used.describe()} for {self.by}")
-            name, value = self.auth_used.header(credential)
+            name, value = self.auth_used.header(credential.token if isinstance(credential, Signed) else credential)
             headers[name] = value
         payload = self.payload(client.ids, client.resolve)
         if isinstance(payload, bytes):

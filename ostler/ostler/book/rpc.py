@@ -23,6 +23,7 @@ from ostler.book.contracts import STREAMING
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.http import Answer, Auth, Client, Endpoint, Field, Int, List, Map, Object, Shape, Str
 from ostler.book.httpsurface import HttpSurface
+from ostler.book.signed import Signed
 from ostler.book.status import Code, Status
 
 STATUS = Object("Status", message=Field(Str()))
@@ -100,7 +101,7 @@ class Rpc(Endpoint, abstract=True):
 class GrpcClient(Client):
     """Where each service listens, as `host:port`, and what each caller holds."""
 
-    def __init__(self, base: str, credentials: Mapping[Auth, str] | None = None, timeout: float = 10,
+    def __init__(self, base: str, credentials: Mapping[Auth, str | Signed] | None = None, timeout: float = 10,
                  message_of: Callable[[object], str] = status_message, hosts: Mapping[str, str] | None = None,
                  plaintext: bool = True, binary: str = "grpcurl"):
         super().__init__(base, credentials, timeout, message_of, hosts)
