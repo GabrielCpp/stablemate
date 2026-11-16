@@ -124,6 +124,15 @@ session, decodes it and compares as above. A page whose path is not on the route
 and the note names both. A list the browser fetches through the app's gateway keeps
 `given=request(...)`.
 
+A list can also be asked of a backend through its book: `given=asked(ListTodos)` names an endpoint
+class of another book under the root. Before each step on the screen the run sends that call as the
+person taking the step, through the owner's surface, and derives the list from the answer exactly as
+from a received one. A call built with no input must be enough. An owner with no book, a refusal or a
+call that cannot be built is a fault on the list that names the call and why. `asked` is the only
+feed a phone can read, and it works on the web too. A backend that answers a moment after the page
+got its data gives the same data only for a list that changes slowly (A6): a busy shared list keeps
+`always`, `never` and `entries`.
+
 ## An interaction
 
 One `Interaction` per act, naming its screen, the action it carries on the model and a line on
@@ -240,6 +249,15 @@ identifier (a Flutter `TestId`); one without an id is found by its visible text 
 | `press`, `fill`, `value`, `text`, `disabled`, `visible`, `wait_for` | as on the web |
 | `heard(prefixes)`, `await_heard(prefixes, present)` | a snackbar or label by its first words |
 | `await_value(component, text)` | a field comes to hold a value |
+
+`fill` on a `select` opens the list with a tap and reads the entries that appeared: the texts on the
+screen after the tap that were not on it before, top to bottom then left to right. The choice before
+the tap is the select's own text. A phone judges `derived` (from `asked` only), `always`, `never`,
+`entries` and `picked` as the web does, then taps the entry whose text is the value. A value the list
+does not show closes it with Android back and is a `CannotReach` that names what it offers. A phone
+sees no request, so a list whose `given` is `request(...)` or `handed(...)` is a fault saying so.
+`labels(component)` opens a list, reads it and closes it. `picked` is judged again after `launch()`
+or `clear()`.
 
 `fill` types with `adb input text`, so text outside printable ASCII is a `CannotReach`. It reads
 the field back and types again, up to three times, when a keystroke was lost. The video comes from
