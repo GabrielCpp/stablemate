@@ -21,22 +21,24 @@ def module(name: str) -> ModuleType:
     return importlib.import_module(name)
 
 
-def runtime(port: int, web: int | None = None, digest: int | None = None) -> dict[str, str]:
+def runtime(port: int, web: int | None = None, digest: int | None = None, kit: int | None = None) -> dict[str, str]:
     """The environment a book run gets: the port the stand-in app listens on, the port of its web page and of
-    the digest service when there are ones, and no import path."""
+    the digest service and of the kit app when there are ones, and no import path."""
     env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
     env["TODO_API_PORT"] = str(port)
     if web is not None:
         env["TODO_WEB_PORT"] = str(web)
     if digest is not None:
         env["TODO_DIGEST_PORT"] = str(digest)
+    if kit is not None:
+        env["TODO_KIT_PORT"] = str(kit)
     return env
 
 
 def run_book(arguments: list[str], port: int, cwd: Path = FIXTURE, web: int | None = None,
-             digest: int | None = None) -> subprocess.CompletedProcess[str]:
-    """`python -m ostler.book` from the fixture's root, with the app on `port`, its page on `web` and the digest service on `digest`."""
-    return subprocess.run([sys.executable, "-m", "ostler.book", *arguments], cwd=cwd, env=runtime(port, web, digest),
+             digest: int | None = None, kit: int | None = None) -> subprocess.CompletedProcess[str]:
+    """`python -m ostler.book` from the fixture's root, with the app on `port`, its page on `web`, the digest service on `digest` and the kit app on `kit`."""
+    return subprocess.run([sys.executable, "-m", "ostler.book", *arguments], cwd=cwd, env=runtime(port, web, digest, kit),
                           capture_output=True, text=True, check=False)
 
 

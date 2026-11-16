@@ -11,6 +11,7 @@ from ostler.book.cast import KEEP, SOLE, Actor
 from ostler.book.domain import Action, Fixture
 from ostler.book.errors import BookError
 from ostler.book.http import Field as Wire
+from ostler.book.pagedata import Handed
 
 
 @dataclass(frozen=True, init=False)
@@ -63,13 +64,14 @@ ROLES = {
 
 @dataclass(frozen=True)
 class Lists:
-    """What a list filled from data holds: `given` matches the request whose answer fills it, `derived` turns the
-    decoded body of that answer into the texts the list shows, in order, and `head` are the labels shown before them.
+    """What a list filled from data holds: `given` matches the request whose answer fills it, or names the page whose
+    data the app's server hands it with `handed(route)`, `derived` turns the decoded body of that answer, or that data,
+    into the texts the list shows, in order, and `head` are the labels shown before them.
     `always` and `never` read the model, for the person looking, and return the texts the list must show and the
     texts it must not; entries neither names are ignored."""
 
     head: tuple[T | str, ...] = ()
-    given: Callable[[Any], bool] | None = None
+    given: Callable[[Any], bool] | Handed | None = None
     derived: Callable[[Any], list[str]] | None = None
     always: Callable[[Any, Any], list[str]] | None = None
     never: Callable[[Any, Any], list[str]] | None = None
@@ -94,6 +96,8 @@ class Lists:
 
     def says(self, lang: str) -> str:
         said = (self.derived.__doc__ or "").strip().splitlines()[0] if self.derived is not None else ""
+        if said and isinstance(self.given, Handed):
+            said = f"{said}, from the {self.given.text}"
         shown = ", ".join([repr(label) for label in self.labels(lang)] + ([said] if said else []))
         claims = [f"{claim} {function.__doc__.strip().splitlines()[0]}"
                   for claim, function in (("always", self.always), ("never", self.never)) if function is not None and function.__doc__]

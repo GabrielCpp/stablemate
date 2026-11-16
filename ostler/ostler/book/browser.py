@@ -16,6 +16,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from ostler.book.errors import BookError
 from ostler.book.outcome import CannotReach, cut_by_limit
+from ostler.book.pagedata import Handed, decode, on_route
 from ostler.book.screen import ROLES, Component, Screen
 
 Wanted = Callable[[Any], bool]
@@ -39,6 +40,19 @@ def answer(method: str, path: str, **query: str) -> Wanted:
     """Matches the answer to such a request, whatever its status."""
     wanted = request(method, path, **query)
     return lambda response: wanted(response.request)
+
+
+def action(route: str, name: str) -> Wanted:
+    """Matches the answer to the POST of the form action `name` of the page `route`, as `POST /?/add`."""
+
+    def wanted(response: Any) -> bool:
+        req = response.request
+        parts = urlsplit(req.url)
+        named = any(key == f"/{name}" for key, _ in parse_qsl(parts.query, keep_blank_values=True))
+        return req.method == "POST" and on_route(route, parts.path) and named
+
+    setattr(wanted, "text", f"POST {route}?/{name}")
+    return wanted
 
 
 def refusal(method: str, path: str) -> Wanted:
@@ -167,7 +181,7 @@ class Browser:
         """Keeps, for each request a list of these screens is given by, the last answer the page receives."""
         self._screens = screens
         self._feeds = tuple(c.lists.given for screen in screens for c in screen.components()
-                            if c.lists is not None and c.lists.given is not None)
+                            if c.lists is not None and c.lists.given is not None and not isinstance(c.lists.given, Handed))
         if self.context is not None:
             self._listen()
 
@@ -221,14 +235,38 @@ class Browser:
     def _judge_derived(self, component: Component, name: str, shown: list[str]) -> None:
         lists = component.lists
         assert lists is not None and lists.given is not None and lists.derived is not None
-        kept = self._kept.get(lists.given)
-        if kept is None:
-            self._faults.append(f"the page received no answer to {getattr(lists.given, 'text', 'the request')} "
-                                f"before the pick in {name}")
-            return
-        derived = [*lists.labels(self.lang), *lists.derived(kept.json())]
+        if isinstance(lists.given, Handed):
+            body = self._handed(lists.given, name)
+            if body is None:
+                return
+        else:
+            kept = self._kept.get(lists.given)
+            if kept is None:
+                self._faults.append(f"the page received no answer to {getattr(lists.given, 'text', 'the request')} "
+                                    f"before the pick in {name}")
+                return
+            body = kept.json()
+        derived = [*lists.labels(self.lang), *lists.derived(body)]
         if shown != derived:
             self._faults.append(f"the list {name} shows {shown}, the book derives {derived}")
+
+    def _handed(self, given: Handed, name: str) -> Any:
+        """The data the app's server hands the page now open, asked again in the browser's own session, or None after
+        a fault says why it could not be read."""
+        path = urlsplit(self.page.url).path
+        if not on_route(given.route, path):
+            self._faults.append(f"the list {name} is {given.text}, and the page open is at {path}, not on {given.route}")
+            return None
+        url = f"{self.base}{path.rstrip('/')}/__data.json"
+        answered = self.context.request.get(url)
+        if not answered.ok:
+            self._faults.append(f"the list {name} is {given.text}, and the app's server answered {answered.status} to GET {url}")
+            return None
+        try:
+            return decode(answered.text())
+        except BookError as unreadable:
+            self._faults.append(f"the list {name} is {given.text}, and it cannot be read: {unreadable}")
+            return None
 
     def taken(self) -> list[Any]:
         """The requests recorded since the last time this was asked."""

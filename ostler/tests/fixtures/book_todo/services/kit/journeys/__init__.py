@@ -1,0 +1,7 @@
+from .an_assignee_is_picked_after_a_navigation import AnAssigneeIsPickedAfterANavigation
+from .an_assignee_is_picked_on_a_first_visit import AnAssigneeIsPickedOnAFirstVisit
+from .an_owner_is_picked_after_a_navigation import AnOwnerIsPickedAfterANavigation
+from .an_owner_is_picked_on_a_first_visit import AnOwnerIsPickedOnAFirstVisit
+
+ALL = (AnOwnerIsPickedOnAFirstVisit, AnOwnerIsPickedAfterANavigation, AnAssigneeIsPickedOnAFirstVisit,
+       AnAssigneeIsPickedAfterANavigation)

@@ -1,0 +1,17 @@
+{
+  "name": "kit-fixture",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@sveltejs/adapter-node": "5.5.7",
+    "@sveltejs/kit": "2.70.3",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "devalue": "5.9.4",
+    "svelte": "5.57.2",
+    "vite": "8.3.5"
+  }
+}
