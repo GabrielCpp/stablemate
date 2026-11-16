@@ -7,7 +7,9 @@ from typing import Any
 
 import json
 
-from ostler.book import Answer, Diverges, Done, Endpoint, Enum, Field, Id, Model, Object, Refusal, Refusals, Service, Str
+from ostler.book import (Action, Answer, CannotReach, Diverges, Done, Endpoint, Enum, Field, Id, Model, Object, Refusal, Refusals, Rule, Service,
+                         Str)
+from ostler.book.model import Refused
 from ostler.book.http import Client
 from ostler.book.httpsurface import HttpSurface
 from ostler.book.inputs import InputClass, classes, judge, vary
@@ -144,3 +146,50 @@ def test_the_wrong_type_class_of_a_minted_id_field_is_refused_by_a_service_that_
                              stack=no_stack, refusals=Refusals(wrong_type=Refusal("name must be text", 400)))
     sent = judge(service, vary(call, chosen), chosen, Plain(DAY), Strict(NumberRefuser("http://x")))
     assert sent.ok, sent.note
+
+
+class Short(Endpoint):
+    method = "POST"
+    path = "/short"
+    body = Object("Short", title=Field(Str(max_len=5)))
+    answers = (Answer(200, None, "sent"),)
+    carries = Action
+
+
+class Tight(Plain):
+    def apply(self, request: object) -> None:
+        if len(request.body_value["title"]) > 5:
+            raise Refused(Rule("too long", lambda a, s, by: True))
+        return None
+
+    def copy(self) -> Tight:
+        return Tight(self.today)
+
+
+class Stopped(Quiet):
+    def __init__(self, listed: tuple[object, ...]) -> None:
+        self.listed = listed
+
+    def perform(self, step: Any) -> Done | Refusal:
+        raise CannotReach("keeps only its first 5 characters of 6 typed")
+
+    def rows(self) -> tuple[object, ...]:
+        return self.listed
+
+
+def _stopped_at_its_length(listed: tuple[object, ...]):
+    call = Short({"title": "abc"})
+    chosen = next(c for c in classes(call, Tight(DAY), None) if c.kind == "too long")
+    service = Service[Tight](name="x", new_model=Tight, surface=lambda environment: Stopped(listed), journeys=(), stack=no_stack)
+    return judge(service, vary(call, chosen), chosen, Tight(DAY), Stopped(listed))
+
+
+def test_a_class_the_app_never_received_leaves_the_world_clean_when_the_rows_still_match():
+    sent = _stopped_at_its_length(())
+    assert sent.ok, sent.note
+    assert sent.clean
+
+
+def test_a_class_the_app_never_received_leaves_no_clean_world_when_the_rows_differ():
+    sent = _stopped_at_its_length(("stray",))
+    assert not sent.clean

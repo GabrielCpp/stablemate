@@ -488,7 +488,9 @@ def judge(service: Service[Any], call: Endpoint, c: InputClass, model: Model, su
         taken = attempt(call, model, surface)
         if taken.skipped:
             raise CannotArrange(taken.skipped)
-        clean = taken.ok and isinstance(taken.model, Refusal) and isinstance(taken.app, Refusal)
+        clean = taken.ok and isinstance(taken.model, Refusal) and (
+            isinstance(taken.app, Refusal)
+            or (isinstance(taken.app, Unreachable) and surface.rows() == listing(surface, model)))
         return Sent(cls, c, taken.ok, taken.note, f"{taken.model} / {taken.app}", known=taken.known, clean=clean)
     want = refusals_for(service, cls).of(c.default)
     match = next((d for d in service.diverges if d.endpoint is cls and d.label == c.label), None)
