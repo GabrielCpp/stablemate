@@ -69,12 +69,14 @@ FIELDS = """root => {
 
 
 def request(method: str, path: str, **query: str) -> Wanted:
-    """Matches a request by verb, path (`/todos` also matches `/todos/{id}`)
-    and the query parameters named; a parameter not sent counts as ''."""
+    """Matches a request by verb, path (`/todos` also matches `/todos/{id}`, and a `{name}` in the path stands for
+    one segment, as in `/projects/{id}/variants`) and the query parameters named; a parameter not sent counts as ''."""
+    shape = "/".join("[^/]+" if re.fullmatch(r"\{[^{}/]+\}", part) else re.escape(part) for part in path.split("/"))
+    template = re.compile(f"{shape}(/.*)?")
 
     def wanted(req: Any) -> bool:
         parts = urlsplit(req.url)
-        on_path = parts.path == path or parts.path.startswith(path + "/")
+        on_path = template.fullmatch(parts.path) is not None
         params = dict(parse_qsl(parts.query, keep_blank_values=True))
         return req.method == method and on_path and all(params.get(k, "") == v for k, v in query.items())
 

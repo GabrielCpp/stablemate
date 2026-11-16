@@ -228,7 +228,8 @@ Everything else goes through `self.browser`:
 | `sent`, `holding` | waits for a request to leave, or keeps it from reaching the server |
 | `set_offline(bool)` | the browser loses or regains the network |
 
-Match requests with `request(method, path, **query)`, `answer(...)` and `refusal(...)`. A form
+Match requests with `request(method, path, **query)`, `answer(...)` and `refusal(...)`. A `{id}` in
+the path stands for one segment, as in `request("PATCH", "/projects/{id}/variants")`. A form
 action of a SvelteKit page is `action(route, name)`, which matches the answer to `POST /?/add` for
 `action("/", "add")`, to wait on with `answered`.
 
