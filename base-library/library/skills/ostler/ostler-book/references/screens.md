@@ -37,6 +37,7 @@ Heading("#pane h2", "Settings")
 | --- | --- |
 | `Field`, `TextArea`, `DateField` | role `textbox` named by the label |
 | `Select` | role `combobox`. A native select or a popup of options (a combobox that opens a `listbox` of `option` entries), driven the same way. A fixed list of choices goes in `options=(...)`, as labels. A list filled from data states what it holds with `lists=` |
+| `Form` | role `form`, `group` or `region` by its accessible name. A form the page draws from data states its fields with `lists=`, each entry a name and a role |
 | `Button`, `Check`, `Heading`, `MenuItem`, `Link`, `Option` | the role of the same name |
 | `Banner`, `Spinner` | role `alert`, `progressbar` |
 | `Text` | by its text, or by `data-testid` when it has an id |
@@ -111,15 +112,14 @@ list. A select with no shape and no claim stays a finding that blocks the run.
 
 A SvelteKit app renders some lists from data its server loaded and fetches others in the browser
 through its own endpoints. Tell them apart in the source. A list filled from the `data` of a
-`+page.server.js` or `+page.server.ts` load (or a `+layout.server` one) is `given=handed(route)`, the
-route spelled as its folders spell it, `/tickets/[id]` for `src/routes/tickets/[id]`. A list filled
-by a `fetch` in a `.svelte` file, or by a call to the app's own `/api` routes (`+server.js`), is
-`given=request(method, path)`. A `+page.js` or `+page.ts` universal load is not handed: the
-server answers `__data.json` for server loads only and skips a node that has none, so name the
-`fetch` the universal load makes with `request`. A step that submits a form action of the page
-(`export const actions`, a `<form method="POST">`) waits on `action(route, name)`. A list the server rendered states `given=handed(route)`, the route
-spelled as SvelteKit spells it (`/tickets/[id]`). `derived` then takes the data the page was
-handed, a dictionary as the page's `data` prop sees it.
+`+page.server.js` or `+page.server.ts` load (or a `+layout.server` one) is `given=handed(route)`,
+the route spelled as its folders spell it, `/tickets/[id]` for `src/routes/tickets/[id]`. A list
+filled by a `fetch` in a `.svelte` file, or by a call to the app's own `/api` routes
+(`+server.js`), is `given=request(method, path)`. A `+page.js` or `+page.ts` universal load is not
+handed: the server answers `__data.json` for server loads only and skips a node that has none, so
+name the `fetch` the universal load makes with `request`. A step that submits a form action of the
+page (`export const actions`, a `<form method="POST">`) waits on `action(route, name)`. `derived`
+takes the data the page was handed, a dictionary as the page's `data` prop sees it.
 
 ```python
 from ostler.book import handed
@@ -138,15 +138,44 @@ and the note names both. A list the browser fetches through the app's gateway ke
 
 A list can also be asked of a backend through its book: `given=asked(ListTodos)` names an endpoint
 class of another book under the root. Before each step on the screen the run sends that call as the
-person taking the step, through the owner's surface, and derives the list from the answer exactly as
-from a received one. A call built with no input must be enough. An owner with no book, a refusal or a
-call that cannot be built is a fault on the list that names the call and why. `asked` is the only
-feed a phone can read, and it works on the web too. A list on a phone screen states
+person taking the step, through the owner's surface, and derives the list from the answer exactly
+as from a received one. A call built with no input must be enough. An owner with no book, a refusal
+or a call that cannot be built is a fault on the list that names the call and why. `asked` is the
+only feed a phone can read, and it works on the web too. A list on a phone screen states
 `given=asked(<Endpoint>)`: find the call the app's client code makes to fill the list (the
-repository or API client the screen's state reads), then take the `Endpoint` of the backend's
-book that declares that route. Find it with `ostler book search <path>` over the root. A backend that answers a moment after the page
-got its data gives the same data only for a list that changes slowly (A6): a busy shared list keeps
-`always`, `never` and `entries`.
+repository or API client the screen's state reads), then take the `Endpoint` of the backend's book
+that declares that route. Find it with `ostler book search <path>` over the root. A backend that
+answers a moment after the page got its data gives the same data only for a list that changes
+slowly (A6): a busy shared list keeps `always`, `never` and `entries`.
+
+## A form drawn from data
+
+A form the page draws from data is a list whose entries are its fields. Each entry is a pair of
+the field's accessible name and its ARIA role, and the role is the field's kind: `textbox`,
+`spinbutton`, `combobox`, `checkbox`, `radiogroup`, `switch`, `slider` or `listbox`.
+
+```python
+from ostler.book import Form, T, no_repeat, request
+from ostler.book.screen import Lists
+
+ROLE = {"text": "textbox", "number": "spinbutton", "choice": "combobox", "flag": "checkbox"}
+
+def definition_fields(answer):
+    """each field of the details form, with its label and kind, in the definition's order"""
+    return [(field["label"], ROLE[field["type"]]) for field in answer["fields"]]
+
+fields = Lists(given=request("GET", "/definition"), derived=definition_fields, entries=(no_repeat(),))
+details = Form("details-form", T(en="Details", fr="Détails"), "the fields drawn from the definition", lists=fields)
+```
+
+`Form(id, label, does, lists=Lists(given=..., derived=...))` is found by role `form`, `group` or
+`region` with its accessible name, or by its id. `derived` returns the pairs in the order the page
+draws them. Read the role of each pair from the code that renders each field kind.
+
+A step reads the form with `browser.fields(Screen.form)` when a journey shows it. A difference
+fails the step, and the note names both sequences. A control with no accessible name is a fault of
+its own. `entries` rules and `always` and `never` judge the names. The report lists a `Form` like a
+select.
 
 ## An interaction
 
