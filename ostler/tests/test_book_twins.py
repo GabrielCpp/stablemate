@@ -333,3 +333,19 @@ def test_the_todo_book_skips_the_pair_where_the_field_declares_the_offset_ignore
     tried = _play_fixture(utc_server)
     assert tried.underspecified == []
     assert tried.twins_ignored == 1
+
+
+def test_the_first_value_of_a_pair_takes_the_world_the_last_clean_class_left(todo_server):
+    service = module("services.api.service").service
+    surface = service.surface(Environment("local", {"api": todo_server.url}))
+    arranged = []
+
+    def counted() -> Model:
+        arranged.append(1)
+        return fresh(service, surface)
+
+    tried = play(service, surface, counted, only=frozenset({"AddTodo"}))
+    assert tried.twins_played
+    assert tried.sent[-1].clean
+    anew = sum(1 for before, s in zip([None, *tried.sent], tried.sent) if before is None or not before.clean)
+    assert len(arranged) == anew + 2 * tried.twins_played - 1
