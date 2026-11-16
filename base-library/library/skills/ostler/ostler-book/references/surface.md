@@ -99,6 +99,14 @@ Declare each body once in `endpoints/shapes.py` and reuse it.
   neither, with all, and with each one alone, and the model's rules judge each.
 - `List(shape, unordered="<why>")` when the app leaves ties in an order the book cannot
   predict. Without it, order is compared.
+- `List(shape, entries=(has("id"), no_repeat("id"), in_order("name")))` when every entry of the
+  list the app answers holds a rule, whoever made the record. A rule judges the whole answer,
+  other people's entries included, before the comparison drops an entry whose id the book never
+  learned, so it sees what the comparison hides. `has(key)` takes a dotted path and breaks on a
+  missing, null or empty value. Each rule needs a docstring: its first line is what `explain`
+  and `search` show. State one only where the app holds it for every entry. A list that breaks
+  it fails the step, naming the endpoint, the path (`assets[]`) and the entry, unless a
+  `Defect(..., breaks=<rule>)` covers it.
 
 ### Twins and `ignores=`
 

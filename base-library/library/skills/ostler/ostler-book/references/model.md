@@ -102,6 +102,19 @@ defects = (Defect[Sending, Serving](rules.DELIVERY_REFUSED, lambda a, s, by: Tru
                                     why="a refused delivery answers 503 where 424 is meant"),)
 ```
 
+When the app answers what the model says except that a list in the answer breaks an entry rule,
+the defect names the rule with `breaks=`, on the action whose answer holds the list. Share one
+rule object between the `List(entries=...)` and the defect. `breaks=` takes no `over`, `does` or
+status:
+
+```python
+defects = (Defect[Listing, Serving]("a blank asset heads the inventory", lambda a, s, by: a.kind is None,
+                                    breaks=rules.HAS_TAG, why="the list scans rows of every kind"),)
+```
+
+The run reports KNOWN while the rule breaks where the predicate holds. When the app is fixed
+the defect is never met and the run fails, naming it.
+
 A status under 400 is a success the app should not give, and the message is then the defect's
 name only. When the wrong answer also changes state, `does=` returns that change the way a
 `reduce` does, so later steps compare against what the app holds. `does=lambda a, s, by:
