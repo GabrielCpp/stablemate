@@ -56,6 +56,17 @@ def test_a_screen_book_with_no_package_yet_starts_with_the_owner_because_the_sur
     assert step.params == {"gate": "", "lap": 1}
 
 
+def test_a_screen_book_whose_package_holds_only_its_stack_starts_with_the_owner(tmp_path: Path) -> None:
+    flow, _runner = build_flow(tmp_path, kind="web")
+    (flow.root / flow.package / "ops").mkdir(parents=True)
+    (flow.root / flow.package / "ops" / "stack.yml").write_text("services: {}\n", encoding="utf-8")
+
+    step = flow.start()
+
+    assert isinstance(step, Continue) and step.state == "write"
+    assert step.params == {"gate": "", "lap": 1}
+
+
 def test_a_book_reached_by_no_screen_surface_starts_with_the_owner(tmp_path: Path) -> None:
     flow, _runner = build_flow(tmp_path, kind="http,grpc")
 

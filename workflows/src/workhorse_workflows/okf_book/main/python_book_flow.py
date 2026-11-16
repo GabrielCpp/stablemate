@@ -96,6 +96,11 @@ class WritePythonBook(BookFlow):
         return f"services/{self.service}"
 
     @property
+    def written(self) -> bool:
+        """Whether the book's package holds a service, so its modules load. A package holding only the stack it is played on is not written yet."""
+        return (self.root / self.package / "service.py").is_file()
+
+    @property
     def kinds(self) -> tuple[str, ...]:
         return tuple(kind.strip() for kind in self.kind.split(",") if kind.strip())
 
@@ -115,11 +120,11 @@ class WritePythonBook(BookFlow):
 
     def start(self) -> Continue[...] | Await[...]:
         """Read what the book format changed for a book whose package exists, and wait for the operator where that cannot be read. Survey a book reached by a screen surface that already has a package, and send the owner its first lap otherwise."""
-        if (self.root / self.package).is_dir():
+        if self.written:
             delta = self.call(book_format_delta, self.root, self.service, self.format_history)
             if delta.unreadable:
                 return Await(self.run_dir / FORMAT_GATE, format_question(self.service, delta.unreadable), self.start).because("the format history could not be read")
-        if self.screen_modules and (self.root / self.package).is_dir():
+        if self.screen_modules and self.written:
             return Continue(None, self.survey, gate="", lap=0).because("survey the screens")
         return Continue(None, self.write, gate="", lap=1).because("send the owner")
 
@@ -274,7 +279,7 @@ class WritePythonBook(BookFlow):
         return Continue(reply, self.check, lap=lap).because("check the book")
 
     def _format(self) -> dict[str, object] | None:
-        if not (self.root / self.package).is_dir():
+        if not self.written:
             return None
         delta = self.call(book_format_delta, self.root, self.service, self.format_history)
         if not delta.behind:
