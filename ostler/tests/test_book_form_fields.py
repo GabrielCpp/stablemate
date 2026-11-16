@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any, Iterator
 
 import pytest
@@ -57,10 +58,10 @@ def control(index: int, field: dict, kind: str | None) -> str:
 
 
 @contextmanager
-def _form_page(definition: dict | None = None, wrong_kind: str | None = None, nameless: bool = False) -> Iterator[Browser]:
+def _form_page(definition: dict | None = None, wrong_kind: str | None = None, nameless: bool = False, query: str = "") -> Iterator[Browser]:
     body = (
         '<!doctype html><html><body><form id="project" aria-label="Project" data-testid="project-form"></form><script>'
-        "fetch('/definition').then(r => r.json()).then(d => {"
+        f"fetch('/definition{query}').then(r => r.json()).then(d => {{"
         "const form = document.getElementById('project');"
         "d.fields.forEach((f, i) => { form.insertAdjacentHTML('beforeend', f.html); });"
         "form.dataset.ready = 'yes'; });</script></body></html>")
@@ -70,7 +71,7 @@ def _form_page(definition: dict | None = None, wrong_kind: str | None = None, na
         served["fields"].append({"label": "", "type": "text", "html": '<input type="text">'})
 
     def answer(route: Any) -> None:
-        if route.request.url.endswith("/definition"):
+        if urlsplit(route.request.url).path == "/definition":
             route.fulfill(content_type="application/json", body=json.dumps(served))
         else:
             route.fulfill(content_type="text/html", body=body)

@@ -262,7 +262,7 @@ class Browser(ListReader):
     def _judge(self, component: Component, shown: list[str], selected: str) -> None:
         self.lists.judge(component, shown, selected, self.lang, self._feed)
 
-    def _feed(self, component: Component, name: str) -> Any:
+    def _feed(self, component: Component, name: str) -> tuple[Any, str]:
         given = component.lists.given if component.lists is not None else None
         assert given is not None and not isinstance(given, Asked)
         if isinstance(given, Handed):
@@ -270,9 +270,9 @@ class Browser(ListReader):
         kept = self._kept.get(given)
         if kept is None:
             raise Unfed(f"the page received no answer to {getattr(given, 'text', 'the request')} before the pick in {name}")
-        return kept.json()
+        return kept.json(), kept.url
 
-    def _handed(self, given: Handed, name: str) -> Any:
+    def _handed(self, given: Handed, name: str) -> tuple[Any, str]:
         """The data the app's server hands the page now open, asked again in the browser's own session."""
         path = urlsplit(self.page.url).path
         if not on_route(given.route, path):
@@ -282,7 +282,7 @@ class Browser(ListReader):
         if not answered.ok:
             raise Unfed(f"the list {name} is {given.text}, and the app's server answered {answered.status} to GET {url}")
         try:
-            return decode(answered.text())
+            return decode(answered.text()), self.page.url
         except BookError as unreadable:
             raise Unfed(f"the list {name} is {given.text}, and it cannot be read: {unreadable}") from None
 

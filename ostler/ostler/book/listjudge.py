@@ -13,7 +13,7 @@ class Unfed(Exception):
     """The data a list is derived from cannot be had, and why: the whole text is the fault."""
 
 
-Feed = Callable[[Component, str], Any]
+Feed = Callable[[Component, str], tuple[Any, str]]
 
 
 class ListJudge:
@@ -108,11 +108,11 @@ class ListJudge:
         lists = component.lists
         assert lists is not None and lists.given is not None and lists.derived is not None
         try:
-            body = self.answer(lists.given, name) if isinstance(lists.given, Asked) else feed(component, name)
+            body, url = (self.answer(lists.given, name), "") if isinstance(lists.given, Asked) else feed(component, name)
         except Unfed as unfed:
             self.faults.append(str(unfed))
             return
-        derived = [*lists.labels(lang), *(tuple(entry) if isinstance(entry, list) else entry for entry in lists.derived(body))]
+        derived = [*lists.labels(lang), *(tuple(entry) if isinstance(entry, list) else entry for entry in lists.derive(body, url))]
         if shown != derived:
             self.faults.append(f"the list {name} shows {shown}, the book derives {derived}")
 

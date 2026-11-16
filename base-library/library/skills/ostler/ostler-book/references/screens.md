@@ -79,8 +79,9 @@ assignee = Select("list-assignee", ASSIGNEE, "filters by owner",
 
 The run judges the list when a journey picks in it: it reads the labels the select shows and
 compares them with the `head` labels followed by `derived` applied to the last answer the page
-received to `given`. A difference fails the step and the note names both orders. The report
-names the lists a pick judged, the stated ones no pick reached and the selects nobody stated.
+received to `given`. `derived(body, url)` may take the URL of the request answered as a second
+argument, the page's URL for `handed`, and `''` for `asked`. A difference fails the step and the
+note names both orders. The report names the lists a pick judged, the stated ones no pick reached and the selects nobody stated.
 
 `always` names who must be offered and `never` who must not, each a read of the model for the
 person looking, taken before the step. Entries neither names are ignored, so the claim holds

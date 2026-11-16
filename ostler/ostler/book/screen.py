@@ -4,6 +4,7 @@ through and the transitions between them."""
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from typing import Any, Callable, ClassVar, Generic, TypeVar, cast
 
@@ -70,6 +71,8 @@ class Lists:
     data the app's server hands it with `handed(route)`, or names a backend's call, asked as the person looking, with
     `asked(Endpoint)`, `derived` turns the decoded body of that answer, or that data,
     into the texts the list shows, in order, and `head` are the labels shown before them.
+    `derived` may take the URL of the request that was answered as a second argument, which is '' for a list
+    given by `asked`.
     `always` and `never` read the model, for the person looking, and return the texts the list must show and the
     texts it must not; entries neither names are ignored.
     `entries` are rules every entry shown must hold, such as `in_order()`, and `picked` is the label the list has
@@ -79,7 +82,7 @@ class Lists:
 
     head: tuple[T | str, ...] = ()
     given: Callable[[Any], bool] | Handed | Asked | None = None
-    derived: Callable[[Any], list[Any]] | None = None
+    derived: Callable[..., list[Any]] | None = None
     always: Callable[[Any, Any], list[str]] | None = None
     never: Callable[[Any, Any], list[str]] | None = None
     entries: tuple[Callable[[list[Any]], list[str]], ...] = ()
@@ -100,11 +103,25 @@ class Lists:
             if not (rule.__doc__ or "").strip():
                 raise BookError(f"the entries rule {getattr(rule, '__name__', 'rule')} has no docstring: "
                                 "its first line says what the entries hold, and search and explain show it")
+        if self.derived is not None and not 1 <= self.arity() <= 2:
+            raise BookError(f"the derived function {getattr(self.derived, '__name__', 'derived')} takes the body of the answer "
+                            "and, if it wants it, the URL of the request: one or two arguments")
         picked = self.picked if callable(self.picked) else None
         for claim, function in (("derived", self.derived), ("always", self.always), ("never", self.never), ("picked", picked)):
             if function is not None and not (function.__doc__ or "").strip():
                 raise BookError(f"the {claim} function {getattr(function, '__name__', claim)} has no docstring: "
                                 "its first line says what the list holds, and search and explain show it")
+
+    def arity(self) -> int:
+        assert self.derived is not None
+        taken = inspect.signature(self.derived).parameters.values()
+        if any(p.kind is p.VAR_POSITIONAL for p in taken):
+            return 2
+        return sum(p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD) for p in taken)
+
+    def derive(self, body: Any, url: str) -> list[Any]:
+        assert self.derived is not None
+        return self.derived(body, url) if self.arity() == 2 else self.derived(body)
 
     def labels(self, lang: str) -> list[str]:
         return [(T(h) if isinstance(h, str) else h)[lang] for h in self.head]

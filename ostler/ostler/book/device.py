@@ -249,7 +249,7 @@ class Device(ListReader):
         """Names the lists of these screens, so a judged list is reported by screen and attribute."""
         self.lists.feeding(screens)
 
-    def feed(self, component: Component, name: str) -> Any:
+    def feed(self, component: Component, name: str) -> tuple[Any, str]:
         given = component.lists.given if component.lists is not None else None
         raise Unfed(f"the list {name} is {getattr(given, 'text', 'a request')}, and a phone cannot see what the app received: "
                     "state the list as asked(<an endpoint of the backend's book>)")
