@@ -296,7 +296,7 @@ user received except the caller".
 
 - A1. **Assumption:** a run can ask a SvelteKit server again, in the browser's session, for
   the data it handed a page, and decode it. **Decided:** the second feed variant, in slice 4.
-  **Basis:** the SvelteKit documentation on server loads. Not tried. **If wrong:** a list
+  **Basis:** the SvelteKit documentation on server loads. Tried on the fixture's SvelteKit 2.70 app. **If wrong:** a list
   rendered on the server keeps belonging and rules only, and its derivation is checked in
   the app's own tests.
 - A2. **Assumption:** a run can tell its own records apart in a list, by the id the list
