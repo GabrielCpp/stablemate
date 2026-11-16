@@ -533,7 +533,7 @@ def play(
     for endpoint in (*service.endpoints, *service.interactions):
         if only and endpoint.__name__ not in only:
             continue
-        if endpoint.carries is None or not has_inputs(endpoint) or endpoint in skipped:
+        if endpoint.carries is None or getattr(endpoint, "streams", "") or not has_inputs(endpoint) or endpoint in skipped:
             continue
         base = found.get(endpoint)
         if base is None:

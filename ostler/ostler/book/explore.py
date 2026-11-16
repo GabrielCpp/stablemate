@@ -184,14 +184,14 @@ def attempts(endpoints: Iterable[type[Endpoint]], store: Model, wanted: tuple[st
     """Every call the declarations allow from this state, valid or not: the
     baseline of each endpoint for every caller of the cast, the field variations
     for the first, and one call with no caller where the endpoint declares auth."""
-    return [call for e in endpoints if e.carries is not None for call in _calls(e, store, wanted, True, cast)]
+    return [call for e in endpoints if e.carries is not None and not e.streams for call in _calls(e, store, wanted, True, cast)]
 
 
 def moves(endpoints: Iterable[type[Endpoint]], wanted: tuple[str, ...] = (),
           cast: tuple[Actor, ...] = (SOLE,)) -> Callable[[Model], list[Endpoint]]:
     """The valid calls from a state, for every caller of the cast, using these
     texts where a field wants one."""
-    kinds = tuple(e for e in endpoints if e.carries is not None)
+    kinds = tuple(e for e in endpoints if e.carries is not None and not e.streams)
 
     def from_state(store: Model) -> list[Endpoint]:
         return [call for e in kinds for call in _calls(e, store, wanted, False, cast)]

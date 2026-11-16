@@ -25,6 +25,7 @@ from typing import Any, Callable, ClassVar, Iterable, Mapping, cast
 
 from ostler.book.boundary import Passes, Reaches
 from ostler.book.cast import KEEP, SOLE, Actor
+from ostler.book.contracts import STREAMING
 from ostler.book.domain import Action, Fixture, Heard, On
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.model import attribute
@@ -793,6 +794,7 @@ class Endpoint:
     unauthenticated: ClassVar[Status] = 401
     typed_wire: ClassVar[bool] = False
     typed_away: ClassVar[tuple[str, ...]] = ("wrong type", "out of enum", "null")
+    streams: ClassVar[str] = ""
 
     def __init_subclass__(cls, abstract: bool = False) -> None:
         if abstract:
@@ -806,7 +808,7 @@ class Endpoint:
             raise BookError(f"{name}: path names {sorted(in_path)} but params declare {sorted(declared)}")
         if cls.body is not None and cls.method in ("GET", "DELETE"):
             raise BookError(f"{name}: a {cls.method} carries no body")
-        if not cls.answers:
+        if not cls.answers and not cls.streams:
             raise BookError(f"{name}: declares no answer")
         statuses = [a.status for a in cls.answers]
         if len(statuses) != len(set(statuses)):
@@ -815,7 +817,7 @@ class Endpoint:
             raise BookError(f"{name}: passes the owner's answer on, so it carries no action of its own")
         if cls.reaches is not None and cls.carries is not None:
             raise BookError(f"{name}: reaches the owner's call, so it carries no action of its own")
-        if cls.auth and cls.unauthenticated not in statuses:
+        if cls.auth and cls.answers and cls.unauthenticated not in statuses:
             raise BookError(f"{name}: accepts credentials but never answers {cls.unauthenticated}")
 
     @classmethod
@@ -1116,6 +1118,8 @@ class Endpoint:
     @classmethod
     def describe(cls) -> str:
         lines = [cls.route(), f"  {cls.does}"]
+        if cls.streams:
+            lines.append(f"  {STREAMING[cls.streams]}")
         lines.append("  auth: " + (" or ".join(a.describe() for a in cls.auth) if cls.auth else "none"))
         if cls.params.fields:
             lines.append("  path:")

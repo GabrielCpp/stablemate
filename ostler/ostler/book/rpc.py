@@ -19,6 +19,7 @@ import os
 import subprocess
 from typing import Callable, ClassVar, Mapping, cast
 
+from ostler.book.contracts import STREAMING
 from ostler.book.errors import BookError, Unhealthy
 from ostler.book.http import Answer, Auth, Client, Endpoint, Field, Int, List, Map, Object, Shape, Str
 from ostler.book.httpsurface import HttpSurface
@@ -77,6 +78,8 @@ class Rpc(Endpoint, abstract=True):
         service, _, called = cls.rpc.partition("/")
         if not service or not called or "/" in called:
             raise BookError(f"{name}: rpc is written package.Service/Method, not {cls.rpc!r}")
+        if cls.streams and cls.streams not in STREAMING:
+            raise BookError(f"{name}: streams is {cls.streams!r}, one of {', '.join(STREAMING)}")
         if cls.params.fields or cls.query is not None:
             raise BookError(f"{name}: a call carries every input in its request message, the body")
         named = [a.status for a in cls.answers if not isinstance(a.status, Code)]

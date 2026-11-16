@@ -22,6 +22,7 @@ from typing import Any
 from ostler.book.backstage import CannotArrange
 from ostler.book.cells import Played, play
 from ostler.book.check import broken, cmd_check
+from ostler.book.contracts import STREAMING, rpc_of
 from ostler.book.decisions import cmd_decisions, load as load_decisions
 from ostler.book.defects import declared, never_met, met, section, tally
 from ostler.book.denied import denied
@@ -498,6 +499,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         print(line)
     for line in underspecified_lines(tried):
         print(line)
+    for line in unplayed_lines(service):
+        print(line)
     print(twin_tally(tried))
     if service.screens:
         stated, tried_fields = fields_tried(service, tried)
@@ -513,6 +516,15 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     show_skips(args.environment, skips)
     return 0 if (all(r.ok for r in results) and played.ok and tried.ok and not tried.underspecified and not settled.stale and not (names and unmet)
                  and (partial or (not stale and not unmet and seen.complete))) else 1
+
+
+PLAYED = {"answer": "one answer", "request": "one request", "both": "one request and one answer"}
+
+
+def unplayed_lines(service: Service[Any]) -> list[str]:
+    """One line per call of the book that streams, which a run never plays."""
+    return [f"not played: {rpc_of(e).rpartition('.')[2]} {STREAMING[e.streams]}, and a run plays calls with {PLAYED[e.streams]}"
+            for e in service.endpoints if e.streams]
 
 
 def cmd_explore(service: Service[Any], args: argparse.Namespace) -> int:
@@ -915,8 +927,17 @@ def cmd_missing(service: Service[Any], args: argparse.Namespace) -> int:
         if args.files:
             for path in paths:
                 print(f"    {path}")
-    print(f"\n{len(found.unnamed)} of {found.total} files are in no element and under no ignore pattern")
-    if found.unnamed:
+    calls = sum(len(c) for c in found.calls.values())
+    if calls:
+        print("\n## Calls a contract lists that no element declares")
+        for path, listed in found.calls.items():
+            for call in listed:
+                print(f"- {path}: {call.name}" + (f" ({STREAMING[call.kind]})" if call.kind else ""))
+    closing = f"\n{len(found.unnamed)} of {found.total} files are in no element and under no ignore pattern"
+    if calls:
+        closing += f", and {calls} {'call a contract lists is' if calls == 1 else 'calls a contract lists are'} declared by no element"
+    print(closing)
+    if found.unnamed or calls:
         return 1
     print("nothing missing")
     return 0

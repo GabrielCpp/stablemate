@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ostler._vendor.stablemate_core import config as core_config
+from ostler.book.contracts import Call, is_openapi, parse, proto_services, rpc_of
 from ostler.book.service import Service
 from ostler.refs import parse_code_ref
 
@@ -112,6 +113,7 @@ class Missing:
     unnamed: list[str]
     left_out: dict[str, list[str]]
     total: int
+    calls: dict[str, list[Call]] = field(default_factory=dict)
 
 
 def kinds(service: Service[Any]) -> list[tuple[str, type]]:
@@ -145,7 +147,53 @@ def missing_files(service: Service[Any], app_root: str, under: tuple[str, ...] =
             left_out.setdefault(pattern, []).append(path)
         elif path not in namers:
             unnamed.append(path)
-    return Missing(named, unnamed, left_out, len(tracked))
+    return Missing(named, unnamed, left_out, len(tracked), undeclared_calls(service, app_root, tracked))
+
+
+def read(app_root: str, path: str) -> str:
+    try:
+        with open(os.path.join(app_root, path), encoding="utf-8") as f:
+            return f.read()
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
+def contract_files(service: Service[Any], app_root: str, tracked: list[str]) -> dict[str, str]:
+    """The tracked contract files of the book, each with its text: the protos under the roots, the protos
+    anywhere in the app that declare a service one of the book's calls names, and the OpenAPI documents under the roots."""
+    named = {rpc_of(e).partition("/")[0] for e in service.endpoints if rpc_of(e)}
+    found: dict[str, str] = {}
+    for path in tracked:
+        if path.endswith(".proto"):
+            found[path] = read(app_root, path)
+        elif path.endswith((".yaml", ".yml", ".json")):
+            text = read(app_root, path)
+            if is_openapi(text):
+                found[path] = text
+    if named:
+        for path in git(app_root, "ls-files", "*.proto").splitlines():
+            text = found.get(path) or read(app_root, path)
+            if path not in found and named.intersection(proto_services(text)):
+                found[path] = text
+    return found
+
+
+def undeclared_calls(service: Service[Any], app_root: str, tracked: list[str]) -> dict[str, list[Call]]:
+    assert service.app is not None
+    ignore = service.app.ignore
+    declared_rpcs = {rpc_of(e) for e in service.endpoints if rpc_of(e)}
+    declared_routes = [(e.method, e.path) for e in service.endpoints if not rpc_of(e)]
+    left: dict[str, list[Call]] = {}
+    for path, text in sorted(contract_files(service, app_root, tracked).items()):
+        if ignored(path, ignore):
+            continue
+        for call in parse(path, text):
+            if ignored(f"{path}::{call.key}", ignore):
+                continue
+            if call.name in declared_rpcs or any(call.matches(method, route) for method, route in declared_routes):
+                continue
+            left.setdefault(path, []).append(call)
+    return left
 
 
 DEFINITIONS = (

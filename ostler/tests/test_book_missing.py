@@ -107,3 +107,97 @@ def test_files_lists_each_left_out_file_under_its_pattern_and_the_default_only_c
     assert "    web/routes/home.test.tsx" not in capsys.readouterr().out
     _run(service, app, files=True)
     assert "- *.test.tsx: 1 files\n    web/routes/home.test.tsx\n" in capsys.readouterr().out
+
+
+PROTO = """syntax = "proto3";
+package notifications.v1;
+service NotificationsService {
+  rpc Send(A) returns (B);
+  rpc StreamNotifications(A) returns (stream B);
+}
+"""
+
+OPENAPI = """openapi: 3.0.0
+paths:
+  /todos:
+    get: {}
+  /todos/{id}:
+    delete: {}
+"""
+
+
+def _repo(tmp_path: Path, files: dict[str, str]) -> Path:
+    root = tmp_path / "api-service"
+    for name, text in files.items():
+        (root / name).parent.mkdir(parents=True, exist_ok=True)
+        (root / name).write_text(text)
+    _git(tmp_path, "init", "--quiet", str(root))
+    _git(root, "add", ".")
+    _git(root, "commit", "--quiet", "-m", "init")
+    return root
+
+
+def _rpc(call: str) -> Any:
+    return SimpleNamespace(__name__=call.rpartition("/")[2], source=("api/notifications.proto",), rpc=call, method="POST", path="/" + call)
+
+
+def _endpoint(method: str, path: str) -> Any:
+    return SimpleNamespace(__name__=f"{method}{path}", source=("api/openapi.yaml",), method=method, path=path)
+
+
+def _book(*endpoints: Any, ignore: tuple[str, ...] = ()) -> Service[Any]:
+    return cast("Service[Any]", SimpleNamespace(name="api", endpoints=endpoints, records=(), screens=(), interactions=(),
+                                                app=App(roots=("api",), verified="VERIFIED", ignore=ignore)))
+
+
+def test_an_rpc_the_proto_lists_and_no_rpc_declares_is_named_and_exits_1(tmp_path, capsys):
+    root = _repo(tmp_path, {"api/notifications.proto": PROTO})
+    code = _run(_book(_rpc("notifications.v1.NotificationsService/Send")), root)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "## Calls a contract lists that no element declares\n- api/notifications.proto: notifications.v1.NotificationsService/StreamNotifications (streams its answer)\n" in out
+    assert "no ignore pattern, and 1 call a contract lists is declared by no element" in out
+    assert "nothing missing" not in out
+
+
+def test_a_proto_outside_the_roots_is_found_from_a_service_the_declared_calls_name(tmp_path, capsys):
+    root = _repo(tmp_path, {"api/handler.go": "x\n", "proto/notifications.proto": PROTO})
+    code = _run(_book(_rpc("notifications.v1.NotificationsService/Send")), root)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "- proto/notifications.proto: notifications.v1.NotificationsService/StreamNotifications (streams its answer)" in out
+
+
+def test_a_proto_outside_the_roots_that_no_declared_call_names_is_left_alone(tmp_path, capsys):
+    root = _repo(tmp_path, {"api/handler.go": "x\n", "proto/notifications.proto": PROTO})
+    assert _run(_book(_endpoint("GET", "/other"), ignore=("*.go",)), root) == 0
+
+
+def test_an_openapi_operation_no_endpoint_declares_is_named_with_path_parameters_matched_by_position(tmp_path, capsys):
+    root = _repo(tmp_path, {"api/openapi.yaml": OPENAPI})
+    code = _run(_book(_endpoint("GET", "/todos"), _endpoint("PATCH", "/todos/{todo_id}")), root)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "- api/openapi.yaml: DELETE /todos/{id}" in out
+    assert "GET /todos\n" not in out.split("## Calls a contract lists")[1]
+    assert _run(_book(_endpoint("GET", "/todos"), _endpoint("DELETE", "/todos/{todo_id}")), root) == 0
+
+
+def test_an_ignore_pattern_on_a_call_leaves_it_out_and_exits_0(tmp_path, capsys):
+    root = _repo(tmp_path, {"api/notifications.proto": PROTO})
+    book = _book(_rpc("notifications.v1.NotificationsService/Send"), ignore=("api/notifications.proto::StreamNotifications",))
+    assert _run(book, root) == 0
+    assert out_ends(capsys) == "nothing missing"
+
+
+def out_ends(capsys) -> str:
+    return capsys.readouterr().out.rstrip().splitlines()[-1]
+
+
+def test_a_book_that_declares_every_call_of_its_contract_prints_as_before(tmp_path, capsys):
+    root = _repo(tmp_path, {"api/notifications.proto": PROTO})
+    book = _book(_rpc("notifications.v1.NotificationsService/Send"), _rpc("notifications.v1.NotificationsService/StreamNotifications"))
+    assert _run(book, root) == 0
+    out = capsys.readouterr().out
+    assert out == ("## What the book names\n- api/notifications.proto: Send (endpoint), StreamNotifications (endpoint)\n"
+                   "\n## Files no element names\n\n## Left out by the book\n\n0 of 1 files are in no element and under no ignore pattern\nnothing missing\n")

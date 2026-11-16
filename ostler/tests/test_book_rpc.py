@@ -6,6 +6,7 @@ import json
 import stat
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -108,3 +109,100 @@ def test_a_missing_binary_is_reported_as_a_book_error(tmp_path: Path):
     client = GrpcClient("teams.local:50051", {Bearer(): CREDENTIAL}, binary=str(tmp_path / "no-grpcurl"))
     with pytest.raises(BookError, match="is not on PATH"):
         GetTeam({"team_id": 7}).send(client)
+
+
+STREAM_ANSWERS = (Answer(Code.OK, TEAM, "each team"),)
+
+
+def test_a_streaming_rpc_is_declared_with_streams_and_needs_no_answer():
+    class WatchTeams(Rpc):
+        rpc = "acme.Teams/WatchTeams"
+        auth = (Bearer(),)
+        body = ASK
+        streams = "answer"
+        does = "Streams every change of a team."
+
+    assert WatchTeams.streams == "answer"
+    assert WatchTeams.answers == ()
+
+
+def test_a_streams_value_that_is_not_answer_request_or_both_is_refused_where_it_is_declared():
+    with pytest.raises(BookError, match="streams is 'sideways'.*answer, request, both"):
+
+        class Bad(Rpc):
+            rpc = "acme.Teams/Bad"
+            body = ASK
+            streams = "sideways"
+            answers = STREAM_ANSWERS
+
+
+def test_a_unary_rpc_still_needs_an_answer():
+    with pytest.raises(BookError, match="declares no answer"):
+
+        class NoAnswer(Rpc):
+            rpc = "acme.Teams/NoAnswer"
+            body = ASK
+
+
+class WatchOne(Rpc):
+    rpc = "acme.Teams/WatchOne"
+    body = ASK
+    streams = "answer"
+    does = "Streams a team."
+    source = ("api/teams.proto",)
+
+
+def test_check_asks_no_matrix_placement_of_a_streaming_rpc():
+    from ostler.book.check import matrix_faults
+    from test_book_search import _book
+
+    assert [f.name for f in matrix_faults(_book(endpoints=(GetTeam, WatchOne)))] == ["endpoint GetTeam"]
+
+
+def test_exploration_never_plays_a_streaming_rpc_even_when_it_carries_an_action():
+    from ostler.book.explore import attempts, moves
+
+    from ostler.book.domain import Action
+
+    class Move(Action[Any, Any]):
+        pass
+
+    class Carried(Rpc):
+        rpc = "acme.Teams/Carried"
+        body = ASK
+        streams = "both"
+        carries = Move
+
+    assert moves([Carried])(cast(Any, None)) == []
+    assert attempts([Carried], cast(Any, None)) == []
+
+
+def test_a_run_report_names_each_streaming_rpc_as_not_played():
+    from ostler.book.cli import unplayed_lines
+    from test_book_search import _book
+
+    assert unplayed_lines(_book(endpoints=(GetTeam, WatchOne))) == [
+        "not played: Teams/WatchOne streams its answer, and a run plays calls with one answer"
+    ]
+
+
+def test_search_says_a_call_streams_its_answer():
+    from ostler.book.search import items
+
+    [item] = [i for i in items(_book_of(WatchOne), "test_book_rpc") if i.kind == "endpoint"]
+    assert "  streams its answer" in item.lines
+
+
+def test_explain_says_a_call_streams_its_answer(capsys):
+    from types import SimpleNamespace
+
+    from ostler.book.search import cmd_explain
+
+    cmd_explain(_book_of(WatchOne), SimpleNamespace(service="test_book_rpc", name="WatchOne"))
+    assert "  streams its answer" in capsys.readouterr().out.splitlines()
+
+
+def _book_of(*endpoints):
+    from test_book_search import _book
+
+    return _book(endpoints=endpoints)

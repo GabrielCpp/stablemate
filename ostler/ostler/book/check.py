@@ -490,7 +490,7 @@ def matrix_faults(service: Service[Any]) -> list[Finding]:
                     named.add(type(call))
                     break
     return [Finding(f"endpoint {e.__name__}", "no lifecycle matrix names it, so exploration plays it in every state of every record: give it a column in the matrix of the record it reads or writes")
-            for e in service.endpoints if e not in named and e.passes is None and e.reaches is None]
+            for e in service.endpoints if e not in named and e.passes is None and e.reaches is None and not e.streams]
 
 
 def spoken(service: Service[Any]) -> list[Finding]:
