@@ -167,6 +167,23 @@ It goes in `Service(outside=...)`, and the backstage performs it. A new endpoint
 an outside event also arranges gets a fixture of its own; an existing fixture's examples are
 never widened to suit it.
 
+## A backstage that reaches into the copy
+
+A backstage that runs SQL or a one-shot service runs it through its environment, in the
+play's own process: `self.environment.exec(service, argv, stdin=...)` runs a command in a
+running service of the copy, and `self.environment.compose([...])` runs `docker compose`
+against it. Neither starts the `ostler` command line from a book, because each start costs a
+second or more on every reset. Both return the finished process and never raise on a non-zero
+exit, so the backstage reads `returncode` and `stderr`.
+
+```python
+def sql(self, statement: str) -> str:
+    done = self.environment.exec("api-db", ["psql", "-U", "app", "-t", "-A"], stdin=statement)
+    if done.returncode:
+        raise CannotArrange(done.stderr)
+    return done.stdout
+```
+
 ## Contracts
 
 A contract file lists many calls, so naming the file in one `source` does not cover it.
