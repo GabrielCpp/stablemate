@@ -95,6 +95,11 @@ from the entries to what breaks it, with a docstring whose first line `describe`
 over the entries after the `head`, native select or popup alike, and a break names the list,
 the rule and the entries.
 
+Read the claims from the code that builds the list. A sort (`sort`, `toSorted`, `orderBy`, an
+`ORDER BY` the app's own endpoint runs) is `in_order(key)`, with the key the sort reads. A dedup
+(a `Set`, `uniqBy`, a `filter` that keeps the first index of a value) is `no_repeat(key)`. A default
+selection, an initial value bound to the control or an option marked `selected`, is `picked`.
+
 `picked=ANYONE` states the entry the list has selected before a person picks, as a label or a
 function of the model and the person looking, with a docstring. The run judges it on the first
 pick in that list after the page loads, reading the selected option (in a popup, the option
@@ -105,7 +110,14 @@ record's own value states no `picked`. The report adds, per read list, the claim
 list. A select with no shape and no claim stays a finding that blocks the run.
 
 A SvelteKit app renders some lists from data its server loaded and fetches others in the browser
-through its own endpoints. A list the server rendered states `given=handed(route)`, the route
+through its own endpoints. Tell them apart in the source. A list filled from the `data` of a
+`+page.server.js` or `+page.server.ts` load (or a `+layout.server` one) is `given=handed(route)`, the
+route spelled as its folders spell it, `/tickets/[id]` for `src/routes/tickets/[id]`. A list filled
+by a `fetch` in a `.svelte` file, or by a call to the app's own `/api` routes (`+server.js`), is
+`given=request(method, path)`. A `+page.js` or `+page.ts` universal load is not handed: the
+server answers `__data.json` for server loads only and skips a node that has none, so name the
+`fetch` the universal load makes with `request`. A step that submits a form action of the page
+(`export const actions`, a `<form method="POST">`) waits on `action(route, name)`. A list the server rendered states `given=handed(route)`, the route
 spelled as SvelteKit spells it (`/tickets/[id]`). `derived` then takes the data the page was
 handed, a dictionary as the page's `data` prop sees it.
 
@@ -129,7 +141,10 @@ class of another book under the root. Before each step on the screen the run sen
 person taking the step, through the owner's surface, and derives the list from the answer exactly as
 from a received one. A call built with no input must be enough. An owner with no book, a refusal or a
 call that cannot be built is a fault on the list that names the call and why. `asked` is the only
-feed a phone can read, and it works on the web too. A backend that answers a moment after the page
+feed a phone can read, and it works on the web too. A list on a phone screen states
+`given=asked(<Endpoint>)`: find the call the app's client code makes to fill the list (the
+repository or API client the screen's state reads), then take the `Endpoint` of the backend's
+book that declares that route. Find it with `ostler book search <path>` over the root. A backend that answers a moment after the page
 got its data gives the same data only for a list that changes slowly (A6): a busy shared list keeps
 `always`, `never` and `entries`.
 

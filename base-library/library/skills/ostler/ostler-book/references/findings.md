@@ -37,6 +37,14 @@ A FAIL is one of two things. Read the source the endpoint's `source` names and d
 Never make a FAIL pass by loosening a shape, widening an existing fixture, or adding a step
 that hides the difference.
 
+## A list answer holds a row the model does not expect
+
+A row in a call's list that the model does not predict is not loosened in the model and not left as
+prose in `DISAGREEMENTS.md`. State the rule the list breaks on `List(shape, entries=(...))`, a rule
+over every entry such as `no_repeat(key)` or `in_order(key)`, so each run judges it. When the source
+shows the app breaks that rule on purpose, or by a defect the app's own code or tracker names,
+declare `Defect(breaks=rule)` on the action whose answer holds the list, sharing the rule object, as [model.md](model.md) says.
+
 ## DISAGREEMENTS.md
 
 One numbered entry per disagreement, after the last one:

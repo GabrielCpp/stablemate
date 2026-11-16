@@ -186,6 +186,19 @@ never modelled here: the book refers to it, as [neighbours.md](neighbours.md) sa
       reads = ("ticket_id", "snapshot.priority")
   ```
 
+  Find each in the source. `emits` goes on the action whose code path publishes the event: follow
+  the call that publishes (a bus `Publish`, `PutEvents` or `publish`, with the detail type or topic)
+  back to the handler it sits in, and put `emits` on the action that handler carries. `announces`
+  returns the fields the publish site builds into the detail, as far as the model predicts them.
+  `heard` is the event the listener's handler decodes, and `reads` the fields of it the handler
+  touches.
+
+  An event's id field refers to the Id kind of the book that owns the record, never to a record the
+  listener restates. In the owner's own book it is `Id(Ticket, Str())`. In a listener that declares
+  the event itself, name the owner's record as [neighbours.md](neighbours.md) does and take its
+  kind from the reference: `TICKET = Foreign("Ticket", owner="services.ticket", reads=("id",))`,
+  then `Id(TICKET.record, Str())`. An event shared across books carries that one kind.
+
   List the event in `Service(events=(TicketChanged,))`. A listener whose event has no book
   under the root declares the event itself with `owner = "<who emits it>"` and lists it too.
   `check` fails a `reads` path the event's detail does not declare.
