@@ -177,7 +177,8 @@ draws them. Read the role of each pair from the code that renders each field kin
 
 A step reads the form with `browser.fields(Screen.form)` when a journey shows it. A difference
 fails the step, and the note names both sequences. A control with no accessible name is a fault of
-its own. `entries` rules and `always` and `never` judge the names. The report lists a `Form` like a
+its own. `entries` rules judge the names, and `of_pairs(rule)` hands a rule the pairs of name and
+role instead. `always` and `never` judge the names. The report lists a `Form` like a
 select.
 
 ## An interaction

@@ -65,7 +65,7 @@ class ListJudge:
         unnamed = [entry for entry in shown if isinstance(entry, tuple) and not entry[0]]
         if unnamed:
             self.faults.append(f"the list {name} has {len(unnamed)} control(s) with no accessible name: {unnamed}")
-        self.entries(lists, name, texts, lang)
+        self.entries(lists, name, texts, lang, shown)
         if lists.entries:
             judged.add("entries")
         self.picked_entry(lists, name, selected, lang)
@@ -84,13 +84,15 @@ class ListJudge:
         if forbidden:
             self.faults.append(f"the list {name} shows {forbidden}, which must never be in it")
 
-    def entries(self, lists: Lists, name: str, shown: list[str], lang: str) -> None:
+    def entries(self, lists: Lists, name: str, shown: list[str], lang: str, pairs: list[Any] | None = None) -> None:
         head = lists.labels(lang)
-        entries = shown[len(head):] if shown[:len(head)] == head else shown
+        start = len(head) if shown[:len(head)] == head else 0
+        entries = shown[start:]
+        paired = (shown if pairs is None else pairs)[start:]
         for rule in lists.entries:
             said = (rule.__doc__ or "").strip().splitlines()[0]
             try:
-                broken = rule(entries)
+                broken = rule(paired if getattr(rule, "pairs", False) else entries)
             except Exception as crash:
                 self.faults.append(f"the list {name} cannot judge \"{said}\": {type(crash).__name__}: {crash}")
                 continue

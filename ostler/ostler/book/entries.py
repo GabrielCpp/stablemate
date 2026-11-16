@@ -34,6 +34,18 @@ def _named(key: Key) -> str:
     return "" if key is None else key if isinstance(key, str) else getattr(key, "__name__", "a function")
 
 
+def of_pairs(rule: Callable[[list[Any]], list[str]]) -> Callable[[list[Any]], list[str]]:
+    """Hands a rule the entries of a generated form as the pairs of accessible name and ARIA role it reads them as, where a
+    rule on its own judges the names."""
+
+    def judged(entries: list[Any]) -> list[str]:
+        return rule(entries)
+
+    judged.__doc__ = rule.__doc__
+    setattr(judged, "pairs", True)
+    return judged
+
+
 def in_order(key: Key = None) -> Callable[[list[Any]], list[str]]:
     read = _read(key)
 
