@@ -15,9 +15,10 @@ from typing import Any, Callable, Iterator, Mapping
 from urllib.parse import parse_qsl, urlsplit
 
 from ostler.book.errors import BookError
+from ostler.book.listjudge import ListJudge, Unfed
 from ostler.book.outcome import CannotReach, cut_by_limit
 from ostler.book.pagedata import Handed, decode, on_route
-from ostler.book.screen import ROLES, Component, Lists, Screen
+from ostler.book.screen import ROLES, Component, Screen
 
 Wanted = Callable[[Any], bool]
 
@@ -100,13 +101,9 @@ class Browser:
         self._prefix: str | None = None
         self._recording = ""
         self._began = 0.0
-        self._screens: tuple[type[Screen], ...] = ()
+        self.lists = ListJudge()
         self._feeds: tuple[Wanted, ...] = ()
         self._kept: dict[Wanted, Any] = {}
-        self._faults: list[str] = []
-        self._read: dict[str, set[str]] = {}
-        self._picked: set[str] = set()
-        self._expected: dict[str, tuple[Any, ...]] = {}
 
     def start(self) -> None:
         try:
@@ -181,7 +178,7 @@ class Browser:
 
     def feeding(self, screens: tuple[type[Screen], ...]) -> None:
         """Keeps, for each request a list of these screens is given by, the last answer the page receives."""
-        self._screens = screens
+        self.lists.feeding(screens)
         self._feeds = tuple(c.lists.given for screen in screens for c in screen.components()
                             if c.lists is not None and c.lists.given is not None and not isinstance(c.lists.given, Handed))
         if self.context is not None:
@@ -200,116 +197,52 @@ class Browser:
 
     def list_faults(self) -> list[str]:
         """The differences found between a list and what the book derives since the last time this was asked."""
-        faults, self._faults = self._faults, []
-        return faults
+        return self.lists.taken()
 
     def lists_read(self) -> frozenset[str]:
         """The lists, by screen and attribute, a pick has judged."""
-        return frozenset(self._read)
+        return self.lists.lists_read()
 
     def claims_judged(self) -> dict[str, frozenset[str]]:
         """For each list a pick has judged, the claims it judged: derived, always, never, entries, picked."""
-        return {name: frozenset(claims) for name, claims in self._read.items()}
+        return self.lists.claims_judged()
 
     def _navigated(self, frame: Any) -> None:
         if frame == self.page.main_frame:
-            self._picked.clear()
-
-    def _named(self, component: Component) -> str:
-        for screen in self._screens:
-            for name, found in screen.attributes():
-                if found is component:
-                    return f"{screen.__name__}.{name}"
-        return component.found_by(self.lang)
+            self.lists.forget_picks()
 
     def expecting(self, expectations: Mapping[str, tuple[Any, ...]]) -> None:
         """Hands over, for each list by screen and attribute, the texts it must show and the texts it must not, and
         when the list's picked entry is a function, the label it returns, for the picks that follow. An empty mapping
         drops them."""
-        self._expected = dict(expectations)
+        self.lists.expecting(expectations)
 
     def _judge(self, component: Component, shown: list[str], selected: str) -> None:
-        lists = component.lists
-        assert lists is not None
-        name = self._named(component)
-        judged = self._read.setdefault(name, set())
-        if lists.derived is not None:
-            judged.add("derived")
-            self._judge_derived(component, name, shown)
-        self._judge_entries(lists, name, shown)
-        if lists.entries:
-            judged.add("entries")
-        self._judge_picked(lists, name, selected)
-        if name not in self._picked and (lists.picked is not None and (not callable(lists.picked) or len(self._expected.get(name, ())) > 2)):
-            judged.add("picked")
-        self._picked.add(name)
-        belong, never = self._expected.get(name, ([], []))[:2]
-        if lists.always is not None and name in self._expected:
-            judged.add("always")
-        if lists.never is not None and name in self._expected:
-            judged.add("never")
-        missing = [text for text in dict.fromkeys(belong) if text not in shown]
-        if missing:
-            self._faults.append(f"the list {name} misses {missing}, which belong in it")
-        forbidden = [text for text in dict.fromkeys(never) if text in shown]
-        if forbidden:
-            self._faults.append(f"the list {name} shows {forbidden}, which must never be in it")
+        self.lists.judge(component, shown, selected, self.lang, self._feed)
 
-    def _judge_entries(self, lists: Lists, name: str, shown: list[str]) -> None:
-        head = lists.labels(self.lang)
-        entries = shown[len(head):] if shown[:len(head)] == head else shown
-        for rule in lists.entries:
-            said = (rule.__doc__ or "").strip().splitlines()[0]
-            try:
-                broken = rule(entries)
-            except Exception as crash:
-                self._faults.append(f"the list {name} cannot judge \"{said}\": {type(crash).__name__}: {crash}")
-                continue
-            self._faults += [f"the list {name} breaks \"{said}\": {why}" for why in broken]
-
-    def _judge_picked(self, lists: Lists, name: str, selected: str) -> None:
-        if name in self._picked or lists.picked is None:
-            return
-        expected = self._expected.get(name, ())
-        wanted = lists.label_picked(self.lang) if not callable(lists.picked) else expected[2] if len(expected) > 2 else None
-        if wanted is not None and selected != wanted:
-            self._faults.append(f"the list {name} has {selected!r} selected before the pick, the book says {wanted!r}")
-
-    def _judge_derived(self, component: Component, name: str, shown: list[str]) -> None:
-        lists = component.lists
-        assert lists is not None and lists.given is not None and lists.derived is not None
-        if isinstance(lists.given, Handed):
-            body = self._handed(lists.given, name)
-            if body is None:
-                return
-        else:
-            kept = self._kept.get(lists.given)
-            if kept is None:
-                self._faults.append(f"the page received no answer to {getattr(lists.given, 'text', 'the request')} "
-                                    f"before the pick in {name}")
-                return
-            body = kept.json()
-        derived = [*lists.labels(self.lang), *lists.derived(body)]
-        if shown != derived:
-            self._faults.append(f"the list {name} shows {shown}, the book derives {derived}")
+    def _feed(self, component: Component, name: str) -> Any:
+        given = component.lists.given if component.lists is not None else None
+        assert given is not None
+        if isinstance(given, Handed):
+            return self._handed(given, name)
+        kept = self._kept.get(given)
+        if kept is None:
+            raise Unfed(f"the page received no answer to {getattr(given, 'text', 'the request')} before the pick in {name}")
+        return kept.json()
 
     def _handed(self, given: Handed, name: str) -> Any:
-        """The data the app's server hands the page now open, asked again in the browser's own session, or None after
-        a fault says why it could not be read."""
+        """The data the app's server hands the page now open, asked again in the browser's own session."""
         path = urlsplit(self.page.url).path
         if not on_route(given.route, path):
-            self._faults.append(f"the list {name} is {given.text}, and the page open is at {path}, not on {given.route}")
-            return None
+            raise Unfed(f"the list {name} is {given.text}, and the page open is at {path}, not on {given.route}")
         url = f"{self.base}{path.rstrip('/')}/__data.json"
         answered = self.context.request.get(url)
         if not answered.ok:
-            self._faults.append(f"the list {name} is {given.text}, and the app's server answered {answered.status} to GET {url}")
-            return None
+            raise Unfed(f"the list {name} is {given.text}, and the app's server answered {answered.status} to GET {url}")
         try:
             return decode(answered.text())
         except BookError as unreadable:
-            self._faults.append(f"the list {name} is {given.text}, and it cannot be read: {unreadable}")
-            return None
+            raise Unfed(f"the list {name} is {given.text}, and it cannot be read: {unreadable}") from None
 
     def taken(self) -> list[Any]:
         """The requests recorded since the last time this was asked."""
