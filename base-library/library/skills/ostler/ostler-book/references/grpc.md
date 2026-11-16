@@ -273,7 +273,7 @@ changes them under whoever else is using it.
 
 Report a call that needs one of these, and leave it out of the book:
 
-- a call that streams its answer or its request,
+- a call that streams, played as a conversation. A call that streams its answer or its request is declared with `streams = "answer"`, `"request"` or `"both"` on its `Rpc`, found by `search` and `explain`, and never played by a run,
 - status details beyond the code and the message,
 - a defect whose own message quotes the request.
 - a call of the book's own service whose effect lands after its answer,
