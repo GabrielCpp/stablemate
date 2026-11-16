@@ -157,7 +157,7 @@ class Short(Endpoint):
 
 
 class Tight(Plain):
-    def apply(self, request: object) -> None:
+    def apply(self, request: Any) -> None:
         if len(request.body_value["title"]) > 5:
             raise Refused(Rule("too long", lambda a, s, by: True))
         return None
