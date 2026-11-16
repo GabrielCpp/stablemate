@@ -400,18 +400,19 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         random.Random(args.seed).shuffle(journeys)
     order = args.order + (f" (seed {args.seed})" if args.order == "shuffled" else "")
     print(f"order: {order}")
+    resets = Resets()
     began = time.time()
     try:
-        sick = unhealthy(service, surface)
+        sick = unhealthy(service, surface, resets)
         if sick:
             print(f"could not judge: {sick}")
             return 3
-        model, why = renewed(service, surface)
+        model, why = renewed(service, surface, resets)
         for journey in journeys:
             started = time.time()
             _speak(service, surface, journey.lang)
             if journey.alone or model is None:
-                model, why = renewed(service, surface)
+                model, why = renewed(service, surface, resets)
             record = getattr(surface, "record", None)
             if callable(record):
                 record(journey.title())
@@ -433,14 +434,14 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
                         print(f"      a known defect made a wrong change earlier in this journey: {defect.status} {defect.message}; "
                               "if the app no longer makes it, delete its declaration")
             if journey.alone or not result.ok or result.skipped:
-                model, why = renewed(service, surface)
+                model, why = renewed(service, surface, resets)
         journeys_took = time.time() - began
         played = Played()
         if not args.journey and service.matrices:
             _speak(service, surface)
             print(f"journeys took {journeys_took:.0f}s; playing the cells")
             began = time.time()
-            played = play(service.matrices, surface, lambda: fresh(service, surface),
+            played = play(service.matrices, surface, lambda: fresh(service, surface, resets),
                           keep=lambda axes, scene, name: not names or aims(service, axes, scene, name, names),
                           keep_videos=args.keep_videos)
             cells_took = time.time() - began
@@ -451,8 +452,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         if not args.journey and (service.endpoints or service.interactions):
             print("playing the input classes")
             began = time.time()
-            surface.reset()
-            tried = play_inputs(service, surface, lambda: fresh(service, surface), only=names, today=_today(surface))
+            resets.reset(surface)
+            tried = play_inputs(service, surface, lambda: fresh(service, surface, resets), only=names, today=_today(surface))
             inputs_took = time.time() - began
         settled = settle_register(service, args, tried)
         seen = witnessed(service, surface)
@@ -505,7 +506,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     if service.screens:
         stated, tried_fields = fields_tried(service, tried)
         print(f"fields: {stated} state a shape, {tried_fields} tried")
-    print(f"time: journeys {journeys_took:.1f}s, cells {cells_took:.1f}s, inputs {inputs_took:.1f}s")
+    print(f"time: journeys {journeys_took:.1f}s, cells {cells_took:.1f}s, inputs {inputs_took:.1f}s, {resets.line()}")
     everything = [*results, played, tried]
     stale = never_met(found, met(everything))
     for line in section(everything, found, not partial):
@@ -631,20 +632,41 @@ def begin(surface: Surface, stack: Any, args: argparse.Namespace) -> str:
     return ""
 
 
-def unhealthy(service: Service[Any], surface: Surface) -> str:
+def unhealthy(service: Service[Any], surface: Surface, resets: Resets | None = None) -> str:
     """Why the environment cannot be judged, or an empty string: each health
     journey the service declares, played on a fresh model, must pass."""
     for journey in service.health:
-        result = walk(journey, fresh(service, surface), surface)
+        result = walk(journey, fresh(service, surface, resets), surface)
         bad = next((step for step in result.steps if not step.ok or step.skipped), None)
         if bad is not None:
             return f"the health journey {journey.title()} fails at: {bad.text}: {bad.note}"
     return ""
 
 
-def renewed(service: Service[Any], surface: Surface) -> tuple[Model | None, str]:
+@dataclasses.dataclass
+class Resets:
+    """What the surface's resets cost in one run."""
+
+    count: int = 0
+    seconds: float = 0.0
+
+    def reset(self, surface: Surface) -> None:
+        began = time.time()
+        try:
+            surface.reset()
+        finally:
+            self.count += 1
+            self.seconds += time.time() - began
+
+    def line(self) -> str:
+        if not self.count:
+            return "resets 0"
+        return f"resets {self.count}, {self.seconds:.1f} s ({self.seconds / self.count:.1f} s each)"
+
+
+def renewed(service: Service[Any], surface: Surface, resets: Resets | None = None) -> tuple[Model | None, str]:
     try:
-        return fresh(service, surface), ""
+        return fresh(service, surface, resets), ""
     except CannotArrange as cannot:
         return None, cannot.reason
 
@@ -724,9 +746,12 @@ def show_witness(service: Service[Any], seen: WitnessReport, out: str, fails: bo
     print(text)
 
 
-def fresh(service: Service[Any], surface: Surface) -> Model:
+def fresh(service: Service[Any], surface: Surface, resets: Resets | None = None) -> Model:
     """A reset surface and a new model of it, in step."""
-    surface.reset()
+    if resets is None:
+        surface.reset()
+    else:
+        resets.reset(surface)
     return service.new_model(_today(surface))
 
 
