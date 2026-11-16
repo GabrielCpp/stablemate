@@ -12,7 +12,7 @@ already refuses for its caller has no classes and no twins.
 
 | Shape, with its options | Classes the run builds | Twins |
 | --- | --- | --- |
-| `Str()` or `Str(max_len=N)`, any `format` not listed below | each label of `classes={label: value}` (valid), `blank` (body or screen, required), `too long` (`max_len`) | `surrounding spaces`, `case` (only when the text has letters) |
+| `Str()` or `Str(max_len=N)`, any `format` not listed below | each label of `classes={label: value}` (valid), `blank` (body or screen, required; on a screen also an optional one that states no `max_len` and no classes, a valid input so the field is tried), `too long` (`max_len`) | `surrounding spaces`, `case` (only when the text has letters) |
 | `Str(format="date")` | as `Str()`, and `malformed date` | none, and at a screen `midnight` |
 | `Str(format="date-time")` | as `Str()` | `time of day`, `offset` |
 | `Str(format="uuid"/"hex32"/"ulid")` as a plain field | as `Str()` | none |

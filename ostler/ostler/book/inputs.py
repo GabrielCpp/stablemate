@@ -182,6 +182,8 @@ def field_classes(place: str, name: str, spec: Field, model: Model, ids: Identit
             add("blank", "   ", "missing")
         if shape.max_len:
             add("too long", "x" * (shape.max_len + 1), "malformed")
+        if place == SCREEN and not out and not spec.required:
+            add("blank", "   ", valid=True)
     elif isinstance(shape, Enum):
         add("out of enum", "nobody", "malformed")
     elif place == SCREEN and isinstance(shape, (Int, Num)):
