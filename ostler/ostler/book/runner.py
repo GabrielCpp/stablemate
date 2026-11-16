@@ -177,7 +177,7 @@ def read(step: object, model: Model, surface: Surface, seen: dict[int, Seen]) ->
     if getattr(type(step), "reaches", None) is not None:
         Owners.prepare(cast(Endpoint, step))
     clear_breaches(surface)
-    owed = model.breaking(step)
+    owed = owed_by(model, step)
     cover(surface, step, owed, model)
     try:
         outcome = surface.perform(step)
@@ -341,6 +341,11 @@ def occurrence(hearing: Arrange[Any], model: Model) -> tuple[dict[str, Any], str
     return cast(dict[str, Any], detail), note
 
 
+def owed_by(model: object, call: object) -> list[Defect[Any, Any]]:
+    breaking = getattr(model, "breaking", None)
+    return list(cast("Iterable[Defect[Any, Any]]", breaking(call))) if callable(breaking) else []
+
+
 def clear_breaches(surface: Surface) -> None:
     take = getattr(surface, "take_breaches", None)
     if callable(take):
@@ -353,7 +358,7 @@ def cover(surface: Surface, request: object | None, owed: list[Defect[Any, Any]]
     hook = getattr(surface, "cover", None)
     if not callable(hook):
         return
-    hook(lambda call: tuple(d.breaks for d in (owed if request is not None and call is request else model.breaking(call))
+    hook(lambda call: tuple(d.breaks for d in (owed if request is not None and call is request else owed_by(model, call))
                             if d.breaks is not None))
 
 
@@ -368,7 +373,7 @@ def judged(request: object, owed: list[Defect[Any, Any]], model: Model, surface:
     notes: list[str] = []
     known: Defect[Any, Any] | None = None
     for breach in take():
-        covers = owed if breach.call is request else model.breaking(breach.call)
+        covers = owed if breach.call is request else owed_by(model, breach.call)
         defect = next((d for d in covers if d.breaks is breach.rule), None)
         if defect is None:
             notes.append(f"{type(breach.call).__name__} answers a list that breaks {says(breach.rule)} at {breach.path}: {breach.said}")
@@ -387,7 +392,7 @@ def settle(ok: bool, note: str, notes: list[str], known: Defect[Any, Any] | None
 
 def move(step: object, request: object, model: Model, surface: Surface) -> StepResult:
     clear_breaches(surface)
-    owed = model.breaking(request)
+    owed = owed_by(model, request)
     cover(surface, request, owed, model)
     hearing = delivered(request)
     action = emitter(request)
