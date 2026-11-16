@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping
 
+from ostler.book.asked import Asked, Unasked
 from ostler.book.screen import Component, Lists, Screen
 
 
@@ -22,6 +23,7 @@ class ListJudge:
         self.read: dict[str, set[str]] = {}
         self.picked: set[str] = set()
         self.expected: dict[str, tuple[Any, ...]] = {}
+        self.asked: dict[str, Any] = {}
 
     def feeding(self, screens: tuple[type[Screen], ...]) -> None:
         self.screens = screens
@@ -40,8 +42,9 @@ class ListJudge:
     def forget_picks(self) -> None:
         self.picked.clear()
 
-    def expecting(self, expectations: Mapping[str, tuple[Any, ...]]) -> None:
+    def expecting(self, expectations: Mapping[str, tuple[Any, ...]], asked: Mapping[str, Any] | None = None) -> None:
         self.expected = dict(expectations)
+        self.asked = dict(asked or {})
 
     def named(self, component: Component, lang: str) -> str:
         for screen in self.screens:
@@ -101,10 +104,45 @@ class ListJudge:
         lists = component.lists
         assert lists is not None and lists.given is not None and lists.derived is not None
         try:
-            body = feed(component, name)
+            body = self.answer(lists.given, name) if isinstance(lists.given, Asked) else feed(component, name)
         except Unfed as unfed:
             self.faults.append(str(unfed))
             return
         derived = [*lists.labels(lang), *lists.derived(body)]
         if shown != derived:
             self.faults.append(f"the list {name} shows {shown}, the book derives {derived}")
+
+    def answer(self, given: Asked, name: str) -> Any:
+        said = f"the list {name} is asked of {given.text}"
+        if name not in self.asked:
+            raise Unfed(f"{said}, and no step asked it before this pick")
+        fed = self.asked[name]
+        if isinstance(fed, Unasked):
+            raise Unfed(f"{said}, and {fed.why}")
+        return fed
+
+
+class ListReader:
+    """What a surface that reads lists tells the run about them: the faults found, the lists read and the claims judged,
+    and what to expect of the picks of the next step. The surface holds its `ListJudge` as `lists`."""
+
+    lists: ListJudge
+
+    def list_faults(self) -> list[str]:
+        """The differences found between a list and what the book says it holds since the last time this was asked."""
+        return self.lists.taken()
+
+    def lists_read(self) -> frozenset[str]:
+        """The lists, by screen and attribute, a pick has judged."""
+        return self.lists.lists_read()
+
+    def claims_judged(self) -> dict[str, frozenset[str]]:
+        """For each list a pick has judged, the claims it judged: derived, always, never, entries, picked."""
+        return self.lists.claims_judged()
+
+    def expecting(self, expectations: Mapping[str, tuple[Any, ...]], asked: Mapping[str, Any] | None = None) -> None:
+        """Hands over, for each list by screen and attribute, the texts it must show and the texts it must not, and
+        when the list's picked entry is a function, the label it returns, for the picks that follow. `asked` holds, for
+        each list fed by a backend's call, the answer that call got as the person taking the step, or why it got none.
+        An empty mapping drops them."""
+        self.lists.expecting(expectations, asked)

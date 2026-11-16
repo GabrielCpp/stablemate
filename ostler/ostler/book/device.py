@@ -13,11 +13,13 @@ import shlex
 import shutil
 import subprocess
 import time
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ostler.book.errors import BookError
+from ostler.book.listjudge import ListJudge, ListReader, Unfed
 from ostler.book.outcome import CannotReach, cut_by_limit
 from ostler.book.screen import ROLES, Component, Screen
 from ostler.qa import android
@@ -48,6 +50,10 @@ class Node:
         return self.box[0] >= outer.box[0] and self.box[1] >= outer.box[1] and self.box[2] <= outer.box[2] and self.box[3] <= outer.box[3]
 
     @property
+    def shown(self) -> str:
+        return self.text or (self.names[0] if self.names else "")
+
+    @property
     def centre(self) -> tuple[int, int]:
         return (self.box[0] + self.box[2]) // 2, (self.box[1] + self.box[3]) // 2
 
@@ -76,11 +82,30 @@ def nodes_of(raw: str) -> list[Node]:
     return out
 
 
+def appeared(before: list[Node], after: list[Node]) -> list[Node]:
+    """The nodes of `after` that carry a text and were not in `before`, by text and place, with a node that holds
+    the same text inside another new node dropped, ordered top to bottom then left to right."""
+    seen = Counter((node.shown, node.box) for node in before)
+    fresh: list[Node] = []
+    for node in after:
+        key = (node.shown, node.box)
+        if not node.shown:
+            continue
+        if seen[key] > 0:
+            seen[key] -= 1
+            continue
+        fresh.append(node)
+    kept = [node for at, node in enumerate(fresh)
+            if not any(other.shown == node.shown and node.inside(other) and (other.box != node.box or earlier < at)
+                       for earlier, other in enumerate(fresh) if earlier != at)]
+    return sorted(kept, key=lambda node: (node.box[1], node.box[0]))
+
+
 def named(node: Node, name: str) -> bool:
     return name in node.names
 
 
-class Device:
+class Device(ListReader):
     """Same verbs as `Browser`, aimed at an app on an Android device. `app_id` is the bundle id the app installs as;
     `serial` picks the device when several are attached."""
 
@@ -94,6 +119,7 @@ class Device:
         self._name = ""
         self._began = 0.0
         self._screen = load_harness_module("ostler_qa_hierarchy")
+        self.lists = ListJudge()
 
     def start(self) -> None:
         for tool in ("adb", "maestro"):
@@ -114,6 +140,7 @@ class Device:
         return done.stdout
 
     def launch(self) -> None:
+        self.lists.forget_picks()
         self.adb("shell", "monkey", "-p", self.app_id, "-c", "android.intent.category.LAUNCHER", "1")
 
     def restart(self) -> None:
@@ -121,6 +148,7 @@ class Device:
         self.launch()
 
     def clear(self) -> None:
+        self.lists.forget_picks()
         self.adb("shell", "pm", "clear", self.app_id)
 
     def forward(self, port: int) -> None:
@@ -217,8 +245,61 @@ class Device:
     def press(self, component: Component, within: Component | None = None) -> None:
         self.tap(self.locate(component, within))
 
+    def feeding(self, screens: tuple[type[Screen], ...]) -> None:
+        """Names the lists of these screens, so a judged list is reported by screen and attribute."""
+        self.lists.feeding(screens)
+
+    def feed(self, component: Component, name: str) -> Any:
+        given = component.lists.given if component.lists is not None else None
+        raise Unfed(f"the list {name} is {getattr(given, 'text', 'a request')}, and a phone cannot see what the app received: "
+                    "state the list as asked(<an endpoint of the backend's book>)")
+
+    def selected(self, component: Component, node: Node) -> str:
+        """What a select shows as its choice before it is opened: its own text, or the name that is not its label."""
+        label = component.label[self.lang] if component.label is not None else ""
+        return node.text or next((name for name in node.names if name != label), "")
+
+    def opened(self, component: Component, node: Node) -> list[Node]:
+        """Taps the select and returns the entries its list shows: the texts that were not on the screen before the tap,
+        top to bottom then left to right."""
+        before = self.nodes()
+        self.tap(node)
+        deadline = time.monotonic() + self.timeout
+        while True:
+            entries = appeared(before, self.nodes())
+            if entries:
+                return entries
+            if time.monotonic() > deadline:
+                raise BookError(f"{component.found_by(self.lang)} showed no list after a tap")
+
+    def back(self) -> None:
+        self.adb("shell", "input", "keyevent", "4")
+
+    def labels(self, component: Component, within: Component | None = None) -> list[str]:
+        """The texts a select shows, in order. The list is opened to read them and closed again."""
+        entries = self.opened(component, self.locate(component, within))
+        self.back()
+        return [entry.shown for entry in entries]
+
+    def pick(self, component: Component, value: str, within: Component | None = None) -> None:
+        node = self.locate(component, within)
+        selected = self.selected(component, node)
+        entries = self.opened(component, node)
+        shown = [entry.shown for entry in entries]
+        if component.lists is not None:
+            self.lists.judge(component, shown, selected, self.lang, self.feed)
+        chosen = next((entry for entry in entries if entry.shown == value), None)
+        if chosen is None:
+            self.back()
+            raise CannotReach(f"{component.found_by(self.lang)} offers only {shown}")
+        self.tap(chosen)
+
     def fill(self, component: Component, value: str, within: Component | None = None) -> None:
-        """Types `value` into a field. Text the device cannot type is a `CannotReach`."""
+        """Types `value` into a field, or picks it in a select by opening its list and tapping the entry that shows it.
+        Text the device cannot type, and a value the list does not show, are a `CannotReach`."""
+        if component.kind == "select":
+            self.pick(component, value, within)
+            return
         if component.kind not in EDITS:
             raise BookError(f"{component.found_by(self.lang)} is not a field a device can type into")
         if not TYPED.fullmatch(value):

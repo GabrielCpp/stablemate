@@ -90,9 +90,10 @@ class PageSurface:
         """The lists a pick found different from what the book derives."""
         return self.browser.list_faults()
 
-    def expecting(self, expectations: Mapping[str, tuple[list[str], list[str]]]) -> None:
-        """Hands the browser, per list, who must be offered and who must not, for the picks of one step."""
-        self.browser.expecting(expectations)
+    def expecting(self, expectations: Mapping[str, tuple[Any, ...]], asked: Mapping[str, Any] | None = None) -> None:
+        """Hands the browser, per list, who must be offered and who must not, and the answers of the backends that feed
+        lists, for the picks of one step."""
+        self.browser.expecting(expectations, asked)
 
     def lists_read(self) -> frozenset[str]:
         return self.browser.lists_read()

@@ -23,6 +23,7 @@ class MobileSurface(PageSurface):
         return Device(self.app_id, lang, timeout=self.timeout)
 
     def start(self) -> None:
+        self.browser.feeding(self.screens)
         self.browser.start()
 
     def reset(self) -> None:
@@ -31,12 +32,6 @@ class MobileSurface(PageSurface):
 
     def strays(self) -> list[str]:
         return []
-
-    def list_faults(self) -> list[str]:
-        return []
-
-    def lists_read(self) -> frozenset[str]:
-        return frozenset()
 
     def disabled(self, component: Any, row: Any = None) -> str | None:
         return None if self.browser.disabled(component) else f"{component.found_by(self.lang)} is enabled"

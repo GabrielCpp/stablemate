@@ -14,8 +14,9 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterator, Mapping
 from urllib.parse import parse_qsl, urlsplit
 
+from ostler.book.asked import Asked
 from ostler.book.errors import BookError
-from ostler.book.listjudge import ListJudge, Unfed
+from ostler.book.listjudge import ListJudge, ListReader, Unfed
 from ostler.book.outcome import CannotReach, cut_by_limit
 from ostler.book.pagedata import Handed, decode, on_route
 from ostler.book.screen import ROLES, Component, Screen
@@ -74,7 +75,7 @@ class Received:
         return self.response.json()
 
 
-class Browser:
+class Browser(ListReader):
     def __init__(
         self,
         base: str,
@@ -180,7 +181,7 @@ class Browser:
         """Keeps, for each request a list of these screens is given by, the last answer the page receives."""
         self.lists.feeding(screens)
         self._feeds = tuple(c.lists.given for screen in screens for c in screen.components()
-                            if c.lists is not None and c.lists.given is not None and not isinstance(c.lists.given, Handed))
+                            if c.lists is not None and c.lists.given is not None and not isinstance(c.lists.given, (Handed, Asked)))
         if self.context is not None:
             self._listen()
 
@@ -195,34 +196,16 @@ class Browser:
 
         self.context.on("response", keep)
 
-    def list_faults(self) -> list[str]:
-        """The differences found between a list and what the book derives since the last time this was asked."""
-        return self.lists.taken()
-
-    def lists_read(self) -> frozenset[str]:
-        """The lists, by screen and attribute, a pick has judged."""
-        return self.lists.lists_read()
-
-    def claims_judged(self) -> dict[str, frozenset[str]]:
-        """For each list a pick has judged, the claims it judged: derived, always, never, entries, picked."""
-        return self.lists.claims_judged()
-
     def _navigated(self, frame: Any) -> None:
         if frame == self.page.main_frame:
             self.lists.forget_picks()
-
-    def expecting(self, expectations: Mapping[str, tuple[Any, ...]]) -> None:
-        """Hands over, for each list by screen and attribute, the texts it must show and the texts it must not, and
-        when the list's picked entry is a function, the label it returns, for the picks that follow. An empty mapping
-        drops them."""
-        self.lists.expecting(expectations)
 
     def _judge(self, component: Component, shown: list[str], selected: str) -> None:
         self.lists.judge(component, shown, selected, self.lang, self._feed)
 
     def _feed(self, component: Component, name: str) -> Any:
         given = component.lists.given if component.lists is not None else None
-        assert given is not None
+        assert given is not None and not isinstance(given, Asked)
         if isinstance(given, Handed):
             return self._handed(given, name)
         kept = self._kept.get(given)

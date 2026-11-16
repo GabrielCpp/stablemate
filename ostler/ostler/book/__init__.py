@@ -8,6 +8,7 @@ lists what a state refuses.
 """
 
 from ostler.book.arrange import Arrange
+from ostler.book.asked import asked
 from ostler.book.backstage import Backstage, CannotArrange
 from ostler.book.boundary import Foreign, Needs, Passes, Reaches
 from ostler.book.browser import Browser, Received, action, answer, refusal, request
@@ -43,7 +44,7 @@ from ostler.book.witness import Because, Unseen
 
 __all__ = [
     "Actor", "Again", "Arrange", "Bus", "Delivery", "Backstage", "CannotArrange", "Environment", "SOLE", "in_order", "no_repeat",
-    "checkout", "Browser", "Device", "MobileSurface", "PageSurface", "Received", "action", "answer", "handed", "refusal", "request",
+    "checkout", "Browser", "Device", "MobileSurface", "PageSurface", "Received", "action", "answer", "asked", "handed", "refusal", "request",
     "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Event", "Fixture", "Heard", "Index", "MoveToday", "Select",
     "Show", "State", "Total", "Transaction", "Unique", "Update",
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",

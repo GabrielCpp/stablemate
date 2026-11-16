@@ -11,9 +11,10 @@ from dataclasses import replace
 from typing import Any, Callable, Iterable, cast
 
 from ostler.book.arrange import Arrange
+from ostler.book.asked import Asked, Unasked
 from ostler.book.backstage import CannotArrange
 from ostler.book.boundary import Needs
-from ostler.book.cast import SOLE
+from ostler.book.cast import SOLE, Actor
 from ostler.book.delivery import Delivery, faults as detail_faults
 from ostler.book.domain import Action, State
 from ostler.book.event import Event
@@ -308,20 +309,52 @@ def expectations(request: object, model: Model) -> dict[str, tuple[Any, ...]]:
     return wanted
 
 
-def hand_over(surface: Surface, wanted: dict[str, tuple[Any, ...]]) -> None:
+def asked_feeds(request: object) -> dict[str, Any]:
+    """For each list of the request's screen filled from a backend's call, the answer that call gets from the backend
+    through its book, as the person taking the step, or why it got none."""
+    screen = getattr(type(request), "screen", None)
+    if screen is None:
+        return {}
+    by = getattr(request, "by", SOLE)
+    fed: dict[str, Any] = {}
+    for attribute, component in screen.attributes():
+        lists = component.lists
+        if lists is not None and isinstance(lists.given, Asked):
+            fed[f"{screen.__name__}.{attribute}"] = ask_backend(lists.given, by)
+    return fed
+
+
+def ask_backend(given: Asked, by: object) -> Any:
+    try:
+        call = given.call()
+    except (BookError, TypeError) as cannot:
+        return Unasked(f"the call cannot be built with no input: {cannot}")
+    call.by = cast(Actor | None, by)
+    try:
+        owner, _, surface = Owners.asked(call)
+        reply = Owners.sender(owner, surface, "a list fed by its call")(call)
+    except BookError as wrong:
+        return Unasked(str(wrong))
+    if reply.refusal is not None:
+        return Unasked(f"the owner {owner} refused {call}: {reply.refusal}")
+    return reply.body
+
+
+def hand_over(surface: Surface, wanted: dict[str, tuple[Any, ...]], asked: dict[str, Any] | None = None) -> None:
     ask = getattr(surface, "expecting", None)
     if callable(ask):
-        ask(wanted)
+        ask(wanted, asked) if asked else ask(wanted)
 
 
 def perform(step: object, request: object, model: Model, surface: Surface) -> StepResult:
     wanted = expectations(request, model)
-    if wanted:
-        hand_over(surface, wanted)
+    fed = asked_feeds(request)
+    if wanted or fed:
+        hand_over(surface, wanted, fed)
     try:
         return move(step, request, model, surface)
     finally:
-        if wanted:
+        if wanted or fed:
             hand_over(surface, {})
 
 
