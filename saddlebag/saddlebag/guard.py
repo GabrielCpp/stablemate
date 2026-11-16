@@ -28,7 +28,7 @@ _ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _REDIRECT = re.compile(r"^\d*[<>]+")
 _SUBSHELL = re.compile(r"\$\(([^()]*)\)|`([^`]*)`")
 
-DOTENV_MESSAGE = "`{path}` holds secrets. Read it masked: `saddlebag env show {path}`; list its keys: `saddlebag env keys {path}`."
+DOTENV_MESSAGE = "`{path}` holds secrets. Read it masked: `saddlebag env show {path}`; list its keys: `saddlebag env keys {path}`; change a literal: `saddlebag env set {path} KEY VALUE`."
 FILE_MESSAGE = "`{path}` holds secrets. Store it: `saddlebag secret set NAME < {path}`, then run the consumer under `saddlebag exec --env VAR=NAME -- <command>`."
 EXPORT_MESSAGE = "`{path}` is a saddlebag export with every secret in plaintext. Load it: `saddlebag import {path}`; see what the store holds: `saddlebag list`."
 

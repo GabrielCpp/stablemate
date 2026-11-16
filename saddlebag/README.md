@@ -168,6 +168,7 @@ carries `environment=<slug>`, the tag the stack root's `secrets: saddlebag:` nam
 | `exec` | run a command with matching secrets in its environment |
 | `env show` `keys` `classify` | read a dotenv file with its secret values masked, list its keys with the rule that marks each secret one, or print the verdicts as JSON |
 | `env import` | store a dotenv's chosen keys as secrets, one record per key, without printing a value |
+| `env set` | assign a value to a key in a dotenv when neither the line nor the value is secret |
 | `export` `import` | write the whole store with its values to a plaintext JSON file, from a terminal only, and load such a file back |
 | `guard --hook` `guard install` | the Claude Code PreToolUse hook that denies a read of a dotenv, key, credentials or export file, and its installer |
 | `doctor` | backend and route in use, store reachable, secrets with no value, orphan keyring items, stray token file, and on the daemon route where its token came from |
@@ -178,6 +179,7 @@ saddlebag type NAME [--field username|password|totp|meta.KEY] [--device SERIAL]
 saddlebag exec [--tag k=v]... [--env VAR=NAME[.field|.meta.KEY]]... -- cmd args...
 saddlebag env show|keys|classify FILE [--json]
 saddlebag env import FILE --keys KEY[,KEY...] [--tag k=v]... [--prefix TEXT] [--json]
+saddlebag env set FILE KEY VALUE
 saddlebag export FILE.saddlebag.json
 saddlebag import FILE [--replace] [--json]
 saddlebag guard install --user|--project
@@ -233,6 +235,15 @@ lowercased with `_` as `-`, and every record carries the `--tag` pairs. It print
 `stored KEY as NAME` per key and never a value. A key the file lacks or an empty value
 stops it before any write; a record name already in use stops it at that key, and the
 keys before it stay stored.
+
+`env set FILE KEY VALUE` changes a literal in place. It sets every assignment of `KEY`
+and keeps each line's `export `, spacing, trailing comment and line ending, or appends
+`KEY=VALUE` when the file has none. It quotes `VALUE` only as much as a dotenv reader
+needs to read it back unchanged. It asks the store to classify the current line and the
+new value first, and refuses with exit 2 when either is secret, leaving the file
+untouched. A secret stays the operator's to edit, or goes into the store and reaches
+its consumer through `exec`. It prints `set KEY in FILE` or `added KEY in FILE` and
+never a value.
 
 ---
 

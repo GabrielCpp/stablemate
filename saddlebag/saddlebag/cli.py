@@ -334,6 +334,40 @@ def cmd_env(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_env_set(args: argparse.Namespace) -> int:
+    from saddlebag import dotenv
+    from saddlebag._vendor.stablemate_core.dotenv import assignment
+
+    key, value, path = args.key, args.value, args.file
+    if assignment(f"{key}=") != (key, ""):
+        return _error(f"{key!r} is not a dotenv key", 2)
+    try:
+        dotenv.quote(value)
+    except ValueError as exc:
+        return _error(f"cannot write {key}: {exc}", 2)
+    try:
+        text = path.read_text()
+    except OSError as exc:
+        return _error(f"cannot read {path}: {exc.strerror or exc}", 1)
+    current = [{"key": key, "value": line.value or ""} for line in dotenv.parse(text) if line.key == key]
+    reply = _ask("classify", {"entries": [*current, {"key": key, "value": value}]})
+    if isinstance(reply, int):
+        return reply
+    rule = next((verdict["rule"] for verdict in reply.result["verdicts"] if verdict["secret"]), None)
+    if rule is not None:
+        return _error(
+            f"{key} is secret ({rule}); env set writes literals only. Store it with `saddlebag secret` and run its consumer under `saddlebag exec --env {key}=NAME`, or ask the operator to edit {path}",
+            2,
+        )
+    updated, found = dotenv.assign(text, key, value)
+    try:
+        path.write_text(updated)
+    except OSError as exc:
+        return _error(f"cannot write {path}: {exc.strerror or exc}", 1)
+    print(f"{'set' if found else 'added'} {key} in {path}")
+    return 0
+
+
 def cmd_env_import(args: argparse.Namespace) -> int:
     from saddlebag.models import validate_name
 
@@ -592,7 +626,7 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("command", nargs=argparse.REMAINDER, metavar="-- CMD")
     e.set_defaults(func=cmd_exec)
 
-    ev = sub.add_parser("env", help="show a dotenv with its secret lines masked")
+    ev = sub.add_parser("env", help="read or change a dotenv without exposing its secrets")
     esub = ev.add_subparsers(dest="env_command", required=True)
     for verb, text in (("show", "print FILE with secret values masked"), ("keys", "list FILE's keys, marking secret ones"), ("classify", "say which of FILE's keys are secret")):
         ep = esub.add_parser(verb, help=text)
@@ -607,6 +641,11 @@ def build_parser() -> argparse.ArgumentParser:
     ei.add_argument("--prefix", default="", metavar="TEXT", help="put TEXT before each record name")
     ei.add_argument("--json", action="store_true")
     ei.set_defaults(func=cmd_env_import)
+    es = esub.add_parser("set", help="assign VALUE to KEY in FILE when neither is secret")
+    es.add_argument("file", type=Path, metavar="FILE", help="a dotenv file")
+    es.add_argument("key", metavar="KEY")
+    es.add_argument("value", metavar="VALUE")
+    es.set_defaults(func=cmd_env_set)
 
     x = sub.add_parser("export", help="write every secret with its values to a plaintext JSON file; terminal only")
     x.add_argument("file", type=Path, metavar="FILE.saddlebag.json", help="a new file; it must not exist")

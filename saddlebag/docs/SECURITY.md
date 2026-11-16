@@ -164,6 +164,10 @@ everything a same-user process can read without a debugger.
 - **`env import` reads values from a file and writes them to the store.** It prints the
   record names it created and never a value, and it stops before any write when a
   requested key is absent or empty.
+- **`env set` writes a literal and never touches a secret line.** It sends the key's
+  current values and the new value to `classify` before it writes, and refuses when any
+  is secret, so it cannot overwrite a secret the agent never saw, nor place a value the
+  store holds. It prints the key and the file, never a value.
 - **The guard refuses a secret file's read before a value is read.** `guard --hook` sees
   a tool call's arguments, not its output, and denies the ones that would read a dotenv,
   key, credentials or export file. A denial carries the saddlebag line that gets the same job done.

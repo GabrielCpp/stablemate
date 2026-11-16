@@ -10,9 +10,8 @@ import pytest
 
 from saddlebag.models import Secret
 
-from conftest import FakeBackend, Running
+from conftest import SEEDED_PASSWORD as PASSWORD, FakeBackend, Running
 
-PASSWORD = "hunter2-pw"
 Run = Callable[..., int]
 
 DOTENV = """APP_HOST=localhost
@@ -44,29 +43,6 @@ def dotenv_file(tmp_path: Path) -> Path:
     path = tmp_path / ".env"
     path.write_text(DOTENV)
     return path
-
-
-@pytest.fixture(params=["daemon", "keyring"])
-def seeded(request: pytest.FixtureRequest, run: Run, tmp_path: Path) -> Callable[..., None]:
-    if request.param == "daemon":
-        running: Running = request.getfixturevalue("running")
-
-        def seed_daemon(*extra: str) -> None:
-            running.vault.create(Secret("login", "gab", "A login", "LOGIN_PASSWORD", frozenset({("environment", "local")})))
-            running.vault.set_value("login", "password", PASSWORD)
-            for index, var in enumerate(extra):
-                running.vault.create(Secret(f"extra{index}", None, None, var, frozenset()))
-
-        return seed_daemon
-    request.getfixturevalue("keyring_route")
-
-    def seed_keyring(*extra: str) -> None:
-        assert run("secret", "create", "login", "--username", "gab", "--var", "LOGIN_PASSWORD", "--tag", "environment=local") == 0
-        assert run("secret", "set", "login", stdin=PASSWORD + "\n") == 0
-        for index, var in enumerate(extra):
-            assert run("secret", "create", f"extra{index}", "--var", var) == 0
-
-    return seed_keyring
 
 
 def test_show_masks_secret_lines_and_keeps_the_rest(seeded: Callable[..., None], run: Run, dotenv_file: Path, capsys: pytest.CaptureFixture[str]) -> None:

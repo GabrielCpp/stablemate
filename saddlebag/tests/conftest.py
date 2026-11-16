@@ -162,6 +162,32 @@ def running(vault: FakeVault, daemon_path: Path) -> Iterator[Running]:
         thread.join(timeout=5)
 
 
+SEEDED_PASSWORD = "hunter2-pw"
+
+
+@pytest.fixture(params=["daemon", "keyring"])
+def seeded(request: pytest.FixtureRequest, run: Callable[..., int], tmp_path: Path) -> Callable[..., None]:
+    if request.param == "daemon":
+        running: Running = request.getfixturevalue("running")
+
+        def seed_daemon(*extra: str) -> None:
+            running.vault.create(Secret("login", "gab", "A login", "LOGIN_PASSWORD", frozenset({("environment", "local")})))
+            running.vault.set_value("login", "password", SEEDED_PASSWORD)
+            for index, var in enumerate(extra):
+                running.vault.create(Secret(f"extra{index}", None, None, var, frozenset()))
+
+        return seed_daemon
+    request.getfixturevalue("keyring_route")
+
+    def seed_keyring(*extra: str) -> None:
+        assert run("secret", "create", "login", "--username", "gab", "--var", "LOGIN_PASSWORD", "--tag", "environment=local") == 0
+        assert run("secret", "set", "login", stdin=SEEDED_PASSWORD + "\n") == 0
+        for index, var in enumerate(extra):
+            assert run("secret", "create", f"extra{index}", "--var", var) == 0
+
+    return seed_keyring
+
+
 @pytest.fixture
 def run(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> Callable[..., int]:
     def _run(*argv: str, stdin: str | None = None) -> int:
