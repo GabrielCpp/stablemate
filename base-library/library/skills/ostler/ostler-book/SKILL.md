@@ -162,6 +162,14 @@ the app's roots that no element names gets an element with that file in its `sou
 pattern in `App(ignore=...)` when no served request runs it. A screen and an
 interaction carry `source` like an endpoint does.
 
+`missing` also names each call a contract lists that no element declares. A `.proto` under the
+roots, a proto anywhere in the app that declares a service one of the book's `Rpc` calls names,
+and an OpenAPI or Swagger document under the roots each list calls, and a contract counts as named only
+when every call is. A call gets an `Rpc` or an `Endpoint`, or an `ignore` pattern when no served
+request runs it. A call that streams its request or its answer is declared like any call,
+with `streams = "answer"`, `"request"` or `"both"`: `search` and `explain` say it streams, and a run
+never plays it.
+
 When the commit answers a story, the story is the intent: read its model, plan and review
 answers before the diff, and write the delta from them. The latest decision wins. A review
 answer or the commit message that changes what the model said is the intent now, and the
@@ -237,7 +245,7 @@ one is live.
 | `ostler book run services.<name> --no-stack` | tens of minutes | every journey, every declared cell and every input class; the book's gate, run when a backfill ends and nightly, never per batch |
 | `ostler book index services.<name>` | seconds | rewrites `index.tsv`, which `search` reads |
 | `ostler book stale services.<name> --app <root>` | seconds, no app | the elements whose source changed since the verified commit, changed files no element names, decisions they touch |
-| `ostler book missing services.<name> --app <root> [--under <folder>] [--files]` | seconds, no app | every tracked file under the app's roots that no element names; prints the map of each named file to its elements, the unnamed files, and a count per ignore pattern (`--files` lists them); the batch a backfill works through |
+| `ostler book missing services.<name> --app <root> [--under <folder>] [--files]` | seconds, no app | every tracked file under the app's roots that no element names, and every call a contract file lists that no element declares; prints the map of each named file to its elements, the unnamed files, a count per ignore pattern (`--files` lists them) and the undeclared calls; exits 1 for either; the batch a backfill works through |
 | `ostler book decisions services.<name> --unexplained [--kind KIND]` | seconds, no app | the class name of each endpoint, record, screen and interaction no decision names, one per line; `--kind` keeps `endpoint`, `record`, `screen` or `interaction` |
 | `ostler book verified services.<name> --app <root>` | seconds | records the app's HEAD once `stale` is worked |
 

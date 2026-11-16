@@ -139,3 +139,17 @@ class Lands(Arrange[Order]):
 It goes in `Service(outside=...)`, and the backstage performs it. A new endpoint on a record
 an outside event also arranges gets a fixture of its own; an existing fixture's examples are
 never widened to suit it.
+
+## Contracts
+
+A contract file lists many calls, so naming the file in one `source` does not cover it.
+`ostler book missing` reads each `.proto` and each OpenAPI or Swagger document of the app and
+lists every call no element declares. An `Rpc` declares its `rpc` string, and an `Endpoint`
+declares its method and path, with path parameters matched by position, so `/todos/{id}` and
+`/todos/{todo_id}` are one call. A call no served request runs, such as an rpc the server leaves
+unimplemented, goes in `App(ignore=...)` as `path/to/file.proto::Method` for a proto and
+`path/to/openapi.yaml::GET /todos/{id}` for an OpenAPI operation.
+
+A call that streams is declared like any other, with `streams = "answer"`, `"request"` or
+`"both"` on the `Rpc`. It needs no `answers`, no matrix places it, and a run never plays it:
+the report says `not played` and names it.
