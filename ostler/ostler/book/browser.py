@@ -301,15 +301,21 @@ class Browser(ListReader):
             return self.page
         return self._find(self.page, within)
 
+    @staticmethod
+    def _named_form(scope: Any, name: str) -> Any:
+        return (scope.get_by_role("form", name=name, exact=True)
+                .or_(scope.get_by_role("group", name=name, exact=True))
+                .or_(scope.get_by_role("region", name=name, exact=True)))
+
     def _find(self, scope: Any, component: Component) -> Any:
         if component.id is not None:
             return scope.locator(self.selector.format(id=component.id)).first
         assert component.label is not None
         name = component.label[self.lang]
         if component.kind == "form":
-            return (scope.get_by_role("form", name=name, exact=True)
-                    .or_(scope.get_by_role("group", name=name, exact=True))
-                    .or_(scope.get_by_role("region", name=name, exact=True))).first
+            return (self._named_form(scope, name)
+                    .or_(scope.locator("form").filter(has=scope.get_by_role("heading", name=name, exact=True)))
+                    .or_(scope.locator("form").filter(has=scope.get_by_role("button", name=name, exact=True)))).first
         if component.kind in ROLES:
             return scope.get_by_role(ROLES[component.kind], name=name, exact=True).first
         return scope.get_by_text(name, exact=True).first
@@ -466,6 +472,10 @@ class Browser(ListReader):
                 if component.label is None or component.per_row or component.kind == "spinner":
                     continue
                 if not self.visible(component, screen.root):
+                    continue
+                if component.kind == "form" and component.id is not None and not self._named_form(self._scope(screen.root), component.label[lang]).count():
+                    wrong.append(f"{screen.__name__}.{component.found_by(lang)}: the form has no accessible name {component.label[lang]!r}, "
+                                 "it is found only by its id: give it aria-label or aria-labelledby")
                     continue
                 name = self.accessible_name(self.locate(component, within=screen.root))
                 if component.label[lang] not in name:

@@ -170,7 +170,9 @@ details = Form("details-form", T(en="Details", fr="Détails"), "the fields drawn
 ```
 
 `Form(id, label, does, lists=Lists(given=..., derived=...))` is found by role `form`, `group` or
-`region` with its accessible name, or by its id. `derived` returns the pairs in the order the page
+`region` with its accessible name, or by its id. A form with no accessible name is found, with no id,
+by the heading it holds or by the name of its submit button, and a form with an id and no accessible
+name is a finding of the label check: give it `aria-label` or `aria-labelledby`. `derived` returns the pairs in the order the page
 draws them. Read the role of each pair from the code that renders each field kind.
 
 A step reads the form with `browser.fields(Screen.form)` when a journey shows it. A difference
