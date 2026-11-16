@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import uuid
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -14,21 +15,39 @@ from ostler.book.event import Event
 
 class Delivery:
     """Subclass per way of travelling. `place` puts one event, with the detail of one occurrence, where the
-    service's handler will take it, and returns nothing."""
+    service's handler will take it, and returns nothing. The way that places events also taps them: `open_tap` starts
+    reading every event the environment carries, `tapped` returns the name and decoded detail of the events read since
+    the last call, and `close_tap` removes what `open_tap` made. A way that cannot tap raises NotImplementedError."""
 
     def place(self, event: type[Event], detail: dict[str, Any]) -> None:
         raise NotImplementedError
 
+    def open_tap(self) -> None:
+        raise NotImplementedError(f"{type(self).__name__} cannot tap the events of the environment")
+
+    def tapped(self) -> list[tuple[str, dict[str, Any]]]:
+        raise NotImplementedError(f"{type(self).__name__} cannot tap the events of the environment")
+
+    def close_tap(self) -> None:
+        raise NotImplementedError(f"{type(self).__name__} cannot tap the events of the environment")
+
 
 class Bus(Delivery):
     """Publishes on a bus that routes to queues, as a person doing QA by hand does: one entry whose source and detail type
-    are the event's own. The AWS client comes from `boto3`, an optional extra of the tool, or from the caller."""
+    are the event's own. It taps the bus with a queue the run makes for itself and a rule that sends every event of the bus
+    to it, both removed when the tap closes. The AWS clients come from `boto3`, an optional extra of the tool, or from the
+    caller: `client` for the bus, `queues` for the queue service."""
 
-    def __init__(self, name: str, endpoint: str = "", region: str = "", client: Any = None) -> None:
+    def __init__(self, name: str, endpoint: str = "", region: str = "", client: Any = None, queues: Any = None) -> None:
         self.name = name
         self.endpoint = endpoint
         self.region = region
         self.client = client
+        self.queues = queues
+        self.tap_name = ""
+        self.tap_url = ""
+        self.tap_rule = False
+        self.tap_target = False
 
     def place(self, event: type[Event], detail: dict[str, Any]) -> None:
         if self.client is None:
@@ -36,13 +55,56 @@ class Bus(Delivery):
         self.client.put_events(Entries=[{"Source": event.source, "DetailType": event.name, "Detail": json.dumps(detail),
                                          "EventBusName": self.name}])
 
-    def connect(self) -> Any:
+    def connect(self, service: str = "events") -> Any:
         try:
             boto3 = importlib.import_module("boto3")
         except ImportError:
             raise BookError(f"publishing on bus {self.name} needs the AWS client: install the aws extra of ostler, "
                             "for example pip install 'ostler[aws]'") from None
-        return boto3.client("events", endpoint_url=self.endpoint or None, region_name=self.region or None)
+        return boto3.client(service, endpoint_url=self.endpoint or None, region_name=self.region or None)
+
+    def open_tap(self) -> None:
+        if self.client is None:
+            self.client = self.connect()
+        if self.queues is None:
+            self.queues = self.connect("sqs")
+        self.tap_name = f"ostler-tap-{uuid.uuid4().hex[:8]}"
+        try:
+            self.tap_url = self.queues.create_queue(QueueName=self.tap_name)["QueueUrl"]
+            arn = self.queues.get_queue_attributes(QueueUrl=self.tap_url, AttributeNames=["QueueArn"])["Attributes"]["QueueArn"]
+            rule = self.client.put_rule(Name=self.tap_name, EventBusName=self.name, State="ENABLED",
+                                        EventPattern=json.dumps({"source": [{"prefix": ""}]}))
+            self.tap_rule = True
+            policy = {"Version": "2012-10-17", "Statement": [{
+                "Effect": "Allow", "Principal": {"Service": "events.amazonaws.com"}, "Action": "sqs:SendMessage", "Resource": arn,
+                "Condition": {"ArnEquals": {"aws:SourceArn": rule["RuleArn"]}}}]}
+            self.queues.set_queue_attributes(QueueUrl=self.tap_url, Attributes={"Policy": json.dumps(policy)})
+            self.tap_target = True
+            self.client.put_targets(Rule=self.tap_name, EventBusName=self.name, Targets=[{"Id": "tap", "Arn": arn}])
+        except BaseException:
+            self.close_tap()
+            raise
+
+    def tapped(self) -> list[tuple[str, dict[str, Any]]]:
+        got = self.queues.receive_message(QueueUrl=self.tap_url, MaxNumberOfMessages=10, WaitTimeSeconds=0)
+        out: list[tuple[str, dict[str, Any]]] = []
+        for message in got.get("Messages", []):
+            self.queues.delete_message(QueueUrl=self.tap_url, ReceiptHandle=message["ReceiptHandle"])
+            envelope = json.loads(message["Body"])
+            detail = envelope.get("detail", {})
+            out.append((str(envelope.get("detail-type", "")), json.loads(detail) if isinstance(detail, str) else detail))
+        return out
+
+    def close_tap(self) -> None:
+        if self.tap_target:
+            self.client.remove_targets(Rule=self.tap_name, EventBusName=self.name, Ids=["tap"])
+            self.tap_target = False
+        if self.tap_rule:
+            self.client.delete_rule(Name=self.tap_name, EventBusName=self.name)
+            self.tap_rule = False
+        if self.tap_url:
+            self.queues.delete_queue(QueueUrl=self.tap_url)
+            self.tap_url = ""
 
 
 @dataclass(frozen=True)

@@ -368,6 +368,11 @@ class Action(Generic[A, S]):
     def reduce(a: A, s: S, by: Actor | None) -> Reduced:
         return None
 
+    @staticmethod
+    def announces(event: type[Event], a: A, s: S, by: Actor | None) -> dict[str, Any] | None:
+        """What the detail of this event carries, as far as the model predicts it, built from the state after the action."""
+        return None
+
     @classmethod
     def take(cls, raw: object) -> A:
         if isinstance(raw, Heard):

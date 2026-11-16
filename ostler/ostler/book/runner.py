@@ -4,15 +4,21 @@ each step to."""
 
 from __future__ import annotations
 
+import atexit
+import dataclasses
+import signal
 from dataclasses import replace
 from typing import Any, Callable, Iterable, cast
 
 from ostler.book.arrange import Arrange
 from ostler.book.backstage import CannotArrange
 from ostler.book.boundary import Needs
+from ostler.book.cast import SOLE
 from ostler.book.delivery import Delivery, faults as detail_faults
+from ostler.book.domain import Action, State
+from ostler.book.event import Event
 from ostler.book.errors import BookError, Unhealthy
-from ostler.book.http import Endpoint, OffShape, Undeclared
+from ostler.book.http import Client, Endpoint, Id, Identities, List, Object, OffShape, Shape, Undeclared, canonical
 from ostler.book.journey import (Check, Given, Journey, JourneyResult, Listed, OwnerRefused, Refused, Relates, Same, Seen, Shows,
                                  StepResult, Undo, difference, masked)
 from ostler.book.model import Defect, Model
@@ -328,6 +334,9 @@ def occurrence(hearing: Arrange[Any], model: Model) -> tuple[dict[str, Any], str
 
 def move(step: object, request: object, model: Model, surface: Surface) -> StepResult:
     hearing = delivered(request)
+    action = emitter(request)
+    if action is not None:
+        Deliveries.watch()
     detail: dict[str, Any] = {}
     if hearing is not None:
         detail, wrong = occurrence(hearing, model)
@@ -368,6 +377,9 @@ def move(step: object, request: object, model: Model, surface: Surface) -> StepR
         note = f"the surface never offers this: {app_outcome.reason}"
     if hearing is not None and ok:
         ok, note, model_rows, app_rows = repeated(hearing, detail, request, model, surface, model_rows, reads)
+    if action is not None and ok and isinstance(app_outcome, Done):
+        note = emissions(action, request, model, surface)
+        ok = not note
     return StepResult(step, model_outcome, app_outcome, model_rows, app_rows, ok, note, reduced)
 
 
@@ -400,6 +412,89 @@ def repeated(hearing: Arrange[Any], detail: dict[str, Any], request: object, mod
         return False, note + (f"; the event had not landed after {took} reads" if took > 1 else ""), wanted, got
     Deliveries.declared += 1
     return True, "", wanted, got
+
+
+def emitter(request: object) -> type[Action[Any, Any]] | None:
+    """The action this request carries, when it emits an event."""
+    action = getattr(type(request), "carries", None)
+    return action if isinstance(action, type) and issubclass(action, Action) and action.emits else None
+
+
+class Held(Identities):
+    """The registry of a surface that issues no ids: an id is the run's when the model keeps a record that holds it."""
+
+    def __init__(self, model: Model) -> None:
+        super().__init__()
+        self.model = model
+
+    def model_of(self, kind: type, real: str) -> str | None:
+        if not isinstance(self.model, State):
+            return None
+        for name in self.model.collections():
+            for entity in getattr(self.model, name):
+                values = [getattr(entity, f.name) for f in dataclasses.fields(entity)] if dataclasses.is_dataclass(entity) else list(vars(entity).values())
+                if any(str(value) == real for value in values):
+                    return real
+        return None
+
+
+def run_ids(surface: Surface, model: Model) -> Identities:
+    client = getattr(surface, "client", None)
+    return client.ids if isinstance(client, Client) else Held(model)
+
+
+def ownership(shape: Shape | None, value: object, ids: Identities) -> tuple[int, int]:
+    """How many ids of a detail the run made, and how many it did not."""
+    if isinstance(shape, Id):
+        if value is None:
+            return 0, 0
+        return (1, 0) if ids.model_of(shape.kind, str(value)) is not None else (0, 1)
+    if isinstance(shape, List) and isinstance(value, list):
+        counts = [ownership(shape.of, item, ids) for item in value]
+        return sum(c[0] for c in counts), sum(c[1] for c in counts)
+    if isinstance(shape, Object) and isinstance(value, dict):
+        counts = [ownership(spec.shape, value.get(name), ids) for name, spec in shape.fields.items()]
+        return sum(c[0] for c in counts), sum(c[1] for c in counts)
+    return 0, 0
+
+
+def plain(value: object) -> object:
+    if isinstance(value, dict):
+        return {k: plain(v) for k, v in cast("dict[str, object]", value).items()}
+    if isinstance(value, (list, tuple)):
+        return tuple(plain(v) for v in cast("Iterable[object]", value))
+    return value
+
+
+def differences(want: dict[str, Any], got: object, where: str = "") -> list[str]:
+    """Each path the book predicts whose value the tapped detail does not hold, with both values."""
+    out: list[str] = []
+    for name, expected in want.items():
+        path = f"{where}.{name}" if where else name
+        held = cast("dict[str, object]", got).get(name) if isinstance(got, dict) else None
+        if isinstance(expected, dict):
+            out += differences(cast("dict[str, Any]", expected), held, path)
+        elif plain(expected) != plain(held):
+            out.append(f"{path} tapped {held!r}, the book says {expected!r}")
+    return out
+
+
+def emissions(action: type[Action[Any, Any]], request: object, model: Model, surface: Surface) -> str:
+    """The note of the first event the action should emit and the tap did not show, or nothing."""
+    if not Deliveries.tapping:
+        Deliveries.unproven += len(action.emits)
+        return ""
+    ids = run_ids(surface, model)
+    by = getattr(request, "by", SOLE)
+    accepted = action.take(cast(Any, request).input())
+    for event in action.emits:
+        wanted = action.announces(event, accepted, model, by) or {}
+        note = Deliveries.prove(event, wanted, ids, action.__name__)
+        if note:
+            Deliveries.failed_emissions += 1
+            return note
+        Deliveries.proven += 1
+    return ""
 
 
 class Landings:
@@ -498,15 +593,92 @@ class Deliveries:
     delivered = 0
     declared = 0
     failed = 0
+    proven = 0
+    failed_emissions = 0
+    unproven = 0
+    tapping = False
+    cannot = False
+    buffer: list[tuple[str, Any]] = []
+    hooked = False
+    handler: Any = None
 
     @classmethod
     def begin(cls, role: Delivery | None) -> None:
+        cls.close()
         cls.role = role
         cls.delivered = cls.declared = cls.failed = 0
+        cls.proven = cls.failed_emissions = cls.unproven = 0
+        cls.cannot = False
+        cls.buffer = []
+
+    @classmethod
+    def watch(cls) -> None:
+        """Opens the tap the first time an action that emits is about to be taken. An environment that names no delivery,
+        or one that cannot tap, leaves the emissions unproven."""
+        if cls.tapping or cls.cannot or cls.role is None:
+            return
+        try:
+            cls.role.open_tap()
+        except NotImplementedError:
+            cls.cannot = True
+            return
+        cls.tapping = True
+        if not cls.hooked:
+            atexit.register(cls.close)
+            cls.hooked = True
+        try:
+            cls.handler = signal.signal(signal.SIGTERM, cls.terminated)
+        except ValueError:
+            cls.handler = None
+
+    @staticmethod
+    def terminated(signum: int, frame: object) -> None:
+        raise SystemExit(128 + signum)
+
+    @classmethod
+    def close(cls) -> None:
+        """Removes what the tap made. Safe to call when no tap is open."""
+        if not cls.tapping:
+            return
+        cls.tapping = False
+        if cls.handler is not None:
+            signal.signal(signal.SIGTERM, cls.handler)
+            cls.handler = None
+        if cls.role is not None:
+            cls.role.close_tap()
+
+    @classmethod
+    def prove(cls, event: type[Event], wanted: dict[str, Any], ids: Identities, name: str) -> str:
+        """Reads the tap again, at most `Landings.bound()` times, until an event of this name about a record the run made
+        agrees with what the action announces. The events about the run's records that matched nothing stay buffered."""
+        assert cls.role is not None and event.detail is not None
+        most = Landings.bound()
+        off: list[str] = []
+        for reads in range(1, most + 1):
+            for tapped, detail in cls.role.tapped():
+                owned, strange = ownership(event.detail, detail, ids)
+                if owned or not strange:
+                    cls.buffer.append((tapped, canonical(event.detail, detail, app=True, ids=ids, where=event.name)))
+            off = []
+            for position, (tapped, seen) in enumerate(cls.buffer):
+                if tapped != event.name:
+                    continue
+                off = differences(wanted, seen)
+                if not off:
+                    del cls.buffer[position]
+                    Landings.longest = max(Landings.longest, reads)
+                    return ""
+        Landings.missed = True
+        if not off:
+            return f"{name} should emit {event.name} about a record this run made; the tap read none in {most} reads"
+        return f"{name} emitted {event.name} but it disagrees with the book: " + "; ".join(off)
 
     @classmethod
     def line(cls) -> str:
-        """The run's second deliveries, or nothing when no hearing was delivered."""
-        if not cls.delivered:
-            return ""
-        return f"repeats: {cls.delivered} delivered, {cls.declared} applied again as declared, {cls.failed} fail"
+        """The run's second deliveries and emissions, or nothing when no hearing was delivered and no action emitted."""
+        lines = []
+        if cls.delivered:
+            lines.append(f"repeats: {cls.delivered} delivered, {cls.declared} applied again as declared, {cls.failed} fail")
+        if cls.proven or cls.failed_emissions or cls.unproven:
+            lines.append(f"emissions: {cls.proven} proven, {cls.failed_emissions} fail, {cls.unproven} unproven")
+        return "\n".join(lines)
