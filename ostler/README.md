@@ -276,7 +276,9 @@ define. They never print a value.
 
 A book names the books it needs with `needs: [api]` at its top level, and every service of it then
 waits for every service of those books. A `once` job lists the names it writes in `outputs:`, and
-the services that need it read them as `${NAME}`. See the format reference for both.
+the services that need it read them as `${NAME}`. A play that reaches a service its own services do not
+need to start goes in `reaches: [api]`, which brings it up with the book and orders nothing. See the
+format reference for each.
 
 Every service needs an `about:` line, which `ostler env ls` shows. The format reference is the
 `references/stack.md` page of the `ostler-cli` skill.

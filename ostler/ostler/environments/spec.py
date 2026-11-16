@@ -62,6 +62,10 @@ KEYS: tuple[Key, ...] = (
         "services/ops/stack.yml"),
     Key("book", "needs", _STRINGS,
         "the books whose every service this book's services need, so they come up first"),
+    Key("book", "reaches", _STRINGS,
+        "the books, or `book:name` services, a play of this book reaches that its own services "
+        "do not need to start: a bring-up of the book brings them up too, and no start order "
+        "follows from it"),
     Key("book", "default-fixtures", _STRINGS,
         "the fixture sets loaded when a bring-up names none"),
     Key("book", "device", _DEVICE,
@@ -179,6 +183,7 @@ class Book:
     directory: Path
     ops_dir: Path
     needs: tuple[str, ...] = ()
+    reaches: tuple[str, ...] = ()
     default_fixtures: tuple[str, ...] = ()
     services: tuple[str, ...] = ()
     device: tuple[dict[str, Any], ...] = ()
@@ -246,6 +251,7 @@ def load(root: Path) -> Catalog:
         first_file[name] = stack_file
         _read_book(catalog, root, name, stack_file)
     _expand_book_needs(catalog, root)
+    _check_reaches(catalog, root)
     _check_needs(catalog)
     _check_cycles(catalog)
     _check_shared(catalog)
@@ -302,6 +308,7 @@ def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> Non
         directory=book_dir(stack_file),
         ops_dir=stack_file.parent,
         needs=tuple(str(item) for item in _as_list(raw.get("needs"))),
+        reaches=tuple(str(item) for item in _as_list(raw.get("reaches"))),
         default_fixtures=defaults,
         services=tuple(refs),
         device=_read_device(catalog, where, raw.get("device")),
@@ -440,6 +447,21 @@ def _expand_book_needs(catalog: Catalog, root: Path) -> None:
                 service, needs=tuple(dict.fromkeys([*service.needs, *wanted])))
 
 
+def _check_reaches(catalog: Catalog, root: Path) -> None:
+    for book in catalog.books.values():
+        where = shown(root, book.ops_dir / STACK_FILE)
+        for name in book.reaches:
+            if ":" in name:
+                if name not in catalog.services:
+                    catalog.errors.append(f"{where}: `reaches:` names the service `{name}`, "
+                                          "which no stack.yml defines")
+            elif name == book.name:
+                catalog.errors.append(f"{where}: book `{book.name}` lists itself in `reaches:`")
+            elif name not in catalog.books:
+                catalog.errors.append(f"{where}: `reaches:` names the book `{name}`, which no "
+                                      "stack.yml defines")
+
+
 def _old_secrets(value: object) -> str:
     if isinstance(value, str):
         return (f" (`{value}` was a saddlebag environment, which is gone: the stack root writes "
@@ -566,6 +588,10 @@ def closure(catalog: Catalog, targets: Iterable[str]) -> list[Service]:
     for target in targets:
         for ref in resolve_target(catalog, target):
             visit(ref)
+        if ":" not in target:
+            for reached in catalog.books[target].reaches:
+                for ref in resolve_target(catalog, reached):
+                    visit(ref)
     return ordered
 
 

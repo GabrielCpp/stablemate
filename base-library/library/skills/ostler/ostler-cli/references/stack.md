@@ -34,6 +34,7 @@ services:
 | `services` | book | one entry per service this book defines, named in lowercase letters, digits and `-` |
 | `secrets` | root | the one source of `${VAR}` values: `file:` a dotenv file, `decrypt:` a command whose stdout is dotenv, or `saddlebag:` the `key=value` tags that select secrets in saddlebag. Valid only in the stack root |
 | `needs` | book | the books whose every service this book's services need. They come up first, and a cycle across books is refused |
+| `reaches` | book | the books, or `book:name` services, a play of this book reaches that its own services do not need to start. A bring-up of the book (not of one `book:name`) brings them up too. It adds no start order and no cycle. A play that reaches a service its own services do not need goes here, never in `needs` |
 | `default-fixtures` | book | the fixture sets loaded when a bring-up names none |
 | `device` | book | the steps that boot a device and install the app before a mobile book plays, in order. Each step is `name`, `run`, an optional `working-directory` resolved against the repo root (`repo://` allowed) and an optional `timeout` in seconds. A step runs with the copy's `STABLEMATE_LEASE` and `STABLEMATE_ADDRESS_BOOK`, so `ostler env address NAME` in it names the run's copy |
 | `about` | service | one line on what the service is, required. `ostler env ls` shows it |

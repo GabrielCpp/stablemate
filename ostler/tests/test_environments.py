@@ -1123,6 +1123,45 @@ def test_books_that_need_each_other_form_a_cycle_naming_the_services(tmp_path: P
     assert "web:web" in errors[0] and "api:api" in errors[0]
 
 
+def _report_reaches_api(root: Path, key: str) -> None:
+    _rewrite_stack(root, "api", {
+        "api": {"about": "x", "define": "services/api.yml.j2",
+                "needs": ["db", "provision", "report:report"]}})
+    _file(root, f"{SERVICES}/report/ops/services/report.yml.j2", "image: report\n")
+    _file(root, f"{SERVICES}/report/ops/stack.yml", yaml.safe_dump({key: ["api"], "services": {
+        "report": {"about": "x", "define": "services/report.yml.j2"}}}))
+
+
+def test_a_book_reaches_a_service_its_own_do_not_need_without_a_cycle(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _report_reaches_api(root, "reaches")
+    catalog = spec.load(root)
+    assert catalog.errors == []
+    order = [service.ref for service in spec.closure(catalog, ["report"])]
+    assert order == ["report:report", "api:db", "api:provision", "api:api"]
+    assert catalog.services["report:report"].needs == ()
+
+
+def test_a_book_that_needs_what_needs_it_is_still_a_cycle(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _report_reaches_api(root, "needs")
+    assert any("cycle" in error for error in spec.load(root).errors)
+
+
+def test_a_book_reaching_an_unknown_book_is_refused(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _book_stack(root, "web", {"reaches": ["queue"]})
+    assert ("services/web/ops/stack.yml: `reaches:` names the book `queue`, which no "
+            "stack.yml defines") in spec.load(root).errors
+
+
+def test_a_target_of_one_service_does_not_pull_what_its_book_reaches(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    _report_reaches_api(root, "reaches")
+    catalog = spec.load(root)
+    assert [service.ref for service in spec.closure(catalog, ["report:report"])] == ["report:report"]
+
+
 def test_outputs_need_once_and_an_environment_name(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     _rewrite_stack(root, "api", {
