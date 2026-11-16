@@ -51,6 +51,25 @@ class FindTodos(Endpoint):
     )
 ```
 
+## Credentials
+
+A surface holds every account's credential as a `Signed`, never a bare token. A play outlasts
+a token's life, and the input classes of an endpoint hold one arrangement for the whole
+endpoint. `Signed` signs the account in on first read and again whenever less than `margin`
+seconds of life remain.
+
+```python
+self.owner = Signed(lambda: self.back.sign_in("owner"))
+self.client.hold(OWNER, BEARER, self.owner)
+self.back.api("POST", "/projects", self.owner.token, body)
+```
+
+- `sign_in` is the call that signs the account in. It returns the token as a string.
+- A JWT carries its own end in `exp`. `Signed` reads it.
+- `lasts=` is the life in seconds of a token that is not a JWT. With no `lasts=`, an opaque
+  token is never renewed.
+- `margin=` is how early to renew, 300 seconds by default.
+
 ## Answers
 
 `Answer(status, shape, means, creates=None, why="")`. `means` says when the app gives it.
