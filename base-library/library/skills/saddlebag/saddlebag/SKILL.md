@@ -1,6 +1,6 @@
 ---
 name: saddlebag
-description: "saddlebag: where the password, token or TOTP for a test login lives. Load it before you type a password, search seed, fixture or config files for test credentials, ask the user for a login, or read a `.env` to sign in. saddlebag hands the secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers signing in with `fill` (username, password, TOTP), typing into an Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, loading a whole-store export with `import`, the `secrets: saddlebag:` source in a stack.yml, the PreToolUse guard that refuses a read of a dotenv, key or credentials file, registering a secret, and reading errors. Also load when a command needs a password or token in its environment, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
+description: "saddlebag: where the password, token or TOTP for a test login lives. Load it before you type a password, search seed, fixture or config files for test credentials, ask the user for a login, or read a `.env` to sign in. saddlebag hands the secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers signing in with `fill` (username, password, TOTP), typing into an Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, changing a literal in it with `env set`, loading a whole-store export with `import`, the `secrets: saddlebag:` source in a stack.yml, the PreToolUse guard that refuses a read of a dotenv, key or credentials file, registering a secret, and reading errors. Also load when a command needs a password or token in its environment, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
 tags: [cli, tests, qa]
 ---
 
@@ -155,7 +155,7 @@ saddlebag exec --tag environment=local --env OTP=admin_login.totp -- ./scripts/e
   command that encodes the value or writes it to a file still leaks it, so a command
   whose job is to show its environment stays out of `exec`.
 
-## Read a dotenv without reading its secrets: `env`
+## Read or change a dotenv without reading its secrets: `env`
 
 A `.env` file mixes literals with secrets, and reading it whole puts every value in your
 transcript. The `env` verbs read it for you and keep the secret values out of the
@@ -185,6 +185,18 @@ Each record takes the key as its `var`, the tags you pass, and the name
 `<prefix><key lowercased, _ to ->`, so `STRIPE_KEY` becomes `local-stripe-key`. It
 prints `stored STRIPE_KEY as local-stripe-key` per key. A key the file lacks, or one with
 an empty value, stops it before anything is written.
+
+`env set` changes a literal, such as a port, a host or a feature flag, without opening
+the file:
+
+```bash
+saddlebag env set .env APP_PORT 9090   # prints `set APP_PORT in .env`, or `added` for a new key
+```
+
+It keeps every other line as it was and quotes the value when it must. It refuses a key
+whose current line or new value is secret by the four rules above, and writes nothing.
+A secret is the operator's to change: store it with `saddlebag secret` and run the
+consumer under `exec --env KEY=NAME`, or ask the operator to edit the file.
 
 A whole store moves as one `*.saddlebag.json` file. The operator writes it with
 `saddlebag export FILE.saddlebag.json`, which runs only from their own terminal, and the
@@ -229,8 +241,8 @@ saddlebag guard install --user      # ~/.claude/settings.json
 saddlebag guard install --project   # ./.claude/settings.json
 ```
 
-A denial is not a wall. Run the line it names: `saddlebag env show` or `env keys` for a
-dotenv, `secret set NAME < FILE` then `exec --env` for a key file.
+A denial is not a wall. Run the line it names: `saddlebag env show` or `env keys` to read
+a dotenv, `env set` to change a literal in it, `secret set NAME < FILE` then `exec --env` for a key file.
 
 ## A workflow node
 
@@ -329,6 +341,7 @@ permanent, so ask the operator before you run it.
 | `<path> holds secrets. Read it masked: ...` (guard) | A dotenv. Run the `saddlebag env show` or `env keys` line it names. |
 | `<path> holds secrets. Store it: ...` (guard) | A key or credentials file. Hand the operator the `secret set NAME < <path>` line, then run the consumer under `exec --env`. |
 | `<file> has no <KEY>` / `<KEY> has an empty value in <file>` | `env import` stopped before any write. Fix `--keys` or the file. |
+| `<KEY> is secret (<rule>); env set writes literals only` | Nothing was written. Store the secret and use `exec --env`, or ask the operator to edit the file. |
 
 ## Install
 
