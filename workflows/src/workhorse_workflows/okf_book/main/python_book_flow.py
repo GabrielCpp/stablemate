@@ -1,4 +1,4 @@
-"""One service's Python book. A book reached by a screen surface first gets a breadth pass, one skeleton screen per entry file the book names nowhere, and a reasons pass, the decisions for the screens no decision names. A pass never drops work silently: a turn without a reply or a failed listing waits for the operator. Then one owner turn per lap writes `services/<service>/`, the run judges it with the book's own check and run, and a green book is committed."""
+"""One service's Python book. A book reached by a screen surface whose package exists first gets a breadth pass, one skeleton screen per entry file the book names nowhere, and a reasons pass, the decisions for the screens no decision names. A screen-reached book with no package starts with the owner, whose first lap writes the package. A pass never drops work silently: a turn without a reply or a failed listing waits for the operator. Then one owner turn per lap writes `services/<service>/`, the run judges it with the book's own check and run, and a green book is committed."""
 from __future__ import annotations
 
 import logging
@@ -76,7 +76,7 @@ def finished_books(root: Path, service: str) -> list[str]:
 
 @dry_run(service="dry-run")
 class WritePythonBook(BookFlow):
-    """Surveys the entry files a screen-reached book names nowhere and has a skeleton screen written for each, eight to a turn. Then has the reasons written for each screen no decision names, five to a turn. A turn of either pass that ends without a reply, and a decisions listing that fails, each wait on an operator gate, and the answer sends the same batch again or lists again. Then sends the book's owner until the book's check and run both pass and no source file is left unnamed, stamps the book verified at the app's HEAD, and commits the book's package. A missing list still red on a screen-reached book goes through the survey again before the owner."""
+    """Surveys the entry files a screen-reached book names nowhere and has a skeleton screen written for each, eight to a turn. Then has the reasons written for each screen no decision names, five to a turn. A turn of either pass that ends without a reply, and a decisions listing that fails, each wait on an operator gate, and the answer sends the same batch again or lists again. Then sends the book's owner until the book's check and run both pass and no source file is left unnamed, stamps the book verified at the app's HEAD, and commits the book's package. A screen-reached book whose package exists first gets the breadth and reasons passes. One with no package starts with the owner, whose first lap writes the package. A missing list still red after a lap sends it through the survey."""
 
     service: str = ""
     kind: str = "cli"
