@@ -87,6 +87,23 @@ on an environment that keeps other people's records. A derivation follows the da
 was given, and these two do not, so a list a backend fills wrongly needs them. A list may
 state any of the three claims alone.
 
+`entries=(in_order(), no_repeat())` states rules every entry holds whatever records the list
+holds, so they hold on a shared environment. `in_order(key)` and `no_repeat(key)` take no key
+(the entry itself), a function, or a dotted path read from a dict entry. A rule is any function
+from the entries to what breaks it, with a docstring whose first line `describe`, `search` and
+`explain` print. `entries` takes a tuple, not one rule. At each pick the run judges each rule
+over the entries after the `head`, native select or popup alike, and a break names the list,
+the rule and the entries.
+
+`picked=ANYONE` states the entry the list has selected before a person picks, as a label or a
+function of the model and the person looking, with a docstring. The run judges it on the first
+pick in that list after the page loads, reading the selected option (in a popup, the option
+marked `aria-selected`, else the button's own text). A list of an edit form that starts on the
+record's own value states no `picked`. The report adds, per read list, the claims a pick judged.
+
+`check` notes, and does not fail on, each select that states a shape and says nothing about its
+list. A select with no shape and no claim stays a finding that blocks the run.
+
 A SvelteKit app renders some lists from data its server loaded and fetches others in the browser
 through its own endpoints. A list the server rendered states `given=handed(route)`, the route
 spelled as SvelteKit spells it (`/tickets/[id]`). `derived` then takes the data the page was
