@@ -6,6 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from ostler.book import Actor
+
 USERS = ("ana", "bo")
 STATUSES = ("unscheduled", "scheduled", "overdue")
 
@@ -19,6 +21,7 @@ class TodoRecord:
     assignee: str | None
     remind_at: str | None = None
     remind_day: date | None = None
+    owner: str | None = None
 
     def status(self, today: date) -> str:
         if self.due_on is None:
@@ -34,6 +37,11 @@ class TodoRecord:
         if self.description:
             bits.append(repr(self.description))
         return " · ".join(bits)
+
+
+def owner_of(by: Actor | None) -> str | None:
+    """The account a caller's todos belong to: a person's own handle, nobody for the shared credential."""
+    return by.handle if by is not None and by.fresh else None
 
 
 @dataclass(frozen=True)

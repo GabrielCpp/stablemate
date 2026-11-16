@@ -33,12 +33,24 @@ function h(tag, attrs, ...children) {
   return el;
 }
 
+window.signIn = async (handle, password) => {
+  const res = await fetch(window.API_URL + "/sign-in", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ handle, password }),
+  });
+  if (!res.ok) throw new Error(t("failed"));
+  sessionStorage.setItem("token", (await res.json()).token);
+};
+
+window.signOut = () => sessionStorage.removeItem("token");
+
 async function call(path, init = {}) {
   let res;
   try {
     res = await fetch(window.API_URL + path, {
       ...init,
-      headers: { Authorization: "Bearer test-token", ...(init.body ? { "Content-Type": "application/json" } : {}) },
+      headers: { Authorization: `Bearer ${sessionStorage.getItem("token") || "test-token"}`, ...(init.body ? { "Content-Type": "application/json" } : {}) },
     });
   } catch {
     throw new Error(t("failed"));

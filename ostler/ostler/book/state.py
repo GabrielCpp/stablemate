@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Callable, Generic, Iterable, TypeVar
 
+from ostler.book.boundary import Needs
 from ostler.book.model import Model
 
 S = TypeVar("S", bound=Model)
@@ -24,8 +25,13 @@ class Scene:
     step is built from what the step before it was answered."""
 
     def arrange(self, model: S) -> S:
+        from ostler.book.owners import Owners
+
         for step in self.reached_by(model.today):
-            model.apply(step)
+            if isinstance(step, Needs):
+                Owners.seed(step, model)
+            else:
+                model.apply(step)
         return model
 
     def describe(self, today: date) -> str:

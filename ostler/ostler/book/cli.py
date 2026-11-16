@@ -247,7 +247,7 @@ def made_ready(service: Service[Any], args: argparse.Namespace) -> tuple[Surface
     if why:
         show_skips(args.environment, [why])
         return 0
-    Owners.begin(args.environment, lambda owner: _surface(owner, args.environment), fresh)
+    Owners.begin(args.environment, lambda owner: _surface(owner, args.environment), fresh, service.person)
     Deliveries.begin(args.environment.delivery)
     return surface, stack
 
@@ -279,6 +279,7 @@ def cmd_walk(service: Service[Any], args: argparse.Namespace) -> int:
             return 0
         today = _today(surface)
         model = service.new_model(today)
+        Owners.world(surface)
         print(f"{scene.name}: {scene.when}")
         taken = []
         for step in scene.reached_by(today):
@@ -674,9 +675,11 @@ class Resets:
 def renewed(service: Service[Any], surface: Surface, resets: Resets | None = None,
             unused: bool = False) -> tuple[Model | None, str]:
     try:
-        return fresh(service, surface, resets, unused), ""
+        model = fresh(service, surface, resets, unused)
     except CannotArrange as cannot:
         return None, cannot.reason
+    Owners.pending = True
+    return model, ""
 
 
 def show_skips(environment: Environment, reasons: list[str]) -> None:

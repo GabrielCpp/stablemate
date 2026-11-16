@@ -12,6 +12,7 @@ from typing import Any, Callable
 
 from ostler.book.backstage import CannotArrange
 from ostler.book.model import Defect, Model
+from ostler.book.owners import Owners
 from ostler.book.runner import attempt
 from ostler.book.state import Impossible
 from ostler.book.surface import Surface
@@ -108,6 +109,7 @@ def one(axes: Any, scene: Any, name: str, build: Callable[[Model], object], surf
         except CannotArrange as cannot:
             cell.skipped = cannot.reason
             return cell, None
+        Owners.world(surface)
         for step in scene.reached_by(model.today):
             arranged = attempt(step, model, surface)
             if arranged.skipped:

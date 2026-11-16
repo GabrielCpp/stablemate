@@ -45,6 +45,11 @@ class AnOverdueTodoIsInTheDigest(Journey):
 a fresh record and hands this journey the id the owner's app issued. Never perform the
 owner's calls here to reach a state: how a todo becomes overdue is the owner's to change.
 
+`Needs(TODO, "overdue", ANA)` also names the owner's cast member the record belongs to. The owner's
+scene is the one in which that person takes part, and the owner's surface offers that person's account
+with `account(actor)`, for a screen book to sign in with. See
+[screens.md](screens.md#a-record-a-backends-book-stores).
+
 The run reaches the owner through the owner's own surface. So this book's environment lists
 the owner's hosts and secrets beside its own, under the names the owner's book gives them,
 and the run says which one is missing.

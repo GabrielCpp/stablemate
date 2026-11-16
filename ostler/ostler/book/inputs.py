@@ -18,6 +18,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, TypeGuard, cast
 
 from ostler.book.backstage import CannotArrange
+from ostler.book.boundary import Needs
 from ostler.book.cast import Actor
 from ostler.book.domain import Fixture
 from ostler.book.errors import BookError, Unhealthy
@@ -26,6 +27,7 @@ from ostler.book.http import (Bool, Client, Endpoint, Enum, Field, Id, Identitie
 from ostler.book.journey import Given, StepResult, difference
 from ostler.book.model import Defect, Model
 from ostler.book.outcome import CannotReach, Done, Flawed, Outcome, Refusal, Refusals, Unreachable
+from ostler.book.owners import Owners
 from ostler.book.runner import agree, attempt, listing
 from ostler.book.screen import Interaction
 from ostler.book.surface import Surface
@@ -324,6 +326,7 @@ def _speak(surface: Surface, lang: str) -> None:
 def _journey_base(journey: Any, k: int, home: str) -> Callable[[Surface, Callable[[], Model]], tuple[Model, Endpoint]]:
     def arrange(surface: Surface, fresh: Callable[[], Model]) -> tuple[Model, Endpoint]:
         model = fresh()
+        Owners.world(surface)
         baseline = model.rows()
         seen: dict[int, Any] = {}
         _speak(surface, journey.lang or home)
@@ -343,6 +346,7 @@ def _journey_base(journey: Any, k: int, home: str) -> Callable[[Surface, Callabl
 def _cell_base(scene: Any, build: Callable[[Model], object]) -> Callable[[Surface, Callable[[], Model]], tuple[Model, Endpoint]]:
     def arrange(surface: Surface, fresh: Callable[[], Model]) -> tuple[Model, Endpoint]:
         model = fresh()
+        Owners.world(surface)
         for step in scene.reached_by(model.today):
             _ok(attempt(step, model, surface))
         action = build(model)
@@ -371,6 +375,8 @@ def bases(service: Service[Any], today: date | None = None) -> dict[type[Any], B
             for given in journey.given:
                 if isinstance(given, Given):
                     model.perform(given.request)
+                elif isinstance(given, Needs) and given.foreign.takes is not None:
+                    Owners.seed(given, model)
             for k, step in enumerate(journey().steps(model.today)):
                 if not _carried(step):
                     continue

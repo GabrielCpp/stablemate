@@ -12,15 +12,15 @@ from ostler.book import Action, Actor, Become, Create, Delete, MoveToday, Select
 from ..fixtures import Clock, Query, Switch, Todo
 from . import rules
 from .state import Serving, StoreAction, StoreDown, TodoApp, listing_order
-from .todo import Day, TodoRecord
+from .todo import Day, TodoRecord, owner_of
 
 
-def record(a: Todo) -> TodoRecord:
+def record(a: Todo, by: Actor | None) -> TodoRecord:
     """The record the service keeps for the todo a client sent; the id is already set."""
     assert a.id is not None
     due = rules.as_date(a.due_on) if a.due_on is not None else None
     day = date.fromisoformat(a.remind_at[:10]) if a.remind_at is not None else None
-    return TodoRecord(a.id, (a.title or "").strip(), a.description, due, a.assignee, a.remind_at, day)
+    return TodoRecord(a.id, (a.title or "").strip(), a.description, due, a.assignee, a.remind_at, day, owner_of(by))
 
 
 def matches(q: Query, today: date):
@@ -43,7 +43,7 @@ class AddTodo(StoreAction[Todo]):
     @staticmethod
     def reduce(a: Todo, s: TodoApp, by: Actor | None) -> Transaction:
         a.set(id=str(uuid4()))
-        return Transaction(Create(s.todos, record(a)))
+        return Transaction(Create(s.todos, record(a, by)))
 
 
 class ReadTodo(StoreAction[Todo]):
@@ -61,7 +61,7 @@ class ReplaceTodo(StoreAction[Todo]):
 
     @staticmethod
     def reduce(a: Todo, s: TodoApp, by: Actor | None) -> Transaction:
-        return Transaction(Update(s.todos, a.id, record(a)))
+        return Transaction(Update(s.todos, a.id, record(a, by)))
 
 
 class RemoveTodo(StoreAction[Todo]):
@@ -79,7 +79,8 @@ class FindTodos(StoreAction[Query]):
 
     @staticmethod
     def reduce(a: Query, s: TodoApp, by: Actor | None) -> Select[TodoRecord]:
-        return Select(s.todos, where=matches(a, s.today), order=listing_order(s))
+        keep = matches(a, s.today)
+        return Select(s.todos, where=lambda t: t.owner == owner_of(by) and keep(t), order=listing_order(s))
 
 
 class TellDay(Action[object, TodoApp]):

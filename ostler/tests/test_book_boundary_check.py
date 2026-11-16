@@ -7,22 +7,11 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterator
 
 import pytest
 
 from ostler.book.check import Finding, boundary_faults, check
 
-from book_todo import FIXTURE, services_from
-
-
-@pytest.fixture
-def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    copy = tmp_path / "book_todo"
-    shutil.copytree(FIXTURE, copy, ignore=shutil.ignore_patterns("__pycache__", "node_modules"))
-    monkeypatch.chdir(copy)
-    with services_from(copy):
-        yield copy
 
 
 def test_a_needed_record_of_an_owner_with_no_book_fails_where_it_is_taken():
@@ -68,12 +57,15 @@ def test_the_same_removal_is_named_on_the_owners_check_with_the_neighbours_name(
 
 def test_a_state_the_owners_matrices_no_longer_have_is_named_on_both_checks(root: Path):
     _edit(root, "api", "model/lifecycle.py", 'Scene("overdue"', 'Scene("late"')
-    for module in ("services.digest", "services.api"):
+    digest = {"journey AnOverdueTodoIsInTheDigest", "journey AnOverdueTodoIsFinishedFromTheDigest"}
+    web = {"journey TheDayPasses", "scene chore:overdue"}
+    for module, names in (("services.digest", digest), ("services.api", digest | web)):
         every = _boundary(module)
-        assert {found.name for found in every} == {"journey AnOverdueTodoIsInTheDigest", "journey AnOverdueTodoIsFinishedFromTheDigest"}
+        assert {found.name for found in every} == names
         for found in every:
             assert found.blocks
-            assert "overdue" in found.problem and "services.api" in found.problem and "services.digest" in found.problem
+            assert "overdue" in found.problem and "services.api" in found.problem
+            assert ("services.web" if found.name in web else "services.digest") in found.problem
             assert "late" in found.problem and "unscheduled" in found.problem
 
 

@@ -66,11 +66,15 @@ def attempt(found: list[Finding], name: str, build: Callable[[], Any], required:
 
 
 def given_model(service: Service[Any], journey: type[Journey]) -> Any:
-    """A new model with the journey's `Given` requests performed on it."""
+    """A new model with the journey's `Given` requests performed on it and the records a screen book needs taken in from their owners."""
+    from ostler.book.owners import Owners
+
     model = service.new_model(date.today())
     for given in journey.given:
         if isinstance(given, Given):
             model.perform(given.request)
+        elif isinstance(given, Needs) and given.foreign.takes is not None:
+            Owners.seed(given, model)
     return model
 
 
@@ -275,7 +279,7 @@ def registration_faults(service: Service[Any], module: str) -> list[Finding]:
             found.append(Finding(f"module {info.name}", "nothing the service loads imports it: register what it defines or delete it"))
     found += unregistered(module, Endpoint, service.endpoints, "service.endpoints")
     found += unregistered(module, Journey, (*service.journeys, *service.health), "service.journeys or service.health")
-    stepped = tuple({type(step) for journey in service.journeys for step in journey().steps(date.today()) if isinstance(step, Arrange)})
+    stepped = tuple({type(step) for journey in service.journeys for step in journey().steps(given_model(service, journey).today) if isinstance(step, Arrange)})
     found += unregistered(module, Arrange, (*service.outside, *stepped), "service.outside or a journey step")
     carried = {id(r) for a in actions_of(service, module) for r in a.rules} | {id(r) for s in states_of(service) for r in s.rules}
     try:
@@ -358,11 +362,22 @@ def references(module: str, service: Service[Any]) -> list[Foreign]:
             for value in list(vars(loaded).values()):
                 if isinstance(value, Foreign):
                     found[id(value)] = value
-    for journey in service.journeys:
-        for given in journey.given:
-            if isinstance(given, Needs):
-                found[id(given.foreign)] = given.foreign
+    for _, given in needed_by(service):
+        found[id(given.foreign)] = given.foreign
     return list(found.values())
+
+
+def needed_by(service: Service[Any]) -> list[tuple[str, Needs]]:
+    """Every need a book states, with where: a journey's given and a step of a scene."""
+    out: list[tuple[str, Needs]] = [(f"journey {journey.__name__}", given) for journey in service.journeys
+                                    for given in journey.given if isinstance(given, Needs)]
+    for axes in service.matrices:
+        for scene in axes.scenes:
+            try:
+                out += [(f"scene {axes.record}:{scene.name}", step) for step in scene.reached_by(axes.today) if isinstance(step, Needs)]
+            except Exception:
+                continue
+    return out
 
 
 def walked(service: Service[Any]) -> list[tuple[type[Journey], object]]:
@@ -412,16 +427,21 @@ def answered(call: type[Endpoint]) -> set[str]:
     return out
 
 
-def held_records(service: Service[Any]) -> set[str]:
-    """The record names a book's model and matrices state: the entity class of each collection of the model, the label of each matrix, and the
-    records the book lists. A record kept in a plain attribute, or in a collection of a state the model reaches only by `Become`, is not seen."""
-    names = {axes.record for axes in service.matrices} | {record.__name__ for record in service.records}
+def stored(service: Service[Any]) -> set[str]:
+    """The record names a book keeps: the entity class of each collection of its model and the records it lists."""
+    names = {record.__name__ for record in service.records}
     try:
         collections = getattr(type(service.new_model(date.today())), "collections", None)
         names |= {c.of.__name__ for c in collections().values()} if collections is not None else set()
     except Exception:
         pass
     return names
+
+
+def held_records(service: Service[Any]) -> set[str]:
+    """The record names a book's model and matrices state: the entity class of each collection of the model, the label of each matrix, and the
+    records the book lists. A record kept in a plain attribute, or in a collection of a state the model reaches only by `Become`, is not seen."""
+    return {axes.record for axes in service.matrices} | stored(service)
 
 
 def reference_faults(module: str, found: dict[str, Service[Any]], skipped: dict[str, str]) -> list[Finding]:
@@ -452,16 +472,35 @@ def reference_faults(module: str, found: dict[str, Service[Any]], skipped: dict[
                 out.append(Finding(f"foreign {record}", f"{name} names {record} by a word, and {owner} has a book: name the record class of that book"))
             elif owner not in skipped:
                 out.append(Finding(f"foreign {record}", f"{name} names {record} by a word, and its owner {owner} has no book under the root yet", told=True))
-        for journey in book.journeys:
-            for given in journey.given:
-                if not isinstance(given, Needs) or given.foreign.owner not in found or module not in (name, given.foreign.owner):
-                    continue
-                owner = given.foreign.owner
-                states = list(dict.fromkeys(scene.name for axes in found[owner].matrices for scene in axes.scenes))
-                if given.state not in states:
-                    out.append(Finding(f"journey {journey.__name__}", f"{name} needs {given.foreign.record.__name__} of {owner} in "
-                                       f"{given.state!r}, and no matrix of {owner} has that state: its states are {', '.join(states)}"))
+        for where, given in needed_by(book):
+            if given.foreign.owner not in found or module not in (name, given.foreign.owner):
+                continue
+            owner = given.foreign.owner
+            states = list(dict.fromkeys(scene.name for axes in found[owner].matrices for scene in axes.scenes))
+            if given.state not in states:
+                out.append(Finding(where, f"{name} needs {given.foreign.record.__name__} of {owner} in "
+                                   f"{given.state!r}, and no matrix of {owner} has that state: its states are {', '.join(states)}"))
+            elif given.person is not None and given.person not in found[owner].cast:
+                out.append(Finding(where, f"{name} needs {given.foreign.record.__name__} of {owner} for {given.person}, "
+                                   f"who is not in the cast of {owner}: its cast is {', '.join(str(a) for a in found[owner].cast)}"))
+            elif given.foreign.takes is not None:
+                out += [f for f in view_faults(where, name, given, found[owner]) if f not in out]
     return out
+
+
+def view_faults(where: str, name: str, given: Needs, owner: Service[Any]) -> list[Finding]:
+    """The fields a screen reads of a needed record that the owner's view of it lacks."""
+    from ostler.book.owners import Owners, shown_of
+
+    try:
+        owned, entity = Owners.alone(owner, given)
+    except BookError as cannot:
+        return [Finding(where, f"{name} needs {given.foreign.record.__name__} of {given.foreign.owner} in {given.state!r}, "
+                        f"and the owner's book cannot arrange it alone: {cannot}")]
+    shown = shown_of(owned.row(entity))
+    return [Finding(f"foreign {given.foreign.record.__name__}", f"{name} reads {field} of {given.foreign.record.__name__} of "
+                    f"{given.foreign.owner}, and the owner's view of it in {given.state!r} has no such field: it has {', '.join(shown)}")
+            for field in given.foreign.reads if field not in shown]
 
 
 def answers_calls(service: Service[Any]) -> bool:
@@ -498,13 +537,97 @@ def trespass_faults(module: str, service: Service[Any], found: dict[str, Service
     return out
 
 
+def effects(before: Any, after: Any) -> tuple[set[str], set[str]]:
+    """The records an act changed on a model, and the ones it made."""
+    changed: set[str] = set()
+    made: set[str] = set()
+    for name in type(before).collections():
+        old, new = getattr(before, name), getattr(after, name)
+        if old.items != new.items:
+            changed.add(new.of.__name__)
+        if set(new.items) - set(old.items):
+            made.add(new.of.__name__)
+    return changed, made
+
+
+def acted(service: Service[Any]) -> list[tuple[type[Interaction[Any]], set[str], set[str]]]:
+    """Each interaction the book's scenes, cells and journeys take on the model alone, with the records it changed and made."""
+    from ostler.book.owners import Owners
+
+    out: list[tuple[type[Interaction[Any]], set[str], set[str]]] = []
+
+    def take(step: object, model: Any) -> None:
+        if not isinstance(step, Interaction):
+            return
+        before = model.copy()
+        try:
+            model.perform(step)
+            out.append((type(step), *effects(before, model)))
+        except Exception:
+            return
+
+    for axes in service.matrices:
+        for scene in axes.scenes:
+            try:
+                model = service.new_model(axes.today)
+                for step in scene.reached_by(axes.today):
+                    if isinstance(step, Needs):
+                        Owners.seed(step, model)
+                    else:
+                        take(step, model)
+                for build in axes.actions.values():
+                    take(build(model.copy()), model.copy())
+            except Exception:
+                continue
+    for journey in service.journeys:
+        try:
+            model = given_model(service, journey)
+            for step in journey().steps(model.today):
+                take(step, model)
+        except Exception:
+            continue
+    return out
+
+
+def copy_faults(module: str, service: Service[Any], found: dict[str, Service[Any]]) -> list[Finding]:
+    """A screen book keeps the life of a record only where one of its screens writes it, and makes no record outside its screens that a
+    backend book under the root stores. The finding names the record and the owner's book. It blocks once the book refers to a foreign record;
+    until then it is a note, so a book written before a book could refer to another still passes."""
+    if not service.screens:
+        return []
+    backends = {name: book for name, book in found.items() if name != module and answers_calls(book)}
+    if not backends:
+        return []
+    told = not references(module, service)
+    owned = {name: stored(book) for name, book in backends.items()}
+    written: set[str] = set()
+    outside: dict[str, set[str]] = {}
+    for act, changed, made in acted(service):
+        if act.screen is not None:
+            written |= changed
+        elif made:
+            outside.setdefault(act.__name__, set()).update(made)
+    out: list[Finding] = []
+    for record in sorted(stored(service) - written):
+        owners = [name for name, names in owned.items() if record in names]
+        if owners:
+            out.append(Finding(f"record {record}", f"{module} keeps {record}, which no screen of it writes, and {', '.join(owners)} stores it: "
+                               f"ask {owners[0]}'s book for the state with Needs and drop the lifecycle, rules and actions kept here", told=told))
+    for name, made in sorted(outside.items()):
+        for record in sorted(made):
+            owners = [n for n, names in owned.items() if record in names] or list(backends)
+            out.append(Finding(f"interaction {name}", f"{module} makes {record} outside its screens, and {', '.join(owners)} stores it: "
+                               f"ask {owners[0]}'s book for the state with Needs instead of making the record here", told=told))
+    return out
+
+
 def boundary_faults(service: Service[Any], module: str) -> list[Finding]:
     """What this book's references to other books' records, or other books' references to its own, say that the other book no longer answers."""
     from ostler.book.eventmap import books
 
     found, skipped = books(module, service)
     out = [Finding(f"book {name}", f"cannot be loaded, so its boundary is not read: {why}", blocks=False) for name, why in skipped.items()]
-    return out + reference_faults(module, found, skipped) + trespass_faults(module, service, found)
+    return out + reference_faults(module, found, skipped) + trespass_faults(module, service, found) + copy_faults(module, service, found)
 
 
 def matrix_faults(service: Service[Any]) -> list[Finding]:

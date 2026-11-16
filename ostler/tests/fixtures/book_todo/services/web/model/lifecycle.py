@@ -7,9 +7,11 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Callable, cast
 
-from ostler.book import Axes, Impossible, Scene
+from ostler.book import Axes, Impossible, Needs, Scene
 
 from ..fixtures import Clock, Network, Query, Switch, Todo, scheduled, todo
+from ...api.people import ANA
+from ..foreign import TODO
 from ..interactions import AddTodo, DayPasses, EditTodo, Filter, RemoveTodo, SetNetwork, SetStore
 from .state import TodoApp
 from .todo import TodoRecord
@@ -36,8 +38,7 @@ CHORE_SCENES = (
     Scene("unscheduled", f"{CHORE!r} is listed with no due day", lambda today: (AddTodo(todo(CHORE)),)),
     Scene("scheduled", f"{CHORE!r} is listed with a due day on or after today",
           lambda today: (AddTodo(scheduled(today, 2, title=CHORE)),)),
-    Scene("overdue", f"{CHORE!r} is listed with a due day before today",
-          lambda today: (AddTodo(scheduled(today, 2, title=CHORE)), DayPasses(Clock(today + timedelta(days=3))))),
+    Scene("overdue", f"{CHORE!r} is listed with a due day before today", lambda today: (Needs(TODO, "overdue", ANA),)),
 )
 
 

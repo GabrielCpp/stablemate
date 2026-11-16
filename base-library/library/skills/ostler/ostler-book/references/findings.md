@@ -8,6 +8,8 @@ reports something.
 | Finding | Command | Means | Fix |
 | --- | --- | --- | --- |
 | `<Record>: no source pointer` | check | a record or element names no source | add `source`; a finding present before your pass is the baseline, leave it |
+| `record <Record>: <book> keeps <Record>, which no screen of it writes` | check | a screen book keeps the lifecycle, rules or actions of a record a backend's book stores and no screen of its own writes | take the state from the backend's book with `Needs` and delete the copy; see [screens.md](screens.md#a-record-a-backends-book-stores) |
+| `interaction <Act>: <book> makes <Record> outside its screens` | check | an act with no screen, in a scene, a cell or a journey, makes a record the backend stores | ask the backend's book for the state with `Needs` instead; keep the act only for what is not a record, such as the clock or the network |
 | endpoint, journey or rule not registered | check | a class exists that nothing lists | add it to `ALL` or `__all__` |
 | endpoint no matrix places | check | it will be played in every state | add a column to the matrix of the record it touches |
 | module nothing imports | check | dead file | import it where it belongs, or delete it |
@@ -21,6 +23,8 @@ reports something.
 | `FAIL  input <Endpoint> <class>` | run | the app answered an input class other than the book predicts | book wrong: fix the shape or the refusal; app lenient: declare `Diverges` |
 | `Declared divergences never met` | run | a `Diverges` whose class the app now refuses | the app was fixed or the class name changed: remove or rename it |
 | a gap under "what the run witnessed" | run | an answer or field no step showed | reach it with a step, or declare it `Unseen` |
+
+A copy finding blocks the run once the book refers to a record of another book with `Foreign`, and is a `NOTE` before it does, so a screen book written before a book could refer to another still passes.
 
 ## Book wrong or app wrong
 

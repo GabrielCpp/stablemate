@@ -10,7 +10,7 @@ from ostler.book import Actor, Rule
 from ..fixtures import Clock, Query, Todo
 from ..fixtures.todo import TITLE_MAX
 from .state import TodoApp
-from .todo import STATUSES, USERS
+from .todo import STATUSES, USERS, owner_of
 
 DESCRIPTION_MAX = 2000
 
@@ -55,7 +55,8 @@ due_not_in_the_past = Rule[Todo, TodoApp]("Due date cannot be in the past", _due
 reminder_must_be_a_date_time = Rule[Todo, TodoApp]("Reminder must be a date-time",
                                                    lambda a, s, by: a.remind_at is not None and not is_date_time(a.remind_at))
 no_such_user = Rule[Todo, TodoApp]("No such user", lambda a, s, by: a.assignee is not None and a.assignee not in USERS)
-not_found = Rule[Todo, TodoApp]("Not found", lambda a, s, by: a.id not in s.todos, 404)
+not_found = Rule[Todo, TodoApp]("Not found", lambda a, s, by: a.id not in s.todos or s.todos[a.id].owner != owner_of(by), 404,
+                                why="A person lists and reaches only the todos they made, so another caller's todo is not found.")
 unknown_status = Rule[Query, TodoApp]("Unknown status", lambda a, s, by: a.status is not None and a.status not in STATUSES)
 clock_must_be_a_date = Rule[Clock, TodoApp]("Due date must be a date", lambda a, s, by: parse_date(a.today) is None)
 

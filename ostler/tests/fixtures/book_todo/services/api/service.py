@@ -3,7 +3,7 @@
 import os
 import sys
 
-from ostler.book import App, Diverges, Environment, Process, Refusal, Refusals, Service, Stack
+from ostler.book import SOLE, App, Diverges, Environment, Process, Refusal, Refusals, Service, Stack
 
 from . import fixtures
 from .health import TheStoreAnswers
@@ -11,6 +11,7 @@ from .endpoints import ALL as ENDPOINTS, AddTodo, FindTodos, SetStore, UpdateTod
 from .journeys import ALL as JOURNEYS
 from .model.lifecycle import MATRICES
 from .model.state import Serving, TodoApp
+from .people import ANA
 from .surface import TodoApi
 
 APP = os.path.join(os.path.dirname(__file__), "..", "..")
@@ -31,6 +32,7 @@ service = Service[TodoApp](
     environments={"local": LOCAL},
     default_environment="local",
     new_model=Serving,
+    cast=(SOLE, ANA),
     surface=TodoApi,
     journeys=JOURNEYS,
     health=(TheStoreAnswers,),

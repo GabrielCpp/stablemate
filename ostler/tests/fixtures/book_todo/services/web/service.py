@@ -3,9 +3,10 @@
 import os
 import sys
 
-from ostler.book import Environment, Process, Service, Stack
+from ostler.book import Environment, Person, Process, Service, Stack
 
 from . import fixtures
+from ..api.people import ANA
 from .interactions import ALL as INTERACTIONS
 from .journeys import ALL as JOURNEYS
 from .model.lifecycle import MATRICES
@@ -35,6 +36,7 @@ service = Service[TodoApp](
     environments={"local": LOCAL},
     default_environment="local",
     languages=("en", "fr"),
+    person=Person("services.api", ANA),
     new_model=Online,
     surface=TodoWeb,
     journeys=JOURNEYS,

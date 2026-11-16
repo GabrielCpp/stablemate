@@ -60,3 +60,11 @@ def services_from(path: Path) -> Iterator[None]:
         for name in loaded():
             del sys.modules[name]
         sys.modules.update(saved)
+
+
+def edited(copy: Path, relative: str, before: str, after: str) -> None:
+    """The file under `copy` with `before` replaced by `after`; `before` must be there."""
+    file = copy / relative
+    text = file.read_text()
+    assert before in text, before
+    file.write_text(text.replace(before, after))

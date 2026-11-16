@@ -10,6 +10,7 @@ from datetime import date
 from typing import Any, Callable, Generic, Mapping, TypeVar
 
 from ostler.book.arrange import Arrange
+from ostler.book.boundary import Person
 from ostler.book.cast import SOLE, Actor
 from ostler.book.domain import App
 from ostler.book.environment import Environment
@@ -54,6 +55,7 @@ class Service(Generic[S]):
     environments: dict[str, Environment] = field(default_factory=dict)
     default_environment: str = ""
     languages: tuple[str, ...] = ()
+    person: Person | None = None
 
     @property
     def language(self) -> str:

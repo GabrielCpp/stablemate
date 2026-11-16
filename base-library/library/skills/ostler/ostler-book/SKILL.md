@@ -71,7 +71,8 @@ record, rule or action for what its service does not store.
 
 A web app, driven through a browser, is written with [references/screens.md](references/screens.md)
 open: it covers `Screen`, components found by role and accessible name, `Interaction`,
-`PageSurface`, and how the run judges a page.
+`PageSurface`, how the run judges a page, and the states a screen takes from a backend's book
+instead of making its records.
 
 A field's shape decides what a run types into it. [references/inputs.md](references/inputs.md) lists
 the input classes and twins of each shape, the language they play in and what the run's `inputs:` and

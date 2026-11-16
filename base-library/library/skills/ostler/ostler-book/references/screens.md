@@ -183,6 +183,93 @@ its own. `entries` rules judge the names, and `of_pairs(rule)` hands a rule the 
 role instead. `always` and `never` judge the names. The report lists a `Form` like a
 select.
 
+## A record a backend's book stores
+
+A screen shows records a backend stores. The backend's book states how such a record is made and
+moved, so a screen book never performs the backend's calls and never writes SQL, API calls or
+scripts to make one. It names the record and the state it needs, and the owner's book arranges it.
+Read no source outside the screen app: the owner's book is the only view of the backend
+(`ostler book search`, `ostler book explain services.<owner> <Class>`).
+
+```python
+from datetime import date
+
+from ostler.book import Create, Foreign, Transaction, View
+
+from ..api.model.todo import TodoRecord as Stored
+from .model.todo import TodoRecord
+
+def take(state, ident, view: View):
+    due = view["due_on"]
+    return Transaction(Create(state.todos, TodoRecord(ident, view["title"], None, date.fromisoformat(due) if due else None, view["assignee"])))
+
+TODO = Foreign(Stored, owner="services.api", reads=("title", "due_on", "assignee"), takes=take)
+```
+
+`reads` lists the fields of the owner's view of the record that the screen shows, and no more. The
+owner's view is the row its model lists for the record. `check` fails a read field the view lacks.
+`take` is the screen book's own words for the record: from the screen's model, the id the owner's
+app issued and the `View`, it builds the transaction that puts the record in the screen's own model.
+A read of a field outside `reads` fails. The screen keeps its own record type for what its forms also
+write, so `take` builds that type.
+
+A scene or a journey starts from the need:
+
+```python
+Scene("overdue", "a todo is listed with a due day before today", lambda today: (Needs(TODO, "overdue"),))
+
+class TheDayPasses(Journey):
+    chore = Needs(TODO, "overdue")
+    given = (chore,)
+
+    def steps(self, today):
+        gate = Todo.of(self.chore.record, id=self.chore.id)
+```
+
+The run asks the owner's book to reach the state on a fresh record against the owner's app, then
+hands the screen the id, takes the read fields into the screen's model, moves the screen model's day to
+the owner's day and opens the page again. `today` in `steps` is that day. Never move the clock in a
+screen scene to make a todo overdue: the owner's scene says how. A walk with no app arranges the
+owner's model alone and takes the record in the same way, so a scene that starts from a need reaches
+the same state on the model.
+
+A surface that finds a row by the id it learned when it saved the record also finds a row it never
+saved by the id the owner issued, which is the row's own id on the page.
+
+### The person the page plays as
+
+A page shows what its signed-in person may see, so a need names the person the record belongs to,
+from the owner's cast, and the service names the person its pages play as when no need does:
+
+```python
+from ..api.people import ANA
+
+Needs(TODO, "overdue", ANA)
+
+service = Service[TodoApp](..., person=Person("services.api", ANA))
+```
+
+The owner's book gives the person a scene of that state in which the person takes part, and the owner's
+surface offers `account(actor)`, the new account of that person: what a person types to sign in, as the
+owner's service holds it now. A `fresh=` person gets a new account for each world, so a journey or a cell
+counts on no empty list and on no record it did not ask for. Never mint a person, make a record or wipe the
+owner's store in the screen book. A need whose scene the person takes no part in fails the check, and the
+finding names the scene's actors.
+
+Write the sign-in in the screen's surface as the hook `sign_in(account)`, which receives the owner's
+account, or `None` to sign out. The run calls it with the owner's account before a step whose person
+differs from the one the page plays as, and opens the page again after it. A journey whose needs name
+one person plays its steps as that person. A journey that needs a record is `alone = True`: the owner
+starts its world from nothing, which ends the world of the journeys before it.
+
+An interaction that creates or edits the record through a form keeps its action, rules and record in the
+screen book. Only the state the screen starts from comes from the owner.
+
+`check` names a screen book that keeps the lifecycle, rules or actions of a record that a backend's book
+stores and none of its own screens writes, and an act with no screen that makes such a record in a scene, a
+cell or a journey. The finding names the record and the owner's book. The fix is the same for both: delete
+the copy and the act, and write `Needs(<RECORD>, "<state>")`.
+
 ## An interaction
 
 One `Interaction` per act, naming its screen, the action it carries on the model and a line on

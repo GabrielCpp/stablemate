@@ -18,7 +18,7 @@ class TodoApp(State):
     todos = Collection(TodoRecord, Unique("id"), Index("assignee"))
 
     def rows(self) -> tuple[Row, ...]:
-        return tuple(self.row(t) for t in sorted(self.todos, key=listing_order(self)))
+        return tuple(self.row(t) for t in sorted((t for t in self.todos if t.owner is None), key=listing_order(self)))
 
     def key(self) -> Hashable:
         return (type(self).__name__, TodoApp.rows(self))

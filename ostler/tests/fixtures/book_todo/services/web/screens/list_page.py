@@ -33,7 +33,7 @@ offline_phase = Phase("offline", shows=(offline, rows), disabled=(remove,),
 class ListPage(Screen):
     source = ("web/index.html", "web/app.js")
     api = "/todos"
-    sends = (request("GET", "/todos"), RECEIVED)
+    sends = (request("GET", "/todos"), request("POST", "/sign-in"), RECEIVED)
     route = "/"
     name = T(en="Todos", fr="Tâches")
     first = True

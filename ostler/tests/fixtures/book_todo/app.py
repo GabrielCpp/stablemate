@@ -46,7 +46,9 @@ def now() -> datetime:
 
 class Todo:
     def __init__(self, ident: str, title: str, description: str | None, due_on: str | None,
-                 assignee: str | None, created_at: str, seq: int, remind_at: str | None = None) -> None:
+                 assignee: str | None, created_at: str, seq: int, remind_at: str | None = None,
+                 owner: str | None = None) -> None:
+        self.owner = owner
         self.ident = ident
         self.title = title
         self.description = description
@@ -78,6 +80,8 @@ class TodoStore:
         self.sign_in = sign_in
         self.clock = clock
         self.issued: dict[str, float] = {}
+        self.persons: dict[str, str] = {}
+        self.sessions: dict[str, str] = {}
         self.lock = threading.Lock()
         self.reset()
 
@@ -86,6 +90,8 @@ class TodoStore:
         self.counter = 0
         self.down = False
         self.today = now().strftime("%Y-%m-%d")
+        self.persons = {}
+        self.sessions = {}
 
     def view(self, todo: Todo) -> dict[str, Any]:
         if todo.due_on is None:
@@ -111,9 +117,9 @@ class TodoStore:
             return parsed.astimezone(timezone.utc).date().isoformat() if parsed is not None else None
         return remind_at[:10]
 
-    def find(self, ident: str) -> Todo | None:
+    def find(self, ident: str, who: str | None = None) -> Todo | None:
         for todo in self.todos:
-            if todo.ident == ident:
+            if todo.ident == ident and todo.owner == who:
                 return todo
         return None
 
@@ -153,18 +159,18 @@ class TodoStore:
             remind_at = raw
         return Fields(title, description, due_on, assignee, remind_at), ""
 
-    def create_todo(self, body: dict[str, Any]) -> tuple[int, Any]:
+    def create_todo(self, body: dict[str, Any], who: str | None = None) -> tuple[int, Any]:
         fields, message = self.parse_fields(body, None)
         if fields is None:
             return 400, {"error": message}
         self.counter += 1
         todo = Todo(str(uuid.uuid4()), fields.title, fields.description, fields.due_on, fields.assignee,
-                    now().strftime("%Y-%m-%dT%H:%M:%SZ"), self.counter, fields.remind_at)
+                    now().strftime("%Y-%m-%dT%H:%M:%SZ"), self.counter, fields.remind_at, who)
         self.todos.append(todo)
         return 201, self.view(todo)
 
-    def put_todo(self, ident: str, body: dict[str, Any]) -> tuple[int, Any]:
-        todo = self.find(ident)
+    def put_todo(self, ident: str, body: dict[str, Any], who: str | None = None) -> tuple[int, Any]:
+        todo = self.find(ident, who)
         if todo is None:
             return 404, {"error": "Not found"}
         fields, message = self.parse_fields(body, todo)
@@ -175,14 +181,14 @@ class TodoStore:
             todo.remind_at = fields.remind_at
         return 200, self.view(todo)
 
-    def remove_todo(self, ident: str) -> tuple[int, Any]:
-        todo = self.find(ident)
+    def remove_todo(self, ident: str, who: str | None = None) -> tuple[int, Any]:
+        todo = self.find(ident, who)
         if todo is None:
             return 404, {"error": "Not found"}
         self.todos.remove(todo)
         return 204, None
 
-    def list_todos(self, query: dict[str, list[str]]) -> tuple[int, Any]:
+    def list_todos(self, query: dict[str, list[str]], who: str | None = None) -> tuple[int, Any]:
         def first(name: str) -> str:
             return query.get(name, [""])[0]
 
@@ -191,6 +197,8 @@ class TodoStore:
             return 400, {"error": "Unknown status"}
         found: list[tuple[Todo, dict[str, Any]]] = []
         for todo in self.todos:
+            if todo.owner != who:
+                continue
             shown = self.view(todo)
             if status and shown["status"] != status:
                 continue
@@ -233,14 +241,29 @@ class TodoStore:
             return -1 if a["due_on"] < b["due_on"] else 1
         return -1 if left[0].seq < right[0].seq else 1
 
-    def authorised(self, headers: Any) -> bool:
+    def identify(self, headers: Any) -> tuple[bool, str | None]:
+        """Whether the call carries an accepted credential, and the person it belongs to, if any."""
         if headers.get("Authorization") == f"Bearer {self.token}" or headers.get("X-Api-Key") == self.api_key:
-            return True
+            return True, None
         bearer = headers.get("Authorization", "").removeprefix("Bearer ")
         with self.lock:
-            return self.sign_in and self.issued.get(bearer, 0.0) > self.clock()
+            if bearer in self.sessions:
+                return True, self.sessions[bearer]
+            return self.sign_in and self.issued.get(bearer, 0.0) > self.clock(), None
 
-    def sign_in_handler(self, method: str) -> tuple[int, Any]:
+    def authorised(self, headers: Any) -> bool:
+        return self.identify(headers)[0]
+
+    def sign_in_handler(self, method: str, body: bytes = b"") -> tuple[int, Any]:
+        asked = read_body(body)
+        if method == "POST" and asked is not None and "handle" in asked:
+            handle, password = asked.get("handle"), asked.get("password")
+            with self.lock:
+                if not isinstance(handle, str) or not isinstance(password, str) or self.persons.get(handle) != password:
+                    return 401, {"error": "Unauthorized"}
+                token = uuid.uuid4().hex
+                self.sessions[token] = handle
+            return 200, {"token": token}
         if not self.sign_in or method != "POST":
             return 404, {"error": "Not found"}
         with self.lock:
@@ -253,7 +276,8 @@ class TodoStore:
         return 200, {"token": token}
 
     def todos_handler(self, method: str, path: str, query: dict[str, list[str]], headers: Any, body: bytes) -> tuple[int, Any]:
-        if not self.authorised(headers):
+        authorised, who = self.identify(headers)
+        if not authorised:
             return 401, {"error": "Unauthorized"}
         with self.lock:
             if self.down:
@@ -262,18 +286,18 @@ class TodoStore:
             if not ident:
                 if method == "POST":
                     parsed = read_body(body)
-                    return (400, {"error": "Invalid JSON"}) if parsed is None else self.create_todo(parsed)
+                    return (400, {"error": "Invalid JSON"}) if parsed is None else self.create_todo(parsed, who)
                 if method == "GET":
-                    return self.list_todos(query)
+                    return self.list_todos(query, who)
                 return 405, {"error": "Method not allowed"}
             if method == "GET":
-                todo = self.find(ident)
+                todo = self.find(ident, who)
                 return (404, {"error": "Not found"}) if todo is None else (200, self.view(todo))
             if method == "DELETE":
-                return self.remove_todo(ident)
+                return self.remove_todo(ident, who)
             if method == "PUT":
                 parsed = read_body(body)
-                return (400, {"error": "Invalid JSON"}) if parsed is None else self.put_todo(ident, parsed)
+                return (400, {"error": "Invalid JSON"}) if parsed is None else self.put_todo(ident, parsed, who)
             return 405, {"error": "Method not allowed"}
 
     def users_handler(self, method: str, headers: Any) -> tuple[int, Any]:
@@ -303,6 +327,16 @@ class TodoStore:
             with self.lock:
                 self.down = bool(down)
             return 204, None
+        if path == "/admin/persons" and method == "POST":
+            decoded = read_object(body)
+            handle = decoded.get("handle") if decoded is not None else None
+            if not isinstance(handle, str) or not handle:
+                return 400, {"error": "Invalid JSON"}
+            with self.lock:
+                if handle in self.persons:
+                    return 400, {"error": "Person exists"}
+                self.persons[handle] = uuid.uuid4().hex
+                return 201, {"handle": handle, "password": self.persons[handle]}
         if path == "/admin/reset" and method == "POST":
             with self.lock:
                 self.reset()
@@ -375,7 +409,7 @@ class TodoServer:
                     status, payload = store.todos_handler(
                         self.command, parts.path, parse_qs(parts.query, keep_blank_values=True), self.headers, body)
                 elif parts.path == "/sign-in":
-                    status, payload = store.sign_in_handler(self.command)
+                    status, payload = store.sign_in_handler(self.command, body)
                 elif parts.path == "/users":
                     status, payload = store.users_handler(self.command, self.headers)
                 elif parts.path.startswith("/admin/"):

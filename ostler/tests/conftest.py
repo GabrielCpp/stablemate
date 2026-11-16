@@ -205,3 +205,15 @@ def module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
     monkeypatch.syspath_prepend(str(tmp_path))
     yield "shop_book"
     sys.modules.pop("shop_book", None)
+
+
+@pytest.fixture
+def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """A copy of the todo fixture, the working directory and the `services` package of a book test."""
+    from book_todo import FIXTURE, services_from
+
+    copy = tmp_path / "book_todo"
+    shutil.copytree(FIXTURE, copy, ignore=shutil.ignore_patterns("__pycache__", "node_modules"))
+    monkeypatch.chdir(copy)
+    with services_from(copy):
+        yield copy

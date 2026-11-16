@@ -11,6 +11,7 @@ from ostler.book import Axes, Impossible, Scene
 
 from ..endpoints import AddTodo, FindTodos, ReadClock, ReadTodo, RemoveTodo, Reset, SetClock, SetStore, UpdateTodo
 from ..fixtures import Clock, Switch, Todo, scheduled, todo
+from ..people import ANA
 from .state import TodoApp
 from .todo import TodoRecord
 
@@ -81,9 +82,49 @@ APP_ACTIONS: dict[str, Callable[[TodoApp], object]] = {
     "reset": lambda m: Reset(),
 }
 
+def her_chore(model: TodoApp) -> TodoRecord | None:
+    """The chore Ana made: the first todo she keeps."""
+    return next((t for t in model.todos if t.owner == ANA.handle), None)
+
+
+def _hers(build: Callable[[TodoApp, Todo], object]) -> Callable[[TodoApp], object]:
+    def aim(model: TodoApp) -> object:
+        chore = her_chore(model)
+        return build(model, Todo.of(chore)) if chore else Impossible("Ana has no todo to aim at")
+
+    return aim
+
+
+HER_SCENES = (
+    Scene("(none)", "Ana has no todo", lambda today: ()),
+    Scene("unscheduled", f"Ana has {CHORE!r} with no due day", lambda today: (AddTodo(todo(CHORE), by=ANA),)),
+    Scene("scheduled", f"Ana has {CHORE!r} with a due day on or after today",
+          lambda today: (AddTodo(scheduled(today, 2, title=CHORE), by=ANA),)),
+    Scene("overdue", f"Ana has {CHORE!r} with a due day before today",
+          lambda today: (AddTodo(scheduled(today, 2, title=CHORE), by=ANA), SetClock(Clock(today + timedelta(days=3)), by=None))),
+)
+
+HER_ACTIONS: dict[str, Callable[[TodoApp], object]] = {
+    "add": lambda m: AddTodo(todo(CHORE), by=ANA),
+    "list": lambda m: FindTodos(by=ANA),
+    "read": _hers(lambda m, c: ReadTodo(c, by=ANA)),
+    "update title": _hers(lambda m, c: UpdateTodo(c.set(title="Mend the gate"), by=ANA)),
+    "remove": _hers(lambda m, c: RemoveTodo(c, by=ANA)),
+    "read as the shared credential": _hers(lambda m, c: ReadTodo(c)),
+    "remove as the shared credential": _hers(lambda m, c: RemoveTodo(c)),
+}
+
+
+def her_status(model: TodoApp) -> str:
+    chore = her_chore(model)
+    return chore.status(model.today) if chore else "(none)"
+
+
 MATRICES = (
     Axes[TodoApp]("chore", TODAY, CHORE_SCENES, CHORE_ACTIONS, chore_status,
                   state_of=lambda m, t: cast(TodoRecord, t).status(m.today), entities=lambda m: m.todos),
+    Axes[TodoApp]("her chore", TODAY, HER_SCENES, HER_ACTIONS, her_status,
+                  state_of=lambda m, t: cast(TodoRecord, t).status(m.today), entities=lambda m: [t for t in m.todos if t.owner == ANA.handle]),
     Axes[TodoApp]("app", TODAY, APP_SCENES, APP_ACTIONS, lambda m: type(m).__name__,
                   state_of=lambda m, _: type(m).__name__),
 )

@@ -4,13 +4,15 @@ book arranges a record a journey needs, and answers about it when a read passes 
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import json
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from ostler.book.backstage import CannotArrange
-from ostler.book.boundary import Needs
-from ostler.book.domain import Fixture
+from ostler.book.boundary import Needs, Person, View
+from ostler.book.cast import SOLE, Actor
+from ostler.book.domain import Fixture, State
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError
 from ostler.book.http import Endpoint, Reply
@@ -48,12 +50,19 @@ class Owners:
     handed: dict[str, list[object]] = {}
     needs: list[Needs] = []
     loaded: list[str] = []
+    person: Person | None = None
+    standing: Actor | None = None
+    holder: str | None = None
+    signed: Actor = SOLE
+    began = False
+    pending = False
 
     @classmethod
     def begin(cls, environment: Environment, surfaced: Callable[[Service[Any]], Surface],
-              fresh: Callable[[Service[Any], Surface], Model]) -> None:
-        cls.environment, cls.surfaced, cls.fresh = environment, surfaced, fresh
+              fresh: Callable[[Service[Any], Surface], Model], person: Person | None = None) -> None:
+        cls.environment, cls.surfaced, cls.fresh, cls.person = environment, surfaced, fresh, person
         cls.books, cls.models, cls.handed, cls.needs, cls.loaded = {}, {}, {}, [], []
+        cls.standing, cls.holder, cls.signed = None, None, SOLE
 
     @classmethod
     def close(cls) -> None:
@@ -61,14 +70,89 @@ class Owners:
         cls.models, cls.handed = {}, {}
         for _, surface in books.values():
             surface.stop()
-        cls.environment = cls.surfaced = cls.fresh = None
+        cls.environment = cls.surfaced = cls.fresh = cls.person = None
+        cls.standing = cls.holder = None
 
     @classmethod
     def journey(cls) -> None:
-        """A journey begins: no owner is fresh yet, and no record has been handed over."""
+        """A journey begins: no owner is fresh yet, and no record has been handed over. The first journey of a world keeps
+        the owner's model the world made for the person it signed in as."""
         for needed in cls.needs:
             needed.forget()
-        cls.models, cls.handed, cls.needs = {}, {}, []
+        cls.handed, cls.needs = {}, []
+        if cls.began:
+            cls.began = False
+            return
+        cls.models = {}
+
+    @classmethod
+    def book(cls, module: str) -> Service[Any]:
+        try:
+            service: Service[Any] = importlib.import_module(f"{module}.service").service
+        except Exception as crash:
+            raise BookError(f"{module} cannot be loaded as an owner's book: {type(crash).__name__}: {crash}") from None
+        return service
+
+    @classmethod
+    def world(cls, surface: Surface) -> None:
+        """A new world begins on the screen's surface: no owner is fresh, no record is handed, and a page that signs in is
+        signed in as the service's person, who gets a new account from the owner."""
+        cls.pending = cls.began = False
+        cls.journey()
+        cls.standing = cls.holder = None
+        cls.signed = SOLE
+        if not callable(getattr(surface, "sign_in", None)):
+            return
+        if cls.person is None:
+            cls.sign(surface, None)
+            return
+        cls.standing, cls.holder = cls.person.actor, cls.person.owner
+        cls.enter(surface, cls.person.owner, cls.person.actor)
+        cls.began = True
+
+    @classmethod
+    def adopt(cls, surface: Surface, needed: Needs) -> None:
+        """The need names a person the page is not signed in as: the page signs in as that person, and the world's steps
+        are taken by them."""
+        if needed.person is None or needed.person == cls.signed or not callable(getattr(surface, "sign_in", None)):
+            return
+        cls.standing, cls.holder = needed.person, needed.foreign.owner
+        cls.enter(surface, needed.foreign.owner, needed.person)
+
+    @classmethod
+    def play_as(cls, surface: Surface, request: object) -> None:
+        """A step left to the standing caller is taken by the world's person. A step that names another person signs the page
+        in as that person first."""
+        if cls.holder is None or not callable(getattr(surface, "sign_in", None)):
+            return
+        by = getattr(request, "by", None)
+        if by == SOLE and cls.standing is not None:
+            setattr(request, "by", by := cls.standing)
+        if isinstance(by, Actor) and by != cls.signed:
+            cls.enter(surface, cls.holder, by)
+
+    @classmethod
+    def enter(cls, surface: Surface, owner: str, actor: Actor) -> None:
+        """The owner makes the account of `actor` in its own app, and the page signs in with what a person types."""
+        service, owned = cls.owner(owner)
+        cls.model_of(owner, service, owned)
+        offer = getattr(owned, "account", None)
+        if not callable(offer):
+            raise BookError(f"{owner}'s surface offers no account for {actor}: give it `account(actor)`")
+        cls.sign(surface, offer(actor))
+        cls.signed = actor
+
+    @classmethod
+    def sign(cls, surface: Surface, account: Any) -> None:
+        getattr(surface, "sign_in")(account)
+        cls.reopen(surface)
+
+    @classmethod
+    def reopen(cls, surface: Surface) -> None:
+        """The page is opened again: it shows what the owner made."""
+        open_again = getattr(surface, "open", None)
+        if callable(open_again):
+            open_again()
 
     @classmethod
     def owner(cls, module: str) -> tuple[Service[Any], Surface]:
@@ -76,10 +160,7 @@ class Owners:
             return cls.books[module]
         if cls.environment is None or cls.surfaced is None:
             raise BookError(f"{module} is an owner, and no run has begun to start its surface")
-        try:
-            service: Service[Any] = importlib.import_module(f"{module}.service").service
-        except Exception as crash:
-            raise BookError(f"{module} cannot be loaded as an owner's book: {type(crash).__name__}: {crash}") from None
+        service = cls.book(module)
         cls.lacks(module, service)
         try:
             surface = cls.surfaced(service)
@@ -108,16 +189,9 @@ class Owners:
         """The given taken: the owner's book makes the record in the state, and the journey is handed it."""
         owner, state = needed.foreign.owner, needed.state
         service, surface = cls.owner(owner)
-        named = [a for a in service.matrices if any(sc.name == state for sc in a.scenes)]
-        if not named:
-            states = ", ".join(dict.fromkeys(sc.name for a in service.matrices for sc in a.scenes))
-            return failed(needed, model, f"{owner} has no state {state!r}; its matrices have {states}")
-        axes = cls.matrix_of(service, needed.foreign.record, state, named)
-        if axes is None:
-            names = ", ".join(a.record for a in named)
-            return failed(needed, model, f"{owner} {state}: no matrix of {names} makes a {needed.foreign.record.__name__} in that state")
-        if axes.entities is None or axes.state_of is None:
-            return failed(needed, model, f"{owner} {state}: the matrix {axes.record!r} says no entity is in a state")
+        axes = cls.choose(service, needed)
+        if isinstance(axes, str):
+            return failed(needed, model, axes)
         client = getattr(surface, "client", None)
         ids = getattr(client, "ids", None)
         if ids is None:
@@ -130,6 +204,64 @@ class Owners:
             if not done.ok:
                 return failed(needed, model, f"{owner} {state}: {done.text}: {done.note}")
         return cls.hand(needed, model, owner, state, axes, owned, ids)
+
+    @classmethod
+    def choose(cls, service: Service[Any], needed: Needs) -> Axes[Any] | str:
+        """The owner's matrix that makes the needed record in its state, or why none does."""
+        owner, state = needed.foreign.owner, needed.state
+        named = [a for a in service.matrices if any(sc.name == state for sc in a.scenes)]
+        if not named:
+            states = ", ".join(dict.fromkeys(sc.name for a in service.matrices for sc in a.scenes))
+            return f"{owner} has no state {state!r}; its matrices have {states}"
+        if needed.person is not None:
+            taking = [a for a in named if needed.person in actors_of(a.scene(state), a.today)]
+            if not taking:
+                actors = ", ".join(sorted({str(x) for a in named for x in actors_of(a.scene(state), a.today)})) or "none"
+                return f"{owner} {state}: no scene takes part for {needed.person}; the actors of the scenes of that state are {actors}"
+            named = taking
+        axes = cls.matrix_of(service, needed.foreign.record, state, named)
+        if axes is None:
+            names = ", ".join(a.record for a in named)
+            return f"{owner} {state}: no matrix of {names} makes a {needed.foreign.record.__name__} in that state"
+        if axes.entities is None or axes.state_of is None:
+            return f"{owner} {state}: the matrix {axes.record!r} says no entity is in a state"
+        return axes
+
+    @classmethod
+    def alone(cls, service: Service[Any], needed: Needs) -> tuple[Model, object]:
+        """The owner's model with no app, arranged in the needed state, and the one entity of the record in it."""
+        owner, state = needed.foreign.owner, needed.state
+        axes = cls.choose(service, needed)
+        if isinstance(axes, str):
+            raise BookError(axes)
+        owned = axes.scene(state).arrange(service.new_model(axes.today))
+        assert axes.entities is not None and axes.state_of is not None
+        found = [e for e in axes.entities(owned) if axes.state_of(owned, e) == state]
+        if len(found) != 1:
+            raise BookError(f"{owner} {state}: {len(found)} {axes.record} entities are in the state, one is needed")
+        return owned, found[0]
+
+    @classmethod
+    def seed(cls, needed: Needs, model: Model) -> None:
+        """The given taken with no app: the owner's book arranges its own model alone, and the screen's model takes the
+        record in, as it does at play. The id is the one the owner's model gave."""
+        owned, entity = cls.alone(cls.book(needed.foreign.owner), needed)
+        ident = str(getattr(entity, "id"))
+        needed.arranged(ident, entity)
+        cls.take_in(needed, model, owned, ident, entity)
+
+    @classmethod
+    def take_in(cls, needed: Needs, model: Model, owned: Model, ident: str, entity: object) -> None:
+        """The screen book's own words for the record: its model takes the fields it reads, and its day is the owner's."""
+        takes = needed.foreign.takes
+        if takes is None:
+            return
+        if not isinstance(model, State):
+            raise BookError(f"{needed} is taken in by a model that keeps no collections: a screen's model is a State")
+        view = View(needed.foreign, shown_of(owned.row(entity)))
+        for change in takes(model, ident, view).changes:
+            change.apply(model)
+        model.today = owned.today
 
     @classmethod
     def matrix_of(cls, service: Service[Any], record: type, state: str, named: list[Axes[Any]]) -> Axes[Any] | None:
@@ -160,6 +292,7 @@ class Owners:
         needed.arranged(real, entity)
         taken.append(entity)
         cls.needs.append(needed)
+        cls.take_in(needed, model, owned, real, entity)
         return StepResult(needed, None, None, model.rows(), (), True)
 
     @classmethod
@@ -293,6 +426,23 @@ class Owners:
         if isinstance(accepts, type) and issubclass(accepts, Fixture) and not isinstance(entity, accepts):
             entity = accepts.of(entity)
         return entity
+
+
+def actors_of(scene: Any, today: Any) -> set[Actor]:
+    """The people a scene's steps are taken by."""
+    out: set[Actor] = set()
+    for step in scene.reached_by(today):
+        by = getattr(step, "by", None)
+        if isinstance(by, Actor):
+            out.add(by)
+    return out
+
+
+def shown_of(row: object) -> dict[str, Any]:
+    """The fields of the row the owner's book shows for a record."""
+    if dataclasses.is_dataclass(row) and not isinstance(row, type):
+        return {f.name: getattr(row, f.name) for f in dataclasses.fields(row)}
+    return dict(vars(row))
 
 
 def dump(body: Any) -> str:

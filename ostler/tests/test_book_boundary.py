@@ -11,7 +11,7 @@ from typing import Iterator
 
 import pytest
 
-from book_todo import FIXTURE, module, run_book, runtime
+from book_todo import FIXTURE, edited, module, run_book, runtime
 
 BUGGY = "digest-keeps-scheduled"
 HIDING = "digest-hides-missing"
@@ -173,13 +173,6 @@ def test_the_digest_book_holds_no_lifecycle_rule_or_action():
     model = service.new_model(date.today())
     assert model.rules == ()
     assert not model.collections()
-
-
-def edited(copy: Path, relative: str, before: str, after: str) -> None:
-    file = copy / relative
-    text = file.read_text()
-    assert before in text, before
-    file.write_text(text.replace(before, after))
 
 
 REFUSALS = "TheTodoApiTurnsACallerAway"

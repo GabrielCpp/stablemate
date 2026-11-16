@@ -51,6 +51,8 @@ def walk(journey: type[Journey], model: Model, surface: Surface) -> JourneyResul
     baseline = model.rows()
     seen: dict[int, Seen] = {}
     cover(surface, None, [], model)
+    if Owners.pending:
+        Owners.world(surface)
     Owners.journey()
     for given in journey.given:
         result.steps.append(attempt(given, model, surface, baseline, seen))
@@ -158,7 +160,11 @@ def take(step: object, model: Model, surface: Surface, baseline: tuple[object, .
     if isinstance(step, Given):
         return perform(step, step.request, model, surface)
     if isinstance(step, Needs):
-        return Owners.arrange(step, model, attempt)
+        Owners.adopt(surface, step)
+        arranged = Owners.arrange(step, model, attempt)
+        if arranged.ok and step.foreign.takes is not None:
+            Owners.reopen(surface)
+        return arranged
     if isinstance(step, Listed):
         return listed(step, model, surface, baseline)
     if getattr(step, "carries", True) is None:
@@ -347,6 +353,7 @@ def hand_over(surface: Surface, wanted: dict[str, tuple[Any, ...]], asked: dict[
 
 
 def perform(step: object, request: object, model: Model, surface: Surface) -> StepResult:
+    Owners.play_as(surface, request)
     wanted = expectations(request, model)
     fed = asked_feeds(request)
     if wanted or fed:

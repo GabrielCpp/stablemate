@@ -6,7 +6,7 @@ row by the id the app gave it and not by its text, which two rows may share."""
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, datetime, timezone
 from typing import Any, Iterator, cast
 
 from ostler.book import CannotReach, Done, Environment, Outcome, PageSurface, Received, Refusal, answer, refusal, request
@@ -38,9 +38,18 @@ class TodoWeb(PageSurface):
 
     def restore(self) -> None:
         self.backend.store_down(False)
-        self.backend.reset()
+        self.backend.set_today(datetime.now(timezone.utc).date())
         self._shown.clear()
         self._app_ids.clear()
+
+    def sign_in(self, account: dict[str, str] | None) -> None:
+        """Signs the page in with what a person types, or out when there is no account."""
+        page = self.browser.page
+        if account is None:
+            page.evaluate("() => window.signOut()")
+            return
+        with self.browser.answered(answer("POST", "/sign-in")):
+            page.evaluate("([handle, password]) => window.signIn(handle, password)", [account["handle"], account["password"]])
 
     def open(self) -> None:
         with self.browser.answered(answer("GET", "/users")) as users:
@@ -116,8 +125,14 @@ class TodoWeb(PageSurface):
         self._app_ids[cast(str, todo.id)] = next(i for i in shown if i not in taken)
 
     def _row(self, todo: Todo) -> Any:
-        found = self.browser.page.locator(f'{ROWS}[data-id="{self._app_ids.get(todo.id or "")}"]')
+        found = self.browser.page.locator(f'{ROWS}[data-id="{self._app_ids.get(todo.id or "", todo.id)}"]')
         return found.first if found.count() else None
+
+    def _read(self, li: Any, todo: Todo) -> Todo:
+        """The todo as its row shows it, for a todo the page already listed when the book met it."""
+        b = self.browser
+        return Todo(b.in_row(li, ListPage.row_title).inner_text(), None, b.in_row(li, ListPage.row_due).inner_text() or None,
+                    b.in_row(li, ListPage.row_assignee).inner_text() or None, todo.id)
 
     def _fill(self, form: type[AddForm] | type[EditForm], title: str | None = None, description: str | None = None,
               due: date | str | None = None, assignee: str | None = None, clear_due: bool = False) -> None:
@@ -154,9 +169,9 @@ class TodoWeb(PageSurface):
 
     def _update(self, todo: Todo) -> Outcome:
         li = self._row(todo)
-        shown = self._shown.get(todo.id or "")
-        if li is None or shown is None:
+        if li is None:
             return Refusal("Not found", 404)
+        shown = self._shown.get(todo.id or "") or self._read(li, todo)
         self.browser.in_row(li, ListPage.edit).click()
         was_due = _typed(shown.due_on)
         now_due = _typed(todo.due_on)
