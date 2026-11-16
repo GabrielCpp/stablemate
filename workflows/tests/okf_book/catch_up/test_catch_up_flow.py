@@ -51,6 +51,21 @@ def test_a_book_with_no_verified_commit_is_named_a_first_book_and_not_written(tm
     assert not (flow.root / "services/ledger/VERIFIED").exists()
 
 
+def test_a_book_whose_service_declares_no_app_is_a_first_book_and_asks_no_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, runner, _env = build_flow(tmp_path)
+    book_exits(monkeypatch, stale={"services.ledger": (2, "ledger declares no app\n")})
+
+    filled = flow.fill()
+    step = flow.books()
+    done = summarized(flow)
+
+    assert isinstance(filled, Continue)
+    assert isinstance(step, Continue) and step.state == "summarize"
+    assert runner.total == 0
+    assert done.books == [BookOutcome(service="ledger", verdict="first-book")]
+    assert not (flow.run_dir / STALE_GATE).exists()
+
+
 def test_a_named_service_with_no_book_is_a_first_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow, runner, _env = build_flow(tmp_path, services=["billing"])
     seen = book_exits(monkeypatch)

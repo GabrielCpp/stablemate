@@ -16,6 +16,7 @@ FILE_LINE = re.compile(r"^- (\S+) \(\d+ commits?:.*?\)(?: named by (.+))?$")
 VERIFIED_LINE = re.compile(r"^verified at (\S+), app at (\S+)$")
 GONE_LINE = re.compile(r"^- (\w+): (\S+)$")
 NOT_VERIFIED = "not verified"
+NO_APP_LINE = re.compile(r"^\S+ declares no app$")
 NOTHING_STALE = 0
 SOME_STALE = 1
 COULD_NOT_READ = 2
@@ -48,7 +49,7 @@ def read_stale(module: str, exit_code: int, stdout: str, stderr: str = "") -> Mo
     """The module's verdict from the stale command's exit code, and for a stale one the elements, files and pointers it printed."""
     if exit_code == NOTHING_STALE:
         return ModuleReport(module=module, verdict=CURRENT)
-    if exit_code == COULD_NOT_READ and NOT_VERIFIED in stdout:
+    if exit_code == COULD_NOT_READ and (NOT_VERIFIED in stdout or NO_APP_LINE.match(stdout.strip())):
         return ModuleReport(module=module, verdict=FIRST_BOOK)
     if exit_code != SOME_STALE:
         return ModuleReport(module=module, verdict=UNJUDGED, output=stdout.strip(), exit_code=exit_code, error=stderr.strip())
