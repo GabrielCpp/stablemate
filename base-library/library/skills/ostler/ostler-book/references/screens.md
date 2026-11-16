@@ -87,6 +87,26 @@ on an environment that keeps other people's records. A derivation follows the da
 was given, and these two do not, so a list a backend fills wrongly needs them. A list may
 state any of the three claims alone.
 
+A SvelteKit app renders some lists from data its server loaded and fetches others in the browser
+through its own endpoints. A list the server rendered states `given=handed(route)`, the route
+spelled as SvelteKit spells it (`/tickets/[id]`). `derived` then takes the data the page was
+handed, a dictionary as the page's `data` prop sees it.
+
+```python
+from ostler.book import handed
+
+def handed_by_name(data):
+    """the users the page was handed, by name"""
+    return sorted(u["name"] for u in data["users"])
+
+owner = Select("owner", OWNER, "who the todo is for", lists=Lists(given=handed("/"), derived=handed_by_name))
+```
+
+At the pick the run asks the app's server for `<path>/__data.json` again, in the browser's own
+session, decodes it and compares as above. A page whose path is not on the route fails the pick
+and the note names both. A list the browser fetches through the app's gateway keeps
+`given=request(...)`.
+
 ## An interaction
 
 One `Interaction` per act, naming its screen, the action it carries on the model and a line on
@@ -138,7 +158,9 @@ Everything else goes through `self.browser`:
 | `sent`, `holding` | waits for a request to leave, or keeps it from reaching the server |
 | `set_offline(bool)` | the browser loses or regains the network |
 
-Match requests with `request(method, path, **query)`, `answer(...)` and `refusal(...)`.
+Match requests with `request(method, path, **query)`, `answer(...)` and `refusal(...)`. A form
+action of a SvelteKit page is `action(route, name)`, which matches the answer to `POST /?/add` for
+`action("/", "add")`, to wait on with `answered`.
 
 A surface waits on events, never on time: a request leaving, an answer arriving, a component
 appearing, the rows an answer carries showing on screen. A book has no sleep, timer or timeout.
@@ -152,7 +174,8 @@ finds the row by the id the app gave it and not by its text, which two rows may 
 Each step runs on the model and in the page, and the rows the page then shows are compared
 with the model's. A refusal is the message the page shows, so the model's rule carries the
 app's words. After each step the runtime fails the step if the page sent a request under `api`
-that no screen's `sends` declares. `check` builds every screen in each declared language and every
+that no screen's `sends` declares. With `api = "/api"` that judges the app's gateway endpoints. The data
+handed with a page and the form actions are not under it, so they are never strays. `check` builds every screen in each declared language and every
 interaction. `run` plays the journeys, then the lifecycle cells.
 
 A web run records a video of each journey and each cell arrangement under `<out>/videos`. It keeps
