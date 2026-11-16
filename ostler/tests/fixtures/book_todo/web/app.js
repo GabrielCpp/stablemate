@@ -5,7 +5,7 @@ const EN = {
   editForm: "Edit todo", todoTitle: "Title", description: "Description", due: "Due date", nobody: "Nobody",
   save: "Save", saving: "Saving", cancel: "Cancel", clearDue: "Clear due date",
   removeQuestion: "Remove this todo?", removeConfirm: "Yes, remove", removeCancel: "Keep it",
-  failed: "Request failed",
+  failed: "Request failed", details: "Details",
 };
 const FR = {
   title: "Tâches", search: "Rechercher", assignee: "Responsable", status: "État", anyone: "Tous", any: "Tous",
@@ -14,7 +14,7 @@ const FR = {
   addForm: "Ajouter une tâche", editForm: "Modifier la tâche", todoTitle: "Titre", description: "Description",
   due: "Échéance", nobody: "Personne", save: "Enregistrer", saving: "Enregistrement", cancel: "Annuler",
   clearDue: "Effacer l'échéance", removeQuestion: "Supprimer cette tâche ?", removeConfirm: "Oui, supprimer",
-  removeCancel: "Garder", failed: "Échec de la requête",
+  removeCancel: "Garder", failed: "Échec de la requête", details: "Détails",
 };
 
 const query = new URLSearchParams(location.search).get("lang");
@@ -306,16 +306,39 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") setStatusOpen(false);
 });
 
+const details = h("form", { "data-testid": "details-form", "aria-label": t("details") });
+
+function control(index, field) {
+  const id = `details-${index}`;
+  if (field.type === "choice") return h("select", { id }, ...field.options.map((option) => h("option", { value: option }, option)));
+  if (field.type === "flag") return h("input", { id, type: "checkbox" });
+  if (field.type === "longtext") return h("textarea", { id });
+  const number = field.type === "number" && window.BUG !== "wrong-kind";
+  return h("input", { id, type: number ? "number" : "text" });
+}
+
+async function loadDetails() {
+  try {
+    const definition = await (await fetch("/definition")).json();
+    definition.fields.forEach((field, index) => {
+      details.append(h("div", {}, h("label", { for: `details-${index}` }, field.label), control(index, field)));
+    });
+  } finally {
+    details.dataset.ready = "yes";
+  }
+}
+
 const adding = form("add", {}, load, () => {});
 main.append(
   h("h1", { "data-testid": "list-title" }, t("title")), banner, adding,
   h("div", {}, h("label", { for: "list-search" }, t("search")), search,
     h("label", { for: "list-assignee" }, t("assignee")), assignee,
     h("label", { for: "list-status" }, t("status")), status, statusList),
-  loading, empty, list, dialogs);
+  details, loading, empty, list, dialogs);
 
 window.addEventListener("online", () => { state.online = true; load(); render(); });
 window.addEventListener("offline", () => { state.online = false; render(); });
 render();
 loadUsers();
+loadDetails();
 load();

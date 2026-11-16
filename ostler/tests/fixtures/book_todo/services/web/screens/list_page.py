@@ -2,14 +2,16 @@
 row into the edit form or opens the remove dialog."""
 
 from ostler.book import Phase, Screen, Stored, T, Transition, When, request
-from ostler.book.screen import Banner, Button, Select, Spinner, Text
+from ostler.book.screen import Banner, Button, Form, Select, Spinner, Text
 
+from .definition import DETAILS
 from .labels import ASSIGNEE, STATUS, STATUSES
 from .users import FILTER, RECEIVED
 
 search = Text("list-search", T(en="Search", fr="Rechercher"), "filters by title or description as you type")
 assignee = Select("list-assignee", ASSIGNEE, "filters by owner", lists=FILTER)
 status = Select("list-status", STATUS, "filters by derived status", options=(T(en="Any", fr="Tous"),) + STATUSES)
+details = Form("details-form", T(en="Details", fr="Détails"), "the fields of the details definition, drawn from data", lists=DETAILS)
 loading = Spinner("list-loading", "the first fetch is out")
 empty = Text("list-empty", T(en="Nothing to do", fr="Rien à faire"), "the fetch returned no row")
 rows = Text("todo-list", does="one row per todo, in the API's order")
@@ -39,6 +41,7 @@ class ListPage(Screen):
     search = search
     assignee = assignee
     status = status
+    details = details
     loading = loading
     empty = empty
     rows = rows

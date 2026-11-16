@@ -245,6 +245,11 @@ class TodoWeb(PageSurface):
                 b.press(RemoveDialog.confirm)
         return wrong
 
+    def details_fields(self) -> None:
+        """Reads the fields of the details form once the page has drawn them; the run judges them."""
+        self.browser.page.wait_for_selector('[data-testid="details-form"][data-ready="yes"]')
+        self.browser.fields(ListPage.details)
+
     def wrong_labels_in_edit(self, lang: str, todo: Todo) -> str | None:
         self.browser.in_row(self._row(todo), ListPage.edit).click()
         wrong = self.wrong_labels(lang, (EditForm,))

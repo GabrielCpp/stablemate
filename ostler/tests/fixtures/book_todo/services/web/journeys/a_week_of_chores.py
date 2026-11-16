@@ -1,6 +1,6 @@
 from datetime import date, timedelta
 
-from ostler.book import Journey, Listed
+from ostler.book import Check, Journey, Listed
 
 from ..fixtures import Query, described, scheduled, todo
 from ..interactions import AddTodo, EditTodo, Filter, RemoveTodo
@@ -28,3 +28,4 @@ class AWeekOfChores(Journey):
         yield Filter(Query(assignee="ana"))
         yield Filter(Query(text="plumber"))
         yield Filter(Query(status="unscheduled"))
+        yield Check("the details form lists its fields", lambda s: s.details_fields())

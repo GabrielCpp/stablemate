@@ -264,7 +264,7 @@ def test_a_page_that_leaves_no_user_out_passes_the_step_that_picks_in_the_filter
 def test_the_report_of_a_run_names_the_lists_a_journey_picked_in(todo_web, tmp_path: Path):
     done = _run(todo_web, tmp_path)
     assert done.returncode == 0, done.stdout + done.stderr
-    listed = "Lists\nstated and read:\n- ListPage.assignee\n- AddForm.assignee\n- EditForm.assignee\nstated and never read:\n- none\nnamed only:\n- none\n"
+    listed = "Lists\nstated and read:\n- ListPage.assignee\n- ListPage.details\n- AddForm.assignee\n- EditForm.assignee\nstated and never read:\n- none\nnamed only:\n- none\n"
     assert listed in done.stdout
     assert "## Lists\n\nstated and read:\n- ListPage.assignee" in (tmp_path / "out" / "web.md").read_text()
 

@@ -53,7 +53,7 @@ class ListJudge:
                     return f"{screen.__name__}.{name}"
         return component.found_by(lang)
 
-    def judge(self, component: Component, shown: list[str], selected: str, lang: str, feed: Feed) -> None:
+    def judge(self, component: Component, shown: list[Any], selected: str, lang: str, feed: Feed) -> None:
         lists = component.lists
         assert lists is not None
         name = self.named(component, lang)
@@ -61,7 +61,11 @@ class ListJudge:
         if lists.derived is not None:
             judged.add("derived")
             self.derived(component, name, shown, lang, feed)
-        self.entries(lists, name, shown, lang)
+        texts = [entry[0] if isinstance(entry, tuple) else entry for entry in shown]
+        unnamed = [entry for entry in shown if isinstance(entry, tuple) and not entry[0]]
+        if unnamed:
+            self.faults.append(f"the list {name} has {len(unnamed)} control(s) with no accessible name: {unnamed}")
+        self.entries(lists, name, texts, lang)
         if lists.entries:
             judged.add("entries")
         self.picked_entry(lists, name, selected, lang)
@@ -73,10 +77,10 @@ class ListJudge:
             judged.add("always")
         if lists.never is not None and name in self.expected:
             judged.add("never")
-        missing = [text for text in dict.fromkeys(belong) if text not in shown]
+        missing = [text for text in dict.fromkeys(belong) if text not in texts]
         if missing:
             self.faults.append(f"the list {name} misses {missing}, which belong in it")
-        forbidden = [text for text in dict.fromkeys(never) if text in shown]
+        forbidden = [text for text in dict.fromkeys(never) if text in texts]
         if forbidden:
             self.faults.append(f"the list {name} shows {forbidden}, which must never be in it")
 
@@ -100,7 +104,7 @@ class ListJudge:
         if wanted is not None and selected != wanted:
             self.faults.append(f"the list {name} has {selected!r} selected before the pick, the book says {wanted!r}")
 
-    def derived(self, component: Component, name: str, shown: list[str], lang: str, feed: Feed) -> None:
+    def derived(self, component: Component, name: str, shown: list[Any], lang: str, feed: Feed) -> None:
         lists = component.lists
         assert lists is not None and lists.given is not None and lists.derived is not None
         try:
@@ -108,7 +112,7 @@ class ListJudge:
         except Unfed as unfed:
             self.faults.append(str(unfed))
             return
-        derived = [*lists.labels(lang), *lists.derived(body)]
+        derived = [*lists.labels(lang), *(tuple(entry) if isinstance(entry, list) else entry for entry in lists.derived(body))]
         if shown != derived:
             self.faults.append(f"the list {name} shows {shown}, the book derives {derived}")
 

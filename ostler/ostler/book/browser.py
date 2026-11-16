@@ -11,7 +11,7 @@ import re
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping, cast
 from urllib.parse import parse_qsl, urlsplit
 
 from ostler.book.asked import Asked
@@ -22,6 +22,50 @@ from ostler.book.pagedata import Handed, decode, on_route
 from ostler.book.screen import ROLES, Component, Screen
 
 Wanted = Callable[[Any], bool]
+
+FIELDS = """root => {
+    const KINDS = ['textbox', 'spinbutton', 'combobox', 'checkbox', 'radiogroup', 'switch', 'slider', 'listbox'];
+    const shown = (el) => el.checkVisibility ? el.checkVisibility() : !!el.offsetParent;
+    const text = (el) => (el.textContent || '').replace(/\\s+/g, ' ').trim();
+    const named = (el) => {
+        const by = el.getAttribute('aria-labelledby');
+        if (by) return by.split(/\\s+/).map((id) => document.getElementById(id)).filter(Boolean).map(text).join(' ');
+        if (el.getAttribute('aria-label')) return el.getAttribute('aria-label').trim();
+        const set = el.closest('fieldset');
+        const legend = set && set.querySelector('legend');
+        if (el.getAttribute('role') === 'radiogroup' || el.type === 'radio') return legend ? text(legend) : '';
+        if (el.labels && el.labels.length) return [...el.labels].map(text).join(' ');
+        return (el.getAttribute('title') || el.getAttribute('placeholder') || '').trim();
+    };
+    const roleOf = (el) => {
+        const given = (el.getAttribute('role') || '').split(/\\s+/)[0];
+        if (given) return KINDS.includes(given) ? given : null;
+        const tag = el.tagName;
+        if (tag === 'TEXTAREA') return 'textbox';
+        if (tag === 'SELECT') return el.multiple || el.size > 1 ? 'listbox' : 'combobox';
+        if (tag !== 'INPUT') return null;
+        const type = (el.getAttribute('type') || 'text').toLowerCase();
+        if (type === 'number') return 'spinbutton';
+        if (type === 'checkbox') return 'checkbox';
+        if (type === 'range') return 'slider';
+        if (type === 'radio') return el.closest('[role=radiogroup]') ? null : 'radiogroup';
+        return ['hidden', 'button', 'submit', 'reset', 'image', 'file', 'color'].includes(type) ? null : 'textbox';
+    };
+    const out = [], taken = [], groups = new Set();
+    for (const el of root.querySelectorAll('*')) {
+        if (!shown(el) || taken.some((outer) => outer.contains(el))) continue;
+        const role = roleOf(el);
+        if (role === null) continue;
+        if (el.type === 'radio') {
+            if (groups.has(el.name)) continue;
+            groups.add(el.name);
+        } else {
+            taken.push(el);
+        }
+        out.push([named(el), role]);
+    }
+    return out;
+}"""
 
 
 def request(method: str, path: str, **query: str) -> Wanted:
@@ -247,6 +291,10 @@ class Browser(ListReader):
             return scope.locator(self.selector.format(id=component.id)).first
         assert component.label is not None
         name = component.label[self.lang]
+        if component.kind == "form":
+            return (scope.get_by_role("form", name=name, exact=True)
+                    .or_(scope.get_by_role("group", name=name, exact=True))
+                    .or_(scope.get_by_role("region", name=name, exact=True))).first
         if component.kind in ROLES:
             return scope.get_by_role(ROLES[component.kind], name=name, exact=True).first
         return scope.get_by_text(name, exact=True).first
@@ -353,8 +401,19 @@ class Browser(ListReader):
         listbox.locator("[role=option]").nth(index).click()
         listbox.wait_for(state="hidden")
 
+    def fields(self, component: Component, within: Component | None = None) -> list[tuple[str, str]]:
+        """The labelled controls of a form, in document order, each as its accessible name and its ARIA role, judged
+        against what the book states of the form."""
+        shown = [(label, role) for label, role in self.locate(component, within=within).evaluate(FIELDS)]
+        if component.lists is not None:
+            self._judge(component, cast("list[Any]", shown), "")
+        return shown
+
     def labels(self, component: Component, within: Component | None = None) -> list[str]:
-        """The texts a select shows, in order. A popup is opened to read them and closed again."""
+        """The texts a select shows, in order. A popup is opened to read them and closed again. A form gives the
+        names of its fields, read and judged as `fields` does."""
+        if component.kind == "form":
+            return [label for label, _ in self.fields(component, within)]
         found = self.locate(component, within=within)
         if self._native(found):
             return self._texts(found)

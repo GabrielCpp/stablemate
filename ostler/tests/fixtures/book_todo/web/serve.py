@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).parent
+DEFINITION = [
+    {"label": "Project name", "type": "text"},
+    {"label": "Budget", "type": "number"},
+    {"label": "Category", "type": "choice", "options": ["internal", "client"]},
+    {"label": "Billable", "type": "flag"},
+    {"label": "Notes", "type": "longtext"},
+]
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8"}
 
 
 class WebServer:
-    """The page on a loopback port. `api` is the address the page calls; `bug` plants a defect in the script."""
+    """The page on a loopback port. `api` is the address the page calls; `bug` plants a defect in the script, or in the definition of the form the page draws."""
 
     def __init__(self, api: str, bug: str | None = None, port: int = 0) -> None:
         self.api = api
@@ -28,6 +36,10 @@ class WebServer:
                 if path == "/config.js":
                     body = f"window.API_URL = {api!r}; window.BUG = {bug!r};".encode()
                     kind = TYPES[".js"]
+                elif path == "/definition":
+                    fields = [*DEFINITION, DEFINITION[0]] if bug == "repeated-field" else DEFINITION
+                    body = json.dumps({"fields": fields}).encode()
+                    kind = "application/json"
                 else:
                     name = "index.html" if path == "/" else path.lstrip("/")
                     found = HERE / name

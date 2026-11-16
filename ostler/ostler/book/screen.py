@@ -53,6 +53,7 @@ ROLES = {
     "date": "textbox",
     "button": "button",
     "select": "combobox",
+    "form": "form",
     "check": "checkbox",
     "heading": "heading",
     "menuitem": "menuitem",
@@ -72,11 +73,13 @@ class Lists:
     `always` and `never` read the model, for the person looking, and return the texts the list must show and the
     texts it must not; entries neither names are ignored.
     `entries` are rules every entry shown must hold, such as `in_order()`, and `picked` is the label the list has
-    selected before a person picks, or a function of the model and the person looking that returns it."""
+    selected before a person picks, or a function of the model and the person looking that returns it.
+    The entries of a generated form are its fields, each a pair of the field's accessible name and its ARIA role:
+    `derived` returns those pairs, and the rules judge the names."""
 
     head: tuple[T | str, ...] = ()
     given: Callable[[Any], bool] | Handed | Asked | None = None
-    derived: Callable[[Any], list[str]] | None = None
+    derived: Callable[[Any], list[Any]] | None = None
     always: Callable[[Any, Any], list[str]] | None = None
     never: Callable[[Any, Any], list[str]] | None = None
     entries: tuple[Callable[[list[Any]], list[str]], ...] = ()
@@ -185,6 +188,10 @@ def Select(id: str | None, label: T | str, does: str = "", takes: str = "", hold
                         f"or lists=Lists(...) for one filled from data, not both ({id or label})")
     return Component(id, "select", as_label(label), does, tuple(T(o) if isinstance(o, str) else o for o in options),
                      takes=takes, holds=holds, lists=lists)
+
+
+def Form(id: str | None, label: T | str, does: str = "", *, lists: Lists | None = None) -> Component:
+    return Component(id, "form", as_label(label), does, lists=lists)
 
 
 def Button(id: str | None, label: T | str | None = None, does: str = "", per_row: bool = False) -> Component:

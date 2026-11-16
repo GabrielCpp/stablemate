@@ -1,4 +1,4 @@
-"""The account of the selects a book's screens declare: which state what they hold and were judged by a pick,
+"""The account of the selects and forms a book's screens declare: which state what they hold and were judged by a pick,
 which state it and no pick reached, and which only name the select."""
 
 from __future__ import annotations
@@ -24,14 +24,14 @@ def claims_by(surface: Any) -> dict[str, frozenset[str]]:
 
 
 def account(screens: tuple[type[Screen], ...], read: frozenset[str], claims: Mapping[str, frozenset[str]] | None = None) -> list[str]:
-    """The heading `Lists` and a line per select under three headings, then the claims each read list had judged,
+    """The heading `Lists` and a line per select or form under three headings, then the claims each read list had judged,
     or nothing when no screen has a select."""
     judged: list[str] = []
     unread: list[str] = []
     named: list[str] = []
     for screen in screens:
         for attribute, component in screen.attributes():
-            if component.kind != "select":
+            if component.kind not in ("select", "form"):
                 continue
             where = f"{screen.__name__}.{attribute}"
             if component.lists is not None:
