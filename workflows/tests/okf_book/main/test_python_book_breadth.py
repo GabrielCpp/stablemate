@@ -32,13 +32,28 @@ def _handed(flow: WritePythonBook, *files: str) -> None:
     (folder / "handed.txt").write_text("".join(f"{file}\n" for file in files), encoding="utf-8")
 
 
+def _package(flow: WritePythonBook) -> None:
+    (flow.root / flow.package).mkdir(parents=True)
+    (flow.root / flow.package / "service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
+
+
 def test_a_book_reached_by_a_screen_surface_starts_with_the_survey_and_no_owner_lap(tmp_path: Path) -> None:
     flow, _runner = build_flow(tmp_path, kind="web")
+    _package(flow)
 
     step = flow.start()
 
     assert isinstance(step, Continue) and step.state == "survey"
     assert step.params == {"gate": "", "lap": 0}
+
+
+def test_a_screen_book_with_no_package_yet_starts_with_the_owner_because_the_survey_has_no_book_to_list(tmp_path: Path) -> None:
+    flow, _runner = build_flow(tmp_path, kind="web")
+
+    step = flow.start()
+
+    assert isinstance(step, Continue) and step.state == "write"
+    assert step.params == {"gate": "", "lap": 1}
 
 
 def test_a_book_reached_by_no_screen_surface_starts_with_the_owner(tmp_path: Path) -> None:

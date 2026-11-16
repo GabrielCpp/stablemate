@@ -110,8 +110,8 @@ class WritePythonBook(BookFlow):
         return tuple(f"{base}.{kind}" for kind in self.kinds if kind in SCREEN_KINDS)
 
     def start(self) -> Continue[...]:
-        """Survey a book reached by a screen surface, and send the owner its first lap otherwise."""
-        if self.screen_modules:
+        """Survey a book reached by a screen surface that already has a package, and send the owner its first lap otherwise."""
+        if self.screen_modules and (self.root / self.package).is_dir():
             return Continue(None, self.survey, gate="", lap=0).because("survey the screens")
         return Continue(None, self.write, gate="", lap=1).because("send the owner")
 
