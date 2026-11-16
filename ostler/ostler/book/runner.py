@@ -442,6 +442,8 @@ def move(step: object, request: object, model: Model, surface: Surface) -> StepR
         if hearing is not None and Deliveries.role is not None and hearing.heard is not None:
             Deliveries.role.place(hearing.heard, detail)
             app_outcome: Outcome = Done()
+        elif action is not None and action.clock and isinstance(request, Arrange):
+            app_outcome = Done()
         else:
             app_outcome = surface.perform(request)
     except CannotReach as blocked:

@@ -358,9 +358,12 @@ class Action(Generic[A, S]):
     rules: ClassVar[tuple[Rule[Any, Any], ...]] = ()
     defects: ClassVar[tuple[Defect[Any, Any], ...]] = ()
     emits: ClassVar[tuple[type[Event], ...]] = ()
+    clock: ClassVar[str] = ""
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
+        if cls.clock and cls.hears:
+            raise BookError(f"{cls.__name__} is caused by the clock ({cls.clock!r}) and hears headers: a clocked action takes no call, drop hears or drop clock")
         for emitted in cls.emits:
             if not (isinstance(emitted, type) and issubclass(emitted, Event)):
                 raise BookError(f"{cls.__name__} emits {emitted!r}, which is not an Event: write emits = (<an Event class>,)")

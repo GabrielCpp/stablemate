@@ -14,9 +14,10 @@ from typing import Any, Iterator
 import pytest
 
 from ostler.book import BookError, Bus, Delivery
+from ostler.book import runner
 from ostler.book.runner import Deliveries, Landings, perform
 
-from book_desk import Desk, Emitter, Opens, OpensQuietly, Tap, Tickets, ToQueue
+from book_desk import Breaches, Desk, Emitter, Lapses, Opens, OpensQuietly, ScanTap, Scanner, Tap, Tickets, ToQueue, Writes
 
 DAY = date(2026, 11, 14)
 
@@ -264,3 +265,44 @@ def test_the_bus_variant_names_the_aws_extra_when_boto3_is_missing_for_the_tap(m
     monkeypatch.setitem(sys.modules, "boto3", None)
     with pytest.raises(BookError, match=r"install the aws extra of ostler"):
         Bus("zeta-bus").open_tap()
+
+
+def _clocked(scanning: bool = True) -> tuple[ScanTap, Scanner, Tickets]:
+    tap = ScanTap()
+    Deliveries.begin(tap)
+    model = Tickets(DAY)
+    surface = Scanner(tap, scanning)
+    surface.start()
+    return tap, surface, model
+
+
+def test_a_step_that_carries_a_clocked_action_sends_nothing_and_proves_its_emission_from_the_tap():
+    tap, surface, model = _clocked()
+    try:
+        for step in (Writes("T-20"), Lapses("T-20"), Breaches("T-20")):
+            result = perform(step, step, model, surface)
+            assert result.ok, result.note
+    finally:
+        surface.stop()
+    assert [type(s) for s in surface.performed] == [Writes, Lapses]
+    assert Deliveries.line() == "emissions: 1 proven, 0 fail, 0 unproven"
+
+
+def test_a_clocked_action_whose_scan_never_runs_fails_its_step_and_the_note_says_the_tap_read_none(monkeypatch: pytest.MonkeyPatch):
+    tap, surface, model = _clocked(scanning=False)
+    monkeypatch.setattr(runner, "RETAKES", 20)
+    for step in (Writes("T-21"), Lapses("T-21")):
+        assert perform(step, step, model, surface).ok
+    step = Breaches("T-21")
+    result = perform(step, step, model, surface)
+    assert not result.ok
+    assert "Breach should emit ticket.breached about a record this run made; the tap read none in 20 reads" in result.note
+
+
+def test_a_clocked_action_in_an_environment_that_names_no_delivery_leaves_its_emission_unproven():
+    surface = Scanner(ScanTap())
+    model = Tickets(DAY)
+    Deliveries.begin(None)
+    for step in (Writes("T-22"), Lapses("T-22"), Breaches("T-22")):
+        assert perform(step, step, model, surface).ok
+    assert Deliveries.line() == "emissions: 0 proven, 0 fail, 1 unproven"

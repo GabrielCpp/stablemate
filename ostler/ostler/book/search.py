@@ -116,7 +116,7 @@ def items(service: Service[Any], module: str) -> list[Item]:
         out.append(Item("interaction", address(interaction), interaction.__name__, (" ".join(interaction.describe().split()), *source_lines(interaction))))
     for action in actions_of(service, module):
         doc = tuple((action.__doc__ or "").strip().splitlines())
-        out.append(Item("action", address(action), action.__name__, (action.__name__, *doc, *(f"emits: {e.name}" for e in action.emits))))
+        out.append(Item("action", address(action), action.__name__, (action.__name__, *doc, *((f"clock: {action.clock}",) if action.clock else ()), *(f"emits: {e.name}" for e in action.emits))))
         for rule in action.rules:
             out.append(Item("rule", address(action), action.__name__, rule_lines(rule)))
         for defect in action.defects:

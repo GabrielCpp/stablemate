@@ -126,6 +126,21 @@ def header_faults(service: Service[Any]) -> list[Finding]:
     return found
 
 
+def clock_faults(service: Service[Any]) -> list[Finding]:
+    found: list[Finding] = []
+    for endpoint in service.endpoints:
+        action = endpoint.carries
+        if action is not None and action.clock:
+            found.append(Finding(f"endpoint {endpoint.__name__}", f"carries {action.__name__}, which the clock causes ({action.clock!r}): "
+                                 "carry it from an Arrange the journey takes after the record is past its moment, or drop clock"))
+    for outside in service.outside:
+        action = outside.carries
+        if outside.heard is not None and action is not None and action.clock:
+            found.append(Finding(f"outside {outside.__name__}", f"hears {outside.heard.name} and carries {action.__name__}, which the clock causes "
+                                 f"({action.clock!r}): split it in two, one Arrange that hears the event and one that carries the clocked action"))
+    return found
+
+
 def defect_faults(service: Service[Any]) -> list[Finding]:
     carried: dict[Any, list[type[Endpoint]]] = {}
     for endpoint in service.endpoints:
@@ -628,6 +643,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "identities", lambda: found.extend(identity_faults(service)) or "done")
     attempt(found, "defects", lambda: found.extend(defect_faults(service)) or "done")
     attempt(found, "headers", lambda: found.extend(header_faults(service)) or "done")
+    attempt(found, "clock", lambda: found.extend(clock_faults(service)) or "done")
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
     attempt(found, "screen shapes", lambda: found.extend(shape_faults(service)) or "done")
     attempt(found, "unstated lists", lambda: found.extend(unstated_lists(service)) or "done")

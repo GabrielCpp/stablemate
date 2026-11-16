@@ -272,6 +272,31 @@ A field or an answer the run cannot draw is declared by the code's name:
 `Unseen(ListAtRisk, "OK: tickets[].sla.resolution.stopped_at", Because.NEVER_FILLED, "<why>")`,
 or `"NOT_FOUND"` for a whole answer.
 
+## An event the clock causes
+
+An event the service publishes when time passes, such as a timer that breaches when its due time
+goes by, goes on an action that sets `clock = "<the moment>"` beside `emits`. No endpoint carries
+it and it hears nothing, and `check` fails both. A journey reaches it in two steps. An arrangement
+puts the record past the moment through the backstage, and a later step carries the clocked
+action from an `Arrange`. That step sends nothing to the app. The run reads the tap for the events
+the action declares, which the app's own scan publishes. It waits for the event and never for a
+time, so the book holds no sleep.
+
+```python
+class Breach(Action[TimerFixture, Timer]):
+    """The scan finds a timer past its due time."""
+
+    clock = "the timer's due time goes by"
+    emits = (TimerBreached,)
+
+
+class Breaches(Arrange[TimerFixture]):
+    does = "The clock takes a timer past its due time."
+    carries = Breach
+```
+
+With no delivery that taps, the emission counts unproven on the `emissions:` line.
+
 ## A value the clock sets
 
 The runtime cannot set the service's clock. A value that moves with it, such as the minutes
@@ -290,4 +315,4 @@ Report a call that needs one of these, and leave it out of the book:
 - status details beyond the code and the message,
 - a defect whose own message quotes the request.
 - a call of the book's own service whose effect lands after its answer,
-- a breach, or a minute count at its exact boundary: both need a clock the book sets.
+- a minute count at its exact boundary: it needs a clock the book sets.

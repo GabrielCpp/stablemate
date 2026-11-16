@@ -4,13 +4,14 @@ a test places the queue's envelope on, and the surface that performs an arrival 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, replace
 from typing import Any
 
-from ostler.book import Done, Event, Field, Object, Str
+from ostler.book import Arrange, Done, Event, Field, Object, Str
 from ostler.book.cast import SOLE
 from ostler.book.delivery import Delivery
-from ostler.book.domain import Action, Collection, Create, State, Unique
+from ostler.book.domain import Action, Collection, Create, State, Unique, Update
 from ostler.book.http import Id
 
 from book_fakes import Quiet
@@ -77,6 +78,7 @@ class DeskSurface(Quiet):
 class Ticket:
     id: str
     priority: str
+    lapsed: bool = False
 
 
 class Tickets(State):
@@ -176,3 +178,114 @@ class Emitter(Quiet):
 
     def rows(self) -> tuple[object, ...]:
         return tuple(self.tickets)
+
+
+class Breached(Event):
+    """A ticket's due time went by."""
+
+    name = "ticket.breached"
+    source = "zeta.scan"
+    detail = Object(ticket_id=Field(Id(Ticket)))
+
+
+class Write(Action[str, Tickets]):
+    @staticmethod
+    def reduce(a: str, s: Tickets, by: Any) -> Create:
+        return Create(Tickets.tickets, Ticket(a, "high"))
+
+
+class Lapse(Action[str, Tickets]):
+    @staticmethod
+    def reduce(a: str, s: Tickets, by: Any) -> Update:
+        return Update(Tickets.tickets, a, replace(s.tickets[a], lapsed=True))
+
+
+class Breach(Action[str, Tickets]):
+    """The scan finds a ticket past its due time."""
+
+    clock = "the ticket's due time goes by"
+    emits = (Breached,)
+
+    @staticmethod
+    def announces(event: type[Event], a: str, s: Tickets, by: Any) -> dict[str, Any] | None:
+        return {"ticket_id": a}
+
+
+class Writes(Arrange[str]):
+    does = "A ticket is written."
+    carries = Write
+
+
+class Lapses(Arrange[str]):
+    does = "A ticket is written past its due time."
+    carries = Lapse
+
+
+class Breaches(Arrange[str]):
+    does = "The clock takes a ticket past its due time."
+    carries = Breach
+
+
+class ScanTap(Tap):
+    """A tap whose read waits a moment for the scan to publish, as a read of a queue does."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.lock = threading.Condition()
+
+    def publish(self, event: tuple[str, dict[str, Any]]) -> None:
+        with self.lock:
+            self.waiting.append(event)
+            self.lock.notify_all()
+
+    def tapped(self) -> list[tuple[str, dict[str, Any]]]:
+        with self.lock:
+            if not self.waiting:
+                self.lock.wait(0.002)
+            self.reads += 1
+            out, self.waiting = self.waiting, []
+            return out
+
+
+class Scanner(Quiet):
+    """A surface whose app scans its store on its own loop in its own thread and publishes `ticket.breached` once for every
+    ticket written past its due time. `scanning` is False for an app whose scan never runs."""
+
+    name = "scanner"
+
+    def __init__(self, tap: ScanTap, scanning: bool = True) -> None:
+        self.tap = tap
+        self.scanning = scanning
+        self.store: dict[str, bool] = {}
+        self.performed: list[object] = []
+        self.told: set[str] = set()
+        self.stopped = threading.Event()
+        self.guard = threading.Lock()
+        self.loop = threading.Thread(target=self.scan, daemon=True)
+
+    def start(self) -> None:
+        if self.scanning:
+            self.loop.start()
+
+    def stop(self) -> None:
+        self.stopped.set()
+        if self.loop.is_alive():
+            self.loop.join()
+
+    def scan(self) -> None:
+        while not self.stopped.wait(0.001):
+            with self.guard:
+                due = [t for t, lapsed in self.store.items() if lapsed and t not in self.told]
+                self.told.update(due)
+            for ticket in due:
+                self.tap.publish(("ticket.breached", {"ticket_id": ticket}))
+
+    def perform(self, step: Any) -> Done:
+        self.performed.append(step)
+        ticket = str(step.of)
+        with self.guard:
+            self.store[ticket] = isinstance(step, Lapses) or self.store.get(ticket, False)
+        return Done()
+
+    def rows(self) -> tuple[object, ...]:
+        return tuple(self.store)
