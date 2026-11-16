@@ -30,13 +30,18 @@ class HttpSurface:
         self.client = client
         self.watch: tuple[Endpoint, ...] = ()
         self.breached: dict[tuple[int, str, int, str], Breach] = {}
+        self.covering: Callable[[Endpoint], tuple[Callable[[list[Any]], list[str]], ...]] | None = None
+
+    def cover(self, covering: Callable[[Endpoint], tuple[Callable[[list[Any]], list[str]], ...]] | None) -> None:
+        """What the step in hand lets the run leave out of an answer: for each call, the rules a known defect covers."""
+        self.covering = covering
 
     def judge(self, call: Endpoint, reply: Reply) -> None:
         """The entry rules of every list the answer holds, judged on the entries the app answered."""
         answer = reply.answer
         if answer.body is None:
             return
-        for path, rule, said in breaches(answer.body, reply.body):
+        for path, rule, said in breaches(answer.body, reply.whole):
             self.breached.setdefault((id(call), path, id(rule), said), Breach(call, path, rule, said))
 
     def take_breaches(self) -> list[Breach]:
@@ -70,7 +75,7 @@ class HttpSurface:
 
     def send(self, call: Endpoint) -> Reply:
         """Every request the surface makes, a step or a watch read, goes through here."""
-        return call.send(self.client)
+        return call.send(self.client, self.covering(call) if self.covering is not None else ())
 
     def perform(self, step: Any) -> Outcome:
         call = cast(Endpoint, step)

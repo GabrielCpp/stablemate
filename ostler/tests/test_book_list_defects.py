@@ -10,8 +10,9 @@ import pytest
 
 from book_todo import FIXTURE, module, run_book
 from ostler.book import Action, Answer, BookError, Defect, Endpoint, Field, List, Object, Rule, Str
-from ostler.book.entries import has, no_repeat
-from ostler.book.http import breaches
+from ostler.book.check import defect_faults
+from ostler.book.entries import has, in_order, no_repeat
+from ostler.book.http import apart, breaches
 from ostler.book.search import defect_lines
 
 DEFECT = '''    rules = (rules.unknown_status,)
@@ -42,23 +43,58 @@ def repeating_app() -> Iterator:
 
 
 @pytest.fixture
+def offshape_app() -> Iterator:
+    yield from _server("offshape")
+
+
+@pytest.fixture
+def ghost_app() -> Iterator:
+    yield from _server("ghost")
+
+
+@pytest.fixture
+def drifting_app() -> Iterator:
+    yield from _server("ghost_drift")
+
+
+@pytest.fixture
 def clean_app() -> Iterator:
     yield from _server(None)
 
 
-@pytest.fixture
-def declared(tmp_path: Path) -> Path:
+def _declared(tmp_path: Path, breaks: str = "HAS_TITLE", repeat: bool = True) -> Path:
     book = tmp_path / "book"
     book.mkdir()
     shutil.copytree(FIXTURE / "services", book / "services")
     actions = book / "services" / "api" / "model" / "actions.py"
     text = actions.read_text()
     text = text.replace("from ostler.book import Action,", "from ostler.book import Action, Defect,")
-    text = text.replace("from .state import", "from .lists import HAS_TITLE\nfrom .state import")
+    text = text.replace("from .state import", f"from .lists import {breaks}\nfrom .state import")
     old = "    accept = Query\n    rules = (rules.unknown_status,)\n"
     assert old in text
-    actions.write_text(text.replace(old, "    accept = Query\n" + DEFECT))
+    actions.write_text(text.replace(old, "    accept = Query\n" + DEFECT.replace("HAS_TITLE", breaks)))
+    lists = book / "services" / "api" / "model" / "lists.py"
+    stated = lists.read_text()
+    if not repeat:
+        stated = stated.replace("TODOS = (HAS_ID, HAS_TITLE, ONCE)", "TODOS = (HAS_ID, HAS_TITLE)")
+    stated = stated.replace("import has, no_repeat", "import has, in_order, no_repeat")
+    lists.write_text(stated + 'UNSTATED = in_order("id")\n')
     return book
+
+
+@pytest.fixture
+def declared(tmp_path: Path) -> Path:
+    return _declared(tmp_path)
+
+
+@pytest.fixture
+def ghosted(tmp_path: Path) -> Path:
+    return _declared(tmp_path, repeat=False)
+
+
+@pytest.fixture
+def unstated(tmp_path: Path) -> Path:
+    return _declared(tmp_path, breaks="UNSTATED")
 
 
 def _run(cwd: Path, port: int, out: Path):
@@ -216,3 +252,113 @@ def test_search_shows_the_rule_a_known_defect_breaks():
     (head, *rest) = defect_lines(_action().defects[0])
     assert head == "breaks every entry has id: a blank asset heads the list"
     assert rest == ["why: since the import"]
+
+
+def test_an_entry_off_the_shape_that_breaks_a_rule_alone_is_the_defects_and_makes_the_step_known(declared, offshape_app, tmp_path):
+    done = _run(declared, offshape_app.port, tmp_path / "out")
+    assert done.returncode == 0, done.stdout
+    assert "KNOWN  AWeekOfChores" in done.stdout
+    assert "answered outside the book" not in done.stdout
+
+
+def test_an_entry_off_the_shape_fails_as_off_shape_when_no_defect_is_declared(offshape_app, tmp_path):
+    done = _run(FIXTURE, offshape_app.port, tmp_path / "out")
+    assert done.returncode == 3, done.stdout
+    assert "answered outside the book" in done.stdout
+
+
+def test_an_entry_that_breaks_the_rule_alone_is_left_out_of_the_comparison(ghosted, ghost_app, tmp_path):
+    done = _run(ghosted, ghost_app.port, tmp_path / "out")
+    assert done.returncode == 0, done.stdout
+    assert "KNOWN  AWeekOfChores" in done.stdout
+
+
+def test_the_entries_beside_the_one_left_out_are_still_compared(ghosted, drifting_app, tmp_path):
+    done = _run(ghosted, drifting_app.port, tmp_path / "out")
+    assert done.returncode == 3, done.stdout
+    assert "drifted" in done.stdout
+
+
+def _rows() -> Object:
+    return Object("Row", id=Field(Str()))
+
+
+def test_an_order_rule_broken_under_a_defect_leaves_every_entry_in_the_comparison():
+    ordered = in_order("id")
+    page = List(_rows(), entries=(ordered,))
+    entries = [{"id": "b"}, {"id": "a"}, {"id": "c"}]
+    assert ordered(entries)
+    assert apart(page, entries, (ordered,)) == entries
+
+
+def test_apart_leaves_out_only_the_entries_that_break_the_rule_alone_at_any_depth():
+    titled = has("id")
+    page = Object("Page", rows=Field(List(_rows(), entries=(titled,))))
+    held = apart(page, {"rows": [{"id": "a"}, {"id": ""}, {"id": "b"}]}, (titled,))
+    assert held == {"rows": [{"id": "a"}, {"id": "b"}]}
+
+
+def test_apart_leaves_every_entry_when_no_rule_is_owed():
+    titled = has("id")
+    entries = [{"id": ""}]
+    assert apart(List(_rows(), entries=(titled,)), entries, ()) == entries
+
+
+def _checked(book: Path, port: int):
+    run_book(["check", "services.api"], port, book)
+    return run_book(["check", "services.api"], port, book)
+
+
+def test_check_refuses_a_defect_whose_rule_no_list_of_its_actions_answers_states(unstated, clean_app):
+    done = _checked(unstated, clean_app.port)
+    assert done.returncode != 0, done.stdout
+    assert "FindTodos" in done.stdout
+    assert "a blank todo heads the list" in done.stdout
+    assert "in order of id" in done.stdout
+
+
+def test_check_accepts_a_defect_whose_rule_is_stated_in_a_list(declared, clean_app):
+    done = _checked(declared, clean_app.port)
+    assert "a blank todo heads the list" not in done.stdout
+    assert done.returncode == 0, done.stdout
+
+
+def test_check_accepts_a_defect_whose_rule_is_stated_in_a_nested_list():
+    titled = has("id")
+
+    class Lister(Action):
+        defects = (Defect("a blank row", lambda a, s, by: True, breaks=titled),)
+
+    class Nested(Endpoint):
+        path = "/things"
+        answers = (Answer(200, Object("Page", rows=Field(List(_rows(), entries=(titled,)))), "the things"),)
+        carries = Lister
+
+    class Other(Endpoint):
+        path = "/others"
+        answers = (Answer(200, List(_rows(), entries=(in_order("id"),)), "the others"),)
+        carries = Lister
+
+    class Service:
+        endpoints = [Nested, Other]
+
+    assert defect_faults(cast(Any, Service)) == []
+
+
+def test_check_names_the_action_the_defect_and_the_rule_of_a_defect_no_list_states():
+    titled = has("id")
+
+    class Lister(Action):
+        defects = (Defect("a blank row", lambda a, s, by: True, breaks=titled),)
+
+    class Plain(Endpoint):
+        path = "/things"
+        answers = (Answer(200, List(_rows(), entries=(in_order("id"),)), "the things"),)
+        carries = Lister
+
+    class Service:
+        endpoints = [Plain]
+
+    (found,) = defect_faults(cast(Any, Service))
+    assert found.blocks
+    assert "Lister" in str(found) and "a blank row" in str(found) and "every entry has id" in str(found)

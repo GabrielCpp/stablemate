@@ -632,6 +632,7 @@ class Reply:
     body: Any
     answer: Answer
     message_of: Callable[[object], str] = error_field
+    whole: Any = None
 
     @property
     def refusal(self) -> Refusal | None:
@@ -1044,7 +1045,7 @@ class Endpoint:
             data = None if payload is None else json.dumps(payload).encode()
         return client.transport(cls.method, self.url(client.address(cls.host), client.ids, client.resolve), headers, data)
 
-    def send(self, client: Client) -> Reply:
+    def send(self, client: Client, owed: tuple[Callable[[list[Any]], list[str]], ...] = ()) -> Reply:
         cls = type(self)
         status, raw = self.exchange(client)
         answer = next((a for a in cls.answers if a.status == status), None)
@@ -1052,7 +1053,9 @@ class Endpoint:
             raise Unhealthy(f"{cls.route()} answered {status}: the service is not there to answer")
         if answer is None:
             raise Undeclared(cls, status, _loose(raw))
-        parsed = cls.read(answer, raw)
+        whole = parsed = cls.read(answer, raw)
+        if answer.body is not None:
+            parsed = apart(answer.body, parsed, owed)
         if answer.body is None:
             if parsed is not None:
                 raise OffShape(cls, status, ["a body where none is declared"])
@@ -1073,7 +1076,7 @@ class Endpoint:
             else:
                 client.ids.learn(issued.kind, str(known), str(issued_id))
         client.witness.see(cls, answer, parsed, client.ids)
-        self.reply = Reply(status, parsed, answer, lambda body: client.ids.spoken(client.message_of(body)))
+        self.reply = Reply(status, parsed, answer, lambda body: client.ids.spoken(client.message_of(body)), whole)
         return self.reply
 
     def __str__(self) -> str:
@@ -1302,6 +1305,43 @@ def breaches(shape: Shape | None, value: Any, path: str = "") -> list[tuple[str,
         for item in value.values():
             out += breaches(shape.of, item, path + "{}")
     return out
+
+
+def _alone(rule: Callable[[list[Any]], list[str]], entry: Any) -> bool:
+    try:
+        return bool(rule([entry]))
+    except Exception:
+        return False
+
+
+def apart(shape: Shape | None, value: Any, owed: tuple[Callable[[list[Any]], list[str]], ...]) -> Any:
+    """The answer without the entries that break, on their own, a rule a known defect covers: they are the defect's, and
+    nothing else is judged of them. A rule that only breaks across entries leaves nothing out."""
+    if not owed:
+        return value
+    if isinstance(shape, List) and isinstance(value, list):
+        held = [rule for rule in shape.entries if any(rule is covered for covered in owed)]
+        return [apart(shape.of, item, owed) for item in value if not any(_alone(rule, item) for rule in held)]
+    if isinstance(shape, Object) and isinstance(value, dict):
+        return {name: apart(shape.fields[name].shape, item, owed) if name in shape.fields else item for name, item in value.items()}
+    if isinstance(shape, Map) and isinstance(value, dict):
+        return {name: apart(shape.of, item, owed) for name, item in value.items()}
+    return value
+
+
+def states(shape: Shape | None, rule: Callable[[list[Any]], list[str]], seen: set[int] | None = None) -> bool:
+    """Whether a list anywhere in the shape holds the rule among its entries."""
+    seen = seen if seen is not None else set()
+    if shape is None or id(shape) in seen:
+        return False
+    seen.add(id(shape))
+    if isinstance(shape, List):
+        return any(stated is rule for stated in shape.entries) or states(shape.of, rule, seen)
+    if isinstance(shape, Object):
+        return any(states(spec.shape, rule, seen) for spec in shape.fields.values())
+    if isinstance(shape, Map):
+        return states(shape.of, rule, seen)
+    return False
 
 
 SET = "<set, value not compared>"

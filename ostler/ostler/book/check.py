@@ -21,7 +21,8 @@ from ostler.book.arrange import Arrange
 from ostler.book.explore import _overrides, attempts, moves
 from ostler.book.graph import dot
 from ostler.book.boundary import Foreign, Needs
-from ostler.book.http import Endpoint, List, Object, bare_ids
+from ostler.book.entries import says
+from ostler.book.http import Endpoint, List, Object, bare_ids, states
 from ostler.book.journey import Given, Journey, OwnerRefused, Refused
 from ostler.book.model import Rule
 from ostler.book.inputs import bases, classes, expected, has_inputs, predicted, refusals_for, vary
@@ -122,6 +123,22 @@ def header_faults(service: Service[Any]) -> list[Finding]:
                                  "does not hear them: set hears = True and reduce over Heard, or drop the header"))
         if endpoint.headers is None and action.hears:
             found.append(Finding(name, f"{action.__name__} hears headers but the endpoint declares none"))
+    return found
+
+
+def defect_faults(service: Service[Any]) -> list[Finding]:
+    carried: dict[Any, list[type[Endpoint]]] = {}
+    for endpoint in service.endpoints:
+        if endpoint.carries is not None:
+            carried.setdefault(endpoint.carries, []).append(endpoint)
+    found: list[Finding] = []
+    for action, endpoints in carried.items():
+        for defect in action.defects:
+            rule = defect.breaks
+            if rule is None or any(states(answer.body, rule) for e in endpoints for answer in e.answers):
+                continue
+            found.append(Finding(f"action {action.__name__}", f"the defect {defect.message!r} breaks {says(rule)}, but no list in the answers of "
+                                 f"{', '.join(e.__name__ for e in endpoints)} states that rule: add it to the entries of the list it judges"))
     return found
 
 
@@ -609,6 +626,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
         attempt(found, "plan moves", lambda: moves(service.endpoints, cast=service.cast)(service.new_model(today)))
         attempt(found, "denied attempts", lambda: attempts(service.endpoints, service.new_model(today), cast=service.cast))
     attempt(found, "identities", lambda: found.extend(identity_faults(service)) or "done")
+    attempt(found, "defects", lambda: found.extend(defect_faults(service)) or "done")
     attempt(found, "headers", lambda: found.extend(header_faults(service)) or "done")
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
     attempt(found, "screen shapes", lambda: found.extend(shape_faults(service)) or "done")

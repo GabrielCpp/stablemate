@@ -49,6 +49,7 @@ def walk(journey: type[Journey], model: Model, surface: Surface) -> JourneyResul
     result = JourneyResult(journey, surface.name)
     baseline = model.rows()
     seen: dict[int, Seen] = {}
+    cover(surface, None, [], model)
     Owners.journey()
     for given in journey.given:
         result.steps.append(attempt(given, model, surface, baseline, seen))
@@ -87,6 +88,7 @@ def attempt(step: object, model: Model, surface: Surface, baseline: tuple[object
         result = StepResult(step, None, None, model.rows(), (), False, f"the book contradicts itself: {wrong}")
     except Exception as crash:
         result = StepResult(step, None, None, model.rows(), (), False, f"crashed: {type(crash).__name__}: {str(crash).splitlines()[0]}")
+    cover(surface, None, [], model)
     result.text = text
     result.at = at
     stray = strays(surface)
@@ -176,6 +178,7 @@ def read(step: object, model: Model, surface: Surface, seen: dict[int, Seen]) ->
         Owners.prepare(cast(Endpoint, step))
     clear_breaches(surface)
     owed = model.breaking(step)
+    cover(surface, step, owed, model)
     try:
         outcome = surface.perform(step)
     except CannotReach as blocked:
@@ -344,6 +347,16 @@ def clear_breaches(surface: Surface) -> None:
         take()
 
 
+def cover(surface: Surface, request: object | None, owed: list[Defect[Any, Any]], model: Model) -> None:
+    """Tells the surface which entries of an answer belong to a known defect: those that break, alone, the rule a defect
+    covers for the call, by the same reading `judged` makes. Between steps, a read is covered by the model as it stands."""
+    hook = getattr(surface, "cover", None)
+    if not callable(hook):
+        return
+    hook(lambda call: tuple(d.breaks for d in (owed if request is not None and call is request else model.breaking(call))
+                            if d.breaks is not None))
+
+
 def judged(request: object, owed: list[Defect[Any, Any]], model: Model, surface: Surface) -> tuple[list[str], Defect[Any, Any] | None]:
     """What the entry rules say of every list the surface read since the step began: a note for each rule broken that no
     known defect covers, and the first known defect that covers one. A defect covers the rule for the call whose action
@@ -375,6 +388,7 @@ def settle(ok: bool, note: str, notes: list[str], known: Defect[Any, Any] | None
 def move(step: object, request: object, model: Model, surface: Surface) -> StepResult:
     clear_breaches(surface)
     owed = model.breaking(request)
+    cover(surface, request, owed, model)
     hearing = delivered(request)
     action = emitter(request)
     if action is not None:

@@ -200,6 +200,12 @@ class TodoStore:
         listed = [shown for _, shown in found]
         if self.bug == "blank" and not (status or assignee or text):
             listed.insert(0, self.untitled())
+        if self.bug == "offshape" and not (status or assignee or text):
+            listed.insert(0, {**self.untitled(), "status": "limbo"})
+        if self.bug in ("ghost", "ghost_drift") and not (status or assignee or text) and listed:
+            if self.bug == "ghost_drift":
+                listed[-1] = {**listed[-1], "description": "drifted"}
+            listed.append({**listed[0], "title": ""})
         if self.bug == "stranger":
             listed.append(self.untitled())
         if self.bug == "repeat" and listed:
