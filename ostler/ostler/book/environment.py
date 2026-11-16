@@ -7,11 +7,15 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Mapping
 
 from ostler.book.errors import BookError
-from ostler.environments.render import SHARED
+from ostler.environments import commands, runtime
+from ostler.environments.render import COMPOSE_FILE, SHARED, Copy
+from ostler.environments.runtime import Runner, run_command
 from ostler.qa.addresses import LEASE_ENV
 
 if TYPE_CHECKING:
@@ -20,6 +24,7 @@ if TYPE_CHECKING:
 OSTLER = "ostler:"
 PREFIX = "BOOK_SECRET_"
 GUARD = "BOOK_REEXEC"
+GONE = "No such container"
 
 
 @dataclass
@@ -31,6 +36,11 @@ class Environment:
     root: str = ""
     leased: str = ""
     delivery: Delivery | None = None
+    runner: Runner = field(default=run_command, repr=False, compare=False)
+    _roots: dict[str, Path] = field(default_factory=dict, init=False, repr=False, compare=False)
+    _books: dict[str, tuple[int, dict[str, str]]] = field(default_factory=dict, init=False, repr=False, compare=False)
+    _answers: dict[tuple[str, str], str] = field(default_factory=dict, init=False, repr=False, compare=False)
+    _containers: dict[tuple[str, str], str] = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def address(self, host: str) -> str:
         if host not in self.hosts:
@@ -38,11 +48,68 @@ class Environment:
         url = self.hosts[host]
         if not url.startswith(OSTLER):
             return url
-        done = subprocess.run(["ostler", "env", "address", host, "--copy", self._copy_of(url)], cwd=self.root or None,
-                              capture_output=True, text=True, check=False)
-        if done.returncode:
-            raise RuntimeError(done.stderr or done.stdout)
-        return done.stdout.strip()
+        copy = runtime.copy_for(self._stack_root(), self._copy_of(url))
+        book_file = copy.directory / runtime.ADDRESSES
+        try:
+            stamp = book_file.stat().st_mtime_ns
+        except OSError:
+            stamp = -1
+        known = self._books.get(copy.name)
+        if known is None or known[0] != stamp:
+            known = (stamp, commands.read_book(copy))
+            self._books[copy.name] = known
+            self._answers = {key: value for key, value in self._answers.items() if key[0] != copy.name}
+        kept = self._answers.get((copy.name, host))
+        if kept is not None:
+            return kept
+        outcome = commands.lookup(copy, known[1], host)
+        if not outcome.ok:
+            raise RuntimeError(outcome.message + "\n")
+        self._answers[(copy.name, host)] = outcome.message
+        return outcome.message
+
+    def exec(self, service: str, argv: Sequence[str], *, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        """Runs *argv* in the running container of *service* of this environment's copy."""
+        copy = self._rendered_copy()
+        done = self._exec_once(copy, service, argv, stdin)
+        if done.returncode and GONE in (done.stderr or ""):
+            self._containers.pop((copy.name, service), None)
+            done = self._exec_once(copy, service, argv, stdin)
+        return done
+
+    def _exec_once(self, copy: Copy, service: str, argv: Sequence[str], stdin: str | None) -> subprocess.CompletedProcess[str]:
+        key = (copy.name, service)
+        if key not in self._containers:
+            self._containers[key] = self._container(copy, service)
+        command = ["docker", "exec", *(["-i"] if stdin is not None else []), self._containers[key], *argv]
+        return self.runner(command, capture=True, stdin=stdin)
+
+    def compose(self, args: Sequence[str], *, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        """Runs `docker compose` with *args* against this environment's copy, as `run --rm` one-shots need."""
+        copy = self._rendered_copy()
+        return self.runner(runtime.Compose(copy).argv(args), capture=True, stdin=stdin)
+
+    def _container(self, copy: Copy, service: str) -> str:
+        done = runtime.Compose(copy, self.runner).run(["ps", "-q", service], capture=True)
+        lines = done.stdout.split() if done.returncode == 0 else []
+        if not lines:
+            raise RuntimeError(f"{copy.name} runs no container for `{service}`" + (f": {done.stderr.strip()}" if done.stderr else ""))
+        return lines[0]
+
+    def _rendered_copy(self) -> Copy:
+        name = self.copy()
+        if not name:
+            raise BookError(f"environment {self.name!r} reaches no stack copy")
+        copy = runtime.copy_for(self._stack_root(), name)
+        if not (copy.directory / COMPOSE_FILE).is_file():
+            raise RuntimeError(f"{copy.name} has not been rendered: run `ostler env up` first")
+        return copy
+
+    def _stack_root(self) -> Path:
+        start = self.root or str(Path.cwd())
+        if start not in self._roots:
+            self._roots[start] = commands.env_root(Path(start))
+        return self._roots[start]
 
     def copy(self) -> str:
         """The stack copy this environment reaches, or nothing when no host is one ostler runs."""

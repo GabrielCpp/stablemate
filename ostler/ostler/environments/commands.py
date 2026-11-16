@@ -288,7 +288,7 @@ def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
             "status": state,
             "targets": targets,
             "rendered_at": manifest.get("rendered_at", ""),
-            "addresses": _read_book(copy),
+            "addresses": read_book(copy),
         })
         copy_lines.append(f"{copy.name}  {state}  {', '.join(targets)}")
     services = [_service_row(service, by_ref.get(service.ref, [])) for service in catalog.services.values()]
@@ -345,11 +345,23 @@ def _short(about: str) -> str:
 def cmd_address(root: Path, name: str, *, copy_name: str = SHARED) -> EnvOutcome:
     """The URL the copy publishes *name* at."""
     copy = runtime.copy_for(root, copy_name)
-    book = _read_book(copy)
+    return lookup(copy, read_book(copy), name)
+
+
+def lookup(copy: Copy, book: Mapping[str, str], name: str) -> EnvOutcome:
+    """What *copy*'s address *book* answers for *name*."""
     if name not in book:
         known = ", ".join(sorted(book)) or "none, since it is not up"
         return _fail(f"{copy.name} publishes no `{name}` (it publishes {known})")
     return EnvOutcome(True, book[name], {"ok": True, "name": name, "url": book[name]})
+
+
+def env_root(start: Path) -> Path:
+    """The root `ostler env` reads its stacks under: the book root in a workspace, else the docs root."""
+    from ostler._vendor.stablemate_core import config as core_config
+    from ostler.model import find_root
+
+    return core_config.book_home(start) or find_root(start)
 
 
 def compose_argv(root: Path, args: Sequence[str], *, copy_name: str = SHARED) -> list[str] | EnvOutcome:
@@ -360,7 +372,7 @@ def compose_argv(root: Path, args: Sequence[str], *, copy_name: str = SHARED) ->
     return Compose(copy).argv(args)
 
 
-def _read_book(copy: Copy) -> dict[str, str]:
+def read_book(copy: Copy) -> dict[str, str]:
     try:
         return addresses.read_book(copy.directory / runtime.ADDRESSES)
     except addresses.AddressError:

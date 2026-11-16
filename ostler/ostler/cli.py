@@ -21,7 +21,6 @@ from ostler import index as index_mod
 from ostler import textindex as textindex_mod
 from ostler.environments import cli as env_cli
 from ostler.book import cli as book_cli
-from ostler._vendor.stablemate_core import config as core_config
 from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.model import find_root, load
 
@@ -1148,7 +1147,7 @@ def _cmd_checks(args: argparse.Namespace) -> int:
 
 def _env_root(start: Path) -> Path:
     """The root `ostler env` reads its stacks under: the book root in a workspace, else the docs root."""
-    return core_config.book_home(start) or find_root(start)
+    return env_cli.commands.env_root(start)
 
 
 def main(argv: list[str] | None = None) -> int:
