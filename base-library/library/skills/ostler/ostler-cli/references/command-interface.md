@@ -30,7 +30,7 @@ ostler search <query> [--type T] [--json]                         # full-text ma
 ostler query  stories-covering-seed <arg> [--json]
 ostler next-epic [--json]                            # next queued epic with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
-ostler path epic <epic> | spec <story-id> | story <story-id> | branch <story-id> [--epic] [--is_epic emits feat/<slug>]
+ostler path epic <epic> | spec <story-id> | story <story-id> | branch <story-id> | branch <epic> --epic   # --epic emits feat/<slug>
 ```
 
 Epic directories are numbered in creation order — `create epic checkout-flow` writes

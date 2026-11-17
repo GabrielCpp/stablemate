@@ -17,10 +17,11 @@ Do not assume it lives at a particular path like `example-org/agents`; that
 is just one possible checkout, and treating it as fixed will conflate a
 specific machine's layout with the library itself.
 
-The agent library is the single source of truth. The per-repo `.codex/`,
+The agent library is the single source of truth. The per-repo `.agents/`,
 `.claude/`, `.github/instructions/`, `.github/skills/`, `.github/prompts/`,
-`.agents/workflows/`, and local `AGENTS.md`/`CLAUDE.md` files are **generated
-outputs** — never hand-edit them. Change the library, then re-install.
+and local `AGENTS.md`/`CLAUDE.md` files are **generated outputs**. Never
+hand-edit them. Change the library, then re-install. `.codex/` is a home
+output, written by `farrier install --user`.
 
 ## Library layout
 

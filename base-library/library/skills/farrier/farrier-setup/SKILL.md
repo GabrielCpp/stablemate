@@ -13,8 +13,8 @@ Use this skill when setting up farrier in a new repository or adding/modifying
 
 Farrier renders a shared prompt library (the `example-org/agents` tree) into
 per-repo adapter files for Claude (`.claude/skills/`, `.claude/commands/`,
-local `CLAUDE.md`), Codex, and Copilot, plus workflow bundles under
-`.agents/workflows/` and an `agents.mk` Makefile include.
+local `CLAUDE.md`), Codex, and Copilot, plus an `agents.mk` Makefile include.
+It installs no workflows. A workflow is a Python distribution with its own command.
 
 ## Installation
 
@@ -185,8 +185,8 @@ library source path. Run farrier once without `localInstructions` and check
 `.claude/skills/` to discover the installed names.
 
 The aggregated body is written to `AGENTS.md` — the name every harness reads
-natively — and, when the claude adapter is on, a `CLAUDE.md` beside it holding
-`@AGENTS.md`. The full `DO NOT EDIT` banner rides on that pointer: it names the
+natively. A mapping that sets `claudeMd: true` also gets a `CLAUDE.md` beside it
+holding `@AGENTS.md`. Without the flag, Claude does not load the rules. The full `DO NOT EDIT` banner rides on that pointer: it names the
 library source(s), the regeneration command, and a copy-pasteable
 `farrier source <path>` command that prints this machine's editable source paths
 (one per line). Claude strips block-level HTML comments before loading, so the

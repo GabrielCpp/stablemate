@@ -1,6 +1,6 @@
 ---
 name: saddlebag
-description: "saddlebag: where the password, token or TOTP for a test login lives. Load it before you type a password, search seed, fixture or config files for test credentials, ask the user for a login, read a `.env` to sign in, or change a value in a `.env`. saddlebag hands the secret to its consumer (a browser field over CDP, a focused Android field over adb, or a command's environment) so the agent never holds the value. Covers signing in with `fill` (username, password, TOTP), typing into an Android screen with `type`, running a command or a compose stack under `exec`, reading a dotenv masked with `env show|keys|classify|import`, changing a literal in it with `env set`, loading a whole-store export with `import`, the `secrets: saddlebag:` source in a stack.yml, the PreToolUse guard that refuses a read of a dotenv, key or credentials file, registering a secret, and reading errors. Also load when a command needs a password or token in its environment, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
+description: "saddlebag: where the password, token or TOTP for a test login lives. Load it before you type a password, search seed, fixture or config files for test credentials, ask the user for a login, read a `.env` to sign in, or change a value in a `.env`. Covers `fill`, `type`, `exec`, the `env` verbs, `import`, the `secrets: saddlebag:` source in a stack.yml, the PreToolUse guard and registering a secret. Also load when a command needs a password or token in its environment, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
 tags: [cli, tests, qa]
 ---
 
@@ -227,7 +227,8 @@ its variants (`.env.example` and the like excepted), private keys and `id_*` fil
 `.netrc`, `.npmrc`, `.pypirc`, `.git-credentials`, `.vault-token`, `~/.aws/credentials`
 and `~/.docker/config.json`, and a `*.saddlebag.json` export, through the file tools or a shell
 reader such as `cat`, `grep`, `sed`, `source` or `python`. Its denial names the saddlebag
-line that gets the same job done. It covers Read, Grep, Write, Edit and Bash.
+line that gets the same job done. It watches Read, Grep and Bash. A write through
+Write or Edit passes, so change a dotenv literal with `env set`.
 
 The guard refuses nothing else. A dump of the environment, `/proc/<pid>/environ` or a
 secret manager's read passes, and its output lands in your transcript. Keep those

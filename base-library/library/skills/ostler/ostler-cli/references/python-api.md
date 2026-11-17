@@ -72,7 +72,7 @@ from ostler import path as okf_path
 
 okf_path.epics_root_in(root)                     # <root>/docs/epics
 okf_path.epics_index_in(root)                    # the epic queue's index.md
-okf_path.services_root_in(root, service)         # the book, whole or per-service
+okf_path.specs_root_in(root)                     # <root>/docs/specs
 okf_path.epic_dir_in(root, "checkout-flow")      # → .../0001-checkout-flow, from the bare slug
 okf_path.story_dir_in(root, epic, slug)          # the story folder; join your own story.md
 ```
