@@ -7,7 +7,6 @@ from ostler.book import Journey
 
 from .. import commands as c
 from .. import fixtures as f
-from ..events import ListUserLibrary, ListWhatIsWanted
 
 
 class ConfigureTheMachine(Journey):
