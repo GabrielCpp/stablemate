@@ -10,7 +10,9 @@ from .model import documents as act
 ARGS = Object("NoArgs")
 OPAQUE = Lines(opaque=("",))
 CORE = ("ostler/ostler/book/cli.py", "ostler/ostler/book/index.py", "ostler/ostler/book/model.py", "ostler/ostler/book/state.py",
-        "ostler/ostler/book/domain.py", "ostler/ostler/book/command.py", "ostler/ostler/book/http.py", "ostler/ostler/book/journey.py")
+        "ostler/ostler/book/domain.py", "ostler/ostler/book/command.py", "ostler/ostler/book/http.py", "ostler/ostler/book/journey.py",
+        "ostler/ostler/book/tree.py::bind", "ostler/ostler/book/tree.py::fill", "ostler/ostler/book/tree.py::resolved", "ostler/ostler/book/tree.py::repoint",
+        "ostler/ostler/book/tree.py::swapped", "ostler/ostler/book/tree.py::_reaches", "ostler/ostler/book/tree.py::unresolved")
 
 
 class CheckBook(Command):
