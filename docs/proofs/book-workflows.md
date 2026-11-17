@@ -199,6 +199,72 @@ what the row says, and the evidence lives where the row points. Groom run ids re
   the played commit and answered each gate. Each run then made its own commit.
 - **Evidence:** groom `w3-paddock`, `w3-saddlebag`; stablemate commits `126479b77`, `926dfc755`.
 
+## 2026-11-17: python_book writes four more command-line and screen books
+
+- **Run:** okf-book `python_book`, groom runs `w3-workflows`, `w3-workhorse`, `w3-groom` and
+  `w3-ostler`, on stablemate's own packages, each from a detached worktree of main.
+- **Stablemate:** launched at `91ffe90a1` with the `Watched` row, the skill text and the fix
+  prompt of the entry above.
+- **Proved:** a first command-line book commits with nothing by hand. The workflows and workhorse
+  runs each wrote the book, played it green and made their own commit with no gate. The groom run
+  wrote an HTTP module and a screen module in one book.
+- **Proved along the way:** a commit refused by several checks in turn. The groom and ostler
+  commits were each refused more than once. Each new refusal now gets its own fix turn, up to four
+  (`448a8d0de`), and both runs then committed on their own.
+- **Not proved:** that a large first book is cheap. The ostler writer took four turns and its
+  context reached about 566 thousand tokens.
+- **Gates' last lines:** workflows `4 pass, 0 known defects, 0 fail`, 105 cells; workhorse `5
+  pass`, 330 cells; groom http `9 pass`, 159 cells, web `6 pass`, 50 cells; ostler `11 pass, 0
+  known defects, 0 fail`. Each `check: 0 findings`, `nothing missing`, `nothing stale` and `make
+  lint` clean on the commit rebased onto main, with a whole replay by the attendant.
+- **Cost:** workflows $1.18 billed, 13 minutes of wall. Workhorse $0.76, 24 minutes. Groom $5.74,
+  54 minutes. Ostler $10.14, 4 hours 51 minutes.
+- **By hand:** workflows and workhorse, nothing. Groom, one reload onto the fix-turn change and
+  one answer. Ostler, one answer on which unreachable files may be ignored, one reload and one
+  answer at the commit gate. No book was edited by hand.
+- **Evidence:** groom runs as named; stablemate commits `e239b95a8`, `f44dbef26`, `00311dff7`,
+  `986ba3933`.
+
+## 2026-11-17: a book a commit fix changed is replayed before it is committed
+
+- **Run:** groom run `w3-ostler`, reloaded at its commit gate onto `413218ac8`.
+- **Proved:** a fix turn for a refused commit edited the book, the flow saw the book's Python
+  change, ran check, the whole play and missing again, and only then tried the commit. It did so
+  twice, after the second and the third fix turn, and the run then made its own commit.
+- **Not proved:** a red replay on a live run. Tests cover it: a red replay goes back to the writer
+  like any red gate.
+- **Also seen:** the fix turns repaired one refusal at a time, so each refusal cost one whole
+  replay, about 20 minutes on this book. A book the size of the client's largest would pay about
+  90 minutes each.
+- **Cost:** three fix turns, $0.66 billed together.
+- **By hand:** the reload and one answer.
+- **Evidence:** groom `w3-ostler`; stablemate commits `413218ac8`, `986ba3933`.
+
+## 2026-11-17: catch_up brings a command-line book level with its app
+
+- **Run:** okf-book `catch_up`, groom runs `w3-ostler-catchup` and `w3-ostler-catchup-2`, on the
+  ostler book after two changes to ostler itself.
+- **Stablemate:** `f5a2c6fe2`, then `71b64b34d`.
+- **Proved:** after a change that added one source file and changed a command's output, one owner
+  turn named the file, restated the command, wrote the decision, played the targeted run, moved
+  the stamp and committed. The second run did the same after a format change and also moved the
+  book's format mark.
+- **Gates' last lines:** `check: 0 findings`, `nothing missing`, `nothing stale`, `make lint`
+  clean, read by the attendant on each commit.
+- **Cost:** $0.33 and 80 seconds; $0.32 and 23 minutes, 21 of them in the play.
+- **By hand:** nothing.
+- **Evidence:** groom runs as named; stablemate commits `ca121388b`, `2ad76e231`.
+
+## 2026-11-17: built and tested, not yet read on a live run
+
+- **Progress and verdict of a play** (`73ba6257d`, `f5a2c6fe2`). A run writes one line to stderr
+  as each journey and phase ends, and ends its stdout on the counts, every part that made it red
+  and the failing journeys. The hand-off to the writer keeps 20 progress lines and the report's
+  tail. Proven by tests. No writer turn has yet waited on a play with them.
+- **A shape that holds itself** (`a34829091`, skill `71b64b34d`). `Itself(name)` lets a book
+  declare a tree as one object. Proven by 24 tests and the whole ostler suite. No book uses it
+  yet.
+
 ## Open
 
 - **The coder's book lane, live.** Proven by tests on a real repository only. Its live proof waits
@@ -208,5 +274,8 @@ what the row says, and the evidence lives where the row points. Groom run ids re
   book without the breach events; the skill was widened after it, not re-proven.
 - **A phone list read through the recording proxy by a writer.** The tool is built and the app's
   plain HTTP target was confirmed on the phone reference app; no writer run yet.
-- **Books for groom, ostler, workflows and workhorse.** Not run yet.
-- **A first command-line book that commits with nothing by hand.** The two above did not.
+- **A book that declares a tree with `Itself`.** The client's largest book still stamps out one
+  object per level. Moving it is a catch-up run on the client's repository.
+- **A writer turn that waits on a play by its progress lines.** Built, not yet seen.
+- **A fix turn that clears every refusal in one turn.** Seen three turns and two replays on one
+  book.
