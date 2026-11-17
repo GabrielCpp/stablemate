@@ -48,6 +48,14 @@ def check(root: Path, command: list[str], path: str) -> str:
     return (ran.stdout + ran.stderr).decode("utf-8", errors="replace").strip()
 
 
+def refuse(header: str, findings: list[str]) -> int:
+    print(header, file=sys.stderr)
+    for found in findings:
+        print(found, file=sys.stderr)
+    print("Fix the file, restage it, and commit again.", file=sys.stderr)
+    return 1
+
+
 def main(argv: list[str]) -> int:
     paths = staged_python(argv)
     if not paths:
@@ -60,11 +68,7 @@ def main(argv: list[str]) -> int:
     findings = [found for path in paths if (found := check(root, command, path))]
     if not findings:
         return 0
-    print("A staged Python file fails the repository's ruff config:", file=sys.stderr)
-    for found in findings:
-        print(found, file=sys.stderr)
-    print("Fix the file, restage it, and commit again.", file=sys.stderr)
-    return 1
+    return refuse("A staged Python file fails the repository's ruff config:", findings)
 
 
 if __name__ == "__main__":

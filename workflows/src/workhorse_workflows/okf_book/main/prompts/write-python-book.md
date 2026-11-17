@@ -104,7 +104,9 @@ the book or the app is wrong. A wrong book gets fixed. A wrong app gets an entry
 settles gets an entry in `UNDERSPECIFIED.md`.
 
 Do not commit. Reply with one JSON object and nothing else. `done` says what the book now
-covers. `blocked` says, only when you could not finish, what an operator must decide or fix:
+covers. `blocked` says, only when you could not finish, what an operator must decide or fix. Any
+text in it stops the run for the operator, so a finished book leaves it empty. A defect of the
+app is found in the book's own files, which the run reports, and never in `blocked`:
 
 ```json
 {"done": "", "blocked": ""}
