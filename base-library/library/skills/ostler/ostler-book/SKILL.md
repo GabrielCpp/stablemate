@@ -13,10 +13,12 @@ and compares the answers. A book imports `ostler.book` and its own modules, noth
 pytest, no other library. The examples in the book are the format. When they and this skill
 disagree, this skill is wrong; say so in the pass's report.
 
-The runtime source is not for reading. The one file to open in the installed `ostler/book/`
-package is `__init__.py`, which lists every name a book may use; this skill says how each is
-meant. A question the skill and the examples do not answer goes in the report under "what the
-format could not express".
+The runtime source is not for reading. A signature, a member or a method's effect comes from
+`python -m pydoc ostler.book.<Name>`, for any name `ostler.book` exports: `Browser`, `State`,
+`Collection`, `Become`, `Signed`, `Service`, `PageSurface`. It prints the signature and what each
+method does, from the repo's venv and from a client repo alike. This skill says how each name is
+meant. A question the skill, pydoc and the examples do not answer goes in the report under "what
+the format could not express".
 
 This release covers HTTP, gRPC, web, mobile and command-line books.
 
@@ -73,6 +75,12 @@ A web app, driven through a browser, is written with [references/screens.md](ref
 open: it covers `Screen`, components found by role and accessible name, `Interaction`,
 `PageSurface`, how the run judges a page, and the states a screen takes from a backend's book
 instead of making its records.
+
+What a play calls on the book, in what order, is in [references/play.md](references/play.md).
+Open it when you need to know what a play does to the book, in what order, or why a world was
+or was not reset: the reset and the day of a world, the baseline of a journey, the hooks a
+surface may offer, where an endpoint's input classes get their base, how twins play, and what
+`--only` plays.
 
 A field's shape decides what a run types into it. [references/inputs.md](references/inputs.md) lists
 the input classes and twins of each shape, the language they play in and what the run's `inputs:` and
