@@ -99,6 +99,8 @@ and each of its waits on a play rebuilds that context.
 
 The app takes one play at a time: start a play only when no other is running. A play can outlast a shell command's time limit, so start it in the background and wait
 on its exit.
+The play writes a line to stderr as each journey ends. Wait on the command's exit and read those
+lines to see that it moves. Never sleep on a timer.
 
 A run that fails names the cell the app answered differently. Decide, from the source, whether
 the book or the app is wrong. A wrong book gets fixed. A wrong app gets an entry in the book's

@@ -14,6 +14,7 @@ from workhorse_workflows.okf_book.shared.blueprint import blueprint
 UNNAMED_HEADING = "## Files no element names"
 GATE_TAIL_LINES = 200
 GATE_LINE_CHARS = 2000
+PROGRESS_TAIL_LINES = 20
 
 
 class BookGate(BaseModel):
@@ -88,9 +89,10 @@ def run_flags(stack_copy: str = "", only: tuple[str, ...] = ()) -> tuple[str, ..
 
 @blueprint.node(stub=_green)
 def python_book_run(logger: logging.Logger, root: Path, module: str, out_dir: Path, flags: tuple[str, ...] = ()) -> BookGate:
-    """Play one of the book's modules against the live app from the book root, with the flags the run names, and keep the tail of what it printed."""
+    """Play one of the book's modules against the live app from the book root, with the flags the run names, and keep the last lines of its progress and the tail of its report."""
     done = run_tool([*book_command("run", module, "--out", str(out_dir)), *flags], cwd=root, logger=logger)
-    return BookGate(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()))
+    progress = "\n".join(_narrow(line) for line in done.stderr.splitlines()[-PROGRESS_TAIL_LINES:])
+    return BookGate(exit_code=done.returncode, output=f"{progress}\n\n{tail(done.stdout)}".strip())
 
 
 @blueprint.node(stub=_green)
