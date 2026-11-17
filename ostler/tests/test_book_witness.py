@@ -8,7 +8,7 @@ import pytest
 
 from ostler.book import Answer, Endpoint
 from ostler.book.errors import BookError
-from ostler.book.witness import Because, Unseen
+from ostler.book.witness import Because, Gap, Unseen, WitnessReport
 
 
 class Ping(Endpoint):
@@ -35,3 +35,21 @@ def test_unseen_refuses_a_reason_that_is_not_a_because():
 def test_unseen_refuses_a_blank_why():
     with pytest.raises(BookError, match="say why"):
         Unseen(Ping, "401", Because.RUNTIME, "  ")
+
+
+def _report(paths: list[str]) -> WitnessReport:
+    gap = Gap(Ping, fields={200: paths})
+    return WitnessReport([gap], 0, 1, 0, len(paths))
+
+
+def test_forty_never_seen_paths_are_all_listed() -> None:
+    paths = [f"f{n}" for n in range(40)]
+    text = _report(paths).text("book")
+    assert "- 200: fields never seen with a real value: " + ", ".join(paths) + "\n" in text + "\n"
+    assert "more under" not in text
+
+
+def test_more_than_forty_never_seen_paths_name_the_rest_by_first_segment() -> None:
+    paths = [f"f{n}" for n in range(40)] + ["b.x.y", "a[].z", "a[].w", "c{}.k", "c{}"]
+    text = _report(paths).text("book")
+    assert "- 200: fields never seen with a real value: " + ", ".join(paths[:40]) + ", and 5 more under: a[], b, c{}\n" in text + "\n"

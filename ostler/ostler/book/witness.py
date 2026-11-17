@@ -17,6 +17,9 @@ from ostler.book.http import Endpoint, Witness, declared_paths
 ITEM = re.compile(r"^((\d{1,3}|[A-Z]+(_[A-Z]+)*)(: \S.*)?|inputs)$")
 
 
+LISTED_PATHS = 40
+
+
 class Because(Enum):
 
     SHARED_GATE = "the answer comes from a gate every endpoint shares, and another endpoint shows it"
@@ -126,7 +129,11 @@ class WitnessReport:
                 if gap.statuses:
                     lines.append("- answers never seen: " + ", ".join(str(s) for s in gap.statuses))
                 for status, paths in gap.fields.items():
-                    lines.append(f"- {status}: fields never seen with a real value: " + ", ".join(paths))
+                    listed = ", ".join(paths[:LISTED_PATHS])
+                    if len(paths) > LISTED_PATHS:
+                        rest = sorted({p.split(".", 1)[0] for p in paths[LISTED_PATHS:]})
+                        listed += f", and {len(paths) - LISTED_PATHS} more under: " + ", ".join(rest)
+                    lines.append(f"- {status}: fields never seen with a real value: " + listed)
                 lines.append("")
         if self.stale:
             lines += ["## Declared unseen but seen, or not declared by the endpoint" + (" (fails the run)" if fails else ""), ""]
