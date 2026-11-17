@@ -613,7 +613,7 @@ class EpicEdit(Workflow):
     def finish(self, intent: EditIntent, applied: AppliedEpicEdit) -> Done:
         report = self.call(verify_integrity, "")
         if not report.holds and not report.skipped:
-            self.call(commit_author, "incomplete", applied.epic, intent.change)
+            self.call(commit_author, "incomplete", applied.slug or applied.epic, intent.change)
             raise WorkflowFailed(
                 f"epic edit broke graph integrity:\n{report.errors}",
                 failure_class="epic-edit-graph-integrity-broken",
@@ -621,7 +621,7 @@ class EpicEdit(Workflow):
             )
         if intent.kind == "add-story" and intent.record_id:
             self.call(promote_record, intent.record_id, intent.epic)
-        self.call(commit_author, "epic-edit", applied.epic, intent.change)
+        self.call(commit_author, "epic-edit", applied.slug or applied.epic, intent.change)
         return Done(applied)
 
 

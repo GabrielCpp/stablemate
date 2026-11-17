@@ -18,7 +18,7 @@ from workhorse_workflows.kit.git import commit_paths
 RECORD = "widget-pagination"
 TEXT = "the widget list does not paginate"
 SLUG = "the-widget-list-does-not-paginate"
-STORY_REL = f"0001-fixes/stories/{SLUG}"
+EPIC = "fixes"
 
 RED_MAKEFILE = "lint:\n\t@echo 'pagination.go:1: undefined: pageSize'; exit 1\n"
 

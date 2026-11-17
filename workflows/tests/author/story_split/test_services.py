@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from _books import write_book
-from _epics import epics_root
+from _epics import epics_root, story_dir
 
 import logging
 from pathlib import Path
@@ -33,8 +33,11 @@ def _epic(repo: Path) -> str:
     return str(Ostler(repo).list("epic")[0]["name"])
 
 
+EPIC = "accounts"
+
+
 def _list_services(repo: Path, slug: str, services: list[str]) -> Path:
-    story_md = next(epics_root().glob(f"*/stories/{slug}/story.md"))
+    story_md = story_dir(EPIC, slug) / "story.md"
     raw = story_md.read_text(encoding="utf-8")
     story_md.write_text(
         raw.replace("---\n", f"---\nservices: [{', '.join(services)}]\n", 1), encoding="utf-8"
@@ -84,7 +87,7 @@ def test_deriving_twice_leaves_the_story_files_alone(
 ) -> None:
     epic = _epic(repo)
     derive_story_services(logger, epic, repo_dir=str(repo))
-    story_md = next(epics_root().glob("*/stories/01-both/story.md"))
+    story_md = story_dir(EPIC, "01-both") / "story.md"
     before = story_md.read_bytes()
 
     derive_story_services(logger, epic, repo_dir=str(repo))

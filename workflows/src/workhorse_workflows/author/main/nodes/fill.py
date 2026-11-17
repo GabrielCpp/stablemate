@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import Ostler, registry
+from ostler import Ostler
 from ostler.model import Epic
 from ostler.select import dag_order, epic_by_name
 from workhorse.pyflow import WorkflowFailed
@@ -30,13 +30,13 @@ STORY_ORDER_STRIDE = 10_000
 
 
 def _ordered_epics(okf: Ostler, names: list[str]) -> list[Epic] | None:
-    normalized = [registry.epic_slug(name) for name in names]
-    if not names or len(set(normalized)) != len(normalized):
+    if not names:
         return None
     epics = [epic_by_name(okf.graph, name) for name in names]
-    if any(epic is None for epic in epics):
+    found = [epic for epic in epics if epic is not None]
+    if len(found) != len(names) or len({epic.name for epic in found}) != len(found):
         return None
-    return [epic for epic in epics if epic is not None]
+    return found
 
 
 def _story_graph_valid(epic: Epic) -> bool:

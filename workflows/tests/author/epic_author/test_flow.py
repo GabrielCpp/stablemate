@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from _books import write_book
-from _epics import write_epic_prose
+from _epics import epic_dir, write_epic_prose
 from _fakes import StubRunner
 from _milestones import write_milestone
 from _pm import answer
@@ -91,12 +91,12 @@ def test_authors_only_the_explicit_epic_and_returns_document_evidence(
     )
 
     assert isinstance(result, EpicAuthorDone)
-    assert result.epic.endswith("sign-in")
+    assert result.epic == epic_dir("sign-in").name
     assert result.seed_count == 1
     assert agent.calls == {"write-epic": 1}
-    assert agent.args["write-epic"]["epic"].endswith("sign-in")
+    assert agent.args["write-epic"]["epic"] == epic_dir("sign-in").name
     assert Ostler(repo).list("story") == []
-    recovery = next(epic for epic in Ostler(repo).graph.epics if epic.name.endswith("recovery"))
+    recovery = next(epic for epic in Ostler(repo).graph.epics if epic.slug == "recovery")
     assert recovery.seeds == []
     assert git.active_branch.name == "main"
     assert git.head.commit.hexsha == before

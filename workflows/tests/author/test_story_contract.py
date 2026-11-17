@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from _books import write_book
 from _workspace import lay_out, name_members, run_git
-from _epics import epics_root
+from _epics import story_dir as epic_story_dir
 from ostler import Ostler
 
 from workhorse_workflows.author.shared.nodes.services import service_errors
@@ -21,7 +21,7 @@ def _authored_story(
     okf = Ostler(repo)
     okf.create_epic("parser", "Parser")
     assert okf.create_story("parser", "safe-ast", "Safe AST").ok
-    story_dir = str(epics_root() / "0001-parser/stories/safe-ast")
+    story_dir = str(epic_story_dir("parser", "safe-ast"))
     path = repo / story_dir / "story.md"
     text = path.read_text(encoding="utf-8")
     if services:

@@ -243,12 +243,12 @@ folder, the epics index, the book
 all come from `ostler.path`; no module under `src/workhorse_workflows/` writes
 `docs/epics` as a literal.
 
-The reason is that epic directories are **numbered**
-(`0001-checkout-flow`) while every queue entry, prompt and operator names them by bare
-slug. A hand-built join gets both wrong, and gets them wrong *silently*: the run writes
-into a directory nothing reads, and `ostler doctor` reports an epic that is not there. Two
-derivations of the same location is the failure the rule exists for; the second one never
-learns the numbering.
+The reason is that epic and story directories are named by their **ids**
+(`<artifacts dir>/epics/<epic-id>/stories/<story-id>/`) while prompts and operators name
+them by slug. A hand-built join gets it wrong *silently*: the run writes into a directory
+nothing reads, and `ostler doctor` reports an epic that is not there. Two derivations of
+the same location is the failure the rule exists for; the second one never learns the
+naming.
 
 What a workflow still owns is the **filename it invented** — `context.md`, `feedback.md`,
 `_author-context.md`, `<gate>-context.md`, `attempts.md` — joined onto

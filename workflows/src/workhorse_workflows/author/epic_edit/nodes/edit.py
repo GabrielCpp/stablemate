@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ostler import Ostler, markdown, registry
+from ostler import Ostler, markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.epic_edit.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared import paths
@@ -82,14 +82,10 @@ def snapshot_epic(
     """Capture the graph and story-body baseline an edit is allowed to change."""
     resolved_epics_dir = paths.epics_dir(repo_dir)
     okf = Ostler(repo_dir)
-    wanted = registry.epic_slug(epic)
-    epic_row = next(
-        (row for row in okf.list("epic") if registry.epic_slug(str(row["name"])) == wanted),
-        None,
-    )
-    if epic_row is None:
+    found = okf.graph.epic_by_ref(epic)
+    if found is None:
         raise WorkflowFailed(f"epic '{epic}' does not exist")
-    name = str(epic_row["name"])
+    name = found.name
     epic_dir_rel = paths.epic_dir(repo_dir, name)
     seeds = [
         SeedSnapshot(
@@ -123,14 +119,15 @@ def snapshot_epic(
             epics=[str(value) for value in row["epics"]],
         )
         for row in okf.list("milestone")
-        if any(registry.epic_slug(str(value)) == wanted for value in row["epics"])
+        if name in [str(value) for value in row["epics"]]
     ]
     logger.info("snapshotted epic %s (%d seeds, %d stories)", name, len(seeds), len(stories))
     return EpicSnapshot(
         epic=name,
+        slug=found.slug,
         epic_dir=epic_dir_rel,
         epics_dir=resolved_epics_dir,
-        title=str(epic_row["title"]),
+        title=found.title,
         epic_hash=_hash(Path(repo_dir) / epic_dir_rel / "epic.md"),
         seeds=seeds,
         stories=stories,
@@ -209,7 +206,8 @@ def validate_edit_plan(
             )
     if plan.status != "complete":
         errors.append(f"[E_PLAN_BLOCKED] planner did not produce a complete plan: {plan.notes}")
-    if registry.epic_slug(plan.epic) != registry.epic_slug(snapshot.epic):
+    graph = Ostler(repo_dir).graph
+    if graph.epic_by_ref(plan.epic) is not graph.epic_by_ref(snapshot.epic):
         errors.append(f"[E_WRONG_EPIC] plan targets '{plan.epic}', expected '{snapshot.epic}'")
 
     for label, names in (
@@ -392,6 +390,7 @@ def apply_edit_plan(
         return AppliedEpicEdit(
             changed=True,
             epic=epic,
+            slug=snapshot.slug,
             epic_dir=snapshot.epic_dir,
             deleted=True,
             removed_stories=[
@@ -407,6 +406,7 @@ def apply_edit_plan(
     return AppliedEpicEdit(
         changed=True,
         epic=epic,
+        slug=snapshot.slug,
         epic_dir=snapshot.epic_dir,
         affected_stories=affected,
         removed_stories=[
@@ -426,10 +426,7 @@ def validate_applied_edit(
     """Prove disk matches the approved graph and unaffected story bodies remain byte-stable."""
     okf = Ostler(repo_dir)
     if applied.deleted:
-        exists = any(
-            registry.epic_slug(str(row["name"])) == registry.epic_slug(snapshot.epic)
-            for row in okf.list("epic")
-        )
+        exists = okf.graph.epic_by_ref(snapshot.epic) is not None
         return Defects(
             ok=not exists,
             errors="[E_APPLY_DELTA] deleted epic still exists" if exists else "",

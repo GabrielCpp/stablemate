@@ -5,7 +5,7 @@ import logging
 from pathlib import Path
 
 from github import GithubException
-from ostler import path as okf_path, registry
+from ostler import path as okf_path
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.branches import epic_of_branch
@@ -92,7 +92,7 @@ def _run_description(root: Path, branch: str, epic: str, story_path: str, story_
     if story_path and story_slug:
         return commits.story_description(root, story_path, story_slug)
     if epic:
-        name = registry.epic_slug(epic) or epic
+        name = okf_path.epic_slug_in(root, epic) or epic
         try:
             epic_md = okf_path.epic_dir_in(root, epic) / "epic.md"
             return commits.story_description(root, okf_path.display_path(root, epic_md), name)

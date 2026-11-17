@@ -202,7 +202,7 @@ def sync_story_fixtures(
         logger.info("%s is in no git checkout — leaving it uncommitted", story_md)
         return FixturesSynced(changed=True)
     rels = [str(p.resolve().relative_to(root)) for p in res.paths]
-    epic = registry.epic_slug(found[0].name) if found else ""
+    epic = found[0].slug if found else ""
     slug = found[1].slug if found else story_id
     message = commits.message(
         "docs",

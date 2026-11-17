@@ -5,7 +5,7 @@ import hashlib
 import logging
 from pathlib import Path
 
-from ostler import Ostler, markdown, registry
+from ostler import Ostler, markdown
 from workhorse_workflows.author.epic_split.nodes._blueprint import blueprint
 from workhorse_workflows.author.epic_split.schemas import EpicSplitContext, EpicSplitValidation
 from workhorse_workflows.author.shared import paths
@@ -96,8 +96,7 @@ def validate_epic_split(
         ordered = [str(epic).strip() for epic in milestone.epics if str(epic).strip()]
         if not ordered:
             errors.append("the milestone must contain a non-empty ordered epic list")
-        normalized = [registry.epic_slug(epic) for epic in ordered]
-        if len(set(normalized)) != len(normalized):
+        if len(set(ordered)) != len(ordered):
             errors.append("the milestone epic list contains duplicates")
         for ref in milestone.epic_refs:
             epic = okf.graph.epic_by_ref(ref)

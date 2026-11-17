@@ -347,7 +347,7 @@ def seed_fix_story(
         if record_id not in (story.get("covers") or []):
             continue
         slug = str(story.get("slug", ""))
-        path = str(story.get("path", "")) or f"{epic_dir_rel}/stories/{slug}/story.md"
+        path = str(story.get("path", "")) or f"{epic_dir_rel}/stories/{story.get('id') or slug}/story.md"
         _author_story_body(root / path, record_id, summary, logger, *where)
         logger.info("story '%s' already covers '%s' — reusing", slug, record_id)
         return FixStorySeed(
@@ -376,7 +376,7 @@ def seed_fix_story(
             f"could not create fix story '{slug}' in '{bucket}': {result.message}"
         )
 
-    story_dir_rel = f"{epic_dir_rel}/stories/{slug}"
+    story_dir_rel = f"{epic_dir_rel}/stories/{result.entity_id}"
     story_path_rel = f"{story_dir_rel}/story.md"
     _author_story_body(root / story_path_rel, record_id, summary, logger, *where)
 

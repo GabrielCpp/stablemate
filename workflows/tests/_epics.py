@@ -10,6 +10,18 @@ def epics_root() -> Path:
     return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve() / "epics"
 
 
+def epic_dir(ref: str) -> Path:
+    from ostler import path
+
+    return path.epic_dir_under(epics_root(), ref)
+
+
+def story_dir(epic: str, story: str) -> Path:
+    from ostler import path
+
+    return path.story_dir_under(epic_dir(epic), story)
+
+
 def write_epic_prose(epic_md: Path) -> None:
     """Give *epic_md* a paragraph under every section the epic contract requires, above `## Seeds`."""
     from ostler import registry

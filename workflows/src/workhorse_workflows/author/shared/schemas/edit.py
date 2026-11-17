@@ -55,6 +55,7 @@ class MilestoneSnapshot(AuthorResult):
 
 class EpicSnapshot(AuthorResult):
     epic: str = ""
+    slug: str = ""
     epic_dir: str = ""
     epics_dir: str = ""
     title: str = ""
@@ -106,6 +107,7 @@ class EpicEditPlan(AuthorResult):
 class AppliedEpicEdit(AuthorResult):
     changed: bool = False
     epic: str = ""
+    slug: str = ""
     epic_dir: str = ""
     deleted: bool = False
     affected_stories: list[str] = []

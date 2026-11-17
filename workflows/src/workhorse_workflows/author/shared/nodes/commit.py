@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import registry
 from workhorse_workflows.kit import commit_paths, find_docs_root
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared.schemas.main import Committed
@@ -22,7 +21,6 @@ def _commit_message(mode: str, epic: str, bullet: str, milestone: str = "") -> s
         return f"author: {epic} — {trimmed}" if trimmed else f"author: {epic}"
     if mode == "epic-edit" and epic:
         trimmed = bullet.strip().splitlines()[0][:72] if bullet.strip() else ""
-        epic = registry.epic_slug(epic)
         return f"author: {epic} — {trimmed}" if trimmed else f"author: {epic}"
     if milestone:
         return f"author: milestone {Path(milestone).parent.name}"

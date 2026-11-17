@@ -14,7 +14,8 @@ from coder.fix.scripted import (
     RECORD,
     RED_MAKEFILE,
     SCREENSHOT,
-    STORY_REL,
+    EPIC,
+    SLUG,
     TEXT,
     ScriptedAgent,
     assert_agent_story_commit,
@@ -26,7 +27,7 @@ from coder.fix.scripted import (
 )
 from workhorse_workflows.coder.fix.flow import Fix
 from workhorse_workflows.coder.shared.backlog import close_fix_item
-from _epics import epics_root
+from _epics import story_dir
 
 
 def test_one_item_is_seeded_fixed_checked_committed_and_closed(
@@ -46,7 +47,7 @@ def test_one_item_is_seeded_fixed_checked_committed_and_closed(
 
     assert agent.counts() == {"fix-item": 1}, agent.counts()
 
-    story = (epics_root() / STORY_REL / "story.md").read_text(encoding="utf-8")
+    story = (story_dir(EPIC, SLUG) / "story.md").read_text(encoding="utf-8")
     assert f"- {TEXT}" in story, story
     assert RECORD in story, story
     assert f"debt record `{RECORD}` in `api/widget` of the artifacts register" in story, story

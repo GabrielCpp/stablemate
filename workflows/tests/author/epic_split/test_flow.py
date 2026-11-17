@@ -22,7 +22,7 @@ from workhorse_workflows.author.epic_split.flow import EpicSplit
 from workhorse_workflows.author.epic_split.nodes import prepare_epic_split, validate_epic_split
 from workhorse_workflows.author.epic_split.schemas import EpicSplitDone
 from workhorse_workflows.author.workflow import workflow
-from _epics import epics_root
+from _epics import epic_dir, epics_root
 
 MILESTONE = "docs/milestones/account-access/milestone.md"
 
@@ -98,7 +98,7 @@ def test_creates_only_ordered_epic_skeletons_after_review_rework(
 
     assert isinstance(result, EpicSplitDone)
     assert result.status == "accepted"
-    assert result.ordered_epics == ["0001-sign-in", "0002-recover-access"]
+    assert result.ordered_epics == [epic_dir("sign-in").name, epic_dir("recover-access").name]
     assert result.reworks == 1
     assert agent.calls == {
         "split-epics": 1,

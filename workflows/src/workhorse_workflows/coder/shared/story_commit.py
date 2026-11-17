@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import registry
+from ostler import path as okf_path, registry
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -301,7 +301,7 @@ def commit_leftovers(
     """Commit exactly the paths a passed story left uncommitted, and nothing else in the tree."""
     slug = story_slug or "story"
     root = find_repo_root(repo_dir)
-    epic_name = registry.epic_slug(epic) or epic
+    epic_name = okf_path.epic_slug_in(find_docs_root(repo_dir), epic) or epic
     committed = False
     for name, repo_path in _affected_roots(logger, root, spec_dir, workspace, repo_dir):
         prefix = f"{name}:"
@@ -367,7 +367,7 @@ def commit_book_delta(
         "docs",
         commits.scope(find_docs_root(repo_dir).name),
         f"specify {slug} in the book",
-        epic=registry.epic_slug(epic) or epic,
+        epic=okf_path.epic_slug_in(find_docs_root(repo_dir), epic) or epic,
         story=story_id or slug,
     )
     try:
@@ -417,7 +417,7 @@ def commit_plan_record(
         "docs",
         commits.scope(root.name),
         f"record the plan of {slug}",
-        epic=registry.epic_slug(epic) or epic,
+        epic=okf_path.epic_slug_in(find_docs_root(repo_dir), epic) or epic,
         story=story_id or slug,
     )
     committed = bool(spec_dir) and commit_paths(root, message, rel, verify=False)
@@ -444,7 +444,7 @@ def commit_story(
     slug = story_slug or "story"
     root = find_repo_root(repo_dir)
 
-    epic_name = registry.epic_slug(epic) or epic
+    epic_name = okf_path.epic_slug_in(find_docs_root(repo_dir), epic) or epic
     description = commits.story_description(find_docs_root(repo_dir), story_path, slug)
 
     def _story_message(package: str) -> str:
