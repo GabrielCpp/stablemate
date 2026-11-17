@@ -62,6 +62,11 @@ build. Plan from the model's cells, use the names the book gives each endpoint a
 make every claim pass before you hand off. A claim you cannot meet is a block that names the
 claim, not a change you make silently. You do not edit these paths. The book lane plays them after
 you and keeps their `source=` pointers and index current.
+
+To see a claim pass, play only the calls those paths state: `ostler book run services.<name>
+--only <call>`. Never play a whole book in this turn, whatever the repository's own instructions
+say of a finished story: the book lane plays it after you, and a whole play can outlast the turn.
+Start a play as a background command and wait on its exit, never on a sleep.
 {% endif %}
 {% if follow_up_title and not opening_brief %}
 
