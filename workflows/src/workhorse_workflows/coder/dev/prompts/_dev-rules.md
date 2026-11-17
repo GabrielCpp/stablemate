@@ -15,5 +15,10 @@ Every commit carries `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}` as footers, spelled exactly so, and nowhere else in
 the message. Do not push and do not open a pull request. The workflow owns both.
 
+Name every path a commit takes on the command itself: `git commit --only -m <message> --
+<paths>`, after a `git add -- <path>` for each new file. Never a bare `git commit`, never
+`git commit -a` and never `git add -A` or `git add .`. The checkout's index can hold changes
+somebody else staged, and a commit with no paths takes them under this story's name.
+
 {% include "shared/prompts/_step-cost.md" %}
 {% endif %}
