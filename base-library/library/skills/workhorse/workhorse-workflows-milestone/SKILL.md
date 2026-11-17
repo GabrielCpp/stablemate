@@ -35,7 +35,7 @@ a larger milestone.
 ## Folder contract
 
 A milestone is a folder, `docs/milestones/NNNN-<slug>/`. The four-digit number carries the
-milestone's order, as an epic folder's does. `ostler create milestone <slug> "<title>"` picks the
+milestone's order. An epic folder carries no order: it is named by the epic's id. `ostler create milestone <slug> "<title>"` picks the
 next number and mints the id. The bare slug still names the milestone in every command. A folder
 with no number is a doctor warning that prints the `git mv` that numbers it. A flat
 `docs/milestones/<slug>.md` file is a doctor error.
@@ -87,7 +87,7 @@ frontmatter keys are `id` (defaults to the folder name), `dependsOn`, `sourceIte
 Ostler owns `epics:` and `## Epics`, so leave both empty while the milestone is `proposed`.
 The epic split sets them with `ostler milestone epics <milestone> <epic>...`, in coding order.
 Ostler stores each epic by its id under `epics:` and writes one line per epic under
-`## Epics`: its title, its id and its folder. That section is how a reader of the milestone
+`## Epics`: its title and its id, which is also its folder's name. That section is how a reader of the milestone
 sees which epics deliver it. Never edit either by hand. A list written by name, or a section
 that no longer matches the list, is a doctor error once the milestone is `approved`.
 `ostler milestone epics <milestone>` with no epic moves an old list onto ids and rewrites the

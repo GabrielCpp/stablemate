@@ -70,11 +70,12 @@ imports the derivation module directly instead:
 ```python
 from ostler import path as okf_path
 
-okf_path.epics_root_in(root)                     # <root>/docs/epics
+okf_path.epics_root_in(root)                     # <artifacts dir>/epics
 okf_path.epics_index_in(root)                    # the epic queue's index.md
-okf_path.specs_root_in(root)                     # <root>/docs/specs
-okf_path.epic_dir_in(root, "checkout-flow")      # → .../0001-checkout-flow, from the bare slug
-okf_path.story_dir_in(root, epic, slug)          # the story folder; join your own story.md
+okf_path.specs_root_in(root)                     # <artifacts dir>/specs
+okf_path.epic_dir_in(root, "checkout-flow")      # → .../<epic-id>, from the id, the folder or the slug
+okf_path.epic_slug_in(root, epic)                # the slug the epic's frontmatter declares
+okf_path.story_dir_in(root, epic, story)         # → .../stories/<story-id>, from the story's id or slug
 ```
 
 Every derivation comes in up to three spellings, chosen by what the caller already holds:

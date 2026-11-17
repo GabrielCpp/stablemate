@@ -33,10 +33,11 @@ ostler next-story <epic> [--json]                    # next runnable story (deps
 ostler path epic <epic> | spec <story-id> | story <story-id> | branch <story-id> | branch <epic> --epic   # --epic emits feat/<slug>
 ```
 
-Epic directories are numbered in creation order — `create epic checkout-flow` writes
-`docs/epics/0001-checkout-flow/` — so ask `path epic` instead of joining `docs/epics/<slug>`.
-The number orders the listing and is **not** the identity (that is the minted `id`), so every
-epic command still takes the bare slug, and `path branch` drops it (`feat/checkout-flow`).
+Epic and story folders are named by their ids: `create epic checkout-flow` writes
+`<artifacts dir>/epics/<epic-id>/epic.md` with `slug: checkout-flow`, and `create story` writes
+`stories/<story-id>/story.md`. Ask `path epic` instead of joining a path. Every epic command takes
+the id, the handle or the slug, and `path branch --epic` uses the slug (`feat/checkout-flow`).
+A shelf still in the numbered `NNNN-slug` layout refuses every command until `ostler layout apply`.
 A story is addressed by its id. The slug names the story's folder and its `### <slug>` heading in
 `epic.md`. A slug passed where a story id belongs is refused, and the error names the id to use.
 

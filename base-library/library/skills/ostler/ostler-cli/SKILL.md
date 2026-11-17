@@ -34,8 +34,8 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 
 | `type` | Location | Identity | Required frontmatter |
 |---|---|---|---|
-| `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
-| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | `<slug>` | `type`, `slug`, `status` |
+| `epic` | `<artifacts_dir>/epics/<epic-id>/epic.md` | the `id`, which names the folder; `slug` names it in commands | `type`, `id`, `slug`, `title` |
+| `story` | `<artifacts_dir>/epics/<epic-id>/stories/<story-id>/story.md` | the `id`, which names the folder | `type`, `slug`, `status` |
 | `spec.plan` / `spec.review` / `spec.qa` | `<artifacts_dir>/specs/<story id>/*.md` | path | `type` |
 
 Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story-id>` prints the folder.
