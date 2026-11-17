@@ -40,6 +40,7 @@ from ostler.book.matrix import matrix
 from ostler.book.model import Model
 from ostler.book.owners import Owners
 from ostler.book.planner import plan
+from ostler.book.progress import Progress, verdict_lines
 from ostler.book.register import Settled, load as load_register, path as register_path, save as save_register, settle
 from ostler.book.runner import Deliveries, attempt, blocked, walk
 from ostler.book.state import Impossible
@@ -401,6 +402,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     order = args.order + (f" (seed {args.seed})" if args.order == "shuffled" else "")
     print(f"order: {order}")
     resets = Resets()
+    progress = Progress()
     began = time.time()
     try:
         sick = unhealthy(service, surface, resets)
@@ -408,8 +410,9 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             print(f"could not judge: {sick}")
             return 3
         model, why = renewed(service, surface, resets, unused=True)
-        for journey in journeys:
+        for at, journey in enumerate(journeys, 1):
             started = time.time()
+            lap = progress.now()
             _speak(service, surface, journey.lang)
             if journey.alone or model is None:
                 model, why = renewed(service, surface, resets, unused=True)
@@ -422,6 +425,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             if callable(finish):
                 result.video = str(finish(args.keep_videos or not result.ok or bool(result.defects)))
             results.append(result)
+            progress.journey(at, len(journeys), journey.title(), result.verdict, lap)
             print(f"{result.verdict}  {journey.title()}  ({len(result.steps)} steps, {time.time() - started:.1f}s)"
                   + ("  [alone]" if journey.alone else ""))
             for step in result.steps:
@@ -442,9 +446,11 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             _speak(service, surface)
             print(f"journeys took {journeys_took:.0f}s; playing the cells")
             began = time.time()
+            lap = progress.phase("cells")
             played = play(service.matrices, surface, lambda: fresh(service, surface, resets),
                           keep=lambda axes, scene, name: not names or aims(service, axes, scene, name, names),
                           keep_videos=args.keep_videos)
+            progress.done("cells", lap)
             cells_took = time.time() - began
         else:
             cells_took = 0.0
@@ -453,12 +459,16 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         if not args.journey and (service.endpoints or service.interactions):
             print("playing the input classes")
             began = time.time()
+            lap = progress.phase("input classes")
             resets.ensure(surface)
             tried = play_inputs(service, surface, lambda: fresh(service, surface, resets), only=names, today=_today(surface))
+            progress.done("input classes", lap)
             inputs_took = time.time() - began
         settled = settle_register(service, args, tried)
+        lap = progress.phase("witness")
         seen = witnessed(service, surface)
         kept = account(service.screens, read_by(surface), claims_by(surface))
+        progress.done("witness", lap)
         if names:
             seen = dataclasses.replace(seen, gaps=[g for g in seen.gaps if g.endpoint.__name__ in names],
                                        unseen=tuple(u for u in seen.unseen if u.endpoint.__name__ in names))
@@ -516,8 +526,15 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         print(line)
     show_witness(service, seen, args.out, not partial)
     show_skips(args.environment, skips)
-    return 0 if (all(r.ok for r in results) and played.ok and tried.ok and not tried.underspecified and not settled.stale and not (names and unmet)
-                 and (partial or (not stale and not unmet and seen.complete))) else 1
+    red = [part for part, bad in (
+        ("journeys", not all(r.ok for r in results)), ("cells", not played.ok), ("inputs", not tried.ok),
+        ("underspecified inputs", bool(tried.underspecified)), ("stale register", bool(settled.stale)),
+        ("divergences never met", bool(unmet) and (bool(names) or not partial)),
+        ("known defects never met", bool(stale) and not partial), ("witness", not partial and not seen.complete),
+    ) if bad]
+    for line in verdict_lines(results, red):
+        print(line)
+    return 1 if red else 0
 
 
 PLAYED = {"answer": "one answer", "request": "one request", "both": "one request and one answer"}

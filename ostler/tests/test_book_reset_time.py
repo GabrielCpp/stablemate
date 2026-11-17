@@ -3,27 +3,9 @@
 from __future__ import annotations
 
 import re
-import sys
 from pathlib import Path
-from typing import Iterator
-
-import pytest
 
 from book_todo import FIXTURE, module
-
-
-@pytest.fixture
-def todo_app() -> Iterator:
-    server = module("app").TodoServer().start()
-    yield server
-    server.stop()
-
-
-@pytest.fixture
-def own_book(monkeypatch) -> None:
-    """The fixture's `services` package imported anew, so its address is read from this test's port."""
-    for name in [n for n in sys.modules if n == "services" or n.startswith("services.")]:
-        monkeypatch.delitem(sys.modules, name)
 
 
 def play(todo_app, own_book, tmp_path: Path, monkeypatch, capsys, *arguments: str) -> tuple[int, str, int]:

@@ -219,3 +219,19 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     monkeypatch.chdir(copy)
     with services_from(copy):
         yield copy
+
+
+@pytest.fixture
+def todo_app() -> Iterator:
+    from book_todo import module
+
+    server = module("app").TodoServer().start()
+    yield server
+    server.stop()
+
+
+@pytest.fixture
+def own_book(monkeypatch) -> None:
+    """The fixture's `services` package imported anew, so its address is read from this test's port."""
+    for name in [n for n in sys.modules if n == "services" or n.startswith("services.")]:
+        monkeypatch.delitem(sys.modules, name)
