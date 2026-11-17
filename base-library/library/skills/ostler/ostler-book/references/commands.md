@@ -65,6 +65,18 @@ which of the declared strings the file holds, in the order declared. The model k
 `Collection`, and `Select`s them. This is how a file the command writes, or must leave alone, is judged. Put the
 read in `Service.watch` and give it a column in a matrix.
 
+The model's row is one subclass of `Watched` that names `marks` and `source`. A book never writes its own record
+fields, `declared` or `holding`. Make a row with `FileRecord.holding(path, *strings)`. It keeps the strings in
+the order the marks list them.
+
+```python
+class FileRecord(Watched):
+    marks = MARKS
+    source = ("acme/outputs.py::write_text",)
+
+row = FileRecord.holding("agents.yml", "claude: true")
+```
+
 Something a person does between commands is an `Outside` subclass with `happen(sandbox)` and a carried action.
 
 ## Input classes and twins
