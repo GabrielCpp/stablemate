@@ -296,7 +296,7 @@ error names the secrets imported before the failure.
 `saddlebag guard --hook` reads a Claude Code PreToolUse payload on stdin and prints a
 deny decision when the tool call would read a dotenv, key or credentials file. The
 denial's reason is the saddlebag line that gets the same thing done, so the agent is
-redirected rather than stopped. It covers the Read, Grep, Write, Edit and Bash tools.
+redirected rather than stopped. It watches the Read, Grep and Bash tools.
 
 It refuses `.env` and its variants other than `.env.example`, `.env.sample`,
 `.env.template` and `.env.dist`. It refuses `.pem`, `.key`, `.p12` and `.pfx` files and
