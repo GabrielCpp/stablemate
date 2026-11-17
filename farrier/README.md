@@ -152,9 +152,9 @@ line per leaf (`power.high.claude.model=haiku`). A profile **replaces** the top-
 tables rather than layering over them, so what it prints is the whole config that run
 resolves from, and two profiles diff against each other line by line. `--config PATH`
 goes before the action and names the file every config verb reads and writes, so the
-question can be asked of a config that is not this machine's home one. There is no
-setter: a profile is a nested table, and `set-library`-style flat assignment cannot
-express one — edit the file.
+question can be asked of a config that is not this machine's home one.
+`farrier config set profiles.<name>.<key>=<value>` writes one profile leaf, and refuses
+an undeclared key.
 
 `worktrees` finds the linked worktrees agents left behind and changes nothing until you pass
 `--apply`. Each path is a checkout or a folder of checkouts, the default is the current
