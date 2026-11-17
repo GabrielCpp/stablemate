@@ -3,13 +3,20 @@ type: milestone
 title: Groom run visibility
 status: approved
 epics:
-- 0009-see-what-a-live-run-is-costing
-- 0010-inspect-files-and-diff-of-a-container-run
-- 0011-read-the-activity-of-a-run
-- 0012-review-a-finished-run-in-history
+- SM-01M6CME7NCND2J351NJY8WXFY1
+- SM-01M6CMEAEKNGMH50KS9EFGHNM2
+- SM-01M6CMED7TBQHT6Z50WAWHDPKJ
+- SM-01M6CMEG9J5GV2K1TZHDB4C1A0
 ---
 
 # Groom run visibility
+
+## Epics
+
+1. See what a live run is costing (`SM-01M6CME7NCND2J351NJY8WXFY1`, `0009-see-what-a-live-run-is-costing`)
+2. Inspect files and diff of a container run (`SM-01M6CMEAEKNGMH50KS9EFGHNM2`, `0010-inspect-files-and-diff-of-a-container-run`)
+3. Read the activity of a run (`SM-01M6CMED7TBQHT6Z50WAWHDPKJ`, `0011-read-the-activity-of-a-run`)
+4. Review a finished run in history (`SM-01M6CMEG9J5GV2K1TZHDB4C1A0`, `0012-review-a-finished-run-in-history`)
 
 ## Outcome
 
