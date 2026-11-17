@@ -116,7 +116,12 @@ what the row says, and the evidence lives where the row points. Groom run ids re
 - **Gates' last lines:** `8 pass, 0 known defects, 0 fail`; `nothing missing` and `nothing
   stale` read on main after landing.
 - **Cost:** $3.35, two Sonnet owner turns, 38 minutes of turns. Wall 48 minutes. No stack.
-- **By hand:** nothing beyond the launch.
+- **By hand:** after landing, the book failed the repository's lint: 8 unused imports and one
+  untyped lookup. The workflow's commit ran none of the repository's declared checks. Fixed at
+  the cause: a book commit now runs the declared commit checks and a refusal goes to the fix turn
+  (`24b900511`), and the declared Python check runs ruff, ty and basedpyright on staged files
+  (`1471dc4ab`). The 9 lines were then fixed by an agent (`92b465f28`, `41a9bd3dd`), and the
+  book still checks clean and plays green.
 - **Evidence:** groom `w3-farrier`; stablemate commit `8c19b5ddb`.
 
 ## Open

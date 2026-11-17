@@ -39,6 +39,10 @@ Run the check that refused, on its own, before you end the turn. Running it is h
 - Never commit, amend, stash, reset, check out, or change a branch. Never stage or unstage a path.
 - Never pass `--no-verify`, set a variable that skips a hook, or edit, disable or remove a hook
   or the check it runs. A check that is wrong for this commit is a finding for the operator.
+- Never add an exception, a coincidence entry, an ignore or any other waiver to a check's
+  configuration. The commit carries only its own paths, so a waiver outside them leaves the next
+  commit refused the same way. A repeat the clone check names is fixed in the book: the second
+  copy imports the first.
 - Never push, deploy, build an image, or run a command against anything outside this machine.
 
 ## Your reply
