@@ -5,6 +5,7 @@ from __future__ import annotations
 import difflib
 import functools
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,12 +50,25 @@ class Report:
         }
 
 
-def scope_to_paths(report: Report, paths: list[str]) -> Report:
-    """*report* keeping only the findings about *paths* (repo-relative files or folders)."""
-    wanted = [p.strip("/") for p in paths]
+def scope_to_paths(report: Report, root: Path, files: list[Path],
+                   epic_files: Mapping[str, Path] | None = None) -> Report:
+    """*report* keeping only the findings about *files*, each a file or folder.
+
+    A finding names its file relative to *root* when inside it, absolute otherwise. A finding
+    that names an epic and no file is about that epic's file in *epic_files*.
+    """
+    wanted = [file.resolve() for file in files]
+    epic_files = epic_files or {}
 
     def inside(path: str) -> bool:
-        return any(path == p or path.startswith(p + "/") for p in wanted)
+        if not path:
+            return False
+        named = (root / path).resolve()
+        return any(named == file or named.is_relative_to(file) for file in wanted)
+
+    def about(finding: Finding) -> str:
+        epic_file = epic_files.get(finding.epic)
+        return finding.path or (str(epic_file) if epic_file is not None else "")
 
     return Report(
         org=report.org,
@@ -62,7 +76,7 @@ def scope_to_paths(report: Report, paths: list[str]) -> Report:
         epics=report.epics,
         findings=[
             f for f in report.findings
-            if inside(f.path) or any(inside(r.split("#", 1)[0]) for r in f.related)
+            if inside(about(f)) or any(inside(r.split("#", 1)[0]) for r in f.related)
         ],
     )
 
@@ -95,6 +109,11 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
         milestone_filter: str | None = None) -> Report:
     report = Report(org=graph.org_name, profile=graph.profile)
     f = report.findings
+    if epic_filter and not any(_epic_matches(epic, epic_filter) for epic in graph.epics):
+        f.append(Finding("error", "unknown-epic",
+                         f"no epic '{epic_filter}' under {_rel_posix(graph.doc_roots['epics'], graph.root)}",
+                         ref=epic_filter))
+        return report
     if milestone_filter:
         milestone = graph.milestone_by_name(milestone_filter)
         if milestone is None:

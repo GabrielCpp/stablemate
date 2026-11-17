@@ -201,6 +201,12 @@ def minting_root(tmp_path: Path) -> Path:
 
 
 @pytest.fixture(autouse=True)
+def _ostler_defects_raise(monkeypatch):
+    """A defect inside ostler raises in a test instead of becoming the one-line internal error."""
+    monkeypatch.setenv("OSTLER_DEBUG", "1")
+
+
+@pytest.fixture(autouse=True)
 def _git_identity(monkeypatch):
     """Tests commit to the artifacts repo, and a CI runner has no git identity of its own."""
     for role in ("AUTHOR", "COMMITTER"):

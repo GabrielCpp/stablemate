@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import pytest
-from ostler import crud, doctor, layout, markdown, todo
+from ostler import cli, crud, doctor, layout, markdown, todo
 from ostler.model import load
 
 from conftest import present
@@ -83,3 +83,45 @@ def test_a_story_folder_named_by_its_slug_is_a_finding(tmp_path: Path):
     codes = {f.code for f in doctor.run(load(tmp_path)).findings}
 
     assert "story-folder-not-id" in codes
+
+
+def test_doctor_path_takes_a_shelf_file_and_keeps_its_findings(tmp_path: Path, capsys):
+    epic = crud.create_epic(load(tmp_path), "accounts", "Accounts")
+    assert crud.create_story(load(tmp_path), "accounts", "sign-in", "Sign in").ok
+    folder = _shelf() / "epics" / epic.entity_id
+
+    code = cli.main(["-C", str(tmp_path), "--no-index", "doctor", "--path", str(folder)])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "story-covers-no-seed" in out and "0 error(s)" not in out
+
+
+def test_doctor_path_outside_every_doc_root_names_the_roots_it_accepts(tmp_path: Path, capsys):
+    code = cli.main(["-C", str(tmp_path), "--no-index", "doctor", "--path", "/etc/hostname"])
+
+    assert code == 2
+    assert str(_shelf() / "epics") in capsys.readouterr().err
+
+
+def test_an_unknown_epic_is_an_error_and_never_a_clean_result(tmp_path: Path, capsys):
+    assert cli.main(["-C", str(tmp_path), "--no-index", "doctor", "--epic", "nope"]) == 1
+    assert "unknown-epic" in capsys.readouterr().out
+    assert cli.main(["-C", str(tmp_path), "--no-index", "next-story", "nope"]) == 1
+    assert "no epic named 'nope'" in capsys.readouterr().err
+
+
+def test_an_ostler_defect_prints_one_line_and_exits_70(tmp_path: Path, monkeypatch, capsys):
+    monkeypatch.delenv("OSTLER_DEBUG")
+
+    def broken(*_args, **_kwargs):
+        raise ValueError("boom")
+
+    monkeypatch.setattr(cli, "_cmd_doctor", broken)
+
+    code = cli.main(["-C", str(tmp_path), "--no-index", "doctor"])
+
+    err = capsys.readouterr().err
+    assert code == cli.INTERNAL_ERROR
+    assert "ostler doctor: internal error at test_id_folders.py:" in err
+    assert "ValueError: boom" in err and "Traceback" not in err

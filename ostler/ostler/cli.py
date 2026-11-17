@@ -7,6 +7,7 @@ import json
 import os
 import shlex
 import sys
+import traceback
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 
@@ -721,41 +722,41 @@ def _result(res, as_json: bool = False) -> int:
     return 0 if res.ok else 1
 
 
-def _repo_relative(graph, path: str) -> str | None:
-    """*path* as the repo-relative spelling a finding carries, or None when it is not the book's."""
-    root = graph.root.resolve()
-    typed = Path(path).resolve()
-    candidate = typed if typed.exists() and typed.is_relative_to(root) else root / path
+def _book_file(graph, typed: str) -> Path | None:
+    """The file or folder *typed* names, an absolute path as given and a relative one under the repo root as doctor prints it, or None when no doc root holds it."""
+    candidate = Path(typed) if Path(typed).is_absolute() else graph.root / typed
     candidate = candidate.resolve()
     if not candidate.exists():
         return None
     if not any(candidate.is_relative_to(r.resolve()) for r in graph.doc_roots.values()):
         return None
-    return candidate.relative_to(root).as_posix()
+    return candidate
 
 
 def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
-    scope = [_repo_relative(graph, p) for p in args.path]
-    outside = [p for p, rel in zip(args.path, scope, strict=True) if rel is None]
+    scope = [_book_file(graph, p) for p in args.path]
+    outside = [p for p, file in zip(args.path, scope, strict=True) if file is None]
     if outside:
-        roots = ", ".join(sorted(r.relative_to(graph.root).as_posix()
-                                 for r in graph.doc_roots.values()
-                                 if r.is_relative_to(graph.root)))
+        roots = ", ".join(sorted(path_mod.display_path(graph.root, r)
+                                 for r in graph.doc_roots.values()))
         print(f"ostler doctor: --path {', '.join(outside)} is not a file of this book "
               f"(its doc roots: {roots})", file=sys.stderr)
         return 2
-    wanted = [rel for rel in scope if rel is not None]
+    wanted = [file for file in scope if file is not None]
     report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema,
                         milestone_filter=args.milestone)
     if wanted:
-        report = doctor.scope_to_paths(report, wanted)
+        report = doctor.scope_to_paths(
+            report, graph.root, wanted,
+            {epic.name: epic.epic_md for epic in graph.epics if epic.epic_md is not None})
     if args.json:
         payload = report.as_dict()
         payload["index"] = store.stats()
         _out(json.dumps(payload, indent=2))
         return 1 if report.errors else 0
     if args.path:
-        _out(f"{report.errors} error(s), {report.warnings} warning(s) in {', '.join(wanted)}")
+        _out(f"{report.errors} error(s), {report.warnings} warning(s) in "
+             f"{', '.join(path_mod.display_path(graph.root, file) for file in wanted)}")
     else:
         _out(f"org: {report.org}   profile: {report.profile}")
     for facts in [] if args.path else report.epics:
@@ -1168,12 +1169,33 @@ def _env_root(start: Path) -> Path:
     return env_cli.commands.env_root(start)
 
 
+INTERNAL_ERROR = 70
+
+
 def main(argv: list[str] | None = None) -> int:
     try:
         return _main(argv)
     except ConfigError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except Exception as exc:
+        if os.environ.get("OSTLER_DEBUG"):
+            raise
+        print(_internal_error(argv, exc), file=sys.stderr)
+        return INTERNAL_ERROR
+
+
+def _internal_error(argv: list[str] | None, exc: Exception) -> str:
+    """One line naming the command, where ostler failed and why: an ostler defect, never the caller's input."""
+    given = sys.argv[1:] if argv is None else argv
+    at = 0
+    while at < len(given) and given[at].startswith("-"):
+        at += 2 if given[at] in ("-C", "--chdir", "--index-dir") else 1
+    command = given[at] if at < len(given) else ""
+    frame = traceback.extract_tb(exc.__traceback__)[-1]
+    where = f"{Path(frame.filename).name}:{frame.lineno}"
+    return (f"ostler {command}: internal error at {where}: "
+            f"{type(exc).__name__}: {exc} (an ostler defect; OSTLER_DEBUG=1 prints the stack)")
 
 
 def _book_position(argv: list[str]) -> int | None:
@@ -1271,7 +1293,11 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
     if c == "next-epic":
         return _emit(select.next_epic(graph), args.json)
     if c == "next-story":
-        return _emit(select.next_story(graph, args.epic), args.json)
+        found = select.next_story_report(graph, args.epic)
+        if found["state"] == "no-epic":
+            print(f"ostler next-story: {found['detail']}", file=sys.stderr)
+            return 1
+        return _emit(found["story"], args.json)
     if c == "create":
         if args.what == "epic":
             res = crud.create_epic(graph, args.name, args.title)

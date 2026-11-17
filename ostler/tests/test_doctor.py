@@ -546,8 +546,9 @@ def test_path_scope_keeps_only_that_files_findings():
     two = doctor.Finding("error", "missing-type", "m", path="docs/specs/a/rec2.md")
     report = doctor.Report(org="acme", profile="full", findings=[one, two])
 
-    assert doctor.scope_to_paths(report, ["docs/specs/a/rec.md"]).findings == [one]
-    assert doctor.scope_to_paths(report, ["docs/specs/a/"]).findings == [one, two]
+    root = Path("/repo")
+    assert doctor.scope_to_paths(report, root, [root / "docs/specs/a/rec.md"]).findings == [one]
+    assert doctor.scope_to_paths(report, root, [root / "docs/specs/a"]).findings == [one, two]
 
 
 def test_path_scope_keeps_a_group_finding_through_its_related_member():
@@ -555,4 +556,5 @@ def test_path_scope_keeps_a_group_finding_through_its_related_member():
     other = doctor.Finding("warn", "schema", "m", path="docs/specs/c.md")
     report = doctor.Report(org="acme", profile="full", findings=[member, other])
 
-    assert doctor.scope_to_paths(report, ["docs/specs/b.md"]).findings == [member]
+    root = Path("/repo")
+    assert doctor.scope_to_paths(report, root, [root / "docs/specs/b.md"]).findings == [member]

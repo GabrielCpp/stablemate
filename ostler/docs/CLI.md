@@ -42,13 +42,22 @@ what gets written into a document is always the full id.
 ## Inspect
 
 ```bash
-ostler doctor [--epic EPIC | --milestone NAME] [--json] [--no-schema]
+ostler doctor [--epic EPIC | --milestone NAME] [--path PATH]... [--json] [--no-schema]
 #   conformance + referential integrity; non-zero on an error-level finding.
+#   --path keeps the findings about one file or folder of the book, on the shelf too.
 #   --no-schema skips JSON Schema validation.
 ostler layout apply
 #   rename every epic and story folder on the shelf to its id, record each epic's slug,
 #   repoint the queue; exit 1 names each folder it could not move.
 ```
+
+`--path` takes an absolute path, or a path relative to the repo root, the way doctor prints the
+files it reports. A path under no doc root is refused with the roots it accepts, the artifacts
+shelf included. An `--epic` that names no epic is an `unknown-epic` error, and `next-story` with an
+unknown epic exits 1, so a typo never reads as a clean result.
+
+A failure inside ostler itself prints one line, `ostler <command>: internal error at <file>:<line>:
+<type>: <message>`, and exits 70. `OSTLER_DEBUG=1` prints the stack instead.
 
 ## Retrieve
 
