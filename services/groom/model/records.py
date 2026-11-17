@@ -326,3 +326,24 @@ class Filter:
 
     key: str
     text: str
+
+
+@dataclass(frozen=True)
+class Session:
+    """An attendant's session, which only an attendant creates."""
+
+    session_id: str
+
+
+@dataclass(frozen=True)
+class Job:
+    """An attendant job, which only a gate waiting on an attendant creates."""
+
+    job_id: str
+
+
+@dataclass(frozen=True)
+class Item:
+    """An item of a dispatch queue, which only a configured queue takes."""
+
+    item_id: str

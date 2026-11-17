@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from ostler.book import App, Environment, Service
+from typing import cast
+
+from ostler.book import App, Because, Endpoint, Environment, Service, Unseen
 
 from .. import fixtures
 from ..model.state import Dashboard, DashboardOff
 from ..stack import PORT, stack
 from .health import TheDashboardShowsTheFleet
 from .interactions import ALL as INTERACTIONS
+from .interactions import AnswerTheGate
 from .journeys import ALL as JOURNEYS
 from .lifecycle import MATRICES
 from .screens import ALL as SCREENS
@@ -26,10 +29,26 @@ service = Service[Dashboard](
     journeys=JOURNEYS,
     health=(TheDashboardShowsTheFleet,),
     stack=stack,
-    app=App(roots=("groom/groom",), verified="VERIFIED", ignore=()),
+    app=App(
+        roots=("groom/groom/assets", "groom/groom/templates"),
+        verified="VERIFIED",
+        ignore=(
+            "groom/groom/assets/README.md",
+            "groom/groom/assets/*.css",
+            "groom/groom/assets/*.png",
+            "groom/groom/assets/diff2html.min.js",
+            "groom/groom/assets/highlight.min.js",
+            "groom/groom/assets/htm-preact.js",
+            "groom/groom/assets/marked.min.js",
+            "groom/groom/assets/purify.min.js",
+        ),
+    ),
     screens=SCREENS,
     interactions=INTERACTIONS,
     matrices=MATRICES,
     watch=(),
+    unseen=(
+        Unseen(cast(type[Endpoint], AnswerTheGate), "inputs", Because.NEVER_FILLED, "groom refuses every answer of a pushed run the same way, so no answer succeeds for an input class to vary"),
+    ),
     words={**{i.__name__: i for i in INTERACTIONS}, **{name: getattr(fixtures, name) for name in fixtures.__all__}},
 )

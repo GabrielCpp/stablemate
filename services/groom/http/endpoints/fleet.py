@@ -14,7 +14,7 @@ class ReadFleet(Endpoint):
     path = "/api/state"
     query = Object(q=Field(RUN_ID, required=False, does="keeps the runs where this text, in any case, is part of the name, repo, branch, node, run id or a gate path"))
     answers = (Answer(200, FLEET, "the fleet as the dashboard shows it, filtered by q"),)
-    source = (APP + "api_state", PROJECTION + "fleet_rows", PROJECTION + "matches", PROJECTION + "attention_events")
+    source = (APP + "api_state", PROJECTION + "fleet_rows", PROJECTION + "matches", PROJECTION + "attention_events", "groom/groom/attention.py")
     does = (
         "Reads the fleet. Runs come blocked first, then running, then finished, each group by name. The attention list "
         "covers every run and ignores q."

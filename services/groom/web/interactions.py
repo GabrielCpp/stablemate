@@ -1,8 +1,8 @@
 from ostler.book import Interaction
 
-from ..fixtures import Push, Query, Settings
-from ..model.actions import FilterRuns, Navigate, PushBlocked, PushExited, PushProgress, SwitchAttendant
-from .screens import Runs
+from ..fixtures import Push, Query, Reply, Settings
+from ..model.actions import AnswerFromPage, FilterRuns, Navigate, OpenRun as SelectRun, PushBlocked, PushExited, PushProgress, SwitchAttendant
+from .screens import Attendant, Dispatch, History, RunDetail, Runs
 from .screens import Settings as SettingsScreen
 
 
@@ -52,4 +52,42 @@ class SwitchTheAttendant(Interaction[Settings]):
     carries = SwitchAttendant
 
 
-ALL = (ReportProgress, ReportGate, ReportExit, FilterTheList, OpenSettings, OpenRuns, SwitchTheAttendant)
+class OpenRun(Interaction[Push]):
+    source = ("groom/groom/assets/dashboard.js",)
+    screen = RunDetail
+    does = "presses a run in the list; its detail pane opens beside the list with the gate it waits on"
+    carries = SelectRun
+
+
+class AnswerTheGate(Interaction[Reply]):
+    source = ("groom/groom/assets/dashboard.js", "groom/groom/app.py")
+    screen = RunDetail
+    does = "types an answer under the question of a blocked run and presses Send answer"
+    carries = AnswerFromPage
+
+
+class OpenHistory(Interaction[object]):
+    source = ("groom/groom/assets/dashboard.js",)
+    screen = History
+    does = "presses History in the left bar"
+    carries = Navigate
+
+
+class OpenAttendant(Interaction[object]):
+    source = ("groom/groom/assets/dashboard.js",)
+    screen = Attendant
+    does = "presses Attendant in the left bar"
+    carries = Navigate
+
+
+class OpenDispatch(Interaction[object]):
+    source = ("groom/groom/assets/dashboard.js",)
+    screen = Dispatch
+    does = "presses Dispatch in the left bar"
+    carries = Navigate
+
+
+ALL = (
+    ReportProgress, ReportGate, ReportExit, FilterTheList, OpenSettings, OpenRuns, SwitchTheAttendant,
+    OpenRun, AnswerTheGate, OpenHistory, OpenAttendant, OpenDispatch,
+)

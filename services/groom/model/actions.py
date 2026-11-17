@@ -8,8 +8,10 @@ from typing import Any
 
 from ostler.book import Action, Actor, Become, Create, Show, Transaction, Update
 
-from ..fixtures import Push, Query, Settings
-from .records import BLOCKED, FINISHED, PREVIEW_MAX, RUNNING, Ack, AttendSettings, Filter, Gate, GateView, Head, Metrics, Run, Running, Strip, Worker
+from ..fixtures import Look, Push, Query, Reply, Settings
+from . import rules
+from .records import BLOCKED, GATE_STATUS, FINISHED, PREVIEW_MAX, RUNNING, Ack, AttendSettings, Filter, Gate, GateView, Head, Metrics, Run, Running, Strip, Worker
+from . import views
 from .state import FILTER_KEY, Dashboard, DashboardHeadless, DashboardOff, GroomApp, Headless, Off
 
 
@@ -184,4 +186,254 @@ class SwitchAttendant(Action[Settings, Dashboard]):
 class Navigate(Action[object, Dashboard]):
     @staticmethod
     def reduce(a: object, s: Dashboard, by: Actor | None) -> Transaction:
+        return Transaction()
+
+
+class ReadOutbox(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        run = s.runs[a.run_id] if a.run_id in s.runs else None
+        if run is None or not run.gates:
+            return Show(views.Outbox(False))
+        gate = run.gates[0]
+        return Show(views.Outbox(True, gate.file_path, gate.question, GATE_STATUS))
+
+
+def _refuse_unknown_run(a: Look, s: GroomApp, reason: str) -> Show:
+    if a.run_id not in s.runs:
+        return Show(views.Notice(False, "no such run"))
+    return Show(views.Notice(False, reason))
+
+
+class AnswerGate(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return _refuse_unknown_run(a, s, "unknown workspace volume for this container")
+
+
+class ReadInbox(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Inbox())
+
+
+class LeaveMessage(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        if a.run_id in s.runs and not a.body:
+            return Show(views.Notice(False, "message body is required"))
+        return _refuse_unknown_run(a, s, "no run directory yet")
+
+
+class ReadOverview(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Overview(a.run_id or ""))
+
+
+class ReadActivity(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Activity(a.run_id or ""))
+
+
+class ReadRecords(Action[Look, GroomApp]):
+    accept = Look
+    rules = (rules.bad_cursor,)
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Records(a.run_id or "", metrics=bool(a.metrics)))
+
+
+class SearchRun(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Matches(a.run_id or "", a.q or ""))
+
+
+class ReadEntry(Action[Look, GroomApp]):
+    accept = Look
+    rules = (rules.no_entry,)
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Transaction:
+        return Transaction()
+
+
+class ReadTurn(Action[Look, GroomApp]):
+    accept = Look
+    rules = (rules.no_turn,)
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Transaction:
+        return Transaction()
+
+
+class ReadArchive(Action[Look, GroomApp]):
+    accept = Look
+    rules = (rules.no_archive,)
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Transaction:
+        return Transaction()
+
+
+class ReadFiles(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Tree())
+
+
+class ReadFile(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        path = a.path or ""
+        return Show(views.FileText(path, views.language_of(path)))
+
+
+class ReadDiff(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Change())
+
+
+class ReadRepos(Action[object, GroomApp]):
+    @staticmethod
+    def reduce(a: object, s: GroomApp, by: Actor | None) -> Show:
+        return Show()
+
+
+class ReadLive(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show()
+
+
+class ReadHistory(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.History())
+
+
+class RetryHistory(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Done())
+
+
+class Refresh(Action[object, GroomApp]):
+    @staticmethod
+    def reduce(a: object, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Refreshed())
+
+
+class Reload(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Reloaded())
+
+
+class ReadAttendQueue(Action[object, GroomApp]):
+    @staticmethod
+    def reduce(a: object, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.AttendQueue(s.attend))
+
+
+class ReadAttendSessions(Action[object, GroomApp]):
+    @staticmethod
+    def reduce(a: object, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.AttendSessions(s.attend))
+
+
+class ReadAttendSession(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        ident = a.session_id or ""
+        return Show(views.AttendSession(ident, f"claude --resume {ident}"))
+
+
+class StopAttendant(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Done())
+
+
+class ReadQueues(Action[object, GroomApp]):
+    @staticmethod
+    def reduce(a: object, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Queues())
+
+
+class Enqueue(Action[Look, GroomApp]):
+    accept = Look
+    rules = (rules.no_queue,)
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Transaction:
+        return Transaction()
+
+
+class ReadQueueItems(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.QueueItems())
+
+
+class DropItem(Action[Look, GroomApp]):
+    accept = Look
+
+    @staticmethod
+    def reduce(a: Look, s: GroomApp, by: Actor | None) -> Show:
+        return Show(views.Done())
+
+
+class OpenRun(Action[Push, Dashboard]):
+    accept = Push
+
+    @staticmethod
+    def reduce(a: Push, s: Dashboard, by: Actor | None) -> Transaction:
+        return Transaction()
+
+
+class AnswerFromPage(Action[Reply, Dashboard]):
+    accept = Reply
+    rules = (rules.workspace_unreachable,)
+
+    @staticmethod
+    def reduce(a: Reply, s: Dashboard, by: Actor | None) -> Transaction:
         return Transaction()

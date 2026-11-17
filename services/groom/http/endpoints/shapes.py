@@ -2,8 +2,12 @@
 
 from ostler.book import Bool, Enum, Field, Id, Int, List, Map, Num, Object, Str
 
-from ...model.records import ATTEND_MODES, GATE_STATUS, LIVE, STATES, Run
+from ...model.records import ATTEND_MODES, GATE_STATUS, LIVE, STATES, Item, Job, Run, Session
 
+SESSION_ID = Id(Session, Str(), minted="the book's groom keeps no attendant session, so any name the book makes up is one it has never seen")
+JOB_ID = Id(Job, Str(), minted="the book's groom runs no attendant, so any name the book makes up is a job it has never seen")
+ITEM_ID = Id(Item, Str(), minted="the book's groom names no dispatch queue, so any name the book makes up is an item it has never seen")
+LIVE_RUN = Id(Run, Str(), minted="a live run is one that sends telemetry, which the book cannot send, so any name the book makes up is a run it has never seen")
 RUN_ID = Id(Run, Str(), minted="groom keeps every run it was ever told of and is never wiped, so a run id must be new to it")
 
 ERROR = Object(
@@ -16,6 +20,8 @@ ERROR = Object(
         does="one entry per field the framework refused, present on a validation failure only",
     ),
 )
+
+SERVER_ERROR = Object("ServerError", status_code=Field(Int()), detail=Field(Str(), does="the framework's words for an unhandled error"))
 
 ACK = Object("Ack", ok=Field(Bool(), does="true when groom took the push, false when it lacked what it needs to know the run"))
 
@@ -215,3 +221,216 @@ ATTEND = Object(
 )
 
 ATTEND_INPUT = Object("AttendInput", enabled=Field(Bool(), required=False, does="true turns the attendant on; absent or false turns it off"))
+
+
+ENTRY = Map(Str())
+EMPTY_BECAUSE = "the book's groom has a fresh database and no telemetry, so no entry ever shows"
+
+QUEUE_ERROR = Object(
+    "QueueError",
+    ok=Field(Bool()),
+    error=Field(Str(), does="the reason, in the queue answers' own words"),
+)
+
+OUTBOX = Object(
+    "Outbox",
+    found=Field(Bool(), does="false when the run is unknown or waits on no gate"),
+    file_path=Field(Str(), required=False, does="the first gate path in path order"),
+    question=Field(Str(), required=False, does="the question exactly as the run pushed it"),
+    status=Field(Enum((GATE_STATUS,)), required=False),
+)
+
+ANSWER_INPUT = Object(
+    "AnswerInput",
+    file_path=Field(Str(), required=False, does="the gate file the answer is for"),
+    answer=Field(Str(), required=False, does="what the operator answers"),
+)
+
+MESSAGE_INPUT = Object(
+    "MessageInput",
+    body=Field(Str(), required=False, does="the operator's message; an empty body is refused"),
+)
+
+NOTICE = Object(
+    "Notice",
+    ok=Field(Bool()),
+    message=Field(Str(), does="why groom did not do it"),
+)
+
+INBOX = Object("Inbox", messages=Field(List(Str()), does="the run's outstanding messages; none for a run that has no run directory"))
+
+TREE = Object(
+    "Tree",
+    paths=Field(List(Str()), does="the repo-relative paths of the checkout"),
+    failed=Field(Bool(), does="true when the read did not happen"),
+    reported=Field(Bool(), does="true when the source says whether it failed"),
+    served=Field(Enum(("sidecar", "volume")), does="which reader answered"),
+    repos=Field(List(Str()), required=False, does="the checkouts a sidecar names, when it names them"),
+)
+
+FILE_TEXT = Object(
+    "FileText",
+    path=Field(Str(), does="the path asked for, as sent"),
+    content=Field(Str()),
+    lang=Field(Str(), does="the highlight.js language the file name implies, empty for a name with no grammar"),
+    failed=Field(Bool()),
+    reported=Field(Bool()),
+    served=Field(Enum(("sidecar", "volume"))),
+)
+
+DIFF = Object(
+    "Diff",
+    diff=Field(Str()),
+    untracked=Field(List(Str())),
+    failed=Field(Bool()),
+    reported=Field(Bool()),
+    served=Field(Enum(("sidecar", "volume"))),
+    repos=Field(List(Str()), required=False),
+    based=Field(Bool(), required=False, does="whether a sidecar reported where the branch started, on a branch view"),
+    base=Field(Str(), required=False),
+    base_ref=Field(Str(), required=False),
+    base_branch=Field(Str(), required=False),
+    base_reason=Field(Str(), required=False),
+)
+
+REFRESHED = Object("Refreshed", ok=Field(Bool()), count=Field(Int(), does="how many workflows the scan found"))
+RELOADED = Object("Reloaded", ok=Field(Bool()), reloaded=Field(Int(), does="how many sidecars were told"))
+DONE = Object("Done", ok=Field(Bool(), does="false when nothing matched the id"))
+
+COST = Object(
+    "Cost",
+    turns=Field(Int()),
+    priced_turns=Field(Int()),
+    reports_cost=Field(Bool()),
+    usd=Field(Num(), nullable=True),
+    est_usd=Field(Num(), nullable=True),
+    output_tokens=Field(Int()),
+    backends=Field(List(Str())),
+)
+
+TILES = Object(
+    "Tiles",
+    finished=Field(Bool()),
+    reports_cost=Field(Bool()),
+    cost_usd=Field(Num(), nullable=True),
+    turns=Field(Int()),
+    priced_turns=Field(Int()),
+    active_s=Field(Num()),
+    items_done=Field(Int(), nullable=True),
+    items_total=Field(Int(), nullable=True),
+    est_usd=Field(Num(), nullable=True),
+    backends=Field(List(Str())),
+    wall_s=Field(Num()),
+    sessions=Field(Int()),
+)
+
+STANDING = Object(
+    "Standing",
+    gates=Field(Int()),
+    gate_wait_s=Field(Num()),
+    failed_steps=Field(Int()),
+    retries=Field(Int()),
+    failed_gate_checks=Field(Int()),
+    churn_alerts=Field(Int()),
+    problems=Field(Int()),
+)
+
+FACTS = Object("Facts", started_ts=Field(Num(), nullable=True), branch=Field(Str()), run_dir=Field(Str()))
+
+OVERVIEW = Object(
+    "Overview",
+    run_id=Field(RUN_ID),
+    finished=Field(Bool()),
+    cost=Field(COST),
+    figures=Field(TILES),
+    standing=Field(STANDING),
+    flows=Field(List(ENTRY), does=EMPTY_BECAUSE),
+    nodes=Field(List(ENTRY), does=EMPTY_BECAUSE),
+    compare=Field(Map(Str()), nullable=True),
+    norm_runs=Field(Int()),
+    items=Field(Map(Str()), nullable=True),
+    time_s=Field(Num()),
+    clock=Field(Map(Str()), nullable=True),
+    models=Field(List(Str())),
+    sessions=Field(List(ENTRY), does=EMPTY_BECAUSE),
+    facts=Field(FACTS),
+    as_of_ts=Field(Num(), nullable=True),
+    ending=Field(Map(Str()), nullable=True, does="why a stopped run did not finish; null for a run with no recorded ending"),
+)
+
+HISTORY_TOTALS = Object(
+    "HistoryTotals",
+    runs=Field(Int()),
+    reading=Field(Int()),
+    unreadable=Field(Int()),
+    spent_usd=Field(Num()),
+    estimate_usd=Field(Num()),
+    partly_priced=Field(Int()),
+    active_s=Field(Num()),
+    ready=Field(Int()),
+    success=Field(Int()),
+)
+
+HISTORY = Object(
+    "History",
+    runs=Field(List(ENTRY, unordered="the summaries of the whole environment, which the book never made"), does="the runs that ended in the retention window, newest first"),
+    totals=Field(HISTORY_TOTALS, opaque="adds up every ended run of the environment"),
+    medians=Field(Map(Str()), opaque="the cost per item of every workflow the environment ran"),
+    endings=Field(List(List(Str())), does="every ending a run may have, with the words the table shows"),
+    unlisted=Field(Int(), opaque="counts the archives of the whole environment that have no summary yet"),
+)
+
+ACTIVITY = Object(
+    "Activity",
+    run_id=Field(RUN_ID),
+    rows=Field(List(ENTRY), does=EMPTY_BECAUSE),
+    items=Field(List(ENTRY), does=EMPTY_BECAUSE),
+    problems=Field(Int()),
+    log_count=Field(Int()),
+    as_of=Field(Num(), opaque="the server's clock"),
+)
+
+RECORDS = Object(
+    "Records",
+    run_id=Field(RUN_ID),
+    records=Field(List(ENTRY), does=EMPTY_BECAUSE),
+    total=Field(Int()),
+    metric_samples=Field(Int()),
+    metrics=Field(Bool(), does="whether the metric samples were asked for"),
+    next=Field(Str(), does="the cursor of the next page, empty on the last"),
+)
+
+MATCHES = Object(
+    "Matches",
+    run_id=Field(RUN_ID),
+    query=Field(Str(), does="the text asked for, as sent"),
+    matches=Field(List(ENTRY), does=EMPTY_BECAUSE),
+)
+
+ATTEND_QUEUE = Object(
+    "AttendQueue",
+    mode=Field(Enum(("off", "session", "headless")), does="the attendant's mode"),
+    jobs=Field(List(ENTRY), does="every run waiting on an attendant, oldest first", opaque="the jobs of the whole environment"),
+)
+
+ATTEND_SESSIONS = Object(
+    "AttendSessions",
+    mode=Field(Enum(("off", "session", "headless"))),
+    sessions=Field(List(ENTRY), does="the latest 200 attendances, newest first", opaque="the log of the whole environment"),
+)
+
+ATTEND_SESSION = Object(
+    "AttendSession",
+    session_id=Field(SESSION_ID, does="the session asked for, as sent"),
+    present=Field(Bool(), does="whether a transcript of the session exists"),
+    path=Field(Str(), opaque="where the environment keeps the transcript"),
+    entries=Field(List(ENTRY), does="the conversation, one entry per message"),
+    resume=Field(Str(), does="claude --resume followed by the session id", opaque="the session id in it is the name the run minted"),
+    record=Field(Map(Str()), nullable=True, does="the ledger row of the session, null when the ledger has none"),
+    attempts=Field(List(Str()), does="every session id the attendance tried"),
+)
+
+QUEUES = Object("Queues", queues=Field(List(ENTRY), does="every queue the home config names, with its concurrency and its occupancy"))
+QUEUE_ITEMS = Object("QueueItems", items=Field(List(ENTRY), does="the queue's items, newest first, at most 200"))
+ENQUEUE_INPUT = Object("EnqueueInput", params=Field(Map(Str()), required=False, does="the parameters of the item; anything but an object counts as none"))
+ENQUEUED = Object("Enqueued", ok=Field(Bool()), item=Field(Map(Str()), does="the queued item as the ledger holds it"))

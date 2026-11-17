@@ -11,12 +11,15 @@ from typing import Any
 from ostler.book import Browser, Done, Environment, PageSurface, Refusal, answer
 from ostler.book.screen import Interaction
 
-from ..fixtures import Push, Query, Settings
+from ..fixtures import Push, Query, Reply, Settings
 from ..model.actions import handle
 from ..model.records import Ack, Line, Panel
-from .interactions import FilterTheList, OpenRuns, OpenSettings, ReportExit, ReportGate, ReportProgress, SwitchTheAttendant
+from .interactions import (
+    AnswerTheGate, FilterTheList, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    ReportGate, ReportProgress, SwitchTheAttendant,
+)
 from .screens import ALL as SCREENS
-from .screens import Runs
+from .screens import Attendant, Dispatch, History, RunDetail, Runs
 from .screens import Settings as SettingsScreen
 
 HOOK = """
@@ -155,7 +158,40 @@ class GroomDashboard(PageSurface):
             self.browser.wait_for(Runs.root)
         elif isinstance(step, SwitchTheAttendant):
             self.switch(step.of)
+        elif isinstance(step, OpenRun):
+            self.open_run(step.of)
+        elif isinstance(step, AnswerTheGate):
+            return self.answer(step.of)
+        elif isinstance(step, OpenHistory):
+            self.pane("history", History.root)
+        elif isinstance(step, OpenAttendant):
+            self.pane("attend", Attendant.root)
+        elif isinstance(step, OpenDispatch):
+            self.pane("dispatch", Dispatch.root)
         return Done(self.rows())
+
+    def pane(self, mode: str, root: object) -> None:
+        self.browser.page.click(f"#activitybar .act-btn[data-mode={mode}]")
+        self.browser.wait_for(root)
+        self.settle()
+
+    def open_run(self, run: Push) -> None:
+        app_id = self.app_id(handle(run.container_id))
+        if not self.browser.visible(Runs.root):
+            self.browser.page.click("#activitybar .act-btn[data-mode=runs]")
+            self.browser.wait_for(Runs.root)
+        self.browser.page.click(f'#runs-list button.row[data-worker-id="{app_id}"]')
+        self.browser.page.wait_for_selector(f'#detail .run-id:text-is("{app_id}")')
+        self.settle()
+
+    def answer(self, reply: Reply) -> Done | Refusal:
+        self.open_run(Push(container_id=reply.container_id))
+        self.browser.fill(RunDetail.answer, reply.answer or "")
+        self.browser.press(RunDetail.send)
+        self.browser.wait_for(RunDetail.rejected, "visible")
+        shown = self.browser.text(RunDetail.rejected).splitlines()
+        self.settle()
+        return Refusal(shown[-1], 400)
 
     def switch(self, settings: Settings) -> None:
         want = bool(settings.enabled)

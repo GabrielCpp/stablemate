@@ -8,10 +8,13 @@ from typing import Callable, cast
 
 from ostler.book import Axes, Impossible, Scene
 
-from ..fixtures import Push, Query, Settings, blocked, finished, running
+from ..fixtures import Push, Query, Settings, blocked, finished, replying, running
 from ..model.records import Run
 from ..model.state import Dashboard
-from .interactions import FilterTheList, OpenRuns, OpenSettings, ReportExit, ReportGate, ReportProgress, SwitchTheAttendant
+from .interactions import (
+    AnswerTheGate, FilterTheList, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    ReportGate, ReportProgress, SwitchTheAttendant,
+)
 
 TODAY = date(2026, 11, 4)
 
@@ -46,7 +49,16 @@ RUN_ACTIONS: dict[str, Callable[[Dashboard], object]] = {
     "report a clean exit": _on_run(lambda p: ReportExit(p.but(exit_code=0)), lambda: ReportExit(finished(0))),
     "filter by its name": _on_run(lambda p: FilterTheList(Query(q=p.name)), lambda: FilterTheList(Query())),
     "clear the filter": lambda m: FilterTheList(Query()),
+    "open it": _on_run(lambda p: OpenRun(p), lambda: Impossible("no run is on the list to open")),
+    "answer its gate": lambda m: _answer(m),
 }
+
+
+def _answer(model: Dashboard) -> object:
+    run = run_of(model)
+    if run is None or not run.gates:
+        return Impossible("no run on the list waits on a gate")
+    return AnswerTheGate(replying(run.container_id, "yes"))
 
 
 def run_state(model: Dashboard) -> str:
@@ -64,6 +76,9 @@ ATTEND_ACTIONS: dict[str, Callable[[Dashboard], object]] = {
     "turn off": lambda m: SwitchTheAttendant(Settings(enabled=False)),
     "open settings": lambda m: OpenSettings(),
     "return to the runs": lambda m: OpenRuns(),
+    "open history": lambda m: OpenHistory(),
+    "open the attendant": lambda m: OpenAttendant(),
+    "open dispatch": lambda m: OpenDispatch(),
 }
 
 MATRICES = (
