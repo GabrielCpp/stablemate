@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ostler.book import Outside, Sandbox
 
-from .model.actions import SelectByHand, WriteByHand
+from .model.actions import AddUserLibrary, SelectByHand, WriteByHand
 
 
 class HandWriteConfig(Outside):
@@ -21,3 +21,11 @@ class ListWhatIsWanted(Outside):
 
     def happen(self, sandbox: Sandbox) -> None:
         sandbox.append("agents.yml", "skills:\n  - demo\nscaffolds:\n  - service-gitignore\n")
+
+
+class ListUserLibrary(Outside):
+    does = "A person adds a [user_library.claude] table naming the demo skill to the home config."
+    carries = AddUserLibrary
+
+    def happen(self, sandbox: Sandbox) -> None:
+        sandbox.append("config.toml", '\n[user_library.claude]\nskills = ["demo"]\n')

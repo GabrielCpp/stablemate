@@ -19,3 +19,10 @@ tool does.
    farrier-run-hook` into .githooks/pre-commit" there. `farrier-commands-workflows.md` shows that line only for
    husky. The tool wires the `githooks` manager when nothing else is detected
    (`concepts/hook-manager-wiring.md` line 117), so the install page's list of files install renders is incomplete.
+
+4. `farrier sync`, in a directory that is not a git checkout: with an `agents.yml` and a library the home config
+   resolves, `_run_sync` (`farrier/farrier/cli.py:1065`) reaches `dirty_paths` (`farrier/farrier/sync.py:38`), whose
+   `git status` exits 128 and the `CalledProcessError` ends the command in a traceback with exit 1. Without a
+   resolvable library the same command skips the check and exits 0, so the command is graceful in one case and
+   crashes in the other. The command is a commit check, which only runs inside a checkout, so the book plays it
+   before the sandbox has a library and never after.

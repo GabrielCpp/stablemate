@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ostler.book import Environment, Service, Stack
+from ostler.book import App, Environment, Service, Stack
 
 from .commands import ALL as ENDPOINTS, Look
 from .journeys import ALL as JOURNEYS
@@ -24,4 +24,5 @@ service = Service[Repo](
     matrices=MATRICES,
     watch=(Look(),),
     records=(FileRecord,),
+    app=App(roots=("farrier/farrier",), verified="VERIFIED", ignore=("farrier/farrier/__init__.py", "farrier/farrier/README.md", "farrier/farrier/_vendor/*")),
 )
