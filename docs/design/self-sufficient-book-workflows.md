@@ -69,6 +69,13 @@ fields to 0, for $33.82 and 753 minutes, with one operator gate. Slice 3 caught 
 one lap for $0.69 and 58 minutes. Slice 2 is proven by a test on a real repository, and its live
 proof waits for the next client story.
 
+Read 2026-11-16, wave 3, recorded run by run in `docs/proofs/book-workflows.md`. `python_book`
+completed three existing client books and declared the app of a command-line book with nothing
+by hand, for $0.64 to $3.35 each. `catch_up` moved a book onto the current format through two
+gates whose causes were fixed in the workflow and in ostler. Every run played from a worktree.
+The two runs whose owner handed the book to subagents cost about $58 by token count and $62; no other run passed
+$5. The owner now writes the book itself, which no run has proven yet.
+
 ## Assumptions
 
 1. A book's verified commit is the baseline a catch-up reads. A book with none is a first book.

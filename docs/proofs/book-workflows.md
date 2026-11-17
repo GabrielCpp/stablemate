@@ -66,6 +66,34 @@ what the row says, and the evidence lives where the row points. Groom run ids re
 - **By hand:** nothing beyond the launch.
 - **Evidence:** groom `w3-docs-api-complete`; client commit `7115236fd`.
 
+## 2026-11-16: python_book writes the client web app's book from nothing, from a worktree
+
+- **Run:** okf-book `python_book`, groom run `w3-web-scratch`, in a client worktree with the web
+  book's package deleted except its stack. The result was compared with the book on client
+  master and not merged.
+- **Stablemate:** launched at `192ee2d04` (runner later moved to `0b1aa3f1c` and `5b24826cd`;
+  prompts read at each turn).
+- **Proved:** a first screen book of the client web app reached the same gates as the book on
+  master with nothing in the book written by hand: `check: 0 findings, 8 notes` on both, `missing`
+  0 of 561 files on both, a whole play of 31 pass, 5 known defects, 0 fail, stamped, marked and
+  committed by the run. It holds 81 interactions and 36 journeys against master's 34 and 34, and
+  found 7 app defects, 1 of them also on master's list and 6 new.
+- **Not proved:** that it costs less than the earlier first web book. It cost more: $61.82 against
+  $33.82, in one owner turn of 445 minutes that handed the book to six subagent writers in a row.
+  Those writers held 87 percent of the cache writes and slept 215 minutes on plays. The prompt
+  now has the owner write the book itself (`0b1aa3f1c`); not re-proven by a run.
+- **Gates' last lines:** `31 pass, 5 known defects, 0 fail`, 64 input classes with 5 declared
+  diverging, 12 twin pairs played.
+- **Cost:** $61.82. Wall 7 hours 41 minutes. Copy up in 48 seconds and 41 seconds on the resume;
+  no image built inside the run.
+- **By hand:** (1) the finished owner wrote its app defects into `blocked`, which parks the run;
+  the attendant stopped it, rewound it to its check and resumed it on a new copy (cause fixed in
+  `5b24826cd`). (2) The commit was refused by the clone check and the run's fix turn waived nine
+  clones in the check's configuration outside the commit; the waiver was not kept (cause fixed in
+  `c4f61d892`).
+- **Evidence:** groom `w3-web-scratch`; client branch `book/web-scratch` at `93a1354db`; the
+  comparison report in the goal record.
+
 ## 2026-11-16: python_book completes an existing screen book
 
 - **Run:** okf-book `python_book`, groom run `w3-docs-app-complete`, on the client's docs app
@@ -127,4 +155,13 @@ what the row says, and the evidence lives where the row points. Groom run ids re
 ## Open
 
 - **The coder's book lane, live.** Proven by tests on a real repository only. Its live proof waits
-  for a real client story.
+  for a real client story. Its worktree path reaches the copy through the same `copy_for` as the
+  runs above, read from the code, not from a run.
+- **The client api book's completion.** Run `w3-api-complete` was stopped at the wave's spend
+  ceiling after its owner handed the book to five subagents at once, about $58 by token count.
+  Its half-written book is kept in a locked worktree for a resume under the fixed prompt.
+- **A writer declaring an event the service's clock causes.** Run `td-sla-2` ($8.11) wrote a green
+  book without the breach events; the skill was widened after it, not re-proven.
+- **A phone list read through the recording proxy by a writer.** The tool is built and the app's
+  plain HTTP target was confirmed on the phone reference app; no writer run yet.
+- **Books for groom, ostler, workflows, workhorse, saddlebag and paddock.** Not run in this wave.
