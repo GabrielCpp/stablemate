@@ -126,9 +126,7 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
         return False
     if not repo.git.status("--porcelain", *scope).strip():
         return False
-    present = [spec for spec in pathspecs if _matches(repo, spec)]
-    if present:
-        repo.git.add("--", *present)
+    stage_paths(repo, *pathspecs)
     try:
         repo.git.diff("--cached", "--quiet", *scope)
         return False
@@ -140,6 +138,13 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
         repo.git.reset("-q", "--", *scope)
         raise
     return True
+
+
+def stage_paths(repo: Repo, *pathspecs: str) -> None:
+    """Stage the files ``pathspecs`` name that git can stage."""
+    present = [spec for spec in pathspecs if _matches(repo, spec)]
+    if present:
+        repo.git.add("--", *present)
 
 
 def _matches(repo: Repo, spec: str) -> bool:

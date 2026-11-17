@@ -137,6 +137,7 @@ localInstructions:
       - commit-and-push
       - private-names
       - service-book
+      - python-lint
     paths:
       - "."
     includeReadme: false

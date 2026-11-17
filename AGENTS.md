@@ -184,6 +184,15 @@ repository keeps.
 
 ---
 
+## Staged Python passes ruff
+
+`make lint` runs ruff over the whole tree, so a staged Python file that fails the
+repository's ruff config turns it red. Every agent commit runs ruff over the staged
+Python files, as the index holds them, and a refusal lists each finding. Fix the
+file, restage, and commit again.
+
+---
+
 ## This is a `uv` workspace monorepo
 
 One `uv.lock` and one venv at the root serve every member. A member is not a

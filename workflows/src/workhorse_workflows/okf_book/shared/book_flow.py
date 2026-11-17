@@ -13,6 +13,7 @@ from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.kit.answer import answer_below
 from workhorse_workflows.kit.paths import find_book_root
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
+from workhorse_workflows.kit.commit_checks import declared_checks_failure
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
@@ -71,9 +72,9 @@ def render_book_agent_files(logger: logging.Logger, root: Path) -> str:
 
 @blueprint.node(stub=_nothing_refused_in_dry_run)
 def commit_book_paths(logger: logging.Logger, root: Path, message: str, pathspecs: tuple[str, ...]) -> str:
-    """Commit exactly *pathspecs*, and return what git said when it refused. A dry run commits nothing."""
+    """Commit exactly *pathspecs*, and return what a declared commit check or git said when it refused. A dry run commits nothing."""
     del logger
-    return commit_returning_refusal(root, message, *pathspecs)
+    return declared_checks_failure(root, message, pathspecs) or commit_returning_refusal(root, message, *pathspecs)
 
 
 class CommitFix(BaseModel):

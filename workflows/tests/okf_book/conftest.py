@@ -29,3 +29,13 @@ def rendered_repos(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
 
     monkeypatch.setattr(book_flow, "render_agent_files_returning_failure", _render)
     return rendered
+
+
+@pytest.fixture(autouse=True)
+def declared_checks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A book commit meets no declared commit check unless a test says which."""
+
+    def _passes(_root: Path, _message: str, _pathspecs: tuple[str, ...]) -> str:
+        return ""
+
+    monkeypatch.setattr(book_flow, "declared_checks_failure", _passes)
