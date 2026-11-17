@@ -152,16 +152,61 @@ what the row says, and the evidence lives where the row points. Groom run ids re
   book still checks clean and plays green.
 - **Evidence:** groom `w3-farrier`; stablemate commit `8c19b5ddb`.
 
+## 2026-11-17: python_book completes the client's largest service book
+
+- **Run:** okf-book `python_book`, groom run `w3-api-complete`, on the client's api book (an HTTP
+  service of 731 source files), resumed from the half-written book the wave's first attempt left.
+- **Stablemate:** resumed at `0b1aa3f1c`; the runner stayed at `f9fe5b740` to the end.
+- **Proved:** under the prompt that has the owner write the book itself, one owner finished the
+  book with no subagent writer: check clean, whole play green, `missing` empty, stamped, marked
+  and committed by the run. Played from a worktree on its own stack copy, which the run tore down.
+- **Not proved:** that a book of this size is cheap. One line of the play's witness report was
+  1.5 MB, because the book unrolled a recursive tree four levels deep, and it nearly doubled the
+  owner's context. The hand-off to the owner is now cut in width (`f49b332db`) and the report's
+  list is bounded (`b6b5ea472`); neither is re-proven by a run. The format has no recursive shape.
+- **Gates' last lines:** `check: 0 findings, 5 notes`; `0 of 731 files are in no element and under
+  no ignore pattern`; `nothing stale` read on client master after landing.
+- **Cost:** $13.20 billed by groom, about $24.80 at list price. Wall 6 hours 47 minutes.
+- **By hand:** (1) the run's fix turn for a refused commit reshaped seven endpoints, and the flow
+  committed with no replay. The attendant replayed those seven on a fresh copy: 7 pass, 0 fail.
+  (2) The attendant rebased the run's commit onto client master and landed it by fast-forward.
+- **Evidence:** groom `w3-api-complete`; client commit `f5d3e6d5c`.
+
+## 2026-11-17: python_book writes two command-line books from nothing
+
+- **Run:** okf-book `python_book`, groom runs `w3-paddock` and `w3-saddlebag`, on stablemate's own
+  paddock and saddlebag packages, each from a stablemate worktree with no book.
+- **Stablemate:** launched at `f9fe5b740`; released on `52966c3cd`.
+- **Proved:** each writer wrote a first command-line book that reached check clean, a green whole
+  play, `missing` empty and a stamp, in one owner lap, with no stack.
+- **Not proved:** that a first command-line book commits on its own. Both commits were refused by
+  the clone check and both runs parked on the operator. The books copied the watched file row and
+  its two helpers from the farrier book, because the tool had no type for that row. One fix turn
+  made the paddock book import the farrier book's model, which the prompt's wording invited.
+  ostler now ships the row as `Watched` (`ab62dcc03`), the skill teaches it (`9e2aef010`) and the
+  fix turn's prompt forbids the import (`0b9c4a9d5`); none is re-proven by a run.
+- **Also seen:** the saddlebag owner turn took 139 minutes, about 100 of them in plays, because a
+  first book's writer played every element and the flow then played the whole book again. The
+  prompt now says to play nothing twice (`0b9c4a9d5`); not re-proven.
+- **Gates' last lines:** paddock `8 pass, 0 known defects, 0 fail`, `cells: 54 played`; saddlebag
+  `7 pass, 0 known defects, 0 fail`, `cells: 480 played`; both `nothing missing` and `nothing
+  stale` on main after landing, and `make lint` clean.
+- **Cost:** paddock $4.67 billed over four Sonnet turns, 35 minutes to the gate. Saddlebag $6.81
+  over two turns, 2 hours 44 minutes to the gate. Each then waited about 10 hours on the operator.
+- **By hand:** an agent moved each book's file row onto `Watched`, gave the paddock book its own
+  state row, folded two repeated fixture blocks in the saddlebag book and restated one copied
+  function there as a named table. The attendant replayed each book green, rewrote each stamp at
+  the played commit and answered each gate. Each run then made its own commit.
+- **Evidence:** groom `w3-paddock`, `w3-saddlebag`; stablemate commits `126479b77`, `926dfc755`.
+
 ## Open
 
 - **The coder's book lane, live.** Proven by tests on a real repository only. Its live proof waits
   for a real client story. Its worktree path reaches the copy through the same `copy_for` as the
   runs above, read from the code, not from a run.
-- **The client api book's completion.** Run `w3-api-complete` was stopped at the wave's spend
-  ceiling after its owner handed the book to five subagents at once, about $58 by token count.
-  Its half-written book is kept in a locked worktree for a resume under the fixed prompt.
 - **A writer declaring an event the service's clock causes.** Run `td-sla-2` ($8.11) wrote a green
   book without the breach events; the skill was widened after it, not re-proven.
 - **A phone list read through the recording proxy by a writer.** The tool is built and the app's
   plain HTTP target was confirmed on the phone reference app; no writer run yet.
-- **Books for groom, ostler, workflows, workhorse, saddlebag and paddock.** Not run in this wave.
+- **Books for groom, ostler, workflows and workhorse.** Not run yet.
+- **A first command-line book that commits with nothing by hand.** The two above did not.
