@@ -79,6 +79,7 @@ class TodoStore:
         self.bug = bug
         self.sign_in = sign_in
         self.clock = clock
+        self.start_day = now().strftime("%Y-%m-%d")
         self.issued: dict[str, float] = {}
         self.persons: dict[str, str] = {}
         self.sessions: dict[str, str] = {}
@@ -89,7 +90,7 @@ class TodoStore:
         self.todos: list[Todo] = []
         self.counter = 0
         self.down = False
-        self.today = now().strftime("%Y-%m-%d")
+        self.today = self.start_day
         self.persons = {}
         self.sessions = {}
 

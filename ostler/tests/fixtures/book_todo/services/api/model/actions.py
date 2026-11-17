@@ -14,6 +14,8 @@ from . import rules
 from .state import Serving, StoreAction, StoreDown, TodoApp, listing_order
 from .todo import Day, TodoRecord, owner_of
 
+START_DAY = datetime.now(timezone.utc).date()
+
 
 def record(a: Todo, by: Actor | None) -> TodoRecord:
     """The record the service keeps for the todo a client sent; the id is already set."""
@@ -109,4 +111,4 @@ class SwitchStore(Action[Switch, TodoApp]):
 class Wipe(Action[object, TodoApp]):
     @staticmethod
     def reduce(a: object, s: TodoApp, by: Actor | None) -> Transaction:
-        return Transaction(*(Delete(s.todos, t.id) for t in s.todos), MoveToday(datetime.now(timezone.utc).date()), Become(Serving))
+        return Transaction(*(Delete(s.todos, t.id) for t in s.todos), MoveToday(START_DAY), Become(Serving))

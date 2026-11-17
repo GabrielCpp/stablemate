@@ -6,7 +6,7 @@ row by the id the app gave it and not by its text, which two rows may share."""
 from __future__ import annotations
 
 from contextlib import contextmanager
-from datetime import date, datetime, timezone
+from datetime import date
 from typing import Any, Iterator, cast
 
 from ostler.book import CannotReach, Done, Environment, Outcome, PageSurface, Received, Refusal, answer, refusal, request
@@ -29,6 +29,7 @@ def _typed(due: date | str | None) -> str | None:
 
 class TodoWeb(PageSurface):
     locales = {"en": "en-US", "fr": "fr-CA"}
+    _day: date | None = None
 
     def __init__(self, environment: Environment, lang: str = ""):
         super().__init__(environment, SCREENS, lang)
@@ -38,7 +39,8 @@ class TodoWeb(PageSurface):
 
     def restore(self) -> None:
         self.backend.store_down(False)
-        self.backend.set_today(datetime.now(timezone.utc).date())
+        self._day = self._day or self.backend.today()
+        self.backend.set_today(self._day)
         self._shown.clear()
         self._app_ids.clear()
 

@@ -97,6 +97,32 @@ def test_the_owners_book_moves_the_clock_five_days_instead_of_three_and_the_web_
     assert "cells: 41 played on 23 arrangements, 8 impossible, 0 fail" in done.stdout
 
 
+def test_two_worlds_of_one_play_get_the_same_day_when_the_clock_crosses_midnight(monkeypatch: pytest.MonkeyPatch):
+    from datetime import datetime, timezone
+
+    clock = {"at": datetime(2026, 11, 18, 23, 59, tzinfo=timezone.utc)}
+    app, surface = module("app"), module("services.web.surface")
+    monkeypatch.setattr(app, "now", lambda: clock["at"])
+    monkeypatch.setattr(surface, "datetime", SimpleNamespace(now=lambda tz=None: clock["at"]), raising=False)
+    api = app.TodoServer().start()
+    try:
+        web = surface.TodoWeb.__new__(surface.TodoWeb)
+        web.backend = surface.Backend(api.url)
+        web._shown, web._app_ids = {}, {}
+
+        def world():
+            web.backend.reset()
+            web.restore()
+            return web.backend.today()
+
+        first = world()
+        clock["at"] = datetime(2026, 11, 19, 0, 1, tzinfo=timezone.utc)
+        second = world()
+    finally:
+        api.stop()
+    assert first == second == datetime(2026, 11, 18).date()
+
+
 def test_walking_the_overdue_scene_of_the_web_book_arranges_the_need_and_opens_the_page_on_it(todo_web, tmp_path: Path):
     api, page = todo_web
     done = run_book(["walk", "services.web", "--record", "chore", "--scene", "overdue", "--no-stack", "--out", str(tmp_path / "out")],
