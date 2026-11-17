@@ -63,6 +63,11 @@ def validate_authored_epic(
             errors.append(f"epic '{found.name}' has no epic.md")
         if not found.seeds:
             errors.append(f"epic '{found.name}' has no researched seeds")
+        if found.unwritten_detail:
+            errors.append(
+                f"epic '{found.name}' lacks the epic contract's "
+                f"{', '.join(found.unwritten_detail)}"
+            )
         books = okf.service_books()
         for seed in found.seeds:
             errors.extend(

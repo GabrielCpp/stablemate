@@ -711,7 +711,7 @@ digraph author {
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
       f9__close__0 [label="validate_artifacts\nCan the coder engine actually walk what this run produced?", shape=box, fillcolor=white];
-      f9__close__1 [label="validate_milestone_epics\nProve the milestone lists at least one epic.", shape=box, fillcolor=white];
+      f9__close__1 [label="validate_milestone_epics\nProve the milestone lists its epics by id, and that it, they and their stories meet the authoring contract.", shape=box, fillcolor=white];
       f9__close__2 [label="mark_milestone_authored\nAdvance one validated milestone from approved to authored, idempotently.", shape=box, fillcolor=white];
       f9__close__3 [label="commit_author\nCommit the epic/story docs this run wrote, in the one repo it wrote them in.", shape=box, fillcolor=white];
       f9__close__0 -> f9__close__1 [color=gray40, arrowsize=0.6];
@@ -728,7 +728,7 @@ digraph author {
       label="milestone_epics"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f9__milestone_epics__0 [label="validate_milestone_epics\nProve the milestone lists at least one epic.", shape=box, fillcolor=white];
+      f9__milestone_epics__0 [label="validate_milestone_epics\nProve the milestone lists its epics by id, and that it, they and their stories meet the authoring contract.", shape=box, fillcolor=white];
     }
     subgraph cluster_f9__reconcile {
       label="reconcile"; fontsize=12;

@@ -6,8 +6,10 @@ from typing import Any
 
 import pytest
 from _fakes import StubRunner
+from _epics import write_epic_prose
 from _milestones import write_milestone
-from ostler import Ostler
+from ostler import Ostler, crud
+from ostler.model import load
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
@@ -72,7 +74,7 @@ Use the existing account boundary.
 
 
 def _planning_graph(repo: Path, *, selectable: bool) -> None:
-    write_milestone(repo, epics=[EPIC])
+    write_milestone(repo)
     _commit(repo, "approved milestone")
 
     okf = Ostler(repo)
@@ -89,7 +91,11 @@ def _planning_graph(repo: Path, *, selectable: bool) -> None:
         "Sign in",
         covers=["credentials"],
     ).ok
-
+    epic = Ostler(repo).graph.epic_by_ref(EPIC)
+    assert epic is not None and epic.epic_md is not None
+    write_epic_prose(epic.epic_md)
+    listed = crud.set_milestone_epics(load(repo), "account-access", [EPIC])
+    assert listed.ok, listed.message
 
     story = next(row for row in Ostler(repo).list("story") if row["slug"] == STORY)
     story_path = repo / str(story["path"])

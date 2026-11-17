@@ -11,7 +11,8 @@ from _fakes import StubRunner
 from _pm import answer, verdict
 from _milestones import write_milestone
 from git import Repo
-from ostler import Ostler
+from ostler import Ostler, crud
+from ostler.model import load
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow.driver import drive
@@ -34,10 +35,8 @@ def _planning_input(repo: Path) -> None:
 
 
 def _set_epics(repo: Path, epics: list[str]) -> None:
-    path = repo / MILESTONE
-    text = path.read_text(encoding="utf-8")
-    replacement = "epics:\n" + "".join(f"- {epic}\n" for epic in epics)
-    path.write_text(text.replace("epics: []\n", replacement), encoding="utf-8")
+    listed = crud.set_milestone_epics(load(repo), "account-access", epics)
+    assert listed.ok, listed.message
 
 
 class _Agent:
@@ -99,7 +98,7 @@ def test_creates_only_ordered_epic_skeletons_after_review_rework(
 
     assert isinstance(result, EpicSplitDone)
     assert result.status == "accepted"
-    assert result.ordered_epics == ["sign-in", "recover-access"]
+    assert result.ordered_epics == ["0001-sign-in", "0002-recover-access"]
     assert result.reworks == 1
     assert agent.calls == {
         "split-epics": 1,

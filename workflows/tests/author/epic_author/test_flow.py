@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from _books import write_book
+from _epics import write_epic_prose
 from _fakes import StubRunner
 from _milestones import write_milestone
 from _pm import answer
@@ -32,13 +33,7 @@ def _document_epic(repo: Path) -> None:
     okf = Ostler(repo)
     epic = okf.graph.epics[0]
     assert epic.epic_md is not None
-    epic.epic_md.write_text(
-        epic.epic_md.read_text(encoding="utf-8").replace(
-            "## Seeds",
-            "## User Outcome\n\nPeople can access their account.\n\n## Seeds",
-        ),
-        encoding="utf-8",
-    )
+    write_epic_prose(epic.epic_md)
     assert okf.add_seed(
         "sign-in",
         "credentials",

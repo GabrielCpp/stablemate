@@ -9,11 +9,13 @@ install dependencies, run repository-wide checks, stage, commit, push, or alter 
 Author validates and delivers after all authoring stages finish.
 
 Read `{{ milestone }}`, the grill records in the `grills/` folder beside it, the mockups in its
-`mockups/` folder, and every design note it links. Replace the
-milestone's `epics` value with one positive, non-empty list in coding order. Each epic must group
-coherent user journeys and deliver or materially advance an observable milestone outcome.
+`mockups/` folder, and every design note it links. Set the milestone's epics, in coding order, with
+`ostler milestone epics <milestone> <epic>...`. Ostler stores each epic by its id and writes the
+`## Epics` section a reader sees, so never edit the `epics:` value or that section by hand. Each
+epic must group coherent user journeys and deliver or materially advance an observable milestone
+outcome.
 
-Create missing epics with Ostler so it allocates their ids. Leave every new epic as Ostler's bare
+Create missing epics with `ostler create epic` first, so Ostler allocates their ids. Leave every new epic as Ostler's bare
 skeleton: title plus empty `## Seeds` and `## Stories` sections. Do not author outcome, journey,
 acceptance, method, seed, or story prose. Do not edit existing epic documents, legacy
 todo indexes, branches, commits, or downstream artifacts. The deterministic gate compares existing

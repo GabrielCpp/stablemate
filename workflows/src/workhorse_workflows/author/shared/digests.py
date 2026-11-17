@@ -4,13 +4,19 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from ostler import markdown
+from ostler import markdown, registry
 
 
 def milestone_body_digest(root: Path, milestone_path: str) -> str:
-    """The sha256 of the milestone body, which no run writes."""
+    """The sha256 of the milestone body the owner writes, without the `## Epics` section ostler writes."""
     text = (root / milestone_path).read_text(encoding="utf-8")
-    return hashlib.sha256(markdown.split(text).body.encode("utf-8")).hexdigest()
+    document = markdown.split(text)
+    lines = document.body.split("\n")
+    section = document.find_section(registry.MILESTONE_EPICS_HEADING)
+    if section is not None:
+        del lines[section.line_start:section.line_end]
+    owned = "\n".join(lines).rstrip("\n") + "\n"
+    return hashlib.sha256(owned.encode("utf-8")).hexdigest()
 
 
 __all__ = ["milestone_body_digest"]

@@ -99,10 +99,15 @@ def validate_epic_split(
         normalized = [registry.epic_slug(epic) for epic in ordered]
         if len(set(normalized)) != len(normalized):
             errors.append("the milestone epic list contains duplicates")
-        available = {registry.epic_slug(epic.name): epic for epic in okf.graph.epics}
-        for name, slug in zip(ordered, normalized, strict=True):
-            if slug not in available:
-                errors.append(f"milestone epic '{name}' has no epic skeleton")
+        for ref in milestone.epic_refs:
+            epic = okf.graph.epic_by_ref(ref)
+            if epic is None:
+                errors.append(f"milestone epic '{ref}' has no epic skeleton")
+            elif ref != epic.eid:
+                errors.append(
+                    f"milestone epic '{ref}' is listed by name; list it by its id {epic.eid} "
+                    f"with `ostler milestone epics {milestone.name} <epic-id>...`"
+                )
 
     current_seeds = _seed_ids(okf)
     current_stories = _story_slugs(okf)

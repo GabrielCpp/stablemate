@@ -13,11 +13,12 @@ from unittest.mock import patch
 
 import pytest
 from _books import write_book
-from _epics import epics_root
+from _epics import epics_root, write_epic_prose
 from _fakes import StubRunner
 from _milestones import write_milestone
 from _pm import amendment, answer, verdict
-from ostler import Ostler, ids
+from ostler import Ostler, crud, ids
+from ostler.model import load
 from ostler.register import RECORD_FILE, Record
 from workhorse import inbox
 from workhorse.artifacts import ArtifactWriter
@@ -165,7 +166,10 @@ def _stories(repo: Path) -> dict[str, bool]:
 
 
 def _milestone(repo: Path, *epics: str) -> None:
-    write_milestone(repo, epics=epics)
+    write_milestone(repo)
+    if epics:
+        listed = crud.set_milestone_epics(load(repo), "account-access", list(epics))
+        assert listed.ok, listed.message
 
 
 _BODY = """# Story: {title}
@@ -471,6 +475,9 @@ The running system is the source of truth.
     def _write_epic(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
         okf = Ostler(self.repo)
         epic = str(data["epic"])
+        found = okf.graph.epic_by_ref(SECOND_EPIC if epic.endswith(SECOND_EPIC) else EPIC)
+        assert found is not None and found.epic_md is not None
+        write_epic_prose(found.epic_md)
         if epic.endswith(SECOND_EPIC):
             okf.add_seed(
                 SECOND_EPIC,
@@ -671,7 +678,7 @@ def test_epic_mode_authors_the_approved_milestone_and_commits_it(
 
     milestones = Ostler(backlogged).list("milestone")
     assert len(milestones) == 1
-    assert milestones[0]["epics"] == [EPIC]
+    assert milestones[0]["epics"] == [EPIC_DIR]
     assert "status: authored" in (backlogged / MILESTONE).read_text(encoding="utf-8")
 
     assert _subject(backlogged) == "author: milestone account-access"

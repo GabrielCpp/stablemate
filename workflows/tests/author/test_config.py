@@ -5,8 +5,10 @@ from pathlib import Path
 
 import pytest
 from _books import write_book
+from _epics import write_epic_prose
 import workhorse_workflows
-from ostler import Ostler
+from ostler import Ostler, crud
+from ostler.model import load
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.finalize.nodes.milestone import (
     mark_milestone_authored,
@@ -148,15 +150,37 @@ def test_a_milestone_must_list_at_least_one_epic(tmp_path: Path) -> None:
     assert not empty.ok
     assert "lists no epics" in empty.errors
 
-    (tmp_path / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
-    assert Ostler(tmp_path).create_epic("account-access", "Account access").ok
-    _write(tmp_path, epics="[account-access]")
+    _listed_epic(tmp_path)
     valid = validate_milestone_epics(LOGGER, MILESTONE, repo_dir=str(tmp_path))
     assert valid.ok, valid.errors
 
 
-def test_epic_validation_ignores_other_milestones(tmp_path: Path) -> None:
+def test_a_milestone_that_lists_an_epic_by_name_does_not_validate(tmp_path: Path) -> None:
+    (tmp_path / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
+    assert Ostler(tmp_path).create_epic("account-access", "Account access").ok
     _write(tmp_path, epics="[account-access]")
+
+    result = validate_milestone_epics(LOGGER, MILESTONE, repo_dir=str(tmp_path))
+
+    assert not result.ok
+    assert "[milestone-epic-by-name]" in result.errors
+
+
+def _listed_epic(root: Path) -> None:
+    """One epic that meets the contract, listed on the milestone by its id."""
+    (root / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
+    okf = Ostler(root)
+    assert okf.create_epic("account-access", "Account access").ok
+    epic = okf.graph.epic_by_ref("account-access")
+    assert epic is not None and epic.epic_md is not None
+    write_epic_prose(epic.epic_md)
+    _write(root)
+    listed = crud.set_milestone_epics(load(root), "account-access", ["account-access"])
+    assert listed.ok, listed.message
+
+
+def test_epic_validation_ignores_other_milestones(tmp_path: Path) -> None:
+    _listed_epic(tmp_path)
     _write(tmp_path, "unrelated", status="proposed", epics="[missing-epic]")
 
     result = validate_milestone_epics(LOGGER, MILESTONE, repo_dir=str(tmp_path))
