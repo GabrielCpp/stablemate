@@ -96,6 +96,11 @@ A table that names `hooks` guards adds each one to `~/.claude/settings.json` or
 `~/.codex/hooks.json`. Codex skips a new guard until you approve it in `/hooks`,
 and `farrier install --user --check` names each guard still waiting.
 
+A Claude table that names `settings` merges each `library/settings/<name>.json` object into
+`~/.claude/settings.json`. Each top-level key is one entry farrier owns, so a key you set by
+hand stays, and a key dropped from the library file leaves the home. `hooks` belongs to the
+guards, and two files that set one key stop the install.
+
 A table that names `agents` writes each helper agent to `~/.claude/agents` or
 `~/.codex/agents`, on the model `[profiles.<harness>.delegates.<name>]` names.
 Codex cannot enforce a read-only agent, so its prompt asks for it instead.

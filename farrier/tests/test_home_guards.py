@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 
 from farrier.home_guards import approval_keys
-from farrier.install import main
+from home_install import configure, run
 
 SETTINGS: dict[str, Any] = {"model": "opus", "hooks": {"Stop": [{"hooks": []}]}}
 BOTH = (
@@ -47,16 +47,6 @@ def home(tmp_path: Path) -> Path:
     (home / ".codex").mkdir()
     (home / ".claude" / "settings.json").write_text(json.dumps(SETTINGS, indent=2), encoding="utf-8")
     return home
-
-
-def configure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str) -> None:
-    config = tmp_path / "stablemate.toml"
-    config.write_text(f"config_version = 1\n\n{body}", encoding="utf-8")
-    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
-
-
-def run(home: Path, library: Path, *extra: str) -> int:
-    return main(["install", "--user", "--home", str(home), "--library", str(library), *extra])
 
 
 def groups(path: Path) -> list[dict]:
