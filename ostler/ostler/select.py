@@ -23,12 +23,8 @@ def is_blocked(status: str) -> bool:
 
 
 def epic_by_name(graph: Graph, name: str) -> Epic | None:
-    """The epic named by its directory (`0001-checkout-flow`) or by its bare slug."""
-    exact = next((e for e in graph.epics if e.name == name), None)
-    if exact is not None or registry.epic_seq(name) is not None:
-        return exact
-    slug = registry.epic_slug(name)
-    return next((e for e in graph.epics if registry.epic_slug(e.name) == slug), None)
+    """The epic named by its id, its directory or its slug."""
+    return graph.epic_by_ref(name)
 
 
 def epic_done(epic: Epic) -> bool:

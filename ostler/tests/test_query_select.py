@@ -7,7 +7,7 @@ import pytest
 from ostler import crud, query, select, todo
 from ostler.model import load
 
-from conftest import FOO_ID, present, write, epics_root
+from conftest import EPIC_A, EPIC_B, FOO_ID, present, write, epics_root
 
 pytestmark = pytest.mark.usefixtures("minting_root")
 
@@ -18,7 +18,7 @@ def _sid(root: Path, slug: str) -> str:
 
 def test_list_by_type(repo: Path):
     g = load(repo)
-    assert {r["name"] for r in query.list_entities(g, "epic")} == {"epic-a", "epic-b"}
+    assert {r["name"] for r in query.list_entities(g, "epic")} == {EPIC_A, EPIC_B}
     assert {r["slug"] for r in query.list_entities(g, "story")} == {"01-foo", "01-bar"}
     assert {r["id"] for r in query.list_entities(g, "seed")} == {"seed-a1", "seed-a2", "seed-b1"}
 
@@ -34,7 +34,7 @@ def test_list_filters(repo: Path):
 def test_search_hits_body(repo: Path):
     g = load(repo)
     hits = query.search(g, "thing works", etype="story")
-    assert any(h["path"].endswith("01-foo/story.md") for h in hits)
+    assert any(h["path"].endswith(f"{FOO_ID}/story.md") for h in hits)
 
 
 def test_query_reverse_indexes(repo: Path):
@@ -46,7 +46,7 @@ def test_query_reverse_indexes(repo: Path):
 def test_next_epic_and_story(repo: Path):
     g = load(repo)
     ne = present(select.next_epic(g))
-    assert ne["name"] == "epic-a"
+    assert ne["name"] == EPIC_A
     ns = present(select.next_story(g, "epic-a"))
     assert ns["slug"] == "01-foo"
     crud.set_status(load(repo), FOO_ID, "QA passed")
@@ -61,11 +61,11 @@ def test_next_story_reports_the_minted_id(tmp_path: Path):
 
 
 def test_story_id_survives_an_epic_block_that_never_recorded_it(tmp_path: Path):
-    write(epics_root() / "e/epic.md", "\n".join([
-        "---", "type: epic", "id: t-9", "title: E", "---", "# Epic: E", "",
+    write(epics_root() / "t-9/epic.md", "\n".join([
+        "---", "type: epic", "id: t-9", "slug: e", "title: E", "---", "# Epic: E", "",
         "## Stories", "", "### a", "- title: A", "- covers: (none)", "",
     ]) + "\n")
-    write(epics_root() / "e/stories/a/story.md", "\n".join([
+    write(epics_root() / "t-9/stories/a/story.md", "\n".join([
         "---", "type: story", "id: X-LEGACY7", "slug: a", "status: Not started", "---",
         "# Story: A", "",
     ]) + "\n")
@@ -102,7 +102,7 @@ epics:
 
     ne = present(select.next_epic(load(repo)))
 
-    assert ne["name"] == "epic-a"
+    assert ne["name"] == EPIC_A
 
 
 def test_next_story_respects_dependencies(tmp_path: Path):
@@ -116,17 +116,18 @@ def test_next_story_respects_dependencies(tmp_path: Path):
 
 
 def test_todo_queue(tmp_path: Path):
-    """The queue names the directories that exist; every operation still takes a bare epic slug."""
+    """The queue names the id-named directories that exist; every operation still takes a bare epic slug."""
     g = load(tmp_path)
     crud.create_epic(g, "one", "One")
     crud.create_epic(load(tmp_path), "two", "Two")
     todo.add(load(tmp_path), "one")
     todo.add(load(tmp_path), "two")
-    assert todo.list_epics(load(tmp_path)) == ["0001-one", "0002-two"]
+    ids = {epic.slug: epic.name for epic in load(tmp_path).epics}
+    assert todo.list_epics(load(tmp_path)) == [ids["one"], ids["two"]]
     todo.reorder(load(tmp_path), ["two", "one"])
-    assert todo.list_epics(load(tmp_path)) == ["0002-two", "0001-one"]
+    assert todo.list_epics(load(tmp_path)) == [ids["two"], ids["one"]]
     todo.prune(load(tmp_path), "two")
-    assert todo.list_epics(load(tmp_path)) == ["0001-one"]
+    assert todo.list_epics(load(tmp_path)) == [ids["one"]]
     assert not todo.add(load(tmp_path), "one").ok
 
 

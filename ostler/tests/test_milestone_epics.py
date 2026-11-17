@@ -35,23 +35,23 @@ def test_milestone_epics_are_stored_by_id_and_shown_in_coding_order(tmp_path: Pa
     assert (doc.frontmatter or {})["epics"] == [profiles_id, accounts_id]
     section = present(doc.find_section(registry.MILESTONE_EPICS_HEADING))
     assert [line for line in section.body.splitlines() if line.strip()] == [
-        f"1. Profiles (`{profiles_id}`, `0002-profiles`)",
-        f"2. Accounts (`{accounts_id}`, `0001-accounts`)",
+        f"1. Profiles (`{profiles_id}`)",
+        f"2. Accounts (`{accounts_id}`)",
     ]
     milestone = present(load(tmp_path).milestone_by_name("mvp"))
-    assert milestone.epics == ["0002-profiles", "0001-accounts"]
+    assert milestone.epics == [profiles_id, accounts_id]
     assert _epic_list_findings(tmp_path) == []
 
 
 def test_a_list_written_by_name_is_a_finding_until_ostler_moves_it_onto_ids(tmp_path: Path):
     accounts_id, profiles_id, path = _two_epics_and_a_milestone(tmp_path)
     path.write_text(path.read_text(encoding="utf-8").replace(
-        "epics: []", "epics:\n- accounts\n- 0002-profiles"), encoding="utf-8")
+        "epics: []", "epics:\n- accounts\n- profiles"), encoding="utf-8")
 
     assert _epic_list_findings(tmp_path) == [
         "milestone-epic-by-name", "milestone-epic-by-name", "milestone-epics-section"]
     assert present(load(tmp_path).milestone_by_name("mvp")).epics == [
-        "0001-accounts", "0002-profiles"]
+        accounts_id, profiles_id]
 
     assert crud.set_milestone_epics(load(tmp_path), "mvp").ok
 
@@ -159,7 +159,7 @@ def test_doctor_milestone_reports_only_that_milestone_and_its_epics(tmp_path: Pa
 
     report = doctor.run(load(tmp_path), milestone_filter="mvp")
 
-    assert {f.epic for f in report.findings if f.epic} == {"0001-accounts"}
+    assert {f.epic for f in report.findings if f.epic} == {accounts_id}
     assert {f.path for f in report.findings if not f.epic} == {"docs/milestones/0001-mvp/milestone.md"}
     assert {"unwritten-epic", "story-covers-no-seed"} <= {f.code for f in report.findings}
     assert report.errors

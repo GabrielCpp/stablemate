@@ -11,7 +11,7 @@ import pytest
 from ostler import doctor, index, markdown
 from ostler.cli import main
 
-from conftest import entry_files, report_of, warm_index, epics_root
+from conftest import EPIC_A, entry_files, report_of, warm_index, epics_root
 
 
 class _Seam:
@@ -129,7 +129,7 @@ def test_a_second_process_reads_the_epics_and_stories_off_the_index_too(
     assert planning and not {name: c for name, c in reparsed.items() if any(c)}
 
 def test_the_read_only_accessor_hands_back_one_document_per_file(repo: Path, index_home: Path):
-    path = epics_root() / "epic-a" / "epic.md"
+    path = epics_root() / EPIC_A / "epic.md"
 
     with index.session(repo):
         first = model.read_doc(path)
@@ -142,7 +142,7 @@ def test_the_read_only_accessor_hands_back_one_document_per_file(repo: Path, ind
 
 def test_a_writer_never_receives_a_shared_cached_document(repo: Path, index_home: Path):
     """`replace_body` mutates in place and drops the parsed sections."""
-    path = epics_root() / "epic-a" / "epic.md"
+    path = epics_root() / EPIC_A / "epic.md"
 
     with index.session(repo):
         shared = model.read_doc(path)

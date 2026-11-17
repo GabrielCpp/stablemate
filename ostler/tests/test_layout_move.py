@@ -86,26 +86,26 @@ def test_an_adr_folder_prints_a_move_to_a_slug_folder(tmp_path: Path) -> None:
 
 
 def test_a_docs_epics_folder_prints_a_move_to_the_artifacts_epics(tmp_path: Path) -> None:
-    write(tmp_path / "docs/epics/0001-billing/epic.md", "# Epic\n")
+    write(tmp_path / "docs/epics/t-1/epic.md", "# Epic\n")
 
     with pytest.raises(layout.LayoutMoveRequired) as raised:
         load(tmp_path)
 
     message = str(raised.value)
-    assert f"mv {tmp_path.resolve()}/docs/epics/0001-billing {artifacts()}/epics/0001-billing" in message
+    assert f"mv {tmp_path.resolve()}/docs/epics/t-1 {artifacts()}/epics/t-1" in message
     shell(message)
     load(tmp_path)
-    assert (artifacts() / "epics/0001-billing/epic.md").is_file()
+    assert (artifacts() / "epics/t-1/epic.md").is_file()
 
 
 def test_a_docs_epics_folder_holding_only_test_screenshots_loads(tmp_path: Path) -> None:
-    write(tmp_path / "docs/epics/0001-billing/stories/01-pay/qa/shot.png", "x")
+    write(tmp_path / "docs/epics/t-1/stories/t-01pay/qa/shot.png", "x")
 
     load(tmp_path)
 
 
 def test_the_current_layout_loads(tmp_path: Path) -> None:
     write(artifacts() / "backlogs/web-app/book/acme-1/record.md", "x")
-    write(artifacts() / "epics/0001-billing/epic.md", "# Epic\n")
+    write(artifacts() / "epics/t-1/epic.md", "# Epic\n")
 
     load(tmp_path)

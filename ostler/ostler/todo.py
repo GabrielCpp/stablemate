@@ -5,19 +5,21 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ostler import markdown, path as path_mod, registry
+from ostler import markdown, path as path_mod
 from ostler.result import Result
 from ostler.model import Graph
 
 _NAME = re.compile(r"\A[A-Za-z0-9][\w-]*")
 
 
-def _queued_as(names: list[str], name: str) -> str | None:
+def _queued_as(graph: Graph, names: list[str], name: str) -> str | None:
     """The queue entry naming the same epic as *name*, or None."""
     if name in names:
         return name
-    slug = registry.epic_slug(name)
-    return next((n for n in names if registry.epic_slug(n) == slug), None)
+    wanted = graph.epic_by_ref(name)
+    if wanted is None:
+        return None
+    return next((n for n in names if graph.epic_by_ref(n) is wanted), None)
 
 
 def _index_path(graph: Graph) -> Path:
@@ -76,7 +78,7 @@ def _write(graph: Graph, names: list[str]) -> Path:
 
 def add(graph: Graph, name: str, *, front: bool = False) -> Result:
     names = list_epics(graph)
-    queued = _queued_as(names, name)
+    queued = _queued_as(graph, names, name)
     if queued is not None:
         return Result(False, f"epic '{queued}' already in the queue")
     name = path_mod.epic_dir(graph, name).name
@@ -90,7 +92,7 @@ def add(graph: Graph, name: str, *, front: bool = False) -> Result:
 
 def prune(graph: Graph, name: str) -> Result:
     names = list_epics(graph)
-    queued = _queued_as(names, name)
+    queued = _queued_as(graph, names, name)
     if queued is None:
         return Result(False, f"epic '{name}' not in the queue")
     names = [n for n in names if n != queued]
@@ -99,7 +101,7 @@ def prune(graph: Graph, name: str) -> Result:
 
 def reorder(graph: Graph, order: list[str]) -> Result:
     current = list_epics(graph)
-    resolved = [(n, _queued_as(current, n)) for n in order]
+    resolved = [(n, _queued_as(graph, current, n)) for n in order]
     unknown = [n for n, q in resolved if q is None]
     if unknown:
         return Result(False, f"not in queue: {', '.join(unknown)}")

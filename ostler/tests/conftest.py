@@ -17,6 +17,10 @@ from ostler import index, registry
 
 FOO_ID = "t-01foo"
 BAR_ID = "t-01bar"
+EPIC_A = "t-1"
+EPIC_B = "t-2"
+FOO_STORY = f"{EPIC_A}/stories/{FOO_ID}/story.md"
+BAR_STORY = f"{EPIC_B}/stories/{BAR_ID}/story.md"
 
 
 def present[T](value: T | None) -> T:
@@ -73,9 +77,11 @@ def write_prefix(root: Path, prefix: str = "X") -> None:
 
 
 def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
-            stories: list[tuple[str, str, list[str]]]) -> str:
-    """seeds: (id, status, summary)."""
-    out = ["---", "type: epic", f"id: {eid}", f"title: {title}", "---",
+            stories: list[tuple[str, str, list[str]]] | list[tuple[str, str, list[str], str]],
+            slug: str | None = None) -> str:
+    """seeds: (id, status, summary); stories: (slug, title, covers) or (slug, title, covers, id)."""
+    out = ["---", "type: epic", f"id: {eid}", *([f"slug: {slug}"] if slug else []),
+           f"title: {title}", "---",
            f"# Epic: {title}", ""]
     for spec in registry.EPIC_SECTIONS:
         out += [f"## {spec.heading}", "", f"What {title} holds to for {spec.heading.lower()}.", ""]
@@ -84,8 +90,9 @@ def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
         for sid, status, summary in seeds:
             out += [f"### {sid}", f"- status: {status}", "", summary, ""]
     out += ["## Stories", ""]
-    for slug, stitle, covers in stories:
-        out += [f"### {slug}",
+    for slug_, stitle, covers, *sid in stories:
+        out += [f"### {slug_}",
+                *([f"- id: {sid[0]}"] if sid else []),
                 f"- title: {stitle}",
                 f"- covers: {', '.join(covers) if covers else '(none)'}",
                 ""]
@@ -117,20 +124,22 @@ def repo(tmp_path: Path) -> Path:
     """A clean two-epic repo."""
     root = tmp_path
 
-    write(epics_root() / "epic-a/epic.md", epic_md(
-        "t-1", "epic-a",
+    write(epics_root() / EPIC_A / "epic.md", epic_md(
+        EPIC_A, "epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
-        stories=[("01-foo", "Foo", ["seed-a1"])],
+        stories=[("01-foo", "Foo", ["seed-a1"], FOO_ID)],
+        slug="epic-a",
     ))
-    write(epics_root() / "epic-a/stories/01-foo/story.md",
+    write(epics_root() / FOO_STORY,
           story_md("01-foo", "Foo", "Not started", eid=FOO_ID))
 
-    write(epics_root() / "epic-b/epic.md", epic_md(
-        "t-2", "epic-b",
+    write(epics_root() / EPIC_B / "epic.md", epic_md(
+        EPIC_B, "epic-b",
         seeds=[("seed-b1", "researched", "bee")],
-        stories=[("01-bar", "Bar", ["seed-b1"])],
+        stories=[("01-bar", "Bar", ["seed-b1"], BAR_ID)],
+        slug="epic-b",
     ))
-    write(epics_root() / "epic-b/stories/01-bar/story.md",
+    write(epics_root() / BAR_STORY,
           story_md("01-bar", "Bar", "Not started", eid=BAR_ID))
 
     return root

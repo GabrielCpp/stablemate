@@ -7,7 +7,7 @@ import pytest
 from ostler import crud, doctor, markdown, query, registry, select, todo
 from ostler.model import load
 
-from conftest import FOO_ID, present, epics_root, write_prefix
+from conftest import EPIC_A, FOO_ID, FOO_STORY, present, epics_root, write_prefix
 
 pytestmark = pytest.mark.usefixtures("minting_root")
 
@@ -16,11 +16,12 @@ def test_create_epic_allocates_id_and_parses(tmp_path: Path):
     g = load(tmp_path)
     res = crud.create_epic(g, "billing", "Billing at parity")
     assert res.ok
-    assert res.entity_name == "0001-billing"
+    assert res.entity_name == res.entity_id
     g2 = load(tmp_path)
     assert g2.profile == "full"
     epic = select.epic_by_name(g2, "billing")
     assert epic is not None
+    assert epic.eid == res.entity_id and epic.name == res.entity_id
     assert epic.eid.startswith("X-") and epic.title == "Billing at parity"
     assert len(epic.eid.split("-", 1)[1]) == 26
 
@@ -78,10 +79,11 @@ def test_create_story_adds_block_and_scaffold(tmp_path: Path):
 
 def test_story_scaffold_writes_every_required_section(tmp_path: Path):
     """And stamps nothing: the sections are the record that the contract was honored."""
-    crud.create_epic(load(tmp_path), "billing", "Billing")
-    assert crud.create_story(load(tmp_path), "billing", "01-current", "Current shape").ok
+    epic = crud.create_epic(load(tmp_path), "billing", "Billing")
+    story = crud.create_story(load(tmp_path), "billing", "01-current", "Current shape")
+    assert story.ok
 
-    story_path = epics_root() / "0001-billing/stories/01-current/story.md"
+    story_path = epics_root() / epic.entity_id / "stories" / story.entity_id / "story.md"
     text = story_path.read_text(encoding="utf-8")
 
     assert "storyShape" not in text
@@ -91,20 +93,20 @@ def test_story_scaffold_writes_every_required_section(tmp_path: Path):
 
 def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):
     """The scaffold states the DAG edge in the file a reader has open, not one file up."""
-    crud.create_epic(load(tmp_path), "billing", "Billing")
-    assert crud.create_story(load(tmp_path), "billing", "01-first", "First").ok
-    assert crud.create_story(load(tmp_path), "billing", "02-second", "Second",
-                             depends=["01-first"]).ok
+    epic_id = crud.create_epic(load(tmp_path), "billing", "Billing").entity_id
+    first_id = crud.create_story(load(tmp_path), "billing", "01-first", "First").entity_id
+    second_id = crud.create_story(load(tmp_path), "billing", "02-second", "Second",
+                                  depends=["01-first"]).entity_id
 
-    epic_text = (epics_root() / "0001-billing/epic.md").read_text(encoding="utf-8")
+    epic_text = (epics_root() / epic_id / "epic.md").read_text(encoding="utf-8")
     assert "depends on" not in epic_text
 
-    second = (epics_root() / "0001-billing/stories/02-second/story.md"
+    second = (epics_root() / epic_id / "stories" / second_id / "story.md"
               ).read_text(encoding="utf-8")
     assert "## Dependencies\n\n- Blocked by: 01-first\n" in second
     assert second.index("## Dependencies") < second.index("## Context")
 
-    first = (epics_root() / "0001-billing/stories/01-first/story.md"
+    first = (epics_root() / epic_id / "stories" / first_id / "story.md"
              ).read_text(encoding="utf-8")
     assert "## Dependencies\n\n(none)\n" in first
     assert "Blocked by" not in first
@@ -116,10 +118,10 @@ def test_create_story_writes_its_blockers_into_the_story(tmp_path: Path):
 
 def test_none_passed_as_a_blocker_is_not_written_as_one(tmp_path: Path):
     """`--depends '(none)'` is how a caller says "no blockers"; it must not name one."""
-    crud.create_epic(load(tmp_path), "billing", "Billing")
-    assert crud.create_story(load(tmp_path), "billing", "01-only", "Only",
-                             depends=["(none)"]).ok
-    text = (epics_root() / "0001-billing/stories/01-only/story.md"
+    epic_id = crud.create_epic(load(tmp_path), "billing", "Billing").entity_id
+    only = crud.create_story(load(tmp_path), "billing", "01-only", "Only", depends=["(none)"])
+    assert only.ok
+    text = (epics_root() / epic_id / "stories" / only.entity_id / "story.md"
             ).read_text(encoding="utf-8")
     assert "## Dependencies\n\n(none)\n" in text
     assert "Blocked by" not in text
@@ -132,8 +134,6 @@ def test_set_status_updates_frontmatter_and_line(repo: Path):
     _, story = present(g.find_story(FOO_ID))
     assert story.status == "QA passed"
 
-
-FOO_STORY = "epic-a/stories/01-foo/story.md"
 
 
 def _status_lines(repo: Path) -> tuple[str, str]:
@@ -199,7 +199,7 @@ def test_set_status_rewrites_only_the_field_not_the_prose(tmp_path: Path):
     g = load(tmp_path)
     epic_dir = crud.create_epic(g, "billing", "Billing").entity_name
     story_id = crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu").entity_id
-    story_md = epics_root() / f"{epic_dir}/stories/01-apercu/story.md"
+    story_md = epics_root() / epic_dir / "stories" / story_id / "story.md"
     prose = (
         "- The legacy screen's QA passed in 4.2; hold that behaviour.\n"
         "- Status is shown in the header — do not move it.\n"
@@ -223,8 +223,8 @@ def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path
     """The read half on its own: prose mentioning "QA passed" must not make a story done."""
     g = load(tmp_path)
     epic_dir = crud.create_epic(g, "billing", "Billing").entity_name
-    crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu")
-    story_md = epics_root() / f"{epic_dir}/stories/01-apercu/story.md"
+    story_id = crud.create_story(load(tmp_path), "billing", "01-apercu", "Aperçu").entity_id
+    story_md = epics_root() / epic_dir / "stories" / story_id / "story.md"
     story_md.write_text(
         story_md.read_text(encoding="utf-8").replace(
             "## Context\n", "## Context\n\nThe old report QA passed before the rewrite.\n"),
@@ -238,7 +238,7 @@ def test_status_is_read_as_the_field_even_when_the_prose_says_qa_passed(tmp_path
 def test_delete_story_removes_block_and_dir(repo: Path):
     res = crud.delete_story(load(repo), FOO_ID)
     assert res.ok
-    assert not (epics_root() / "epic-a/stories/01-foo").exists()
+    assert not (epics_root() / EPIC_A / "stories" / FOO_ID).exists()
     g = load(repo)
     assert g.find_story(FOO_ID) is None
     assert g.story_by_slug("01-foo") is None
@@ -246,20 +246,20 @@ def test_delete_story_removes_block_and_dir(repo: Path):
 
 def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
     """The two edges are written where each is read, and nothing else in either file moves."""
-    assert crud.create_epic(load(tmp_path), "accounts", "Accounts").ok
+    epic_id = crud.create_epic(load(tmp_path), "accounts", "Accounts").entity_id
     assert crud.add_seed(load(tmp_path), "accounts", "sign-in", status="researched").ok
     assert crud.add_seed(load(tmp_path), "accounts", "raw-xml", status="researched").ok
     assert crud.create_story(
         load(tmp_path), "accounts", "sign-in", "Sign in", covers=["sign-in"]
     ).ok
-    assert crud.create_story(load(tmp_path), "accounts", "editor", "Editor").ok
-    story_path = epics_root() / "0001-accounts/stories/editor/story.md"
+    editor_id = crud.create_story(load(tmp_path), "accounts", "editor", "Editor").entity_id
+    story_path = epics_root() / epic_id / "stories" / editor_id / "story.md"
     story_path.write_text(
         story_path.read_text(encoding="utf-8") + "\nHand-authored contract.\n",
         encoding="utf-8",
     )
     assert "## Dependencies\n\n(none)\n" in story_path.read_text(encoding="utf-8")
-    epic_path = epics_root() / "0001-accounts/epic.md"
+    epic_path = epics_root() / epic_id / "epic.md"
     epic_path.write_text(
         epic_path.read_text(encoding="utf-8").replace(
             "### editor\n- title: Editor\n",
@@ -301,9 +301,9 @@ def test_update_story_rewrites_only_the_dependencies_section(tmp_path: Path):
 
 def test_update_story_states_its_fixtures_only_when_asked(tmp_path: Path):
     """`--fixtures` is optional where `--depends` is not, and that asymmetry is deliberate."""
-    assert crud.create_epic(load(tmp_path), "accounts", "Accounts").ok
+    epic_id = crud.create_epic(load(tmp_path), "accounts", "Accounts").entity_id
     editor_id = crud.create_story(load(tmp_path), "accounts", "editor", "Editor").entity_id
-    story_path = epics_root() / "0001-accounts/stories/editor/story.md"
+    story_path = epics_root() / epic_id / "stories" / editor_id / "story.md"
     assert "## Fixtures\n\n(none)\n" in story_path.read_text(encoding="utf-8")
 
     def update(**kwargs):
@@ -341,7 +341,8 @@ def test_ensure_fixtures_adds_the_section_to_a_story_written_before_it_existed(t
 def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):
     created = crud.create_epic(load(tmp_path), "accounts", "Accounts")
     assert created.ok
-    assert crud.create_epic(load(tmp_path), "profiles", "Profiles").ok
+    profiles = crud.create_epic(load(tmp_path), "profiles", "Profiles")
+    assert profiles.ok
     assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
     milestone_path = tmp_path / "docs/milestones/0001-mvp/milestone.md"
     milestone_path.write_text(
@@ -358,7 +359,7 @@ def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):
     graph = load(tmp_path)
     milestone = graph.milestone_by_name("mvp")
     assert milestone is not None
-    assert milestone.epics == ["0002-profiles"]
+    assert milestone.epics == [profiles.entity_id]
     assert milestone.epic_refs == [present(select.epic_by_name(graph, "profiles")).eid]
     assert "Milestone prose survives." in milestone_path.read_text(encoding="utf-8")
     assert not (epics_root() / f"{created.entity_name}").exists()
@@ -408,7 +409,7 @@ def test_list_epics_falls_back_to_milestone_order_without_index(tmp_path: Path):
     )
     assert not (epics_root() / "index.md").exists()
 
-    assert todo.list_epics(load(tmp_path)) == ["0001-accounts"]
+    assert todo.list_epics(load(tmp_path)) == [created.entity_id]
 
 
 def test_seed_add_remove(repo: Path):
@@ -438,7 +439,7 @@ def test_a_seed_keeps_the_record_it_came_from(repo: Path):
 
 def test_a_seed_with_a_legacy_source_bullet_line_still_parses_and_raises_no_finding(repo: Path):
     before = sorted((f.code, f.ref) for f in doctor.run(load(repo)).findings)
-    epic_md = epics_root() / "epic-a/epic.md"
+    epic_md = epics_root() / EPIC_A / "epic.md"
     text = epic_md.read_text(encoding="utf-8")
     assert "### seed-a1\n- status: researched\n" in text
     epic_md.write_text(
@@ -458,7 +459,7 @@ def test_create_story_existing_slug_is_a_noop(repo: Path):
     crud.add_seed(load(repo), "epic-a", "s1", status="researched")
     first = crud.create_story(load(repo), "epic-a", "01-dup", "Dup", covers=["s1"])
     assert first.ok
-    story_md = epics_root() / "epic-a/stories/01-dup/story.md"
+    story_md = epics_root() / EPIC_A / "stories" / first.entity_id / "story.md"
     story_md.write_text(story_md.read_text(encoding="utf-8") + "\nhand-written body\n",
                         encoding="utf-8")
 
@@ -475,7 +476,7 @@ def test_story_frontmatter_carries_the_allocated_id(repo: Path):
     assert res.ok and res.entity_id
 
     import yaml as _yaml
-    text = (epics_root() / "epic-a/stories/01-ided/story.md").read_text(encoding="utf-8")
+    text = (epics_root() / EPIC_A / "stories" / res.entity_id / "story.md").read_text(encoding="utf-8")
     fm = _yaml.safe_load(text.split("---")[1])
     assert fm["id"] == res.entity_id, "the allocated id must be in the story's own frontmatter"
     found = load(repo).find_story(res.entity_id)
@@ -504,7 +505,7 @@ def test_seed_layers_and_services_round_trip(repo: Path):
     assert seed.layers == ("frontend", "backend")
     assert seed.services == ("api-service",)
     assert seed.design == "preserve"
-    assert "- layers: frontend, backend" in (epics_root() / "epic-a/epic.md").read_text(
+    assert "- layers: frontend, backend" in (epics_root() / EPIC_A / "epic.md").read_text(
         encoding="utf-8"
     )
 
@@ -537,5 +538,5 @@ def test_set_conflict_records_and_clears_the_frontmatter_key(repo: Path):
     assert crud.set_conflict(load(repo), FOO_ID, "").ok
     _, story = present(load(repo).find_story(FOO_ID))
     assert story.conflict == ""
-    assert "conflict:" not in (epics_root() / "epic-a/stories/01-foo/story.md").read_text()
+    assert "conflict:" not in (epics_root() / FOO_STORY).read_text()
     assert not crud.set_conflict(load(repo), "no-such", "x").ok

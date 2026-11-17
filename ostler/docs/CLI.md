@@ -13,7 +13,7 @@ The commands fall into two surfaces that barely overlap:
 
 | Surface | Verbs | What it operates on |
 |---|---|---|
-| **The planning graph** | `doctor` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `path` `vet` | `docs/milestones/`, `docs/epics/`, `docs/specs/` |
+| **The planning graph** | `doctor` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `path` `vet` | `docs/milestones/`, and on the artifacts shelf `epics/`, `specs/`, `backlogs/` |
 | **Verification** | `qa` `artifact` | a story's spec dir, and what a QA run produces |
 
 ## Global
@@ -42,9 +42,12 @@ what gets written into a document is always the full id.
 ## Inspect
 
 ```bash
-ostler doctor [--epic SLUG | --milestone NAME] [--json] [--no-schema]
+ostler doctor [--epic EPIC | --milestone NAME] [--json] [--no-schema]
 #   conformance + referential integrity; non-zero on an error-level finding.
 #   --no-schema skips JSON Schema validation.
+ostler layout apply
+#   rename every epic and story folder on the shelf to its id, record each epic's slug,
+#   repoint the queue; exit 1 names each folder it could not move.
 ```
 
 ## Retrieve
@@ -64,11 +67,12 @@ with prefix and stemming matches. `--root` names epics, milestones, specs or the
 `--root all` reads every root. `index build` builds
 or refreshes the store that backs it and reports the counts.
 
-Epic directories are numbered in creation order (`docs/epics/0001-checkout-flow/`), so ask
-`path epic` rather than joining `docs/epics/<slug>` yourself. Every command below still takes the
-bare epic slug — the number orders the listing, it is not the epic's identity.
+Epic directories are named by the epic's id (`<artifacts dir>/epics/<epic-id>/`), and a story's
+folder by the story's id (`stories/<story-id>/`). Ask `path epic` rather than joining a path
+yourself. Every command below takes the epic's id, its short handle or its slug.
+`ostler layout apply` renames the folders of a shelf still in the numbered `NNNN-slug` layout.
 
-A story is addressed by its id. The slug names the story's folder and its `### <slug>` heading in
+A story is addressed by its id. The slug names the story's `### <slug>` heading in
 `epic.md`, and no command looks a story up by it. A slug passed where an id belongs is refused, and
 the error names the id to use.
 
@@ -105,8 +109,8 @@ ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | tod
 rewrites that section wholesale, so pass every blocker each time, or `(none)` to clear it.
 
 `create … --json` returns `{"ok": true, "id": "<allocated-id>", "name": "<name-on-disk>",
-"message": "…"}`. For `create epic` the `name` is the numbered directory that was written
-(`0001-checkout-flow`) — read it back rather than assuming which number the epic got.
+"message": "…"}`. For `create epic` the `name` is the directory that was written, which is the
+epic's id.
 
 `unblock` clears the give-up stamps a coder run leaves behind — `QA give-up after N attempts …`,
 `Docs blocked — needs manual review: …`, `Blocked` — and restores `Not started` (or `--status S`).
@@ -142,7 +146,7 @@ one milestone.
 
 `milestone epics <name> <epic>...` sets the milestone's epics in coding order. It takes each epic
 by id, folder or slug, stores the ids under `epics:`, and writes the `## Epics` section under the
-milestone's title: one line per epic with its title, id and folder. With no epic it resolves the
+milestone's title: one line per epic with its title and id. With no epic it resolves the
 list the milestone already holds, which moves a list written by name onto ids. Once the milestone
 is `approved`, `doctor` reports an epic listed by name and an `## Epics` section that is not the
 list as errors.

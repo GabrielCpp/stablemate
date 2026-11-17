@@ -8,20 +8,20 @@ from ostler import doctor, edit, markdown
 from ostler.model import load
 from ostler.path import resolve_spec
 
-from conftest import FOO_ID, specs_root, write, epics_root
+from conftest import present, EPIC_B, FOO_ID, FOO_STORY, specs_root, write, epics_root
 
 
 def _link(repo: Path, name: str) -> str:
-    return os.path.relpath(epics_root() / "epic-b" / name, epics_root() / "epic-a/stories/01-foo")
+    return os.path.relpath(epics_root() / EPIC_B / name, (epics_root() / FOO_STORY).parent)
 
 
 def _cite(repo: Path, name: str) -> None:
-    story = epics_root() / "epic-a/stories/01-foo/story.md"
+    story = epics_root() / FOO_STORY
     story.write_text(story.read_text() + f"\nSee [it]({_link(repo, name)}).\n", encoding="utf-8")
 
 
 def _story_status(repo: Path, epic: str, slug: str) -> str:
-    p = epics_root() / f"{epic}/stories/{slug}/story.md"
+    p = present(present(load(repo).story_by_slug(slug))[1].story_md)
     return (markdown.split(p.read_text()).frontmatter or {})["status"]
 
 
@@ -35,23 +35,25 @@ def test_rename_cascades_and_stays_clean(repo: Path):
     graph = load(repo)
     plan = edit.rename(graph, "01-foo", "01-foofoo")
     assert plan.changes
-    assert plan.moves
+    assert not plan.moves
     plan.apply()
 
-    assert (epics_root() / "epic-a/stories/01-foofoo/story.md").exists()
-    assert not (epics_root() / "epic-a/stories/01-foo").exists()
+    assert (epics_root() / FOO_STORY).exists()
+    assert present(load(repo).story_by_slug("01-foofoo"))[1].eid == FOO_ID
+    assert load(repo).story_by_slug("01-foo") is None
 
     report = doctor.run(load(repo))
     assert report.errors == 0, [f.message for f in report.findings if f.severity == "error"]
 
 
 def test_rename_does_not_touch_unrelated_substrings(repo: Path):
-    story = epics_root() / "epic-a/stories/01-foo/story.md"
+    story = epics_root() / FOO_STORY
     story.write_text(story.read_text() + "\nThe word foobar stays.\n", encoding="utf-8")
     plan = edit.rename(load(repo), "01-foo", "01-baz")
     plan.apply()
-    moved = (epics_root() / "epic-a/stories/01-baz/story.md").read_text()
-    assert "foobar stays" in moved
+    renamed = (epics_root() / FOO_STORY).read_text()
+    assert "foobar stays" in renamed
+    assert "slug: 01-baz" in renamed
 
 
 def test_relink_replaces_path_everywhere(repo: Path):
@@ -60,14 +62,14 @@ def test_relink_replaces_path_everywhere(repo: Path):
                        _link(repo, "renamed.md"))
     assert plan.changes
     plan.apply()
-    story = (epics_root() / "epic-a/stories/01-foo/story.md").read_text()
+    story = (epics_root() / FOO_STORY).read_text()
     assert "renamed.md" in story
-    assert "epic-b/epic.md" not in story
+    assert f"{EPIC_B}/epic.md" not in story
 
 
 def test_edit_dry_run_writes_nothing(repo: Path):
     _cite(repo, "epic.md")
-    story = epics_root() / "epic-a/stories/01-foo/story.md"
+    story = epics_root() / FOO_STORY
     before = story.read_text()
     plan = edit.relink(load(repo), _link(repo, "epic.md"), _link(repo, "renamed.md"))
     assert plan.changes
@@ -307,10 +309,10 @@ def test_settle_answers_dry_run_writes_nothing(repo: Path):
 
 def test_settle_answers_write_records_the_ledger_and_never_the_status(repo: Path):
     _write_answers(repo, FOO_ID, ANSWERS)
-    before = (epics_root() / "epic-a/stories/01-foo/story.md").read_text()
+    before = (epics_root() / FOO_STORY).read_text()
     led = edit.settle_answers(load(repo), FOO_ID, ["F-1", "F-2"], write=True)
     assert _ledger(repo, FOO_ID) == led
-    assert (epics_root() / "epic-a/stories/01-foo/story.md").read_text() == before
+    assert (epics_root() / FOO_STORY).read_text() == before
 
 
 def test_settle_answers_write_creates_a_missing_spec_dir(repo: Path):

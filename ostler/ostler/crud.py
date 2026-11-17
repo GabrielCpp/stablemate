@@ -237,25 +237,23 @@ def create_epic(
     *,
     followups: bool = False,
 ) -> Result:
-    """Create ``<epics>/NNNN-<slug>/epic.md`` — the epic's directory carries its order."""
-    eroot = graph.doc_roots["epics"]
-    existing = path_mod.epic_dir(graph, name)
-    if (existing / "epic.md").exists():
-        return Result(False, f"epic '{existing.name}' already exists")
-    dir_name = name if registry.epic_seq(name) is not None else registry.epic_dir_name(
-        registry.next_epic_seq(d.name for d in path_mod.epic_dirs(graph)),
-        registry.epic_slug(name))
-    edir = eroot / dir_name
-    epic_md = edir / "epic.md"
+    """Create ``<epics>/<epic-id>/epic.md``; the slug *name* names it in commands and branches."""
+    slug = registry.epic_slug(name)
+    existing = graph.epic_by_ref(slug)
+    if existing is not None:
+        return Result(False, f"epic '{slug}' already exists ({existing.name})")
     eid = ids.allocate(graph)
-    fm: dict[str, object] = {"type": "epic", "id": eid, "title": title, "status": "planned"}
+    edir = graph.doc_roots["epics"] / eid
+    epic_md = edir / "epic.md"
+    fm: dict[str, object] = {"type": "epic", "id": eid, "slug": slug, "title": title,
+                             "status": "planned"}
     if followups:
         fm["followups"] = True
     text = f"---\n{dump_frontmatter(fm)}---\n# Epic: {title}\n\n## Seeds\n\n## Stories\n"
     edir.mkdir(parents=True, exist_ok=True)
     epic_md.write_text(text, encoding="utf-8")
-    return Result(True, f"created epic '{dir_name}' ({eid})", [epic_md],
-                  entity_id=eid, entity_name=dir_name)
+    return Result(True, f"created epic '{slug}' ({eid})", [epic_md],
+                  entity_id=eid, entity_name=eid)
 
 
 def delete_epic(graph: Graph, name: str) -> Result:
@@ -316,15 +314,17 @@ def _story_body(title: str, depends: list[str]) -> str:
 
 def create_story(graph: Graph, epic_name: str, slug: str, title: str,
                  covers: list[str] | None = None, depends: list[str] | None = None) -> Result:
-    edir = path_mod.epic_dir(graph, epic_name)
-    epic_md = edir / "epic.md"
-    if not epic_md.exists():
+    epic = graph.epic_by_ref(epic_name)
+    if epic is None or epic.epic_md is None:
         return Result(False, f"no epic '{epic_name}'")
-    story_md = edir / "stories" / slug / "story.md"
-    if story_md.exists():
-        return Result(True, f"story '{slug}' already exists in epic '{epic_name}'", [story_md])
+    epic_md = epic.epic_md
+    same = next((s for s in epic.stories if s.slug == slug), None)
+    if same is not None:
+        return Result(True, f"story '{slug}' already exists in epic '{epic_name}'",
+                      [same.story_md] if same.story_md else [])
 
     sid = ids.allocate(graph)
+    story_md = epic.directory / "stories" / sid / "story.md"
     doc = markdown.split(epic_md.read_text(encoding="utf-8"))
     _insert_subsection(doc, registry.STORIES_HEADING,
                        _story_block(slug, title, sid, covers or []))

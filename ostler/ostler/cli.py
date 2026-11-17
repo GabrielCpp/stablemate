@@ -19,6 +19,7 @@ from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
 from ostler import index as index_mod
 from ostler import textindex as textindex_mod
+from ostler._vendor.stablemate_core import config as core_config
 from ostler.environments import cli as env_cli
 from ostler.book import cli as book_cli
 from ostler._vendor.stablemate_core.config import ConfigError
@@ -74,6 +75,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="print ids in full (default for --json)")
     sub = p.add_subparsers(dest="command", required=True)
     env_cli.add_parser(sub)
+    lay = sub.add_parser("layout", help="bring the epics shelf to the current layout")
+    lay.add_argument("op", choices=["apply"],
+                     help="apply: rename every epic and story folder to its id, record each "
+                          "epic's slug and repoint the queue")
 
     sub.add_parser(
         "book", parents=[book_cli.build_parser(embedded=True)], add_help=False,
@@ -1192,6 +1197,18 @@ def _cmd_book(cwd: Path | None, book_args: list[str]) -> int:
     return book_cli.main(book_args)
 
 
+def _cmd_layout() -> int:
+    """Rename the shelf's epic and story folders to their ids; exit 1 when any could not move."""
+    done, refused = layout_mod.apply(core_config.resolve_artifacts_dir())
+    for line in done:
+        _out(line)
+    for line in refused:
+        print(f"ostler layout: {line}", file=sys.stderr)
+    if not done and not refused:
+        _out("every epic and story folder is already named by its id")
+    return 1 if refused else 0
+
+
 def _main(argv: list[str] | None) -> int:
     given = sys.argv[1:] if argv is None else argv
     at = _book_position(given)
@@ -1206,6 +1223,8 @@ def _main(argv: list[str] | None) -> int:
         return _cmd_book(cwd, book_args)
     if args.command == "env":
         return env_cli.run(args, _env_root(cwd if cwd is not None else Path.cwd()))
+    if args.command == "layout":
+        return _cmd_layout()
     if args.command == "doctor" and args.verify_index:
         return _cmd_verify_index(cwd, args)
     with index_mod.session(

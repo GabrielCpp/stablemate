@@ -1,4 +1,4 @@
-"""Epic directories carry their creation order — `0001-<slug>` — and the slug still names them."""
+"""Epic directories are named by their ids, and the slug still names them."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import pytest
 from ostler import crud, doctor, path as path_mod, query, registry, select, todo
 from ostler.model import load
 
-from conftest import write, epics_root
+from conftest import present, write, epics_root
 
 pytestmark = pytest.mark.usefixtures("minting_root")
 
@@ -17,31 +17,8 @@ def _create(root: Path, name: str, title: str = "T") -> str:
     return crud.create_epic(load(root), name, title).entity_name
 
 
-def test_directories_are_numbered_in_creation_order(tmp_path: Path):
-    assert _create(tmp_path, "first") == "0001-first"
-    assert _create(tmp_path, "second") == "0002-second"
-    assert sorted(d.name for d in path_mod.epic_dirs(load(tmp_path))) == \
-        ["0001-first", "0002-second"]
-
-
-def test_a_name_that_already_carries_a_number_is_taken_literally(tmp_path: Path):
-    """Re-importing an epic must land on the number it came with, not be renumbered."""
-    assert _create(tmp_path, "0007-imported") == "0007-imported"
-    assert _create(tmp_path, "next") == "0008-next"
-
-
-def test_a_missing_number_in_the_middle_never_renumbers_its_survivors(tmp_path: Path):
-    """The sequence is derived from what is on disk, so deleting the *last* epic frees its number — harmless, since the number is a rank and not an identity."""
-    _create(tmp_path, "a")
-    _create(tmp_path, "b")
-    _create(tmp_path, "c")
-    assert crud.delete_epic(load(tmp_path), "b").ok
-    assert [d.name for d in path_mod.epic_dirs(load(tmp_path))] == ["0001-a", "0003-c"]
-    assert _create(tmp_path, "d") == "0004-d"
-
-
 def test_creating_the_same_slug_twice_is_refused(tmp_path: Path):
-    """Not "already exists" by directory name — `checkout` and `0001-checkout` are one epic, and creating the slug again would otherwise scaffold a second folder over the same work."""
+    """Not "already exists" by directory name — the folder is the id, so the slug alone says the work exists, and creating it again would otherwise scaffold a second folder over the same work."""
     _create(tmp_path, "checkout")
     res = crud.create_epic(load(tmp_path), "checkout", "Again")
     assert not res.ok and "already exists" in res.message
@@ -57,7 +34,7 @@ def test_every_entry_point_takes_the_bare_slug(tmp_path: Path):
     assert crud.add_seed(load(tmp_path), "checkout", "s1", summary="a seed").ok
     story_id = crud.create_story(load(tmp_path), "checkout", "01-a", "A", covers=["s1"]).entity_id
     assert path_mod.resolve_story(load(tmp_path), story_id) == \
-        str(epics_root() / dir_name / "stories/01-a/story.md")
+        str(epics_root() / dir_name / "stories" / story_id / "story.md")
 
     g = load(tmp_path)
     found = select.epic_by_name(g, "checkout")
@@ -71,35 +48,28 @@ def test_every_entry_point_takes_the_bare_slug(tmp_path: Path):
     assert crud.delete_epic(load(tmp_path), "checkout").ok
 
 
-def test_a_wrong_number_is_reported_rather_than_resolved(tmp_path: Path):
-    """`0009-checkout` is not `0001-checkout`."""
-    _create(tmp_path, "checkout")
-    res = crud.create_story(load(tmp_path), "0009-checkout", "01-a", "A")
-    assert not res.ok and "0009-checkout" in res.message
-
-
-def test_an_unnumbered_epic_on_disk_still_resolves(tmp_path: Path):
-    """Epics that predate the numbering are left where they are — nothing renames them, and a caller naming one gets its real directory back."""
-    write(epics_root() / "legacy/epic.md",
-          "---\ntype: epic\nid: x-1\ntitle: Legacy\n---\n# Epic: Legacy\n\n## Stories\n")
+def test_an_epic_whose_folder_is_its_id_resolves_by_slug(tmp_path: Path):
+    write(epics_root() / "x-1/epic.md",
+          "---\ntype: epic\nid: x-1\nslug: legacy\ntitle: Legacy\n---\n# Epic: Legacy\n\n## Stories\n")
     g = load(tmp_path)
-    assert path_mod.epic_dir(g, "legacy").name == "legacy"
+    assert path_mod.epic_dir(g, "legacy").name == "x-1"
     found = select.epic_by_name(g, "legacy")
-    assert found is not None and found.name == "legacy"
-    assert _create(tmp_path, "modern") == "0001-modern"
+    assert found is not None and found.name == "x-1"
+    modern = _create(tmp_path, "modern")
+    assert modern == present(load(tmp_path).epic_by_ref("modern")).eid
 
 
 def test_the_queue_tolerates_either_name(tmp_path: Path):
-    _create(tmp_path, "one")
-    _create(tmp_path, "two")
-    write(epics_root() / "index.md", "# Epics\n\n- [one](one/epic.md) — One\n")
-    assert todo.list_epics(load(tmp_path)) == ["one"]
-    assert not todo.add(load(tmp_path), "0001-one").ok, "already queued, under its other name"
+    one = _create(tmp_path, "one")
+    two = _create(tmp_path, "two")
+    write(epics_root() / "index.md", f"# Epics\n\n- [{one}]({one}/epic.md) — One\n")
+    assert todo.list_epics(load(tmp_path)) == [one]
+    assert not todo.add(load(tmp_path), "one").ok, "already queued, under its other name"
     assert todo.add(load(tmp_path), "two").ok
-    assert todo.reorder(load(tmp_path), ["0002-two", "one"]).ok
-    assert todo.list_epics(load(tmp_path)) == ["0002-two", "one"]
+    assert todo.reorder(load(tmp_path), ["two", one]).ok
+    assert todo.list_epics(load(tmp_path)) == [two, one]
     assert todo.prune(load(tmp_path), "one").ok
-    assert todo.list_epics(load(tmp_path)) == ["0002-two"]
+    assert todo.list_epics(load(tmp_path)) == [two]
 
 
 def test_registry_helpers_do_not_read_a_short_number_as_a_prefix(tmp_path: Path):

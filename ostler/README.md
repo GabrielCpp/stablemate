@@ -44,8 +44,8 @@ ostler create backlog-item "Ship checkout parity" --section Scope --json
 ostler create milestone checkout-mvp --title "Checkout MVP" \
   --source-items <full-backlog-id> --json
 
-# 3. Scaffold an epic (allocates an id, writes docs/epics/0001-checkout-flow/epic.md —
-#    the directory carries the order it was created in; `--json` reports the name it used)
+# 3. Scaffold an epic (allocates an id and writes <artifacts dir>/epics/<epic-id>/epic.md;
+#    `--json` reports the id, which is also the folder's name)
 ostler create epic checkout-flow --title "Checkout Flow at Parity"
 
 # 4. Record a seed (a unit of intended work) in that epic's ## Seeds
@@ -86,21 +86,27 @@ documents the graph reads.
 | `type` | Location (repo-relative) | Identity | Required frontmatter |
 |---|---|---|---|
 | `milestone` | `docs/milestones/<NNNN-slug>/milestone.md` | folder name `<NNNN-slug>`, or its bare `<slug>`; optional `id` defaults to it | `type`, `title`, `status` |
-| `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
-| `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | opaque `id` (a ULID when ostler mints it); the `<slug>` names the folder and the `epic.md` heading | `type`, `slug`, `status` |
+| `epic` | `<artifacts dir>/epics/<epic-id>/epic.md` | the minted `id`, which names the folder; the `slug` names it in commands and branches | `type`, `id`, `slug`, `title` |
+| `story` | `<artifacts dir>/epics/<epic-id>/stories/<story-id>/story.md` | opaque `id` (a ULID when ostler mints it), which names the folder; the `slug` names the `epic.md` heading | `type`, `slug`, `status` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `<artifacts dir>/specs/<story-id>/*.md` (`ostler path spec <story-id>`) | path | `type` |
 
-**Epic directories carry their creation order** — `create epic checkout-flow` writes
-`docs/epics/0001-checkout-flow/`, so a listing of `docs/epics` reads as the work order rather than
-as an alphabetized set. The number is *not* an identity (that is the minted `id`, which never
-changes), so the bare slug still names the epic in every command: `ostler todo add checkout-flow`,
-`--epic checkout-flow`, `create story checkout-flow …`. Use `ostler path epic <slug>` when you need
-the directory itself, and read `--json`'s `name` back after `create epic` rather than assuming one.
+**Epic and story folders are named by their ids.** `create epic checkout-flow` mints an id and
+writes `<artifacts dir>/epics/<epic-id>/epic.md` with `slug: checkout-flow` in its frontmatter;
+`create story` writes `<epic-id>/stories/<story-id>/story.md`. An id never changes, so a path built
+from it never goes stale. The slug still names the epic in every command: `ostler todo add
+checkout-flow`, `--epic checkout-flow`, `create story checkout-flow …`. The order of the work lives
+in the milestone's `## Epics` list and the epics queue, not in the folder names. Use `ostler path
+epic <slug>` when you need the directory itself.
+
+A shelf still holding `NNNN-slug` epic folders refuses every command until `ostler layout apply`
+renames each epic and story folder to its id, records each epic's slug and repoints the queue.
+Doctor reports an epic or story folder not named by its id (`epic-folder-not-id`,
+`story-folder-not-id`).
 
 `spec.*` documents are process artifacts: typed and conformance-checked, but ostler does not own their
 internal schema. The subtype is the file's stem (`executive.md` → `spec.executive`); mint them with
 `ostler create spec <story-id> <doc>`, which is idempotent and also retro-stamps free-form docs.
-**Not typed documents** (managed markdown, left in place): `docs/epics/index.md` (the epics queue).
+**Not typed documents** (managed markdown, left in place): `<artifacts dir>/epics/index.md` (the epics queue).
 
 ### Planning intake identity
 

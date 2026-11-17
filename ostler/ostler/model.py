@@ -73,6 +73,7 @@ class Epic:
     name: str
     directory: Path
     title: str = ""
+    slug: str = ""
     status: str = ""
     eid: str = ""
     epic_md: Path | None = None
@@ -125,7 +126,7 @@ class Graph:
         return {s.slug for e in self.epics for s in e.stories}
 
     def epic_by_ref(self, ref: str) -> Epic | None:
-        """The epic *ref* names: its id, its directory, or its bare slug, in that order."""
+        """The epic *ref* names: its id, its directory, or its slug, in that order; a numbered ``NNNN-slug`` from the old layout names it by its slug."""
         ref = ref.strip()
         if not ref:
             return None
@@ -133,10 +134,10 @@ class Graph:
         if by_id is not None:
             return by_id
         exact = next((e for e in self.epics if e.name == ref), None)
-        if exact is not None or registry.epic_seq(ref) is not None:
+        if exact is not None:
             return exact
         slug = registry.epic_slug(ref)
-        return next((e for e in self.epics if registry.epic_slug(e.name) == slug), None)
+        return next((e for e in self.epics if e.slug == slug), None)
 
     def milestone_by_name(self, name: str) -> Milestone | None:
         """The milestone *name* names: its id, its folder, or its folder's slug without the number."""
@@ -399,14 +400,15 @@ def _parse_stories(doc: markdown.MarkdownDoc, epic_name: str, root: Path,
             continue
         meta = _meta_from_bullets(sub)
         seed_items = _split_list(_meta_scalar(meta, registry.STORY_COVERS_KEY))
-        story_md = epic_dir / "stories" / slug / "story.md"
+        eid = _meta_scalar(meta, "id")
+        story_md = epic_dir / "stories" / (eid or slug) / "story.md"
         rel = story_md.relative_to(root).as_posix() if story_md.is_relative_to(root) else story_md.as_posix()
         raw = {"slug": slug, "seedItems": seed_items, **meta}
         stories.append(Story(
             slug=slug,
             title=_meta_scalar(meta, "title"),
             path=rel,
-            eid=_meta_scalar(meta, "id"),
+            eid=eid,
             seed_items=seed_items,
             dependencies=[],
             raw=raw,
@@ -653,6 +655,7 @@ def _load_epics(graph: Graph) -> None:
             name=d.name,
             directory=d,
             title=str(fm.get("title") or ""),
+            slug=str(fm.get("slug") or "").strip() or registry.epic_slug(d.name),
             status=str(fm.get("status") or ""),
             eid=str(fm.get("id") or ""),
             epic_md=epic_md,

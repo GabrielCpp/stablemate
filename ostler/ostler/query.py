@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ostler import crud_generic, registry, textindex
+from ostler import crud_generic, textindex
 from ostler.model import Graph
 
 
@@ -57,9 +57,9 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
         rows = crud_generic.find_instance(graph, etype)
 
     if epic is not None:
-        want = registry.epic_slug(epic)
-        rows = [r for r in rows
-                if registry.epic_slug(str(r.get("epic") or r.get("name") or "")) == want]
+        found = graph.epic_by_ref(epic)
+        want = found.name if found is not None else epic
+        rows = [r for r in rows if str(r.get("epic") or r.get("name") or "") == want]
     if status is not None:
         rows = [r for r in rows if str(r.get("status", "")).lower() == status.lower()]
     return rows

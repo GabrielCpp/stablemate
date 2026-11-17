@@ -7,9 +7,7 @@ import pytest
 from ostler import crud, doctor
 from ostler.model import load
 
-from conftest import BAR_ID, FOO_ID, epic_md, specs_root, story_md, write, write_prefix, epics_root
-
-FOO_STORY = "epic-a/stories/01-foo/story.md"
+from conftest import BAR_ID, present, BAR_STORY, EPIC_A, EPIC_B, FOO_ID, FOO_STORY, epic_md, specs_root, story_md, write, write_prefix, epics_root
 
 
 def codes(report):
@@ -20,14 +18,14 @@ def test_clean_repo_has_no_errors(repo: Path):
     report = doctor.run(load(repo))
     assert report.errors == 0, [f.message for f in report.findings if f.severity == "error"]
     assert report.profile == "full"
-    assert {e["dir"] for e in report.epics} == {"epic-a", "epic-b"}
+    assert {e["dir"] for e in report.epics} == {EPIC_A, EPIC_B}
 
 
 def test_cross_epic_seed_reference_is_flagged(repo: Path):
-    write(epics_root() / "epic-a/epic.md", epic_md(
-        "t-1", "epic-a",
+    write(epics_root() / EPIC_A / "epic.md", epic_md(
+        EPIC_A, "epic-a", slug="epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
-        stories=[("01-foo", "Foo", ["seed-b1"])],
+        stories=[("01-foo", "Foo", ["seed-b1"], FOO_ID)],
     ))
 
     report = doctor.run(load(repo))
@@ -37,29 +35,35 @@ def test_cross_epic_seed_reference_is_flagged(repo: Path):
 
 
 def test_blocker_naming_no_story_is_flagged(repo: Path):
-    write(epics_root() / FOO_STORY, story_md("01-foo", "Foo", "Not started", depends=["no-such-story"]))
+    write(epics_root() / FOO_STORY, story_md("01-foo", "Foo", "Not started", eid=FOO_ID, depends=["no-such-story"]))
     assert "dangling-dependency" in codes(doctor.run(load(repo)))
 
 
 def test_blocker_in_another_epic_is_flagged(repo: Path):
-    write(epics_root() / FOO_STORY, story_md("01-foo", "Foo", "Not started", depends=["01-bar"]))
+    write(epics_root() / FOO_STORY, story_md("01-foo", "Foo", "Not started", eid=FOO_ID, depends=["01-bar"]))
     assert "cross-epic-dependency" in codes(doctor.run(load(repo)))
 
 
 def test_story_key_collision_is_flagged_and_lookup_is_ambiguous(repo: Path):
-    second = epics_root() / "epic-b/stories/01-bar/story.md"
+    second = epics_root() / BAR_STORY
     second.write_text(
         second.read_text(encoding="utf-8").replace(f"id: {BAR_ID}", f"id: {FOO_ID}"),
         encoding="utf-8",
     )
+    epic_b = epics_root() / EPIC_B / "epic.md"
+    epic_b.write_text(
+        epic_b.read_text(encoding="utf-8").replace(f"- id: {BAR_ID}", f"- id: {FOO_ID}"),
+        encoding="utf-8",
+    )
+    second.parent.rename(second.parent.with_name(FOO_ID))
     graph = load(repo)
     findings = [
         f for f in doctor.run(graph).findings if f.code == "story-key-collision"
     ]
 
     assert [finding.ref for finding in findings] == [FOO_ID]
-    assert "01-foo/story.md" in findings[0].message
-    assert "01-bar/story.md" in findings[0].message
+    assert f"{EPIC_A}/stories/{FOO_ID}/story.md" in findings[0].message
+    assert f"{EPIC_B}/stories/{FOO_ID}/story.md" in findings[0].message
     with pytest.raises(ValueError, match="ambiguous"):
         graph.find_story(FOO_ID)
 
@@ -107,7 +111,7 @@ def test_story_id_mismatch_between_epic_and_story_is_flagged(tmp_path: Path):
 
 def test_a_dependencies_bullet_that_names_no_blocker_is_flagged(repo: Path):
     """The guard against a silent rewrite: story.md is agent-written, and a body turned into prose empties the DAG with nothing else reporting it."""
-    text = story_md("01-foo", "Foo", "Not started", depends=["01-bar"])
+    text = story_md("01-foo", "Foo", "Not started", eid=FOO_ID, depends=["01-bar"])
     write(epics_root() / FOO_STORY, text.replace("- Blocked by: 01-bar", "- Needs: 01-bar"))
 
     findings = [f for f in doctor.run(load(repo)).findings
@@ -124,10 +128,10 @@ def test_resolved_seed_not_required_to_be_covered(repo: Path):
 
 def test_a_story_covering_a_seed_id_unknown_to_the_whole_book_is_flagged(repo: Path):
     """Unlike `cross-epic-seed` (the id belongs to a sibling epic), `dangling-seed` is what fires when no epic anywhere claims the id at all."""
-    write(epics_root() / "epic-a/epic.md", epic_md(
-        "t-1", "epic-a",
+    write(epics_root() / EPIC_A / "epic.md", epic_md(
+        EPIC_A, "epic-a", slug="epic-a",
         seeds=[("seed-a1", "researched", "first"), ("seed-a2", "resolved", "done")],
-        stories=[("01-foo", "Foo", ["seed-ghost"])],
+        stories=[("01-foo", "Foo", ["seed-ghost"], FOO_ID)],
     ))
     report = doctor.run(load(repo))
     assert "dangling-seed" in codes(report)
@@ -136,10 +140,10 @@ def test_a_story_covering_a_seed_id_unknown_to_the_whole_book_is_flagged(repo: P
 
 
 def test_a_story_named_in_the_epic_with_no_story_file_on_disk_is_flagged(repo: Path):
-    write(epics_root() / "epic-a/epic.md", epic_md(
-        "t-1", "epic-a",
+    write(epics_root() / EPIC_A / "epic.md", epic_md(
+        EPIC_A, "epic-a", slug="epic-a",
         seeds=[("seed-a1", "researched", "first")],
-        stories=[("01-foo", "Foo", ["seed-a1"]), ("02-ghost", "Ghost", [])],
+        stories=[("01-foo", "Foo", ["seed-a1"], FOO_ID), ("02-ghost", "Ghost", [], "t-02ghost")],
     ))
     report = doctor.run(load(repo))
     assert "missing-story-file" in codes(report)
@@ -148,19 +152,19 @@ def test_a_story_named_in_the_epic_with_no_story_file_on_disk_is_flagged(repo: P
 
 
 def test_seedless_epic_no_covers_warning(repo: Path):
-    write(epics_root() / "epic-c/epic.md", epic_md(
-        "t-3", "epic-c", seeds=[], stories=[("01-x", "X", [])]))
-    write(epics_root() / "epic-c/stories/01-x/story.md",
-          "---\ntype: story\nslug: 01-x\nstatus: Not started\n---\n# Story: X\n")
+    write(epics_root() / "t-3/epic.md", epic_md(
+        "t-3", "epic-c", seeds=[], stories=[("01-x", "X", [], "t-01x")], slug="epic-c"))
+    write(epics_root() / "t-3/stories/t-01x/story.md",
+          "---\ntype: story\nslug: 01-x\nid: t-01x\nstatus: Not started\n---\n# Story: X\n")
     warns = {f.code for f in doctor.run(load(repo)).findings if f.severity == "warn"}
     assert "story-covers-no-seed" not in warns
 
 
 def test_a_story_that_covers_no_seed_in_a_seeded_epic_is_flagged(repo: Path):
-    write(epics_root() / "epic-a/epic.md", epic_md(
-        "t-1", "epic-a",
+    write(epics_root() / EPIC_A / "epic.md", epic_md(
+        EPIC_A, "epic-a", slug="epic-a",
         seeds=[("seed-a1", "researched", "first")],
-        stories=[("01-foo", "Foo", [])],
+        stories=[("01-foo", "Foo", [], FOO_ID)],
     ))
     report = doctor.run(load(repo))
     errors = [f for f in report.findings if f.severity == "error"]
@@ -180,7 +184,7 @@ def test_an_active_seed_with_no_layers_bullet_is_flagged_unclassified(repo: Path
 
 def test_epic_filter_scopes_findings(repo: Path):
     report = doctor.run(load(repo), epic_filter="epic-b")
-    assert all(f.epic in ("epic-b",) for f in report.findings)
+    assert all(f.epic in (EPIC_B,) for f in report.findings)
 
 
 def test_template_kind_instance_missing_type_is_flagged(repo: Path):
@@ -203,8 +207,12 @@ def _unwritten(root: Path) -> list:
     return [f for f in doctor.run(load(root)).findings if f.code == "unwritten-story"]
 
 
+def _story_file(root: Path, slug: str) -> Path:
+    return present(present(load(root).story_by_slug(slug))[1].story_md)
+
+
 def _scaffolded(root: Path, slugs: list[str]) -> str:
-    """Scaffold the stories under a fresh epic; return its numbered directory name."""
+    """Scaffold the stories under a fresh epic; return its directory name, which is its id."""
     write_prefix(root)
     epic_dir = crud.create_epic(load(root), "billing", "Billing").entity_name
     for slug in slugs:
@@ -221,13 +229,13 @@ def test_every_unwritten_story_is_named_with_its_empty_sections(tmp_path: Path):
     assert all(f.severity == "error" for f in found)
     assert all(f.epic == epic_dir for f in found)
     assert "Context (empty), Acceptance Criteria (empty)" in found[0].message
-    assert found[0].path == str(epics_root() / epic_dir / "stories/01-a/story.md")
+    assert found[0].path == str(_story_file(tmp_path, "01-a"))
 
 
 def test_an_old_story_is_unwritten_for_the_sections_it_never_had(tmp_path: Path):
     """No frontmatter exempts a document from the contract — there is only one, and it is the table."""
-    epic_dir = _scaffolded(tmp_path, ["01-a"])
-    story_md = epics_root() / f"{epic_dir}/stories/01-a/story.md"
+    _scaffolded(tmp_path, ["01-a"])
+    story_md = _story_file(tmp_path, "01-a")
     text = story_md.read_text(encoding="utf-8")
     start = text.index("## Non-Functional Acceptance Criteria")
     end = text.index("## Implementation Status")
@@ -243,8 +251,8 @@ def test_an_old_story_is_unwritten_for_the_sections_it_never_had(tmp_path: Path)
 
 
 def test_a_partially_written_story_names_only_the_empty_section(tmp_path: Path):
-    epic_dir = _scaffolded(tmp_path, ["01-a"])
-    story_md = epics_root() / f"{epic_dir}/stories/01-a/story.md"
+    _scaffolded(tmp_path, ["01-a"])
+    story_md = _story_file(tmp_path, "01-a")
     story_md.write_text(
         story_md.read_text(encoding="utf-8").replace(
             "## Context\n", "## Context\n\n- the operator needs a daily total\n"),
@@ -259,8 +267,8 @@ def test_a_partially_written_story_names_only_the_empty_section(tmp_path: Path):
 
 def test_a_section_the_story_predates_is_reported_missing_not_empty(tmp_path: Path):
     """A story written before a section was required has no heading to write under, and reporting that as "empty" sends the reader looking for prose that has nowhere to go."""
-    epic_dir = _scaffolded(tmp_path, ["01-a"])
-    story_md = epics_root() / f"{epic_dir}/stories/01-a/story.md"
+    _scaffolded(tmp_path, ["01-a"])
+    story_md = _story_file(tmp_path, "01-a")
     body = story_md.read_text(encoding="utf-8")
     start = body.index("## Dependencies")
     story_md.write_text(body[:start] + body[body.index("## Context") :], encoding="utf-8")
@@ -272,7 +280,7 @@ def test_a_section_the_story_predates_is_reported_missing_not_empty(tmp_path: Pa
 
 
 def test_story_status_mismatch_is_flagged(repo: Path):
-    story = epics_root() / "epic-a/stories/01-foo/story.md"
+    story = epics_root() / FOO_STORY
     story.write_text(
         story.read_text(encoding="utf-8").replace(
             "- **Status**: Not started", "- **Status**: QA passed"),
@@ -308,7 +316,7 @@ epics:
 
     assert "epic-without-milestone" in codes(report)
     finding = next(f for f in report.findings if f.code == "epic-without-milestone")
-    assert finding.ref == "epic-b"
+    assert finding.ref == EPIC_B
 
 
 def _foundation_owning(*epics: str) -> str:
@@ -323,25 +331,27 @@ def test_an_epic_of_filed_follow_ups_needs_no_milestone(repo: Path):
     write_prefix(repo)
     write(repo / "docs/milestones/foundation/milestone.md", _foundation_owning("epic-a", "epic-b"))
     assert crud.create_epic(load(repo), "fixes", "Filed fixes", followups=True).ok
-    assert crud.create_epic(load(repo), "loose", "Loose").ok
+    loose = crud.create_epic(load(repo), "loose", "Loose")
+    assert loose.ok
 
     report = doctor.run(load(repo))
 
     unowned = [f.ref for f in report.findings if f.code == "epic-without-milestone"]
-    assert unowned == ["0002-loose"], unowned
+    assert unowned == [loose.entity_id], unowned
 
 
 def test_a_milestone_listing_the_epic_of_filed_follow_ups_is_flagged(repo: Path):
     write_prefix(repo)
-    assert crud.create_epic(load(repo), "fixes", "Filed fixes", followups=True).ok
+    fixes = crud.create_epic(load(repo), "fixes", "Filed fixes", followups=True)
+    assert fixes.ok
     write(repo / "docs/milestones/foundation/milestone.md",
-          _foundation_owning("epic-a", "epic-b", "0001-fixes"))
+          _foundation_owning("epic-a", "epic-b", "fixes"))
 
     report = doctor.run(load(repo))
 
     finding = next(f for f in report.findings if f.code == "followups-epic-in-milestone")
     assert finding.severity == "error"
-    assert finding.ref == "0001-fixes"
+    assert finding.ref == fixes.entity_id
 
 
 def test_a_milestone_depending_on_an_unknown_milestone_is_flagged(repo: Path):
@@ -418,7 +428,7 @@ def test_a_recorded_conflict_is_an_error_on_the_story_until_cleared(repo: Path):
     crud.set_conflict(load(repo), FOO_ID, "AC2 wants a modal, AC4 forbids one")
     found = conflicts()
     assert len(found) == 1 and found[0].severity == "error"
-    assert found[0].epic == "epic-a" and found[0].ref == "01-foo"
+    assert found[0].epic == EPIC_A and found[0].ref == "01-foo"
     assert "AC2 wants a modal" in found[0].message
     assert f"ostler conflict {FOO_ID} --clear" in found[0].suggestion
     crud.set_conflict(load(repo), FOO_ID, "")
@@ -449,8 +459,8 @@ def test_missing_type_is_flagged(repo: Path):
 
 
 def test_writing_the_sections_clears_the_finding(tmp_path: Path):
-    epic_dir = _scaffolded(tmp_path, ["01-a"])
-    story_md = epics_root() / f"{epic_dir}/stories/01-a/story.md"
+    _scaffolded(tmp_path, ["01-a"])
+    story_md = _story_file(tmp_path, "01-a")
     story_md.write_text(
         story_md.read_text(encoding="utf-8")
         .replace("## Context\n", "## Context\n\n- the operator needs a daily total\n")
@@ -527,7 +537,7 @@ epics:
 
     assert "epic-in-multiple-milestones" in codes(report)
     finding = next(f for f in report.findings if f.code == "epic-in-multiple-milestones")
-    assert finding.ref == "epic-a"
+    assert finding.ref == EPIC_A
     assert "foundation" in finding.message and "feature" in finding.message
 
 

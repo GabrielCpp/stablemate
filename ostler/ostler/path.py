@@ -102,40 +102,65 @@ def epic_dirs(graph: Graph) -> list[Path]:
     return epic_dirs_under(epics_root(graph))
 
 
+def _epic_names(epic_md: Path) -> tuple[str, str]:
+    """The id and the slug an epic.md declares, the slug read off an old ``NNNN-slug`` folder when it declares none."""
+    fm = model.read_doc(epic_md).frontmatter or {}
+    slug = str(fm.get("slug") or "").strip() or registry.epic_slug(epic_md.parent.name)
+    return str(fm.get("id") or "").strip(), slug
+
+
 def epic_dir_under(epics_root: Path, name: str) -> Path:
-    """:func:`epic_dir_in`'s resolution against an epics directory the caller names."""
+    """:func:`epic_dir_in`'s resolution against an epics directory the caller names: the folder, the id, then the slug."""
     name = name.strip()
-    if (not name or (epics_root / name / "epic.md").is_file()
-            or registry.epic_seq(name) is not None):
+    if not name or (epics_root / name / "epic.md").is_file():
         return epics_root / name
     slug = registry.epic_slug(name)
-    return next((d for d in epic_dirs_under(epics_root) if registry.epic_slug(d.name) == slug),
-                epics_root / name)
+    named = [(d, *_epic_names(d / "epic.md")) for d in epic_dirs_under(epics_root)]
+    return next((d for d, eid, _ in named if eid == name),
+                next((d for d, _, s in named if s == slug), epics_root / name))
+
+
+def epic_slug_in(root: Path, name: str) -> str:
+    """The slug epic *name* (its folder, id or slug) declares under *root*, else *name* read as an old ``NNNN-slug``."""
+    epic_md = epic_dir_in(root, name) / "epic.md"
+    return _epic_names(epic_md)[1] if epic_md.is_file() else registry.epic_slug(name)
 
 
 def epic_dir_in(root: Path, name: str) -> Path:
-    """The directory of epic *name* under *root*, by number or by bare slug."""
+    """The directory of epic *name* under *root*, by folder, id or slug."""
     return epic_dir_under(epics_root_in(root), name)
 
 
 def epic_dir(graph: Graph, name: str) -> Path:
-    """The directory of epic *name*, whether or not the caller knows its number."""
+    """The directory of epic *name*, by folder, id or slug."""
     return epic_dir_under(epics_root(graph), name)
 
 
-def story_dir_in(root: Path, epic: str, slug: str) -> Path:
-    """The folder of story *slug* in *epic*: ``<epic-dir>/stories/<slug>``."""
-    return epic_dir_in(root, epic) / "stories" / slug
+def _story_id_under(epic_dir_path: Path, story: str) -> str:
+    """The id the epic's `## Stories` block gives the story filed under slug *story*, else *story* itself."""
+    epic_md = epic_dir_path / "epic.md"
+    if not epic_md.is_file():
+        return story
+    section = model.read_doc(epic_md).find_section(registry.STORIES_HEADING)
+    for sub in section.children if section is not None else []:
+        if sub.title.strip() == story:
+            return model._meta_scalar(model._meta_from_bullets(sub), "id") or story
+    return story
 
 
-def story_dir(graph: Graph, epic: str, slug: str) -> Path:
-    """The folder of story *slug* in *epic* for this graph."""
-    return epic_dir(graph, epic) / "stories" / slug
+def story_dir_in(root: Path, epic: str, story: str) -> Path:
+    """The folder of *story* (its id or its slug) in *epic*: ``<epic-dir>/stories/<story-id>``."""
+    return story_dir_under(epic_dir_in(root, epic), story)
 
 
-def story_dir_under(epic_dir_path: Path, slug: str) -> Path:
-    """The folder of story *slug* under an epic directory the caller already holds."""
-    return epic_dir_path / "stories" / slug
+def story_dir(graph: Graph, epic: str, story: str) -> Path:
+    """The folder of *story* (its id or its slug) in *epic* for this graph."""
+    return story_dir_under(epic_dir(graph, epic), story)
+
+
+def story_dir_under(epic_dir_path: Path, story: str) -> Path:
+    """The folder of *story* (its id or its slug) under an epic directory the caller already holds."""
+    return epic_dir_path / "stories" / _story_id_under(epic_dir_path, story)
 
 
 def resolve_epic(graph: Graph, name: str) -> str:
@@ -149,13 +174,14 @@ def resolve_story(graph: Graph, story: str) -> str:
     if found is None:
         raise ValueError(graph.no_story(story))
     epic, s = found
-    return display_path(graph.root, epic_dir(graph, epic.name) / "stories" / s.slug / "story.md")
+    return display_path(graph.root, s.story_md or epic.directory / "stories" / s.eid / "story.md")
 
 
 def resolve_branch(graph: Graph, ref: str, *, epic: bool = False) -> str:
     """The git branch for a story id (its slug) or, with *epic*, for an epic name (``feat/<slug>``)."""
     if epic:
-        return f"feat/{registry.epic_slug(ref)}"
+        found_epic = graph.epic_by_ref(ref)
+        return f"feat/{found_epic.slug if found_epic is not None else registry.epic_slug(ref)}"
     found = graph.find_story(ref)
     if found is None:
         raise ValueError(graph.no_story(ref))

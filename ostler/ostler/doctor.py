@@ -86,9 +86,9 @@ def diff_reports(indexed: Report, uncached: Report, *, context: int = 2) -> list
 
 
 def _epic_matches(epic: Epic, epic_filter: str) -> bool:
-    """Whether ``--epic <filter>`` names this epic — by directory or by bare slug."""
-    return (epic_filter in (epic.name, epic.directory.name)
-            or registry.epic_slug(epic.name) == registry.epic_slug(epic_filter))
+    """Whether ``--epic <filter>`` names this epic: by id, directory or slug."""
+    return (epic_filter in (epic.name, epic.directory.name, epic.eid, epic.slug)
+            or epic.slug == registry.epic_slug(epic_filter))
 
 
 def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
@@ -268,6 +268,11 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                          f"epic '{epic.name}' has no `id:`, so a milestone cannot list it",
                          epic.name, epic.name, path=rel, line=1,
                          suggestion="file epics with `ostler create epic`, which mints the id"))
+    elif epic.directory.name != epic.eid:
+        f.append(Finding("error", "epic-folder-not-id",
+                         f"epic '{epic.slug}' lives in `{epic.directory.name}/`, not in a folder "
+                         f"named by its id `{epic.eid}`", epic.name, epic.name, path=rel, line=1,
+                         suggestion="ostler layout apply"))
     if epic.stories and not epic.followups and epic.unwritten_detail:
         f.append(Finding("error", "unwritten-epic",
                          f"epic '{epic.name}' has stories but its epic.md lacks "
@@ -351,6 +356,12 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                              f"story '{story.slug}' has no `id:`, so no command, milestone or "
                              f"commit can name it", epic.name, story.slug,
                              suggestion="file stories with `ostler create story`, which mints the id"))
+        elif story.story_md is not None and story.story_md.parent.name != story.eid:
+            f.append(Finding("error", "story-folder-not-id",
+                             f"story '{story.slug}' lives in `stories/{story.story_md.parent.name}/`, "
+                             f"not in a folder named by its id `{story.eid}`", epic.name, story.slug,
+                             path=_rel_posix(story.story_md, graph.root), line=1,
+                             suggestion="ostler layout apply"))
         if not story.seed_items and (epic.seeds or not epic.followups):
             f.append(Finding("warn" if epic.followups else "error", "story-covers-no-seed",
                              f"story '{story.slug}' covers no seed, so nothing in the epic "
@@ -440,20 +451,15 @@ def _undeclared_fixture_repair(name: str, referenced: set[str] | None, plan_rel:
             f"arranges nothing")
 
 
-def _epic_ref(epic_name: str) -> str:
-    return registry.epic_slug(epic_name.strip())
-
-
 def _epic_by_ref(graph: Graph, epic_name: str) -> Epic | None:
-    ref = _epic_ref(epic_name)
-    return next((e for e in graph.epics if e.name == epic_name or _epic_ref(e.name) == ref), None)
+    return graph.epic_by_ref(epic_name)
 
 
 def _milestone_ref_by_epic(graph: Graph) -> dict[str, list[str]]:
     owners: dict[str, list[str]] = {}
     for milestone in graph.milestones:
         for epic_name in milestone.epics:
-            owners.setdefault(_epic_ref(epic_name), []).append(milestone.name)
+            owners.setdefault(epic_name, []).append(milestone.name)
     return owners
 
 
@@ -527,7 +533,7 @@ def _check_milestones(graph: Graph, f: list[Finding]) -> None:
                     epic=listed.name, ref=epic_name, path=rel, line=1))
 
     for epic in graph.epics:
-        refs = owners.get(_epic_ref(epic.name), [])
+        refs = owners.get(epic.name, [])
         if not refs and not epic.followups:
             f.append(Finding(
                 "error", "epic-without-milestone",

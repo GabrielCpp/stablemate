@@ -175,7 +175,7 @@ def epics_section_lines(graph: Graph, milestone: Milestone) -> list[str]:
         if epic is None:
             lines.append(f"{position}. `{ref}`, which names no epic")
         else:
-            lines.append(f"{position}. {epic.title or epic.name} (`{epic.eid}`, `{epic.name}`)")
+            lines.append(f"{position}. {epic.title or epic.slug} (`{epic.eid or epic.name}`)")
     return lines
 
 

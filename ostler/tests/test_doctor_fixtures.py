@@ -7,9 +7,8 @@ from pathlib import Path
 from ostler import doctor
 from ostler.model import load
 
-from conftest import FOO_ID, specs_root, story_md, write, epics_root
+from conftest import FOO_ID, FOO_STORY, specs_root, story_md, write, epics_root
 
-FOO_STORY = "epic-a/stories/01-foo/story.md"
 FOO_PLAN = f"{FOO_ID}/qa_plan.py"
 
 AGENTS = """\

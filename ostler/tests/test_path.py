@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from conftest import FOO_ID, ostler_process, specs_root, epics_root
+from conftest import FOO_ID, FOO_STORY, ostler_process, specs_root, epics_root
 import pytest
 
 from ostler import crud
@@ -68,7 +68,7 @@ def test_resolve_spec_returns_the_id_folder(repo):
 
 def test_resolve_story(repo):
     graph = load(repo)
-    assert resolve_story(graph, FOO_ID) == str(epics_root() / "epic-a/stories/01-foo/story.md")
+    assert resolve_story(graph, FOO_ID) == str(epics_root() / FOO_STORY)
 
 
 def test_resolve_story_refuses_a_slug(repo):

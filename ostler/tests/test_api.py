@@ -9,30 +9,30 @@ import pytest
 
 from ostler import Ostler
 
-from conftest import FOO_ID, present, specs_root, write, epics_root
+from conftest import EPIC_A, EPIC_B, FOO_ID, FOO_STORY, present, specs_root, write, epics_root
 
 pytestmark = pytest.mark.usefixtures("minting_root")
 
 
 def test_reads_match_the_underlying_core(repo: Path):
     okf = Ostler(repo)
-    assert {r["name"] for r in okf.list("epic")} == {"epic-a", "epic-b"}
+    assert {r["name"] for r in okf.list("epic")} == {EPIC_A, EPIC_B}
     assert {r["slug"] for r in okf.list("story")} == {"01-foo", "01-bar"}
     assert {r["id"] for r in okf.list("seed", epic="epic-a")} == {"seed-a1", "seed-a2"}
-    assert present(okf.next_epic())["name"] == "epic-a"
+    assert present(okf.next_epic())["name"] == EPIC_A
     assert present(okf.next_story("epic-a"))["slug"] == "01-foo"
 
 
 def test_query_and_search(repo: Path):
     okf = Ostler(repo)
     assert {x["slug"] for x in okf.query("stories-covering-seed", "seed-a1")} == {"01-foo"}
-    assert any("/01-foo/" in h["node"] for h in okf.search("thing works", etype="story"))
+    assert any(f"/{FOO_ID}/" in h["node"] for h in okf.search("thing works", etype="story"))
 
 
 def test_path_resolution(repo: Path):
     okf = Ostler(repo)
     assert FOO_ID in okf.spec_path(FOO_ID)
-    assert "01-foo" in okf.story_path(FOO_ID)
+    assert f"/stories/{FOO_ID}/" in okf.story_path(FOO_ID)
     assert okf.branch(FOO_ID) == "01-foo"
     assert okf.branch("epic-a", epic=True) == "feat/epic-a"
 
@@ -77,7 +77,7 @@ def test_mutation_invalidates_the_snapshot(repo: Path):
 
 
 def test_set_status_refuses_an_empty_status_and_writes_nothing(repo: Path):
-    story_md = epics_root() / "epic-a/stories/01-foo/story.md"
+    story_md = epics_root() / FOO_STORY
     before = story_md.read_bytes()
 
     res = Ostler(repo).set_status(FOO_ID, "")
@@ -100,9 +100,9 @@ def test_doc_root_override_is_used_for_reads_and_mutations(tmp_path: Path) -> No
     result = okf.create_epic("accounts", "Accounts")
 
     assert result.ok
-    assert (tmp_path / "product/epics/0001-accounts/epic.md").is_file()
+    assert (tmp_path / "product/epics" / result.entity_id / "epic.md").is_file()
     assert not (epics_root()).exists()
-    assert [row["name"] for row in okf.list("epic")] == ["0001-accounts"]
+    assert [row["name"] for row in okf.list("epic")] == [result.entity_id]
 
 
 def test_delete_story_is_visible_to_the_next_read(repo: Path):
@@ -117,7 +117,7 @@ def test_delete_story_is_visible_to_the_next_read(repo: Path):
 
 def test_update_story_and_delete_epic_are_visible_to_the_next_read(repo: Path):
     okf = Ostler(repo)
-    body = epics_root() / "epic-a/stories/01-foo/story.md"
+    body = epics_root() / FOO_STORY
     before = body.read_bytes()
 
     updated = okf.update_story(
@@ -133,7 +133,7 @@ def test_update_story_and_delete_epic_are_visible_to_the_next_read(repo: Path):
     deleted = okf.delete_epic("epic-a")
 
     assert deleted.ok
-    assert "epic-a" not in {r["name"] for r in okf.list("epic")}
+    assert EPIC_A not in {r["name"] for r in okf.list("epic")}
 
 
 def test_remove_seed_is_visible_to_the_next_read(repo: Path):
@@ -154,7 +154,7 @@ def test_backlog_and_todo_round_trip(repo: Path):
     assert [line.split("\t")[0] for line in okf.record_listing()] == [result.entity_id]
 
     okf.todo_add("epic-a")
-    assert "epic-a" in okf.todo()
+    assert EPIC_A in okf.todo()
 
 
 def test_create_milestone_is_visible_to_the_next_read(repo: Path):
@@ -212,7 +212,7 @@ def test_settle_answers_and_ledger_only_settle_review_through_the_facade(repo: P
     plan = okf.settle_review(FOO_ID, write=True, status_write=False)
     assert not plan.error, plan.error
     assert okf.story(FOO_ID) is not None
-    assert "Not started" in (epics_root() / "epic-a/stories/01-foo/story.md").read_text()
+    assert "Not started" in (epics_root() / FOO_STORY).read_text()
 
 
 def test_sync_story_fixtures_states_exactly_what_the_plan_uses(repo: Path):

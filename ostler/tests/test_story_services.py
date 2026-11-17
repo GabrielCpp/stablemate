@@ -16,7 +16,7 @@ def _services(repo: Path, line: str) -> None:
 
 
 def _schema_findings(repo: Path) -> list:
-    return [f for f in doctor.run(load(repo)).findings if f.code == "schema" and "01-foo" in f.message]
+    return [f for f in doctor.run(load(repo)).findings if f.code == "schema" and "t-01foo" in (f.message + f.path)]
 
 
 def test_a_story_without_services_has_an_empty_tuple(repo: Path):

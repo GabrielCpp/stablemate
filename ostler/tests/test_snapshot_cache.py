@@ -11,7 +11,7 @@ import pytest
 from ostler import api, model, index
 from ostler.api import Ostler
 
-from conftest import epic_md, story_md, write, epics_root
+from conftest import BAR_STORY, FOO_ID, EPIC_A, EPIC_B, FOO_STORY, epic_md, story_md, write, epics_root
 
 
 def loads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -77,8 +77,8 @@ def test_writing_into_the_spec_root_does_not_invalidate(repo, index_home, monkey
 
 def test_editing_a_story_invalidates(repo, index_home):
     Ostler(repo).graph
-    write(epics_root() / "epic-a/stories/01-foo/story.md",
-          story_md("01-foo", "Foo", "QA passed"))
+    write(epics_root() / FOO_STORY,
+          story_md("01-foo", "Foo", "QA passed", eid=FOO_ID))
 
     okf = Ostler(repo)
     story = next(s for e in okf.graph.epics for s in e.stories if s.slug == "01-foo")
@@ -90,23 +90,23 @@ def test_editing_a_story_invalidates(repo, index_home):
 def test_a_new_document_invalidates(repo, index_home):
     """The listing half: a per-file digest can only speak for files that already existed."""
     Ostler(repo).graph
-    write(epics_root() / "epic-c/epic.md", epic_md(
+    write(epics_root() / "t-3/epic.md", epic_md(
         "t-3", "epic-c", seeds=[("seed-c1", "researched", "see")],
-        stories=[("01-baz", "Baz", ["seed-c1"])]))
+        stories=[("01-baz", "Baz", ["seed-c1"], "t-03baz")], slug="epic-c"))
 
     okf = Ostler(repo)
     names = {e.name for e in okf.graph.epics}
 
     assert okf.snapshot_stats()["misses"] == 1
-    assert "epic-c" in names
+    assert "t-3" in names
 
 
 def test_a_deleted_document_invalidates(repo, index_home):
     Ostler(repo).graph
-    (epics_root() / "epic-b/stories/01-bar/story.md").unlink()
+    (epics_root() / BAR_STORY).unlink()
 
     okf = Ostler(repo)
-    story = next(s for e in okf.graph.epics if e.name == "epic-b" for s in e.stories)
+    story = next(s for e in okf.graph.epics if e.name == EPIC_B for s in e.stories)
 
     assert okf.snapshot_stats()["misses"] == 1
     assert story.story_md is None
@@ -114,16 +114,16 @@ def test_a_deleted_document_invalidates(repo, index_home):
 
 def test_a_story_file_appearing_where_none_was_invalidates(repo, index_home):
     """The negative half: a graph is a function of what was *not* found, too."""
-    write(epics_root() / "epic-c/epic.md", epic_md(
+    write(epics_root() / "t-3/epic.md", epic_md(
         "t-3", "epic-c", seeds=[("seed-c1", "researched", "see")],
-        stories=[("01-baz", "Baz", ["seed-c1"])]))
+        stories=[("01-baz", "Baz", ["seed-c1"], "t-03baz")], slug="epic-c"))
     first = Ostler(repo)
-    story = next(s for e in first.graph.epics if e.name == "epic-c" for s in e.stories)
+    story = next(s for e in first.graph.epics if e.name == "t-3" for s in e.stories)
     assert story.story_md is None
 
-    write(epics_root() / "epic-c/stories/01-baz/story.md", story_md("01-baz", "Baz", "Not started"))
+    write(epics_root() / "t-3/stories/t-03baz/story.md", story_md("01-baz", "Baz", "Not started", eid="t-03baz"))
     okf = Ostler(repo)
-    grown = next(s for e in okf.graph.epics if e.name == "epic-c" for s in e.stories)
+    grown = next(s for e in okf.graph.epics if e.name == "t-3" for s in e.stories)
 
     assert okf.snapshot_stats()["misses"] == 1
 
@@ -152,7 +152,7 @@ def test_a_corrupt_entry_is_a_miss_not_a_failure(repo, index_home):
     names = {e.name for e in okf.graph.epics}
 
     assert okf.snapshot_stats()["misses"] == 1
-    assert names == {"epic-a", "epic-b"}
+    assert names == {EPIC_A, EPIC_B}
 
 
 def test_a_truncated_entry_is_a_miss_not_a_failure(repo, index_home):
@@ -164,7 +164,7 @@ def test_a_truncated_entry_is_a_miss_not_a_failure(repo, index_home):
     names = {e.name for e in okf.graph.epics}
 
     assert okf.snapshot_stats()["misses"] == 1
-    assert names == {"epic-a", "epic-b"}
+    assert names == {EPIC_A, EPIC_B}
 
 
 def test_a_payload_that_is_not_a_snapshot_is_a_miss(repo, index_home, monkeypatch):
@@ -178,7 +178,7 @@ def test_a_payload_that_is_not_a_snapshot_is_a_miss(repo, index_home, monkeypatc
     names = {e.name for e in fresh.graph.epics}
 
     assert fresh.snapshot_stats()["misses"] == 1
-    assert names == {"epic-a", "epic-b"}
+    assert names == {EPIC_A, EPIC_B}
 
 
 def test_no_index_stores_and_serves_no_snapshot(repo, tmp_path, index_home, monkeypatch):
@@ -198,7 +198,7 @@ def test_no_index_stores_and_serves_no_snapshot(repo, tmp_path, index_home, monk
 def test_the_probe_order_matches_the_loader(repo, index_home):
     """`_story_candidates` repeats `model._attach_story_md`'s list; a drift is a stale hit."""
     okf = Ostler(repo)
-    epic = next(e for e in okf.graph.epics if e.name == "epic-a")
+    epic = next(e for e in okf.graph.epics if e.name == EPIC_A)
     story = next(s for s in epic.stories if s.slug == "01-foo")
     candidates = api._story_candidates(okf.graph, epic, story)
 
@@ -218,12 +218,13 @@ def big_book(root: Path, milestones: int = 400, epics: int = 4, stories: int = 8
         write(root / f"docs/milestones/m{i}/milestone.md",
               f"---\ntype: milestone\nid: m{i}\ntitle: M {i}\nstatus: proposed\ndependsOn: []\nepics: []\n---\n# M {i}\n")
     for e in range(epics):
-        write(epics_root() / f"epic-{e}/epic.md", epic_md(
+        write(epics_root() / f"t-{e}/epic.md", epic_md(
             f"t-{e}", f"epic-{e}", seeds=[(f"seed-{e}", "researched", "s")],
-            stories=[(f"0{s}-story", f"S{s}", []) for s in range(stories)]))
+            stories=[(f"0{s}-story", f"S{s}", [], f"t-{e}s{s}") for s in range(stories)],
+            slug=f"epic-{e}"))
         for s in range(stories):
-            write(epics_root() / f"epic-{e}/stories/0{s}-story/story.md",
-                  story_md(f"0{s}-story", f"S{s}", "Not started"))
+            write(epics_root() / f"t-{e}/stories/t-{e}s{s}/story.md",
+                  story_md(f"0{s}-story", f"S{s}", "Not started", eid=f"t-{e}s{s}"))
     return root
 
 

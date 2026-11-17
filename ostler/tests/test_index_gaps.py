@@ -10,7 +10,7 @@ import pytest
 from ostler import index, markdown, model
 from ostler.cli import main
 
-from conftest import (entry_files, epics_root, ostler_process, report_of, warm_index, write)
+from conftest import (FOO_STORY, entry_files, epics_root, ostler_process, report_of, warm_index, write)
 
 def doctor_report(book: Path, *argv: str) -> dict:
     """One `doctor --json`, in a process of its own."""
@@ -114,7 +114,7 @@ def test_verify_index_catches_a_store_that_round_trips_a_document_wrongly(
 def test_verify_index_agrees_against_a_partially_stale_index(repo: Path, warm: Path, capsys):
     """One file edited, the rest warm — the state a working tree is in nearly all the time."""
     before = len(entry_files(warm))
-    story = epics_root() / "epic-a/stories/01-foo/story.md"
+    story = epics_root() / FOO_STORY
     story.write_text(story.read_text(encoding="utf-8") + "\nA line of prose the warm entry has never seen.\n",
                      encoding="utf-8")
 
