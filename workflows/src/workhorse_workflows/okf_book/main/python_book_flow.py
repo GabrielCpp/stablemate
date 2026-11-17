@@ -41,6 +41,8 @@ REASONS_PROMPT = "main/prompts/write-screen-reasons.md"
 SCREEN_KINDS = frozenset({"web", "mobile"})
 BATCH_SIZE = 8
 REASONS_BATCH = 5
+FIRST_BOOK_MARK = "first-book"
+FORMAT_UNMARKED = "format-unmarked.txt"
 
 
 def book_module(service: str) -> str:
@@ -75,10 +77,6 @@ def finished_books(root: Path, service: str) -> list[str]:
     patterns = ("services/*/service.py", "services/*/*/service.py")
     found = {path.relative_to(root).parts[1] for pattern in patterns for path in root.glob(pattern)}
     return [f"services/{name}" for name in sorted(found - {service})]
-
-
-FIRST_BOOK_MARK = "first-book"
-FORMAT_UNMARKED = "format-unmarked.txt"
 
 
 @dry_run(service="dry-run")
@@ -317,40 +315,44 @@ class WritePythonBook(BookFlow):
 
     def check(self, lap: int) -> Continue[...] | Await[...]:
         """Run the check of each of the book's modules. A pass plays the book, and the first fail sends the owner another lap."""
-        gate = BookGate(exit_code=0)
-        for module in self.modules:
-            gate = self.call(python_book_check, self.root, module, self.code_root)
-            if gate.exit_code != 0:
-                return self._judged("check", module, gate, lap, self.check)
-        return Continue(gate, self.play, lap=lap).because("the check passes")
+        gate, red = self._checked(lap)
+        return red or Continue(gate, self.play, lap=lap).because("the check passes")
 
     def play(self, lap: int) -> Continue[...] | Await[...]:
         """Play each of the book's modules against the live app. A pass commits the book, and the first fail sends the owner another lap."""
-        gate = BookGate(exit_code=0)
-        for module in self.modules:
-            gate = self.call(python_book_run, self.root, module, self.run_dir / "book-run" / module, run_flags(self.stack_copy))
-            if gate.exit_code != 0:
-                return self._judged("run", module, gate, lap, self.play)
-        return Continue(gate, self.account, lap=lap).because("the book plays green")
+        gate, red = self._played(lap)
+        return red or Continue(gate, self.account, lap=lap).because("the book plays green")
 
     def account(self, lap: int) -> Continue[...] | Await[...]:
         """List the app's source files each of the book's modules names nowhere. An empty list stamps the book, and the first module with a file left sends a screen-reached book through the survey again, or any other book the owner, for another lap."""
+        gate, red = self._accounted(lap)
+        return red or Continue(gate, self.stamp, lap=lap).because("no source file is left unnamed")
+
+    def _each(self, verb: str, retry: Callable[..., Transition], lap: int, ask: Callable[[str], BookGate]) -> tuple[BookGate, Continue[...] | Await[...] | None]:
         gate = BookGate(exit_code=0)
         for module in self.modules:
-            gate = self.call(python_book_missing, self.root, module, self.code_root, self.source_folder)
-            if gate.exit_code == 1 and self.screen_modules and lap < MAX_LAPS:
-                return Continue(gate, self.survey, gate=self._said("missing", module, gate), lap=lap).because("survey the files left")
+            gate = ask(module)
             if gate.exit_code != 0:
-                return self._judged("missing", module, gate, lap, self.account)
-        return Continue(gate, self.stamp, lap=lap).because("no source file is left unnamed")
+                return gate, self._judged(verb, module, gate, lap, retry)
+        return gate, None
+
+    def _checked(self, lap: int) -> tuple[BookGate, Continue[...] | Await[...] | None]:
+        return self._each("check", self.check, lap, lambda module: self.call(python_book_check, self.root, module, self.code_root))
+
+    def _played(self, lap: int) -> tuple[BookGate, Continue[...] | Await[...] | None]:
+        return self._each("run", self.play, lap, lambda module: self.call(python_book_run, self.root, module, self.run_dir / "book-run" / module, run_flags(self.stack_copy)))
+
+    def _accounted(self, lap: int) -> tuple[BookGate, Continue[...] | Await[...] | None]:
+        return self._each("missing", self.account, lap, lambda module: self.call(python_book_missing, self.root, module, self.code_root, self.source_folder))
+
+    def _replayed(self, lap: int) -> Continue[...] | Await[...] | None:
+        return next(filter(None, (judge(lap)[1] for judge in (self._checked, self._played, self._accounted))), None)
 
     def stamp(self, lap: int) -> Continue[...] | Await[...]:
         """Record the app's HEAD as the commit each of the book's modules is verified at, so a later catch-up knows where the book was judged, and the commit of the writer's instructions it was written against. A module that refuses sends the owner another lap with what it printed. A format history that cannot be read waits for the operator."""
-        gate = BookGate(exit_code=0)
-        for module in self.modules:
-            gate = self.call(python_book_verified, self.root, module, self.code_root)
-            if gate.exit_code != 0:
-                return self._judged("verified", module, gate, lap, self.stamp)
+        gate, red = self._each("verified", self.stamp, lap, lambda module: self.call(python_book_verified, self.root, module, self.code_root))
+        if red:
+            return red
         delta = self.call(book_format_delta, self.root, self.service, self.format_history)
         if delta.unreadable and (self.run_dir / FIRST_BOOK_MARK).is_file():
             (self.run_dir / FORMAT_UNMARKED).write_text(delta.unreadable, encoding="utf-8")
@@ -366,6 +368,8 @@ class WritePythonBook(BookFlow):
 
     def _judged(self, verb: str, module: str, gate: BookGate, lap: int, retry: Callable[..., Transition]) -> Continue[...] | Await[...]:
         said = self._said(verb, module, gate)
+        if verb == "missing" and gate.exit_code == 1 and self.screen_modules and lap < MAX_LAPS:
+            return Continue(gate, self.survey, gate=said, lap=lap).because("survey the files left")
         if gate.exit_code == COULD_NOT_JUDGE:
             return Await(self.run_dir / ENVIRONMENT_GATE, environment_question(self.service, verb, said), retry, lap=lap).because("the book could not be judged")
         if lap >= MAX_LAPS:
@@ -382,9 +386,9 @@ class WritePythonBook(BookFlow):
             return waiting
         return Continue(lap, self.commit, lap=lap).because("commit the book")
 
-    def commit(self, lap: int) -> Done | Await[...]:
-        """Commit the book's package. A retry after the commit landed finds nothing to commit."""
-        waiting = self._commit_or_await(book_commit_subject(self.service), (self.package,), self.commit, lap=lap)
+    def commit(self, lap: int) -> Done | Continue[...] | Await[...]:
+        """Commit the book's package. A turn that fixed a refused commit and changed the book sends it through the check, the play and the list again first. A retry after the commit landed finds nothing to commit."""
+        waiting = self._commit_or_await(book_commit_subject(self.service), (self.package,), lambda: self._replayed(lap), self.commit, lap=lap)
         if waiting:
             return waiting
         unmarked = self.run_dir / FORMAT_UNMARKED

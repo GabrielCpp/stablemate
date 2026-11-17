@@ -125,22 +125,30 @@ class CatchUpBooks(BookFlow):
 
     def check(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
         """Run the check of each of the book's modules. A pass plays the targeted run, and the first fail sends the owner another lap."""
+        gate, red = self._checked(service, lap, added, ignored)
+        return red or Continue(gate, self.play, service=service, lap=lap, added=added, ignored=ignored).because("the check passes")
+
+    def play(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
+        """Play, in each module, the journeys that call the endpoints and interactions the report named or the owner added, or the whole module when the book format moved. A pass stamps the book, and the first fail sends the owner another lap."""
+        gate, red = self._played(service, lap, added, ignored)
+        return red or Continue(gate, self.stamp, service=service, lap=lap, added=added, ignored=ignored).because("the run is green")
+
+    def _checked(self, service: str, lap: int, added: list[str], ignored: list[str]) -> tuple[BookGate, Continue[...] | Await[...] | None]:
         gate = BookGate(exit_code=0)
         for module in self._modules(service):
             gate = self.call(python_book_check, self.root, module, self.code_root)
             if gate.exit_code != 0:
-                return self._judged("check", module, gate, Lap(service, lap, added, ignored), self.check)
-        return Continue(gate, self.play, service=service, lap=lap, added=added, ignored=ignored).because("the check passes")
+                return gate, self._judged("check", module, gate, Lap(service, lap, added, ignored), self.check)
+        return gate, None
 
-    def play(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
-        """Play, in each module, the journeys that call the endpoints and interactions the report named or the owner added, or the whole module when the book format moved. A pass stamps the book, and the first fail sends the owner another lap."""
+    def _played(self, service: str, lap: int, added: list[str], ignored: list[str]) -> tuple[BookGate, Continue[...] | Await[...] | None]:
         report = self._report(service)
         gate = BookGate(exit_code=0)
         for module in report.modules:
             if report.format_behind:
                 gate = self.call(python_book_run, self.root, module.module, self.run_dir / "book-run" / module.module, run_flags(self.stack_copy))
                 if gate.exit_code != 0:
-                    return self._judged("run", module.module, gate, Lap(service, lap, added, ignored), self.play)
+                    return gate, self._judged("run", module.module, gate, Lap(service, lap, added, ignored), self.play)
                 continue
             known = self.call(python_book_calls, self.root, module.module)
             names = tuple(sorted(set(known) & {*module.elements, *added}))
@@ -148,8 +156,11 @@ class CatchUpBooks(BookFlow):
                 continue
             gate = self.call(python_book_run, self.root, module.module, self.run_dir / "book-run" / module.module, run_flags(self.stack_copy, names))
             if gate.exit_code != 0:
-                return self._judged("run", module.module, gate, Lap(service, lap, added, ignored), self.play)
-        return Continue(gate, self.stamp, service=service, lap=lap, added=added, ignored=ignored).because("the run is green")
+                return gate, self._judged("run", module.module, gate, Lap(service, lap, added, ignored), self.play)
+        return gate, None
+
+    def _replayed(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...] | None:
+        return self._checked(service, lap, added, ignored)[1] or self._played(service, lap, added, ignored)[1]
 
     def stamp(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
         """Record the app's HEAD as the commit each of the book's modules is verified at, when the app changed. A module that refuses, because a file or function changed since the verified commit is named by no element or a pointer names a file that is gone, sends the owner another lap with what it printed. A book that moved onto the format then records the commit of the instructions it was judged against."""
@@ -174,7 +185,7 @@ class CatchUpBooks(BookFlow):
         """Commit the book's package and its stamp, and record the book as caught up. A retry after the commit landed finds nothing to commit."""
         report = self._report(service)
         subject = caught_up_book_commit_subject(service) if report.verdict == STALE else format_book_commit_subject(service)
-        waiting = self._commit_or_await(subject, (f"services/{service}",), self.commit, service=service, lap=lap, added=added, ignored=ignored)
+        waiting = self._commit_or_await(subject, (f"services/{service}",), lambda: self._replayed(service, lap, added, ignored), self.commit, service=service, lap=lap, added=added, ignored=ignored)
         if waiting:
             return waiting
         notes = self.call(catch_up_format_notes, self.run_dir, service, ())

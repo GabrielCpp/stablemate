@@ -29,7 +29,7 @@ def _flow(tmp_path: Path) -> tuple[WritePythonBook, ScriptedRunner]:
 
 
 def _commit(flow: WritePythonBook) -> object:
-    return flow._commit_or_await("docs(ledger): write the book", ("services/ledger",), flow.commit, lap=1)  # pyright: ignore[reportPrivateUsage]
+    return flow._commit_or_await("docs(ledger): write the book", ("services/ledger",), lambda: None, flow.commit, lap=1)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_a_different_refusal_after_a_fix_turn_gets_its_own_turn(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

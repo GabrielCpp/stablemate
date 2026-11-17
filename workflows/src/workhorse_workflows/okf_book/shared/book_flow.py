@@ -1,6 +1,7 @@
 """The base every okf-book machine sits on: the repo it writes, the folder its records go in, and how it commits a book."""
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from collections.abc import Callable
@@ -78,6 +79,23 @@ def commit_book_paths(logger: logging.Logger, root: Path, message: str, pathspec
     return declared_checks_failure(root, message, pathspecs) or commit_returning_refusal(root, message, *pathspecs)
 
 
+def _book_sources(root: Path, pathspec: str) -> list[Path]:
+    base = root / pathspec
+    found = [base] if base.is_file() and base.suffix == ".py" else sorted(base.rglob("*.py")) if base.is_dir() else []
+    return [path for path in found if not {"__pycache__", "results"} & set(path.relative_to(root).parts)]
+
+
+@blueprint.node(stub=_nothing_refused_in_dry_run)
+def book_digest(logger: logging.Logger, root: Path, pathspecs: tuple[str, ...]) -> str:
+    """Hash every Python file under *pathspecs*, so a turn that edited the book can be told from one that did not. Results and bytecode folders do not count. A dry run hashes nothing."""
+    del logger
+    digest = hashlib.sha256()
+    for path in sorted({path for pathspec in pathspecs for path in _book_sources(root, pathspec)}, key=lambda path: path.relative_to(root).as_posix()):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
+
+
 class CommitFix(BaseModel):
     """What the turn sent to a refused commit says it changed, or why it changed nothing."""
 
@@ -139,16 +157,21 @@ class BookFlow(Workflow):
             **kwargs,
         ).because("the agent files could not be rendered")
 
-    def _commit_or_await[**P](
-        self, message: str, pathspecs: tuple[str, ...], retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs
-    ) -> Await[P] | None:
-        """Commit exactly *pathspecs*. Each new refusal goes to its own turn that fixes what it names, up to four turns, and the commit is tried again after each. A refusal that repeats one already sent, or one after the last turn, waits for the operator, whose answer commits again."""
+    def _commit_or_await[**P, T: Transition](
+        self, message: str, pathspecs: tuple[str, ...], replay: Callable[[], T | None], retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs
+    ) -> Await[P] | T | None:
+        """Commit exactly *pathspecs*. Each new refusal goes to its own turn that fixes what it names, up to four turns, and the commit is tried again after each. A turn that changed the book's Python sends the book through *replay* first, and a transition it returns ends the commit. A refusal that repeats one already sent, or one after the last turn, waits for the operator, whose answer commits again."""
         refusal = self.call(commit_book_paths, self.root, message, pathspecs)
         seen: list[str] = []
         said = ""
         while refusal and refusal not in seen and len(seen) < FIX_COMMIT_TURNS:
             seen.append(refusal)
+            before = self.call(book_digest, self.root, pathspecs)
             said = self._fix_refused_commit(refusal, pathspecs)
+            if self.call(book_digest, self.root, pathspecs) != before:
+                red = replay()
+                if red is not None:
+                    return red
             refusal = self.call(commit_book_paths, self.root, message, pathspecs)
         if not refusal:
             return None
