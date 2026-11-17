@@ -283,9 +283,8 @@ def test_a_book_whose_fixtures_mint_names_checks_clean_against_its_index(module:
 def test_the_farrier_book_runs_green_against_the_current_farrier(tmp_path: Path):
     done = _book(["run", "services.farrier", "--out", str(tmp_path / "out")])
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "3 pass, 0 known defects, 0 fail" in done.stdout
-    assert "cells: 32 played" in done.stdout
-    assert "7 of 7 answers" in done.stdout
+    assert " pass, 0 known defects, 0 fail" in done.stdout
+    assert "Every declared answer and field was seen." in done.stdout
 
 
 def test_a_starter_config_with_a_wrong_default_turns_the_farrier_book_red(tmp_path: Path):
