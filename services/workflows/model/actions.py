@@ -6,13 +6,13 @@ from ostler.book import Action, Actor, Create, Select, Transaction, Update
 
 from ..fixtures import DryRunArgs, NewArgs
 from . import rules
-from .files import SKILL_NAME, SKILLS, RUN, TREE, FileRecord, holding
+from .files import SKILL_NAME, SKILLS, RUN, TREE, FileRecord
 from .state import Workspace
 
 
 def write(s: Workspace, path: str, *strings: str) -> Create | Update:
     """The change that leaves this file holding these strings."""
-    record = holding(path, *strings)
+    record = FileRecord.holding(path, *strings)
     return Update(s.files, path, record) if path in s.files else Create(s.files, record)
 
 

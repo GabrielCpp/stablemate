@@ -11,7 +11,7 @@ from ..fixtures import (HOME, SCAFFOLD, BaseDirArgs, ChecksArgs, ConfigGetArgs, 
                         WorkflowsArgs, WorktreeDirArgs, WorktreesArgs)
 from . import rules
 from .files import (CONFIG, HAND_WRITTEN, HOME_SKILL, SELECTED, SETTING_VALUES, SETTINGS, SKILL, STARTER, USER_LIBRARY,
-                    FileRecord, holding)
+                    FileRecord)
 from .state import Repo
 
 PROPOSAL = (
@@ -27,7 +27,7 @@ PROPOSAL = (
 def write(s: Repo, path: str, *strings: str) -> Create | Update:
     """The change that leaves this file holding these strings and whatever it held before."""
     kept = s.files.get(path)
-    record = holding(path, *strings, *(kept.holds if kept is not None else ()))
+    record = FileRecord.holding(path, *strings, *(kept.holds if kept is not None else ()))
     return Update(s.files, path, record) if kept is not None else Create(s.files, record)
 
 
@@ -37,7 +37,7 @@ class RunInit(Action[InitArgs, Repo]):
 
     @staticmethod
     def reduce(a: InitArgs, s: Repo, by: Actor | None) -> Transaction:
-        record = holding("agents.yml", *STARTER)
+        record = FileRecord.holding("agents.yml", *STARTER)
         change = Update(s.files, "agents.yml", record) if "agents.yml" in s.files else Create(s.files, record)
         proposal = () if USER_LIBRARY in s.files[CONFIG].holds else PROPOSAL
         says = ("Wrote <sandbox>/agents.yml", "Next: list this repo's own packs under `packs:`, then `farrier install`.", *proposal)
@@ -88,7 +88,7 @@ class RunScaffold(Action[ScaffoldArgs, Repo]):
             changes: tuple[Create, ...] = ()
         else:
             made, line = 1, f"created: {folder}/.gitignore"
-            changes = (Create(s.files, holding(path, "node_modules")),)
+            changes = (Create(s.files, FileRecord.holding(path, "node_modules")),)
         return Transaction(*changes, says=(line, f"Scaffolded '{a.name}': {made} file(s) created in {a.root}"))
 
 
@@ -101,7 +101,7 @@ class ListFiles(Action[object, Repo]):
 class WriteByHand(Action[object, Repo]):
     @staticmethod
     def reduce(a: object, s: Repo, by: Actor | None) -> Transaction:
-        record = holding("agents.yml", *HAND_WRITTEN)
+        record = FileRecord.holding("agents.yml", *HAND_WRITTEN)
         change = Update(s.files, "agents.yml", record) if "agents.yml" in s.files else Create(s.files, record)
         return Transaction(change)
 
@@ -137,7 +137,7 @@ class RunDoctor(Action[DoctorArgs, Repo]):
 def set_in_config(s: Repo, *keys: str) -> Create | Update:
     """The change that leaves these settings in the home config beside the ones it already holds."""
     kept = s.files[CONFIG]
-    return Update(s.files, CONFIG, holding(CONFIG, *(SETTINGS[k] for k in keys), *kept.holds))
+    return Update(s.files, CONFIG, FileRecord.holding(CONFIG, *(SETTINGS[k] for k in keys), *kept.holds))
 
 
 def values_set(s: Repo) -> tuple[str, ...]:
@@ -283,8 +283,8 @@ class RunEject(Action[EjectArgs, Repo]):
     @staticmethod
     def reduce(a: EjectArgs, s: Repo, by: Actor | None) -> Transaction:
         config = s.files["agents.yml"]
-        released = holding("agents.yml", *(h for h in config.holds if h != "- demo"))
-        kept = holding(SKILL, "name: acme-demo")
+        released = FileRecord.holding("agents.yml", *(h for h in config.holds if h != "- demo"))
+        kept = FileRecord.holding(SKILL, "name: acme-demo")
         changes: list[Create | Update | Delete] = [
             Update(s.files, "agents.yml", released),
             Update(s.files, SKILL, kept),
@@ -379,4 +379,4 @@ class AddUserLibrary(Action[object, Repo]):
     @staticmethod
     def reduce(a: object, s: Repo, by: Actor | None) -> Transaction:
         kept = s.files[CONFIG]
-        return Transaction(Update(s.files, CONFIG, holding(CONFIG, USER_LIBRARY, *kept.holds)))
+        return Transaction(Update(s.files, CONFIG, FileRecord.holding(CONFIG, USER_LIBRARY, *kept.holds)))

@@ -7,7 +7,7 @@ from typing import cast
 
 from ostler.book import Collection, State, Unique
 
-from .files import CONFIG, USER_LIBRARY, FileRecord, holding
+from .files import CONFIG, USER_LIBRARY, FileRecord
 
 
 class Repo(State):
@@ -15,7 +15,7 @@ class Repo(State):
 
     def __init__(self, today: date):
         super().__init__(today)
-        self.files.items[CONFIG] = holding(CONFIG)
+        self.files.items[CONFIG] = FileRecord.holding(CONFIG)
 
     def rows(self) -> tuple[FileRecord, ...]:
         return tuple(sorted(self.files, key=lambda f: f.path))

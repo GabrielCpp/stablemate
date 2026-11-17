@@ -7,7 +7,7 @@ from ostler.book import Action, Actor, Create, Select, Transaction, Update
 from ..fixtures import (ANSWER, ControlArgs, DotArgs, FinishArgs, ParkArgs, InboxReadArgs, InboxReplyArgs, ReplayArgs, RunArgs, VersionArgs)
 from . import rules
 from .files import (FLOW, FREE, GATE, GRAPH_CHART, GRAPH_LOOP_RUNNER, M1_ANSWERED, M1_OPEN, M2_ANSWERED,
-                    M2_YES, REWOUND, RUNS, STALE, TERMINAL, FileRecord, at, holding)
+                    M2_YES, REWOUND, RUNS, STALE, TERMINAL, FileRecord, at)
 from .graph import graph
 from .state import DRY_RUN, Runs, held_params, holds, messages
 
@@ -37,9 +37,9 @@ class DryRun(Action[RunArgs, Runs]):
     def reduce(a: RunArgs, s: Runs, by: Actor | None) -> Transaction:
         root = a.runs_dir or RUNS
         changes = (
-            put(s, holding(at(DRY_RUN, "run.json", root), TERMINAL)),
-            put(s, holding(at(DRY_RUN, "checkpoint.json", root), FLOW, FREE)),
-            put(s, holding(at(DRY_RUN, "events.jsonl", root))),
+            put(s, FileRecord.holding(at(DRY_RUN, "run.json", root), TERMINAL)),
+            put(s, FileRecord.holding(at(DRY_RUN, "checkpoint.json", root), FLOW, FREE)),
+            put(s, FileRecord.holding(at(DRY_RUN, "events.jsonl", root))),
         )
         says = (
             "[workhorse] starting 'loop-runner' LoopRunner (run: loop-runner-dry-run)",
@@ -57,7 +57,7 @@ class DrawGraph(Action[DotArgs, Runs]):
         if a.out is None:
             return Transaction(says=lines)
         held = GRAPH_CHART if a.name == "chart" else GRAPH_LOOP_RUNNER
-        return Transaction(put(s, holding(a.out, held)), says=())
+        return Transaction(put(s, FileRecord.holding(a.out, held)), says=())
 
 
 class ShowVersion(Action[VersionArgs, Runs]):
@@ -117,8 +117,8 @@ class SteerRun(Action[ControlArgs, Runs]):
             "  resume:  control resume [CLI]",
         ]
         changes = (
-            put(s, holding(at(name, "checkpoint.json"), FLOW, FREE)),
-            put(s, holding(at(name, "events.jsonl"), REWOUND)),
+            put(s, FileRecord.holding(at(name, "checkpoint.json"), FLOW, FREE)),
+            put(s, FileRecord.holding(at(name, "events.jsonl"), REWOUND)),
         )
         return Transaction(*changes, says=tuple(says))
 
@@ -161,7 +161,7 @@ class AnswerInbox(Action[InboxReplyArgs, Runs]):
         else:
             kept = [h for h in held if h in (M1_OPEN, M1_ANSWERED)]
             now = {ANSWER: M2_ANSWERED, "yes": M2_YES}.get(a.text or "")
-        record = holding(path, *kept, *([now] if now else []))
+        record = FileRecord.holding(path, *kept, *([now] if now else []))
         return Transaction(put(s, record), says=(f"replied to [{a.message}] in <sandbox>/{RUNS}/loop-runner-{a.target}",))
 
 
@@ -180,9 +180,9 @@ class ParkByHand(Action[ParkArgs, Runs]):
     @staticmethod
     def reduce(a: ParkArgs, s: Runs, by: Actor | None) -> Transaction:
         return Transaction(
-            put(s, holding(at("parked", "run.json"))),
-            put(s, holding(at("parked", "checkpoint.json"), FLOW, GATE, STALE)),
-            put(s, holding(at("parked", "inbox.jsonl"), M1_OPEN, M2_YES)),
+            put(s, FileRecord.holding(at("parked", "run.json"))),
+            put(s, FileRecord.holding(at("parked", "checkpoint.json"), FLOW, GATE, STALE)),
+            put(s, FileRecord.holding(at("parked", "inbox.jsonl"), M1_OPEN, M2_YES)),
         )
 
 
@@ -192,8 +192,8 @@ class FinishByHand(Action[FinishArgs, Runs]):
     @staticmethod
     def reduce(a: FinishArgs, s: Runs, by: Actor | None) -> Transaction:
         return Transaction(
-            put(s, holding(at("finished", "run.json"), TERMINAL)),
-            put(s, holding(at("finished", "checkpoint.json"), FLOW, FREE)),
+            put(s, FileRecord.holding(at("finished", "run.json"), TERMINAL)),
+            put(s, FileRecord.holding(at("finished", "checkpoint.json"), FLOW, FREE)),
         )
 
 

@@ -3,11 +3,9 @@ which of the declared strings it holds. A row is that and nothing more."""
 
 from __future__ import annotations
 
-import fnmatch
-from dataclasses import dataclass
 from typing import ClassVar
 
-from ostler.book import Mark
+from ostler.book import Mark, Watched
 
 NAMES = ("loop-runner", "research", "author", "coder", "okf-book", "review-debt")
 RUN = '"workflow": "{}"'
@@ -35,27 +33,11 @@ TREE = (
 )
 
 
-@dataclass(frozen=True)
-class FileRecord:
+class FileRecord(Watched):
     """A watched file the sandbox holds."""
 
-    path: str
-    holds: tuple[str, ...] = ()
-
+    marks = MARKS
     source: ClassVar[tuple[str, ...]] = (
         "workflows/src/workhorse_workflows/new/scaffold.py::scaffold",
         "workhorse/workhorse/pyflow/run.py::run_pyflow",
     )
-
-    def __str__(self) -> str:
-        return f"{self.path} [{'; '.join(self.holds)}]"
-
-
-def declared(path: str) -> tuple[str, ...]:
-    """The strings the watch looks for in this path, in the order it lists them."""
-    return tuple(dict.fromkeys(s for m in MARKS if fnmatch.fnmatchcase(path, m.glob) for s in m.holds))
-
-
-def holding(path: str, *strings: str) -> FileRecord:
-    """The record of a file that holds these strings, in the order the watch lists them."""
-    return FileRecord(path, tuple(s for s in declared(path) if s in strings))
