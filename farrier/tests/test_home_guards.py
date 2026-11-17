@@ -331,3 +331,33 @@ def test_a_guard_watching_nothing_a_harness_has_is_refused_by_name(
 
     with pytest.raises(SystemExit, match="'reads' watches read, which codex"):
         run(home, library)
+
+
+def test_a_done_guard_installs_as_a_stop_hook_beside_the_harness_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: Path, library: Path
+) -> None:
+    (library / "library" / "hooks" / "epics").mkdir()
+    (library / "library" / "hooks" / "epics" / "hook.yml").write_text(
+        "command: python3 {dir}/check.py\nwhen: done\ntimeout: 120\nnot_on: [opencode]\n", encoding="utf-8"
+    )
+    configure(tmp_path, monkeypatch, '[user_library.claude]\nhooks = ["epics", "comments"]\n')
+
+    assert run(home, library) == 0
+
+    hooks = json.loads((home / ".claude" / "settings.json").read_text())["hooks"]
+    command = f"python3 {home / '.agents/hooks/epics'}/check.py"
+    assert hooks["Stop"] == [{"hooks": []}, {"hooks": [{"type": "command", "command": command, "timeout": 120}]}]
+    assert [group["matcher"] for group in hooks["PreToolUse"]] == ["Write|Edit|MultiEdit|Bash"]
+
+
+def test_a_done_guard_with_watches_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: Path, library: Path
+) -> None:
+    (library / "library" / "hooks" / "epics").mkdir()
+    (library / "library" / "hooks" / "epics" / "hook.yml").write_text(
+        "command: /bin/epics\nwhen: done\nwatches: [edit]\n", encoding="utf-8"
+    )
+    configure(tmp_path, monkeypatch, '[user_library.claude]\nhooks = ["epics"]\n')
+
+    with pytest.raises(SystemExit, match="runs at `done`, when no tool is called"):
+        run(home, library)

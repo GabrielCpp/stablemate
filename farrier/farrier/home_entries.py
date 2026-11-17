@@ -19,6 +19,8 @@ from farrier.user_library import user_library_tables
 LEDGER = ".agents/.farrier-home.json"
 SERVER_KEYS = {"command", "args", "env"}
 GUARD_CONTAINER = "hooks.PreToolUse"
+DONE_CONTAINER = "hooks.Stop"
+HOOK_CONTAINERS = {GUARD_CONTAINER: "PreToolUse", DONE_CONTAINER: "Stop"}
 TOP_LEVEL = "."
 SETTINGS_FILES = {"claude": ".claude/settings.json"}
 SETTINGS_OWNED_ELSEWHERE = {"hooks": "library/hooks guards"}
@@ -81,14 +83,14 @@ class JsonEntryFile:
         self._document: dict[str, Any] = json.loads(text) if text.strip() else {}
         self._ending = text[len(text.rstrip()) :]
 
-    def _guard_groups(self) -> list[dict[str, Any]]:
-        return (self._document.get("hooks") or {}).get("PreToolUse") or []
+    def _hook_groups(self, event: str) -> list[dict[str, Any]]:
+        return (self._document.get("hooks") or {}).get(event) or []
 
     def entries(self, container: str) -> dict[str, Any]:
-        if container == GUARD_CONTAINER:
+        if container in HOOK_CONTAINERS:
             return {
                 hook["command"]: group
-                for group in self._guard_groups()
+                for group in self._hook_groups(HOOK_CONTAINERS[container])
                 for hook in group.get("hooks", [])
                 if "command" in hook
             }
@@ -100,10 +102,10 @@ class JsonEntryFile:
         if container == TOP_LEVEL:
             self._document[name] = value
             return
-        if container != GUARD_CONTAINER:
+        if container not in HOOK_CONTAINERS:
             self._document.setdefault(container, {})[name] = value
             return
-        groups = self._document.setdefault("hooks", {}).setdefault("PreToolUse", [])
+        groups = self._document.setdefault("hooks", {}).setdefault(HOOK_CONTAINERS[container], [])
         held = self.entries(container).get(name)
         if held is None:
             groups.append(value)
@@ -114,13 +116,14 @@ class JsonEntryFile:
         if container == TOP_LEVEL:
             del self._document[name]
             return
-        if container != GUARD_CONTAINER:
+        if container not in HOOK_CONTAINERS:
             del self._document[container][name]
             return
+        event = HOOK_CONTAINERS[container]
         hooks = self._document["hooks"]
-        hooks["PreToolUse"].remove(self.entries(container)[name])
-        if not hooks["PreToolUse"]:
-            del hooks["PreToolUse"]
+        hooks[event].remove(self.entries(container)[name])
+        if not hooks[event]:
+            del hooks[event]
         if not hooks:
             del self._document["hooks"]
 

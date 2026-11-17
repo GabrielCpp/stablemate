@@ -223,6 +223,10 @@ without `tests` or `__pycache__`, and writes one hook group into `~/.claude/sett
 `~/.codex/hooks.json`. On OpenCode a generated plugin, `~/.config/opencode/plugins/farrier-guards.ts`,
 calls the command instead. `{dir}` in `command` stands for the installed folder.
 
+`when` says when the guard runs. `tool`, the default, runs it before each call of a tool it
+`watches`. `done` runs it when the agent ends its turn, as a `Stop` hook, and takes no `watches`.
+OpenCode has no such moment, so a `done` guard must name `opencode` in `not_on`.
+
 ## `library/agents/<name>.md`: a home's helper agents
 
 A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` table lists names in `agents`, or a pack does.
