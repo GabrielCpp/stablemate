@@ -166,14 +166,14 @@ def test_create_milestone_is_visible_to_the_next_read(repo: Path):
     assert result.ok
     assert okf.list("milestone") == [{
         "type": "milestone",
-        "name": "docs-app-mvp",
+        "name": "0001-docs-app-mvp",
         "id": result.entity_id,
         "title": "Docs App MVP",
         "status": "proposed",
         "dependsOn": [],
         "sourceItems": [source],
         "epics": [],
-        "path": "docs/milestones/docs-app-mvp/milestone.md",
+        "path": "docs/milestones/0001-docs-app-mvp/milestone.md",
     }]
 
     assert okf.set_milestone_source_items("docs-app-mvp", [source]).ok

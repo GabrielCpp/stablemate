@@ -59,6 +59,16 @@ STORY_SECTIONS: tuple[SectionSpec, ...] = (
                 stub=f"- **{STORY_STATUS_LABEL}**: {DEFAULT_STORY_STATUS}"),
 )
 
+EPIC_SECTIONS: tuple[SectionSpec, ...] = (
+    SectionSpec("User Outcome", filled=True),
+    SectionSpec("User Journeys", filled=True),
+    SectionSpec("Delivered Experience", filled=True),
+    SectionSpec("Guardrails", filled=True),
+    SectionSpec("Non-Goals", filled=True),
+    SectionSpec("Acceptance", filled=True),
+    SectionSpec("Method", filled=True),
+)
+
 RESERVED_FILES = {"index.md", "log.md"}
 
 MILESTONE_FILE = "milestone.md"
@@ -66,6 +76,7 @@ MILESTONE_STATUSES = ("proposed", "approved", "authored", "delivered", "supersed
 MILESTONE_DEFAULT_STATUS = "proposed"
 MILESTONE_JOURNEYS_HEADING = "User Journeys"
 MILESTONE_OPEN_DECISIONS_HEADING = "Open Decisions"
+MILESTONE_EPICS_HEADING = "Epics"
 MILESTONE_SECTIONS: tuple[SectionSpec, ...] = (
     SectionSpec("Outcome", filled=True),
     SectionSpec("Release Boundary", filled=True),

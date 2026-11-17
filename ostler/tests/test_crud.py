@@ -32,7 +32,7 @@ def test_create_milestone_allocates_id_and_records_source_items(tmp_path: Path):
         load(tmp_path), "docs-app-mvp", "Docs App MVP", [source]
     )
 
-    assert res.ok and res.entity_name == "docs-app-mvp"
+    assert res.ok and res.entity_name == "0001-docs-app-mvp"
     assert res.entity_id.startswith("X-")
     milestone = load(tmp_path).milestone_by_name("docs-app-mvp")
     assert milestone is not None
@@ -343,7 +343,7 @@ def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):
     assert created.ok
     assert crud.create_epic(load(tmp_path), "profiles", "Profiles").ok
     assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
-    milestone_path = tmp_path / "docs/milestones/mvp/milestone.md"
+    milestone_path = tmp_path / "docs/milestones/0001-mvp/milestone.md"
     milestone_path.write_text(
         milestone_path.read_text(encoding="utf-8").replace(
             "epics: []", "epics:\n- accounts\n- profiles"
@@ -358,7 +358,8 @@ def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):
     graph = load(tmp_path)
     milestone = graph.milestone_by_name("mvp")
     assert milestone is not None
-    assert milestone.epics == ["profiles"]
+    assert milestone.epics == ["0002-profiles"]
+    assert milestone.epic_refs == [present(select.epic_by_name(graph, "profiles")).eid]
     assert "Milestone prose survives." in milestone_path.read_text(encoding="utf-8")
     assert not (epics_root() / f"{created.entity_name}").exists()
 
@@ -369,7 +370,7 @@ def test_delete_epic_finishes_cleanup_after_interruption(
     created = crud.create_epic(load(tmp_path), "accounts", "Accounts")
     assert created.ok
     assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
-    milestone_path = tmp_path / "docs/milestones/mvp/milestone.md"
+    milestone_path = tmp_path / "docs/milestones/0001-mvp/milestone.md"
     milestone_path.write_text(
         milestone_path.read_text(encoding="utf-8").replace("epics: []", "epics:\n- accounts")
     )
@@ -401,13 +402,13 @@ def test_list_epics_falls_back_to_milestone_order_without_index(tmp_path: Path):
     created = crud.create_epic(load(tmp_path), "accounts", "Accounts")
     assert created.ok
     assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
-    milestone_path = tmp_path / "docs/milestones/mvp/milestone.md"
+    milestone_path = tmp_path / "docs/milestones/0001-mvp/milestone.md"
     milestone_path.write_text(
         milestone_path.read_text(encoding="utf-8").replace("epics: []", "epics:\n- accounts")
     )
     assert not (epics_root() / "index.md").exists()
 
-    assert todo.list_epics(load(tmp_path)) == ["accounts"]
+    assert todo.list_epics(load(tmp_path)) == ["0001-accounts"]
 
 
 def test_seed_add_remove(repo: Path):

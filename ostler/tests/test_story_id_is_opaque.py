@@ -15,7 +15,8 @@ EPIC = "CASE-457"
 
 def _tracker_repo(root: Path) -> Path:
     write(epics_root() / f"{EPIC}/epic.md", epic_md(
-        EPIC, "Case epic", seeds=[], stories=[(KEY, "Case story", [])],
+        EPIC, "Case epic", seeds=[("case-seed", "researched", "the case")],
+        stories=[(KEY, "Case story", ["case-seed"])],
     ))
     write(epics_root() / f"{EPIC}/stories/{KEY}/story.md",
           story_md(KEY, "Case story", "Not started", eid=KEY))

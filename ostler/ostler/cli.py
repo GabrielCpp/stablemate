@@ -83,6 +83,11 @@ def _build_parser() -> argparse.ArgumentParser:
     d = sub.add_parser("doctor", help="referential-integrity check")
     d.add_argument("--epic", help="restrict checks to one epic (name or folder)")
     d.add_argument(
+        "--milestone",
+        help="check one milestone, the epics it lists and their stories, against the authoring "
+             "contract (folder name or id); exits 1 on any error",
+    )
+    d.add_argument(
         "--path", action="append", default=[], metavar="PATH",
         help="report only the findings about this file or folder (repeatable); the whole "
              "book is still checked, and the exit code counts only what is reported",
@@ -308,6 +313,13 @@ def _build_parser() -> argparse.ArgumentParser:
     mlss = mls.add_parser("set-source-items")
     mlss.add_argument("name")
     mlss.add_argument("ids", nargs="+")
+    mle = mls.add_parser(
+        "epics",
+        help="set a milestone's epics in coding order, stored by id, and rewrite its `## Epics` section",
+    )
+    mle.add_argument("name", help="the milestone, by folder name or id")
+    mle.add_argument("epics", nargs="*",
+                     help="each epic by id, folder or slug; none re-resolves the list the milestone holds")
 
     td = sub.add_parser("todo", help="manage the epics queue (docs/epics/index.md)")
     tds = td.add_subparsers(dest="op", required=True)
@@ -728,7 +740,8 @@ def _cmd_doctor(graph, args, store: index_mod.IndexStore) -> int:
               f"(its doc roots: {roots})", file=sys.stderr)
         return 2
     wanted = [rel for rel in scope if rel is not None]
-    report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema)
+    report = doctor.run(graph, epic_filter=args.epic, check_schema=not args.no_schema,
+                        milestone_filter=args.milestone)
     if wanted:
         report = doctor.scope_to_paths(report, wanted)
     if args.json:
@@ -1337,6 +1350,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             graph, args.slug, repo=args.repo or decisions_mod.default_repo(start),
             summary=args.summary,
         ))
+    if c == "milestone" and args.op == "epics":
+        return _result(crud.set_milestone_epics(graph, args.name, args.epics or None))
     if c == "milestone":
         return _result(crud.set_milestone_source_items(
             graph,

@@ -91,7 +91,31 @@ def _epic_matches(epic: Epic, epic_filter: str) -> bool:
             or registry.epic_slug(epic.name) == registry.epic_slug(epic_filter))
 
 
-def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True) -> Report:
+def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
+        milestone_filter: str | None = None) -> Report:
+    report = Report(org=graph.org_name, profile=graph.profile)
+    f = report.findings
+    if milestone_filter:
+        milestone = graph.milestone_by_name(milestone_filter)
+        if milestone is None:
+            f.append(Finding("error", "unknown-milestone",
+                             f"no milestone '{milestone_filter}' under "
+                             f"{_rel_posix(graph.doc_roots['milestones'], graph.root)}",
+                             ref=milestone_filter))
+            return report
+        report = _run(graph, None, check_schema, set(milestone.epics))
+        rel = _rel_posix(milestone.path, graph.root)
+        report.findings = [
+            fd for fd in report.findings
+            if fd.epic in milestone.epics or fd.path == rel
+            or (not fd.epic and fd.ref in {milestone.name, milestone.eid})
+        ]
+        return report
+    return _run(graph, epic_filter, check_schema, None)
+
+
+def _run(graph: Graph, epic_filter: str | None, check_schema: bool,
+         epic_names: set[str] | None) -> Report:
     report = Report(org=graph.org_name, profile=graph.profile)
     f = report.findings
 
@@ -111,8 +135,11 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True)
     _check_fixtures(graph, f)
     _check_story_identity(graph, f)
 
+    _check_epic_folders(graph, f)
     for epic in graph.epics:
         if epic_filter and not _epic_matches(epic, epic_filter):
+            continue
+        if epic_names is not None and epic.name not in epic_names:
             continue
         report.epics.append(_epic_facts(epic))
         _check_epic(graph, epic, all_story_slugs, f)
@@ -177,6 +204,22 @@ def _check_decisions(graph: Graph, findings: list[Finding]) -> None:
                 ref=record_id))
 
 
+def _check_epic_folders(graph: Graph, findings: list[Finding]) -> None:
+    """A folder on the epics shelf with no epic.md is no epic, so ostler cannot see what it holds."""
+    eroot = graph.doc_roots["epics"]
+    if not eroot.is_dir():
+        return
+    for folder in sorted(eroot.iterdir()):
+        if not folder.is_dir() or folder.name.startswith((".", "_")):
+            continue
+        if not (folder / "epic.md").is_file():
+            findings.append(Finding(
+                "error", "epic-without-epic-md",
+                f"epic folder '{folder.name}' has no epic.md, so no milestone or command sees it",
+                folder.name, folder.name, path=str(folder),
+                suggestion="restore its epic.md, or remove the folder"))
+
+
 def _check_story_identity(graph: Graph, findings: list[Finding]) -> None:
     """Every accepted story spelling identifies one story, and its two id copies agree."""
     owners: dict[str, list[tuple[Epic, Story]]] = {}
@@ -219,6 +262,17 @@ def _epic_facts(epic: Epic) -> dict:
 def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding]) -> None:
     seed_ids = epic.seed_ids
     covered: set[str] = set()
+    rel = _rel_posix(epic.epic_md, graph.root) if epic.epic_md else ""
+    if not epic.eid:
+        f.append(Finding("error", "epic-without-id",
+                         f"epic '{epic.name}' has no `id:`, so a milestone cannot list it",
+                         epic.name, epic.name, path=rel, line=1,
+                         suggestion="file epics with `ostler create epic`, which mints the id"))
+    if epic.stories and not epic.followups and epic.unwritten_detail:
+        f.append(Finding("error", "unwritten-epic",
+                         f"epic '{epic.name}' has stories but its epic.md lacks "
+                         f"{', '.join(epic.unwritten_detail)}",
+                         epic.name, epic.name, path=rel, line=1))
 
     for story in epic.stories:
         covered.update(story.seed_items)
@@ -292,9 +346,17 @@ def _check_epic(graph: Graph, epic: Epic, all_slugs: set[str], f: list[Finding])
                                  f"story '{story.slug}' orders its required sections against "
                                  f"the contract — {'; '.join(story.misordered_sections)}",
                                  epic.name, story.slug, path=rel, line=1))
-        if not story.seed_items and epic.seeds:
-            f.append(Finding("warn", "story-covers-no-seed",
-                             f"story '{story.slug}' lists no seedItems", epic.name, story.slug))
+        if not story.eid:
+            f.append(Finding("error", "story-without-id",
+                             f"story '{story.slug}' has no `id:`, so no command, milestone or "
+                             f"commit can name it", epic.name, story.slug,
+                             suggestion="file stories with `ostler create story`, which mints the id"))
+        if not story.seed_items and (epic.seeds or not epic.followups):
+            f.append(Finding("warn" if epic.followups else "error", "story-covers-no-seed",
+                             f"story '{story.slug}' covers no seed, so nothing in the epic "
+                             f"says which surface it changes", epic.name, story.slug,
+                             suggestion=f"ostler seed add {epic.name} <seed>, then list it under "
+                                        f"the story's `- covers:`"))
 
     for s in epic.seeds:
         if s.active and s.id not in covered:
@@ -445,7 +507,7 @@ def _check_milestones(graph: Graph, f: list[Finding]) -> None:
     for milestone in graph.milestones:
         rel = _rel_posix(milestone.path, graph.root)
         for dep in milestone.depends_on:
-            if dep not in known_milestones:
+            if dep not in known_milestones and graph.milestone_by_name(dep) is None:
                 f.append(Finding(
                     "error", "dangling-milestone-dependency",
                     f"milestone '{milestone.name}' depends on unknown milestone '{dep}'",

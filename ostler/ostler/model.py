@@ -79,6 +79,7 @@ class Epic:
     followups: bool = False
     seeds: list[SeedItem] = field(default_factory=list)
     stories: list[Story] = field(default_factory=list)
+    unwritten_detail: list[str] = field(default_factory=list)
 
     @property
     def seed_ids(self) -> set[str]:
@@ -95,6 +96,7 @@ class Milestone:
     depends_on: list[str] = field(default_factory=list)
     source_items: list[str] = field(default_factory=list)
     epics: list[str] = field(default_factory=list)
+    epic_refs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -122,11 +124,29 @@ class Graph:
     def all_story_slugs(self) -> set[str]:
         return {s.slug for e in self.epics for s in e.stories}
 
+    def epic_by_ref(self, ref: str) -> Epic | None:
+        """The epic *ref* names: its id, its directory, or its bare slug, in that order."""
+        ref = ref.strip()
+        if not ref:
+            return None
+        by_id = next((e for e in self.epics if e.eid and e.eid == ref), None)
+        if by_id is not None:
+            return by_id
+        exact = next((e for e in self.epics if e.name == ref), None)
+        if exact is not None or registry.epic_seq(ref) is not None:
+            return exact
+        slug = registry.epic_slug(ref)
+        return next((e for e in self.epics if registry.epic_slug(e.name) == slug), None)
+
     def milestone_by_name(self, name: str) -> Milestone | None:
+        """The milestone *name* names: its id, its folder, or its folder's slug without the number."""
         for milestone in self.milestones:
             if name in (milestone.name, milestone.eid):
                 return milestone
-        return None
+        if registry.epic_seq(name) is not None:
+            return None
+        slug = registry.epic_slug(name)
+        return next((m for m in self.milestones if registry.epic_slug(m.name) == slug), None)
 
     def find_story(self, ref: str) -> tuple[Epic, Story] | None:
         """The story whose id is *ref*. A slug is not a story reference: see :meth:`no_story`."""
@@ -464,6 +484,7 @@ def load(
     _load_milestones(graph)
     if profile == "full":
         _load_epics(graph)
+        _resolve_milestone_epics(graph)
     return graph
 
 
@@ -572,7 +593,18 @@ def _load_milestones(graph: Graph) -> None:
             depends_on=_as_list(fm.get("dependsOn") or fm.get("depends_on")),
             source_items=_as_list(fm.get("sourceItems") or fm.get("source_items")),
             epics=_as_list(fm.get("epics")),
+            epic_refs=_as_list(fm.get("epics")),
         ))
+
+
+def _resolve_milestone_epics(graph: Graph) -> None:
+    """Point each milestone's epic refs at the epic directories they name, an unknown ref as written."""
+    for milestone in graph.milestones:
+        resolved = [graph.epic_by_ref(ref) for ref in milestone.epic_refs]
+        milestone.epics = [
+            epic.name if epic is not None else ref
+            for ref, epic in zip(milestone.epic_refs, resolved, strict=True)
+        ]
 
 
 _ANCHOR_STRIP_RE = re.compile(r"[^\w\s-]")
@@ -627,6 +659,10 @@ def _load_epics(graph: Graph) -> None:
             followups=fm.get("followups") is True,
         )
         epic.seeds = _parse_seeds(doc)
+        epic.unwritten_detail = [
+            f"{spec.heading} ({why})"
+            for spec, why in required_section_problems(doc, registry.EPIC_SECTIONS)
+        ]
         for story in _parse_stories(doc, epic.name, graph.root, d):
             _attach_story_md(graph, epic, story)
             epic.stories.append(story)

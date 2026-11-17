@@ -44,11 +44,8 @@ def epic_authored(epic: Epic) -> bool:
 def _milestone_epic_order(graph: Graph) -> list[str]:
     order: list[str] = []
     visited: set[str] = set()
-    by_name = {m.name: m for m in graph.milestones}
-    by_name.update({m.eid: m for m in graph.milestones if m.eid})
-
     def visit(name: str) -> None:
-        milestone = by_name.get(name)
+        milestone = graph.milestone_by_name(name)
         if milestone is None or milestone.name in visited:
             return
         visited.add(milestone.name)

@@ -93,6 +93,16 @@ def check_layout(graph: Graph, f: list[Finding]) -> None:
             f"{rel}: a milestone is a folder, move it to `docs/milestones/{slug}/milestone.md`",
             path=rel, line=1, ref=slug,
             suggestion=f"git mv {rel} docs/milestones/{slug}/milestone.md"))
+    unnumbered = [m for m in graph.milestones if registry.epic_seq(m.path.parent.name) is None]
+    first = registry.next_epic_seq(m.path.parent.name for m in graph.milestones)
+    for position, milestone in enumerate(unnumbered):
+        rel = _rel(graph, milestone.path.parent)
+        numbered = registry.epic_dir_name(first + position, milestone.path.parent.name)
+        f.append(Finding(
+            "warn", "milestone-folder-unnumbered",
+            f"{rel}: a milestone folder carries its order as a number, as an epic's does",
+            path=_rel(graph, milestone.path), line=1, ref=milestone.name,
+            suggestion=f"git mv {rel} {_rel(graph, milestone.path.parent.parent)}/{numbered}"))
     approved = approved_milestones(graph)
     if len(approved) > 1:
         names = ", ".join(m.name for m in approved)
@@ -129,6 +139,21 @@ def check_milestones(graph: Graph, f: list[Finding]) -> None:
     check_layout(graph, f)
     for milestone in graph.milestones:
         f.extend(check_milestone(graph, milestone))
+        f.extend(check_epic_list(graph, milestone))
+
+
+def check_epic_list(graph: Graph, milestone: Milestone) -> list[Finding]:
+    """The epic list Author writes: by id, and shown in `## Epics`; error or warn by status, none once superseded."""
+    if milestone.status in SKIPPED_STATUSES:
+        return []
+    try:
+        doc = read_doc(milestone.path)
+    except OSError:
+        return []
+    found = _epic_list_findings(graph, milestone, doc, _rel(graph, milestone.path))
+    if milestone.status in BLOCKING_STATUSES:
+        return found
+    return [replace(fd, severity="warn") for fd in found]
 
 
 def _missing_sections(milestone: Milestone, doc: markdown.MarkdownDoc, rel: str) -> list[Finding]:
@@ -139,6 +164,47 @@ def _missing_sections(milestone: Milestone, doc: markdown.MarkdownDoc, rel: str)
             "error", "milestone-missing-section",
             f"{rel}: the required `## {spec.heading}` section is {state}",
             path=rel, line=1, ref=milestone.name, suggestion=f"## {spec.heading}"))
+    return found
+
+
+def epics_section_lines(graph: Graph, milestone: Milestone) -> list[str]:
+    """The body ostler writes under a milestone's `## Epics`: one numbered line per epic, in coding order."""
+    lines: list[str] = []
+    for position, ref in enumerate(milestone.epic_refs, 1):
+        epic = graph.epic_by_ref(ref)
+        if epic is None:
+            lines.append(f"{position}. `{ref}`, which names no epic")
+        else:
+            lines.append(f"{position}. {epic.title or epic.name} (`{epic.eid}`, `{epic.name}`)")
+    return lines
+
+
+def _epic_list_findings(graph: Graph, milestone: Milestone, doc: markdown.MarkdownDoc,
+                        rel: str) -> list[Finding]:
+    """An epic listed by name instead of its id, and a `## Epics` section that is not the list."""
+    if graph.profile != "full":
+        return []
+    found: list[Finding] = []
+    fix = f"ostler milestone epics {milestone.name}"
+    for ref in milestone.epic_refs:
+        epic = graph.epic_by_ref(ref)
+        if epic is not None and epic.eid and ref != epic.eid:
+            found.append(Finding(
+                "error", "milestone-epic-by-name",
+                f"{rel}: `epics:` lists '{ref}' by name, list the epic by its id {epic.eid}",
+                path=rel, line=1, ref=ref, suggestion=fix))
+    section = doc.find_section(registry.MILESTONE_EPICS_HEADING)
+    stated = [] if section is None else [
+        line.strip() for line in section.body.splitlines() if line.strip()]
+    expected = epics_section_lines(graph, milestone)
+    if stated != expected:
+        state = "absent" if section is None else "not the `epics:` list"
+        found.append(Finding(
+            "error", "milestone-epics-section",
+            f"{rel}: the `## {registry.MILESTONE_EPICS_HEADING}` section is {state}, "
+            f"so a reader cannot see which epics deliver the milestone",
+            path=rel, line=1 if section is None else doc.body_offset + section.line_start + 1,
+            ref=milestone.name, suggestion=fix))
     return found
 
 

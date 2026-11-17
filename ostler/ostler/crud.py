@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import ids, markdown, model, path as path_mod, registry, select, todo as todo_mod
+from ostler import ids, markdown, milestones as milestones_mod, model, path as path_mod, registry, select, todo as todo_mod
 from ostler.model import Epic, Graph, Story
 from ostler.result import Result
 
@@ -118,8 +118,15 @@ def create_milestone(
     title: str,
     source_items: list[str] | None = None,
 ) -> Result:
-    """Create a release milestone with a generated id and backlog ownership."""
-    folder = graph.doc_roots["milestones"] / name
+    """Create ``<milestones>/NNNN-<slug>/milestone.md`` with a generated id; the folder's number carries its order."""
+    mroot = graph.doc_roots["milestones"]
+    existing = graph.milestone_by_name(name)
+    if existing is not None:
+        return Result(False, f"milestone '{existing.name}' already exists")
+    if registry.epic_seq(name) is None:
+        taken = [d.name for d in mroot.iterdir() if d.is_dir()] if mroot.is_dir() else []
+        name = registry.epic_dir_name(registry.next_epic_seq(taken), name)
+    folder = mroot / name
     path = folder / registry.MILESTONE_FILE
     if folder.exists():
         return Result(False, f"milestone '{name}' already exists")
@@ -170,14 +177,57 @@ def set_milestone_source_items(
     )
 
 
-def _set_milestone_epics(milestone: model.Milestone, epics: list[str]) -> None:
-    """Replace one milestone's epic membership while preserving its prose and other fields."""
+def _write_milestone_epics(graph: Graph, milestone: model.Milestone, epics: list[Epic]) -> None:
+    """Make *epics* the milestone's epic list: their ids under `epics:` and the `## Epics` section a reader sees."""
+    milestone.epic_refs = [epic.eid for epic in epics]
+    milestone.epics = [epic.name for epic in epics]
     doc = markdown.split(milestone.path.read_text(encoding="utf-8"))
     fm = dict(doc.frontmatter or {})
-    fm["epics"] = epics
+    fm["epics"] = milestone.epic_refs
     doc.frontmatter = fm
     doc.raw_frontmatter = dump_frontmatter(fm)
+    body = milestones_mod.epics_section_lines(graph, milestone)
+    if not _write_section_body(doc, registry.MILESTONE_EPICS_HEADING, [*body, ""]):
+        lines = doc.body.split("\n")
+        at = next((i for i, line in enumerate(lines) if line.startswith("## ")), len(lines))
+        lines[at:at] = [f"## {registry.MILESTONE_EPICS_HEADING}", "", *body, ""]
+        doc.body = "\n".join(lines)
+        doc._sections = None
     milestone.path.write_text(doc.render(), encoding="utf-8")
+
+
+def set_milestone_epics(graph: Graph, name: str, refs: list[str] | None = None) -> Result:
+    """Set a milestone's epics in coding order, each named by id, directory or slug, and stored by id.
+
+    With no *refs* the milestone's own list is resolved again, which moves a list written by name
+    onto ids and rewrites its `## Epics` section.
+    """
+    milestone = graph.milestone_by_name(name)
+    if milestone is None:
+        return Result(False, f"no milestone '{name}'")
+    wanted = milestone.epic_refs if refs is None else refs
+    epics: list[Epic] = []
+    errors: list[str] = []
+    for ref in wanted:
+        epic = graph.epic_by_ref(ref)
+        if epic is None:
+            errors.append(f"'{ref}' names no epic")
+        elif not epic.eid:
+            errors.append(f"epic '{epic.name}' has no `id:`, so a milestone cannot list it")
+        elif epic in epics:
+            errors.append(f"epic '{epic.name}' is listed twice")
+        else:
+            epics.append(epic)
+    if errors:
+        return Result(False, f"milestone '{milestone.name}' keeps its epics: " + "; ".join(errors))
+    _write_milestone_epics(graph, milestone, epics)
+    return Result(
+        True,
+        f"set {len(epics)} epic(s) on milestone '{milestone.name}'",
+        [milestone.path],
+        entity_id=milestone.eid,
+        entity_name=milestone.name,
+    )
 
 
 def create_epic(
@@ -212,17 +262,14 @@ def delete_epic(graph: Graph, name: str) -> Result:
     edir = path_mod.epic_dir(graph, name)
     existed = (edir / "epic.md").exists()
     changed: list[Path] = []
-    target_refs = {
-        name,
-        registry.epic_slug(name),
-        edir.name,
-        registry.epic_slug(edir.name),
-    }
     for milestone in graph.milestones:
-        remaining = [epic for epic in milestone.epics if epic not in target_refs]
-        if remaining != milestone.epics:
-            _set_milestone_epics(milestone, remaining)
-            changed.append(milestone.path)
+        if edir.name not in milestone.epics:
+            continue
+        remaining = [graph.epic_by_ref(ref) for ref in milestone.epic_refs]
+        _write_milestone_epics(graph, milestone, [
+            epic for epic in remaining
+            if epic is not None and epic.eid and epic.name != edir.name])
+        changed.append(milestone.path)
     removed = ""
     todo_result = todo_mod.prune(graph, name)
     if todo_result.ok:

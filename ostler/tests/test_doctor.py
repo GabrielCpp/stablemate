@@ -163,9 +163,9 @@ def test_a_story_that_covers_no_seed_in_a_seeded_epic_is_flagged(repo: Path):
         stories=[("01-foo", "Foo", [])],
     ))
     report = doctor.run(load(repo))
-    warns = [f for f in report.findings if f.severity == "warn"]
-    assert "story-covers-no-seed" in {f.code for f in warns}
-    finding = next(f for f in warns if f.code == "story-covers-no-seed")
+    errors = [f for f in report.findings if f.severity == "error"]
+    assert "story-covers-no-seed" in {f.code for f in errors}
+    finding = next(f for f in errors if f.code == "story-covers-no-seed")
     assert finding.ref == "01-foo"
 
 

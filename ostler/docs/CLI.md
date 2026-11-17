@@ -42,7 +42,7 @@ what gets written into a document is always the full id.
 ## Inspect
 
 ```bash
-ostler doctor [--epic SLUG] [--json] [--no-schema]
+ostler doctor [--epic SLUG | --milestone NAME] [--json] [--no-schema]
 #   conformance + referential integrity; non-zero on an error-level finding.
 #   --no-schema skips JSON Schema validation.
 ```
@@ -95,6 +95,7 @@ ostler unblock <story-id> | unblock --epic <name> | unblock --all   [--status S]
 ostler backlog adopt --repo R <file> [--json]
 ostler backlog add <summary> --repo R --area A [--pattern P] | backlog prune <id> | backlog list [--json]
 ostler milestone set-source-items <name> <id> [id ...]
+ostler milestone epics <name> [<epic> ...]
 ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | todo list [--json]
 ```
 
@@ -131,10 +132,26 @@ Register and persists a full id. `backlog add` does the same. `backlog adopt` tu
 list into records once and deletes the list. `backlog prune` closes a record as done, dropped or
 promoted.
 
-`create milestone` allocates an id independent of the readable `<name>` used for its filename and
-records full backlog ids in `sourceItems`. `milestone set-source-items` replaces that ownership set
-on an existing milestone and accepts full ids or unambiguous short handles. `doctor` reports an
-error if one backlog id is owned by more than one milestone.
+`create milestone` allocates an id independent of the readable `<name>`, writes the milestone to
+`docs/milestones/NNNN-<name>/` with the next free number, and records full backlog ids in
+`sourceItems`. The bare `<name>` still names the milestone in every command. `doctor` warns on a
+milestone folder with no number and prints the `git mv` that numbers it.
+`milestone set-source-items` replaces that ownership set on an existing milestone and accepts full
+ids or unambiguous short handles. `doctor` reports an error if one backlog id is owned by more than
+one milestone.
+
+`milestone epics <name> <epic>...` sets the milestone's epics in coding order. It takes each epic
+by id, folder or slug, stores the ids under `epics:`, and writes the `## Epics` section under the
+milestone's title: one line per epic with its title, id and folder. With no epic it resolves the
+list the milestone already holds, which moves a list written by name onto ids. Once the milestone
+is `approved`, `doctor` reports an epic listed by name and an `## Epics` section that is not the
+list as errors.
+
+`doctor --milestone <name>` checks one milestone, the epics it lists and their stories, and exits 1
+on any error. Beyond the graph checks it refuses an epic or story with no `id:`, an epic folder with
+no `epic.md`, an epic with stories whose `epic.md` lacks `## User Outcome`, `## User Journeys`,
+`## Delivered Experience`, `## Guardrails`, `## Non-Goals`, `## Acceptance` or `## Method`, and a
+story that covers no seed outside a follow-ups epic.
 
 ## Repair and approve
 

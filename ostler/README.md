@@ -85,7 +85,7 @@ documents the graph reads.
 
 | `type` | Location (repo-relative) | Identity | Required frontmatter |
 |---|---|---|---|
-| `milestone` | `docs/milestones/<slug>/milestone.md` | folder name `<slug>`; optional `id` defaults to it | `type`, `title`, `status` |
+| `milestone` | `docs/milestones/<NNNN-slug>/milestone.md` | folder name `<NNNN-slug>`, or its bare `<slug>`; optional `id` defaults to it | `type`, `title`, `status` |
 | `epic` | `docs/epics/<NNNN-slug>/epic.md` | `<NNNN-slug>` (dir name) | `type`, `id`, `title` |
 | `story` | `docs/epics/<NNNN-slug>/stories/<slug>/story.md` | opaque `id` (a ULID when ostler mints it); the `<slug>` names the folder and the `epic.md` heading | `type`, `slug`, `status` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `<artifacts dir>/specs/<story-id>/*.md` (`ostler path spec <story-id>`) | path | `type` |
@@ -111,7 +111,8 @@ by `backlog adopt --repo R <file>`, which deletes the list. Ostler reads no bull
 A milestone's generated `id` is independent of its readable filename and title. Its `sourceItems`
 contains the full ids of the backlog intake it owns. Use `milestone set-source-items` to update that
 set when an active milestone absorbs more intake. `doctor` rejects a backlog id owned by multiple
-milestones. Never persist a short handle: handles are display/input conveniences and may lengthen
+milestones. Its `epics` are epic ids in coding order, written with `milestone epics`, which also
+writes the `## Epics` section a reader of the milestone sees. Never persist a short handle: handles are display/input conveniences and may lengthen
 after a collision; Ostler resolves command inputs and writes full ids.
 
 ### `epic.md` — single source of truth for an epic

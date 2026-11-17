@@ -12,7 +12,7 @@ from typing import Iterator
 
 import pytest
 
-from ostler import index
+from ostler import index, registry
 
 
 FOO_ID = "t-01foo"
@@ -77,6 +77,8 @@ def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],
     """seeds: (id, status, summary)."""
     out = ["---", "type: epic", f"id: {eid}", f"title: {title}", "---",
            f"# Epic: {title}", ""]
+    for spec in registry.EPIC_SECTIONS:
+        out += [f"## {spec.heading}", "", f"What {title} holds to for {spec.heading.lower()}.", ""]
     if seeds:
         out += ["## Seeds", ""]
         for sid, status, summary in seeds:

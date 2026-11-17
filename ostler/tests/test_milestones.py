@@ -278,7 +278,7 @@ def test_create_milestone_writes_the_folder_with_every_section_as_a_stub(tmp_pat
     write_prefix(tmp_path)
     result = crud.create_milestone(load(tmp_path), "sign-in", "Sign in")
 
-    path = tmp_path / "docs/milestones/sign-in/milestone.md"
+    path = tmp_path / "docs/milestones/0001-sign-in/milestone.md"
     assert result.ok and result.paths == [path]
     text = path.read_text(encoding="utf-8")
     assert "status: proposed" in text
@@ -286,4 +286,4 @@ def test_create_milestone_writes_the_folder_with_every_section_as_a_stub(tmp_pat
     assert "## Open Decisions" not in text
     assert crud.create_milestone(load(tmp_path), "sign-in", "Again").ok is False
     [milestone] = load(tmp_path).milestones
-    assert (milestone.name, milestone.status) == ("sign-in", "proposed")
+    assert (milestone.name, milestone.status) == ("0001-sign-in", "proposed")
