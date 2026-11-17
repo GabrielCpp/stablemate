@@ -1,6 +1,6 @@
 ---
 name: workhorse-workflows-milestone
-description: "Writing the milestone folder consumed by the Workhorse Author workflow: one durable release contract in `docs/milestones/<slug>/milestone.md`, its grill records, mockups and design links, and the ready gate Author enforces. Load when creating or reviewing a milestone, grilling one, or deciding whether a proposed milestone is ready for Author."
+description: "Writing the milestone folder consumed by the Workhorse Author workflow: one durable release contract in `docs/milestones/NNNN-<slug>/milestone.md`, its grill records, mockups and design links, and the ready gate Author enforces. Load when creating or reviewing a milestone, grilling one, or deciding whether a proposed milestone is ready for Author."
 applyTo: "**/docs/milestones/*/milestone.md"
 tags: [planning, docs]
 ---
@@ -34,11 +34,14 @@ a larger milestone.
 
 ## Folder contract
 
-A milestone is a folder, `docs/milestones/<slug>/`. A flat `docs/milestones/<slug>.md` file
-is a doctor error.
+A milestone is a folder, `docs/milestones/NNNN-<slug>/`. The four-digit number carries the
+milestone's order, as an epic folder's does. `ostler create milestone <slug> "<title>"` picks the
+next number and mints the id. The bare slug still names the milestone in every command. A folder
+with no number is a doctor warning that prints the `git mv` that numbers it. A flat
+`docs/milestones/<slug>.md` file is a doctor error.
 
 ```text
-docs/milestones/<slug>/
+docs/milestones/NNNN-<slug>/
   milestone.md          required
   grills/<topic>.md     optional, one recorded grill tree per topic
   mockups/<journey-slug>.html   optional, one per journey that changes a screen
@@ -59,6 +62,8 @@ status: proposed
 
 # Local Formula and Report Engine
 
+## Epics
+
 ## Outcome
 
 ## Release Boundary
@@ -74,10 +79,19 @@ status: proposed
 ## Non-Goals
 ```
 
-Every section above needs prose. `## Compatibility Sources` is optional. Add it for a
-rewrite, migration, or parity release, and omit it for new work. The optional frontmatter
-keys are `id` (defaults to the folder name), `dependsOn`, `sourceItems` and `epics`. The
-epic split writes `epics`, so leave it empty.
+Every section above needs prose, except `## Epics`. `## Compatibility Sources` is optional.
+Add it for a rewrite, migration, or parity release, and omit it for new work. The optional
+frontmatter keys are `id` (defaults to the folder name), `dependsOn`, `sourceItems` and
+`epics`.
+
+Ostler owns `epics:` and `## Epics`, so leave both empty while the milestone is `proposed`.
+The epic split sets them with `ostler milestone epics <milestone> <epic>...`, in coding order.
+Ostler stores each epic by its id under `epics:` and writes one line per epic under
+`## Epics`: its title, its id and its folder. That section is how a reader of the milestone
+sees which epics deliver it. Never edit either by hand. A list written by name, or a section
+that no longer matches the list, is a doctor error once the milestone is `approved`.
+`ostler milestone epics <milestone>` with no epic moves an old list onto ids and rewrites the
+section.
 
 `## Architecture Decisions` records only decisions already made. A `## Open Decisions`
 section is a doctor finding, so settle each decision into the right section and delete the
@@ -206,7 +220,8 @@ resolves to a file, and the epic split reads the notes it links.
 
 ## What stays out
 
-- **No epic or story list.** Author owns decomposition and coding order.
+- **No hand-written epic or story list.** Author owns decomposition and coding order, and
+  ostler writes the `## Epics` section from it.
 - **No implementation checklist.** A bullet such as "create the bucket" is not a release
   outcome and biases Author toward horizontal stories.
 - **No multiple release phases.** MVP, phase two, and later release gates are several
@@ -239,6 +254,7 @@ A milestone is ready when `ostler doctor` reports no milestone finding for it:
 - no `## Open Decisions` section remains;
 - every relative link resolves;
 - every journey has a services bullet that names existing books;
+- once Author ran, every epic is listed by id and `## Epics` matches the list;
 - `status` is `approved` by the human owner, and no other milestone is `approved`.
 
 Doctor reports these as warnings while the milestone is `proposed` and as errors once it is

@@ -42,6 +42,10 @@ Propose ordered epics, each one a coherent journey an actor can recognize as fin
 removal in the same epic as its replacement, so no epic leaves a surface missing. State what
 each epic leaves for a later one.
 
+Create each epic with `ostler create epic`, so it gets its id, then list them on the milestone
+in coding order with `ostler milestone epics <milestone> <epic>...`. Ostler stores the ids and
+writes the milestone's `## Epics` section. Never edit either by hand.
+
 Done when every milestone journey and acceptance line has an epic that delivers it. This is the
 first checkpoint.
 
@@ -53,7 +57,8 @@ another story opened. This is the second checkpoint.
 
 **Create.** Add seeds with `ostler seed add` and stories with `ostler create story`, in the
 order of the slices. Ostler owns `## Seeds` and `## Stories`, and it allocates every id. Each
-seed names its surface as a book node, and its backing as the data that serves it.
+seed names its surface as a book node, and its backing as the data that serves it. Every story
+covers at least one seed with `--covers`.
 
 **Mock.** A story that changes a screen gets a `mockup.html`. Read
 [references/mockups.md](references/mockups.md) before the first one, and when a rendered state
@@ -61,8 +66,8 @@ looks wrong.
 
 **Write.** Add the epic's prose above `## Seeds` and fill each story, to the bars below.
 
-**Check.** `ostler doctor` raises no finding on the epic, and every active seed is covered.
-Findings that were there before the session stay out of the session.
+**Check.** `ostler doctor --milestone <milestone>` exits 0. It checks the milestone, the epics
+it lists and their stories against the bars below, and nothing else on the shelf.
 
 **Read fresh.** Run the reader described below, and resolve what it finds.
 
@@ -77,14 +82,17 @@ Done when each hand-off resolves to a criterion by name.
 
 ### 5. Report
 
+Run `ostler doctor --milestone <milestone>` once more. The session is done only when it exits 0.
 State the epics and stories in coding order, the choices taken under auto-accept and any
 finding left open. The milestone stays `approved`, because the session leaves its status to the
 owner.
 
 ## The epic bar
 
-An epic carries `## User Outcome`, `## User Journeys`, `## Delivered Experience` with its
-required states, `## Guardrails`, `## Non-Goals`, `## Acceptance` and `## Method`. The journey
+An epic carries an `id:`, then `## User Outcome`, `## User Journeys`, `## Delivered Experience`
+with its required states, `## Guardrails`, `## Non-Goals`, `## Acceptance` and `## Method`, each
+with prose, above `## Seeds` and `## Stories`. Doctor refuses an epic with stories that lacks one,
+and an epic folder with no `epic.md`. The journey
 steps come from the milestone word for word. A guardrail binds a plausible build that would
 otherwise break it. Method says why the first story is the walking skeleton and why the last
 story comes last.
@@ -92,7 +100,7 @@ story comes last.
 ## The story bar
 
 A coder run builds the story with nobody to ask, so a reader who guesses builds something else.
-Each story has four prose sections:
+Each story carries the `id:` ostler minted, covers at least one seed, and has four prose sections:
 
 - **Context:** the actor's problem in their words, the book node this lands on as a link, the
   mockup as the source of truth, and what Done means.
