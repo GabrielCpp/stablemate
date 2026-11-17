@@ -163,12 +163,56 @@ front matter at all, which silently strips *every* tag on that skill rather than
 erroring. After a bulk retag, check that each source still opens with a
 well-formed `---` … `---` block before trusting a query that comes back empty.
 
-## Commit checks: what an agent's commit runs
+## Git hooks and commit checks: who pays for the check
 
-A check that only an agent's commit needs is a commit check, not a git hook. A git
-hook runs on every human commit too, so it pays its cost on commits that never asked
-for it. Keep a git hook only for what must hold whoever commits, such as the
-commit-message format.
+A skill or a policy can attach a script to a commit in two ways. The choice decides
+who waits for it.
+
+| | `hooks:` (git hook) | `commit_checks:` (agent commit check) |
+| --- | --- | --- |
+| Runs on | every commit, human or agent | an agent's `git commit` only |
+| Fires from | git, through the repo's hook manager | the `commit-checks` home guard, before the shell runs |
+| Entry keys | `stage` (`pre-commit` or `commit-msg`) and `run` | `run` and `budget` |
+| Listed by | `farrier hooks list` | `farrier checks --repo <repo>` |
+| Wired by | `farrier install` or `farrier hooks install` in the repo | `hooks = ["commit-checks"]` in each harness profile of the home config |
+| Bypassed by | `--no-verify` | a harness without the guard |
+
+Pick `hooks:` when the rule must hold whoever commits. The commit-message format is
+the example: release-please reads every subject, so a human's bad subject breaks a
+release as surely as an agent's. Pick `commit_checks:` for everything an agent's
+commit needs and a human's does not, such as lint, type checks or the private-names
+scan. A git hook pays its cost on every human commit. Before the split, a human waited
+about seventeen seconds on checks only an agent's commit needed.
+
+The two keys are separate on purpose. A marker under `hooks:` was rejected, because
+that key names a git-hook stage.
+
+### Declaring a git hook
+
+```yaml
+hooks:
+  - stage: commit-msg
+    run: scripts/check_commit_message.py
+```
+
+- `stage` is `pre-commit` or `commit-msg`. Install skips any other stage without a
+  word. `farrier library check` reports it, and the same check catches a missing
+  `run:` file or a malformed `commit_checks:` entry.
+- `run` is a path inside the source's own folder. A `.py` script runs through
+  `python3`. Any other script must be executable.
+- A `commit-msg` script gets the message file path as its first argument.
+
+`farrier install` writes one runner per stage, `.agents/hooks/pre-commit` and
+`.agents/hooks/commit-msg`, from the `hooks:` of every selected skill and every
+policy a `localInstructions` mapping names. It then splices one fenced entry into
+the repo's hook manager. `hooks.manager` in `agents.yml` names it: `pre-commit`,
+`lefthook`, `husky`, `githooks` or `none`. Without that key, farrier picks the
+manager from the repo's marker files and falls back to `githooks`, which sets
+`core.hooksPath`. The pre-commit entry calls `make farrier-run-hook`. Farrier owns
+only the fenced region, so the repo's own hooks around it survive a reinstall.
+`none` strips the fence and leaves the runners unwired.
+
+### Declaring a commit check
 
 A skill or a policy declares its checks in front matter:
 
@@ -206,6 +250,10 @@ but to `/dev/null`. Any other commit
 comes back refused, with the rewritten command for the agent to run. Enable it by
 naming `commit-checks` in the `hooks` list of each harness profile in the farrier
 config.
+
+Three things in farrier carry the word "hooks". The `hooks:` front-matter key is a
+git-hook stage. `library/hooks/<name>/` is a home guard, a harness hook such as
+`commit-checks` itself. `hooks.manager` in `agents.yml` names the git hook manager.
 
 A home guard's `command` may carry a `{harness}` placeholder. Farrier replaces it
 with the harness it installs into, so one guard can answer each harness in its own
