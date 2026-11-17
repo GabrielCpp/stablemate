@@ -15,7 +15,7 @@ import pytest
 
 from ostler.book import (STDERR, Action, Actor, BookError, Collection, Command, CommandSurface, Create, Done, Enum, Exit,
                          Exited, Field, Files, Fixture, Flag, Lines, Mark, Object, Refusal, Rule, Sandbox, Seed, Select,
-                         State, Str, Switch, Transaction, Undeclared, Unique)
+                         State, Str, Switch, Transaction, Undeclared, Unique, Watched)
 from ostler.book.inputs import classes, twin_classes, vary
 from ostler.book.runner import attempt
 
@@ -303,3 +303,22 @@ def test_a_starter_config_with_a_wrong_default_turns_the_farrier_book_red(tmp_pa
     assert done.returncode == 1, done.stdout + done.stderr
     assert "at: farrier init --repo ." in done.stdout
     assert "rows differ" in done.stdout
+
+
+class Row(Watched):
+    marks = (Mark("*.txt", "b", "a"), Mark("out.*", "a", "c"))
+
+
+def test_watched_declares_the_strings_in_mark_order_without_duplicates():
+    assert Row.declared("out.txt") == ("b", "a", "c")
+    assert Row.declared("other.md") == ()
+
+
+def test_watched_holding_keeps_mark_order_and_the_subclass():
+    row = Row.holding("out.txt", "c", "b")
+    assert isinstance(row, Row)
+    assert row == Row("out.txt", ("b", "c"))
+
+
+def test_watched_row_prints_its_path_and_holds():
+    assert str(Row("out.txt", ("b", "a"))) == "out.txt [b; a]"

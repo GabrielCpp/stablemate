@@ -31,7 +31,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Mapping, cast
+from typing import Any, ClassVar, Mapping, Self, cast
 
 from ostler.book.arrange import Arrange
 from ostler.book.errors import BookError
@@ -214,6 +214,31 @@ class Mark:
     def __init__(self, glob: str, *holds: str):
         object.__setattr__(self, "glob", glob)
         object.__setattr__(self, "holds", holds)
+
+
+@dataclass(frozen=True)
+class Watched:
+    """The model's row for one watched file: its path and which of the declared
+    strings it holds. Subclass once per book, name the `marks` the watch reads
+    and the `source`."""
+
+    path: str
+    holds: tuple[str, ...] = ()
+
+    marks: ClassVar[tuple[Mark, ...]] = ()
+
+    def __str__(self) -> str:
+        return f"{self.path} [{'; '.join(self.holds)}]"
+
+    @classmethod
+    def declared(cls, path: str) -> tuple[str, ...]:
+        """The strings the watch looks for in this path, in the order it lists them."""
+        return tuple(dict.fromkeys(s for m in cls.marks if fnmatch.fnmatchcase(path, m.glob) for s in m.holds))
+
+    @classmethod
+    def holding(cls, path: str, *strings: str) -> Self:
+        """The record of a file that holds these strings, in the order the watch lists them."""
+        return cls(path, tuple(s for s in cls.declared(path) if s in strings))
 
 
 FILE = Object("File", path=Field(Str(), does="the path from the sandbox root"),

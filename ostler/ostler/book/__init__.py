@@ -16,7 +16,7 @@ from ostler.book.cast import SOLE, Actor
 from ostler.book.delivery import Again, Bus, Delivery
 from ostler.book.domain import (Action, App, Become, Change, Collection, Create, Delete, Entry, Fixture, Heard, Index, MoveToday,
                                 Select, Show, State, Total, Transaction, Unique, Update)
-from ostler.book.command import STDERR, Command, CommandSurface, Exit, Files, Flag, Lines, Mark, Outside, Positional, Sandbox, Seed, Switch
+from ostler.book.command import STDERR, Command, CommandSurface, Exit, Files, Flag, Lines, Mark, Outside, Positional, Sandbox, Seed, Switch, Watched
 from ostler.book.entries import in_order, no_repeat, of_pairs
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError, Unhealthy
@@ -51,7 +51,7 @@ __all__ = [
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",
     "Endpoint", "Enum", "Field", "Foreign", "Form", "Given", "Id", "Impossible", "Int", "Interaction", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",
     "Needs", "Num", "On", "OwnerRefused", "Passes", "Person", "Phase", "Process", "Reaches", "Reference", "Refusal", "Refusals", "Refused", "Relates", "Rule", "Same", "Scene", "Screen", "Seen", "Service", "Shows", "Stack", "Stored", "Str", "Surface",
-    "Command", "CommandSurface", "Exit", "Files", "Flag", "Lines", "Mark", "Outside", "Positional", "STDERR", "Sandbox", "Seed", "Switch",
+    "Command", "CommandSurface", "Exit", "Files", "Flag", "Lines", "Mark", "Outside", "Positional", "STDERR", "Sandbox", "Seed", "Switch", "Watched",
     "Code", "Exited", "GrpcClient", "GrpcSurface", "HttpSurface", "Rpc", "STATUS", "Signed", "refused", "succeeded",
     "T", "Transition", "Undeclared", "Undo", "Unreachable", "Unseen", "View", "Because", "When", "error_field", "masked", "pluck", "problem",
 ]
