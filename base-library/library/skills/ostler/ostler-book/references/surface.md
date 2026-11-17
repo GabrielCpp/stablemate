@@ -116,6 +116,22 @@ Declare each body once in `endpoints/shapes.py` and reuse it.
 - `Object(...).one_of("a", "b")` when the handler takes exactly one of two fields, and
   `.together("a", "b")` when it takes both or neither. The runtime sends the body with
   neither, with all, and with each one alone, and the model's rules judge each.
+- `Itself("Name")` when a field holds the object that encloses it: a formula whose operands are
+  formulas, a folder of folders. Write the tree as one named object and never as one object per
+  level (`Expression4` down to `Expression0`), which states four levels and no more. The check
+  accepts any depth the app answers and judges every level by the same fields. Each field of the
+  tree is one path in the witness, so `ast.value` is seen once whichever level held it. An
+  `Itself` whose name matches no enclosing object fails `ostler book check`.
+
+  ```python
+  EXPRESSION = Object(
+      "BundleExpression",
+      kind=Str(), value=Field(Str(), required=False),
+      operand=Field(Itself("BundleExpression"), required=False),
+      left=Field(Itself("BundleExpression"), required=False),
+      right=Field(Itself("BundleExpression"), required=False),
+  )
+  ```
 - `List(shape, unordered="<why>")` when the app leaves ties in an order the book cannot
   predict. Without it, order is compared.
 - `List(shape, entries=(has("id"), no_repeat("id"), in_order("name")))` when every entry of the
