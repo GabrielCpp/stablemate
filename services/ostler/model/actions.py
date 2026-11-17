@@ -2,15 +2,22 @@
 
 from __future__ import annotations
 
-from ostler.book import Action, Actor, Select, Transaction, Update
+import re
 
-from ..fixtures import (EPICS, STORY_PATHS, AddArgs, ConflictArgs, ListArgs, PathEpicArgs, PruneArgs, ReorderArgs, SeedAddArgs,
-                        SeedRemoveArgs, SetStatusArgs, directory_of)
+from ostler.book import Action, Actor, Create, Delete, Select, Transaction, Update
+
+from ..fixtures import (COVERS, EPICS, SLUGS, STORY_PATHS, AddArgs, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
+                        DeleteEpicArgs, DeleteStoryArgs, ListArgs, PathBranchArgs, PathEpicArgs, PathSpecArgs, PathStoryArgs,
+                        PruneArgs, ReorderArgs, SeedAddArgs, SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs,
+                        directory_of, slug_of)
 from . import rules
 from .files import BULLET_LINES, CONFLICT_LINES, STATUS_LINES, FileRecord, holding, seed_block
 from .records import Queue
 from .rules import queued_as
+
 from .state import QUEUE, Plan
+
+_NUMBERED = re.compile(r"^(\d{4,})-(.+)$")
 
 WARNING = " — WARNING: no '{name}/epic.md' yet, so epic selection will skip it and report no work remaining"
 
@@ -134,4 +141,163 @@ class PathOfEpic(Action[PathEpicArgs, Plan]):
 class ListFiles(Action[object, Plan]):
     @staticmethod
     def reduce(a: object, s: Plan, by: Actor | None) -> Select[FileRecord]:
-        return Select(s.files, order=lambda f: f.path)
+        return Select(s.files, order=lambda f: tuple(f.path.split("/")))
+
+
+def status_of(s: Plan, path: str) -> str:
+    held = s.files[path].holds
+    return next(name for name, line in STATUS_LINES.items() if line in held)
+
+
+def with_status(s: Plan, story: str, status: str) -> Update:
+    path = STORY_PATHS[story]
+    replaced = (*STATUS_LINES.values(), *BULLET_LINES.values())
+    kept = tuple(h for h in s.files[path].holds if h not in replaced)
+    return rewrite(s, path, *kept, STATUS_LINES[status], BULLET_LINES[status])
+
+
+def epic_of(path: str) -> str:
+    return path.split("/")[2]
+
+
+class MakeEpic(Action[CreateEpicArgs, Plan]):
+    accept = CreateEpicArgs
+    rules = (rules.epic_exists,)
+
+    @staticmethod
+    def reduce(a: CreateEpicArgs, s: Plan, by: Actor | None) -> Transaction:
+        name = (a.name or "").strip()
+        if _NUMBERED.match(name):
+            folder = name
+        else:
+            taken = [int(d.split("-", 1)[0]) for d in s.epic_dirs()]
+            folder = f"{max(taken, default=0) + 1:04d}-{slug_of(name)}"
+        path = f"art/epics/{folder}/epic.md"
+        return Transaction(Create(s.files, holding(path)), says=())
+
+
+class MakeStory(Action[CreateStoryArgs, Plan]):
+    accept = CreateStoryArgs
+    rules = (rules.no_epic_for_story,)
+
+    @staticmethod
+    def reduce(a: CreateStoryArgs, s: Plan, by: Actor | None) -> Transaction:
+        folder = s.resolve_epic(a.epic or "")
+        story_path = f"art/epics/{folder}/stories/{a.slug}/story.md"
+        if story_path in s.files.items:
+            return Transaction(says=(f"story '{a.slug}' already exists in epic '{a.epic}'",))
+        epic_path = f"art/epics/{folder}/epic.md"
+        held = s.files[epic_path].holds
+        added = (f"### {a.slug}", f"- title: {a.title}")
+        return Transaction(
+            Create(s.files, holding(story_path, STATUS_LINES["Not started"], BULLET_LINES["Not started"])),
+            rewrite(s, epic_path, *held, *added), says=())
+
+
+class DropEpic(Action[DeleteEpicArgs, Plan]):
+    accept = DeleteEpicArgs
+
+    @staticmethod
+    def reduce(a: DeleteEpicArgs, s: Plan, by: Actor | None) -> Transaction:
+        name = a.name or ""
+        folder = s.resolve_epic(name)
+        queued = queued_as(s, name)
+        removed = " (removed from epics index)" if queued is not None else ""
+        gone = tuple(f.path for f in s.files if f.path.startswith("art/epics/") and epic_of(f.path) == folder)
+        changes: list = [Delete(s.files, path) for path in gone]
+        if queued is not None:
+            changes.append(requeue(s, tuple(e for e in s.epics() if e != queued)))
+        if not gone:
+            return Transaction(*changes, says=(f"epic '{name}' already absent; cleanup complete{removed}",))
+        return Transaction(*changes, says=(f"deleted epic '{folder}'{removed}",))
+
+
+class DropStory(Action[DeleteStoryArgs, Plan]):
+    accept = DeleteStoryArgs
+    rules = (rules.no_story_to_delete,)
+
+    @staticmethod
+    def reduce(a: DeleteStoryArgs, s: Plan, by: Actor | None) -> Transaction:
+        assert a.story is not None
+        path = STORY_PATHS[a.story]
+        slug = SLUGS[a.story]
+        epic_path = f"art/epics/{epic_of(path)}/epic.md"
+        dropped = (f"### {slug}", f"- title: Story {slug}", f"- title: Renamed {slug}", f"- covers: {COVERS[a.story]}")
+        kept = tuple(h for h in s.files[epic_path].holds if h not in dropped)
+        return Transaction(Delete(s.files, path), rewrite(s, epic_path, *kept),
+                           says=(f"deleted story '{slug}' from epic '{epic_of(path)}'",))
+
+
+class EditStory(Action[UpdateStoryArgs, Plan]):
+    accept = UpdateStoryArgs
+    rules = (rules.no_story_to_update,)
+
+    @staticmethod
+    def reduce(a: UpdateStoryArgs, s: Plan, by: Actor | None) -> Transaction:
+        assert a.story is not None
+        path = STORY_PATHS[a.story]
+        slug = SLUGS[a.story]
+        epic_path = f"art/epics/{epic_of(path)}/epic.md"
+        titles = (f"- title: Story {slug}", f"- title: Renamed {slug}")
+        kept = tuple(h for h in s.files[epic_path].holds if h not in titles and h != f"- covers: {COVERS[a.story]}")
+        cover = () if a.covers == "(none)" else (f"- covers: {a.covers}",)
+        blocker = () if a.depends == "(none)" else (f"- Blocked by: {a.depends}",)
+        story_kept = tuple(h for h in s.files[path].holds if not h.startswith("- Blocked by: "))
+        return Transaction(rewrite(s, epic_path, *kept, f"- title: {a.title}", *cover), rewrite(s, path, *story_kept, *blocker),
+                           says=(f"updated story '{slug}' in epic '{epic_of(path)}'",))
+
+
+class ClearBlocks(Action[UnblockArgs, Plan]):
+    accept = UnblockArgs
+    rules = (rules.nothing_to_unblock_named, rules.all_takes_no_target, rules.story_and_epic, rules.unblock_no_story,
+             rules.unblock_no_epic)
+
+    @staticmethod
+    def reduce(a: UnblockArgs, s: Plan, by: Actor | None) -> Transaction:
+        if a.story:
+            candidates = [a.story]
+        elif a.epic:
+            folder = s.resolve_epic(a.epic)
+            candidates = [sid for sid, path in sorted(STORY_PATHS.items(), key=lambda kv: kv[1])
+                          if epic_of(path) == folder and s.has_story(sid)]
+        else:
+            candidates = [sid for sid, path in sorted(STORY_PATHS.items(), key=lambda kv: kv[1]) if s.has_story(sid)]
+        blocked = [sid for sid in candidates if status_of(s, STORY_PATHS[sid]).lower().startswith("blocked")]
+        if not blocked:
+            tail = f": '{a.target}' is not blocked" if a.target else ""
+            return Transaction(says=(f"nothing to unblock{tail}",))
+        status = (a.status or "Not started").strip()
+        names = ", ".join(SLUGS[sid] for sid in blocked)
+        return Transaction(*(with_status(s, sid, status) for sid in blocked),
+                           says=(f"unblocked {len(blocked)} → {a.status or 'Not started'}: {names}",))
+
+
+class StoryPath(Action[PathStoryArgs, Plan]):
+    accept = PathStoryArgs
+    rules = (rules.no_story_for_story_path,)
+
+    @staticmethod
+    def reduce(a: PathStoryArgs, s: Plan, by: Actor | None) -> Transaction:
+        assert a.story is not None
+        return Transaction(says=(STORY_PATHS[a.story],))
+
+
+class SpecPath(Action[PathSpecArgs, Plan]):
+    accept = PathSpecArgs
+    rules = (rules.no_story_for_spec_path,)
+
+    @staticmethod
+    def reduce(a: PathSpecArgs, s: Plan, by: Actor | None) -> Transaction:
+        return Transaction(says=(f"<sandbox>/art/specs/{a.story}",))
+
+
+class BranchName(Action[PathBranchArgs, Plan]):
+    accept = PathBranchArgs
+    rules = (rules.no_story_for_branch,)
+
+    @staticmethod
+    def reduce(a: PathBranchArgs, s: Plan, by: Actor | None) -> Transaction:
+        ref = a.ref or ""
+        if a.epic:
+            return Transaction(says=(f"feat/{slug_of(ref)}",))
+        return Transaction(says=(SLUGS[ref],))

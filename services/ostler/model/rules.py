@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from ostler.book import Actor, Exited, Rule
 
-from ..fixtures import (EPICS, SEED_LAYERS, SEED_STATUSES, STORY_PATHS, AddArgs, ConflictArgs, PruneArgs, ReorderArgs,
-                        SeedAddArgs, SeedRemoveArgs, SetStatusArgs, slug_of)
+from ..fixtures import (EPICS, SEED_LAYERS, SEED_STATUSES, AddArgs, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
+                        DeleteStoryArgs, PathBranchArgs, PathSpecArgs, PathStoryArgs, PruneArgs, ReorderArgs, SeedAddArgs,
+                        SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs, slug_of)
 from .state import Plan
 
 FAILED = Exited(1)
@@ -68,8 +69,45 @@ def _no_seed(a: SeedRemoveArgs, s: Plan, by: Actor | None) -> bool:
     return not any(b.startswith(f"### {a.seed}\n") for b in s.files[path].holds)
 
 
-def _no_story(a: SetStatusArgs | ConflictArgs, s: Plan, by: Actor | None) -> bool:
-    return a.story not in STORY_PATHS
+def _no_story(a: SetStatusArgs | ConflictArgs | DeleteStoryArgs | UpdateStoryArgs | PathStoryArgs | PathSpecArgs | UnblockArgs,
+              s: Plan, by: Actor | None) -> bool:
+    return not s.has_story(a.story or "")
+
+
+def _epic_present(s: Plan, name: str | None) -> bool:
+    return f"art/epics/{s.resolve_epic(name or '')}/epic.md" in s.files.items
+
+
+def _epic_exists(a: CreateEpicArgs, s: Plan, by: Actor | None) -> bool:
+    return _epic_present(s, a.name)
+
+
+def _no_epic_for_story(a: CreateStoryArgs, s: Plan, by: Actor | None) -> bool:
+    return not _epic_present(s, a.epic)
+
+
+def _nothing_named(a: UnblockArgs, s: Plan, by: Actor | None) -> bool:
+    return not (a.story or a.epic or a.all)
+
+
+def _all_with_target(a: UnblockArgs, s: Plan, by: Actor | None) -> bool:
+    return bool(a.all and (a.story or a.epic))
+
+
+def _both_named(a: UnblockArgs, s: Plan, by: Actor | None) -> bool:
+    return bool(a.story and a.epic)
+
+
+def _unblock_no_story(a: UnblockArgs, s: Plan, by: Actor | None) -> bool:
+    return bool(a.story) and not s.has_story(a.story or "")
+
+
+def _unblock_no_epic(a: UnblockArgs, s: Plan, by: Actor | None) -> bool:
+    return not a.story and bool(a.epic) and not _epic_present(s, a.epic)
+
+
+def _no_branch_story(a: PathBranchArgs, s: Plan, by: Actor | None) -> bool:
+    return not a.epic and not s.has_story(a.ref or "")
 
 
 def _empty_status(a: SetStatusArgs, s: Plan, by: Actor | None) -> bool:
@@ -102,3 +140,15 @@ empty_status = Rule[SetStatusArgs, Plan](
     why="a script that passes an unset variable would blank the story's status and be told it worked.")
 conflict_unclear = Rule[ConflictArgs, Plan]("pass the conflict text, or --clear — one of the two", _conflict_unclear, FAILED)
 no_story_for_conflict = Rule[ConflictArgs, Plan]("no story with id '{story}'", _no_story, FAILED)
+epic_exists = Rule[CreateEpicArgs, Plan]("epic '{canonical}' already exists", _epic_exists, FAILED)
+no_epic_for_story = Rule[CreateStoryArgs, Plan]("no epic '{epic}'", _no_epic_for_story, FAILED)
+no_story_to_delete = Rule[DeleteStoryArgs, Plan]("no story with id '{story}'", _no_story, FAILED)
+no_story_to_update = Rule[UpdateStoryArgs, Plan]("no story with id '{story}'", _no_story, FAILED)
+nothing_to_unblock_named = Rule[UnblockArgs, Plan]("name a story, pass --epic, or pass --all", _nothing_named, FAILED)
+all_takes_no_target = Rule[UnblockArgs, Plan]("--all takes no story or --epic", _all_with_target, FAILED)
+story_and_epic = Rule[UnblockArgs, Plan]("pass a story or an epic, not both", _both_named, FAILED)
+unblock_no_story = Rule[UnblockArgs, Plan]("no story with id '{story}'", _unblock_no_story, FAILED)
+unblock_no_epic = Rule[UnblockArgs, Plan]("no epic '{epic}'", _unblock_no_epic, FAILED)
+no_story_for_story_path = Rule[PathStoryArgs, Plan]("error: no story with id '{story}'", _no_story, FAILED)
+no_story_for_spec_path = Rule[PathSpecArgs, Plan]("error: no story with id '{story}'", _no_story, FAILED)
+no_story_for_branch = Rule[PathBranchArgs, Plan]("error: no story with id '{ref}'", _no_branch_story, FAILED)

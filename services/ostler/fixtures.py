@@ -18,6 +18,9 @@ STORY_PATHS = {
     BRAVO: "art/epics/0001-first/stories/bravo/story.md",
     SX: "art/epics/0002-second/stories/sx/story.md",
 }
+SLUGS = {ALPHA: "alpha", BRAVO: "bravo", SX: "sx"}
+COVERS = {ALPHA: "SD-3", BRAVO: "SD-4", SX: "SD-3"}
+BLOCKERS = {ALPHA: "bravo", BRAVO: "alpha", SX: "alpha"}
 SEED_STATUSES = ("backlog", "researched", "covered", "resolved", "dropped", "deferred")
 SEED_LAYERS = ("frontend", "backend", "infra")
 _NUMBERED = re.compile(r"^(\d{4,})-(.+)$")
@@ -151,6 +154,156 @@ class PathEpicArgs(Fixture):
         return (path_epic(), path_epic("first"), path_epic("nope"))
 
 
+@dataclass
+class CreateEpicArgs(Epic, Fixture):
+    name: str | None = None
+    title: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[CreateEpicArgs]:
+        return (create_epic("second", "Second again"), create_epic("0001-first", "First again"))
+
+
+@dataclass
+class CreateStoryArgs(Fixture):
+    epic: str | None = None
+    slug: str | None = None
+    title: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[CreateStoryArgs]:
+        return (create_story("first", "alpha", "Alpha again"), create_story("0009-nope"))
+
+
+@dataclass
+class DeleteEpicArgs(Epic, Fixture):
+    name: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[DeleteEpicArgs]:
+        return (delete_epic("0009-nope"),)
+
+
+@dataclass
+class DeleteStoryArgs(Fixture):
+    story: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[DeleteStoryArgs]:
+        return (delete_story("TST-NOPE"),)
+
+
+@dataclass
+class UpdateStoryArgs(Fixture):
+    story: str | None = None
+    title: str | None = None
+    covers: str | None = None
+    depends: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[UpdateStoryArgs]:
+        return (update_story(), update_story(ALPHA, "Story alpha", "(none)", "(none)"), update_story(BRAVO, "Renamed bravo", COVERS[BRAVO], BLOCKERS[BRAVO]),
+                update_story("TST-NOPE"))
+
+
+@dataclass
+class UnblockArgs(Fixture):
+    story: str | None = None
+    epic: str | None = None
+    all: bool | None = None
+    status: str | None = None
+
+    @property
+    def target(self) -> str:
+        """What the user named to unblock, as the tool repeats it."""
+        return self.story or self.epic or ""
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[UnblockArgs]:
+        return (unblock(), unblock(ALPHA, status="in-progress"), unblock(None, "first"), unblock(None, None, all=True),
+                unblock(ALPHA, "first"), unblock(None, None), unblock("TST-NOPE"), unblock(None, "nope"),
+                unblock(ALPHA, all=True))
+
+
+@dataclass
+class PathStoryArgs(Fixture):
+    story: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[PathStoryArgs]:
+        return (path_story(), path_story("TST-NOPE"))
+
+
+@dataclass
+class PathSpecArgs(Fixture):
+    story: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[PathSpecArgs]:
+        return (path_spec(), path_spec("TST-NOPE"))
+
+
+@dataclass
+class PathBranchArgs(Fixture):
+    ref: str | None = None
+    epic: bool | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[PathBranchArgs]:
+        return (path_branch(), path_branch("0002-second", epic=True), path_branch("second", epic=True), path_branch("TST-NOPE"))
+
+
+def create_epic(name: str | None = "fourth", title: str | None = "Fourth epic") -> CreateEpicArgs:
+    return CreateEpicArgs(name=name, title=title)
+
+
+def create_story(epic: str | None = "third", slug: str | None = "delta", title: str | None = "Delta story") -> CreateStoryArgs:
+    return CreateStoryArgs(epic=epic, slug=slug, title=title)
+
+
+def delete_epic(name: str | None = "third") -> DeleteEpicArgs:
+    return DeleteEpicArgs(name=name)
+
+
+def delete_story(story: str | None = ALPHA) -> DeleteStoryArgs:
+    return DeleteStoryArgs(story=story)
+
+
+def update_story(story: str | None = ALPHA, title: str | None = "Renamed alpha", covers: str | None = "SD-3",
+                 depends: str | None = "bravo") -> UpdateStoryArgs:
+    return UpdateStoryArgs(story=story, title=title, covers=covers, depends=depends)
+
+
+def unblock(story: str | None = None, epic: str | None = None, *, all: bool | None = None,
+            status: str | None = None) -> UnblockArgs:
+    return UnblockArgs(story=story, epic=epic, all=all, status=status)
+
+
+def path_story(story: str | None = ALPHA) -> PathStoryArgs:
+    return PathStoryArgs(story=story)
+
+
+def path_spec(story: str | None = ALPHA) -> PathSpecArgs:
+    return PathSpecArgs(story=story)
+
+
+def path_branch(ref: str | None = ALPHA, *, epic: bool | None = None) -> PathBranchArgs:
+    return PathBranchArgs(ref=ref, epic=epic)
+
+
+@dataclass
+class Nothing(Fixture):
+    """A command that takes no argument the book varies: the words it needs are in its argv."""
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[Nothing]:
+        return (Nothing(),)
+
+
+def nothing() -> Nothing:
+    return Nothing()
+
+
 def todo_add(name: str | None = "third", *, front: bool | None = None) -> AddArgs:
     return AddArgs(name=name, front=front)
 
@@ -189,6 +342,10 @@ def path_epic(name: str | None = "0001-first") -> PathEpicArgs:
 
 
 __all__ = [
+    "Nothing", "nothing",
+    "BLOCKERS", "COVERS", "CreateEpicArgs", "CreateStoryArgs", "DeleteEpicArgs", "DeleteStoryArgs", "PathBranchArgs",
+    "PathSpecArgs", "PathStoryArgs", "SLUGS", "UnblockArgs", "UpdateStoryArgs", "create_epic", "create_story",
+    "delete_epic", "delete_story", "path_branch", "path_spec", "path_story", "unblock", "update_story",
     "ALPHA", "AddArgs", "BRAVO", "ConflictArgs", "EPICS", "ListArgs", "PathEpicArgs", "PruneArgs", "ReorderArgs", "SEED_LAYERS",
     "SEED_STATUSES", "STORY_PATHS", "SX", "SeedAddArgs", "SeedRemoveArgs", "SetStatusArgs", "conflict", "directory_of", "path_epic",
     "seed_add", "seed_remove", "set_status", "slug_of", "todo_add", "todo_list", "todo_prune", "todo_reorder",
