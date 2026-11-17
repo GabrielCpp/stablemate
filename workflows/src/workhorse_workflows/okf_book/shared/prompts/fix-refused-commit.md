@@ -41,8 +41,11 @@ Run the check that refused, on its own, before you end the turn. Running it is h
   or the check it runs. A check that is wrong for this commit is a finding for the operator.
 - Never add an exception, a coincidence entry, an ignore or any other waiver to a check's
   configuration. The commit carries only its own paths, so a waiver outside them leaves the next
-  commit refused the same way. A repeat the clone check names is fixed in the book: the second
-  copy imports the first.
+  commit refused the same way. A repeat the clone check names is fixed in the book. Two copies
+  inside this book become one, which both callers import. A copy of another service's book is
+  never imported from that book, because a book reads no other book's model: write it with the
+  type the `ostler-book` skill gives for that shape, and when the skill gives none, leave it and
+  say so in `blocked`.
 - Never push, deploy, build an image, or run a command against anything outside this machine.
 
 ## Your reply

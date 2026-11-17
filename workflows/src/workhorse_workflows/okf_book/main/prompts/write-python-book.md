@@ -78,9 +78,11 @@ instead by a pattern in the service's `App(ignore=...)`. A file that holds a pag
 command is never ignored. It gets its element.
 
 You are done when every `check` and `missing` below exits 0 from the book root, each `index` has
-rewritten its `index.tsv`, and a run `--only` the endpoints and interactions this turn added or
-changed exits 0. After the turn the flow plays the whole book once, and a failure comes back to
-you as the next lap's gate. Play nothing wider yourself.
+rewritten its `index.tsv`, and each endpoint and interaction this turn added or changed has
+passed a run `--only` it since its last edit. After the turn the flow plays the whole book once,
+and a failure comes back to you as the next lap's gate. Play nothing wider yourself, and play
+nothing a second time that passed and that you have not edited since: on a first book that
+second pass is a whole play, which the flow is about to run anyway.
 
 ```
 {% for module in modules %}
