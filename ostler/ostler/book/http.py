@@ -23,6 +23,7 @@ from dataclasses import dataclass, field, is_dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, Callable, ClassVar, Iterable, Mapping, cast
 
+from ostler.book import tree
 from ostler.book.boundary import Passes, Reaches
 from ostler.book.cast import KEEP, SOLE, Actor
 from ostler.book.contracts import STREAMING
@@ -278,6 +279,23 @@ class Bytes(Shape):
 
 
 @dataclass(frozen=True)
+class Itself(Shape):
+    """A field that holds the enclosing object of this name, so a tree is one object and not one per level. The object
+    replaces the placeholder when it is built; one that names no enclosing object refuses to check."""
+
+    name: str
+
+    def refusal(self) -> str:
+        return f"Itself({self.name!r}) names no enclosing object {self.name!r}"
+
+    def check(self, value: object, where: str = "body") -> list[str]:
+        raise BookError(self.refusal())
+
+    def describe(self) -> str:
+        raise BookError(self.refusal())
+
+
+@dataclass(frozen=True)
 class Field:
     shape: Shape
     required: bool = True
@@ -323,6 +341,8 @@ class Object(Shape):
         self.fields = fields
         self.one_ofs: tuple[tuple[str, ...], ...] = ()
         self.togethers: tuple[tuple[str, ...], ...] = ()
+        if name:
+            tree.bind(self)
 
     def one_of(self, *names: str) -> Object:
         return self._related(names, one_of=True)
@@ -337,7 +357,7 @@ class Object(Shape):
         out = Object(self.name, **self.fields)
         out.one_ofs = (*self.one_ofs, names) if one_of else self.one_ofs
         out.togethers = self.togethers if one_of else (*self.togethers, names)
-        return out
+        return tree.repoint(out, self)
 
     def check(self, value: object, where: str = "body") -> list[str]:
         if not isinstance(value, dict):
@@ -533,41 +553,52 @@ def _real(value: object) -> bool:
     return value is not None and value != "" and value != [] and value != {}
 
 
-def declared_paths(shape: Shape | None, prefix: str = "") -> list[str]:
-    """Every field path a shape declares, going through lists as `lines[].quantity`."""
+def declared_paths(shape: Shape | None, prefix: str = "", trail: tuple[Object, ...] = ()) -> list[str]:
+    """Every field path a shape declares, going through lists as `lines[].quantity`. An object that holds itself declares each
+    of its fields once: meeting an object already on the path ends it."""
     if isinstance(shape, Object):
+        if any(shape is above for above in trail):
+            return []
         out: list[str] = []
         for key, spec in shape.fields.items():
             path = f"{prefix}.{key}" if prefix else key
             out.append(path)
-            out += declared_paths(spec.shape, path)
+            out += declared_paths(spec.shape, path, (*trail, shape))
         return out
     if isinstance(shape, List):
-        return declared_paths(shape.of, prefix + "[]")
+        return declared_paths(shape.of, prefix + "[]", trail)
     if isinstance(shape, Map):
-        return declared_paths(shape.of, prefix + "{}")
+        return declared_paths(shape.of, prefix + "{}", trail)
     return []
 
 
-def real_paths(shape: Shape | None, value: object, prefix: str = "", ids: Identities | None = None) -> set[str]:
+def real_paths(shape: Shape | None, value: object, prefix: str = "", ids: Identities | None = None,
+               trail: Mapping[int, str] | None = None) -> set[str]:
     """The declared field paths at which this value holds something real. A list
     entry the comparison drops, one naming an id the book never issued, shows
-    nothing: the run did not check it."""
+    nothing: the run did not check it. An object that holds itself folds onto the
+    paths `declared_paths` gives: entering an object already on the path
+    continues from the prefix it was first entered at."""
     out: set[str] = set()
+    trail = trail if trail is not None else {}
     if isinstance(shape, Object) and isinstance(value, dict):
+        if id(shape) in trail:
+            prefix = trail[id(shape)]
+        else:
+            trail = {**trail, id(shape): prefix}
         for key, spec in shape.fields.items():
             if _real(value.get(key)):
                 path = f"{prefix}.{key}" if prefix else key
                 out.add(path)
-                out |= real_paths(spec.shape, cast(dict[str, Any], value)[key], path, ids)
+                out |= real_paths(spec.shape, cast(dict[str, Any], value)[key], path, ids, trail)
     elif isinstance(shape, List) and isinstance(value, list):
         for item in value:
             if ids is not None and _unknown(canonical(shape.of, item, app=True, ids=ids, where=prefix + "[]")):
                 continue
-            out |= real_paths(shape.of, item, prefix + "[]", ids)
+            out |= real_paths(shape.of, item, prefix + "[]", ids, trail)
     elif isinstance(shape, Map) and isinstance(value, dict):
         for item in value.values():
-            out |= real_paths(shape.of, item, prefix + "{}", ids)
+            out |= real_paths(shape.of, item, prefix + "{}", ids, trail)
     return out
 
 
@@ -1453,9 +1484,13 @@ def _wire(value: object, shape: Shape | None = None) -> Any:
 
 def named_shapes(endpoints: tuple[type[Endpoint], ...]) -> dict[str, Object]:
     out: dict[str, Object] = {}
+    visited: set[int] = set()
 
     def visit(shape: Shape | None) -> None:
         if isinstance(shape, Object) and shape.name:
+            if id(shape) in visited:
+                return
+            visited.add(id(shape))
             out.setdefault(shape.name, shape)
             for f in shape.fields.values():
                 visit(f.shape)

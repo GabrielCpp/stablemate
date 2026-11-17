@@ -23,6 +23,7 @@ from ostler.book.graph import dot
 from ostler.book.boundary import Foreign, Needs
 from ostler.book.entries import says
 from ostler.book.http import Endpoint, List, Object, bare_ids, states
+from ostler.book.tree import unresolved
 from ostler.book.journey import Given, Journey, OwnerRefused, Refused
 from ostler.book.model import Rule
 from ostler.book.inputs import bases, classes, expected, has_inputs, predicted, refusals_for, vary
@@ -112,6 +113,17 @@ def identity_faults(service: Service[Any]) -> list[Finding]:
         fresh = service.new_model(date.today())
         for step in moves(service.endpoints, cast=service.cast)(fresh):
             found += [Finding(f"plan move {step}", fault) for fault in step.id_faults(fresh)]
+    return found
+
+
+def itself_faults(service: Service[Any]) -> list[Finding]:
+    """Every `Itself` that names no enclosing object, in the shapes the endpoints declare."""
+    found: list[Finding] = []
+    for endpoint in service.endpoints:
+        for shape, place in ((endpoint.params, "path"), (endpoint.query, "query"), (endpoint.headers, "headers"), (endpoint.body, "body")):
+            found += [Finding(f"endpoint {endpoint.__name__}", p) for p in unresolved(shape, place)]
+        for answer in endpoint.answers:
+            found += [Finding(f"endpoint {endpoint.__name__}", p) for p in unresolved(answer.body, f"answer {answer.status}")]
     return found
 
 
@@ -765,6 +777,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
         attempt(found, "denied attempts", lambda: attempts(service.endpoints, service.new_model(today), cast=service.cast))
     attempt(found, "identities", lambda: found.extend(identity_faults(service)) or "done")
     attempt(found, "defects", lambda: found.extend(defect_faults(service)) or "done")
+    attempt(found, "itself", lambda: found.extend(itself_faults(service)) or "done")
     attempt(found, "headers", lambda: found.extend(header_faults(service)) or "done")
     attempt(found, "clock", lambda: found.extend(clock_faults(service)) or "done")
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
