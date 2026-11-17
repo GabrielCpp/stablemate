@@ -9,6 +9,84 @@ from .model.files import MARKS
 
 DIGITS = tuple("0123456789")
 
+
+def _app(*paths: str) -> tuple[str, ...]:
+    return tuple(f"workhorse/workhorse/{path}" for path in paths)
+
+
+LOOP = _app(
+    "artifacts.py",
+    "cli/__init__.py",
+    "cli/params.py",
+    "cli/parser.py",
+    "config_run.py",
+    "context.py",
+    "control.py",
+    "gates.py",
+    "gitstate.py",
+    "job.py",
+    "logsetup.py",
+    "manifest.py",
+    "otel.py",
+    "packaged.py",
+    "profile.py",
+    "records.py",
+    "references.py",
+    "reload.py",
+    "rundir.py",
+    "scratch.py",
+    "sessions.py",
+    "templates.py",
+    "turnkey.py",
+    "worklist.py",
+    "pyflow/activity.py",
+    "pyflow/blueprint.py",
+    "pyflow/driver.py",
+    "pyflow/engine.py",
+    "pyflow/errors.py",
+    "pyflow/graph.py",
+    "pyflow/names.py",
+    "pyflow/park.py",
+    "pyflow/preflight.py",
+    "pyflow/prompts.py",
+    "pyflow/registry.py",
+    "pyflow/replies.py",
+    "pyflow/run.py",
+    "pyflow/transitions.py",
+    "pyflow/workflow.py",
+    "pyflow/workspace_worktrees.py",
+    "pyflow/worktree.py",
+    "runner/acp.py",
+    "runner/caps.py",
+    "runner/extract.py",
+    "runner/failure.py",
+    "runner/ladder.py",
+    "runner/process.py",
+    "runner/redact.py",
+    "runner/reframe.py",
+    "runner/spec.py",
+    "runner/transcript.py",
+    "runner/turn_record.py",
+    "runner/usage.py",
+    "runner/waits.py",
+    "runner/worktree_guard.py",
+    "runner/backends/__init__.py",
+    "runner/backends/claude.py",
+    "runner/backends/cline.py",
+    "runner/backends/codex.py",
+    "runner/backends/copilot.py",
+    "runner/backends/delegates.py",
+    "runner/backends/guard.py",
+    "runner/backends/guard_shell.py",
+    "runner/backends/jsonl.py",
+    "runner/backends/model_guard.py",
+    "runner/backends/null.py",
+    "runner/backends/opencode.py",
+    "runner/backends/policy.py",
+    "runner/backends/registry.py",
+    "runner/backends/turn.py",
+)
+
 RUN = Field(Str(), required=False, does="the run to act on, by name or directory; the newest unfinished run when left out")
 
 
@@ -57,7 +135,7 @@ class Run(Command):
         Exit(2, STDERR, "two flags that cannot be given together were given together"),
     )
     carries = DryRun
-    source = ("workhorse/workhorse/cli/run.py::run", "workhorse/workhorse/cli/run.py::invocation")
+    source = ("workhorse/workhorse/cli/run.py::run", "workhorse/workhorse/cli/run.py::invocation", *LOOP)
 
 
 class Dot(Command):
@@ -71,7 +149,7 @@ class Dot(Command):
     )
     answers = (Exit(0, Lines(), "the graph is printed, or written to the named file"),)
     carries = DrawGraph
-    source = ("workhorse/workhorse/cli/dot.py::run",)
+    source = ("workhorse/workhorse/cli/dot.py::run", *_app("pyflow/dot.py", "pyflow/graph.py", "packaged.py"))
 
 
 class Version(Command):
@@ -134,6 +212,7 @@ class Control(Command):
         "workhorse/workhorse/cli/offline.py::run_rewind",
         "workhorse/workhorse/cli/offline.py::print_params",
         "workhorse/workhorse/cli/target.py::resolve_target",
+        *_app("control.py", "reload.py", "rewind.py", "rundir.py", "records.py"),
     )
 
 
@@ -184,7 +263,7 @@ class Replay(Command):
     )
     answers = (Exit(1, STDERR, "the run or the turn cannot be found"),)
     carries = RefuseReplay
-    source = ("workhorse/workhorse/cli/replay.py::run",)
+    source = ("workhorse/workhorse/cli/replay.py::run", *_app("rundir.py", "runner/turn_record.py"))
 
 
 class Look(Files):

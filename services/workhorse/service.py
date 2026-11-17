@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ostler.book import Because, Environment, Service, Stack, Unseen
+from ostler.book import App, Because, Environment, Service, Stack, Unseen
 
 from .events import FinishARun, ParkARun
 from .commands import ALL as ENDPOINTS, Look, Replay
@@ -26,6 +26,22 @@ service = Service[Runs](
     watch=(Look(),),
     records=(FileRecord,),
     outside=(ParkARun, FinishARun),
+    app=App(
+        roots=("workhorse/workhorse",),
+        verified="VERIFIED",
+        ignore=(
+            "workhorse/workhorse/__init__.py",
+            "workhorse/workhorse/README.md",
+            "workhorse/workhorse/_vendor/*",
+            "workhorse/workhorse/cli/README.md",
+            "workhorse/workhorse/pyflow/__init__.py",
+            "workhorse/workhorse/pyflow/README.md",
+            "workhorse/workhorse/runner/__init__.py",
+            "workhorse/workhorse/runner/README.md",
+            "workhorse/workhorse/runner/backends/README.md",
+            "workhorse/workhorse/testing.py",
+        ),
+    ),
     unseen=(
         Unseen(
             Replay,
