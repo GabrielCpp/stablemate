@@ -1,0 +1,1 @@
+- RunTask: why does a tasks.py that raises on import end a run in a traceback when list reports the same error as "cannot load" and carries on?

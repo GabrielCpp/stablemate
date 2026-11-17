@@ -1,0 +1,11 @@
+from .a_benchmark_that_does_not_load import ABenchmarkThatDoesNotLoad
+from .a_round_is_interrupted_and_resumed import ARoundIsInterruptedAndResumed
+from .a_round_stopped_from_outside import ARoundStoppedFromOutside
+from .a_step_fails import AStepFails
+from .run_the_tasks_of_a_benchmark import RunTheTasksOfABenchmark
+from .the_home_config_is_wrong import TheHomeConfigIsWrong
+from .the_sandbox_refuses_what_would_leak import TheSandboxRefusesWhatWouldLeak
+from .wrong_turns import WrongTurns
+
+ALL = (RunTheTasksOfABenchmark, ARoundIsInterruptedAndResumed, ARoundStoppedFromOutside, AStepFails, WrongTurns, ABenchmarkThatDoesNotLoad,
+       TheHomeConfigIsWrong, TheSandboxRefusesWhatWouldLeak)
