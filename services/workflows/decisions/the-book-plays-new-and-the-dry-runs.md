@@ -9,3 +9,7 @@ book plays the two things the workflows package decides by itself: workhorse-new
 run --dry-run of each workflow, which loads the workflow, stubs every agent turn and node, and writes a run
 directory. Sub-flows run standalone (a flow name after run), params, resume and worktree flags are the engine's
 and are not played. A dry run ignores --run-id, so every dry run is named <workflow>-dry-run.
+
+Every dry run starts the workflow's whole package and the shared kit it imports, so each dry run names the workflow's
+files and the kit's in its source. The sub-flows and the agent prompts of a workflow are read when its run loads, and
+a run of one is the engine's.

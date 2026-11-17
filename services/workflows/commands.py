@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from ostler.book import STDERR, Command, Exit, Field, Files, Flag, Lines, Object, Positional, Str
+from ostler.book import STDERR, Bool, Command, Exit, Field, Files, Flag, Lines, Object, Positional, Str, Switch
 
-from .model.actions import (ListFiles, RunAuthor, RunCoder, RunLoopRunner, RunNew, RunOkfBook, RunResearch,
-                            RunReviewDebt)
+from .model.actions import (ListFiles, RunAuthor, RunCoder, RunLoopRunner, RunNew, RunNewProgram, RunOkfBook,
+                            RunResearch, RunReviewDebt)
 from .model.files import MARKS
+from .sources import AUTHOR, CODER, KIT, LOOP_RUNNER, NEW, OKF_BOOK, PROGRAM, RESEARCH, REVIEW_DEBT
 
 NONE = Object("DryRunArgs")
 ENGINE = "workhorse/workhorse/pyflow/run.py::run_pyflow"
@@ -34,7 +35,36 @@ class New(Command):
     )
     carries = RunNew
     source = ("workflows/src/workhorse_workflows/new/scaffold.py::main",
-              "workflows/src/workhorse_workflows/new/scaffold.py::scaffold")
+              "workflows/src/workhorse_workflows/new/scaffold.py::scaffold", *NEW)
+
+
+class NewProgram(Command):
+    does = "Write the folder of a research program: its manifest, README, progress log and first gate."
+    program = "python"
+    argv = ("-m", "workhorse_workflows.research.scaffold.new_program", Flag("--dir", "dir"),
+            Flag("--code-root", "code_root"), Flag("--gate", "gate"), Switch("--set-default", "set_default"),
+            Switch("--force", "force"))
+    args = Object(
+        "NewProgramArgs",
+        dir=Field(Str(), required=False, ignores=("case", "surrounding spaces"),
+                  why="the folder name is a path, and a path spelled another way is another folder.",
+                  does="the program folder, relative to the working directory"),
+        code_root=Field(Str(), required=False, ignores=("case", "surrounding spaces"),
+                        why="the source folder is named in the README as typed, and another spelling is another folder.",
+                        does="the source folder the program's experiments live in"),
+        gate=Field(Str(), required=False, ignores=("case", "surrounding spaces"),
+                   why="the gate id names the first gate's file and heading as typed.",
+                   does="the id of the first gate; G0 when left out"),
+        set_default=Field(Bool(), required=False, does="point .agents/program at this program"),
+        force=Field(Bool(), required=False, does="overwrite the files a program folder already holds"),
+    )
+    answers = (
+        Exit(0, Lines(opaque=("  created ",)), "each file written is named, and the program's findings folder when it is new"),
+        Exit(1, STDERR, "the program's manifest is already there and --force was not given"),
+        Exit(2, STDERR, "the folder or the source folder is missing, and the usage is printed"),
+    )
+    carries = RunNewProgram
+    source = ("workflows/src/workhorse_workflows/research/scaffold/new_program.py::main", *PROGRAM)
 
 
 class DryRunLoopRunner(Command):
@@ -44,7 +74,7 @@ class DryRunLoopRunner(Command):
     args = NONE
     answers = (Exit(0, Lines(), "the run name and the directory holding its artifacts are printed"),)
     carries = RunLoopRunner
-    source = ("workflows/src/workhorse_workflows/loop_runner/workflow.py::main", ENTRY, ENGINE)
+    source = ("workflows/src/workhorse_workflows/loop_runner/workflow.py::main", *LOOP_RUNNER, *KIT, ENTRY, ENGINE)
 
 
 class DryRunResearch(Command):
@@ -54,7 +84,7 @@ class DryRunResearch(Command):
     args = NONE
     answers = (Exit(0, Lines(), "the run name and the directory holding its artifacts are printed"),)
     carries = RunResearch
-    source = ("workflows/src/workhorse_workflows/research/workflow.py::main", ENTRY, ENGINE)
+    source = ("workflows/src/workhorse_workflows/research/workflow.py::main", *RESEARCH, *KIT, ENTRY, ENGINE)
 
 
 class DryRunAuthor(Command):
@@ -64,7 +94,7 @@ class DryRunAuthor(Command):
     args = NONE
     answers = (Exit(0, Lines(), "the run name and the directory holding its artifacts are printed"),)
     carries = RunAuthor
-    source = ("workflows/src/workhorse_workflows/author/workflow.py::main", ENTRY, ENGINE)
+    source = ("workflows/src/workhorse_workflows/author/workflow.py::main", *AUTHOR, *KIT, ENTRY, ENGINE)
 
 
 class DryRunCoder(Command):
@@ -76,7 +106,7 @@ class DryRunCoder(Command):
         Exit(0, Lines(), "the run name and the directory holding its artifacts are printed"),
     )
     carries = RunCoder
-    source = ("workflows/src/workhorse_workflows/coder/workflow.py::main", ENTRY, ENGINE)
+    source = ("workflows/src/workhorse_workflows/coder/workflow.py::main", *CODER, *KIT, ENTRY, ENGINE)
 
 
 class DryRunOkfBook(Command):
@@ -89,7 +119,7 @@ class DryRunOkfBook(Command):
         Exit(1, Lines(), "a skill its prompts name is installed neither in the repository nor at home"),
     )
     carries = RunOkfBook
-    source = ("workflows/src/workhorse_workflows/okf_book/workflow.py::main", ENTRY, ENGINE,
+    source = ("workflows/src/workhorse_workflows/okf_book/workflow.py::main", *OKF_BOOK, *KIT, ENTRY, ENGINE,
               "workhorse/workhorse/references.py::missing_references")
 
 
@@ -100,7 +130,7 @@ class DryRunReviewDebt(Command):
     args = NONE
     answers = (Exit(0, Lines(), "the run name and the directory holding its artifacts are printed"),)
     carries = RunReviewDebt
-    source = ("workflows/src/workhorse_workflows/review_debt/workflow.py::main", ENTRY, ENGINE)
+    source = ("workflows/src/workhorse_workflows/review_debt/workflow.py::main", *REVIEW_DEBT, *KIT, ENTRY, ENGINE)
 
 
 class Look(Files):
@@ -110,4 +140,4 @@ class Look(Files):
     source = ("workflows/src/workhorse_workflows/new/scaffold.py::scaffold", ENGINE)
 
 
-ALL = (New, DryRunLoopRunner, DryRunResearch, DryRunAuthor, DryRunCoder, DryRunOkfBook, DryRunReviewDebt, Look)
+ALL = (New, NewProgram, DryRunLoopRunner, DryRunResearch, DryRunAuthor, DryRunCoder, DryRunOkfBook, DryRunReviewDebt, Look)

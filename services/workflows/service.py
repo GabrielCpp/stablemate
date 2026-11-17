@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ostler.book import Environment, Service, Stack
+from ostler.book import App, Environment, Service, Stack
 
 from .commands import ALL as ENDPOINTS, Look
 from .journeys import ALL as JOURNEYS
@@ -24,4 +24,9 @@ service = Service[Workspace](
     matrices=MATRICES,
     watch=(Look(),),
     records=(FileRecord,),
+    app=App(
+        roots=("workflows/src/workhorse_workflows",),
+        verified="VERIFIED",
+        ignore=("*/__init__.py", "workflows/src/workhorse_workflows/*/README.md", "workflows/src/workhorse_workflows/README.md"),
+    ),
 )

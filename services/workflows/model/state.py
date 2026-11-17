@@ -27,8 +27,14 @@ def scaffolded(model: Workspace) -> bool:
     return "fix-tests/pyproject.toml" in model.files
 
 
+def programmed(model: Workspace) -> bool:
+    return "specs/demo/program.yml" in model.files
+
+
 def stage(model: Workspace) -> str:
     """How far the directory has come: the scene it is in."""
     if scaffolded(model):
         return "scaffolded with skills" if skills_installed(model) else "scaffolded"
-    return "skills installed" if skills_installed(model) else "bare"
+    if skills_installed(model):
+        return "skills installed"
+    return "program written" if programmed(model) else "bare"

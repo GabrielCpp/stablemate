@@ -1,6 +1,6 @@
 story: workflows-book
 date: 2026-11-12
-elements: New, FileRecord
+elements: New, FileRecord, Look
 
 workhorse-new substitutes the name and the check into five files. The watch has to name the strings it looks
 for, so it names those of the one workflow the book scaffolds, fix-tests, with the two checks it plays, pytest -q

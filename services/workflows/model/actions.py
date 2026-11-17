@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ostler.book import Action, Actor, Create, Select, Transaction, Update
 
-from ..fixtures import DryRunArgs, NewArgs
+from ..fixtures import DryRunArgs, NewArgs, NewProgramArgs
 from . import rules
 from .files import SKILL_NAME, SKILLS, RUN, TREE, FileRecord
 from .state import Workspace
@@ -45,6 +45,33 @@ class RunNew(Action[NewArgs, Workspace]):
             "  cd path/to/your/repo",
             "  workhorse-fix-tests run --dry-run",
         )
+        return Transaction(*changes, says=says)
+
+
+class RunNewProgram(Action[NewProgramArgs, Workspace]):
+    accept = NewProgramArgs
+    rules = (
+        rules.program_needs_dir_and_code_root,
+        rules.program_needs_dir,
+        rules.program_needs_code_root,
+        rules.program_already_there,
+    )
+
+    @staticmethod
+    def reduce(a: NewProgramArgs, s: Workspace, by: Actor | None) -> Transaction:
+        assert a.code_root is not None
+        folder, gate = a.program_dir, a.first_gate
+        ladder = f"| {gate} | <title>"
+        changes = [
+            write(s, f"{folder}/program.yml", f"code_root: {a.code_root}", "min_containment: premium"),
+            write(s, f"{folder}/README.md", "# Demo", f"`{a.code_root}/CLAUDE.md`", ladder),
+            write(s, f"{folder}/PROGRESS.md", "# Demo — Progress Log", ladder),
+            write(s, f"{folder}/{gate}_program.md", f"# {gate} — <Gate Title>"),
+        ]
+        if a.set_default:
+            changes.append(write(s, ".agents/program", folder))
+        says = tuple(f"  wrote <sandbox>/{path}" for path in (
+            f"{folder}/program.yml", f"{folder}/README.md", f"{folder}/PROGRESS.md", f"{folder}/{gate}_program.md"))
         return Transaction(*changes, says=says)
 
 

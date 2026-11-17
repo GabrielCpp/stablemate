@@ -10,6 +10,9 @@ from ostler.book import Fixture
 WORKFLOW = "fix-tests"
 CHECK = "pytest -q"
 OTHER_CHECK = "make test"
+PROGRAM_DIR = "specs/demo"
+CODE_ROOT = "src/demo"
+OTHER_GATE = "G1"
 
 
 @dataclass
@@ -33,6 +36,24 @@ class NewArgs(Fixture):
 
 
 @dataclass
+class NewProgramArgs(Fixture):
+    dir: str | None = None
+    code_root: str | None = None
+    gate: str | None = None
+    set_default: bool | None = None
+    force: bool | None = None
+
+    @property
+    def program_dir(self) -> str:
+        """The program folder as the scaffolder trims it, without the slashes around it."""
+        return str(self.dir).strip("/")
+
+    @property
+    def first_gate(self) -> str:
+        return self.gate or "G0"
+
+
+@dataclass
 class DryRunArgs(Fixture):
     pass
 
@@ -41,8 +62,14 @@ def new(name: str | None = WORKFLOW, *, check: str | None = CHECK, into: str | N
     return NewArgs(name=name, check=check, into=into)
 
 
+def program(dir: str | None = PROGRAM_DIR, *, code_root: str | None = CODE_ROOT, gate: str | None = None,
+            set_default: bool | None = None, force: bool | None = None) -> NewProgramArgs:
+    return NewProgramArgs(dir=dir, code_root=code_root, gate=gate, set_default=set_default, force=force)
+
+
 def dry_run() -> DryRunArgs:
     return DryRunArgs()
 
 
-__all__ = ["CHECK", "DryRunArgs", "NewArgs", "OTHER_CHECK", "WORKFLOW", "dry_run", "new"]
+__all__ = ["CHECK", "CODE_ROOT", "DryRunArgs", "NewArgs", "NewProgramArgs", "OTHER_CHECK", "OTHER_GATE", "PROGRAM_DIR",
+           "WORKFLOW", "dry_run", "new", "program"]

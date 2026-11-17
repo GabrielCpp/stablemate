@@ -13,6 +13,7 @@ SUBFLOWS = ("Finalize", "BookQa", "Dev", "Docs", "Fix", "Qa")
 SKILLS = ("ostler-book",)
 SKILL_NAME = "name: {}"
 CHECKS = ("pytest -q", "make test")
+PROGRAM_GATES = ("G0", "G1")
 
 MARKS = (
     Mark(".agents/runs/*/run.json", *(RUN.format(n) for n in (*NAMES, *SUBFLOWS))),
@@ -22,6 +23,11 @@ MARKS = (
     Mark("*fix-tests/src/fix_tests/__init__.py", "`workhorse-fix-tests`"),
     Mark("*fix-tests/src/fix_tests/workflow.py", *(f'check: str = "{c}"' for c in CHECKS)),
     Mark("*fix-tests/src/fix_tests/prompts/fix.md", "Fix the cause, not the check."),
+    Mark("specs/demo/program.yml", "code_root: src/demo", "min_containment: premium"),
+    Mark("specs/demo/README.md", "# Demo", "`src/demo/CLAUDE.md`", *(f"| {g} | <title>" for g in PROGRAM_GATES)),
+    Mark("specs/demo/PROGRESS.md", "# Demo — Progress Log", *(f"| {g} | <title>" for g in PROGRAM_GATES)),
+    Mark("specs/demo/*_program.md", *(f"# {g} — <Gate Title>" for g in PROGRAM_GATES)),
+    Mark(".agents/program", "specs/demo"),
 )
 
 TREE = (
@@ -31,6 +37,8 @@ TREE = (
     "src/fix_tests/workflow.py",
     "src/fix_tests/prompts/fix.md",
 )
+
+PROGRAM_FOLDER = "specs/demo"
 
 
 class FileRecord(Watched):
