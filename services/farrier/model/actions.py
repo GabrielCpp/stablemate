@@ -170,6 +170,7 @@ class RunConfigGet(Action[ConfigGetArgs, Repo]):
             return Transaction(says=("2",))
         if a.key == "default_cli" and not rules.configured(s, "default_cli"):
             return Transaction(says=("claude",))
+        assert a.key is not None
         return Transaction(says=(SETTING_VALUES[a.key],))
 
 
