@@ -92,12 +92,12 @@ class RunBook(Command):
     program = "ostler"
     argv = ("--full-ids", "book", "run", "services.demo", "--no-stack", "--out", "out")
     args = ARGS
-    answers = (Exit(0, OPAQUE, "every journey, cell and class agrees with the app, with the times it took"),)
+    answers = (Exit(0, OPAQUE, "every journey, cell and class agrees with the app, with the times it took, and a closing verdict block that says green"),)
     carries = act.Reading
     source = ("ostler/ostler/book/runner.py", "ostler/ostler/book/cells.py", "ostler/ostler/book/defects.py",
               "ostler/ostler/book/environment.py", "ostler/ostler/book/httpsurface.py", "ostler/ostler/book/listing.py",
-              "ostler/ostler/book/outcome.py", "ostler/ostler/book/owners.py", "ostler/ostler/book/register.py",
-              "ostler/ostler/book/witness.py", "ostler/ostler/qa/__init__.py")
+              "ostler/ostler/book/outcome.py", "ostler/ostler/book/owners.py", "ostler/ostler/book/progress.py::__init__", "ostler/ostler/book/progress.py::now", "ostler/ostler/book/progress.py::say", "ostler/ostler/book/progress.py::journey", "ostler/ostler/book/progress.py::phase", "ostler/ostler/book/progress.py::done", "ostler/ostler/book/progress.py::verdict_lines", 
+              "ostler/ostler/book/register.py", "ostler/ostler/book/witness.py", "ostler/ostler/qa/__init__.py")
 
 
 class DrawBook(Command):
