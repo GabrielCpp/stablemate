@@ -107,6 +107,10 @@ python -m ostler.book stale {{ module }} --app {{ app_root }}
 {% endfor %}
 ```
 
+Update the book yourself. A subagent may answer a narrow question about the app's source, and
+never writes or plays a part of the book: each one loads the skill, the book and the source again,
+and each of its waits on a play rebuilds that context.
+
 {% if stack_copy and app_changed %}
 Before you reply, play the journeys of the endpoints and interactions among the changed elements
 and of those you added, with their names, comma separated, after `--only`, and repair the book

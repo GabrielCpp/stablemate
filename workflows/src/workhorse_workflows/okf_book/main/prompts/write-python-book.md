@@ -91,8 +91,11 @@ python -m ostler.book index {{ module }}
 {% endfor %}
 ```
 
-The app takes one play at a time, yours or a subagent's: start a play only when no other is
-running. A play can outlast a shell command's time limit, so start it in the background and wait
+Write the book yourself. A subagent may answer a narrow question about the app's source, and
+never writes or plays a part of the book: each one loads the skill, the book and the source again,
+and each of its waits on a play rebuilds that context.
+
+The app takes one play at a time: start a play only when no other is running. A play can outlast a shell command's time limit, so start it in the background and wait
 on its exit.
 
 A run that fails names the cell the app answered differently. Decide, from the source, whether
