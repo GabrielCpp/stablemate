@@ -13,6 +13,7 @@ from workhorse_workflows.okf_book.shared.blueprint import blueprint
 
 UNNAMED_HEADING = "## Files no element names"
 GATE_TAIL_LINES = 200
+GATE_LINE_CHARS = 2000
 
 
 class BookGate(BaseModel):
@@ -42,8 +43,14 @@ def _missing_green(_logger: logging.Logger, *_args: object) -> MissingList:
     return MissingList(exit_code=0, output="dry run")
 
 
+def _narrow(line: str) -> str:
+    if len(line) <= GATE_LINE_CHARS:
+        return line
+    return f"{line[:GATE_LINE_CHARS]} … [{len(line) - GATE_LINE_CHARS} more characters cut]"
+
+
 def tail(text: str) -> str:
-    return "\n".join(text.splitlines()[-GATE_TAIL_LINES:])
+    return "\n".join(_narrow(line) for line in text.splitlines()[-GATE_TAIL_LINES:])
 
 
 def _unnamed(stdout: str) -> tuple[str, ...]:
