@@ -32,7 +32,7 @@ refused on, and often the command that repairs them.
   or overwrite work in the tree that is not yours to judge: a file somebody else is editing
   stays as it is.
 
-Run the check that refused, on its own, before you end the turn. Running it is how you know.
+Run the check that refused, on its own, before you end the turn. Running it is how you know. The commit runs its checks in order and stops at the first that refuses, so a later check may refuse next. When the refusal shows the command line of each check, run the others on the same paths too and fix what they name.
 
 ## What you never do
 

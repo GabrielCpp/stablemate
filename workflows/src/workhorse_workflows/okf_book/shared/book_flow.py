@@ -22,6 +22,7 @@ COMMIT_GATE = "commit-refused.md"
 RENDER_GATE = "agent-files-unrendered.md"
 PREFLIGHT_GATE = "preflight-gate.md"
 FIX_COMMIT_TIMEOUT = 1800.0
+FIX_COMMIT_TURNS = 4
 RED_GATE = "python-book-red.md"
 BLOCKED_GATE = "python-book-blocked.md"
 ENVIRONMENT_GATE = "python-book-environment.md"
@@ -141,12 +142,14 @@ class BookFlow(Workflow):
     def _commit_or_await[**P](
         self, message: str, pathspecs: tuple[str, ...], retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs
     ) -> Await[P] | None:
-        """Commit exactly *pathspecs*. A commit the repo refused goes to one turn that fixes what the refusal names, and is tried again. A commit refused after that waits for the operator, whose answer commits again."""
+        """Commit exactly *pathspecs*. Each new refusal goes to its own turn that fixes what it names, up to four turns, and the commit is tried again after each. A refusal that repeats one already sent, or one after the last turn, waits for the operator, whose answer commits again."""
         refusal = self.call(commit_book_paths, self.root, message, pathspecs)
-        if not refusal:
-            return None
-        said = self._fix_refused_commit(refusal, pathspecs)
-        refusal = self.call(commit_book_paths, self.root, message, pathspecs)
+        seen: list[str] = []
+        said = ""
+        while refusal and refusal not in seen and len(seen) < FIX_COMMIT_TURNS:
+            seen.append(refusal)
+            said = self._fix_refused_commit(refusal, pathspecs)
+            refusal = self.call(commit_book_paths, self.root, message, pathspecs)
         if not refusal:
             return None
         return self._await_operator_on_refused_commit(f"{refusal}\n\n{said}" if said else refusal, retry, *args, **kwargs)
