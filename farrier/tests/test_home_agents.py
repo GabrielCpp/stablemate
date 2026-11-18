@@ -192,3 +192,53 @@ def test_delegates_must_name_agents(home: Path, library: Path) -> None:
     )
     with pytest.raises(SystemExit, match="`delegates` must list agent names"):
         install(home, library, config)
+
+
+def write_browser_agent(library: Path) -> None:
+    servers = library / "library/mcp"
+    servers.mkdir(parents=True)
+    (servers / "playwright.yml").write_text(
+        'command: npx\nargs: ["-y", "@playwright/mcp@latest"]\n', encoding="utf-8"
+    )
+    (library / "library/agents/browser.md").write_text(
+        "---\ndescription: Drives a browser.\nread_only: true\nmcp: [playwright]\n---\n\n"
+        "You drive a browser.\n",
+        encoding="utf-8",
+    )
+
+
+BROWSER = PROFILES + '[profiles.claude.delegates.browser]\nmodel = "sonnet-x"\n\n'
+
+
+def test_an_agent_server_connects_inside_that_agent_only_on_claude(home: Path, library: Path) -> None:
+    write_browser_agent(library)
+    config = BROWSER + '[user_library.claude]\nagents = ["browser", "worker"]\n'
+    assert install(home, library, config) == 0
+    head = claude_head(home / ".claude/agents/browser.md")
+    assert head["mcpServers"] == [
+        {"playwright": {"type": "stdio", "command": "npx", "args": ["-y", "@playwright/mcp@latest"], "env": {}}}
+    ]
+    assert head["tools"] == "Read, Grep, Glob, Bash, mcp__playwright__*"
+    assert "mcpServers" not in claude_head(home / ".claude/agents/worker.md")
+    assert not (home / ".claude.json").exists()
+
+
+def test_an_agent_server_on_codex_stops_the_install(home: Path, library: Path) -> None:
+    write_browser_agent(library)
+    config = (
+        BROWSER
+        + '[profiles.codex.delegates.browser]\nmodel = "terra"\n\n'
+        + '[user_library.codex]\nagents = ["browser"]\n'
+    )
+    with pytest.raises(SystemExit, match="`mcp`.*only for claude"):
+        install(home, library, config)
+
+
+def test_an_unknown_agent_server_stops_the_install(home: Path, library: Path) -> None:
+    write_browser_agent(library)
+    (library / "library/agents/browser.md").write_text(
+        "---\ndescription: x\nmcp: [ghost]\n---\n\nprompt\n", encoding="utf-8"
+    )
+    config = BROWSER + '[user_library.claude]\nagents = ["browser"]\n'
+    with pytest.raises(SystemExit, match="unknown MCP server 'ghost'"):
+        install(home, library, config)
