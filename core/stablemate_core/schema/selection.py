@@ -58,6 +58,11 @@ class Selection(Section):
         description="Helper agents to install on top of the packs, each a file under library/agents. A claude or codex user-scope table takes them, and each needs a model under `delegates` in the profile named after the harness.",
         examples=[["lookup"]],
     )
+    settings: list[str] = setting(
+        factory=list,
+        description="Settings files to merge into the harness's own settings, each a JSON object under library/settings. Only a claude user-scope table takes them, into ~/.claude/settings.json. Each top-level key is one entry farrier owns. `hooks` belongs to guards, and two files may not name the same key.",
+        examples=[["claude-base"]],
+    )
     scaffolds: list[str] = setting(
         factory=list,
         description="Scaffold ids available to `farrier scaffold`. They apply to a repository, not to the home directory.",

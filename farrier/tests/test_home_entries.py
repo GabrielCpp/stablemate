@@ -8,7 +8,7 @@ import pytest
 
 from farrier._vendor.stablemate_core.schema.base import stray_keys
 from farrier.home_entries import LEDGER
-from farrier.install import main
+from home_install import configure, run
 from farrier.manifest import as_manifest
 
 CODEX_CONFIG = """# my settings
@@ -47,16 +47,6 @@ def home(tmp_path: Path) -> Path:
     (home / ".claude.json").write_text(json.dumps(CLAUDE_STATE, indent=2), encoding="utf-8")
     (home / ".claude.json").chmod(0o600)
     return home
-
-
-def configure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str) -> None:
-    config = tmp_path / "stablemate.toml"
-    config.write_text(f"config_version = 1\n\n{body}", encoding="utf-8")
-    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
-
-
-def run(home: Path, library: Path, *extra: str) -> int:
-    return main(["install", "--user", "--home", str(home), "--library", str(library), *extra])
 
 
 def codex_servers(home: Path) -> dict:

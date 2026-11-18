@@ -127,7 +127,7 @@ class Managed:
 
 REPO_MANAGED = Managed(tuple(MANAGED_DIRS), tuple(MANAGED_FILES), tuple(ASSUMED_OWNED))
 
-HOME_ONLY = {"mcp", "hooks", "agents"}
+HOME_ONLY = {"mcp", "hooks", "agents", "settings"}
 
 READS_OTHER_SKILLS = {"opencode"}
 
@@ -519,10 +519,11 @@ def user_selections(
             or tool_server_names(table)
             or guard_names(table)
             or agent_names(table)
+            or table.settings
         ):
             raise SystemExit(
                 f"error: [user_library.{harness}] selected no skills, prompts, roots, "
-                "MCP servers, guards or agents."
+                "MCP servers, guards, agents or settings."
             )
         if harness in READS_OTHER_SKILLS:
             skills, prompts = [], []

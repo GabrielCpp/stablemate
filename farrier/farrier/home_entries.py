@@ -19,6 +19,9 @@ from farrier.user_library import user_library_tables
 LEDGER = ".agents/.farrier-home.json"
 SERVER_KEYS = {"command", "args", "env"}
 GUARD_CONTAINER = "hooks.PreToolUse"
+TOP_LEVEL = "."
+SETTINGS_FILES = {"claude": ".claude/settings.json"}
+SETTINGS_OWNED_ELSEWHERE = {"hooks": "library/hooks guards"}
 OPENCODE_CONFIG = ".config/opencode/opencode.json"
 OVERRIDES = {OPENCODE_CONFIG: ".config/opencode/opencode.jsonc"}
 
@@ -40,7 +43,7 @@ class Entry:
     rel: str
     container: str
     name: str
-    value: dict[str, Any]
+    value: Any
 
 
 @dataclass(frozen=True)
@@ -61,7 +64,7 @@ class EntryFile(Protocol):
 
     def entries(self, container: str) -> dict[str, Any]: ...
 
-    def put(self, container: str, name: str, value: dict[str, Any]) -> None: ...
+    def put(self, container: str, name: str, value: Any) -> None: ...
 
     def drop(self, container: str, name: str) -> None: ...
 
@@ -89,9 +92,14 @@ class JsonEntryFile:
                 for hook in group.get("hooks", [])
                 if "command" in hook
             }
+        if container == TOP_LEVEL:
+            return dict(self._document)
         return dict(self._document.get(container) or {})
 
-    def put(self, container: str, name: str, value: dict[str, Any]) -> None:
+    def put(self, container: str, name: str, value: Any) -> None:
+        if container == TOP_LEVEL:
+            self._document[name] = value
+            return
         if container != GUARD_CONTAINER:
             self._document.setdefault(container, {})[name] = value
             return
@@ -103,6 +111,9 @@ class JsonEntryFile:
             groups[groups.index(held)] = value
 
     def drop(self, container: str, name: str) -> None:
+        if container == TOP_LEVEL:
+            del self._document[name]
+            return
         if container != GUARD_CONTAINER:
             del self._document[container][name]
             return
@@ -264,10 +275,56 @@ def tool_server_names(table: Selection) -> set[str]:
     return names
 
 
+def load_settings(name: str) -> dict[str, Any]:
+    """The settings object ``library/settings/<name>.json`` from the highest layer holding it."""
+    hit = find_in_layers("library", "settings", f"{name}.json")
+    if hit is None:
+        available = ", ".join(available_names("library", "settings", suffix=".json")) or "none"
+        raise SystemExit(
+            f"error: unknown settings file {name!r}. Available: {available}.\n"
+            f"Searched these library layers:\n{searched_layers()}"
+        )
+    _layer, path = hit
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise SystemExit(f"error: cannot parse {path}: {exc}.") from exc
+    if not isinstance(data, dict):
+        raise SystemExit(f"error: {path} must hold one JSON object.")
+    for key, owner in SETTINGS_OWNED_ELSEWHERE.items():
+        if key in data:
+            raise SystemExit(f"error: {path} sets `{key}`, which farrier writes from {owner}.")
+    return data
+
+
+def settings_entries(harness: str, table: Selection) -> list[Entry]:
+    """One top-level entry per key of the settings files *table* names."""
+    if not table.settings:
+        return []
+    rel = SETTINGS_FILES.get(harness)
+    if rel is None:
+        raise SystemExit(
+            f"error: [user_library.{harness}] names settings, and farrier merges "
+            f"them only for {', '.join(SETTINGS_FILES)}."
+        )
+    owners: dict[str, str] = {}
+    entries: list[Entry] = []
+    for name in table.settings:
+        for key, value in load_settings(name).items():
+            if key in owners:
+                raise SystemExit(
+                    f"error: settings files {owners[key]!r} and {name!r} both set `{key}`."
+                )
+            owners[key] = name
+            entries.append(Entry(rel, TOP_LEVEL, key, value))
+    return entries
+
+
 def user_entries(home: HomeConfig) -> list[Entry]:
     """Every merged entry the user_library tables intend, in a stable order."""
     entries: list[Entry] = []
     for harness, table in user_library_tables(home).items():
+        entries.extend(settings_entries(harness, table))
         names = tool_server_names(table)
         if not names:
             continue
@@ -314,8 +371,10 @@ def ledger_with(ledger: Ledger, owned: list[Entry]) -> Ledger:
     return merged
 
 
-def significant(value: Mapping[str, Any]) -> dict[str, Any]:
+def significant(value: Any) -> Any:
     """*value* without its empty keys, because a harness may write or omit an empty list."""
+    if not isinstance(value, Mapping):
+        return value
     return {key: item for key, item in value.items() if item not in ({}, [], None)}
 
 
