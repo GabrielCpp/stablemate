@@ -673,7 +673,7 @@ def spoken(service: Service[Any]) -> list[Finding]:
     listed = ", ".join(service.languages)
     found: list[Finding] = []
     for screen in service.screens:
-        labelled = [("name", as_label(screen.name))]
+        labelled = [] if isinstance(screen.name, Component) else [("name", as_label(screen.name))]
         if screen.root is not None:
             labelled.append(("root", screen.root.label))
         for attribute, value in vars(screen).items():
@@ -694,6 +694,12 @@ def spoken(service: Service[Any]) -> list[Finding]:
         if journey.lang and journey.lang not in declared:
             found.append(Finding(f"journey {journey.__name__}", f"plays in {journey.lang!r}, which the service does not declare; it declares {listed}"))
     return found
+
+
+def name_faults(service: Service[Any]) -> list[Finding]:
+    """Every screen whose `name`, the screen's own name, holds a component."""
+    return [Finding(f"screen {screen.__name__}.name", "`name` is the screen's own name, and here it holds a component; give the component another attribute name")
+            for screen in service.screens if isinstance(screen.name, Component)]
 
 
 def shape_faults(service: Service[Any]) -> list[Finding]:
@@ -781,6 +787,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "headers", lambda: found.extend(header_faults(service)) or "done")
     attempt(found, "clock", lambda: found.extend(clock_faults(service)) or "done")
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
+    attempt(found, "screen names", lambda: found.extend(name_faults(service)) or "done")
     attempt(found, "screen shapes", lambda: found.extend(shape_faults(service)) or "done")
     attempt(found, "unstated lists", lambda: found.extend(unstated_lists(service)) or "done")
     attempt(found, "screen fills", lambda: found.extend(fill_faults(service)) or "done")

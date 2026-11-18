@@ -384,6 +384,16 @@ def _faults_of(**components):
     return [(f.name, f.problem, f.blocks) for f in shape_faults(dataclasses.replace(service, screens=(screen,)))]
 
 
+def test_a_component_named_name_is_a_finding_and_does_not_crash_the_language_check():
+    from ostler.book.check import name_faults
+
+    Team = type("Team", (Screen,), {"name": Field(None, "Name")})
+
+    found = [str(f) for f in name_faults(_service(Team))]
+    assert found == ["screen Team.name: `name` is the screen's own name, and here it holds a component; give the component another attribute name"]
+    assert spoken(_service(Team, languages=("en",))) == []
+
+
 def test_the_check_names_a_field_that_states_no_shape():
     problem = "a person fills it and it states no shape, so no input is tried on it: give it takes= and holds="
     from ostler.book.screen import DateField, TextArea
