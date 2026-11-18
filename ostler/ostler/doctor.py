@@ -114,6 +114,16 @@ def run(graph: Graph, epic_filter: str | None = None, check_schema: bool = True,
                          f"no epic '{epic_filter}' under {_rel_posix(graph.doc_roots['epics'], graph.root)}",
                          ref=epic_filter))
         return report
+    prefix = ids_mod.own_prefix(graph)
+    foreign = _foreign_epics(graph, prefix)
+    if epic_filter and all(epic.name in foreign for epic in graph.epics if _epic_matches(epic, epic_filter)):
+        epic = next(epic for epic in graph.epics if _epic_matches(epic, epic_filter))
+        f.append(Finding(
+            "warn", "foreign-epic",
+            f"epic '{epic.name}' was minted under `{foreign[epic.name]}`, and this repo mints under "
+            f"`{prefix}`, so its milestones and fixtures live in the other repo; run "
+            f"`ostler doctor --epic {epic.name}` from that repo", epic.name, ref=epic.name))
+        return report
     if milestone_filter:
         milestone = graph.milestone_by_name(milestone_filter)
         if milestone is None:
@@ -155,7 +165,10 @@ def _run(graph: Graph, epic_filter: str | None, check_schema: bool,
     _check_story_identity(graph, f)
 
     _check_epic_folders(graph, f)
+    foreign = _foreign_epics(graph, ids_mod.own_prefix(graph))
     for epic in graph.epics:
+        if epic.name in foreign:
+            continue
         if epic_filter and not _epic_matches(epic, epic_filter):
             continue
         if epic_names is not None and epic.name not in epic_names:
@@ -163,11 +176,19 @@ def _run(graph: Graph, epic_filter: str | None, check_schema: bool,
         report.epics.append(_epic_facts(epic))
         _check_epic(graph, epic, all_story_slugs, f)
 
+    if foreign:
+        report.findings = [fd for fd in report.findings if fd.epic not in foreign]
     if epic_filter:
         keep = {e.name for e in graph.epics if _epic_matches(e, epic_filter)} or {epic_filter}
         report.findings = [fd for fd in report.findings if fd.epic in keep]
 
     return report
+
+
+def _foreign_epics(graph: Graph, prefix: str) -> dict[str, str]:
+    """Each epic another repo minted, by folder name, with the prefix it was minted under."""
+    minted = {epic.name: ids_mod.minted_elsewhere(epic.eid or epic.name, prefix) for epic in graph.epics}
+    return {name: other for name, other in minted.items() if other}
 
 
 def _check_removed_doc_roots(graph: Graph, findings: list[Finding]) -> None:

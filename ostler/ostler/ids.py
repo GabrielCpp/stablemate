@@ -70,6 +70,18 @@ def repo_prefix(graph: Graph) -> str:
     return prefix
 
 
+def own_prefix(graph: Graph) -> str:
+    """The id prefix the manifest at the graph root sets, or "" when it sets none."""
+    manifest = read_manifest(graph.root)
+    return (manifest.repo.id_prefix if manifest is not None else None) or ""
+
+
+def minted_elsewhere(identifier: str, prefix: str) -> str:
+    """The prefix *identifier* was minted under when it differs from *prefix*; "" when the id is this repo's, carries no prefix, or the repo sets none."""
+    minted = _split(identifier)[0]
+    return minted if prefix and minted and minted != prefix else ""
+
+
 def allocate(graph: Graph) -> str:
     """Mint the next id: ``<PREFIX>-<ULID>``."""
     return f"{repo_prefix(graph)}-{new_ulid()}"

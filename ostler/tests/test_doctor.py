@@ -319,6 +319,21 @@ epics:
     assert finding.ref == EPIC_B
 
 
+def test_an_epic_another_repo_minted_is_left_to_that_repo(repo: Path):
+    write(repo / "docs/milestones/foundation/milestone.md", _foundation_owning(EPIC_A))
+    write_prefix(repo, "t")
+    assert "epic-without-milestone" in codes(doctor.run(load(repo)))
+
+    write_prefix(repo, "u")
+    report = doctor.run(load(repo))
+    scoped = doctor.run(load(repo), epic_filter=EPIC_B)
+
+    assert "epic-without-milestone" not in codes(report)
+    assert not any(f.epic in {EPIC_A, EPIC_B} for f in report.findings)
+    assert [(f.severity, f.code) for f in scoped.findings] == [("warn", "foreign-epic")]
+    assert "`t`" in scoped.findings[0].message and "`u`" in scoped.findings[0].message
+
+
 def _foundation_owning(*epics: str) -> str:
     listed = "".join(f"  - {epic}\n" for epic in epics)
     return (
