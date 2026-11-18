@@ -237,6 +237,9 @@ to one owner. Waiting for a third copy gives the first two time to drift.
 
 **Trigger.** The clone check reports a pair. It runs as this skill's agent commit check,
 `scripts/check_clones.py`, and names both places with their lines and their enclosing functions.
+It judges only the lines the change adds, so an old copy never blocks a commit. A refactoring
+that pays down old copies runs `scripts/check_clones.py --all`, which lists every pair in the
+repository, longest first.
 A reader sees the same trigger in a block of five or more lines repeated in two places.
 
 **Fix.** Move one copy to the owner that rules 2.5 to 2.9 pick. Delete the other copy and point

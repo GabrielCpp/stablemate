@@ -696,3 +696,59 @@ def test_range_mode_reports_a_missing_detector_as_exit_two(repo: Path, capsys):
 
     assert gate.main(["--root", str(repo), "--base", base, "--json"], missing) == 2
     assert "no detector here" in capsys.readouterr().err
+
+
+def test_every_pair_keeps_old_pairs_longest_first_and_drops_the_excused_ones():
+    short = _pair(_side("a.go", 1, 6), _side("b.go", 1, 6), lines=6, is_new=False)
+    long = _pair(_side("c.go", 1, 20), _side("d.go", 1, 20), lines=20, is_new=False)
+    same_test = _pair(_side("tests/test_a.py", 5, 14), _side("tests/test_a.py", 25, 34))
+    covered = _pair(_side("api-service/errors/map.go", 1, 9), _side("reporting-service/errors/map.go", 1, 9))
+    entry = gate.Coincidence(("*/errors/map.go",), ("the public wire codes", "the internal report codes"))
+
+    assert gate.every_pair([short, same_test, long, covered], [entry]) == [long, short]
+
+
+def test_all_mode_lists_an_old_copy_with_nothing_staged_and_runs_without_a_base(repo: Path):
+    seen = []
+
+    def runner(root: Path, limits, base):
+        seen.append(base)
+        return _report()
+
+    problems, pairs = gate.all_clones(repo, runner)
+
+    assert seen == [None]
+    assert problems == []
+    assert [(p.first.path, p.second.path, p.lines) for p in pairs] == [
+        ("api-service/xlsx/sheet.go", "reporting-service/xlsx/sheet.go", 17)
+    ]
+
+
+def test_main_in_all_mode_counts_the_pairs_and_names_both_places(repo: Path, capsys):
+    code = gate.main(["--root", str(repo), "--all"], lambda root, limits, base: _report())
+
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "the repository holds 1 pairs of copied code" in err
+    assert "api-service/xlsx/sheet.go:1-17 (WriteSheet)" in err
+    assert "repeats reporting-service/xlsx/sheet.go:1-17 (WriteSheet), 17 lines" in err
+
+
+def test_json_in_all_mode_names_the_sides_first_and_second(repo: Path, capsys):
+    gate.main(["--root", str(repo), "--all", "--json"], lambda root, limits, base: _report())
+
+    (pair,) = json.loads(capsys.readouterr().out)["pairs"]
+    assert pair["first"]["path"] == "api-service/xlsx/sheet.go"
+    assert pair["second"]["path"] == "reporting-service/xlsx/sheet.go"
+    assert "added" not in pair
+
+
+@pytest.mark.parametrize("extra", [["--base", "HEAD"], ["api-service"]])
+def test_all_mode_refuses_a_base_or_paths(repo: Path, extra: list[str]):
+    def refuse(root: Path, limits, base):
+        raise AssertionError("the detector ran")
+
+    with pytest.raises(SystemExit) as exit_info:
+        gate.main(["--root", str(repo), "--all", *extra], refuse)
+
+    assert exit_info.value.code == 2

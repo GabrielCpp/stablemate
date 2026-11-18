@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refuse a commit that adds code which already exists elsewhere in the repository."""
+"""Refuse a commit that adds code which already exists elsewhere in the repository, or list every copy it holds."""
 
 from __future__ import annotations
 
@@ -152,7 +152,7 @@ class Threshold:
 
 
 Span = dict[str, list[tuple[int, int]]]
-Runner = Callable[[Path, Threshold, str], Mapping]
+Runner = Callable[[Path, Threshold, str | None], Mapping]
 
 
 def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -351,6 +351,12 @@ def between_tests(pair: CopyPair) -> bool:
     return is_test(pair.first.path) and is_test(pair.second.path)
 
 
+def _excused(pair: CopyPair, coincidences: Sequence[Coincidence]) -> bool:
+    if pair.first.path == pair.second.path and is_test(pair.first.path):
+        return True
+    return any(_covered(pair, entry) for entry in coincidences)
+
+
 def copy_pairs(
     pairs: Sequence[CopyPair],
     span: Span,
@@ -366,17 +372,19 @@ def copy_pairs(
     grown = {pair.first for pair in pairs if pair.is_new}
     kept = []
     for pair in pairs:
-        if pair.first not in grown:
-            continue
-        if pair.first.path == pair.second.path and is_test(pair.first.path):
+        if pair.first not in grown or _excused(pair, coincidences):
             continue
         first_added = _added(pair.first, span.get(pair.first.path, [])) >= min_added
         if not first_added and _added(pair.second, span.get(pair.second.path, [])) < min_added:
             continue
-        if any(_covered(pair, entry) for entry in coincidences):
-            continue
         kept.append(pair if first_added else replace(pair, first=pair.second, second=pair.first))
     return kept
+
+
+def every_pair(pairs: Sequence[CopyPair], coincidences: Sequence[Coincidence] = ()) -> list[CopyPair]:
+    """Every pair, old or new, less the declared coincidences and the repeats inside one test file, longest first."""
+    kept = [pair for pair in pairs if not _excused(pair, coincidences)]
+    return sorted(kept, key=lambda pair: (-pair.lines, pair.first.path, pair.first.start))
 
 
 def enclosing_unit(path: Path, line: int) -> str | None:
@@ -429,16 +437,16 @@ def builds(root: Path, pair: CopyPair) -> tuple[str, str]:
     return build_of(root, pair.first.path), build_of(root, pair.second.path)
 
 
-def run_detector(root: Path, limits: Threshold, base: str = "HEAD") -> Mapping:
-    """jscpd's JSON report of clones new against `base`."""
+def run_detector(root: Path, limits: Threshold, base: str | None = "HEAD") -> Mapping:
+    """jscpd's JSON report of clones, each marked new or old against `base` when one is given."""
     binary = ensure_detector()
+    baseline = ("--baseline-from-ref", base) if base else ()
     with tempfile.TemporaryDirectory() as out_dir:
         result = subprocess.run(
             (
                 str(binary),
                 ".",
-                "--baseline-from-ref",
-                base,
+                *baseline,
                 "-r",
                 "json",
                 "-o",
@@ -491,6 +499,13 @@ def check_clones(
     return problems, copy_pairs(pairs, span, limits.coincidences, limits.min_lines)
 
 
+def all_clones(root: Path, runner: Runner = run_detector) -> tuple[list[str], list[CopyPair]]:
+    """Config problems and every copy pair the repository holds, for a refactoring that removes old copies."""
+    limits = threshold(root)
+    pairs = pairs_from_report(runner(root, limits, None), root, limits)
+    return coincidence_problems(limits), every_pair(pairs, limits.coincidences)
+
+
 def _renders(root: Path, pairs: Sequence[CopyPair]) -> list[str]:
     lines = []
     for pair in pairs:
@@ -512,13 +527,18 @@ def _side_json(root: Path, side: Side) -> dict:
     }
 
 
-def _json_report(root: Path, problems: Sequence[str], pairs: Sequence[CopyPair]) -> str:
+def _json_report(
+    root: Path,
+    problems: Sequence[str],
+    pairs: Sequence[CopyPair],
+    sides: tuple[str, str] = ("added", "existing"),
+) -> str:
     return json.dumps(
         {
             "pairs": [
                 {
-                    "added": _side_json(root, pair.first),
-                    "existing": _side_json(root, pair.second),
+                    sides[0]: _side_json(root, pair.first),
+                    sides[1]: _side_json(root, pair.second),
                     "lines": pair.lines,
                     "tests": between_tests(pair),
                 }
@@ -532,28 +552,44 @@ def _json_report(root: Path, problems: Sequence[str], pairs: Sequence[CopyPair])
 def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="repo to check (default: cwd)")
-    parser.add_argument("--base", help="check every line changed since this ref instead of the staged paths")
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--base", help="check every line changed since this ref instead of the staged paths")
+    scope.add_argument(
+        "--all",
+        action="store_true",
+        help="list every copy in the repository, old ones included, instead of the copies the change adds",
+    )
     parser.add_argument("--json", action="store_true", help="print the pairs and problems as one JSON object")
     parser.add_argument("pathspecs", nargs="*", help="limit the check to these staged paths")
     args = parser.parse_args(argv)
+    if args.all and args.pathspecs:
+        parser.error("--all checks the whole repository and takes no paths")
 
     root = args.root.resolve()
     top = _git(root, "rev-parse", "--show-toplevel", check=False)
     if top.returncode == 0 and top.stdout.strip():
         root = Path(top.stdout.strip())
     try:
-        problems, pairs = check_clones(root, runner, args.base, args.pathspecs)
+        if args.all:
+            problems, pairs = all_clones(root, runner)
+        else:
+            problems, pairs = check_clones(root, runner, args.base, args.pathspecs)
     except DetectorMissing as error:
         print(f"\nFAIL check_clones: {error}", file=sys.stderr)
         return 2
     if args.json:
-        print(_json_report(root, problems, pairs))
+        sides = ("first", "second") if args.all else ("added", "existing")
+        print(_json_report(root, problems, pairs, sides))
         return 1 if problems or pairs else 0
     if not problems and not pairs:
         return 0
 
     if pairs:
-        print("\nFAIL check_clones: this commit adds code that already exists elsewhere.", file=sys.stderr)
+        if args.all:
+            headline = f"the repository holds {len(pairs)} pairs of copied code, longest first."
+        else:
+            headline = "this commit adds code that already exists elsewhere."
+        print(f"\nFAIL check_clones: {headline}", file=sys.stderr)
         for line in _renders(root, pairs):
             print(line, file=sys.stderr)
     for problem in problems:
