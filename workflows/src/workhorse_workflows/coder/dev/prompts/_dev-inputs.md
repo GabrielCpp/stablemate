@@ -67,6 +67,10 @@ To see a claim pass, play only the calls those paths state: `ostler book run ser
 --only <call>`. Never play a whole book in this turn, whatever the repository's own instructions
 say of a finished story: the book lane plays it after you, and a whole play can outlast the turn.
 Start a play as a background command and wait on its exit, never on a sleep.
+Start it as your shell tool's own background command, which tells you when it exits. When you
+wait from a shell instead, keep the play's pid from `$!` in the same command and `wait` on it.
+Never find the play with `pgrep` on its command line: the pattern matches the shell that runs
+the search, and the wait then sits on itself until it times out.
 {% endif %}
 {% if follow_up_title and not opening_brief %}
 

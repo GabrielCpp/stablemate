@@ -101,6 +101,10 @@ The app takes one play at a time: start a play only when no other is running. A 
 on its exit.
 The play writes a line to stderr as each journey ends. Wait on the command's exit and read those
 lines to see that it moves. Never sleep on a timer.
+Start it as your shell tool's own background command, which tells you when it exits. When you
+wait from a shell instead, keep the play's pid from `$!` in the same command and `wait` on it.
+Never find the play with `pgrep` on its command line: the pattern matches the shell that runs
+the search, and the wait then sits on itself until it times out.
 
 A run that fails names the cell the app answered differently. Decide, from the source, whether
 the book or the app is wrong. A wrong book gets fixed. A wrong app gets an entry in the book's
