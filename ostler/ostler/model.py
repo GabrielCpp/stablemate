@@ -150,7 +150,12 @@ class Graph:
         return next((m for m in self.milestones if registry.epic_slug(m.name) == slug), None)
 
     def find_story(self, ref: str) -> tuple[Epic, Story] | None:
-        """The story whose id is *ref*. A slug is not a story reference: see :meth:`no_story`."""
+        """The story whose id is *ref*, or whose id ostler prints as the handle *ref*. A slug is not a story reference: see :meth:`no_story`."""
+        from ostler import ids
+
+        story_ids = [story.eid for epic in self.epics for story in epic.stories if story.eid]
+        if ref and ref not in story_ids:
+            ref = ids.expand(ref, ids.known(self)) or ref
         matches = [
             (epic, story)
             for epic in self.epics

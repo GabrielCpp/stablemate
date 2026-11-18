@@ -125,3 +125,16 @@ def test_an_ostler_defect_prints_one_line_and_exits_70(tmp_path: Path, monkeypat
     assert code == cli.INTERNAL_ERROR
     assert "ostler doctor: internal error at test_id_folders.py:" in err
     assert "ValueError: boom" in err and "Traceback" not in err
+
+
+def test_a_story_id_ostler_prints_short_is_one_its_commands_take(tmp_path: Path, capsys):
+    assert crud.create_epic(load(tmp_path), "accounts", "Accounts").ok
+    assert crud.create_story(load(tmp_path), "accounts", "sign-in", "Sign in").ok
+    assert cli.main(["-C", str(tmp_path), "--no-index", "set-status", "sign-in", "Done"]) == 1
+    handle = capsys.readouterr().out.strip().rsplit(" ", 1)[-1]
+
+    code = cli.main(["-C", str(tmp_path), "--no-index", "set-status", handle, "Done"])
+
+    assert code == 0, capsys.readouterr()
+    story = present(load(tmp_path).epic_by_ref("accounts")).stories[0]
+    assert story.status == "Done"
