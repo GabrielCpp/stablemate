@@ -36,8 +36,17 @@ def _has_staged(repo: Repo, pathspecs: tuple[str, ...]) -> bool:
     return bool(repo.git.diff("--cached", "--name-only", "--", *pathspecs).strip())
 
 
+def unstage_paths(root: Path, pathspecs: tuple[str, ...]) -> None:
+    """Leave *pathspecs* unstaged, as they were before the checks staged them."""
+    try:
+        repo = open_repo(root)
+        repo.git.reset("-q", "--", *pathspecs)
+    except GitError:
+        return
+
+
 def declared_checks_failure(root: Path, message: str, pathspecs: tuple[str, ...]) -> str:
-    """Run the repo's declared commit checks over *pathspecs* as staged, and return what the first failing one said. Empty when all pass.
+    """Run the repo's declared commit checks over *pathspecs* as staged, and return what every failing one said, in order, each under the line that names its command. Empty when all pass.
 
     A failing check leaves *pathspecs* unstaged, as a refused commit does.
     """
@@ -52,6 +61,7 @@ def declared_checks_failure(root: Path, message: str, pathspecs: tuple[str, ...]
     except GitError as failed:
         return str(failed)
     env = {**os.environ, COMMAND_ENV: shlex.join(["git", "commit", "-m", message]), CWD_ENV: str(root)}
+    failures: list[str] = []
     for command, budget in checks:
         try:
             ran = subprocess.run(
@@ -64,11 +74,10 @@ def declared_checks_failure(root: Path, message: str, pathspecs: tuple[str, ...]
                 timeout=max(budget * 10, 60.0),
             )
         except (OSError, subprocess.TimeoutExpired) as unrunnable:
-            failure = f"commit check `{command}` could not run: {unrunnable}"
+            failures.append(f"commit check `{command}` could not run: {unrunnable}")
         else:
-            if ran.returncode == 0:
-                continue
-            failure = f"commit check `{command}` refused the commit:\n{(ran.stderr or ran.stdout).strip()}"
+            if ran.returncode != 0:
+                failures.append(f"commit check `{command}` refused the commit:\n{(ran.stderr or ran.stdout).strip()}")
+    if failures:
         repo.git.reset("-q", "--", *pathspecs)
-        return failure
-    return ""
+    return "\n\n".join(failures)

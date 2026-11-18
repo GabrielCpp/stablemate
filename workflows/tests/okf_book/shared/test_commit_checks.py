@@ -1,6 +1,7 @@
 """A book commit meets the commit checks its repo declares, so a book that fails the repo's lint is refused with the finding."""
 from __future__ import annotations
 
+import json
 import logging
 import subprocess
 import sys
@@ -87,3 +88,45 @@ def test_a_repo_that_declares_no_checks_commits_as_before(
     refusal = book_flow.commit_book_paths(logging.getLogger("test"), root, "docs: page", ("docs",))
 
     assert (refusal, _head(root), calls) == ("", "docs: page", [["farrier", "checks", "--repo", str(root)]])
+
+
+def _check_listing(*checks: tuple[str, int]) -> str:
+    return "".join(f"{sys.executable} -c 'import sys; sys.stderr.write({json.dumps(said)}); sys.exit({code})'\t5\n" for said, code in checks)
+
+
+def _stage_a_page(root: Path) -> None:
+    page = root / "docs/page.md"
+    page.parent.mkdir(parents=True)
+    _ = page.write_text("x\n", encoding="utf-8")
+
+
+def test_two_failing_checks_out_of_three_are_both_returned_in_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _declares(monkeypatch, _check_listing(("first said no", 1), ("second is fine", 0), ("third said no", 2)), [])
+    _stage_a_page(root)
+
+    refusal = declared_checks_failure(root, "docs: page", ("docs",))
+
+    assert refusal.count("refused the commit") == 2
+    assert refusal.index("first said no") < refusal.index("third said no")
+    assert "second is fine" not in refusal
+
+
+def test_one_failing_check_returns_the_text_it_returned_before(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    listing = _check_listing(("first is fine", 0), ("second said no", 1))
+    _declares(monkeypatch, listing, [])
+    _stage_a_page(root)
+
+    refusal = declared_checks_failure(root, "docs: page", ("docs",))
+
+    command = listing.splitlines()[1].partition("\t")[0]
+    assert refusal == f"commit check `{command}` refused the commit:\nsecond said no"
+
+
+def test_checks_that_all_pass_return_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _declares(monkeypatch, _check_listing(("one", 0), ("two", 0)), [])
+    _stage_a_page(root)
+
+    assert declared_checks_failure(root, "docs: page", ("docs",)) == ""

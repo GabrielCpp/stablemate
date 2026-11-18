@@ -10,7 +10,7 @@ from workhorse_workflows.okf_book.main import python_book_flow
 from workhorse_workflows.okf_book.shared import book_gates
 from workhorse_workflows.okf_book.main.python_book_flow import WritePythonBook
 
-from okf_book.support import Reply, ScriptedRunner, git, run_env
+from okf_book.support import FIX_COMMIT_NODE, Reply, ScriptedRunner, git, run_env
 
 
 def build_flow(tmp_path: Path, replies: dict[str, Reply] | None = None, kind: str = "cli", history: str = "") -> tuple[WritePythonBook, ScriptedRunner]:
@@ -59,3 +59,10 @@ def written_book(flow: WritePythonBook) -> Path:
     (repo / "services/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
     (repo / "scratch.txt").write_text("not the book\n", encoding="utf-8")
     return repo
+
+
+def fixing_flow(tmp_path: Path) -> tuple[WritePythonBook, ScriptedRunner]:
+    """A flow over a written book whose fix turn for a refused commit says it repaired it."""
+    flow, runner = build_flow(tmp_path, {FIX_COMMIT_NODE: lambda _args: {"fixed": "repaired it", "blocked": ""}})
+    _ = written_book(flow)
+    return flow, runner

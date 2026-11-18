@@ -20,6 +20,7 @@ from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.spec import AgentNode
 
 from workhorse_workflows import okf_book
+from workhorse_workflows.okf_book.shared import book_flow
 from workhorse_workflows.okf_book.shared.book_format import SKILL_DIR
 from workhorse_workflows.okf_book.workflow import workflow
 
@@ -38,6 +39,17 @@ def run_env(runs_dir: Path, runner: AgentRunner) -> RunEnv:
         nodes=workflow.nodes,
         agent_runner=runner,
     )
+
+
+def refused_with(monkeypatch: pytest.MonkeyPatch, said: list[str]) -> list[str]:
+    """The declared commit checks answer with each of `said` in turn. The list left shows how many were asked."""
+    left = list(said)
+
+    def _declared(_root: Path, _message: str, _pathspecs: tuple[str, ...]) -> str:
+        return left.pop(0)
+
+    monkeypatch.setattr(book_flow, "declared_checks_failure", _declared)
+    return left
 
 
 def advance(flow: object, step: Continue[...] | Await[...]) -> Continue[...] | Await[...]:

@@ -31,6 +31,7 @@ from workhorse_workflows.okf_book.shared.book_flow import (
     no_reply_question,
     red_question,
 )
+from workhorse_workflows.okf_book.main.book_names import book_module, finished_books, owner_chain
 from workhorse_workflows.okf_book.main.models import BookEntries, PythonBookOutcome, PythonBookReply
 from workhorse_workflows.okf_book.main.nodes.passes import BREADTH_DIR, REASONS_DIR, Reasons, Skeletons, pass_handed, record_pass
 
@@ -43,10 +44,6 @@ BATCH_SIZE = 8
 REASONS_BATCH = 5
 FIRST_BOOK_MARK = "first-book"
 FORMAT_UNMARKED = "format-unmarked.txt"
-
-
-def book_module(service: str) -> str:
-    return f"services.{service}"
 
 
 class Unexplained(BookGate):
@@ -66,17 +63,6 @@ def python_book_unexplained(logger: logging.Logger, root: Path, module: str) -> 
     done = run_tool(book_command("decisions", module, "--unexplained", "--kind", "screen"), cwd=root, logger=logger)
     screens = tuple(line.strip() for line in done.stdout.splitlines() if line.strip())
     return Unexplained(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()), module=module, screens=screens)
-
-
-def owner_chain(service: str) -> str:
-    return f"pybook:{service}"
-
-
-def finished_books(root: Path, service: str) -> list[str]:
-    """The repo's other book packages, which the owner reads for the shape of each file."""
-    patterns = ("services/*/service.py", "services/*/*/service.py")
-    found = {path.relative_to(root).parts[1] for pattern in patterns for path in root.glob(pattern)}
-    return [f"services/{name}" for name in sorted(found - {service})]
 
 
 @dry_run(service="dry-run")
@@ -313,10 +299,15 @@ class WritePythonBook(BookFlow):
         gate = self._owner_gate(question, gate_name)
         return Continue(gate, self.write, gate=gate, lap=lap).because("the operator answered")
 
-    def check(self, lap: int) -> Continue[...] | Await[...]:
-        """Run the check of each of the book's modules. A pass plays the book, and the first fail sends the owner another lap."""
+    def check(self, lap: int, seen: list[str] | None = None) -> Continue[...] | Await[...]:
+        """Run the check of each of the book's modules. A pass sends the book through the repo's commit checks, and the first fail sends the owner another lap."""
         gate, red = self._checked(lap)
-        return red or Continue(gate, self.play, lap=lap).because("the check passes")
+        return red or Continue(gate, self.checks, lap=lap, seen=seen or []).because("the check passes")
+
+    def checks(self, lap: int, seen: list[str] | None = None) -> Continue[...] | Await[...]:
+        """Meet the repo's commit checks over the book's package before it is played, so a refusal costs no replay. Each refusal goes to a fix turn and back to the check, and a pass plays the book."""
+        waiting = self._checks_or_fix(book_commit_subject(self.service), (self.package,), seen or [], self.check, self.checks, lap=lap)
+        return waiting or Continue(None, self.play, lap=lap).because("the commit checks pass")
 
     def play(self, lap: int) -> Continue[...] | Await[...]:
         """Play each of the book's modules against the live app. A pass commits the book, and the first fail sends the owner another lap."""

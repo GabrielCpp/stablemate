@@ -123,10 +123,15 @@ class CatchUpBooks(BookFlow):
         gate = self._owner_gate(question, gate_name)
         return Continue(gate, self.write, service=service, gate=gate, lap=lap, added=kept["added"], ignored=kept["ignored"]).because("the operator answered")
 
-    def check(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
-        """Run the check of each of the book's modules. A pass plays the targeted run, and the first fail sends the owner another lap."""
+    def check(self, service: str, lap: int, added: list[str], ignored: list[str], seen: list[str] | None = None) -> Continue[...] | Await[...]:
+        """Run the check of each of the book's modules. A pass sends the book through the repo's commit checks, and the first fail sends the owner another lap."""
         gate, red = self._checked(service, lap, added, ignored)
-        return red or Continue(gate, self.play, service=service, lap=lap, added=added, ignored=ignored).because("the check passes")
+        return red or Continue(gate, self.checks, service=service, lap=lap, added=added, ignored=ignored, seen=seen or []).because("the check passes")
+
+    def checks(self, service: str, lap: int, added: list[str], ignored: list[str], seen: list[str] | None = None) -> Continue[...] | Await[...]:
+        """Meet the repo's commit checks over the book's package before the targeted run, so a refusal costs no replay. Each refusal goes to a fix turn and back to the check, and a pass plays the targeted run."""
+        waiting = self._checks_or_fix(self._subject(service), (f"services/{service}",), seen or [], self.check, self.checks, service=service, lap=lap, added=added, ignored=ignored)
+        return waiting or Continue(None, self.play, service=service, lap=lap, added=added, ignored=ignored).because("the commit checks pass")
 
     def play(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
         """Play, in each module, the journeys that call the endpoints and interactions the report named or the owner added, or the whole module when the book format moved. A pass stamps the book, and the first fail sends the owner another lap."""
@@ -184,14 +189,16 @@ class CatchUpBooks(BookFlow):
     def commit(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
         """Commit the book's package and its stamp, and record the book as caught up. A retry after the commit landed finds nothing to commit."""
         report = self._report(service)
-        subject = caught_up_book_commit_subject(service) if report.verdict == STALE else format_book_commit_subject(service)
-        waiting = self._commit_or_await(subject, (f"services/{service}",), lambda: self._replayed(service, lap, added, ignored), self.commit, service=service, lap=lap, added=added, ignored=ignored)
+        waiting = self._commit_or_await(self._subject(service), (f"services/{service}",), lambda: self._replayed(service, lap, added, ignored), self.commit, service=service, lap=lap, added=added, ignored=ignored)
         if waiting:
             return waiting
         notes = self.call(catch_up_format_notes, self.run_dir, service, ())
         outcome = BookOutcome(service=service, verdict="caught-up", laps=lap, elements=report.elements, added=added, ignored=ignored, app=report.verdict == STALE, moved=report.format_behind, format=notes if report.format_behind else [])
         _ = self.call(catch_up_record, self.run_dir, outcome)
         return Continue(outcome, self.books).because("the book is committed")
+
+    def _subject(self, service: str) -> str:
+        return caught_up_book_commit_subject(service) if self._report(service).verdict == STALE else format_book_commit_subject(service)
 
     def _modules(self, service: str) -> list[str]:
         return [module.module for module in self._report(service).modules]

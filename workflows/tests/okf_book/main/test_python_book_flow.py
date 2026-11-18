@@ -104,14 +104,14 @@ def test_a_run_that_could_not_judge_waits_and_runs_again_without_a_lap(tmp_path:
     assert runner.total == 0
 
 
-def test_a_green_check_plays_the_book_into_the_run_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_green_check_sends_the_book_to_the_commit_checks_and_play_runs_it_into_the_run_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     seen = book_exits(monkeypatch)
     flow, _runner = build_flow(tmp_path)
 
     checked = flow.check(lap=1)
     played = flow.play(lap=1)
 
-    assert isinstance(checked, Continue) and checked.state == "play"
+    assert isinstance(checked, Continue) and checked.state == "checks"
     assert isinstance(played, Continue) and played.state == "account"
     assert seen[1][3:] == ["run", "services.ledger", "--out", str(flow.run_dir / "book-run" / "services.ledger")]
 

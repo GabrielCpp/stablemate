@@ -8,13 +8,13 @@ from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
-from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Transition, Workflow
+from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Transition, Workflow
 from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.kit.answer import answer_below
 from workhorse_workflows.kit.paths import find_book_root
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
-from workhorse_workflows.kit.commit_checks import declared_checks_failure
+from workhorse_workflows.kit.commit_checks import declared_checks_failure, unstage_paths
 from workhorse_workflows.okf_book.shared.blockers import Phase
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.metrics import record_turn, turn_metric
@@ -77,6 +77,16 @@ def commit_book_paths(logger: logging.Logger, root: Path, message: str, pathspec
     """Commit exactly *pathspecs*, and return what a declared commit check or git said when it refused. A dry run commits nothing."""
     del logger
     return declared_checks_failure(root, message, pathspecs) or commit_returning_refusal(root, message, *pathspecs)
+
+
+@blueprint.node(stub=_nothing_refused_in_dry_run)
+def book_commit_checks(logger: logging.Logger, root: Path, message: str, pathspecs: tuple[str, ...]) -> str:
+    """Run the repo's declared commit checks over *pathspecs* as a commit with *message* would meet them, and return what the failing ones said. Nothing is committed, and the index is left as it was. A dry run checks nothing."""
+    del logger
+    failure = declared_checks_failure(root, message, pathspecs)
+    if not failure:
+        unstage_paths(root, pathspecs)
+    return failure
 
 
 def _book_sources(root: Path, pathspec: str) -> list[Path]:
@@ -176,6 +186,25 @@ class BookFlow(Workflow):
         if not refusal:
             return None
         return self._await_operator_on_refused_commit(f"{refusal}\n\n{said}" if said else refusal, retry, *args, **kwargs)
+
+    def _checks_or_fix(
+        self, message: str, pathspecs: tuple[str, ...], seen: list[str], check: Callable[..., Transition], checks: Callable[..., Transition], **params: object
+    ) -> Await[...] | Continue[...] | None:
+        """Run the commit checks before the book is played. Each new refusal goes to its own fix turn, up to four in all, and the book goes back through *check* because the turn changed it. A refusal that repeats one already sent, or one after the last turn, waits for the operator, whose answer runs *checks* again with the count cleared."""
+        _ = self.call(render_book_agent_files, self.root)
+        refusal = self.call(book_commit_checks, self.root, message, pathspecs)
+        if not refusal:
+            return None
+        if refusal in seen or len(seen) >= FIX_COMMIT_TURNS:
+            return Await(
+                self.run_dir / COMMIT_GATE,
+                f"The repo's commit checks refused the book before it was played:\n\n{refusal}\n\nFix what they name in the repo, then answer here to run them again.",
+                checks,
+                **params,
+                seen=[],
+            ).because("the repo refused the commit checks")
+        said = self._fix_refused_commit(refusal, pathspecs)
+        return Continue(f"{refusal}\n\n{said}" if said else refusal, check, **params, seen=[*seen, refusal]).because("the commit checks refused")
 
     def _fix_refused_commit(self, refusal: str, pathspecs: tuple[str, ...]) -> str:
         """One turn at the repo's root reads the refusal and fixes its cause. Returns what the turn said of it, for the operator a second refusal reaches."""
