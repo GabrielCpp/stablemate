@@ -1,12 +1,13 @@
 ---
 name: workhorse-operate
-description: "Launching, watching and acting on a workhorse run from the terminal. Start `groom serve` before a launch, watch through the groom feed (`/feed` in the Monitor tool, or `groom wait --run <run_id>` from a shell) and never by tailing a log. Then: list the runs groom sees, resolve one to its `workflow` and `run_dir`, then `control` it over its socket: `status`, `reload` (pushed code), `switch-cli`, `switch-profile`, `questions`/`answer` (gates), `inbox read`/`reply` — and repair a stopped one with `stop --wait`, `status --params`, `rewind --to STATE` and `resume [CLI]`. Load when asked to launch, watch, monitor, attend, reload, restart, rewind, resume, switch, answer, poke, or find a run — including one named from the groom dashboard. Reading *why* a run is stuck is groom-telemetry; groom's own architecture is groom; writing nodes is workhorse-engine."
+description: "Load before you launch a workhorse run, or a benchmark or script that launches one, and whenever a turn is about to wait on a run, whether someone asked for a watch or the run is one step of a larger goal. Also load when asked to watch, monitor, attend, reload, restart, rewind, resume, switch, answer, poke or find a run, including one named from the groom dashboard. Launching, attending and acting on a workhorse run from the terminal: start `groom serve` before a launch, and attend through the groom feed, whose digest every half hour wakes the session even when the run has gone quiet (`/feed` in the Monitor tool, `groom feed --run <run_id> --every 30m` from a shell, `groom wait --run <run_id>` for the next event), never by tailing a log or waiting on a process. Then: list the runs groom sees, resolve one to its `workflow` and `run_dir`, then `control` it over its socket: `status`, `reload` (pushed code), `switch-cli`, `switch-profile`, `questions`/`answer` (gates), `inbox read`/`reply`. Repair a stopped one with `stop --wait`, `status --params`, `rewind --to STATE` and `resume [CLI]`. Reading *why* a run is stuck is groom-telemetry; groom's own architecture is groom; writing nodes is workhorse-engine."
 tags: [cli]
 ---
 
 # Operating a live workhorse run
 
-Load this skill when the ask is to **do something to a run that is already going**:
+Load this skill before a launch, before any wait on a run, and when the ask is to
+**do something to a run that is already going**:
 reload it onto pushed code, move it to another agent CLI or model profile, answer the
 gate it is parked on, or just find where it is. The run is a process holding a control
 socket in its run dir; groom already indexes every live one. Nothing here requires
@@ -20,7 +21,7 @@ poll its run dir.
 ```bash
 curl -s -o /dev/null http://127.0.0.1:8787/ || setsid nohup groom serve > groom.log 2>&1 < /dev/null &
 workhorse-<workflow> run …                       # launch only once groom answers
-groom feed --run <run_id>                        # from a shell: follows the run, never exits
+groom feed --run <run_id> --every 30m            # from a shell: a digest every half hour, never exits
 ```
 
 - **Start groom before the launch.** A run looks for the collector once, when its
@@ -37,11 +38,23 @@ groom feed --run <run_id>                        # from a shell: follows the run
   `EXAMINED.md`. An `event` frame of kind `blocked` is a gate: read, fix,
   answer. Monitor expires after 30 minutes. Re-arm it with `since=<ts of the last frame>`
   so the gap replays.
-- **From a shell, use the two clients of the same feed.** `groom wait --run <run_id>`
-  stays silent and exits on the first of `blocked`, `ended`, `stuck`, `stalled` or
-  `gave-up`. `--until` widens the set, for example with `churn`, `watchdog` and `died`.
-  `groom feed --run <run_id>` prints every event and every digest and never exits. Run
-  either as a background task and let its output wake you.
+- **From a shell, use the two clients of the same feed.**
+  `groom feed --run <run_id> --every 30m` prints every event and a digest every half
+  hour, and never exits. The digest comes even when nothing happened, so a run that went
+  quiet still wakes you. `groom wait --run <run_id>` stays silent and exits on the first
+  of `blocked`, `ended`, `stuck`, `stalled` or `gave-up`. `--until` widens the set, for
+  example with `churn`, `watchdog` and `died`. Run either as a background task and let
+  its output wake you. `--since` takes a timestamp in epoch seconds, as `date +%s` prints
+  it, and replays the events after it.
+- **An attended run always has a feed.** A `wait` alone, a wait on the launcher's
+  process or a wait on a result file returns only when something ends. A run that hangs
+  ends nothing, and the session sleeps beside it for as long as it hangs. Where a
+  background task wakes you only when it exits, take one digest at a time:
+  `timeout 1900 groom feed --run <run_id> --every 30m`, started again with `--since` on
+  each wake.
+- **A command outside any run has no feed.** A play, a replay or a script started by
+  hand sends groom nothing. Give it a time limit when you start it,
+  `timeout <seconds> <command>`, sized from how long the last one took.
 - **On each wake, read before acting.** `groom status --run <run_id>` says where the
   run is. `control questions` and `inbox read` say what it asks. Fix the cause, then
   answer. A `wait` exits after one event, so start a new one. The feed keeps running.
