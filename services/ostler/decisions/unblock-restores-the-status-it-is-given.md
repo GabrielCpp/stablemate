@@ -1,5 +1,5 @@
 story: none
-date: 2026-11-17
+date: 2026-11-18
 elements: Unblock, SetStatus
 
 `ostler unblock` clears the stamp a run leaves on a story, and a status is a stamp when it starts with `Blocked`,
@@ -11,4 +11,5 @@ in that order, and then an unknown story or an unknown epic. A scope with no blo
 `nothing to unblock`, and with the name it was given when it names a story or an epic.
 
 The restored status is `Not started` unless `--status` gives another, and the summary prints it as typed, so
-`unblock --all --status in-progress` says `-> in-progress`. The stories are listed in folder order.
+`unblock --all --status in-progress` says `-> in-progress`. The stories are listed epic by epic, in the order of the epics' id folders, and each epic's in the order its
+page lists them.

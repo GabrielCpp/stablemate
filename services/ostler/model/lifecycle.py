@@ -8,10 +8,10 @@ from typing import Callable
 
 from ostler.book import Axes, Scene
 
-from ..commands import (Conflict, CreateEpic, CreateStory, DeleteEpic, DeleteStory, Look, PathBranch, PathEpic, PathSpec,
+from ..commands import (Conflict, CreateEpic, CreateStory, DeleteCreatedEpic, DeleteEpic, DeleteStory, LayoutApply, Look, PathBranch, PathEpic, PathSpec,
                         PathStory, SeedAdd, SeedRemove, SetStatus, TodoAdd, TodoList, TodoPrune, TodoReorder, Unblock,
                         UpdateStory)
-from ..fixtures import (ALPHA, BRAVO, SX, conflict, create_epic, create_story, delete_epic, delete_story, path_branch, path_epic,
+from ..fixtures import (ALPHA, BRAVO, FIRST, SECOND, SX, THIRD, conflict, create_epic, create_story, delete_epic, delete_story, path_branch, path_epic,
                         path_spec, path_story, seed_add, seed_remove, set_status, todo_add, todo_list, todo_prune,
                         todo_reorder, unblock, update_story)
 from ..graph import (EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, ValidatePhonePlan, ValidateWebPlan, VetDryRun, VetOfUnknownStory,
@@ -24,6 +24,7 @@ from ..graph import (EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, Valida
                      VetArtifact)
 from ..books import (CheckBook, DrawBook, ExplainBook, ExplainNothing, ExploreBook, IndexBook, ListBookDecisions, RunBook,
                      SearchBook)
+from ..events import CopyInAnOldEpic
 from ..fixtures import nothing
 from .documents import holds
 from .files import (RENDERED, LEDGER, QA_EVIDENCE, SESSION, ARTIFACT, CLOSED, DECISION, FIRST_EPIC_LISTED, GUIDANCE, MILESTONE, OPEN, RECORD, SECOND_EPIC_LISTED,
@@ -44,23 +45,27 @@ QUEUE_SCENES = (
 
 QUEUE_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "add": lambda m: TodoAdd(todo_add("third")),
-    "add by number": lambda m: TodoAdd(todo_add("0003-third")),
+    "add by an old NNNN-slug name": lambda m: TodoAdd(todo_add("0003-third")),
+    "add by id": lambda m: TodoAdd(todo_add(THIRD)),
     "add to the front": lambda m: TodoAdd(todo_add("third", front=True)),
     "add a queued epic": lambda m: TodoAdd(todo_add("second")),
     "add an epic with no folder": lambda m: TodoAdd(todo_add("0009-nope")),
     "prune": lambda m: TodoPrune(todo_prune("second")),
+    "prune by id": lambda m: TodoPrune(todo_prune(FIRST)),
     "prune an unqueued epic": lambda m: TodoPrune(todo_prune("0003-third")),
     "reorder one": lambda m: TodoReorder(todo_reorder("second")),
     "reorder two": lambda m: TodoReorder(todo_reorder("0002-second", "0001-first")),
     "reorder an unqueued epic": lambda m: TodoReorder(todo_reorder("0001-first", "0003-third")),
     "reorder two unqueued epics": lambda m: TodoReorder(todo_reorder("0003-third", "0009-nope")),
     "reorder a repeated epic": lambda m: TodoReorder(todo_reorder("0002-second", "0002-second")),
-    "reorder a repeated epic by its slug and its number": lambda m: TodoReorder(todo_reorder("second", "0002-second")),
-    "reorder a repeated epic by its number and its slug": lambda m: TodoReorder(todo_reorder("0001-first", "first")),
+    "reorder a repeated epic by its slug and its old name": lambda m: TodoReorder(todo_reorder("second", "0002-second")),
+    "reorder a repeated epic by its old name and its slug": lambda m: TodoReorder(todo_reorder("0001-first", "first")),
+    "reorder a repeated epic by its id and its slug": lambda m: TodoReorder(todo_reorder(SECOND, "second")),
     "reorder a repeated third epic": lambda m: TodoReorder(todo_reorder("0003-third", "0003-third")),
     "reorder a repeated epic with no folder": lambda m: TodoReorder(todo_reorder("0009-nope", "0009-nope")),
     "list": lambda m: TodoList(todo_list()),
-    "path of an epic by number": lambda m: PathEpic(path_epic("0001-first")),
+    "path of an epic by its old name": lambda m: PathEpic(path_epic("0001-first")),
+    "path of an epic by id": lambda m: PathEpic(path_epic(FIRST)),
     "path of an epic by slug": lambda m: PathEpic(path_epic("first")),
     "path of an epic with no folder": lambda m: PathEpic(path_epic("nope")),
 }
@@ -99,7 +104,8 @@ STORY_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "unblock the story": lambda m: Unblock(unblock(ALPHA)),
     "unblock the story to a status": lambda m: Unblock(unblock(ALPHA, status="in-progress")),
     "unblock the epic": lambda m: Unblock(unblock(None, "first")),
-    "unblock the epic by its number": lambda m: Unblock(unblock(None, "0001-first")),
+    "unblock the epic by its old name": lambda m: Unblock(unblock(None, "0001-first")),
+    "unblock the epic by id": lambda m: Unblock(unblock(None, FIRST)),
     "unblock the second epic": lambda m: Unblock(unblock(None, "0002-second")),
     "unblock every story": lambda m: Unblock(unblock(None, None, all=True)),
     "unblock with nothing named": lambda m: Unblock(unblock()),
@@ -117,6 +123,7 @@ STORY_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "branch of the story": lambda m: PathBranch(path_branch(ALPHA)),
     "branch of an unknown story": lambda m: PathBranch(path_branch("TST-NOPE")),
     "branch of an epic": lambda m: PathBranch(path_branch("second", epic=True)),
+    "branch of an epic by id": lambda m: PathBranch(path_branch(SECOND, epic=True)),
     "look": lambda m: Look(),
 }
 
@@ -152,17 +159,22 @@ PLAN_SCENES = (
 
 PLAN_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "create an epic": lambda m: CreateEpic(create_epic("fifth", "Fifth epic")),
-    "create an epic by its number": lambda m: CreateEpic(create_epic("0007-seventh", "Seventh epic")),
+    "create an epic by an old NNNN-slug name": lambda m: CreateEpic(create_epic("0007-seventh", "Seventh epic")),
     "create an epic that exists": lambda m: CreateEpic(create_epic("second", "Second again")),
-    "create an epic by its number that exists": lambda m: CreateEpic(create_epic("0001-first", "First again")),
+    "create an epic by the old name of one that exists": lambda m: CreateEpic(create_epic("0001-first", "First again")),
     "create a story": lambda m: CreateStory(create_story("third", "delta")),
-    "create a story by the epic's number": lambda m: CreateStory(create_story("0002-second", "delta")),
+    "create a story by the epic's old name": lambda m: CreateStory(create_story("0002-second", "delta")),
+    "create a story by the epic's id": lambda m: CreateStory(create_story(THIRD, "delta")),
+    "create a story in the created epic": lambda m: CreateStory(create_story("fourth", "delta")),
     "create a story that exists": lambda m: CreateStory(create_story("first", "alpha", "Alpha again")),
     "create a story in an unknown epic": lambda m: CreateStory(create_story("0009-nope")),
     "delete an epic": lambda m: DeleteEpic(delete_epic("third")),
     "delete a queued epic": lambda m: DeleteEpic(delete_epic("0002-second")),
     "delete an epic with stories": lambda m: DeleteEpic(delete_epic("first")),
     "delete an epic that is gone": lambda m: DeleteEpic(delete_epic("0009-nope")),
+    "delete an epic by id": lambda m: DeleteEpic(delete_epic(THIRD)),
+    "delete the created epic": lambda m: DeleteCreatedEpic(delete_epic("fourth")),
+    "delete the created epic by an old name": lambda m: DeleteCreatedEpic(delete_epic("0004-fourth")),
     "delete a story": lambda m: DeleteStory(delete_story(ALPHA)),
     "delete the story of the second epic": lambda m: DeleteStory(delete_story(SX)),
     "delete an unknown story": lambda m: DeleteStory(delete_story("TST-NOPE")),
@@ -400,6 +412,23 @@ TEMPLATE_ACTIONS: dict[str, Callable[[Plan], object]] = {
 }
 
 
+def layout_stage(model: Plan) -> str:
+    """Whether the shelf still names an epic folder by number and slug."""
+    return "numbered" if model.numbered() else "ids"
+
+
+LAYOUT_SCENES = (
+    Scene("ids", "every epic folder is named by its id", lambda today: ()),
+    Scene("numbered", "a person copied in an epic folder from the old layout", lambda today: (CopyInAnOldEpic(),)),
+)
+
+LAYOUT_ACTIONS: dict[str, Callable[[Plan], object]] = {
+    "list the queue": lambda m: TodoList(todo_list()),
+    "apply the layout": lambda m: LayoutApply(nothing()),
+    "look": lambda m: Look(),
+}
+
+
 MATRICES = (
     Axes[Plan]("queue", TODAY, QUEUE_SCENES, QUEUE_ACTIONS, queue_stage, state_of=lambda m, _: queue_stage(m)),
     Axes[Plan]("story", TODAY, STORY_SCENES, STORY_ACTIONS, story_stage, state_of=lambda m, _: story_stage(m)),
@@ -415,4 +444,5 @@ MATRICES = (
     Axes[Plan]("template", TODAY, TEMPLATE_SCENES, TEMPLATE_ACTIONS, template_stage, state_of=lambda m, _: template_stage(m)),
     Axes[Plan]("plan", TODAY, PLAN_SCENES, PLAN_ACTIONS, plan_stage, state_of=lambda m, _: plan_stage(m)),
     Axes[Plan]("seeds", TODAY, SEED_SCENES, SEED_ACTIONS, seed_stage, state_of=lambda m, _: seed_stage(m)),
+    Axes[Plan]("layout", TODAY, LAYOUT_SCENES, LAYOUT_ACTIONS, layout_stage, state_of=lambda m, _: layout_stage(m)),
 )

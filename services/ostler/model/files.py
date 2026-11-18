@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from ostler.book import Mark, Watched
 
-from ..fixtures import EPICS, STORY_PATHS
+from ..fixtures import EPICS, FIRST, SECOND, SLUG_OF, STORY_PATHS
 
 NOT_STARTED = "status: Not started"
 IN_PROGRESS = "status: in-progress"
@@ -36,8 +36,8 @@ COVER_LINES = ("- covers: SD-3", "- covers: SD-4")
 
 MILESTONE = "docs/milestones/0001-ms/milestone.md"
 PROPOSED = "status: proposed"
-FIRST_EPIC_LISTED = "1. First epic (`TST-01M585P778TKS9VRC0053BQDSZ`, `0001-first`)"
-SECOND_EPIC_LISTED = "2. Second epic (`TST-01M585PEGMRE3FWETV74QRSSY3`, `0002-second`)"
+FIRST_EPIC_LISTED = f"1. First epic (`{FIRST}`)"
+SECOND_EPIC_LISTED = f"2. Second epic (`{SECOND}`)"
 SOURCE_ITEM = "sourceItems:\n- SD-3"
 RECORD_ID = "TST-01M7N888KSZ21DR28M6BSGQTY2"
 RECORD = f"art/backlogs/acme/web/{RECORD_ID}/record.md"
@@ -69,9 +69,28 @@ STEP_ASSERT = "plans/qa/asserts/a1.json"
 
 SEED_BLOCKS = tuple(seed_block(i, s, layer) for i in SEED_IDS for s in SEED_STATUSES for layer in SEED_LAYERS)
 
+LEGACY = "TST-01M585PH3QK2V8N4W6Y0ZB7CDX"
+LEGACY_SLUG = "legacy"
+LEGACY_STORY = "TST-01M585PJ9T7RX2E5Q8M1N4KZAB"
+OLD_FOLDER = f"0004-{LEGACY_SLUG}"
+OLD_EPIC = f"art/epics/{OLD_FOLDER}/epic.md"
+OLD_STORY = f"art/epics/{OLD_FOLDER}/stories/echo/story.md"
+MOVED_EPIC = f"art/epics/{LEGACY}/epic.md"
+MOVED_STORY = f"art/epics/{LEGACY}/stories/{LEGACY_STORY}/story.md"
+RECORDED_SLUG = f"slug: {LEGACY_SLUG}"
+
+EPIC_PATHS = tuple(f"art/epics/{e}/epic.md" for e in EPICS)
+STORY_FILES = tuple(STORY_PATHS.values())
+STORY_STRINGS = (*STATUS_LINES.values(), *BULLET_LINES.values(), *CONFLICT_LINES, *DEPENDENCY_LINES)
+EPIC_STRINGS = (*SEED_BLOCKS, *STORY_HEADINGS, *TITLE_LINES, *COVER_LINES)
+
 MARKS = (
-    Mark("art/epics/*/stories/*/story.md", *STATUS_LINES.values(), *BULLET_LINES.values(), *CONFLICT_LINES,
-         *DEPENDENCY_LINES),
+    *(Mark(path, *STORY_STRINGS) for path in STORY_FILES),
+    *(Mark(path, f"slug: {SLUG_OF[path.split('/')[2]]}", *EPIC_STRINGS) for path in EPIC_PATHS),
+    Mark(OLD_EPIC, RECORDED_SLUG),
+    Mark(OLD_STORY, NOT_STARTED),
+    Mark(MOVED_EPIC, RECORDED_SLUG),
+    Mark(MOVED_STORY, NOT_STARTED),
     Mark(OLD_LIST, OLD_BULLET),
     Mark(SESSION, ASSERTED, PASSED),
     Mark(RENDERED),
@@ -86,11 +105,7 @@ MARKS = (
     Mark(ARTIFACT, ORDER_KEY),
     Mark(TEMPLATES, TEMPLATE_DECLARED),
     Mark(GUIDANCE, GUIDED),
-    Mark("art/epics/*/epic.md", *SEED_BLOCKS, *STORY_HEADINGS, *TITLE_LINES, *COVER_LINES),
 )
-
-EPIC_PATHS = tuple(f"art/epics/{e}/epic.md" for e in EPICS)
-STORY_FILES = tuple(STORY_PATHS.values())
 
 
 class FileRecord(Watched):

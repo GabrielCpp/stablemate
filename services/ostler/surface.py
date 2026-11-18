@@ -5,26 +5,18 @@ from __future__ import annotations
 from ostler.book import CommandSurface, Environment, Seed
 
 from .demo import FILES as DEMO_BOOK
+from .fixtures import ALPHA, BRAVO, EPICS, FIRST, SECOND, SLUG_OF, SX, THIRD
 
 PREFIX = "TST"
-EPIC_IDS = {
-    "0001-first": "TST-01M585P778TKS9VRC0053BQDSZ",
-    "0002-second": "TST-01M585PEGMRE3FWETV74QRSSY3",
-    "0003-third": "TST-01M585PF6G57AQ3V1JZA5X8PKY",
-}
-TITLES = {"0001-first": "First epic", "0002-second": "Second epic", "0003-third": "Third epic"}
-STORIES = {
-    "0001-first": (("alpha", "TST-01M585P7WKBH9YJ8E6NA73W4S9"), ("bravo", "TST-01M585P8MYP5WJAMJ89Z981GEG")),
-    "0002-second": (("sx", "TST-01M585PFWZZXH4Y6KNMH1VK58H"),),
-    "0003-third": (),
-}
+TITLES = {FIRST: "First epic", SECOND: "Second epic", THIRD: "Third epic"}
+STORIES = {FIRST: (("alpha", ALPHA), ("bravo", BRAVO)), SECOND: (("sx", SX),), THIRD: ()}
 
 
-def epic_page(name: str) -> str:
+def epic_page(eid: str) -> str:
     stories = "".join(
-        f"\n### {slug}\n- title: Story {slug}\n- id: {ident}\n- covers: (none)\n" for slug, ident in STORIES[name])
-    return (f"---\ntype: epic\nid: {EPIC_IDS[name]}\ntitle: {TITLES[name]}\nstatus: planned\n---\n"
-            f"# Epic: {TITLES[name]}\n\n## Seeds\n\n## Stories\n{stories}")
+        f"\n### {slug}\n- title: Story {slug}\n- id: {ident}\n- covers: (none)\n" for slug, ident in STORIES[eid])
+    return (f"---\ntype: epic\nid: {eid}\nslug: {SLUG_OF[eid]}\ntitle: {TITLES[eid]}\nstatus: planned\n---\n"
+            f"# Epic: {TITLES[eid]}\n\n## Seeds\n\n## Stories\n{stories}")
 
 
 def story_page(slug: str, ident: str) -> str:
@@ -34,8 +26,8 @@ def story_page(slug: str, ident: str) -> str:
             "- **Status**: Not started\n")
 
 
-def index_page(names: tuple[str, ...]) -> str:
-    rows = "".join(f"- [{n}]({n}/epic.md) — {TITLES[n]}\n" for n in names)
+def index_page(eids: tuple[str, ...]) -> str:
+    rows = "".join(f"- [{e}]({e}/epic.md) — {TITLES[e]}\n" for e in eids)
     return f"# Epics\n\nThe ordered work queue for this repo.\n\n{rows}"
 
 
@@ -66,12 +58,12 @@ def files() -> dict[str, str]:
     out = {"agents.yml": f"repo:\n  id_prefix: {PREFIX}\n", "home/.keep": "", "plans/qa_plan.py": GOOD_PLAN,
            "plans/bad/qa_plan.py": BAD_PLAN, "plans/web/qa_plan.py": WEB_PLAN, "plans/phone/qa_plan.py": PHONE_PLAN,
            "plans/grpc/qa_plan.py": GRPC_PLAN, "vet/regions.json": "[]", "vet/manifest.json": "{}", "old-backlog.md": OLD_BACKLOG}
-    out["art/epics/index.md"] = index_page(("0001-first", "0002-second"))
+    out["art/epics/index.md"] = index_page((FIRST, SECOND))
     out.update(DEMO_BOOK)
-    for name in EPIC_IDS:
-        out[f"art/epics/{name}/epic.md"] = epic_page(name)
-        for slug, ident in STORIES[name]:
-            out[f"art/epics/{name}/stories/{slug}/story.md"] = story_page(slug, ident)
+    for eid in EPICS:
+        out[f"art/epics/{eid}/epic.md"] = epic_page(eid)
+        for slug, ident in STORIES[eid]:
+            out[f"art/epics/{eid}/stories/{ident}/story.md"] = story_page(slug, ident)
     return out
 
 

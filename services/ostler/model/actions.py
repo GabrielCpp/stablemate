@@ -2,22 +2,18 @@
 
 from __future__ import annotations
 
-import re
-
 from ostler.book import Action, Actor, Create, Delete, Select, Transaction, Update
 
-from ..fixtures import (COVERS, EPICS, SLUGS, STORY_PATHS, AddArgs, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
-                        DeleteEpicArgs, DeleteStoryArgs, ListArgs, PathBranchArgs, PathEpicArgs, PathSpecArgs, PathStoryArgs,
+from ..fixtures import (COVERS, SLUGS, STORY_PATHS, AddArgs, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
+                        DeleteEpicArgs, DeleteStoryArgs, ListArgs, Nothing, PathBranchArgs, PathEpicArgs, PathSpecArgs, PathStoryArgs,
                         PruneArgs, ReorderArgs, SeedAddArgs, SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs,
-                        directory_of, slug_of)
+                        slug_of)
 from . import rules
-from .files import BULLET_LINES, CONFLICT_LINES, STATUS_LINES, FileRecord, holding, seed_block
-from .records import Queue
+from .files import (BULLET_LINES, CONFLICT_LINES, LEGACY, LEGACY_SLUG, LEGACY_STORY, MOVED_EPIC, MOVED_STORY, NOT_STARTED,
+                    OLD_EPIC, OLD_FOLDER, OLD_STORY, RECORDED_SLUG, STATUS_LINES, FileRecord, holding, seed_block)
+from .records import MintedEpic, MintedStory, Queue
 from .rules import queued_as
-
-from .state import QUEUE, Plan
-
-_NUMBERED = re.compile(r"^(\d{4,})-(.+)$")
+from .state import MINTED, QUEUE, Plan
 
 WARNING = " — WARNING: no '{name}/epic.md' yet, so epic selection will skip it and report no work remaining"
 
@@ -37,9 +33,9 @@ class AddEpic(Action[AddArgs, Plan]):
 
     @staticmethod
     def reduce(a: AddArgs, s: Plan, by: Actor | None) -> Transaction:
-        name = a.canonical
+        name = s.resolve_epic(a.name)
         epics = (name, *s.epics()) if a.front else (*s.epics(), name)
-        warning = "" if name in EPICS else WARNING.format(name=name)
+        warning = "" if name in s.folders() else WARNING.format(name=name)
         return Transaction(requeue(s, epics), says=(f"queued epic '{name}'{warning}",))
 
 
@@ -68,6 +64,7 @@ class ReorderEpics(Action[ReorderArgs, Plan]):
 
 class ListEpics(Action[ListArgs, Plan]):
     accept = ListArgs
+    rules = (rules.shelf_numbered,)
 
     @staticmethod
     def reduce(a: ListArgs, s: Plan, by: Actor | None) -> Transaction:
@@ -80,7 +77,7 @@ class AddSeed(Action[SeedAddArgs, Plan]):
 
     @staticmethod
     def reduce(a: SeedAddArgs, s: Plan, by: Actor | None) -> Transaction:
-        path = f"art/epics/{a.epic}/epic.md"
+        path = f"art/epics/{s.resolve_epic(a.epic)}/epic.md"
         assert a.seed is not None
         held = s.files[path].holds
         existed = any(b.startswith(f"### {a.seed}\n") for b in held)
@@ -96,7 +93,7 @@ class RemoveSeed(Action[SeedRemoveArgs, Plan]):
 
     @staticmethod
     def reduce(a: SeedRemoveArgs, s: Plan, by: Actor | None) -> Transaction:
-        path = f"art/epics/{a.epic}/epic.md"
+        path = f"art/epics/{s.resolve_epic(a.epic)}/epic.md"
         kept = tuple(b for b in s.files[path].holds if not b.startswith(f"### {a.seed}\n"))
         return Transaction(rewrite(s, path, *kept), says=(f"removed seed '{a.seed}' from epic '{a.epic}'",))
 
@@ -135,7 +132,7 @@ class PathOfEpic(Action[PathEpicArgs, Plan]):
 
     @staticmethod
     def reduce(a: PathEpicArgs, s: Plan, by: Actor | None) -> Transaction:
-        return Transaction(says=(f"art/epics/{directory_of(a.name or '')}",))
+        return Transaction(says=(f"art/epics/{s.resolve_epic(a.name)}",))
 
 
 class ListFiles(Action[object, Plan]):
@@ -166,14 +163,7 @@ class MakeEpic(Action[CreateEpicArgs, Plan]):
 
     @staticmethod
     def reduce(a: CreateEpicArgs, s: Plan, by: Actor | None) -> Transaction:
-        name = (a.name or "").strip()
-        if _NUMBERED.match(name):
-            folder = name
-        else:
-            taken = [int(d.split("-", 1)[0]) for d in s.epic_dirs()]
-            folder = f"{max(taken, default=0) + 1:04d}-{slug_of(name)}"
-        path = f"art/epics/{folder}/epic.md"
-        return Transaction(Create(s.files, holding(path)), says=())
+        return Transaction(Create(s.minted, MintedEpic(a.slug, a.title or "")), says=())
 
 
 class MakeStory(Action[CreateStoryArgs, Plan]):
@@ -182,16 +172,16 @@ class MakeStory(Action[CreateStoryArgs, Plan]):
 
     @staticmethod
     def reduce(a: CreateStoryArgs, s: Plan, by: Actor | None) -> Transaction:
-        folder = s.resolve_epic(a.epic or "")
-        story_path = f"art/epics/{folder}/stories/{a.slug}/story.md"
-        if story_path in s.files.items:
-            return Transaction(says=(f"story '{a.slug}' already exists in epic '{a.epic}'",))
+        folder = s.resolve_epic(a.epic)
+        slug = a.slug or ""
+        if slug in s.stories_of(folder):
+            return Transaction(says=(f"story '{slug}' already exists in epic '{a.epic}'",))
+        made = Create(s.stories, MintedStory(f"{folder}/{slug}", folder, slug))
         epic_path = f"art/epics/{folder}/epic.md"
+        if epic_path not in s.files.items:
+            return Transaction(made, says=())
         held = s.files[epic_path].holds
-        added = (f"### {a.slug}", f"- title: {a.title}")
-        return Transaction(
-            Create(s.files, holding(story_path, STATUS_LINES["Not started"], BULLET_LINES["Not started"])),
-            rewrite(s, epic_path, *held, *added), says=())
+        return Transaction(made, rewrite(s, epic_path, *held, f"### {slug}", f"- title: {a.title}"), says=())
 
 
 class DropEpic(Action[DeleteEpicArgs, Plan]):
@@ -201,13 +191,18 @@ class DropEpic(Action[DeleteEpicArgs, Plan]):
     def reduce(a: DeleteEpicArgs, s: Plan, by: Actor | None) -> Transaction:
         name = a.name or ""
         folder = s.resolve_epic(name)
+        existed = folder in s.folders()
         queued = queued_as(s, name)
         removed = " (removed from epics index)" if queued is not None else ""
         gone = tuple(f.path for f in s.files if f.path.startswith("art/epics/") and epic_of(f.path) == folder)
         changes: list = [Delete(s.files, path) for path in gone]
+        changes += [Delete(s.stories, story.key) for story in s.stories if story.epic == folder]
+        changes += [Delete(s.minted, epic.slug) for epic in s.minted if MINTED.format(epic.slug) == folder]
         if queued is not None:
             changes.append(requeue(s, tuple(e for e in s.epics() if e != queued)))
-        if not gone:
+        if folder.startswith(MINTED.format("")[:-1]):
+            return Transaction(*changes, says=())
+        if not existed:
             return Transaction(*changes, says=(f"epic '{name}' already absent; cleanup complete{removed}",))
         return Transaction(*changes, says=(f"deleted epic '{folder}'{removed}",))
 
@@ -257,7 +252,7 @@ class ClearBlocks(Action[UnblockArgs, Plan]):
         if a.story:
             candidates = [a.story]
         elif a.epic:
-            folder = s.resolve_epic(a.epic)
+            folder = s.epic_of(a.epic)
             candidates = [sid for sid, path in sorted(STORY_PATHS.items(), key=lambda kv: kv[1])
                           if epic_of(path) == folder and s.has_story(sid)]
         else:
@@ -299,5 +294,30 @@ class BranchName(Action[PathBranchArgs, Plan]):
     def reduce(a: PathBranchArgs, s: Plan, by: Actor | None) -> Transaction:
         ref = a.ref or ""
         if a.epic:
-            return Transaction(says=(f"feat/{slug_of(ref)}",))
+            folder = s.epic_of(ref)
+            return Transaction(says=(f"feat/{s.folders()[folder] if folder else slug_of(ref)}",))
         return Transaction(says=(SLUGS[ref],))
+
+
+class CopyOldEpic(Action[object, Plan]):
+    @staticmethod
+    def reduce(a: object, s: Plan, by: Actor | None) -> Transaction:
+        return Transaction(Create(s.files, holding(OLD_EPIC)), Create(s.files, holding(OLD_STORY, NOT_STARTED)),
+                           requeue(s, (*s.epics(), OLD_FOLDER)))
+
+
+class ApplyLayout(Action[Nothing, Plan]):
+    accept = Nothing
+
+    @staticmethod
+    def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
+        if OLD_EPIC not in s.files.items:
+            return Transaction(says=("every epic and story folder is already named by its id",))
+        queued = OLD_FOLDER in s.epics()
+        changes: list = [Delete(s.files, OLD_EPIC), Delete(s.files, OLD_STORY), Create(s.files, holding(MOVED_EPIC, RECORDED_SLUG)),
+                         Create(s.files, holding(MOVED_STORY, NOT_STARTED))]
+        if queued:
+            changes.append(requeue(s, tuple(LEGACY if e == OLD_FOLDER else e for e in s.epics())))
+        says = (f"{OLD_FOLDER}: recorded slug `{LEGACY_SLUG}`", f"{OLD_FOLDER}/stories/echo -> {LEGACY_STORY}",
+                f"{OLD_FOLDER} -> {LEGACY}")
+        return Transaction(*changes, says=(*says, *(("index.md: queue entries now name the id folders",) if queued else ())))

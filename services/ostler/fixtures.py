@@ -9,14 +9,18 @@ from typing import Any, Iterable
 
 from ostler.book import Actor, Fixture
 
-EPICS = ("0001-first", "0002-second", "0003-third")
+FIRST = "TST-01M585P778TKS9VRC0053BQDSZ"
+SECOND = "TST-01M585PEGMRE3FWETV74QRSSY3"
+THIRD = "TST-01M585PF6G57AQ3V1JZA5X8PKY"
+SLUG_OF = {FIRST: "first", SECOND: "second", THIRD: "third"}
+EPICS = tuple(SLUG_OF)
 ALPHA = "TST-01M585P7WKBH9YJ8E6NA73W4S9"
 BRAVO = "TST-01M585P8MYP5WJAMJ89Z981GEG"
 SX = "TST-01M585PFWZZXH4Y6KNMH1VK58H"
 STORY_PATHS = {
-    ALPHA: "art/epics/0001-first/stories/alpha/story.md",
-    BRAVO: "art/epics/0001-first/stories/bravo/story.md",
-    SX: "art/epics/0002-second/stories/sx/story.md",
+    ALPHA: f"art/epics/{FIRST}/stories/{ALPHA}/story.md",
+    BRAVO: f"art/epics/{FIRST}/stories/{BRAVO}/story.md",
+    SX: f"art/epics/{SECOND}/stories/{SX}/story.md",
 }
 SLUGS = {ALPHA: "alpha", BRAVO: "bravo", SX: "sx"}
 COVERS = {ALPHA: "SD-3", BRAVO: "SD-4", SX: "SD-3"}
@@ -27,21 +31,22 @@ _NUMBERED = re.compile(r"^(\d{4,})-(.+)$")
 
 
 def slug_of(name: str) -> str:
-    """The slug half of an epic name: the whole name when it carries no number."""
+    """The slug an old `NNNN-slug` name carries: the whole name when it carries no number."""
     found = _NUMBERED.match(name.strip())
     return found.group(2) if found else name.strip()
 
 
 def directory_of(name: str) -> str:
-    """The directory an epic name stands for: a numbered name as typed, a bare slug as the epic that has it."""
+    """The folder a name stands for among the epics the sandbox starts with: an id as typed, a slug or an old
+    `NNNN-slug` name as the id of the epic with that slug, any other name as typed."""
     name = name.strip()
-    if _NUMBERED.match(name):
+    if name in SLUG_OF:
         return name
-    return next((e for e in EPICS if slug_of(e) == name), name)
+    return next((e for e, slug in SLUG_OF.items() if slug == slug_of(name)), name)
 
 
 class Epic:
-    """An epic a user names, by its number and slug or by the slug alone."""
+    """An epic a user names, by its id, its slug or an old `NNNN-slug` name."""
 
     name: str | None
 
@@ -57,7 +62,7 @@ class AddArgs(Epic, Fixture):
 
     @classmethod
     def examples(cls, state: Any, by: Actor | None) -> Iterable[AddArgs]:
-        return (todo_add("third"), todo_add("0003-third", front=True), todo_add("second"), todo_add("0009-nope"))
+        return (todo_add("third"), todo_add("0003-third", front=True), todo_add(THIRD), todo_add("second"), todo_add("0009-nope"))
 
 
 @dataclass
@@ -151,13 +156,18 @@ class PathEpicArgs(Fixture):
 
     @classmethod
     def examples(cls, state: Any, by: Actor | None) -> Iterable[PathEpicArgs]:
-        return (path_epic(), path_epic("first"), path_epic("nope"))
+        return (path_epic(), path_epic("first"), path_epic(FIRST), path_epic("nope"))
 
 
 @dataclass
 class CreateEpicArgs(Epic, Fixture):
     name: str | None = None
     title: str | None = None
+
+    @property
+    def slug(self) -> str:
+        """The slug the new epic takes: the name, less the number of an old `NNNN-slug` name."""
+        return slug_of(self.name or "")
 
     @classmethod
     def examples(cls, state: Any, by: Actor | None) -> Iterable[CreateEpicArgs]:
@@ -250,7 +260,8 @@ class PathBranchArgs(Fixture):
 
     @classmethod
     def examples(cls, state: Any, by: Actor | None) -> Iterable[PathBranchArgs]:
-        return (path_branch(), path_branch("0002-second", epic=True), path_branch("second", epic=True), path_branch("TST-NOPE"))
+        return (path_branch(), path_branch("0002-second", epic=True), path_branch("second", epic=True), path_branch(SECOND, epic=True),
+                path_branch("TST-NOPE"))
 
 
 def create_epic(name: str | None = "fourth", title: str | None = "Fourth epic") -> CreateEpicArgs:
@@ -346,7 +357,7 @@ __all__ = [
     "BLOCKERS", "COVERS", "CreateEpicArgs", "CreateStoryArgs", "DeleteEpicArgs", "DeleteStoryArgs", "PathBranchArgs",
     "PathSpecArgs", "PathStoryArgs", "SLUGS", "UnblockArgs", "UpdateStoryArgs", "create_epic", "create_story",
     "delete_epic", "delete_story", "path_branch", "path_spec", "path_story", "unblock", "update_story",
-    "ALPHA", "AddArgs", "BRAVO", "ConflictArgs", "EPICS", "ListArgs", "PathEpicArgs", "PruneArgs", "ReorderArgs", "SEED_LAYERS",
+    "ALPHA", "AddArgs", "BRAVO", "FIRST", "SECOND", "SLUG_OF", "THIRD", "ConflictArgs", "EPICS", "ListArgs", "PathEpicArgs", "PruneArgs", "ReorderArgs", "SEED_LAYERS",
     "SEED_STATUSES", "STORY_PATHS", "SX", "SeedAddArgs", "SeedRemoveArgs", "SetStatusArgs", "conflict", "directory_of", "path_epic",
     "seed_add", "seed_remove", "set_status", "slug_of", "todo_add", "todo_list", "todo_prune", "todo_reorder",
 ]

@@ -1,9 +1,9 @@
 story: none
-date: 2026-11-17
+date: 2026-11-18
 elements: CreateEpic, CreateStory, DeleteEpic, DeleteStory
 
-The queue, seed and story commands name the sandbox's three epics and three stories, and a refusal prints the folder
-name an epic has in the sandbox. A rule's message is a template over the request, so the model cannot print a folder it
+The queue, seed and story commands name the sandbox's three epics and three stories, and a refusal prints the id
+folder an epic has in the sandbox. A rule's message is a template over the request, so the model cannot print a folder it
 learned from the state. A world where an epic or a story is gone is therefore played only by the `plan` matrix, which
 holds no queue, seed or story command that depends on the missing folder.
 
@@ -12,6 +12,6 @@ give it only the calls that change nothing, so the walk never deletes an epic un
 commands, and it reports the four `plan` scenes that create or delete as never reached. The `plan` matrix and the
 journey `ReshapeThePlan` play them against the app.
 
-`delete epic` drops the epic from the queue when the queue names it by the same slug, whatever its folder spelling,
-and says so on the same line (`deleted epic '0003-third' (removed from epics index)`). An epic whose folder is already
+`delete epic` drops the epic from the queue when a queue entry stands for the same epic, and says so on the same line
+(`deleted epic '<id>' (removed from epics index)`). An epic whose folder is already
 gone is reported as absent and still dropped from the queue.

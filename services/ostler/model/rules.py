@@ -6,22 +6,26 @@ from __future__ import annotations
 
 from ostler.book import Actor, Exited, Rule
 
-from ..fixtures import (EPICS, SEED_LAYERS, SEED_STATUSES, AddArgs, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
+from ..fixtures import (SEED_LAYERS, SEED_STATUSES, AddArgs, ListArgs, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
                         DeleteStoryArgs, PathBranchArgs, PathSpecArgs, PathStoryArgs, PruneArgs, ReorderArgs, SeedAddArgs,
-                        SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs, slug_of)
+                        SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs)
 from .state import Plan
 
 FAILED = Exited(1)
 
 
 def queued_as(s: Plan, name: str | None) -> str | None:
-    """The queue entry that names the same epic as this name, by the name itself or by its slug."""
+    """The queue entry that names the same epic as this name: the entry spelled as typed, else the first entry that
+    stands for the epic the name stands for. A name that stands for no epic matches only itself."""
     if name is None:
         return None
     epics = s.epics()
     if name in epics:
         return name
-    return next((e for e in epics if slug_of(e) == slug_of(name)), None)
+    wanted = s.epic_of(name)
+    if wanted is None:
+        return None
+    return next((e for e in epics if s.epic_of(e) == wanted), None)
 
 
 def _queued(a: AddArgs, s: Plan, by: Actor | None) -> bool:
@@ -49,11 +53,11 @@ def _then_lost(a: ReorderArgs, s: Plan, by: Actor | None) -> bool:
 
 
 def _twice(a: ReorderArgs, s: Plan, by: Actor | None) -> bool:
-    return a.first is not None and a.then is not None and slug_of(a.first) == slug_of(a.then)
+    return a.first is not None and a.then is not None and queued_as(s, a.first) == queued_as(s, a.then)
 
 
 def _no_epic(a: SeedAddArgs | SeedRemoveArgs, s: Plan, by: Actor | None) -> bool:
-    return a.epic not in EPICS
+    return s.epic_of(a.epic) is None
 
 
 def _bad_status(a: SeedAddArgs, s: Plan, by: Actor | None) -> bool:
@@ -65,7 +69,7 @@ def _bad_layer(a: SeedAddArgs, s: Plan, by: Actor | None) -> bool:
 
 
 def _no_seed(a: SeedRemoveArgs, s: Plan, by: Actor | None) -> bool:
-    path = f"art/epics/{a.epic}/epic.md"
+    path = f"art/epics/{s.resolve_epic(a.epic)}/epic.md"
     return not any(b.startswith(f"### {a.seed}\n") for b in s.files[path].holds)
 
 
@@ -75,11 +79,11 @@ def _no_story(a: SetStatusArgs | ConflictArgs | DeleteStoryArgs | UpdateStoryArg
 
 
 def _epic_present(s: Plan, name: str | None) -> bool:
-    return f"art/epics/{s.resolve_epic(name or '')}/epic.md" in s.files.items
+    return s.epic_of(name) is not None
 
 
 def _epic_exists(a: CreateEpicArgs, s: Plan, by: Actor | None) -> bool:
-    return _epic_present(s, a.name)
+    return _epic_present(s, a.slug)
 
 
 def _no_epic_for_story(a: CreateStoryArgs, s: Plan, by: Actor | None) -> bool:
@@ -140,7 +144,9 @@ empty_status = Rule[SetStatusArgs, Plan](
     why="a script that passes an unset variable would blank the story's status and be told it worked.")
 conflict_unclear = Rule[ConflictArgs, Plan]("pass the conflict text, or --clear — one of the two", _conflict_unclear, FAILED)
 no_story_for_conflict = Rule[ConflictArgs, Plan]("no story with id '{story}'", _no_story, FAILED)
-epic_exists = Rule[CreateEpicArgs, Plan]("epic '{canonical}' already exists", _epic_exists, FAILED)
+epic_exists = Rule[CreateEpicArgs, Plan](
+    "epic '{slug}' already exists ({canonical})", _epic_exists, FAILED,
+    why="two epics with one slug would leave a command that names the slug unable to tell which epic it means.")
 no_epic_for_story = Rule[CreateStoryArgs, Plan]("no epic '{epic}'", _no_epic_for_story, FAILED)
 no_story_to_delete = Rule[DeleteStoryArgs, Plan]("no story with id '{story}'", _no_story, FAILED)
 no_story_to_update = Rule[UpdateStoryArgs, Plan]("no story with id '{story}'", _no_story, FAILED)
@@ -152,3 +158,15 @@ unblock_no_epic = Rule[UnblockArgs, Plan]("no epic '{epic}'", _unblock_no_epic, 
 no_story_for_story_path = Rule[PathStoryArgs, Plan]("error: no story with id '{story}'", _no_story, FAILED)
 no_story_for_spec_path = Rule[PathSpecArgs, Plan]("error: no story with id '{story}'", _no_story, FAILED)
 no_story_for_branch = Rule[PathBranchArgs, Plan]("error: no story with id '{ref}'", _no_branch_story, FAILED)
+
+
+def _numbered(a: object, s: Plan, by: Actor | None) -> bool:
+    return bool(s.numbered())
+
+
+shelf_numbered = Rule[ListArgs, Plan](
+    "error: the epics shelf <sandbox>/art/epics still names 1 epic folder(s) by number and slug (0004-legacy); epic and "
+    "story folders are named by their ids now. Run `ostler layout apply` to rename them, record each epic's slug and "
+    "repoint the queue, then run ostler again", _numbered, FAILED,
+    why="a command that read a numbered folder would build every path, queue entry and milestone line from a name "
+        "that goes stale, so ostler reads nothing until the shelf is renamed.")
