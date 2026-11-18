@@ -232,6 +232,11 @@ writes `~/.claude/agents/<name>.md`, `~/.codex/agents/<name>.toml` or `~/.config
 `delegates` lists the agents this one may start. On Claude it adds `Agent(<names>)` to the tools,
 so a session run with `claude --agent <name>` can start only those agents. Codex and OpenCode refuse
 a record with `delegates`.
+`mcp` lists `library/mcp/<name>.yml` servers that belong to this agent alone. On Claude farrier
+writes each server inline in the agent's `mcpServers` and adds `mcp__<name>__*` to its tools. Claude
+starts the server when the agent starts and stops it when the agent finishes, so the main session
+never loads it. Select the server in no `mcp` table to keep it out of every other session. Codex and
+OpenCode refuse a record with `mcp`.
 
 ## `packs/<pack>.yml` — bundles
 
