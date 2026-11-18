@@ -84,17 +84,21 @@ def request(method: str, path: str, **query: str) -> Wanted:
     return wanted
 
 
+def asked(thing: Any) -> Any:
+    return getattr(thing, "request", thing)
+
+
 def answer(method: str, path: str, **query: str) -> Wanted:
     """Matches the answer to such a request, whatever its status."""
     wanted = request(method, path, **query)
-    return lambda response: wanted(response.request)
+    return lambda response: wanted(asked(response))
 
 
 def action(route: str, name: str) -> Wanted:
     """Matches the answer to the POST of the form action `name` of the page `route`, as `POST /?/add`."""
 
     def wanted(response: Any) -> bool:
-        req = response.request
+        req = asked(response)
         parts = urlsplit(req.url)
         named = any(key == f"/{name}" for key, _ in parse_qsl(parts.query, keep_blank_values=True))
         return req.method == "POST" and on_route(route, parts.path) and named
@@ -106,7 +110,7 @@ def action(route: str, name: str) -> Wanted:
 def refusal(method: str, path: str) -> Wanted:
     """Matches a 4xx or 5xx answer to such a request."""
     wanted = request(method, path)
-    return lambda response: wanted(response.request) and response.status >= 400
+    return lambda response: wanted(asked(response)) and getattr(response, "status", 0) >= 400
 
 
 class Held:
