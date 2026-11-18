@@ -195,3 +195,14 @@ def test_an_unnumbered_milestone_folder_is_warned_with_the_move_that_numbers_it(
         ("warn", "git mv docs/milestones/beta docs/milestones/0002-beta"),
         ("warn", "git mv docs/milestones/gamma docs/milestones/0003-gamma"),
     ]
+
+
+def test_setting_the_epics_again_leaves_one_blank_line_before_the_next_heading(tmp_path: Path):
+    accounts_id, profiles_id, path = _two_epics_and_a_milestone(tmp_path)
+
+    assert crud.set_milestone_epics(load(tmp_path), "mvp", [accounts_id, profiles_id]).ok
+    first = path.read_text(encoding="utf-8")
+    assert crud.set_milestone_epics(load(tmp_path), "mvp").ok
+
+    assert path.read_text(encoding="utf-8") == first
+    assert f"2. Profiles (`{profiles_id}`)\n\n## " in first

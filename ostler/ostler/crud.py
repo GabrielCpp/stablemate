@@ -57,9 +57,12 @@ def _write_section_body(doc: markdown.MarkdownDoc, heading: str, body: list[str]
         return False
     lines = doc.body.split("\n")
     end = section.line_end
-    while end > section.line_start + 1 and not lines[end - 1].strip():
-        end -= 1
-    lines[section.line_start + 1:end] = ["", *body]
+    if end < len(lines):
+        lines[section.line_start + 1:end] = ["", *body, ""]
+    else:
+        while end > section.line_start + 1 and not lines[end - 1].strip():
+            end -= 1
+        lines[section.line_start + 1:end] = ["", *body]
     doc.body = "\n".join(lines)
     doc._sections = None
     return True
@@ -187,7 +190,7 @@ def _write_milestone_epics(graph: Graph, milestone: model.Milestone, epics: list
     doc.frontmatter = fm
     doc.raw_frontmatter = dump_frontmatter(fm)
     body = milestones_mod.epics_section_lines(graph, milestone)
-    if not _write_section_body(doc, registry.MILESTONE_EPICS_HEADING, [*body, ""]):
+    if not _write_section_body(doc, registry.MILESTONE_EPICS_HEADING, body):
         lines = doc.body.split("\n")
         at = next((i for i, line in enumerate(lines) if line.startswith("## ")), len(lines))
         lines[at:at] = [f"## {registry.MILESTONE_EPICS_HEADING}", "", *body, ""]
