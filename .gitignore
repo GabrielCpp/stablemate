@@ -231,6 +231,8 @@ __marimo__/
 **/qa/qa-session.json
 # <<< farrier: QA evidence <<<
 
+.lavish/
+
 .agents/runs/
 .agents/worktrees/
 .agents/workflows/
@@ -239,4 +241,3 @@ __marimo__/
 .agents/agents-context.json
 .agents/agents-context.*.json
 .agents/agents.mk
-.lavish/
