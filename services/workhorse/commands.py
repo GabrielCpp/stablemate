@@ -87,7 +87,7 @@ LOOP = _app(
     "runner/backends/turn.py",
 )
 
-RUN = Field(Str(), required=False, does="the run to act on, by name or directory; the newest unfinished run when left out")
+RUN = Field(Str(classes={"the parked run": "parked", "the finished run": "finished"}), required=False, does="the run to act on, by name or directory; the newest unfinished run when left out")
 
 
 class Run(Command):
@@ -108,7 +108,7 @@ class Run(Command):
     )
     args = Object(
         "RunArgs",
-        runs_dir=Field(Str(), required=False, does="where the run directory is written; .agents/runs when left out"),
+        runs_dir=Field(Str(classes={"a folder": "elsewhere", "the default folder": ".agents/runs"}), required=False, does="where the run directory is written; .agents/runs when left out"),
         params=Field(
             Str(classes={"text that is not JSON": "nope", "JSON that is not an object": "[1]"}),
             required=False,
@@ -144,8 +144,8 @@ class Dot(Command):
     argv = ("dot", Flag("-o", "out"), Flag("--name", "name"))
     args = Object(
         "DotArgs",
-        name=Field(Str(), required=False, does="the graph's name; loop_runner when left out"),
-        out=Field(Str(), required=False, does="a file to write instead of printing to the terminal"),
+        name=Field(Str(classes={"a graph name": "flow", "a graph name with an underscore": "my_flow"}), required=False, does="the graph's name; loop_runner when left out"),
+        out=Field(Str(classes={"a file name": "flow.dot", "another file name": "graph.dot"}), required=False, does="a file to write instead of printing to the terminal"),
     )
     answers = (Exit(0, Lines(), "the graph is printed, or written to the named file"),)
     carries = DrawGraph
@@ -187,11 +187,11 @@ class Control(Command):
             required=False,
             does="what to do to the run: status, rewind, resume, switch-cli",
         ),
-        name=Field(Str(), required=False, does="the backend a switch moves the run onto"),
+        name=Field(Str(classes={"a backend": "claude", "another backend": "codex"}), required=False, does="the backend a switch moves the run onto"),
         run=RUN,
         to=Field(Str(classes={"a state the flow does not have": "nowhere"}), required=False,
                  does="the state a rewind moves the run back to"),
-        keep=Field(Str(), required=False, does="the params a rewind keeps"),
+        keep=Field(Str(classes={"a param the run holds": "stale", "a param the run does not hold": "zzz"}), required=False, does="the params a rewind keeps"),
         param=Field(Str(classes={"a param written without a value": "bad", "a param the flow does not declare": "n=3"}),
                     required=False, does="a param a rewind sets, written NAME=VALUE"),
         param_from_turn=Field(Str(classes={"a turn file that cannot be read": "x=nofile"}), required=False,
@@ -200,7 +200,7 @@ class Control(Command):
         core=Field(Bool(), required=False, does="reload the core of a live run"),
         at_boundary=Field(Bool(), required=False, does="apply a switch at the next turn boundary"),
         wait=Field(Bool(), required=False, does="wait for a stopping run to end"),
-        text=Field(Str(), required=False, does="the answer a live run is given"),
+        text=Field(Str(classes={"a short answer": "go ahead", "an answer of several words": "yes, go ahead and ship it"}), required=False, does="the answer a live run is given"),
     )
     answers = (
         Exit(0, Lines(opaque=("  backup:",)), "the checkpoint is printed, or the rewind is applied and described"),
@@ -241,7 +241,7 @@ class InboxReply(Command):
         "InboxReplyArgs",
         message=Field(Str(classes={"a message the inbox does not hold": "m9"}), required=False,
                       does="the message to answer"),
-        text=Field(Str(), required=False, does="the answer"),
+        text=Field(Str(classes={"a short answer": "go ahead", "an answer of several words": "yes, go ahead and ship it"}), required=False, does="the answer"),
         run=RUN,
     )
     answers = (
@@ -258,8 +258,8 @@ class Replay(Command):
     argv = ("replay", Positional("turn"), Flag("--run", "run"))
     args = Object(
         "ReplayArgs",
-        turn=Field(Str(), does="the turn directory to replay"),
-        run=Field(Str(), does="the run to act on, by name or directory"),
+        turn=Field(Str(classes={"a turn directory that does not exist": "nope", "a turn directory with a number": "t1"}), does="the turn directory to replay"),
+        run=Field(Str(classes={"the parked run": "parked", "the finished run": "finished"}), does="the run to act on, by name or directory"),
     )
     answers = (Exit(1, STDERR, "the run or the turn cannot be found"),)
     carries = RefuseReplay

@@ -104,10 +104,10 @@ class SandboxRun(Command):
     args = Object(
         "SandboxRunArgs",
         apps=Field(List(Str()), does="a repo the command works on, once per repo"),
-        workdir=Field(Str(), required=False, does="the --app directory name the command starts in; needed with several --app"),
-        runs_dir=Field(Str(), does="where the command writes its runs"),
+        workdir=Field(Str(classes={"the api app": "api", "the web app": "web"}), required=False, does="the --app directory name the command starts in; needed with several --app"),
+        runs_dir=Field(Str(classes={"a folder to create": "sbx/out", "a nested folder to create": "sbx/out/deep"}), does="where the command writes its runs"),
         config=Field(Str(classes={"a config that is not there": "sbx/none.toml"}), does="the stablemate config the command reads"),
-        credentials=Field(Str(), required=False, does="the Claude Code login, mounted when the config runs claude"),
+        credentials=Field(Str(classes={"a login file": "sbx/credentials.json", "another login file": "sbx/other.json"}), required=False, does="the Claude Code login, mounted when the config runs claude"),
         command=Field(Str(classes={"a command to run": "true"}), required=False, does="the command, after `--`"),
     )
     answers = (

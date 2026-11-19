@@ -31,19 +31,19 @@ PROGRESS = Object(
     "Progress",
     container_id=Field(RUN_ID, required=False, does="the run's container id; only its first 12 characters count"),
     name=Field(RUN_ID, required=False, does="the run's display name; a new run without one shows its container id"),
-    repo_name=Field(Str(), required=False),
-    repo_branch=Field(Str(), required=False),
-    current_node=Field(Str(), required=False, does="the node the run is in"),
+    repo_name=Field(Str(classes={"a plain name": "acme-api", "a name with a slash": "acme/api"}), required=False),
+    repo_branch=Field(Str(classes={"a plain branch": "main", "a branch with a slash": "feat/login"}), required=False),
+    current_node=Field(Str(classes={"a node name": "build", "a node name with a dash": "write-tests"}), required=False, does="the node the run is in"),
 )
 
 BLOCKED = Object(
     "Blocked",
     container_id=Field(RUN_ID, required=False),
-    file_path=Field(Str(), required=False, does="the gate file the run waits on; one gate per path"),
-    question=Field(Str(), required=False, does="what the run asks the operator"),
+    file_path=Field(Str(classes={"an absolute path": "/work/gates/ask.md", "a relative path": "gates/ask.md"}), required=False, does="the gate file the run waits on; one gate per path"),
+    question=Field(Str(classes={"a short question": "Ship it?", "a question with a line break": "Ship it?\nYes or no."}), required=False, does="what the run asks the operator"),
     name=Field(RUN_ID, required=False),
-    repo_name=Field(Str(), required=False),
-    repo_branch=Field(Str(), required=False),
+    repo_name=Field(Str(classes={"a plain name": "acme-api", "a name with a slash": "acme/api"}), required=False),
+    repo_branch=Field(Str(classes={"a plain branch": "main", "a branch with a slash": "feat/login"}), required=False),
 )
 
 EXITED = Object(
@@ -51,8 +51,8 @@ EXITED = Object(
     container_id=Field(RUN_ID, required=False),
     exit_code=Field(Int(), required=False, does="the process exit code"),
     name=Field(RUN_ID, required=False),
-    repo_name=Field(Str(), required=False),
-    repo_branch=Field(Str(), required=False),
+    repo_name=Field(Str(classes={"a plain name": "acme-api", "a name with a slash": "acme/api"}), required=False),
+    repo_branch=Field(Str(classes={"a plain branch": "main", "a branch with a slash": "feat/login"}), required=False),
 )
 
 ROW = Object(
@@ -236,19 +236,19 @@ OUTBOX = Object(
     "Outbox",
     found=Field(Bool(), does="false when the run is unknown or waits on no gate"),
     file_path=Field(Str(), required=False, does="the first gate path in path order"),
-    question=Field(Str(), required=False, does="the question exactly as the run pushed it"),
+    question=Field(Str(classes={"a short question": "Ship it?", "a question with a line break": "Ship it?\nYes or no."}), required=False, does="the question exactly as the run pushed it"),
     status=Field(Enum((GATE_STATUS,)), required=False),
 )
 
 ANSWER_INPUT = Object(
     "AnswerInput",
-    file_path=Field(Str(), required=False, does="the gate file the answer is for"),
-    answer=Field(Str(), required=False, does="what the operator answers"),
+    file_path=Field(Str(classes={"an absolute path": "/work/gates/ask.md", "a relative path": "gates/ask.md"}), required=False, does="the gate file the answer is for"),
+    answer=Field(Str(classes={"a short answer": "yes", "an answer with a line break": "yes\nship it"}), required=False, does="what the operator answers"),
 )
 
 MESSAGE_INPUT = Object(
     "MessageInput",
-    body=Field(Str(), required=False, does="the operator's message; an empty body is refused"),
+    body=Field(Str(classes={"a short message": "Please check the logs", "a message with a line break": "Please check\nthe logs"}), required=False, does="the operator's message; an empty body is refused"),
 )
 
 NOTICE = Object(

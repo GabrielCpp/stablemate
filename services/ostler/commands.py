@@ -15,7 +15,7 @@ EPIC = Field(Str(classes={"an epic with no folder": "0009-nope"}), required=Fals
 QUEUED = Field(Str(classes={"an epic the queue does not hold": "0009-nope"}), required=False,
                does="the epic to drop: its id, its slug, or an old NNNN-slug name read by its slug")
 SEED_EPIC = Field(Str(classes={"an epic that does not exist": "0009"}), required=False, does="the epic that lists the seed")
-SEED = Field(Str(), required=False, does="the seed's id, free text")
+SEED = Field(Str(classes={"a seed id": "SD-5", "a seed id with a dash and digits": "SD-12"}), required=False, does="the seed's id, free text")
 STORY = Field(Str(classes={"a story that does not exist": "TST-NOPE"}), required=False, does="the story's id")
 
 
@@ -155,7 +155,7 @@ class Conflict(Command):
     args = Object(
         "ConflictArgs",
         story=STORY,
-        text=Field(Str(), required=False, does="the conflict and the chain that found it; left out with --clear"),
+        text=Field(Str(classes={"a short text": "specs differ", "a text of several words": "the criteria of two stories disagree"}), required=False, does="the conflict and the chain that found it; left out with --clear"),
         clear=Field(Bool(), required=False, does="remove the recorded conflict"),
     )
     answers = (
@@ -184,7 +184,7 @@ class CreateEpic(Command):
     args = Object(
         "CreateEpicArgs",
         name=Field(Str(classes={"an epic that exists": "second"}), required=False, does="the epic's slug; an old NNNN-slug name gives its slug"),
-        title=Field(Str(), required=False, does="the epic's title"),
+        title=Field(Str(classes={"a plain title": "Third", "a title with a colon": "Third: again"}), required=False, does="the epic's title"),
     )
     answers = (
         Exit(0, Lines(opaque=("created epic",)), "the epic is created and its id minted; the line names the slug and the id"),
@@ -202,8 +202,8 @@ class CreateStory(Command):
     args = Object(
         "CreateStoryArgs",
         epic=Field(Str(classes={"an epic with no folder": "0009-nope"}), required=False, does="the epic, by id, slug or NNNN-slug"),
-        slug=Field(Str(), required=False, does="the story's slug"),
-        title=Field(Str(), required=False, does="the story's title"),
+        slug=Field(Str(classes={"a plain slug": "gamma", "a slug with a dash": "gamma-two"}), required=False, does="the story's slug"),
+        title=Field(Str(classes={"a plain title": "Gamma", "a title with a colon": "Gamma: again"}), required=False, does="the story's title"),
     )
     answers = (
         Exit(0, Lines(opaque=("created story",)), "the story is created and its id minted, or the epic already holds the slug"),
@@ -219,7 +219,7 @@ class DeleteEpic(Command):
             "An epic that is already gone is reported as absent, and the clean-up still runs.")
     program = "ostler"
     argv = ("--full-ids", "delete", "epic", Positional("name"))
-    args = Object("DeleteEpicArgs", name=Field(Str(), required=False, does="the epic, by id, slug or NNNN-slug"))
+    args = Object("DeleteEpicArgs", name=Field(Str(classes={"an epic slug": "second", "an old name": "0001-first"}), required=False, does="the epic, by id, slug or NNNN-slug"))
     answers = (Exit(0, Lines(), "the epic is deleted and the line names its id folder, or it was already absent; the line says when the queue dropped it"),)
     carries = DropEpic
     source = ("ostler/ostler/crud.py::delete_epic",)
@@ -231,7 +231,7 @@ class DeleteCreatedEpic(Command):
             "it without --full-ids, which changes nothing in a line that names a folder.")
     program = "ostler"
     argv = ("delete", "epic", Positional("name"))
-    args = Object("DeleteEpicArgs", name=Field(Str(), required=False, does="the epic, by its slug or NNNN-slug"))
+    args = Object("DeleteEpicArgs", name=Field(Str(classes={"an epic slug": "fourth", "an old name": "0004-fourth"}), required=False, does="the epic, by its slug or NNNN-slug"))
     answers = (Exit(0, Lines(opaque=("deleted epic '",)), "the epic is deleted, or was already absent"),)
     carries = DropEpic
     source = ("ostler/ostler/crud.py::delete_epic",)
@@ -259,9 +259,9 @@ class UpdateStory(Command):
     args = Object(
         "UpdateStoryArgs",
         story=STORY,
-        title=Field(Str(), required=False, does="the new title"),
-        covers=Field(Str(), required=False, does="the seeds the story covers, or (none)"),
-        depends=Field(Str(), required=False, does="the sibling slugs that block the story, or (none)"),
+        title=Field(Str(classes={"a plain title": "Renamed", "a title with a colon": "Renamed: again"}), required=False, does="the new title"),
+        covers=Field(Str(classes={"one seed": "SD-3", "another seed": "SD-4", "no seed": "(none)"}), required=False, does="the seeds the story covers, or (none)"),
+        depends=Field(Str(classes={"one sibling": "bravo", "no sibling": "(none)"}), required=False, does="the sibling slugs that block the story, or (none)"),
     )
     answers = (
         Exit(0, Lines(), "the epic's story block and the story's Dependencies are rewritten"),
@@ -282,7 +282,7 @@ class Unblock(Command):
         story=Field(Str(classes={"a story that does not exist": "TST-NOPE"}), required=False, does="one story's id"),
         epic=Field(Str(classes={"an epic that does not exist": "nope"}), required=False, does="every blocked story of this epic"),
         all=Field(Bool(), required=False, does="every blocked story of the repository"),
-        status=Field(Str(), required=False, does="the status to restore; Not started when left out"),
+        status=Field(Str(classes={"a status": "in-progress", "a status of two words": "Not started"}), required=False, does="the status to restore; Not started when left out"),
     )
     answers = (
         Exit(0, Lines(), "the blocked stories take the status, or none was blocked"),

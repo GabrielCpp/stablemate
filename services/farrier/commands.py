@@ -153,7 +153,7 @@ class ConfigSetWorktree(Command):
     does = "Record the directory new git worktrees are cut into."
     program = "farrier"
     argv = ("config", "set-worktree", Positional("path"))
-    args = Object("WorktreeDirArgs", path=text("the parent directory for worktrees"))
+    args = Object("WorktreeDirArgs", path=text("the parent directory for worktrees", a_folder_name="trees", a_nested_folder="deep/trees"))
     answers = (Exit(0, Lines(), "the key and the absolute path, as written"),)
     carries = act.RunSetWorktree
     source = (f"{CLI}::_dispatch_config",)
@@ -163,7 +163,7 @@ class ConfigSetStablemate(Command):
     does = "Record the stablemate checkout path in the home config."
     program = "farrier"
     argv = ("config", "set-stablemate", Positional("path"))
-    args = Object("StablemateDirArgs", path=text("the stablemate checkout"))
+    args = Object("StablemateDirArgs", path=text("the stablemate checkout", a_folder_name="checkout", a_nested_folder="deep/checkout"))
     answers = (Exit(0, Lines(), "the key and the absolute path, as written"),)
     carries = act.RunSetStablemate
     source = (f"{CLI}::_dispatch_config",)
@@ -309,7 +309,7 @@ class InstallUser(Command):
     does = "Render the user library into the harness home directories."
     program = "farrier"
     argv = ("install", "--user", Flag("--library", "library"), Flag("--home", "home"))
-    args = Object("InstallUserArgs", library=LIBRARY, home=text("the home directory to install into"))
+    args = Object("InstallUserArgs", library=LIBRARY, home=text("the home directory to install into", a_folder_name="other-home", a_nested_folder="deep/home"))
     answers = (
         Exit(0, Lines(), "the generated files are written into the home and counted"),
         Exit(1, STDERR, "the library is not usable, or the home config has no user library table"),

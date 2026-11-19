@@ -26,7 +26,7 @@ class New(Command):
             required=False, does="the workflow name; the command becomes workhorse-NAME"),
         check=Field(Str(classes={"a blank command": "  "}), required=False,
                     does="the shell command that decides when the work is done"),
-        into=Field(Str(), required=False, does="the directory to create the workflow in; the working directory when left out"),
+        into=Field(Str(classes={"a folder name": "elsewhere", "a nested folder": "deep/elsewhere"}), required=False, does="the directory to create the workflow in; the working directory when left out"),
     )
     answers = (
         Exit(0, Lines(), "the distribution is written under the name and the next steps are printed"),
@@ -46,13 +46,13 @@ class NewProgram(Command):
             Switch("--force", "force"))
     args = Object(
         "NewProgramArgs",
-        dir=Field(Str(), required=False, ignores=("case", "surrounding spaces"),
+        dir=Field(Str(classes={"a folder with a slash after it": "specs/demo/", "a folder with two slashes after it": "specs/demo//"}), required=False, ignores=("case", "surrounding spaces"),
                   why="the folder name is a path, and a path spelled another way is another folder.",
                   does="the program folder, relative to the working directory"),
-        code_root=Field(Str(), required=False, ignores=("case", "surrounding spaces"),
+        code_root=Field(Str(classes={"a source folder": "src/app", "a top level source folder": "lib"}), required=False, ignores=("case", "surrounding spaces"),
                         why="the source folder is named in the README as typed, and another spelling is another folder.",
                         does="the source folder the program's experiments live in"),
-        gate=Field(Str(), required=False, ignores=("case", "surrounding spaces"),
+        gate=Field(Str(classes={"a gate id": "G1", "a lowercase gate id": "g2"}), required=False, ignores=("case", "surrounding spaces"),
                    why="the gate id names the first gate's file and heading as typed.",
                    does="the id of the first gate; G0 when left out"),
         set_default=Field(Bool(), required=False, does="point .agents/program at this program"),

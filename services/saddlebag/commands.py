@@ -81,8 +81,8 @@ class Create(Command):
     argv = ("secret", "create", Positional("name"), Flag("--username", "username"), Flag("--description", "description"),
             Flag("--var", "var"), Flag("--tag", "tag"), Flag("--meta", "meta"), Switch("--json", "json"))
     args = Object(
-        "CreateArgs", name=NAME, username=text("the login name, printed in the clear"),
-        description=text("what the secret is for"),
+        "CreateArgs", name=NAME, username=text("the login name, printed in the clear", a_plain_name="ana", a_name_with_a_dot="ana.b"),
+        description=text("what the secret is for", a_short_phrase="the acme login", a_phrase_with_a_comma="the login, for ci"),
         var=text("the variable exec fills with the password", a_name_with_a_dash="a-b"),
         tag=tags("K=V, repeatable"),
         meta=Field(Many(Str(classes={"a key with a dot": "a.b=1"})), required=False, does="printable K=V, repeatable"),
@@ -106,7 +106,7 @@ class SetValue(Command):
     args = Object(
         "SetArgs", name=NAME,
         field=text("password or totp, password when left out", a_field_no_value_is_stored_in="username"),
-        value=Field(Str(), required=False, does="the value, read from stdin"))
+        value=Field(Str(classes={"a plain value": "hunter2", "a value with a space": "two words"}), required=False, does="the value, read from stdin"))
     answers = (
         Exit(0, Lines(), "the number of characters stored"),
         Exit(1, STDERR, "the store cannot be reached, no such secret, or the seed is not base32"),
@@ -148,7 +148,7 @@ class TagSecret(Command):
     program = "saddlebag"
     argv = ("secret", "tag", Positional("name"), Positional("first"), Positional("second"))
     args = Object("TagArgs", name=NAME, first=text("a K=V tag", a_tag_with_no_value="env="),
-                  second=text("another K=V tag"))
+                  second=text("another K=V tag", a_tag="team=b", a_tag_with_a_dash="tier-x=2"))
     answers = (
         Exit(0, Lines(), "tagged NAME"),
         Exit(1, STDERR, "the store cannot be reached or no such secret"),
@@ -163,7 +163,7 @@ class UntagSecret(Command):
     program = "saddlebag"
     argv = ("secret", "untag", Positional("name"), Positional("first"), Positional("second"))
     args = Object("UntagArgs", name=NAME, first=text("a K=V tag", a_tag_with_no_value="env="),
-                  second=text("another K=V tag"))
+                  second=text("another K=V tag", a_tag="team=b", a_tag_with_a_dash="tier-x=2"))
     answers = (
         Exit(0, Lines(), "untagged NAME"),
         Exit(1, STDERR, "the store cannot be reached or no such secret"),
@@ -178,7 +178,7 @@ class Meta(Command):
     program = "saddlebag"
     argv = ("secret", "meta", Positional("name"), Positional("first"), Positional("second"))
     args = Object("MetaArgs", name=NAME, first=text("a K=V pair", a_key_with_a_dot="a.b=1", a_pair_with_no_value="region="),
-                  second=text("another K=V pair"))
+                  second=text("another K=V pair", a_pair="tier=2", a_pair_with_a_dash="data-class=pii"))
     answers = (
         Exit(0, Lines(), "updated metadata of NAME"),
         Exit(1, STDERR, "the store cannot be reached, no such secret, or a key is given twice"),
@@ -193,7 +193,7 @@ class Unmeta(Command):
     program = "saddlebag"
     argv = ("secret", "unmeta", Positional("name"), Positional("first"), Positional("second"))
     args = Object("UnmetaArgs", name=NAME, first=text("a metadata key", a_key_the_secret_lacks="nonesuch"),
-                  second=text("another metadata key"))
+                  second=text("another metadata key", a_key="region", a_key_with_a_dash="data-class"))
     answers = (
         Exit(0, Lines(), "dropped metadata of NAME"),
         Exit(1, STDERR, "the store cannot be reached, no such secret, a key is not valid or the secret lacks it"),
@@ -234,8 +234,8 @@ class Fill(Command):
     args = Object(
         "FillArgs", name=NAME,
         field=text("username, password, totp or meta.KEY, password when left out", a_field_the_secret_lacks="meta.realm"),
-        selector=text("the CSS selector of the input"),
-        url_contains=text("which open page, by a part of its URL"),
+        selector=text("the CSS selector of the input", an_id_selector="#user", a_class_selector=".login"),
+        url_contains=text("which open page, by a part of its URL", a_host="example.com", a_path="/login"),
         cdp=text("the DevTools endpoint, loopback only", a_browser_on_another_host="http://example.com:9222"),
         json=JSON)
     answers = (
@@ -255,7 +255,7 @@ class TypeInto(Command):
     args = Object(
         "TypeArgs", name=NAME,
         field=text("username, password, totp or meta.KEY, password when left out", a_field_the_secret_lacks="meta.realm"),
-        device=text("the adb serial"), json=JSON)
+        device=text("the adb serial", a_serial="emulator-5554", another_serial="R5CT1234"), json=JSON)
     answers = (
         Exit(0, Lines(), "the number of characters typed, the field and the device"),
         Exit(1, STDERR, "the store cannot be reached, no such secret, the field holds nothing, or adb or the device is not usable"),
@@ -272,7 +272,7 @@ class Exec(Command):
         "ExecArgs", tag=tags("fill the var of every secret that carries every one of these tags"),
         env=Field(Many(Str(classes={"a binding with no variable": "=acme"})), required=False, does="VAR=NAME[.field|.meta.KEY], repeatable"),
         run=text("the program to run", a_program_that_does_not_exist="no-such-tool"),
-        show=Field(Str(), required=False, does="the variable printenv prints"))
+        show=Field(Str(classes={"the variable a secret fills": "ACME_PW"}), required=False, does="the variable printenv prints"))
     answers = (
         Exit(0, Lines(), "what the command printed, a stored value masked"),
         Exit(1, STDERR, "the store cannot be reached, a secret or its value is missing, or the command itself exited 1"),
@@ -437,9 +437,9 @@ class Serve(Command):
     argv = ("serve", Flag("--socket", "socket"), Flag("--vault-addr", "vault_addr"), Switch("--keep-token", "keep_token"))
     stdin = "token"
     args = Object(
-        "ServeArgs", socket=text("the socket to listen on"), vault_addr=text("the Vault address"),
+        "ServeArgs", socket=text("the socket to listen on", a_socket_path="run/sb.sock", a_nested_socket_path="run/deep/sb.sock"), vault_addr=text("the Vault address", an_http_address="http://vault.example.com:8200", an_https_address="https://vault.example.com"),
         keep_token=Field(Bool(), required=False, does="store the token from stdin in the keyring and exit"),
-        token=Field(Str(), required=False, does="the Vault token, read from stdin"))
+        token=Field(Str(classes={"a token": "s.abc123", "a token with a dash": "hvs.ab-12"}), required=False, does="the Vault token, read from stdin"))
     answers = (
         Exit(0, Lines(), "the token is kept, which only stderr says"),
         Exit(2, STDERR, "no Vault address, or stdin gave no token"),
