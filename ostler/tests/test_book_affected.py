@@ -545,3 +545,59 @@ def test_a_python_class_does_not_join_by_mention_but_its_method_and_the_methods_
     book = sourced_book({"Drawer": ("s.py::Shelf",), "PutItem": ("s.py::put",), "RestockItem": ("s.py::caller",), "RemoveItem": ("s.py::other",)})
     _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
     assert vias(found) == [("helper", "PutItem", "through helper"), ("helper", "RestockItem", "through put")]
+
+
+ROUTE = "export function load() {{\n\treturn actions();\n}}\n\nexport function actions() {{\n\treturn {n};\n}}\n"
+BYSTANDER = "export function other() {\n\treturn actions();\n}\n"
+
+
+def test_a_route_file_that_defines_the_name_binds_its_mentions_to_its_own_definition(monkeypatch, tmp_path, capsys):
+    files = {"routes/a/page.ts": ROUTE.format(n=1), "routes/b/page.ts": ROUTE.format(n=1)}
+    where, base = scene(tmp_path, files)
+    commit_files(where, {"routes/a/page.ts": ROUTE.format(n=2)})
+    book = sourced_book({"PutItem": ("routes/a/page.ts::load",), "RestockItem": ("routes/b/page.ts::load",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("actions", "PutItem", "through actions")]
+
+
+def test_a_file_that_does_not_define_the_name_still_reaches_every_definition(monkeypatch, tmp_path, capsys):
+    files = {"routes/a/page.ts": ROUTE.format(n=1), "routes/b/page.ts": ROUTE.format(n=1), "lib/o.ts": BYSTANDER}
+    where, base = scene(tmp_path, files)
+    commit_files(where, {"routes/a/page.ts": ROUTE.format(n=2)})
+    book = sourced_book({"PutItem": ("routes/a/page.ts::load",), "RestockItem": ("routes/b/page.ts::load",), "RemoveItem": ("lib/o.ts::other",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert {c["element"] for c in found["chains"]} == {"PutItem", "RemoveItem"}
+    commit_files(where, {"routes/b/page.ts": ROUTE.format(n=3)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert {c["element"] for c in found["chains"] if c["function"] == "actions"} == {"PutItem", "RestockItem", "RemoveItem"}
+
+
+MAKER = "package shelf\n\nfunc Make() string {\n\treturn helper()\n}\n"
+HELPER = "package shelf\n\nfunc helper() string {\n\treturn \"a\"\n}\n"
+
+
+def test_a_go_package_binds_a_mention_to_the_definition_in_another_file_of_the_package(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"p/make.go": MAKER, "p/helper.go": HELPER})
+    commit_files(where, {"p/helper.go": HELPER.replace('"a"', '"z"')})
+    book = sourced_book({"PutItem": ("p/make.go::Make",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("helper", "PutItem", "through helper")]
+
+
+def test_a_go_package_with_its_own_definition_does_not_reach_the_helper_of_another_package(monkeypatch, tmp_path, capsys):
+    files = {"p/make.go": MAKER, "p/helper.go": HELPER, "q/make.go": MAKER.replace("shelf", "drawer"), "q/helper.go": HELPER.replace("shelf", "drawer")}
+    where, base = scene(tmp_path, files)
+    commit_files(where, {"p/helper.go": HELPER.replace('"a"', '"z"')})
+    book = sourced_book({"PutItem": ("p/make.go::Make",), "RestockItem": ("q/make.go::Make",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("helper", "PutItem", "through helper")]
+
+
+def test_a_method_name_mentioned_from_another_file_still_joins(monkeypatch, tmp_path, capsys):
+    getter = "package shelf\n\nfunc (s *Service) Get() string {\n\treturn \"a\"\n}\n"
+    user = "package drawer\n\nfunc Get() string {\n\treturn \"b\"\n}\n\nfunc Use(s *Service) string {\n\treturn s.Get()\n}\n"
+    where, base = scene(tmp_path, {"a/get.go": getter, "b/use.go": user})
+    commit_files(where, {"a/get.go": getter.replace('"a"', '"z"')})
+    book = sourced_book({"PutItem": ("b/use.go::Use",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("Service.Get", "PutItem", "through Service.Get")]

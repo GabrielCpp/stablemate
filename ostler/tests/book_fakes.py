@@ -249,6 +249,7 @@ def git(folder: Path, *arguments: str) -> str:
 def commit_files(folder: Path, files: dict[str, str], message: str = "change") -> str:
     """Writes the files, commits them and gives the short commit."""
     for name, text in files.items():
+        (folder / name).parent.mkdir(parents=True, exist_ok=True)
         (folder / name).write_text(text)
     git(folder, "add", *files)
     git(folder, "commit", "--quiet", "-m", message)

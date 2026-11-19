@@ -342,7 +342,9 @@ The command then follows mentions. It reads every source file under the app's ro
 bare name is a whole identifier in that text. The closure of a changed symbol is the symbol and every symbol that
 mentions a member of the closure, to a fixed point, except that a type (a Go `type`, a class, an interface, an enum) joins only when it is itself changed, because a type that declares or holds a name is not a caller of it. An element is affected when any of its pointers names a
 member. A record whose own symbol changed makes the plan `whole`. A record whose symbol is a function that mentions the changed one is listed in the chains with no play of its own and leaves the plan as it is. Matching is by
-bare name, so two functions that share a name are both followed, and nothing resolves types or packages. A file whose
+bare name, so two functions that share a name are both followed, except that a module-level name a file defines (a Go
+package, for a Go file) means that file's own definition when the file mentions it, and a method is mentioned by its
+bare name from anywhere. Nothing else resolves types or packages. A file whose
 definitions cannot be read with confidence (unbalanced brackets, a definition that never closes) is one unit: each
 symbol in it mentions all the file mentions. Each chain says how the element was reached: `direct` when its own
 symbol changed, `through <symbol>` for the nearest symbol of the closure path.

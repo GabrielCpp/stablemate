@@ -2,7 +2,8 @@
 
 Each defined symbol (function, method, type, constant, variable) has an extent, the lines of its definition, and a
 symbol mentions another when the other's bare name is a whole identifier in that extent. Matching is by name, so two
-symbols that share a bare name are both followed. A file whose extents cannot be read with confidence is one unit."""
+symbols that share a bare name are both followed, except that a module-level name a file defines is, inside that
+file (a Go package, for a Go file), its own definition and no other. A file whose extents cannot be read with confidence is one unit."""
 
 from __future__ import annotations
 
@@ -36,10 +37,19 @@ class Node:
     path: str
     name: str
     is_type: bool = False
+    module: bool = False
+
+    @property
+    def scope(self) -> str:
+        return scope_of(self.path)
 
     @property
     def bare(self) -> str:
         return self.name.rsplit(".", 1)[-1]
+
+
+def scope_of(path: str) -> str:
+    return path.rpartition("/")[0] if path.endswith(".go") else path
 
 
 def indent_of(line: str) -> int:
@@ -127,6 +137,7 @@ class Mentions:
         self.nodes: list[Node] = []
         self.by_path: dict[str, list[int]] = {}
         self.by_word: dict[str, list[int]] = {}
+        self.owned: dict[str, set[str]] = {}
         listed = git(app_root, "ls-files", "--cached", "--others", "--exclude-standard", "--", *roots).splitlines()
         for path in sorted(set(listed)):
             if path.endswith(SOURCE) and not ignored(path, ignore) and not TESTS.search(path):
@@ -150,9 +161,13 @@ class Mentions:
         entries = [(name, every if unreadable else extent) for (_, name), extent in zip(defs, extents)]
         entries.append(("", every if unreadable else frozenset().union(*masked)))
         kinds = [False if unreadable else declares_type(lines[i], name) for i, name in defs] + [False]
-        for (name, mentioned), is_type in zip(entries, kinds):
+        levels = [("." not in name) if path.endswith(".go") else indent_of(lines[i]) == 0 for i, name in defs] + [False]
+        for (_, name), level in zip(defs, levels):
+            if level:
+                self.owned.setdefault(scope_of(path), set()).add(name)
+        for (name, mentioned), is_type, level in zip(entries, kinds, levels):
             index = len(self.nodes)
-            self.nodes.append(Node(path, name, is_type))
+            self.nodes.append(Node(path, name, is_type, level))
             self.by_path.setdefault(path, []).append(index)
             for word in mentioned:
                 self.by_word.setdefault(word, []).append(index)
@@ -161,21 +176,29 @@ class Mentions:
         """The nodes a change to `symbol` of `path` reaches, each with the symbol it was reached through, empty
         for the changed symbol itself."""
         reached: dict[int, str] = {}
+        sources: list[tuple[str, str, str | None]] = []
         for index in self.by_path.get(path, ()):
             node = self.nodes[index]
             if node.name and same_symbol(symbol, node.name):
                 reached[index] = ""
+                sources.append((node.bare, node.name, node.scope if node.module else None))
         bare = symbol.rsplit(".", 1)[-1]
-        queue = deque([(bare, symbol)])
-        done = {bare}
+        if not sources:
+            sources.append((bare, symbol, scope_of(path) if "." not in symbol else None))
+        queue = deque(sources)
+        done = {(word, scope) for word, _, scope in sources}
         while queue:
-            word, label = queue.popleft()
+            word, label, scope = queue.popleft()
             for index in self.by_word.get(word, ()):
                 node = self.nodes[index]
                 if index in reached or node.is_type:
                     continue
+                if scope is not None and node.scope != scope and word in self.owned.get(node.scope, ()):
+                    continue
                 reached[index] = label
-                if node.name and node.bare not in done:
-                    done.add(node.bare)
-                    queue.append((node.bare, node.name))
+                if node.name:
+                    key = (node.bare, node.scope if node.module else None)
+                    if key not in done:
+                        done.add(key)
+                        queue.append((node.bare, node.name, key[1]))
         return reached
