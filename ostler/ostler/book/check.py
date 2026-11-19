@@ -22,7 +22,7 @@ from ostler.book.explore import _overrides, attempts, moves
 from ostler.book.graph import dot
 from ostler.book.boundary import Foreign, Needs
 from ostler.book.entries import says
-from ostler.book.http import Endpoint, List, Object, Str, bare_ids, states
+from ostler.book.http import Endpoint, List, Object, Str, bare_ids, states, token_fields
 from ostler.book.tree import unresolved
 from ostler.book.journey import Given, Journey, OwnerRefused, Refused
 from ostler.book.model import Rule
@@ -113,6 +113,26 @@ def identity_faults(service: Service[Any]) -> list[Finding]:
         fresh = service.new_model(date.today())
         for step in moves(service.endpoints, cast=service.cast)(fresh):
             found += [Finding(f"plan move {step}", fault) for fault in step.id_faults(fresh)]
+    return found
+
+
+def token_faults(service: Service[Any]) -> list[Finding]:
+    """Every page token a request takes that no answer of the service issues, and every answer token left opaque."""
+    issued: set[str] = set()
+    found: list[Finding] = []
+    for endpoint in service.endpoints:
+        for answer in endpoint.answers:
+            tokens: list[tuple[str, Any, Any]] = []
+            token_fields(answer.body, "", tokens)
+            issued |= {token.name for _, token, _ in tokens}
+            found += [Finding(f"endpoint {endpoint.__name__}", f"answer {answer.status} {where}: a typed token is compared by presence "
+                              "and needs no opaque") for where, _, spec in tokens if spec.opaque]
+    for endpoint in service.endpoints:
+        for shape, place in ((endpoint.params, "path"), (endpoint.query, "query"), (endpoint.headers, "headers"), (endpoint.body, "body")):
+            tokens = []
+            token_fields(shape, "", tokens)
+            found += [Finding(f"endpoint {endpoint.__name__}", f"{place} {where}: no answer issues the token {token.name}")
+                      for where, token, _ in tokens if token.name not in issued]
     return found
 
 
@@ -799,6 +819,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
         attempt(found, "denied attempts", lambda: attempts(service.endpoints, service.new_model(today), cast=service.cast))
     attempt(found, "identities", lambda: found.extend(identity_faults(service)) or "done")
     attempt(found, "defects", lambda: found.extend(defect_faults(service)) or "done")
+    attempt(found, "tokens", lambda: found.extend(token_faults(service)) or "done")
     attempt(found, "itself", lambda: found.extend(itself_faults(service)) or "done")
     attempt(found, "headers", lambda: found.extend(header_faults(service)) or "done")
     attempt(found, "clock", lambda: found.extend(clock_faults(service)) or "done")

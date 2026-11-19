@@ -22,7 +22,7 @@ from ostler.book.boundary import Needs
 from ostler.book.cast import Actor
 from ostler.book.domain import Fixture
 from ostler.book.errors import BookError, Unhealthy
-from ostler.book.http import (Bool, Client, Endpoint, Enum, Field, Id, Identities, Int, List, Num, Object, OffShape, Str, Undeclared,
+from ostler.book.http import (Bool, Client, Endpoint, Enum, Field, Id, Identities, Int, List, Num, Object, OffShape, Str, Token, Undeclared,
                               blind, twins, unknown_value)
 from ostler.book.journey import Given, StepResult, difference
 from ostler.book.model import Defect, Model
@@ -199,6 +199,8 @@ def field_classes(place: str, name: str, spec: Field, model: Model, ids: Identit
         foreign = _foreign_id(shape.kind, model, ids, by, current)
         if foreign is not None:
             add("another owner's", foreign, valid=True)
+    elif isinstance(shape, Token):
+        add("made up", "not-a-token", "malformed")
     elif isinstance(shape, Str):
         for label, value in shape.classes.items():
             add(label, value, valid=True)

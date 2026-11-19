@@ -165,6 +165,21 @@ class Id(Shape):
 
 
 @dataclass(frozen=True)
+class Token(Shape):
+    """A page token of the list `name` pages. The model keeps its own token and the app issues another: an answer is
+    compared by whether a token is there, and the tool learns the pair, so a request carrying the model's token sends
+    the app's. Two fields of one name are one token space."""
+
+    name: str
+
+    def check(self, value: object, where: str = "body") -> list[str]:
+        return Str().check(value, where)
+
+    def describe(self) -> str:
+        return f"page token of {self.name}"
+
+
+@dataclass(frozen=True)
 class Enum(Shape):
     values: tuple[str, ...]
 
@@ -679,12 +694,19 @@ class Identities:
 
     def __init__(self) -> None:
         self.by_kind: dict[type, dict[str, str]] = {}
+        self.tokens: dict[str, dict[str, str]] = {}
 
     def learn(self, kind: type, model: str, real: str) -> None:
         self.by_kind.setdefault(kind, {})[model] = real
 
     def real(self, kind: type, model: str) -> str | None:
         return self.by_kind.get(kind, {}).get(model)
+
+    def learn_token(self, name: str, model: str, real: str) -> None:
+        self.tokens.setdefault(name, {})[model] = real
+
+    def real_token(self, name: str, model: str) -> str | None:
+        return self.tokens.get(name, {}).get(model)
 
     def model_of(self, kind: type, real: str) -> str | None:
         return next((m for m, r in self.by_kind.get(kind, {}).items() if r == real), None)
@@ -727,6 +749,7 @@ class Identities:
 
     def clear(self) -> None:
         self.by_kind.clear()
+        self.tokens.clear()
 
 
 def unknown_value(shape: Shape) -> str:
@@ -751,6 +774,25 @@ def real_id(shape: Id, value: object, ids: Identities | None, where: str) -> str
     if other is not None:
         raise BookError(f"{where}: {text} is the id of a {other.__name__}, sent where an id of {shape.kind.__name__} is typed")
     return text
+
+
+def real_token(shape: Token, value: object, ids: Identities | None) -> str | None:
+    """The token the app knows for the model token `value`: the one learned for this name, else the value as written.
+    None or an empty value is no token and sends nothing."""
+    if value is None or value == "":
+        return None
+    text = str(value)
+    found = ids.real_token(shape.name, text) if ids is not None else None
+    return text if found is None else found
+
+
+def wired(shape: Shape | None, value: object, ids: Identities | None, where: str) -> object:
+    """The value as the app is sent it: an id turned into the app's id of its kind, a page token into the app's token."""
+    if isinstance(shape, Token):
+        return real_token(shape, value, ids)
+    if isinstance(shape, Id):
+        return real_id(shape, value, ids, where)
+    return value
 
 
 class Client:
@@ -995,8 +1037,8 @@ class Endpoint:
             if value is None and strict:
                 raise BookError(f"{cls.__name__}: {name} is not known yet; was the fixture created?")
             shape = cls.params.fields[name].shape
-            if value is not None and isinstance(shape, Id):
-                value = real_id(shape, value, ids, f"{cls.__name__} path {name}")
+            if value is not None and isinstance(shape, (Id, Token)):
+                value = wired(shape, value, ids, f"{cls.__name__} path {name}")
             out[name] = "{" + name + "}" if value is None else str(value)
         return out
 
@@ -1009,7 +1051,8 @@ class Endpoint:
         if self.query_values:
             if cls.query is not None:
                 cls.query.pack(self.query_values)
-            pairs = [(k, _wire(self._query_value(k, v, ids, know))) for k, v in self.query_values.items() if v is not None]
+            pairs = [(k, _wire(sent)) for k, v in self.query_values.items() if v is not None
+                     and (sent := self._query_value(k, v, ids, know)) is not None]
             path += "?" + urllib.parse.urlencode(pairs)
         return base + path
 
@@ -1044,8 +1087,8 @@ class Endpoint:
         cls = type(self)
         value = _known(value, know)
         spec = cls.query.fields.get(name) if cls.query is not None else None
-        if spec is not None and isinstance(spec.shape, Id):
-            return real_id(spec.shape, value, ids, f"{cls.__name__} query {name}")
+        if spec is not None and isinstance(spec.shape, (Id, Token)):
+            return wired(spec.shape, value, ids, f"{cls.__name__} query {name}")
         return value
 
     def payload(self, ids: Identities | None = None, know: Callable[[Reference], Any] | None = None) -> Any:
@@ -1266,6 +1309,46 @@ class Canon(dict):
         return "{" + ", ".join(f"{k}: {v}" for k, v in self.items()) + "}"
 
 
+class Page(str):
+    """A page token in the compared form: any two are equal, so only whether a token is there is compared. `app` says
+    whose it is."""
+
+    app: bool
+
+    def __new__(cls, text: str, app: bool) -> Page:
+        held = super().__new__(cls, text)
+        held.app = app
+        return held
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Page)
+
+    def __ne__(self, other: object) -> bool:
+        return not isinstance(other, Page)
+
+    def __hash__(self) -> int:
+        return 0
+
+    def lacks(self) -> str:
+        """Why the other side, which gave no token, differs."""
+        if self.app:
+            return "the app gave a token and the model says there is no next page"
+        return "the model says there is a next page and the app gave no token"
+
+
+def learn_tokens(shape: Shape | None, model: Any, body: Any, ids: Identities) -> None:
+    """The pair of each page token both sides gave: the model's token and the app's, kept under the token's name."""
+    if isinstance(shape, Token):
+        if isinstance(model, Page) and body not in (None, ""):
+            ids.learn_token(shape.name, str(model), str(body))
+    elif isinstance(shape, Object) and isinstance(model, dict) and isinstance(body, dict):
+        for name, spec in shape.fields.items():
+            learn_tokens(spec.shape, model.get(name), body.get(name), ids)
+    elif isinstance(shape, List) and isinstance(model, (list, tuple)) and isinstance(body, list) and len(model) == len(body):
+        for one, other in zip(model, body):
+            learn_tokens(shape.of, one, other, ids)
+
+
 def canonical(shape: Shape | None, value: Any, *, app: bool, ids: Identities | None, where: str) -> Any:
     """The one form an answer is compared in. The app's side reads the body; the
     model's side reads the view, each field off the attribute it names. An id
@@ -1279,6 +1362,8 @@ def canonical(shape: Shape | None, value: Any, *, app: bool, ids: Identities | N
         if found is not None:
             return found
         return str(value) if shape.strangers else Unknown(f"unknown {shape.kind.__name__} id {value}")
+    if isinstance(shape, Token):
+        return None if value is None or value == "" else Page(str(value), app)
     if isinstance(shape, List):
         items = [canonical(shape.of, v, app=app, ids=ids, where=f"{where}[]") for v in value]
         if app:
@@ -1407,6 +1492,22 @@ def _id_fields(shape: Shape | None, where: str, out: list[tuple[str, Id]], seen:
             _id_fields(spec.shape, f"{where}.{name}" if where else name, out, seen)
 
 
+def token_fields(shape: Shape | None, where: str, out: list[tuple[str, Token, Field]], seen: set[int] | None = None) -> None:
+    """Every field of the shape typed Token, with its path and its declaration."""
+    seen = seen if seen is not None else set()
+    if shape is None or id(shape) in seen:
+        return
+    seen.add(id(shape))
+    if isinstance(shape, (List, Map)):
+        token_fields(shape.of, where + "[]", out, seen)
+    elif isinstance(shape, Object):
+        for name, spec in shape.fields.items():
+            path = f"{where}.{name}" if where else name
+            if isinstance(spec.shape, Token):
+                out.append((path, spec.shape, spec))
+            token_fields(spec.shape, path, out, seen)
+
+
 def identity_lines(endpoints: Iterable[type[Endpoint]], only: type[Endpoint] | None = None) -> list[str]:
     """Per record kind, the answers that produce its id and the inputs that consume it."""
     produced: dict[type, list[str]] = {}
@@ -1462,11 +1563,14 @@ def _prepared(shape: Shape | None, value: Any, ids: Identities | None, know: Cal
     if isinstance(shape, Id):
         if value is None or (isinstance(shape.of, Str) and not isinstance(value, str)):
             return value
-        return real_id(shape, value, ids, where)
+        return wired(shape, value, ids, where)
+    if isinstance(shape, Token):
+        return wired(shape, value, ids, where)
     if isinstance(value, dict):
         fields = shape.fields if isinstance(shape, Object) else {}
-        return {k: _prepared(fields[k].shape if k in fields else (shape.of if isinstance(shape, Map) else None), v, ids, know, f"{where}.{k}")
+        sent = {k: _prepared(fields[k].shape if k in fields else (shape.of if isinstance(shape, Map) else None), v, ids, know, f"{where}.{k}")
                 for k, v in value.items()}
+        return {k: v for k, v in sent.items() if v is not None or not isinstance(fields[k].shape if k in fields else None, Token)}
     if isinstance(value, list):
         return [_prepared(shape.of if isinstance(shape, List) else None, v, ids, know, f"{where}[]") for v in value]
     return value

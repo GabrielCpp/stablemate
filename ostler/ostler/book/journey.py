@@ -12,6 +12,7 @@ from datetime import date
 from typing import Any, Callable, Iterable
 
 from ostler.book.boundary import Needs
+from ostler.book.http import Page
 from ostler.book.outcome import Outcome
 from ostler.book.status import Status
 
@@ -123,6 +124,9 @@ def difference(first: Any, second: Any, path: str = "") -> str | None:
             if found:
                 return found
         return None
+    given = next((v for v in (first, second) if isinstance(v, Page)), None)
+    if given is not None and (first is None or second is None):
+        return f"{path or 'value'}: {given.lacks()}"
     return None if first == second else f"{path or 'value'}: {first!r} against {second!r}"
 
 

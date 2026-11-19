@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, cast
 
 from ostler.book.errors import BookError
-from ostler.book.http import Answer, Client, Endpoint, List, Reply, Witness, breaches, canonical
+from ostler.book.http import Answer, Client, Endpoint, List, Reply, Witness, breaches, canonical, learn_tokens
 from ostler.book.model import Model
 from ostler.book.outcome import Done, Outcome
 
@@ -111,7 +111,11 @@ class HttpSurface:
             answer = call.success()
         if answer is None or answer.body is None:
             return ()
-        return self.canon(call.__name__, answer.body, outcome.view or ())
+        found = self.canon(call.__name__, answer.body, outcome.view or ())
+        reply = getattr(request, "reply", None)
+        if reply is not None and found:
+            learn_tokens(answer.body, found if isinstance(answer.body, List) else found[0], reply.body, self.client.ids)
+        return found
 
     def canon(self, where: str, shape: Any, view: tuple[object, ...]) -> tuple[object, ...]:
         if isinstance(shape, List):
