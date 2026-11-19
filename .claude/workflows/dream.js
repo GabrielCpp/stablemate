@@ -11,11 +11,16 @@ export const meta = {
   ],
 }
 
-const MAX_SESSIONS = (args && args.maxSessions) || 6
+const opts = args || {}
+const MAX_SESSIONS = opts.maxSessions || 6
 const SESSIONS_PER_MINER = 2
 const NOTES_PER_VERIFIER = 8
 const NOTES_PER_SWEEPER = 15
-const SWEEP = !(args && args.sweep === false)
+const SWEEP = opts.sweep !== false
+const REPO = opts.repo || null
+const WHERE = REPO
+  ? `The project's repository is ${REPO}. Run git with -C ${REPO} and grep under ${REPO}, not in the current directory.\n\n`
+  : ''
 
 const EXTRACT = `jq -r 'select((.type=="user" or .type=="assistant") and (.isMeta|not)) | .type as $t | .timestamp as $ts | .message.content | if type=="string" then . else (map(select(.type=="text") | .text) | join("\\n")) end | select(length>0) | select(startswith("This session is being continued")|not) | "--- \\($t) \\($ts)\\n\\(.)"' <transcript.jsonl>`
 
@@ -119,7 +124,7 @@ function chunk(list, size) {
 phase('Scout')
 const scout = await agent(
   `Resolve this project's Claude Code auto memory and the sessions a dream should read.\n\n` +
-  `1. projectDir is ~/.claude/projects/<slug>, where <slug> is the absolute working directory with every "/" and "." replaced by "-". ` +
+  `1. projectDir is ~/.claude/projects/<slug>, where <slug> is ${REPO ? `"${REPO}"` : 'the absolute working directory'} with every "/" and "." replaced by "-". ` +
   `Confirm it exists. memoryDir is projectDir/memory.\n` +
   `2. Read projectDir/dream/last-run.json if it exists and return its "finished" field as lastDream, else null.\n` +
   `3. For every .md file in memoryDir except MEMORY.md, return its frontmatter name, its file name and its description.\n` +
@@ -170,6 +175,7 @@ const swept = SWEEP ? pipeline(
     `Each memory file holds one fact, with frontmatter (name, description, metadata.type). Notes link each other with [[name]].\n\n` +
     `All notes:\n${noteIndex}\n\n` +
     `Notes to judge:\n${batch.map(n => `- ${n.name} (${n.file})`).join('\n')}\n\n` +
+    WHERE +
     `Read each note to judge. Check what it claims against the repository: the files, functions, flags, commands and commits it names, ` +
     `with git log, git show and grep. Today's date comes from date -u.\n\n` +
     `A note can be forgotten (delete) when one of these holds, and you can show which:\n` +
@@ -196,6 +202,7 @@ const verified = await pipeline(
     `Units to judge:\n${JSON.stringify(batch, null, 2)}\n\n` +
     `For each unit with a note, read that note file. Check every candidate against the quoted evidence. Rerun the transcript command when a quote looks out of context:\n${EXTRACT}\n` +
     `When a note or candidate names a file, function, flag or commit, check that it still exists in the repository.\n\n` +
+    WHERE +
     `Return one verdict per unit:\n` +
     `- keep: the note stands as written.\n` +
     `- rewrite: text is the full new file, frontmatter included. The newest dated statement wins over an older one.\n` +
