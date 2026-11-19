@@ -15,6 +15,7 @@ import io
 import os
 import random
 import sys
+import tempfile
 import time
 from datetime import date, timedelta
 from typing import Any
@@ -52,6 +53,17 @@ from ostler.book.sources import head_of, missing_files, stale
 from ostler.book.surface import Surface
 
 
+OUT_HELP = "where the reports go; omitted, a fresh folder under the system temp directory is used and named in the output"
+
+
+def default_out(args: argparse.Namespace) -> bool:
+    """Give a command that has `--out` and was not given one a fresh temp folder; true when it did."""
+    if getattr(args, "out", False) is not None:
+        return False
+    args.out = tempfile.mkdtemp(prefix=f"ostler-book-{args.service.rsplit('.', 1)[-1]}-")
+    return True
+
+
 def load(name: str) -> Service[Any]:
     return importlib.import_module(f"{name}.service").service
 
@@ -64,7 +76,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     run = sub.add_parser("run", help="walk every journey on the service's surface, against its model")
     run.add_argument("service")
     run.add_argument("--journey", action="append")
-    run.add_argument("--out", default="results")
+    run.add_argument("--out", default=None, help=OUT_HELP)
     run.add_argument("--no-stack", action="store_true")
     run.add_argument("--keep-videos", action="store_true")
     run.add_argument("--order", choices=("declared", "reversed", "shuffled"), default="declared",
@@ -83,7 +95,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     explorer = sub.add_parser("explore", help="walk the model's state graph, then play every state, action and input class once")
     explorer.add_argument("service")
     explorer.add_argument("--depth", type=int, default=4)
-    explorer.add_argument("--out", default="results")
+    explorer.add_argument("--out", default=None, help=OUT_HELP)
     explorer.add_argument("--no-stack", action="store_true")
     explorer.add_argument("--seed-only", action="store_true", help="walk and list the cells without touching the app")
     explorer.add_argument("--only", action="append", default=[], metavar="CALL",
@@ -94,7 +106,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     live.add_argument("--record", help="the record whose matrix is meant; omitted, the service's first")
     live.add_argument("--scene", required=True, help="a scene named in that matrix")
     live.add_argument("--action", help="an action named in that matrix; omitted, only the scene is arranged")
-    live.add_argument("--out", default="results")
+    live.add_argument("--out", default=None, help=OUT_HELP)
     live.add_argument("--no-stack", action="store_true")
     for p in (run, explorer, live):
         p.add_argument("--print-exec", action="store_true", help="print the saddlebag command that would supply the secrets, and stop")
@@ -136,7 +148,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     graph = sub.add_parser("graph", help="draw each record's state graph and table from the matrix, as dot and svg")
     graph.add_argument("service")
     graph.add_argument("--record", help="one record; omitted, every matrix")
-    graph.add_argument("--out", default="results")
+    graph.add_argument("--out", default=None, help=OUT_HELP)
     for name in ("endpoints", "screens", "matrix", "denied", "plan"):
         p = sub.add_parser(name)
         p.add_argument("service")
@@ -177,7 +189,12 @@ def main(argv: list[str] | None = None) -> int:
         stop = credentials(args.environment, sys.argv[1:] if argv is None else argv, args.print_exec)
         if stop is not None:
             return stop
-    return COMMANDS[args.command](service, args)
+    chosen = default_out(args)
+    try:
+        return COMMANDS[args.command](service, args)
+    finally:
+        if chosen:
+            print(f"reports: {args.out}")
 
 
 def cmd_endpoints(service: Service[Any], args: argparse.Namespace) -> int:

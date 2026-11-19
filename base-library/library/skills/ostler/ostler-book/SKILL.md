@@ -261,7 +261,7 @@ one is live.
 
 `--only` takes endpoint class names, or interaction class names in a screen book, never journey names. A wrong name is refused before anything starts. `explore` and `run` print nothing until they end, and a long one may outlive the shell's
 wait. Send the output to a file and read its last lines once the command has exited. Their report goes under
-`--out`, by default `results/` where you stand: point it outside the repo. `--no-stack` skips starting the
+`--out`. Omitted, it goes to a fresh temp folder the command names on a `reports:` line. In a story, point `--out` at the story's spec folder, and never inside a repository. `--no-stack` skips starting the
 stack `service.py` declares, and changes nothing when that stack is empty.
 
 A host written `ostler:` in an environment is a copy of the stack that `ostler env` runs. The copy is the

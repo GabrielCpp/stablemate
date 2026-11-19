@@ -321,8 +321,9 @@ ostler book graph   services.api          # each record's state graph, as dot an
 ostler book endpoints|screens|matrix|denied|plan services.api   # read the model, no app
 ```
 
-Exit 3 means the place could not be judged, and what ran before it is no verdict. Reports go to
-`results/`, or to `--out`. The `ostler-book` skill is the guide to writing a book.
+Exit 3 means the place could not be judged, and what ran before it is no verdict. Reports go to `--out`.
+Omitted, they go to a fresh folder under the system temp directory, and the command prints its name
+on a `reports:` line. The `ostler-book` skill is the guide to writing a book.
 
 ## The parse index
 
