@@ -1507,6 +1507,12 @@ async def feed_ws(
         now = time.time()
         if since is not None:
             replay = [(ts, event) for ts, event in state.EVENTS.get(run, ()) if ts > since]
+            replayed = {event.event for _, event in replay}
+            replay += [
+                (now, event)
+                for event in projection.attention_events(_all_workflows())
+                if event.run_id == run and event.event not in replayed
+            ]
             window_start = since
         else:
             replay = [
@@ -1548,6 +1554,9 @@ async def feed_ws(
             pending.cancel()
     except WebSocketDisconnect:
         pass
+    except Exception as exc:
+        logger.exception("feed for run %s failed", run)
+        await socket.close(code=1011, reason=f"feed failed: {type(exc).__name__}: {exc}"[:120])
     finally:
         state.remove_feed(queue)
 

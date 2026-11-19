@@ -315,6 +315,7 @@ Silence is not success: a run that stopped emitting and a run that has nothing
 to report look the same without it. Its fields:
 
 - `since` and `until`: the window the digest covers.
+- `known`: false when groom has no telemetry, stored row or event for the run. The summary then says there is no such run yet, and the feed keeps waiting for it to appear.
 - `quiet`: true when the window holds no spans, no events and no log line at
   WARNING or above. A quiet digest needs no action.
 - `summary`: one line to read first, such as
@@ -329,9 +330,9 @@ to report look the same without it. Its fields:
 On connect the feed sends the conditions already active for the run as `event`
 frames, so a run that is blocked before anyone listens is reported at once. It
 then sends a digest for the last `every` seconds. With `since`, it sends instead
-every event recorded after the cursor, then a digest from the cursor to now. The
+every event recorded after the cursor, then any condition still active that the replay did not carry, then a digest from the cursor to now. The
 server keeps the last 200 events per run in memory. A restart of `groom serve`
-empties that history.
+empties that history. A failure while building a frame is logged by the server and closes the socket with code 1011 and a reason, so `groom feed` prints it and exits 1.
 
 `groom feed` prints one line per frame and never exits on its own. `--json`
 prints each frame as one JSON line. `--every` accepts `30m`, `10m`, `3600s` or a

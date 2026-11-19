@@ -104,4 +104,5 @@ class DigestFrame(BaseModel):
     quiet: bool
     summary: str
     standing: Standing
+    known: bool = True
     window: Window

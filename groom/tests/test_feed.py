@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 from litestar import Litestar
+from litestar.exceptions import WebSocketDisconnect
 from litestar.testing import TestClient
 
 from groom import cli, digest, state, store
@@ -214,6 +215,89 @@ def test_feed_for_an_unknown_run_waits_with_a_digest() -> None:
     assert frame["type"] == "digest"
     assert frame["quiet"] is True
     assert frame["until"] - frame["since"] == pytest.approx(1800, abs=5)
+
+
+def test_feed_for_an_unknown_run_says_groom_knows_no_such_run() -> None:
+    with _client() as client, client.websocket_connect("/feed?run=missing") as socket:
+        frame = socket.receive_json()
+    assert frame["known"] is False
+    assert "no such run" in frame["summary"]
+    assert "missing" in frame["summary"]
+
+
+def test_feed_for_a_run_with_telemetry_is_known() -> None:
+    state.RUNS["acme"] = RunTelemetry(run_id="acme", current_node="build")
+    with _client() as client, client.websocket_connect("/feed?run=acme") as socket:
+        assert socket.receive_json()["known"] is True
+
+
+def test_feed_for_a_run_with_only_stored_rows_is_known() -> None:
+    store.insert_logs([_log(100, "INFO", "old")])
+    with _client() as client, client.websocket_connect("/feed?run=acme") as socket:
+        assert socket.receive_json()["known"] is True
+
+
+def _parked() -> None:
+    state.RUNS["acme"] = RunTelemetry(
+        run_id="acme", last_beat_ts=time.time(), last_heartbeat_ts=time.time(),
+        current_node="resolve", wait_kind="operator", wait_elapsed_s=30_000.0,
+        wait_gate_question="Proceed?", wait_gate_path="/gate",
+    )
+
+
+def test_feed_with_since_still_reports_a_gate_raised_before_the_cursor() -> None:
+    _parked()
+    with _client() as client, client.websocket_connect("/feed?run=acme&since=1") as socket:
+        first = socket.receive_json()
+        second = socket.receive_json()
+    assert first["type"] == "event"
+    assert first["event"]["event"] == "blocked"
+    assert first["event"]["question"] == "Proceed?"
+    assert second["type"] == "digest"
+
+
+def test_feed_with_since_does_not_repeat_a_gate_it_replays() -> None:
+    _parked()
+    state.record_event(
+        "acme", AttentionEvent(run_id="acme", event="blocked", question="Proceed?"), time.time() - 5
+    )
+    with _client() as client, client.websocket_connect("/feed?run=acme&since=1") as socket:
+        frames = [socket.receive_json() for _ in range(2)]
+    assert [frame["type"] for frame in frames] == ["event", "digest"]
+
+
+def test_feed_logs_a_failed_digest_and_closes_with_the_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*args: Any, **kwargs: Any) -> None:
+        raise RuntimeError("window read exploded")
+
+    logged: list[tuple[Any, ...]] = []
+    monkeypatch.setattr(digest, "build_digest", boom)
+    monkeypatch.setattr(groom_app.logger, "exception", lambda *args: logged.append(args))
+    with _client() as client, client.websocket_connect("/feed?run=acme") as socket:
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+    assert closed.value.code == 1011
+    assert "window read exploded" in closed.value.detail
+    assert [args[1] for args in logged] == ["acme"]
+
+
+def test_feed_closes_when_a_later_digest_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    real = digest.build_digest
+    calls: list[int] = []
+
+    def flaky(*args: Any, **kwargs: Any) -> Any:
+        calls.append(1)
+        if len(calls) > 1:
+            raise RuntimeError("second digest exploded")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(digest, "build_digest", flaky)
+    monkeypatch.setattr(groom_app, "FEED_MIN_EVERY_S", 0.01)
+    with _client() as client, client.websocket_connect("/feed?run=acme&every=0.05") as socket:
+        assert socket.receive_json()["type"] == "digest"
+        with pytest.raises(WebSocketDisconnect) as closed:
+            socket.receive_json()
+    assert closed.value.code == 1011
 
 
 def test_feed_since_replays_events_then_digests_from_the_cursor() -> None:

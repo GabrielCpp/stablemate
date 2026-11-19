@@ -154,8 +154,12 @@ def build_digest(
 ) -> DigestFrame:
     wall = now if now is not None else time.time()
     window, quiet = _window(run_id, since, until)
+    known = run_id in state.RUNS or run_id in state.EVENTS or store.has_run_rows(run_id)
     frame = DigestFrame(
         seq=0, ts=wall, since=since, until=until, quiet=quiet, summary="",
-        standing=_standing(run_id, wall), window=window,
+        standing=_standing(run_id, wall), window=window, known=known,
     )
-    return frame.model_copy(update={"summary": digest_summary(frame)})
+    summary = digest_summary(frame) if known else (
+        f"no such run: groom has no telemetry for {run_id} yet, waiting for it to appear"
+    )
+    return frame.model_copy(update={"summary": summary})
