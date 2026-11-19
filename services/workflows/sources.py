@@ -133,14 +133,6 @@ AUTHOR = (
     "workflows/src/workhorse_workflows/author/story_split/nodes/services.py",
     "workflows/src/workhorse_workflows/author/story_split/prompts/split-stories.md",
     "workflows/src/workhorse_workflows/author/story_split/schemas.py",
-    "workflows/src/workhorse_workflows/author/surveyor/flow.py",
-    "workflows/src/workhorse_workflows/author/surveyor/nodes/config.py",
-    "workflows/src/workhorse_workflows/author/surveyor/nodes/partition.py",
-    "workflows/src/workhorse_workflows/author/surveyor/prompts/assess-unit.md",
-    "workflows/src/workhorse_workflows/author/surveyor/prompts/fix-record.md",
-    "workflows/src/workhorse_workflows/author/surveyor/prompts/partition-findings.md",
-    "workflows/src/workhorse_workflows/author/surveyor/prompts/plan-units.md",
-    "workflows/src/workhorse_workflows/author/surveyor/prompts/resolve-operator.md",
     "workflows/src/workhorse_workflows/author/workflow.py",
 )
 

@@ -34,10 +34,10 @@ def select_next_unit(
     inv_path = root / inv_rel
     if not inv_path.is_file():
         logger.warning(
-            "no inventory at %s — expand_inventory must materialize it first", inv_rel
+            "no inventory at %s — expand_parity_inventory must materialize it first", inv_rel
         )
         return UnitPick(
-            reason=f"no inventory at {inv_rel} — expand_inventory must materialize it first"
+            reason=f"no inventory at {inv_rel} — expand_parity_inventory must materialize it first"
         )
 
     backend = wl.JsonBackend(inv_path, items_key="units")

@@ -1,7 +1,6 @@
 """End-to-end drives of the author workflow (`author/workflow.py`)."""
 from __future__ import annotations
 
-import json
 import logging
 import subprocess
 from collections import Counter
@@ -38,7 +37,6 @@ from workhorse_workflows.author.finalize.nodes.artifacts import validate_artifac
 from workhorse_workflows.author.shared.nodes.story_mode import promote_record, seed_story
 from workhorse_workflows.author.shared.schemas import EditIntent
 from workhorse_workflows.author.epic_edit import EpicEdit
-from workhorse_workflows.author.shared.survey import record_slug
 from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.story_edit.nodes import resolve_story_intent
 from workhorse_workflows.author.workflow import Author, workflow
@@ -69,15 +67,6 @@ STORIES = (
 SECOND_STORIES = (("01-edit-profile", "Edit profile", "p1"),)
 SLUGS = [slug for slug, _, _ in STORIES]
 SECOND_SLUGS = [slug for slug, _, _ in SECOND_STORIES]
-
-SURVEY_DIR = "docs/survey"
-RUBRIC = f"{SURVEY_DIR}/rubric.md"
-RULES = f"{SURVEY_DIR}/units.yml"
-INVENTORY = f"{SURVEY_DIR}/inventory.json"
-FINDINGS = f"{SURVEY_DIR}/findings"
-PARTITION = f"{SURVEY_DIR}/partition.yaml"
-BUTTON = "src/components/button"
-CLUSTER = "missing-accessible-name"
 
 
 @pytest.fixture
@@ -249,52 +238,6 @@ def _write_story_doc(
         front += f"\nservices: [{', '.join(services)}]"
     body = (_BODY if authored else _UNWRITTEN_BODY).format(title=title)
     path.write_text(f"{front}\n---\n\n{body}", encoding="utf-8")
-
-
-def _rules() -> str:
-    """The enumeration rules the surveyor's planner writes."""
-    return json.dumps({"rules": [{"kind": "folder", "glob": "src/components/*"}]}, indent=2) + "\n"
-
-
-def _record(unit_id: str, kind: str = "folder") -> str:
-    """One survey finding record, as the surveyor's assessor writes it."""
-    front = {
-        "type": "survey-finding",
-        "unit": unit_id,
-        "kind": kind,
-        "status": "assessed",
-        "findings": [
-            {
-                "description": f"{unit_id} renders an icon-only control with no name",
-                "remediation_pattern": CLUSTER,
-                "effort": "small",
-                "evidence": f"{unit_id}/index.tsx:1 — no aria-label on the button",
-            }
-        ],
-    }
-    return f"---\n{json.dumps(front, indent=2)}\n---\n\n# Survey finding: {unit_id}\n"
-
-
-def _partition(repo: Path) -> str:
-    """One mechanical cluster over every assessed unit."""
-    data = json.loads((repo / INVENTORY).read_text())
-    units = [str(u["id"]) for u in data["units"] if u.get("status") == "assessed"]
-    return json.dumps(
-        {
-            "clusters": [
-                {
-                    "id": CLUSTER,
-                    "title": "Give every icon-only control an accessible name",
-                    "remediation_pattern": CLUSTER,
-                    "strategy": "mechanical",
-                    "order": 1,
-                    "units": units,
-                    "notes": "One checklist story; trivial per unit.",
-                }
-            ]
-        },
-        indent=2,
-    )
 
 
 class _Agent:
@@ -576,20 +519,6 @@ The running system is the source of truth.
         return {"decision": "answered", "notes": "relinked"}
 
 
-    def _plan_units(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        (self.repo / data["rules_path"]).write_text(_rules())
-        return {"status": "complete", "notes": "one unit per component folder"}
-
-    def _assess_unit(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        path = self.repo / data["record_path"]
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_record(str(data["unit_id"]), str(data.get("unit_kind", ""))))
-        return {"status": "assessed", "notes": "one finding"}
-
-    def _partition_findings(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        (self.repo / data["partition_path"]).write_text(_partition(self.repo))
-        return {"status": "complete", "notes": "one mechanical cluster"}
-
 
 def _env(tmp: Path, *, run_dir: Path | None = None) -> RunEnv:
     writer = (
@@ -704,6 +633,20 @@ def test_epic_mode_stops_before_any_turn_when_no_milestone_is_approved(
 
     with pytest.raises(WorkflowFailed, match="no milestone is approved"):
         _drive(_env(tmp_path), agent)
+
+    assert agent.calls == []
+
+
+@pytest.mark.parametrize("mode", ["survey", "epics"])
+def test_a_mode_the_author_does_not_run_stops_before_any_turn(
+    backlogged: Path, tmp_path: Path, mode: str
+) -> None:
+    from workhorse.pyflow import WorkflowFailed
+
+    agent = _Agent(backlogged)
+
+    with pytest.raises(WorkflowFailed, match=rf"unknown author mode '{mode}'.*epic, story, parity-survey"):
+        _drive(_env(tmp_path), agent, mode=mode)
 
     assert agent.calls == []
 
@@ -1502,34 +1445,6 @@ def test_epic_edit_semantic_review_reworks_are_bounded(
     assert agent.counts()["refine-epic-edit-plan"] == 3, agent.counts()
     assert len(seen) == 1 and "journey drift" in seen[0], seen
     assert not (epic_dir(EPIC)).exists()
-
-
-def test_survey_mode_runs_the_surveyor_and_stops_at_discovery(
-    backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path], artifacts: Path
-) -> None:
-    """`handoff`: the sub-flow runs on the parent's env and returns its discovery output."""
-    write(backlogged / RUBRIC, "# Accessibility rubric\n\nEvery control needs a name.\n")
-    write(backlogged / BUTTON / "index.tsx", "export const Button = () => <button />\n")
-    _commit(backlogged, "a rubric and one component")
-
-    agent = _Agent(backlogged)
-    _drive(_env(tmp_path), agent, mode="survey")
-
-    assert agent.counts()["plan-units"] == 1, agent.counts()
-    assert agent.counts()["assess-unit"] == 1, agent.counts()
-    assert agent.counts()["partition-findings"] == 1, agent.counts()
-
-    assert (backlogged / RULES).is_file()
-    assert (backlogged / INVENTORY).is_file()
-    assert (backlogged / FINDINGS / f"{record_slug(BUTTON)}.md").is_file()
-    assert (backlogged / PARTITION).is_file()
-    surveyed = [r for r in Ostler(backlogged).records().records if r.filed_by == "survey"]
-    assert surveyed and all(r.repo == "acme" and r.pattern == "missing-accessible-name" for r in surveyed)
-    assert any(CLUSTER in r.summary or CLUSTER in r.body for r in surveyed), surveyed
-    assert not (backlogged / "docs/backlog.md").exists()
-
-    assert _subject(backlogged) == "a rubric and one component"
-    assert _stories(backlogged) == {}
 
 
 def test_a_run_killed_mid_story_resumes_on_that_story_alone(

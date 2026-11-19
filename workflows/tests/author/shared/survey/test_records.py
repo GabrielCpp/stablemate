@@ -145,7 +145,7 @@ def test_every_structural_error_in_a_finding_is_reported_together(
     errors = validate_record(logger, f"{FINDINGS}/src-api.md", "src/api").record_errors
 
     assert "findings[0] missing non-empty `description`" in errors
-    assert "must be a kebab-case slug (the partitioner clusters on it)" in errors
+    assert "must be a kebab-case slug" in errors
     assert "findings[0] effort 'enormous' not one of" in errors
     assert "is a guess, not a finding" in errors
 
@@ -402,26 +402,6 @@ def test_a_unit_dropped_since_the_commit_is_a_regression(
     assert "[dropped-unit] 'src/web' was in the committed inventory (HEAD)" in (
         result.verify_errors
     )
-
-
-def test_a_split_is_lineage_not_a_drop(
-    repo: Path, logger: logging.Logger, write: Write, write_json: WriteJson
-) -> None:
-    """`split_unit` legitimately removes a parent, and the children's paths are the proof — which is why this check reads paths and not just ids."""
-    write_json(repo / INVENTORY, {"units": [_unit("src", "pending")]})
-    _commit(repo, "freeze the inventory")
-
-    write_json(
-        repo / INVENTORY,
-        {"units": [_unit("src/api", "clean"), _unit("src/web", "clean")]},
-    )
-    write(repo / FINDINGS / "src-api.md", _record("src/api", "clean"))
-    write(repo / FINDINGS / "src-web.md", _record("src/web", "clean"))
-
-    result = verify_records(logger)
-
-    assert result.holds is True
-    assert "dropped-unit" not in result.verify_errors
 
 
 def test_the_shrinkage_check_fails_open_with_no_committed_baseline(

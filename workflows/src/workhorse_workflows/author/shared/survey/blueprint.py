@@ -1,4 +1,4 @@
-"""The surveyor sub-flow's own `Blueprint`."""
+"""The survey library's own `Blueprint`."""
 from __future__ import annotations
 
 from workhorse.pyflow import Blueprint

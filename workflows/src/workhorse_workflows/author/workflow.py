@@ -24,7 +24,6 @@ from workhorse_workflows.author.story_author import StoryAuthor
 from workhorse_workflows.author.story_author.nodes import blueprint as story_author_blueprint
 from workhorse_workflows.author.story_split import StorySplitFlow
 from workhorse_workflows.author.story_split.nodes import blueprint as story_split_blueprint
-from workhorse_workflows.author.surveyor import Surveyor
 
 workflow = (
     Registry("author", package=__package__)
@@ -42,7 +41,6 @@ workflow = (
         pm_blueprint,
     )
     .add_flows(
-        surveyor=Surveyor,
         **{
             "parity-surveyor": ParitySurveyor,
             "epic-edit": EpicEdit,

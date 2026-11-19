@@ -92,7 +92,7 @@ This guard is narrow: it stops the specific vocabulary of a deleted give-up patt
 quietly reappearing, not every way the rule could be broken. It does not cover the
 resolver-authority half of the rule — that an `answered` arm exists only where the answer
 was grounded in something already written, at the `operator_mode` sites in
-`author/main/flow.py`, `author/surveyor/flow.py`, `coder/dev/flow.py`,
+`author/main/flow.py`, `coder/dev/flow.py`,
 `coder/qa/flow.py`, `coder/docs/flow.py`, `coder/fix/flow.py` and
 `coder/fix_ci/flow.py` — which needs the
 control-flow graph, not a grep, same as everything else this check cannot see

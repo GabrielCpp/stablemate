@@ -78,7 +78,7 @@ def check_record(record: dict, unit_id: str) -> list[str]:
         if not PATTERN_SLUG_RE.match(pattern):
             errors.append(
                 f"findings[{i}] remediation_pattern '{pattern or '?'}' must be a "
-                f"kebab-case slug (the partitioner clusters on it)"
+                f"kebab-case slug"
             )
         if f.get("effort") not in EFFORTS:
             errors.append(
@@ -231,7 +231,6 @@ def verify_records(
     errors: list[str] = []
     counts = {"assessed": 0, "clean": 0, "blocked": 0, "pending": 0}
     current_ids: set[str] = set()
-    current_paths: list[str] = []
 
     for u in units:
         if not isinstance(u, dict) or not str(u.get("id") or ""):
@@ -239,7 +238,6 @@ def verify_records(
             continue
         unit_id = str(u["id"])
         current_ids.add(unit_id)
-        current_paths.append(str(u.get("path") or unit_id))
         status = u.get("status")
         if status not in UNIT_STATUSES:
             errors.append(f"  - [bad-status] '{unit_id}' has status '{status}'")
@@ -295,13 +293,10 @@ def verify_records(
             bid = str(bu.get("id") or "")
             if not bid or bid in current_ids:
                 continue
-            bpath = str(bu.get("path") or bid)
-            if any(p.startswith(bpath + "/") for p in current_paths):
-                continue
             errors.append(
                 f"  - [dropped-unit] '{bid}' was in the committed inventory ({ref}) "
-                f"but is gone now with no split lineage and no record — a frozen-list "
-                f"drop is a regression; restore it or split it properly"
+                f"but is gone now with no record — a frozen-list drop is a regression; "
+                f"restore it"
             )
 
     total = len(current_ids)

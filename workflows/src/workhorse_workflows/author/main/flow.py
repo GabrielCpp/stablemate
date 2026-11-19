@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workhorse.pyflow import Await, Continue, Done, Workflow
+from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse.worklist import WorkItem
 from workhorse_workflows.author.epic_author import EpicAuthor
 from workhorse_workflows.author.epic_split import EpicSplit
@@ -27,7 +27,8 @@ from workhorse_workflows.author.shared.schemas import RunContext
 from workhorse_workflows.author.story_author import StoryAuthor
 from workhorse_workflows.author.story_split import StorySplitFlow
 from workhorse_workflows.author.story_split.nodes import derive_story_services
-from workhorse_workflows.author.surveyor import Surveyor
+
+MODES = ("epic", "story", "parity-survey")
 
 
 class Author(Workflow):
@@ -38,26 +39,19 @@ class Author(Workflow):
     record: str = ""
     layers: str = ""
     services: str = ""
-    rubric: str = "docs/survey/rubric.md"
-    survey_dir: str = "docs/survey"
     baseline_inventory: str = ""
     parity_survey_dir: str = "docs/survey/legacy-vs-new"
     operator_mode: str = "auto"
 
     def setup(self) -> RunContext:
         """Resolve the paths every handed-off stage works against."""
+        if self.mode not in MODES:
+            raise WorkflowFailed(f"unknown author mode '{self.mode}': the author runs one of {', '.join(MODES)}")
         cfg = self.call(load_config, mode=self.mode)
         return RunContext(**cfg.model_dump())
 
     def start(self) -> Continue | Done:
         """Dispatch discovery modes, one register story, or the stage chain."""
-        if self.mode == "survey":
-            return Done(self.handoff(
-                Surveyor,
-                rubric=self.rubric,
-                survey_dir=self.survey_dir,
-                operator_mode=self.operator_mode,
-            ))
         if self.mode == "parity-survey":
             return Done(self.handoff(
                 ParitySurveyor,
