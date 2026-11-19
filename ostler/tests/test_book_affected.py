@@ -20,11 +20,11 @@ FILES = {
     "put.go": "package shelf\n\nfunc Put(id string) string {\n\treturn id\n}\n\nfunc Other() int {\n\treturn 1\n}\n",
     "remove.go": "package shelf\n\nfunc Remove(id string) string {\n\treturn id\n}\n",
     "drawer.go": "package shelf\n\nfunc Open() int {\n\treturn 1\n}\n",
-    "config.go": "package shelf\n\nvar table = map[string]int{\n\t\"a\": 1,\n}\n",
+    "config.go": "package shelf\n\n// sizes: a\n",
     "other.go": "package shelf\n\nfunc Stray() int {\n\treturn 1\n}\n",
     "box.go": "package shelf\n\ntype Box struct {\n\tName string\n\tSize int\n}\n\nfunc Fill() int {\n\treturn 1\n}\n\nfunc Empty() int {\n\treturn 2\n}\n",
-    "mixed.go": "package shelf\n\nvar table = map[string]int{\n\t\"a\": 1,\n}\n\nfunc Fill() int {\n\treturn 1\n}\n",
-    "twice.go": "package shelf\n\nvar a = 1\n\nvar b = 2\n",
+    "mixed.go": "package shelf\n\n// sizes: a\n\nfunc Fill() int {\n\treturn 1\n}\n",
+    "twice.go": "package shelf\n\n// one\n\n// two\n",
     "skip_test.go": "package shelf\n\nfunc TestIt() {\n\treturn\n}\n",
 }
 
@@ -66,7 +66,7 @@ def test_a_method_the_pointer_names_with_its_type_is_covered(monkeypatch, tmp_pa
 
 def test_a_hunk_with_no_definition_line_counts_at_the_file_and_the_plan_stays_partial(monkeypatch, tmp_path, capsys, repo):
     where, base = repo
-    commit_files(where, edited("config.go", '"a": 1', '"a": 2'))
+    commit_files(where, edited("config.go", "sizes: a", "sizes: b"))
     code, found, _ = affect(monkeypatch, tmp_path, sourced_book({"PutItem": ("config.go",), "RemoveItem": ("config.go",)}), where, base, capsys)
     assert {c["element"] for c in found["chains"]} == {"PutItem", "RemoveItem"}
     assert found["fallbacks"] == []
@@ -75,21 +75,18 @@ def test_a_hunk_with_no_definition_line_counts_at_the_file_and_the_plan_stays_pa
     assert (code, found["plan"]) == (0, "partial")
 
 
-def test_a_helper_one_element_names_widens_to_every_element_that_names_the_file(monkeypatch, tmp_path, capsys, repo):
+def test_a_helper_one_element_names_does_not_widen_to_the_other_elements_of_the_file(monkeypatch, tmp_path, capsys, repo):
     where, base = repo
     commit_files(where, edited("svc.go", "return 1", "return 2"))
     book = sourced_book({"PutItem": ("svc.go::helper",), "RemoveItem": ("svc.go::Server.Get",)})
     _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
-    assert {c["element"] for c in found["chains"]} == {"PutItem", "RemoveItem"}
-    assert found["fallbacks"] == []
-    assert [(w["path"], w["elements"]) for w in found["widened"]] == [("svc.go", ["PutItem", "RemoveItem"])]
-    assert found["only"] == ["PutItem", "RemoveItem"]
-    assert found["plan"] == "partial"
+    assert [(c["element"], c["via"]) for c in found["chains"]] == [("PutItem", "direct")]
+    assert (found["fallbacks"], found["widened"], found["only"], found["plan"]) == ([], [], ["PutItem"], "partial")
 
 
 def test_a_file_level_change_in_a_file_a_record_also_names_makes_the_plan_whole_and_names_the_record(monkeypatch, tmp_path, capsys, repo):
     where, base = repo
-    commit_files(where, edited("config.go", '"a": 1', '"a": 2'))
+    commit_files(where, edited("config.go", "sizes: a", "sizes: b"))
     _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"PutItem": ("config.go",), "Drawer": ("config.go",)}), where, base, capsys)
     assert found["plan"] == "whole"
     assert any("record Drawer" in f["why"] for f in found["fallbacks"])
@@ -131,36 +128,35 @@ def test_a_record_that_points_at_the_file_with_no_symbol_is_touched_by_any_chang
 
 def test_an_unattributed_hunk_does_not_hide_the_function_next_to_it(monkeypatch, tmp_path, capsys, repo):
     where, base = repo
-    commit_files(where, {"mixed.go": FILES["mixed.go"].replace('"a": 1', '"a": 2').replace("return 1", "return 3")})
+    commit_files(where, {"mixed.go": FILES["mixed.go"].replace("sizes: a", "sizes: b").replace("return 1", "return 3")})
     book = sourced_book({"PutItem": ("mixed.go::Fill",), "RemoveItem": ("mixed.go::Remove",)})
     _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
-    assert [(c["function"], c["element"]) for c in found["chains"]] == [("Fill", "PutItem"), ("Fill", "RemoveItem"), ("", "PutItem"), ("", "RemoveItem")]
-    assert [w["elements"] for w in found["widened"]] == [["PutItem", "RemoveItem"], ["PutItem", "RemoveItem"]]
-    assert "no definition line" in found["widened"][1]["why"]
+    assert [(c["function"], c["element"]) for c in found["chains"]] == [("Fill", "PutItem"), ("", "PutItem"), ("", "RemoveItem")]
+    assert [w["elements"] for w in found["widened"]] == [["PutItem", "RemoveItem"]]
+    assert "no definition line" in found["widened"][0]["why"]
     assert (found["plan"], found["only"], found["uncovered"]) == ("partial", ["PutItem", "RemoveItem"], [])
 
 
 def test_an_unattributed_hunk_in_a_file_a_record_names_makes_the_plan_whole(monkeypatch, tmp_path, capsys, repo):
     where, base = repo
-    commit_files(where, edited("mixed.go", '"a": 1', '"a": 2'))
+    commit_files(where, edited("mixed.go", "sizes: a", "sizes: b"))
     _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"Drawer": ("mixed.go::Fill",), "PutItem": ("mixed.go::Fill",)}), where, base, capsys)
     assert found["plan"] == "whole"
     assert [f["why"] for f in found["fallbacks"]] == ["record Drawer names the file and a changed hunk has no definition line: the whole book"]
 
 
-def test_a_helper_widens_to_the_behaviour_elements_of_the_file_and_not_to_its_record(monkeypatch, tmp_path, capsys, repo):
+def test_a_changed_function_does_not_reach_the_other_elements_of_its_file(monkeypatch, tmp_path, capsys, repo):
     where, base = repo
     commit_files(where, edited("box.go", "func Fill() int {\n\treturn 1", "func Fill() int {\n\treturn 3"))
     book = sourced_book({"PutItem": ("box.go::Fill",), "RemoveItem": ("box.go::Empty",), "Drawer": ("box.go::Box",)})
     _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
-    assert {c["element"] for c in found["chains"]} == {"PutItem", "RemoveItem"}
-    assert [w["elements"] for w in found["widened"]] == [["PutItem", "RemoveItem"]]
-    assert (found["plan"], found["fallbacks"]) == ("partial", [])
+    assert {c["element"] for c in found["chains"]} == {"PutItem"}
+    assert (found["plan"], found["fallbacks"], found["widened"]) == ("partial", [], [])
 
 
 def test_the_same_fallback_and_widening_are_listed_once_per_path_and_reason(monkeypatch, tmp_path, capsys, repo):
     where, base = repo
-    commit_files(where, {"twice.go": FILES["twice.go"].replace("= 1", "= 5").replace("= 2", "= 6")})
+    commit_files(where, {"twice.go": FILES["twice.go"].replace("one", "uno").replace("two", "dos")})
     book = sourced_book({"Drawer": ("twice.go",), "PutItem": ("twice.go",)})
     _, found, out = affect(monkeypatch, tmp_path, book, where, base, capsys)
     assert len(found["fallbacks"]) == 1
@@ -184,10 +180,23 @@ def test_two_changed_functions_of_one_record_list_its_fallback_once(monkeypatch,
     ("export interface Ticket {", "Ticket"),
     ("export type Ticket = {", "Ticket"),
     ("export const enum Level {", "Level"),
+    ("const Limit = 5", "Limit"),
+    ("var table = map[string]int{", "table"),
+    ("LIMIT = 5", "LIMIT"),
+    ("LIMIT: int = 5", "LIMIT"),
+    ("export const LIMIT = 5;", "LIMIT"),
+    ("const limit = 5", "limit"),
+    ("let count = 0;", "count"),
+    ("var legacy = 1;", "legacy"),
 ])
-def test_a_type_declaration_is_a_definition_when_asked(line, name):
+def test_a_type_declaration_or_package_level_value_is_a_definition_when_asked(line, name):
     assert defined(line, types=True) == name
     assert defined(line) is None
+
+
+@pytest.mark.parametrize("line", ["\tx = 5", "    const inner = 3", "if x == 5:", "const (", "var (", "x += 1"])
+def test_a_local_assignment_or_block_opener_is_no_definition(line):
+    assert defined(line, types=True) is None
 
 
 def test_a_file_the_book_ignores_is_listed_as_ignored_and_the_plan_is_none(monkeypatch, tmp_path, capsys, repo):
@@ -266,7 +275,7 @@ def test_a_change_to_one_call_gives_a_partial_plan_and_the_command_to_run(monkey
     commit_files(where, edited("remove.go", "return id", "return id + id"))
     code, found, out = affect(monkeypatch, tmp_path, sourced_book({"RemoveItem": ("remove.go::Remove",)}), where, base, capsys)
     assert (code, found["plan"], found["only"], found["journeys"]) == (0, "partial", ["RemoveItem"], ["Clearing"])
-    assert "  remove.go::Remove -> RemoveItem (endpoint) -> RemoveItem, Clearing" in out.splitlines()
+    assert "  remove.go::Remove -> RemoveItem (endpoint, direct) -> RemoveItem, Clearing" in out.splitlines()
     assert out.splitlines()[-1] == "ostler book run services.shelf --only RemoveItem"
 
 
@@ -299,9 +308,9 @@ def test_the_report_holds_the_fields_the_caller_reads_and_what_it_did_not_walk(m
     head = commit_files(where, edited("remove.go", "return id", "return id + id"))
     _, found, out = affect(monkeypatch, tmp_path, sourced_book({"RemoveItem": ("remove.go::Remove",)}), where, base, capsys)
     assert set(found) == {"service", "base", "head", "dirty", "plan", "only", "journeys", "chains", "uncovered", "ignored", "fallbacks", "widened",
-                          "not_computed", "mapped"}
+                          "not_computed", "mapped", "imports"}
     assert (found["service"], found["base"], found["head"]) == ("shelf", base, head)
-    assert set(found["chains"][0]) == {"path", "function", "element", "kind", "plays"}
+    assert set(found["chains"][0]) == {"path", "function", "element", "kind", "plays", "via"}
     assert [n.split(":")[0] for n in found["not_computed"]] == ["dependent books", "configuration", "data", "code in other repositories"]
     assert f"written: {tmp_path / 'out' / 'shelf-affected.json'}" in out
 
@@ -333,6 +342,147 @@ def test_with_no_out_the_report_goes_to_a_temp_folder_the_output_names(monkeypat
     assert Path(folder, "shelf-affected.json").exists()
 
 
+HANDLERS = ("package shelf\n\nfunc Put(id string) string {\n\treturn help(id)\n}\n\nfunc Remove(id string) string {\n\treturn help(id) + \"x\"\n}\n\n"
+            "func help(id string) string {\n\treturn id\n}\n\nfunc Other(id string) string {\n\treturn id\n}\n")
+LIMITS = ("package shelf\n\nconst (\n\tLimit = 5\n\tFloor = 1\n)\n\nfunc help(id string) int {\n\treturn len(id) + Limit\n}\n\n"
+          "func Put(id string) int {\n\treturn help(id)\n}\n\nfunc Remove(id string) int {\n\treturn Floor\n}\n")
+IMPORTS = "package shelf\n\nimport (\n\t\"fmt\"\n)\n\nfunc Put(id string) string {\n\treturn fmt.Sprint(id)\n}\n"
+RENDER = "package shelf\n\nfunc Render() string {\n\treturn \"a\"\n}\n"
+CALLER = "package shelf\n\nfunc {name}() string {{\n\treturn Render()\n}}\n"
+BROKEN = ("package shelf\n\nfunc Put() string {\n\treturn \"p\"\n}\n\nfunc help() string {\n\treturn \"a\"\n}\n\n"
+          "func broken() string {\n\treturn \"b\"\n")
+
+
+def scene(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
+    return tmp_path / "app", code_repo(tmp_path / "app", files)
+
+
+def vias(found: dict[str, Any]) -> list[tuple[str, str, str]]:
+    return [(c["function"], c["element"], c["via"]) for c in found["chains"]]
+
+
+def test_a_helper_two_handlers_use_reaches_the_element_that_names_the_handler(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"h.go": HANDLERS})
+    commit_files(where, {"h.go": HANDLERS.replace("func help(id string) string {\n\treturn id", "func help(id string) string {\n\treturn id + \"!\"")})
+    book = sourced_book({"PutItem": ("h.go::help",), "RemoveItem": ("h.go::Remove",), "RestockItem": ("h.go::Other",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("help", "PutItem", "direct"), ("help", "RemoveItem", "through help")]
+    assert (found["only"], found["widened"], found["fallbacks"], found["plan"]) == (["PutItem", "RemoveItem"], [], [], "partial")
+
+
+def test_a_handler_no_other_handler_mentions_reaches_only_its_own_element(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"h.go": HANDLERS})
+    commit_files(where, {"h.go": HANDLERS.replace("func Other(id string) string {\n\treturn id", "func Other(id string) string {\n\treturn id + \"!\"")})
+    book = sourced_book({"PutItem": ("h.go::Put",), "RemoveItem": ("h.go::Remove",), "RestockItem": ("h.go::Other",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("Other", "RestockItem", "direct")]
+    assert found["only"] == ["RestockItem"]
+
+
+def test_a_changed_constant_reaches_the_elements_whose_functions_mention_it(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"c.go": LIMITS})
+    commit_files(where, {"c.go": LIMITS.replace("Limit = 5", "Limit = 6")})
+    book = sourced_book({"PutItem": ("c.go::Put",), "RemoveItem": ("c.go::Remove",)})
+    _, found, out = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("Limit", "PutItem", "through help")]
+    assert (found["widened"], found["fallbacks"], found["uncovered"], found["plan"]) == ([], [], [], "partial")
+    assert any(line.startswith("  c.go::Limit -> PutItem (endpoint, through help) -> ") for line in out.splitlines())
+
+
+def test_a_constant_the_element_names_is_direct(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"c.go": LIMITS})
+    commit_files(where, {"c.go": LIMITS.replace("Floor = 1", "Floor = 2")})
+    book = sourced_book({"PutItem": ("c.go::Put",), "RemoveItem": ("c.go::Floor",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("Floor", "RemoveItem", "direct")]
+
+
+def test_a_go_import_only_hunk_is_listed_under_imports_and_widens_nothing(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"i.go": IMPORTS})
+    commit_files(where, {"i.go": IMPORTS.replace('\t"fmt"\n', '\t"fmt"\n\t"strings"\n')})
+    code, found, out = affect(monkeypatch, tmp_path, sourced_book({"PutItem": ("i.go::Put",)}), where, base, capsys)
+    assert found["imports"] == ["i.go"]
+    assert (found["chains"], found["widened"], found["fallbacks"], found["uncovered"]) == ([], [], [], [])
+    assert (code, found["plan"], found["mapped"]) == (0, "none", ["i.go"])
+    assert "imports" in out
+
+
+def test_a_blank_import_stays_unplaceable_and_counts_at_the_file(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"i.go": IMPORTS})
+    commit_files(where, {"i.go": IMPORTS.replace('\t"fmt"\n', '\t"fmt"\n\t_ "embed"\n')})
+    _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"PutItem": ("i.go::Put",)}), where, base, capsys)
+    assert found["imports"] == []
+    assert vias(found) == [("", "PutItem", "direct")]
+    assert [w["path"] for w in found["widened"]] == ["i.go"]
+
+
+def test_a_single_line_go_import_is_an_import_hunk(monkeypatch, tmp_path, capsys):
+    one = "package shelf\n\nimport \"fmt\"\n\nfunc Put(id string) string {\n\treturn fmt.Sprint(id)\n}\n"
+    where, base = scene(tmp_path, {"i.go": one})
+    commit_files(where, {"i.go": one.replace('import "fmt"', 'import str "fmt"')})
+    _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"PutItem": ("i.go::Put",)}), where, base, capsys)
+    assert (found["imports"], found["chains"]) == (["i.go"], [])
+
+
+def test_a_same_name_collision_is_followed_on_both(monkeypatch, tmp_path, capsys):
+    files = {"a.go": RENDER, "b.go": RENDER.replace('"a"', '"b"'), "p.go": CALLER.format(name="Put"), "r.go": CALLER.format(name="Remove")}
+    where, base = scene(tmp_path, files)
+    commit_files(where, {"a.go": RENDER.replace('"a"', '"z"')})
+    book = sourced_book({"PutItem": ("p.go::Put",), "RemoveItem": ("r.go::Remove",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("Render", "PutItem", "through Render"), ("Render", "RemoveItem", "through Render")]
+
+
+def test_a_file_whose_extents_cannot_be_read_is_one_unit(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"u.go": BROKEN})
+    commit_files(where, {"u.go": BROKEN.replace('return "a"', 'return "z"')})
+    _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"PutItem": ("u.go::Put",)}), where, base, capsys)
+    assert vias(found) == [("help", "PutItem", "through help")]
+
+
+def test_the_same_file_closed_properly_keeps_the_extents_apart(monkeypatch, tmp_path, capsys):
+    closed = BROKEN + "}\n"
+    where, base = scene(tmp_path, {"u.go": closed})
+    commit_files(where, {"u.go": closed.replace('return "a"', 'return "z"')})
+    code, found, _ = affect(monkeypatch, tmp_path, sourced_book({"PutItem": ("u.go::Put",)}), where, base, capsys)
+    assert (found["chains"], found["uncovered"], code) == ([], [{"path": "u.go", "function": "help"}], 1)
+
+
+def test_a_record_whose_type_mentions_the_changed_symbol_is_touched_and_leaves_the_plan_partial(monkeypatch, tmp_path, capsys):
+    text = "package shelf\n\ntype Level int\n\nfunc Hold() int {\n\treturn Level(2)\n}\n\nfunc Put() int {\n\treturn Level(1)\n}\n"
+    where, base = scene(tmp_path, {"r.go": text})
+    commit_files(where, {"r.go": text.replace("type Level int", "type Level int64")})
+    _, found, out = affect(monkeypatch, tmp_path, sourced_book({"Drawer": ("r.go::Hold",), "PutItem": ("r.go::Put",)}), where, base, capsys)
+    assert vias(found) == [("Level", "PutItem", "through Level"), ("Level", "Drawer", "through Level")]
+    assert (found["plan"], found["fallbacks"], found["only"]) == ("partial", [], ["PutItem"])
+
+
+def test_a_changed_symbol_that_is_the_records_own_makes_the_plan_whole(monkeypatch, tmp_path, capsys):
+    text = "package shelf\n\ntype Level int\n\nfunc Put() int {\n\treturn 1\n}\n"
+    where, base = scene(tmp_path, {"r.go": text})
+    commit_files(where, {"r.go": text.replace("type Level int", "type Level int64")})
+    _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"Drawer": ("r.go::Level",), "PutItem": ("r.go::Put",)}), where, base, capsys)
+    assert vias(found) == [("Level", "Drawer", "direct")]
+    assert (found["plan"], found["fallbacks"]) == ("whole", [{"path": "r.go", "why": "record Drawer changed: the whole book"}])
+
+
+def test_a_changed_symbol_nothing_mentions_and_no_element_names_is_uncovered(monkeypatch, tmp_path, capsys):
+    z = "package shelf\n\nfunc Stray() int {\n\treturn 1\n}\n\nfunc Lone() int {\n\treturn Stray()\n}\n"
+    where, base = scene(tmp_path, {"h.go": HANDLERS, "z.go": z})
+    commit_files(where, {"z.go": z.replace("return 1", "return 2")})
+    code, found, _ = affect(monkeypatch, tmp_path, sourced_book({"PutItem": ("h.go::Put",)}), where, base, capsys)
+    assert (code, found["chains"], found["uncovered"]) == (1, [], [{"path": "z.go", "function": "Stray"}])
+
+
+def test_a_function_in_a_file_no_element_names_reaches_the_element_that_mentions_it(monkeypatch, tmp_path, capsys):
+    z = "package shelf\n\nfunc Stray() int {\n\treturn 1\n}\n"
+    where, base = scene(tmp_path, {"h.go": HANDLERS, "z.go": z})
+    commit_files(where, {"h.go": HANDLERS.replace("return help(id)\n}", "return help(id) + Stray()\n}"), "z.go": z.replace("return 1", "return 2")})
+    code, found, _ = affect(monkeypatch, tmp_path, sourced_book({"PutItem": ("h.go::Put",)}), where, base, capsys)
+    assert vias(found) == [("Put", "PutItem", "direct"), ("Stray", "PutItem", "through Stray")]
+    assert (code, found["uncovered"]) == (0, [])
+
+
 def test_a_screen_reaches_its_interactions_and_a_record_no_call():
     screen = type("Dashboard", (), {})
     service = cast("Service[Any]", SimpleNamespace(interactions=(SimpleNamespace(__name__="Tap", screen=screen),
@@ -351,3 +501,47 @@ def test_run_only_accepts_an_outside_happening_and_keeps_the_journeys_that_arran
 def test_run_only_still_refuses_a_name_the_book_does_not_have(monkeypatch, tmp_path, capsys):
     with pytest.raises(SystemExit, match="--only names no endpoint or interaction or outside happening of shelf: Nobody"):
         run_shelf(monkeypatch, shelf_book(), tmp_path, capsys, "--only", "Nobody")
+
+
+IFACE = ("package shelf\n\ntype Repository interface {\n\tCreate(id string) error\n}\n\n"
+         "func Use(r Repository) error {\n\treturn r.Get()\n}\n\n"
+         "func (s *Service) Create(id string) error {\n\treturn nil\n}\n\n"
+         "func Put() error {\n\treturn Use(nil)\n}\n")
+HOLDS = ("package shelf\n\nconst Limit = 5\n\ntype Box struct {\n\tMax int `json:\"max\"`\n\tLimit int\n}\n\n"
+         "func Make() Box {\n\treturn Box{}\n}\n\nfunc Cap() int {\n\treturn Limit\n}\n")
+
+
+def test_an_interface_declaring_the_changed_method_name_does_not_pull_in_the_functions_that_mention_it(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"s.go": IFACE})
+    commit_files(where, {"s.go": IFACE.replace("return nil", "return fmt.Errorf(id)")})
+    book = sourced_book({"PutItem": ("s.go::Put",), "RestockItem": ("s.go::Use",), "RemoveItem": ("s.go::Service.Create",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert found["only"] == ["RemoveItem"]
+
+
+def test_a_struct_mentioning_a_changed_constant_does_not_pull_in_its_users_but_a_function_does(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"b.go": HOLDS})
+    commit_files(where, {"b.go": HOLDS.replace("Limit = 5", "Limit = 6")})
+    book = sourced_book({"PutItem": ("b.go::Make",), "RemoveItem": ("b.go::Cap",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("Limit", "RemoveItem", "through Limit")]
+
+
+def test_a_changed_type_still_reaches_every_function_that_mentions_it(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"b.go": HOLDS})
+    commit_files(where, {"b.go": HOLDS.replace("Max int", "Max int64")})
+    book = sourced_book({"PutItem": ("b.go::Make",), "RemoveItem": ("b.go::Cap",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("Box", "PutItem", "through Box")]
+
+
+PYCLASS = ("def helper():\n    return 1\n\n\nclass Shelf:\n    def put(self):\n        return helper()\n\n\n"
+           "def caller():\n    return put()\n\n\ndef other():\n    return 2\n")
+
+
+def test_a_python_class_does_not_join_by_mention_but_its_method_and_the_methods_callers_do(monkeypatch, tmp_path, capsys):
+    where, base = scene(tmp_path, {"s.py": PYCLASS})
+    commit_files(where, {"s.py": PYCLASS.replace("return 1", "return 3")})
+    book = sourced_book({"Drawer": ("s.py::Shelf",), "PutItem": ("s.py::put",), "RestockItem": ("s.py::caller",), "RemoveItem": ("s.py::other",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert vias(found) == [("helper", "PutItem", "through helper"), ("helper", "RestockItem", "through put")]

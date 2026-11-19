@@ -1,10 +1,10 @@
 """`ostler book affected`: the plays a code change calls for, read from the diff and the book alone.
 
-The walk has three steps. The diff gives the changed paths and the functions in them, committed or not. The
-`source=` pointers of the book give the elements that name each. The elements give the calls and journeys to play.
-Every changed path lands in exactly one of mapped, uncovered or ignored, and every place the walk could not narrow
-is named. A widened place stays a list. A fallback, where the book cannot name a list at all, makes the plan the whole
-book."""
+The walk has three steps. The diff gives the changed paths and the symbols in them, committed or not. The mention
+map of the source gives every symbol that mentions a changed one, and the `source=` pointers of the book give the
+elements that name any of them. The elements give the calls and journeys to play. Every changed path lands in
+exactly one of mapped, uncovered or ignored, and every place the walk could not narrow is named. A hunk with no
+symbol stays a widened list. A fallback, where the book cannot name a list at all, makes the plan the whole book."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from typing import Any, cast
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book.played import carriers
 from ostler.book.service import Service
+from ostler.book.mentions import Mentions, same_symbol
 from ostler.book.sources import changed_parts, changed_in_tree, file_of, git, head_of, ignored, sourced, traced_in, verified_at
 from ostler.book.touching import touches
 
@@ -46,6 +47,7 @@ class Chain:
     element: str
     kind: str
     plays: list[str]
+    via: str = "direct"
 
 
 @dataclass
@@ -63,6 +65,7 @@ class Affected:
     fallbacks: list[dict[str, str]] = field(default_factory=list)
     widened: list[dict[str, Any]] = field(default_factory=list)
     mapped: list[str] = field(default_factory=list)
+    imports: list[str] = field(default_factory=list)
     not_computed: list[str] = field(default_factory=lambda: list(NOT_COMPUTED))
 
     def command(self, module: str) -> str:
@@ -86,16 +89,6 @@ def pointers(service: Service[Any], app_root: str) -> list[Pointer]:
     return found
 
 
-def same_symbol(changed: str, pointed: str) -> bool:
-    """Whether a changed function is the one a pointer names. Where both give their type, the whole name must be
-    equal, so `Service.Get` is not `Server.Get`; where either gives none, the last name decides."""
-    if changed == pointed:
-        return True
-    if "." in changed and "." in pointed:
-        return False
-    return changed.rsplit(".", 1)[-1] == pointed.rsplit(".", 1)[-1]
-
-
 def calls_of(service: Service[Any], element: type, kind: str) -> set[str] | None:
     """The calls whose plays an element's change can alter, or None where the book cannot narrow them."""
     if kind == "record":
@@ -110,11 +103,13 @@ def calls_of(service: Service[Any], element: type, kind: str) -> set[str] | None
 
 def walk(service: Service[Any], app_root: str, base: str, head: str) -> Affected:
     assert service.app is not None
-    tracked, untracked = changed_in_tree(app_root, base, service.app.roots)
+    app = service.app
+    tracked, untracked = changed_in_tree(app_root, base, app.roots)
     held, loose = changed_in_tree(app_root, "HEAD", service.app.roots)
     found = Affected(service.name, base, head, dirty=bool(held or loose))
     named: dict[str, list[Pointer]] = {}
-    for pointer in pointers(service, app_root):
+    everything = pointers(service, app_root)
+    for pointer in everything:
         named.setdefault(pointer.path, []).append(pointer)
     journeys: dict[str, list[str]] = {}
     called: set[str] = set()
@@ -137,10 +132,11 @@ def walk(service: Service[Any], app_root: str, base: str, head: str) -> Affected
                 return
         found.widened.append({"path": path, "why": why, "elements": elements})
 
-    def chain(path: str, function: str, element: Pointer, because: str = "") -> None:
+    def chain(path: str, function: str, element: Pointer, because: str = "", via: str = "direct") -> None:
         calls = calls_of(service, element.element, element.kind)
         name = element.element.__name__
-        if calls is None:
+        followed = element.kind == "record" and via != "direct"
+        if calls is None and not followed:
             why = because or (f"record {name} changed" if element.kind == "record" else f"{element.kind} {name} reaches no call of the book")
             fall(path, f"{why}: the whole book")
         wanted = sorted(calls or ())
@@ -148,39 +144,54 @@ def walk(service: Service[Any], app_root: str, base: str, head: str) -> Affected
         titles = list(dict.fromkeys(t for c in wanted for t in journeys_of(c)))
         titled.update(titles)
         plays = [*wanted, *titles]
-        found.chains.append(Chain(path, function, name, element.kind, plays))
+        found.chains.append(Chain(path, function, name, element.kind, plays, via))
+
+    order = {p.element: i for i, p in reversed(list(enumerate(everything)))}
+    mentions: list[Mentions] = []
+
+    def reached(path: str, function: str) -> dict[type, tuple[Pointer, str]]:
+        if not mentions:
+            mentions.append(Mentions(app_root, app.roots, app.ignore))
+        found_in = mentions[0].closure(path, function)
+        hits: dict[type, tuple[Pointer, str]] = {}
+        for p in named.get(path, []):
+            if p.symbol is None or same_symbol(function, p.symbol):
+                hits[p.element] = (p, "direct")
+        for index, label in found_in.items():
+            node = mentions[0].nodes[index]
+            for p in named.get(node.path, []):
+                if p.element not in hits and (p.symbol is None or (node.name and same_symbol(node.name, p.symbol))):
+                    hits[p.element] = (p, f"through {label}" if label else "direct")
+        return hits
 
     for path in sorted({*tracked, *untracked}):
         if ignored(path, service.app.ignore):
             found.ignored.append(path)
             continue
         namers = named.get(path, [])
-        if not namers:
-            found.uncovered.append({"path": path, "function": ""})
-            continue
-        functions, unattributed = (set(), [[]]) if path in untracked else changed_parts(app_root, base, path, tree=True, dotted=True, types=True)
-        if not functions and not unattributed:
+        if path in untracked:
+            functions, unattributed, imports = set(), [[]], False
+        else:
+            functions, unattributed, imports = changed_parts(app_root, base, path, tree=True, dotted=True, types=True)
+        if imports:
+            found.imports.append(path)
+        if not (functions or unattributed or imports):
             unattributed = [[]]
-        behaviour = [p for p in namers if p.kind != "record"]
         for function in sorted(functions):
-            exact = [p for p in namers if p.symbol is None or same_symbol(function, p.symbol)]
-            if not exact:
+            hits = reached(path, function)
+            if not hits:
                 found.uncovered.append({"path": path, "function": function})
-                continue
-            targets = exact
-            reached = {p.element for p in exact if p.kind != "record"}
-            spread = bool(reached) and reached != {p.element for p in behaviour}
-            if spread:
-                widen(path, f"{function} is named by some elements and the file by others: widened to every element naming the file", behaviour)
-                targets = [*exact, *behaviour]
-            for element in {p.element: p for p in targets}.values():
-                chain(path, function, element)
+            for element, (pointer, via) in sorted(hits.items(), key=lambda item: order[item[0]]):
+                chain(path, function, pointer, via=via)
         if unattributed:
+            if not namers:
+                found.uncovered.append({"path": path, "function": ""})
+                continue
             widen(path, "a changed hunk has no definition line: every element naming the file is affected", namers)
             for element in {p.element: p for p in namers}.values():
                 chain(path, "", element, f"record {element.element.__name__} names the file and a changed hunk has no definition line")
     left = {u["path"] for u in found.uncovered}
-    found.mapped = sorted({c.path for c in found.chains} - left)
+    found.mapped = sorted({*(c.path for c in found.chains), *found.imports} - left)
     if not (found.chains or found.uncovered):
         found.plan = NONE
     elif found.fallbacks:
@@ -203,10 +214,12 @@ def show(found: Affected, module: str) -> list[str]:
         lines.append("widened:")
         for w in found.widened:
             lines.append(f"  {w['path']}: {w['why']}: {', '.join(w['elements'])}")
+    if found.imports:
+        lines += ["imports (only import lines changed, nothing to play):", *(f"  {p}" for p in found.imports)]
     if found.chains:
         lines.append("chains:")
         for c in found.chains:
-            lines.append(f"  {c.path}{'::' + c.function if c.function else ' (file)'} -> {c.element} ({c.kind}) -> {', '.join(c.plays) or 'the whole book'}")
+            lines.append(f"  {c.path}{'::' + c.function if c.function else ' (file)'} -> {c.element} ({c.kind}, {c.via}) -> {', '.join(c.plays) or ('no play of its own' if c.kind == 'record' and c.via != 'direct' else 'the whole book')}")
     if found.uncovered:
         lines += ["uncovered (no element names them; judge them by hand):",
                   *(f"  {u['path']}{'::' + u['function'] if u['function'] else ''}" for u in found.uncovered)]

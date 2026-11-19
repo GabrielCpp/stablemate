@@ -214,7 +214,18 @@ DEFINITIONS = (
     re.compile(r"^\s*(?:export\s+)?(?:const|let)\s+(\w+)\s*=\s*(?:async\s*)?\("),
     re.compile(r"^\s*(?:static\s+|async\s+|public\s+|private\s+|protected\s+|override\s+)*(?:[\w<>?,\[\]]+\s+)?(\w+)\s*\([^;]*\)\s*(?:async\s*)?(?:\{|=>|$)"),
 )
-NOT_NAMES = {"if", "for", "while", "switch", "return", "catch", "func", "function", "else"}
+NOT_NAMES = {"if", "for", "while", "switch", "return", "catch", "func", "function", "else", "elif", "try", "finally", "_"}
+
+VALUES = (
+    re.compile(r"^(?:const|var)\s+(\w+)"),
+    re.compile(r"^(?:export\s+)?(?:const|let|var)\s+(\w+)\s*(?::[^=]+)?="),
+    re.compile(r"^(\w+)\s*(?::[^=]+)?=(?!=)"),
+)
+BLOCK_OPEN = re.compile(r"^(import|const|var)\s*\(\s*(?://.*)?$")
+ENTRY = re.compile(r"^(?:\t| {1,4})(\w+)(?:\s+[\w.*\[\]]+)?\s*(?:=(?!=).*)?(?://.*)?$")
+IMPORT_LINE = re.compile(r'^\s*(?:[\w.]+\s+)?"[^"]*"\s*(?://.*)?$')
+BLANK_IMPORT = re.compile(r'^\s*(?:import\s+)?[_.]\s+"')
+SINGLE_IMPORT = re.compile(r'^import\s+(?:[\w.]+\s+)?"')
 
 
 METHOD = re.compile(r"^func\s+\(\s*\w*\s*\*?\s*(\w+)(?:\[[^\]]*\])?\s*\)\s*(\w+)")
@@ -241,33 +252,89 @@ def defined(line: str, loose: bool = False, dotted: bool = False, types: bool = 
         m = pattern.match(line)
         if m and m.group(1) not in NOT_NAMES:
             return m.group(1)
+    if types:
+        for pattern in VALUES:
+            m = pattern.match(line)
+            if m and m.group(1) not in NOT_NAMES:
+                return m.group(1)
     return None
 
 
-def changed_parts(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False, types: bool = False) -> tuple[set[str], list[list[str]]]:
-    """The definitions a file's changed lines sit in, and the changed lines of each hunk that has none. With `tree`
-    the span runs to the working tree, uncommitted work included, instead of to HEAD; with `dotted` a Go method is
-    named with its receiver type, `Service.Get`; with `types` a type declaration is a definition too."""
+def entry_of(line: str) -> str | None:
+    """The name a line declares inside a Go `const (` or `var (` block."""
+    m = ENTRY.match(line)
+    return m.group(1) if m and m.group(1) not in NOT_NAMES else None
+
+
+def hunk_parts(lines: list[str], context: str, golang: bool, dotted: bool, types: bool) -> tuple[set[str], bool, bool, bool]:
+    """The names a hunk's changed lines declare, then whether it changes an import, a blank or dot import, and any
+    other line. Go blocks are followed so a const entry is a name and an import line is not."""
+    names: set[str] = set()
+    imported = blank = other = False
+    opened = BLOCK_OPEN.match(context) if golang else None
+    state = opened.group(1) if opened else None
+    for line in lines:
+        text = line[1:]
+        if golang:
+            opened = BLOCK_OPEN.match(text)
+            if opened:
+                state = opened.group(1)
+                continue
+            if text.startswith(")"):
+                state = None
+                continue
+            if state == "import" or SINGLE_IMPORT.match(text):
+                if BLANK_IMPORT.match(text):
+                    blank = True
+                elif IMPORT_LINE.match(text) or SINGLE_IMPORT.match(text):
+                    imported = True
+                elif text.strip():
+                    other = True
+                continue
+            if state in ("const", "var"):
+                declared = entry_of(text)
+                if declared:
+                    names.add(declared)
+                    continue
+        name = defined(text, dotted=dotted, types=types)
+        if name:
+            names.add(name)
+        elif text.strip():
+            other = True
+    return names, imported, blank, other
+
+
+def changed_parts(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False, types: bool = False) -> tuple[set[str], list[list[str]], bool]:
+    """The definitions a file's changed lines sit in, the changed lines of each hunk that has none, and whether a
+    Go hunk changed nothing but imports. With `tree` the span runs to the working tree, uncommitted work included,
+    instead of to HEAD; with `dotted` a Go method is named with its receiver type, `Service.Get`; with `types` a type
+    declaration, a package-level constant or variable and an entry of a Go `const (` block are definitions too, and
+    a Go hunk of import lines is set aside."""
     out = git(app_root, "diff", "-U0", commit if tree else f"{commit}..HEAD", "--", path)
+    golang = types and path.endswith(".go")
     names: set[str] = set()
     unattributed: list[list[str]] = []
+    imports = False
     for hunk in re.split(r"^@@", out, flags=re.M)[1:]:
         head, _, body = hunk.partition("\n")
         lines = [line for line in body.splitlines() if line[:1] in ("+", "-")]
-        found = {n for n in (defined(line[1:], dotted=dotted, types=types) for line in lines) if n}
-        context = defined(head.split("@@", 1)[-1].lstrip(), loose=True, dotted=dotted, types=types)
+        context_line = head.split("@@", 1)[-1].lstrip()
+        found, imported, blank, other = hunk_parts(lines, context_line, golang, dotted, types)
+        if imported and not (found or blank or other):
+            imports = True
+            continue
+        context = defined(context_line, loose=True, dotted=dotted, types=types)
         if context:
             found.add(context)
-        if found:
-            names |= found
-        else:
+        names |= found
+        if blank or not found:
             unattributed.append(lines)
-    return names, unattributed
+    return names, unattributed, imports
 
 
 def changed_functions(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False) -> set[str] | None:
     """The functions a file's changed lines sit in, or None where a hunk has no definition line."""
-    names, unattributed = changed_parts(app_root, commit, path, tree=tree, dotted=dotted)
+    names, unattributed, _ = changed_parts(app_root, commit, path, tree=tree, dotted=dotted)
     return None if unattributed else names
 
 

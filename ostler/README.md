@@ -329,23 +329,33 @@ on a `reports:` line. The `ostler-book` skill is the guide to writing a book.
 `ostler book affected` answers which plays a code change calls for. It reads the diff from the verified commit, or
 `--since`, to the working tree, so staged, unstaged and untracked work under the app's roots counts. It reads the
 `source=` pointers of the endpoints, interactions, screens, records, actions and outside happenings, and no app runs.
-A matched function names its element, and an element names its calls: an action reaches every endpoint,
+A changed symbol names its element, and an element names its calls: an action reaches every endpoint,
 interaction and outside happening that carries it, and a screen its interactions. The plan is `none` (nothing
-changed, or only ignored files), `partial` (a named list) or `whole`. It is `whole` when a record is itself touched
-or when the walk cannot name a list: an action no call carries, a screen with no interactions. A function or a type
-declaration the diff changes is matched to the pointers that name it, so a record that points at `file::Ticket` is
-touched by a change to the struct `Ticket` and not by a change to another symbol of the file. A record that points
-at the file with no symbol is touched by any change to it. A hunk with no definition line counts at the file and
-leaves the other hunks of the file to their own functions. At the file it reaches every element that names it, and
-a record that names it makes the plan `whole`. A function an element names in a file other elements also name widens
-to every call, interaction, screen, action and outside happening that names the file, never to a record. A widened
-place stays `partial` and is listed under `widened` with its elements. Each fallback is listed with its path. A changed path no
-element names, and a changed function in a named file that no pointer names, is listed as uncovered and makes the
-exit code 1. A path an ignore pattern drops is listed as ignored. Every changed path is in exactly one of mapped,
-uncovered and ignored. The command prints each chain as `path::function -> Element (kind) -> plays`, ends with the
-`ostler book run` line to play, and writes `<service>-affected.json` to `--out`. It does not walk dependent books,
-configuration or data, and says so in the `not_computed` field. `run --only` accepts an outside happening's name
-and plays the journeys and cells that arrange it.
+changed, or only ignored files and imports), `partial` (a named list) or `whole`. It is `whole` when a record is
+itself touched or when the walk cannot name a list: an action no call carries, a screen with no interactions.
+A changed symbol is a function, a method, a type declaration, a package-level constant or variable, or an entry of
+a Go `const (` or `var (` block. It is matched to the pointers that name it, so a record that points at
+`file::Ticket` is touched by a change to the struct `Ticket`. A pointer with no symbol names the whole file and is
+touched by any change to it.
+The command then follows mentions. It reads every source file under the app's roots that the ignore patterns keep
+(test files stay out) and maps each symbol to the text of its definition. A symbol mentions another when the other's
+bare name is a whole identifier in that text. The closure of a changed symbol is the symbol and every symbol that
+mentions a member of the closure, to a fixed point, except that a type (a Go `type`, a class, an interface, an enum) joins only when it is itself changed, because a type that declares or holds a name is not a caller of it. An element is affected when any of its pointers names a
+member. A record whose own symbol changed makes the plan `whole`. A record whose symbol is a function that mentions the changed one is listed in the chains with no play of its own and leaves the plan as it is. Matching is by
+bare name, so two functions that share a name are both followed, and nothing resolves types or packages. A file whose
+definitions cannot be read with confidence (unbalanced brackets, a definition that never closes) is one unit: each
+symbol in it mentions all the file mentions. Each chain says how the element was reached: `direct` when its own
+symbol changed, `through <symbol>` for the nearest symbol of the closure path.
+A hunk with no definition line counts at the file and leaves the other hunks of the file to their own symbols. At
+the file it reaches every element that names it, a record that names it makes the plan `whole`, and the place is
+listed under `widened`. A Go hunk of import lines only changes nothing by itself and is listed under `imports`,
+unless it adds or removes a blank or dot import, which counts at the file. Each fallback is listed with its path.
+A changed symbol whose closure reaches no element, and a changed path no element names, is listed as uncovered and
+makes the exit code 1. A path an ignore pattern drops is listed as ignored. Every changed path is in exactly one of
+mapped, uncovered and ignored. The command prints each chain as `path::symbol -> Element (kind, how) -> plays`, ends
+with the `ostler book run` line to play, and writes `<service>-affected.json` to `--out`. It does not walk dependent
+books, configuration or data, and says so in the `not_computed` field. `run --only` accepts an outside happening's
+name and plays the journeys and cells that arrange it.
 
 A run ends its report with the section `Stated and never played`. It lists each outside happening, action,
 rule and scene of the book that no journey step, cell, given or input class exercised, with the step that
