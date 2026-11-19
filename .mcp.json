@@ -3,6 +3,10 @@
     "playwright": {
       "command": "npx",
       "args": ["-y", "@playwright/mcp@latest", "--headless"]
+    },
+    "groom": {
+      "command": "uv",
+      "args": ["run", "--all-packages", "--quiet", "groom", "channel"]
     }
   }
 }
