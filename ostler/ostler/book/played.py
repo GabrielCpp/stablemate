@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Iterable, Sequence, cast
 
@@ -19,6 +20,7 @@ from ostler.book.outcome import Done, Flawed, Refusal
 from ostler.book.runner import Deliveries
 from ostler.book.search import actions_of
 from ostler.book.service import Service
+from ostler.book.witness import ENDPOINT, Unseen
 
 OUTSIDE = "outside happening"
 ACTION = "action"
@@ -84,6 +86,8 @@ def stated_by(service: Service[Any], module: str) -> PlayedBy:
         found.stated(OUTSIDE, outside.__name__)
     actions = actions_of(service, module)
     for action in actions:
+        if any(other is not action and issubclass(other, action) for other in actions):
+            continue
         found.stated(ACTION, action.__name__)
         for rule in action.rules:
             found.stated(RULE, rule.name)
@@ -157,34 +161,88 @@ def tapped() -> bool:
     return Deliveries.role is not None and not Deliveries.cannot
 
 
+FORMS = "Because.RUNTIME | OUTSIDE | NO_ACCOUNT"
+VARIABLES = {RULE: "<rule variable>", SCENE: "<scene variable>"}
+
+
+@dataclass
+class Section:
+    """The report section as lines, and the items that make the run red: what no play exercised and the book does not
+    declare, and a declaration the run contradicts."""
+
+    lines: list[str]
+    red: list[str] = field(default_factory=list)
+
+
+def declared_as(service: Service[Any]) -> dict[tuple[str, str], Unseen]:
+    """The declarations of the book about outside happenings, actions, rules and scenes, by kind and the name the record uses."""
+    scenes = {id(scene): f"{axes.record}:{scene.name}" for axes in service.matrices for scene in axes.scenes}
+    out: dict[tuple[str, str], Unseen] = {}
+    for unseen in service.unseen:
+        if unseen.kind == ENDPOINT:
+            continue
+        name = scenes.get(id(unseen.of), f"?{unseen.name}") if unseen.kind == SCENE else unseen.name
+        out[(unseen.kind, name)] = unseen
+    return out
+
+
+def covered_by_defects(actions: Sequence[type[Action[Any, Any]]]) -> set[str]:
+    return {d.over.name for action in actions for d in action.defects if d.over is not None}
+
+
 def never_played(service: Service[Any], found: PlayedBy, actions: Sequence[type[Action[Any, Any]]], scoped: bool,
-                 skipped: set[tuple[str, str]], streaming: Sequence[str] = ()) -> list[str]:
+                 skipped: set[tuple[str, str]], streaming: Sequence[str] = ()) -> Section:
     """The section of the report. A scoped run judged nothing. A skipped play leaves what it could have exercised, and every
     rule, under `not judged here`."""
     if scoped:
-        return [f"{HEADLINE}: not judged on a partial run", *streaming]
+        return Section([f"{HEADLINE}: not judged on a partial run", *streaming])
     unjudged = {(kind, name) for kind in KINDS for name in found.never(kind)
                 if EVERYTHING in skipped or (kind, name) in skipped or (kind == RULE and ANYTHING in skipped)}
     never = {kind: [n for n in found.never(kind) if (kind, n) not in unjudged] for kind in KINDS}
+    declared = declared_as(service)
+    defects = covered_by_defects(actions)
     outside = {o.__name__: o for o in service.outside}
+    streams = {e.__name__ for e in service.endpoints if getattr(e, "streams", None)}
     lines: list[str] = []
+    red: list[str] = []
     for kind in KINDS:
         for name in never[kind]:
+            if kind == RULE and name in defects:
+                continue
             if kind == ACTION:
                 calls, hearings = carriers(service, name)
                 if not calls and hearings and all(h in never[OUTSIDE] or (OUTSIDE, h) in unjudged for h in hearings):
                     continue
+                if calls and not hearings and all(c in streams for c in calls):
+                    continue
+            if (kind, name) in declared:
+                unseen = declared[(kind, name)]
+                lines.append(f"- {kind} {name} declared unseen ({unseen.because.name}): {unseen.why}")
+                continue
             note = CLOSES[kind]
             if kind == OUTSIDE and name in outside and outside[name].carries is not None:
                 carried = outside[name].carries
                 if carried is not None and carried.__name__ in found.never(ACTION) and not carriers(service, carried.__name__)[0]:
                     note += f"; it carries {carried.__name__}"
-            lines.append(f"- {kind} {name}: {note}")
+            lines.append(f"- {kind} {name}: {note}; or declare it: Unseen({VARIABLES.get(kind, name)}, {FORMS}, \"why\")")
+            red.append(f"{kind} {name}")
+    for (kind, name), unseen in declared.items():
+        if (kind, name) in unjudged:
+            continue
+        plays = found.by[kind].get(name)
+        if plays:
+            lines.append(f"- {kind} {name}: declared unseen but played by {', '.join(plays)}; delete the declaration (fails the run)")
+        elif plays is None:
+            lines.append(f"- {kind} {name.removeprefix('?')}: declared unseen but the book states no such {kind}; delete the declaration (fails the run)")
+        else:
+            continue
+        red.append(f"{kind} {name.removeprefix('?')} declared")
     emitted = [f"{event.name} ({action.__name__})" for action in actions if found.by[ACTION].get(action.__name__) for event in action.emits]
     if emitted and not tapped():
         lines.append(f"- events with no tap: the environment names no delivery tap, so no run sees {', '.join(emitted)} emitted; "
                      "a delivery that taps closes it")
     lines += [f"- {line}" for line in streaming]
     if unjudged:
-        lines.append("  not judged here: " + ", ".join(f"{kind} {name}" for kind in KINDS for name in found.never(kind) if (kind, name) in unjudged))
-    return [HEADLINE, *lines] if lines else [f"{HEADLINE}: nothing"]
+        lines.append("  not judged here:")
+        lines += [f"    - {kind} {name}" for kind in KINDS for name in found.never(kind) if (kind, name) in unjudged]
+    return Section([HEADLINE, *lines] if lines else [f"{HEADLINE}: nothing"], red)

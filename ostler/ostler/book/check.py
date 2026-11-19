@@ -197,7 +197,7 @@ def defect_faults(service: Service[Any]) -> list[Finding]:
 
 def input_faults(service: Service[Any]) -> list[Finding]:
     found: list[Finding] = []
-    skipped = {u.endpoint for u in service.unseen if u.item == "inputs"}
+    skipped = {u.of for u in service.unseen if u.item == "inputs"}
     reached = bases(service)
     labels: dict[type[Any], set[str]] = {}
     for endpoint in (*service.endpoints, *service.interactions):
@@ -213,7 +213,7 @@ def input_faults(service: Service[Any]) -> list[Finding]:
             continue
         if base is None:
             found.append(Finding(name, "no journey step or matrix cell makes a call the model accepts, so its input "
-                                 "classes have no base: add one, or declare Unseen(endpoint, 'inputs', Because.<reason>, why)"))
+                                 "classes have no base: add one, or declare Unseen(Endpoint, 'inputs', Because.<reason>, why)"))
             continue
         for c in classes(base.call, base.before, None):
             labels.setdefault(endpoint, set()).add(c.label)

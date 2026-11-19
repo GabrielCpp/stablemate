@@ -503,7 +503,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         progress.done("witness", lap)
         if names:
             seen = dataclasses.replace(seen, gaps=[g for g in seen.gaps if g.endpoint.__name__ in names],
-                                       unseen=tuple(u for u in seen.unseen if u.endpoint.__name__ in names))
+                                       unseen=tuple(u for u in seen.unseen if u.of.__name__ in names))
     except Unhealthy as sick:
         print(f"could not judge: {sick}")
         print(f"what ran before it is no verdict: {len(results)} journeys")
@@ -552,8 +552,9 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     plays = stated_by(service, args.service)
     record_plays(plays, results, played, tried)
     plays.save(args.out, service.name)
-    for line in never_played(service, plays, actions_of(service, args.service), bool(names) or args.partial,
-                             skipped_names(results, played, tried, day), unplayed_lines(service)):
+    judged = never_played(service, plays, actions_of(service, args.service), bool(names) or args.partial,
+                          skipped_names(results, played, tried, day), unplayed_lines(service))
+    for line in judged.lines:
         print(line)
     stale = never_met(found, met(everything))
     for line in section(everything, found, not partial):
@@ -566,7 +567,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         ("journeys", not all(r.ok for r in results)), ("cells", not played.ok), ("inputs", not tried.ok),
         ("underspecified inputs", bool(tried.underspecified)), ("stale register", bool(settled.stale)),
         ("divergences never met", bool(unmet) and (bool(names) or not partial)),
-        ("known defects never met", bool(stale) and not partial), ("witness", not partial and not seen.complete),
+        ("known defects never met", bool(stale) and not partial), ("witness", not partial and not seen.complete), ("never played", bool(judged.red)),
     ) if bad]
     for line in verdict_lines(results, red):
         print(line)

@@ -3,13 +3,14 @@
 import os
 import sys
 
-from ostler.book import Environment, Person, Process, Service, Stack
+from ostler.book import Because, Environment, Person, Process, Service, Stack, Unseen
 
 from . import fixtures
 from ..api.people import ANA
 from .interactions import ALL as INTERACTIONS
 from .journeys import ALL as JOURNEYS
 from .model.lifecycle import MATRICES
+from .model.rules import unknown_status
 from .model.state import Online, TodoApp
 from .screens import ALL as SCREENS
 from .surface import TodoWeb
@@ -44,5 +45,6 @@ service = Service[TodoApp](
     screens=SCREENS,
     interactions=INTERACTIONS,
     matrices=MATRICES,
+    unseen=(Unseen(unknown_status, Because.OUTSIDE, "the page offers only the known statuses, so only a hand-written address draws the refusal"),),
     words={**{i.__name__: i for i in INTERACTIONS}, **{name: getattr(fixtures, name) for name in fixtures.__all__}},
 )

@@ -593,7 +593,7 @@ def play(
     tried = Tried()
     _speak(surface, service.languages[0] if service.languages else "")
     found = bases(service, today)
-    skipped = {u.endpoint for u in service.unseen if u.item == "inputs"}
+    skipped = {u.of for u in service.unseen if u.item == "inputs"}
     for endpoint in (*service.endpoints, *service.interactions):
         if only and endpoint.__name__ not in only:
             continue

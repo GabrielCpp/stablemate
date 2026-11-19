@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ostler.book import (Action, Answer, App, Arrange, Axes, CannotArrange, Collection, Create, Delete, Done, Endpoint, Environment, Event, Field, Journey,
-                         Model, Object, Refusal, Rule, Scene, Service, Stack, State, Str, Unique)
+                         Model, Object, Refusal, Rule, Scene, Service, Stack, State, Str, Unique, Unseen)
 from ostler.book import cli
 
 
@@ -106,7 +106,11 @@ TAKEN = Rule[str, Shelf]("already on the shelf", lambda a, s, by: a in [i.id for
 MISSING = Rule[str, Shelf]("not on the shelf", lambda a, s, by: a not in [i.id for i in s.items])
 
 
-class Put(Action[str, Shelf]):
+class Shelver(Action[str, Shelf]):
+    pass
+
+
+class Put(Shelver):
     rules = (TAKEN,)
     emits = (Stocked,)
 
@@ -224,10 +228,11 @@ def shelf_matrices() -> tuple[Axes[Shelf], ...]:
 
 
 def shelf_book(journeys: tuple[type[Journey], ...] = (Stocking,), matrices: tuple[Axes[Shelf], ...] = (), delivery: Any = None,
-               outside: tuple[type[Arrange[Any]], ...] = (Arrives, Ghost), cannot: tuple[type, ...] = ()) -> Service[Shelf]:
+               outside: tuple[type[Arrange[Any]], ...] = (Arrives, Ghost), cannot: tuple[type, ...] = (),
+               unseen: tuple[Unseen, ...] = ()) -> Service[Shelf]:
     return Service(name="shelf", new_model=Shelf, surface=lambda environment: Echo(cannot), journeys=journeys, stack=no_stack,
                    matrices=matrices, outside=outside, environments={"local": Environment("local", {}, delivery=delivery)},
-                   default_environment="local")
+                   default_environment="local", unseen=unseen)
 
 
 def run_shelf(monkeypatch: Any, service: Service[Any], out: Path, capsys: Any, *flags: str) -> tuple[int, str]:

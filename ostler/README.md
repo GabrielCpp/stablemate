@@ -370,10 +370,19 @@ name and plays the journeys and cells that arrange it.
 A run ends its report with the section `Stated and never played`. It lists each outside happening, action,
 rule and scene of the book that no journey step, cell, given or input class exercised, with the step that
 closes it, and the streaming calls a run cannot play. An action whose only carrier is an unplayed outside
-happening is named on that happening's line. When the environment names no delivery tap, one line names the
-events the played actions emit and says a tap closes it. A partial run prints `not judged on a partial run`,
-and a run with skips lists what the skipped plays could have exercised under `not judged here`. The section
-does not change the exit code. The run also writes `<service>-played.json` to `--out`: for each kind, each
+happening is named on that happening's line, and a rule counts once across every endpoint. A rule a known
+defect covers is not listed. When the environment names no delivery tap, one line names the events the played
+actions emit and says a tap closes it. A partial run prints `not judged on a partial run`, and a run with
+skips lists what the skipped plays could have exercised under `not judged here` and judges the rest.
+On a full play the section turns the run red under the part `never played`. An outside happening, action,
+rule or scene that no play exercised and the book does not declare is red. A line says what closes it:
+play it in a journey step, a matrix cell, an input class or a `Given`. Where the book cannot cause it, it
+declares the element in `Service(unseen=...)` with `Unseen(Ghost, Because.RUNTIME, "why")`. The section then
+lists it with its reason and the run stays green. A declaration for an element the run played, or that the
+book does not state, is red as stale. Declaring an outside happening covers the action it carries. An action that only a streaming call carries is left to that call's line. The
+events line, the streaming calls and `not judged here` are never red. `Unseen` takes an endpoint with an
+item, `Unseen(Endpoint, "401", Because.X, "why")`, and any other kind without one, `Unseen(Element, Because.X,
+"why")`. Those four kinds take `RUNTIME`, `OUTSIDE` or `NO_ACCOUNT` only. The run also writes `<service>-played.json` to `--out`: for each kind, each
 stated element, sorted, with the plays that exercised it (a journey, a cell or an input class by name), an
 empty list for an element no play did.
 

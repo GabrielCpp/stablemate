@@ -8,9 +8,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable, Iterable, cast
+from typing import Any, Callable, Iterable, cast, overload
 
+from ostler.book.arrange import Arrange
+from ostler.book.domain import Action
 from ostler.book.errors import BookError
+from ostler.book.model import Rule
+from ostler.book.screen import Interaction
+from ostler.book.state import Scene
 from ostler.book.status import Status
 from ostler.book.http import Endpoint, Witness, declared_paths
 
@@ -30,34 +35,96 @@ class Because(Enum):
     TEST_HOOK = "the endpoint is a test hook only the book calls"
 
 
-@dataclass(frozen=True)
-class Unseen:
-    """Something a run is allowed not to see, and why. `item` is an answer,
-    `"401"` or `"NOT_FOUND"`, or a field of an answer, `"200: path.to.field"` or
-    `"OK: path.to.field"`. `"inputs"` is the endpoint's input classes, which no
-    call the run saw succeed could carry."""
+ENDPOINT = "endpoint"
+OUTSIDE_HAPPENING = "outside happening"
+ACTION = "action"
+RULE = "rule"
+SCENE = "scene"
 
-    endpoint: type[Endpoint]
+ELEMENTS = {ENDPOINT: "an endpoint", OUTSIDE_HAPPENING: "an outside happening", ACTION: "an action", RULE: "a rule", SCENE: "a scene"}
+ELSEWHERE = (Because.RUNTIME, Because.OUTSIDE, Because.NO_ACCOUNT)
+
+
+def kind_of(of: object) -> str:
+    if isinstance(of, type):
+        for kind, base in ((ENDPOINT, (Endpoint, Interaction)), (OUTSIDE_HAPPENING, Arrange), (ACTION, Action)):
+            if issubclass(of, base):
+                return kind
+    if isinstance(of, Rule):
+        return RULE
+    if isinstance(of, Scene):
+        return SCENE
+    raise BookError(f"Unseen {of!r}: name an endpoint, an outside happening, an action, a rule or a scene")
+
+
+def name_of(of: Any, kind: str) -> str:
+    return cast(str, of.name if kind in (RULE, SCENE) else of.__name__)
+
+
+@dataclass(frozen=True, init=False)
+class Unseen:
+    """Something a run is allowed not to see, and why. For an endpoint `item` is an answer,
+    `"401"` or `"NOT_FOUND"`, or a field of an answer, `"200: path.to.field"` or
+    `"OK: path.to.field"`, and `"inputs"` is the endpoint's input classes, which no
+    call the run saw succeed could carry: `Unseen(Endpoint, "401", Because.X, "why")`.
+    An outside happening, an action, a rule or a scene has no answers and takes no
+    item: `Unseen(Ghost, Because.X, "why")`."""
+
+    of: Any
     item: str
     because: Because
     why: str
 
-    def __post_init__(self) -> None:
-        if not ITEM.match(self.item):
-            raise BookError(f"Unseen {self.item!r}: write an answer such as '401' or 'NOT_FOUND', or a field of one such as "
-                            f"'200: path.to.field' or 'OK: path.to.field'")
-        if not isinstance(self.because, Because):
-            raise BookError(f"Unseen {self.endpoint.__name__} {self.item}: give a Because; a gap the book can close by "
-                            f"arranging a state, a caller or an input is closed, never declared")
-        if not self.why.strip():
-            raise BookError(f"Unseen {self.endpoint.__name__} {self.item}: say why it stays unseen")
+    @overload
+    def __init__(self, of: type[Endpoint] | type[Interaction[Any]], item: str, because: Because, why: str) -> None: ...
+    @overload
+    def __init__(self, of: type[Arrange[Any]] | type[Action[Any, Any]] | Rule[Any, Any] | Scene, because: Because, why: str) -> None: ...
+
+    def __init__(self, of: Any, *args: Any, **named: Any) -> None:
+        names = ("item", "because", "why") if len(args) + len(named) == 3 else ("because", "why")
+        if len(args) > len(names) or any(n in named for n in names[:len(args)]) or set(named) - set(names):
+            raise BookError(f"Unseen {of!r}: give the element, an item for an endpoint, a Because and a why")
+        given = {**dict(zip(names, args)), **named}
+        kind = kind_of(of)
+        label = name_of(of, kind)
+        item = given.get("item", "")
+        because = given.get("because")
+        why = given.get("why", "")
+        if kind == ENDPOINT:
+            if "item" not in given:
+                raise BookError(f"Unseen {label}: {ELEMENTS[kind]} needs the answer it leaves unseen: write Unseen({label}, '401', "
+                                f"Because.<reason>, why) for an answer, or Unseen({label}, '200: path.to.field', Because.<reason>, why) for a field")
+            if not ITEM.match(item):
+                raise BookError(f"Unseen {item!r}: write an answer such as '401' or 'NOT_FOUND', or a field of one such as "
+                                f"'200: path.to.field' or 'OK: path.to.field'")
+        elif "item" in given:
+            raise BookError(f"Unseen {label}: {ELEMENTS[kind]} takes no item: write Unseen({label}, Because.<reason>, why)")
+        if not isinstance(because, Because):
+            raise BookError(f"Unseen {label} {item}".rstrip() + ": give a Because; a gap the book can close by "
+                            "arranging a state, a caller or an input is closed, never declared")
+        if kind != ENDPOINT and because not in ELSEWHERE:
+            raise BookError(f"Unseen {label}: {ELEMENTS[kind]} is declared with Because.RUNTIME, OUTSIDE or NO_ACCOUNT, not {because.name}")
+        if not isinstance(why, str) or not why.strip():
+            raise BookError(f"Unseen {label} {item}".rstrip() + ": say why it stays unseen")
+        object.__setattr__(self, "of", of)
+        object.__setattr__(self, "item", item)
+        object.__setattr__(self, "because", because)
+        object.__setattr__(self, "why", why)
 
     @property
-    def key(self) -> tuple[type[Endpoint], str]:
-        return self.endpoint, self.item
+    def kind(self) -> str:
+        return kind_of(self.of)
+
+    @property
+    def name(self) -> str:
+        return name_of(self.of, self.kind)
+
+    @property
+    def key(self) -> tuple[Any, str]:
+        return (self.of, self.item) if self.kind == ENDPOINT else (self.kind, self.name)
 
     def __str__(self) -> str:
-        return f"{self.endpoint.__name__} {self.item}"
+        return f"{self.name} {self.item}" if self.item else self.name
 
 
 @dataclass
@@ -177,7 +244,7 @@ def report(declared: Iterable[type[Endpoint]], seen: Witness, unseen: tuple[Unse
                 gap.fields[answer.status] = missing
         if gap.statuses or gap.fields:
             gaps.append(gap)
-    return WitnessReport(gaps, answers_seen, answers_total, fields_seen, fields_total, unseen)
+    return WitnessReport(gaps, answers_seen, answers_total, fields_seen, fields_total, tuple(u for u in unseen if u.kind == ENDPOINT))
 
 
 def witnessed(service: Any, surface: Any) -> WitnessReport:
