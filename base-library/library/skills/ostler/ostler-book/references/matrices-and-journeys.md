@@ -94,3 +94,11 @@ A step is an endpoint call, or a claim:
 `alone = True` makes the journey run with nothing else beside it; give it only to a journey
 that changes the whole app's mode. A journey every route of the batch reaches is better than
 one journey per route: it is the story a reviewer reads.
+
+A paged list is played past its first page. Where a list takes a page size and a token, one
+journey creates a few records under a minted name no other journey uses, asks for a page of
+one record, and follows the token to the last page. A page of one reaches a second page on
+any seed, so the claim does not depend on how much data the stack holds. A name of its own
+makes the last page the last: under a name other journeys share, their records follow. The
+steps state which record each page holds, and the typed `Token` states that the last page
+carries none.

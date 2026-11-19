@@ -120,6 +120,20 @@ Declare each body once in `endpoints/shapes.py` and reuse it.
     other users and earlier runs leave records behind. Where a list has no search and no
     filter, and its count is the only thing to observe, declare that answer `Unseen` with
     its `Because` and why.
+- `Token("<name>")`: a page token, or any cursor the app issues and takes back. The runtime
+  compares it by presence and never by value. An answer is right when the app gives a token
+  exactly where the model's view gives one. In a request, the runtime sends the app's own
+  token in place of the model's.
+  The model pages its own list and returns its own token. A fixture helper builds a request
+  token from the model's paging function, and no book writes one as a literal. A token in a
+  request needs an answer that issues the same name, and the check reports one that none
+  issues. Lists whose tokens the service makes the same way share one name.
+  The runtime sends a made up token by itself, and the model's refusal judges it. A journey
+  spends no step on one.
+  A list the model cannot hold whole keeps a `Str` token with `opaque=`, in a shape of its
+  own. A standing account's list is one: earlier runs left records there, so the model cannot
+  say whether a next page exists. An endpoint that passes the call on to another service
+  learns no token yet, so its token stays opaque too.
 - `Object(...).one_of("a", "b")` when the handler takes exactly one of two fields, and
   `.together("a", "b")` when it takes both or neither. The runtime sends the body with
   neither, with all, and with each one alone, and the model's rules judge each.
