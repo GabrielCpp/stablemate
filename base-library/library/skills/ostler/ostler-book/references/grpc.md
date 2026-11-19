@@ -247,6 +247,14 @@ never modelled here: the book refers to it, as [neighbours.md](neighbours.md) sa
   holds what other cells and other people made. Give the cell's record a scope only it has,
   such as a team whose id is `minted`, and ask within it. A
   column that cannot be scoped in a scene is `Impossible("<why>")`.
+- **A field filled later is read after it lands.** Some fields are filled after the call
+  returns, by an event or by another service's sync. A step witnesses such a field only
+  after the step that waits for that event to land, and it reads the record again. Do not
+  declare the field nullable with several accepted values, and do not leave it opaque on
+  every answer. A play that sees the value only when the stack is slow gives a verdict that
+  changes with load. Where the stack copy exposes nothing to wait on, declare the field
+  `Unseen` with that reason. A value the clock drives stays `opaque=`: the clock cannot be
+  predicted, and a later-filled value can be waited for.
 - **Read only what a cell made.** Once an outside event makes the record, the model keeps no
   seeded one. A seeded record has aged since the seed: its minutes, its targets and its flags
   drift, and a field left opaque for the seeded ones is unchecked for every record. With only

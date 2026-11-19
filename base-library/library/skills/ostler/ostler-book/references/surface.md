@@ -113,6 +113,13 @@ Declare each body once in `endpoints/shapes.py` and reuse it.
     names. A name is kept per kind, so two fields that must carry the same value, such as a
     tag and the query that searches for it, are ids of one kind. A part of a minted name, such
     as its first letters, cannot be written.
+    Mint every record a journey or a fixture creates, not only a name the app requires to be
+    unique. The play then finds its records by searching or filtering for that word, or by
+    opening them by id. It never reads a whole list to find one record, and it never claims
+    the count of a list other users write to. A stack is rarely empty: other books' plays,
+    other users and earlier runs leave records behind. Where a list has no search and no
+    filter, and its count is the only thing to observe, declare that answer `Unseen` with
+    its `Because` and why.
 - `Object(...).one_of("a", "b")` when the handler takes exactly one of two fields, and
   `.together("a", "b")` when it takes both or neither. The runtime sends the body with
   neither, with all, and with each one alone, and the model's rules judge each.
