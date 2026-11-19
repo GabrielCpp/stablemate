@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import os
 import pkgutil
 import re
 import subprocess
@@ -22,6 +23,7 @@ from ostler.book.explore import _overrides, attempts, moves
 from ostler.book.graph import dot
 from ostler.book.boundary import Foreign, Needs
 from ostler.book.entries import says
+from ostler.book.files import outside as imported_outside
 from ostler.book.http import Endpoint, List, Object, Str, bare_ids, states, token_fields
 from ostler.book.tree import unresolved
 from ostler.book.journey import Given, Journey, OwnerRefused, Refused
@@ -874,11 +876,22 @@ def secret_faults(service: Service[Any], name: str | None) -> list[Finding]:
             for handle, secret in environment.secrets.items() if secret not in known]
 
 
+def outside_notes(module: str) -> list[Finding]:
+    from ostler.book.index import book_root
+
+    root = book_root(os.getcwd())
+    held = imported_outside(Path(root), module) if root is not None else []
+    if not held:
+        return []
+    return [Finding("files", f"the book imports {len(held)} file(s) outside its folder: {', '.join(held)}; a commit of the book takes them with it", told=True)]
+
+
 def cmd_check(service: Service[Any], args: argparse.Namespace) -> int:
     indexed: list[Finding] = []
     attempt(indexed, "index", lambda: indexed.extend(index_faults(service, args.service)) or "done")
     found = check(service, args.service, args.app)
     attempt(found, "secrets", lambda: found.extend(secret_faults(service, args.env)) or "done")
     found.extend(indexed)
+    found.extend(outside_notes(args.service))
     report(found)
     return 1 if any(not f.told for f in found) else 0

@@ -113,11 +113,16 @@ again.
 | --- | --- |
 | `accounts.py` | the standing accounts as actors, with the role and team each has, and `CAST` |
 | `answers.py` | the answers and rules every service gives: not signed in, forbidden, the timestamp shape |
-| `places.py` | the environments, one host per service, and the stack |
+| `places.py` | the names of the product's services, and the stack |
 | `surface.py` | the surface: how each account gets its credential before a cell |
 
 A rule or an answer a second service needs moves into `shared` then, never copied. A book
 adds to `shared` only what another service's source also does.
+
+The folder holds the product's accounts, its sign-in and the answers of a shared gate. Hosts
+and ports belong to `ostler env`, which gives each stack copy its own addresses. A commit of
+a book takes the files it imports from `shared` with it, and `ostler book files
+services.<name>` lists them.
 
 Every call names its caller, `by=ALEX`. `by=None` sends no credential.
 

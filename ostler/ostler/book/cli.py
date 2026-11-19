@@ -31,6 +31,7 @@ from ostler.book.denied import denied
 from ostler.book.environment import Environment, credentials
 from ostler.book.errors import Unhealthy
 from ostler.book.explore import attempts, moves
+from ostler.book.files import cmd_files
 from ostler.book.exploration import BASELINE, REFUSED, Cell, Played as Explored, Walk, never_refused, play as play_cells, seed, unreached
 from ostler.book.graph import dot, render
 from ostler.book.index import book_root, cmd_index, cmd_search_book
@@ -147,6 +148,9 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     absent.add_argument("--app", required=True, help="the app's root")
     absent.add_argument("--under", action="append", default=[], help="a folder of the app to answer for instead of the service's roots; repeatable")
     absent.add_argument("--files", action="store_true", help="list each left-out file under its pattern instead of counting them")
+    owned = sub.add_parser("files", help="list the files the book needs to load: its own folder and what it imports from outside it, under the book root")
+    owned.add_argument("service")
+    owned.add_argument("--outside", action="store_true", help="list only the files outside the book's own folder")
     listing = sub.add_parser("decisions", help="list the decisions the service settled")
     listing.add_argument("service")
     listing.add_argument("--story")
@@ -182,6 +186,8 @@ def main(argv: list[str] | None = None) -> int:
     root = book_root(os.getcwd())
     if root is not None:
         sys.path.insert(0, root)
+    if args.command == "files":
+        return cmd_files(args, root)
     if args.command == "search":
         if args.extra is not None:
             if not args.term.startswith("services."):

@@ -317,6 +317,7 @@ ostler book index   services.api          # rewrite index.tsv
 ostler book stale   services.api --app ../api   # what changed in the app since the verified commit
 ostler book verified services.api --app ../api  # record the app's head once stale is worked
 ostler book affected services.api --app ../api --since HEAD~3   # the calls and journeys the changed code calls for
+ostler book files   services.api          # the files the book needs to load: its folder, then what it imports from outside it
 ostler book decisions services.api
 ostler book graph   services.api          # each record's state graph, as dot and svg
 ostler book endpoints|screens|matrix|denied|plan services.api   # read the model, no app
@@ -325,6 +326,13 @@ ostler book endpoints|screens|matrix|denied|plan services.api   # read the model
 Exit 3 means the place could not be judged, and what ran before it is no verdict. Reports go to `--out`.
 Omitted, they go to a fresh folder under the system temp directory, and the command prints its name
 on a `reports:` line. The `ostler-book` skill is the guide to writing a book.
+
+`ostler book files` lists, one path per line relative to the book root, every file a book needs to load: its
+own folder, then the files its modules import from elsewhere under the book root, such as `services/shared/accounts.py`
+and the `__init__.py` files on the way. It reads the imports with `ast`, follows them transitively, loads nothing and
+exits 0. An import of `ostler`, the standard library, an installed package or another service's book is not listed,
+since another book is its own commit. `--outside` prints only the files beyond the book's own folder. `ostler book check`
+prints the same outside files as one note, never blocking, and a commit of a book takes them with it.
 
 `ostler book affected` answers which plays a code change calls for. It reads the diff from the verified commit, or
 `--since`, to the working tree, so staged, unstaged and untracked work under the app's roots counts. It reads the
