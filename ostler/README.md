@@ -325,6 +325,16 @@ Exit 3 means the place could not be judged, and what ran before it is no verdict
 Omitted, they go to a fresh folder under the system temp directory, and the command prints its name
 on a `reports:` line. The `ostler-book` skill is the guide to writing a book.
 
+A run ends its report with the section `Stated and never played`. It lists each outside happening, action,
+rule and scene of the book that no journey step, cell, given or input class exercised, with the step that
+closes it, and the streaming calls a run cannot play. An action whose only carrier is an unplayed outside
+happening is named on that happening's line. When the environment names no delivery tap, one line names the
+events the played actions emit and says a tap closes it. A partial run prints `not judged on a partial run`,
+and a run with skips lists what the skipped plays could have exercised under `not judged here`. The section
+does not change the exit code. The run also writes `<service>-played.json` to `--out`: for each kind, each
+stated element, sorted, with the plays that exercised it (a journey, a cell or an input class by name), an
+empty list for an element no play did.
+
 ## The parse index
 
 `ostler doctor` re-reads and re-parses the same files on every invocation, and an agent that

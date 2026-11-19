@@ -311,7 +311,7 @@ def test_the_todo_book_plays_its_twins_and_finds_nothing_against_an_app_that_rea
 def test_the_todo_book_reports_a_reminder_the_app_reads_in_utc_and_the_model_reads_as_written(utc_server, tmp_path):
     done = run_book(["run", "services.api", "--no-stack", "--out", str(tmp_path)], utc_server.port)
     assert done.returncode == 1, done.stdout + done.stderr
-    found = [line for line in done.stdout.splitlines() if line.startswith("- ")]
+    found = [line for line in done.stdout.partition("Stated and never played")[0].splitlines() if line.startswith("- ")]
     assert len(found) == 2
     assert all("remind_at offset" in line for line in found)
     assert {line.split()[1] for line in found} == {"AddTodo", "UpdateTodo"}

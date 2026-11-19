@@ -170,7 +170,7 @@ def test_a_run_scoped_to_outside_calls_leaves_the_named_calls_failing(book, utc_
     assert done.returncode == 1, done.stdout + done.stderr
     held = load(str(book / "services" / "api" / "UNDERSPECIFIED.md"))
     assert [e.key for e in held] == ["UpdateTodo body remind_at offset"]
-    assert [line.split()[1] for line in done.stdout.splitlines() if line.startswith("- ")] == ["AddTodo"]
+    assert [line.split()[1] for line in done.stdout.partition("Stated and never played")[0].splitlines() if line.startswith("- ")] == ["AddTodo"]
 
 
 def test_an_entry_the_app_no_longer_splits_fails_the_run_and_names_the_dimension(book, utc_server, todo_server, tmp_path):

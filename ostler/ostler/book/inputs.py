@@ -469,6 +469,7 @@ class Sent:
     known: Defect[Any, Any] | None = None
     skipped: str = ""
     clean: bool = False
+    taken: StepResult | None = None
 
     @property
     def text(self) -> str:
@@ -544,7 +545,7 @@ def judge(service: Service[Any], call: Endpoint, c: InputClass, model: Model, su
         clean = taken.ok and isinstance(taken.model, Refusal) and (
             isinstance(taken.app, Refusal)
             or (isinstance(taken.app, Unreachable) and surface.rows() == listing(surface, model)))
-        return Sent(cls, c, taken.ok, taken.note, f"{taken.model} / {taken.app}", known=taken.known, clean=clean)
+        return Sent(cls, c, taken.ok, taken.note, f"{taken.model} / {taken.app}", known=taken.known, clean=clean, taken=taken)
     want = refusals_for(service, cls).of(c.default)
     match = next((d for d in service.diverges if d.endpoint is cls and d.label == c.label), None)
     if want is None and match is None:

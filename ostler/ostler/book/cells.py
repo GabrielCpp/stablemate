@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from typing import Any, Callable
 
 from ostler.book.backstage import CannotArrange
+from ostler.book.journey import StepResult
 from ostler.book.model import Defect, Model
 from ostler.book.owners import Owners
 from ostler.book.runner import attempt
@@ -31,6 +32,8 @@ class CellRun:
     skipped: str = ""
     at: float | None = None
     video: str = ""
+    steps: list[StepResult] = field(default_factory=list)
+    arranged: bool = False
 
     @property
     def text(self) -> str:
@@ -112,6 +115,7 @@ def one(axes: Any, scene: Any, name: str, build: Callable[[Model], object], surf
         Owners.world(surface)
         for step in scene.reached_by(model.today):
             arranged = attempt(step, model, surface)
+            cell.steps.append(arranged)
             if arranged.skipped:
                 cell.skipped = arranged.skipped
                 return cell, None
@@ -119,6 +123,7 @@ def one(axes: Any, scene: Any, name: str, build: Callable[[Model], object], surf
                 cell.at = arranged.at
                 cell.ok, cell.note = False, f"the scene cannot be arranged: {arranged.text}: {arranged.note}"
                 return cell, None
+    cell.arranged = True
     try:
         action = build(model)
     except Exception as crash:
@@ -132,6 +137,7 @@ def one(axes: Any, scene: Any, name: str, build: Callable[[Model], object], surf
         return cell, None
     before = model.key()
     taken = attempt(action, model, surface)
+    cell.steps.append(taken)
     if taken.skipped:
         cell.skipped = taken.skipped
         return cell, None

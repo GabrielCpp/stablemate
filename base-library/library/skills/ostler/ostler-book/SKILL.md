@@ -253,6 +253,12 @@ one is live.
 | `ostler book explore services.<name> --no-stack --only <A>,<B>` | about 2 s a cell | every cell of the named endpoints, or interactions in a screen book, on every state the walk reaches, against the app |
 | `ostler book run services.<name> --no-stack --only <A>,<B>` | a few minutes | the journeys that call the named endpoints or interactions, their declared cells and their input classes, including divergences declared for them and never met |
 | `ostler book run services.<name> --no-stack` | tens of minutes | every journey, every declared cell and every input class; the book's gate, run when a backfill ends and nightly, never per batch |
+
+A run prints the section `Stated and never played` before its verdict: each outside happening, action, rule and scene
+that no play exercised, with what closes it (a journey step or a given that arranges the happening, a cell built in the
+scene, a step or input class that draws the refusal). It is a list and never turns the run red. An action carried only by
+an unplayed outside happening is named on the happening's line. The run also writes `<service>-played.json` to the report
+folder: each element with the journeys, cells and input classes that exercised it.
 | `ostler book index services.<name>` | seconds | rewrites `index.tsv`, which `search` reads |
 | `ostler book stale services.<name> --app <root>` | seconds, no app | the elements whose source changed since the verified commit, changed files no element names, decisions they touch |
 | `ostler book missing services.<name> --app <root> [--under <folder>] [--files]` | seconds, no app | every tracked file under the app's roots that no element names, and every call a contract file lists that no element declares; prints the map of each named file to its elements, the unnamed files, a count per ignore pattern (`--files` lists them) and the undeclared calls; exits 1 for either; the batch a backfill works through |

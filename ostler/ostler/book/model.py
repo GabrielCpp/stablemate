@@ -120,7 +120,7 @@ class Refused(Exception):
         super().__init__(self.said)
 
     def as_outcome(self) -> Refusal:
-        return Refusal(self.said, self.rule.status)
+        return Refusal(self.said, self.rule.status, self.rule)
 
     def __str__(self) -> str:
         return f"refused {self.rule.status} {self.said}"

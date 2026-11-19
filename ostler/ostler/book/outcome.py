@@ -22,8 +22,11 @@ class Done:
 
 @dataclass(frozen=True)
 class Refusal:
+    """`rule` is the model's rule that gave it, when a rule did."""
+
     message: str
     status: Status = 400
+    rule: Any = field(default=None, compare=False)
 
     def __str__(self) -> str:
         return f"refused {self.status} {self.message}"

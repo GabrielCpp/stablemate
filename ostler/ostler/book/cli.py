@@ -40,12 +40,13 @@ from ostler.book.listing import account, claims_by, read_by
 from ostler.book.matrix import matrix
 from ostler.book.model import Model
 from ostler.book.owners import Owners
+from ostler.book.played import never_played, record as record_plays, skipped_names, stated_by
 from ostler.book.planner import plan
 from ostler.book.progress import Progress, verdict_lines
 from ostler.book.register import Settled, load as load_register, path as register_path, save as save_register, settle
 from ostler.book.runner import Deliveries, attempt, blocked, walk
 from ostler.book.state import Impossible
-from ostler.book.search import KINDS, cmd_explain, cmd_search
+from ostler.book.search import KINDS, actions_of, cmd_explain, cmd_search
 from ostler.book.witness import WitnessReport, witnessed
 from ostler.book.service import Service
 from ostler.book.stack import Stack
@@ -482,6 +483,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
             progress.done("input classes", lap)
             inputs_took = time.time() - began
         settled = settle_register(service, args, tried)
+        day = _today(surface)
         lap = progress.phase("witness")
         seen = witnessed(service, surface)
         kept = account(service.screens, read_by(surface), claims_by(surface))
@@ -528,14 +530,18 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         print(line)
     for line in underspecified_lines(tried):
         print(line)
-    for line in unplayed_lines(service):
-        print(line)
     print(twin_tally(tried))
     stated, tried_fields = fields_tried(service, tried)
     if service.screens or stated:
         print(f"fields: {stated} state a shape, {tried_fields} tried")
     print(f"time: journeys {journeys_took:.1f}s, cells {cells_took:.1f}s, inputs {inputs_took:.1f}s, {resets.line()}")
     everything = [*results, played, tried]
+    plays = stated_by(service, args.service)
+    record_plays(plays, results, played, tried)
+    plays.save(args.out, service.name)
+    for line in never_played(service, plays, actions_of(service, args.service), bool(names) or args.partial,
+                             skipped_names(results, played, tried, day), unplayed_lines(service)):
+        print(line)
     stale = never_met(found, met(everything))
     for line in section(everything, found, not partial):
         print(line)
