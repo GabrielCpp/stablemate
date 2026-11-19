@@ -72,6 +72,14 @@ One numbered entry per disagreement, after the last one:
   can close by arranging a state, a caller or an input has no reason on the list: arrange it.
   A list whose only entries other cells made gets an entry the book makes, through a standing
   fact the backstage arranges once and the model seeds.
+- `Unseen(Ghost, Because.RUNTIME, "<why>")`: an outside happening, an action, a rule or a scene no play
+  exercised. A full run lists each such element under "Stated and never played" and fails on
+  the ones the book leaves undeclared. An outside happening is played when a step or a `Given` arranges it. An
+  action is played when a step, a cell or an input class takes it and the model accepts. A rule is
+  played when a play draws its refusal and the app agrees. A scene is played when a cell arranges it. The first move
+  is to play it: a journey step, a matrix cell, an input class or a `Given`. A declaration is for what
+  the book cannot cause, and it takes `RUNTIME`, `OUTSIDE` or `NO_ACCOUNT`. These four kinds take no item.
+  A declaration for an element the run played is stale and fails the run.
 - `Diverges(Endpoint, "<input class as the run prints it>", why="<why>")` in
   `Service(diverges=...)`: the app accepts an input class the book refuses.
 - A route the app answers with 501 or leaves unimplemented gets an endpoint whose answer says
