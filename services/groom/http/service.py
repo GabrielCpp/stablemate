@@ -93,6 +93,7 @@ IGNORE = (
     "groom/groom/cli.py",
     "groom/groom/export.py",
     "groom/groom/wait.py",
+    "groom/groom/channel.py",
     "groom/groom/ws_url.py",
     "groom/groom/digest.py",
     "groom/groom/notify.py",

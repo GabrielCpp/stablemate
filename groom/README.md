@@ -364,6 +364,48 @@ Neither command reconnects on its own. A disconnection is reported instead of
 silently crossing a gap in monitoring. `feed --since` is how a caller closes
 that gap.
 
+## Push a run into a Claude Code session (`groom channel`)
+
+`groom channel` is a stdio MCP server that Claude Code runs as a channel. It
+offers one tool, `watch`. A session calls `watch` with a `run_id`, and the
+channel follows that run's `/feed` from then on. Each frame reaches the session
+as a message, and a message wakes a session that sits idle. The session polls
+nothing, and no monitor expires under it.
+
+The repository's `.mcp.json` registers the server as `groom`. Channels are a
+research preview, so a custom channel loads only with the development flag:
+
+```bash
+claude --dangerously-load-development-channels server:groom
+```
+
+Claude Code shows a warning first. Pick "I am using this for local
+development". The flag works in an interactive `claude` session only. A `-p`
+run or an Agent SDK run ignores it.
+
+A message arrives as `<channel source="groom" run_id="..." kind="...">`:
+
+| `kind` | Body | Other attributes |
+| --- | --- | --- |
+| `event` | the line `groom wait` prints | `event`, plus `node` and `gate_path` when known |
+| `digest` | the digest `summary` | `quiet` |
+| `connection` | groom became unreachable, or came back | `state` is `lost` or `back` |
+
+`watch` takes `every_minutes` for the digest interval, 30 by default and at
+least 1. A second call on the same run replaces the first. `stop: true` ends
+the watch. A session can watch several runs at once.
+
+The channel reconnects on its own and says so once with a `connection`
+message. It reconnects with `since` set to the last frame it received, so the
+events fired during the gap arrive after the `back` message. A restart of
+`groom serve` loses the events it held in memory. The next digest's
+`standing` still shows an open gate.
+
+Claude Code drops a channel message without an error when the session was
+started without the flag. The tool still answers, so a session cannot tell from
+the tool result. The first digest arrives right after `watch`. A session that
+sees none was started without the flag.
+
 ## What was it saying? (`groom logs`)
 
 `status` says *where* a run is; logs say what it was doing on the way there.

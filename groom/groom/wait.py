@@ -5,11 +5,11 @@ import argparse
 import json
 import sys
 from collections.abc import Iterator
+from typing import Protocol
 from urllib.parse import urlencode
 
 from websockets.exceptions import WebSocketException
 from websockets.sync.client import connect
-from websockets.sync.connection import Connection
 
 from groom.attention import (
     RULE_EVENTS,
@@ -19,6 +19,10 @@ from groom.attention import (
     EventName,
 )
 from groom.ws_url import ws_url
+
+
+class Receiver(Protocol):
+    def recv(self) -> str | bytes: ...
 
 
 def event_names(value: str) -> frozenset[EventName]:
@@ -32,12 +36,12 @@ def event_names(value: str) -> frozenset[EventName]:
     return frozenset(event for event in known if event in names)
 
 
-def _endpoint(url: str, run: str, **params: object) -> str:
+def endpoint(url: str, run: str, **params: object) -> str:
     query = urlencode({"run": run, **{k: v for k, v in params.items() if v is not None}})
     return ws_url(url, "/feed", query)
 
 
-def _event_line(event: AttentionEvent) -> str:
+def event_line(event: AttentionEvent) -> str:
     return (
         f"{event.run_id}: {event.event}"
         f"{(' at ' + event.node) if event.node else ''}"
@@ -45,7 +49,7 @@ def _event_line(event: AttentionEvent) -> str:
     )
 
 
-def _frames(socket: Connection) -> Iterator[EventFrame | DigestFrame]:
+def frames(socket: Receiver) -> Iterator[EventFrame | DigestFrame]:
     while True:
         frame = json.loads(socket.recv())
         if not isinstance(frame, dict):
@@ -59,10 +63,10 @@ def _frames(socket: Connection) -> Iterator[EventFrame | DigestFrame]:
 def wait(url: str, run: str, until: frozenset[EventName], as_json: bool) -> None:
     """Connect once; a broken monitor fails rather than hiding a gap in coverage."""
     try:
-        with connect(_endpoint(url, run), open_timeout=5, close_timeout=1) as socket:
-            for frame in _frames(socket):
+        with connect(endpoint(url, run), open_timeout=5, close_timeout=1) as socket:
+            for frame in frames(socket):
                 if isinstance(frame, EventFrame) and frame.event.run_id == run and frame.event.event in until:
-                    print(frame.event.model_dump_json() if as_json else _event_line(frame.event))
+                    print(frame.event.model_dump_json() if as_json else event_line(frame.event))
                     return
     except KeyboardInterrupt:
         raise SystemExit(130) from None
@@ -74,15 +78,15 @@ def wait(url: str, run: str, until: frozenset[EventName], as_json: bool) -> None
 def feed(url: str, run: str, every_s: float, since: float | None, as_json: bool) -> None:
     """Print one line per frame until interrupted; a lost connection fails rather than hiding a gap."""
     try:
-        endpoint = _endpoint(url, run, every=every_s, since=since)
-        with connect(endpoint, open_timeout=5, close_timeout=1) as socket:
-            for frame in _frames(socket):
+        address = endpoint(url, run, every=every_s, since=since)
+        with connect(address, open_timeout=5, close_timeout=1) as socket:
+            for frame in frames(socket):
                 if as_json:
                     print(frame.model_dump_json(), flush=True)
                 elif isinstance(frame, DigestFrame):
                     print(frame.summary, flush=True)
                 else:
-                    print(_event_line(frame.event), flush=True)
+                    print(event_line(frame.event), flush=True)
     except KeyboardInterrupt:
         raise SystemExit(130) from None
     except (OSError, TimeoutError, WebSocketException, ValueError) as exc:

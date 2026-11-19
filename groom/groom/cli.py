@@ -1078,6 +1078,11 @@ def _main(argv: list[str] | None) -> None:
                              help="Replay events after this timestamp, then digest from it.")
     feed_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    subparsers.add_parser(
+        "channel",
+        help="Serve MCP on stdio so a Claude Code session can watch runs and get their feed pushed in.",
+    )
+
     tui_parser = subparsers.add_parser(
         "tui", help="Watch the fleet and answer operator gates from the terminal."
     )
@@ -1410,6 +1415,10 @@ def _main(argv: list[str] | None) -> None:
         wait(url=_serve_url(), run=args.run, until=args.until, as_json=args.as_json)
     elif args.command == "feed":
         feed(url=_serve_url(), run=args.run, every_s=args.every, since=args.since, as_json=args.as_json)
+    elif args.command == "channel":
+        from groom.channel import run as run_channel
+
+        run_channel(url=_serve_url())
     elif args.command == "tui":
         from groom.tui import app as tui_app
         from groom.ws_url import ws_url
