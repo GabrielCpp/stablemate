@@ -13,6 +13,7 @@ from book_fakes import Clearing, Haunting, Shelving, code_repo, commit_files, gi
 from ostler.book import cli
 from ostler.book.affected import calls_of
 from ostler.book.service import Service
+from ostler.book.sources import defined
 
 FILES = {
     "svc.go": "package shelf\n\nfunc (s *Service) Get(id string) string {\n\treturn \"a\"\n}\n\nfunc (s *Server) Get(id string) string {\n\treturn \"b\"\n}\n\nfunc helper() int {\n\treturn 1\n}\n",
@@ -21,6 +22,9 @@ FILES = {
     "drawer.go": "package shelf\n\nfunc Open() int {\n\treturn 1\n}\n",
     "config.go": "package shelf\n\nvar table = map[string]int{\n\t\"a\": 1,\n}\n",
     "other.go": "package shelf\n\nfunc Stray() int {\n\treturn 1\n}\n",
+    "box.go": "package shelf\n\ntype Box struct {\n\tName string\n\tSize int\n}\n\nfunc Fill() int {\n\treturn 1\n}\n\nfunc Empty() int {\n\treturn 2\n}\n",
+    "mixed.go": "package shelf\n\nvar table = map[string]int{\n\t\"a\": 1,\n}\n\nfunc Fill() int {\n\treturn 1\n}\n",
+    "twice.go": "package shelf\n\nvar a = 1\n\nvar b = 2\n",
     "skip_test.go": "package shelf\n\nfunc TestIt() {\n\treturn\n}\n",
 }
 
@@ -99,6 +103,91 @@ def test_a_function_every_namer_of_the_file_names_does_not_widen(monkeypatch, tm
     _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
     assert found["fallbacks"] == []
     assert found["plan"] == "partial"
+
+
+def test_a_struct_change_hits_the_record_that_points_at_it_and_makes_the_plan_whole(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, edited("box.go", "Size int", "Size int64"))
+    _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"Drawer": ("box.go::Box",), "PutItem": ("box.go::Fill",)}), where, base, capsys)
+    assert found["plan"] == "whole"
+    assert found["fallbacks"] == [{"path": "box.go", "why": "record Drawer changed: the whole book"}]
+    assert [(c["function"], c["element"]) for c in found["chains"]] == [("Box", "Drawer")]
+
+
+def test_a_change_to_another_function_in_a_record_s_file_leaves_the_record_out(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, edited("box.go", "func Fill() int {\n\treturn 1", "func Fill() int {\n\treturn 3"))
+    _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"Drawer": ("box.go::Box",), "PutItem": ("box.go::Fill",)}), where, base, capsys)
+    assert [(c["function"], c["element"]) for c in found["chains"]] == [("Fill", "PutItem")]
+    assert (found["plan"], found["fallbacks"], found["widened"], found["only"]) == ("partial", [], [], ["PutItem"])
+
+
+def test_a_record_that_points_at_the_file_with_no_symbol_is_touched_by_any_change_to_it(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, edited("box.go", "func Fill() int {\n\treturn 1", "func Fill() int {\n\treturn 3"))
+    _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"Drawer": ("box.go",), "PutItem": ("box.go::Fill",)}), where, base, capsys)
+    assert found["plan"] == "whole"
+
+
+def test_an_unattributed_hunk_does_not_hide_the_function_next_to_it(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, {"mixed.go": FILES["mixed.go"].replace('"a": 1', '"a": 2').replace("return 1", "return 3")})
+    book = sourced_book({"PutItem": ("mixed.go::Fill",), "RemoveItem": ("mixed.go::Remove",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert [(c["function"], c["element"]) for c in found["chains"]] == [("Fill", "PutItem"), ("Fill", "RemoveItem"), ("", "PutItem"), ("", "RemoveItem")]
+    assert [w["elements"] for w in found["widened"]] == [["PutItem", "RemoveItem"], ["PutItem", "RemoveItem"]]
+    assert "no definition line" in found["widened"][1]["why"]
+    assert (found["plan"], found["only"], found["uncovered"]) == ("partial", ["PutItem", "RemoveItem"], [])
+
+
+def test_an_unattributed_hunk_in_a_file_a_record_names_makes_the_plan_whole(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, edited("mixed.go", '"a": 1', '"a": 2'))
+    _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"Drawer": ("mixed.go::Fill",), "PutItem": ("mixed.go::Fill",)}), where, base, capsys)
+    assert found["plan"] == "whole"
+    assert [f["why"] for f in found["fallbacks"]] == ["record Drawer names the file and a changed hunk has no definition line: the whole book"]
+
+
+def test_a_helper_widens_to_the_behaviour_elements_of_the_file_and_not_to_its_record(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, edited("box.go", "func Fill() int {\n\treturn 1", "func Fill() int {\n\treturn 3"))
+    book = sourced_book({"PutItem": ("box.go::Fill",), "RemoveItem": ("box.go::Empty",), "Drawer": ("box.go::Box",)})
+    _, found, _ = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert {c["element"] for c in found["chains"]} == {"PutItem", "RemoveItem"}
+    assert [w["elements"] for w in found["widened"]] == [["PutItem", "RemoveItem"]]
+    assert (found["plan"], found["fallbacks"]) == ("partial", [])
+
+
+def test_the_same_fallback_and_widening_are_listed_once_per_path_and_reason(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, {"twice.go": FILES["twice.go"].replace("= 1", "= 5").replace("= 2", "= 6")})
+    book = sourced_book({"Drawer": ("twice.go",), "PutItem": ("twice.go",)})
+    _, found, out = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert len(found["fallbacks"]) == 1
+    assert len(found["widened"]) == 1
+    assert sum(line.startswith("  twice.go: record Drawer") for line in out.splitlines()) == 1
+
+
+def test_two_changed_functions_of_one_record_list_its_fallback_once(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, {"box.go": FILES["box.go"].replace("return 1", "return 3").replace("return 2", "return 4")})
+    _, found, _ = affect(monkeypatch, tmp_path, sourced_book({"Drawer": ("box.go",)}), where, base, capsys)
+    assert found["fallbacks"] == [{"path": "box.go", "why": "record Drawer changed: the whole book"}]
+
+
+@pytest.mark.parametrize("line, name", [
+    ("type Ticket struct {", "Ticket"),
+    ("type Store interface {", "Store"),
+    ("type Handler func(w int)", "Handler"),
+    ("class Ticket(Base):", "Ticket"),
+    ("export class Ticket extends Base {", "Ticket"),
+    ("export interface Ticket {", "Ticket"),
+    ("export type Ticket = {", "Ticket"),
+    ("export const enum Level {", "Level"),
+])
+def test_a_type_declaration_is_a_definition_when_asked(line, name):
+    assert defined(line, types=True) == name
+    assert defined(line) is None
 
 
 def test_a_file_the_book_ignores_is_listed_as_ignored_and_the_plan_is_none(monkeypatch, tmp_path, capsys, repo):

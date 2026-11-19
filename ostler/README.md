@@ -331,11 +331,15 @@ on a `reports:` line. The `ostler-book` skill is the guide to writing a book.
 `source=` pointers of the endpoints, interactions, screens, records, actions and outside happenings, and no app runs.
 A matched function names its element, and an element names its calls: an action reaches every endpoint,
 interaction and outside happening that carries it, and a screen its interactions. The plan is `none` (nothing
-changed, or only ignored files), `partial` (a named list) or `whole`. It is `whole` when a record changed or when
-the walk cannot name a list: an action no call carries, a screen with no interactions. A hunk with no definition line
-counts at the file, and a function an element names in a file other elements also name widens to all of them. A
-widened place stays `partial` and is listed under `widened` with its elements, unless a record names the file, which
-makes it `whole`. Each fallback is listed with its path. A changed path no
+changed, or only ignored files), `partial` (a named list) or `whole`. It is `whole` when a record is itself touched
+or when the walk cannot name a list: an action no call carries, a screen with no interactions. A function or a type
+declaration the diff changes is matched to the pointers that name it, so a record that points at `file::Ticket` is
+touched by a change to the struct `Ticket` and not by a change to another symbol of the file. A record that points
+at the file with no symbol is touched by any change to it. A hunk with no definition line counts at the file and
+leaves the other hunks of the file to their own functions. At the file it reaches every element that names it, and
+a record that names it makes the plan `whole`. A function an element names in a file other elements also name widens
+to every call, interaction, screen, action and outside happening that names the file, never to a record. A widened
+place stays `partial` and is listed under `widened` with its elements. Each fallback is listed with its path. A changed path no
 element names, and a changed function in a named file that no pointer names, is listed as uncovered and makes the
 exit code 1. A path an ignore pattern drops is listed as ignored. Every changed path is in exactly one of mapped,
 uncovered and ignored. The command prints each chain as `path::function -> Element (kind) -> plays`, ends with the

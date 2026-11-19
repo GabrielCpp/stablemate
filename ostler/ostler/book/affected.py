@@ -18,7 +18,7 @@ from typing import Any, cast
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book.played import carriers
 from ostler.book.service import Service
-from ostler.book.sources import changed_functions, changed_in_tree, file_of, git, head_of, ignored, sourced, traced_in, verified_at
+from ostler.book.sources import changed_parts, changed_in_tree, file_of, git, head_of, ignored, sourced, traced_in, verified_at
 from ostler.book.touching import touches
 
 NONE, PARTIAL, WHOLE = "none", "partial", "whole"
@@ -131,20 +131,17 @@ def walk(service: Service[Any], app_root: str, base: str, head: str) -> Affected
 
     def widen(path: str, why: str, targets: list[Pointer]) -> None:
         elements = sorted({p.element.__name__ for p in targets})
-        records = sorted({p.element.__name__ for p in targets if p.kind == "record"})
-        if records:
-            fall(path, f"{why}, and record {', '.join(records)} names the file: the whole book")
         for entry in found.widened:
             if entry["path"] == path and entry["why"] == why:
                 entry["elements"] = sorted({*entry["elements"], *elements})
                 return
         found.widened.append({"path": path, "why": why, "elements": elements})
 
-    def chain(path: str, function: str, element: Pointer, widened: bool = False) -> None:
+    def chain(path: str, function: str, element: Pointer, because: str = "") -> None:
         calls = calls_of(service, element.element, element.kind)
         name = element.element.__name__
-        if calls is None and not (widened and element.kind == "record"):
-            why = f"record {name} changed" if element.kind == "record" else f"{element.kind} {name} reaches no call of the book"
+        if calls is None:
+            why = because or (f"record {name} changed" if element.kind == "record" else f"{element.kind} {name} reaches no call of the book")
             fall(path, f"{why}: the whole book")
         wanted = sorted(calls or ())
         called.update(wanted)
@@ -161,24 +158,27 @@ def walk(service: Service[Any], app_root: str, base: str, head: str) -> Affected
         if not namers:
             found.uncovered.append({"path": path, "function": ""})
             continue
-        functions = None if path in untracked else changed_functions(app_root, base, path, tree=True, dotted=True)
-        if not functions:
-            widen(path, "a changed hunk has no definition line: every element naming the file is affected", namers)
-            for element in {p.element: p for p in namers}.values():
-                chain(path, "", element, widened=True)
-            continue
+        functions, unattributed = (set(), [[]]) if path in untracked else changed_parts(app_root, base, path, tree=True, dotted=True, types=True)
+        if not functions and not unattributed:
+            unattributed = [[]]
+        behaviour = [p for p in namers if p.kind != "record"]
         for function in sorted(functions):
             exact = [p for p in namers if p.symbol is None or same_symbol(function, p.symbol)]
             if not exact:
                 found.uncovered.append({"path": path, "function": function})
                 continue
             targets = exact
-            spread = {p.element for p in exact} != {p.element for p in namers}
+            reached = {p.element for p in exact if p.kind != "record"}
+            spread = bool(reached) and reached != {p.element for p in behaviour}
             if spread:
-                widen(path, f"{function} is named by some elements and the file by others: widened to every element naming the file", namers)
-                targets = namers
+                widen(path, f"{function} is named by some elements and the file by others: widened to every element naming the file", behaviour)
+                targets = [*exact, *behaviour]
             for element in {p.element: p for p in targets}.values():
-                chain(path, function, element, widened=spread)
+                chain(path, function, element)
+        if unattributed:
+            widen(path, "a changed hunk has no definition line: every element naming the file is affected", namers)
+            for element in {p.element: p for p in namers}.values():
+                chain(path, "", element, f"record {element.element.__name__} names the file and a changed hunk has no definition line")
     left = {u["path"] for u in found.uncovered}
     found.mapped = sorted({c.path for c in found.chains} - left)
     if not (found.chains or found.uncovered):

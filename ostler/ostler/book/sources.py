@@ -219,8 +219,21 @@ NOT_NAMES = {"if", "for", "while", "switch", "return", "catch", "func", "functio
 
 METHOD = re.compile(r"^func\s+\(\s*\w*\s*\*?\s*(\w+)(?:\[[^\]]*\])?\s*\)\s*(\w+)")
 
+TYPES = (
+    re.compile(r"^type\s+(\w+)(?:\[|\s+\S)"),
+    re.compile(r"^\s*(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:abstract\s+)?class\s+(\w+)"),
+    re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?interface\s+(\w+)"),
+    re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?type\s+(\w+)\s*(?:<[^>]*>)?\s*="),
+    re.compile(r"^\s*(?:export\s+)?(?:declare\s+)?(?:const\s+)?enum\s+(\w+)"),
+)
 
-def defined(line: str, loose: bool = False, dotted: bool = False) -> str | None:
+
+def defined(line: str, loose: bool = False, dotted: bool = False, types: bool = False) -> str | None:
+    if types:
+        for pattern in TYPES:
+            m = pattern.match(line)
+            if m:
+                return m.group(1)
     method = METHOD.match(line) if dotted else None
     if method:
         return f"{method.group(1)}.{method.group(2)}"
@@ -231,23 +244,31 @@ def defined(line: str, loose: bool = False, dotted: bool = False) -> str | None:
     return None
 
 
-def changed_functions(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False) -> set[str] | None:
-    """The functions a file's changed lines sit in, or None where a hunk has no definition line. With `tree` the
-    span runs to the working tree, uncommitted work included, instead of to HEAD; with `dotted` a Go method is
-    named with its receiver type, `Service.Get`."""
+def changed_parts(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False, types: bool = False) -> tuple[set[str], list[list[str]]]:
+    """The definitions a file's changed lines sit in, and the changed lines of each hunk that has none. With `tree`
+    the span runs to the working tree, uncommitted work included, instead of to HEAD; with `dotted` a Go method is
+    named with its receiver type, `Service.Get`; with `types` a type declaration is a definition too."""
     out = git(app_root, "diff", "-U0", commit if tree else f"{commit}..HEAD", "--", path)
     names: set[str] = set()
+    unattributed: list[list[str]] = []
     for hunk in re.split(r"^@@", out, flags=re.M)[1:]:
         head, _, body = hunk.partition("\n")
-        inside = [defined(line[1:], dotted=dotted) for line in body.splitlines() if line[:1] in "+-"]
-        found = {n for n in inside if n}
-        context = defined(head.split("@@", 1)[-1].lstrip(), loose=True, dotted=dotted)
+        lines = [line for line in body.splitlines() if line[:1] in ("+", "-")]
+        found = {n for n in (defined(line[1:], dotted=dotted, types=types) for line in lines) if n}
+        context = defined(head.split("@@", 1)[-1].lstrip(), loose=True, dotted=dotted, types=types)
         if context:
             found.add(context)
-        if not found:
-            return None
-        names |= found
-    return names
+        if found:
+            names |= found
+        else:
+            unattributed.append(lines)
+    return names, unattributed
+
+
+def changed_functions(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False) -> set[str] | None:
+    """The functions a file's changed lines sit in, or None where a hunk has no definition line."""
+    names, unattributed = changed_parts(app_root, commit, path, tree=tree, dotted=dotted)
+    return None if unattributed else names
 
 
 def changed_since(service: Service[Any], app_root: str, commit: str) -> dict[str, list[str]]:
