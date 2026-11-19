@@ -33,7 +33,7 @@ from ostler.book.exploration import BASELINE, REFUSED, Cell, Played as Explored,
 from ostler.book.graph import dot, render
 from ostler.book.index import book_root, cmd_index, cmd_search_book
 from ostler.book.http import Endpoint, identity_lines, named_shapes
-from ostler.book.inputs import Tried, fields_tried, play as play_inputs
+from ostler.book.inputs import Tried, fields_tried, plays, play as play_inputs
 from ostler.book.journey import JourneyResult
 from ostler.book.listing import account, claims_by, read_by
 from ostler.book.matrix import matrix
@@ -514,8 +514,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
     for line in unplayed_lines(service):
         print(line)
     print(twin_tally(tried))
-    if service.screens:
-        stated, tried_fields = fields_tried(service, tried)
+    stated, tried_fields = fields_tried(service, tried)
+    if service.screens or stated:
         print(f"fields: {stated} state a shape, {tried_fields} tried")
     print(f"time: journeys {journeys_took:.1f}s, cells {cells_took:.1f}s, inputs {inputs_took:.1f}s, {resets.line()}")
     everything = [*results, played, tried]
@@ -614,11 +614,12 @@ def touches(service: Service[Any], journey: Any, names: frozenset[str]) -> bool:
                 return True
             model.perform(given.request)
         for step in journey().steps(model.today):
-            if getattr(type(step), "carries", None) is None:
+            if not plays(type(step)):
                 continue
             if type(step).__name__ in names:
                 return True
-            model.perform(step)
+            if getattr(type(step), "carries", None) is not None:
+                model.perform(step)
     except Exception:
         return True
     return False

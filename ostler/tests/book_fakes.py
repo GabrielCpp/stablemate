@@ -53,3 +53,14 @@ class Counter(Model):
 
     def copy(self) -> Counter:
         return type(self)(self.today, self.n)
+
+
+class Plain(Model):
+    def apply(self, request: object) -> None:
+        return None
+
+    def rows(self) -> tuple[object, ...]:
+        return ()
+
+    def copy(self) -> Plain:
+        return Plain(self.today)

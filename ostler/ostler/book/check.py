@@ -22,11 +22,11 @@ from ostler.book.explore import _overrides, attempts, moves
 from ostler.book.graph import dot
 from ostler.book.boundary import Foreign, Needs
 from ostler.book.entries import says
-from ostler.book.http import Endpoint, List, Object, bare_ids, states
+from ostler.book.http import Endpoint, List, Object, Str, bare_ids, states
 from ostler.book.tree import unresolved
 from ostler.book.journey import Given, Journey, OwnerRefused, Refused
 from ostler.book.model import Rule
-from ostler.book.inputs import bases, classes, expected, has_inputs, predicted, refusals_for, vary
+from ostler.book.inputs import bases, body_fields, classes, expected, has_inputs, passed_on as passes_call, plays, predicted, refusals_for, states_shape, vary
 from ostler.book.errors import BookError
 from ostler.book.matrix import cell, matrix
 from ostler.book.state import Impossible
@@ -179,13 +179,15 @@ def input_faults(service: Service[Any]) -> list[Finding]:
     reached = bases(service)
     labels: dict[type[Any], set[str]] = {}
     for endpoint in (*service.endpoints, *service.interactions):
-        if endpoint.carries is None or not has_inputs(endpoint):
+        if not plays(endpoint) or not has_inputs(endpoint):
             continue
         name = f"{'interaction' if issubclass(endpoint, Interaction) else 'endpoint'} {endpoint.__name__}"
         base = reached.get(endpoint)
         if endpoint in skipped:
             if base is not None:
                 found.append(Finding(name, "inputs are declared unseen, but a step reaches it: delete the declaration"))
+            continue
+        if base is None and issubclass(endpoint, Endpoint) and passes_call(endpoint) and endpoint.body is None:
             continue
         if base is None:
             found.append(Finding(name, "no journey step or matrix cell makes a call the model accepts, so its input "
@@ -199,7 +201,12 @@ def input_faults(service: Service[Any]) -> list[Finding]:
                 found.append(Finding(name, f"{c.label} cannot be built: {type(crash).__name__}: {crash}"))
                 continue
             declared = any(d.endpoint is endpoint and d.label == c.label for d in service.diverges)
-            if not expected(c, predicted(call, base.before)) and not declared and refusals_for(service, endpoint).of(c.default) is None:
+            try:
+                said = predicted(call, base.before)
+            except BookError as wrong:
+                found.append(Finding(name, f"{c.label}: {wrong}"))
+                continue
+            if not expected(c, said) and not declared and refusals_for(service, endpoint).of(c.default) is None:
                 found.append(Finding(name, f"{c.label}: the model has no rule and the book declares no {c.default} refusal"))
     for d in service.diverges:
         if d.label not in labels.get(d.endpoint, set()):
@@ -716,6 +723,15 @@ def shape_faults(service: Service[Any]) -> list[Finding]:
     return found
 
 
+def body_faults(service: Service[Any]) -> list[Finding]:
+    """Every request body field of text that states no length, format or samples, so no input could be tried on it."""
+    return [Finding(f"endpoint {endpoint.__name__}.{name}", "the field states no length, no format, no set of values and no samples, so no input can be "
+                    "tried on it: state what the app enforces with max_len=, format= or an Enum, and where it enforces nothing give classes= "
+                    "with the samples the play sends")
+            for endpoint in service.endpoints for name, spec in body_fields(endpoint)
+            if isinstance(spec.shape, Str) and not states_shape(spec)]
+
+
 def fill_faults(service: Service[Any]) -> list[Finding]:
     """Every component that states a shape on a screen where no interaction of the book fills it."""
     found: list[Finding] = []
@@ -789,6 +805,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "input classes", lambda: found.extend(input_faults(service)) or "done")
     attempt(found, "screen names", lambda: found.extend(name_faults(service)) or "done")
     attempt(found, "screen shapes", lambda: found.extend(shape_faults(service)) or "done")
+    attempt(found, "body shapes", lambda: found.extend(body_faults(service)) or "done")
     attempt(found, "unstated lists", lambda: found.extend(unstated_lists(service)) or "done")
     attempt(found, "screen fills", lambda: found.extend(fill_faults(service)) or "done")
     attempt(found, "sources", lambda: found.extend(source_faults(service, app)) or "done")

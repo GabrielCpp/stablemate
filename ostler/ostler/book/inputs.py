@@ -27,7 +27,7 @@ from ostler.book.http import (Bool, Client, Endpoint, Enum, Field, Id, Identitie
 from ostler.book.journey import Given, StepResult, difference
 from ostler.book.model import Defect, Model
 from ostler.book.outcome import CannotReach, Done, Flawed, Outcome, Refusal, Refusals, Unreachable
-from ostler.book.owners import Owners
+from ostler.book.owners import Owners, Said
 from ostler.book.runner import agree, attempt, listing
 from ostler.book.screen import Interaction
 from ostler.book.surface import Surface
@@ -70,6 +70,30 @@ class InputClass:
     @property
     def label(self) -> str:
         return f"{self.name} {self.kind}"
+
+
+def passed_on(kind: Any) -> bool:
+    return getattr(kind, "passes", None) is not None or getattr(kind, "reaches", None) is not None
+
+
+def plays(kind: Any) -> bool:
+    """Whether the run tries input classes on the endpoint: it carries an action, or it passes a call on and takes inputs."""
+    return getattr(kind, "carries", None) is not None or (passed_on(kind) and has_inputs(kind))
+
+
+def body_fields(endpoint: type[Any]) -> Iterator[tuple[str, Field]]:
+    """The request body fields of an endpoint the run can fill: an object's, or a list of objects' as `[].name`."""
+    body = endpoint.body
+    shape, prefix = (body.of, "[].") if isinstance(body, List) else (body, "")
+    if isinstance(shape, Object):
+        for name, spec in shape.fields.items():
+            yield prefix + name, spec
+
+
+def states_shape(spec: Field) -> bool:
+    """Whether a field states something a run can try: text states a length, a format or samples, any other shape states itself."""
+    shape = spec.shape
+    return not isinstance(shape, Str) or bool(shape.max_len or shape.format or shape.classes)
 
 
 def has_inputs(endpoint: type[Any]) -> bool:
@@ -236,7 +260,7 @@ def classes(call: Any, model: Model, ids: Identities | None) -> list[InputClass]
     """The classes of a call the model accepts as it stands. A call the model
     already refuses for its caller says nothing of its inputs, only of the order
     of two rules, so it has none."""
-    if model.explain(call) is not None:
+    if (not isinstance(predicted(call, model), Done)) if passed_on(type(call)) else model.explain(call) is not None:
         return []
     cls = type(call)
     out: list[InputClass] = []
@@ -249,6 +273,13 @@ def classes(call: Any, model: Model, ids: Identities | None) -> list[InputClass]
     if cls.typed_wire:
         out = [c for c in out if c.kind not in cls.typed_away]
     return out
+
+
+def _replaced(target: Fixture, name: str, value: Any) -> Any:
+    try:
+        return target.but(**{name: value})
+    except AttributeError:
+        return Said(target, {name: value}, ())
 
 
 def vary(call: Any, c: InputClass) -> Any:
@@ -275,7 +306,7 @@ def vary(call: Any, c: InputClass) -> Any:
     if c.place == "path":
         target = call.of
         if isinstance(target, Fixture) and hasattr(target, c.name):
-            return call.varied(of=target.but(**{c.name: c.value}))
+            return call.varied(of=_replaced(target, c.name, c.value))
         if isinstance(target, Mapping):
             return call.varied(of={**target, c.name: c.value})
         if isinstance(target, tuple):
@@ -285,7 +316,7 @@ def vary(call: Any, c: InputClass) -> Any:
     if c.place == "query":
         target = call.of
         if isinstance(target, Fixture) and hasattr(target, c.name) and c.value is not GONE:
-            return call.varied(of=target.but(**{c.name: c.value}), query=edited(call.query_values))
+            return call.varied(of=_replaced(target, c.name, c.value), query=edited(call.query_values))
         return call.varied(query=edited(call.query_values))
     if c.place == "body" and c.name.startswith("[]."):
         items = list(cast(List, cls.body).pack(call.body_value))
@@ -314,7 +345,7 @@ class Base:
 
 
 def _carried(step: object) -> TypeGuard[Any]:
-    return isinstance(step, (Endpoint, Interaction)) and step.carries is not None
+    return isinstance(step, (Endpoint, Interaction)) and plays(type(step))
 
 
 def _speak(surface: Surface, lang: str) -> None:
@@ -371,18 +402,20 @@ def bases(service: Service[Any], today: date | None = None) -> dict[type[Any], B
     home = service.languages[0] if service.languages else ""
     for journey in service.journeys:
         model = service.new_model(today or date.today())
+        Owners.seeded = {}
         try:
             for given in journey.given:
                 if isinstance(given, Given):
                     model.perform(given.request)
-                elif isinstance(given, Needs) and given.foreign.takes is not None:
+                elif isinstance(given, Needs):
                     Owners.seed(given, model)
             for k, step in enumerate(journey().steps(model.today)):
                 if not _carried(step):
                     continue
                 before, kept = model.copy(), copy.deepcopy(step)
-                outcome = model.perform(step)
-                if isinstance(outcome, Done) and type(step) not in found:
+                setattr(before, "owners", dict(Owners.seeded))
+                outcome = predicted(step, before) if passed_on(type(step)) else model.perform(step)
+                if (outcome is None or isinstance(outcome, Done)) and type(step) not in found:
                     found[type(step)] = Base(f"journey {journey.__name__}, step {k + 1}", _journey_base(journey, k, home), before, kept)
         except Exception:
             continue
@@ -407,7 +440,10 @@ def refusals_for(service: Service[Any], endpoint: type[Any]) -> Refusals:
 
 
 def predicted(call: Endpoint, model: Model) -> Outcome | None:
-    """What the model alone says of the call, or None when it cannot take it."""
+    """What the model alone says of the call, or None when it cannot take it. A call passed on is the owner's
+    model's to say: the endpoint's refusal for the owner's, a Done where the owner takes it, None where the owner never gets it."""
+    if passed_on(type(call)):
+        return Owners.foresee(call, model.today, getattr(model, "owners", None))
     try:
         return model.copy().perform(call)
     except Exception:
@@ -481,17 +517,24 @@ class Tried:
 
 
 def fields_tried(service: Service[Any], tried: Tried) -> tuple[int, int]:
-    """How many screen attributes state a shape, and how many of those the run played an input class or a pair of twins on."""
-    played = {(s.endpoint.screen, s.c.name) for s in tried.sent if not s.skipped and issubclass(s.endpoint, Interaction)}
-    played |= {(t.endpoint.screen, t.twin.name) for t in tried.twins if t.played and issubclass(t.endpoint, Interaction)}
-    stated = [(screen, c) for screen in service.screens for _, c in screen.attributes() if c.holds is not None]
-    return len(stated), sum(1 for screen, c in stated if (screen, c.takes) in played)
+    """How many screen attributes and endpoint body fields state a shape, and how many of those the run played an input class or a pair of twins on."""
+
+    def where(endpoint: type[Any]) -> Any:
+        return endpoint.screen if issubclass(endpoint, Interaction) else endpoint
+
+    played = {(where(s.endpoint), s.c.name) for s in tried.sent if not s.skipped and s.c.place in (SCREEN, "body")}
+    played |= {(where(t.endpoint), t.twin.name) for t in tried.twins if t.played and t.twin.place in (SCREEN, "body")}
+    stated: list[tuple[Any, str]] = [(screen, c.takes) for screen in service.screens for _, c in screen.attributes() if c.holds is not None]
+    stated += [(e, name) for e in service.endpoints for name, spec in body_fields(e) if states_shape(spec)]
+    return len(stated), sum(1 for key in stated if key in played)
 
 
 def judge(service: Service[Any], call: Endpoint, c: InputClass, model: Model, surface: Surface) -> Sent:
     """Sends the varied call on the surface and the model, and compares them."""
     cls = type(call)
     said = predicted(call, model)
+    if passed_on(cls) and isinstance(said, Refusal):
+        return sends(cls, c, call, model, surface, said, None, f"{said} (the owner's refusal, as this endpoint maps it)", True)
     if expected(c, said):
         taken = attempt(call, model, surface)
         if taken.skipped:
@@ -504,6 +547,12 @@ def judge(service: Service[Any], call: Endpoint, c: InputClass, model: Model, su
     match = next((d for d in service.diverges if d.endpoint is cls and d.label == c.label), None)
     if want is None and match is None:
         return Sent(cls, c, False, f"the model has no rule for {c.label} and the book declares no {c.default} refusal")
+    return sends(cls, c, call, model, surface, want, match, f"{want} (the book's {c.default} refusal)" if want is not None else "a refusal")
+
+
+def sends(cls: type[Any], c: InputClass, call: Endpoint, model: Model, surface: Surface, want: Refusal | None,
+          match: Diverges | None, wanted: str, by_status: bool = False) -> Sent:
+    """Sends the call and judges the answer against the refusal the book wants, by its status alone where the owner's message is not this endpoint's."""
     try:
         got = surface.perform(call)
     except (CannotArrange, Unhealthy):
@@ -514,7 +563,9 @@ def judge(service: Service[Any], call: Endpoint, c: InputClass, model: Model, su
         return Sent(cls, c, False, f"the app answered outside the book: {outside}")
     except Exception as crash:
         return Sent(cls, c, False, f"crashed: {type(crash).__name__}: {str(crash).splitlines()[0]}")
-    shown = f"{want} (the book's {c.default} refusal) / {got}" if want is not None else f"a refusal / {got}"
+    shown = f"{wanted} / {got}"
+    if want is not None and by_status and isinstance(got, Refusal):
+        want = dataclasses.replace(want, message=got.message)
     if want is not None and agree(want, got) and isinstance(got, (Refusal, Unreachable)):
         if surface.rows() == listing(surface, model):
             return Sent(cls, c, True, outcome=shown, clean=True)
@@ -543,7 +594,7 @@ def play(
     for endpoint in (*service.endpoints, *service.interactions):
         if only and endpoint.__name__ not in only:
             continue
-        if endpoint.carries is None or getattr(endpoint, "streams", "") or not has_inputs(endpoint) or endpoint in skipped:
+        if not plays(endpoint) or getattr(endpoint, "streams", "") or not has_inputs(endpoint) or endpoint in skipped:
             continue
         base = found.get(endpoint)
         if base is None:
@@ -554,7 +605,7 @@ def play(
             sent, arranged = one(service, endpoint, base, n, surface, fresh, held)
             tried.sent.append(sent)
             held = arranged if sent.clean else None
-        for twin in twin_classes(base.call, base.before):
+        for twin in [] if passed_on(endpoint) else twin_classes(base.call, base.before):
             weighed = weigh(endpoint, twin, base, surface, fresh, held)
             tried.twins.append(weighed)
             if weighed.played or weighed.skipped or not weighed.ok:

@@ -7,28 +7,17 @@ from typing import Any
 
 import json
 
-from ostler.book import (Action, Answer, CannotReach, Diverges, Done, Endpoint, Enum, Field, Id, Model, Object, Refusal, Refusals, Rule, Service,
+from ostler.book import (Action, Answer, CannotReach, Diverges, Done, Endpoint, Enum, Field, Id, Object, Refusal, Refusals, Rule, Service,
                          Str)
 from ostler.book.model import Refused
 from ostler.book.http import Client
 from ostler.book.httpsurface import HttpSurface
 from ostler.book.inputs import InputClass, classes, judge, vary
 
-from book_fakes import Quiet, no_stack
+from book_fakes import Plain, Quiet, no_stack
 
 DAY = date(2026, 11, 4)
 FIELDS = {"kind": Field(Enum(("a", "b"))), "note": Field(Str(), required=False)}
-
-
-class Plain(Model):
-    def apply(self, request: object) -> None:
-        return None
-
-    def rows(self) -> tuple[object, ...]:
-        return ()
-
-    def copy(self) -> Plain:
-        return Plain(self.today)
 
 
 class Send(Endpoint):

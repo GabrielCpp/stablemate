@@ -7,18 +7,20 @@ from __future__ import annotations
 import dataclasses
 import importlib
 import json
+from collections.abc import Iterable, Mapping
+from datetime import date
 from typing import TYPE_CHECKING, Any, Callable, cast
 
 from ostler.book.backstage import CannotArrange
-from ostler.book.boundary import Needs, Person, View
+from ostler.book.boundary import Needs, Person, Reaches, View
 from ostler.book.cast import SOLE, Actor
 from ostler.book.domain import Fixture, State
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError
-from ostler.book.http import Endpoint, Reply
+from ostler.book.http import Endpoint, Object, Reply
 from ostler.book.journey import StepResult, difference
 from ostler.book.model import Model
-from ostler.book.outcome import Done, Refusal
+from ostler.book.outcome import Done, Outcome, Refusal
 from ostler.book.state import Axes
 from ostler.book.status import Status, refused as turned_away
 from ostler.book.surface import Surface
@@ -35,6 +37,76 @@ def book_of(call: object) -> str:
     return ".".join(type(call).__module__.split(".")[:2])
 
 
+class Said:
+    """What a mapping reads of a step whose inputs were replaced, by name or by attribute as it reads a fixture: the value
+    sent, none for a field the endpoint declares and the call lacks, and any other name from the fixture the step was
+    built on."""
+
+    def __init__(self, base: object, values: Mapping[Any, Any], declared: Iterable[str]) -> None:
+        self.__dict__.update(base=base, values=values, declared=frozenset(declared))
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("__"):
+            raise AttributeError(name)
+        if name in self.values:
+            return self.values[name]
+        if name in self.declared:
+            return None
+        if self.base is None:
+            raise AttributeError(name)
+        return getattr(self.base, name)
+
+    def __getitem__(self, name: str) -> Any:
+        if name in self.values:
+            return self.values[name]
+        raise KeyError(name)
+
+    def get(self, name: str, default: Any = None) -> Any:
+        return self.values.get(name, default)
+
+    def __contains__(self, name: object) -> bool:
+        return name in self.values
+
+
+class Varied:
+    """A step with its inputs replaced, as a mapping reads it: every attribute is the step's, and each input the step
+    now holds as plain values reads as the fixture the book wrote it as."""
+
+    def __init__(self, step: Endpoint) -> None:
+        kind = type(step)
+        self.step = step
+        base = step.of if isinstance(step.of, Fixture) else None
+        body = list(kind.body.fields) if isinstance(kind.body, Object) else []
+        params = list(kind.params.fields)
+        asked = list(kind.query.fields) if kind.query is not None else []
+        values: dict[str, Any] = {}
+        if isinstance(step.of, Mapping):
+            values.update(cast(Mapping[str, Any], step.of))
+        if isinstance(step.body_value, Mapping):
+            values.update(cast(Mapping[str, Any], step.body_value))
+        self.given_view: Any = Said(base, values, [*body, *params]) if isinstance(step.of, Mapping) or isinstance(step.body_value, Mapping) else step.given()
+        self.body_value: Any = Said(None, step.body_value, body) if isinstance(step.body_value, Mapping) else step.body_value
+        self.of: Any = self.given_view if isinstance(step.of, Mapping) else step.of
+        self.query_given: Any = (Said(base, step.query_given, asked) if isinstance(step.query_given, Mapping) else step.query_given)
+
+    def given(self) -> Any:
+        return self.given_view
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.step, name)
+
+
+class Held:
+    """The stand-in for an owner's surface where no run has started one: it holds the tokens a book lends and sends nothing."""
+
+    def __init__(self) -> None:
+        self.client = self
+        self.held: set[object] = set()
+
+    def hold(self, *_: object) -> None:
+        return None
+
+
 def failed(step: object, model: Model, note: str) -> StepResult:
     return StepResult(step, None, None, model.rows(), (), False, note)
 
@@ -47,6 +119,7 @@ class Owners:
     fresh: Callable[[Service[Any], Surface], Model] | None = None
     books: dict[str, tuple[Service[Any], Surface]] = {}
     models: dict[str, Model] = {}
+    seeded: dict[str, Model] = {}
     handed: dict[str, list[object]] = {}
     needs: list[Needs] = []
     loaded: list[str] = []
@@ -248,6 +321,7 @@ class Owners:
         owned, entity = cls.alone(cls.book(needed.foreign.owner), needed)
         ident = str(getattr(entity, "id"))
         needed.arranged(ident, entity)
+        cls.seeded[needed.foreign.owner] = owned
         cls.take_in(needed, model, owned, ident, entity)
 
     @classmethod
@@ -373,6 +447,48 @@ class Owners:
             return (f"{kind.__name__}: the owner {owner} refused {call} with {asked.status}, the book maps it to {mapped}, "
                     f"and the app answered {app}")
         return ""
+
+    @classmethod
+    def foresee(cls, step: Endpoint, today: date, owners: Mapping[str, Model] | None = None) -> Outcome | None:
+        """What the owner's model says of the call `step` passes on or reaches, as this endpoint answers it: its refusal
+        with the status the map gives, a Done where the owner takes the call, or None where the call never reaches the
+        owner because the book cannot build it from the values sent or the owner's model cannot read them."""
+        kind = type(step)
+        claim = kind.reaches or kind.passes
+        if claim is None:
+            raise BookError(f"{kind.__name__} passes nothing on and reaches nothing")
+        heard = Varied(step)
+        before = cls.__dict__["owner"]
+        if cls.environment is None:
+            def stood_in(module: str) -> tuple[Service[Any], Surface]:
+                return cls.books.get(module) or (cls.book(module), cast("Surface", Held()))
+
+            setattr(cls, "owner", staticmethod(stood_in))
+        try:
+            call = claim.call(heard) if isinstance(claim, Reaches) else claim.asks(heard)
+        except Exception:
+            return None
+        finally:
+            setattr(cls, "owner", before)
+        owner = book_of(call)
+        service = cls.book(owner)
+        if type(call) not in service.endpoints:
+            raise BookError(f"{type(call).__name__} is no endpoint of {owner}: a call a book passes on or reaches is one of the owner's endpoints")
+        action = type(call).carries
+        if action is None:
+            return Done()
+        call.by = step.by
+        held = (owners or {}).get(owner) or cls.models.get(owner)
+        owned = held if held is not None else service.new_model(today)
+        try:
+            outcome = owned.copy().perform(cls.modelled(call, action))
+        except Exception:
+            return None
+        if not isinstance(outcome, Refusal):
+            return Done()
+        if outcome.status not in claim.refused:
+            raise BookError(f"{kind.__name__}: the owner {owner} refuses with {outcome.status} and the map names no such status")
+        return Refusal(outcome.message, claim.refused[outcome.status])
 
     @classmethod
     def prepare(cls, step: Endpoint) -> None:
