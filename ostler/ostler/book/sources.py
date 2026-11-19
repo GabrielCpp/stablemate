@@ -42,8 +42,14 @@ def symbol_of(pointer: str) -> str | None:
     return pointer.split("::", 1)[1].rsplit(".", 1)[-1] if "::" in pointer else None
 
 
+def actions(service: Service[Any]) -> tuple[type, ...]:
+    """The actions some endpoint, interaction or outside happening of the book carries."""
+    carried = (e.carries for e in (*service.endpoints, *service.interactions, *service.outside) if e.carries is not None)
+    return tuple(dict.fromkeys(carried))
+
+
 def elements(service: Service[Any]) -> tuple[type, ...]:
-    return (*service.endpoints, *service.records, *service.screens, *service.interactions)
+    return tuple(element for _, element in sourced(service))
 
 
 def raw(service: Service[Any]) -> dict[str, tuple[str, ...]]:
@@ -125,13 +131,18 @@ def kinds(service: Service[Any]) -> list[tuple[str, type]]:
     ]
 
 
+def sourced(service: Service[Any]) -> list[tuple[str, type]]:
+    """Every element that names its code: the kinds above, the actions the book carries and its outside happenings."""
+    return [*kinds(service), *(("action", e) for e in actions(service)), *(("outside", e) for e in service.outside)]
+
+
 def missing_files(service: Service[Any], app_root: str, under: tuple[str, ...] = ()) -> Missing:
     assert service.app is not None
     folders = under or service.app.roots
     tracked = [line for line in git(app_root, "ls-files", "--", *folders).splitlines() if line]
     member = core_config.repository_name(Path(app_root))
     namers: dict[str, set[tuple[str, str]]] = {}
-    for kind, element in kinds(service):
+    for kind, element in sourced(service):
         for pointer in cast(Any, element).source:
             traced = traced_in(pointer, member)
             if traced is not None:
@@ -206,7 +217,13 @@ DEFINITIONS = (
 NOT_NAMES = {"if", "for", "while", "switch", "return", "catch", "func", "function", "else"}
 
 
-def defined(line: str, loose: bool = False) -> str | None:
+METHOD = re.compile(r"^func\s+\(\s*\w*\s*\*?\s*(\w+)(?:\[[^\]]*\])?\s*\)\s*(\w+)")
+
+
+def defined(line: str, loose: bool = False, dotted: bool = False) -> str | None:
+    method = METHOD.match(line) if dotted else None
+    if method:
+        return f"{method.group(1)}.{method.group(2)}"
     for pattern in DEFINITIONS if loose else DEFINITIONS[:-1]:
         m = pattern.match(line)
         if m and m.group(1) not in NOT_NAMES:
@@ -214,14 +231,17 @@ def defined(line: str, loose: bool = False) -> str | None:
     return None
 
 
-def changed_functions(app_root: str, commit: str, path: str) -> set[str] | None:
-    out = git(app_root, "diff", "-U0", f"{commit}..HEAD", "--", path)
+def changed_functions(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False) -> set[str] | None:
+    """The functions a file's changed lines sit in, or None where a hunk has no definition line. With `tree` the
+    span runs to the working tree, uncommitted work included, instead of to HEAD; with `dotted` a Go method is
+    named with its receiver type, `Service.Get`."""
+    out = git(app_root, "diff", "-U0", commit if tree else f"{commit}..HEAD", "--", path)
     names: set[str] = set()
     for hunk in re.split(r"^@@", out, flags=re.M)[1:]:
         head, _, body = hunk.partition("\n")
-        inside = [defined(line[1:]) for line in body.splitlines() if line[:1] in "+-"]
+        inside = [defined(line[1:], dotted=dotted) for line in body.splitlines() if line[:1] in "+-"]
         found = {n for n in inside if n}
-        context = defined(head.split("@@", 1)[-1].lstrip(), loose=True)
+        context = defined(head.split("@@", 1)[-1].lstrip(), loose=True, dotted=dotted)
         if context:
             found.add(context)
         if not found:
@@ -241,6 +261,14 @@ def changed_since(service: Service[Any], app_root: str, commit: str) -> dict[str
         elif line.strip() and not ignored(line, service.app.ignore):
             changed.setdefault(line, []).append(current)
     return changed
+
+
+def changed_in_tree(app_root: str, commit: str, roots: tuple[str, ...]) -> tuple[list[str], list[str]]:
+    """The files under the roots that differ between the commit and the working tree, committed, staged or not,
+    and apart from them the untracked files there."""
+    tracked = git(app_root, "diff", "--name-only", "--relative", commit, "--", *roots).splitlines()
+    untracked = git(app_root, "ls-files", "--others", "--exclude-standard", "--", *roots).splitlines()
+    return sorted(p for p in tracked if p), sorted(p for p in untracked if p)
 
 
 def symbol_commits(app_root: str, commit: str, pointer: str) -> list[str] | None:

@@ -359,6 +359,7 @@ class Action(Generic[A, S]):
     defects: ClassVar[tuple[Defect[Any, Any], ...]] = ()
     emits: ClassVar[tuple[type[Event], ...]] = ()
     clock: ClassVar[str] = ""
+    source: ClassVar[tuple[str, ...]] = ()
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

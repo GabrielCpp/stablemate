@@ -20,6 +20,7 @@ import time
 from datetime import date, timedelta
 from typing import Any
 
+from ostler.book.affected import cmd_affected as affected
 from ostler.book.backstage import CannotArrange
 from ostler.book.cells import Played, play
 from ostler.book.check import broken, cmd_check
@@ -34,7 +35,7 @@ from ostler.book.exploration import BASELINE, REFUSED, Cell, Played as Explored,
 from ostler.book.graph import dot, render
 from ostler.book.index import book_root, cmd_index, cmd_search_book
 from ostler.book.http import Endpoint, identity_lines, named_shapes
-from ostler.book.inputs import Tried, fields_tried, plays, play as play_inputs
+from ostler.book.inputs import Tried, fields_tried, play as play_inputs
 from ostler.book.journey import JourneyResult
 from ostler.book.listing import account, claims_by, read_by
 from ostler.book.matrix import matrix
@@ -52,6 +53,7 @@ from ostler.book.service import Service
 from ostler.book.stack import Stack
 from ostler.book.sources import head_of, missing_files, stale
 from ostler.book.surface import Surface
+from ostler.book.touching import aims, touches
 
 
 OUT_HELP = "where the reports go; omitted, a fresh folder under the system temp directory is used and named in the output"
@@ -86,8 +88,8 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     run.add_argument("--partial", action="store_true",
                      help="a run of some journeys only: unseen answers and unmet defects do not fail it")
     run.add_argument("--only", action="append", default=[], metavar="CALL",
-                     help="play only the journeys that call these endpoints, or these interactions in a screen book, "
-                          "their declared cells and their input classes; repeatable or comma-separated")
+                     help="play only the journeys that call these endpoints, or these interactions in a screen book, or arrange "
+                          "these outside happenings, their declared cells and their input classes; repeatable or comma-separated")
     run.add_argument("--register", action="store_true",
                      help="add the underspecified findings the register lacks to the service's UNDERSPECIFIED.md, and do not fail on them")
     run.add_argument("--register-outside", action="append", default=[], metavar="CALL",
@@ -135,6 +137,11 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
         p.add_argument("--app", required=True, help="the app's root")
         if name == "stale":
             p.add_argument("--since", help="judge against this commit instead of the verified one; a book with no verified commit still answers")
+    what = sub.add_parser("affected", help="list the calls and journeys to play for the code changed since a commit, uncommitted work included")
+    what.add_argument("service")
+    what.add_argument("--app", required=True, help="the app's root")
+    what.add_argument("--since", help="judge against this commit instead of the verified one")
+    what.add_argument("--out", default=None, help=OUT_HELP)
     absent = sub.add_parser("missing", help="list the tracked source files of the app that no element names and no ignore pattern covers")
     absent.add_argument("service")
     absent.add_argument("--app", required=True, help="the app's root")
@@ -608,14 +615,13 @@ def cmd_explore(service: Service[Any], args: argparse.Namespace) -> int:
 
 
 def named(service: Service[Any], only: list[str]) -> frozenset[str]:
-    """The endpoint and interaction names `--only` gives, each one checked against the service."""
+    """The endpoint, interaction and outside happening names `--only` gives, each one checked against the service."""
     names = frozenset(n.strip() for item in only for n in item.split(",") if n.strip())
-    known = {e.__name__ for e in (*service.endpoints, *service.interactions)}
+    known = {e.__name__ for e in (*service.endpoints, *service.interactions, *service.outside)}
     unknown = sorted(names - known)
     if unknown:
-        raise SystemExit(
-            f"--only names no endpoint or interaction of {service.name}: {', '.join(unknown)}; known: {', '.join(sorted(known))}"
-        )
+        kinds = "endpoint or interaction" + (" or outside happening" if service.outside else "")
+        raise SystemExit(f"--only names no {kinds} of {service.name}: {', '.join(unknown)}; known: {', '.join(sorted(known))}")
     return names
 
 
@@ -625,37 +631,6 @@ def chosen(service: Service[Any], cells: list[Cell], only: list[str]) -> list[Ce
     if not names:
         return cells
     return [c for c in cells if c.endpoint in names]
-
-
-def touches(service: Service[Any], journey: Any, names: frozenset[str]) -> bool:
-    """Whether the journey calls one of the named endpoints, found on the model alone.
-    A journey the model cannot walk is kept, so a broken one is never left out."""
-    model = service.new_model(date.today())
-    try:
-        for given in journey.given:
-            if type(given.request).__name__ in names:
-                return True
-            model.perform(given.request)
-        for step in journey().steps(model.today):
-            if not plays(type(step)):
-                continue
-            if type(step).__name__ in names:
-                return True
-            if getattr(type(step), "carries", None) is not None:
-                model.perform(step)
-    except Exception:
-        return True
-    return False
-
-
-def aims(service: Service[Any], axes: Any, scene: Any, name: str, names: frozenset[str]) -> bool:
-    """Whether a declared cell calls one of the named endpoints, found on the model alone.
-    A cell the model cannot build is kept."""
-    try:
-        action = axes.actions[name](scene.arrange(service.new_model(axes.today)))
-    except Exception:
-        return True
-    return type(action).__name__ in names
 
 
 def begin(surface: Surface, stack: Any, args: argparse.Namespace) -> str:
@@ -990,6 +965,10 @@ def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_affected(service: Service[Any], args: argparse.Namespace) -> int:
+    return affected(service, args.service, args.app, args.since, _package_dir(args), args.out)
+
+
 def cmd_missing(service: Service[Any], args: argparse.Namespace) -> int:
     if service.app is None:
         print(f'{service.name} declares no app: give Service app=App(roots=(...), verified="VERIFIED")')
@@ -1040,7 +1019,7 @@ def cmd_verified(service: Service[Any], args: argparse.Namespace) -> int:
     return 0
 
 
-COMMANDS = {"stale": cmd_stale, "missing": cmd_missing, "decisions": cmd_decisions, "verified": cmd_verified, "check": cmd_check, "explore": cmd_explore, "search": cmd_search, "index": cmd_index, "explain": cmd_explain, "run": cmd_run, "walk": cmd_walk, "endpoints": cmd_endpoints, "screens": cmd_screens, "matrix": cmd_matrix,
+COMMANDS = {"stale": cmd_stale, "affected": cmd_affected, "missing": cmd_missing, "decisions": cmd_decisions, "verified": cmd_verified, "check": cmd_check, "explore": cmd_explore, "search": cmd_search, "index": cmd_index, "explain": cmd_explain, "run": cmd_run, "walk": cmd_walk, "endpoints": cmd_endpoints, "screens": cmd_screens, "matrix": cmd_matrix,
             "denied": cmd_denied, "plan": cmd_plan, "graph": cmd_graph}
 
 

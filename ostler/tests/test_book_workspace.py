@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import pytest
 
+from book_fakes import git as _git
 from book_todo import FIXTURE, runtime
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book import checkout
@@ -20,11 +21,6 @@ from ostler.book.check import source_faults
 from ostler.book import App
 from ostler.book.service import Service
 from ostler.book.sources import missing, stale
-
-
-def _git(folder: Path, *arguments: str) -> None:
-    subprocess.run(["git", "-C", str(folder), "-c", "user.name=t", "-c", "user.email=t@example.com", *arguments],
-                   check=True, capture_output=True)
 
 
 def _member(folder: Path) -> Path:
@@ -112,10 +108,11 @@ class _Cls:
     def __init__(self, *source: str) -> None:
         self.__name__ = "Thing"
         self.source = source
+        self.carries = None
 
 
 def _service(*source: str) -> Service[Any]:
-    return cast("Service[Any]", SimpleNamespace(endpoints=(_Cls(*source),), records=(), screens=(), interactions=(), app=None))
+    return cast("Service[Any]", SimpleNamespace(endpoints=(_Cls(*source),), records=(), screens=(), interactions=(), outside=(), app=None))
 
 
 def test_a_qualified_pointer_to_an_existing_member_file_is_no_finding(workspace):
@@ -197,7 +194,7 @@ def test_stale_names_the_member_from_its_worktree(workspace, tmp_path):
 def _screen_service(*source: str, app: App | None = None) -> Service[Any]:
     screen = _Cls(*source)
     screen.__name__ = "Dashboard"
-    return cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(screen,), interactions=(), app=app))
+    return cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(screen,), interactions=(), outside=(), app=app))
 
 
 def test_a_screen_whose_source_does_not_exist_is_a_finding_under_app(workspace):
@@ -299,8 +296,8 @@ def test_the_stale_command_accepts_since():
 
 
 def test_an_interaction_outside_the_screens_owes_no_source_pointer(workspace):
-    outside = SimpleNamespace(__name__="ClockMoves", source=(), screen=None)
-    bound = SimpleNamespace(__name__="PressSave", source=(), screen=object())
-    service = cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(), interactions=(outside, bound), app=None))
+    outside = SimpleNamespace(__name__="ClockMoves", source=(), screen=None, carries=None)
+    bound = SimpleNamespace(__name__="PressSave", source=(), screen=object(), carries=None)
+    service = cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(), interactions=(outside, bound), outside=(), app=None))
     found = source_faults(service, None)
     assert [(f.name, f.problem) for f in found] == [("PressSave", "no source pointer")]

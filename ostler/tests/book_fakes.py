@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
-from ostler.book import (Action, Arrange, Axes, CannotArrange, Collection, Create, Delete, Done, Environment, Event, Field, Journey,
+from ostler.book import (Action, Answer, App, Arrange, Axes, CannotArrange, Collection, Create, Delete, Done, Endpoint, Environment, Event, Field, Journey,
                          Model, Object, Refusal, Rule, Scene, Service, Stack, State, Str, Unique)
 from ostler.book import cli
 
@@ -236,3 +237,85 @@ def run_shelf(monkeypatch: Any, service: Service[Any], out: Path, capsys: Any, *
     monkeypatch.setattr(cli, "register_path", lambda module: str(out / "register.txt"))
     code = cli.main(["run", __name__, "--no-stack", "--out", str(out), *flags])
     return code, capsys.readouterr().out
+
+
+def git(folder: Path, *arguments: str) -> str:
+    """What git prints for `arguments` run in `folder`, as a committer with a fixed name."""
+    done = subprocess.run(["git", "-C", str(folder), "-c", "user.name=t", "-c", "user.email=t@example.com", *arguments],
+                          check=True, capture_output=True, text=True)
+    return done.stdout
+
+
+def commit_files(folder: Path, files: dict[str, str], message: str = "change") -> str:
+    """Writes the files, commits them and gives the short commit."""
+    for name, text in files.items():
+        (folder / name).write_text(text)
+    git(folder, "add", *files)
+    git(folder, "commit", "--quiet", "-m", message)
+    return git(folder, "rev-parse", "--short", "HEAD").strip()
+
+
+def code_repo(folder: Path, files: dict[str, str]) -> str:
+    """A new git repository holding the files in one commit, and that commit."""
+    folder.mkdir(parents=True)
+    git(folder, "init", "--quiet")
+    return commit_files(folder, files, "base")
+
+
+class Drawer:
+    """A record of the shelf book."""
+
+
+class PutItem(Endpoint):
+    method = "POST"
+    path = "/shelf/{id}"
+    params = Object(id=Field(Str()))
+    answers = (Answer(200, None, "ok"),)
+    carries = Put
+    does = "Puts an item on the shelf."
+
+
+class RestockItem(Endpoint):
+    method = "PUT"
+    path = "/shelf/{id}"
+    params = Object(id=Field(Str()))
+    answers = (Answer(200, None, "ok"),)
+    carries = Restock
+    does = "Puts an item on the shelf again."
+
+
+class RemoveItem(Endpoint):
+    method = "DELETE"
+    path = "/shelf/{id}"
+    params = Object(id=Field(Str()))
+    answers = (Answer(200, None, "ok"),)
+    carries = Remove
+    does = "Takes an item off the shelf."
+
+
+class Shelving(Journey):
+    """An item arrives and another is put."""
+
+    def steps(self, today: date) -> tuple[object, ...]:
+        return (Arrives("a"), PutItem("b"))
+
+
+class Clearing(Journey):
+    """An item is put and taken off."""
+
+    def steps(self, today: date) -> tuple[object, ...]:
+        return (PutItem("c"), RemoveItem("c"))
+
+
+def sourced_book(sources: dict[str, tuple[str, ...]], ignore: tuple[str, ...] = ("*_test.go",)) -> Service[Shelf]:
+    """The shelf book with calls, outside happenings, actions and a record, each naming the code `sources` gives for its name."""
+
+    def named(cls: type, **extra: Any) -> Any:
+        return type(cls.__name__, (cls,), {"source": sources.get(cls.__name__, ()), "__module__": cls.__module__, **extra})
+
+    put, restock, remove, haunt = (named(a) for a in (Put, Restock, Remove, Haunt))
+    book = shelf_book((Shelving, Clearing, Haunting), outside=(named(Arrives, carries=put), named(Ghost, carries=haunt)))
+    book.endpoints = (named(PutItem, carries=put), named(RestockItem, carries=restock), named(RemoveItem, carries=remove))
+    book.records = (named(Drawer),)
+    book.app = App(roots=(".",), verified="VERIFIED", ignore=ignore)
+    return book

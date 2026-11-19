@@ -164,7 +164,9 @@ element is an existing endpoint or record to replay. Each changed file or functi
 names is a route or a rule to add, or a `source` pointer to extend down to it; code that no served
 request runs goes in the app's `ignore` as `path` or `path::function`, and code a served request
 runs, however pure, is named in a `source`. Each decision listed is
-one to reread. Work them through "Adding a route", then `verified` records the app's HEAD. Done
+one to reread. Work them through "Adding a route", then `verified` records the app's HEAD. An action
+and an outside happening name their code with `source` too, so a change in a domain function or a handler that
+no endpoint reaches is found. `ostler book affected` turns the same diff into the calls and journeys to play. Done
 when `stale` lists nothing. In a workspace `--app` names one member. A pointer into another member is listed as `not traced`.
 
 A first pass over a service works the `missing` list to empty instead: each tracked file under
@@ -264,8 +266,9 @@ folder: each element with the journeys, cells and input classes that exercised i
 | `ostler book missing services.<name> --app <root> [--under <folder>] [--files]` | seconds, no app | every tracked file under the app's roots that no element names, and every call a contract file lists that no element declares; prints the map of each named file to its elements, the unnamed files, a count per ignore pattern (`--files` lists them) and the undeclared calls; exits 1 for either; the batch a backfill works through |
 | `ostler book decisions services.<name> --unexplained [--kind KIND]` | seconds, no app | the class name of each endpoint, record, screen and interaction no decision names, one per line; `--kind` keeps `endpoint`, `record`, `screen` or `interaction` |
 | `ostler book verified services.<name> --app <root>` | seconds | records the app's HEAD once `stale` is worked |
+| `ostler book affected services.<name> --app <root> [--since <commit>] [--out <dir>]` | seconds, no app | the calls and journeys to play for the code changed since the verified commit or `--since`, uncommitted and untracked work included; plan `none`, `partial` or `whole`, the chain from each changed function to its element and plays, the changed paths no element names (exit 1), the ignored ones, the widened places (still a list), and the fallbacks that made the plan whole; writes `<service>-affected.json`; ends with the `run` line to play |
 
-`--only` takes endpoint class names, or interaction class names in a screen book, never journey names. A wrong name is refused before anything starts. `explore` and `run` print nothing until they end, and a long one may outlive the shell's
+`--only` takes endpoint class names, or interaction class names in a screen book, or outside happening names, never journey names. A wrong name is refused before anything starts. `explore` and `run` print nothing until they end, and a long one may outlive the shell's
 wait. Send the output to a file and read its last lines once the command has exited. Their report goes under
 `--out`. Omitted, it goes to a fresh temp folder the command names on a `reports:` line. In a story, point `--out` at the story's spec folder, and never inside a repository. `--no-stack` skips starting the
 stack `service.py` declares, and changes nothing when that stack is empty.

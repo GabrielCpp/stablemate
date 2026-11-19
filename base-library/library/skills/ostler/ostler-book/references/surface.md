@@ -28,7 +28,10 @@ class ReadTodo(Endpoint):
   lacks is a FAIL; a listed status no run sees must be declared unseen.
 - `source` points at the handler first, then the code it reaches, as `path::Symbol`. `stale`
   reads these to say which elements a commit touched, so a pointer that names the shared
-  procedure or library function is what makes a coworker's change findable.
+  procedure or library function is what makes a coworker's change findable. An action and an
+  outside happening take `source` the same way. `ostler book affected` reads every pointer as the
+  complete list of what the element runs: a function in the file that the pointer leaves out is
+  reported as uncovered, so name the helpers the element calls.
 - `does` is one or two sentences a caller would read. Behaviour the openapi leaves out goes
   here.
 - `refusals` overrides the service's refusal keys for this endpoint only.

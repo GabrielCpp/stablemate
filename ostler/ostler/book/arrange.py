@@ -26,6 +26,7 @@ class Arrange(Generic[F]):
     heard: ClassVar[type[Event] | None] = None
     reads: ClassVar[tuple[str, ...]] = ()
     repeat: ClassVar[Again | None] = None
+    source: ClassVar[tuple[str, ...]] = ()
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()

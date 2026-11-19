@@ -316,6 +316,7 @@ ostler book explain services.api AddTodo
 ostler book index   services.api          # rewrite index.tsv
 ostler book stale   services.api --app ../api   # what changed in the app since the verified commit
 ostler book verified services.api --app ../api  # record the app's head once stale is worked
+ostler book affected services.api --app ../api --since HEAD~3   # the calls and journeys the changed code calls for
 ostler book decisions services.api
 ostler book graph   services.api          # each record's state graph, as dot and svg
 ostler book endpoints|screens|matrix|denied|plan services.api   # read the model, no app
@@ -324,6 +325,23 @@ ostler book endpoints|screens|matrix|denied|plan services.api   # read the model
 Exit 3 means the place could not be judged, and what ran before it is no verdict. Reports go to `--out`.
 Omitted, they go to a fresh folder under the system temp directory, and the command prints its name
 on a `reports:` line. The `ostler-book` skill is the guide to writing a book.
+
+`ostler book affected` answers which plays a code change calls for. It reads the diff from the verified commit, or
+`--since`, to the working tree, so staged, unstaged and untracked work under the app's roots counts. It reads the
+`source=` pointers of the endpoints, interactions, screens, records, actions and outside happenings, and no app runs.
+A matched function names its element, and an element names its calls: an action reaches every endpoint,
+interaction and outside happening that carries it, and a screen its interactions. The plan is `none` (nothing
+changed, or only ignored files), `partial` (a named list) or `whole`. It is `whole` when a record changed or when
+the walk cannot name a list: an action no call carries, a screen with no interactions. A hunk with no definition line
+counts at the file, and a function an element names in a file other elements also name widens to all of them. A
+widened place stays `partial` and is listed under `widened` with its elements, unless a record names the file, which
+makes it `whole`. Each fallback is listed with its path. A changed path no
+element names, and a changed function in a named file that no pointer names, is listed as uncovered and makes the
+exit code 1. A path an ignore pattern drops is listed as ignored. Every changed path is in exactly one of mapped,
+uncovered and ignored. The command prints each chain as `path::function -> Element (kind) -> plays`, ends with the
+`ostler book run` line to play, and writes `<service>-affected.json` to `--out`. It does not walk dependent books,
+configuration or data, and says so in the `not_computed` field. `run --only` accepts an outside happening's name
+and plays the journeys and cells that arrange it.
 
 A run ends its report with the section `Stated and never played`. It lists each outside happening, action,
 rule and scene of the book that no journey step, cell, given or input class exercised, with the step that

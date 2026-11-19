@@ -35,7 +35,7 @@ def app(tmp_path: Path) -> Path:
 def _service(*source: str, roots: tuple[str, ...] = ("web",), ignore: tuple[str, ...] = (), declared: bool = True) -> Service[Any]:
     screen = SimpleNamespace(__name__="Home", source=source)
     book = App(roots=roots, verified="VERIFIED", ignore=ignore) if declared else None
-    return cast("Service[Any]", SimpleNamespace(name="web", endpoints=(), records=(), screens=(screen,), interactions=(), app=book))
+    return cast("Service[Any]", SimpleNamespace(name="web", endpoints=(), records=(), screens=(screen,), interactions=(), outside=(), app=book))
 
 
 def _run(service: Service[Any], app: Path, *under: str, files: bool = False) -> int:
@@ -138,15 +138,15 @@ def _repo(tmp_path: Path, files: dict[str, str]) -> Path:
 
 
 def _rpc(call: str) -> Any:
-    return SimpleNamespace(__name__=call.rpartition("/")[2], source=("api/notifications.proto",), rpc=call, method="POST", path="/" + call)
+    return SimpleNamespace(__name__=call.rpartition("/")[2], source=("api/notifications.proto",), carries=None, rpc=call, method="POST", path="/" + call)
 
 
 def _endpoint(method: str, path: str) -> Any:
-    return SimpleNamespace(__name__=f"{method}{path}", source=("api/openapi.yaml",), method=method, path=path)
+    return SimpleNamespace(__name__=f"{method}{path}", source=("api/openapi.yaml",), carries=None, method=method, path=path)
 
 
 def _book(*endpoints: Any, ignore: tuple[str, ...] = ()) -> Service[Any]:
-    return cast("Service[Any]", SimpleNamespace(name="api", endpoints=endpoints, records=(), screens=(), interactions=(),
+    return cast("Service[Any]", SimpleNamespace(name="api", endpoints=endpoints, records=(), screens=(), interactions=(), outside=(),
                                                 app=App(roots=("api",), verified="VERIFIED", ignore=ignore)))
 
 
