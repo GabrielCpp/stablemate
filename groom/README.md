@@ -365,13 +365,23 @@ Neither command reconnects on its own. A disconnection is reported instead of
 silently crossing a gap in monitoring. `feed --since` is how a caller closes
 that gap.
 
-## Push a run into a Claude Code session (`groom channel`)
+## Talk to a run from a Claude Code session (`groom channel`)
 
 `groom channel` is a stdio MCP server that Claude Code runs as a channel. It
-offers one tool, `watch`. A session calls `watch` with a `run_id`, and the
-channel follows that run's `/feed` from then on. Each frame reaches the session
-as a message, and a message wakes a session that sits idle. The session polls
-nothing, and no monitor expires under it.
+makes a Claude Code session the operator of the runs it watches. Everything a
+run sends its operator reaches the session: the question of the gate it is
+parked on, from its outbox, and each message it leaves in its inbox. The
+session answers through the same channel. A message wakes a session that sits
+idle. The session polls nothing, and no monitor expires under it.
+
+The channel offers two tools:
+
+- `watch` follows a run. A session calls it with a `run_id`, and the channel
+  follows that run's `/feed` from then on.
+- `reply` sends text to a run. With `gate_path`, it answers that gate, the
+  same as `control answer`, and the parked run resumes. Without `gate_path`, it
+  leaves a message in the run's inbox, the same as `POST /api/run/{run_id}/inbox`.
+  The run reads the message at its next poll point.
 
 The repository's `.mcp.json` registers the server as `groom`. Channels are a
 research preview, so a custom channel loads only with the development flag:
@@ -389,8 +399,18 @@ A message arrives as `<channel source="groom" run_id="..." kind="...">`:
 | `kind` | Body | Other attributes |
 | --- | --- | --- |
 | `event` | the line `groom wait` prints | `event`, plus `node` and `gate_path` when known |
+| `inbox` | a message the run left, or the run's reply to a session message | `message_id` and `inbox_kind` for the first, `in_reply_to` for the second |
 | `digest` | the digest `summary` | `quiet` |
 | `connection` | groom became unreachable, or came back | `state` is `lost` or `back` |
+
+A `blocked` event carries the gate's `gate_path`, which `reply` takes to
+answer it. When the run's telemetry names no gate, the channel reads the path
+from the run's outbox.
+
+The channel reads the run's inbox after each frame. A message the run left,
+such as a `failure` handoff, arrives once. The run's reply to a message arrives
+once the run writes it. When a watch starts, the messages the run left with no
+reply yet arrive, and replies written before the watch do not.
 
 `watch` takes `every_minutes` for the digest interval, 30 by default and at
 least 1. A second call on the same run replaces the first. `stop: true` ends

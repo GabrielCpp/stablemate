@@ -1,4 +1,4 @@
-"""`groom channel`: the MCP handshake a Claude Code session sees and the watch that pushes a run's feed into it."""
+"""`groom channel`: the MCP handshake a Claude Code session sees, the watch that pushes a run's outbox and inbox into it, and the reply that goes back."""
 from __future__ import annotations
 
 import json
@@ -61,6 +61,30 @@ def _digest(ts: float, summary: str) -> str:
     ).model_dump_json()
 
 
+class FakeMail:
+    def __init__(self, *inboxes: list[dict[str, Any]], gate: dict[str, Any] | None = None,
+                 answered: dict[str, Any] | None = None) -> None:
+        self._inboxes = list(inboxes) or [[]]
+        self.gate = gate or {"found": False}
+        self.answered = answered or {"ok": True, "message": "answered over the run's control socket"}
+        self.answers: list[tuple[str, str, str]] = []
+        self.left: list[tuple[str, str]] = []
+
+    def inbox(self, run: str) -> list[dict[str, Any]]:
+        return self._inboxes.pop(0) if len(self._inboxes) > 1 else self._inboxes[0]
+
+    def outbox(self, run: str) -> dict[str, Any]:
+        return self.gate
+
+    def answer(self, run: str, gate_path: str, text: str) -> dict[str, Any]:
+        self.answers.append((run, gate_path, text))
+        return self.answered
+
+    def leave(self, run: str, text: str) -> dict[str, Any]:
+        self.left.append((run, text))
+        return {"ok": True, "message": {"id": "m1", "body": text, "at": "2026-11-18T22:00:00+00:00"}}
+
+
 class Sink:
     def __init__(self) -> None:
         self.replies: queue.Queue[dict[str, Any]] = queue.Queue()
@@ -86,8 +110,8 @@ def channels() -> Iterator[list[Channel]]:
         channel.close()
 
 
-def _channel(groom: FakeGroom, sent: Sink, channels: list[Channel]) -> Channel:
-    channel = Channel("http://127.0.0.1:8787", sent, connect=groom, retry_s=0)
+def _channel(groom: FakeGroom, sent: Sink, channels: list[Channel], mail: FakeMail | None = None) -> Channel:
+    channel = Channel("http://127.0.0.1:8787", sent, connect=groom, mail=mail or FakeMail(), retry_s=0)
     channels.append(channel)
     return channel
 
@@ -113,11 +137,12 @@ def test_initialize_declares_the_claude_channel_capability(sent: Sink, channels:
     assert "watch tool" in result["instructions"]
 
 
-def test_the_one_tool_is_watch(sent: Sink, channels: list[Channel]) -> None:
+def test_the_tools_are_watch_and_reply(sent: Sink, channels: list[Channel]) -> None:
     channel = _channel(FakeGroom(), sent, channels)
     tools = _call(channel, sent, "tools/list", {})["result"]["tools"]
-    assert [tool["name"] for tool in tools] == ["watch"]
-    assert tools[0]["inputSchema"]["required"] == ["run_id"]
+    assert [(tool["name"], tool["inputSchema"]["required"]) for tool in tools] == [
+        ("watch", ["run_id"]), ("reply", ["run_id", "text"]),
+    ]
 
 
 def test_an_unknown_request_is_method_not_found(sent: Sink, channels: list[Channel]) -> None:
@@ -205,3 +230,90 @@ def test_serve_answers_each_line_and_stops_every_watch_at_end_of_input(
     answered = [sent.replies.get(timeout=5)["id"] for _ in range(2)]
     assert answered == [1, 2]
     assert live.closed.is_set()
+
+
+def _failure(message_id: str, reply: str = "") -> dict[str, Any]:
+    return {"id": message_id, "body": "failure_class: Timeout\nnode: plan", "at": "t", "kind": "failure",
+            "reply": reply}
+
+
+def _note(message_id: str, reply: str = "") -> dict[str, Any]:
+    return {"id": message_id, "body": "skip the docs pass", "at": "t", "reply": reply}
+
+
+def test_a_message_the_run_left_reaches_the_session_once(sent: Sink, channels: list[Channel]) -> None:
+    mail = FakeMail([_failure("f0", reply="seen"), _failure("f1")])
+    channel = _channel(FakeGroom(FakeSocket([_digest(100.0, "first"), _digest(160.0, "second")])), sent, channels, mail)
+    _call(channel, sent, "tools/call", {"name": "watch", "arguments": {"run_id": "acme"}})
+    pushed = [_pushed(sent) for _ in range(3)]
+    assert [p["meta"]["kind"] for p in pushed] == ["digest", "inbox", "digest"]
+    assert pushed[1] == {
+        "content": "failure_class: Timeout\nnode: plan",
+        "meta": {"run_id": "acme", "kind": "inbox", "inbox_kind": "failure", "message_id": "f1"},
+    }
+    assert sent.pushes.empty()
+
+
+def test_the_runs_reply_to_a_session_message_arrives_once_it_lands(sent: Sink, channels: list[Channel]) -> None:
+    mail = FakeMail(
+        [_note("old", reply="done"), _note("m1")],
+        [_note("old", reply="done"), _note("m1", reply="noted, skipping docs")],
+    )
+    frames = [_digest(100.0, "first"), _digest(160.0, "second"), _digest(220.0, "third")]
+    channel = _channel(FakeGroom(FakeSocket(frames)), sent, channels, mail)
+    _call(channel, sent, "tools/call", {"name": "watch", "arguments": {"run_id": "acme"}})
+    pushed = [_pushed(sent) for _ in range(4)]
+    assert [p["meta"]["kind"] for p in pushed] == ["digest", "digest", "inbox", "digest"]
+    assert pushed[2]["meta"] == {"run_id": "acme", "kind": "inbox", "in_reply_to": "m1"}
+    assert pushed[2]["content"].startswith("noted, skipping docs")
+    assert sent.pushes.empty()
+
+
+def test_a_blocked_event_without_a_gate_path_takes_the_outbox_gate(sent: Sink, channels: list[Channel]) -> None:
+    mail = FakeMail(gate={"found": True, "file_path": "/runs/acme/decision.md", "question": "Which backend?"})
+    channel = _channel(FakeGroom(FakeSocket([_event(100.0)])), sent, channels, mail)
+    _call(channel, sent, "tools/call", {"name": "watch", "arguments": {"run_id": "acme"}})
+    event = _pushed(sent)
+    assert event["meta"]["gate_path"] == "/runs/acme/decision.md"
+    assert "Which backend?" in event["content"]
+
+
+def test_reply_with_a_gate_path_answers_that_gate(sent: Sink, channels: list[Channel]) -> None:
+    mail = FakeMail()
+    channel = _channel(FakeGroom(), sent, channels, mail)
+    result = _call(channel, sent, "tools/call", {"name": "reply", "arguments": {
+        "run_id": "acme", "text": "sqlite", "gate_path": "/runs/acme/decision.md",
+    }})["result"]
+    assert result["isError"] is False
+    assert mail.answers == [("acme", "/runs/acme/decision.md", "sqlite")]
+    assert mail.left == []
+
+
+def test_a_refused_answer_is_a_tool_error(sent: Sink, channels: list[Channel]) -> None:
+    mail = FakeMail(answered={"ok": False, "message": "already answered"})
+    channel = _channel(FakeGroom(), sent, channels, mail)
+    result = _call(channel, sent, "tools/call", {"name": "reply", "arguments": {
+        "run_id": "acme", "text": "sqlite", "gate_path": "/runs/acme/decision.md",
+    }})["result"]
+    assert result["isError"] is True
+    assert "already answered" in result["content"][0]["text"]
+
+
+def test_reply_without_a_gate_leaves_an_inbox_message(sent: Sink, channels: list[Channel]) -> None:
+    mail = FakeMail()
+    channel = _channel(FakeGroom(), sent, channels, mail)
+    result = _call(channel, sent, "tools/call", {"name": "reply", "arguments": {
+        "run_id": "acme", "text": "skip the docs pass",
+    }})["result"]
+    assert result["isError"] is False
+    assert mail.left == [("acme", "skip the docs pass")]
+    assert mail.answers == []
+    assert "m1" in result["content"][0]["text"]
+
+
+def test_reply_without_text_is_a_tool_error(sent: Sink, channels: list[Channel]) -> None:
+    mail = FakeMail()
+    channel = _channel(FakeGroom(), sent, channels, mail)
+    result = _call(channel, sent, "tools/call", {"name": "reply", "arguments": {"run_id": "acme", "text": " "}})
+    assert result["result"]["isError"] is True
+    assert mail.left == [] and mail.answers == []
