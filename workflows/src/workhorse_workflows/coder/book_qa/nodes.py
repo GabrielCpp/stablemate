@@ -25,6 +25,13 @@ from workhorse_workflows.coder.shared.schemas.qa import QaFinding
 from workhorse_workflows.coder.shared.schemas.queue import StoryCommitted
 from workhorse_workflows.coder.shared.story_commit import uncommitted_paths
 from workhorse_workflows.coder.shared.worktree import is_product, not_product_roots, untouched_since
+from workhorse_workflows.kit.book_files import (
+    BOOK_ENV,
+    is_compiled,
+    left_behind,
+    left_behind_refusal,
+    outside_paths,
+)
 from workhorse_workflows.kit import (
     GitError,
     commit_paths,
@@ -75,7 +82,7 @@ def _tail(text: str) -> str:
 
 
 def _play(argv: list[str], cwd: Path) -> BookPlay:
-    done = run_tool(argv, cwd=cwd)
+    done = run_tool(argv, cwd=cwd, env=BOOK_ENV)
     return BookPlay(exit_code=done.returncode, output=_tail(done.stdout + done.stderr))
 
 
@@ -126,7 +133,7 @@ def touched_services(logger: logging.Logger, base: str, repo_dir: str = "") -> C
     touched: list[str] = []
     for name in _booked_services(root):
         for module in book_modules(root, name):
-            done = run_tool(_stale_argv(module, app, base), cwd=root)
+            done = run_tool(_stale_argv(module, app, base), cwd=root, env=BOOK_ENV)
             if done.returncode == STALE_EXIT and _names_a_change(done.stdout):
                 touched.append(name)
                 break
@@ -198,7 +205,7 @@ def stamp_books_verified(
     base = _story_base(logger, repo_dir, story_slug, story_id)
     for name in services:
         for module in book_modules(root, name):
-            pending = run_tool(_stale_argv(module, app), cwd=root)
+            pending = run_tool(_stale_argv(module, app), cwd=root, env=BOOK_ENV)
             if pending.returncode == 0:
                 logger.info("the book of %s is current, nothing to stamp", module)
                 continue
@@ -210,7 +217,7 @@ def stamp_books_verified(
             if not base:
                 logger.info("the book of %s is not stamped: no story base to tell the story's commits from older ones", module)
                 continue
-            since = run_tool(_stale_argv(module, app, base), cwd=root)
+            since = run_tool(_stale_argv(module, app, base), cwd=root, env=BOOK_ENV)
             if since.returncode not in (0, STALE_EXIT) or not _entries(pending.stdout) <= _entries(since.stdout):
                 logger.info("the book of %s was behind before the story and is left to the catch-up flow", module)
                 continue
@@ -450,15 +457,16 @@ def commit_service_book(
     book = find_book_root(repo_dir)
     code = find_repo_root(repo_dir)
     folders = [(book / book_dir(name)).resolve() for name in services]
+    imported = {path for name in services for path in outside_paths(book, name)}
     excluded = not_product_roots(repo_dir)
     inside: list[str] = []
     stray: list[str] = []
     for root in dict.fromkeys((book, code)):
         excused = untouched_since(root, tuple(preexisting or ()))
         for rel in uncommitted_paths(root):
-            if rel in excused or paths.is_gate_context(rel):
+            if rel in excused or paths.is_gate_context(rel) or is_compiled(rel):
                 continue
-            if root == book and any((root / rel).resolve().is_relative_to(folder) for folder in folders):
+            if root == book and (rel in imported or any((root / rel).resolve().is_relative_to(folder) for folder in folders)):
                 inside.append(rel)
             elif is_product(root, rel, excluded):
                 stray.append(rel)
@@ -487,7 +495,11 @@ def commit_service_book(
     try:
         landed = commit_paths(book, message, *inside, verify=False)
     except GitError as exc:
-        return StoryCommitted(refused=f"git refused the commit for {slug} in {book}: {exc}")
+        listing = ", ".join(f"`{rel}`" for rel in inside)
+        return StoryCommitted(refused=f"git refused the commit for {slug} in {book} of {listing}: {exc}")
+    left = left_behind_refusal(left_behind(book, sorted(imported)))
+    if left:
+        return StoryCommitted(committed=landed, refused=left)
     logger.info("committed %d service book path(s) for %s", len(inside), slug)
     return StoryCommitted(committed=landed)
 

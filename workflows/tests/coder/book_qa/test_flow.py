@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 import pytest
 from _epics import epics_root
-from _books import TODO_BOOK, write_todo_book
+from _books import SHARED_FILES, TODO_BOOK, import_shared, write_todo_book
 from _workspace import Workspace, cut_run_worktrees
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow import park as pyflow_park
@@ -28,6 +28,7 @@ from workhorse_workflows.coder.book_qa.flow import BookQa
 from workhorse_workflows.coder.shared import qa_owner, roles
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
 from workhorse_workflows.coder.shared.schemas.qa import StackStatus, StackTarget, StackTornDown
+from workhorse_workflows.coder.shared.worktree import digest
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
@@ -120,7 +121,7 @@ class _Book:
         self.unverified = set(unverified)
 
     def __call__(
-        self, argv: list[str], cwd: Any = None, *, check: bool = False, logger: Any = None
+        self, argv: list[str], cwd: Any = None, *, check: bool = False, logger: Any = None, env: Any = None
     ) -> subprocess.CompletedProcess[str]:
         verb = argv[argv.index("ostler.book") + 1]
         self.argv[verb].append(argv)
@@ -960,6 +961,68 @@ def test_in_a_worktree_run_a_book_path_outside_the_covered_services_is_not_a_str
 
     assert result.refused == "", result.refused
     assert result.committed
+
+
+def test_a_monorepo_book_commit_takes_the_files_it_imports_and_no_compiled_file(
+    lane: Path, git: Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
+    import_shared(lane, "api")
+
+    result = book_nodes.commit_service_book(logging.getLogger("test"), ["api"], repo_dir=str(lane))
+
+    assert result.refused == "", result.refused
+    assert result.committed
+    landed = git(lane, "show", "--name-only", "--format=", "HEAD").stdout.split()
+    assert sorted(landed) == sorted([*SHARED_FILES, "services/api/service.py"])
+    assert "pyc" not in git(lane, "ls-files").stdout
+
+
+def test_in_a_workspace_the_book_commit_takes_the_files_it_imports_and_no_compiled_file(
+    workspace_lane: Workspace, git: Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
+    import_shared(workspace_lane.artifacts, "api")
+
+    result = book_nodes.commit_service_book(logging.getLogger("test"), ["api"], repo_dir=str(workspace_lane.api))
+
+    assert result.refused == "", result.refused
+    landed = git(workspace_lane.artifacts, "show", "--name-only", "--format=", "HEAD").stdout.split()
+    assert sorted(landed) == sorted([*SHARED_FILES, "services/api/service.py"])
+    assert "pyc" not in git(workspace_lane.artifacts, "ls-files").stdout
+
+
+def test_an_imported_file_the_commit_leaves_untracked_is_refused_with_its_path(
+    workspace_lane: Workspace, git: Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
+    root = workspace_lane.artifacts
+    import_shared(root, "api")
+    kept = [f"{rel}\0{digest(root, rel)}" for rel in SHARED_FILES]
+
+    result = book_nodes.commit_service_book(
+        logging.getLogger("test"), ["api"], preexisting=kept, repo_dir=str(workspace_lane.api)
+    )
+
+    assert result.committed
+    for rel in SHARED_FILES:
+        assert f"- `{rel}`" in result.refused, result.refused
+
+
+def test_a_refused_book_commit_is_logged_with_each_path_and_sent_to_the_seat(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    book()
+    agent = _Agent(lane, stray="README.md")
+
+    with caplog.at_level(logging.WARNING), patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    logged = [record.getMessage() for record in caplog.records if "the book commit was refused" in record.getMessage()]
+    assert logged and all("`README.md`" in line for line in logged), caplog.text
+    assert "`README.md`" in agent.args[1]["report"], agent.args[1]["report"]
 
 
 def test_a_book_root_with_no_git_lands_nothing_and_does_not_raise(

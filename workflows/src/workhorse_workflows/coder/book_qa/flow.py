@@ -189,6 +189,7 @@ class BookQa(QaOwner):
             list(self.preexisting),
         )
         if landed.refused:
+            self.logger.warning("the book commit was refused: %s", landed.refused)
             return self._lap(landed, [_gate("the book commit", landed.refused)], laps, blocks)
         found = [QaFinding.model_validate(f) for f in findings or []]
         self.call(write_book_record, self.ctx.spec_dir, list(named.values()), found, list(unreached or []))

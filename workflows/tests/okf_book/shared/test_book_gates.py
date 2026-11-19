@@ -47,3 +47,22 @@ def test_a_run_keeps_its_verdict_under_a_long_progress_stream(monkeypatch: pytes
     assert "[500/500] J500 PASS 1.0s" in lines
     assert "[480/500] J480 PASS 1.0s" not in lines
     assert len(lines) == 20 + 1 + GATE_TAIL_LINES
+
+
+def test_every_book_command_runs_with_bytecode_writing_off(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    seen: list[dict[str, str] | None] = []
+
+    def _run(argv: list[str], **kw: dict[str, str] | None) -> subprocess.CompletedProcess[str]:
+        seen.append(kw.get("env"))
+        return subprocess.CompletedProcess(argv, 0, stdout="[]", stderr="")
+
+    monkeypatch.setattr(book_gates, "run_tool", _run)
+    logger = logging.getLogger("t")
+    _ = book_gates.python_book_check(logger, tmp_path, "services.api", tmp_path)
+    _ = book_gates.python_book_missing(logger, tmp_path, "services.api", tmp_path, "")
+    _ = book_gates.python_book_run(logger, tmp_path, "services.api", tmp_path)
+    _ = book_gates.python_book_verified(logger, tmp_path, "services.api", tmp_path)
+    _ = book_gates.python_book_calls(logger, tmp_path, "services.api")
+    _ = book_gates.run_stale(logger, tmp_path, "services.api", tmp_path)
+
+    assert seen == [{"PYTHONDONTWRITEBYTECODE": "1"}] * 6

@@ -130,7 +130,7 @@ class CatchUpBooks(BookFlow):
 
     def checks(self, service: str, lap: int, added: list[str], ignored: list[str], seen: list[str] | None = None) -> Continue[...] | Await[...]:
         """Meet the repo's commit checks over the book's package before the targeted run, so a refusal costs no replay. Each refusal goes to a fix turn and back to the check, and a pass plays the targeted run."""
-        waiting = self._checks_or_fix(self._subject(service), (f"services/{service}",), seen or [], self.check, self.checks, service=service, lap=lap, added=added, ignored=ignored)
+        waiting = self._checks_or_fix(self._subject(service), self._paths(service), seen or [], self.check, self.checks, service=service, lap=lap, added=added, ignored=ignored)
         return waiting or Continue(None, self.play, service=service, lap=lap, added=added, ignored=ignored).because("the commit checks pass")
 
     def play(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
@@ -189,7 +189,7 @@ class CatchUpBooks(BookFlow):
     def commit(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
         """Commit the book's package and its stamp, and record the book as caught up. A retry after the commit landed finds nothing to commit."""
         report = self._report(service)
-        waiting = self._commit_or_await(self._subject(service), (f"services/{service}",), lambda: self._replayed(service, lap, added, ignored), self.commit, service=service, lap=lap, added=added, ignored=ignored)
+        waiting = self._commit_or_await(self._subject(service), self._paths(service), lambda: self._replayed(service, lap, added, ignored), self.commit, service=service, lap=lap, added=added, ignored=ignored)
         if waiting:
             return waiting
         notes = self.call(catch_up_format_notes, self.run_dir, service, ())

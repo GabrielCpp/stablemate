@@ -13,6 +13,7 @@ from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.kit.answer import answer_below
 from workhorse_workflows.kit.paths import find_book_root
+from workhorse_workflows.kit.book_files import book_pathspecs, left_behind, left_behind_refusal, stageable
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
 from workhorse_workflows.kit.commit_checks import declared_checks_failure, unstage_paths
 from workhorse_workflows.okf_book.shared.blockers import Phase
@@ -72,20 +73,34 @@ def render_book_agent_files(logger: logging.Logger, root: Path) -> str:
     return render_agent_files_returning_failure(root)
 
 
+def _own_folder_only(_logger: logging.Logger, _root: Path, service: str) -> list[str]:
+    return [f"services/{service}"]
+
+
+@blueprint.node(stub=_own_folder_only)
+def book_paths(logger: logging.Logger, root: Path, service: str) -> list[str]:
+    """The paths a commit of the service's book takes: its folder and the files it imports from outside it. A dry run names the folder alone."""
+    del logger
+    return list(book_pathspecs(root, service))
+
+
 @blueprint.node(stub=_nothing_refused_in_dry_run)
 def commit_book_paths(logger: logging.Logger, root: Path, message: str, pathspecs: tuple[str, ...]) -> str:
-    """Commit exactly *pathspecs*, and return what a declared commit check or git said when it refused. A dry run commits nothing."""
+    """Commit the files under *pathspecs*, compiled files left out, and return what a declared commit check or git said when it refused, or the files of *pathspecs* the commit left untracked or modified. A dry run commits nothing."""
     del logger
-    return declared_checks_failure(root, message, pathspecs) or commit_returning_refusal(root, message, *pathspecs)
+    staged = tuple(stageable(root, pathspecs))
+    refusal = declared_checks_failure(root, message, staged) or commit_returning_refusal(root, message, *staged)
+    return refusal or left_behind_refusal(left_behind(root, pathspecs))
 
 
 @blueprint.node(stub=_nothing_refused_in_dry_run)
 def book_commit_checks(logger: logging.Logger, root: Path, message: str, pathspecs: tuple[str, ...]) -> str:
     """Run the repo's declared commit checks over *pathspecs* as a commit with *message* would meet them, and return what the failing ones said. Nothing is committed, and the index is left as it was. A dry run checks nothing."""
     del logger
-    failure = declared_checks_failure(root, message, pathspecs)
+    staged = tuple(stageable(root, pathspecs))
+    failure = declared_checks_failure(root, message, staged)
     if not failure:
-        unstage_paths(root, pathspecs)
+        unstage_paths(root, staged)
     return failure
 
 
@@ -166,6 +181,10 @@ class BookFlow(Workflow):
             *args,
             **kwargs,
         ).because("the agent files could not be rendered")
+
+    def _paths(self, service: str) -> tuple[str, ...]:
+        """What a commit of the service's book takes: its folder and the files it imports from outside it."""
+        return tuple(self.call(book_paths, self.root, service))
 
     def _commit_or_await[**P, T: Transition](
         self, message: str, pathspecs: tuple[str, ...], replay: Callable[[], T | None], retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs

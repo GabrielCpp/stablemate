@@ -24,6 +24,7 @@ from workhorse_workflows.coder.shared.worktree import (
     untouched_since,
 )
 from workhorse_workflows.kit.agent_files import render_agent_files_returning_failure
+from workhorse_workflows.kit.book_files import is_compiled, left_behind, left_behind_refusal, outside_paths
 from workhorse_workflows.kit import (
     GitError,
     commit_paths,
@@ -350,12 +351,14 @@ def commit_book_delta(
     slug = story_slug or "story"
     root = find_book_root(repo_dir)
     folders = [(root / "services" / name).resolve() for name in book_services or []]
+    imported = {path for name in book_services or [] for path in outside_paths(root, name)}
     excused = untouched_since(root, tuple(preexisting or ()))
     rels = [
         rel
         for rel in uncommitted_paths(root)
         if rel not in excused
-        and any((root / rel).resolve().is_relative_to(folder) for folder in folders)
+        and not is_compiled(rel)
+        and (rel in imported or any((root / rel).resolve().is_relative_to(folder) for folder in folders))
     ]
     if not rels:
         logger.info("the spec pass left no uncommitted book path for %s", slug)
@@ -374,6 +377,9 @@ def commit_book_delta(
         landed = commit_paths(root, message, *rels, verify=False)
     except GitError as exc:
         raise WorkflowFailed(f"git refused the commit for {slug} in {root}: {exc}") from exc
+    left = left_behind_refusal(left_behind(root, sorted(imported)))
+    if left:
+        raise WorkflowFailed(f"the spec pass book commit for {slug} in {root} is incomplete. {left}")
     if landed:
         logger.info("committed %d book path(s) the spec pass wrote in %s", len(rels), root.name)
     return StoryCommitted(committed=landed)

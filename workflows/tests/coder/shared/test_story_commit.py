@@ -9,8 +9,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from _books import SHARED_FILES, import_shared
 from _epics import epics_root
 from _workspace import Workspace, cut_run_worktrees
+from workhorse.pyflow.errors import WorkflowFailed
 from workhorse_workflows.coder.shared import story_commit
 from workhorse_workflows.coder.shared.schemas.queue import ProofScope
 from workhorse_workflows.coder.shared.worktree import digest
@@ -326,6 +328,48 @@ def test_the_book_delta_commit_lands_new_and_edited_book_files_and_leaves_the_re
         " M services/app/stale.py",
         " M src/server.py",
     ]
+
+
+def test_the_book_delta_commit_takes_the_files_the_book_imports_and_no_compiled_file(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    import_shared(repo, "app")
+
+    result = story_commit.commit_book_delta(
+        logger, epic=EPIC, story_slug=SLUG, spec_dir=spec, repo_dir=str(repo), book_services=["app"]
+    )
+
+    assert result.committed
+    landed = git(repo, "show", "--name-only", "--format=", "HEAD").stdout.split()
+    assert sorted(landed) == sorted([*SHARED_FILES, "services/app/service.py"])
+    assert "pyc" not in git(repo, "ls-files").stdout
+
+
+def test_the_book_delta_commit_that_leaves_an_imported_file_untracked_fails_naming_it(
+    repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    git: Callable[..., subprocess.CompletedProcess],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spec = _book(repo, write, git, monkeypatch, tmp_path)
+    import_shared(repo, "app")
+    kept = [f"{rel}\0{digest(repo, rel)}" for rel in SHARED_FILES]
+
+    with pytest.raises(WorkflowFailed) as refused:
+        story_commit.commit_book_delta(
+            logger, epic=EPIC, story_slug=SLUG, spec_dir=spec, preexisting=kept, repo_dir=str(repo), book_services=["app"]
+        )
+
+    for rel in SHARED_FILES:
+        assert f"- `{rel}`" in str(refused.value)
 
 
 def test_the_clean_check_skips_the_artifacts_dir_only_when_asked(

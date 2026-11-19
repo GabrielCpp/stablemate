@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from _workspace import Workspace, lay_out, name_members, run_git
 from workhorse.pyflow.engine import Engine
 from workhorse_workflows.okf_book.main import python_book_flow
 from workhorse_workflows.okf_book.shared import book_gates
@@ -66,3 +67,12 @@ def fixing_flow(tmp_path: Path) -> tuple[WritePythonBook, ScriptedRunner]:
     flow, runner = build_flow(tmp_path, {FIX_COMMIT_NODE: lambda _args: {"fixed": "repaired it", "blocked": ""}})
     _ = written_book(flow)
     return flow, runner
+
+
+def workspace_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replies: dict[str, Reply] | None = None) -> tuple[WritePythonBook, ScriptedRunner, Workspace]:
+    laid = lay_out(tmp_path, run_git)
+    name_members(tmp_path, monkeypatch, laid)
+    runner = ScriptedRunner(replies or {})
+    flow = WritePythonBook(repo_dir=str(laid.api), service="ledger", kind="cli", source_folder="ledger")
+    flow._bind(Engine(run_env(tmp_path / "runs", runner)))  # pyright: ignore[reportPrivateUsage]
+    return flow, runner, laid

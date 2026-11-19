@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from workhorse.pyflow import Await, Continue, Done, Transition, dry_run
 from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.kit.tools import run_tool
+from workhorse_workflows.kit.book_files import BOOK_ENV
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.book_format import book_format_delta, mark_book_format
 from workhorse_workflows.okf_book.shared.book_gates import BookGate, book_command, tail, python_book_check, python_book_missing, python_book_run, python_book_verified, run_flags
@@ -60,7 +61,7 @@ def _none_unexplained(_logger: logging.Logger, *_args: object) -> Unexplained:
 @blueprint.node(stub=_none_unexplained)
 def python_book_unexplained(logger: logging.Logger, root: Path, module: str) -> Unexplained:
     """List the screens of one of the book's modules that no decision names, from the book root, with the exit code and output of the listing."""
-    done = run_tool(book_command("decisions", module, "--unexplained", "--kind", "screen"), cwd=root, logger=logger)
+    done = run_tool(book_command("decisions", module, "--unexplained", "--kind", "screen"), cwd=root, logger=logger, env=BOOK_ENV)
     screens = tuple(line.strip() for line in done.stdout.splitlines() if line.strip())
     return Unexplained(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()), module=module, screens=screens)
 
@@ -306,7 +307,7 @@ class WritePythonBook(BookFlow):
 
     def checks(self, lap: int, seen: list[str] | None = None) -> Continue[...] | Await[...]:
         """Meet the repo's commit checks over the book's package before it is played, so a refusal costs no replay. Each refusal goes to a fix turn and back to the check, and a pass plays the book."""
-        waiting = self._checks_or_fix(book_commit_subject(self.service), (self.package,), seen or [], self.check, self.checks, lap=lap)
+        waiting = self._checks_or_fix(book_commit_subject(self.service), self._paths(self.service), seen or [], self.check, self.checks, lap=lap)
         return waiting or Continue(None, self.play, lap=lap).because("the commit checks pass")
 
     def play(self, lap: int) -> Continue[...] | Await[...]:
@@ -379,7 +380,7 @@ class WritePythonBook(BookFlow):
 
     def commit(self, lap: int) -> Done | Continue[...] | Await[...]:
         """Commit the book's package. A turn that fixed a refused commit and changed the book sends it through the check, the play and the list again first. A retry after the commit landed finds nothing to commit."""
-        waiting = self._commit_or_await(book_commit_subject(self.service), (self.package,), lambda: self._replayed(lap), self.commit, lap=lap)
+        waiting = self._commit_or_await(book_commit_subject(self.service), self._paths(self.service), lambda: self._replayed(lap), self.commit, lap=lap)
         if waiting:
             return waiting
         unmarked = self.run_dir / FORMAT_UNMARKED

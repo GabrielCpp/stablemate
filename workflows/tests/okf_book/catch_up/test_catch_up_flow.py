@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from _books import import_shared
 from okf_book.catch_up.flows import UPDATE, advance, book_exits, build_flow, make_app, stale_book, stale_printed, summarized, walk
 from okf_book.support import Reply, dry_run_said, git, install_book_skill
 from workhorse import templates
@@ -158,6 +159,18 @@ def test_a_book_whose_gates_pass_is_stamped_verified_and_committed(tmp_path: Pat
     done = walk(flow, step, "summarize")
     assert summarized(flow).books == [BookOutcome(service="ledger", verdict="caught-up", laps=1, elements=["Entry", "Ping"], added=[], ignored=[])]
     assert isinstance(done, Continue)
+
+
+def test_a_caught_up_book_is_committed_with_the_files_it_imports_and_no_compiled_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner, _seen = stale_book(tmp_path, monkeypatch, DONE)
+    shared = import_shared(flow.root, "ledger")
+    (flow.root / "services/ledger/VERIFIED").write_text("9f8e7d6\n", encoding="utf-8")
+
+    step = walk(flow, flow.books(), "write")
+    walk(flow, advance(flow, step), "books")
+
+    assert sorted(git(flow.root, "show", "--name-only", "--format=", "HEAD").split()) == sorted([*shared, "services/ledger/VERIFIED", "services/ledger/service.py"])
+    assert "pyc" not in git(flow.root, "ls-files")
 
 
 def test_a_book_whose_whole_missing_list_is_not_empty_is_caught_up_when_its_changed_files_are_named(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

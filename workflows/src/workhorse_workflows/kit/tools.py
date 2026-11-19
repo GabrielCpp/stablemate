@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 
@@ -12,6 +13,7 @@ def run_tool(
     *,
     check: bool = False,
     logger: logging.Logger | None = None,
+    env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run an external CLI tool as a subprocess and return the completed process."""
     result = subprocess.run(
@@ -20,6 +22,7 @@ def run_tool(
         text=True,
         check=False,
         cwd=str(cwd) if cwd is not None else None,
+        env={**os.environ, **env} if env else None,
     )
     if result.returncode != 0 and check:
         if logger is not None:

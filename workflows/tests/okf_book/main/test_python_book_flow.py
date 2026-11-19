@@ -8,9 +8,9 @@ from typing import cast
 
 import pytest
 from _books import TODO_BOOK, write_todo_book
-from _workspace import Workspace, cut_run_worktrees, lay_out, name_members, run_git
-from okf_book.main.flows import book_exits, build_flow, written_book
-from okf_book.support import Reply, ScriptedRunner, git, install_book_skill, run_env
+from _workspace import cut_run_worktrees, lay_out, name_members, run_git
+from okf_book.main.flows import book_exits, build_flow, workspace_flow, written_book
+from okf_book.support import ScriptedRunner, git, install_book_skill, run_env
 from workhorse.pyflow import Await, Continue, Done
 from workhorse import templates
 from workhorse.pyflow.engine import Engine
@@ -262,17 +262,8 @@ def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_pat
         assert f"python -m ostler.book run {module} --only " in rendered
 
 
-def _workspacebuild_flow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replies: dict[str, Reply] | None = None) -> tuple[WritePythonBook, ScriptedRunner, Workspace]:
-    laid = lay_out(tmp_path, run_git)
-    name_members(tmp_path, monkeypatch, laid)
-    runner = ScriptedRunner(replies or {})
-    flow = WritePythonBook(repo_dir=str(laid.api), service="ledger", kind="cli", source_folder="ledger")
-    flow._bind(Engine(run_env(tmp_path / "runs", runner)))  # pyright: ignore[reportPrivateUsage]
-    return flow, runner, laid
-
-
 def test_in_a_workspace_the_book_is_written_and_committed_in_the_artifacts_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner, laid = _workspacebuild_flow(tmp_path, monkeypatch)
+    flow, _runner, laid = workspace_flow(tmp_path, monkeypatch)
     api_head = git(laid.api, "rev-parse", "HEAD")
     (laid.artifacts / "services/ledger").mkdir(parents=True)
     (laid.artifacts / "services/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
@@ -304,7 +295,7 @@ def test_in_a_worktree_run_the_book_is_written_and_committed_in_the_artifacts_wo
 
 
 def test_in_a_workspace_the_owner_is_told_both_roots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, _runner, laid = _workspacebuild_flow(tmp_path, monkeypatch)
+    flow, _runner, laid = workspace_flow(tmp_path, monkeypatch)
 
     rendered = _rendered(flow, tmp_path, monkeypatch)
 
@@ -313,7 +304,7 @@ def test_in_a_workspace_the_owner_is_told_both_roots(tmp_path: Path, monkeypatch
 
 
 def test_in_a_workspace_the_owner_may_read_the_code_repository(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    flow, runner, laid = _workspacebuild_flow(tmp_path, monkeypatch, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}})
+    flow, runner, laid = workspace_flow(tmp_path, monkeypatch, {WRITE: lambda _args: {"done": "the ledger book", "blocked": ""}})
 
     flow.write(gate="", lap=1)
 

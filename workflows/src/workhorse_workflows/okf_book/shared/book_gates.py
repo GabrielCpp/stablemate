@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from pydantic import BaseModel, ConfigDict
+from workhorse_workflows.kit.book_files import BOOK_ENV, book_command
 from workhorse_workflows.kit.tools import run_tool
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 
@@ -30,10 +31,6 @@ class MissingList(BookGate):
     """What the book's missing said, with the files no element names."""
 
     unnamed: tuple[str, ...] = ()
-
-
-def book_command(*verb: str) -> list[str]:
-    return [sys.executable, "-m", "ostler.book", *verb]
 
 
 def _green(_logger: logging.Logger, *_args: object) -> BookGate:
@@ -70,7 +67,7 @@ def _unnamed(stdout: str) -> tuple[str, ...]:
 @blueprint.node(stub=_green)
 def python_book_check(logger: logging.Logger, root: Path, module: str, app: Path) -> BookGate:
     """Run the check of one of the book's modules from the book root, with the source pointers read under the app's root, and keep the tail of what it printed."""
-    done = run_tool(book_command("check", module, "--app", str(app)), cwd=root, logger=logger)
+    done = run_tool(book_command("check", module, "--app", str(app)), cwd=root, logger=logger, env=BOOK_ENV)
     return BookGate(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()))
 
 
@@ -78,7 +75,7 @@ def python_book_check(logger: logging.Logger, root: Path, module: str, app: Path
 def python_book_missing(logger: logging.Logger, root: Path, module: str, app: Path, under: str) -> MissingList:
     """List the tracked source files of the app, under the folder the run names, that no element of one of the book's modules names, and keep the tail of what it printed."""
     where = ("--under", under) if under else ()
-    done = run_tool(book_command("missing", module, "--app", str(app), *where), cwd=root, logger=logger)
+    done = run_tool(book_command("missing", module, "--app", str(app), *where), cwd=root, logger=logger, env=BOOK_ENV)
     return MissingList(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()), unnamed=_unnamed(done.stdout))
 
 
@@ -90,7 +87,7 @@ def run_flags(stack_copy: str = "", only: tuple[str, ...] = ()) -> tuple[str, ..
 @blueprint.node(stub=_green)
 def python_book_run(logger: logging.Logger, root: Path, module: str, out_dir: Path, flags: tuple[str, ...] = ()) -> BookGate:
     """Play one of the book's modules against the live app from the book root, with the flags the run names, and keep the last lines of its progress and the tail of its report."""
-    done = run_tool([*book_command("run", module, "--out", str(out_dir)), *flags], cwd=root, logger=logger)
+    done = run_tool([*book_command("run", module, "--out", str(out_dir)), *flags], cwd=root, logger=logger, env=BOOK_ENV)
     progress = "\n".join(_narrow(line) for line in done.stderr.splitlines()[-PROGRESS_TAIL_LINES:])
     return BookGate(exit_code=done.returncode, output=f"{progress}\n\n{tail(done.stdout)}".strip())
 
@@ -98,7 +95,7 @@ def python_book_run(logger: logging.Logger, root: Path, module: str, out_dir: Pa
 @blueprint.node(stub=_green)
 def python_book_verified(logger: logging.Logger, root: Path, module: str, app: Path) -> BookGate:
     """Stamp the app's HEAD as the commit one of the book's modules is verified at, which the book refuses while a changed file or function is named by no element."""
-    done = run_tool(book_command("verified", module, "--app", str(app)), cwd=root, logger=logger)
+    done = run_tool(book_command("verified", module, "--app", str(app)), cwd=root, logger=logger, env=BOOK_ENV)
     return BookGate(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()))
 
 
@@ -117,7 +114,7 @@ CALLS_SCRIPT = (
 @blueprint.node(stub=_no_calls)
 def python_book_calls(logger: logging.Logger, root: Path, module: str) -> list[str]:
     """List the endpoints and interactions one of the book's modules declares, which the book's run takes by name."""
-    done = run_tool([sys.executable, "-c", CALLS_SCRIPT, module], cwd=root, logger=logger)
+    done = run_tool([sys.executable, "-c", CALLS_SCRIPT, module], cwd=root, logger=logger, env=BOOK_ENV)
     if done.returncode != 0:
         logger.warning("listing the calls of %s exited %s: %s", module, done.returncode, done.stderr.strip())
         return []
@@ -132,5 +129,5 @@ class StaleSaid(BookGate):
 
 def run_stale(logger: logging.Logger, root: Path, module: str, app: Path) -> StaleSaid:
     """What the book's stale said of one module, whole, since a cut report would hide an element."""
-    done = run_tool(book_command("stale", module, "--app", str(app)), cwd=root, logger=logger)
+    done = run_tool(book_command("stale", module, "--app", str(app)), cwd=root, logger=logger, env=BOOK_ENV)
     return StaleSaid(exit_code=done.returncode, output=done.stdout, error=done.stderr)
