@@ -239,3 +239,4 @@ __marimo__/
 .agents/agents-context.json
 .agents/agents-context.*.json
 .agents/agents.mk
+.lavish/
