@@ -32,7 +32,6 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 | `backlog prune` | `okf.close_record(id, status, reason)` (commits the close in the artifacts repo) |
 | `qa validate` · `qa run` | `okf.qa_validate(plan, spec=…)` · `okf.qa_run(plan, spec=…)` |
 | `artifact vet KIND --spec DIR` | `okf.artifact_vet("KIND", spec) -> QaOutcome` |
-| `qa tools list` | `okf.qa_tools_catalog() -> QaOutcome` (`.data` = `{"tools": …, "errors": …}`) |
 | `edit settle-review ID --write` | `okf.settle_review(story_id, write=True) -> EditPlan` (`.error`, per-finding ledger) |
 
 ### `QaOutcome` — a check that answers instead of raising

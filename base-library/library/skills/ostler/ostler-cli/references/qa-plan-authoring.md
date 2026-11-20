@@ -140,7 +140,7 @@ working tree.
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
 | `qa.artifact(path, kind=…)` | register a file as evidence; relative paths resolve inside `qa.dir`. A directory is filed file by file (every file under it, one manifest row each, `directory` naming the root); an empty directory is a problem |
 | `qa.secret(name)` | a declared secret's value |
-| `qa.tool(name).run(*args, cwd=…, env=…, timeout=…)` | an opted-in external command; `cwd` must stay inside `qa.dir`, `env` keys must be declared with `tool_env(...)`; returns `ToolResult(stdout, stderr, exit_code)` |
+| `qa.tool(name).run(*args, cwd=…, env=…, timeout=…)` | an external command found on PATH; `cwd` must stay inside `qa.dir`, `env` keys must be declared with `tool_env(...)`; returns `ToolResult(stdout, stderr, exit_code)` |
 | `qa.eventually(label, lambda: …, covers=…)` / `qa.require_eventually(...)` | the retrying forms of `check`/`require`: hand them a callable — a lambda, a bound method, a nested function — and the sampler re-evaluates it until it holds or the timeout passes. A bare `wait_for*` statement is refused by plan lint |
 | `qa.http.get/post/put/patch/delete(path, json_body=…, headers=…, expect_status=…)` | HTTP bound to the target's `base_url` |
 | `qa.dir`, `qa.root`, `qa.spec_dir`, `qa.scenario_id`, `qa.covers` | the paths and identity, already resolved |

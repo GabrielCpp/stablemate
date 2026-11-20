@@ -118,8 +118,7 @@ qa.check("the export wrote report.csv", "report.csv" not in before and "report.c
 
 ## `qa.tool(name).run(*args, cwd=, env=, timeout=)`
 
-It runs a command this repo opted into in `agents.yml`. The QA prompt lists the tools and
-whether each is on this host. A name that is not opted in raises with the line to add.
+It runs a command found on PATH. A command that is not on PATH raises `qa tool '<name>' is not on PATH`.
 It returns a `ToolResult`. A non-zero exit does not raise. Assert on its
 `exit_code`, `stdout` or `stderr`.
 
