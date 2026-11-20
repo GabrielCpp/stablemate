@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from farrier import cli
+from farrier._vendor.stablemate_core.base_cache import cache_root
 from farrier.hook_managers import (
     FENCE_END,
     FENCE_START,
@@ -224,14 +226,48 @@ def test_the_runner_tries_every_adapter_path_for_a_declared_hook():
         assert f"{root}/acme-ostler/scripts/g.py" in text
 
 
-def test_the_runner_exports_the_cache_dir_before_the_first_gate(monkeypatch, tmp_path: Path):
-    """A gate that fetches a tool needs the shared cache location, and the system python3 the runner uses has no way to resolve it."""
+def _run_cache_gate(repo: Path, env: dict[str, str]) -> str:
+    gate = repo / ".agents/skills/acme-ostler/scripts/g.sh"
+    gate.parent.mkdir(parents=True)
+    gate.write_text('#!/bin/sh\nprintf %s "$STABLEMATE_CACHE_DIR"\n', encoding="utf-8")
+    gate.chmod(0o755)
+    runner = repo / "runner.sh"
+    runner.write_text(
+        runner_text([SkillHook(skill="acme-ostler", stage="pre-commit", run="scripts/g.sh")]),
+        encoding="utf-8",
+    )
+    done = subprocess.run(
+        ["sh", str(runner)], cwd=repo, env=env, capture_output=True, text=True, check=True
+    )
+    return done.stdout
+
+
+def test_the_runner_holds_no_path_of_the_machine_that_rendered_it(monkeypatch, tmp_path: Path):
+    """The runner is committed, so a home or cache path baked in at install breaks every other clone."""
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "my cache"))
 
     text = runner_text([SkillHook(skill="acme-ostler", stage="pre-commit", run="scripts/g.py")])
 
-    assert f"STABLEMATE_CACHE_DIR='{tmp_path / 'my cache'}'" in text
+    assert str(tmp_path) not in text
     assert text.index("export STABLEMATE_CACHE_DIR") < text.index("for gate in")
+
+
+def test_the_runner_hands_a_gate_the_cache_dir_the_core_resolves(repo: Path, tmp_path: Path):
+    """A gate that fetches a tool needs the shared cache location, and the system python3 the runner uses has no way to resolve it."""
+    home = tmp_path / "elsewhere"
+    env = {"PATH": os.environ["PATH"], "HOME": str(home)}
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(os, "environ", env)
+        expected = str(cache_root())
+
+    assert _run_cache_gate(repo, env) == expected
+
+
+def test_the_runner_keeps_an_operator_cache_dir(repo: Path, tmp_path: Path):
+    env = {"PATH": os.environ["PATH"], "HOME": str(tmp_path), "STABLEMATE_CACHE_DIR": "/srv/cache"}
+
+    assert _run_cache_gate(repo, env) == "/srv/cache"
 
 
 def test_the_empty_runner_exports_nothing(monkeypatch, tmp_path: Path):

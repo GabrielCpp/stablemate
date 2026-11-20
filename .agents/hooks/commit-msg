@@ -7,7 +7,11 @@ set -eu
 root=$(git rev-parse --show-toplevel)
 
 if [ -z "${STABLEMATE_CACHE_DIR:-}" ]; then
-  STABLEMATE_CACHE_DIR=/home/gabriel/.cache/stablemate
+  case $(uname -s) in
+    Darwin) STABLEMATE_CACHE_DIR="$HOME/Library/Caches/stablemate" ;;
+    MINGW*|MSYS*|CYGWIN*) STABLEMATE_CACHE_DIR="${LOCALAPPDATA:-}/stablemate/stablemate/Cache" ;;
+    *) STABLEMATE_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/stablemate" ;;
+  esac
 fi
 export STABLEMATE_CACHE_DIR
 

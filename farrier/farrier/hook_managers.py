@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import shlex
 import subprocess
 from pathlib import Path
 
-from farrier._vendor.stablemate_core.base_cache import cache_root
 from farrier._vendor.stablemate_core.schema import HOOK_MANAGERS
 from farrier.manifest import ConfigLike, as_manifest
 from farrier.skill_hooks import STAGES, SkillHook
@@ -181,7 +179,11 @@ def runner_text(hooks: list[SkillHook], stage: str = "pre-commit") -> str:
         return "\n".join(lines)
     lines += [
         'if [ -z "${STABLEMATE_CACHE_DIR:-}" ]; then',
-        f"  STABLEMATE_CACHE_DIR={shlex.quote(str(cache_root()))}",
+        "  case $(uname -s) in",
+        '    Darwin) STABLEMATE_CACHE_DIR="$HOME/Library/Caches/stablemate" ;;',
+        '    MINGW*|MSYS*|CYGWIN*) STABLEMATE_CACHE_DIR="${LOCALAPPDATA:-}/stablemate/stablemate/Cache" ;;',
+        '    *) STABLEMATE_CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/stablemate" ;;',
+        "  esac",
         "fi",
         "export STABLEMATE_CACHE_DIR",
         "",
