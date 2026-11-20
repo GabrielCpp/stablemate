@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse.worklist import WorkItem
@@ -29,6 +30,7 @@ from workhorse_workflows.author.story_split import StorySplitFlow
 from workhorse_workflows.author.story_split.nodes import derive_story_services
 
 MODES = ("epic", "story", "parity-survey")
+STAGES = ("epic", "story-split", "story")
 
 
 class Author(Workflow):
@@ -57,7 +59,7 @@ class Author(Workflow):
                 ParitySurveyor,
                 baseline_inventory=self.baseline_inventory,
                 survey_dir=self.parity_survey_dir,
-            ))
+            )).because("parity survey mode")
         if self.mode == "story":
             seeded = self.call(
                 seed_story,
@@ -78,10 +80,10 @@ class Author(Workflow):
                 seeded.record_id,
                 self.epic,
                 seeded.story_slug,
-            ))
+            )).because("register story written")
         self.call(contract_digest, self.ctx.milestone_path)
         self.call(snapshot_epics)
-        return Continue(None, self.split_epics)
+        return Continue(None, self.split_epics).because("milestone digested")
 
     def _context_path(self) -> Path:
         return Path(self.ctx.repo_root) / paths.author_context(self.ctx.repo_root)
@@ -96,78 +98,53 @@ class Author(Workflow):
                     result.notes,
                     self.answered_split,
                     question=result.notes,
-                )
-        return Continue(None, self.fill_epics)
+                ).because("the split stayed blocked")
+        return Continue(None, self.fill).because("the milestone has an ordered split")
 
     def answered_split(self, question: str) -> Continue:
         """Run the epic split again with the operator's answer as its note."""
         gate = self._context_path()
         text = gate.read_text(encoding="utf-8") if gate.is_file() else ""
-        return Continue(None, self.split_epics, note=answer_below(text, question))
-
-    def fill_epics(self) -> Continue:
-        self.call(fill_work, "epic", str(self.run_dir))
-        return Continue(None, self.epics)
-
-    def epics(self) -> Continue | Done | Await:
-        return self.pipeline("epic", to=self.author_epic, n=1) or Continue(
-            None, self.fill_story_splits
+        return Continue(None, self.split_epics, note=answer_below(text, question)).because(
+            "the operator answered"
         )
 
-    def author_epic(self, items: list[WorkItem]) -> Continue:
-        """Write one epic, and keep an epic nobody can fix blocked on the work list."""
+    def fill(self, stage: int = 0) -> Continue:
+        """Queue one stage's rows from the planning graph."""
+        self.call(fill_work, STAGES[stage], str(self.run_dir))
+        return Continue(None, self.drain, stage=stage).because("rows queued")
+
+    def drain(self, stage: int = 0) -> Continue | Done | Await:
+        """Hand the stage's rows to its sub-flow one at a time, then move to the next stage."""
+        if stage + 1 < len(STAGES):
+            after = Continue(None, self.fill, stage=stage + 1).because("stage drained")
+        else:
+            after = Continue(None, self.complete).because("last stage drained")
+        return self.pipeline(STAGES[stage], to=self.author_row, n=1, stage=stage) or after
+
+    def author_row(self, items: list[WorkItem], stage: int) -> Continue:
+        """Author one row through its stage's sub-flow, and keep a row nobody can fix blocked on the work list."""
         item = items[0]
-        result = self.handoff(EpicAuthor, epic=item.payload["epic"], note=item.note)
+        kind = STAGES[stage]
+        result = self._author(kind, item)
         if result.status == "blocked":
-            self.logger.warning("epic '%s' remains blocked", item.payload["epic"])
-            self.work_list.mark(item.id, "blocked", kind="epic", note=result.notes)
-        return Continue(result, self.epics)
+            self.logger.warning("%s '%s' remains blocked", kind, item.id)
+            self.work_list.mark(item.id, "blocked", kind=kind, note=result.notes)
+        return Continue(result, self.drain, stage=stage).because("row authored or blocked")
 
-    def fill_story_splits(self) -> Continue:
-        self.call(fill_work, "story-split", str(self.run_dir))
-        return Continue(None, self.story_splits)
-
-    def story_splits(self) -> Continue | Done | Await:
-        return self.pipeline("story-split", to=self.split_epic_stories, n=1) or Continue(
-            None, self.fill_stories
-        )
-
-    def split_epic_stories(self, items: list[WorkItem]) -> Continue:
-        """Split one epic into stories, and keep a split nobody can fix blocked on the work list."""
-        item = items[0]
-        result = self.handoff(StorySplitFlow, epic=item.payload["epic"], note=item.note)
-        if result.status == "blocked":
-            self.logger.warning("the story split of epic '%s' remains blocked", item.payload["epic"])
-            self.work_list.mark(item.id, "blocked", kind="story-split", note=result.notes)
-        return Continue(result, self.story_splits)
-
-    def fill_stories(self) -> Continue:
-        self.call(fill_work, "story", str(self.run_dir))
-        return Continue(None, self.stories)
-
-    def stories(self) -> Continue | Done | Await:
-        return self.pipeline("story", to=self.author_story, n=1) or Continue(
-            None, self.complete
-        )
-
-    def author_story(self, items: list[WorkItem]) -> Continue:
-        """Write one story, and keep a story nobody can fix blocked on the work list."""
-        item = items[0]
-        result = self.handoff(
+    def _author(self, kind: str, item: WorkItem) -> Any:
+        epic = item.payload["epic"]
+        if kind == "epic":
+            return self.handoff(EpicAuthor, epic=epic, note=item.note)
+        if kind == "story-split":
+            return self.handoff(StorySplitFlow, epic=epic, note=item.note)
+        return self.handoff(
             StoryAuthor,
-            epic=item.payload["epic"],
+            epic=epic,
             story=item.payload["story"],
             feedback_dir=str(self.run_dir),
             note=item.note,
         )
-        if result.status == "blocked":
-            self.logger.warning(
-                "story '%s' in epic '%s' remains blocked",
-                item.payload["story"],
-                item.payload["epic"],
-            )
-            self.work_list.mark(item.id, "blocked", kind="story", note=result.notes)
-        return Continue(result, self.stories)
 
     def complete(self, baseline: str = "") -> Await | Done:
         """Finalize only when the contract held and every row is done; both gates wait for a human."""
@@ -184,7 +161,9 @@ class Author(Workflow):
                 f"Its digest is now {check.digest}. Answer to accept the change "
                 "and finish the run, or restore the body and answer."
             )
-            return Await(self._context_path(), question, self.complete, baseline=check.digest)
+            return Await(self._context_path(), question, self.complete, baseline=check.digest).because(
+                "the milestone body changed"
+            )
         if check.unfinished:
             listed = "\n".join(
                 f"- {row.kind} {row.id}: {row.status} after {row.laps} laps"
@@ -201,19 +180,19 @@ class Author(Workflow):
                 self.requeue,
                 ids=[row.id for row in check.unfinished],
                 question=question,
-            )
+            ).because("rows left unfinished")
         return Done(self.handoff(
             Finalize,
             operator_mode=self.operator_mode,
             baseline=self.output(snapshot_epics).model_dump_json(),
-        ))
+        )).because("every row done")
 
     def requeue(self, ids: list[str], question: str) -> Continue:
         """Reset the unfinished rows with the operator's answer as their note, and run the chain again."""
         gate = self._context_path()
         text = gate.read_text(encoding="utf-8") if gate.is_file() else ""
         self.work_list.requeue(ids, answer_below(text, question))
-        return Continue(None, self.split_epics)
+        return Continue(None, self.split_epics).because("rows requeued with the answer")
 
 
 __all__ = ["Author"]

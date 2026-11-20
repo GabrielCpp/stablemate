@@ -12,17 +12,15 @@ digraph author {
 
     f0____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
     f0__answered_split [label="answered_split"];
-    subgraph cluster_f0__author_epic {
-      label="author_epic"; fontsize=12;
+    subgraph cluster_f0__author_row {
+      label="author_row"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__author_epic__0 [label="handoff → epic-author", shape=box, fillcolor=plum];
-    }
-    subgraph cluster_f0__author_story {
-      label="author_story"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f0__author_story__0 [label="handoff → story-author", shape=box, fillcolor=plum];
+      f0__author_row__0 [label="handoff → story-author", shape=box, fillcolor=plum];
+      f0__author_row__1 [label="handoff → epic-author", shape=box, fillcolor=plum];
+      f0__author_row__2 [label="handoff → story-split", shape=box, fillcolor=plum];
+      f0__author_row__0 -> f0__author_row__1 [style=invis];
+      f0__author_row__1 -> f0__author_row__2 [style=invis];
     }
     subgraph cluster_f0__complete {
       label="complete"; fontsize=12;
@@ -32,32 +30,14 @@ digraph author {
       f0__complete__1 [label="handoff → finalize", shape=box, fillcolor=plum];
       f0__complete__0 -> f0__complete__1 [style=invis];
     }
-    f0__epics [label="epics"];
-    subgraph cluster_f0__fill_epics {
-      label="fill_epics"; fontsize=12;
+    f0__drain [label="drain"];
+    subgraph cluster_f0__fill {
+      label="fill"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f0__fill_epics__0 [label="fill_work\nFile every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
-    }
-    subgraph cluster_f0__fill_stories {
-      label="fill_stories"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f0__fill_stories__0 [label="fill_work\nFile every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
-    }
-    subgraph cluster_f0__fill_story_splits {
-      label="fill_story_splits"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f0__fill_story_splits__0 [label="fill_work\nFile every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
+      f0__fill__0 [label="fill_work\nFile every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed.", shape=box, fillcolor=white];
     }
     f0__requeue [label="requeue"];
-    subgraph cluster_f0__split_epic_stories {
-      label="split_epic_stories"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f0__split_epic_stories__0 [label="handoff → story-split", shape=box, fillcolor=plum];
-    }
     subgraph cluster_f0__split_epics {
       label="split_epics"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
@@ -84,35 +64,24 @@ digraph author {
       f0__start__4 -> f0__start__5 [style=invis];
       f0__start__5 -> f0__start__6 [style=invis];
     }
-    f0__stories [label="stories"];
-    f0__story_splits [label="story_splits"];
     f0____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f0____start -> f0__start__0 [lhead=cluster_f0__start];
-    f0__answered_split -> f0__split_epics__0 [tooltip="note", lhead=cluster_f0__split_epics];
-    f0__author_epic__0 -> f0__epics [ltail=cluster_f0__author_epic];
-    f0__author_story__0 -> f0__stories [ltail=cluster_f0__author_story];
-    f0__complete__1 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__complete];
-    f0__complete__1 -> f0__complete__0 [tooltip="baseline", style=dashed, color=darkorange];
-    f0__complete__1 -> f0__requeue [tooltip="ids, question", style=dashed, color=darkorange, ltail=cluster_f0__complete];
-    f0__epics -> f0__epics [label="another chunk"];
-    f0__epics -> f0__author_epic__0 [label="drain target", tooltip="items", lhead=cluster_f0__author_epic];
-    f0__epics -> f0__fill_story_splits__0 [lhead=cluster_f0__fill_story_splits];
-    f0__fill_epics__0 -> f0__epics [ltail=cluster_f0__fill_epics];
-    f0__fill_stories__0 -> f0__stories [ltail=cluster_f0__fill_stories];
-    f0__fill_story_splits__0 -> f0__story_splits [ltail=cluster_f0__fill_story_splits];
-    f0__requeue -> f0__split_epics__0 [lhead=cluster_f0__split_epics];
-    f0__split_epic_stories__0 -> f0__story_splits [ltail=cluster_f0__split_epic_stories];
-    f0__split_epics__1 -> f0__fill_epics__0 [ltail=cluster_f0__split_epics, lhead=cluster_f0__fill_epics];
-    f0__split_epics__1 -> f0__answered_split [tooltip="question", style=dashed, color=darkorange, ltail=cluster_f0__split_epics];
-    f0__start__6 -> f0__split_epics__0 [ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
-    f0__start__6 -> f0____end [color=darkgoldenrod, ltail=cluster_f0__start];
-    f0__stories -> f0__stories [label="another chunk"];
-    f0__stories -> f0__author_story__0 [label="drain target", tooltip="items", lhead=cluster_f0__author_story];
-    f0__stories -> f0__complete__0 [lhead=cluster_f0__complete];
-    f0__story_splits -> f0__story_splits [label="another chunk"];
-    f0__story_splits -> f0__split_epic_stories__0 [label="drain target", tooltip="items", lhead=cluster_f0__split_epic_stories];
-    f0__story_splits -> f0__fill_stories__0 [lhead=cluster_f0__fill_stories];
+    f0__answered_split -> f0__split_epics__0 [label="the operator answered", tooltip="note", lhead=cluster_f0__split_epics];
+    f0__author_row__2 -> f0__drain [label="row authored or blocked", tooltip="stage", ltail=cluster_f0__author_row];
+    f0__complete__1 -> f0____end [label="every row done", color=darkgoldenrod, ltail=cluster_f0__complete];
+    f0__complete__1 -> f0__complete__0 [label="the milestone body changed", tooltip="baseline", style=dashed, color=darkorange];
+    f0__complete__1 -> f0__requeue [label="rows left unfinished", tooltip="ids, question", style=dashed, color=darkorange, ltail=cluster_f0__complete];
+    f0__drain -> f0__fill__0 [label="stage drained", tooltip="stage", lhead=cluster_f0__fill];
+    f0__drain -> f0__complete__0 [label="last stage drained", lhead=cluster_f0__complete];
+    f0__drain -> f0__drain [label="another chunk"];
+    f0__drain -> f0__author_row__0 [label="drain target", tooltip="items, stage", lhead=cluster_f0__author_row];
+    f0__fill__0 -> f0__drain [label="rows queued", tooltip="stage", ltail=cluster_f0__fill];
+    f0__requeue -> f0__split_epics__0 [label="rows requeued with the answer", lhead=cluster_f0__split_epics];
+    f0__split_epics__1 -> f0__fill__0 [label="the milestone has an ordered split", ltail=cluster_f0__split_epics, lhead=cluster_f0__fill];
+    f0__split_epics__1 -> f0__answered_split [label="the split stayed blocked", tooltip="question", style=dashed, color=darkorange, ltail=cluster_f0__split_epics];
+    f0__start__6 -> f0__split_epics__0 [label="milestone digested", ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
+    f0__start__6 -> f0____end [label="parity survey mode / register story written", color=darkgoldenrod, ltail=cluster_f0__start];
   }
 
   subgraph cluster_parity_surveyor_f1__ {

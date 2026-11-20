@@ -1462,7 +1462,8 @@ def test_a_run_killed_mid_story_resumes_on_that_story_alone(
 
     checkpoint = parse_checkpoint((run_dir / ArtifactWriter.CHECKPOINT_FILE).read_text())
     resume = read_resume(checkpoint)
-    assert resume.state == "author_story", resume
+    assert resume.state == "author_row", resume
+    assert resume.params["stage"] == 2, resume
     assert [item["id"] for item in resume.params["items"]] == [f"{_name(EPIC)}/02-reset-password"]
     assert resume.flow == "Author", resume
 
