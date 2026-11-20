@@ -430,7 +430,7 @@ class FakeDocker:
         if "port" in args:
             stdout = {"80": "127.0.0.1:49200\n", "8080": "127.0.0.1:49201\n"}[args[-1]]
         if args[:3] == ["docker", "compose", "ls"]:
-            stdout = '[{"Name": "acme-story-1", "Status": "running(5)"}]'
+            stdout = '[{"Name": "acme-story-1", "Status": "exited(3), running(5)"}]'
         if args[:2] == ["docker", "ps"]:
             stdout = self.ps
         return subprocess.CompletedProcess(args, 0, stdout, "")
@@ -552,7 +552,7 @@ def test_up_writes_the_address_book_from_the_published_ports(tmp_path: Path) -> 
         "http://localhost:49200"
     listing = commands.cmd_ls(root, runner=docker)
     assert [(row["copy"], row["status"]) for row in listing.data["copies"]] == [
-        ("story-1", "running(5)")]
+        ("story-1", "running")]
 
 
 def test_down_removes_the_copy_and_drops_its_data_unless_kept(tmp_path: Path) -> None:
@@ -795,9 +795,9 @@ def test_ls_lists_each_service_with_its_about_address_and_copies(tmp_path: Path)
     assert listing.ok
     assert listing.message.splitlines() == [
         "api",
-        "  api:api        the HTTP API               api            shared (not running), story-1",
-        "  api:db         the database                              shared (not running), story-1",
-        "  api:provision  creates the schema                        shared (not running), story-1",
+        "  api:api        the HTTP API               api            shared (stopped), story-1",
+        "  api:db         the database                              shared (stopped), story-1",
+        "  api:provision  creates the schema                        shared (stopped), story-1",
         "web",
         "  web:gateway    the proxy a browser opens  gateway :8443  story-1",
         "  web:web        the browser app                           story-1",
@@ -846,7 +846,7 @@ def test_ls_with_no_stack_file_says_so_and_lists_the_copies(tmp_path: Path) -> N
     runtime.write_manifest(runtime.copy_for(root, "story-9"), {
         "repo": str(root), "copy": "story-9", "targets": ["x:y"]})
     kept = commands.cmd_ls(root, runner=FakeDocker())
-    assert kept.message.splitlines() == ["no book has an ops/stack.yml", "story-9  not running  x:y"]
+    assert kept.message.splitlines() == ["no book has an ops/stack.yml", "story-9  stopped  x:y"]
 
 
 def _book_stack(root: Path, book: str, change: dict) -> None:
@@ -1577,7 +1577,7 @@ class RunningDocker(FakeDocker):
         args = list(argv)
         if args[:3] == ["docker", "compose", "ls"]:
             self.calls.append(args)
-            rows = [{"Name": name, "Status": "running(1)"} for name in self.running]
+            rows = [{"Name": name, "Status": "exited(3), running(1)"} for name in self.running]
             return subprocess.CompletedProcess(args, 0, json.dumps(rows), "")
         return super().__call__(argv, capture=capture, stdin=stdin)
 
@@ -1796,3 +1796,54 @@ def test_touching_a_copy_that_cannot_be_written_never_raises() -> None:
     copy = _manifest("locked")
     (copy.directory / runtime.MANIFEST).chmod(0o400)
     runtime.touch_used(copy.directory)
+
+
+class BrokenDocker(FakeDocker):
+    def __init__(self, returncode: int = 1, error: Exception | None = None) -> None:
+        super().__init__()
+        self.returncode = returncode
+        self.error = error
+
+    def __call__(self, argv: Sequence[str], *, capture: bool, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        args = list(argv)
+        if args[:3] == ["docker", "compose", "ls"]:
+            if self.error:
+                raise self.error
+            return subprocess.CompletedProcess(args, self.returncode, "", "Cannot connect to the Docker daemon")
+        return super().__call__(argv, capture=capture, stdin=stdin)
+
+
+def test_a_project_with_exited_and_running_containers_is_running() -> None:
+    states = runtime.project_states(RunningDocker(["acme-busy"]))
+    assert states.of("acme-busy") == "running"
+    assert states.of("acme-gone") == "stopped"
+    assert runtime.project_states(FakeDocker()).projects["acme-story-1"] == "exited(3), running(5)"
+
+
+def test_ls_all_and_ls_list_a_running_copy_as_running(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    docker = FakeDocker()
+    assert commands.cmd_up(root, ["web"], copy_name="story-1", runner=docker).ok
+    assert commands.cmd_ls(root, runner=docker).data["copies"][0]["status"] == "running"
+    assert commands.cmd_ls_all(runner=docker).data["copies"][0]["state"] == "running"
+
+
+def test_a_copy_whose_containers_are_gone_lists_as_stopped(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    assert commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker()).ok
+    docker = RunningDocker()
+    assert commands.cmd_ls(root, runner=docker).data["copies"][0]["status"] == "stopped"
+    assert commands.cmd_ls_all(runner=docker).data["copies"][0]["state"] == "stopped"
+
+
+def test_a_failing_status_query_lists_unknown_with_the_reason(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    assert commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker()).ok
+    for docker in (BrokenDocker(), BrokenDocker(error=FileNotFoundError("docker"))):
+        everywhere = commands.cmd_ls_all(runner=docker)
+        assert everywhere.data["copies"][0]["state"] == "unknown"
+        assert everywhere.data["status_error"] in everywhere.message
+        listing = commands.cmd_ls(root, runner=docker)
+        assert listing.data["copies"][0]["status"] == "unknown"
+        assert listing.data["copies"][0]["status_error"]
+    assert "Cannot connect" in commands.cmd_ls_all(runner=BrokenDocker()).data["status_error"]

@@ -176,7 +176,7 @@ def _bring_up(
         return _fail(str(exc), copy=copy.name)
     except secrets.SecretError as exc:
         return _fail(str(exc), copy=copy.name)
-    running = runtime.running_projects(runner).get(copy.project, "").startswith("running")
+    running = runtime.project_states(runner).running(copy.project)
     started_by: dict[str, object] | None = None
     if keep is not None:
         started_by = _record(keep, "started_by")
@@ -378,7 +378,7 @@ def _reclaim(*, keep: Copy | None, runner: Runner) -> tuple[list[str], list[dict
 def prune(*, keep: Copy | None = None, dry_run: bool = False, runner: Runner = run_command,
           now: datetime | None = None) -> list[dict[str, str]]:
     """Tear down each orphaned copy and stop each idle running one, keeping its data; name what was acted on."""
-    status: dict[str, str] | None = None
+    status: runtime.ProjectStates | None = None
     acted: list[dict[str, str]] = []
     for copy, manifest in runtime.held_copies():
         if keep is not None and copy.directory == keep.directory:
@@ -389,8 +389,8 @@ def prune(*, keep: Copy | None = None, dry_run: bool = False, runner: Runner = r
                     "worktree": str(manifest.get("worktree", ""))}
             keep_data = False
         elif runtime.idle(manifest, now) and (
-                status := status if status is not None else runtime.running_projects(runner)
-        ).get(copy.project, "").startswith("running"):
+                status := status if status is not None else runtime.project_states(runner)
+        ).running(copy.project):
             ago = runtime.used_ago(manifest, now)
             row |= {"reason": "idle", "action": "stop", "idle": _span(ago)}
             keep_data = True
@@ -444,7 +444,7 @@ def _down(copy: Copy, *, keep_data: bool, runner: Runner) -> EnvOutcome:
 def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
     """Every service of this repo's stack with what it is and the copies running it, then the copies."""
     catalog = spec.load(root)
-    status = runtime.running_projects(runner)
+    status = runtime.project_states(runner)
     rows: list[dict[str, Any]] = []
     copy_lines: list[str] = []
     by_ref: dict[str, list[str]] = {}
@@ -452,7 +452,7 @@ def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
     for copy in runtime.copies(root):
         manifest = runtime.read_manifest(copy.directory)
         targets = _listed(manifest, "targets")
-        state = status.get(copy.project, "not running")
+        state = status.of(copy.project)
         states[copy.name] = state
         for ref in targets:
             by_ref.setdefault(ref, []).append(copy.name)
@@ -460,6 +460,7 @@ def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
             "copy": copy.name,
             "project": copy.project,
             "status": state,
+            "status_error": status.error,
             "targets": targets,
             "rendered_at": manifest.get("rendered_at", ""),
             "addresses": read_book(copy),
@@ -478,7 +479,7 @@ def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
 
 def cmd_ls_all(*, runner: Runner = run_command, now: datetime | None = None) -> EnvOutcome:
     """Every copy on this machine, of any repo, with its worktree, state, age, last use and mark."""
-    status = runtime.running_projects(runner)
+    status = runtime.project_states(runner)
     moment = now or datetime.now(UTC)
     rows: list[dict[str, Any]] = []
     for copy, manifest in runtime.held_copies():
@@ -489,7 +490,7 @@ def cmd_ls_all(*, runner: Runner = run_command, now: datetime | None = None) -> 
             "copy": copy.name,
             "project": copy.project,
             "worktree": str(manifest.get("worktree", "")),
-            "state": "running" if status.get(copy.project, "").startswith("running") else "stopped",
+            "state": status.of(copy.project),
             "rendered_at": manifest.get("rendered_at", ""),
             "age": _span(moment - rendered) if rendered else "unknown",
             "used_at": manifest.get("used_at", ""),
@@ -501,8 +502,10 @@ def cmd_ls_all(*, runner: Runner = run_command, now: datetime | None = None) -> 
     widths = [max(len(cell[column]) for cell in cells) for column in range(6)] if cells else []
     lines = ["  ".join([*(cell[column].ljust(widths[column]) for column in range(6)),
                         cell[6]]).rstrip() for cell in cells]
+    if rows and status.error:
+        lines.append(f"state unknown: {status.error}")
     return EnvOutcome(True, "\n".join(lines) or "no copy exists on this machine",
-                      {"ok": True, "copies": rows})
+                      {"ok": True, "copies": rows, "status_error": status.error})
 
 
 def _stamp(value: object) -> datetime | None:
@@ -528,7 +531,7 @@ def _service_row(service: spec.Service, copies: list[str]) -> dict[str, Any]:
 def _service_lines(catalog: spec.Catalog, services: list[dict[str, Any]],
                    states: dict[str, str]) -> list[str]:
     cells = [(row["book"], row["ref"], _short(row["about"]), _published(row),
-              ", ".join(name if states[name].startswith("running") else f"{name} ({states[name]})"
+              ", ".join(name if states[name] == "running" else f"{name} ({states[name]})"
                         for name in row["copies"])) for row in services]
     widths = [max(len(cell[column]) for cell in cells) for column in (1, 2, 3)]
     lines: list[str] = []

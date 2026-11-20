@@ -311,17 +311,40 @@ def remove_secrets(copy: Copy) -> None:
         shutil.rmtree(directory)
 
 
-def running_projects(runner: Runner = run_command) -> dict[str, str]:
-    """Each compose project docker knows, with its status line."""
-    outcome = runner(["docker", "compose", "ls", "--all", "--format", "json"], capture=True)
+@dataclass(frozen=True)
+class ProjectStates:
+    """What `docker compose ls` said of every compose project, or why it said nothing."""
+
+    projects: Mapping[str, str]
+    error: str = ""
+
+    def of(self, project: str) -> str:
+        """`running` when any container of the project runs, `stopped` when none does, `unknown` when docker could not say."""
+        if self.error:
+            return "unknown"
+        return "running" if "running(" in self.projects.get(project, "") else "stopped"
+
+    def running(self, project: str) -> bool:
+        return self.of(project) == "running"
+
+
+def project_states(runner: Runner = run_command) -> ProjectStates:
+    """Ask docker once which compose projects have a running container. A status line such as `exited(3), running(7)` is running."""
+    try:
+        outcome = runner(["docker", "compose", "ls", "--all", "--format", "json"], capture=True)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return ProjectStates({}, f"docker compose ls failed: {exc}")
     if outcome.returncode != 0:
-        return {}
+        detail = (outcome.stderr or "").strip()
+        return ProjectStates({}, f"docker compose ls exited {outcome.returncode}" + (f": {detail}" if detail else ""))
     try:
         rows = json.loads(outcome.stdout or "[]")
     except json.JSONDecodeError:
-        return {}
-    return {str(row.get("Name", "")): str(row.get("Status", "")) for row in rows
-            if isinstance(row, dict)}
+        return ProjectStates({}, "docker compose ls printed no JSON")
+    if not isinstance(rows, list):
+        return ProjectStates({}, "docker compose ls printed no list")
+    return ProjectStates({str(row.get("Name", "")): str(row.get("Status", "")) for row in rows
+                          if isinstance(row, dict)})
 
 
 @dataclass(frozen=True)
