@@ -30,3 +30,18 @@ def test_named_calls_win_over_journeys_in_one_argument_list() -> None:
     argv = _run_argv("services.api", ["AddTodo"], None, "copy", "out", journeys=["One"])
 
     assert "--journey" not in argv and "--partial" not in argv
+
+
+def test_a_play_carries_the_holder_of_the_copy_so_it_may_reset_its_data(monkeypatch, tmp_path) -> None:
+    from workhorse_workflows.coder.book_qa import nodes
+
+    seen: dict[str, str] = {}
+
+    def run(argv, cwd=None, env=None, timeout=None):
+        seen.update(env or {})
+        return type("Done", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(nodes, "run_tool", run)
+    monkeypatch.setattr(nodes, "stack_env", lambda root, near="", lease="": {"STABLEMATE_LEASE": lease, "STABLEMATE_LEASE_HOLDER": "41"})
+    nodes._play(["x"], tmp_path, 5, nodes.stack_env(tmp_path, lease="story-7"))
+    assert (seen["STABLEMATE_LEASE_HOLDER"], seen["STABLEMATE_LEASE"]) == ("41", "story-7")

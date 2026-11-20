@@ -44,6 +44,7 @@ from workhorse_workflows.kit import (
     find_repo_root,
     open_repo,
 )
+from workhorse_workflows.kit.qa.runner import stack_env
 from workhorse_workflows.kit.tools import run_tool
 
 TAIL_LINES = 200
@@ -93,9 +94,9 @@ def _printed(text: str | bytes | None) -> str:
     return text.decode("utf-8", "replace") if isinstance(text, bytes) else text or ""
 
 
-def _play(argv: list[str], cwd: Path, timeout: float | None = None) -> BookPlay:
+def _play(argv: list[str], cwd: Path, timeout: float | None = None, held: dict[str, str] | None = None) -> BookPlay:
     try:
-        done = run_tool(argv, cwd=cwd, env=BOOK_ENV, timeout=timeout)
+        done = run_tool(argv, cwd=cwd, env={**BOOK_ENV, **(held or {})}, timeout=timeout)
     except subprocess.TimeoutExpired as expired:
         printed = _tail(_printed(expired.stdout) + _printed(expired.stderr))
         minutes = int((timeout or 0) // 60)
@@ -516,7 +517,7 @@ def book_run(
                 target = str(Path(target) / "journeys")
             argv = _run_argv(module, named, module_outside, copy, target, register=register, journeys=titles, fresh=reload)
             reload = False
-            play = _play(argv, root, PLAY_LIMIT_S)
+            play = _play(argv, root, PLAY_LIMIT_S, stack_env(root, lease=copy))
             what = f"{len(named)} call(s)" if named else f"{len(titles)} journey(s)" if titles else "the whole book"
             logger.info("book run of %s over %s exited %d", module, what, play.exit_code)
             if play.exit_code != 0:
