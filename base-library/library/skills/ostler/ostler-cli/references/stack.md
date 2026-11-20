@@ -266,3 +266,31 @@ main checkout directory name, which a `git worktree` of the repository shares, s
 A run killed before its teardown does not leave its copy up for good. The next leased bring-up
 on the machine tears down every copy whose run is gone, and says which. A copy brought up by
 hand, outside any run, has no holder and stays until `ostler env down` removes it.
+
+Each copy's `copy.json` records the `worktree` its `up` ran from and `used_at`, the time of its
+last use. `ostler env up`, `ostler book run` and `ostler qa run` against a copy refresh
+`used_at`. A copy made before these fields existed is never orphaned and never idle.
+`started_by` names the run that brought the copy up from stopped, and stays empty for a hand
+start. The coder workflow's end of run tears down the shared copy only when it started it.
+A running copy whose starter is dead, as after a resumed run, is adopted by the next `up` that holds it.
+The run clears its `holder` at its end, so a copy a person keeps using is not reclaimed.
+
+A copy is orphaned when its worktree is no directory and `git worktree list` of its repo does
+not list it. A copy whose repo is missing, or whose worktree's parent directory is missing, is
+not orphaned. A copy is idle when `used_at` is more than 24 hours old and its holder is absent
+or dead.
+
+```bash
+timeout 30 ostler env ls --all
+timeout 600 ostler env prune --dry-run
+timeout 600 ostler env prune
+```
+
+`ostler env ls --all` lists every copy on the machine, of any repo: repo, copy, worktree,
+running or stopped, age since `rendered_at`, time since `used_at`, and the mark `orphaned` or
+`idle`. It takes `--json`.
+`ostler env prune` tears down every orphaned copy and drops its data, and stops every idle
+running copy and keeps its data. It prints one line per copy it acts on, or `nothing to prune`.
+`--dry-run` prints the same lines and acts on nothing. `--json` prints the rows.
+Every leased bring-up also prunes, after it reclaims the copies whose run is gone, and never
+touches the copy it brings up.
