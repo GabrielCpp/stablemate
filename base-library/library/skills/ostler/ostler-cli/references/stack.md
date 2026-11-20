@@ -101,7 +101,8 @@ comes from the stack root's one secret source. A secret value is never written i
 
 A template names a host from `service(...)` and never as a literal, because each copy has its
 own. A dependency with a `healthcheck` is waited for until healthy, so a service that clients
-reach before it is ready declares one.
+reach before it is ready declares one. A service with no `healthcheck` is waited for until its
+published port accepts a TCP connection, and `up` fails naming the service if it never does.
 
 ## Files
 
@@ -254,7 +255,8 @@ Each bring-up of a copy that is already up does the same work:
 target. It keeps the copy's `holder`, `started_by` and `worktree`. It is refused for a copy that was
 never brought up and for a copy another live process holds, since it would pull the data from under
 that process's play. The process that holds the copy, as `$STABLEMATE_LEASE_HOLDER` names it, may
-reset it.
+reset it. A reset keeps the copy's addresses: it publishes each service on the host port the copy
+had, and fails when that port is taken instead of taking another.
 
 `ostler env down` and `ostler env down --copy` drop the copy's volumes with it.
 `ostler env down --keep-data` keeps them for the next `up`.
