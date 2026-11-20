@@ -326,3 +326,26 @@ def test_an_action_only_a_streaming_call_carries_is_left_to_the_streaming_line()
     judged = never_played(book, found, [], scoped=False, skipped=set(), streaming=["not played: Shelf/Watch streams its answer"])
     assert judged.red == ["action Remove"]
     assert not any(line.startswith("- action Sweep") for line in judged.lines)
+
+
+def test_an_action_left_from_an_earlier_import_of_the_book_is_not_stated(module: str, tmp_path: Path):
+    import gc
+    import importlib
+    import sys
+    from types import SimpleNamespace
+    from typing import Any, cast
+
+    from ostler.book.search import actions_of
+
+    (tmp_path / module / "actions.py").write_text(
+        "from ostler.book import Action\n\n\n"
+        "class Shelving(Action[str, str]):\n    pass\n\n\n"
+        "class Put(Shelving):\n    pass\n")
+    earlier = importlib.import_module(f"{module}.actions").Shelving
+    for name in (module, f"{module}.actions"):
+        del sys.modules[name]
+    gc.collect()
+    current = importlib.import_module(f"{module}.actions")
+    found = actions_of(cast("Any", SimpleNamespace(endpoints=(), interactions=())), module)
+    assert earlier.__subclasses__() == []
+    assert found == [current.Shelving, current.Put]

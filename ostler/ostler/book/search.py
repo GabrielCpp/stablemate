@@ -49,6 +49,16 @@ def subclasses[T](cls: type[T]) -> Iterator[type[T]]:
         yield from subclasses(sub)
 
 
+def replaced(cls: type) -> bool:
+    """Whether the module of `cls` now holds another class under its name: `cls` was left by an earlier import of the book."""
+    if "<locals>" in cls.__qualname__ or cls.__module__ not in sys.modules:
+        return False
+    held: object = sys.modules[cls.__module__]
+    for part in cls.__qualname__.split("."):
+        held = getattr(held, part, None)
+    return held is not None and held is not cls
+
+
 def actions_of(service: Service[Any], module: str) -> list[type[Action[Any, Any]]]:
     found: dict[type[Action[Any, Any]], None] = {}
     for endpoint in service.endpoints:
@@ -58,7 +68,7 @@ def actions_of(service: Service[Any], module: str) -> list[type[Action[Any, Any]
         if interaction.carries is not None:
             found[interaction.carries] = None
     for sub in subclasses(Action):
-        if sub.__module__.startswith(module):
+        if sub.__module__.startswith(module) and not replaced(sub):
             found[sub] = None
     return list(found)
 
