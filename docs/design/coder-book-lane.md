@@ -62,7 +62,10 @@ planted defect each, one on a whole unfinished story with the installed tool):
 Flow: coverage answers first. With no covered service the lane is over and says so. The
 seat plays the calls it picks once before it edits, to prove the base. It
 makes its pass. The judgement selects the plays from the story's diff with
-`ostler book affected`, plays them and reads the outcome. The
+`ostler book affected`, plays only those calls and journeys under a time limit
+(`book_play_minutes`) after saying what it will play, and reads the outcome. A story's
+QA never plays a whole book. What the selection cannot narrow is listed as owed to a
+scheduled whole play that runs outside any story. The
 record lands the change when the outcome agrees. A later visit for the same story plays
 the calls the first visit recorded, and the seat is called only when that play disagrees.
 
@@ -188,7 +191,7 @@ and sentinel ids. They belong to the scenario lane and stay there.
   story's diff of the app and of the book, and the seat's result no longer carries calls.
   Basis: a seat that narrows its own exam passes a story it never judged. If wrong: the
   seat names the calls again and the judgement refuses an empty list.
-- A2. A targeted play takes minutes. Decided: two plays a story, no cap of their own.
+- A2. A targeted play takes minutes. Decided: two plays a story, each limited by `book_play_minutes` (15).
   Basis: 3 min 42 s and 4 min 30 s on the attended story. If wrong: the base play goes.
 - A3. The executable book lives at `services/<name>` under the repo root. Basis: the tool
   loads it from there today. If wrong: coverage and the record take the root from one
