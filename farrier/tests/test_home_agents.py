@@ -242,3 +242,37 @@ def test_an_unknown_agent_server_stops_the_install(home: Path, library: Path) ->
     config = BROWSER + '[user_library.claude]\nagents = ["browser"]\n'
     with pytest.raises(SystemExit, match="unknown MCP server 'ghost'"):
         install(home, library, config)
+
+
+def write_session_tools(library: Path) -> None:
+    (library / "library/agents/lookup.md").write_text(
+        '---\ndescription: "Read-only lookup."\nread_only: true\nsession_mcp: [groom]\n---\n\n'
+        "You answer one question.\n",
+        encoding="utf-8",
+    )
+
+
+def test_session_mcp_grants_a_session_server_tools_without_owning_the_server(
+    home: Path, library: Path
+) -> None:
+    write_session_tools(library)
+    assert install(home, library, PROFILES + BOTH) == 0
+    head = claude_head(home / ".claude/agents/lookup.md")
+    assert head["tools"] == "Read, Grep, Glob, Bash, mcp__groom__*"
+    assert "mcpServers" not in head
+    assert not (home / ".claude.json").exists()
+
+
+def test_session_mcp_leaves_codex_agents_as_they_were(home: Path, library: Path) -> None:
+    write_session_tools(library)
+    assert install(home, library, PROFILES + BOTH) == 0
+    codex = tomllib.loads((home / ".codex/agents/lookup.toml").read_text(encoding="utf-8"))
+    assert "groom" not in str(codex)
+
+
+def test_session_mcp_must_name_servers(home: Path, library: Path) -> None:
+    (library / "library/agents/lookup.md").write_text(
+        "---\ndescription: x\nsession_mcp: groom\n---\n\nprompt\n", encoding="utf-8"
+    )
+    with pytest.raises(SystemExit, match="`session_mcp` must list MCP server names"):
+        install(home, library, PROFILES + BOTH)

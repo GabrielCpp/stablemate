@@ -104,6 +104,9 @@ guards, and two files that set one key stop the install.
 A table that names `agents` writes each helper agent to `~/.claude/agents` or
 `~/.codex/agents`, on the model `[profiles.<harness>.delegates.<name>]` names.
 Codex cannot enforce a read-only agent, so its prompt asks for it instead.
+A Claude agent may call only the tools its file lists. An agent record's `session_mcp` names
+servers the session runs, such as a channel, and the agent may call their tools. Codex and
+OpenCode agents already reach every server the session runs, so they ignore it.
 
 A `[user_library.opencode]` table takes the same `roots`, `mcp`, `hooks` and `agents`.
 They land in `~/.config/opencode`: rules in `AGENTS.md`, servers in `opencode.json`, helper
