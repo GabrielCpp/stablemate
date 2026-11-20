@@ -14,6 +14,7 @@ def play(todo_app, own_book, tmp_path: Path, monkeypatch, capsys, fresh: Fresh |
     from ostler.book.cli import main
 
     monkeypatch.setenv("TODO_API_PORT", str(todo_app.port))
+    monkeypatch.syspath_prepend(str(FIXTURE))
     service = module("services.api.service").service
     kept = service.stack
     monkeypatch.setattr(service, "stack", lambda log_dir: dataclass_with(kept(log_dir), fresh))
