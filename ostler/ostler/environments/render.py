@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 import shutil
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -72,9 +72,9 @@ def fixture_sets(catalog: Catalog, services: Sequence[Service], chosen: Sequence
 
 def render(
     catalog: Catalog, services: Sequence[Service], copy: Copy, *, repo: Path,
-    fixtures: Sequence[str],
+    fixtures: Sequence[str], pinned: Mapping[str, int] | None = None,
 ) -> Rendered:
-    """The compose file and helper files that bring *services* up as *copy*."""
+    """The compose file and helper files that bring *services* up as *copy*; a named copy publishes each service of *pinned* on its host port."""
     environment = jinja2.Environment(
         undefined=jinja2.StrictUndefined, keep_trailing_newline=True, autoescape=False)
     rendered = Rendered(compose={"name": copy.project, "services": {}, "volumes": {}})
@@ -97,7 +97,10 @@ def render(
         if depends:
             block["depends_on"] = depends
         if service.address:
-            host = str(service.host_port) if copy.shared and service.host_port else ""
+            if copy.shared:
+                host = str(service.host_port) if service.host_port else ""
+            else:
+                host = str((pinned or {}).get(service.ref, ""))
             block["ports"] = [f"127.0.0.1:{host}:{service.port}"]
         block.setdefault("labels", {})
         if isinstance(block["labels"], dict):

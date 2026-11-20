@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -36,6 +37,7 @@ class Prepared:
     services: list[spec.Service]
     copy: Copy
     fixtures: list[str]
+    pinned: dict[str, int] = field(default_factory=dict)
 
 
 def _fail(message: str, **data: Any) -> EnvOutcome:
@@ -160,6 +162,7 @@ def _bring_up(
     """Render, start and read the addresses of *prepared*; *keep* is a manifest whose holder, starter and worktree are kept."""
     copy = prepared.copy
     compose = Compose(copy, runner)
+    began = time.monotonic()
     if fresh and (copy.directory / render_mod.COMPOSE_FILE).is_file():
         compose.down(keep_data=False)
     source = secrets.source_for(prepared.catalog, root, runner)
@@ -195,12 +198,20 @@ def _bring_up(
         problem = _run_jobs(prepared, jobs, produced, compose, wait_seconds)
         if problem:
             return _fail(problem, copy=copy.name)
-    outcome = compose.up(wait_seconds=wait_seconds)
+    pins = bool(prepared.pinned)
+    outcome = compose.up(wait_seconds=wait_seconds, capture=pins)
     _drop_raw_outputs(copy, jobs)
+    if pins:
+        for text in (outcome.stdout, outcome.stderr):
+            if text:
+                print(text, end="" if text.endswith("\n") else "\n", file=sys.stderr)
     if outcome.returncode != 0:
         return _fail(f"docker compose could not bring {copy.name} up (exit {outcome.returncode}); "
-                     f"read `ostler env compose --copy {copy.name} -- logs`", copy=copy.name)
+                     f"read `ostler env compose --copy {copy.name} -- logs`"
+                     + (_pinned_sentence(prepared.pinned, f"{outcome.stdout}\n{outcome.stderr}")
+                        if pins else ""), copy=copy.name)
     book: dict[str, str] = {}
+    probes: dict[str, tuple[str, int]] = {}
     for service in prepared.services:
         if not service.address:
             continue
@@ -209,6 +220,14 @@ def _bring_up(
             return _fail(f"{service.ref} is up but compose reports no host port for "
                          f"{service.port}", copy=copy.name)
         book[service.address] = runtime.host_url(service.scheme, published)
+        number = published.rpartition(":")[2]
+        if number.isdigit():
+            probes[service.ref] = ("localhost", int(number))
+    refusing = runtime.await_ports(probes, began + wait_seconds)
+    if refusing:
+        host, port = probes[refusing]
+        return _fail(f"{refusing} did not accept a connection on {host}:{port} within "
+                     f"{wait_seconds}s", copy=copy.name)
     book_file = copy.directory / runtime.ADDRESSES
     addresses.write_book(book_file, book)
     entry = next((book[service.address] for service in reversed(prepared.services)
@@ -219,6 +238,28 @@ def _bring_up(
     return EnvOutcome(True, "\n".join([f"{copy.name} is up", *lines]),
                       _summary(prepared, addresses=book, address_book=str(book_file),
                                entry_url=entry, reclaimed=reclaimed or [], pruned=pruned or []))
+
+
+def _pinned_sentence(pinned: Mapping[str, int], output: str) -> str:
+    """The sentence that tells a failed reset start that it pins the copy's ports, naming the one compose refused when its *output* shows it."""
+    sentence = " A reset pins the copy's host ports to the ones it had and never takes a new one."
+    refused = [port for port in dict.fromkeys(pinned.values())
+               if re.search(rf":{port}\b", output)
+               and re.search(r"already allocated|already in use|Bind for|address in use", output)]
+    if refused:
+        sentence = (f" A reset pins the copy's host ports to the ones it had, and host port "
+                    f"{refused[0]} was refused.")
+    return sentence
+
+
+def _pins(book: Mapping[str, str], services: Sequence[spec.Service]) -> dict[str, int]:
+    """The host port each of *services* was published on in the address *book*."""
+    pinned: dict[str, int] = {}
+    for service in services:
+        number = book.get(service.address, "").rpartition(":")[2] if service.address else ""
+        if number.isdigit():
+            pinned[service.ref] = int(number)
+    return pinned
 
 
 def _record(manifest: dict[str, object], key: str) -> dict[str, object]:
@@ -257,6 +298,8 @@ def _reset(root: Path, copy_name: str, wait_seconds: int, runner: Runner) -> Env
                        fixtures=_listed(manifest, "fixtures"))
     if isinstance(prepared, EnvOutcome):
         return prepared
+    if not copy.shared:
+        prepared.pinned.update(_pins(read_book(copy), prepared.services))
     return _bring_up(root, prepared, fresh=True, cwd=None, wait_seconds=wait_seconds,
                      holder=None, runner=runner, keep=manifest)
 
@@ -592,7 +635,7 @@ def _drop_raw_outputs(copy: Copy, jobs: list[spec.Service]) -> None:
 
 def _rendered(root: Path, prepared: Prepared) -> render_mod.Rendered:
     return render_mod.render(prepared.catalog, prepared.services, prepared.copy, repo=root,
-                             fixtures=prepared.fixtures)
+                             fixtures=prepared.fixtures, pinned=prepared.pinned)
 
 
 def _missing_message(problems: list[str]) -> str:

@@ -216,6 +216,21 @@ def _ostler_defects_raise(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _environments_home(monkeypatch, tmp_path):
+    """Each test keeps its `ostler env` copies in its own directory, so parallel workers never share one."""
+    monkeypatch.setenv("OSTLER_ENV_HOME", str(tmp_path / "ostler-env-home"))
+
+
+@pytest.fixture(autouse=True)
+def _published_ports_accept(monkeypatch):
+    """A test copy's published ports accept at once and a refusing one is retried without pause."""
+    from ostler.environments import runtime
+    monkeypatch.setattr(runtime, "port_probe", lambda host, port: True)
+    monkeypatch.setattr(runtime, "PORT_INTERVAL", 0.0)
+    monkeypatch.setattr(runtime, "PORT_FLOOR", 0.0)
+
+
+@pytest.fixture(autouse=True)
 def _git_identity(monkeypatch):
     """Tests commit to the artifacts repo, and a CI runner has no git identity of its own."""
     for role in ("AUTHOR", "COMMITTER"):

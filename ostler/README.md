@@ -269,7 +269,7 @@ ostler env ls                        # each service, what it is, and the copies 
 ostler env ls --all                  # every copy on this machine, marked orphaned or idle
 ostler env prune --dry-run           # what prune would tear down (orphaned) or stop (idle)
 ostler env schema                    # the JSON Schema of a stack.yml
-ostler env reset --copy story-12     # the copy's data back to what it started with; refused while another process holds it
+ostler env reset --copy story-12     # the copy's data back to what it started with, on the same addresses; refused while another process holds it
 ostler env down --copy story-12      # data and rendered files go too, unless --keep-data
 ```
 

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+import yaml
 from test_environments import FakeDocker, RunningDocker, _gone_pid, _repo
 
 from ostler.environments import cli, commands, leases, runtime
@@ -131,6 +133,28 @@ def test_a_dead_holder_does_not_block_a_reset(tmp_path: Path) -> None:
     assert code == 0, shown
 
 
+def test_a_reset_waits_for_a_port_that_refuses_twice_then_accepts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _repo(tmp_path)
+    commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker())
+    tries: list[int] = []
+
+    def probe(host: str, port: int) -> bool:
+        tries.append(port)
+        return tries.count(port) > 2
+
+    monkeypatch.setattr(runtime, "port_probe", probe)
+    code, _, shown = commands.reset(root, "story-1", runner=FakeDocker())
+    assert code == 0, shown
+    assert tries.count(49200) == 3
+
+    monkeypatch.setattr(runtime, "port_probe", lambda host, port: False)
+    code, _, shown = commands.reset(root, "story-1", 1, runner=FakeDocker())
+    assert code == 1
+    assert "did not accept a connection on localhost:" in shown
+
+
 def test_a_failed_bring_up_returns_its_code_and_what_up_prints(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker())
@@ -145,6 +169,99 @@ def test_a_failed_bring_up_returns_its_code_and_what_up_prints(tmp_path: Path) -
     code, _, shown = commands.reset(root, "story-1", runner=Failing())
     assert code == 1
     assert "docker compose could not bring" in shown and "(exit 3)" in shown
+
+
+class PickingDocker(FakeDocker):
+    """A docker that publishes a service on the host port its compose file fixes, else on the next free one."""
+
+    def __init__(self, refuse: str = "") -> None:
+        super().__init__()
+        self.next_port = 40000
+        self.published: dict[tuple[str, str], str] = {}
+        self.refuse = refuse
+
+    def __call__(self, argv: Sequence[str], *, capture: bool, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        args = list(argv)
+        if "up" in args and self.refuse:
+            self.calls.append(args)
+            return subprocess.CompletedProcess(args, 1, "", self.refuse)
+        done = super().__call__(args, capture=capture, stdin=stdin)
+        if "up" in args:
+            compose = yaml.safe_load(Path(args[args.index("--file") + 1]).read_text(encoding="utf-8"))
+            self.published = {}
+            for name, block in compose["services"].items():
+                for mapping in block.get("ports", []):
+                    _, host, container = mapping.split(":")
+                    if not host:
+                        self.next_port += 1
+                        host = str(self.next_port)
+                    self.published[(name, container)] = host
+        if "port" in args:
+            return subprocess.CompletedProcess(
+                args, 0, f"127.0.0.1:{self.published[(args[-2], args[-1])]}\n", "")
+        return done
+
+
+def _compose_ports(root: Path, name: str) -> dict[str, list[str]]:
+    text = (runtime.copy_for(root, name).directory / "compose.yml").read_text(encoding="utf-8")
+    return {key: block["ports"] for key, block in yaml.safe_load(text)["services"].items()
+            if "ports" in block}
+
+
+def test_a_reset_publishes_each_target_on_the_host_port_it_had(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    docker = PickingDocker()
+    assert commands.cmd_up(root, ["web"], copy_name="story-1", runner=docker).ok
+    copy = runtime.copy_for(root, "story-1")
+    before = commands.read_book(copy)
+    assert set(before) == {"api", "gateway"}
+    assert _compose_ports(root, "story-1") == {"api-api": ["127.0.0.1::8080"],
+                                              "web-gateway": ["127.0.0.1::80"]}
+    for _ in range(2):
+        code, _, shown = commands.reset(root, "story-1", runner=docker)
+        assert code == 0, shown
+        assert commands.read_book(copy) == before
+    api_port = before["api"].rpartition(":")[2]
+    gateway_port = before["gateway"].rpartition(":")[2]
+    assert _compose_ports(root, "story-1") == {"api-api": [f"127.0.0.1:{api_port}:8080"],
+                                              "web-gateway": [f"127.0.0.1:{gateway_port}:80"]}
+
+
+def test_a_target_with_no_recorded_port_is_left_to_docker(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    docker = PickingDocker()
+    assert commands.cmd_up(root, ["web"], copy_name="story-1", runner=docker).ok
+    copy = runtime.copy_for(root, "story-1")
+    before = commands.read_book(copy)
+    addresses.write_book(copy.directory / runtime.ADDRESSES, {"gateway": before["gateway"]})
+    code, _, shown = commands.reset(root, "story-1", runner=docker)
+    assert code == 0, shown
+    gateway_port = before["gateway"].rpartition(":")[2]
+    assert _compose_ports(root, "story-1") == {"api-api": ["127.0.0.1::8080"],
+                                              "web-gateway": [f"127.0.0.1:{gateway_port}:80"]}
+    after = commands.read_book(copy)
+    assert after["gateway"] == before["gateway"]
+    assert set(after) == {"api", "gateway"}
+
+
+def test_a_start_that_cannot_rebind_a_pinned_port_says_so_and_takes_no_other(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    assert commands.cmd_up(root, ["web"], copy_name="story-1", runner=PickingDocker()).ok
+    port = commands.read_book(runtime.copy_for(root, "story-1"))["gateway"].rpartition(":")[2]
+    refusing = PickingDocker(refuse=f"Bind for 127.0.0.1:{port} failed: port is already allocated")
+    code, _, shown = commands.reset(root, "story-1", runner=refusing)
+    assert code == 1
+    assert "docker compose could not bring story-1 up (exit 1)" in shown
+    assert f"A reset pins the copy's host ports to the ones it had, and host port {port} was refused." in shown
+    assert _compose_ports(root, "story-1")["web-gateway"] == [f"127.0.0.1:{port}:80"]
+
+
+def test_a_failed_start_that_names_no_port_still_says_the_ports_are_pinned(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    assert commands.cmd_up(root, ["web"], copy_name="story-1", runner=PickingDocker()).ok
+    code, _, shown = commands.reset(root, "story-1", runner=PickingDocker(refuse="boom"))
+    assert code == 1
+    assert "A reset pins the copy's host ports to the ones it had and never takes a new one." in shown
 
 
 def test_the_command_prints_the_seconds_it_took(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

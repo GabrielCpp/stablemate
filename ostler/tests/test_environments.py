@@ -489,6 +489,54 @@ def test_a_named_copy_never_checks_the_fixed_ports(tmp_path: Path) -> None:
     assert not any(call[:2] == ["docker", "ps"] for call in docker.calls)
 
 
+def test_up_waits_for_a_port_that_refuses_twice_then_accepts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _repo(tmp_path)
+    tries: list[tuple[str, int]] = []
+
+    def probe(host: str, port: int) -> bool:
+        tries.append((host, port))
+        return tries.count((host, port)) > 2 or port != 49201
+
+    monkeypatch.setattr(runtime, "port_probe", probe)
+    outcome = commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker())
+    assert outcome.ok, outcome.message
+    assert tries.count(("localhost", 49201)) == 3
+    assert (runtime.copy_for(root, "story-1").directory / runtime.ADDRESSES).is_file()
+
+
+def test_up_fails_naming_a_port_that_never_accepts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _repo(tmp_path)
+    monkeypatch.setattr(runtime, "port_probe", lambda host, port: port != 49201)
+    outcome = commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker(), wait_seconds=1)
+    assert not outcome.ok
+    assert outcome.message == "api:api did not accept a connection on localhost:49201 within 1s"
+    assert not (runtime.copy_for(root, "story-1").directory / runtime.ADDRESSES).exists()
+
+
+def test_a_target_with_no_published_port_is_not_probed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = _repo(tmp_path)
+    tries: list[int] = []
+    monkeypatch.setattr(runtime, "port_probe", lambda host, port: tries.append(port) or True)
+    assert commands.cmd_up(root, ["api"], copy_name="story-1", runner=FakeDocker()).ok
+    assert tries == [49201]
+
+
+def test_the_probe_accepts_a_listening_port_and_refuses_a_closed_one() -> None:
+    import socket
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = listener.getsockname()[1]
+        assert runtime.accepts_connection("127.0.0.1", port)
+    assert not runtime.accepts_connection("127.0.0.1", port)
+
+
 def test_up_writes_the_address_book_from_the_published_ports(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     docker = FakeDocker()

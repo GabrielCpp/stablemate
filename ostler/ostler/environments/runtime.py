@@ -8,6 +8,7 @@ import re
 import shutil
 import socket
 import subprocess
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -24,6 +25,9 @@ MANIFEST = "copy.json"
 ADDRESSES = "addresses.json"
 SECRETS_DIR = "secrets"
 IDLE_AFTER = timedelta(hours=24)
+PORT_INTERVAL = 1.0
+PORT_TIMEOUT = 2.0
+PORT_FLOOR = 5.0
 _PROJECT_CHARS = re.compile(r"[^a-z0-9_-]+")
 _PUBLISHED = re.compile(r":(\d+)->")
 _OCCUPANT_FORMAT = "\t".join([
@@ -271,10 +275,10 @@ class Compose:
         return self.runner(self.argv(args), capture=capture)
 
     def up(
-        self, *, wait_seconds: int, services: Sequence[str] = ()
+        self, *, wait_seconds: int, services: Sequence[str] = (), capture: bool = False,
     ) -> subprocess.CompletedProcess[str]:
         return self.run(["up", "--detach", "--build", "--remove-orphans", "--wait",
-                         "--wait-timeout", str(wait_seconds), *services])
+                         "--wait-timeout", str(wait_seconds), *services], capture=capture)
 
     def down(self, *, keep_data: bool) -> subprocess.CompletedProcess[str]:
         args = ["down", "--remove-orphans"]
@@ -350,3 +354,28 @@ def port_free(port: int) -> bool:
         except OSError:
             return False
     return True
+
+
+def accepts_connection(host: str, port: int) -> bool:
+    """Whether a TCP connection to *host* on *port* is accepted now."""
+    try:
+        with socket.create_connection((host, port), timeout=PORT_TIMEOUT):
+            return True
+    except OSError:
+        return False
+
+
+port_probe = accepts_connection
+
+
+def await_ports(targets: Mapping[str, tuple[str, int]], deadline: float) -> str | None:
+    """Wait until every `name: (host, port)` accepts a connection once; the first name still refusing at *deadline* (a `time.monotonic` value, with a floor of `PORT_FLOOR` seconds from now), or None."""
+    deadline = max(deadline, time.monotonic() + PORT_FLOOR)
+    waiting = dict(targets)
+    while True:
+        waiting = {name: at for name, at in waiting.items() if not port_probe(*at)}
+        if not waiting:
+            return None
+        if time.monotonic() >= deadline:
+            return next(iter(waiting))
+        time.sleep(PORT_INTERVAL)
