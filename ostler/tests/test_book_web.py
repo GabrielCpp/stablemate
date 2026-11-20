@@ -181,6 +181,31 @@ def test_the_browser_names_the_extra_when_playwright_is_missing(monkeypatch: pyt
         Browser("http://127.0.0.1:1").start()
 
 
+def test_a_stack_walk_under_a_caller_with_no_file_does_not_search_the_modules(monkeypatch: pytest.MonkeyPatch):
+    import inspect
+    import linecache
+
+    from ostler.book.browser import known_callers
+
+    nowhere = "<a caller with no file>"
+    assert nowhere not in linecache.cache
+    searched: list[str] = []
+    real = inspect.getmodule
+
+    def getmodule(thing: Any, _filename: str | None = None) -> Any:
+        searched.append(str(_filename))
+        return real(thing, _filename)
+
+    monkeypatch.setattr(inspect, "getmodule", getmodule)
+    scope: dict[str, Any] = {"known_callers": known_callers, "inspect": inspect}
+    try:
+        exec(compile("known_callers()\nfound = [f.filename for f in inspect.stack(0)]", nowhere, "exec"), scope)
+    finally:
+        linecache.cache.pop(nowhere, None)
+    assert nowhere in scope["found"]
+    assert nowhere not in searched
+
+
 @pytest.fixture
 def todo_web() -> Iterator:
     stack = _stack()

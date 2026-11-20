@@ -6,8 +6,10 @@ appearing, the rows an answer carries showing on screen. No wait is on a clock."
 
 from __future__ import annotations
 
+import linecache
 import os
 import re
+import sys
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -113,6 +115,18 @@ def refusal(method: str, path: str) -> Wanted:
     return lambda response: wanted(asked(response)) and getattr(response, "status", 0) >= 400
 
 
+def known_callers() -> None:
+    """Every frame below this call whose file is on no disk, such as `<frozen runpy>` under `python -m`, put in
+    `linecache`. Playwright's sync API calls `inspect.stack` on every browser call, and `inspect` scans all of
+    `sys.modules` for each frame it cannot place, so two such frames made each call several times slower."""
+    frame = sys._getframe(1)
+    while frame is not None:
+        name = frame.f_code.co_filename
+        if name not in linecache.cache and not os.path.exists(name):
+            linecache.cache[name] = (0, None, [], name)
+        frame = frame.f_back
+
+
 class Held:
     def __init__(self, page: Any, routes: list[Any]):
         self.page = page
@@ -176,6 +190,7 @@ class Browser(ListReader):
             raise BookError("a web book drives a browser through Playwright, which is not installed: "
                             "install ostler with the 'qa' extra and run `playwright install chromium`") from None
 
+        known_callers()
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=self.headless)
         self._make()
