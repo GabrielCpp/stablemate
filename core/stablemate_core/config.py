@@ -687,15 +687,65 @@ def _git(folder: Path, *args: str) -> str | None:
     return done.stdout.strip() if done.returncode == 0 else None
 
 
+_GIT_DISCOVERY = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM")
+
+
+@dataclass(frozen=True)
+class _Placed:
+    identity: RepositoryIdentity
+    common: Path | None
+    layout: tuple[object, ...]
+
+
+_placed: dict[tuple[Path, tuple[str | None, ...]], _Placed] = {}
+
+
+def _mark(path: Path) -> tuple[int, int, int] | None:
+    """A directory by its inode alone, since git writes inside it at every commit; a file also by its mtime and size."""
+    try:
+        found = path.stat()
+    except OSError:
+        return None
+    if path.is_dir():
+        return (found.st_ino, 0, 0)
+    return (found.st_ino, found.st_mtime_ns, found.st_size)
+
+
+def _layout(folder: Path, toplevel: Path | None, common: Path | None) -> tuple[object, ...]:
+    """What git reads to place ``folder``: the ``.git`` of each folder from it up to its top level, or to the root outside a repository, and the config naming the origin."""
+    marks: list[object] = []
+    for step in (folder, *folder.parents):
+        marks.append(_mark(step / ".git"))
+        if step == toplevel:
+            break
+    marks.append(_mark(common / "config") if common is not None else None)
+    return tuple(marks)
+
+
 def repository_identity(start: Path) -> RepositoryIdentity:
-    """The identity of the repository holding ``start``; a folder outside any repository is its own."""
+    """The identity of the repository holding ``start``; a folder outside any repository is its own.
+
+    Asking git takes two processes and a run asks it of the same few folders thousands of times, so an answer is
+    kept for as long as everything git read to give it stays as it was."""
     folder = start.resolve()
+    key = (folder, tuple(os.environ.get(name) for name in _GIT_DISCOVERY))
+    kept = _placed.get(key)
+    if kept is not None:
+        toplevel = kept.identity.folder if kept.common is not None else None
+        if kept.layout == _layout(folder, toplevel, kept.common):
+            return kept.identity
     probe = _git(folder, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir")
     lines = probe.splitlines() if probe else []
+    common: Path | None = None
     if len(lines) != 2:
-        return RepositoryIdentity(folder, folder)
-    toplevel, common = Path(lines[0]).resolve(), Path(lines[1]).resolve()
-    return RepositoryIdentity(toplevel, common.parent, _git(toplevel, "remote", "get-url", "origin") or "")
+        identity = RepositoryIdentity(folder, folder)
+    else:
+        toplevel, common = Path(lines[0]).resolve(), Path(lines[1]).resolve()
+        identity = RepositoryIdentity(toplevel, common.parent, _git(toplevel, "remote", "get-url", "origin") or "")
+    layout = _layout(folder, identity.folder if common is not None else None, common)
+    if common is not None or not any(layout):
+        _placed[key] = _Placed(identity, common, layout)
+    return identity
 
 
 def _normal_url(url: str) -> str:
