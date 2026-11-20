@@ -384,9 +384,9 @@ def run_author(run: Run, fixture: Fixture) -> None:
 
 
 def run_coder(run: Run, fixture: Fixture) -> None:
-    """Implement the epic queue, watching for gates without answering them."""
+    """Implement every epic the milestones list, watching for gates without answering them."""
     if not find_epics(home_of(run)):
-        raise TrialError("no epic queue — author produced no epics to implement")
+        raise TrialError("no epics — author produced none to implement")
     stop, thread = og.gates_watched(run, "coder")
     thread.start()
     try:
