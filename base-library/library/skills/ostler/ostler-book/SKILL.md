@@ -276,8 +276,9 @@ folder: each element with the journeys, cells and input classes that exercised i
 | `ostler book verified services.<name> --app <root>` | seconds | records the app's HEAD once `stale` is worked |
 | `ostler book affected services.<name> --app <root> [--since <commit>] [--out <dir>]` | seconds, no app | the calls and journeys to play for the code changed since the verified commit or `--since`, uncommitted and untracked work included; plan `none`, `empty`, `partial` or `whole` (`empty`, with exit 1, means files changed and none selects a play), the changed files of the book's own folder read class by class (an edited element class selects its plays, a changed shared line makes the plan whole), the files outside every root it did not judge under `diff.not_computed`, the `only` and `journeys` lists to pass to `run`, `whole` with its `reason`, the chain from each changed symbol to its element and plays, with how it was reached (`direct`, or `through` the nearest symbol that mentions the change), the changed symbols and paths no element names (exit 1), the ignored ones, the Go import-only files, the widened places (a hunk with no definition line, still a list), and the fallbacks that made the plan whole (a screen no interaction names or an action no call carries goes under `unplayed` and does not widen the plan; a record or an event still makes it whole); writes `<service>-affected.json`; ends with the `run` line to play |
 
-`--only` takes endpoint class names, or interaction class names in a screen book, or outside happening names, never journey names. A wrong name is refused before anything starts. `explore` and `run` print nothing until they end, and a long one may outlive the shell's
-wait. Send the output to a file and read its last lines once the command has exited. Their report goes under
+`--only` takes endpoint class names, or interaction class names in a screen book, or outside happening names, never journey names. A wrong name is refused before anything starts. `explore` and `run` print their verdict when they end, and a long one may outlive the shell's
+wait. Send the output to a file and read its last lines once the command has exited.
+[references/play.md](references/play.md#running-a-long-play) says how to start one and what it prints. Their report goes under
 `--out`. Omitted, it goes to a fresh temp folder the command names on a `reports:` line. In a story, point `--out` at the story's spec folder, and never inside a repository. `--no-stack` skips starting the
 stack `service.py` declares, and changes nothing when that stack is empty.
 
@@ -292,6 +293,10 @@ Stack((), log_dir, fresh=Fresh(("make", "seed"), cwd="repo://api-service"))
 A host written `ostler:` in an environment is a copy of the stack that `ostler env` runs. The copy is the
 runner's to name: `--copy NAME`, else the lease the run holds, else the name the book wrote after `ostler:`,
 else `shared`. Write no copy name the book cannot keep for every runner.
+
+`ostler env up` takes the book's name as its `ops/stack.yml` declares it, the folder under
+`services/`, such as `api`, and never the module name `services.api`. One service of a book is
+`book:service`. A wrong name is refused with the list of the books that have a stack file.
 
 `search <term>` and `explain <Endpoint|Journey|Action|Event>` answer what the book already says
 before you read any source. A search term may be a label in any of the book's languages, a source file or a part

@@ -64,6 +64,13 @@ The keys are in [surface.md](surface.md#refusal-keys).
   match when the label differs by a character, when the endpoint is a subclass, or when the
   app refuses or the surface raises `CannotReach`. The run then lists it under
   `Declared divergences never met`, as `- <Endpoint> <label>: <why>`.
+- The varied call holds the changed input under the name the wire uses, so a path parameter
+  `rowId` is `rowId`, and a body is a plain mapping of the wire's field names. A path or query
+  input replaces the fixture's attribute of that name when the fixture has one. When it has none,
+  or the target is no fixture, the call holds a mapping of the wire names alone, and the
+  fixture's other attributes, such as an id a journey minted, are gone. A fixture, a model action
+  and a surface helper must not assume such an attribute is present. A bare `assert` on it
+  crashes the step. An input the call lacks is read as absent, and a rule refuses it.
 - A fixture field left `None` is left out of a body built from the fixture, and out of a query.
   A body written as a mapping sends `{"note": None}` as `null`: write the mapping to send null,
   the fixture to leave the field out.

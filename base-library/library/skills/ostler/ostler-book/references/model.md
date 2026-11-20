@@ -40,7 +40,17 @@ due_not_in_the_past = Rule[Todo, TodoApp]("Due date cannot be in the past", _due
                                          why="A chore due yesterday would show as overdue the moment it is written...")
 ```
 
-- The message is the app's, word for word.
+- The message is the app's, word for word. The run compares it to the app's answer as an exact
+  string, so every rule states the message the app answers with. An empty message is no
+  message: the rule prints with no name in the never-played list, and `check` does not flag it.
+- A text that varies per input is exact only where the variation is what the request sent,
+  written `{field}` as below. A text the book cannot rebuild from the request, such as one that
+  carries a time or a generated id, cannot be matched. Its rule is declared
+  `Unseen(rule, Because.RUNTIME, "<why>")`, and no prefix of it is written in its place.
+- A check in the app's handler that a generated router or an earlier layer makes unreachable
+  never answers the caller: the router refuses the request first, with its own message. The
+  book states that refusal, the router's, and has no rule for the unreachable check. The book
+  states what the running app answers, never what the code holds.
 - A message that repeats what the caller sent names the request's field in braces,
   `"user {sub} not found"`. The runtime fills it from the call.
 - The predicate reads the request `a`, the state `s` and the caller `by` (`None` for no

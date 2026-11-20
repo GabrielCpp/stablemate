@@ -68,9 +68,20 @@ One numbered entry per disagreement, after the last one:
 - `Unseen(Endpoint, "401", Because.SHARED_GATE, "<why>")` or
   `Unseen(Endpoint, "200: path.to.field", Because.<reason>, "<why>")` in
   `Service(unseen=...)`: an answer or field no run reaches. `Because` is a closed list of what
-  lies out of the book's reach: `SHARED_GATE`, `NEVER_FILLED`, `OUTSIDE`, `NO_ACCOUNT`,
-  `TEST_HOOK`, and `RUNTIME` for what the runtime cannot yet send or read. A gap the book
-  can close by arranging a state, a caller or an input has no reason on the list: arrange it.
+  lies out of the book's reach. A gap the book can close by arranging a state, a caller or an
+  input has no reason on the list: arrange it.
+
+  | `Because` | Means | A typical case |
+  | --- | --- | --- |
+  | `SHARED_GATE` | the answer comes from a gate every endpoint shares, and another endpoint shows it | the 401 of a token check that every route runs |
+  | `RUNTIME` | the runtime cannot yet send the request that draws it or read the answer | a refusal the app's router gives in plain text, which the runtime cannot read |
+  | `NEVER_FILLED` | the app never fills the field for any caller | a field the openapi lists and no handler sets |
+  | `OUTSIDE` | only a system outside the app sets it | a state a nightly job makes; the model's behaviour behind a route the app does not implement |
+  | `NO_ACCOUNT` | no environment the book runs in provisions an account that draws it | an admin answer where no environment has an admin |
+  | `TEST_HOOK` | the endpoint is a test hook only the book calls | a route that seeds data for the book |
+
+  An outside happening, an action, a rule or a scene takes only `RUNTIME`, `OUTSIDE` or
+  `NO_ACCOUNT`, and the book refuses any other.
   A list whose only entries other cells made gets an entry the book makes, through a standing
   fact the backstage arranges once and the model seeds.
 - `Unseen(Ghost, Because.RUNTIME, "<why>")`: an outside happening, an action, a rule or a scene no play

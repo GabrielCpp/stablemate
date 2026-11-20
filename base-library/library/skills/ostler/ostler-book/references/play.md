@@ -79,6 +79,26 @@ A pair of twins plays from the same base, each value on a world of its own. The 
 
 `Underspecified` means the app answered the two values apart where the model said they are alike. The run exits 1. Decide with the story whether the intent ignores the dimension: then the app is wrong, or the field declares `ignores=` with a `why`. If the intent cares, the model gets a rule or a read of that dimension. [inputs.md](inputs.md#twins-and-underspecified) holds the dimensions and the register for a field outside your story.
 
+## Running a long play
+
+A whole play of a large book takes 20 minutes or more, and it prints nothing during the input
+phase. Start it as one background command with a time limit, output to a file, and wait for the
+command's end. Never wait in a polling loop.
+
+```bash
+ostler book run services.<name> --no-stack > run.txt 2>&1
+```
+
+The play prints these lines, in this order:
+
+1. One `[k/N] <Journey> <verdict> <seconds>s` line per journey, on stderr.
+2. `journeys took <N>s; playing the cells`, then `cells: start` and `cells: end <seconds>s`.
+3. `playing the input classes`, then `input classes: start` and `input classes: end <seconds>s`.
+   Nothing prints between the two while the classes play.
+4. The witness phase, then the run's findings, the `inputs:` and `twins:` lines and the
+   `time: journeys, cells, inputs` line.
+5. The `verdict` block ends the output, with `green` or `red: <parts>`.
+
 ## What `--only` plays
 
 `--only` takes endpoint names, or interaction names in a screen book. It plays these and what they need to run:
