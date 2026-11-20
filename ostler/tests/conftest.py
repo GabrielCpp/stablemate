@@ -187,6 +187,15 @@ def warm_index(book: Path, directory: Path) -> None:
 
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "whole_run: plays a whole book for minutes, so the suite hands it out first")
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """The whole runs first, so `-n` plays them beside the short tests instead of after them."""
+    items.sort(key=lambda item: item.get_closest_marker("whole_run") is None)
+
+
 @pytest.fixture(autouse=True)
 def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
     """Specs live in the user's artifacts folder, so no test may resolve to the real one."""

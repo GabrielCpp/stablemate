@@ -86,6 +86,7 @@ def test_the_overdue_state_and_the_journey_that_starts_from_it_play_green_on_the
     assert done.returncode == 0, done.stdout + done.stderr
 
 
+@pytest.mark.whole_run
 def test_the_owners_book_moves_the_clock_five_days_instead_of_three_and_the_web_book_untouched_plays_green(
         todo_web, root: Path, tmp_path: Path):
     api, page = todo_web

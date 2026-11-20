@@ -280,6 +280,7 @@ def test_a_book_whose_fixtures_mint_names_checks_clean_against_its_index(module:
     assert "index differed" not in done.stdout
 
 
+@pytest.mark.whole_run
 def test_the_farrier_book_runs_green_against_the_current_farrier(tmp_path: Path):
     done = _book(["run", "services.farrier", "--out", str(tmp_path / "out")])
     assert done.returncode == 0, done.stdout + done.stderr

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import re
 import socket
+import subprocess
 import sys
 import threading
 from contextlib import contextmanager
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Iterator, cast
+from typing import Any, Callable, Iterator, cast
 
 import pytest
 
@@ -236,6 +238,30 @@ def _run(stack, tmp_path: Path, *only: str):
     return run_book(arguments, api.port, web=page.port)
 
 
+@dataclass(frozen=True)
+class FullRun:
+    """One whole run of the web book against the correct page, and the folder it wrote."""
+
+    done: subprocess.CompletedProcess[str]
+    out: Path
+
+
+@pytest.fixture(scope="module")
+def full_run(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FullRun]:
+    """The whole web book played once, read by every test that judges a complete run."""
+    stack = _stack()
+    try:
+        tmp_path = tmp_path_factory.mktemp("full-run")
+        yield FullRun(_run(stack, tmp_path), tmp_path / "out")
+    finally:
+        _stop(stack)
+
+
+def full_run_group[F: Callable[..., object]](test: F) -> F:
+    """A test that reads the shared whole run: on the one worker that plays it, handed out first."""
+    return pytest.mark.whole_run(pytest.mark.xdist_group("web-book-full-run")(test))
+
+
 def test_check_finds_nothing_wrong_with_the_web_book(todo_web):
     api, page = todo_web
     done = run_book(["check", "services.web"], api.port, web=page.port)
@@ -243,8 +269,9 @@ def test_check_finds_nothing_wrong_with_the_web_book(todo_web):
     assert "check: 0 findings" in done.stdout
 
 
-def test_the_journeys_and_the_cells_play_green_headless(todo_web, tmp_path: Path):
-    done = _run(todo_web, tmp_path)
+@full_run_group
+def test_the_journeys_and_the_cells_play_green_headless(full_run: FullRun):
+    done = full_run.done
     assert done.returncode == 0, done.stdout + done.stderr
     assert "8 pass, 0 known defects, 0 fail" in done.stdout
     assert "cells: 41 played on 23 arrangements, 8 impossible, 0 fail" in done.stdout
@@ -286,12 +313,13 @@ def test_a_page_that_leaves_no_user_out_passes_the_step_that_picks_in_the_filter
     assert done.returncode == 0, done.stdout + done.stderr
 
 
-def test_the_report_of_a_run_names_the_lists_a_journey_picked_in(todo_web, tmp_path: Path):
-    done = _run(todo_web, tmp_path)
+@full_run_group
+def test_the_report_of_a_run_names_the_lists_a_journey_picked_in(full_run: FullRun):
+    done = full_run.done
     assert done.returncode == 0, done.stdout + done.stderr
     listed = "Lists\nstated and read:\n- ListPage.assignee\n- ListPage.details\n- AddForm.assignee\n- EditForm.assignee\nstated and never read:\n- none\nnamed only:\n- none\n"
     assert listed in done.stdout
-    assert "## Lists\n\nstated and read:\n- ListPage.assignee" in (tmp_path / "out" / "web.md").read_text()
+    assert "## Lists\n\nstated and read:\n- ListPage.assignee" in (full_run.out / "web.md").read_text()
 
 
 def test_a_failing_journey_keeps_its_video_and_the_report_names_it_with_an_offset(tmp_path: Path):
@@ -578,8 +606,9 @@ def test_a_date_typed_into_a_screen_keeps_its_midnight_twin_when_the_screen_has_
     assert _twin_dimensions("due_on", ("title",)) == ["midnight"]
 
 
-def test_the_run_of_the_web_book_plays_the_same_pairs_as_before(todo_web, tmp_path: Path):
-    done = _run(todo_web, tmp_path)
+@full_run_group
+def test_the_run_of_the_web_book_plays_the_same_pairs_as_before(full_run: FullRun):
+    done = full_run.done
     assert done.returncode == 0, done.stdout + done.stderr
     assert "twins: 9 pairs played, 1 skipped because the model distinguished them, 0 underspecified" in done.stdout.splitlines()
 
@@ -591,28 +620,32 @@ def test_a_screen_input_must_name_the_fixture_field_it_holds():
         Field("x", "X", holds=Wire(Str()))
 
 
-def test_the_twins_of_a_date_pass_when_the_page_keeps_the_day(todo_web, tmp_path: Path):
-    done = _run(todo_web, tmp_path)
+@full_run_group
+def test_the_twins_of_a_date_pass_when_the_page_keeps_the_day(full_run: FullRun):
+    done = full_run.done
     assert done.returncode == 0, done.stdout + done.stderr
     assert re.search(r"twins: [1-9]\d* pairs played, .*, 0 underspecified", done.stdout), done.stdout
     assert "Underspecified" not in done.stdout
 
 
-def test_the_run_of_the_web_book_plays_the_input_classes_its_forms_state(todo_web, tmp_path: Path):
-    done = _run(todo_web, tmp_path)
+@full_run_group
+def test_the_run_of_the_web_book_plays_the_input_classes_its_forms_state(full_run: FullRun):
+    done = full_run.done
     assert done.returncode == 0, done.stdout + done.stderr
     played = re.search(r"inputs: (\d+) played, \d+ diverge as declared, 0 fail", done.stdout)
     assert played and int(played.group(1)) > 2, done.stdout
 
 
-def test_the_run_of_the_web_book_prints_how_many_stated_fields_it_tried_and_tried_every_one(todo_web, tmp_path: Path):
-    done = _run(todo_web, tmp_path)
+@full_run_group
+def test_the_run_of_the_web_book_prints_how_many_stated_fields_it_tried_and_tried_every_one(full_run: FullRun):
+    done = full_run.done
     assert done.returncode == 0, done.stdout + done.stderr
     said = re.search(r"^fields: (\d+) state a shape, (\d+) tried$", done.stdout, re.MULTILINE)
     assert said and int(said.group(1)) > 0 and said.group(1) == said.group(2), done.stdout
     assert done.stdout.index("twins:") < done.stdout.index("fields:")
 
 
+@pytest.mark.whole_run
 def test_a_page_that_sends_the_date_from_a_local_midnight_is_underspecified(tmp_path: Path):
     stack = _stack("utc-midnight")
     try:
