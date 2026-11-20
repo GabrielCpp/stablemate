@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 import hashlib
 import os
 import pickle
@@ -101,8 +102,9 @@ def _reachable_dataclasses(roots: tuple[type, ...]) -> set[type[Any]]:
     return seen
 
 
+@functools.cache
 def dataclass_shape_digest(*roots: type) -> str:
-    """A stable digest over the field *names and annotations* of *roots* and every dataclass reachable from them."""
+    """A stable digest over the field *names and annotations* of *roots* and every dataclass reachable from them, read once per set of classes since a class keeps its fields."""
     types_ = sorted(
         _reachable_dataclasses(roots), key=lambda tp: f"{tp.__module__}.{tp.__qualname__}"
     )
@@ -115,6 +117,7 @@ def dataclass_shape_digest(*roots: type) -> str:
     return _sha(*chunks)
 
 
+@functools.cache
 def _ostler_version() -> str:
     try:
         return metadata.version("ostler")
@@ -122,8 +125,9 @@ def _ostler_version() -> str:
         return "unknown"
 
 
+@functools.cache
 def _schemas_material() -> str:
-    """A digest over every bundled JSON Schema, by name and by content."""
+    """A digest over every bundled JSON Schema, by name and by content, read once since a process keeps the package it loaded."""
     root = files("ostler").joinpath("schema")
     chunks: list[bytes] = []
     for entry in sorted(root.iterdir(), key=lambda item: item.name):

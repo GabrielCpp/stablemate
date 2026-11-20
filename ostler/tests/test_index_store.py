@@ -208,6 +208,33 @@ def test_the_shape_digest_is_a_pure_function_of_the_classes_it_is_given():
     assert index.dataclass_shape_digest(Shape) == index.dataclass_shape_digest(Shape)
 
 
+def test_the_shape_digest_of_classes_already_read_reads_no_annotation_again(monkeypatch):
+    """Every index key carries the digest, and reading the annotations again cost a run seconds per graph load."""
+
+    @dataclasses.dataclass
+    class Shape:
+        a: str
+
+    first = index.dataclass_shape_digest(Shape)
+
+    def unread(*args, **kwargs):
+        raise AssertionError("the annotations were read again")
+
+    monkeypatch.setattr(index.typing, "get_type_hints", unread)
+    assert index.dataclass_shape_digest(Shape) == first
+
+
+def test_the_epoch_reads_the_installed_version_once_per_process(monkeypatch):
+    """Looking a version up scans every installed distribution, and every graph load asks for the epoch."""
+    first = index._ostler_version()
+
+    def unread(name):
+        raise AssertionError("the installed version was looked up again")
+
+    monkeypatch.setattr(index.metadata, "version", unread)
+    assert index._ostler_version() == first
+
+
 def test_two_worktrees_of_one_repo_resolve_to_one_entry(tmp_path):
     """Repo-relative, not absolute — so one entry serves every worktree and container."""
     first = make_repo(tmp_path / "worktrees/a/acme")
