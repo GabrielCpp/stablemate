@@ -8,6 +8,7 @@ import shutil
 import stat
 import subprocess
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import NoReturn
 
@@ -1502,3 +1503,248 @@ def test_up_from_a_worktree_names_the_main_checkouts_project(tmp_path: Path) -> 
     assert call[call.index("--project-name") + 1] == "acme-story-1"
     manifest = runtime.read_manifest(runtime.copy_for(main, "story-1").directory)
     assert manifest["repo"] == str(main)
+
+
+def _git_repo(tmp_path: Path) -> Path:
+    root = tmp_path / "acme"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _git(root, "commit", "-q", "--allow-empty", "-m", "init")
+    return root
+
+
+def _manifest(name: str, **fields: object) -> runtime.Copy:
+    copy = runtime.Copy(name=name, project=f"acme-{name}", directory=runtime.home() / f"acme-{name}")
+    runtime.write_manifest(copy, {"repo": "/nowhere", "copy": name, **fields})
+    (copy.directory / render_mod.COMPOSE_FILE).write_text("services: {}\n", encoding="utf-8")
+    return copy
+
+
+class RunningDocker(FakeDocker):
+    def __init__(self, running: Sequence[str] = ()) -> None:
+        super().__init__()
+        self.running = list(running)
+
+    def __call__(self, argv: Sequence[str], *, capture: bool, stdin: str | None = None) -> subprocess.CompletedProcess[str]:
+        args = list(argv)
+        if args[:3] == ["docker", "compose", "ls"]:
+            self.calls.append(args)
+            rows = [{"Name": name, "Status": "running(1)"} for name in self.running]
+            return subprocess.CompletedProcess(args, 0, json.dumps(rows), "")
+        return super().__call__(argv, capture=capture, stdin=stdin)
+
+
+def _ago(hours: float) -> str:
+    return (datetime.now(UTC) - timedelta(hours=hours)).isoformat(timespec="seconds")
+
+
+def test_up_records_the_worktree_and_the_time_of_use(tmp_path: Path) -> None:
+    root = _git_repo(tmp_path)
+    tree = tmp_path / "trees" / "story"
+    tree.parent.mkdir()
+    _git(root, "worktree", "add", "-q", str(tree), "-b", "story")
+    _file(tree, "marker", "x")
+    stub = _repo(tmp_path / "stub")
+    docker = RunningDocker()
+    up = commands.cmd_up(stub, ["web"], copy_name="story-1", cwd=tree, runner=docker)
+    manifest = runtime.read_manifest(Path(up.data["directory"]))
+    assert manifest["worktree"] == str(tree.resolve())
+    assert datetime.fromisoformat(str(manifest["used_at"])).tzinfo is not None
+    again = commands.cmd_up(stub, ["web"], copy_name="story-1", cwd=tmp_path, runner=docker)
+    assert runtime.read_manifest(Path(again.data["directory"]))["worktree"] == str(tree.resolve())
+
+
+def test_a_manifest_with_neither_field_is_never_orphaned_and_never_idle() -> None:
+    old = {"repo": "/nowhere", "copy": "x", "holder": {}}
+    assert not runtime.orphaned(old)
+    assert not runtime.idle(old)
+    assert commands.cmd_ls_all(runner=RunningDocker()).message == "no copy exists on this machine"
+    _manifest("old", repo="/nowhere")
+    row = commands.cmd_ls_all(runner=RunningDocker()).data["copies"][0]
+    assert row["mark"] == "" and row["worktree"] == ""
+
+
+def test_a_worktree_missing_from_disk_and_from_git_is_orphaned(tmp_path: Path) -> None:
+    root = _git_repo(tmp_path)
+    tree = tmp_path / "trees" / "story"
+    tree.parent.mkdir()
+    _git(root, "worktree", "add", "-q", str(tree), "-b", "story")
+    manifest = {"repo": str(root), "worktree": str(tree)}
+    assert not runtime.orphaned(manifest)
+    shutil.rmtree(tree)
+    assert not runtime.orphaned(manifest)
+    _git(root, "worktree", "prune")
+    assert runtime.orphaned(manifest)
+
+
+def test_an_unmounted_disk_or_a_missing_repo_is_not_an_orphan(tmp_path: Path) -> None:
+    root = _git_repo(tmp_path)
+    assert not runtime.orphaned({"repo": str(root), "worktree": str(tmp_path / "unmounted" / "story")})
+    (tmp_path / "trees").mkdir()
+    gone = {"repo": str(tmp_path / "missing"), "worktree": str(tmp_path / "trees" / "story")}
+    assert not runtime.orphaned(gone)
+    assert runtime.orphaned({"repo": str(root), "worktree": str(tmp_path / "trees" / "story")})
+
+
+def test_a_copy_unused_for_a_day_with_no_live_holder_is_idle() -> None:
+    assert runtime.idle({"used_at": _ago(25)})
+    assert runtime.idle({"used_at": _ago(25), "holder": {}})
+    assert runtime.idle({"used_at": _ago(25), "holder": {"pid": _gone_pid(), "started": ""}})
+    assert not runtime.idle({"used_at": _ago(23)})
+    assert not runtime.idle({"used_at": _ago(25), "holder": runtime.holder_stamp(os.getpid())})
+
+
+def test_ls_all_lists_every_copy_with_its_mark(tmp_path: Path) -> None:
+    root = _git_repo(tmp_path)
+    (tmp_path / "trees").mkdir()
+    _manifest("lost", repo=str(root), worktree=str(tmp_path / "trees" / "lost"),
+              rendered_at=_ago(50), used_at=_ago(2))
+    _manifest("slow", repo="/nowhere", worktree="/nowhere/tree", rendered_at=_ago(5),
+              used_at=_ago(30))
+    _manifest("busy", repo="/nowhere", rendered_at=_ago(1), used_at=_ago(0.5))
+    docker = RunningDocker(["acme-slow"])
+    listing = commands.cmd_ls_all(runner=docker)
+    by_copy = {row["copy"]: row for row in listing.data["copies"]}
+    assert by_copy["lost"]["mark"] == "orphaned" and by_copy["lost"]["state"] == "stopped"
+    assert by_copy["lost"]["age"] == "2d" and by_copy["lost"]["unused"] == "2h"
+    assert by_copy["slow"]["mark"] == "idle" and by_copy["slow"]["state"] == "running"
+    assert by_copy["busy"]["mark"] == ""
+    lines = {line.split()[1]: line for line in listing.message.splitlines()}
+    assert lines["lost"].endswith("orphaned") and lines["slow"].endswith("idle")
+    assert lines["busy"].split()[2] == "unknown"
+
+
+def test_prune_tears_down_orphans_and_stops_idle_running_copies(tmp_path: Path) -> None:
+    root = _git_repo(tmp_path)
+    (tmp_path / "trees").mkdir()
+    lost = _manifest("lost", repo=str(root), worktree=str(tmp_path / "trees" / "lost"),
+                     used_at=_ago(1))
+    slow = _manifest("slow", used_at=_ago(30))
+    asleep = _manifest("asleep", used_at=_ago(30))
+    busy = _manifest("busy", used_at=_ago(1))
+    docker = RunningDocker(["acme-slow", "acme-busy"])
+    dry = commands.cmd_prune(dry_run=True, runner=docker)
+    assert sorted(dry.message.splitlines()) == [
+        f"acme-lost: orphaned, its worktree {tmp_path / 'trees' / 'lost'} is gone; "
+        "tear down and drop its data",
+        "acme-slow: idle for 30h; stop and keep its data"]
+    assert not [call for call in docker.calls if "down" in call]
+    done = commands.cmd_prune(runner=docker)
+    assert sorted(done.message.splitlines()) == sorted(dry.message.splitlines())
+    downs = {call[call.index("--project-name") + 1]: call for call in docker.calls if "down" in call}
+    assert set(downs) == {"acme-lost", "acme-slow"}
+    assert "--volumes" in downs["acme-lost"] and "--volumes" not in downs["acme-slow"]
+    assert not lost.directory.exists()
+    assert slow.directory.is_dir() and asleep.directory.is_dir() and busy.directory.is_dir()
+
+
+def test_prune_with_nothing_to_do_says_so() -> None:
+    _manifest("busy", used_at=_ago(1))
+    outcome = commands.cmd_prune(runner=RunningDocker(["acme-busy"]))
+    assert outcome.message == "nothing to prune"
+    assert outcome.data["pruned"] == []
+
+
+def test_the_cli_runs_ls_all_and_prune_with_json(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    _manifest("busy", used_at=_ago(1))
+    parser = argparse.ArgumentParser()
+    cli.add_parser(parser.add_subparsers(dest="command"))
+    listing = parser.parse_args(["env", "ls", "--all", "--json"])
+    assert cli.run(listing, tmp_path) == 0
+    assert json.loads(capsys.readouterr().out)["copies"][0]["copy"] == "busy"
+    pruning = parser.parse_args(["env", "prune", "--dry-run", "--json"])
+    assert pruning.dry_run
+
+
+def test_an_up_reclaims_the_orphaned_and_the_idle_beside_the_dead_holder(tmp_path: Path) -> None:
+    root = _git_repo(tmp_path)
+    (tmp_path / "trees").mkdir()
+    _manifest("lost", repo=str(root), worktree=str(tmp_path / "trees" / "lost"))
+    _manifest("slow", used_at=_ago(30))
+    docker = RunningDocker(["acme-slow"])
+    stub = _repo(tmp_path / "stub")
+    up = commands.cmd_up(stub, ["web"], copy_name="story-2", runner=docker)
+    assert up.ok, up.message
+    assert sorted(row["project"] for row in up.data["pruned"]) == ["acme-lost", "acme-slow"]
+    assert "acme-slow: idle for 30h; stop and keep its data" in up.message
+    assert not (runtime.home() / "acme-lost").exists()
+    assert (runtime.home() / "acme-slow").is_dir()
+    assert (runtime.home() / "acme-story-2").is_dir()
+
+
+def test_an_up_never_prunes_the_copy_it_brings_up(tmp_path: Path) -> None:
+    stub = _repo(tmp_path)
+    docker = RunningDocker(["acme-story-2"])
+    commands.cmd_up(stub, ["web"], copy_name="story-2", runner=docker)
+    runtime.write_manifest(runtime.copy_for(stub, "story-2"), {
+        **runtime.read_manifest(runtime.copy_for(stub, "story-2").directory),
+        "used_at": _ago(40), "worktree": str(tmp_path / "gone")})
+    up = commands.cmd_up(stub, ["web"], copy_name="story-2", runner=docker)
+    assert up.data["pruned"] == []
+
+
+def test_a_copy_records_who_started_it_only_when_it_was_not_running(tmp_path: Path) -> None:
+    stub = _repo(tmp_path)
+    copy = runtime.copy_for(stub, "story-2")
+    stamp = runtime.holder_stamp(os.getpid())
+    commands.cmd_up(stub, ["web"], copy_name="story-2", holder=os.getpid(), runner=RunningDocker())
+    assert runtime.read_manifest(copy.directory)["started_by"] == stamp
+    commands.cmd_up(stub, ["web"], copy_name="story-2", holder=_gone_pid(),
+                    runner=RunningDocker(["acme-story-2"]))
+    assert runtime.read_manifest(copy.directory)["started_by"] == stamp
+    commands.cmd_up(stub, ["web"], copy_name="by-hand", runner=RunningDocker())
+    assert runtime.read_manifest(runtime.copy_for(stub, "by-hand").directory)["started_by"] == {}
+
+
+def test_a_running_copy_whose_starter_is_dead_is_adopted_by_the_next_up(tmp_path: Path) -> None:
+    stub = _repo(tmp_path)
+    copy = runtime.copy_for(stub, "story-2")
+    commands.cmd_up(stub, ["web"], copy_name="story-2", holder=_gone_pid(), runner=RunningDocker())
+    commands.cmd_up(stub, ["web"], copy_name="story-2", holder=os.getpid(),
+                    runner=RunningDocker(["acme-story-2"]))
+    assert runtime.read_manifest(copy.directory)["started_by"] == runtime.holder_stamp(os.getpid())
+
+
+def test_a_running_copy_whose_starter_is_alive_keeps_its_starter(tmp_path: Path) -> None:
+    stub = _repo(tmp_path)
+    copy = runtime.copy_for(stub, "story-2")
+    first = subprocess.Popen(["sleep", "60"])
+    try:
+        stamp = runtime.holder_stamp(first.pid)
+        commands.cmd_up(stub, ["web"], copy_name="story-2", holder=first.pid,
+                        runner=RunningDocker())
+        commands.cmd_up(stub, ["web"], copy_name="story-2", holder=os.getpid(),
+                        runner=RunningDocker(["acme-story-2"]))
+        assert runtime.read_manifest(copy.directory)["started_by"] == stamp
+    finally:
+        first.kill()
+        first.wait()
+
+
+def test_a_running_copy_started_by_hand_stays_empty_when_another_up_holds_it(
+    tmp_path: Path,
+) -> None:
+    stub = _repo(tmp_path)
+    copy = runtime.copy_for(stub, "story-2")
+    commands.cmd_up(stub, ["web"], copy_name="story-2", runner=RunningDocker())
+    commands.cmd_up(stub, ["web"], copy_name="story-2", holder=os.getpid(),
+                    runner=RunningDocker(["acme-story-2"]))
+    assert runtime.read_manifest(copy.directory)["started_by"] == {}
+
+
+def test_a_holder_is_cleared_only_by_the_process_that_holds_it(tmp_path: Path) -> None:
+    stub = _repo(tmp_path)
+    copy = runtime.copy_for(stub, "story-2")
+    commands.cmd_up(stub, ["web"], copy_name="story-2", holder=os.getpid(), runner=RunningDocker())
+    assert not runtime.release_holder(stub, "story-2", _gone_pid())
+    assert runtime.release_holder(stub, "story-2", os.getpid())
+    assert runtime.read_manifest(copy.directory)["holder"] == {}
+
+
+def test_touching_a_copy_that_cannot_be_written_never_raises() -> None:
+    runtime.touch_used(runtime.home() / "acme-nothing")
+    copy = _manifest("locked")
+    (copy.directory / runtime.MANIFEST).chmod(0o400)
+    runtime.touch_used(copy.directory)

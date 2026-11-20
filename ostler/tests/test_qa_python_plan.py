@@ -7,6 +7,10 @@ import re
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from ostler.environments import runtime
+from ostler.qa import addresses
 from ostler.qa.harness_host import load_harness_module
 from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
 from ostler.qa.run import cmd_run, cmd_validate
@@ -409,3 +413,18 @@ def test_a_stale_report_does_not_outlive_the_run_that_wrote_it(tmp_path: Path) -
     assert "<!-- run: qa-story-1 status: passed -->" in (spec / "qa-report.md").read_text(encoding="utf-8")
 
 
+
+
+def test_a_run_against_a_copy_records_the_use_of_the_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    module = _plan(spec)
+    (tmp_path / "out.json").write_text(json.dumps({"item": {"id": "abc"}}), encoding="utf-8")
+    monkeypatch.setenv(runtime.HOME_ENV, str(tmp_path / "env-home"))
+    copy = runtime.Copy(name="story-1", project="acme-story-1",
+                        directory=tmp_path / "env-home" / "acme-story-1")
+    runtime.write_manifest(copy, {"repo": "/nowhere", "copy": "story-1"})
+    monkeypatch.setenv(addresses.BOOK_ENV, str(copy.directory / runtime.ADDRESSES))
+    assert cmd_run(module, spec, root=tmp_path).ok
+    assert runtime.read_manifest(copy.directory)["used_at"]

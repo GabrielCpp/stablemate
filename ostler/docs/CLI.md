@@ -293,7 +293,8 @@ ostler env check  [--json]
 ostler env render [TARGET...] [--copy NAME] [--fixtures SET[,SET]] [--json]
 ostler env up     [TARGET...] [--copy NAME] [--fixtures SET[,SET]] [--fresh] [--wait SECONDS] [--json]
 ostler env down   [--copy NAME] [--keep-data] [--json]
-ostler env ls     [--json]
+ostler env ls     [--all] [--json]
+ostler env prune  [--dry-run] [--json]
 ostler env schema
 ostler env address NAME [--copy NAME] [--json]
 ostler env compose [--copy NAME] -- ARGS...
@@ -301,7 +302,7 @@ ostler env exec [--copy NAME] -- COMMAND...
 ```
 
 `exec` runs a command under the secrets the stack root's `secrets:` names. `ls` prints each service with its `about`, its address and the copies that run it, and exits 1 when
-the stack files have errors. `schema` prints a JSON Schema for `stack.yml`.
+the stack files have errors. `ls --all` lists every copy on this machine with its worktree, age, last use and an `orphaned` or `idle` mark. `prune` tears down the orphaned copies and stops the idle ones, and `--dry-run` only says which. `schema` prints a JSON Schema for `stack.yml`.
 
 `--fresh` drops the copy's volumes before it comes up, so its fixtures load again. `--fixtures`
 replaces each book's `default-fixtures`. `--keep-data` keeps the volumes and the rendered files,

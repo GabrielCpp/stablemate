@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ from ostler.qa.plan import load_plan, resolve_spec_dir, validate_v2
 from ostler.qa.report import ReportError, build_report, video_clock, write_report
 from ostler.qa.frames import FramesError, extract_frames
 from ostler.qa.v2 import run_plan as run_v2_plan
+from ostler.qa import addresses
 from ostler.qa import lint as lint_mod
 from ostler.qa import run_log
 from ostler.qa import tools as tools_mod
@@ -404,6 +406,11 @@ def cmd_run(
             data={"problems": problems},
             status="invalid",
         )
+    book_file = os.environ.get(addresses.BOOK_ENV, "")
+    if book_file:
+        from ostler.environments import runtime
+
+        runtime.touch_used(Path(book_file).parent)
     status, message, data = run_v2_plan(
         document,
         root=root,

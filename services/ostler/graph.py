@@ -418,6 +418,26 @@ class EnvList(Command):
     source = ("ostler/ostler/environments/commands.py::cmd_ls",)
 
 
+class EnvListAll(Command):
+    does = "List every copy on this machine, of any repo, marking the orphaned and idle ones."
+    program = "ostler"
+    argv = ("--full-ids", "env", "ls", "--all")
+    args = ARGS
+    answers = (Exit(0, Lines(), "one line for each copy with its worktree, state, age, last use and mark, or that none exists"),)
+    carries = act.ListEveryCopy
+    source = ("ostler/ostler/environments/commands.py::cmd_ls_all", "ostler/ostler/environments/runtime.py")
+
+
+class EnvPrune(Command):
+    does = "Say which copies prune would tear down or stop, and act on none."
+    program = "ostler"
+    argv = ("--full-ids", "env", "prune", "--dry-run")
+    args = ARGS
+    answers = (Exit(0, Lines(), "one line for each orphaned or idle copy, or that there is nothing to prune"),)
+    carries = act.PruneNothing
+    source = ("ostler/ostler/environments/commands.py::cmd_prune", "ostler/ostler/environments/runtime.py")
+
+
 class BacklogAdopt(Command):
     does = "Import an old bullet list as records on the Register, once, and delete the list."
     program = "ostler"
@@ -783,7 +803,7 @@ ALL = (
     EditRename, EditRenameUnknown, CreateMilestone, MilestoneEpicsFirst, MilestoneEpicsBoth, MilestoneEpicsUnknown,
     MilestoneSourceItem, CreateSpec, CreateSpecOfUnknownStory, BacklogAdd, BacklogList, BacklogPrune, BacklogDropWithoutReason,
     FileDecision, TemplateNew, TemplateFind, TemplateApply, TemplateDelete, ListArtifactKinds, ScaffoldArtifact, VetArtifact,
-    ListQaTools, CleanQaScratch, EnvSchema, EnvCheck, EnvList, BacklogAdopt, LintPlan, LintBadPlan, ValidatePlan,
+    ListQaTools, CleanQaScratch, EnvSchema, EnvCheck, EnvList, EnvListAll, EnvPrune, BacklogAdopt, LintPlan, LintBadPlan, ValidatePlan,
     ValidateBadPlan, RunPlan, RunBadPlan, ReportRun, ReplayRun, ReadLedger, CutFrames, StartSession, RecordStep, RecordAssertion,
     StopSession, EnvRender, EnvRenderUnknown, EnvDown, EnvAddress, EnvExec,
     ValidateWebPlan, ValidatePhonePlan, RunWebPlan, RunPhonePlan, RunGrpcPlan, VetWithoutArguments, VetWithoutRegions,

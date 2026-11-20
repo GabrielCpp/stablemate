@@ -8,8 +8,9 @@ import re
 import shutil
 import socket
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
@@ -22,6 +23,7 @@ HOLDER_ENV = "STABLEMATE_LEASE_HOLDER"
 MANIFEST = "copy.json"
 ADDRESSES = "addresses.json"
 SECRETS_DIR = "secrets"
+IDLE_AFTER = timedelta(hours=24)
 _PROJECT_CHARS = re.compile(r"[^a-z0-9_-]+")
 _PUBLISHED = re.compile(r":(\d+)->")
 _OCCUPANT_FORMAT = "\t".join([
@@ -141,6 +143,85 @@ def hold(repo: Path, name: str, pid: int) -> bool:
     if not manifest:
         return False
     write_manifest(copy, {**manifest, "holder": holder_stamp(pid)})
+    return True
+
+
+def worktree_of(cwd: Path) -> str:
+    """The top level of the git worktree *cwd* stands in, or empty outside one."""
+    try:
+        done = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+                              capture_output=True, text=True, check=False)
+    except OSError:
+        return ""
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+def touch_used(directory: Path) -> None:
+    """Record now as the last use of the copy held in *directory*; a copy with no manifest, or an unwritable one, is left alone."""
+    try:
+        manifest = read_manifest(directory)
+        if not manifest or directory.parent != home():
+            return
+        manifest["used_at"] = datetime.now(UTC).isoformat(timespec="seconds")
+        (directory / MANIFEST).write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+                                          encoding="utf-8")
+    except OSError:
+        return
+
+
+def _listed_worktrees(repo: Path) -> set[str] | None:
+    try:
+        done = subprocess.run(["git", "-C", str(repo), "worktree", "list", "--porcelain"],
+                              capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+    if done.returncode != 0:
+        return None
+    return {line.removeprefix("worktree ").strip() for line in done.stdout.splitlines()
+            if line.startswith("worktree ")}
+
+
+def orphaned(manifest: Mapping[str, object]) -> bool:
+    """Whether the worktree a copy records is gone: no directory, and no entry in its repo's worktree list."""
+    recorded = manifest.get("worktree")
+    repo = manifest.get("repo")
+    if not isinstance(recorded, str) or not recorded or not isinstance(repo, str):
+        return False
+    tree = Path(recorded)
+    if tree.is_dir() or not tree.parent.is_dir() or not Path(repo).is_dir():
+        return False
+    listed = _listed_worktrees(Path(repo))
+    return listed is not None and recorded not in listed
+
+
+def used_ago(manifest: Mapping[str, object], now: datetime | None = None) -> timedelta | None:
+    """How long ago the copy was last used, or None when its manifest records no use."""
+    stamp = manifest.get("used_at")
+    if not isinstance(stamp, str):
+        return None
+    try:
+        then = datetime.fromisoformat(stamp)
+    except ValueError:
+        return None
+    return (now or datetime.now(UTC)) - then.astimezone(UTC) if then.tzinfo else None
+
+
+def idle(manifest: Mapping[str, object], now: datetime | None = None) -> bool:
+    """Whether the copy went unused for longer than `IDLE_AFTER` and no live run holds it."""
+    ago = used_ago(manifest, now)
+    if ago is None or ago <= IDLE_AFTER:
+        return False
+    holder = manifest.get("holder")
+    return not (isinstance(holder, dict) and holder.get("pid")) or not holder_alive(holder)
+
+
+def release_holder(repo: Path, name: str, pid: int) -> bool:
+    """Clear the holder of *repo*'s copy *name* when it is the process *pid*, so the copy outlives the run."""
+    copy = copy_for(repo, name)
+    manifest = read_manifest(copy.directory)
+    if not manifest or manifest.get("holder") != holder_stamp(pid):
+        return False
+    write_manifest(copy, {**manifest, "holder": {}})
     return True
 
 

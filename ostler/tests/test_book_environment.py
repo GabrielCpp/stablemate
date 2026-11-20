@@ -226,3 +226,24 @@ def test_a_copy_not_rendered_runs_nothing(stack: Path):
 def test_a_run_takes_the_copy_as_an_option(tmp_path: Path):
     done = run_book(["run", "services.api", "--no-stack", "--copy", "runs-own", "--out", str(tmp_path / "out"), "--print-exec"], 1)
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_resolving_an_address_records_the_use_of_the_copy(stack: Path):
+    publish(stack, "books-own", {"api": "http://127.0.0.1:4000"})
+    directory = runtime.copy_for(stack, "books-own").directory
+    runtime.write_manifest(runtime.copy_for(stack, "books-own"), {"repo": str(stack), "copy": "books-own"})
+    assert "used_at" not in runtime.read_manifest(directory)
+    local(stack).address("api")
+    assert runtime.read_manifest(directory)["used_at"]
+
+
+def test_a_command_run_records_the_use_of_the_copy(stack: Path):
+    publish(stack, "books-own", {})
+    copy = runtime.copy_for(stack, "books-own")
+    runtime.write_manifest(copy, {"repo": str(stack), "copy": "books-own"})
+    place = local(stack)
+    place.runner = Docker(["abc123"])
+    assert place.copy() == "books-own"
+    assert "used_at" not in runtime.read_manifest(copy.directory)
+    place.exec("api", ["true"])
+    assert runtime.read_manifest(copy.directory)["used_at"]

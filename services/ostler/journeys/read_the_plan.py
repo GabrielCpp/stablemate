@@ -7,7 +7,7 @@ from ostler.book import Journey
 
 from ..commands import Look
 from ..fixtures import nothing
-from ..graph import (BuildIndex, CleanQaScratch, Doctor, EditRename, EditRenameUnknown, EnvCheck, EnvList, EnvSchema, EvictCache,
+from ..graph import (BuildIndex, CleanQaScratch, Doctor, EditRename, EditRenameUnknown, EnvCheck, EnvList, EnvListAll, EnvPrune, EnvSchema, EvictCache,
                      ListArtifactKinds, ListEpicRows, ListQaTools, ListStoryRows, NextEpic, NextStory, QueryCovering, SearchPlan,
                      ShowChecks)
 
@@ -40,5 +40,7 @@ class ReadThePlan(Journey):
             EnvSchema(nothing()),
             EnvCheck(nothing()),
             EnvList(nothing()),
+            EnvListAll(nothing()),
+            EnvPrune(nothing()),
             Look(),
         )

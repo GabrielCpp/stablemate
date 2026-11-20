@@ -266,6 +266,8 @@ ostler env up web --copy story-12    # web and everything it needs, waited until
 ostler env address gateway --copy story-12
 ostler env compose --copy story-12 -- logs api-api
 ostler env ls                        # each service, what it is, and the copies running it
+ostler env ls --all                  # every copy on this machine, marked orphaned or idle
+ostler env prune --dry-run           # what prune would tear down (orphaned) or stop (idle)
 ostler env schema                    # the JSON Schema of a stack.yml
 ostler env down --copy story-12      # data and rendered files go too, unless --keep-data
 ```

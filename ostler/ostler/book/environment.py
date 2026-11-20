@@ -41,6 +41,7 @@ class Environment:
     _books: dict[str, tuple[int, dict[str, str]]] = field(default_factory=dict, init=False, repr=False, compare=False)
     _answers: dict[tuple[str, str], str] = field(default_factory=dict, init=False, repr=False, compare=False)
     _containers: dict[tuple[str, str], str] = field(default_factory=dict, init=False, repr=False, compare=False)
+    _touched: set[str] = field(default_factory=set, init=False, repr=False, compare=False)
 
     def address(self, host: str) -> str:
         if host not in self.hosts:
@@ -49,6 +50,7 @@ class Environment:
         if not url.startswith(OSTLER):
             return url
         copy = runtime.copy_for(self._stack_root(), self._copy_of(url))
+        self._touch(copy)
         book_file = copy.directory / runtime.ADDRESSES
         try:
             stamp = book_file.stat().st_mtime_ns
@@ -103,7 +105,13 @@ class Environment:
         copy = runtime.copy_for(self._stack_root(), name)
         if not (copy.directory / COMPOSE_FILE).is_file():
             raise RuntimeError(f"{copy.name} has not been rendered: run `ostler env up` first")
+        self._touch(copy)
         return copy
+
+    def _touch(self, copy: Copy) -> None:
+        if copy.project not in self._touched:
+            self._touched.add(copy.project)
+            runtime.touch_used(copy.directory)
 
     def _stack_root(self) -> Path:
         start = self.root or str(Path.cwd())

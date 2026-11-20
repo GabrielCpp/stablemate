@@ -15,7 +15,7 @@ from ..fixtures import (ALPHA, BRAVO, FIRST, SECOND, SX, THIRD, conflict, create
 from ..graph import (EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, ValidatePhonePlan, ValidateWebPlan, VetDryRun, VetOfUnknownStory,
                      VetWithoutArguments, VetWithoutRegions, EnvAddress, EnvDown, EnvExec, EnvRender, EnvRenderUnknown, BacklogAdopt, BacklogAdd, CutFrames, LintBadPlan, LintPlan, ReadLedger, RecordAssertion, RecordStep, ReplayRun,
                      ReportRun, RunBadPlan, RunPlan, StartSession, StopSession, ValidateBadPlan, ValidatePlan, BacklogDropWithoutReason, BacklogList, BacklogPrune, BuildIndex, CleanQaScratch, CreateMilestone,
-                     CreateSpec, CreateSpecOfUnknownStory, Doctor, EditRename, EditRenameUnknown, EnvCheck, EnvList, EnvSchema,
+                     CreateSpec, CreateSpecOfUnknownStory, Doctor, EditRename, EditRenameUnknown, EnvCheck, EnvList, EnvListAll, EnvPrune, EnvSchema,
                      EvictCache, FileDecision, ListArtifactKinds, ListEpicRows, ListQaTools, ListStoryRows, MilestoneEpicsBoth,
                      MilestoneEpicsFirst, MilestoneEpicsUnknown, MilestoneSourceItem, NextEpic, NextStory, QueryCovering,
                      ScaffoldArtifact, SearchPlan, ShowChecks, TemplateApply, TemplateDelete, TemplateFind, TemplateNew,
@@ -211,6 +211,8 @@ READ_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "env schema": lambda m: EnvSchema(nothing()),
     "env check": lambda m: EnvCheck(nothing()),
     "env list": lambda m: EnvList(nothing()),
+    "env list all": lambda m: EnvListAll(nothing()),
+    "env prune, dry run": lambda m: EnvPrune(nothing()),
     "look": lambda m: Look(),
 }
 

@@ -44,7 +44,14 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
     down.add_argument("--json", action="store_true")
 
     ls = ops.add_parser("ls", help="list this stack's services, what each is and the copies running it")
+    ls.add_argument("--all", action="store_true",
+                    help="list every copy on this machine, of any repo, marking the orphaned and idle ones")
     ls.add_argument("--json", action="store_true")
+
+    prune = ops.add_parser(
+        "prune", help="tear down the copies whose worktree is gone and stop the idle ones")
+    prune.add_argument("--dry-run", action="store_true", help="say what would be done and do nothing")
+    prune.add_argument("--json", action="store_true")
 
     render = ops.add_parser("render", help="write the copy's compose file without starting it")
     render.add_argument("targets", nargs="*", metavar="TARGET")
@@ -101,7 +108,9 @@ def run(args: argparse.Namespace, root: Path) -> int:
     elif op == "down":
         outcome = commands.cmd_down(root, copy_name=copy_name, keep_data=args.keep_data)
     elif op == "ls":
-        outcome = commands.cmd_ls(root)
+        outcome = commands.cmd_ls_all() if args.all else commands.cmd_ls(root)
+    elif op == "prune":
+        outcome = commands.cmd_prune(dry_run=args.dry_run)
     elif op == "render":
         outcome = commands.cmd_render(root, args.targets, copy_name=copy_name, fixtures=fixtures)
     elif op == "address":

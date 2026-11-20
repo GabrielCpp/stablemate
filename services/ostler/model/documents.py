@@ -297,6 +297,23 @@ class ListEnvServices(Action[Nothing, Plan]):
         return Transaction(says=("demo", "  demo:web  a static page server  demo-web :18080"))
 
 
+class ListEveryCopy(Action[Nothing, Plan]):
+    accept = Nothing
+
+    @staticmethod
+    def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
+        listed = "<sandbox>/plan  shared  unknown  stopped  age 0m  unused unknown"
+        return Transaction(says=(listed if RENDERED in s.files.items else "no copy exists on this machine",))
+
+
+class PruneNothing(Action[Nothing, Plan]):
+    accept = Nothing
+
+    @staticmethod
+    def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
+        return Transaction(says=("nothing to prune",))
+
+
 class EvictCache(Action[Nothing, Plan]):
     accept = Nothing
 

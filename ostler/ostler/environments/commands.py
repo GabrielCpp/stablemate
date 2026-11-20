@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -143,7 +143,7 @@ def cmd_up(
         taken = _taken_ports(prepared, targets, runner)
         if taken:
             return _fail(taken, copy=copy.name)
-    reclaimed = reclaim(keep=copy, runner=runner) if copy.name != SHARED else []
+    reclaimed, pruned = _reclaim(keep=copy, runner=runner) if copy.name != SHARED else ([], [])
     if holder is None and os.environ.get(addresses.LEASE_ENV, "") == copy.name:
         holder = runtime.holder_from_env()
     compose = Compose(copy, runner)
@@ -160,11 +160,21 @@ def cmd_up(
         return _fail(str(exc), copy=copy.name)
     except secrets.SecretError as exc:
         return _fail(str(exc), copy=copy.name)
+    running = runtime.running_projects(runner).get(copy.project, "").startswith("running")
+    started_by: dict[str, object] | None = None
+    if not running:
+        started_by = runtime.holder_stamp(holder) if holder else {}
+    elif holder:
+        recorded = runtime.read_manifest(copy.directory).get("started_by")
+        if recorded and not runtime.holder_alive(recorded):
+            started_by = runtime.holder_stamp(holder)
     jobs = [service for service in prepared.services if service.outputs]
     produced = copy.directory / runtime.SECRETS_DIR / OUTPUTS_ENV
     _write(root, prepared, rendered, started=True, holder=holder,
            env_files=[*env_files, produced] if jobs else env_files,
-           exec_prefix=source.exec_prefix())
+           exec_prefix=source.exec_prefix(), started_by=started_by,
+           worktree=runtime.worktree_of(cwd or Path.cwd()))
+    runtime.touch_used(copy.directory)
     if jobs:
         problem = _run_jobs(prepared, jobs, produced, compose, wait_seconds)
         if problem:
@@ -189,9 +199,10 @@ def cmd_up(
                   if service.address), "")
     lines = [f"{name}: {url}" for name, url in sorted(book.items())]
     lines += [f"reclaimed {name}, whose run is gone" for name in reclaimed]
+    lines += [_prune_line(row) for row in pruned]
     return EnvOutcome(True, "\n".join([f"{copy.name} is up", *lines]),
                       _summary(prepared, addresses=book, address_book=str(book_file),
-                               entry_url=entry, reclaimed=reclaimed))
+                               entry_url=entry, reclaimed=reclaimed, pruned=pruned))
 
 
 def _taken_ports(prepared: Prepared, targets: Sequence[str], runner: Runner) -> str:
@@ -239,7 +250,12 @@ def cmd_down(root: Path, *, copy_name: str = SHARED, keep_data: bool = False,
 
 
 def reclaim(*, keep: Copy | None = None, runner: Runner = run_command) -> list[str]:
-    """Tear down every copy on this machine whose holding run is gone, and name each one."""
+    """Tear down every copy on this machine whose holding run is gone, then prune, and name each one."""
+    gone, pruned = _reclaim(keep=keep, runner=runner)
+    return [*gone, *(row["project"] for row in pruned)]
+
+
+def _reclaim(*, keep: Copy | None, runner: Runner) -> tuple[list[str], list[dict[str, str]]]:
     gone: list[str] = []
     for copy, manifest in runtime.held_copies():
         if keep is not None and copy.directory == keep.directory:
@@ -248,7 +264,57 @@ def reclaim(*, keep: Copy | None = None, runner: Runner = run_command) -> list[s
             continue
         if _down(copy, keep_data=False, runner=runner).ok:
             gone.append(copy.project)
-    return gone
+    return gone, prune(keep=keep, runner=runner)
+
+
+def prune(*, keep: Copy | None = None, dry_run: bool = False, runner: Runner = run_command,
+          now: datetime | None = None) -> list[dict[str, str]]:
+    """Tear down each orphaned copy and stop each idle running one, keeping its data; name what was acted on."""
+    status: dict[str, str] | None = None
+    acted: list[dict[str, str]] = []
+    for copy, manifest in runtime.held_copies():
+        if keep is not None and copy.directory == keep.directory:
+            continue
+        row = {"copy": copy.name, "project": copy.project, "repo": str(manifest.get("repo", ""))}
+        if runtime.orphaned(manifest):
+            row |= {"reason": "orphaned", "action": "remove",
+                    "worktree": str(manifest.get("worktree", ""))}
+            keep_data = False
+        elif runtime.idle(manifest, now) and (
+                status := status if status is not None else runtime.running_projects(runner)
+        ).get(copy.project, "").startswith("running"):
+            ago = runtime.used_ago(manifest, now)
+            row |= {"reason": "idle", "action": "stop", "idle": _span(ago)}
+            keep_data = True
+        else:
+            continue
+        if dry_run or _down(copy, keep_data=keep_data, runner=runner).ok:
+            acted.append(row)
+    return acted
+
+
+def _prune_line(row: dict[str, str]) -> str:
+    if row["reason"] == "orphaned":
+        return f"{row['project']}: orphaned, its worktree {row['worktree']} is gone; tear down and drop its data"
+    return f"{row['project']}: idle for {row['idle']}; stop and keep its data"
+
+
+def _span(span: timedelta | None) -> str:
+    if span is None:
+        return "unknown"
+    minutes = int(span.total_seconds() // 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    if minutes < 60 * 48:
+        return f"{minutes // 60}h"
+    return f"{minutes // (60 * 24)}d"
+
+
+def cmd_prune(*, dry_run: bool = False, runner: Runner = run_command) -> EnvOutcome:
+    """Tear down the orphaned copies of this machine and stop the idle ones, or only say which."""
+    rows = prune(dry_run=dry_run, runner=runner)
+    message = "\n".join(_prune_line(row) for row in rows) or "nothing to prune"
+    return EnvOutcome(True, message, {"ok": True, "dry_run": dry_run, "pruned": rows})
 
 
 def _down(copy: Copy, *, keep_data: bool, runner: Runner) -> EnvOutcome:
@@ -300,6 +366,43 @@ def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
     return EnvOutcome(not catalog.errors, message,
                       {"ok": not catalog.errors, "copies": rows, "services": services,
                        "errors": catalog.errors})
+
+
+def cmd_ls_all(*, runner: Runner = run_command, now: datetime | None = None) -> EnvOutcome:
+    """Every copy on this machine, of any repo, with its worktree, state, age, last use and mark."""
+    status = runtime.running_projects(runner)
+    moment = now or datetime.now(UTC)
+    rows: list[dict[str, Any]] = []
+    for copy, manifest in runtime.held_copies():
+        mark = "orphaned" if runtime.orphaned(manifest) else "idle" if runtime.idle(manifest, moment) else ""
+        rendered = _stamp(manifest.get("rendered_at"))
+        rows.append({
+            "repo": str(manifest.get("repo", "")),
+            "copy": copy.name,
+            "project": copy.project,
+            "worktree": str(manifest.get("worktree", "")),
+            "state": "running" if status.get(copy.project, "").startswith("running") else "stopped",
+            "rendered_at": manifest.get("rendered_at", ""),
+            "age": _span(moment - rendered) if rendered else "unknown",
+            "used_at": manifest.get("used_at", ""),
+            "unused": _span(runtime.used_ago(manifest, moment)),
+            "mark": mark,
+        })
+    cells = [[row["repo"], row["copy"], row["worktree"] or "unknown", row["state"],
+              f"age {row['age']}", f"unused {row['unused']}", row["mark"]] for row in rows]
+    widths = [max(len(cell[column]) for cell in cells) for column in range(6)] if cells else []
+    lines = ["  ".join([*(cell[column].ljust(widths[column]) for column in range(6)),
+                        cell[6]]).rstrip() for cell in cells]
+    return EnvOutcome(True, "\n".join(lines) or "no copy exists on this machine",
+                      {"ok": True, "copies": rows})
+
+
+def _stamp(value: object) -> datetime | None:
+    try:
+        then = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return then if then.tzinfo else None
 
 
 def _service_row(service: spec.Service, copies: list[str]) -> dict[str, Any]:
@@ -449,7 +552,8 @@ def _name_problems(root: Path, catalog: spec.Catalog, runner: Runner) -> list[st
 def _write(
     root: Path, prepared: Prepared, rendered: render_mod.Rendered, *, started: bool,
     holder: int | None = None, env_files: list[Path] | None = None,
-    exec_prefix: list[str] | None = None,
+    exec_prefix: list[str] | None = None, started_by: dict[str, object] | None = None,
+    worktree: str = "",
 ) -> list[Path]:
     written = render_mod.write(rendered)
     previous = runtime.read_manifest(prepared.copy.directory)
@@ -465,6 +569,9 @@ def _write(
         "holder": runtime.holder_stamp(holder) if holder else {},
         "env_files": [str(path) for path in env_files] if env_files is not None else kept,
         "exec_prefix": exec_prefix if exec_prefix is not None else kept_prefix,
+        "worktree": worktree or previous.get("worktree", ""),
+        "used_at": previous.get("used_at", ""),
+        "started_by": started_by if started_by is not None else previous.get("started_by", {}),
     }))
     return written
 
