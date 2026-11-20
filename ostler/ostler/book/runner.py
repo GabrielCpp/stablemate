@@ -74,6 +74,12 @@ def walk(journey: type[Journey], model: Model, surface: Surface) -> JourneyResul
     return result
 
 
+def crash_note(crash: BaseException) -> str:
+    """What a step says of an exception that escaped it: its kind and the first line of its message, which a bare assert leaves empty."""
+    said = str(crash).splitlines()
+    return f"crashed: {type(crash).__name__}: {said[0]}" if said else f"crashed: {type(crash).__name__}"
+
+
 def attempt(step: object, model: Model, surface: Surface, baseline: tuple[object, ...] = (),
             seen: dict[int, Seen] | None = None) -> StepResult:
     """Takes one step on both sides and turns anything that escapes into a failed step.
@@ -91,7 +97,7 @@ def attempt(step: object, model: Model, surface: Surface, baseline: tuple[object
     except BookError as wrong:
         result = StepResult(step, None, None, model.rows(), (), False, f"the book contradicts itself: {wrong}")
     except Exception as crash:
-        result = StepResult(step, None, None, model.rows(), (), False, f"crashed: {type(crash).__name__}: {str(crash).splitlines()[0]}")
+        result = StepResult(step, None, None, model.rows(), (), False, crash_note(crash))
     cover(surface, None, [], model)
     result.text = text
     result.at = at

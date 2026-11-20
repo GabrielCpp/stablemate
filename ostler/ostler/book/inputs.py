@@ -28,7 +28,7 @@ from ostler.book.journey import Given, StepResult, difference
 from ostler.book.model import Defect, Model
 from ostler.book.outcome import CannotReach, Done, Flawed, Outcome, Refusal, Refusals, Unreachable
 from ostler.book.owners import Owners, Said
-from ostler.book.runner import agree, attempt, listing
+from ostler.book.runner import agree, attempt, crash_note, listing
 from ostler.book.screen import Interaction
 from ostler.book.surface import Surface
 
@@ -565,7 +565,7 @@ def sends(cls: type[Any], c: InputClass, call: Endpoint, model: Model, surface: 
     except (Undeclared, OffShape) as outside:
         return Sent(cls, c, False, f"the app answered outside the book: {outside}")
     except Exception as crash:
-        return Sent(cls, c, False, f"crashed: {type(crash).__name__}: {str(crash).splitlines()[0]}")
+        return Sent(cls, c, False, crash_note(crash))
     shown = f"{wanted} / {got}"
     if want is not None and by_status and isinstance(got, Refusal):
         want = dataclasses.replace(want, message=got.message)
@@ -838,7 +838,7 @@ def weigh(endpoint: type[Any], twin: Twin, base: Base, surface: Surface, fresh: 
         found.ok, found.note = False, f"the app answered outside the book: {outside}"
         return found
     except Exception as crash:
-        found.ok, found.note = False, f"crashed: {type(crash).__name__}: {str(crash).splitlines()[0]}"
+        found.ok, found.note = False, crash_note(crash)
         return found
     found.played = True
     found.answers = (_shown(got[0]), _shown(got[1]))
