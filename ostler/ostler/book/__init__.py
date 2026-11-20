@@ -36,7 +36,7 @@ from ostler.book.rpc import STATUS, GrpcClient, GrpcSurface, Rpc
 from ostler.book.screen import Component, Form, Interaction, Phase, Screen, Stored, T, Transition, When
 from ostler.book.service import Service
 from ostler.book.signed import Signed
-from ostler.book.stack import Process, Stack
+from ostler.book.stack import Fresh, Process, Stack
 from ostler.book.state import Axes, Impossible, Scene
 from ostler.book.status import Code, Exited, refused, succeeded
 from ostler.book.surface import Surface
@@ -49,7 +49,7 @@ __all__ = [
     "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Event", "Fixture", "Heard", "Index", "MoveToday", "Select",
     "Show", "State", "Total", "Transaction", "Unique", "Update",
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",
-    "Endpoint", "Enum", "Field", "Foreign", "Form", "Given", "Id", "Impossible", "Int", "Interaction", "Itself", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",
+    "Endpoint", "Enum", "Field", "Foreign", "Form", "Fresh", "Given", "Id", "Impossible", "Int", "Interaction", "Itself", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",
     "Needs", "Num", "On", "OwnerRefused", "Passes", "Person", "Phase", "Process", "Reaches", "Reference", "Refusal", "Refusals", "Refused", "Relates", "Rule", "Same", "Scene", "Screen", "Seen", "Service", "Shows", "Stack", "Stored", "Str", "Surface", "Token",
     "Command", "CommandSurface", "Exit", "Files", "Flag", "Lines", "Mark", "Outside", "Positional", "STDERR", "Sandbox", "Seed", "Switch", "Watched",
     "Code", "Exited", "GrpcClient", "GrpcSurface", "HttpSurface", "Rpc", "STATUS", "Signed", "refused", "succeeded",

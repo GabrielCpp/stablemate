@@ -83,6 +83,8 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     run.add_argument("--out", default=None, help=OUT_HELP)
     run.add_argument("--no-stack", action="store_true")
     run.add_argument("--keep-videos", action="store_true")
+    run.add_argument("--fresh-data", action="store_true",
+                     help="reload the application's data through the book's stack `fresh` command before any call is played")
     run.add_argument("--order", choices=("declared", "reversed", "shuffled"), default="declared",
                      help="the order the journeys are taken in on the one long-lived account")
     run.add_argument("--seed", type=int, default=0, help="the seed of a shuffled order")
@@ -271,6 +273,11 @@ def made_ready(service: Service[Any], args: argparse.Namespace) -> tuple[Surface
     lets the run arrange nothing."""
     surface = _surface(service, args.environment)
     stack = service.stack(os.path.join(args.out, "logs"))
+    if getattr(args, "fresh_data", False):
+        args.data_line, code = reloaded(stack)
+        print(args.data_line)
+        if code:
+            return code
     try:
         why = begin(surface, stack, args)
     except Unhealthy as sick:
@@ -282,6 +289,17 @@ def made_ready(service: Service[Any], args: argparse.Namespace) -> tuple[Surface
     Owners.begin(args.environment, lambda owner: _surface(owner, args.environment), fresh, service.person)
     Deliveries.begin(args.environment.delivery)
     return surface, stack
+
+
+def reloaded(stack: Stack) -> tuple[str, int]:
+    """The `data:` line of a reload through the stack's `fresh` command, with the output tail of a failed one, and the exit code
+    a red play gives, or 0 where the play goes on."""
+    if stack.fresh is None:
+        return "data: not reloaded, the book states no way to reload it", 0
+    ended, took, shown = stack.fresh.run()
+    if ended == "ok":
+        return f"data: reloaded by {' '.join(stack.fresh.command)} in {took:.0f}s", 0
+    return "\n".join((f"data: reload failed ({ended})", shown)).rstrip(), 1
 
 
 def stopped(surface: Surface, stack: Stack, args: argparse.Namespace) -> None:
@@ -514,7 +532,7 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
         + [s.skipped for s in tried.sent if s.skipped] + [t.skipped for t in tried.twins if t.skipped]
     partial = args.partial or bool(skips) or bool(names)
     found = declared(service, args.service)
-    report(service, results, args.out, order, found, not partial, played, tried, kept)
+    report(service, results, args.out, order, found, not partial, played, tried, kept, getattr(args, "data_line", ""))
     for line in video_lines(results, played):
         print(line)
     print(tally(results))
@@ -841,10 +859,12 @@ def twin_tally(tried: Tried) -> str:
 
 def report(service: Service[Any], results: list[JourneyResult], out: str, order: str = "declared",
            found: list[tuple[type, Any]] | None = None, complete: bool = True, played: Played | None = None,
-           tried: Tried | None = None, kept: list[str] | None = None) -> None:
+           tried: Tried | None = None, kept: list[str] | None = None, data: str = "") -> None:
     os.makedirs(out, exist_ok=True)
     lines = [f"# {service.name}", "", f"{tally(results)}.",
              "", f"Journeys taken in {order} order on one long-lived account.", ""]
+    if data:
+        lines += [data, ""]
     lines += section(results, found or [], complete)
     for result in results:
         lines.append(f"## {result.verdict} {result.journey.title()}")

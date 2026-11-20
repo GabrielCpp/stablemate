@@ -6,8 +6,12 @@ import os
 import signal
 import subprocess
 import threading
+import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import IO
+
+from ostler.book.workspace import checkout
 
 
 def _copy(source: IO[bytes], log: IO[bytes]) -> None:
@@ -62,10 +66,40 @@ class Process:
         self.handle = None
 
 
+@dataclass(frozen=True)
+class Fresh:
+    """The command that returns the application's data to its loaded state and returns once the application answers.
+    `cwd` is `repo://<member>/<path>`, an absolute path, or a path under the book root; empty is the book root."""
+
+    command: tuple[str, ...]
+    cwd: str = ""
+    timeout: float = 600.0
+
+    def directory(self) -> str:
+        if self.cwd.startswith("repo://"):
+            member, _slash, rest = self.cwd.removeprefix("repo://").partition("/")
+            return str(Path(checkout(member)) / rest)
+        return str(Path.cwd() / self.cwd)
+
+    def run(self) -> tuple[str, float, str]:
+        """How the reload ended (`ok`, an exit code, or `timed out`), the seconds it took and the tail of its output."""
+        began = time.time()
+        try:
+            done = subprocess.run(self.command, cwd=self.directory(), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                  timeout=self.timeout, check=False)
+        except subprocess.TimeoutExpired as late:
+            return "timed out", time.time() - began, "\n".join((late.stdout or b"").decode(errors="replace").splitlines()[-20:])
+        except OSError as broken:
+            return "1", time.time() - began, str(broken)
+        shown = "\n".join(done.stdout.decode(errors="replace").splitlines()[-20:])
+        return ("ok" if done.returncode == 0 else str(done.returncode)), time.time() - began, shown
+
+
 @dataclass
 class Stack:
     processes: tuple[Process, ...]
     log_dir: str
+    fresh: Fresh | None = None
 
     def start(self) -> None:
         for process in self.processes:
