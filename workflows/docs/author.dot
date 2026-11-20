@@ -586,51 +586,32 @@ digraph author {
       f8__close__1 -> f8__close__2 [style=invis];
       f8__close__2 -> f8__close__3 [style=invis];
     }
-    subgraph cluster_f8__integrity {
-      label="integrity"; fontsize=12;
+    subgraph cluster_f8__resolve {
+      label="resolve"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f8__integrity__0 [label="verify_integrity\n`ostler doctor` over the whole graph, as a blocking gate.", shape=box, fillcolor=white];
-    }
-    subgraph cluster_f8__milestone_epics {
-      label="milestone_epics"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f8__milestone_epics__0 [label="validate_milestone_epics\nProve the milestone lists its epics by id, and that it, they and their stories meet the authoring contract.", shape=box, fillcolor=white];
-    }
-    subgraph cluster_f8__reconcile {
-      label="reconcile"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f8__reconcile__0 [label="verify_reconcile\nScope this run silently dropped, measured against the epics as they stood when it started.", shape=box, fillcolor=white];
-    }
-    subgraph cluster_f8__resolve_graph {
-      label="resolve_graph"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f8__resolve_graph__0 [label="resolve-integrity.md\nResolve a referential-integrity block autonomously (author)", shape=note, fillcolor=lightyellow];
-    }
-    subgraph cluster_f8__resolve_milestone {
-      label="resolve_milestone"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f8__resolve_milestone__0 [label="resolve-integrity.md\nResolve a referential-integrity block autonomously (author)", shape=note, fillcolor=lightyellow];
+      f8__resolve__0 [label="resolve-integrity.md\nResolve a referential-integrity block autonomously (author)", shape=note, fillcolor=lightyellow];
     }
     f8__start [label="start"];
+    subgraph cluster_f8__verify {
+      label="verify"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f8__verify__0 [label="verify_reconcile\nScope this run silently dropped, measured against the epics as they stood when it started.", shape=box, fillcolor=white];
+      f8__verify__1 [label="verify_integrity\n`ostler doctor` over the whole graph, as a blocking gate.", shape=box, fillcolor=white];
+      f8__verify__2 [label="validate_milestone_epics\nProve the milestone lists its epics by id, and that it, they and their stories meet the authoring contract.", shape=box, fillcolor=white];
+      f8__verify__0 -> f8__verify__1 [style=invis];
+      f8__verify__1 -> f8__verify__2 [style=invis];
+    }
     f8____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f8____start -> f8__start;
-    f8__close__3 -> f8____end [color=darkgoldenrod, ltail=cluster_f8__close];
-    f8__integrity__0 -> f8__resolve_graph__0 [tooltip="notes, resolves", ltail=cluster_f8__integrity, lhead=cluster_f8__resolve_graph];
-    f8__integrity__0 -> f8__milestone_epics__0 [style=dashed, color=darkorange, ltail=cluster_f8__integrity, lhead=cluster_f8__milestone_epics];
-    f8__milestone_epics__0 -> f8__resolve_milestone__0 [tooltip="notes, resolves", ltail=cluster_f8__milestone_epics, lhead=cluster_f8__resolve_milestone];
-    f8__milestone_epics__0 -> f8__close__0 [style=dashed, color=darkorange, ltail=cluster_f8__milestone_epics, lhead=cluster_f8__close];
-    f8__reconcile__0 -> f8__integrity__0 [style=dashed, color=darkorange, ltail=cluster_f8__reconcile, lhead=cluster_f8__integrity];
-    f8__resolve_graph__0 -> f8__integrity__0 [tooltip="resolves", ltail=cluster_f8__resolve_graph, lhead=cluster_f8__integrity];
-    f8__resolve_graph__0 -> f8__milestone_epics__0 [style=dashed, color=darkorange, ltail=cluster_f8__resolve_graph, lhead=cluster_f8__milestone_epics];
-    f8__resolve_milestone__0 -> f8__milestone_epics__0 [tooltip="resolves", ltail=cluster_f8__resolve_milestone, lhead=cluster_f8__milestone_epics];
-    f8__resolve_milestone__0 -> f8__close__0 [style=dashed, color=darkorange, ltail=cluster_f8__resolve_milestone, lhead=cluster_f8__close];
-    f8__start -> f8__reconcile__0 [lhead=cluster_f8__reconcile];
+    f8__close__3 -> f8____end [label="the milestone is authored", color=darkgoldenrod, ltail=cluster_f8__close];
+    f8__resolve__0 -> f8__verify__0 [label="repaired / the agent escalated", tooltip="check, resolves", style=dashed, color=darkorange, ltail=cluster_f8__resolve, lhead=cluster_f8__verify];
+    f8__start -> f8__verify__0 [label="operator mode is auto or human", lhead=cluster_f8__verify];
+    f8__verify__2 -> f8__verify__0 [label="parked for the operator / the check holds", tooltip="check", style=dashed, color=darkorange];
+    f8__verify__2 -> f8__close__0 [label="every closing check ran", ltail=cluster_f8__verify, lhead=cluster_f8__close];
+    f8__verify__2 -> f8__resolve__0 [label="an agent may repair it", tooltip="check, notes, resolves", ltail=cluster_f8__verify, lhead=cluster_f8__resolve];
   }
 
   subgraph cluster_pm_review_f9__ {

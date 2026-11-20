@@ -16,9 +16,11 @@ from workhorse_workflows.author.shared.nodes import (
     verify_integrity,
 )
 from workhorse_workflows.author.shared import paths
-from workhorse_workflows.author.shared.schemas import OperatorResolution, RunContext
+from workhorse_workflows.author.shared.schemas import Defects, OperatorResolution, RunContext
 
 MAX_INTEGRITY_RESOLVES = 2
+CHECKS = ("reconcile", "integrity", "milestone")
+RESOLVABLE = frozenset({"integrity", "milestone"})
 UNBOUNDED = float("inf")
 
 
@@ -66,46 +68,41 @@ class Finalize(Workflow):
     def start(self) -> Continue:
         if self.operator_mode not in {"auto", "human"}:
             raise WorkflowFailed("finalize operator_mode must be 'auto' or 'human'")
-        return Continue(None, self.reconcile)
+        return Continue(None, self.verify).because("operator mode is auto or human")
 
-    def reconcile(self) -> Continue | Await:
-        report = self.call(verify_reconcile, self.baseline)
-        if report.holds or report.skipped:
-            return Continue(report, self.integrity)
-        return Await(self._context_path(), report.errors, self.integrity)
+    def _run(self, check: str) -> Defects:
+        if check == "reconcile":
+            report = self.call(verify_reconcile, self.baseline)
+        elif check == "integrity":
+            report = self.call(verify_integrity, "")
+        else:
+            return self.call(validate_milestone_epics, self.ctx.milestone_path)
+        return Defects(ok=report.holds or report.skipped, errors=report.errors)
 
-    def integrity(self, resolves: int = 0) -> Continue | Await:
-        report = self.call(verify_integrity, "")
-        if report.holds or report.skipped:
-            return Continue(report, self.milestone_epics)
-        if self.operator_mode == "human" or resolves >= MAX_INTEGRITY_RESOLVES:
-            return Await(self._context_path(), report.errors, self.milestone_epics)
-        return Continue(report, self.resolve_graph, notes=report.errors, resolves=resolves)
-
-    def resolve_graph(self, notes: str, resolves: int = 0) -> Continue | Await:
-        result = self._resolve_integrity(notes)
-        if result.decision == "escalated":
-            return Await(self._context_path(), notes, self.milestone_epics)
-        return Continue(result, self.integrity, resolves=resolves + 1)
-
-    def milestone_epics(self, resolves: int = 0) -> Continue | Await:
-        contract = self.call(validate_milestone_epics, self.ctx.milestone_path)
-        if contract.ok:
-            return Continue(contract, self.close)
-        if self.operator_mode == "human" or resolves >= MAX_INTEGRITY_RESOLVES:
-            return Await(self._context_path(), contract.errors, self.close)
-        return Continue(
-            contract,
-            self.resolve_milestone,
-            notes=contract.errors,
-            resolves=resolves,
+    def verify(self, check: int = 0, resolves: int = 0) -> Continue | Await:
+        """Run the closing checks in order, repair a failed one, or park it for the operator."""
+        if check == len(CHECKS):
+            return Continue(None, self.close).because("every closing check ran")
+        name = CHECKS[check]
+        report = self._run(name)
+        if report.ok:
+            return Continue(report, self.verify, check=check + 1).because("the check holds")
+        if name in RESOLVABLE and self.operator_mode == "auto" and resolves < MAX_INTEGRITY_RESOLVES:
+            return Continue(report, self.resolve, check=check, notes=report.errors, resolves=resolves).because(
+                "an agent may repair it"
+            )
+        return Await(self._context_path(), report.errors, self.verify, check=check + 1).because(
+            "parked for the operator"
         )
 
-    def resolve_milestone(self, notes: str, resolves: int = 0) -> Continue | Await:
+    def resolve(self, check: int, notes: str, resolves: int = 0) -> Continue | Await:
+        """Let an agent repair what a closing check found, then run that check again."""
         result = self._resolve_integrity(notes)
         if result.decision == "escalated":
-            return Await(self._context_path(), notes, self.close)
-        return Continue(result, self.milestone_epics, resolves=resolves + 1)
+            return Await(self._context_path(), notes, self.verify, check=check + 1).because(
+                "the agent escalated"
+            )
+        return Continue(result, self.verify, check=check, resolves=resolves + 1).because("repaired")
 
     def close(self) -> Done:
         artifacts = self.call(validate_artifacts)
@@ -117,7 +114,9 @@ class Finalize(Workflow):
             self._fail_validation("milestone did not validate", contract.errors)
 
         self.call(mark_milestone_authored, self.ctx.milestone_path)
-        return Done(self.call(commit_author, "epic", "", "", self.ctx.milestone_path))
+        return Done(self.call(commit_author, "epic", "", "", self.ctx.milestone_path)).because(
+            "the milestone is authored"
+        )
 
 
 __all__ = ["Finalize", "MAX_INTEGRITY_RESOLVES"]

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from _fakes import StubRunner
@@ -13,10 +15,13 @@ from ostler.model import load
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import WorkflowFailed
+from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows import author
 from workhorse_workflows.author.finalize import Finalize
+from workhorse_workflows.author.finalize.flow import MAX_INTEGRITY_RESOLVES
+from workhorse_workflows.author.shared.schemas import Committed, Defects, MilestoneStatus, VerifyReport
 from workhorse_workflows.author.workflow import workflow
 
 MILESTONE = "docs/milestones/account-access/milestone.md"
@@ -152,3 +157,119 @@ def test_terminal_validation_commits_incomplete_then_fails(repo: Path, tmp_path:
         "author: INCOMPLETE — milestone account-access, do not merge"
     )
     assert "status: approved" in (repo / MILESTONE).read_text(encoding="utf-8")
+
+
+class _Checks:
+    """Scripted closing checks: each name maps to the verdicts it returns, in order, the last one repeating."""
+
+    def __init__(self, repo: Path, **verdicts: list[bool]) -> None:
+        self.repo = repo
+        self.verdicts = {"reconcile": [True], "integrity": [True], "milestone": [True], **verdicts}
+        self.events: list[str] = []
+        self.gates: list[str] = []
+        self.decisions: list[str] = []
+
+    def _next(self, name: str) -> bool:
+        self.events.append(name)
+        queue = self.verdicts[name]
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    def nodes(self) -> Any:
+        def reconcile(logger: Any, *args: Any, **kwargs: Any) -> VerifyReport:
+            holds = self._next("reconcile")
+            return VerifyReport(holds=holds, errors="" if holds else "reconcile drifted")
+
+        def integrity(logger: Any, *args: Any, **kwargs: Any) -> VerifyReport:
+            holds = self._next("integrity")
+            return VerifyReport(holds=holds, errors="" if holds else "integrity broken")
+
+        def milestone(logger: Any, *args: Any, **kwargs: Any) -> Defects:
+            ok = self.verdicts["milestone"][0] if self.events[-1:] == ["close"] else self._next("milestone")
+            return Defects(ok=ok, errors="" if ok else "milestone epics wrong")
+
+        def artifacts(logger: Any, *args: Any, **kwargs: Any) -> Defects:
+            self.events.append("close")
+            return Defects(ok=True)
+
+        def mark(logger: Any, *args: Any, **kwargs: Any) -> MilestoneStatus:
+            return MilestoneStatus()
+
+        def commit(logger: Any, *args: Any, **kwargs: Any) -> Committed:
+            self.events.append("commit")
+            return Committed(committed=True)
+
+        return workflow.override(
+            verify_reconcile=reconcile,
+            verify_integrity=integrity,
+            validate_milestone_epics=milestone,
+            validate_artifacts=artifacts,
+            mark_milestone_authored=mark,
+            commit_author=commit,
+        )
+
+    def agent(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+        assert Path(node.prompt).stem == "resolve-integrity"
+        self.events.append("resolve")
+        decision = self.decisions.pop(0) if self.decisions else "repaired"
+        return "scripted", {"decision": decision, "notes": ""}
+
+    def answered(self, path: Path, **kwargs: Any) -> None:
+        self.gates.append(path.read_text(encoding="utf-8"))
+
+
+def _verify(repo: Path, tmp_path: Path, checks: _Checks, mode: str = "auto") -> Any:
+    _planning_graph(repo, selectable=True)
+    env = replace(_env(tmp_path), nodes=checks.nodes(), agent_runner=StubRunner(checks.agent))
+    with patch.object(pyflow_park, "wait_for_answer", checks.answered):
+        return drive(Finalize(repo_dir=str(repo), operator_mode=mode), env)
+
+
+def test_a_repaired_check_runs_again_before_the_next_one(repo: Path, tmp_path: Path) -> None:
+    checks = _Checks(repo, integrity=[False, True])
+
+    result = _verify(repo, tmp_path, checks)
+
+    assert result.committed is True
+    assert checks.events == ["reconcile", "integrity", "resolve", "integrity", "milestone", "close", "commit"]
+    assert checks.gates == []
+
+
+def test_a_check_the_agent_cannot_repair_parks_after_its_budget_and_the_next_check_runs(
+    repo: Path, tmp_path: Path
+) -> None:
+    checks = _Checks(repo, integrity=[False])
+
+    _verify(repo, tmp_path, checks)
+
+    assert checks.events.count("resolve") == MAX_INTEGRITY_RESOLVES
+    assert checks.events[-3:] == ["milestone", "close", "commit"]
+    assert len(checks.gates) == 1 and "integrity broken" in checks.gates[0]
+
+
+def test_a_human_operator_is_asked_before_any_repair(repo: Path, tmp_path: Path) -> None:
+    checks = _Checks(repo, milestone=[False, True])
+
+    _verify(repo, tmp_path, checks, mode="human")
+
+    assert "resolve" not in checks.events
+    assert len(checks.gates) == 1 and "milestone epics wrong" in checks.gates[0]
+
+
+def test_a_reconcile_drift_parks_without_a_repair(repo: Path, tmp_path: Path) -> None:
+    checks = _Checks(repo, reconcile=[False])
+
+    _verify(repo, tmp_path, checks)
+
+    assert checks.events[:2] == ["reconcile", "integrity"]
+    assert "resolve" not in checks.events
+    assert len(checks.gates) == 1 and "reconcile drifted" in checks.gates[0]
+
+
+def test_an_escalated_repair_parks_and_the_next_check_runs(repo: Path, tmp_path: Path) -> None:
+    checks = _Checks(repo, integrity=[False])
+    checks.decisions = ["escalated"]
+
+    _verify(repo, tmp_path, checks)
+
+    assert checks.events[:4] == ["reconcile", "integrity", "resolve", "milestone"]
+    assert len(checks.gates) == 1 and "integrity broken" in checks.gates[0]
