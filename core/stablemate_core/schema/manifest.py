@@ -351,7 +351,7 @@ class QaFixture(Section):
 
     tool: str | None = setting(
         None,
-        description="The opted-in QA tool that runs the fixture.",
+        description="The command that runs the fixture, found on PATH.",
         examples=["seed-db"],
         default_text="unset",
     )
@@ -376,11 +376,6 @@ class QaFixture(Section):
 class QaTable(Section):
     """What ostler's QA runs may use."""
 
-    tools: list[str] = setting(
-        factory=list,
-        description="QA tools this repository opts into. A name resolves to a built-in or to a `qa_tools` table of the machine config.",
-        examples=[["tesseract", "grpcurl"]],
-    )
     fixtures: dict[str, QaFixture] = setting(
         factory=dict,
         description="Fixtures keyed by name. A scenario's precondition names one.",

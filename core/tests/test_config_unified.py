@@ -542,21 +542,6 @@ def test_v1_profile_without_a_cli_is_a_config_error():
 
 
 
-def test_the_home_config_reads_the_qa_tools_table(cfg_file):
-    """`[qa_tools.<name>]` is read generically, like `[power.*]` — no dedicated accessor."""
-    cfg_file.write_text(
-        'config_version = 2\n'
-        '[qa_tools.tesseract]\ncommand = "tesseract"\ndescription = "OCR"\n'
-        '[qa_tools."ocr-diff"]\ncommand = "/opt/bin/ocr-diff"\n'
-    )
-
-    home = cfgmod.load_home_config()
-
-    assert home.qa_tools["tesseract"].command == "tesseract"
-    assert home.qa_tools["tesseract"].description == "OCR"
-    assert home.qa_tools["ocr-diff"].command == "/opt/bin/ocr-diff"
-
-
 def test_writing_a_key_preserves_qa_tools_table(cfg_file):
     """The same non-destructive-write guarantee [power.*] gets, for [qa_tools.*]."""
     cfg_file.write_text('config_version = 2\n[qa_tools.tesseract]\ncommand = "tesseract"\n')

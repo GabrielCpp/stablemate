@@ -292,21 +292,6 @@ class UserLibraryTable(Section):
     )
 
 
-class QaTool(Section):
-    """A command a QA run may invoke, opted into by a repository's manifest."""
-
-    command: str = setting(
-        "",
-        description="The executable to run. A repository that opts into a tool whose table has no command gets an error.",
-        examples=["tesseract", "/opt/bin/ocr-diff"],
-    )
-    description: str = setting(
-        "",
-        description="What the tool does, shown to the agent that may call it.",
-        examples=["OCR a screenshot"],
-    )
-
-
 class SaddlebagTable(Section):
     """Settings read by saddlebag, the credential store."""
 
@@ -421,11 +406,6 @@ class HomeConfig(Section):
         description="What `farrier install --user` installs into the home directory for every project. Nothing is installed at user scope when it is absent.",
         examples=[{"claude": {"packs": ["general"]}}],
         default_text="absent",
-    )
-    qa_tools: dict[str, QaTool] = setting(
-        factory=dict,
-        description="Commands a QA run may invoke, keyed by tool name. A repository opts in by listing the name under `qa: tools:` in its manifest.",
-        examples=[{"tesseract": {"command": "tesseract", "description": "OCR a screenshot"}}],
     )
     saddlebag: SaddlebagTable | None = setting(
         None,

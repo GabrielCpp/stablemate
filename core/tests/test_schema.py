@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from stablemate_core import config as cfgmod
 from stablemate_core import profiles
+from stablemate_core.manifest import load_manifest
 from stablemate_core.schema import (
     HomeConfig,
     reference_rows,
@@ -73,10 +74,6 @@ prompts = ["p"]
 exclude = { skills = ["y"], prompts = ["q"] }
 [user_library.template]
 anything = "goes"
-
-[qa_tools.tesseract]
-command = "tesseract"
-description = "OCR"
 
 [saddlebag]
 backend = "keyring"
@@ -186,11 +183,27 @@ def test_a_full_file_loads_into_typed_attributes(cfg_file):
     assert home.groom.dispatch["runner"].params[0].options == ["a", "b"]
     assert home.user_library and home.user_library.claude and home.user_library.claude.exclude
     assert home.user_library.template == {"anything": "goes"}
-    assert home.qa_tools["tesseract"].command == "tesseract"
     assert home.saddlebag and home.saddlebag.backend == "keyring"
     assert home.workspaces["acme"][1].name == "web"
     assert home.cli["opencode"].env == {"FLAG": "1"}
     assert stray_keys(home) == []
+
+
+def test_a_retired_qa_tools_table_still_loads(cfg_file):
+    cfg_file.write_text('config_version = 2\n[qa_tools.tesseract]\ncommand = "tesseract"\n')
+
+    home = cfgmod.load_home_config()
+
+    assert home.saddlebag is None
+
+
+def test_a_manifest_that_still_lists_qa_tools_loads(tmp_path):
+    path = tmp_path / "agents.yml"
+    path.write_text("qa:\n  tools: [tesseract]\n", encoding="utf-8")
+
+    manifest = load_manifest(path)
+
+    assert manifest.qa.fixtures == {}
 
 
 def test_an_unknown_key_loads_and_warns_with_the_closest_declared_key(cfg_file, caplog):

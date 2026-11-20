@@ -268,7 +268,6 @@ Machine config, by key group:
 - `user_library.<harness>.*`, `user_library.template`: `farrier/farrier/user_library.py`,
   `farrier/farrier/outputs.py:454`. Same selection keys as the manifest, so one Table model
   serves both Documents.
-- `qa_tools.<name>.*`: `ostler/ostler/qa/tools.py:69`.
 - `saddlebag.backend`: `saddlebag/saddlebag/preference.py:36` opens the file with `tomllib`
   and does not use core. Saddlebag is added to the vendor destinations (A4).
 
