@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 from collections import Counter
 from collections.abc import Callable
@@ -23,6 +24,7 @@ from workhorse.records import parse_checkpoint
 
 from ostler import Ostler
 from ostler.environments import commands as env_commands
+from ostler.environments import runtime
 from ostler.environments.render import SHARED as SHARED_COPY
 from ostler.qa import QaOutcome
 
@@ -812,15 +814,14 @@ def test_a_shared_stack_outlives_the_run(docs: Path) -> None:
     assert released.torn_down == "skipped", released
 
 
-def test_the_run_end_tears_down_the_stack_yml_copy(
-    docs: Path,
-    write: Callable[[Path, str], Path],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Bring-up starts the shared `stack.yml` copy, so the run's end takes that copy down."""
-    log = logging.getLogger("test")
+def _stack_copy(docs: Path, write: Callable[[Path, str], Path], monkeypatch: pytest.MonkeyPatch,
+                tmp_path: Path, started_by: dict[str, Any]) -> list[str]:
     write(docs / "services" / "app" / "ops" / "stack.yml",
           "services:\n  web:\n    about: the web app\n    define: web.yml.j2\n    address: web\n    port: 80\n")
+    monkeypatch.setenv(runtime.HOME_ENV, str(tmp_path / "env-home"))
+    copy = runtime.copy_for(docs, SHARED_COPY)
+    runtime.write_manifest(copy, {"repo": str(docs), "copy": SHARED_COPY, "started_by": started_by,
+                                  "holder": runtime.holder_stamp(os.getpid())})
     copies: list[str] = []
 
     def _copy_down(_root: Path, *, copy_name: str, **_kw: Any) -> env_commands.EnvOutcome:
@@ -828,11 +829,42 @@ def test_the_run_end_tears_down_the_stack_yml_copy(
         return env_commands.EnvOutcome(True, f"tore {copy_name} down", {"ok": True})
 
     monkeypatch.setattr(env_commands, "cmd_down", _copy_down)
+    return copies
+
+
+def test_the_run_end_tears_down_the_stack_yml_copy_it_started(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The run that brought the shared `stack.yml` copy up takes it down at its end."""
+    log = logging.getLogger("test")
+    copies = _stack_copy(docs, write, monkeypatch, tmp_path, runtime.holder_stamp(os.getpid()))
 
     torn = qa_nodes.teardown_stack(log, str(docs))
 
     assert torn.torn_down == "yes", torn
     assert copies == [SHARED_COPY]
+
+
+def test_the_run_end_leaves_a_shared_copy_it_did_not_start(
+    docs: Path,
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A copy up before the run, or started by hand, stays serving, and the run lets go of it."""
+    log = logging.getLogger("test")
+    for started_by in ({}, {"pid": 1, "started": "0"}):
+        copies = _stack_copy(docs, write, monkeypatch, tmp_path, started_by)
+
+        torn = qa_nodes.teardown_stack(log, str(docs))
+
+        assert torn.torn_down == "skipped", torn
+        assert copies == []
+        manifest = runtime.read_manifest(runtime.copy_for(docs, SHARED_COPY).directory)
+        assert manifest["holder"] == {}
 
 
 def test_the_run_releases_the_copy_it_named_when_it_finishes(

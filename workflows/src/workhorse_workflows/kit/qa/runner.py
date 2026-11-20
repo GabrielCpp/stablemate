@@ -11,6 +11,7 @@ from pathlib import Path
 
 from ostler import Ostler
 from ostler.environments import leases, runtime, spec
+from ostler.environments.render import SHARED
 from ostler.qa import devices, stack
 from ostler.qa.outcome import QaOutcome
 
@@ -62,12 +63,17 @@ def release_copy(
 
 
 def teardown_stack(logger: logging.Logger, repo_dir: str = "") -> QaOutcome:
-    """Tear down the shared stack the run brought up: its `stack.yml` copy."""
+    """Tear down the shared stack when this run brought it up, and leave one already serving."""
     root = find_book_root(repo_dir)
+    if not leases.books_near(root):
+        return QaOutcome(True, "no book declares a stack", {"torn_down": "skipped"})
+    started = runtime.read_manifest(runtime.copy_for(root, SHARED).directory).get("started_by")
+    if started != runtime.holder_stamp(os.getpid()):
+        _ = runtime.release_holder(root, SHARED, os.getpid())
+        return QaOutcome(True, "the stack was up before this run, so it stays serving",
+                         {"torn_down": "skipped"})
     copied = leases.down(root)
-    if copied is not None:
-        return copied
-    return QaOutcome(True, "no book declares a stack", {"torn_down": "skipped"})
+    return copied or QaOutcome(True, "no book declares a stack", {"torn_down": "skipped"})
 
 
 def hold_copy(repo_dir: str = "", lease: str = "") -> bool:
