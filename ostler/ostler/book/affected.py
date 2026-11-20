@@ -67,6 +67,7 @@ class Affected:
     diff: dict[str, Any] = field(default_factory=dict)
     chains: list[Chain] = field(default_factory=list)
     uncovered: list[dict[str, str]] = field(default_factory=list)
+    unplayed: list[dict[str, str]] = field(default_factory=list)
     ignored: list[str] = field(default_factory=list)
     fallbacks: list[dict[str, str]] = field(default_factory=list)
     widened: list[dict[str, Any]] = field(default_factory=list)
@@ -99,14 +100,14 @@ def pointers(service: Service[Any], app_root: str) -> list[Pointer]:
 
 
 def calls_of(service: Service[Any], element: type, kind: str) -> set[str] | None:
-    """The calls whose plays an element's change can alter, or None where the book cannot narrow them."""
+    """The calls whose plays an element's change can alter, an empty set where no call reaches it, or None where the book cannot narrow them."""
     if kind in ("record", "event"):
         return None
     if kind == "action":
         direct, outside = carriers(service, element.__name__)
-        return {*direct, *outside} or None
+        return {*direct, *outside}
     if kind == "screen":
-        return {i.__name__ for i in service.interactions if i.screen is element} or None
+        return {i.__name__ for i in service.interactions if i.screen is element}
     return {element.__name__}
 
 
@@ -156,6 +157,8 @@ def walk(service: Service[Any], app_root: str, base: str, head: str, book: Path 
         if calls is None and not followed:
             why = because or (f"record {name} changed" if element.kind == "record" else f"{element.kind} {name} reaches no call of the book")
             fall(path, f"{why}: the whole book")
+        if calls is not None and not calls and not any(u["element"] == name and u["kind"] == element.kind for u in found.unplayed):
+            found.unplayed.append({"element": name, "kind": element.kind, "path": path})
         wanted = sorted(calls or ())
         called.update(wanted)
         titles = list(dict.fromkeys(t for c in wanted for t in journeys_of(c)))
@@ -220,9 +223,9 @@ def walk(service: Service[Any], app_root: str, base: str, head: str, book: Path 
     found.not_computed += owned.notes
     if found.fallbacks:
         found.plan = WHOLE
-    elif found.chains or found.uncovered:
+    elif found.uncovered or called or direct:
         found.plan = PARTIAL
-    elif unjudged:
+    elif found.chains or unjudged:
         found.plan = EMPTY
     else:
         found.plan = NONE
@@ -263,11 +266,14 @@ def show(found: Affected, module: str) -> list[str]:
         lines += ["imports (only import lines changed, nothing to play):", *(f"  {p}" for p in found.imports)]
     if found.chains:
         lines.append("chains:")
+        unplayed = {(u["element"], u["kind"]) for u in found.unplayed}
         for c in found.chains:
-            lines.append(f"  {c.path}{(':' if c.path.startswith('book ') else '::') + c.function if c.function else ' (file)'} -> {c.element} ({c.kind}, {c.via}) -> {', '.join(c.plays) or ('no play of its own' if c.kind == 'record' and c.via != 'direct' else 'the whole book')}")
+            lines.append(f"  {c.path}{(':' if c.path.startswith('book ') else '::') + c.function if c.function else ' (file)'} -> {c.element} ({c.kind}, {c.via}) -> {', '.join(c.plays) or ('no play of its own' if c.kind == 'record' and c.via != 'direct' else 'no play reaches it' if (c.element, c.kind) in unplayed else 'the whole book')}")
     if found.uncovered:
         lines += ["uncovered (no element names them; judge them by hand):",
                   *(f"  {u['path']}{'::' + u['function'] if u['function'] else ''}" for u in found.uncovered)]
+    if found.unplayed:
+        lines += ["unplayed (the book states them and no play reaches them):", *(f"  {u['kind']} {u['element']}" for u in found.unplayed)]
     lines.append("not computed: " + "; ".join(found.not_computed))
     return lines
 

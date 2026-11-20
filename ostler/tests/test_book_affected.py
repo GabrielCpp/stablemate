@@ -11,7 +11,9 @@ import pytest
 
 from book_fakes import Clearing, Haunting, Shelving, code_repo, commit_files, git, run_shelf, shelf_book, sourced_book
 from ostler.book import cli
+from ostler.book import affected as affected_module
 from ostler.book.affected import calls_of
+from ostler.book.screen import Screen
 from ostler.book.service import Service
 from ostler.book.sources import defined
 
@@ -308,7 +310,7 @@ def test_the_report_holds_the_fields_the_caller_reads_and_what_it_did_not_walk(m
     head = commit_files(where, edited("remove.go", "return id", "return id + id"))
     _, found, out = affect(monkeypatch, tmp_path, sourced_book({"RemoveItem": ("remove.go::Remove",)}), where, base, capsys)
     assert set(found) == {"service", "base", "head", "dirty", "plan", "whole", "reason", "only", "journeys", "by_journey", "diff", "chains", "uncovered",
-                          "ignored", "fallbacks", "widened", "not_computed", "mapped", "imports"}
+                          "unplayed", "ignored", "fallbacks", "widened", "not_computed", "mapped", "imports"}
     assert (found["service"], found["base"], found["head"]) == ("shelf", base, head)
     assert set(found["chains"][0]) == {"path", "function", "element", "kind", "plays", "via"}
     assert [n.split(":")[0] for n in found["not_computed"]] == ["dependent books", "configuration", "data", "code in other repositories"]
@@ -489,6 +491,52 @@ def test_a_screen_reaches_its_interactions_and_a_record_no_call():
                                                                   SimpleNamespace(__name__="Idle", screen=None))))
     assert calls_of(service, screen, "screen") == {"Tap"}
     assert calls_of(service, screen, "record") is None
+    assert calls_of(service, screen, "event") is None
+
+
+def test_a_screen_no_interaction_names_and_an_action_no_call_carries_reach_no_call():
+    screen = type("Dashboard", (), {})
+    other = type("Other", (), {})
+    service = cast("Service[Any]", SimpleNamespace(interactions=(SimpleNamespace(__name__="Tap", screen=other),), endpoints=(), outside=()))
+    assert calls_of(service, screen, "screen") == set()
+    assert calls_of(service, type("Sweep", (), {}), "action") == set()
+
+
+def cabinet_book(sources: dict[str, tuple[str, ...]]) -> Any:
+    book = sourced_book(sources)
+    book.screens = (type("Cabinet", (Screen,), {"source": sources.get("Cabinet", ()), "__module__": __name__}),)
+    return book
+
+
+def test_a_screen_nothing_reaches_is_listed_as_unplayed_and_leaves_the_plan_partial(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, {**edited("put.go", "return id", "return id + id"), **edited("drawer.go", "return 1", "return 2")})
+    book = cabinet_book({"PutItem": ("put.go::Put",), "Cabinet": ("drawer.go::Open",)})
+    code, found, out = affect(monkeypatch, tmp_path, book, where, base, capsys)
+    assert (code, found["plan"], found["only"], found["fallbacks"]) == (0, "partial", ["PutItem"], [])
+    assert found["unplayed"] == [{"element": "Cabinet", "kind": "screen", "path": "drawer.go"}]
+    assert [c["plays"] for c in found["chains"] if c["element"] == "Cabinet"] == [[]]
+    assert "unplayed (the book states them and no play reaches them):\n  screen Cabinet" in out
+    assert "-> Cabinet (screen, direct) -> no play reaches it" in out
+
+
+def test_a_diff_reaching_only_an_unplayed_screen_gives_the_plan_empty_and_exits_1(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, edited("drawer.go", "return 1", "return 2"))
+    code, found, out = affect(monkeypatch, tmp_path, cabinet_book({"Cabinet": ("drawer.go::Open",)}), where, base, capsys)
+    assert (code, found["plan"], found["only"], found["fallbacks"], found["whole"]) == (1, "empty", [], [], False)
+    assert [u["element"] for u in found["unplayed"]] == ["Cabinet"]
+    assert "unplayed (the book states them and no play reaches them):" in out
+    assert out.splitlines()[-1] == "nothing to play: the changed files select no play"
+
+
+def test_an_action_no_call_carries_is_unplayed_and_does_not_make_the_plan_whole(monkeypatch, tmp_path, capsys, repo):
+    where, base = repo
+    commit_files(where, edited("put.go", "return id", "return id + id"))
+    monkeypatch.setattr(affected_module, "carriers", lambda service, action: ([], []))
+    code, found, _ = affect(monkeypatch, tmp_path, sourced_book({"Put": ("put.go::Put",)}), where, base, capsys)
+    assert found["unplayed"] == [{"element": "Put", "kind": "action", "path": "put.go"}]
+    assert (code, found["plan"], found["fallbacks"], found["only"]) == (1, "empty", [], [])
 
 
 def test_run_only_accepts_an_outside_happening_and_keeps_the_journeys_that_arrange_it(monkeypatch, tmp_path, capsys):

@@ -376,7 +376,8 @@ listed under `widened`. A Go hunk of import lines only changes nothing by itself
 unless it adds or removes a blank or dot import, which counts at the file. Each fallback is listed with its path.
 A changed symbol whose closure reaches no element, and a changed path no element names, is listed as uncovered and
 makes the exit code 1. A path an ignore pattern drops is listed as ignored. Every changed path is in exactly one of
-mapped, uncovered and ignored. The command prints each chain as `path::symbol -> Element (kind, how) -> plays`, ends
+mapped, uncovered and ignored. A screen no interaction names, or an action no call carries, is listed under `unplayed` with its chain
+and does not widen the plan, because no play checks it. A record or an event still makes the plan `whole`. The command prints each chain as `path::symbol -> Element (kind, how) -> plays`, ends
 with the `ostler book run` line to play, and writes `<service>-affected.json` to `--out`. It does not walk dependent
 books, configuration or data, and says so in the `not_computed` field. `run --only` accepts an outside happening's
 name and plays the journeys and cells that arrange it.
