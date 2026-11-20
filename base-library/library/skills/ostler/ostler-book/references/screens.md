@@ -54,6 +54,56 @@ or disabled, and why) and `transitions` between them. `describe(lang)` prints al
 one language. `check` builds it in each declared language and refuses a label that misses
 one or names an undeclared one.
 
+## Moving between screens
+
+A book states how a person gets from one screen to the next in three facts, so the book answers
+"what do I do to reach this screen" with no app running.
+
+- `first = True` on a screen a person can open directly: by its address on the web, at launch on a
+  phone. A book may hold several, and a book with screens needs one.
+- `leads_to = <Screen>` on an interaction names the screen the person is on once the act went
+  through. `screen` stays the screen the act happens on, and an interaction with no `leads_to`
+  leaves the person on it. An interaction with no `screen` and a `leads_to` makes its target a
+  screen a person can arrive on from outside, such as a deep link.
+- `inside = <Screen>` on a screen that has no address of its own (a dialog, a form inside a list
+  page), with `shown_in = <phase>` when the host has a phase in which it is shown. A hosted screen is
+  reached when its host is.
+
+```python
+class GoToAssign(Interaction[None]):
+    screen = Home
+    leads_to = Assign
+    does = "follows the Assign link"
+
+class RemoveDialog(Screen):
+    inside = ListPage
+    shown_in = ready
+```
+
+`check` refuses a `leads_to` or `inside` that names no screen of the book, a screen inside itself,
+a `shown_in` that is not a phase of the host, a `shown_in` with no `inside`, and a book with
+screens and no `first`. It tells, and does not block, of a screen no walk from a first screen
+reaches, and of a screen an interaction leads to that states neither `route` nor `root`, so an
+arrival on it could not be recognised.
+
+The play checks these facts on the surface after each act the app took. A stated `leads_to` is
+waited for, by the browser's own wait, and a miss fails the step with "the act did not land on
+<Screen>". An act that states no `leads_to`, or that the model refused, must leave the person on its
+`screen`. One that does not still passes, and the run ends with a line that lists each such
+interaction once: state its `leads_to`. A screen is recognised by its `route` (the path of the
+address, with `[id]`, `{id}`, `:id` or `$id` for one segment, a trailing slash and the query
+ignored) and by its `root` when it states both, so give screens that share a route each its own
+`root`. A screen inside another is recognised by its own `root`, or by its host's. A screen with
+neither `route` nor `root` cannot be recognised, and the play checks nothing for it. A phone
+recognises a screen by its `root` alone.
+
+```bash
+ostler book explain services.web RemoveDialog      # reached by, hosted by and phase, from an entry: A then B
+ostler book explain services.web AddTodo           # the way to its screen, leads to or stays on
+ostler book explain services.web ListPage.edit     # the component, the phases that show or hide it, the way there
+ostler book search remove                          # each hit adds: on <Screen>, reached by <A> then <B>
+```
+
 ## A list filled from data
 
 ```python
