@@ -12,7 +12,7 @@ var __exportAll = (all, no_symbols) => {
 	__defProp(target, Symbol.toStringTag, { value: "Module" });
 	return target;
 };
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/abort-signal.js
+// node_modules/svelte/src/internal/server/abort-signal.js
 function getAbortSignal() {
 	let context = ssr_context;
 	while (context !== null) {
@@ -21,7 +21,7 @@ function getAbortSignal() {
 	}
 	return new AbortController().signal;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/hydratable.js
+// node_modules/svelte/src/internal/server/hydratable.js
 /** @import { HydratableLookupEntry } from '#server' */
 /**
 * @template T
@@ -82,7 +82,7 @@ function serialization_stack(root_stack, uneval_stack) {
 	if (uneval_stack) out += "Caused by:\n" + uneval_stack + "\n";
 	return out || "<missing stack trace>";
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/blocks/snippet.js
+// node_modules/svelte/src/internal/server/blocks/snippet.js
 /** @import { Snippet } from 'svelte' */
 /** @import { Renderer } from '../renderer' */
 /** @import { Getters } from '#shared' */
@@ -101,7 +101,7 @@ function createRawSnippet(fn) {
 		renderer.push(fn(...getters).render().trim());
 	};
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/index-server.js
+// node_modules/svelte/src/index-server.js
 /** @import { SSRContext } from '#server' */
 /** @import { Renderer } from './internal/server/renderer.js' */
 var index_server_exports = /* @__PURE__ */ __exportAll({

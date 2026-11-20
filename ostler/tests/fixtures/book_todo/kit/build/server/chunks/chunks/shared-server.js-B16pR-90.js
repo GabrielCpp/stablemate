@@ -1,4 +1,4 @@
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/runtime/shared-server.js
+// node_modules/@sveltejs/kit/src/runtime/shared-server.js
 /**
 * `$env/dynamic/private`
 * @type {Record<string, string>}

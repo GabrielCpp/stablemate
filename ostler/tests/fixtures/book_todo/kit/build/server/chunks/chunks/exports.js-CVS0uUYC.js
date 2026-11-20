@@ -113,7 +113,7 @@ function allow_nodejs_console_log(url) {
 		return inspect(new URL(url), opts);
 	};
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/store/shared/index.js
+// node_modules/svelte/src/store/shared/index.js
 /** @import { Readable, StartStopNotifier, Subscriber, Unsubscriber, Updater, Writable } from '../public.js' */
 /** @import { Stores, StoresValues, SubscribeInvalidateTuple } from '../private.js' */
 /**
@@ -196,7 +196,7 @@ function writable(value, start = noop) {
 		subscribe
 	};
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/utils/hash.js
+// node_modules/@sveltejs/kit/src/utils/hash.js
 /**
 * Hash using djb2
 * @param {import('types').StrictBody[]} values
@@ -213,7 +213,7 @@ function hash(...values) {
 	} else throw new TypeError("value must be a string or TypedArray");
 	return (hash >>> 0).toString(36);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/utils/routing.js
+// node_modules/@sveltejs/kit/src/utils/routing.js
 /**
 * @param {RegExpMatchArray} match
 * @param {import('types').RouteParam[]} params
@@ -273,7 +273,7 @@ function find_route(path, routes, matchers) {
 	}
 	return null;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/utils/exports.js
+// node_modules/@sveltejs/kit/src/utils/exports.js
 /**
 * @param {Set<string>} expected
 */

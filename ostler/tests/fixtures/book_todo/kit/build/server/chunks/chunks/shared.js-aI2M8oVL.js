@@ -1848,7 +1848,7 @@ function stringify_primitive(thing) {
 	return String(thing);
 }
 
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/utils/functions.js
+// node_modules/@sveltejs/kit/src/utils/functions.js
 function noop() {}
 /**
 * @template T
@@ -1864,7 +1864,7 @@ function once(fn) {
 		return result = fn();
 	};
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/runtime/utils.js
+// node_modules/@sveltejs/kit/src/runtime/utils.js
 var text_encoder = new TextEncoder();
 /**
 * Like node's path.relative, but without using node
@@ -1907,7 +1907,7 @@ function base64_decode(encoded) {
 	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
 	return bytes;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/utils/error.js
+// node_modules/@sveltejs/kit/src/utils/error.js
 /**
 * @param {unknown} err
 * @return {Error}

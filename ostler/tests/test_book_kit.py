@@ -35,6 +35,18 @@ def _data(flat: list) -> dict:
     return {"type": "data", "data": flat, "uses": {}}
 
 
+def test_the_committed_build_names_no_file_outside_the_kit():
+    """The bundler names each module's source file in a comment, and a rebuild against node_modules outside its folder writes the builder's own path into a public repo."""
+    escaped = [
+        f"{path.relative_to(FIXTURE)}: {line}"
+        for path in sorted((FIXTURE / "kit" / "build").rglob("*.js"))
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.startswith(("// ../", "// /"))
+    ]
+
+    assert escaped == []
+
+
 def test_a_page_s_data_decodes_dates_sets_maps_undefined_and_a_value_referenced_twice():
     got = decode(_answer(None, _data(SHARED)))
     assert got["when"] == "2026-11-04T10:00:00.000Z"

@@ -6,11 +6,11 @@ import '../../chunks/exports.js-CVS0uUYC.js';
 import '../../chunks/internal2.js-DLO42cJ6.js';
 import '../../chunks/utils.js-LtVxGe4m.js';
 
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/runtime/app/state/server.js
+// node_modules/@sveltejs/kit/src/runtime/app/state/server.js
 function context() {
 	return getContext("__request__");
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/runtime/app/state/index.js
+// node_modules/@sveltejs/kit/src/runtime/app/state/index.js
 /**
 * A read-only reactive object with information about the current page, serving several use cases:
 * - retrieving the combined `data` of all pages/layouts anywhere in your component tree (also see [loading data](https://svelte.dev/docs/kit/load))
@@ -55,7 +55,7 @@ var page = {
 	get status() {
 		return context().page.status;
 	}};
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/runtime/components/svelte-5/error.svelte
+// node_modules/@sveltejs/kit/src/runtime/components/svelte-5/error.svelte
 function Error$1($$renderer, $$props) {
 	$$renderer.component(($$renderer) => {
 		$$renderer.push(`<h1>${escape_html(page.status)}</h1> <p>${escape_html(page.error?.message)}</p>`);

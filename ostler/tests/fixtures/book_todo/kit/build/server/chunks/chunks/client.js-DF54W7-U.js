@@ -30,7 +30,7 @@ if (is_legacy) {
 		url = new URL(placeholder_url);
 	}();
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/runtime/client/client.js
+// node_modules/@sveltejs/kit/src/runtime/client/client.js
 /** @import { RemoteFunctionDataNode, ServerNodesResponse, ServerRedirectNode } from 'types' */
 /** @import { CacheEntry } from './remote-functions/cache.svelte.js' */
 /** @import { Query } from './remote-functions/query/instance.svelte.js' */

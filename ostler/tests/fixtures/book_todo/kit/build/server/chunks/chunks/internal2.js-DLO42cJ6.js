@@ -5,7 +5,7 @@ var read_implementation = null;
 function set_read_implementation(fn) {
 	read_implementation = fn;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/dom/elements/events.js
+// node_modules/svelte/src/internal/client/dom/elements/events.js
 /**
 * Used on elements, as a map of event type -> event handler,
 * and on events themselves to track which element handled an event
@@ -95,7 +95,7 @@ function handle_event_propagation(event) {
 		set_active_effect(previous_effect);
 	}
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/dom/template.js
+// node_modules/svelte/src/internal/client/dom/template.js
 /**
 * @param {TemplateNode} start
 * @param {TemplateNode | null} end
@@ -109,7 +109,7 @@ function assign_nodes(start, end) {
 		t: null
 	};
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/reactivity/create-subscriber.js
+// node_modules/svelte/src/reactivity/create-subscriber.js
 /**
 * Returns a `subscribe` function that integrates external event-based systems with Svelte's reactivity.
 * It's particularly useful for integrating with web APIs like `MediaQuery`, `IntersectionObserver`, or `WebSocket`.
@@ -181,7 +181,7 @@ function createSubscriber(start) {
 		}
 	};
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/dom/blocks/boundary.js
+// node_modules/svelte/src/internal/client/dom/blocks/boundary.js
 /** @import { Effect, Source, TemplateNode, } from '#client' */
 /**
 * @typedef {{
@@ -736,7 +736,7 @@ function unmount(component, options) {
 	}
 	return Promise.resolve();
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/legacy/legacy-client.js
+// node_modules/svelte/src/legacy/legacy-client.js
 /** @import { ComponentConstructorOptions, ComponentType, SvelteComponent, Component } from 'svelte' */
 /**
 * Takes the component function and returns a Svelte 4 compatible component constructor.
@@ -860,7 +860,7 @@ var Svelte4Component = class {
 		this.#instance.$destroy();
 	}
 };
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/legacy/legacy-server.js
+// node_modules/svelte/src/legacy/legacy-server.js
 /** @import { SvelteComponent } from '../index.js' */
 /** @import { Csp } from '../server/public.js' */
 /** @typedef {{ head: string, html: string, css: { code: string, map: null }; hashes?: { script: `sha256-${string}`[] } }} LegacyRenderResult */

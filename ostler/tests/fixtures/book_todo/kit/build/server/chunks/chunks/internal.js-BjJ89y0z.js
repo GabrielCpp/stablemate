@@ -1,4 +1,4 @@
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/runtime/app/paths/internal/server.js
+// node_modules/@sveltejs/kit/src/runtime/app/paths/internal/server.js
 var base = "";
 var assets = base;
 var app_dir = "_app";

@@ -2,7 +2,7 @@ import { u as uneval } from './shared.js-aI2M8oVL.js';
 
 function r(e){var t,f,n="";if("string"==typeof e||"number"==typeof e)n+=e;else if("object"==typeof e)if(Array.isArray(e)){var o=e.length;for(t=0;t<o;t++)e[t]&&(f=r(e[t]))&&(n&&(n+=" "),n+=f);}else for(f in e)e[f]&&(n&&(n+=" "),n+=f);return n}function clsx(){for(var e,t,f=0,n="",o=arguments.length;f<o;f++)(e=arguments[f])&&(t=r(e))&&(n&&(n+=" "),n+=t);return n}
 
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/shared/utils.js
+// node_modules/svelte/src/internal/shared/utils.js
 var is_array = Array.isArray;
 var index_of = Array.prototype.indexOf;
 var includes = Array.prototype.includes;
@@ -41,7 +41,7 @@ function deferred() {
 		reject
 	};
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/reactivity/equality.js
+// node_modules/svelte/src/internal/client/reactivity/equality.js
 /** @import { Equals } from '#client' */
 /** @type {Equals} */
 function equals(value) {
@@ -90,7 +90,7 @@ var STALE_REACTION = new class StaleReactionError extends Error {
 	name = "StaleReactionError";
 	message = "The reaction that called `getAbortSignal()` was re-run or destroyed";
 }();
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/constants.js
+// node_modules/svelte/src/constants.js
 var HYDRATION_ERROR = {};
 var UNINITIALIZED = Symbol("uninitialized");
 /**
@@ -112,7 +112,7 @@ function hydration_mismatch(location) {
 function svelte_boundary_reset_noop() {
 	console.warn(`https://svelte.dev/e/svelte_boundary_reset_noop`);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/dom/hydration.js
+// node_modules/svelte/src/internal/client/dom/hydration.js
 /** @import { TemplateNode } from '#client' */
 /**
 * Use this variable to guard everything related to hydration code so it can be treeshaken out
@@ -181,7 +181,7 @@ function read_hydration_instruction(node) {
 	}
 	return node.data;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/shared/errors.js
+// node_modules/svelte/src/internal/shared/errors.js
 /**
 * Cannot use `%name%(...)` unless the `experimental.async` compiler option is `true`
 * @param {string} name
@@ -254,7 +254,7 @@ function state_unsafe_mutation() {
 function svelte_boundary_reset_onerror() {
 	throw new Error(`https://svelte.dev/e/svelte_boundary_reset_onerror`);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/shared/context.js
+// node_modules/svelte/src/internal/shared/context.js
 /**
 * @template T
 * @param {(key: object) => T} get_context
@@ -294,7 +294,7 @@ function get_or_init_context_map(context, name) {
 	if (context === null) lifecycle_outside_component();
 	return context.c ??= new Map(get_parent_context(context) || void 0);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/context.js
+// node_modules/svelte/src/internal/client/context.js
 /** @import { ComponentContext, DevStackEntry, Effect } from '#client' */
 /** @type {ComponentContext | null} */
 var component_context = null;
@@ -348,7 +348,7 @@ function mark_as_component(component = {}) {
 function is_runes() {
 	return true;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/dom/task.js
+// node_modules/svelte/src/internal/client/dom/task.js
 /** @type {Array<() => void>} */
 var micro_tasks = [];
 function run_micro_tasks() {
@@ -374,7 +374,7 @@ function queue_micro_task(fn) {
 function flush_tasks() {
 	while (micro_tasks.length > 0) run_micro_tasks();
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/reactivity/status.js
+// node_modules/svelte/src/internal/client/reactivity/status.js
 /** @import { Derived, Signal } from '#client' */
 var STATUS_MASK = -7169;
 /**
@@ -392,7 +392,7 @@ function update_derived_status(derived) {
 	if ((derived.f & 512) !== 0 || derived.deps === null) set_signal_status(derived, CLEAN);
 	else set_signal_status(derived, MAYBE_DIRTY);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/reactivity/utils.js
+// node_modules/svelte/src/internal/client/reactivity/utils.js
 /** @import { Effect } from '#client' */
 /**
 * @param {Effect} effect
@@ -404,7 +404,7 @@ function defer_effect(effect, dirty_effects, maybe_dirty_effects) {
 	else if ((effect.f & 4096) !== 0) maybe_dirty_effects.add(effect);
 	set_signal_status(effect, CLEAN);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/dom/elements/bindings/shared.js
+// node_modules/svelte/src/internal/client/dom/elements/bindings/shared.js
 /**
 * @template T
 * @param {() => T} fn
@@ -502,7 +502,7 @@ function unfreeze_derived_effects(derived) {
 	if (derived.effects === null) return;
 	for (const e of derived.effects) if (e.teardown && e.fn !== null) update_effect(e);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/reactivity/batch.js
+// node_modules/svelte/src/internal/client/reactivity/batch.js
 /** @import { Fork } from 'svelte' */
 /** @import { Derived, Effect, Reaction, Source, Value } from '#client' */
 /** @type {Batch | null} */
@@ -1245,7 +1245,7 @@ function reset_all(effect) {
 		e = e.next;
 	}
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/reactivity/sources.js
+// node_modules/svelte/src/internal/client/reactivity/sources.js
 /** @import { Derived, Effect, Source, Value } from '#client' */
 /** @type {Set<Effect>} */
 var eager_effects = /* @__PURE__ */ new Set();
@@ -1553,7 +1553,7 @@ function proxy(value) {
 		}
 	});
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/dom/operations.js
+// node_modules/svelte/src/internal/client/dom/operations.js
 /** @type {Window} */
 var $window;
 /** @type {() => Node | null} */
@@ -1645,7 +1645,7 @@ function invoke_error_boundary(error, effect) {
 	}
 	throw error;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/reactivity/effects.js
+// node_modules/svelte/src/internal/client/reactivity/effects.js
 /** @import { Blocker, ComponentContext, ComponentContextLegacy, Derived, Effect, TemplateNode, TransitionManager } from '#client' */
 /**
 * @param {Effect} effect
@@ -1933,7 +1933,7 @@ function move_effect(effect, fragment) {
 		node = next;
 	}
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/client/runtime.js
+// node_modules/svelte/src/internal/client/runtime.js
 /** @import { Derived, Effect, Reaction, Source, Value } from '#client' */
 var is_destroying_effect = false;
 /** @param {boolean} value */
@@ -2280,7 +2280,7 @@ function untrack(fn) {
 		untracking = previous_untracking;
 	}
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/utils.js
+// node_modules/svelte/src/utils.js
 /**
 * Attributes that are boolean, i.e. they are present or not present.
 */
@@ -2338,7 +2338,7 @@ var PASSIVE_EVENTS = ["touchstart", "touchmove"];
 function is_passive_event(name) {
 	return PASSIVE_EVENTS.includes(name);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/escaping.js
+// node_modules/svelte/src/escaping.js
 var ATTR_REGEX = /[&"<]/g;
 var CONTENT_REGEX = /[&<]/g;
 /**
@@ -2360,7 +2360,7 @@ function escape_html(value, is_attr) {
 	}
 	return escaped + str.substring(last);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/shared/attributes.js
+// node_modules/svelte/src/internal/shared/attributes.js
 /**
 * `<div translate={false}>` should be rendered as `<div translate="no">` and _not_
 * `<div translate="false">`, which is equivalent to `<div translate="yes">`. There
@@ -2498,10 +2498,10 @@ function to_style(value, styles) {
 	}
 	return value == null ? null : String(value);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/hydration.js
+// node_modules/svelte/src/internal/server/hydration.js
 var BLOCK_OPEN = `<!--[-->`;
 var BLOCK_CLOSE = `<!--]-->`;
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/errors.js
+// node_modules/svelte/src/internal/server/errors.js
 /**
 * The node API `AsyncLocalStorage` is not available, but is required to use async server rendering.
 * @returns {never}
@@ -2578,7 +2578,7 @@ function server_context_required() {
 	error.name = "Svelte error";
 	throw error;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/context.js
+// node_modules/svelte/src/internal/server/context.js
 /** @import { SSRContext } from '#server' */
 /** @type {SSRContext | null} */
 var ssr_context = null;
@@ -2650,7 +2650,7 @@ function pop() {
 function unresolved_hydratable(key, stack) {
 	console.warn(`https://svelte.dev/e/unresolved_hydratable`);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/render-context.js
+// node_modules/svelte/src/internal/server/render-context.js
 /** @import { AsyncLocalStorage } from 'node:async_hooks' */
 /** @import { RenderContext } from '#server' */
 /** @type {Promise<void> | null} */
@@ -2705,7 +2705,7 @@ function init_render_context() {
 function in_webcontainer() {
 	return !!globalThis.process?.versions?.webcontainer;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/crypto.js
+// node_modules/svelte/src/internal/server/crypto.js
 var text_encoder;
 var crypto;
 /** @param {string} module_name */
@@ -2729,7 +2729,7 @@ function base64_encode(bytes) {
 	for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
 	return btoa(binary);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/renderer.js
+// node_modules/svelte/src/internal/server/renderer.js
 /** @import { Component } from 'svelte' */
 /** @import { HydratableContext, SSRContext } from './types.js' */
 /** @import { Csp, RenderOutput, SyncRenderOutput, Sha256Source } from '../../server/public.js' */
@@ -3531,7 +3531,7 @@ var SSRState = class {
 		}
 	}
 };
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/svelte/src/internal/server/index.js
+// node_modules/svelte/src/internal/server/index.js
 var INVALID_ATTR_NAME_CHAR_REGEX = /[\s'">/=\u{FDD0}-\u{FDEF}\u{FFFE}\u{FFFF}\u{1FFFE}\u{1FFFF}\u{2FFFE}\u{2FFFF}\u{3FFFE}\u{3FFFF}\u{4FFFE}\u{4FFFF}\u{5FFFE}\u{5FFFF}\u{6FFFE}\u{6FFFF}\u{7FFFE}\u{7FFFF}\u{8FFFE}\u{8FFFF}\u{9FFFE}\u{9FFFF}\u{AFFFE}\u{AFFFF}\u{BFFFE}\u{BFFFF}\u{CFFFE}\u{CFFFF}\u{DFFFE}\u{DFFFF}\u{EFFFE}\u{EFFFF}\u{FFFFE}\u{FFFFF}\u{10FFFE}\u{10FFFF}]/u;
 /**
 * Only available on the server and when compiling with the `server` option.

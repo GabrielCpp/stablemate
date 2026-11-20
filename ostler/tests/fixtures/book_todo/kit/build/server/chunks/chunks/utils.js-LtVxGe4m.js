@@ -531,7 +531,7 @@ var PAGE_METHODS = [
 	"POST",
 	"HEAD"
 ];
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/runtime/form-utils.js
+// node_modules/@sveltejs/kit/src/runtime/form-utils.js
 /** @import { RemoteForm } from '@sveltejs/kit' */
 /** @import { BinaryFormMeta, InternalRemoteFormIssue } from 'types' */
 /** @import { StandardSchemaV1 } from '@standard-schema/spec' */
@@ -849,7 +849,7 @@ function deep_set(object, keys, value) {
 	if (value === DELETE_KEY) delete current[final_key];
 	else current[final_key] = value;
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/utils/http.js
+// node_modules/@sveltejs/kit/src/utils/http.js
 /**
 * Given an Accept header and a list of possible content types, pick
 * the most suitable one to respond with
@@ -920,7 +920,7 @@ function is_content_type(request, ...types) {
 function is_form_content_type(request) {
 	return is_content_type(request, "application/x-www-form-urlencoded", "multipart/form-data", "text/plain", BINARY_FORM_CONTENT_TYPE);
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/utils/escape.js
+// node_modules/@sveltejs/kit/src/utils/escape.js
 /**
 * When inside a double-quoted attribute value, only `&` and `"` hold special meaning.
 * @see https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(double-quoted)-state
@@ -955,7 +955,7 @@ function escape_html(str, is_attr) {
 		return dict[match] ?? `&#${match.charCodeAt(0)};`;
 	});
 }
-// ../../../home/gabriel/Documents/ai-artifacts/benchmarks/gold/ticket-desk/data/gamma/node_modules/@sveltejs/kit/src/runtime/server/utils.js
+// node_modules/@sveltejs/kit/src/runtime/server/utils.js
 /** @import { ServerHooks } from 'types' */
 /**
 * @param {Partial<Record<import('types').HttpMethod, any>>} mod
