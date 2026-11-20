@@ -500,9 +500,12 @@ def _describe(spec: NodeSpec, args: tuple[Any, ...], kwargs: dict[str, Any]) -> 
 
 
 def _sub_scope(cls: type[Workflow], env: RunEnv) -> dict[str, Any]:
-    """What a handed-off flow gets that its caller does not: its own registry's world."""
+    """What a handed-off flow gets that its caller does not: its own registry's world.
+
+    A caller that runs on its registry's nodes, or on a substitution of them, shares that world with a flow of the same registry.
+    """
     registry = registry_of(cls)
-    if registry is None or registry.nodes is env.nodes:
+    if registry is None or (env.nodes is not None and registry.nodes is env.nodes.origin):
         return {}
     return {
         "workflow_dir": registry.directory(),

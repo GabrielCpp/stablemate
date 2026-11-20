@@ -14,6 +14,7 @@ class NameIndex(Generic[T]):
     def __init__(self, kind: str, owner: str = "") -> None:
         self.kind = kind
         self.owner = owner
+        self.origin: NameIndex[T] = self
         self._live: dict[str, T] = {}
         self._aliases: dict[str, str] = {}
 
@@ -61,8 +62,9 @@ class NameIndex(Generic[T]):
             self._alias(alias, name)
 
     def replacing(self, targets: dict[str, T]) -> "NameIndex[T]":
-        """A copy of this index with `targets` swapped in — the substitution primitive."""
+        """A copy of this index with `targets` swapped in, the substitution primitive. The copy keeps the index it was first copied from as its `origin`."""
         copy: NameIndex[T] = NameIndex(self.kind, owner=self.owner)
+        copy.origin = self.origin
         copy._live = dict(self._live)
         copy._aliases = dict(self._aliases)
         for name, target in targets.items():

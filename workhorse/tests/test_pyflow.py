@@ -1838,6 +1838,28 @@ def test_a_handoff_into_another_registrys_flow_runs_in_that_registrys_world():
         assert drive(Parent(), env) == "child:login"
 
 
+def test_a_node_substituted_on_a_registry_reaches_its_own_sub_flows():
+    """A test that stands in for a node of its registry stands in for it in every flow of that registry, however deep the handoff."""
+    with tempfile.TemporaryDirectory() as tmp:
+        same = Blueprint("acme-sub")
+
+        @same.node
+        def weigh(logger: Any, subject: str) -> Payload:
+            return Payload(kind=f"real:{subject}", count=0)
+
+        class Child(Workflow):
+            def start(self) -> Transition:
+                return Done(self.call(weigh, "login").kind)
+
+        class Caller(Workflow):
+            def start(self) -> Transition:
+                return Done(self.handoff(Child))
+
+        registry = Registry("acme-sub").add_blueprints(same).add_flows(child=Child)
+        env = _env(tmp, nodes=registry.override(weigh=lambda logger, subject: Payload(kind="stand-in", count=0)))
+        assert drive(Caller(), env) == "stand-in"
+
+
 def test_a_flow_class_may_belong_to_only_one_registry():
     class Shared(Workflow):
         def start(self) -> Transition:
