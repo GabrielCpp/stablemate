@@ -574,9 +574,9 @@ during a two-day wait resumes into the waiting state rather than re-asking.
 ### What the diagram reads off a state
 
 `dot` (see [CHECKING.md](CHECKING.md#dot-diagramming-a-workflow-workhorse-name-dot)) draws a
-state as the chain of steps its body runs and labels each transition with why it is
+state as the stack of steps its body runs and labels each transition with why it is
 taken. It invents none of that text; it reads three things the author writes anyway, and
-a state missing one of them draws as a bare file name or a parameter list:
+a state missing one of them draws as a bare file name or an unlabelled arrow:
 
 | You write | The diagram shows |
 |---|---|
@@ -586,7 +586,7 @@ a state missing one of them draws as a bare file name or a parameter list:
 | `turn = roles.turn(self, "review", …)` then `self.agent(turn.prompt, …)`, where `turn` is marked `@resolves_prompt(path_of)` | the bubble `path_of(cls, "review")` names, read off the local's binding |
 | `turn = roles.turn(self, "a", …) if x else roles.turn(self, "b", …)` | one bubble per arm, each read through `path_of` |
 | `self.agent(text, label="fix-findings", …)` | a bubble named for the label, captioned with the body's own `#` title |
-| `Continue(...).because("…")`, likewise on `Await` and `Done` | the sentence on the edge, in place of the parameter names |
+| `Continue(...).because("…")`, likewise on `Await` and `Done` | the sentence on the edge; the parameter names stay in its tooltip |
 
 `.because()` is also logged by the driver on the transition line, so a run log reads the
 same way the diagram does. Keep a reason under about sixty characters, and take it from

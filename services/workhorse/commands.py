@@ -141,13 +141,17 @@ class Run(Command):
 class Dot(Command):
     does = "Print the loop runner's flow as a Graphviz graph, or write it to a file."
     program = "workhorse-loop-runner"
-    argv = ("dot", Flag("-o", "out"), Flag("--name", "name"))
+    argv = ("dot", Flag("-o", "out"), Flag("--name", "name"), Flag("--flow", "flow"))
     args = Object(
         "DotArgs",
         name=Field(Str(classes={"a graph name": "flow", "a graph name with an underscore": "my_flow"}), required=False, does="the graph's name; loop_runner when left out"),
         out=Field(Str(classes={"a file name": "flow.dot", "another file name": "graph.dot"}), required=False, does="a file to write instead of printing to the terminal"),
+        flow=Field(Str(classes={"the runner's one flow": "default", "a flow the runner does not have": "nope"}), required=False, does="the one flow to draw; every flow when left out"),
     )
-    answers = (Exit(0, Lines(), "the graph is printed, or written to the named file"),)
+    answers = (
+        Exit(0, Lines(), "the graph is printed, or written to the named file"),
+        Exit(1, STDERR, "the runner has no flow of that name"),
+    )
     carries = DrawGraph
     source = ("workhorse/workhorse/cli/dot.py::run", *_app("pyflow/dot.py", "pyflow/graph.py", "packaged.py"))
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from ostler.book import Actor, Exited, Rule
 
-from ..fixtures import (BACKENDS, HELD_PARAM, STATE, ControlArgs, InboxReadArgs,
+from ..fixtures import (BACKENDS, HELD_PARAM, STATE, ControlArgs, DotArgs, InboxReadArgs,
                         InboxReplyArgs, ReplayArgs, RunArgs)
 from .state import Runs, exists, finished, held_params, messages, unfinished
 
@@ -257,3 +257,12 @@ def _turn_missing(a: ReplayArgs, s: Runs, by: Actor | None) -> bool:
 turn_missing = Rule[ReplayArgs, Runs](
     "error: " + RUNS + "/loop-runner-{target}/turns/{turn}/turn.json does not exist; name a directory under the run's "
     "turns/ that holds a turn.json", _turn_missing, FAILED)
+
+
+def _unknown_flow(a: DotArgs, s: Runs, by: Actor | None) -> bool:
+    return a.flow is not None and a.flow not in ("default", "LoopRunner")
+
+
+unknown_flow = Rule[DotArgs, Runs](
+    "no flow named '{flow}': this workflow has LoopRunner, default", _unknown_flow, FAILED,
+    why="A flow name that matches nothing would draw an empty graph, which reads as a flow with no states.")

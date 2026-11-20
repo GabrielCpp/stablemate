@@ -82,6 +82,7 @@ class VersionArgs(Fixture):
 class DotArgs(Fixture):
     name: str | None = None
     out: str | None = None
+    flow: str | None = None
 
     @property
     def graph(self) -> str:

@@ -217,6 +217,18 @@ class Reasoned(Workflow):
         return Done(None).because("nothing left to do")
 
 
+class Converging(Workflow):
+    """Two returns of one state lead to the same next state, one of them through an operator gate."""
+
+    def start(self) -> Transition:
+        if self.run_id:
+            return Continue(None, self.finish, note="go").because("checked")
+        return Await("q.md", "?", self.finish).because("parked")
+
+    def finish(self, note: str = "") -> Transition:
+        return Done(None)
+
+
 def test_a_chained_because_is_read_as_the_edge_reason():
     start = {(e.target, e.kind, e.reason) for e in _state(Reasoned, "start").edges}
     assert start == {("hold", "continue", "a run id was given"), ("finish", "continue", "")}
@@ -230,7 +242,7 @@ def test_a_chained_because_is_read_as_the_edge_reason():
 
 def test_dot_prefers_the_reason_over_parameter_names():
     dot = to_dot([_graph(Reasoned)])
-    assert 'f0__start -> f0__hold [label="a run id was given"]' in dot
+    assert 'f0__start -> f0__hold [label="a run id was given", tooltip="attempt"]' in dot
     assert 'label="attempt"' not in dot
     assert 'f0__finish -> f0____end [label="nothing left to do", color=darkgoldenrod]' in dot
 
@@ -526,7 +538,8 @@ def test_dot_draws_a_state_as_the_chain_of_steps_it_runs():
     assert "subgraph cluster_f0__start {" in dot
     assert 'f0__start__0 [label="measure' in dot
     assert 'f0__start__1 [label="record.md", shape=note' in dot
-    assert "f0__start__0 -> f0__start__1" in dot
+    assert "f0__start__0 -> f0__start__1 [style=invis]" in dot
+    assert "gray40" not in dot
     assert "f0__start__1 -> f0__finish__0 [ltail=cluster_f0__start, lhead=cluster_f0__finish]" in dot
     assert "f0____start -> f0__start__0 [lhead=cluster_f0__start]" in dot
     plain = to_dot([_graph(Reasoned)])
@@ -549,10 +562,20 @@ def test_a_step_carries_the_docstring_line_or_the_prompt_title(tmp_path: Path):
     assert review.steps == (Step("agent", "prompts/review.md"),)
 
 
-def test_dot_marks_an_await_edge_and_labels_bound_parameters():
+def test_dot_marks_an_await_edge_and_keeps_bound_parameters_in_a_tooltip():
     dot = to_dot([_graph(Sample)])
     assert "style=dashed" in dot
-    assert 'label="verdict"' in dot
+    assert 'tooltip="verdict"' in dot
+    assert 'label="verdict"' not in dot
+
+
+def test_two_returns_to_one_state_draw_one_arrow_that_parks_if_either_parks():
+    dot = to_dot([_graph(Converging)])
+    arrows = [line for line in dot.splitlines() if "f0__start -> f0__finish" in line]
+    assert arrows == [
+        '    f0__start -> f0__finish [label="parked / checked", tooltip="note", '
+        "style=dashed, color=darkorange];"
+    ]
 
 
 def test_dot_draws_done_as_an_edge_to_one_end_sink_per_flow():
@@ -925,7 +948,7 @@ def _dot_args(**kwargs: Any) -> Any:
     """The `dot` Namespace argparse would have built."""
     import argparse
 
-    defaults = {"name": None, "output": None, "registry": None}
+    defaults = {"name": None, "output": None, "registry": None, "flow": None}
     return argparse.Namespace(**{**defaults, **kwargs})
 
 
@@ -939,6 +962,22 @@ def test_dot_renders_a_python_workflow_from_its_registry():
     with redirect_stdout(buffer):
         run_dot(_dot_args(registry=_sample_registry()))
     assert buffer.getvalue().startswith("digraph acme {")
+
+
+def test_dot_renders_only_the_flow_it_is_asked_for():
+    import io
+    from contextlib import redirect_stdout
+
+    from workhorse.cli.dot import run as run_dot
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        run_dot(_dot_args(registry=_sample_registry(), flow="orphan"))
+    dot = buffer.getvalue()
+    assert 'label="orphan"' in dot
+    assert "review" not in dot
+    with pytest.raises(SystemExit, match="no flow named 'acme-flow'.*Orphan, Sample, default, orphan"):
+        run_dot(_dot_args(registry=_sample_registry(), flow="acme-flow"))
 
 
 def test_dot_rejects_pin_and_leaf_at_the_parser():

@@ -50,6 +50,7 @@ class DryRun(Action[RunArgs, Runs]):
 
 class DrawGraph(Action[DotArgs, Runs]):
     accept = DotArgs
+    rules = (rules.unknown_flow,)
 
     @staticmethod
     def reduce(a: DotArgs, s: Runs, by: Actor | None) -> Transaction:

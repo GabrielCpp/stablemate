@@ -15,6 +15,12 @@ _HEADER = (
     "  edge [color=darkblue, fontsize=10];\n"
 )
 
+_LOOK = {
+    "continue": "",
+    "await": "style=dashed, color=darkorange",
+    "done": "color=darkgoldenrod",
+}
+
 _STEP_STYLE = {
     "call": "shape=box, fillcolor=white",
     "agent": "shape=note, fillcolor=lightyellow",
@@ -41,7 +47,7 @@ _LEGEND = [
     f'      legend_agent [label="an agent turn: prompt.md\\nits title", {_STEP_STYLE["agent"]}];',
     f'      legend_handoff [label="handoff → a sub-flow\\nrun to its END, then back here", '
     f'{_STEP_STYLE["handoff"]}];',
-    "      legend_call -> legend_agent -> legend_handoff [color=gray40, arrowsize=0.6];",
+    "      legend_call -> legend_agent -> legend_handoff [style=invis];",
     "    }",
     "  }",
 ]
@@ -86,8 +92,8 @@ def _emit_flow(
     clip = _clip(prefix, None, first).lstrip(", ")
     lines.append(f"    {start_id} -> {entry}{f' [{clip}]' if clip else ''};")
     for node in graph.states:
-        for edge in node.edges:
-            lines.append(f"    {_edge(prefix, node, edge, graph)};")
+        for edges in _merged(node.edges):
+            lines.append(f"    {_edge(prefix, node, edges, graph)};")
     lines.append("  }")
 
 
@@ -149,12 +155,22 @@ def _emit_state(
         label = "\\n".join(_esc(part) for part in parts)
         lines.append(f'      {step_id} [label="{label}", {_STEP_STYLE[step.kind]}];')
     for tail, head in zip(ids, ids[1:], strict=False):
-        lines.append(f"      {tail} -> {head} [color=gray40, arrowsize=0.6];")
+        lines.append(f"      {tail} -> {head} [style=invis];")
     lines.append("    }")
 
 
-def _edge(prefix: str, node: StateNode, edge: Edge, graph: FlowGraph) -> str:
-    """One transition."""
+def _merged(edges: Sequence[Edge]) -> list[list[Edge]]:
+    """The state's edges grouped by where they lead, so two returns to one place draw one arrow."""
+    groups: dict[tuple[str, str], list[Edge]] = {}
+    for edge in edges:
+        key = ("done", "") if edge.kind == "done" else ("dynamic" if edge.dynamic else "state", edge.target)
+        groups.setdefault(key, []).append(edge)
+    return list(groups.values())
+
+
+def _edge(prefix: str, node: StateNode, edges: Sequence[Edge], graph: FlowGraph) -> str:
+    """One arrow for every transition from `node` to the same place."""
+    edge = edges[0]
     into: StateNode | None = None
     if edge.kind == "done":
         target = f"{prefix}__end"
@@ -171,15 +187,15 @@ def _edge(prefix: str, node: StateNode, edge: Edge, graph: FlowGraph) -> str:
         head = ""
 
     attrs = []
-    if edge.reason:
-        attrs.append(f'label="{_esc(edge.reason)}"')
-    elif edge.params:
-        attrs.append(f'label="{_esc(", ".join(edge.params))}"')
-    if edge.kind == "await":
-        attrs.append("style=dashed")
-        attrs.append("color=darkorange")
-    elif edge.kind == "done":
-        attrs.append("color=darkgoldenrod")
+    reasons = list(dict.fromkeys(e.reason for e in edges if e.reason))
+    if reasons:
+        attrs.append(f'label="{_esc(" / ".join(reasons))}"')
+    params = list(dict.fromkeys(p for e in edges for p in e.params))
+    if params:
+        attrs.append(f'tooltip="{_esc(", ".join(params))}"')
+    kind = "await" if any(e.kind == "await" for e in edges) else edge.kind
+    if _LOOK[kind]:
+        attrs.append(_LOOK[kind])
     clip = "" if into is node else _clip(prefix, node, into).lstrip(", ")
     if clip:
         attrs.append(clip)

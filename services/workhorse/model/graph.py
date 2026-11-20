@@ -44,7 +44,7 @@ BODY = (
     '      legend_call [label="a node call\\nits docstring", shape=box, fillcolor=white];',
     '      legend_agent [label="an agent turn: prompt.md\\nits title", shape=note, fillcolor=lightyellow];',
     '      legend_handoff [label="handoff → a sub-flow\\nrun to its END, then back here", shape=box, fillcolor=plum];',
-    '      legend_call -> legend_agent -> legend_handoff [color=gray40, arrowsize=0.6];',
+    '      legend_call -> legend_agent -> legend_handoff [style=invis];',
     '    }',
     '  }',
     '}',

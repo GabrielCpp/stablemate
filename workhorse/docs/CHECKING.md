@@ -143,7 +143,8 @@ dot -Tsvg wf.dot -o wf.svg                  # render (needs graphviz)
 
 A workflow is rendered from its states, one dashed cluster per flow, each with its own
 `START` (green circle) and `END` (gold double circle). A state is a rounded blue box
-holding one bubble per step its body runs, top to bottom in source order:
+holding one bubble per step its body runs, stacked top to bottom in source order with no
+arrow between them:
 
 | Bubble | What it is | Caption |
 |---|---|---|
@@ -159,8 +160,10 @@ nothing is the plain box it always was.
 Edges are the transitions. `Done` is one transition among the others — an edge into the
 flow's `END`, coloured gold — never a colour on the state, because a state that can end on
 one branch still continues on another. An `Await` is dashed orange. The edge label is the
-transition's `.because("…")` reason when the author wrote one; otherwise it lists the
-parameters the transition binds. A state nothing reaches, an opaque state, or a dangling
+transition's `.because("…")` reason. A transition with no reason draws unlabelled, and the
+parameters it binds show in the arrow's tooltip when the graph is rendered to SVG. Two
+returns of one state that lead to the same place draw one arrow: its label joins their
+reasons, and it is dashed orange when either of them parks. A state nothing reaches, an opaque state, or a dangling
 target is coral, since the same walk already found it as a defect. The graph is read off
 the states' source, so both arms of an `if` appear (it over-approximates) and it cannot
 drift from the code. A state that factors a repeated turn into a private helper keeps
@@ -176,6 +179,7 @@ every node, a `#` title on every prompt, a `.because()` on every transition.
 | Flag | Purpose |
 |---|---|
 | `--name <id>` | Override the `digraph` identifier (default: sanitized workflow name) |
+| `--flow <name>` | Render only the flow the registry names so, or the flow of that class |
 | `-o, --output <path>` | Write to a file instead of stdout |
 
 There is no flag for carving one mode out of a multi-mode workflow: a state machine's
