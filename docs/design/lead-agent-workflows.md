@@ -559,13 +559,15 @@ Answer is a shared value type. The Dev owner writes it, and Sign-off reads it.
 
   | Params | Files |
   |---|---|
-  | none, or `epic=all` | every queued epic's open stories, epic by epic |
+  | none, or `epic=all` | the open stories of every epic the milestones list, epic by epic in milestone order |
   | `epic=<name>` | that epic's open stories |
   | `story=<slug>` | that story alone, with no dependency check, as story mode does today (`coder/main/flow.py:141-144`) |
 
   `mode` goes. `epic` defaults to `all`. Naming both `story` and an epic other than `all`
   fails at launch with both values in the message, before any turn runs. "Open" means not
-  done by ostler's own test (`ostler/ostler/select.py:100-103`).
+  done by ostler's own test (`ostler/ostler/select.py:100-103`). The run keeps what it
+  finished on its own worklist and never writes the milestones (revised 2026-11-19: there is
+  no shared epics queue to read or prune).
 - **Launch set: New (was Story set).** Resolved once at `start` (`coder/main/flow.py:138`)
   from the Selection, stored in the checkpoint and filed as story items, each carrying its
   epic.
@@ -796,8 +798,8 @@ Answer is a shared value type. The Dev owner writes it, and Sign-off reads it.
    - Engine: the claim gains a strict mode. `counts` takes a set of kinds.
    - Ostler: one call returns an epic's open stories in dependency order.
    **Done when**, for the launch, three launches on one repository show their full
-   count from the first state, read from the worklist: `epic=all` counts every queued
-   epic's open stories, `epic=<name>` counts that epic's, and `story=<slug>` shows
+   count from the first state, read from the worklist: `epic=all` counts the open stories
+   of every epic the milestones list, `epic=<name>` counts that epic's, and `story=<slug>` shows
    "0 of 1". Each run ends after its last item without reading the queue again. A run
    killed mid-story resumes on that story. A launch with an open dependency outside its
    launch set fails before any turn runs.
@@ -883,7 +885,9 @@ follow-up yet. *If wrong:* a run grows faster than it finishes, and a follow-up 
 per epic joins the Lap budget. Re-derive invariant 14 and slice 5.
 
 **A12.** *Assumption:* "In order" means the epic queue front-first, then each epic's
-stories by dependency. *Decided:* Order sorts that way once, at launch. *Basis:* the run
+stories by dependency. *Revised 2026-11-19:* the milestones replace the queue. A
+milestone's `dependsOn` milestones come first, then its `epics:` list in order
+(`Ostler.milestone_epics`). *Decided:* Order sorts that way once, at launch. *Basis:* the run
 works the queue front-first today (`coder/shared/queue.py:89-130`), and ostler's
 `dag_order` already sorts an epic's stories (`ostler/ostler/select.py:63`). `dag_order`
 drops a dependency outside the epic (74-75), so the launch checks those itself
