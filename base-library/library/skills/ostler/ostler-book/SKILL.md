@@ -204,6 +204,10 @@ already busy:
   fixture. A field or a state a play needs is arranged by that play, and what no play can
   arrange is declared `Unseen`. Before the book is done, reload the stack's data and play the
   whole book once more.
+  The book states `fresh` on its stack, and the workflow's closing play reloads through it.
+  Check the book with `ostler book run <module> --fresh-data` before reporting it done.
+  The command returns only once the data is loaded and the application answers.
+  It is the cheapest command that restores the loaded state.
 - **A list is read as containing.** The runtime compares a list only on the entries whose
   ids the book learned. An entry whose id the book never learned drops out of the comparison,
   and an entry whose id is read as written (`strangers`) stays in it. So the service's own
@@ -276,6 +280,14 @@ folder: each element with the journeys, cells and input classes that exercised i
 wait. Send the output to a file and read its last lines once the command has exited. Their report goes under
 `--out`. Omitted, it goes to a fresh temp folder the command names on a `reports:` line. In a story, point `--out` at the story's spec folder, and never inside a repository. `--no-stack` skips starting the
 stack `service.py` declares, and changes nothing when that stack is empty.
+
+An application the book does not start still needs its data reloaded. The stack states how, and `ostler book run <module> --fresh-data` runs that command before any call:
+
+```python
+Stack((), log_dir, fresh=Fresh(("make", "seed"), cwd="repo://api-service"))
+```
+
+`cwd` takes `repo://<member>/<path>`, an absolute path or a path under the book root, and empty is the book root. A repo that shares its stack through `services/shared/` states the `fresh` there once. A book that states none prints a warning and plays on.
 
 A host written `ostler:` in an environment is a copy of the stack that `ostler env` runs. The copy is the
 runner's to name: `--copy NAME`, else the lease the run holds, else the name the book wrote after `ostler:`,
