@@ -28,7 +28,9 @@ For each entry file:
 2. Write one `Screen` class for it:
    - `route` is the address the app declares for it, with `{name}` for each parameter.
    - `name` is the screen's title as the app shows it.
-   - `reached_from` says in one line how a user gets there, from the code: a link, a redirect.
+   - `first = True` when a person can open it directly, by its address or at launch. How a user gets
+     there from another screen is the `leads_to` of the interaction that follows the link, the
+     redirect or the press: state it on that interaction, not on the screen.
    - `source` names the entry file first, then each file you read that belongs to this screen
      alone, spelled the way the book's other pointers are.
    - One component per thing a user sees when the screen has loaded with ordinary data: each
@@ -36,7 +38,8 @@ For each entry file:
      book's service declares, each copied from the app's own texts. Its last argument says what
      the thing is for, in a few plain words.
 3. A dialog or a tab the screen opens is a `Screen` class of its own in the same module. It has
-   no `route`, and its `reached_from` names the screen and the control that opens it.
+   no `route`. It states `inside` as the screen that hosts it and `shown_in` as the phase of that
+   screen in which it is shown.
 4. Register each class where the book registers its screens.
 
 A component that a screen the book already has also shows is imported from that screen's module.
