@@ -9,6 +9,7 @@ from typing import cast
 
 from pydantic import BaseModel, ConfigDict
 from workhorse_workflows.kit.book_files import BOOK_ENV, book_command
+from workhorse_workflows.kit.git import head_sha
 from workhorse_workflows.kit.tools import run_tool
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 
@@ -16,6 +17,7 @@ UNNAMED_HEADING = "## Files no element names"
 GATE_TAIL_LINES = 200
 GATE_LINE_CHARS = 2000
 PROGRESS_TAIL_LINES = 20
+AFFECTED_PLANNED = (0, 1)
 
 
 class BookGate(BaseModel):
@@ -79,9 +81,10 @@ def python_book_missing(logger: logging.Logger, root: Path, module: str, app: Pa
     return MissingList(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()), unnamed=_unnamed(done.stdout))
 
 
-def run_flags(stack_copy: str = "", only: tuple[str, ...] = (), fresh: bool = False) -> tuple[str, ...]:
-    """The flags a run takes to play only the journeys of the named calls, on the named stack copy, after the data is reloaded when `fresh`."""
-    return (*(("--only", ",".join(only)) if only else ()), *(("--copy", stack_copy) if stack_copy else ()), *(("--fresh-data",) if fresh else ()))
+def run_flags(stack_copy: str = "", only: tuple[str, ...] = (), fresh: bool = False, journeys: tuple[str, ...] = ()) -> tuple[str, ...]:
+    """The flags a run takes to play only the journeys of the named calls, or only the journeys of the named titles as a partial run, on the named stack copy, after the data is reloaded when `fresh`."""
+    titled = ("--partial", *(flag for title in journeys for flag in ("--journey", title))) if journeys else ()
+    return (*(("--only", ",".join(only)) if only else ()), *titled, *(("--copy", stack_copy) if stack_copy else ()), *(("--fresh-data",) if fresh else ()))
 
 
 @blueprint.node(stub=_green)
@@ -97,6 +100,43 @@ def python_book_verified(logger: logging.Logger, root: Path, module: str, app: P
     """Stamp the app's HEAD as the commit one of the book's modules is verified at, which the book refuses while a changed file or function is named by no element."""
     done = run_tool(book_command("verified", module, "--app", str(app)), cwd=root, logger=logger, env=BOOK_ENV)
     return BookGate(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()))
+
+
+class Selection(BookGate):
+    """What the book's affected selected to play: the plan, the calls for `--only`, the journey titles for `--partial --journey`, and for a whole plan the reason it is whole."""
+
+    plan: str = ""
+    only: tuple[str, ...] = ()
+    journeys: tuple[str, ...] = ()
+    whole: bool = False
+    reason: str = ""
+
+
+def _nothing_selected(_logger: logging.Logger, *_args: object) -> Selection:
+    return Selection(exit_code=0, output="dry run", plan="none")
+
+
+@blueprint.node(stub=_nothing_selected)
+def python_book_affected(logger: logging.Logger, root: Path, module: str, app: Path, out_dir: Path) -> Selection:
+    """Read the plays the uncommitted edits of one of the book's modules call for, from the app's HEAD so that the diff is the working tree alone, and keep the plan `affected` wrote to the output folder."""
+    base = head_sha(app)
+    if not base:
+        return Selection(exit_code=2, output=f"the HEAD of {app} could not be read")
+    done = run_tool(book_command("affected", module, "--app", str(app), "--since", base, "--out", str(out_dir)), cwd=root, logger=logger, env=BOOK_ENV)
+    said = tail(f"{done.stdout}\n{done.stderr}".strip())
+    written = sorted(out_dir.glob("*-affected.json")) if done.returncode in AFFECTED_PLANNED else []
+    if not written:
+        return Selection(exit_code=done.returncode, output=said)
+    plan = cast("dict[str, object]", json.loads(written[0].read_text(encoding="utf-8")))
+    return Selection(
+        exit_code=done.returncode,
+        output=said,
+        plan=str(plan.get("plan", "")),
+        only=tuple(cast("list[str]", plan.get("only", []))),
+        journeys=tuple(cast("list[str]", plan.get("by_journey", []))),
+        whole=bool(plan.get("whole", False)),
+        reason=str(plan.get("reason", "")),
+    )
 
 
 def _no_calls(_logger: logging.Logger, *_args: object) -> list[str]:

@@ -8,15 +8,17 @@ from typing import cast
 
 from workhorse.worklist import WORK_FILE, JsonBackend, WorkItem, WorkList
 from workhorse_workflows.kit.git import open_repo
-from workhorse_workflows.okf_book.catch_up.models import CURRENT, FIRST_BOOK, STALE, UNJUDGED, BookOutcome, BookReport, Filed, ModuleReport, Roots
-from workhorse_workflows.okf_book.catch_up.report import read_stale
+from workhorse_workflows.okf_book.catch_up.models import CURRENT, FIRST_BOOK, STALE, UNJUDGED, BookOutcome, BookReport, Filed, FormatMove, ModuleCheck, ModuleReport, Roots
+from workhorse_workflows.okf_book.catch_up.report import read_check, read_stale
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.book_format import book_format_delta
-from workhorse_workflows.okf_book.shared.book_gates import run_stale
+from workhorse_workflows.okf_book.shared.book_flow import COULD_NOT_JUDGE
+from workhorse_workflows.okf_book.shared.book_gates import python_book_check, run_stale
 
 BOOK = "book"
 OUTCOMES_DIR = "outcomes"
 NOTES_DIR = "format-notes"
+MOVES_DIR = "format-moves"
 DIFF_LIMIT_CHARS = 60000
 
 
@@ -50,7 +52,7 @@ def _one_stale_book(_logger: logging.Logger, _roots: Roots, _services: tuple[str
 
 @blueprint.node(stub=_one_stale_book)
 def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...], run_dir: Path) -> Filed:
-    """File each book with something stale in the app or behind on the book format on the run's work list, and record the books that need no turn: current and first books. A book whose stale report or format history could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
+    """File each book with something stale in the app, or with nothing stale and a red check, on the run's work list, and record the books that need no turn: current and first books. A book filed for the red check alone is filed for the format, and the check's findings are its work list. The writer's history comes along as context when it can be read. A book whose stale report or check could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
     work = WorkList(JsonBackend(run_dir / WORK_FILE))
     root = roots.book
     modules = book_modules(root)
@@ -69,19 +71,40 @@ def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...
         elif report.verdict == FIRST_BOOK:
             write_outcome(run_dir, _settled(report))
             filed.settled.append(service)
+        elif report.verdict == STALE:
+            _ = work.add([_item(logger, report, roots, order, for_format=False)])
+            filed.stale.append(service)
         else:
-            delta = book_format_delta(logger, root, service, roots.history)
-            if delta.unreadable:
-                filed.unformatted[service] = delta.unreadable
-            elif report.verdict == STALE or delta.behind:
-                report = report.model_copy(update={"format": delta})
-                _ = work.add([WorkItem(id=service, kind=BOOK, order=order, payload=report.model_dump(mode="json"))])
+            checks = [_checked(logger, root, module.module, roots.app) for module in report.modules]
+            if any(check.exit_code == COULD_NOT_JUDGE for check in checks):
+                filed.unread[service] = "\n\n".join(_cannot(check) for check in checks if check.exit_code == COULD_NOT_JUDGE)
+            elif any(check.red for check in checks):
+                _ = work.add([_item(logger, report.model_copy(update={"checks": checks}), roots, order, for_format=True)])
                 filed.stale.append(service)
             else:
                 write_outcome(run_dir, _settled(report))
                 filed.settled.append(service)
-    logger.info("catch-up fill: %d filed, %d settled, %d unread, %d without format history", len(filed.stale), len(filed.settled), len(filed.unread), len(filed.unformatted))
+    logger.info("catch-up fill: %d filed, %d settled, %d unread", len(filed.stale), len(filed.settled), len(filed.unread))
     return filed
+
+
+def _checked(logger: logging.Logger, root: Path, module: str, app: Path) -> ModuleCheck:
+    said = python_book_check(logger, root, module, app)
+    return read_check(module, said.exit_code, said.output)
+
+
+def _cannot(check: ModuleCheck) -> str:
+    return f"`python -m ostler.book check {check.module}` exited {check.exit_code}:\n\n" + "\n".join(check.lines)
+
+
+def _item(logger: logging.Logger, report: BookReport, roots: Roots, order: int, for_format: bool) -> WorkItem:
+    delta = book_format_delta(logger, roots.book, report.service, roots.history)
+    if delta.unreadable:
+        logger.info("%s: the format history was not available (%s), the check's findings are the work list", report.service, delta.unreadable)
+        report = report.model_copy(update={"for_format": for_format})
+    else:
+        report = report.model_copy(update={"format": delta, "for_format": for_format})
+    return WorkItem(id=report.service, kind=BOOK, order=order, payload=report.model_dump(mode="json"))
 
 
 def _survey(logger: logging.Logger, root: Path, module: str, app: Path) -> ModuleReport:
@@ -158,3 +181,23 @@ def catch_up_format_notes(logger: logging.Logger, run_dir: Path, service: str, l
         _ = path.write_text(json.dumps(kept, indent=2), encoding="utf-8")
     logger.info("%s: %d format lines", service, len(kept))
     return list(kept.values())
+
+
+def _move_path(run_dir: Path, service: str) -> Path:
+    return run_dir / MOVES_DIR / f"{service}.json"
+
+
+def _unmoved(_logger: logging.Logger, _run_dir: Path, _service: str, move: FormatMove) -> FormatMove:
+    return move
+
+
+@blueprint.node(stub=_unmoved)
+def catch_up_move(logger: logging.Logger, run_dir: Path, service: str, move: FormatMove) -> FormatMove:
+    """Merge the fields of *move* that were set into what the book's earlier laps recorded of its move onto the format, a later lap replacing an earlier one, and return all of it."""
+    path = _move_path(run_dir, service)
+    kept = FormatMove.model_validate_json(path.read_text(encoding="utf-8")) if path.is_file() else FormatMove()
+    merged = kept.model_copy(update=move.model_dump(exclude_unset=True))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(merged.model_dump_json(indent=2), encoding="utf-8")
+    logger.info("%s: move %s", service, merged.model_dump_json())
+    return merged

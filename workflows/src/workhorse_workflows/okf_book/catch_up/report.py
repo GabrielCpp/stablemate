@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from workhorse_workflows.okf_book.catch_up.models import CURRENT, FIRST_BOOK, STALE, UNJUDGED, ModuleReport
+from workhorse_workflows.okf_book.catch_up.models import CURRENT, FIRST_BOOK, STALE, UNJUDGED, ModuleCheck, ModuleReport
 
 STALE_ELEMENTS = "## Stale elements"
 UNNAMED_FILES = "## Changed files no element names"
@@ -15,6 +15,9 @@ ELEMENT_LINE = re.compile(r"^- (\w+): (\S+) \(\d+ commits?:")
 FILE_LINE = re.compile(r"^- (\S+) \(\d+ commits?:.*?\)(?: named by (.+))?$")
 VERIFIED_LINE = re.compile(r"^verified at (\S+), app at (\S+)$")
 GONE_LINE = re.compile(r"^- (\w+): (\S+)$")
+CHECK_PREFIX = "CHECK"
+NOTE_PREFIX = "NOTE"
+CHECK_TOTAL = re.compile(r"^check: (\d+) findings?(?:, (\d+) notes?)?$")
 NOT_VERIFIED = "not verified"
 NO_APP_LINE = re.compile(r"^\S+ declares no app$")
 NOTHING_STALE = 0
@@ -63,3 +66,15 @@ def read_stale(module: str, exit_code: int, stdout: str, stderr: str = "") -> Mo
         else:
             read.take(section, line)
     return ModuleReport(module=module, verdict=STALE, verified=read.verified, elements=read.elements, new_files=read.new_files, gone=read.gone)
+
+
+def read_check(module: str, exit_code: int, output: str) -> ModuleCheck:
+    """The module's findings from the check's output: the lines it printed as findings, and the counts of its last line. A red check that printed neither gives its whole output as the findings."""
+    lines = [line[len(CHECK_PREFIX):].strip() for line in output.splitlines() if line.startswith(f"{CHECK_PREFIX} ")]
+    notes = sum(1 for line in output.splitlines() if line.startswith(f"{NOTE_PREFIX} "))
+    total = next((CHECK_TOTAL.match(line) for line in reversed(output.splitlines()) if CHECK_TOTAL.match(line)), None)
+    if total is not None:
+        return ModuleCheck(module=module, exit_code=exit_code, findings=int(total.group(1)), notes=int(total.group(2) or 0), lines=lines)
+    if exit_code != 0 and not lines:
+        lines = [line for line in output.splitlines() if line.strip()]
+    return ModuleCheck(module=module, exit_code=exit_code, findings=len(lines), notes=notes, lines=lines)

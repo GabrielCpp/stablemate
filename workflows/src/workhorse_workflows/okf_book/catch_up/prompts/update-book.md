@@ -64,6 +64,22 @@ The diff of those files since `{{ section.verified }}`:
 ```
 {% endfor %}
 {% endif %}
+{% if findings %}
+
+The book is behind the current book format. The check of this book reports these findings.
+Each one names what the current format asks. State it from what the app's code shows, and
+never invent a statement to silence a finding. Keep every behaviour the book states.
+{% for section in findings %}
+
+`{{ section.module }}`, {{ section.count }} findings:
+{% for line in section.lines %}
+- {{ line }}
+{% endfor %}
+{% if section.unlisted %}
+- {{ section.unlisted }} more are not listed here: run the check below to read them all.
+{% endif %}
+{% endfor %}
+{% endif %}
 {% if format %}
 
 The book format changed since this book was last judged against it. For each change, apply it
@@ -81,8 +97,8 @@ Their diff:
 ```
 
 Name each change in `format`, one line each, spelled `<short sha> applied: <what you changed>` or
-`<short sha> not applicable: <why>`. The run plays the whole book after your turn, so a form left
-in the old shape fails there.
+`<short sha> not applicable: <why>`. The run plays only the calls and journeys your edits to the
+book select, so a form left in the old shape fails there.
 {% endif %}
 {% if gate %}
 

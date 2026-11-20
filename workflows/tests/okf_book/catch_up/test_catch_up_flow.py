@@ -31,7 +31,7 @@ def test_a_book_whose_stale_report_is_empty_is_skipped_and_named_current(tmp_pat
     done = summarized(flow)
 
     assert isinstance(step, Continue) and step.state == "summarize"
-    assert [argv[3] for argv in seen] == ["stale"]
+    assert [argv[3] for argv in seen] == ["stale", "check"]
     assert runner.total == 0
     assert done.books == [BookOutcome(service="ledger", verdict="current")]
     assert done.summary == "ledger: current"

@@ -45,18 +45,48 @@ class ModuleReport(BaseModel):
         return sorted(found | set(self.new_files))
 
 
+class ModuleCheck(BaseModel):
+    """What the book's check said of one module: its exit code, the findings and notes it counted, and the finding lines it printed."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    module: str
+    exit_code: int = 0
+    findings: int = 0
+    notes: int = 0
+    lines: list[str] = Field(default_factory=list)
+
+    @property
+    def red(self) -> bool:
+        return self.exit_code != 0
+
+    @property
+    def unlisted(self) -> int:
+        return max(0, self.findings - len(self.lines))
+
+
 class BookReport(BaseModel):
-    """What the stale reports of every module of one service say."""
+    """What the stale reports and the checks of every module of one service say, the writer's history when it could be read, and whether the book is filed for the format alone."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     service: str
     modules: list[ModuleReport] = Field(default_factory=list)
     format: FormatDelta | None = None
+    checks: list[ModuleCheck] = Field(default_factory=list)
+    for_format: bool = False
 
     @property
     def format_behind(self) -> bool:
         return self.format is not None and self.format.behind
+
+    @property
+    def check_findings(self) -> int:
+        return sum(check.findings for check in self.checks)
+
+    @property
+    def check_notes(self) -> int:
+        return sum(check.notes for check in self.checks)
 
     @property
     def verdict(self) -> str:
@@ -69,6 +99,21 @@ class BookReport(BaseModel):
     @property
     def elements(self) -> list[str]:
         return sorted({name for module in self.modules for name in module.elements})
+
+
+class FormatMove(BaseModel):
+    """What an operator reads to accept a book moved onto the format: the check's findings and notes before the owner's first lap and after the last, the calls and journeys played with the play's exit, and what a whole play is owed."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    findings_before: int = 0
+    findings_after: int = 0
+    notes_before: int = 0
+    notes_after: int = 0
+    calls: int = 0
+    journeys: int = 0
+    exit_code: int | None = None
+    owed: str = ""
 
 
 class BookOutcome(BaseModel):
@@ -85,17 +130,17 @@ class BookOutcome(BaseModel):
     app: bool = True
     moved: bool = False
     format: list[str] = Field(default_factory=list)
+    move: FormatMove | None = None
 
 
 class Filed(BaseModel):
-    """What the fill found, by service, and for each book whose stale report or format history could not be read what the command printed."""
+    """What the fill found, by service, and for each book whose stale report or check could not be read what the command printed."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     stale: list[str] = Field(default_factory=list)
     settled: list[str] = Field(default_factory=list)
     unread: dict[str, str] = Field(default_factory=dict)
-    unformatted: dict[str, str] = Field(default_factory=dict)
 
 
 class CatchUpReply(BaseModel):

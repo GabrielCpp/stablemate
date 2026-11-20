@@ -76,3 +76,7 @@ def test_a_run_asks_for_a_data_reload_only_when_told_to() -> None:
 def test_a_run_with_no_calls_leaves_the_only_flag_out() -> None:
     assert "--only" not in book_gates.run_flags("evening", ())
     assert book_gates.run_flags(only=("Ping", "Pong")) == ("--only", "Ping,Pong")
+
+
+def test_a_run_of_journeys_is_partial_and_names_each_title() -> None:
+    assert book_gates.run_flags("evening", journeys=("Open", "Close"), fresh=True) == ("--partial", "--journey", "Open", "--journey", "Close", "--copy", "evening", "--fresh-data")

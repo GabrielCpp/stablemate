@@ -60,11 +60,17 @@ def book_exits(
     monkeypatch: pytest.MonkeyPatch,
     stale: dict[str, tuple[int, str] | tuple[int, str, str]] | None = None,
     calls: dict[str, list[str]] | None = None,
+    checks: dict[str, list[tuple[int, str]]] | None = None,
+    plans: dict[str, tuple[int, dict[str, object]]] | None = None,
     **codes: int,
 ) -> list[list[str]]:
+    """Stand in for the book's commands. `checks` lists what each module's check says in turn, the last repeating, and `plans` what its affected writes."""
     seen: list[list[str]] = []
     stale = stale or {}
     calls = calls or {}
+    asked: dict[str, int] = {}
+    checks = checks or {}
+    plans = plans or {}
 
     def _run(argv: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
         seen.append(argv)
@@ -74,6 +80,17 @@ def book_exits(
         if verb == "stale":
             code, said, *error = stale.get(module, (0, "nothing stale\n"))
             return subprocess.CompletedProcess(argv, code, stdout=said, stderr="".join(error))
+        if verb == "check" and module in checks:
+            said = checks[module]
+            code, text = said[min(asked.get(module, 0), len(said) - 1)]
+            asked[module] = asked.get(module, 0) + 1
+            return subprocess.CompletedProcess(argv, code, stdout=text, stderr="")
+        if verb == "affected":
+            code, plan = plans.get(module, (0, {"plan": "none"}))
+            out = Path(argv[argv.index("--out") + 1])
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "ledger-affected.json").write_text(json.dumps(plan), encoding="utf-8")
+            return subprocess.CompletedProcess(argv, code, stdout="written", stderr="")
         return subprocess.CompletedProcess(argv, codes.get(verb, 0), stdout=f"{verb} said cell 7 differs", stderr="")
 
     monkeypatch.setattr(book_gates, "run_tool", _run)
@@ -105,6 +122,6 @@ def stale_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replies: dict[st
     flow, runner, _env = build_flow(tmp_path, replies)
     first = make_app(flow.root)
     said = stale_printed(first, {"Ping": "ledger/ping.py", "Entry": "ledger/ping.py"}, ["ledger/new.py"])
-    seen = book_exits(monkeypatch, stale={"services.ledger": (1, said)}, calls={"services.ledger": ["Ping", "Pong", "Other"]}, **codes)
+    seen = book_exits(monkeypatch, stale={"services.ledger": (1, said)}, calls={"services.ledger": ["Ping", "Pong", "Other"]}, checks=None, plans=None, **codes)
     flow.fill()
     return flow, runner, seen
