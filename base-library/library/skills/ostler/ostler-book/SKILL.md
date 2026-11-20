@@ -200,6 +200,10 @@ already busy:
 - **A cell makes what it acts on.** A scene's steps create the records the column aims at.
   Ids come from the app's answers; a fixture learns its id from the `creates=` answer. Never
   write an id the app issues.
+- **A book plays green on freshly loaded data.** A record an earlier play left behind is no
+  fixture. A field or a state a play needs is arranged by that play, and what no play can
+  arrange is declared `Unseen`. Before the book is done, reload the stack's data and play the
+  whole book once more.
 - **A list is read as containing.** The runtime compares a list only on the entries whose
   ids the book learned. An entry whose id the book never learned drops out of the comparison,
   and an entry whose id is read as written (`strangers`) stays in it. So the service's own
