@@ -373,8 +373,9 @@ symbol changed, `through <symbol>` for the nearest symbol of the closure path.
 `affected` also reads the book's own folder, `services/<name>/` and the files it imports under the book root, since
 the same commit, uncommitted and untracked files included. An edited element class (an endpoint, interaction,
 screen, action, outside happening or journey) selects its plays, and its chain starts with `book <path>:<Class>`.
-A changed line outside every element class, or a file that does not parse, makes the plan `whole` with the reason
-`a shared book file changed: <path>`. A deleted class needs no play. The plan is `empty`, with exit 1, when files
+A changed module-level name (an assignment, an annotated assignment or a function) or a changed class that is no element of the book (a fixture dataclass, a helper, a mixin) selects the element classes that use it,
+found through the book's own files by the identifiers each definition mentions and the imports that carry the name, and its chain reads `NAME <- used by Class`. A journey that uses it lands in `by_journey`. A changed line that is no class and no name, or a file that does not parse, makes the plan `whole` with the reason
+`a shared book file changed: <path>`, and so does a changed name or class that reaches no element and is star-imported, read with `getattr` or `globals()`, or used only by names that reach none. A name or class nothing mentions selects nothing and is listed under `unused` in the JSON and `changed and used by nothing:` in the print. Import lines and the module docstring never count. A deleted class needs no play. The plan is `empty`, with exit 1, when files
 changed and none selects a play, and `none`, with exit 0, when nothing changed. The `diff` field of
 `<service>-affected.json` counts the changed app files and book files and lists, up to 50 paths with a count, the
 changed files under `not_computed` that the command did not judge: files outside every root and files of the book

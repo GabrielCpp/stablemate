@@ -73,6 +73,7 @@ class Affected:
     fallbacks: list[dict[str, str]] = field(default_factory=list)
     widened: list[dict[str, Any]] = field(default_factory=list)
     mapped: list[str] = field(default_factory=list)
+    unused: list[str] = field(default_factory=list)
     imports: list[str] = field(default_factory=list)
     not_computed: list[str] = field(default_factory=lambda: list(NOT_COMPUTED))
 
@@ -222,11 +223,12 @@ def walk(service: Service[Any], app_root: str, base: str, head: str, book: Path 
     found.diff = {"app_files": len({*tracked, *untracked}), "book_files": len(owned.files),
                   "not_computed": {"count": len(unjudged), "paths": unjudged[:UNJUDGED_CAP]}}
     found.not_computed += owned.notes
+    found.unused = owned.unused
     if found.fallbacks:
         found.plan = WHOLE
     elif found.uncovered or called or direct:
         found.plan = PARTIAL
-    elif found.chains or unjudged:
+    elif found.chains or unjudged or owned.files:
         found.plan = EMPTY
     else:
         found.plan = NONE
@@ -270,6 +272,8 @@ def show(found: Affected, module: str) -> list[str]:
         unplayed = {(u["element"], u["kind"]) for u in found.unplayed}
         for c in found.chains:
             lines.append(f"  {c.path}{(':' if c.path.startswith('book ') else '::') + c.function if c.function else ' (file)'} -> {c.element} ({c.kind}, {c.via}) -> {', '.join(c.plays) or ('no play of its own' if c.kind == 'record' and c.via != 'direct' else 'no play reaches it' if (c.element, c.kind) in unplayed else 'the whole book')}")
+    if found.unused:
+        lines += ["changed and used by nothing:", *(f"  {u}" for u in found.unused)]
     if found.uncovered:
         lines += ["uncovered (no element names them; judge them by hand):",
                   *(f"  {u['path']}{'::' + u['function'] if u['function'] else ''}" for u in found.uncovered)]
