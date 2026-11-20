@@ -136,7 +136,6 @@ BOOK_READERS = sorted(
         AUTHOR / "epic_edit/prompts/plan-epic-edit.md",
         AUTHOR / "pm/prompts/_inputs.md",
         AUTHOR / "pm/prompts/answer.md",
-        AUTHOR / "parity_surveyor/prompts/assess-parity-unit.md",
     }
 )
 

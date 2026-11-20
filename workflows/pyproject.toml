@@ -35,7 +35,7 @@ dependencies = [
   # broken input, which is the right answer for an agent reply and the wrong one for a
   # config file the operator wrote and expects to be told about.
   "json5>=0.9",
-  # The survey's finding-record front matter is YAML the nodes read directly.
+  # The coder's reach config is YAML the nodes read directly.
   # Declared here rather than leaned on through workhorse's own dependency: a
   # module that imports it says so.
   "pyyaml>=6.0",

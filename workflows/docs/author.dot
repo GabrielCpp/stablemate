@@ -55,14 +55,12 @@ digraph author {
       f0__start__2 [label="seed_story\nRegister ONE register record as a new story inside an already-existing epic.", shape=box, fillcolor=white];
       f0__start__3 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
       f0__start__4 [label="handoff → story-author", shape=box, fillcolor=plum];
-      f0__start__5 [label="handoff → parity-surveyor", shape=box, fillcolor=plum];
-      f0__start__6 [label="promote_record\nClose the record a story was authored from as promoted, naming the story and its epic.", shape=box, fillcolor=white];
+      f0__start__5 [label="promote_record\nClose the record a story was authored from as promoted, naming the story and its epic.", shape=box, fillcolor=white];
       f0__start__0 -> f0__start__1 [style=invis];
       f0__start__1 -> f0__start__2 [style=invis];
       f0__start__2 -> f0__start__3 [style=invis];
       f0__start__3 -> f0__start__4 [style=invis];
       f0__start__4 -> f0__start__5 [style=invis];
-      f0__start__5 -> f0__start__6 [style=invis];
     }
     f0____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
@@ -80,191 +78,153 @@ digraph author {
     f0__requeue -> f0__split_epics__0 [label="rows requeued with the answer", lhead=cluster_f0__split_epics];
     f0__split_epics__1 -> f0__fill__0 [label="the milestone has an ordered split", ltail=cluster_f0__split_epics, lhead=cluster_f0__fill];
     f0__split_epics__1 -> f0__answered_split [label="the split stayed blocked", tooltip="question", style=dashed, color=darkorange, ltail=cluster_f0__split_epics];
-    f0__start__6 -> f0__split_epics__0 [label="milestone digested", ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
-    f0__start__6 -> f0____end [label="parity survey mode / register story written", color=darkgoldenrod, ltail=cluster_f0__start];
+    f0__start__5 -> f0__split_epics__0 [label="milestone digested", ltail=cluster_f0__start, lhead=cluster_f0__split_epics];
+    f0__start__5 -> f0____end [label="register story written", color=darkgoldenrod, ltail=cluster_f0__start];
   }
 
-  subgraph cluster_parity_surveyor_f1__ {
-    label="parity-surveyor";
+  subgraph cluster_epic_edit_f1__ {
+    label="epic-edit";
     style=dashed; color=gray50; fontsize=11;
 
     f1____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f1__assess {
-      label="assess"; fontsize=12;
+    subgraph cluster_f1__apply_plan {
+      label="apply_plan"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f1__assess__0 [label="read_parity_register\nThe open records of the surveyed repository, for the assessor to match a surface against.", shape=box, fillcolor=white];
-      f1__assess__1 [label="assess-parity-unit.md\nCompare one baseline surface with the current service books", shape=note, fillcolor=lightyellow];
-      f1__assess__0 -> f1__assess__1 [style=invis];
+      f1__apply_plan__0 [label="apply_edit_plan\nApply one validated plan idempotently through Ostler's structural APIs.", shape=box, fillcolor=white];
+      f1__apply_plan__1 [label="validate_applied_edit\nProve disk matches the approved graph and unaffected story bodies remain byte-stable.", shape=box, fillcolor=white];
+      f1__apply_plan__0 -> f1__apply_plan__1 [style=invis];
     }
-    subgraph cluster_f1__emit {
-      label="emit"; fontsize=12;
+    subgraph cluster_f1__check_coverage {
+      label="check_coverage"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f1__emit__0 [label="emit_parity_records\nOne register record per assessed surface that no new-app feature already owns.", shape=box, fillcolor=white];
+      f1__check_coverage__0 [label="validate_coverage\nEvery seed covered by a story, the story graph acyclic, every story file present.", shape=box, fillcolor=white];
+      f1__check_coverage__1 [label="handoff → pm-review", shape=box, fillcolor=plum];
+      f1__check_coverage__0 -> f1__check_coverage__1 [style=invis];
     }
-    subgraph cluster_f1__mark {
-      label="mark"; fontsize=12;
+    subgraph cluster_f1__design_mockup {
+      label="design_mockup"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f1__mark__0 [label="validate_record\nCheck one unit's finding record, hard and deterministically.", shape=box, fillcolor=white];
-      f1__mark__1 [label="mark_unit\nStamp the unit's inventory entry with its (validated) record's status.", shape=box, fillcolor=white];
-      f1__mark__0 -> f1__mark__1 [style=invis];
+      f1__design_mockup__0 [label="design-mockup.md\nDesign a mockup for a new screen: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
+      f1__design_mockup__1 [label="check_mockup_needed\nA story needs a mockup exactly when one of its services is a UI book.", shape=box, fillcolor=white];
+      f1__design_mockup__0 -> f1__design_mockup__1 [style=invis];
     }
-    subgraph cluster_f1__pick {
-      label="pick"; fontsize=12;
+    subgraph cluster_f1__draft_story {
+      label="draft_story"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f1__pick__0 [label="select_next_unit\nThe first unit still `pending`, or the news that none is left.", shape=box, fillcolor=white];
+      f1__draft_story__0 [label="handoff → draft", shape=box, fillcolor=plum];
+    }
+    subgraph cluster_f1__finish {
+      label="finish"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__finish__0 [label="verify_integrity\n`ostler doctor` over the whole graph, as a blocking gate.", shape=box, fillcolor=white];
+      f1__finish__1 [label="commit_author\nCommit the epic/story docs this run wrote, in the one repo it wrote them in.", shape=box, fillcolor=white];
+      f1__finish__2 [label="promote_record\nClose the record a story was authored from as promoted, naming the story and its epic.", shape=box, fillcolor=white];
+      f1__finish__0 -> f1__finish__1 [style=invis];
+      f1__finish__1 -> f1__finish__2 [style=invis];
+    }
+    subgraph cluster_f1__next_affected_story {
+      label="next_affected_story"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__next_affected_story__0 [label="select_affected_story\nResolve the next approved affected story without widening the edit worklist.", shape=box, fillcolor=white];
+      f1__next_affected_story__1 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f1__next_affected_story__0 -> f1__next_affected_story__1 [style=invis];
+    }
+    subgraph cluster_f1__plan_edit {
+      label="plan_edit"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__plan_edit__0 [label="plan-epic-edit.md\nPlan an edit to epic `{{ workhorse_var('snapshot').epic }}`", shape=note, fillcolor=lightyellow];
+      f1__plan_edit__1 [label="read_register_listing\nThe open records of every repository, one line each under a header, for the planner to read.", shape=box, fillcolor=white];
+      f1__plan_edit__0 -> f1__plan_edit__1 [style=invis];
+    }
+    subgraph cluster_f1__refine_plan {
+      label="refine_plan"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__refine_plan__0 [label="refine-epic-edit-plan.md\nRefine an invalid epic edit plan", shape=note, fillcolor=lightyellow];
+      f1__refine_plan__1 [label="read_register_listing\nThe open records of every repository, one line each under a header, for the planner to read.", shape=box, fillcolor=white];
+      f1__refine_plan__0 -> f1__refine_plan__1 [style=invis];
+    }
+    subgraph cluster_f1__review_plan {
+      label="review_plan"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__review_plan__0 [label="handoff → pm-review", shape=box, fillcolor=plum];
+    }
+    subgraph cluster_f1__rewrite_epic {
+      label="rewrite_epic"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f1__rewrite_epic__0 [label="rewrite-epic-edit.md\nRewrite epic prose after an approved graph edit", shape=note, fillcolor=lightyellow];
+      f1__rewrite_epic__1 [label="validate_epic_document\nCheck the model-authored epic prose without re-parsing Ostler-owned graph metadata.", shape=box, fillcolor=white];
+      f1__rewrite_epic__2 [label="validate_applied_edit\nProve disk matches the approved graph and unaffected story bodies remain byte-stable.", shape=box, fillcolor=white];
+      f1__rewrite_epic__0 -> f1__rewrite_epic__1 [style=invis];
+      f1__rewrite_epic__1 -> f1__rewrite_epic__2 [style=invis];
     }
     subgraph cluster_f1__start {
       label="start"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f1__start__0 [label="expand_parity_inventory\nFreeze one survey unit per baseline surface.", shape=box, fillcolor=white];
+      f1__start__0 [label="snapshot_epic\nCapture the graph and story-body baseline an edit is allowed to change.", shape=box, fillcolor=white];
     }
-    subgraph cluster_f1__verify {
-      label="verify"; fontsize=12;
+    subgraph cluster_f1__validate_plan {
+      label="validate_plan"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f1__verify__0 [label="verify_records\nThe coverage gate: every frozen unit accounted for, and no silent shrinkage.", shape=box, fillcolor=white];
+      f1__validate_plan__0 [label="validate_edit_plan\nReject an unsafe projected graph before any Ostler mutation runs.", shape=box, fillcolor=white];
     }
     f1____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f1____start -> f1__start__0 [lhead=cluster_f1__start];
-    f1__assess__1 -> f1__mark__0 [label="assessed", tooltip="unit_id, record_path", ltail=cluster_f1__assess, lhead=cluster_f1__mark];
-    f1__emit__0 -> f1____end [label="records emitted", color=darkgoldenrod, ltail=cluster_f1__emit];
-    f1__mark__1 -> f1__pick__0 [label="unit marked", ltail=cluster_f1__mark, lhead=cluster_f1__pick];
-    f1__pick__0 -> f1__assess__0 [label="a unit pending", tooltip="unit_id, unit_path, unit_kind, record_path, progress", ltail=cluster_f1__pick, lhead=cluster_f1__assess];
-    f1__pick__0 -> f1__verify__0 [label="no unit pending", ltail=cluster_f1__pick, lhead=cluster_f1__verify];
-    f1__start__0 -> f1__pick__0 [label="inventory frozen", ltail=cluster_f1__start, lhead=cluster_f1__pick];
-    f1__verify__0 -> f1__emit__0 [label="coverage holds", ltail=cluster_f1__verify, lhead=cluster_f1__emit];
+    f1__apply_plan__1 -> f1__rewrite_epic__0 [label="plan applied", tooltip="edit", ltail=cluster_f1__apply_plan, lhead=cluster_f1__rewrite_epic];
+    f1__apply_plan__1 -> f1__finish__0 [label="the epic was deleted", tooltip="edit", ltail=cluster_f1__apply_plan, lhead=cluster_f1__finish];
+    f1__check_coverage__1 -> f1__finish__0 [label="coverage holds", tooltip="edit", ltail=cluster_f1__check_coverage, lhead=cluster_f1__finish];
+    f1__design_mockup__1 -> f1__draft_story__0 [label="mockup drawn / no mockup needed", tooltip="edit, pick, index, mockup", ltail=cluster_f1__design_mockup, lhead=cluster_f1__draft_story];
+    f1__draft_story__0 -> f1__next_affected_story__0 [label="the PM passed the story", tooltip="edit, index", ltail=cluster_f1__draft_story, lhead=cluster_f1__next_affected_story];
+    f1__draft_story__0 -> f1__draft_story__0 [label="the story stayed blocked", tooltip="edit, pick, index, mockup", style=dashed, color=darkorange];
+    f1__finish__2 -> f1____end [label="edit committed", color=darkgoldenrod, ltail=cluster_f1__finish];
+    f1__next_affected_story__1 -> f1__design_mockup__0 [label="a story to rewrite", tooltip="edit, pick, index", ltail=cluster_f1__next_affected_story, lhead=cluster_f1__design_mockup];
+    f1__next_affected_story__1 -> f1__check_coverage__0 [label="no story left", tooltip="edit", ltail=cluster_f1__next_affected_story, lhead=cluster_f1__check_coverage];
+    f1__plan_edit__1 -> f1__validate_plan__0 [label="planned", tooltip="edit", ltail=cluster_f1__plan_edit, lhead=cluster_f1__validate_plan];
+    f1__refine_plan__1 -> f1__validate_plan__0 [label="refined", tooltip="edit, reworks", ltail=cluster_f1__refine_plan, lhead=cluster_f1__validate_plan];
+    f1__review_plan__0 -> f1__plan_edit__0 [label="out of plan reworks", tooltip="edit", style=dashed, color=darkorange, ltail=cluster_f1__review_plan, lhead=cluster_f1__plan_edit];
+    f1__review_plan__0 -> f1__apply_plan__0 [label="the PM passed the plan", tooltip="edit", ltail=cluster_f1__review_plan, lhead=cluster_f1__apply_plan];
+    f1__review_plan__0 -> f1__refine_plan__0 [label="the PM has findings", tooltip="edit, findings, reworks", ltail=cluster_f1__review_plan, lhead=cluster_f1__refine_plan];
+    f1__rewrite_epic__2 -> f1__rewrite_epic__0 [label="blocked or out of reworks / the epic has findings", tooltip="edit, findings, reworks", style=dashed, color=darkorange];
+    f1__rewrite_epic__2 -> f1__next_affected_story__0 [label="the epic reads right", tooltip="edit, index", ltail=cluster_f1__rewrite_epic, lhead=cluster_f1__next_affected_story];
+    f1__start__0 -> f1__plan_edit__0 [label="baseline taken", tooltip="edit", ltail=cluster_f1__start, lhead=cluster_f1__plan_edit];
+    f1__validate_plan__0 -> f1__refine_plan__0 [label="the plan has findings", tooltip="edit, findings, reworks", ltail=cluster_f1__validate_plan, lhead=cluster_f1__refine_plan];
+    f1__validate_plan__0 -> f1__review_plan__0 [label="the plan is valid", tooltip="edit, reworks", ltail=cluster_f1__validate_plan, lhead=cluster_f1__review_plan];
+    f1__validate_plan__0 -> f1__plan_edit__0 [label="out of plan reworks", tooltip="edit", style=dashed, color=darkorange, ltail=cluster_f1__validate_plan, lhead=cluster_f1__plan_edit];
   }
 
-  subgraph cluster_epic_edit_f2__ {
-    label="epic-edit";
+  subgraph cluster_story_edit_f2__ {
+    label="story-edit";
     style=dashed; color=gray50; fontsize=11;
 
     f2____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f2__apply_plan {
-      label="apply_plan"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__apply_plan__0 [label="apply_edit_plan\nApply one validated plan idempotently through Ostler's structural APIs.", shape=box, fillcolor=white];
-      f2__apply_plan__1 [label="validate_applied_edit\nProve disk matches the approved graph and unaffected story bodies remain byte-stable.", shape=box, fillcolor=white];
-      f2__apply_plan__0 -> f2__apply_plan__1 [style=invis];
-    }
-    subgraph cluster_f2__check_coverage {
-      label="check_coverage"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__check_coverage__0 [label="validate_coverage\nEvery seed covered by a story, the story graph acyclic, every story file present.", shape=box, fillcolor=white];
-      f2__check_coverage__1 [label="handoff → pm-review", shape=box, fillcolor=plum];
-      f2__check_coverage__0 -> f2__check_coverage__1 [style=invis];
-    }
-    subgraph cluster_f2__design_mockup {
-      label="design_mockup"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__design_mockup__0 [label="design-mockup.md\nDesign a mockup for a new screen: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
-      f2__design_mockup__1 [label="check_mockup_needed\nA story needs a mockup exactly when one of its services is a UI book.", shape=box, fillcolor=white];
-      f2__design_mockup__0 -> f2__design_mockup__1 [style=invis];
-    }
-    subgraph cluster_f2__draft_story {
-      label="draft_story"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__draft_story__0 [label="handoff → draft", shape=box, fillcolor=plum];
-    }
-    subgraph cluster_f2__finish {
-      label="finish"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__finish__0 [label="verify_integrity\n`ostler doctor` over the whole graph, as a blocking gate.", shape=box, fillcolor=white];
-      f2__finish__1 [label="commit_author\nCommit the epic/story docs this run wrote, in the one repo it wrote them in.", shape=box, fillcolor=white];
-      f2__finish__2 [label="promote_record\nClose the record a story was authored from as promoted, naming the story and its epic.", shape=box, fillcolor=white];
-      f2__finish__0 -> f2__finish__1 [style=invis];
-      f2__finish__1 -> f2__finish__2 [style=invis];
-    }
-    subgraph cluster_f2__next_affected_story {
-      label="next_affected_story"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__next_affected_story__0 [label="select_affected_story\nResolve the next approved affected story without widening the edit worklist.", shape=box, fillcolor=white];
-      f2__next_affected_story__1 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
-      f2__next_affected_story__0 -> f2__next_affected_story__1 [style=invis];
-    }
-    subgraph cluster_f2__plan_edit {
-      label="plan_edit"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__plan_edit__0 [label="plan-epic-edit.md\nPlan an edit to epic `{{ workhorse_var('snapshot').epic }}`", shape=note, fillcolor=lightyellow];
-      f2__plan_edit__1 [label="read_register_listing\nThe open records of every repository, one line each under a header, for the planner to read.", shape=box, fillcolor=white];
-      f2__plan_edit__0 -> f2__plan_edit__1 [style=invis];
-    }
-    subgraph cluster_f2__refine_plan {
-      label="refine_plan"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__refine_plan__0 [label="refine-epic-edit-plan.md\nRefine an invalid epic edit plan", shape=note, fillcolor=lightyellow];
-      f2__refine_plan__1 [label="read_register_listing\nThe open records of every repository, one line each under a header, for the planner to read.", shape=box, fillcolor=white];
-      f2__refine_plan__0 -> f2__refine_plan__1 [style=invis];
-    }
-    subgraph cluster_f2__review_plan {
-      label="review_plan"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__review_plan__0 [label="handoff → pm-review", shape=box, fillcolor=plum];
-    }
-    subgraph cluster_f2__rewrite_epic {
-      label="rewrite_epic"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__rewrite_epic__0 [label="rewrite-epic-edit.md\nRewrite epic prose after an approved graph edit", shape=note, fillcolor=lightyellow];
-      f2__rewrite_epic__1 [label="validate_epic_document\nCheck the model-authored epic prose without re-parsing Ostler-owned graph metadata.", shape=box, fillcolor=white];
-      f2__rewrite_epic__2 [label="validate_applied_edit\nProve disk matches the approved graph and unaffected story bodies remain byte-stable.", shape=box, fillcolor=white];
-      f2__rewrite_epic__0 -> f2__rewrite_epic__1 [style=invis];
-      f2__rewrite_epic__1 -> f2__rewrite_epic__2 [style=invis];
-    }
     subgraph cluster_f2__start {
       label="start"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f2__start__0 [label="snapshot_epic\nCapture the graph and story-body baseline an edit is allowed to change.", shape=box, fillcolor=white];
-    }
-    subgraph cluster_f2__validate_plan {
-      label="validate_plan"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f2__validate_plan__0 [label="validate_edit_plan\nReject an unsafe projected graph before any Ostler mutation runs.", shape=box, fillcolor=white];
+      f2__start__0 [label="resolve_story_intent\nValidate the requested story operation and name its parent epic and binding outcome.", shape=box, fillcolor=white];
+      f2__start__1 [label="handoff → epic-edit", shape=box, fillcolor=plum];
+      f2__start__0 -> f2__start__1 [style=invis];
     }
     f2____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f2____start -> f2__start__0 [lhead=cluster_f2__start];
-    f2__apply_plan__1 -> f2__rewrite_epic__0 [label="plan applied", tooltip="edit", ltail=cluster_f2__apply_plan, lhead=cluster_f2__rewrite_epic];
-    f2__apply_plan__1 -> f2__finish__0 [label="the epic was deleted", tooltip="edit", ltail=cluster_f2__apply_plan, lhead=cluster_f2__finish];
-    f2__check_coverage__1 -> f2__finish__0 [label="coverage holds", tooltip="edit", ltail=cluster_f2__check_coverage, lhead=cluster_f2__finish];
-    f2__design_mockup__1 -> f2__draft_story__0 [label="mockup drawn / no mockup needed", tooltip="edit, pick, index, mockup", ltail=cluster_f2__design_mockup, lhead=cluster_f2__draft_story];
-    f2__draft_story__0 -> f2__next_affected_story__0 [label="the PM passed the story", tooltip="edit, index", ltail=cluster_f2__draft_story, lhead=cluster_f2__next_affected_story];
-    f2__draft_story__0 -> f2__draft_story__0 [label="the story stayed blocked", tooltip="edit, pick, index, mockup", style=dashed, color=darkorange];
-    f2__finish__2 -> f2____end [label="edit committed", color=darkgoldenrod, ltail=cluster_f2__finish];
-    f2__next_affected_story__1 -> f2__design_mockup__0 [label="a story to rewrite", tooltip="edit, pick, index", ltail=cluster_f2__next_affected_story, lhead=cluster_f2__design_mockup];
-    f2__next_affected_story__1 -> f2__check_coverage__0 [label="no story left", tooltip="edit", ltail=cluster_f2__next_affected_story, lhead=cluster_f2__check_coverage];
-    f2__plan_edit__1 -> f2__validate_plan__0 [label="planned", tooltip="edit", ltail=cluster_f2__plan_edit, lhead=cluster_f2__validate_plan];
-    f2__refine_plan__1 -> f2__validate_plan__0 [label="refined", tooltip="edit, reworks", ltail=cluster_f2__refine_plan, lhead=cluster_f2__validate_plan];
-    f2__review_plan__0 -> f2__plan_edit__0 [label="out of plan reworks", tooltip="edit", style=dashed, color=darkorange, ltail=cluster_f2__review_plan, lhead=cluster_f2__plan_edit];
-    f2__review_plan__0 -> f2__apply_plan__0 [label="the PM passed the plan", tooltip="edit", ltail=cluster_f2__review_plan, lhead=cluster_f2__apply_plan];
-    f2__review_plan__0 -> f2__refine_plan__0 [label="the PM has findings", tooltip="edit, findings, reworks", ltail=cluster_f2__review_plan, lhead=cluster_f2__refine_plan];
-    f2__rewrite_epic__2 -> f2__rewrite_epic__0 [label="blocked or out of reworks / the epic has findings", tooltip="edit, findings, reworks", style=dashed, color=darkorange];
-    f2__rewrite_epic__2 -> f2__next_affected_story__0 [label="the epic reads right", tooltip="edit, index", ltail=cluster_f2__rewrite_epic, lhead=cluster_f2__next_affected_story];
-    f2__start__0 -> f2__plan_edit__0 [label="baseline taken", tooltip="edit", ltail=cluster_f2__start, lhead=cluster_f2__plan_edit];
-    f2__validate_plan__0 -> f2__refine_plan__0 [label="the plan has findings", tooltip="edit, findings, reworks", ltail=cluster_f2__validate_plan, lhead=cluster_f2__refine_plan];
-    f2__validate_plan__0 -> f2__review_plan__0 [label="the plan is valid", tooltip="edit, reworks", ltail=cluster_f2__validate_plan, lhead=cluster_f2__review_plan];
-    f2__validate_plan__0 -> f2__plan_edit__0 [label="out of plan reworks", tooltip="edit", style=dashed, color=darkorange, ltail=cluster_f2__validate_plan, lhead=cluster_f2__plan_edit];
+    f2__start__1 -> f2____end [label="the epic edit ran", color=darkgoldenrod, ltail=cluster_f2__start];
   }
 
-  subgraph cluster_story_edit_f3__ {
-    label="story-edit";
+  subgraph cluster_epic_split_f3__ {
+    label="epic-split";
     style=dashed; color=gray50; fontsize=11;
 
     f3____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
@@ -272,299 +232,280 @@ digraph author {
       label="start"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f3__start__0 [label="resolve_story_intent\nValidate the requested story operation and name its parent epic and binding outcome.", shape=box, fillcolor=white];
-      f3__start__1 [label="handoff → epic-edit", shape=box, fillcolor=plum];
+      f3__start__0 [label="handoff → draft", shape=box, fillcolor=plum];
+      f3__start__1 [label="validate_epic_split\nValidate an ordered, non-empty epic list without accepting prose, seeds, or stories.", shape=box, fillcolor=white];
       f3__start__0 -> f3__start__1 [style=invis];
     }
     f3____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f3____start -> f3__start__0 [lhead=cluster_f3__start];
-    f3__start__1 -> f3____end [label="the epic edit ran", color=darkgoldenrod, ltail=cluster_f3__start];
+    f3__start__1 -> f3____end [label="the PM passed the split / the split stayed blocked", color=darkgoldenrod, ltail=cluster_f3__start];
   }
 
-  subgraph cluster_epic_split_f4__ {
-    label="epic-split";
-    style=dashed; color=gray50; fontsize=11;
-
-    f4____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f4__start {
-      label="start"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f4__start__0 [label="handoff → draft", shape=box, fillcolor=plum];
-      f4__start__1 [label="validate_epic_split\nValidate an ordered, non-empty epic list without accepting prose, seeds, or stories.", shape=box, fillcolor=white];
-      f4__start__0 -> f4__start__1 [style=invis];
-    }
-    f4____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
-
-    f4____start -> f4__start__0 [lhead=cluster_f4__start];
-    f4__start__1 -> f4____end [label="the PM passed the split / the split stayed blocked", color=darkgoldenrod, ltail=cluster_f4__start];
-  }
-
-  subgraph cluster_epic_author_f5__ {
+  subgraph cluster_epic_author_f4__ {
     label="epic-author";
     style=dashed; color=gray50; fontsize=11;
 
-    f5____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f5__ask_pm {
+    f4____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    subgraph cluster_f4__ask_pm {
       label="ask_pm"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f5__ask_pm__0 [label="handoff → gap-answer", shape=box, fillcolor=plum];
+      f4__ask_pm__0 [label="handoff → gap-answer", shape=box, fillcolor=plum];
     }
-    subgraph cluster_f5__author_epic {
+    subgraph cluster_f4__author_epic {
       label="author_epic"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f5__author_epic__0 [label="write-epic.md\nWrite the epic: `{{ workhorse_var('epic') }}`", shape=note, fillcolor=lightyellow];
-      f5__author_epic__1 [label="validate_authored_epic\nApply the main worklist's documented-epic evidence to one explicit epic.", shape=box, fillcolor=white];
-      f5__author_epic__0 -> f5__author_epic__1 [style=invis];
+      f4__author_epic__0 [label="write-epic.md\nWrite the epic: `{{ workhorse_var('epic') }}`", shape=note, fillcolor=lightyellow];
+      f4__author_epic__1 [label="validate_authored_epic\nApply the main worklist's documented-epic evidence to one explicit epic.", shape=box, fillcolor=white];
+      f4__author_epic__0 -> f4__author_epic__1 [style=invis];
     }
-    f5__start [label="start"];
-    f5____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
+    f4__start [label="start"];
+    f4____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
-    f5____start -> f5__start;
-    f5__ask_pm__0 -> f5__author_epic__0 [label="the PM answered", tooltip="draft", ltail=cluster_f5__ask_pm, lhead=cluster_f5__author_epic];
-    f5__author_epic__1 -> f5____end [label="the epic validates / out of budget", color=darkgoldenrod, ltail=cluster_f5__author_epic];
-    f5__author_epic__1 -> f5__ask_pm__0 [label="the writer has a question", tooltip="question, draft", ltail=cluster_f5__author_epic, lhead=cluster_f5__ask_pm];
-    f5__author_epic__1 -> f5__author_epic__0 [label="the epic failed validation", tooltip="draft"];
-    f5__start -> f5__author_epic__0 [label="nothing written yet", tooltip="draft", lhead=cluster_f5__author_epic];
+    f4____start -> f4__start;
+    f4__ask_pm__0 -> f4__author_epic__0 [label="the PM answered", tooltip="draft", ltail=cluster_f4__ask_pm, lhead=cluster_f4__author_epic];
+    f4__author_epic__1 -> f4____end [label="the epic validates / out of budget", color=darkgoldenrod, ltail=cluster_f4__author_epic];
+    f4__author_epic__1 -> f4__ask_pm__0 [label="the writer has a question", tooltip="question, draft", ltail=cluster_f4__author_epic, lhead=cluster_f4__ask_pm];
+    f4__author_epic__1 -> f4__author_epic__0 [label="the epic failed validation", tooltip="draft"];
+    f4__start -> f4__author_epic__0 [label="nothing written yet", tooltip="draft", lhead=cluster_f4__author_epic];
   }
 
-  subgraph cluster_story_split_f6__ {
+  subgraph cluster_story_split_f5__ {
     label="story-split";
     style=dashed; color=gray50; fontsize=11;
 
+    f5____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    subgraph cluster_f5__start {
+      label="start"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f5__start__0 [label="handoff → draft", shape=box, fillcolor=plum];
+    }
+    f5____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
+
+    f5____start -> f5__start__0 [lhead=cluster_f5__start];
+    f5__start__0 -> f5____end [label="the split passed or stayed blocked", color=darkgoldenrod, ltail=cluster_f5__start];
+  }
+
+  subgraph cluster_story_author_f6__ {
+    label="story-author";
+    style=dashed; color=gray50; fontsize=11;
+
     f6____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    subgraph cluster_f6__design_mockup {
+      label="design_mockup"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f6__design_mockup__0 [label="design-mockup.md\nDesign a mockup for a new screen: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
+    }
+    subgraph cluster_f6__draft {
+      label="draft"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f6__draft__0 [label="handoff → draft", shape=box, fillcolor=plum];
+    }
     subgraph cluster_f6__start {
       label="start"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f6__start__0 [label="handoff → draft", shape=box, fillcolor=plum];
+      f6__start__0 [label="prepare_story\nResolve exactly ``epic/story`` and give its document every required section it lacks.", shape=box, fillcolor=white];
+      f6__start__1 [label="check_mockup_needed\nA story needs a mockup exactly when one of its services is a UI book.", shape=box, fillcolor=white];
+      f6__start__0 -> f6__start__1 [style=invis];
+    }
+    subgraph cluster_f6__story_feedback {
+      label="story_feedback"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f6__story_feedback__0 [label="check_story_feedback\nPoll the operator's run-scoped inbox for un-consumed feedback.", shape=box, fillcolor=white];
+      f6__story_feedback__1 [label="rework-story.md\nRework the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
+      f6__story_feedback__0 -> f6__story_feedback__1 [style=invis];
     }
     f6____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f6____start -> f6__start__0 [lhead=cluster_f6__start];
-    f6__start__0 -> f6____end [label="the split passed or stayed blocked", color=darkgoldenrod, ltail=cluster_f6__start];
+    f6__design_mockup__0 -> f6__draft__0 [label="mockup drawn", tooltip="target, mockup", ltail=cluster_f6__design_mockup, lhead=cluster_f6__draft];
+    f6__design_mockup__0 -> f6____end [label="no mockup", color=darkgoldenrod, ltail=cluster_f6__design_mockup];
+    f6__draft__0 -> f6__story_feedback__0 [label="the PM passed it", tooltip="target, mockup, spent", ltail=cluster_f6__draft, lhead=cluster_f6__story_feedback];
+    f6__draft__0 -> f6____end [label="the story stayed blocked", color=darkgoldenrod, ltail=cluster_f6__draft];
+    f6__start__1 -> f6__draft__0 [label="no mockup needed", tooltip="target", ltail=cluster_f6__start, lhead=cluster_f6__draft];
+    f6__start__1 -> f6__design_mockup__0 [label="the story changes a UI service", tooltip="target", ltail=cluster_f6__start, lhead=cluster_f6__design_mockup];
+    f6__story_feedback__1 -> f6__draft__0 [label="operator feedback applied", tooltip="target, mockup, written", ltail=cluster_f6__story_feedback, lhead=cluster_f6__draft];
+    f6__story_feedback__1 -> f6____end [label="no operator feedback", color=darkgoldenrod, ltail=cluster_f6__story_feedback];
   }
 
-  subgraph cluster_story_author_f7__ {
-    label="story-author";
-    style=dashed; color=gray50; fontsize=11;
-
-    f7____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f7__design_mockup {
-      label="design_mockup"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f7__design_mockup__0 [label="design-mockup.md\nDesign a mockup for a new screen: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
-    }
-    subgraph cluster_f7__draft {
-      label="draft"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f7__draft__0 [label="handoff → draft", shape=box, fillcolor=plum];
-    }
-    subgraph cluster_f7__start {
-      label="start"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f7__start__0 [label="prepare_story\nResolve exactly ``epic/story`` and give its document every required section it lacks.", shape=box, fillcolor=white];
-      f7__start__1 [label="check_mockup_needed\nA story needs a mockup exactly when one of its services is a UI book.", shape=box, fillcolor=white];
-      f7__start__0 -> f7__start__1 [style=invis];
-    }
-    subgraph cluster_f7__story_feedback {
-      label="story_feedback"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f7__story_feedback__0 [label="check_story_feedback\nPoll the operator's run-scoped inbox for un-consumed feedback.", shape=box, fillcolor=white];
-      f7__story_feedback__1 [label="rework-story.md\nRework the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
-      f7__story_feedback__0 -> f7__story_feedback__1 [style=invis];
-    }
-    f7____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
-
-    f7____start -> f7__start__0 [lhead=cluster_f7__start];
-    f7__design_mockup__0 -> f7__draft__0 [label="mockup drawn", tooltip="target, mockup", ltail=cluster_f7__design_mockup, lhead=cluster_f7__draft];
-    f7__design_mockup__0 -> f7____end [label="no mockup", color=darkgoldenrod, ltail=cluster_f7__design_mockup];
-    f7__draft__0 -> f7__story_feedback__0 [label="the PM passed it", tooltip="target, mockup, spent", ltail=cluster_f7__draft, lhead=cluster_f7__story_feedback];
-    f7__draft__0 -> f7____end [label="the story stayed blocked", color=darkgoldenrod, ltail=cluster_f7__draft];
-    f7__start__1 -> f7__draft__0 [label="no mockup needed", tooltip="target", ltail=cluster_f7__start, lhead=cluster_f7__draft];
-    f7__start__1 -> f7__design_mockup__0 [label="the story changes a UI service", tooltip="target", ltail=cluster_f7__start, lhead=cluster_f7__design_mockup];
-    f7__story_feedback__1 -> f7__draft__0 [label="operator feedback applied", tooltip="target, mockup, written", ltail=cluster_f7__story_feedback, lhead=cluster_f7__draft];
-    f7__story_feedback__1 -> f7____end [label="no operator feedback", color=darkgoldenrod, ltail=cluster_f7__story_feedback];
-  }
-
-  subgraph cluster_finalize_f8__ {
+  subgraph cluster_finalize_f7__ {
     label="finalize";
     style=dashed; color=gray50; fontsize=11;
 
-    f8____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f8__close {
+    f7____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    subgraph cluster_f7__close {
       label="close"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f8__close__0 [label="validate_artifacts\nCan the coder engine actually walk what this run produced?", shape=box, fillcolor=white];
-      f8__close__1 [label="validate_milestone_epics\nProve the milestone lists its epics by id, and that it, they and their stories meet the authoring contract.", shape=box, fillcolor=white];
-      f8__close__2 [label="mark_milestone_authored\nAdvance one validated milestone from approved to authored, idempotently.", shape=box, fillcolor=white];
-      f8__close__3 [label="commit_author\nCommit the epic/story docs this run wrote, in the one repo it wrote them in.", shape=box, fillcolor=white];
-      f8__close__0 -> f8__close__1 [style=invis];
-      f8__close__1 -> f8__close__2 [style=invis];
-      f8__close__2 -> f8__close__3 [style=invis];
+      f7__close__0 [label="validate_artifacts\nCan the coder engine actually walk what this run produced?", shape=box, fillcolor=white];
+      f7__close__1 [label="validate_milestone_epics\nProve the milestone lists its epics by id, and that it, they and their stories meet the authoring contract.", shape=box, fillcolor=white];
+      f7__close__2 [label="mark_milestone_authored\nAdvance one validated milestone from approved to authored, idempotently.", shape=box, fillcolor=white];
+      f7__close__3 [label="commit_author\nCommit the epic/story docs this run wrote, in the one repo it wrote them in.", shape=box, fillcolor=white];
+      f7__close__0 -> f7__close__1 [style=invis];
+      f7__close__1 -> f7__close__2 [style=invis];
+      f7__close__2 -> f7__close__3 [style=invis];
     }
-    subgraph cluster_f8__resolve {
+    subgraph cluster_f7__resolve {
       label="resolve"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f8__resolve__0 [label="resolve-integrity.md\nResolve a referential-integrity block autonomously (author)", shape=note, fillcolor=lightyellow];
+      f7__resolve__0 [label="resolve-integrity.md\nResolve a referential-integrity block autonomously (author)", shape=note, fillcolor=lightyellow];
     }
-    f8__start [label="start"];
-    subgraph cluster_f8__verify {
+    f7__start [label="start"];
+    subgraph cluster_f7__verify {
       label="verify"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f8__verify__0 [label="verify_reconcile\nScope this run silently dropped, measured against the epics as they stood when it started.", shape=box, fillcolor=white];
-      f8__verify__1 [label="verify_integrity\n`ostler doctor` over the whole graph, as a blocking gate.", shape=box, fillcolor=white];
-      f8__verify__2 [label="validate_milestone_epics\nProve the milestone lists its epics by id, and that it, they and their stories meet the authoring contract.", shape=box, fillcolor=white];
-      f8__verify__0 -> f8__verify__1 [style=invis];
-      f8__verify__1 -> f8__verify__2 [style=invis];
+      f7__verify__0 [label="verify_reconcile\nScope this run silently dropped, measured against the epics as they stood when it started.", shape=box, fillcolor=white];
+      f7__verify__1 [label="verify_integrity\n`ostler doctor` over the whole graph, as a blocking gate.", shape=box, fillcolor=white];
+      f7__verify__2 [label="validate_milestone_epics\nProve the milestone lists its epics by id, and that it, they and their stories meet the authoring contract.", shape=box, fillcolor=white];
+      f7__verify__0 -> f7__verify__1 [style=invis];
+      f7__verify__1 -> f7__verify__2 [style=invis];
+    }
+    f7____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
+
+    f7____start -> f7__start;
+    f7__close__3 -> f7____end [label="the milestone is authored", color=darkgoldenrod, ltail=cluster_f7__close];
+    f7__resolve__0 -> f7__verify__0 [label="repaired / the agent escalated", tooltip="check, resolves", style=dashed, color=darkorange, ltail=cluster_f7__resolve, lhead=cluster_f7__verify];
+    f7__start -> f7__verify__0 [label="operator mode is auto or human", lhead=cluster_f7__verify];
+    f7__verify__2 -> f7__verify__0 [label="parked for the operator / the check holds", tooltip="check", style=dashed, color=darkorange];
+    f7__verify__2 -> f7__close__0 [label="every closing check ran", ltail=cluster_f7__verify, lhead=cluster_f7__close];
+    f7__verify__2 -> f7__resolve__0 [label="an agent may repair it", tooltip="check, notes, resolves", ltail=cluster_f7__verify, lhead=cluster_f7__resolve];
+  }
+
+  subgraph cluster_draft_f8__ {
+    label="draft";
+    style=dashed; color=gray50; fontsize=11;
+
+    f8____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    subgraph cluster_f8__ask_pm {
+      label="ask_pm"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f8__ask_pm__0 [label="handoff → gap-answer", shape=box, fillcolor=plum];
+    }
+    subgraph cluster_f8__check {
+      label="check"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f8__check__0 [label="validate_story\nThe bare-minimum story contract, checked deterministically.", shape=box, fillcolor=white];
+      f8__check__1 [label="check_story_grounding\nDoes every seed the story claims belong to its epic?", shape=box, fillcolor=white];
+      f8__check__2 [label="validate_epic_split\nValidate an ordered, non-empty epic list without accepting prose, seeds, or stories.", shape=box, fillcolor=white];
+      f8__check__3 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
+      f8__check__4 [label="validate_coverage\nEvery seed covered by a story, the story graph acyclic, every story file present.", shape=box, fillcolor=white];
+      f8__check__0 -> f8__check__1 [style=invis];
+      f8__check__1 -> f8__check__2 [style=invis];
+      f8__check__2 -> f8__check__3 [style=invis];
+      f8__check__3 -> f8__check__4 [style=invis];
+    }
+    subgraph cluster_f8__review {
+      label="review"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f8__review__0 [label="handoff → pm-review", shape=box, fillcolor=plum];
+    }
+    subgraph cluster_f8__rework {
+      label="rework"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f8__rework__0 [label="rework-epic-split.md\nRework an epic skeleton split", shape=note, fillcolor=lightyellow];
+      f8__rework__1 [label="split-stories.md\nSplit epic `{{ workhorse_var('epic') }}` into stories", shape=note, fillcolor=lightyellow];
+      f8__rework__2 [label="rework-story.md\nRework the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
+      f8__rework__3 [label="rework-story.md\nRework the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
+      f8__rework__4 [label="record_attempt\nAppend this attempt's failure to the story's attempts ledger, and read it back.", shape=box, fillcolor=white];
+      f8__rework__0 -> f8__rework__1 [style=invis];
+      f8__rework__1 -> f8__rework__2 [style=invis];
+      f8__rework__2 -> f8__rework__3 [style=invis];
+      f8__rework__3 -> f8__rework__4 [style=invis];
+    }
+    f8__start [label="start"];
+    subgraph cluster_f8__write {
+      label="write"; fontsize=12;
+      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
+      node [style="filled", fontsize=10];
+      f8__write__0 [label="split-epics.md\nSplit one milestone into epic skeletons", shape=note, fillcolor=lightyellow];
+      f8__write__1 [label="split-stories.md\nSplit epic `{{ workhorse_var('epic') }}` into stories", shape=note, fillcolor=lightyellow];
+      f8__write__2 [label="write-story.md\nWrite the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
+      f8__write__3 [label="write-story.md\nWrite the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
+      f8__write__0 -> f8__write__1 [style=invis];
+      f8__write__1 -> f8__write__2 [style=invis];
+      f8__write__2 -> f8__write__3 [style=invis];
     }
     f8____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f8____start -> f8__start;
-    f8__close__3 -> f8____end [label="the milestone is authored", color=darkgoldenrod, ltail=cluster_f8__close];
-    f8__resolve__0 -> f8__verify__0 [label="repaired / the agent escalated", tooltip="check, resolves", style=dashed, color=darkorange, ltail=cluster_f8__resolve, lhead=cluster_f8__verify];
-    f8__start -> f8__verify__0 [label="operator mode is auto or human", lhead=cluster_f8__verify];
-    f8__verify__2 -> f8__verify__0 [label="parked for the operator / the check holds", tooltip="check", style=dashed, color=darkorange];
-    f8__verify__2 -> f8__close__0 [label="every closing check ran", ltail=cluster_f8__verify, lhead=cluster_f8__close];
-    f8__verify__2 -> f8__resolve__0 [label="an agent may repair it", tooltip="check, notes, resolves", ltail=cluster_f8__verify, lhead=cluster_f8__resolve];
+    f8__ask_pm__0 -> f8__rework__0 [label="the PM answered", tooltip="draft", ltail=cluster_f8__ask_pm, lhead=cluster_f8__rework];
+    f8__ask_pm__0 -> f8__write__0 [label="the PM answered", tooltip="draft", ltail=cluster_f8__ask_pm, lhead=cluster_f8__write];
+    f8__check__4 -> f8__review__0 [label="the checks pass", tooltip="draft", ltail=cluster_f8__check, lhead=cluster_f8__review];
+    f8__check__4 -> f8__rework__0 [label="needs rework", tooltip="draft", ltail=cluster_f8__check, lhead=cluster_f8__rework];
+    f8__check__4 -> f8____end [label="out of budget", color=darkgoldenrod, ltail=cluster_f8__check];
+    f8__review__0 -> f8__rework__0 [label="needs rework", tooltip="draft", ltail=cluster_f8__review, lhead=cluster_f8__rework];
+    f8__review__0 -> f8____end [label="out of budget / the PM passed it", color=darkgoldenrod, ltail=cluster_f8__review];
+    f8__rework__4 -> f8__check__0 [label="reworked", tooltip="draft", ltail=cluster_f8__rework, lhead=cluster_f8__check];
+    f8__rework__4 -> f8__ask_pm__0 [label="the writer has a question", tooltip="question, phase, draft", ltail=cluster_f8__rework, lhead=cluster_f8__ask_pm];
+    f8__rework__4 -> f8____end [label="out of budget", color=darkgoldenrod, ltail=cluster_f8__rework];
+    f8__start -> f8__write__0 [label="nothing written yet", tooltip="draft", lhead=cluster_f8__write];
+    f8__start -> f8__check__0 [label="already written", tooltip="draft", lhead=cluster_f8__check];
+    f8__write__3 -> f8__check__0 [label="written", tooltip="draft", ltail=cluster_f8__write, lhead=cluster_f8__check];
+    f8__write__3 -> f8__ask_pm__0 [label="the writer has a question", tooltip="question, phase, draft", ltail=cluster_f8__write, lhead=cluster_f8__ask_pm];
+    f8__write__3 -> f8____end [label="out of budget", color=darkgoldenrod, ltail=cluster_f8__write];
   }
 
-  subgraph cluster_draft_f9__ {
-    label="draft";
+  subgraph cluster_pm_review_f9__ {
+    label="pm-review";
     style=dashed; color=gray50; fontsize=11;
 
     f9____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f9__ask_pm {
-      label="ask_pm"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f9__ask_pm__0 [label="handoff → gap-answer", shape=box, fillcolor=plum];
-    }
-    subgraph cluster_f9__check {
-      label="check"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f9__check__0 [label="validate_story\nThe bare-minimum story contract, checked deterministically.", shape=box, fillcolor=white];
-      f9__check__1 [label="check_story_grounding\nDoes every seed the story claims belong to its epic?", shape=box, fillcolor=white];
-      f9__check__2 [label="validate_epic_split\nValidate an ordered, non-empty epic list without accepting prose, seeds, or stories.", shape=box, fillcolor=white];
-      f9__check__3 [label="derive_story_services\nA story's services stay inside the sorted union of the services of the seeds it covers.", shape=box, fillcolor=white];
-      f9__check__4 [label="validate_coverage\nEvery seed covered by a story, the story graph acyclic, every story file present.", shape=box, fillcolor=white];
-      f9__check__0 -> f9__check__1 [style=invis];
-      f9__check__1 -> f9__check__2 [style=invis];
-      f9__check__2 -> f9__check__3 [style=invis];
-      f9__check__3 -> f9__check__4 [style=invis];
-    }
     subgraph cluster_f9__review {
       label="review"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f9__review__0 [label="handoff → pm-review", shape=box, fillcolor=plum];
-    }
-    subgraph cluster_f9__rework {
-      label="rework"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f9__rework__0 [label="rework-epic-split.md\nRework an epic skeleton split", shape=note, fillcolor=lightyellow];
-      f9__rework__1 [label="split-stories.md\nSplit epic `{{ workhorse_var('epic') }}` into stories", shape=note, fillcolor=lightyellow];
-      f9__rework__2 [label="rework-story.md\nRework the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
-      f9__rework__3 [label="rework-story.md\nRework the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
-      f9__rework__4 [label="record_attempt\nAppend this attempt's failure to the story's attempts ledger, and read it back.", shape=box, fillcolor=white];
-      f9__rework__0 -> f9__rework__1 [style=invis];
-      f9__rework__1 -> f9__rework__2 [style=invis];
-      f9__rework__2 -> f9__rework__3 [style=invis];
-      f9__rework__3 -> f9__rework__4 [style=invis];
+      f9__review__0 [label="review-delegated.md\nReview as the product manager: {{ workhorse_var('stage') }}", shape=note, fillcolor=lightyellow];
+      f9__review__1 [label="review-inline.md\nReview as the product manager: {{ workhorse_var('stage') }}", shape=note, fillcolor=lightyellow];
+      f9__review__2 [label="record_pm_receipt\nBind a passing review to the exact bytes it judged, for the stages whose output is a durable file.", shape=box, fillcolor=white];
+      f9__review__0 -> f9__review__1 [style=invis];
+      f9__review__1 -> f9__review__2 [style=invis];
     }
     f9__start [label="start"];
-    subgraph cluster_f9__write {
-      label="write"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f9__write__0 [label="split-epics.md\nSplit one milestone into epic skeletons", shape=note, fillcolor=lightyellow];
-      f9__write__1 [label="split-stories.md\nSplit epic `{{ workhorse_var('epic') }}` into stories", shape=note, fillcolor=lightyellow];
-      f9__write__2 [label="write-story.md\nWrite the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
-      f9__write__3 [label="write-story.md\nWrite the story: `{{ workhorse_var('story_slug') }}`", shape=note, fillcolor=lightyellow];
-      f9__write__0 -> f9__write__1 [style=invis];
-      f9__write__1 -> f9__write__2 [style=invis];
-      f9__write__2 -> f9__write__3 [style=invis];
-    }
     f9____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
     f9____start -> f9__start;
-    f9__ask_pm__0 -> f9__rework__0 [label="the PM answered", tooltip="draft", ltail=cluster_f9__ask_pm, lhead=cluster_f9__rework];
-    f9__ask_pm__0 -> f9__write__0 [label="the PM answered", tooltip="draft", ltail=cluster_f9__ask_pm, lhead=cluster_f9__write];
-    f9__check__4 -> f9__review__0 [label="the checks pass", tooltip="draft", ltail=cluster_f9__check, lhead=cluster_f9__review];
-    f9__check__4 -> f9__rework__0 [label="needs rework", tooltip="draft", ltail=cluster_f9__check, lhead=cluster_f9__rework];
-    f9__check__4 -> f9____end [label="out of budget", color=darkgoldenrod, ltail=cluster_f9__check];
-    f9__review__0 -> f9__rework__0 [label="needs rework", tooltip="draft", ltail=cluster_f9__review, lhead=cluster_f9__rework];
-    f9__review__0 -> f9____end [label="out of budget / the PM passed it", color=darkgoldenrod, ltail=cluster_f9__review];
-    f9__rework__4 -> f9__check__0 [label="reworked", tooltip="draft", ltail=cluster_f9__rework, lhead=cluster_f9__check];
-    f9__rework__4 -> f9__ask_pm__0 [label="the writer has a question", tooltip="question, phase, draft", ltail=cluster_f9__rework, lhead=cluster_f9__ask_pm];
-    f9__rework__4 -> f9____end [label="out of budget", color=darkgoldenrod, ltail=cluster_f9__rework];
-    f9__start -> f9__write__0 [label="nothing written yet", tooltip="draft", lhead=cluster_f9__write];
-    f9__start -> f9__check__0 [label="already written", tooltip="draft", lhead=cluster_f9__check];
-    f9__write__3 -> f9__check__0 [label="written", tooltip="draft", ltail=cluster_f9__write, lhead=cluster_f9__check];
-    f9__write__3 -> f9__ask_pm__0 [label="the writer has a question", tooltip="question, phase, draft", ltail=cluster_f9__write, lhead=cluster_f9__ask_pm];
-    f9__write__3 -> f9____end [label="out of budget", color=darkgoldenrod, ltail=cluster_f9__write];
+    f9__review__2 -> f9____end [label="every angle judged", color=darkgoldenrod, ltail=cluster_f9__review];
+    f9__start -> f9__review__0 [label="the stage has angles", lhead=cluster_f9__review];
   }
 
-  subgraph cluster_pm_review_f10__ {
-    label="pm-review";
-    style=dashed; color=gray50; fontsize=11;
-
-    f10____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f10__review {
-      label="review"; fontsize=12;
-      style="rounded,filled"; fillcolor=lightblue; color=steelblue;
-      node [style="filled", fontsize=10];
-      f10__review__0 [label="review-delegated.md\nReview as the product manager: {{ workhorse_var('stage') }}", shape=note, fillcolor=lightyellow];
-      f10__review__1 [label="review-inline.md\nReview as the product manager: {{ workhorse_var('stage') }}", shape=note, fillcolor=lightyellow];
-      f10__review__2 [label="record_pm_receipt\nBind a passing review to the exact bytes it judged, for the stages whose output is a durable file.", shape=box, fillcolor=white];
-      f10__review__0 -> f10__review__1 [style=invis];
-      f10__review__1 -> f10__review__2 [style=invis];
-    }
-    f10__start [label="start"];
-    f10____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
-
-    f10____start -> f10__start;
-    f10__review__2 -> f10____end [label="every angle judged", color=darkgoldenrod, ltail=cluster_f10__review];
-    f10__start -> f10__review__0 [label="the stage has angles", lhead=cluster_f10__review];
-  }
-
-  subgraph cluster_gap_answer_f11__ {
+  subgraph cluster_gap_answer_f10__ {
     label="gap-answer";
     style=dashed; color=gray50; fontsize=11;
 
-    f11____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
-    subgraph cluster_f11__record_human {
+    f10____start [label="START", shape=circle, fillcolor=lightgreen, width=0.4];
+    subgraph cluster_f10__record_human {
       label="record_human"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f11__record_human__0 [label="append_ledger\nRecord one answered question in `grills/pm.md`, which only ever grows.", shape=box, fillcolor=white];
+      f10__record_human__0 [label="append_ledger\nRecord one answered question in `grills/pm.md`, which only ever grows.", shape=box, fillcolor=white];
     }
-    subgraph cluster_f11__start {
+    subgraph cluster_f10__start {
       label="start"; fontsize=12;
       style="rounded,filled"; fillcolor=lightblue; color=steelblue;
       node [style="filled", fontsize=10];
-      f11__start__0 [label="answer.md\nAnswer a writer's question as the product manager", shape=note, fillcolor=lightyellow];
-      f11__start__1 [label="append_ledger\nRecord one answered question in `grills/pm.md`, which only ever grows.", shape=box, fillcolor=white];
-      f11__start__0 -> f11__start__1 [style=invis];
+      f10__start__0 [label="answer.md\nAnswer a writer's question as the product manager", shape=note, fillcolor=lightyellow];
+      f10__start__1 [label="append_ledger\nRecord one answered question in `grills/pm.md`, which only ever grows.", shape=box, fillcolor=white];
+      f10__start__0 -> f10__start__1 [style=invis];
     }
-    f11____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
+    f10____end [label="END", shape=doublecircle, fillcolor=gold, width=0.4];
 
-    f11____start -> f11__start__0 [lhead=cluster_f11__start];
-    f11__record_human__0 -> f11____end [label="the operator answered", color=darkgoldenrod, ltail=cluster_f11__record_human];
-    f11__start__1 -> f11__record_human__0 [label="only the operator can answer", tooltip="asked", style=dashed, color=darkorange, ltail=cluster_f11__start, lhead=cluster_f11__record_human];
-    f11__start__1 -> f11____end [label="the PM answered", color=darkgoldenrod, ltail=cluster_f11__start];
+    f10____start -> f10__start__0 [lhead=cluster_f10__start];
+    f10__record_human__0 -> f10____end [label="the operator answered", color=darkgoldenrod, ltail=cluster_f10__record_human];
+    f10__start__1 -> f10__record_human__0 [label="only the operator can answer", tooltip="asked", style=dashed, color=darkorange, ltail=cluster_f10__start, lhead=cluster_f10__record_human];
+    f10__start__1 -> f10____end [label="the PM answered", color=darkgoldenrod, ltail=cluster_f10__start];
   }
 
   subgraph cluster_legend {

@@ -644,7 +644,7 @@ def test_a_mode_the_author_does_not_run_stops_before_any_turn(
 
     agent = _Agent(backlogged)
 
-    with pytest.raises(WorkflowFailed, match=rf"unknown author mode '{mode}'.*epic, story, parity-survey"):
+    with pytest.raises(WorkflowFailed, match=rf"unknown author mode '{mode}'.*epic, story"):
         _drive(_env(tmp_path), agent, mode=mode)
 
     assert agent.calls == []

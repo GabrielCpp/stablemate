@@ -9,7 +9,7 @@ from workhorse_workflows.kit.paths import docs_home_or
 
 
 def launch_repo_root(repo_dir: str | Path = "") -> Path:
-    """The consuming repo, as the parity surveyor's scripts resolved it: input, else cwd; the artifacts repo while a workspace is active."""
+    """The consuming repo: input, else cwd; the artifacts repo while a workspace is active."""
     return docs_home_or(Path(repo_dir).resolve() if repo_dir else Path.cwd().resolve())
 
 

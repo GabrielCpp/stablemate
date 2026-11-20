@@ -23,13 +23,12 @@ from workhorse_workflows.author.shared.nodes import (
     promote_record,
     seed_story,
 )
-from workhorse_workflows.author.parity_surveyor import ParitySurveyor
 from workhorse_workflows.author.shared.schemas import RunContext
 from workhorse_workflows.author.story_author import StoryAuthor
 from workhorse_workflows.author.story_split.flow import StorySplitFlow
 from workhorse_workflows.author.story_split.nodes import derive_story_services
 
-MODES = ("epic", "story", "parity-survey")
+MODES = ("epic", "story")
 STAGES = ("epic", "story-split", "story")
 
 
@@ -41,8 +40,6 @@ class Author(Workflow):
     record: str = ""
     layers: str = ""
     services: str = ""
-    baseline_inventory: str = ""
-    parity_survey_dir: str = "docs/survey/legacy-vs-new"
     operator_mode: str = "auto"
 
     def setup(self) -> RunContext:
@@ -53,13 +50,7 @@ class Author(Workflow):
         return RunContext(**cfg.model_dump())
 
     def start(self) -> Continue | Done:
-        """Dispatch discovery modes, one register story, or the stage chain."""
-        if self.mode == "parity-survey":
-            return Done(self.handoff(
-                ParitySurveyor,
-                baseline_inventory=self.baseline_inventory,
-                survey_dir=self.parity_survey_dir,
-            )).because("parity survey mode")
+        """Author one register story, or run the stage chain."""
         if self.mode == "story":
             seeded = self.call(
                 seed_story,

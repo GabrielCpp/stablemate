@@ -75,8 +75,7 @@ workhorse-author run
 Author refuses a milestone that fails `ostler doctor`, so a missing section, an open decision, a
 dangling link or a journey without its mockup stops the run before any agent turn. Author preserves
 the milestone, writes ordered epics and vertical stories, and changes `status: approved` to
-`status: authored` only after the complete planning graph validates. Survey modes stop after
-discovery; they do not bypass milestone approval by decomposing the records they file.
+`status: authored` only after the complete planning graph validates.
 
 Author keeps a work list of epics, story splits and stories, and drains each kind in turn. A story it
 cannot fix stays blocked on the list while the others continue. Before it finalizes, Author stops
@@ -253,7 +252,7 @@ naming.
 What a workflow still owns is the **filename it invented** — `context.md`, `feedback.md`,
 `_author-context.md`, `<gate>-context.md`, `attempts.md` — joined onto
 a directory ostler resolved. Run artifacts that are not documents at all (`.agents/operator`,
-`.agents/okf-build`, the parity survey's `docs/survey/` scratch) stay
+`.agents/okf-build`) stay
 with the workflow, because ostler has no opinion about them.
 
 Each workflow's `shared/paths.py` is the one place that calls `ostler.path`, and it is also
