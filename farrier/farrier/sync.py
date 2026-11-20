@@ -33,6 +33,15 @@ def sync_command(repo: Path) -> str:
     return f"{shlex.quote(farrier_executable())} sync --repo {shlex.quote(str(repo))}"
 
 
+def in_work_tree(repo: Path) -> bool:
+    """Whether git sees *repo* as part of a work tree."""
+    probe = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "--is-inside-work-tree"],
+        capture_output=True, text=True, check=False,
+    )
+    return probe.returncode == 0 and probe.stdout.strip() == "true"
+
+
 def dirty_paths(repo: Path) -> set[str]:
     """Every path git reports as changed, staged or untracked in *repo*."""
     out = subprocess.run(

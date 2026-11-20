@@ -300,9 +300,10 @@ class Sync(Command):
     program = "farrier"
     argv = ("sync",)
     args = Object("SyncArgs")
-    answers = (Exit(0, Lines(), "nothing, whether the files are current or the library cannot be resolved"),)
+    answers = (Exit(0, Lines(), "nothing, whether the files are current, the library cannot be resolved or the folder is no git repository"),)
     carries = act.RunSync
-    source = (f"{CLI}::_run_sync", "farrier/farrier/sync.py::sync", "farrier/farrier/drift.py")
+    source = (f"{CLI}::_run_sync", "farrier/farrier/sync.py::sync", "farrier/farrier/sync.py::in_work_tree",
+              "farrier/farrier/drift.py")
 
 
 class InstallUser(Command):

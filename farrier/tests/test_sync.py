@@ -25,18 +25,24 @@ def library(tmp_path: Path) -> Path:
     return root
 
 
-@pytest.fixture
-def repo(monkeypatch, library: Path, tmp_path: Path) -> Path:
+def configured(monkeypatch, library: Path, tmp_path: Path) -> Path:
+    """A folder whose agents.yml selects the library's one skill."""
     monkeypatch.setattr(cli, "resolve_library_dir", lambda _cli: library)
     monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
     monkeypatch.setattr(cli, "load_home_config", lambda: HomeConfig())
     set_layers(library)
     root = tmp_path / "demo"
     root.mkdir()
-    git(root, "init", "-q")
     (root / "agents.yml").write_text(
         "agents:\n  claude: true\nskills:\n  - demo/plain\n", encoding="utf-8"
     )
+    return root
+
+
+@pytest.fixture
+def repo(monkeypatch, library: Path, tmp_path: Path) -> Path:
+    root = configured(monkeypatch, library, tmp_path)
+    git(root, "init", "-q")
     assert cli.main(["install", "--repo", str(root)]) == 0
     git(root, "add", "-A")
     git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--no-verify", "-qm", "init")
@@ -100,3 +106,14 @@ def test_a_repo_without_agents_yml_passes(tmp_path: Path):
     bare.mkdir()
 
     assert cli.main(["sync", "--repo", str(bare)]) == 0
+
+
+def test_a_folder_outside_git_is_skipped(monkeypatch, library: Path, tmp_path: Path, capsys):
+    """A commit check has nothing to stage where there is no repository."""
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    folder = configured(monkeypatch, library, tmp_path)
+
+    assert cli.main(["sync", "--repo", str(folder)]) == 0
+
+    assert sorted(p.name for p in folder.iterdir()) == ["agents.yml"]
+    assert "not a git repository" in capsys.readouterr().err

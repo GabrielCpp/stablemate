@@ -107,7 +107,7 @@ from farrier.scaffolds import (
     resolve_scaffold_params,
     substitute_scaffold_path,
 )
-from farrier.sync import SYNC_BUDGET, sync, sync_command
+from farrier.sync import SYNC_BUDGET, in_work_tree, sync, sync_command
 from farrier.sources import (
     collect_selection,
     library_source_path,
@@ -1050,6 +1050,9 @@ def _run_sync(args: argparse.Namespace) -> int:
     repo = args.repo.resolve()
     config_path = locate_manifest(repo)
     if config_path is None:
+        return 0
+    if not in_work_tree(repo):
+        print(f"Skipped the generated-file check: {repo} is not a git repository", file=sys.stderr)
         return 0
     try:
         _load_library(None, check=True)
