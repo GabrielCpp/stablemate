@@ -99,6 +99,28 @@ def _spec_dir() -> Path:
     return core_config.resolve_artifacts_dir() / "specs" / STORY
 
 
+MODULE_CALLS = {
+    "services.api": ["ListX", "BuildX"],
+    "services.api.http": ["ListX"],
+    "services.api.web": ["BuildX"],
+    "services.web": ["ShowHome"],
+}
+
+
+def affected_report(plan: str = "partial", **fields: Any) -> dict[str, Any]:
+    """The JSON `ostler book affected` writes, with the fields a test names over a quiet default."""
+    report: dict[str, Any] = {
+        "plan": plan,
+        "whole": plan == "whole",
+        "reason": "",
+        "only": [],
+        "by_journey": [],
+        "uncovered": [],
+        "diff": {"app_files": 1, "book_files": 0, "not_computed": {"count": 0, "paths": []}},
+    }
+    return report | fields
+
+
 class _Book:
     """`ostler book`, scripted at the process edge: the exit code each verb answers with, in order."""
 
@@ -111,9 +133,15 @@ class _Book:
         stamped: tuple[str, ...] = (),
         pending: dict[str, str] | None = None,
         unverified: tuple[str, ...] = (),
+        affected: tuple[int, ...] = (0,),
+        plans: dict[str, dict[str, Any]] | None = None,
+        hang: bool = False,
     ) -> None:
-        self.script = {"check": check, "run": run, "verified": verified}
-        self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": []}
+        self.script = {"check": check, "run": run, "verified": verified, "affected": affected}
+        self.plans = plans or {}
+        self.hang = hang
+        self.timeouts: list[float | None] = []
+        self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": [], "affected": []}
         self.cwds: list[Any] = []
         self.changed = changed or {}
         self.stamped = set(stamped)
@@ -121,18 +149,40 @@ class _Book:
         self.unverified = set(unverified)
 
     def __call__(
-        self, argv: list[str], cwd: Any = None, *, check: bool = False, logger: Any = None, env: Any = None
+        self,
+        argv: list[str],
+        cwd: Any = None,
+        *,
+        check: bool = False,
+        logger: Any = None,
+        env: Any = None,
+        timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         verb = argv[argv.index("ostler.book") + 1]
         self.argv[verb].append(argv)
         self.cwds.append(cwd)
         if verb == "stale":
             return self._stale(argv)
+        if verb == "run":
+            self.timeouts.append(timeout)
+            if self.hang:
+                raise subprocess.TimeoutExpired(argv, timeout or 0, output="half a report\n", stderr="")
         codes = self.script[verb]
         code = codes[min(len(self.argv[verb]), len(codes)) - 1]
+        if verb == "affected":
+            self._affected(argv, code)
         if verb == "verified" and code == 0:
             self.stamped.add(argv[argv.index("verified") + 1])
         return subprocess.CompletedProcess(argv, code, f"{verb} said exit {code}\n", "")
+
+    def _affected(self, argv: list[str], code: int) -> None:
+        module = argv[argv.index("affected") + 1]
+        if code == 2:
+            return
+        report = self.plans.get(module) or affected_report(only=MODULE_CALLS.get(module, []))
+        out = Path(argv[argv.index("--out") + 1])
+        out.mkdir(parents=True, exist_ok=True)
+        (out / f"{module.split('.')[1]}-affected.json").write_text(json.dumps(report), encoding="utf-8")
 
     def _stale(self, argv: list[str]) -> subprocess.CompletedProcess[str]:
         module = argv[argv.index("stale") + 1]
@@ -780,25 +830,6 @@ def test_a_red_replay_goes_to_the_seat_with_the_output_as_its_report(
     assert "run said exit 1" in agent.args[0]["report"], agent.args[0]["report"]
 
 
-def test_a_seat_that_names_no_call_for_a_covered_service_is_sent_back_before_any_play(
-    lane: Path,
-    book: Callable[..., _Book],
-    stack: _Stack,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """With no calls named the run would judge nothing and pass the story."""
-    scripted = book()
-    agent = _Agent(lane, {"status": "passed", "calls": []}, {"status": "passed", "calls": CALLS})
-
-    result = drive_flow(_flow(), env(), agent)
-
-    assert result.status == "passed", result
-    assert "Name the calls the story touches" in agent.args[1]["report"], agent.args[1]["report"]
-    assert "api" in agent.args[1]["report"]
-    assert len(scripted.argv["run"]) == 1
-
-
 def test_a_product_edit_outside_the_book_is_refused_and_sent_back_unlanded(
     lane: Path,
     git: Callable[..., subprocess.CompletedProcess[str]],
@@ -1299,3 +1330,227 @@ def test_the_seat_prompt_renders_the_restructure_step_and_the_narrowed_unreached
     assert "not a contract" in text
     assert "`unreached` is only for a claim no call or backstage step can" in text
     assert "is not\n   `unreached`: restructure the book for it" in text
+
+
+def _plan_md() -> str:
+    return (_spec_dir() / "qa-plan.md").read_text(encoding="utf-8")
+
+
+def test_the_plan_selects_the_calls_and_the_seats_own_are_not_played(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The seat writes the book and the diff picks what is played."""
+    scripted = book(plans={"services.api": affected_report(only=["Picked"])})
+    agent = _Agent(lane, {"status": "passed", "calls": [{"service": "api", "calls": ["Chosen"]}]})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    [argv] = scripted.argv["run"]
+    assert argv[argv.index("--only") + 1] == "Picked", argv
+    record = json.loads((_spec_dir() / "book-qa.json").read_text(encoding="utf-8"))
+    assert record == {"services": [{"service": "api", "calls": ["Picked"]}]}, record
+
+
+def test_a_selection_runs_against_the_story_base_into_the_spec_dir(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book()
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    [argv] = scripted.argv["affected"]
+    assert argv[argv.index("--out") + 1] == str(_spec_dir() / "qa" / "book"), argv
+    assert argv[argv.index("--app") + 1] == str(lane), argv
+    assert argv[argv.index("affected") + 1] == "services.api"
+
+
+def test_the_journeys_of_a_plan_are_a_second_play_and_only_the_first_reloads_the_data(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """`--only` and `--journey` combine as AND in one run, so they cannot share it."""
+    scripted = book(plans={"services.api": affected_report(only=["ListX"], by_journey=["Share a list", "Open a list"])})
+
+    result = drive_flow(_flow(), env(), _Agent(lane))
+
+    assert result.status == "passed", result
+    first, second = scripted.argv["run"]
+    assert first[first.index("--only") + 1] == "ListX" and "--journey" not in first, first
+    assert "--fresh-data" in first, first
+    assert "--only" not in second and "--partial" in second, second
+    assert [second[i + 1] for i, arg in enumerate(second) if arg == "--journey"] == ["Share a list", "Open a list"]
+    assert "--fresh-data" not in second, second
+
+
+def test_a_plan_of_journeys_alone_plays_one_partial_run_on_fresh_data(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(plans={"services.api": affected_report(by_journey=["Share a list"])})
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    [argv] = scripted.argv["run"]
+    assert "--fresh-data" in argv and "--partial" in argv and "--only" not in argv, argv
+
+
+def test_a_whole_plan_plays_the_whole_book_and_registers_outside_its_calls(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(plans={"services.api": affected_report("whole", only=["ListX"], reason="the model changed")})
+
+    result = drive_flow(_flow(), env(), _Agent(lane))
+
+    assert result.status == "passed", result
+    [argv] = scripted.argv["run"]
+    assert _played_whole(argv) and "--journey" not in argv, argv
+    assert "--fresh-data" in argv, argv
+    assert argv[argv.index("--register-outside") + 1] == "ListX", argv
+    assert "- reason: the model changed" in _plan_md()
+
+
+def test_a_changed_function_no_element_names_goes_back_to_the_seat_and_nothing_is_played(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    uncovered = [{"path": "src/api.py", "function": "build"}, {"path": "src/db.py", "function": ""}]
+    scripted = book(plans={"services.api": affected_report(uncovered=uncovered)})
+    agent = _Agent(lane)
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert scripted.argv["run"] == []
+    report = agent.args[1]["report"]
+    assert "`src/api.py::build`" in report and "`src/db.py`" in report, report
+    assert "`source=`" in report and "ignore pattern" in report, report
+    assert "cannot be selected" in report, report
+
+
+def test_a_selection_that_exits_2_goes_back_to_the_seat_with_its_output(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(affected=(2, 0))
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert "ostler book affected services.api" in agent.args[1]["report"], agent.args[1]["report"]
+    assert "affected said exit 2" in agent.args[1]["report"], agent.args[1]["report"]
+    assert len(scripted.argv["run"]) == 1
+
+
+def test_a_story_whose_changes_select_no_play_goes_back_to_the_seat(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    diff = {"app_files": 2, "book_files": 0, "not_computed": {"count": 1, "paths": ["docs/a.md"]}}
+    scripted = book(plans={"services.api": affected_report("empty", diff=diff, reason="no element names them")})
+    agent = _Agent(lane)
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert scripted.argv["run"] == []
+    report = agent.args[1]["report"]
+    assert "the story's plays" in report and "3 files" in report and "select no play" in report, report
+    assert "ignore pattern" in report, report
+
+
+def test_a_story_that_changed_nothing_passes_with_no_play(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    diff = {"app_files": 0, "book_files": 0, "not_computed": {"count": 0, "paths": []}}
+    scripted = book(plans={"services.api": affected_report("none", diff=diff)})
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"qa-book": 1}, agent.counts()
+    assert scripted.argv["run"] == []
+    assert "- plan: none" in _plan_md() and "- play exit: not played" in _plan_md()
+
+
+def test_a_play_that_does_not_end_in_time_goes_to_the_operator_as_an_environment_exit(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(hang=True)
+    agent = _Agent(lane)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert scripted.timeouts == [book_nodes.PLAY_LIMIT_S]
+    assert agent.counts() == {"qa-book": 1}, agent.counts()
+    assert "the QA environment" in seen[0] and "did not end within 120 minutes" in seen[0], seen
+    assert "half a report" in seen[0], seen
+
+
+def test_the_plan_is_written_from_code_with_the_calls_and_the_exit_of_each_play(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    diff = {"app_files": 2, "book_files": 1, "not_computed": {"count": 4, "paths": []}}
+    book(plans={"services.api": affected_report(only=["ListX", "BuildX"], by_journey=["Share a list"], diff=diff)})
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    assert _plan_md() == "\n".join(
+        [
+            "# QA plan",
+            "",
+            "## api",
+            "",
+            "- plan: partial",
+            "- calls: ListX, BuildX",
+            "- journeys: Share a list",
+            "- uncovered: none",
+            "- changed files: 7",
+            "- files not judged: 4",
+            "- play exit: 0",
+            "",
+        ]
+    )

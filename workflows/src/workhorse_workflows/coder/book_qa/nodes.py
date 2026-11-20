@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
+from typing import Any, Literal, cast
 
 from ostler.book.index import FILE as INDEX_FILE
 from ostler.book.index import parse as parse_index
@@ -13,11 +15,13 @@ from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.provenance import story_base
 from workhorse_workflows.coder.shared.schemas.book_qa import (
     BookPaths,
+    BookPlan,
     BookPlay,
     BookQaRecord,
     BookScope,
     CoveredServices,
     ServiceCalls,
+    StoryBase,
     UnreachedClaims,
 )
 from workhorse_workflows.coder.shared.schemas.docs import DocumentationGate
@@ -57,6 +61,10 @@ CHANGE_SECTIONS = frozenset(
 RECORD_FILE = "book-qa.json"
 BOOK_OUT = Path("qa") / "book"
 UNREACHED_FILE = "qa-unreached.json"
+PLAN_FILE = "qa-plan.md"
+PLAY_LIMIT_S = 7200
+TIMEOUT_EXIT = 3
+PLAN_STRENGTH = ("none", "empty", "partial", "whole")
 
 
 def book_dir(service: str) -> str:
@@ -81,8 +89,17 @@ def _tail(text: str) -> str:
     return "\n".join(text.splitlines()[-TAIL_LINES:])
 
 
-def _play(argv: list[str], cwd: Path) -> BookPlay:
-    done = run_tool(argv, cwd=cwd, env=BOOK_ENV)
+def _printed(text: str | bytes | None) -> str:
+    return text.decode("utf-8", "replace") if isinstance(text, bytes) else text or ""
+
+
+def _play(argv: list[str], cwd: Path, timeout: float | None = None) -> BookPlay:
+    try:
+        done = run_tool(argv, cwd=cwd, env=BOOK_ENV, timeout=timeout)
+    except subprocess.TimeoutExpired as expired:
+        printed = _tail(_printed(expired.stdout) + _printed(expired.stderr))
+        minutes = int((timeout or 0) // 60)
+        return BookPlay(exit_code=TIMEOUT_EXIT, output=f"the play did not end within {minutes} minutes\n{printed}".strip())
     return BookPlay(exit_code=done.returncode, output=_tail(done.stdout + done.stderr))
 
 
@@ -344,6 +361,126 @@ def book_scope(
 
 
 @blueprint.node
+def story_base_of(logger: logging.Logger, story_slug: str = "", story_id: str = "", repo_dir: str = "") -> StoryBase:
+    """The commit the story's own work started from, or an empty base when none is found."""
+    return StoryBase(base=_story_base(logger, repo_dir, story_slug, story_id))
+
+
+def _affected_argv(module: str, app: str, since: str, out: str) -> list[str]:
+    argv = [sys.executable, "-m", "ostler.book", "affected", module, "--app", app]
+    if since:
+        argv += ["--since", since]
+    return argv + ["--out", out]
+
+
+def _affected_report(folder: Path, service: str, multi: bool) -> dict[str, Any] | None:
+    found = sorted(folder.glob("*-affected.json")) if multi else [folder / f"{service}-affected.json"]
+    for path in found:
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8"))
+    return None
+
+
+def _uncovered_entry(item: dict[str, str]) -> str:
+    return f"{item['path']}::{item['function']}" if item.get("function") else item["path"]
+
+
+@blueprint.node
+def book_plan(
+    logger: logging.Logger,
+    service: str,
+    spec_dir: str,
+    story_slug: str = "",
+    story_id: str = "",
+    repo_dir: str = "",
+) -> BookPlan:
+    """Select what to play for one service from the story's diff of the code and of the book with `ostler book affected`, merged over the modules of the book. Nothing needs a running app."""
+    root = find_book_root(repo_dir)
+    app = str(find_repo_root(repo_dir))
+    since = _story_base(logger, repo_dir, story_slug, story_id)
+    modules = book_modules(root, service) or (f"services.{service}",)
+    multi = len(modules) > 1
+    out = Path(spec_dir) / BOOK_OUT
+    kind: Literal["none", "empty", "partial", "whole"] = "none"
+    only: list[str] = []
+    by_journey: list[str] = []
+    reasons: list[str] = []
+    uncovered: list[str] = []
+    changed = not_judged = exit_code = 0
+    outputs: list[str] = []
+    for module in modules:
+        folder = out / module if multi else out
+        for stale in folder.glob("*-affected.json") if multi else [folder / f"{service}-affected.json"]:
+            stale.unlink(missing_ok=True)
+        play = _play(_affected_argv(module, app, since, str(folder)), root)
+        logger.info("book affected of %s exited %d", module, play.exit_code)
+        outputs.append(f"{module}:\n{play.output}" if multi else play.output)
+        if play.exit_code == 2:
+            exit_code = 2
+            continue
+        report = _affected_report(folder, service, multi)
+        if report is None:
+            exit_code = 2
+            continue
+        module_kind = cast(Literal["none", "empty", "partial", "whole"], str(report.get("plan", "none")))
+        if PLAN_STRENGTH.index(module_kind) > PLAN_STRENGTH.index(kind):
+            kind = module_kind
+        only += [call for call in report.get("only", []) if call not in only]
+        by_journey += [title for title in report.get("by_journey", []) if title not in by_journey]
+        if report.get("reason") and report["reason"] not in reasons:
+            reasons.append(str(report["reason"]))
+        uncovered += [_uncovered_entry(item) for item in report.get("uncovered", [])]
+        diff = report.get("diff", {})
+        unjudged = int(diff.get("not_computed", {}).get("count", 0))
+        not_judged += unjudged
+        changed += int(diff.get("app_files", 0)) + int(diff.get("book_files", 0)) + unjudged
+    logger.info("book plan of %s: %s, %d call(s), %d journey(s), %d uncovered", service, kind, len(only), len(by_journey), len(uncovered))
+    return BookPlan(
+        service=service,
+        plan=kind,
+        only=only,
+        by_journey=by_journey,
+        whole=kind == "whole",
+        reason="; ".join(reasons),
+        uncovered=uncovered,
+        changed=changed,
+        not_judged=not_judged,
+        exit_code=exit_code,
+        output=_tail("\n".join(outputs)),
+    )
+
+
+@blueprint.node
+def write_qa_plan(
+    logger: logging.Logger,
+    spec_dir: str,
+    plans: list[BookPlan],
+    exits: dict[str, int] | None = None,
+) -> BookPlay:
+    """Write `qa-plan.md` in the spec dir from the plans the book selected and the exit of each play, with no agent involved."""
+    exits = exits or {}
+    lines = ["# QA plan", ""]
+    for plan in plans:
+        lines += [f"## {plan.service}", "", f"- plan: {plan.plan}"]
+        if plan.plan == "whole" and plan.reason:
+            lines.append(f"- reason: {plan.reason}")
+        lines += [
+            f"- calls: {', '.join(plan.only) or 'none'}",
+            f"- journeys: {', '.join(plan.by_journey) or 'none'}",
+            f"- uncovered: {', '.join(plan.uncovered) or 'none'}",
+            f"- changed files: {plan.changed}",
+            f"- files not judged: {plan.not_judged}",
+            f"- play exit: {exits[plan.service] if plan.service in exits else 'not played'}",
+            "",
+        ]
+    target = Path(spec_dir) / PLAN_FILE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines), encoding="utf-8")
+    logger.info("wrote the QA plan of %d service(s) to %s", len(plans), target)
+    return BookPlay(exit_code=0, output=str(target))
+
+
+@blueprint.node
 def book_run(
     logger: logging.Logger,
     service: str,
@@ -351,35 +488,62 @@ def book_run(
     copy: str,
     out_dir: str,
     outside: list[str] | None = None,
+    journeys: list[str] | None = None,
+    fresh: bool = False,
     repo_dir: str = "",
 ) -> BookPlay:
-    """Play the named calls of the service's book against the run's copy of the stack, or the whole book when `only` is empty. A finding of an endpoint outside `outside` goes to the book's register of underspecified fields. The play has no time bound."""
+    """Play the named calls of the service's book against the run's copy of the stack, or the whole book when `only` and `journeys` are empty. Named journeys are a second play after the calls, because `--only` and `--journey` combine as AND in one run. The first play of the service reloads the data when `fresh`. A finding of an endpoint outside `outside` goes to the book's register of underspecified fields. A play still running after `PLAY_LIMIT_S` seconds is killed and exits 3."""
     root = find_book_root(repo_dir)
     modules = book_modules(root, service) or (f"services.{service}",)
-    if len(modules) == 1:
-        play = _play(_run_argv(modules[0], only, outside, copy, out_dir), root)
-        logger.info("book run of %s over %s exited %d", service, f"{len(only)} call(s)" if only else "the whole book", play.exit_code)
-        return play
-    claims = _calls_by_module(root, modules)
+    wanted = list(journeys or [])
+    laps = [(only, []), ([], wanted)] if only and wanted else [([], wanted)] if wanted else [(only, [])]
+    reload = fresh
     outputs: list[str] = []
-    for module in modules:
-        named = [call for call in only if call in claims[module] or (module == modules[0] and not any(call in held for held in claims.values()))]
-        if only and not named:
-            continue
-        kept = [call for call in outside or () if call in claims[module]]
-        module_outside = kept if kept or not outside else None
-        play = _play(_run_argv(module, named, module_outside, copy, str(Path(out_dir) / module), register=bool(outside) and not kept), root)
-        logger.info("book run of %s over %s exited %d", module, f"{len(named)} call(s)" if named else "the whole module", play.exit_code)
-        if play.exit_code != 0:
-            return BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
-        outputs.append(f"{module}:\n{play.output}")
+    for named_calls, titles in laps:
+        for module in modules:
+            if len(modules) == 1:
+                named, module_outside, register, target = named_calls, outside, False, out_dir
+            else:
+                claims = _calls_by_module(root, modules)
+                named = [call for call in named_calls if call in claims[module] or (module == modules[0] and not any(call in held for held in claims.values()))]
+                if named_calls and not named:
+                    continue
+                kept = [call for call in outside or () if call in claims[module]]
+                module_outside = kept if kept or not outside else None
+                register = bool(outside) and not kept
+                target = str(Path(out_dir) / module)
+            if titles:
+                target = str(Path(target) / "journeys")
+            argv = _run_argv(module, named, module_outside, copy, target, register=register, journeys=titles, fresh=reload)
+            reload = False
+            play = _play(argv, root, PLAY_LIMIT_S)
+            what = f"{len(named)} call(s)" if named else f"{len(titles)} journey(s)" if titles else "the whole book"
+            logger.info("book run of %s over %s exited %d", module, what, play.exit_code)
+            if play.exit_code != 0:
+                return play if len(modules) == 1 else BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
+            outputs.append(play.output if len(modules) == 1 else f"{module}:\n{play.output}")
     return BookPlay(exit_code=0, output=_tail("\n".join(outputs)))
 
 
-def _run_argv(module: str, only: list[str], outside: list[str] | None, copy: str, out_dir: str, register: bool = False) -> list[str]:
+def _run_argv(
+    module: str,
+    only: list[str],
+    outside: list[str] | None,
+    copy: str,
+    out_dir: str,
+    register: bool = False,
+    journeys: list[str] | None = None,
+    fresh: bool = False,
+) -> list[str]:
     argv = [sys.executable, "-m", "ostler.book", "run", module]
+    if fresh:
+        argv += ["--fresh-data"]
     if only:
         argv += ["--only", ",".join(only)]
+    elif journeys:
+        argv += ["--partial"]
+        for title in journeys:
+            argv += ["--journey", title]
     if outside:
         argv += ["--register-outside", ",".join(outside)]
     elif register:
@@ -508,8 +672,11 @@ __all__ = [
     "BOOK_OUT",
     "RECORD_FILE",
     "UNREACHED_FILE",
+    "PLAN_FILE",
+    "PLAY_LIMIT_S",
     "book_check",
     "book_dir",
+    "book_plan",
     "changed_book_paths",
     "verify_book_spec",
     "book_modules",
@@ -520,7 +687,9 @@ __all__ = [
     "read_book_record",
     "shared_book_paths",
     "stamp_books_verified",
+    "story_base_of",
     "touched_services",
     "write_book_record",
+    "write_qa_plan",
     "write_unreached_claims",
 ]

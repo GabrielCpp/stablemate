@@ -6,7 +6,7 @@ agent: agent
 
 You own the service-book pass of one story, in this one turn. You read the story, play the
 calls its claims bear on, bring each covered service's book up to the claims, and play the
-calls again. The turn ends with the book edited under `{{ workhorse_var('book_root') }}/services/<name>/`, a targeted run
+calls again. The workflow, not you, selects what it plays afterwards. The turn ends with the book edited under `{{ workhorse_var('book_root') }}/services/<name>/`, a targeted run
 that exits 0 for every covered service, and the JSON result below. You spawn no subagent.
 
 QA never fixes the product. A claim the app does not meet is a finding you return, and the
@@ -22,6 +22,7 @@ turn.
 - Docs root: `{{ workhorse_var('docs_root') }}`
 - Book root: `{{ workhorse_var('book_root') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
+- Story base commit: `{{ workhorse_var('story_base') }}`
 - Covered services, each with an executable book at `{{ workhorse_var('book_root') }}/services/<name>/`:
 {% for name in services %}  - `{{ name }}`
 {% endfor %}
@@ -59,10 +60,13 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    dir. Do not open the scenario QA's files there (`qa_plan.py`, `qa-report.md`,
    `qa-evidence.json`, `qa/`). Your judgement must not come from another QA's
    work.
-3. **Play the base.** For each covered service, name the calls the story's claims bear on,
-   and play them before any edit: `ostler book run services.<name> --only <calls>`. A call is
+3. **Play the base.** For each covered service, pick the calls the story's claims bear on,
+   and play them before any edit: `ostler book run services.<name> --only <calls>`. You may
+   play any calls while you work. A call is
    an endpoint class of the book, or an interaction class in a screen book. A journey is not a
-   call. `ostler book search <term> --kind endpoint` or `--kind interaction` lists them. Run every
+   call. `ostler book search <term> --kind endpoint` or `--kind interaction` lists them.
+   `ostler book affected services.<name> --app <root> --since <base>` prints what the workflow will play for the
+   story's diff, with the story base commit above as `<base>` and the repository root as `<root>`. Run every
    `ostler book` and `ostler env` command from `{{ workhorse_var('book_root') }}`. A red
    base is not yours to repair. Report `blocked` with the output.
 4. **List the claims.** List every claim the story makes that a call to the service can
@@ -99,16 +103,14 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    `index.tsv` current with the code the story changed.
 10. **Leave the register alone.** `{{ workhorse_var('book_root') }}/services/<name>/UNDERSPECIFIED.md` is the product owner's list of
     fields the book models no dimension for. The whole-book play adds a finding there when it lies
-    outside the calls you named, and reports it as known. A finding on a call you named is yours:
+    outside the calls the story's diff selects, and reports it as known. A finding on a call it selects is yours:
     model the dimension or return a finding. Never edit or delete an entry, and never declare
     `ignores=` on a field outside the story's calls.
-11. **Report.** Return the calls you played per service, the findings and the notes.
+11. **Report.** Return the findings and the notes. The workflow selects the plays, so name no call for it.
 
 ## The checks after this turn
 
-The workflow runs `ostler book check` on each covered service, then plays the calls your
-result names, one service at a time. When your pass changed a shared part of a book, it plays
-the whole book of that service instead. Exit 0 on every service, with no finding, then runs `ostler book verified` on each book that was current when the story started, and on no other. It refuses while a changed file or function of the app is named by no element or ignore pattern, and the refusal comes back to you. Exit 0 on every service ends the pass. Exit 1 or 2
+The workflow runs `ostler book check` on each covered service. It then selects the plays from the story's diff of the code and of the book with `ostler book affected`. It plays them one service at a time on freshly loaded data. It plays the whole book of a service when your pass changed a shared part of it. It sends back to you a changed file or function that no element names and no ignore pattern covers, because it cannot select plays for it. Exit 0 on every service, with no finding, then runs `ostler book verified` on each book that was current when the story started, and on no other. It refuses while a changed file or function of the app is named by no element or ignore pattern, and the refusal comes back to you. Exit 0 on every service ends the pass. Exit 1 or 2
 comes back to you in this session with the output. Exit 3 means the environment could not
 be judged, and it goes to an operator, never to you. A story does not pass while your result
 lists a finding, even when the run is green.

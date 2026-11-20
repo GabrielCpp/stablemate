@@ -132,3 +132,12 @@ def test_a_book_behind_before_the_story_is_covered_when_the_story_touches_it_and
     assert covered.services == ["a", "c"], covered
     assert played.exit_code == 0, played
     assert _verified(books, "c") == first
+
+
+def test_the_selection_runs_for_real_over_the_story_diff(books: Path, logger: logging.Logger, tmp_path: Path) -> None:
+    plan = book_nodes.book_plan(logger, "b", str(tmp_path / "spec"), story_slug="s-1", story_id="S-1", repo_dir=str(books))
+
+    assert plan.exit_code == 0, plan.output
+    assert plan.service == "b" and plan.uncovered == [], plan
+    assert plan.changed == 1, plan
+    assert (tmp_path / "spec" / "qa" / "book" / "b-affected.json").is_file()

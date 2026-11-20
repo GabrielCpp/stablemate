@@ -18,7 +18,7 @@ class ServiceCalls(Result):
     calls: list[str] = Field(
         default=[],
         description="The calls of that service the story's claims bear on, by the name the book "
-        "gives them. The run plays exactly these, so a call you leave out is never judged.",
+        "gives them.",
     )
 
 
@@ -45,8 +45,8 @@ class BookQaOwnerResult(CoderResult):
     )
     calls: list[ServiceCalls] = Field(
         default=[],
-        description="The calls you played, per covered service. Name at least one call for every "
-        "covered service.",
+        description="The calls you played, per covered service. The workflow selects what it plays "
+        "from the story's diff, so this list is informative only.",
     )
     unreached: list[str] = Field(
         default=[],
@@ -91,10 +91,32 @@ class BookQaRecord(CoderResult):
     unreached: list[str] = []
 
 
+class BookPlan(CoderResult):
+    """`book_plan`: what `ostler book affected` selects to play for one service, merged over its modules."""
+
+    service: str = ""
+    plan: Literal["none", "empty", "partial", "whole"] = "none"
+    only: list[str] = []
+    by_journey: list[str] = []
+    whole: bool = False
+    reason: str = ""
+    uncovered: list[str] = []
+    changed: int = 0
+    not_judged: int = 0
+    exit_code: int = 0
+    output: str = ""
+
+
+class StoryBase(CoderResult):
+    """`story_base_of`: the commit the story's own work started from, or empty when none is found."""
+
+    base: str = ""
+
+
 class UnreachedClaims(CoderResult):
     """`write_unreached_claims`: the claims `qa-unreached.json` now holds for the scenario seat."""
 
     claims: list[str] = []
 
 
-__all__ = ["BookPaths", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "BookScope", "CoveredServices", "ServiceCalls", "UnreachedClaims"]
+__all__ = ["BookPaths", "BookPlan", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "BookScope", "CoveredServices", "ServiceCalls", "StoryBase", "UnreachedClaims"]
