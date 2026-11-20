@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Generic, TypeVar, cast
+from typing import Any, Callable, ClassVar, Generic, Sequence, TypeVar, cast
 
 from ostler.book.asked import Asked
 from ostler.book.cast import KEEP, SOLE, Actor
@@ -172,6 +172,15 @@ class Component:
         if (self.holds is None) != (not self.takes):
             raise BookError(f"a {self.kind} component holds a shape only with the fixture field it takes, and the reverse")
 
+    def describe(self, lang: str) -> str:
+        """The component as a line of its screen's description: how it is found, its kind, its label and what it does."""
+        label = f" {self.label[lang]!r}" if self.label else ""
+        opts = "  options: " + ", ".join(o[lang] for o in self.options) if self.options else ""
+        opts = f"  lists: {self.lists.says(lang)}" if self.lists is not None else opts
+        row = " (per row)" if self.per_row else ""
+        holds = f"  holds {self.holds.describe()} as {self.takes}" if self.holds is not None else ""
+        return f"{self.found_by(lang):18} {self.kind:9}{label}{row}  {self.does}{opts}{holds}".rstrip()
+
     def found_by(self, lang: str) -> str:
         """How a driver finds this component: its id, or its role and name."""
         if self.id is not None:
@@ -301,7 +310,8 @@ class Screen:
     name: T | str = ""
     root: Component | None = None
     first: bool = False
-    reached_from: str = ""
+    inside: ClassVar[type[Screen] | None] = None
+    shown_in: ClassVar[Phase | None] = None
     stored: tuple[Stored, ...] = ()
     phases: tuple[Phase, ...] = ()
     transitions: tuple[Transition, ...] = ()
@@ -319,24 +329,24 @@ class Screen:
         return [(name, v) for name, v in vars(cls).items() if isinstance(v, Component) and v is not cls.root]
 
     @classmethod
-    def describe(cls, lang: str) -> str:
+    def describe(cls, lang: str, arrived: Sequence[type[Interaction[Any]]] = ()) -> str:
         title = as_label(cls.name)
         lines = [f"# {(title[lang] if title else '') or cls.__name__}" + (f"  ({cls.route})" if cls.route else "")]
         if cls.root is not None:
             lines.append(f"inside: {cls.root.found_by(lang)}")
         if cls.first:
             lines.append("first screen")
-        if cls.reached_from:
-            lines.append(f"reached from: {cls.reached_from}")
+        for interaction in arrived:
+            on = f" on {interaction.screen.__name__}" if interaction.screen is not None else ""
+            lines.append(f"reached by: {interaction.__name__}{on}")
+        if cls.inside is not None:
+            lines.append(f"hosted by: {cls.inside.__name__}")
+        if cls.shown_in is not None:
+            lines.append(f"shown in: {cls.shown_in.name}")
         lines.append("")
         lines.append("components:")
         for c in cls.components():
-            label = f" {c.label[lang]!r}" if c.label else ""
-            opts = "  options: " + ", ".join(o[lang] for o in c.options) if c.options else ""
-            opts = f"  lists: {c.lists.says(lang)}" if c.lists is not None else opts
-            row = " (per row)" if c.per_row else ""
-            holds = f"  holds {c.holds.describe()} as {c.takes}" if c.holds is not None else ""
-            lines.append(f"  {c.found_by(lang):18} {c.kind:9}{label}{row}  {c.does}{opts}{holds}".rstrip())
+            lines.append("  " + c.describe(lang))
         if cls.sends:
             lines.append("")
             lines.append(f"sends (to {cls.api or 'the product API'}):")
@@ -378,6 +388,7 @@ class Interaction(Generic[F]):
     model; an instance is one act, aimed at the fixture the user fills in."""
 
     screen: ClassVar[type[Screen] | None] = None
+    leads_to: ClassVar[type[Screen] | None] = None
     does: ClassVar[str] = ""
     carries: ClassVar[type[Action[Any, Any]] | None] = None
     source: ClassVar[tuple[str, ...]] = ()

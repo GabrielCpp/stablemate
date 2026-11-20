@@ -9,7 +9,8 @@ from urllib.parse import urlsplit
 
 from ostler.book.browser import Browser
 from ostler.book.environment import Environment
-from ostler.book.screen import Screen
+from ostler.book.pagedata import on_route
+from ostler.book.screen import Component, Screen
 
 
 class PageSurface:
@@ -21,6 +22,7 @@ class PageSurface:
     name = "web"
     host = "web"
     locales: dict[str, str] = {}
+    routed = True
 
     def __init__(self, environment: Environment, screens: tuple[type[Screen], ...], lang: str = ""):
         self.screens = screens
@@ -80,6 +82,52 @@ class PageSurface:
         self.browser.lang = lang
         if changed and self.browser.page is not None:
             self.open()
+
+    def marks(self, screen: type[Screen]) -> tuple[str, Component | None]:
+        """What tells the person is on the screen: its route and its root component, each empty when the screen states none.
+        A screen inside another with no root of its own is told by its host."""
+        if screen.inside is not None:
+            return ("", screen.root) if screen.root is not None else self.marks(screen.inside)
+        return (screen.route if self.routed else "", screen.root)
+
+    def path(self) -> str:
+        """The path of the page's address, below the base address, with no query."""
+        return self.below(urlsplit(self.browser.page.url).path)
+
+    def below(self, path: str) -> str:
+        base = urlsplit(self.browser.base).path.rstrip("/")
+        if base and (path == base or path.startswith(base + "/")):
+            return path[len(base):] or "/"
+        return path
+
+    def on(self, screen: type[Screen]) -> bool | None:
+        """Whether the person is on the screen now: the path of the page matches its route and its root is visible, each
+        when the screen states it. None when it states neither."""
+        route, root = self.marks(screen)
+        if not route and root is None:
+            return None
+        return (not route or on_route(route, self.path())) and (root is None or self.browser.visible(root))
+
+    def arrive(self, screen: type[Screen]) -> bool | None:
+        """Waits, by the browser's own event wait and limit, until the person is on the screen. Returns whether they
+        came, or None when the screen states nothing to tell it by."""
+        route, root = self.marks(screen)
+        if not route and root is None:
+            return None
+        try:
+            if route:
+                self.browser.page.wait_for_url(lambda url: on_route(route, self.below(urlsplit(url).path)))
+            if root is not None:
+                self.browser.wait_for(root)
+        except self.timeouts():
+            return False
+        return True
+
+    def timeouts(self) -> tuple[type[Exception], ...]:
+        """What the browser raises when its wait runs out."""
+        from playwright.sync_api import TimeoutError as Timeout
+
+        return (Timeout,)
 
     def strays(self) -> list[str]:
         """The product API requests the page sent that no screen declares."""

@@ -1,6 +1,8 @@
 from ostler.book import Phase, Screen, Stored, T, Transition, When, request
 from ostler.book.screen import Button, Text
 
+from .list_page import ListPage, ready
+
 confirm = Button("remove-confirm", T(en="Yes, remove", fr="Oui, supprimer"), "DELETE /todos/{id}")
 keep = Button("remove-cancel", T(en="Keep it", fr="Garder"), "closes without a request")
 question = Text("remove-dialog", T(en="Remove this todo?", fr="Supprimer cette tâche ?"), does="role=dialog")
@@ -14,7 +16,8 @@ class RemoveDialog(Screen):
     api = "/todos"
     sends = (request("DELETE", "/todos"),)
     name = T(en="Remove this todo?", fr="Supprimer cette tâche ?")
-    reached_from = "ListPage.row-remove"
+    inside = ListPage
+    shown_in = ready
     question = question
     confirm = confirm
     keep = keep

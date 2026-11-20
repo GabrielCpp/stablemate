@@ -29,8 +29,12 @@ class Cart: ...
 
 
 class Landing:
+    first = False
+    inside = None
+    shown_in = None
+
     @classmethod
-    def describe(cls, lang: str) -> str:
+    def describe(cls, lang: str, arrived: tuple = ()) -> str:
         return "the landing page"
 
 

@@ -65,7 +65,7 @@ def _found(service: Any, term: str, kind: str | None = None, mod: str = "shop_bo
 
 def test_a_label_in_the_second_language_of_the_book_finds_its_screen(module: str):
     service = _book(Greeting, languages=("fr", "es"))
-    assert _found(service, "Guardar", mod=module) == ["Greeting"]
+    assert _found(service, "Guardar", "screen", module) == ["Greeting"]
 
 
 def test_the_items_of_a_one_language_book_are_the_lines_of_its_first_language(module: str):
@@ -97,7 +97,7 @@ def test_two_words_that_sit_apart_on_one_screen_find_it_when_no_phrase_matches(m
 
 def test_a_phrase_that_matches_keeps_its_result_and_adds_no_loose_match(module: str):
     service = _book(Editor, Plain, languages=("en",))
-    assert _found(service, "save changes", mod=module) == ["Editor"]
+    assert _found(service, "save changes", "screen", module) == ["Editor"]
 
 
 def test_loose_words_that_are_not_all_on_one_item_find_nothing_and_exit_one(module: str, capsys):
@@ -118,7 +118,7 @@ def test_a_loose_match_prints_only_the_lines_that_hold_a_word(module: str, capsy
     service = _book(Greeting, languages=("fr", "es"))
     args = SimpleNamespace(service=module, term="enregistrer aller", kind=None)
     assert cmd_search(service, args) == 0
-    printed = [line.strip() for line in capsys.readouterr().out.splitlines()[1:]]
+    printed = [line.strip() for line in capsys.readouterr().out.splitlines()[1:-1]]
     assert printed and all("aller" in line.lower() or "enregistrer" in line.lower() for line in printed)
 
 

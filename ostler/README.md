@@ -325,6 +325,16 @@ ostler book graph   services.api          # each record's state graph, as dot an
 ostler book endpoints|screens|matrix|denied|plan services.api   # read the model, no app
 ```
 
+A screen book says how a person moves between screens. `first = True` marks a screen a person can open directly.
+`leads_to = <Screen>` on an interaction names the screen the person is on once the act went through, and `inside`
+with `shown_in` names the screen that hosts a dialog or an inline form, and the phase of the host that shows it.
+`check` refuses a book with no first screen and a `leads_to` or `inside` that names no screen of it, and tells of a
+screen no walk from a first screen reaches. `ostler book search` prints, for a screen, an interaction or a component,
+the interactions to perform to get there. `ostler book explain services.web ListPage.edit` reads one component:
+its phases and the way to its screen.
+The play verifies it: after an act, a stated `leads_to` is waited for on the surface and a miss fails the step. An act with
+no `leads_to` that leaves its screen passes, and the run lists its interaction at the end.
+
 Exit 3 means the place could not be judged, and what ran before it is no verdict. Reports go to `--out`.
 Omitted, they go to a fresh folder under the system temp directory, and the command prints its name
 on a `reports:` line. The `ostler-book` skill is the guide to writing a book.

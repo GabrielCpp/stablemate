@@ -18,6 +18,7 @@ from typing import Any, cast
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book.bookdiff import BookDiff, book_diff
 from ostler.book.played import carriers
+from ostler.book.reach import arrivals
 from ostler.book.service import Service
 from ostler.book.mentions import Mentions, same_symbol
 from ostler.book.sources import changed_parts, changed_in_tree, file_of, git, head_of, ignored, sourced, traced_in, verified_at
@@ -107,7 +108,7 @@ def calls_of(service: Service[Any], element: type, kind: str) -> set[str] | None
         direct, outside = carriers(service, element.__name__)
         return {*direct, *outside}
     if kind == "screen":
-        return {i.__name__ for i in service.interactions if i.screen is element}
+        return {i.__name__ for i in service.interactions if i.screen is element} | {i.__name__ for i in arrivals(service, cast(Any, element))}
     return {element.__name__}
 
 

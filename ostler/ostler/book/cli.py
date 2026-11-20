@@ -38,6 +38,7 @@ from ostler.book.index import book_root, cmd_index, cmd_search_book
 from ostler.book.http import Endpoint, identity_lines, named_shapes
 from ostler.book.inputs import Tried, fields_tried, play as play_inputs
 from ostler.book.journey import JourneyResult
+from ostler.book.landing import Leaving
 from ostler.book.listing import account, claims_by, read_by
 from ostler.book.matrix import matrix
 from ostler.book.model import Model
@@ -48,6 +49,7 @@ from ostler.book.progress import Progress, verdict_lines
 from ostler.book.register import Settled, load as load_register, path as register_path, save as save_register, settle
 from ostler.book.runner import Deliveries, attempt, blocked, walk
 from ostler.book.state import Impossible
+from ostler.book.reach import described
 from ostler.book.search import KINDS, actions_of, cmd_explain, cmd_search
 from ostler.book.witness import WitnessReport, witnessed
 from ostler.book.service import Service
@@ -123,9 +125,9 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     find.add_argument("extra", nargs="?", help=argparse.SUPPRESS)
     find.add_argument("--service", help="search this service only; omitted, every service under services/")
     find.add_argument("--kind", choices=KINDS)
-    explain = sub.add_parser("explain", help="everything the book says of one endpoint, action, screen or journey")
+    explain = sub.add_parser("explain", help="everything the book says of one endpoint, action, screen, journey or component")
     explain.add_argument("service")
-    explain.add_argument("name", help="a class name")
+    explain.add_argument("name", help="a class name, or Screen.attribute for a component of a screen")
     indexer = sub.add_parser("index", help="write the service's index.tsv, which search reads without importing the service")
     indexer.add_argument("service")
     checker = sub.add_parser("check", help="build everything the book declares, with no stack, and name what is broken")
@@ -234,7 +236,7 @@ def cmd_screens(service: Service[Any], args: argparse.Namespace) -> int:
     if lang not in service.languages:
         raise SystemExit(f"{service.name} declares the languages {', '.join(service.languages)}, not {lang!r}")
     for screen in service.screens:
-        print(screen.describe(lang))
+        print(described(service, screen, lang))
         print()
     if service.interactions:
         print("interactions:")
@@ -290,6 +292,7 @@ def made_ready(service: Service[Any], args: argparse.Namespace) -> tuple[Surface
         return 0
     Owners.begin(args.environment, lambda owner: _surface(owner, args.environment), fresh, service.person)
     Deliveries.begin(args.environment.delivery)
+    Leaving.begin()
     return surface, stack
 
 
@@ -556,6 +559,8 @@ def cmd_run(service: Service[Any], args: argparse.Namespace) -> int:
           f"{sum(1 for s in tried.sent if not s.ok)} fail")
     if Deliveries.line():
         print(Deliveries.line())
+    if Leaving.line():
+        print(Leaving.line())
     for t in tried.twins:
         if not t.ok:
             print(f"FAIL  twin {t.text}\n      {t.note}")

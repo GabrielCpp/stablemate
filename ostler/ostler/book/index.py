@@ -23,6 +23,7 @@ class Entry:
     name: str
     address: str
     lines: tuple[str, ...]
+    reach: str = ""
 
 
 def escape(text: str) -> str:
@@ -48,15 +49,15 @@ def unescape(text: str) -> list[str]:
 
 
 def render(found: list[Item]) -> str:
-    rows = ["\t".join((i.kind, escape(i.name), escape(i.address), escape("\n".join(i.lines)))) for i in found]
+    rows = ["\t".join((i.kind, escape(i.name), escape(i.address), escape("\n".join(i.lines)), *((escape(i.reach),) if i.reach else ()))) for i in found]
     return "".join(row + "\n" for row in rows)
 
 
 def parse(text: str) -> list[Entry]:
     out: list[Entry] = []
     for row in text.splitlines():
-        kind, name, address, body = row.split("\t", 3)
-        out.append(Entry(kind, name, address, tuple(unescape(body))))
+        kind, name, address, body, *rest = row.split("\t", 4)
+        out.append(Entry(kind, name, address, tuple(unescape(body)), rest[0] if rest else ""))
     return out
 
 
@@ -181,6 +182,8 @@ def cmd_search_book(args: Any) -> int:
             print(f"{entry.kind:9} {entry.address}")
             for line in lines:
                 print(f"    {line}")
+            if entry.reach:
+                print(f"    {entry.reach}")
     if not found:
         print(f"nothing in {args.service or 'the book'} says {args.term!r}" + (f" as a {args.kind}" if args.kind else ""))
     return 0 if found else 1

@@ -15,7 +15,7 @@ from ostler.book.errors import BookError
 SPARSE = -7
 SPECIALS = {-1: None, -3: math.nan, -4: math.inf, -5: -math.inf, -6: -0.0}
 HOLE = -2
-PARAM = re.compile(r"\[[^\]]+\]")
+PARAM = re.compile(r"\[[^\]]+\]|[$:].+|\{[^}]+\}")
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,8 @@ def handed(route: str) -> Handed:
 
 
 def pattern(route: str) -> re.Pattern[str]:
-    """The regular expression a path must match to be a page of `route`. Route groups are not in the path."""
+    """The regular expression a path must match to be a page of `route`. Route groups are not in the path, and a segment
+    spelled `[id]`, `{id}`, `:id` or `$id` takes any one segment."""
     parts = [part for part in route.split("/") if part and not (part.startswith("(") and part.endswith(")"))]
     out = ""
     for part in parts:

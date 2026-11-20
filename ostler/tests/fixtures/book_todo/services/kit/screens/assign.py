@@ -14,6 +14,5 @@ class Assign(Screen):
     sends = (FETCHED_USERS,)
     route = "/assign"
     name = T(en="Assign", fr="Assigner")
-    reached_from = "Home: the Assign link"
     assignee = Select("assignee", ASSIGNEE, "who to assign to", lists=FETCHED)
     back = Link("to-home", BACK, "goes back to the home page without leaving the app")

@@ -14,7 +14,7 @@ from typing import Iterator
 import pytest
 
 from book_todo import FIXTURE, module, run_book
-from ostler.book import Browser, BookError, Screen, action, handed
+from ostler.book import Browser, BookError, PageSurface, Screen, action, handed
 from ostler.book.pagedata import decode, on_route
 from ostler.book.screen import Lists, Select
 
@@ -380,6 +380,7 @@ def test_the_kit_book_is_green_on_the_correct_app(kit, tmp_path: Path):
     assert done.returncode == 0, done.stdout + done.stderr
     assert "4 pass, 0 known defects, 0 fail" in done.stdout
     assert "no screen declares" not in done.stdout
+    assert "left their screen" not in done.stdout
 
 
 @pytest.mark.parametrize("bug, journey, fault", [
@@ -394,6 +395,25 @@ def test_the_kit_book_is_red_on_a_planted_order_bug_and_names_the_failing_step(b
     assert done.returncode == 1, done.stdout + done.stderr
     assert f"FAIL  {journey}" in done.stdout
     assert fault in done.stdout
+
+
+class _Here(PageSurface):
+    def __init__(self, browser: Browser):
+        self.browser = browser
+
+
+def test_a_page_surface_tells_the_screen_the_real_app_shows_and_waits_for_the_one_a_link_leads_to(kit):
+    screens = _screens()
+    with _browser(kit[1]) as browser:
+        here = _Here(browser)
+        _home(browser)
+        assert here.on(screens.Home) is True
+        assert here.on(screens.Assign) is False
+        browser.press(screens.Home.to_assign)
+        assert here.arrive(screens.Assign) is True
+        assert here.on(screens.Home) is False
+        browser.page.set_default_timeout(300)
+        assert here.arrive(screens.Home) is False
 
 
 def test_the_description_of_a_screen_says_its_list_is_handed_with_the_page_of_its_route():

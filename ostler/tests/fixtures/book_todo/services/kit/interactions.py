@@ -20,12 +20,14 @@ class AddTodo(Interaction[Todo]):
 class GoToAssign(Interaction[None]):
     source = ("kit/src/routes/+page.svelte",)
     screen = Home
+    leads_to = Assign
     does = "follows the Assign link"
 
 
 class GoBack(Interaction[None]):
     source = ("kit/src/routes/assign/+page.svelte",)
     screen = Assign
+    leads_to = Home
     does = "follows the Back link"
 
 

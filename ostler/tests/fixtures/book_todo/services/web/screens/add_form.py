@@ -4,6 +4,7 @@ from ostler.book import Field as Wire, Phase, Screen, Str, Stored, T, Transition
 from ostler.book.screen import Button, DateField, Field, Select, Spinner, Text, TextArea
 
 from .labels import ASSIGNEE, DESCRIPTION, DUE, SAVE, TITLE
+from .list_page import ListPage
 from .users import FORM, RECEIVED
 
 form = Text("add-form", does="the form element, role=form")
@@ -26,7 +27,7 @@ class AddForm(Screen):
     api = "/todos"
     sends = (request("POST", "/todos"), RECEIVED)
     name = T(en="Add a todo", fr="Ajouter une tâche")
-    reached_from = "ListPage: always shown above the list"
+    inside = ListPage
     root = form
     title = title
     description = description

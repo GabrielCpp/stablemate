@@ -17,10 +17,11 @@ from ostler.book.errors import BookError
 from ostler.book.event import Event
 from ostler.book.http import identity_lines
 from ostler.book.model import Defect, Rule
-from ostler.book.screen import Screen
+from ostler.book.reach import described, reach_line, route_text
+from ostler.book.screen import Component, Interaction, Screen
 from ostler.book.service import Service
 
-KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "scene", "decision", "question", "event", "outside")
+KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "component", "scene", "decision", "question", "event", "outside")
 
 
 class Row(Protocol):
@@ -37,6 +38,7 @@ class Item:
     address: str
     name: str
     lines: tuple[str, ...]
+    reach: str = ""
 
 
 def address(cls: type) -> str:
@@ -107,15 +109,22 @@ def outside_lines(outside: type[Arrange[Any]]) -> tuple[str, ...]:
 
 
 def screen_lines(service: Service[Any], screen: type[Screen]) -> tuple[str, ...]:
-    lines = screen.describe(service.language).splitlines()
+    lines = described(service, screen, service.language).splitlines()
     sourced = source_lines(screen)
     seen = set(lines)
     for language in service.languages[1:]:
-        for line in screen.describe(language).splitlines():
+        for line in described(service, screen, language).splitlines():
             if line not in seen:
                 seen.add(line)
                 lines.append(line)
     return (*lines, *sourced)
+
+
+def component_lines(service: Service[Any], attribute: str, component: Component) -> tuple[str, ...]:
+    label = component.label
+    named = label.languages() if label is not None else None
+    labels = [] if label is None else [f"{lang}: {label[lang]}" for lang in service.languages if named is None or lang in named]
+    return (f"{attribute}: {component.kind} {component.found_by(service.language)}", *labels, *((component.does,) if component.does else ()))
 
 
 def items(service: Service[Any], module: str) -> list[Item]:
@@ -123,7 +132,8 @@ def items(service: Service[Any], module: str) -> list[Item]:
     for endpoint in service.endpoints:
         out.append(Item("endpoint", address(endpoint), endpoint.__name__, (*endpoint.describe().splitlines(), *source_lines(endpoint))))
     for interaction in service.interactions:
-        out.append(Item("interaction", address(interaction), interaction.__name__, (" ".join(interaction.describe().split()), *source_lines(interaction))))
+        out.append(Item("interaction", address(interaction), interaction.__name__, (" ".join(interaction.describe().split()), *source_lines(interaction)),
+                        reach_line(service, interaction.screen) if interaction.screen is not None else ""))
     for action in actions_of(service, module):
         doc = tuple((action.__doc__ or "").strip().splitlines())
         out.append(Item("action", address(action), action.__name__, (action.__name__, *doc, *((f"clock: {action.clock}",) if action.clock else ()), *(f"emits: {e.name}" for e in action.emits))))
@@ -137,7 +147,10 @@ def items(service: Service[Any], module: str) -> list[Item]:
     for journey in service.journeys:
         out.append(Item("journey", address(journey), journey.__name__, (journey.__name__, *journey.story().splitlines())))
     for screen in service.screens:
-        out.append(Item("screen", address(screen), screen.__name__, screen_lines(service, screen)))
+        out.append(Item("screen", address(screen), screen.__name__, screen_lines(service, screen), reach_line(service, screen)))
+        for attribute, component in screen.attributes():
+            out.append(Item("component", f"{address(screen)}.{attribute}", f"{screen.__name__}.{attribute}",
+                            component_lines(service, attribute, component), reach_line(service, screen)))
     for axes in service.matrices:
         for scene in axes.scenes:
             out.append(Item("scene", f"{axes.record}:{scene.name}", scene.name, (scene.describe(axes.today),)))
@@ -190,6 +203,8 @@ def cmd_search(service: Service[Any], args: Any) -> int:
         print(f"{item.kind:9} {item.address}")
         for line in lines:
             print(f"    {line}")
+        if item.reach:
+            print(f"    {item.reach}")
     if not hits:
         print(f"nothing in {service.name} says {args.term!r}" + (f" as a {args.kind}" if args.kind else ""))
     return 0 if hits else 1
@@ -200,6 +215,8 @@ def journeys_naming(service: Service[Any], cls: type) -> list[type]:
 
 
 def cmd_explain(service: Service[Any], args: Any) -> int:
+    if "." in args.name:
+        return _explain_component(service, args)
     known = [*service.endpoints, *actions_of(service, args.service), *service.screens, *service.journeys, *service.interactions]
     found = [c for c in known if c.__name__ == args.name] or [e for e in service.events if e.__name__ == args.name]
     if not found:
@@ -211,7 +228,7 @@ def cmd_explain(service: Service[Any], args: Any) -> int:
         print("\n".join(identity_lines(service.endpoints, cls)))
         _print_list("journeys that call it", [j.__name__ for j in journeys_naming(service, cls)])
     elif cls in service.screens:
-        print(cls.describe(service.language))
+        _explain_screen(service, cls)
     elif cls in service.journeys:
         print(cls.story())
         for given in cls.given:
@@ -220,6 +237,7 @@ def cmd_explain(service: Service[Any], args: Any) -> int:
         _explain_event(service, args.service, cls)
     elif cls in service.interactions:
         print(cls.describe())
+        _explain_moves(service, cls)
         if cls.carries is not None:
             print(cls.carries.explain())
         _print_list("journeys that call it", [j.__name__ for j in journeys_naming(service, cls)])
@@ -238,6 +256,42 @@ def cmd_explain(service: Service[Any], args: Any) -> int:
         print("\nOpen questions")
         for q in asked:
             print(f"- {q.text}")
+    return 0
+
+
+def _explain_screen(service: Service[Any], screen: type[Screen]) -> None:
+    print(described(service, screen, service.language))
+    print(reach_line(service, screen) if screen.inside is not None else f"from an entry: {route_text(service, screen)}")
+    if screen.inside is not None and screen.shown_in is not None:
+        print(f"{screen.inside.__name__} moves into {screen.shown_in.name}:")
+        for transition in screen.inside.transitions:
+            if transition.end is screen.shown_in:
+                print(f"    {transition.text(service.language)}")
+
+
+def _explain_moves(service: Service[Any], interaction: type[Interaction[Any]]) -> None:
+    if interaction.screen is None:
+        if interaction.leads_to is not None:
+            print(f"leads to: {interaction.leads_to.__name__}")
+        return
+    print(f"from an entry: {route_text(service, interaction.screen)}")
+    print(f"leads to: {interaction.leads_to.__name__}" if interaction.leads_to is not None else f"stays on {interaction.screen.__name__}")
+
+
+def _explain_component(service: Service[Any], args: Any) -> int:
+    owner, _, attribute = args.name.partition(".")
+    screens = [s for s in service.screens if s.__name__ == owner]
+    held = dict(screens[0].attributes()) if screens else {}
+    if attribute not in held:
+        raise SystemExit(f"nothing in {service.name} is called {args.name!r}; try `search {args.service} {attribute}`")
+    screen, component = screens[0], held[attribute]
+    print(f"{address(screen)}.{attribute}")
+    print(component.describe(service.language))
+    for phase in screen.phases:
+        for how, members in (("shows", phase.shows), ("hides", phase.hides), ("disabled", phase.disabled)):
+            if component in members:
+                print(f"phase {phase.name}: {how}" + (f", because {phase.because}" if phase.because else ""))
+    print(reach_line(service, screen))
     return 0
 
 

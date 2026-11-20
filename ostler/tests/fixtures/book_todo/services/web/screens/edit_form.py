@@ -4,6 +4,7 @@ from ostler.book import Field as Wire, Phase, Screen, Str, Stored, T, Transition
 from ostler.book.screen import Button, DateField, Field, Select, Spinner, Text, TextArea
 
 from .labels import ASSIGNEE, DESCRIPTION, DUE, SAVE, TITLE
+from .list_page import ListPage, ready
 from .users import EDIT, RECEIVED
 
 form = Text("edit-form", does="the form element that replaces the row")
@@ -28,7 +29,8 @@ class EditForm(Screen):
     api = "/todos"
     sends = (request("PUT", "/todos"), RECEIVED)
     name = T(en="Edit todo", fr="Modifier la tâche")
-    reached_from = "ListPage.row-edit"
+    inside = ListPage
+    shown_in = ready
     root = form
     title = title
     description = description

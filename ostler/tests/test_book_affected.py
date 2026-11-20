@@ -487,8 +487,8 @@ def test_a_function_in_a_file_no_element_names_reaches_the_element_that_mentions
 
 def test_a_screen_reaches_its_interactions_and_a_record_no_call():
     screen = type("Dashboard", (), {})
-    service = cast("Service[Any]", SimpleNamespace(interactions=(SimpleNamespace(__name__="Tap", screen=screen),
-                                                                  SimpleNamespace(__name__="Idle", screen=None))))
+    service = cast("Service[Any]", SimpleNamespace(interactions=(SimpleNamespace(__name__="Tap", screen=screen, leads_to=None),
+                                                                  SimpleNamespace(__name__="Idle", screen=None, leads_to=None))))
     assert calls_of(service, screen, "screen") == {"Tap"}
     assert calls_of(service, screen, "record") is None
     assert calls_of(service, screen, "event") is None
@@ -497,7 +497,7 @@ def test_a_screen_reaches_its_interactions_and_a_record_no_call():
 def test_a_screen_no_interaction_names_and_an_action_no_call_carries_reach_no_call():
     screen = type("Dashboard", (), {})
     other = type("Other", (), {})
-    service = cast("Service[Any]", SimpleNamespace(interactions=(SimpleNamespace(__name__="Tap", screen=other),), endpoints=(), outside=()))
+    service = cast("Service[Any]", SimpleNamespace(interactions=(SimpleNamespace(__name__="Tap", screen=other, leads_to=None),), endpoints=(), outside=()))
     assert calls_of(service, screen, "screen") == set()
     assert calls_of(service, type("Sweep", (), {}), "action") == set()
 

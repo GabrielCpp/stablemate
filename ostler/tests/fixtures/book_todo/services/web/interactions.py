@@ -21,6 +21,7 @@ class AddTodo(Interaction[Todo]):
 class EditTodo(Interaction[Todo]):
     source = ("web/app.js",)
     screen = EditForm
+    leads_to = ListPage
     does = "opens the row's edit form, changes what differs and presses Save"
     carries = Edit
 
@@ -28,6 +29,7 @@ class EditTodo(Interaction[Todo]):
 class RemoveTodo(Interaction[Todo]):
     source = ("web/app.js",)
     screen = RemoveDialog
+    leads_to = ListPage
     does = "presses Remove on the row and confirms"
     carries = Remove
 

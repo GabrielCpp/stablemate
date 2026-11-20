@@ -274,6 +274,8 @@ def test_the_journeys_and_the_cells_play_green_headless(full_run: FullRun):
     done = full_run.done
     assert done.returncode == 0, done.stdout + done.stderr
     assert "8 pass, 0 known defects, 0 fail" in done.stdout
+    assert "1 interactions left their screen with no leads_to stated: EditTodo\n" in done.stdout
+    assert "the act did not land" not in done.stdout
     assert "cells: 41 played on 23 arrangements, 8 impossible, 0 fail" in done.stdout
 
 
@@ -311,6 +313,12 @@ def test_a_page_that_leaves_a_user_out_fails_the_step_that_picks_in_the_filter_a
 def test_a_page_that_leaves_no_user_out_passes_the_step_that_picks_in_the_filter(todo_web, tmp_path: Path):
     done = _run(todo_web, tmp_path, "AWeekOfChores")
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+@full_run_group
+def test_a_refused_edit_the_surface_closes_is_noted_in_the_report_and_does_not_fail_the_run(full_run: FullRun):
+    assert full_run.done.returncode == 0, full_run.done.stdout + full_run.done.stderr
+    assert "the act left EditForm and the book states no leads_to" in (full_run.out / "web.md").read_text()
 
 
 @full_run_group

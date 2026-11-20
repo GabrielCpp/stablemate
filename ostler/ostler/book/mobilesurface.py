@@ -20,12 +20,14 @@ class MobileSurface(PageSurface):
 
     `listens` maps each host port the app sends its requests to onto the environment host the requests are for, as
     `{19080: "api"}`. The surface holds a recording proxy on each such port while it runs, so a list stated with
-    `request(...)` reads the app's own call and the answer it got."""
+    `request(...)` reads the app's own call and the answer it got. A device cannot read an address, so a screen is told by
+    its root component alone."""
 
     name = "mobile"
     app_id = ""
     timeout = 60.0
     listens: dict[int, str] = {}
+    routed = False
 
     def drive(self, environment: Environment, lang: str) -> Any:
         self.environment = environment
@@ -65,6 +67,9 @@ class MobileSurface(PageSurface):
     def reset(self) -> None:
         self.restore()
         self.open()
+
+    def timeouts(self) -> tuple[type[Exception], ...]:
+        return (BookError,)
 
     def strays(self) -> list[str]:
         return []

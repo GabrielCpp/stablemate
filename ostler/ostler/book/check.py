@@ -34,6 +34,7 @@ from ostler.book.matrix import cell, matrix
 from ostler.book.state import Impossible
 from ostler.book.outcome import Done
 from ostler.book.status import succeeded
+from ostler.book.reach import unreached
 from ostler.book.screen import Component, Interaction, as_label
 from ostler.book.search import actions_of, items, states_of
 from ostler.book.service import Service
@@ -774,6 +775,42 @@ def unstated_lists(service: Service[Any]) -> list[Finding]:
             if component.kind == "select" and component.holds is not None and not component.options and component.lists is None]
 
 
+def move_faults(service: Service[Any]) -> list[Finding]:
+    """Every way the book states how a person moves between screens that cannot hold: a `leads_to` or an `inside` that names
+    no screen of the book, a `shown_in` that is not a phase of the host, and a book with screens and none opened directly."""
+    found: list[Finding] = []
+    for interaction in service.interactions:
+        if interaction.leads_to is not None and interaction.leads_to not in service.screens:
+            found.append(Finding(f"interaction {interaction.__name__}", f"leads to {interaction.leads_to.__name__}, which is not a screen of this book"))
+    for screen in service.screens:
+        where = f"screen {screen.__name__}"
+        if screen.inside is None:
+            if screen.shown_in is not None:
+                found.append(Finding(where, "states `shown_in` and no `inside`: name the screen that hosts it"))
+        elif screen.inside is screen:
+            found.append(Finding(where, "is inside itself: `inside` names the screen that hosts it"))
+        elif screen.inside not in service.screens:
+            found.append(Finding(where, f"is inside {screen.inside.__name__}, which is not a screen of this book"))
+        elif screen.shown_in is not None and screen.shown_in not in screen.inside.phases:
+            found.append(Finding(where, f"is shown in {screen.shown_in.name}, which is not a phase of {screen.inside.__name__}"))
+    if service.screens and not any(screen.first for screen in service.screens):
+        found.append(Finding("screens", "no screen is first: mark the screen a person can open directly"))
+    return found
+
+
+def move_notes(service: Service[Any]) -> list[Finding]:
+    """Every screen no walk from an entry reaches, and every screen an interaction leads to that states neither a route nor a
+    root, so an arrival on it could not be recognised."""
+    found = [Finding(f"screen {screen.__name__}", "nothing leads to it: state `leads_to` on the interaction that opens it, `inside` when "
+                     "another screen hosts it, or `first` when a person opens it directly", told=True)
+             for screen in unreached(service)]
+    for screen in service.screens:
+        if any(i.leads_to is screen for i in service.interactions) and not screen.route and screen.root is None:
+            found.append(Finding(f"screen {screen.__name__}", "an interaction leads to it and it states neither `route` nor `root`, "
+                                 "so an arrival on it could not be recognised", told=True))
+    return found
+
+
 def check(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
     found: list[Finding] = spoken(service)
     today = date.today()
@@ -830,6 +867,7 @@ def check(service: Service[Any], module: str, app: str | None = None) -> list[Fi
     attempt(found, "screen shapes", lambda: found.extend(shape_faults(service)) or "done")
     attempt(found, "body shapes", lambda: found.extend(body_faults(service)) or "done")
     attempt(found, "unstated lists", lambda: found.extend(unstated_lists(service)) or "done")
+    attempt(found, "screen moves", lambda: found.extend([*move_faults(service), *move_notes(service)]) or "done")
     attempt(found, "screen fills", lambda: found.extend(fill_faults(service)) or "done")
     attempt(found, "sources", lambda: found.extend(source_faults(service, app)) or "done")
     attempt(found, "decisions", lambda: found.extend(decision_faults(service, module, app)) or "done")

@@ -23,6 +23,7 @@ from ostler.book.errors import BookError, Unhealthy
 from ostler.book.http import Client, Endpoint, Id, Identities, List, Object, OffShape, Shape, Undeclared, canonical
 from ostler.book.journey import (Check, Given, Journey, JourneyResult, Listed, OwnerRefused, Refused, Relates, Same, Seen, Shows,
                                  StepResult, Undo, difference, masked)
+from ostler.book.landing import judge
 from ostler.book.model import Defect, Model
 from ostler.book.owners import Owners
 from ostler.book.outcome import CannotReach, Done, Flawed, Outcome, Refusal, Unreachable
@@ -94,6 +95,7 @@ def attempt(step: object, model: Model, surface: Surface, baseline: tuple[object
     cover(surface, None, [], model)
     result.text = text
     result.at = at
+    judge(step, result, surface)
     stray = strays(surface)
     if stray and not result.skipped:
         note = "the page sent a request no screen declares: " + ", ".join(stray)
