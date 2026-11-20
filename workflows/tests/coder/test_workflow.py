@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -9,7 +10,7 @@ from typing import Any, Literal
 
 import pytest
 from workhorse.artifacts import ArtifactWriter
-from workhorse.pyflow import Done, Workflow
+from workhorse.pyflow import Done, Workflow, WorkflowFailed
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
@@ -43,12 +44,19 @@ from workhorse_workflows.coder.main import Coder
 from _epics import epics_root
 
 EPIC = "EPIC-1"
-INDEX = f"""# Epics
+MILESTONE = "docs/milestones/0001-launch/milestone.md"
 
-The epic queue, front first.
 
-- [{EPIC}]({EPIC}/epic.md) — Epic One
-"""
+def _milestone(repo: Path, *epics: str, status: str = "approved", name: str = "0001-launch") -> Path:
+    """A milestone that lists *epics*, the list a launch over every epic reads."""
+    path = repo / "docs" / "milestones" / name / "milestone.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    listed = "".join(f"- {e}\n" for e in epics)
+    path.write_text(
+        f"---\ntype: milestone\ntitle: Launch\nstatus: {status}\nepics:\n{listed}---\n# Launch\n",
+        encoding="utf-8",
+    )
+    return path
 
 STORY_MD = """---
 id: {slug}
@@ -116,7 +124,7 @@ def epic(
     write: Callable[[Path, str], Path],
     git: Callable[..., subprocess.CompletedProcess],
 ) -> Callable[..., Path]:
-    """An epic of N stories in the queue, committed — so the tree starts clean."""
+    """An epic of N stories that a milestone lists, committed — so the tree starts clean."""
 
     def _epic(count: int = 1, status: str = "Not started", services: str = "") -> Path:
         slugs = [f"STORY-{n}" for n in range(1, count + 1)]
@@ -130,9 +138,9 @@ def epic(
                 epics_root() / EPIC / "stories" / slug / "story.md",
                 STORY_MD.format(slug=slug, title=f"Story {slug}", status=status, services=services),
             )
-        write(epics_root() / "index.md", INDEX)
+        _milestone(repo, EPIC)
         git(repo, "add", "-A")
-        git(repo, "commit", "-qm", "Queue one epic", "--allow-empty")
+        git(repo, "commit", "-qm", "Plan one epic", "--allow-empty")
         return repo
 
     return _epic
@@ -394,13 +402,13 @@ def _subjects(repo: Path) -> list[str]:
 
 
 
-def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_queue(
+def test_one_epic_of_one_story_builds_it_and_ends_when_the_worklist_is_done(
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The whole loop in one pass: queue → story → commit → pruned queue → no PR offline."""
+    """The whole loop in one pass: milestone → story → commit → no PR offline."""
     repo = epic()
     sub = _Sub(repo).install(monkeypatch)
     run_env = env()
@@ -413,8 +421,59 @@ def test_one_epic_of_one_story_builds_it_prunes_the_queue_and_ends_on_an_empty_q
     assert _output(run_env, stamp_story_passed)["stamped"] is True
     assert _dirty(repo) == "", _dirty(repo)
     assert (repo / "src" / "STORY-1.py").is_file()
-    assert EPIC not in (epics_root() / "index.md").read_text(encoding="utf-8")
     assert _output(run_env, resolve_launch)["mode"] == "epic"
+
+
+def _second_epic(write: Callable[[Path, str], Path], name: str, slug: str) -> None:
+    """Another epic of one story, beside the fixture's."""
+    write(
+        epics_root() / name / "epic.md",
+        f"---\ntitle: {name}\nstatus: active\n---\n\n# {name}\n\n## Stories\n\n### {slug}\n\n- title: Story {slug}\n",
+    )
+    write(
+        epics_root() / name / "stories" / slug / "story.md",
+        STORY_MD.format(slug=slug, title=f"Story {slug}", status="Not started", services=""),
+    )
+
+
+def test_a_launch_over_every_epic_files_what_the_milestones_list_in_their_order(
+    epic: Callable[..., Path], write: Callable[[Path, str], Path]
+) -> None:
+    """An epic no milestone lists stays out of the run, whatever else sits on the shelf."""
+    repo = epic()
+    _second_epic(write, "EPIC-2", "OTHER-1")
+    _second_epic(write, "EPIC-3", "LOOSE-1")
+    _milestone(repo, "EPIC-2", EPIC)
+
+    launch = resolve_launch(logging.getLogger("test"), repo_dir=str(repo))
+
+    assert [(e.epic, e.slug) for e in launch.entries] == [("EPIC-2", "OTHER-1"), (EPIC, "STORY-1")]
+
+
+def test_a_launch_over_every_epic_skips_a_superseded_milestone(
+    epic: Callable[..., Path], write: Callable[[Path, str], Path]
+) -> None:
+    repo = epic()
+    _second_epic(write, "EPIC-2", "OTHER-1")
+    _milestone(repo, "EPIC-2", status="superseded", name="0002-dropped")
+
+    launch = resolve_launch(logging.getLogger("test"), repo_dir=str(repo))
+
+    assert [e.epic for e in launch.entries] == [EPIC]
+
+
+@pytest.mark.parametrize(
+    ("listed", "refusal"),
+    [((), "no milestone in the book"), (("EPIC-9",), "does not hold: EPIC-9")],
+)
+def test_a_launch_over_every_epic_refuses_a_milestone_list_it_cannot_run(
+    listed: tuple[str, ...], refusal: str, epic: Callable[..., Path]
+) -> None:
+    repo = epic()
+    _milestone(repo, *listed)
+
+    with pytest.raises(WorkflowFailed, match=refusal):
+        resolve_launch(logging.getLogger("test"), repo_dir=str(repo))
 
 
 def _booked_epic(epic: Callable[..., Path], write: Callable[[Path, str], Path], git: Callable[..., subprocess.CompletedProcess], count: int = 1) -> Path:
@@ -626,21 +685,22 @@ def test_a_commit_run_stays_on_the_current_branch_and_names_each_story(
 
 
 @pytest.mark.parametrize("delivery", ["pr", "commit"])
-def test_a_finished_epic_is_pruned_from_the_queue_without_a_commit(
+def test_a_finished_epic_leaves_the_milestones_as_they_were(
     delivery: Literal["pr", "commit"],
     epic: Callable[..., Path],
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The prune leaves the tree clean whether or not a PR follows."""
+    """The run tracks what it finished on its own worklist, so no shared list changes and the tree stays clean."""
     repo = epic()
     _Sub(repo).install(monkeypatch)
+    before = (repo / MILESTONE).read_text(encoding="utf-8")
 
-    drive_flow(Coder(epic=EPIC, delivery=delivery), env(), _Agent())
+    drive_flow(Coder(delivery=delivery), env(), _Agent())
 
-    assert EPIC not in (epics_root() / "index.md").read_text(encoding="utf-8")
-    assert "chore(acme): prune completed epic from queue" not in _subjects(repo), _subjects(repo)
+    assert (repo / MILESTONE).read_text(encoding="utf-8") == before
+    assert not [s for s in _subjects(repo) if "prune" in s], _subjects(repo)
     assert _dirty(repo) == "", _dirty(repo)
 
 

@@ -92,26 +92,10 @@ def validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects:
     """Can the coder engine actually walk what this run produced?"""
     okf = Ostler(survey_repo_root(repo_dir))
 
-    try:
-        queue = okf.todo()
-    except (OSError, ValueError, RuntimeError):
-        reason = "could not read the epics index via ostler's in-process API"
-        logger.warning(reason)
-        return Defects(errors=reason)
+    queue = _canonical_epic_names(okf, okf.milestone_epics())
     if not queue:
-        seen: set[str] = set()
-        for milestone in okf.graph.milestones:
-            for epic in milestone.epics:
-                name = str(epic).strip()
-                if name and name not in seen:
-                    queue.append(name)
-                    seen.add(name)
-    if not queue:
-        queue = [epic.name for epic in okf.graph.epics]
-    queue = _canonical_epic_names(okf, queue)
-    if not queue:
-        logger.info("no epics found in todo, milestones, or graph")
-        return Defects(errors="no epics found in todo, milestones, or graph")
+        logger.info("no milestone lists an epic")
+        return Defects(errors="no milestone lists an epic (coder would have nothing to run)")
 
     by_epic: dict[str, list[dict]] = {}
     for s in okf.list("story"):

@@ -39,13 +39,6 @@ from _epics import epics_root
 EPIC = "EPIC-1"
 STORY = "STORY-1"
 
-INDEX = f"""# Epics
-
-The epic queue, front first.
-
-- [{EPIC}]({EPIC}/epic.md) — Epic One
-"""
-
 STORY_MD = """---
 id: STORY-1
 type: story
@@ -129,9 +122,8 @@ def docs(
         f"### {STORY}\n\n- title: Story {STORY}\n",
     )
     write(epics_root() / EPIC / "stories" / STORY / "story.md", STORY_MD)
-    write(epics_root() / "index.md", INDEX)
     git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "Queue one epic", "--allow-empty")
+    git(repo, "commit", "-qm", "Plan one epic", "--allow-empty")
     return repo
 
 

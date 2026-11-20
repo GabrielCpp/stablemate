@@ -85,7 +85,6 @@ def with_epic(backlogged: Path) -> Path:
     """`backlogged` plus one already-authored epic, for `story` mode."""
     okf = Ostler(backlogged)
     okf.create_epic(EPIC, "Accounts")
-    okf.todo_add(EPIC)
     _milestone(backlogged, EPIC)
     _commit(backlogged, "epic scaffold")
     return backlogged

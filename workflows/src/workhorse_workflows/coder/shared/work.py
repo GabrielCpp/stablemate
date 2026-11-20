@@ -254,15 +254,6 @@ def escapes(work: wl.WorkList, story: str) -> list[wl.WorkItem]:
     return [it for it in work.items(FOLLOW_UP) if it.payload.get("escaped_from") == story]
 
 
-def epic_done(work: wl.WorkList, epic: str) -> bool:
-    """Whether every story and follow-up of `epic` is done."""
-    return all(
-        it.status in SCHEME.done
-        for it in work.items(PROGRESS_KINDS)
-        if it.payload.get("epic") == epic
-    )
-
-
 def delivered(work: wl.WorkList) -> list[str]:
     """The ids of the stories the run finished, in the order it worked them."""
     return [
@@ -351,7 +342,6 @@ __all__ = [
     "amend",
     "answer_log_path",
     "delivered",
-    "epic_done",
     "escapes",
     "file",
     "find",

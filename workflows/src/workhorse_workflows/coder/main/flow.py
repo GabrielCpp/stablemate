@@ -38,7 +38,6 @@ from workhorse_workflows.coder.main.nodes.spec import record_spec_book_paths
 from workhorse_workflows.coder.shared.queue import (
     ALL_EPICS,
     begin_run,
-    prune_epic,
     resolve_launch,
 )
 from workhorse_workflows.coder.shared.story_commit import (
@@ -327,15 +326,10 @@ class Coder(Workflow):
         return Continue(result, self.commit)
 
     def standing(self) -> Continue:
-        """The item passed: mark it done, and pop its epic off the queue once nothing of it is left."""
+        """The item passed: mark it done on the run's worklist."""
         item = self._item
-        epic = self._epic
-        w = self._worklist
-        work.move(w, [item.id], work.DONE, kind=item.kind, by="standing")
+        work.move(self._worklist, [item.id], work.DONE, kind=item.kind, by="standing")
         self.logger.info("%s is done%s", item.id, self._progress(), extra={"activity": True})
-        if self._mode == "epic" and work.epic_done(w, epic):
-            self.logger.info("epic %s has nothing left — pruning it from the queue", epic)
-            self.call(prune_epic, epic)
         return Continue(None, self.route)
 
     def deliver(self) -> Continue | Done:

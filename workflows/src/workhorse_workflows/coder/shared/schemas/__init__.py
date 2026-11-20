@@ -67,7 +67,6 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     StackStatus,
 )
 from workhorse_workflows.coder.shared.schemas.queue import (
-    EpicPruned,
     LaunchEntry,
     LaunchSet,
     ReplanResult,
@@ -96,7 +95,6 @@ __all__ = [
     "DocumentationGate",
     "SpecBookPaths",
     "SpecResult",
-    "EpicPruned",
     "LaunchEntry",
     "LaunchSet",
     "FailureReport",

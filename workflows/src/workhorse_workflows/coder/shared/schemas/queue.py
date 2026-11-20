@@ -37,12 +37,6 @@ class RunBranch(CoderResult):
     branch: str = ""
 
 
-class EpicPruned(CoderResult):
-    """`prune-epic.py` — the merged epic was popped off the front of the queue."""
-
-    pruned: bool = False
-
-
 class StoryCommitted(CoderResult):
     """`commit-story.py` — did the story's *work* land in any affected repo?"""
 
@@ -95,7 +89,6 @@ class ReplanResult(CoderResult):
 
 
 __all__ = [
-    "EpicPruned",
     "LaunchEntry",
     "LaunchSet",
     "ReplanResult",

@@ -1,30 +1,21 @@
-"""The main graph's queue spine: which stories a launch files, and the epic it pops when done."""
+"""The main graph's launch: which stories a run files on its own worklist."""
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
-from ostler import Ostler, path as okf_path
+from ostler import Ostler
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.kit import commit_paths, find_docs_root
-from workhorse_workflows.coder.shared import commits, paths, stubs, work
+from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.coder.shared import stubs, work
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.queue import (
-    EpicPruned,
     LaunchEntry,
     LaunchSet,
     RunScope,
 )
 
-LEGACY_QUEUE_NAME = "epics-todo.json"
-
 ALL_EPICS = "all"
-
-
-def legacy_queue(root: Path) -> Path:
-    """The legacy JSON queue for *root*, beside the ostler-managed `index.md`."""
-    return okf_path.epics_root_in(root) / LEGACY_QUEUE_NAME
 
 
 @blueprint.node
@@ -44,32 +35,16 @@ def begin_run(logger: logging.Logger, run_dir: str = "") -> RunScope:
     return RunScope(cleared=cleared)
 
 
-def _queue_from_ostler(facade: Ostler) -> list[str] | None:
-    try:
-        return [str(x) for x in facade.todo()]
-    except (OSError, ValueError, RuntimeError):
-        return None
-
-
-def _queue_from_json(root: Path) -> list[str] | None:
-    """Fallback: the legacy `epics-todo.json` queue file, for repos with no doc graph."""
-    todo = legacy_queue(root)
-    if not todo.is_file():
-        return None
-    try:
-        data = json.loads(todo.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    return [str(x) for x in data] if isinstance(data, list) else None
-
-
-def _queued_epics(root: Path, facade: Ostler) -> list[str]:
-    """The epics queue, front-first, from ostler or the legacy JSON file."""
-    epics = _queue_from_ostler(facade)
+def _milestone_epics(root: Path, facade: Ostler) -> list[str]:
+    """Every epic the project's milestones list, in the order ostler gives them."""
+    epics = facade.milestone_epics()
     if not epics:
-        epics = _queue_from_json(root) or epics
-    if epics is None:
-        raise WorkflowFailed("could not read the epics queue (ostler todo list)")
+        raise WorkflowFailed(f"no milestone in the book at {root} lists an epic")
+    unknown = [name for name in epics if facade.graph.epic_by_ref(name) is None]
+    if unknown:
+        raise WorkflowFailed(
+            "a milestone lists an epic the book does not hold: " + ", ".join(unknown)
+        )
     return epics
 
 
@@ -108,7 +83,7 @@ def resolve_launch(
             mode="story",
             entries=[LaunchEntry(slug=entry["slug"], id=entry["id"] or "", epic=entry["epic"])],
         )
-    epics = _queued_epics(root, facade) if grain == ALL_EPICS else [grain]
+    epics = _milestone_epics(root, facade) if grain == ALL_EPICS else [grain]
     found = [(name, entry) for name in epics for entry in _open_entries(facade, name)]
     launched = {ref for _, entry in found for ref in (entry["slug"], entry["id"]) if ref}
     outside = [
@@ -131,75 +106,8 @@ def resolve_launch(
     )
 
 
-def _prune_json_sidecar(todo_path: Path, epic: str) -> bool:
-    """Back-compat: pop the epic from an explicit JSON queue array."""
-    if not todo_path.is_file():
-        return False
-    try:
-        epics = json.loads(todo_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    if not isinstance(epics, list) or epic not in epics:
-        return False
-    epics.remove(epic)
-    try:
-        todo_path.write_text(json.dumps(epics, indent=2) + "\n", encoding="utf-8")
-    except OSError:
-        return False
-    return True
-
-
-@blueprint.node
-def prune_epic(
-    logger: logging.Logger, epic: str = "", todo_path: str = "", repo_dir: str = ""
-) -> EpicPruned:
-    """Pop a finished epic off the front of the queue, and commit the change on the current branch."""
-    if not epic:
-        logger.info("no epic given — nothing to prune")
-        return EpicPruned()
-
-    root = paths.epics_repo_root(repo_dir)
-
-    if todo_path.strip():
-        sidecar = Path(todo_path.strip())
-        if not sidecar.is_absolute():
-            sidecar = root / sidecar
-        logger.info("explicit sidecar %s given — pruning '%s' from it", sidecar, epic)
-        return _committed(logger, root, epic, str(sidecar), _prune_json_sidecar(sidecar, epic))
-
-    try:
-        res = Ostler(root).todo_prune(epic)
-        pruned = bool(res.ok)
-    except (OSError, ValueError, RuntimeError):
-        pruned = False
-    if pruned:
-        logger.info("pruned '%s' via the ostler-managed epics queue", epic)
-        return _committed(logger, root, epic, paths.epics_index(root), True)
-
-    logger.info("'%s' not found via ostler — falling back to epics-todo.json", epic)
-    sidecar = legacy_queue(root)
-    return _committed(logger, root, epic, str(sidecar), _prune_json_sidecar(sidecar, epic))
-
-
-def _committed(
-    logger: logging.Logger, root: Path, epic: str, queue: str, pruned: bool
-) -> EpicPruned:
-    """Commit the pruned queue file when it sits in the repository, so the next run does not take the epic up again; the epics shelf is untracked and outside it."""
-    if not pruned:
-        return EpicPruned()
-    if not Path(queue).resolve().is_relative_to(root.resolve()):
-        return EpicPruned(pruned=True)
-    message = commits.message(
-        "chore", commits.scope(root.name), "prune completed epic from queue", epic=epic
-    )
-    if commit_paths(root, message, queue, verify=False):
-        logger.info("committed the prune of '%s'", epic)
-    return EpicPruned(pruned=True)
-
-
 __all__ = [
     "ALL_EPICS",
     "begin_run",
-    "prune_epic",
     "resolve_launch",
 ]

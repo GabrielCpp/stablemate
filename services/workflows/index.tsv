@@ -50,6 +50,22 @@ decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-th
 decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-the-dry-runs.md:13	Every dry run starts the workflow's whole package and the shared kit it imports, so each dry run names the workflow's
 decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-the-dry-runs.md:14	files and the kit's in its source. The sub-flows and the agent prompts of a workflow are read when its run loads, and
 decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-the-dry-runs.md:15	a run of one is the engine's.
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:1	story: none
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:3	elements: DryRunCoder
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:4	sources: workflows/src/workhorse_workflows/coder/shared/queue.py::resolve_launch, workflows/src/workhorse_workflows/author/finalize/nodes/artifacts.py::validate_artifacts
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:6	A coder launch over every epic, `epic=all` and the default, files the open stories of every epic the project's
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:7	milestones list. The epics come in milestone order: a milestone's `dependsOn` milestones first, then its `epics:` list
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:8	in order. A superseded milestone gives none. The run files those stories on its own worklist and tracks what it
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:9	finished there. It never writes the milestones.
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:10	
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:11	There is no shared epics queue. The coder reads no `index.md` on the epics shelf and no `epics-todo.json`, and keeps no
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:12	fallback for either. A run used to remove each finished epic from the shared queue and commit that change, so one run's
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:13	progress changed what the next run and every person saw. A person now decides what gets worked by editing the
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:14	milestones.
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:15	
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:16	A launch over every epic fails before any turn when no milestone lists an epic, or when a milestone lists an epic the
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:17	book does not hold. Author's last check judges what it wrote against the same list, so an Author run that ends green
+decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:18	leaves the coder something to run.
 decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:1	story: workflows-book
 decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:3	elements: DryRunCoder, DryRunOkfBook, InstallSkills
 decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:5	The okf-book workflow has four prompts that name a skill (ostler-book): the python book writer, the screen

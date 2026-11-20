@@ -66,11 +66,6 @@ def epic_dir_rel(root: Path, epic: str, configured: str = "") -> str:
 
 
 
-def epics_index(root: Path) -> str:
-    """The epic queue, repo-relative: `index.md` in whichever directory holds the epics."""
-    return _rel(root, okf_path.epics_index_in(root))
-
-
 def epic_dir(root: Path, epic: str) -> Path:
     """The absolute folder of *epic*, by number or by bare slug."""
     return okf_path.epic_dir_in(root, epic)
@@ -114,7 +109,6 @@ __all__ = [
     "epic_dir",
     "epic_dir_rel",
     "epics_dir",
-    "epics_index",
     "epics_repo_root",
     "is_gate_context",
     "is_tool_output",
