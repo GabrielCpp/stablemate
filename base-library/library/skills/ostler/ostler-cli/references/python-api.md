@@ -22,14 +22,14 @@ okf = Ostler(root)          # root discovered upward, like `ostler -C DIR`; None
 | `list --type T [--epic E] [--status S] [--json]` | `okf.list("T", epic=…, status=…) -> list[dict]` |
 | `search Q …` / `query NAME ARG` | `okf.search("Q", …)` / `okf.query("NAME", "ARG")` |
 | `next-epic` / `next-story E` | `okf.next_epic()` / `okf.next_story("E") -> dict\|None` |
-| `todo list` | `okf.todo() -> list[str]` |
+| (no command) | `okf.milestone_epics() -> list[str]`, every epic the milestones list, in order |
 | `backlog list` | `okf.record_listing(repo, status) -> list[str]` · `okf.records()` · `okf.open_records(repo)` |
 | `doctor [--epic E] --json` | `okf.doctor(epic=…) -> QaOutcome` (`.data` is the report `.as_dict()`) |
 | `path epic E` / `path spec ID` / `path story ID` / `path branch ID` | `okf.epic_path("E")` / `okf.spec_path("ID")` / `okf.story_path("ID")` / `okf.branch("ID", epic=False)` |
 | `--handles` rendering | `okf.handle(id) -> str` / `okf.handles() -> dict[str, str]` · `okf.expand(token) -> str` |
 | `create epic/story` · `update story` · `delete epic/story` · `seed add` · `set-status` · `conflict` | `okf.create_epic(…)` / `okf.create_story(…)` · `okf.update_story(story_id, title=…, covers=…, depends=…)` · `okf.delete_epic(…)` / `okf.delete_story(…)` · `okf.add_seed(epic, id, status=…, meta={…})` · `okf.set_status(story_id, status)` · `okf.set_conflict(story_id, text)` (`""` clears) → `Result` |
 | `backlog add` · `backlog adopt` | `okf.backlog_add(summary, repo=, area=, …)` → `Result` (a committed record) · `okf.backlog_import(file, repo=)` → `Imported` |
-| `backlog prune` · `todo add/prune/reorder` | `okf.close_record(id, status, reason)` (commits the close in the artifacts repo) · `okf.todo_add/todo_prune/todo_reorder` → `Result` |
+| `backlog prune` | `okf.close_record(id, status, reason)` (commits the close in the artifacts repo) |
 | `qa validate` · `qa run` | `okf.qa_validate(plan, spec=…)` · `okf.qa_run(plan, spec=…)` |
 | `artifact vet KIND --spec DIR` | `okf.artifact_vet("KIND", spec) -> QaOutcome` |
 | `qa tools list` | `okf.qa_tools_catalog() -> QaOutcome` (`.data` = `{"tools": …, "errors": …}`) |
@@ -71,7 +71,6 @@ imports the derivation module directly instead:
 from ostler import path as okf_path
 
 okf_path.epics_root_in(root)                     # <artifacts dir>/epics
-okf_path.epics_index_in(root)                    # the epic queue's index.md
 okf_path.specs_root_in(root)                     # <artifacts dir>/specs
 okf_path.epic_dir_in(root, "checkout-flow")      # → .../<epic-id>, from the id, the folder or the slug
 okf_path.epic_slug_in(root, epic)                # the slug the epic's frontmatter declares

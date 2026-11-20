@@ -29,7 +29,7 @@ Everything under `docs/` is markdown: a **Concept** is one `.md` file with a YAM
 block (only hard requirement: non-empty `type`) plus a markdown body. **Identity is the path**:
 a Concept's id is its bundle-relative path minus `.md`.
 
-There is **no** `seed.json`, `dependencies.json`, `inventory.json`, or `epics-todo.json`. An epic's
+There is **no** `seed.json`, `dependencies.json`, `inventory.json`, or epics queue. An epic's
 seeds and its story dependency-DAG live entirely inside that epic's own `epic.md`.
 
 | `type` | Location | Identity | Required frontmatter |
@@ -40,8 +40,8 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 
 Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story-id>` prints the folder.
 
-Not Concepts (managed markdown, left in place as-is): `docs/epics/index.md`
-(epics queue).
+The milestones order the work: a milestone's `dependsOn` milestones first, then its `epics:` list in
+order. `okf.milestone_epics()` returns that list.
 
 ## `epic.md` — single source of truth for an epic
 
@@ -87,7 +87,7 @@ Both faces drive the same functional core, and neither is a wrapper over the oth
 
 - **[references/command-interface.md](references/command-interface.md)** — the CLI. Every
   command with its flags and JSON shape: `doctor`, `list`/`search`/`query`,
-  `next-epic`/`next-story`, `path`, the `create`/`update`/`seed`/`backlog`/`todo`
+  `next-epic`/`next-story`, `path`, the `create`/`update`/`seed`/`backlog`/`milestone`
   mutators, `edit` repair, `vet`, the `ostler book` group, the `qa` control plane and its
   browser-diagnostics manifest, and `artifact`. Read it when you are writing a shell step,
   a gate, or a prompt that runs ostler from a terminal.
@@ -163,8 +163,8 @@ finds an open question.
 
 ## When to reach for it
 
-- Any workflow node that needs "what's the next thing to work on" → `next-epic`/`next-story`, not a
-  hand-maintained queue file.
+- Any workflow node that needs "what's the next thing to work on" → `okf.milestone_epics()`,
+  `next-epic`/`next-story`, not a hand-maintained queue file.
 - Any node that needs to resolve a story id to a filesystem path (spec dir, story.md, branch name) →
   `ostler path`, not string-concatenation in a script.
 - Any gate that checks graph health before letting a workflow proceed (e.g. author's

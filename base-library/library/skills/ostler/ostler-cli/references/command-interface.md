@@ -28,7 +28,7 @@ ostler doctor [--epic SLUG] [--json] [--no-schema]   # checks epics, stories, mi
 ostler list   --type epic|story|spec|seed [--epic E] [--status S] [--json]
 ostler search <query> [--type T] [--json]                         # full-text match over node prose
 ostler query  stories-covering-seed <arg> [--json]
-ostler next-epic [--json]                            # next queued epic with unfinished work
+ostler next-epic [--json]                            # first epic in milestone order with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
 ostler path epic <epic> | spec <story-id> | story <story-id> | branch <story-id> | branch <epic> --epic   # --epic emits feat/<slug>
 ```
@@ -58,7 +58,6 @@ ostler backlog add <summary> --repo R --area A [--pattern P] [--symbol S ...] [-
 ostler backlog adopt --repo R <file> [--json]
 ostler backlog prune <id> [--as done|dropped|promoted] [--reason T] [--json]   # closes a record; --as defaults to done, the other two need --reason
 ostler backlog list [--repo R] [--status S] [--json]
-ostler todo add <epic> [--front] | ostler todo prune <epic> | ostler todo reorder <e…> | ostler todo list [--json]
 ```
 
 `--depends` names sibling slugs inside the same epic, and lands in the story's own

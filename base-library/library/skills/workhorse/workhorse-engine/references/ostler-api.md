@@ -17,7 +17,7 @@ fakes it by patching the class:
 from ostler import Ostler
 
 okf = Ostler(root)                         # root discovered upward, like `ostler -C DIR`
-queue   = okf.todo()                       # ["epic-a", …]            (ostler todo list)
+epics   = okf.milestone_epics()            # ["epic-a", …]            (every epic the milestones list, in order)
 stories = okf.list("story", epic="epic-a") # [{"slug","status",…}]    (ostler list --type story)
 spec    = okf.spec_path("01-foo")          # "<artifacts_dir>/specs/<story id>" (ostler path spec)
 report  = okf.doctor(epic="epic-a")        # dict, == doctor --json's report
@@ -31,11 +31,11 @@ okf.set_status("01-foo", "QA passed")
 
 The graph is a **snapshot** read at load time: reads reuse one cached snapshot (the win over
 a subprocess-per-call); mutations (`create_*` / `update_story` / `delete_*` / `add_seed` / `set_status` / `backlog_*` /
-`todo_*` / `settle_review`) apply against a fresh load and invalidate the cache, so the next
+`settle_review`) apply against a fresh load and invalidate the cache, so the next
 read sees them (`reload()` forces a refresh). A read never returns `None` — on a genuinely
 unloadable graph the call raises `(OSError, ValueError, RuntimeError)`; catch that to take a
 fallback (e.g. a JSON sidecar). Don't paper over an empty result as "unavailable": `[]` means
-an empty queue, a raise means unreadable.
+an empty list, a raise means unreadable.
 
 QA / artifact / edit subsystems live on the same facade, **lazy-imported** so the read path
 never loads the QA/vet machinery: `okf.qa_validate(plan, spec=…)`,

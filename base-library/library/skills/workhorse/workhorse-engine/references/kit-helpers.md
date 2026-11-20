@@ -40,7 +40,7 @@ else:
     kit.git.checkout(repo_path, branch, create=True)
 
 kit.git.commit_all(repo_path, f"{epic}: {slug}" if epic else slug)   # False = nothing to commit
-kit.git.commit_paths(repo_path, "prune completed epic from queue", paths.epics_index(root))
+kit.git.commit_paths(repo_path, f"{epic}: replan its stories", paths.epic_dir_rel(root, epic))
 ```
 
 The pathspec on that last line comes from the workflow's `shared/paths.py`, never from a
