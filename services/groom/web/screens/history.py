@@ -8,7 +8,6 @@ class History(Screen):
     name = "History"
     api = "/api"
     sends = (request("GET", "/api/history"), request("GET", "/api/state"), request("GET", "/api/settings/attend"), request("GET", "/api/run/{id}/overview"))
-    reached_from = "the History button of the left bar"
     root = Text("#history-pane", does="the history pane")
     title = Text("#history-title", "History: runs that ended", does="the pane's title")
     empty = Text("#history .empty-big", does="the line shown when no run ended in the last 30 days")

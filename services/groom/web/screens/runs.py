@@ -9,7 +9,6 @@ class Runs(Screen):
     first = True
     api = "/api"
     sends = (request("GET", "/api/state"), request("GET", "/api/settings/attend"))
-    reached_from = "the page opens on it; the Runs button of the left bar returns to it"
     root = Text("#runs-pane", does="the run list pane")
     heading = Heading("#runs-pane h2", "Runs", does="the pane's title")
     filter = Field("#runs-pane input[name=q]", "Filter runs", does="narrows the list to the runs whose name, repo, node, task or id holds the text typed",

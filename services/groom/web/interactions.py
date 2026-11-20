@@ -33,14 +33,16 @@ class FilterTheList(Interaction[Query]):
 
 class OpenSettings(Interaction[object]):
     source = ("groom/groom/assets/dashboard.js",)
-    screen = SettingsScreen
+    screen = Runs
+    leads_to = SettingsScreen
     does = "presses Settings in the left bar"
     carries = Navigate
 
 
 class OpenRuns(Interaction[object]):
     source = ("groom/groom/assets/dashboard.js",)
-    screen = Runs
+    screen = SettingsScreen
+    leads_to = Runs
     does = "presses Runs in the left bar"
     carries = Navigate
 
@@ -54,7 +56,8 @@ class SwitchTheAttendant(Interaction[Settings]):
 
 class OpenRun(Interaction[Push]):
     source = ("groom/groom/assets/dashboard.js",)
-    screen = RunDetail
+    screen = Runs
+    leads_to = RunDetail
     does = "presses a run in the list; its detail pane opens beside the list with the gate it waits on"
     carries = SelectRun
 
@@ -68,21 +71,24 @@ class AnswerTheGate(Interaction[Reply]):
 
 class OpenHistory(Interaction[object]):
     source = ("groom/groom/assets/dashboard.js",)
-    screen = History
+    screen = Runs
+    leads_to = History
     does = "presses History in the left bar"
     carries = Navigate
 
 
 class OpenAttendant(Interaction[object]):
     source = ("groom/groom/assets/dashboard.js",)
-    screen = Attendant
+    screen = Runs
+    leads_to = Attendant
     does = "presses Attendant in the left bar"
     carries = Navigate
 
 
 class OpenDispatch(Interaction[object]):
     source = ("groom/groom/assets/dashboard.js",)
-    screen = Dispatch
+    screen = Runs
+    leads_to = Dispatch
     does = "presses Dispatch in the left bar"
     carries = Navigate
 

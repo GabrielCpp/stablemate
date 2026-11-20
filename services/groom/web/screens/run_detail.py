@@ -8,7 +8,6 @@ class RunDetail(Screen):
     name = "Run detail"
     api = "/api"
     sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
-    reached_from = "pressing a run in the list"
     root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state")
     repo = Text("#detail .repo-branch", "repo", does="the repo and branch of the run")
     run_id = Text("#detail .run-id", "run id", does="the whole id of the run")
