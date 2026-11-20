@@ -185,6 +185,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if args.command == "decisions" and args.unexplained and (args.story or args.element):
         parser.error("--unexplained cannot be combined with --story or --element")
+    if args.command in ("run", "explore") and args.only and not any(n.strip() for item in args.only for n in item.split(",")):
+        parser.error("--only is empty: name the calls to play, or leave --only out to play the whole book")
     root = book_root(os.getcwd())
     if root is not None:
         sys.path.insert(0, root)

@@ -358,6 +358,18 @@ bare name from anywhere. Nothing else resolves types or packages. A file whose
 definitions cannot be read with confidence (unbalanced brackets, a definition that never closes) is one unit: each
 symbol in it mentions all the file mentions. Each chain says how the element was reached: `direct` when its own
 symbol changed, `through <symbol>` for the nearest symbol of the closure path.
+
+`affected` also reads the book's own folder, `services/<name>/` and the files it imports under the book root, since
+the same commit, uncommitted and untracked files included. An edited element class (an endpoint, interaction,
+screen, action, outside happening or journey) selects its plays, and its chain starts with `book <path>:<Class>`.
+A changed line outside every element class, or a file that does not parse, makes the plan `whole` with the reason
+`a shared book file changed: <path>`. A deleted class needs no play. The plan is `empty`, with exit 1, when files
+changed and none selects a play, and `none`, with exit 0, when nothing changed. The `diff` field of
+`<service>-affected.json` counts the changed app files and book files and lists, up to 50 paths with a count, the
+changed files under `not_computed` that the command did not judge: files outside every root and files of the book
+that are not Python. `only` is the list for `run --only`, `by_journey` the titles for `run --partial --journey`, and
+`whole: true` with its `reason` means to run the whole book with no `--only`. `run --only` with an empty value is an
+argument error, exit 2.
 A hunk with no definition line counts at the file and leaves the other hunks of the file to their own symbols. At
 the file it reaches every element that names it, a record that names it makes the plan `whole`, and the place is
 listed under `widened`. A Go hunk of import lines only changes nothing by itself and is listed under `imports`,

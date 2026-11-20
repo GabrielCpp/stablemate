@@ -307,8 +307,8 @@ def test_the_report_holds_the_fields_the_caller_reads_and_what_it_did_not_walk(m
     where, base = repo
     head = commit_files(where, edited("remove.go", "return id", "return id + id"))
     _, found, out = affect(monkeypatch, tmp_path, sourced_book({"RemoveItem": ("remove.go::Remove",)}), where, base, capsys)
-    assert set(found) == {"service", "base", "head", "dirty", "plan", "only", "journeys", "chains", "uncovered", "ignored", "fallbacks", "widened",
-                          "not_computed", "mapped", "imports"}
+    assert set(found) == {"service", "base", "head", "dirty", "plan", "whole", "reason", "only", "journeys", "by_journey", "diff", "chains", "uncovered",
+                          "ignored", "fallbacks", "widened", "not_computed", "mapped", "imports"}
     assert (found["service"], found["base"], found["head"]) == ("shelf", base, head)
     assert set(found["chains"][0]) == {"path", "function", "element", "kind", "plays", "via"}
     assert [n.split(":")[0] for n in found["not_computed"]] == ["dependent books", "configuration", "data", "code in other repositories"]

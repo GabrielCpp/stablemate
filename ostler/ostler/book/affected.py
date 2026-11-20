@@ -16,13 +16,15 @@ from pathlib import Path
 from typing import Any, cast
 
 from ostler._vendor.stablemate_core import config as core_config
+from ostler.book.bookdiff import BookDiff, book_diff
 from ostler.book.played import carriers
 from ostler.book.service import Service
 from ostler.book.mentions import Mentions, same_symbol
 from ostler.book.sources import changed_parts, changed_in_tree, file_of, git, head_of, ignored, sourced, traced_in, verified_at
 from ostler.book.touching import touches
 
-NONE, PARTIAL, WHOLE = "none", "partial", "whole"
+NONE, EMPTY, PARTIAL, WHOLE = "none", "empty", "partial", "whole"
+UNJUDGED_CAP = 50
 
 NOT_COMPUTED = (
     "dependent books: the gateways, web apps and services that call or read this book",
@@ -57,8 +59,12 @@ class Affected:
     head: str
     dirty: bool
     plan: str = NONE
+    whole: bool = False
+    reason: str = ""
     only: list[str] = field(default_factory=list)
     journeys: list[str] = field(default_factory=list)
+    by_journey: list[str] = field(default_factory=list)
+    diff: dict[str, Any] = field(default_factory=dict)
     chains: list[Chain] = field(default_factory=list)
     uncovered: list[dict[str, str]] = field(default_factory=list)
     ignored: list[str] = field(default_factory=list)
@@ -71,11 +77,14 @@ class Affected:
     def command(self, module: str) -> str:
         if self.plan == NONE:
             return "nothing to play"
+        if self.plan == EMPTY:
+            return "nothing to play: the changed files select no play"
         if self.plan == WHOLE:
             return f"ostler book run {module}"
-        if not self.only:
-            return "nothing mapped to a play"
-        return f"ostler book run {module} --only {','.join(self.only)}"
+        runs = [f"ostler book run {module} --only {','.join(self.only)}"] if self.only else []
+        if self.by_journey:
+            runs.append(f"ostler book run {module} --partial {' '.join(f'--journey {t!r}' for t in self.by_journey)}")
+        return "\n".join(runs) or "nothing mapped to a play"
 
 
 def pointers(service: Service[Any], app_root: str) -> list[Pointer]:
@@ -91,7 +100,7 @@ def pointers(service: Service[Any], app_root: str) -> list[Pointer]:
 
 def calls_of(service: Service[Any], element: type, kind: str) -> set[str] | None:
     """The calls whose plays an element's change can alter, or None where the book cannot narrow them."""
-    if kind == "record":
+    if kind in ("record", "event"):
         return None
     if kind == "action":
         direct, outside = carriers(service, element.__name__)
@@ -101,12 +110,14 @@ def calls_of(service: Service[Any], element: type, kind: str) -> set[str] | None
     return {element.__name__}
 
 
-def walk(service: Service[Any], app_root: str, base: str, head: str) -> Affected:
+def walk(service: Service[Any], app_root: str, base: str, head: str, book: Path | None = None, module: str = "") -> Affected:
     assert service.app is not None
     app = service.app
     tracked, untracked = changed_in_tree(app_root, base, app.roots)
     held, loose = changed_in_tree(app_root, "HEAD", service.app.roots)
     found = Affected(service.name, base, head, dirty=bool(held or loose))
+    owned = book_diff(service, book, module, base) if book is not None else BookDiff()
+    direct: set[str] = set()
     named: dict[str, list[Pointer]] = {}
     everything = pointers(service, app_root)
     for pointer in everything:
@@ -133,6 +144,12 @@ def walk(service: Service[Any], app_root: str, base: str, head: str) -> Affected
         found.widened.append({"path": path, "why": why, "elements": elements})
 
     def chain(path: str, function: str, element: Pointer, because: str = "", via: str = "direct") -> None:
+        if element.kind == "journey":
+            title = cast(Any, element.element).title()
+            titled.add(title)
+            direct.add(title)
+            found.chains.append(Chain(path, function, element.element.__name__, element.kind, [title], via))
+            return
         calls = calls_of(service, element.element, element.kind)
         name = element.element.__name__
         followed = element.kind == "record" and via != "direct"
@@ -190,22 +207,50 @@ def walk(service: Service[Any], app_root: str, base: str, head: str) -> Affected
             widen(path, "a changed hunk has no definition line: every element naming the file is affected", namers)
             for element in {p.element: p for p in namers}.values():
                 chain(path, "", element, f"record {element.element.__name__} names the file and a changed hunk has no definition line")
+    for hit in owned.hits:
+        if hit.element is None:
+            fall(hit.path, hit.why)
+        else:
+            chain(f"book {hit.path}", hit.name, Pointer(hit.element, hit.kind, hit.path, None))
     left = {u["path"] for u in found.uncovered}
-    found.mapped = sorted({*(c.path for c in found.chains), *found.imports} - left)
-    if not (found.chains or found.uncovered):
-        found.plan = NONE
-    elif found.fallbacks:
+    found.mapped = sorted({*(c.path for c in found.chains if not c.path.startswith("book ")), *found.imports} - left)
+    unjudged = sorted({*owned.unjudged, *outside_roots(app_root, base, [*tracked, *untracked], book, owned)})
+    found.diff = {"app_files": len({*tracked, *untracked}), "book_files": len(owned.files),
+                  "not_computed": {"count": len(unjudged), "paths": unjudged[:UNJUDGED_CAP]}}
+    found.not_computed += owned.notes
+    if found.fallbacks:
         found.plan = WHOLE
-    else:
+    elif found.chains or found.uncovered:
         found.plan = PARTIAL
+    elif unjudged:
+        found.plan = EMPTY
+    else:
+        found.plan = NONE
+    found.whole = found.plan == WHOLE
+    found.reason = "; ".join(dict.fromkeys(f["why"] for f in found.fallbacks))
     found.only = sorted(called)
     found.journeys = [j.title() for j in service.journeys if j.title() in titled]
+    by_calls = {t for c in called for t in journeys_of(c)}
+    found.by_journey = [t for t in found.journeys if t in direct and t not in by_calls]
     return found
+
+
+def outside_roots(app_root: str, base: str, inside: list[str], book: Path | None, owned: BookDiff) -> list[str]:
+    """The changed files of the app's repository that sit under no root and are not the book's own."""
+    tracked, untracked = changed_in_tree(app_root, base, (".",))
+    held = {os.path.normpath(os.path.join(app_root, p)) for p in inside}
+    own = {os.path.normpath(os.path.join(str(book), p)) for p in owned.files} if book is not None else set()
+    return [p for p in sorted({*tracked, *untracked}) if os.path.normpath(os.path.join(app_root, p)) not in held | own]
 
 
 def show(found: Affected, module: str) -> list[str]:
     lines = [f"affected {module}: {found.base}..{found.head}" + (" and the uncommitted work" if found.dirty else ""),
-             f"plan: {found.plan}"]
+             f"plan: {found.plan}" + (f", {sum(found.diff[k] for k in ('app_files', 'book_files')) + found.diff['not_computed']['count']} changed files select no play" if found.plan == EMPTY else "")]
+    lines.append(f"changed: {found.diff['app_files']} app files, {found.diff['book_files']} book files, {found.diff['not_computed']['count']} not judged")
+    if found.diff["not_computed"]["paths"]:
+        lines += ["not judged (outside every root, or not Python in the book):", *(f"  {p}" for p in found.diff["not_computed"]["paths"])]
+        if found.diff["not_computed"]["count"] > len(found.diff["not_computed"]["paths"]):
+            lines.append(f"  and {found.diff['not_computed']['count'] - len(found.diff['not_computed']['paths'])} more")
     if found.ignored:
         lines += [f"ignored ({len(found.ignored)}):", *(f"  {p}" for p in found.ignored)]
     if found.fallbacks:
@@ -219,12 +264,18 @@ def show(found: Affected, module: str) -> list[str]:
     if found.chains:
         lines.append("chains:")
         for c in found.chains:
-            lines.append(f"  {c.path}{'::' + c.function if c.function else ' (file)'} -> {c.element} ({c.kind}, {c.via}) -> {', '.join(c.plays) or ('no play of its own' if c.kind == 'record' and c.via != 'direct' else 'the whole book')}")
+            lines.append(f"  {c.path}{(':' if c.path.startswith('book ') else '::') + c.function if c.function else ' (file)'} -> {c.element} ({c.kind}, {c.via}) -> {', '.join(c.plays) or ('no play of its own' if c.kind == 'record' and c.via != 'direct' else 'the whole book')}")
     if found.uncovered:
         lines += ["uncovered (no element names them; judge them by hand):",
                   *(f"  {u['path']}{'::' + u['function'] if u['function'] else ''}" for u in found.uncovered)]
     lines.append("not computed: " + "; ".join(found.not_computed))
     return lines
+
+
+def book_root_of(package_dir: str, module: str) -> Path | None:
+    here = Path(package_dir).resolve()
+    parts = module.split(".")
+    return here.parents[len(parts) - 1] if len(parts) >= 2 and len(here.parents) > len(parts) - 1 else None
 
 
 def cmd_affected(service: Service[Any], module: str, app_root: str, since: str | None, package_dir: str, out: str) -> int:
@@ -237,7 +288,7 @@ def cmd_affected(service: Service[Any], module: str, app_root: str, since: str |
         return 2
     try:
         base = git(app_root, "rev-parse", "--short", verified).strip()
-        found = walk(service, app_root, base, head_of(app_root))
+        found = walk(service, app_root, base, head_of(app_root), book_root_of(package_dir, module), module)
     except subprocess.CalledProcessError as wrong:
         print(f"git could not read {app_root} from {verified}: {(wrong.stderr or '').strip()}")
         return 2
@@ -250,4 +301,4 @@ def cmd_affected(service: Service[Any], module: str, app_root: str, since: str |
         print(line)
     print(f"written: {path}")
     print(found.command(module))
-    return 1 if found.uncovered else 0
+    return 1 if found.uncovered or found.plan == EMPTY else 0
