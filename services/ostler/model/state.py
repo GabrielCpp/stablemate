@@ -1,5 +1,5 @@
-"""The plan repository a person works in: the queue of epics, the watched files it holds, and the epics and stories a
-command created under an id the book cannot know."""
+"""The plan repository a person works in: the watched files it holds, and the epics and stories a command created
+under an id the book cannot know."""
 
 from __future__ import annotations
 
@@ -8,13 +8,11 @@ from typing import cast
 
 from ostler.book import Collection, State, Unique
 
-from ..fixtures import ALPHA, FIRST, SECOND, SLUG_OF, SLUGS, STORY_PATHS, slug_of
+from ..fixtures import ALPHA, SECOND, SLUG_OF, SLUGS, STORY_PATHS, slug_of
 from .files import (BULLET_LINES, EPIC_PATHS, LEGACY, LEGACY_SLUG, NOT_STARTED, SEED_IDS, STATUS_LINES, STORY_FILES,
                     CONFLICT_LINES, FileRecord, holding, OLD_BULLET, OLD_LIST)
-from .records import MintedEpic, MintedStory, Queue
+from .records import MintedEpic, MintedStory
 
-SEEDED_QUEUE = (FIRST, SECOND)
-QUEUE = "epics"
 SECOND_EPIC = f"art/epics/{SECOND}/epic.md"
 KNOWN_SLUGS = {**SLUG_OF, LEGACY: LEGACY_SLUG}
 MINTED = "<minted {}>"
@@ -22,7 +20,6 @@ MINTED = "<minted {}>"
 
 class Plan(State):
     files = Collection(FileRecord, Unique("path"))
-    queue = Collection(Queue, Unique("name"))
     minted = Collection(MintedEpic, Unique("slug"))
     stories = Collection(MintedStory, Unique("key"))
 
@@ -36,16 +33,12 @@ class Plan(State):
             held = [m for sid in listed for m in (f"### {SLUGS[sid]}", f"- title: Story {SLUGS[sid]}")]
             self.files.items[path] = holding(path, f"slug: {SLUG_OF[epic]}", *held)
         self.files.items[OLD_LIST] = holding(OLD_LIST, OLD_BULLET)
-        self.queue.items[QUEUE] = Queue(QUEUE, SEEDED_QUEUE)
 
     def rows(self) -> tuple[FileRecord, ...]:
         return tuple(sorted(self.files, key=lambda f: tuple(f.path.split("/"))))
 
     def row(self, entity: object) -> FileRecord:
         return cast(FileRecord, entity)
-
-    def epics(self) -> tuple[str, ...]:
-        return self.queue[QUEUE].epics
 
     def folders(self) -> dict[str, str]:
         """Each epic folder the shelf holds, with the slug of its epic: the folders the watch reads, then the epics
@@ -81,11 +74,6 @@ class Plan(State):
     def numbered(self) -> tuple[str, ...]:
         """The epic folders the shelf still names by number and slug."""
         return tuple(f for f in self.folders() if slug_of(f) != f and not f.startswith("<"))
-
-
-def queue_stage(model: Plan) -> str:
-    """How the queue stands: its epics by slug, first to last."""
-    return " > ".join(KNOWN_SLUGS.get(e, slug_of(e)) for e in model.epics()) or "empty"
 
 
 def story_stage(model: Plan) -> str:

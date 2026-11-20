@@ -162,9 +162,9 @@ the id, and a slug passed to a command is refused with the id spelled out. A slu
 identifies more than one story is a `story-key-collision` error, and the id recorded here must
 agree with the copy in the parent epic's `## Stories` block.
 
-## 5. The epics index
+## 5. The order of the work
 
-**`docs/epics/index.md`** is the **ordered** list of the epics to be worked (the former `epics-todo.json`). Ostler manages its order via `ostler todo`. The coder's runtime queue sidecar (untracked) consumes this ordering.
+The milestones are the one ordered list of the epics to be worked. A milestone's `dependsOn` milestones come first, and each milestone gives its epics in the order its `epics:` list holds them. A superseded milestone gives none, and an epic two milestones list comes once. `Ostler.milestone_epics()` returns that list, and `ostler next-epic` prints its first epic with unfinished work. Ostler keeps no epics queue: it reads no `index.md` on the epics shelf and no `epics-todo.json`.
 
 ## 6. Id allocation
 

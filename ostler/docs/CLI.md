@@ -13,7 +13,7 @@ The commands fall into two surfaces that barely overlap:
 
 | Surface | Verbs | What it operates on |
 |---|---|---|
-| **The planning graph** | `doctor` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` `edit` `path` `vet` | `docs/milestones/`, and on the artifacts shelf `epics/`, `specs/`, `backlogs/` |
+| **The planning graph** | `doctor` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `edit` `path` `vet` | `docs/milestones/`, and on the artifacts shelf `epics/`, `specs/`, `backlogs/` |
 | **Verification** | `qa` `artifact` | a story's spec dir, and what a QA run produces |
 
 ## Global
@@ -47,8 +47,8 @@ ostler doctor [--epic EPIC | --milestone NAME] [--path PATH]... [--json] [--no-s
 #   --path keeps the findings about one file or folder of the book, on the shelf too.
 #   --no-schema skips JSON Schema validation.
 ostler layout apply
-#   rename every epic and story folder on the shelf to its id, record each epic's slug,
-#   repoint the queue; exit 1 names each folder it could not move.
+#   rename every epic and story folder on the shelf to its id and record each epic's slug;
+#   exit 1 names each folder it could not move.
 ```
 
 `--path` takes an absolute path, or a path relative to the repo root, the way doctor prints the
@@ -66,7 +66,7 @@ ostler list  --type ETYPE [--epic E] [--status S] [--json]
 ostler search <query> [--type TYPE] [--root ROOT] [--limit N] [--match] [--json]
 ostler index build [--json]
 ostler query stories-covering-seed <arg> [--json]
-ostler next-epic [--json]                     # next queued epic with unfinished work
+ostler next-epic [--json]                     # first epic in milestone order with unfinished work
 ostler next-story <epic> [--json]             # next runnable story (deps satisfied, not done)
 ostler path epic <epic> | path spec <story-id> | path story <story-id> | path branch <story-id> [--epic]
 ```
@@ -109,7 +109,6 @@ ostler backlog adopt --repo R <file> [--json]
 ostler backlog add <summary> --repo R --area A [--pattern P] | backlog prune <id> | backlog list [--json]
 ostler milestone set-source-items <name> <id> [id ...]
 ostler milestone epics <name> [<epic> ...]
-ostler todo add <epic> [--front] | todo prune <epic> | todo reorder <e…> | todo list [--json]
 ```
 
 `--depends` names sibling slugs inside the same epic, and lands in the story's own
@@ -130,15 +129,14 @@ that stamp is a *sentence*, it lands in both the frontmatter and the body bullet
 vocabulary is never rewritten, so a `QA passed` story survives `--all` and a second run is a
 no-op that still exits 0. Note what it does *not* change: a blocked story was already eligible
 for selection — `next-story` only skips *done* work — so unblocking is about the label the next
-agent reads, not about the queue. The per-run skip lists (`blocked-epics.txt`,
+agent reads, not about selection. The per-run skip lists (`blocked-epics.txt`,
 `qa-skip-stories.txt`) live in the workflow's run dir and are not ostler's to clear; a fresh run
 drops them on its own.
 
 `update story` replaces the title, seed coverage and sibling dependencies stored in the parent
 `epic.md`. All three options are required so the command expresses one complete metadata state.
 It preserves the story id, `story.md` bytes, status, optional metadata and subsection prose.
-`delete epic` removes the numbered epic directory and its references from every milestone and the
-legacy todo queue; numbering gaps are preserved.
+`delete epic` removes the epic directory and its references from every milestone.
 
 `create backlog-item` is the normal entry point for new intake: it files one record on the
 Register and persists a full id. `backlog add` does the same. `backlog adopt` turns an old bullet

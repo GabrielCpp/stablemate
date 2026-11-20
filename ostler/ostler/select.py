@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ostler import path as path_mod
 from ostler import registry
+from ostler.milestones import SKIPPED_STATUSES
 from ostler.model import Epic, Graph, Story
 
 _DONE_STATUSES = {"qa passed", "passed", "done", "merged", "complete"}
@@ -37,7 +38,8 @@ def epic_authored(epic: Epic) -> bool:
             and all(s.authored for s in epic.stories))
 
 
-def _milestone_epic_order(graph: Graph) -> list[str]:
+def milestone_epics(graph: Graph) -> list[str]:
+    """Every epic a live milestone lists, once, a milestone's dependencies first and each milestone's epics in its listed order."""
     order: list[str] = []
     visited: set[str] = set()
     def visit(name: str) -> None:
@@ -47,7 +49,8 @@ def _milestone_epic_order(graph: Graph) -> list[str]:
         visited.add(milestone.name)
         for dep in milestone.depends_on:
             visit(dep)
-        order.extend(milestone.epics)
+        if milestone.status not in SKIPPED_STATUSES:
+            order.extend(epic for epic in milestone.epics if epic not in order)
 
     for milestone in graph.milestones:
         visit(milestone.name)
@@ -80,7 +83,7 @@ def dag_order(epic: Epic) -> list[Story]:
 
 def next_epic(graph: Graph) -> dict | None:
     """First milestone-ordered epic with unfinished work; falls back to graph order."""
-    order = _milestone_epic_order(graph) or [e.name for e in graph.epics]
+    order = milestone_epics(graph) or [e.name for e in graph.epics]
     for name in order:
         epic = epic_by_name(graph, name)
         if epic is None:

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ostler import crud, query, select, todo
+from ostler import crud, query, select
 from ostler.model import load
 
 from conftest import EPIC_A, EPIC_B, FOO_ID, present, write, epics_root
@@ -115,35 +115,43 @@ def test_next_story_respects_dependencies(tmp_path: Path):
     assert present(select.next_story(load(tmp_path), "e"))["slug"] == "b"
 
 
-def test_todo_queue(tmp_path: Path):
-    """The queue names the id-named directories that exist; every operation still takes a bare epic slug."""
-    g = load(tmp_path)
-    crud.create_epic(g, "one", "One")
-    crud.create_epic(load(tmp_path), "two", "Two")
-    todo.add(load(tmp_path), "one")
-    todo.add(load(tmp_path), "two")
-    ids = {epic.slug: epic.name for epic in load(tmp_path).epics}
-    assert todo.list_epics(load(tmp_path)) == [ids["one"], ids["two"]]
-    todo.reorder(load(tmp_path), ["two", "one"])
-    assert todo.list_epics(load(tmp_path)) == [ids["two"], ids["one"]]
-    todo.prune(load(tmp_path), "two")
-    assert todo.list_epics(load(tmp_path)) == [ids["one"]]
-    assert not todo.add(load(tmp_path), "one").ok
+def test_milestone_epics_put_dependencies_first_and_skip_superseded(repo: Path):
+    write(repo / "docs/milestones/feature/milestone.md", """---
+type: milestone
+id: m1
+title: Feature
+status: approved
+dependsOn:
+  - m0
+epics:
+  - epic-b
+  - epic-a
+---
+# Feature
+""")
+    write(repo / "docs/milestones/foundation/milestone.md", """---
+type: milestone
+id: m0
+title: Foundation
+status: delivered
+dependsOn: []
+epics:
+  - epic-a
+---
+# Foundation
+""")
+    write(repo / "docs/milestones/old/milestone.md", """---
+type: milestone
+id: m2
+title: Old
+status: superseded
+epics:
+  - epic-gone
+---
+# Old
+""")
 
-
-def test_todo_add_warns_when_the_epic_has_no_doc(tmp_path: Path):
-    """Queueing a name with no epic.md still succeeds (queue-ahead is legitimate), but says so: selection silently skips such a name and then reports "every epic is fully authored", which is a no-work run indistinguishable from a successful one."""
-    write(epics_root() / ".keep", "")
-    res = todo.add(load(tmp_path), "ghost")
-    assert res.ok
-    assert "WARNING" in res.message and "ghost" in res.message
-    assert todo.list_epics(load(tmp_path)) == ["ghost"]
-
-
-def test_todo_add_does_not_warn_for_a_real_epic(tmp_path: Path):
-    crud.create_epic(load(tmp_path), "real", "Real")
-    res = todo.add(load(tmp_path), "real")
-    assert res.ok and "WARNING" not in res.message
+    assert select.milestone_epics(load(repo)) == [EPIC_A, EPIC_B]
 
 
 def test_next_story_skips_given_up_without_stranding_the_epic(tmp_path: Path):

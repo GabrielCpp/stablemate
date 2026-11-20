@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import crud, crud_generic, decisions as decisions_mod, doctor, edit, ids as ids_mod, layout as layout_mod, path as path_mod, query as query_mod, register as register_mod, register_import, registry, select, templates as templates_mod, todo as todo_mod
+from ostler import crud, crud_generic, decisions as decisions_mod, doctor, edit, ids as ids_mod, layout as layout_mod, path as path_mod, query as query_mod, register as register_mod, register_import, registry, select, templates as templates_mod
 from ostler import checks as checks_mod
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
@@ -326,15 +326,6 @@ def _build_parser() -> argparse.ArgumentParser:
     mle.add_argument("name", help="the milestone, by folder name or id")
     mle.add_argument("epics", nargs="*",
                      help="each epic by id, folder or slug; none re-resolves the list the milestone holds")
-
-    td = sub.add_parser("todo", help="manage the epics queue (docs/epics/index.md)")
-    tds = td.add_subparsers(dest="op", required=True)
-    tda = tds.add_parser("add")
-    tda.add_argument("name")
-    tda.add_argument("--front", action="store_true")
-    tds.add_parser("prune").add_argument("name")
-    tds.add_parser("reorder").add_argument("names", nargs="+")
-    tds.add_parser("list").add_argument("--json", action="store_true")
 
     write_parent = argparse.ArgumentParser(add_help=False)
     write_parent.add_argument(
@@ -1403,14 +1394,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             args.name,
             [ids_mod.resolve(graph, item) for item in args.ids],
         ))
-    if c == "todo":
-        if args.op == "add":
-            return _result(todo_mod.add(graph, args.name, front=args.front))
-        if args.op == "prune":
-            return _result(todo_mod.prune(graph, args.name))
-        if args.op == "reorder":
-            return _result(todo_mod.reorder(graph, args.names))
-        return _emit(todo_mod.list_epics(graph), args.json)
     if c == "path":
         try:
             if args.what == "spec":

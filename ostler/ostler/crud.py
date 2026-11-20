@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import ids, markdown, milestones as milestones_mod, model, path as path_mod, registry, select, todo as todo_mod
+from ostler import ids, markdown, milestones as milestones_mod, model, path as path_mod, registry, select
 from ostler.model import Epic, Graph, Story
 from ostler.result import Result
 
@@ -271,23 +271,18 @@ def delete_epic(graph: Graph, name: str) -> Result:
             epic for epic in remaining
             if epic is not None and epic.eid and epic.name != edir.name])
         changed.append(milestone.path)
-    removed = ""
-    todo_result = todo_mod.prune(graph, name)
-    if todo_result.ok:
-        removed = " (removed from epics index)"
-        changed.extend(todo_result.paths)
     if edir.exists():
         shutil.rmtree(edir)
     if not existed:
         return Result(
             True,
-            f"epic '{name}' already absent; cleanup complete{removed}",
+            f"epic '{name}' already absent; cleanup complete",
             changed,
             entity_name=name,
         )
     return Result(
         True,
-        f"deleted epic '{edir.name}'{removed}",
+        f"deleted epic '{edir.name}'",
         [edir, *changed],
         entity_name=edir.name,
     )

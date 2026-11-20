@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 
 import pytest
-from ostler import crud, doctor, markdown, query, registry, select, todo
+from ostler import crud, doctor, markdown, query, registry, select
 from ostler.model import load
 
 from conftest import EPIC_A, FOO_ID, FOO_STORY, present, epics_root, write_prefix
@@ -377,7 +377,6 @@ def test_delete_epic_finishes_cleanup_after_interruption(
     )
     assert crud.create_story(load(tmp_path), "accounts", "sign-in", "Sign in").ok
     assert crud.add_seed(load(tmp_path), "accounts", "sign-in", status="researched").ok
-    assert todo._write(load(tmp_path), ["accounts"])
     real_rmtree = shutil.rmtree
 
     def interrupt_after_removal(path: str | Path) -> None:
@@ -395,21 +394,6 @@ def test_delete_epic_finishes_cleanup_after_interruption(
     assert not (epics_root() / f"{created.entity_name}").exists()
     milestone = load(tmp_path).milestone_by_name("mvp")
     assert milestone is not None and milestone.epics == []
-    assert todo.list_epics(load(tmp_path)) == []
-
-
-def test_list_epics_falls_back_to_milestone_order_without_index(tmp_path: Path):
-    """A milestone-based repo with no docs/epics/index.md still yields a work queue."""
-    created = crud.create_epic(load(tmp_path), "accounts", "Accounts")
-    assert created.ok
-    assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
-    milestone_path = tmp_path / "docs/milestones/0001-mvp/milestone.md"
-    milestone_path.write_text(
-        milestone_path.read_text(encoding="utf-8").replace("epics: []", "epics:\n- accounts")
-    )
-    assert not (epics_root() / "index.md").exists()
-
-    assert todo.list_epics(load(tmp_path)) == [created.entity_id]
 
 
 def test_seed_add_remove(repo: Path):

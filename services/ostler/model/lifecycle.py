@@ -1,5 +1,5 @@
-"""The lifecycle matrices of a plan repository: how far the queue, a story and an
-epic's seeds have come, and what each command does to them there."""
+"""The lifecycle matrices of a plan repository: how far a story and an epic's seeds
+have come, and what each command does to them there."""
 
 from __future__ import annotations
 
@@ -9,11 +9,9 @@ from typing import Callable
 from ostler.book import Axes, Scene
 
 from ..commands import (Conflict, CreateEpic, CreateStory, DeleteCreatedEpic, DeleteEpic, DeleteStory, LayoutApply, Look, PathBranch, PathEpic, PathSpec,
-                        PathStory, SeedAdd, SeedRemove, SetStatus, TodoAdd, TodoList, TodoPrune, TodoReorder, Unblock,
-                        UpdateStory)
+                        PathStory, SeedAdd, SeedRemove, SetStatus, Unblock, UpdateStory)
 from ..fixtures import (ALPHA, BRAVO, FIRST, SECOND, SX, THIRD, conflict, create_epic, create_story, delete_epic, delete_story, path_branch, path_epic,
-                        path_spec, path_story, seed_add, seed_remove, set_status, todo_add, todo_list, todo_prune,
-                        todo_reorder, unblock, update_story)
+                        path_spec, path_story, seed_add, seed_remove, set_status, unblock, update_story)
 from ..graph import (EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, ValidatePhonePlan, ValidateWebPlan, VetDryRun, VetOfUnknownStory,
                      VetWithoutArguments, VetWithoutRegions, EnvAddress, EnvDown, EnvExec, EnvRender, EnvRenderUnknown, BacklogAdopt, BacklogAdd, CutFrames, LintBadPlan, LintPlan, ReadLedger, RecordAssertion, RecordStep, ReplayRun,
                      ReportRun, RunBadPlan, RunPlan, StartSession, StopSession, ValidateBadPlan, ValidatePlan, BacklogDropWithoutReason, BacklogList, BacklogPrune, BuildIndex, CleanQaScratch, CreateMilestone,
@@ -29,46 +27,9 @@ from ..fixtures import nothing
 from .documents import holds
 from .files import (RENDERED, LEDGER, QA_EVIDENCE, SESSION, ARTIFACT, CLOSED, DECISION, FIRST_EPIC_LISTED, GUIDANCE, MILESTONE, OPEN, RECORD, SECOND_EPIC_LISTED,
                     SOURCE_ITEM, SPEC, TEMPLATE_DECLARED, TEMPLATES)
-from .state import Plan, plan_stage, queue_stage, seed_stage, story_stage
+from .state import Plan, plan_stage, seed_stage, story_stage
 
 TODAY = date(2026, 11, 12)
-
-QUEUE_SCENES = (
-    Scene("first > second", "the queue holds the two epics it starts with", lambda today: ()),
-    Scene("first > second > third", "the third epic is queued last", lambda today: (TodoAdd(todo_add("third")),)),
-    Scene("third > first > second", "the third epic is queued first", lambda today: (TodoAdd(todo_add("0003-third", front=True)),)),
-    Scene("second > first", "the second epic was moved ahead of the first",
-          lambda today: (TodoReorder(todo_reorder("0002-second")),)),
-    Scene("empty", "both epics were pruned",
-          lambda today: (TodoPrune(todo_prune("0001-first")), TodoPrune(todo_prune("0002-second")))),
-)
-
-QUEUE_ACTIONS: dict[str, Callable[[Plan], object]] = {
-    "add": lambda m: TodoAdd(todo_add("third")),
-    "add by an old NNNN-slug name": lambda m: TodoAdd(todo_add("0003-third")),
-    "add by id": lambda m: TodoAdd(todo_add(THIRD)),
-    "add to the front": lambda m: TodoAdd(todo_add("third", front=True)),
-    "add a queued epic": lambda m: TodoAdd(todo_add("second")),
-    "add an epic with no folder": lambda m: TodoAdd(todo_add("0009-nope")),
-    "prune": lambda m: TodoPrune(todo_prune("second")),
-    "prune by id": lambda m: TodoPrune(todo_prune(FIRST)),
-    "prune an unqueued epic": lambda m: TodoPrune(todo_prune("0003-third")),
-    "reorder one": lambda m: TodoReorder(todo_reorder("second")),
-    "reorder two": lambda m: TodoReorder(todo_reorder("0002-second", "0001-first")),
-    "reorder an unqueued epic": lambda m: TodoReorder(todo_reorder("0001-first", "0003-third")),
-    "reorder two unqueued epics": lambda m: TodoReorder(todo_reorder("0003-third", "0009-nope")),
-    "reorder a repeated epic": lambda m: TodoReorder(todo_reorder("0002-second", "0002-second")),
-    "reorder a repeated epic by its slug and its old name": lambda m: TodoReorder(todo_reorder("second", "0002-second")),
-    "reorder a repeated epic by its old name and its slug": lambda m: TodoReorder(todo_reorder("0001-first", "first")),
-    "reorder a repeated epic by its id and its slug": lambda m: TodoReorder(todo_reorder(SECOND, "second")),
-    "reorder a repeated third epic": lambda m: TodoReorder(todo_reorder("0003-third", "0003-third")),
-    "reorder a repeated epic with no folder": lambda m: TodoReorder(todo_reorder("0009-nope", "0009-nope")),
-    "list": lambda m: TodoList(todo_list()),
-    "path of an epic by its old name": lambda m: PathEpic(path_epic("0001-first")),
-    "path of an epic by id": lambda m: PathEpic(path_epic(FIRST)),
-    "path of an epic by slug": lambda m: PathEpic(path_epic("first")),
-    "path of an epic with no folder": lambda m: PathEpic(path_epic("nope")),
-}
 
 STORY_SCENES = (
     Scene("Not started", "the story has not begun", lambda today: ()),
@@ -169,7 +130,7 @@ PLAN_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "create a story that exists": lambda m: CreateStory(create_story("first", "alpha", "Alpha again")),
     "create a story in an unknown epic": lambda m: CreateStory(create_story("0009-nope")),
     "delete an epic": lambda m: DeleteEpic(delete_epic("third")),
-    "delete a queued epic": lambda m: DeleteEpic(delete_epic("0002-second")),
+    "delete an epic by its old name": lambda m: DeleteEpic(delete_epic("0002-second")),
     "delete an epic with stories": lambda m: DeleteEpic(delete_epic("first")),
     "delete an epic that is gone": lambda m: DeleteEpic(delete_epic("0009-nope")),
     "delete an epic by id": lambda m: DeleteEpic(delete_epic(THIRD)),
@@ -407,6 +368,10 @@ TEMPLATE_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "declare": lambda m: TemplateNew(nothing()),
     "find": lambda m: TemplateFind(nothing()),
     "apply": lambda m: TemplateApply(nothing()),
+    "path of an epic by its old name": lambda m: PathEpic(path_epic("0001-first")),
+    "path of an epic by id": lambda m: PathEpic(path_epic(FIRST)),
+    "path of an epic by slug": lambda m: PathEpic(path_epic("first")),
+    "path of an epic with no folder": lambda m: PathEpic(path_epic("nope")),
     "delete": lambda m: TemplateDelete(nothing()),
     "look": lambda m: Look(),
 }
@@ -423,14 +388,13 @@ LAYOUT_SCENES = (
 )
 
 LAYOUT_ACTIONS: dict[str, Callable[[Plan], object]] = {
-    "list the queue": lambda m: TodoList(todo_list()),
+    "path of an epic": lambda m: PathEpic(path_epic("first")),
     "apply the layout": lambda m: LayoutApply(nothing()),
     "look": lambda m: Look(),
 }
 
 
 MATRICES = (
-    Axes[Plan]("queue", TODAY, QUEUE_SCENES, QUEUE_ACTIONS, queue_stage, state_of=lambda m, _: queue_stage(m)),
     Axes[Plan]("story", TODAY, STORY_SCENES, STORY_ACTIONS, story_stage, state_of=lambda m, _: story_stage(m)),
     Axes[Plan]("reads", TODAY, READ_SCENES, READ_ACTIONS, reads_stage, state_of=lambda m, _: reads_stage(m)),
     Axes[Plan]("targets", TODAY, TARGET_SCENES, TARGET_ACTIONS, targets_stage, state_of=lambda m, _: targets_stage(m)),

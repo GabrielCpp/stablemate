@@ -48,16 +48,6 @@ def adr_root(graph: Graph) -> Path:
     return graph.doc_roots["adrs"]
 
 
-def epics_index_in(root: Path) -> Path:
-    """The epic queue, ``index.md`` in the epics root — its front entry is the current epic."""
-    return epics_root_in(root) / "index.md"
-
-
-def epics_index(graph: Graph) -> Path:
-    """The epic queue for this graph."""
-    return epics_root(graph) / "index.md"
-
-
 def resolve_spec_arg(root: Path, spec: Path) -> Path:
     """A ``--spec`` value as an absolute path: as typed, else under the specs root, else under *root*."""
     if spec.is_absolute():

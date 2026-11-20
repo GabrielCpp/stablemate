@@ -7,7 +7,7 @@ validates, searches and mutates** your planning docs (backlog items, milestones,
 seeds and specs) as plain markdown documents with YAML frontmatter.
 
 Everything is markdown. An epic's seeds and its story dependency-DAG live inside its `epic.md`; there
-is **no** `seed.json`, `dependencies.json` or `epics-todo.json`. Ostler owns id
+is **no** `seed.json` or `dependencies.json`, and no epics queue. Ostler owns id
 allocation and is the one tool that reads and writes the graph, so structure stays consistent while
 humans (or agents) author the prose.
 
@@ -62,7 +62,7 @@ ostler list --type story --epic checkout-flow --json
 ```
 
 Then open the scaffolded `epic.md` / `story.md` and write the narrative, acceptance criteria, and
-prose — ostler keeps the seeds, edges, ids and queue coherent around it.
+prose — ostler keeps the seeds, edges and ids coherent around it.
 
 A story's `id` is an opaque string. `create story` mints a ULID, and nothing else assumes the id's
 shape. A tracker key such as `CASE-574` may be written as the `id` by hand. The `id` is the immutable
@@ -93,20 +93,19 @@ documents the graph reads.
 **Epic and story folders are named by their ids.** `create epic checkout-flow` mints an id and
 writes `<artifacts dir>/epics/<epic-id>/epic.md` with `slug: checkout-flow` in its frontmatter;
 `create story` writes `<epic-id>/stories/<story-id>/story.md`. An id never changes, so a path built
-from it never goes stale. The slug still names the epic in every command: `ostler todo add
-checkout-flow`, `--epic checkout-flow`, `create story checkout-flow …`. The order of the work lives
-in the milestone's `## Epics` list and the epics queue, not in the folder names. Use `ostler path
-epic <slug>` when you need the directory itself.
+from it never goes stale. The slug still names the epic in every command: `--epic checkout-flow`,
+`create story checkout-flow …`. The order of the work lives in the milestones alone: a milestone's
+`dependsOn` milestones come first, then its `epics:` list in order (`Ostler.milestone_epics()`).
+Use `ostler path epic <slug>` when you need the directory itself.
 
 A shelf still holding `NNNN-slug` epic folders refuses every command until `ostler layout apply`
-renames each epic and story folder to its id, records each epic's slug and repoints the queue.
+renames each epic and story folder to its id and records each epic's slug.
 Doctor reports an epic or story folder not named by its id (`epic-folder-not-id`,
 `story-folder-not-id`).
 
 `spec.*` documents are process artifacts: typed and conformance-checked, but ostler does not own their
 internal schema. The subtype is the file's stem (`executive.md` → `spec.executive`); mint them with
 `ostler create spec <story-id> <doc>`, which is idempotent and also retro-stamps free-form docs.
-**Not typed documents** (managed markdown, left in place): `<artifacts dir>/epics/index.md` (the epics queue).
 
 ### Planning intake identity
 
@@ -177,7 +176,7 @@ accepted as input either way).
 |---|---|
 | `doctor` | check conformance and referential integrity |
 | `list` `search` `index` `query` `next-epic` `next-story` `path` | read the graph — what exists, what covers what, what to work on next |
-| `create` `update` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `todo` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, move the queue |
+| `create` `update` `delete` `seed` `set-status` `unblock` `backlog` `milestone` | mutate it — scaffold identified intake/plans/specs, revise story graph metadata, record a seed, list a milestone's epics |
 | `edit` | repair a rename across the whole graph |
 | `template` `new` `find` `set` `remove` | declare a repo's own document kinds and operate on their instances |
 | `vet` | check a rendered screenshot against the regions a story declares |

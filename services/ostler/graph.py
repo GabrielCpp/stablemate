@@ -77,7 +77,7 @@ class QueryCovering(Command):
 
 
 class NextEpic(Command):
-    does = "Print the next queued epic that has unfinished work."
+    does = "Print the first epic, in milestone order, that has unfinished work."
     program = "ostler"
     argv = ("--full-ids", "next-epic")
     args = ARGS

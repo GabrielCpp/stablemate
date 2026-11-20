@@ -18,7 +18,7 @@ from ostler import path as path_mod
 from ostler import query as query_mod
 from ostler import register as register_mod
 from ostler import register_import
-from ostler import registry, select, todo as todo_mod
+from ostler import registry, select
 from ostler.crud import Result
 from ostler.qa import (
     QaOutcome,
@@ -291,9 +291,9 @@ class Ostler:
         found = select.epic_by_name(self.graph, epic)
         return found is not None and select.epic_authored(found)
 
-    def todo(self) -> builtins.list[str]:
-        """The epics queue, front-first (``ostler todo list``)."""
-        return todo_mod.list_epics(self.graph)
+    def milestone_epics(self) -> builtins.list[str]:
+        """Every epic a live milestone lists, once, in milestone dependency order and each milestone's listed order."""
+        return select.milestone_epics(self.graph)
 
     def register_root(self) -> Path:
         """The shelf the Register's records live on: ``backlog/`` in the artifacts dir."""
@@ -380,10 +380,6 @@ class Ostler:
     def epics_dir(self) -> Path:
         """Where epics live — ``docs/epics`` unless the repo configures otherwise."""
         return path_mod.epics_root(self.graph)
-
-    def epics_index(self) -> Path:
-        """The epic queue file, whose front entry is the current epic."""
-        return path_mod.epics_index(self.graph)
 
     def epic_dir(self, epic: str) -> Path:
         """The folder of *epic*, resolved by number or bare slug (absolute)."""
@@ -576,18 +572,6 @@ class Ostler:
     def allocate_id(self) -> str:
         """Mint the next repo-prefixed ostler id (``ACME-15``) — the same id space stories/epics/seeds draw from, so a backlog IOU is a first-class, numbered work item."""
         return ids_mod.allocate(self.graph)
-
-    def todo_add(self, name: str, *, front: bool = False) -> Result:
-        """Enqueue an epic (``ostler todo add``)."""
-        return self._apply(todo_mod.add(self._fresh(), name, front=front))
-
-    def todo_prune(self, name: str) -> Result:
-        """Dequeue an epic (``ostler todo prune``)."""
-        return self._apply(todo_mod.prune(self._fresh(), name))
-
-    def todo_reorder(self, order: builtins.list[str]) -> Result:
-        """Reorder the epics queue (``ostler todo reorder``)."""
-        return self._apply(todo_mod.reorder(self._fresh(), order))
 
     def _apply(self, result: Result) -> Result:
         self._graph = None

@@ -51,9 +51,6 @@ def moves(artifacts: Path, home: Path) -> list[str]:
     return list(dict.fromkeys(lines))
 
 
-_QUEUE_ENTRY = re.compile(r"^(\s*-\s*)\[([^\]]+)\]\(([^)]+)/epic\.md\)(.*)$")
-
-
 def numbered_epics(artifacts: Path) -> list[Path]:
     """The epic folders on the shelf still named ``NNNN-slug``; one directory listing."""
     from ostler import registry
@@ -85,37 +82,13 @@ def _record_slug(epic_md: Path, slug: str) -> bool:
     return True
 
 
-def _requeue(shelf: Path, renamed: dict[str, str], slugs: dict[str, str]) -> bool:
-    """Point every queue entry at the epic's id folder; False when the queue named nothing that moved."""
-    from ostler import registry
-
-    index = shelf / "index.md"
-    if not index.is_file():
-        return False
-    changed = False
-    out: list[str] = []
-    for line in index.read_text(encoding="utf-8").splitlines(keepends=True):
-        match = _QUEUE_ENTRY.match(line.rstrip("\n"))
-        name = match.group(2) if match else ""
-        eid = (renamed.get(name) or slugs.get(registry.epic_slug(name))) if match else None
-        if match and eid and eid != name:
-            line = f"{match.group(1)}[{eid}]({eid}/epic.md){match.group(4)}\n"
-            changed = True
-        out.append(line)
-    if changed:
-        index.write_text("".join(out), encoding="utf-8")
-    return changed
-
-
 def apply(artifacts: Path) -> tuple[list[str], list[str]]:
-    """Rename every epic folder and story folder on the shelf to its id, record each epic's slug, and repoint the queue; returns what moved and what could not."""
+    """Rename every epic folder and story folder on the shelf to its id, and record each epic's slug; returns what moved and what could not."""
     from ostler import registry
 
     shelf = artifacts / "epics"
     done: list[str] = []
     refused: list[str] = []
-    renamed: dict[str, str] = {}
-    slugs: dict[str, str] = {}
     for folder in _epic_folders(shelf):
         eid = _id_of(folder / "epic.md")
         if not eid:
@@ -124,7 +97,6 @@ def apply(artifacts: Path) -> tuple[list[str], list[str]]:
         slug = registry.epic_slug(folder.name)
         if _record_slug(folder / "epic.md", slug):
             done.append(f"{folder.name}: recorded slug `{slug}`")
-        slugs[_frontmatter(folder / "epic.md").get("slug") or slug] = eid
         for story_md in sorted((folder / "stories").glob("*/story.md")):
             sid = _id_of(story_md)
             target = story_md.parent.with_name(sid) if sid else None
@@ -142,10 +114,7 @@ def apply(artifacts: Path) -> tuple[list[str], list[str]]:
                 refused.append(f"{folder.name}: {eid} already exists")
                 continue
             folder.rename(target)
-            renamed[folder.name] = eid
             done.append(f"{folder.name} -> {eid}")
-    if _requeue(shelf, renamed, slugs):
-        done.append("index.md: queue entries now name the id folders")
     return done, refused
 
 
@@ -163,7 +132,7 @@ def check(artifacts: Path, home: Path) -> None:
         raise LayoutMoveRequired(
             f"the epics shelf {artifacts / 'epics'} still names {len(numbered)} epic folder(s) by "
             f"number and slug ({names}); epic and story folders are named by their ids now. Run "
-            f"`ostler layout apply` to rename them, record each epic's slug and repoint the queue, "
+            f"`ostler layout apply` to rename them and record each epic's slug, "
             f"then run ostler again")
     if not (
         (artifacts / "backlog").is_dir()

@@ -12,7 +12,7 @@ from ..fixtures import ALPHA, BRAVO, create_epic, create_story, delete_epic, del
 class ReshapeThePlan(Journey):
     """A planner grows the plan and trims it. They create a fourth epic, give it a story, retitle and relink the first
     epic's stories, find where a story and its spec live and which branch it takes, delete a story, and delete the
-    new epic, which a story can no longer be filed under, and the queued second epic. They name the new epic by its
+    new epic, which a story can no longer be filed under, and the second epic. They name the new epic by its
     slug and by an old NNNN-slug name, because the book cannot know the id the tool minted."""
 
     alone = True

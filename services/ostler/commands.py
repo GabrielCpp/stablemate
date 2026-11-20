@@ -5,89 +5,24 @@ from __future__ import annotations
 
 from ostler.book import STDERR, Bool, Command, Exit, Field, Files, Flag, Lines, Object, Positional, Str, Switch
 
-from .model.actions import (AddEpic, AddSeed, ApplyLayout, BranchName, ClearBlocks, DropEpic, DropStory, EditStory, ListEpics, ListFiles,
-                            MakeEpic, MakeStory, PathOfEpic, PruneEpic, RecordConflict, RemoveSeed, ReorderEpics, SetStoryStatus,
-                            SpecPath, StoryPath)
+from .model.actions import (AddSeed, ApplyLayout, BranchName, ClearBlocks, DropEpic, DropStory, EditStory, ListFiles,
+                            MakeEpic, MakeStory, PathOfEpic, RecordConflict, RemoveSeed, SetStoryStatus, SpecPath, StoryPath)
 from .model.files import MARKS
 
-EPIC = Field(Str(classes={"an epic with no folder": "0009-nope"}), required=False,
-             does="the epic to queue: its id, its slug, or an old NNNN-slug name read by its slug")
-QUEUED = Field(Str(classes={"an epic the queue does not hold": "0009-nope"}), required=False,
-               does="the epic to drop: its id, its slug, or an old NNNN-slug name read by its slug")
 SEED_EPIC = Field(Str(classes={"an epic that does not exist": "0009"}), required=False, does="the epic that lists the seed")
 SEED = Field(Str(classes={"a seed id": "SD-5", "a seed id with a dash and digits": "SD-12"}), required=False, does="the seed's id, free text")
 STORY = Field(Str(classes={"a story that does not exist": "TST-NOPE"}), required=False, does="the story's id")
 
 
-class TodoAdd(Command):
-    does = "Queue an epic, last or first, by its id, its slug or an old NNNN-slug name. The queue keeps the epic's id."
-    program = "ostler"
-    argv = ("--full-ids", "todo", "add", Positional("name"), Switch("--front", "front"))
-    args = Object("AddArgs", name=EPIC, front=Field(Bool(), required=False, does="queue the epic first rather than last"))
-    answers = (
-        Exit(0, Lines(), "the epic is queued, with a warning when it has no epic.md yet"),
-        Exit(1, Lines(), "the epic is already in the queue, matched by the name as typed or by the epic it stands for"),
-    )
-    carries = AddEpic
-    source = ("ostler/ostler/todo.py::add", "ostler/ostler/todo.py::_queued_as", "ostler/ostler/path.py::epic_dir_under")
-
-
-class TodoPrune(Command):
-    does = "Drop an epic from the queue."
-    program = "ostler"
-    argv = ("--full-ids", "todo", "prune", Positional("name"))
-    args = Object("PruneArgs", name=QUEUED)
-    answers = (
-        Exit(0, Lines(), "the queued epic is dropped, named as the queue spelled it"),
-        Exit(1, Lines(), "the queue does not hold the epic"),
-    )
-    carries = PruneEpic
-    source = ("ostler/ostler/todo.py::prune",)
-
-
-class TodoReorder(Command):
-    does = ("Move the named epics to the front of the queue in the order given; the rest keep their order after them. "
-            "An epic named twice, by the same name or by two names that stand for it, is refused.")
-    program = "ostler"
-    argv = ("--full-ids", "todo", "reorder", Positional("first"), Positional("then"))
-    args = Object(
-        "ReorderArgs",
-        first=Field(Str(classes={"an epic the queue does not hold": "0009-nope"}), required=False, does="the epic to put first"),
-        then=Field(Str(classes={"an epic the queue does not hold": "0009-nope"}), required=False, does="the epic to put second"),
-    )
-    answers = (
-        Exit(0, Lines(), "the queue is reordered"),
-        Exit(1, Lines(), "the queue does not hold a named epic, and the message lists those it lacks, as typed; or two names "
-                         "stand for the same queued epic, and the message names it as the queue spells it. "
-                         "The queue file is left as it was. A missing epic is refused before a repeat"),
-    )
-    carries = ReorderEpics
-    source = ("ostler/ostler/todo.py::reorder",)
-
-
-class TodoList(Command):
-    does = "Print the queue, one epic per line, first to last."
-    program = "ostler"
-    argv = ("--full-ids", "todo", "list")
-    args = Object("ListArgs")
-    answers = (
-        Exit(0, Lines(), "the queued epics, or (none) when the queue is empty"),
-        Exit(1, STDERR, "the shelf still names an epic folder by number and slug, as every command that reads the plan refuses"),
-    )
-    carries = ListEpics
-    source = ("ostler/ostler/todo.py::list_epics", "ostler/ostler/layout.py::check", "ostler/ostler/layout.py::numbered_epics")
-
-
 class LayoutApply(Command):
-    does = ("Rename every epic and story folder on the shelf to its id, record the slug of each epic that names none, "
-            "and point the queue entries at the id folders. A shelf already named by ids is left alone and said so.")
+    does = ("Rename every epic and story folder on the shelf to its id, and record the slug of each epic that names "
+            "none. A shelf already named by ids is left alone and said so.")
     program = "ostler"
     argv = ("--full-ids", "layout", "apply")
     args = Object("NoArgs")
-    answers = (Exit(0, Lines(), "one line per slug recorded, folder renamed and queue repointed, or the line that nothing moved"),)
+    answers = (Exit(0, Lines(), "one line per slug recorded and folder renamed, or the line that nothing moved"),)
     carries = ApplyLayout
-    source = ("ostler/ostler/cli.py::_cmd_layout", "ostler/ostler/layout.py::apply", "ostler/ostler/layout.py::_record_slug",
-              "ostler/ostler/layout.py::_requeue")
+    source = ("ostler/ostler/cli.py::_cmd_layout", "ostler/ostler/layout.py::apply", "ostler/ostler/layout.py::_record_slug")
 
 
 class SeedAdd(Command):
@@ -171,14 +106,17 @@ class PathEpic(Command):
     program = "ostler"
     argv = ("--full-ids", "path", "epic", Positional("name"))
     args = Object("PathEpicArgs", name=Field(Str(classes={"an epic with no folder": "nope"}), required=False, does="the epic, by id, slug or NNNN-slug"))
-    answers = (Exit(0, Lines(), "the epic's id folder, or a folder named as typed when no epic has the name"),)
+    answers = (
+        Exit(0, Lines(), "the epic's id folder, or a folder named as typed when no epic has the name"),
+        Exit(1, STDERR, "the shelf still names an epic folder by number and slug, as every command that reads the plan refuses"),
+    )
     carries = PathOfEpic
-    source = ("ostler/ostler/path.py::epic_dir_under",)
+    source = ("ostler/ostler/path.py::epic_dir_under", "ostler/ostler/layout.py::check", "ostler/ostler/layout.py::numbered_epics")
 
 
 class CreateEpic(Command):
     does = ("Create an epic: a folder named by the id it mints and an epic.md that records the slug, with no stories. "
-            "An old NNNN-slug name gives the slug alone. A slug an epic already has is refused. The new epic is not queued.")
+            "An old NNNN-slug name gives the slug alone. A slug an epic already has is refused.")
     program = "ostler"
     argv = ("--full-ids", "create", "epic", Positional("name"), Flag("--title", "title"))
     args = Object(
@@ -215,12 +153,12 @@ class CreateStory(Command):
 
 
 class DeleteEpic(Command):
-    does = ("Delete an epic's folder, drop it from the queue and from the milestones that list it. "
+    does = ("Delete an epic's folder and drop it from the milestones that list it. "
             "An epic that is already gone is reported as absent, and the clean-up still runs.")
     program = "ostler"
     argv = ("--full-ids", "delete", "epic", Positional("name"))
     args = Object("DeleteEpicArgs", name=Field(Str(classes={"an epic slug": "second", "an old name": "0001-first"}), required=False, does="the epic, by id, slug or NNNN-slug"))
-    answers = (Exit(0, Lines(), "the epic is deleted and the line names its id folder, or it was already absent; the line says when the queue dropped it"),)
+    answers = (Exit(0, Lines(), "the epic is deleted and the line names its id folder, or it was already absent"),)
     carries = DropEpic
     source = ("ostler/ostler/crud.py::delete_epic",)
 
@@ -343,5 +281,5 @@ class Look(Files):
     source = ("ostler/ostler/crud.py::set_status", "ostler/ostler/crud.py::add_seed")
 
 
-ALL = (TodoAdd, TodoPrune, TodoReorder, TodoList, LayoutApply, SeedAdd, SeedRemove, SetStatus, Conflict, PathEpic, CreateEpic, CreateStory,
+ALL = (LayoutApply, SeedAdd, SeedRemove, SetStatus, Conflict, PathEpic, CreateEpic, CreateStory,
        DeleteEpic, DeleteCreatedEpic, DeleteStory, UpdateStory, Unblock, PathStory, PathSpec, PathBranch, Look)

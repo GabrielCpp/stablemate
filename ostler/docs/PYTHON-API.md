@@ -19,7 +19,7 @@ from ostler import Ostler
 okf = Ostler("path/to/repo")          # graph root discovered upward, like `-C DIR`; None ⇒ cwd
 scoped = Ostler("path/to/repo", doc_roots={"epics": "product/epics"})
 
-okf.todo()                            # ["checkout-flow", …]        (ostler todo list)
+okf.milestone_epics()                 # ["EPIC-1", …]               (every epic the milestones list, in order)
 okf.list("story", epic="checkout-flow")   # [{"slug","status",…}]  (ostler list --type story)
 okf.next_story("checkout-flow")       # {"slug": …} | None          (ostler next-story)
 okf.spec_path("01-cart")              # "docs/specs/01-cart"        (ostler path spec)
@@ -34,14 +34,14 @@ milestone = okf.create_milestone("checkout-mvp", "Checkout MVP", [item.entity_id
 okf.set_milestone_source_items("checkout-mvp", [item.entity_id])
 okf.backlog_import("docs/backlog.md", repo="acme")  # turn an old bullet list into records, once
 okf.delete_story("02-pay")             # same mutation surface as `ostler delete story`
-okf.delete_epic("checkout-flow")        # also removes milestone and queue references
+okf.delete_epic("checkout-flow")        # also removes milestone references
 okf.set_status("01-cart", "QA passed")
 ```
 
 `doc_roots` overrides configured roots for that facade's reads and mutations; relative values
 resolve from the discovered repository root. The loaded graph is a **snapshot**: reads reuse one cached load; a mutation
 (`create_*`/`update_story`/`delete_*`/`add_seed`/`set_status`/`backlog_*`/
-`set_milestone_*`/`todo_*`/`settle_review`/`settle_answers`) applies
+`set_milestone_*`/`settle_review`/`settle_answers`) applies
 against a fresh load and invalidates the cache, so the next read reflects it
 (`reload()` forces a refresh). A read never returns `None` — an unloadable graph
 *raises*. The QA/artifact/edit surface is on the same object

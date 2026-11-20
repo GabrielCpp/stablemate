@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from ostler import crud, doctor, path as path_mod, query, registry, select, todo
+from ostler import crud, doctor, path as path_mod, query, registry, select
 from ostler.model import load
 
 from conftest import present, write, epics_root
@@ -57,19 +57,6 @@ def test_an_epic_whose_folder_is_its_id_resolves_by_slug(tmp_path: Path):
     assert found is not None and found.name == "x-1"
     modern = _create(tmp_path, "modern")
     assert modern == present(load(tmp_path).epic_by_ref("modern")).eid
-
-
-def test_the_queue_tolerates_either_name(tmp_path: Path):
-    one = _create(tmp_path, "one")
-    two = _create(tmp_path, "two")
-    write(epics_root() / "index.md", f"# Epics\n\n- [{one}]({one}/epic.md) — One\n")
-    assert todo.list_epics(load(tmp_path)) == [one]
-    assert not todo.add(load(tmp_path), "one").ok, "already queued, under its other name"
-    assert todo.add(load(tmp_path), "two").ok
-    assert todo.reorder(load(tmp_path), ["two", one]).ok
-    assert todo.list_epics(load(tmp_path)) == [two, one]
-    assert todo.prune(load(tmp_path), "one").ok
-    assert todo.list_epics(load(tmp_path)) == [two]
 
 
 def test_registry_helpers_do_not_read_a_short_number_as_a_prefix(tmp_path: Path):

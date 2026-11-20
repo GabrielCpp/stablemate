@@ -6,7 +6,7 @@ The commands in `graph.py` take free text in the real tool: an epic name, a stor
 each of them once per call it plays and writes the words into the argv, so the command has no argument to vary. A free
 text field would draw the run's input classes and twins, and the tool answers `" alpha "` and `"alpha"` apart
 for most of these, so every field would end as a registered underspecified pair that says nothing about the product.
-The commands that do vary a field (`todo`, `seed`, `set-status`, `conflict`, `unblock`, `create epic|story`, `update
+The commands that do vary a field (`seed`, `set-status`, `conflict`, `unblock`, `create epic|story`, `update
 story`, `delete`, `path`) stay in `commands.py` with their classes.
 
 A command whose output the book cannot state keeps every line opaque, so the claim is the exit code and the files the

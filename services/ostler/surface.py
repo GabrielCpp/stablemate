@@ -26,11 +26,6 @@ def story_page(slug: str, ident: str) -> str:
             "- **Status**: Not started\n")
 
 
-def index_page(eids: tuple[str, ...]) -> str:
-    rows = "".join(f"- [{e}]({e}/epic.md) — {TITLES[e]}\n" for e in eids)
-    return f"# Epics\n\nThe ordered work queue for this repo.\n\n{rows}"
-
-
 GOOD_PLAN = (
     "from ostler_qa import Qa, plan, scenario, target\n\nplan(run_id=\"RUN-1\", story=\"alpha\")\n\ncli = target(\"cli\")\n\n\n"
     "@scenario(target=cli, mechanism=\"fixture\", covers=[\"ac-1\"])\ndef adds_up(qa: Qa) -> None:\n    \"\"\"Arithmetic holds.\"\"\"\n"
@@ -58,7 +53,6 @@ def files() -> dict[str, str]:
     out = {"agents.yml": f"repo:\n  id_prefix: {PREFIX}\n", "home/.keep": "", "plans/qa_plan.py": GOOD_PLAN,
            "plans/bad/qa_plan.py": BAD_PLAN, "plans/web/qa_plan.py": WEB_PLAN, "plans/phone/qa_plan.py": PHONE_PLAN,
            "plans/grpc/qa_plan.py": GRPC_PLAN, "vet/regions.json": "[]", "vet/manifest.json": "{}", "old-backlog.md": OLD_BACKLOG}
-    out["art/epics/index.md"] = index_page((FIRST, SECOND))
     out.update(DEMO_BOOK)
     for eid in EPICS:
         out[f"art/epics/{eid}/epic.md"] = epic_page(eid)

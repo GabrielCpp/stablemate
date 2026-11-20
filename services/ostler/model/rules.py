@@ -6,54 +6,12 @@ from __future__ import annotations
 
 from ostler.book import Actor, Exited, Rule
 
-from ..fixtures import (SEED_LAYERS, SEED_STATUSES, AddArgs, ListArgs, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
-                        DeleteStoryArgs, PathBranchArgs, PathSpecArgs, PathStoryArgs, PruneArgs, ReorderArgs, SeedAddArgs,
+from ..fixtures import (SEED_LAYERS, SEED_STATUSES, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
+                        DeleteStoryArgs, PathBranchArgs, PathEpicArgs, PathSpecArgs, PathStoryArgs, SeedAddArgs,
                         SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs)
 from .state import Plan
 
 FAILED = Exited(1)
-
-
-def queued_as(s: Plan, name: str | None) -> str | None:
-    """The queue entry that names the same epic as this name: the entry spelled as typed, else the first entry that
-    stands for the epic the name stands for. A name that stands for no epic matches only itself."""
-    if name is None:
-        return None
-    epics = s.epics()
-    if name in epics:
-        return name
-    wanted = s.epic_of(name)
-    if wanted is None:
-        return None
-    return next((e for e in epics if s.epic_of(e) == wanted), None)
-
-
-def _queued(a: AddArgs, s: Plan, by: Actor | None) -> bool:
-    return queued_as(s, a.name) is not None
-
-
-def _not_queued(a: PruneArgs, s: Plan, by: Actor | None) -> bool:
-    return queued_as(s, a.name) is None
-
-
-def _lost(a: ReorderArgs, s: Plan) -> tuple[str, ...]:
-    return tuple(n for n in (a.first, a.then) if n is not None and queued_as(s, n) is None)
-
-
-def _both_lost(a: ReorderArgs, s: Plan, by: Actor | None) -> bool:
-    return len(_lost(a, s)) == 2
-
-
-def _first_lost(a: ReorderArgs, s: Plan, by: Actor | None) -> bool:
-    return _lost(a, s) == (a.first,)
-
-
-def _then_lost(a: ReorderArgs, s: Plan, by: Actor | None) -> bool:
-    return a.then is not None and _lost(a, s) == (a.then,)
-
-
-def _twice(a: ReorderArgs, s: Plan, by: Actor | None) -> bool:
-    return a.first is not None and a.then is not None and queued_as(s, a.first) == queued_as(s, a.then)
 
 
 def _no_epic(a: SeedAddArgs | SeedRemoveArgs, s: Plan, by: Actor | None) -> bool:
@@ -122,16 +80,6 @@ def _conflict_unclear(a: ConflictArgs, s: Plan, by: Actor | None) -> bool:
     return bool(a.text) == bool(a.clear)
 
 
-already_queued = Rule[AddArgs, Plan]("epic '{canonical}' already in the queue", _queued, FAILED,
-                                      why="adding an epic twice would run it twice, so the queue refuses the second.")
-not_in_queue = Rule[PruneArgs, Plan]("epic '{name}' not in the queue", _not_queued, FAILED)
-both_missing = Rule[ReorderArgs, Plan]("not in queue: {first}, {then}", _both_lost, FAILED)
-first_missing = Rule[ReorderArgs, Plan]("not in queue: {first}", _first_lost, FAILED)
-then_missing = Rule[ReorderArgs, Plan]("not in queue: {then}", _then_lost, FAILED)
-named_twice = Rule[ReorderArgs, Plan](
-    "epic '{repeated}' named more than once", _twice, FAILED,
-    why="a repeated name is most often a typo for another epic, so the reorder says which name repeats and writes "
-        "nothing, where dropping the repeat would reorder the queue on a guess.")
 no_epic_to_add_to = Rule[SeedAddArgs, Plan]("no epic '{epic}'", _no_epic, FAILED)
 invalid_status = Rule[SeedAddArgs, Plan](
     "invalid status '{status}' (one of backlog, researched, covered, resolved, dropped, deferred)", _bad_status, FAILED)
@@ -164,9 +112,9 @@ def _numbered(a: object, s: Plan, by: Actor | None) -> bool:
     return bool(s.numbered())
 
 
-shelf_numbered = Rule[ListArgs, Plan](
+shelf_numbered = Rule[PathEpicArgs, Plan](
     "error: the epics shelf <sandbox>/art/epics still names 1 epic folder(s) by number and slug (0004-legacy); epic and "
-    "story folders are named by their ids now. Run `ostler layout apply` to rename them, record each epic's slug and "
-    "repoint the queue, then run ostler again", _numbered, FAILED,
-    why="a command that read a numbered folder would build every path, queue entry and milestone line from a name "
-        "that goes stale, so ostler reads nothing until the shelf is renamed.")
+    "story folders are named by their ids now. Run `ostler layout apply` to rename them and record each epic's slug, "
+    "then run ostler again", _numbered, FAILED,
+    why="a command that read a numbered folder would build every path and milestone line from a name that goes "
+        "stale, so ostler reads nothing until the shelf is renamed.")

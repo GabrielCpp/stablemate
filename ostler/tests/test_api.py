@@ -146,15 +146,12 @@ def test_remove_seed_is_visible_to_the_next_read(repo: Path):
     assert "seed-a1" not in {r["id"] for r in okf.list("seed", epic="epic-a")}
 
 
-def test_backlog_and_todo_round_trip(repo: Path):
+def test_backlog_round_trip(repo: Path):
     okf = Ostler(repo)
     assert okf.record_listing() == []
     result = okf.create_backlog_item("fix the thing", repo="web-app", area="checkout")
     assert result.entity_id
     assert [line.split("\t")[0] for line in okf.record_listing()] == [result.entity_id]
-
-    okf.todo_add("epic-a")
-    assert EPIC_A in okf.todo()
 
 
 def test_create_milestone_is_visible_to_the_next_read(repo: Path):

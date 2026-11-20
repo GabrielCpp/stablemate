@@ -56,49 +56,6 @@ class Epic:
 
 
 @dataclass
-class AddArgs(Epic, Fixture):
-    name: str | None = None
-    front: bool | None = None
-
-    @classmethod
-    def examples(cls, state: Any, by: Actor | None) -> Iterable[AddArgs]:
-        return (todo_add("third"), todo_add("0003-third", front=True), todo_add(THIRD), todo_add("second"), todo_add("0009-nope"))
-
-
-@dataclass
-class PruneArgs(Epic, Fixture):
-    name: str | None = None
-
-    @classmethod
-    def examples(cls, state: Any, by: Actor | None) -> Iterable[PruneArgs]:
-        return (todo_prune("second"), todo_prune("0003-third"), todo_prune("0001-first"))
-
-
-@dataclass
-class ReorderArgs(Fixture):
-    first: str | None = None
-    then: str | None = None
-
-    @property
-    def repeated(self) -> str:
-        """The epic both names stand for, as the queue spells it."""
-        return directory_of(self.first or "")
-
-    @classmethod
-    def examples(cls, state: Any, by: Actor | None) -> Iterable[ReorderArgs]:
-        return (todo_reorder("second"), todo_reorder("0002-second", "0001-first"), todo_reorder("0001-first", "0003-third"),
-                todo_reorder("0002-second", "0002-second"), todo_reorder("second", "0002-second"),
-                todo_reorder("0001-first", "first"), todo_reorder("0009-nope", "0009-nope"))
-
-
-@dataclass
-class ListArgs(Fixture):
-    @classmethod
-    def examples(cls, state: Any, by: Actor | None) -> Iterable[ListArgs]:
-        return (todo_list(),)
-
-
-@dataclass
 class SeedAddArgs(Fixture):
     epic: str | None = None
     seed: str | None = None
@@ -315,22 +272,6 @@ def nothing() -> Nothing:
     return Nothing()
 
 
-def todo_add(name: str | None = "third", *, front: bool | None = None) -> AddArgs:
-    return AddArgs(name=name, front=front)
-
-
-def todo_prune(name: str | None = "0002-second") -> PruneArgs:
-    return PruneArgs(name=name)
-
-
-def todo_reorder(first: str | None = "0002-second", then: str | None = None) -> ReorderArgs:
-    return ReorderArgs(first=first, then=then)
-
-
-def todo_list() -> ListArgs:
-    return ListArgs()
-
-
 def seed_add(epic: str | None = "0002-second", seed: str | None = "SD-3", *, status: str | None = None,
              layer: str | None = None) -> SeedAddArgs:
     return SeedAddArgs(epic=epic, seed=seed, status=status, layer=layer)
@@ -357,7 +298,7 @@ __all__ = [
     "BLOCKERS", "COVERS", "CreateEpicArgs", "CreateStoryArgs", "DeleteEpicArgs", "DeleteStoryArgs", "PathBranchArgs",
     "PathSpecArgs", "PathStoryArgs", "SLUGS", "UnblockArgs", "UpdateStoryArgs", "create_epic", "create_story",
     "delete_epic", "delete_story", "path_branch", "path_spec", "path_story", "unblock", "update_story",
-    "ALPHA", "AddArgs", "BRAVO", "FIRST", "SECOND", "SLUG_OF", "THIRD", "ConflictArgs", "EPICS", "ListArgs", "PathEpicArgs", "PruneArgs", "ReorderArgs", "SEED_LAYERS",
+    "ALPHA", "BRAVO", "FIRST", "SECOND", "SLUG_OF", "THIRD", "ConflictArgs", "EPICS", "PathEpicArgs", "SEED_LAYERS",
     "SEED_STATUSES", "STORY_PATHS", "SX", "SeedAddArgs", "SeedRemoveArgs", "SetStatusArgs", "conflict", "directory_of", "path_epic",
-    "seed_add", "seed_remove", "set_status", "slug_of", "todo_add", "todo_list", "todo_prune", "todo_reorder",
+    "seed_add", "seed_remove", "set_status", "slug_of",
 ]

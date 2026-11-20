@@ -4,71 +4,20 @@ from __future__ import annotations
 
 from ostler.book import Action, Actor, Create, Delete, Select, Transaction, Update
 
-from ..fixtures import (COVERS, SLUGS, STORY_PATHS, AddArgs, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
-                        DeleteEpicArgs, DeleteStoryArgs, ListArgs, Nothing, PathBranchArgs, PathEpicArgs, PathSpecArgs, PathStoryArgs,
-                        PruneArgs, ReorderArgs, SeedAddArgs, SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs,
+from ..fixtures import (COVERS, SLUGS, STORY_PATHS, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
+                        DeleteEpicArgs, DeleteStoryArgs, Nothing, PathBranchArgs, PathEpicArgs, PathSpecArgs, PathStoryArgs,
+                        SeedAddArgs, SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs,
                         slug_of)
 from . import rules
 from .files import (BULLET_LINES, CONFLICT_LINES, LEGACY, LEGACY_SLUG, LEGACY_STORY, MOVED_EPIC, MOVED_STORY, NOT_STARTED,
                     OLD_EPIC, OLD_FOLDER, OLD_STORY, RECORDED_SLUG, STATUS_LINES, FileRecord, holding, seed_block)
-from .records import MintedEpic, MintedStory, Queue
-from .rules import queued_as
-from .state import MINTED, QUEUE, Plan
-
-WARNING = " — WARNING: no '{name}/epic.md' yet, so epic selection will skip it and report no work remaining"
-
-
-def requeue(s: Plan, epics: tuple[str, ...]) -> Update:
-    return Update(s.queue, QUEUE, Queue(QUEUE, epics))
+from .records import MintedEpic, MintedStory
+from .state import MINTED, Plan
 
 
 def rewrite(s: Plan, path: str, *strings: str) -> Update:
     """The change that leaves this file holding exactly these strings."""
     return Update(s.files, path, holding(path, *strings))
-
-
-class AddEpic(Action[AddArgs, Plan]):
-    accept = AddArgs
-    rules = (rules.already_queued,)
-
-    @staticmethod
-    def reduce(a: AddArgs, s: Plan, by: Actor | None) -> Transaction:
-        name = s.resolve_epic(a.name)
-        epics = (name, *s.epics()) if a.front else (*s.epics(), name)
-        warning = "" if name in s.folders() else WARNING.format(name=name)
-        return Transaction(requeue(s, epics), says=(f"queued epic '{name}'{warning}",))
-
-
-class PruneEpic(Action[PruneArgs, Plan]):
-    accept = PruneArgs
-    rules = (rules.not_in_queue,)
-
-    @staticmethod
-    def reduce(a: PruneArgs, s: Plan, by: Actor | None) -> Transaction:
-        queued = queued_as(s, a.name)
-        epics = tuple(e for e in s.epics() if e != queued)
-        return Transaction(requeue(s, epics), says=(f"pruned epic '{queued}' from the queue",))
-
-
-class ReorderEpics(Action[ReorderArgs, Plan]):
-    accept = ReorderArgs
-    rules = (rules.both_missing, rules.first_missing, rules.then_missing, rules.named_twice)
-
-    @staticmethod
-    def reduce(a: ReorderArgs, s: Plan, by: Actor | None) -> Transaction:
-        named = [queued_as(s, n) for n in (a.first, a.then) if n is not None]
-        front = tuple(n for n in named if n is not None)
-        epics = (*front, *(e for e in s.epics() if e not in front))
-        return Transaction(requeue(s, epics), says=("reordered epics queue",))
-
-
-class ListEpics(Action[ListArgs, Plan]):
-    accept = ListArgs
-    rules = (rules.shelf_numbered,)
-
-    @staticmethod
-    def reduce(a: ListArgs, s: Plan, by: Actor | None) -> Transaction:
-        return Transaction(says=s.epics() or ("(none)",))
 
 
 class AddSeed(Action[SeedAddArgs, Plan]):
@@ -129,6 +78,7 @@ class RecordConflict(Action[ConflictArgs, Plan]):
 
 class PathOfEpic(Action[PathEpicArgs, Plan]):
     accept = PathEpicArgs
+    rules = (rules.shelf_numbered,)
 
     @staticmethod
     def reduce(a: PathEpicArgs, s: Plan, by: Actor | None) -> Transaction:
@@ -192,19 +142,15 @@ class DropEpic(Action[DeleteEpicArgs, Plan]):
         name = a.name or ""
         folder = s.resolve_epic(name)
         existed = folder in s.folders()
-        queued = queued_as(s, name)
-        removed = " (removed from epics index)" if queued is not None else ""
         gone = tuple(f.path for f in s.files if f.path.startswith("art/epics/") and epic_of(f.path) == folder)
         changes: list = [Delete(s.files, path) for path in gone]
         changes += [Delete(s.stories, story.key) for story in s.stories if story.epic == folder]
         changes += [Delete(s.minted, epic.slug) for epic in s.minted if MINTED.format(epic.slug) == folder]
-        if queued is not None:
-            changes.append(requeue(s, tuple(e for e in s.epics() if e != queued)))
         if folder.startswith(MINTED.format("")[:-1]):
             return Transaction(*changes, says=())
         if not existed:
-            return Transaction(*changes, says=(f"epic '{name}' already absent; cleanup complete{removed}",))
-        return Transaction(*changes, says=(f"deleted epic '{folder}'{removed}",))
+            return Transaction(*changes, says=(f"epic '{name}' already absent; cleanup complete",))
+        return Transaction(*changes, says=(f"deleted epic '{folder}'",))
 
 
 class DropStory(Action[DeleteStoryArgs, Plan]):
@@ -302,8 +248,7 @@ class BranchName(Action[PathBranchArgs, Plan]):
 class CopyOldEpic(Action[object, Plan]):
     @staticmethod
     def reduce(a: object, s: Plan, by: Actor | None) -> Transaction:
-        return Transaction(Create(s.files, holding(OLD_EPIC)), Create(s.files, holding(OLD_STORY, NOT_STARTED)),
-                           requeue(s, (*s.epics(), OLD_FOLDER)))
+        return Transaction(Create(s.files, holding(OLD_EPIC)), Create(s.files, holding(OLD_STORY, NOT_STARTED)))
 
 
 class ApplyLayout(Action[Nothing, Plan]):
@@ -313,11 +258,8 @@ class ApplyLayout(Action[Nothing, Plan]):
     def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
         if OLD_EPIC not in s.files.items:
             return Transaction(says=("every epic and story folder is already named by its id",))
-        queued = OLD_FOLDER in s.epics()
         changes: list = [Delete(s.files, OLD_EPIC), Delete(s.files, OLD_STORY), Create(s.files, holding(MOVED_EPIC, RECORDED_SLUG)),
                          Create(s.files, holding(MOVED_STORY, NOT_STARTED))]
-        if queued:
-            changes.append(requeue(s, tuple(LEGACY if e == OLD_FOLDER else e for e in s.epics())))
         says = (f"{OLD_FOLDER}: recorded slug `{LEGACY_SLUG}`", f"{OLD_FOLDER}/stories/echo -> {LEGACY_STORY}",
                 f"{OLD_FOLDER} -> {LEGACY}")
-        return Transaction(*changes, says=(*says, *(("index.md: queue entries now name the id folders",) if queued else ())))
+        return Transaction(*changes, says=says)
