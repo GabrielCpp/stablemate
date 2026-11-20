@@ -63,8 +63,8 @@ RECORD_FILE = "book-qa.json"
 BOOK_OUT = Path("qa") / "book"
 UNREACHED_FILE = "qa-unreached.json"
 PLAN_FILE = "qa-plan.md"
-PLAY_LIMIT_S = 7200
 TIMEOUT_EXIT = 3
+WHOLE_PLAYS_NEVER_RUN = "whole plays are never run for a story; what the selection could not narrow is listed as owed"
 PLAN_STRENGTH = ("none", "empty", "partial", "whole")
 
 
@@ -94,13 +94,19 @@ def _printed(text: str | bytes | None) -> str:
     return text.decode("utf-8", "replace") if isinstance(text, bytes) else text or ""
 
 
-def _play(argv: list[str], cwd: Path, timeout: float | None = None, held: dict[str, str] | None = None) -> BookPlay:
+def _play(
+    argv: list[str],
+    cwd: Path,
+    timeout: float | None = None,
+    held: dict[str, str] | None = None,
+    limit_text: str = "",
+) -> BookPlay:
     try:
         done = run_tool(argv, cwd=cwd, env={**BOOK_ENV, **(held or {})}, timeout=timeout)
     except subprocess.TimeoutExpired as expired:
         printed = _tail(_printed(expired.stdout) + _printed(expired.stderr))
         minutes = int((timeout or 0) // 60)
-        return BookPlay(exit_code=TIMEOUT_EXIT, output=f"the play did not end within {minutes} minutes\n{printed}".strip())
+        return BookPlay(exit_code=TIMEOUT_EXIT, output=f"{limit_text or f'the play did not end within {minutes} minutes'}\n{printed}".strip())
     return BookPlay(exit_code=done.returncode, output=_tail(done.stdout + done.stderr))
 
 
@@ -460,11 +466,9 @@ def write_qa_plan(
 ) -> BookPlay:
     """Write `qa-plan.md` in the spec dir from the plans the book selected and the exit of each play, with no agent involved."""
     exits = exits or {}
-    lines = ["# QA plan", ""]
+    lines = ["# QA plan", "", WHOLE_PLAYS_NEVER_RUN, ""]
     for plan in plans:
         lines += [f"## {plan.service}", "", f"- plan: {plan.plan}"]
-        if plan.plan == "whole" and plan.reason:
-            lines.append(f"- reason: {plan.reason}")
         lines += [
             f"- calls: {', '.join(plan.only) or 'none'}",
             f"- journeys: {', '.join(plan.by_journey) or 'none'}",
@@ -472,8 +476,10 @@ def write_qa_plan(
             f"- changed files: {plan.changed}",
             f"- files not judged: {plan.not_judged}",
             f"- play exit: {exits[plan.service] if plan.service in exits else 'not played'}",
-            "",
         ]
+        if plan.owed:
+            lines.append(f"- owed to the scheduled whole play: {plan.owed}")
+        lines.append("")
     target = Path(spec_dir) / PLAN_FILE
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines), encoding="utf-8")
@@ -488,37 +494,40 @@ def book_run(
     only: list[str],
     copy: str,
     out_dir: str,
-    outside: list[str] | None = None,
+    limit_minutes: int,
     journeys: list[str] | None = None,
     fresh: bool = False,
     repo_dir: str = "",
 ) -> BookPlay:
-    """Play the named calls of the service's book against the run's copy of the stack, or the whole book when `only` and `journeys` are empty. Named journeys are a second play after the calls, because `--only` and `--journey` combine as AND in one run. The first play of the service reloads the data when `fresh`. A finding of an endpoint outside `outside` goes to the book's register of underspecified fields. A play still running after `PLAY_LIMIT_S` seconds is killed and exits 3."""
+    """Play the named calls of the service's book against the run's copy of the stack. Named journeys are a second play after the calls, because `--only` and `--journey` combine as AND in one run. The first play of the service reloads the data when `fresh`. A play still running after `limit_minutes` minutes is killed and exits 3."""
     root = find_book_root(repo_dir)
     modules = book_modules(root, service) or (f"services.{service}",)
     wanted = list(journeys or [])
+    if not only and not wanted:
+        return BookPlay(exit_code=0, output="nothing selected to play")
     laps = [(only, []), ([], wanted)] if only and wanted else [([], wanted)] if wanted else [(only, [])]
+    limit_text = (
+        f"the play of {service} did not end within {limit_minutes} minutes: "
+        f"the story's plays are limited to {limit_minutes} minutes (book_play_minutes)"
+    )
     reload = fresh
     outputs: list[str] = []
     for named_calls, titles in laps:
         for module in modules:
             if len(modules) == 1:
-                named, module_outside, register, target = named_calls, outside, False, out_dir
+                named, target = named_calls, out_dir
             else:
                 claims = _calls_by_module(root, modules)
                 named = [call for call in named_calls if call in claims[module] or (module == modules[0] and not any(call in held for held in claims.values()))]
                 if named_calls and not named:
                     continue
-                kept = [call for call in outside or () if call in claims[module]]
-                module_outside = kept if kept or not outside else None
-                register = bool(outside) and not kept
                 target = str(Path(out_dir) / module)
             if titles:
                 target = str(Path(target) / "journeys")
-            argv = _run_argv(module, named, module_outside, copy, target, register=register, journeys=titles, fresh=reload)
+            argv = _run_argv(module, named, copy, target, journeys=titles, fresh=reload)
             reload = False
-            play = _play(argv, root, PLAY_LIMIT_S, stack_env(root, lease=copy))
-            what = f"{len(named)} call(s)" if named else f"{len(titles)} journey(s)" if titles else "the whole book"
+            play = _play(argv, root, limit_minutes * 60, stack_env(root, lease=copy), limit_text)
+            what = f"{len(named)} call(s)" if named else f"{len(titles)} journey(s)"
             logger.info("book run of %s over %s exited %d", module, what, play.exit_code)
             if play.exit_code != 0:
                 return play if len(modules) == 1 else BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
@@ -529,10 +538,8 @@ def book_run(
 def _run_argv(
     module: str,
     only: list[str],
-    outside: list[str] | None,
     copy: str,
     out_dir: str,
-    register: bool = False,
     journeys: list[str] | None = None,
     fresh: bool = False,
 ) -> list[str]:
@@ -545,10 +552,6 @@ def _run_argv(
         argv += ["--partial"]
         for title in journeys:
             argv += ["--journey", title]
-    if outside:
-        argv += ["--register-outside", ",".join(outside)]
-    elif register:
-        argv += ["--register"]
     return argv + ["--copy", copy, "--out", out_dir]
 
 
@@ -674,7 +677,6 @@ __all__ = [
     "RECORD_FILE",
     "UNREACHED_FILE",
     "PLAN_FILE",
-    "PLAY_LIMIT_S",
     "book_check",
     "book_dir",
     "book_plan",

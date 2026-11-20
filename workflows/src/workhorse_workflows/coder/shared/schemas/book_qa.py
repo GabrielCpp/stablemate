@@ -100,6 +100,7 @@ class BookPlan(CoderResult):
     by_journey: list[str] = []
     whole: bool = False
     reason: str = ""
+    owed: str = ""
     uncovered: list[str] = []
     changed: int = 0
     not_judged: int = 0

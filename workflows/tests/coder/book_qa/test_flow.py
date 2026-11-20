@@ -136,10 +136,12 @@ class _Book:
         affected: tuple[int, ...] = (0,),
         plans: dict[str, dict[str, Any]] | None = None,
         hang: bool = False,
+        on_run: Callable[[], None] | None = None,
     ) -> None:
         self.script = {"check": check, "run": run, "verified": verified, "affected": affected}
         self.plans = plans or {}
         self.hang = hang
+        self.on_run = on_run
         self.timeouts: list[float | None] = []
         self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": [], "affected": []}
         self.cwds: list[Any] = []
@@ -165,6 +167,8 @@ class _Book:
             return self._stale(argv)
         if verb == "run":
             self.timeouts.append(timeout)
+            if self.on_run:
+                self.on_run()
             if self.hang:
                 raise subprocess.TimeoutExpired(argv, timeout or 0, output="half a report\n", stderr="")
         codes = self.script[verb]
@@ -1122,7 +1126,7 @@ def test_a_pass_that_changed_only_a_new_journey_and_the_index_plays_the_named_ca
 
 
 @pytest.mark.parametrize("touch", ["model/records.py", "journeys/existing.py", "records.py"])
-def test_a_pass_that_changed_a_shared_part_plays_the_whole_book(
+def test_a_pass_that_changed_a_shared_part_plays_the_selection_and_owes_the_rest(
     lane: Path,
     book: Callable[..., _Book],
     stack: _Stack,
@@ -1130,18 +1134,19 @@ def test_a_pass_that_changed_a_shared_part_plays_the_whole_book(
     drive_flow: Callable[..., Any],
     touch: str,
 ) -> None:
-    """A model, fixture or existing journey edit can move a call the pass never named."""
+    """A model, fixture or existing journey edit can move a call the pass never named, and a story never plays the whole book."""
     scripted = book()
 
     result = drive_flow(_flow(), env(), _Agent(lane, touch=touch))
 
     assert result.status == "passed", result
     [argv] = scripted.argv["run"]
-    assert _played_whole(argv), argv
+    assert argv[argv.index("--only") + 1] == "ListX,BuildX", argv
     assert argv[argv.index("--copy") + 1] == stack_lease(argv), argv
+    assert f"- owed to the scheduled whole play: services/api/{touch}" in _plan_md()
 
 
-def test_a_shared_edit_beside_a_new_journey_still_plays_the_whole_book(
+def test_a_shared_edit_beside_a_new_journey_still_owes_the_shared_path(
     lane: Path,
     write: Callable[[Path, str], Path],
     book: Callable[..., _Book],
@@ -1149,13 +1154,28 @@ def test_a_shared_edit_beside_a_new_journey_still_plays_the_whole_book(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """One shared path decides the scope, whatever else the pass added."""
+    """One shared path is owed, whatever else the pass added."""
     write(lane / "services" / "api" / "fixtures.py", "# new\n")
     scripted = book()
 
     drive_flow(_flow(), env(), _Agent(lane, touch="journeys/new.py"))
 
-    assert _played_whole(scripted.argv["run"][0]), scripted.argv["run"]
+    assert not _played_whole(scripted.argv["run"][0]), scripted.argv["run"]
+    assert "- owed to the scheduled whole play: services/api/fixtures.py" in _plan_md()
+
+
+def test_the_limit_defaults_to_fifteen_minutes(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book()
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    assert scripted.timeouts == [15 * 60]
 
 
 def test_the_recorded_replay_stays_targeted_when_nothing_changed(
@@ -1173,24 +1193,6 @@ def test_the_recorded_replay_stays_targeted_when_nothing_changed(
     drive_flow(_flow(), env(), _Agent(lane))
 
     assert not _played_whole(scripted.argv["run"][0]), scripted.argv["run"]
-
-
-def test_the_whole_book_play_registers_the_findings_outside_the_named_calls(
-    lane: Path,
-    book: Callable[..., _Book],
-    stack: _Stack,
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-) -> None:
-    """A finding on a field the story never touched is the owner's to answer, so the whole play lists it in the register."""
-    scripted = book()
-
-    drive_flow(_flow(), env(), _Agent(lane, touch="records.py"))
-
-    [argv] = scripted.argv["run"]
-    assert _played_whole(argv), argv
-    assert argv[argv.index("--register-outside") + 1] == "ListX,BuildX", argv
-    assert "--register" not in argv, argv
 
 
 def test_a_play_of_the_named_calls_registers_nothing(
@@ -1297,7 +1299,7 @@ def test_a_book_with_two_surfaces_checks_each_and_plays_each_its_own_calls(
         assert argv[argv.index("--out") + 1].endswith(f"/{module}"), argv
 
 
-def test_a_shared_model_edit_plays_every_surface_whole_and_registers_outside_its_calls(
+def test_a_shared_model_edit_plays_every_surface_its_calls_and_never_the_whole_book(
     lane: Path,
     git: Callable[..., subprocess.CompletedProcess[str]],
     write: Callable[[Path, str], Path],
@@ -1314,9 +1316,10 @@ def test_a_shared_model_edit_plays_every_surface_whole_and_registers_outside_its
 
     played = {argv[argv.index("run") + 1]: argv for argv in scripted.argv["run"]}
     assert sorted(played) == ["services.api.http", "services.api.web"], played
-    assert all(_played_whole(argv) for argv in played.values()), played
-    assert played["services.api.http"][played["services.api.http"].index("--register-outside") + 1] == "ListX"
-    assert played["services.api.web"][played["services.api.web"].index("--register-outside") + 1] == "BuildX"
+    assert not any(_played_whole(argv) for argv in played.values()), played
+    assert played["services.api.http"][played["services.api.http"].index("--only") + 1] == "ListX"
+    assert played["services.api.web"][played["services.api.web"].index("--only") + 1] == "BuildX"
+    assert all("--register-outside" not in argv for argv in played.values()), played
 
 
 def test_the_seat_prompt_renders_the_restructure_step_and_the_narrowed_unreached_rule(tmp_path: Path) -> None:
@@ -1409,23 +1412,97 @@ def test_a_plan_of_journeys_alone_plays_one_partial_run_on_fresh_data(
     assert "--fresh-data" in argv and "--partial" in argv and "--only" not in argv, argv
 
 
-def test_a_whole_plan_plays_the_whole_book_and_registers_outside_its_calls(
+def _plays_a_whole_book(argv: list[str]) -> bool:
+    return "--only" not in argv and "--journey" not in argv
+
+
+def test_a_whole_plan_plays_what_it_selects_and_never_a_whole_book(
     lane: Path,
     book: Callable[..., _Book],
     stack: _Stack,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    scripted = book(plans={"services.api": affected_report("whole", only=["ListX"], reason="the model changed")})
+    scripted = book(
+        plans={
+            "services.api": affected_report(
+                "whole", only=["ListX"], by_journey=["Share a list"], reason="the model changed"
+            )
+        }
+    )
 
     result = drive_flow(_flow(), env(), _Agent(lane))
 
     assert result.status == "passed", result
-    [argv] = scripted.argv["run"]
-    assert _played_whole(argv) and "--journey" not in argv, argv
-    assert "--fresh-data" in argv, argv
-    assert argv[argv.index("--register-outside") + 1] == "ListX", argv
-    assert "- reason: the model changed" in _plan_md()
+    first, second = scripted.argv["run"]
+    assert first[first.index("--only") + 1] == "ListX", first
+    assert "--fresh-data" in first, first
+    assert "--partial" in second and second[second.index("--journey") + 1] == "Share a list", second
+    assert not any(_plays_a_whole_book(argv) for argv in scripted.argv["run"]), scripted.argv["run"]
+    assert all("--register-outside" not in argv for argv in scripted.argv["run"])
+    assert "- owed to the scheduled whole play: the model changed" in _plan_md()
+
+
+def test_a_whole_plan_with_nothing_narrowed_plays_nothing_and_is_owed(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(plans={"services.api": affected_report("whole", reason="a fallback made the plan whole")})
+    agent = _Agent(lane)
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert scripted.argv["run"] == []
+    assert "- play exit: not played" in _plan_md()
+    assert "- owed to the scheduled whole play: a fallback made the plan whole" in _plan_md()
+
+
+def test_a_story_that_plays_nothing_and_owes_something_goes_back_to_the_seat_with_the_owed_reasons(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book(plans={"services.api": affected_report("whole", reason="a fallback made the plan whole")})
+    agent = _Agent(lane)
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    report = agent.args[1]["report"]
+    assert "the story's plays" in report, report
+    assert "could not be narrowed to any play" in report, report
+    assert "- `api`: a fallback made the plan whole" in report, report
+    assert "select no play" not in report, report
+
+
+def test_what_a_play_will_cover_is_logged_as_activity_before_the_play(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    seen: list[str] = []
+
+    def before() -> None:
+        seen.extend(r.getMessage() for r in caplog.records if getattr(r, "activity", False) and "playing" in r.getMessage())
+
+    scripted = book(
+        plans={"services.api": affected_report(only=["ListX", "BuildX"], by_journey=["Share a list"])}, on_run=before
+    )
+
+    with caplog.at_level(logging.INFO):
+        drive_flow(_flow(book_play_minutes=9), env(), _Agent(lane))
+
+    assert scripted.argv["run"]
+    assert seen[0] == "playing 2 call(s) and 1 journey(s) of api, limit 9 min", seen
 
 
 def test_a_changed_function_no_element_names_goes_back_to_the_seat_and_nothing_is_played(
@@ -1518,11 +1595,15 @@ def test_a_play_that_does_not_end_in_time_goes_to_the_operator_as_an_environment
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
-        drive_flow(_flow(), env(), agent)
+        drive_flow(_flow(book_play_minutes=7), env(), agent)
 
-    assert scripted.timeouts == [book_nodes.PLAY_LIMIT_S]
+    assert scripted.timeouts == [7 * 60]
     assert agent.counts() == {"qa-book": 1}, agent.counts()
-    assert "the QA environment" in seen[0] and "did not end within 120 minutes" in seen[0], seen
+    assert "the QA environment" in seen[0], seen
+    assert (
+        "the play of api did not end within 7 minutes: the story's plays are limited to 7 minutes (book_play_minutes)"
+        in seen[0]
+    ), seen
     assert "half a report" in seen[0], seen
 
 
@@ -1541,6 +1622,8 @@ def test_the_plan_is_written_from_code_with_the_calls_and_the_exit_of_each_play(
     assert _plan_md() == "\n".join(
         [
             "# QA plan",
+            "",
+            "whole plays are never run for a story; what the selection could not narrow is listed as owed",
             "",
             "## api",
             "",

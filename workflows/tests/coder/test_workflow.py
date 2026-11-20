@@ -183,6 +183,7 @@ class _StubFlow(Workflow):
     preexisting: tuple[str, ...] = ()
     operator_mode: str = ""
     target_env: str = ""
+    book_play_minutes: int = 15
     sandbox: bool = False
     repo: str = ""
     branch: str = ""

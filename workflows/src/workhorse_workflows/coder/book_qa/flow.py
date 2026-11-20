@@ -53,6 +53,8 @@ class BookQa(QaOwner):
 
     LABEL_PREFIX: ClassVar[str] = "book-qa"
 
+    book_play_minutes: int = 15
+
     def start(self) -> Continue | Await | Done:
         """Find the story's covered services, bring a stack copy up for them, and replay the recorded calls or call the seat."""
         covered = self.call(
@@ -166,19 +168,26 @@ class BookQa(QaOwner):
                 )
                 return self._lap(plan, [_gate(f"ostler book affected services.{name}", text)], laps, blocks)
             scope = self.call(book_scope, name, list(self.preexisting))
-            if plan.plan in ("none", "empty") and not scope.whole:
+            owed = [reason for reason in (plan.reason if plan.plan == "whole" else "", ", ".join(scope.shared)) if reason]
+            if plan.plan == "whole" and not owed:
+                owed = ["the selection could not narrow the story's change"]
+            if owed:
+                plans[-1] = plan = plan.model_copy(update={"owed": "; ".join(owed)})
+                self.logger.info("owed to the scheduled whole play for %s: %s", name, plan.owed)
+            if not plan.only and not plan.by_journey:
                 self.logger.info("no play for %s: %s", name, plan.reason or f"the plan is {plan.plan}")
                 continue
-            if plan.plan == "whole" or scope.whole:
-                reason = plan.reason or ", ".join(scope.shared)
-                self.logger.info("playing the whole book of %s: %s", name, reason)
-                plans[-1] = plan.model_copy(update={"plan": "whole", "whole": True, "reason": reason})
-                only, journeys, outside = [], [], plan.only
-            else:
-                self.logger.info("playing the plan of %s: %d call(s), %d journey(s)", name, len(plan.only), len(plan.by_journey))
-                only, journeys, outside = plan.only, plan.by_journey, []
-            self.logger.info("playing the book of %s", name, extra={"activity": True})
-            play = self.call(book_run, name, only, target.lease, out_dir, outside, journeys, True)
+            self.logger.info(
+                "playing %d call(s) and %d journey(s) of %s, limit %d min",
+                len(plan.only),
+                len(plan.by_journey),
+                name,
+                self.book_play_minutes,
+                extra={"activity": True},
+            )
+            play = self.call(
+                book_run, name, plan.only, target.lease, out_dir, self.book_play_minutes, plan.by_journey, True
+            )
             played = True
             exits[name] = play.exit_code
             self.call(write_qa_plan, self.ctx.spec_dir, plans, exits)
@@ -188,6 +197,14 @@ class BookQa(QaOwner):
                 return self._lap(play, [_gate(f"ostler book run services.{name}", play.output)], laps, blocks)
         self.call(write_qa_plan, self.ctx.spec_dir, plans, exits)
         total = sum(plan.changed for plan in plans)
+        owed_reasons = [f"- `{plan.service}`: {plan.owed}" for plan in plans if plan.owed]
+        if not played and owed_reasons:
+            text = (
+                "The story's change could not be narrowed to any play, so nothing was played and these are owed "
+                "to the scheduled whole play:\n\n" + "\n".join(owed_reasons) + "\n\n"
+                "State the change in an element a play reaches, so the selection can narrow to it."
+            )
+            return self._lap(None, [_gate("the story's plays", text)], laps, blocks)
         if not played and total:
             text = (
                 f"The story changed {total} files and the books select no play for them, so the book does not "

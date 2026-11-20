@@ -83,9 +83,9 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    backstage may have no step for the world yet, so add the step, and write SQL through the copy
    the way the existing steps do. The book's current structure is the last author's best guess,
    not a contract. Moving a fact, splitting a record or replacing a standing world is in scope,
-   as long as every journey still states what it stated before. The workflow plays the whole
-   book after a pass that changes a shared part of it, so a restructure that breaks another
-   journey comes back to this seat.
+   as long as every journey still states what it stated before. The workflow plays only the calls
+   and journeys the story's diff selects, so a restructure that breaks a journey the diff does
+   not reach is owed to a scheduled whole play and does not come back to this seat.
 7. **Name what no call reaches.** `unreached` is only for a claim no call or backstage step can
    observe, such as a screen of an app with no screen book, a source-level test, a count of
    internal calls or a request between two other services. A claim left out because the world could not be arranged is not
@@ -95,14 +95,14 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    service whose book passed, and it reads `unreached` to know which claims are still its
    to judge. A claim you stated in the book and played is not listed.
 8. **Run until green.** Run `ostler book check`, then the targeted run, until the run exits
-   0. Never run the whole book yourself: the workflow plays it when your pass needs it. Run one at a time. Exit 3 means the environment is not
+   0. Never run the whole book yourself: the workflow plays only what the diff selects. Run one at a time. Exit 3 means the environment is not
    healthy. Report `blocked` and repair nothing.
 9. **Stay in the book.** Edit only under `{{ workhorse_var('book_root') }}/services/<name>/` of the covered services. Put no
    sleep, timer or retry loop in the book.
    No document pass runs after this turn, so you keep every touched endpoint's `source=` pointers and
    `index.tsv` current with the code the story changed.
 10. **Leave the register alone.** `{{ workhorse_var('book_root') }}/services/<name>/UNDERSPECIFIED.md` is the product owner's list of
-    fields the book models no dimension for. The whole-book play adds a finding there when it lies
+    fields the book models no dimension for. A scheduled whole play, outside any story, adds a finding there when it lies
     outside the calls the story's diff selects, and reports it as known. A finding on a call it selects is yours:
     model the dimension or return a finding. Never edit or delete an entry, and never declare
     `ignores=` on a field outside the story's calls.
@@ -110,7 +110,7 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
 
 ## The checks after this turn
 
-The workflow runs `ostler book check` on each covered service. It then selects the plays from the story's diff of the code and of the book with `ostler book affected`. It plays them one service at a time on freshly loaded data. It plays the whole book of a service when your pass changed a shared part of it. It sends back to you a changed file or function that no element names and no ignore pattern covers, because it cannot select plays for it. Exit 0 on every service, with no finding, then runs `ostler book verified` on each book that was current when the story started, and on no other. It refuses while a changed file or function of the app is named by no element or ignore pattern, and the refusal comes back to you. Exit 0 on every service ends the pass. Exit 1 or 2
+The workflow runs `ostler book check` on each covered service. It then selects the plays from the story's diff of the code and of the book with `ostler book affected`. It plays them one service at a time on freshly loaded data. It plays only the calls and journeys the selection names, each play under a time limit, and it never plays the whole book. A shared part the selection could not narrow is listed as owed to a scheduled whole play, and a story whose change could not be narrowed to any play comes back to you so that you state the change in an element a play reaches. It sends back to you a changed file or function that no element names and no ignore pattern covers, because it cannot select plays for it. Exit 0 on every service, with no finding, then runs `ostler book verified` on each book that was current when the story started, and on no other. It refuses while a changed file or function of the app is named by no element or ignore pattern, and the refusal comes back to you. Exit 0 on every service ends the pass. Exit 1 or 2
 comes back to you in this session with the output. Exit 3 means the environment could not
 be judged, and it goes to an operator, never to you. A story does not pass while your result
 lists a finding, even when the run is green.

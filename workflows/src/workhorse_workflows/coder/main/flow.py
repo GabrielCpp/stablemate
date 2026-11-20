@@ -68,6 +68,7 @@ class Coder(Workflow):
     operator_mode: Literal["auto", "human", "operator"] = "auto"
     target_env: Literal["local", "dev"] = "local"
     delivery: Literal["pr", "commit"] = "pr"
+    book_play_minutes: int = 15
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
@@ -180,6 +181,7 @@ class Coder(Workflow):
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
             target_env=self.target_env,
+            book_play_minutes=self.book_play_minutes,
             preexisting=self._preexisting(),
         )
         sent_back = self._sent_back(book)
