@@ -71,3 +71,8 @@ def test_every_book_command_runs_with_bytecode_writing_off(monkeypatch: pytest.M
 def test_a_run_asks_for_a_data_reload_only_when_told_to() -> None:
     assert "--fresh-data" not in book_gates.run_flags("evening", ("Ping",))
     assert book_gates.run_flags(fresh=True) == ("--fresh-data",)
+
+
+def test_a_run_with_no_calls_leaves_the_only_flag_out() -> None:
+    assert "--only" not in book_gates.run_flags("evening", ())
+    assert book_gates.run_flags(only=("Ping", "Pong")) == ("--only", "Ping,Pong")
