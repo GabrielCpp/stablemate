@@ -51,14 +51,14 @@ class ParitySurveyor(Workflow):
             raise WorkflowFailed(
                 f"could not freeze the parity inventory: {expansion.expand_errors}"
             )
-        return Continue(expansion, self.pick)
+        return Continue(expansion, self.pick).because("inventory frozen")
 
 
     def pick(self) -> Continue:
         """Take the next pending unit, or fall through to the coverage gate."""
         pick = self.call(select_next_unit, self.ctx.inventory, self.ctx.findings_dir)
         if not pick.has_unit:
-            return Continue(pick, self.verify)
+            return Continue(pick, self.verify).because("no unit pending")
         return Continue(
             pick,
             self.assess,
@@ -67,7 +67,7 @@ class ParitySurveyor(Workflow):
             unit_kind=pick.unit_kind,
             record_path=pick.record_path,
             progress=pick.progress,
-        )
+        ).because("a unit pending")
 
     def assess(
         self,
@@ -98,9 +98,7 @@ class ParitySurveyor(Workflow):
                 "epics_dir": self.ctx.epics_dir,
             },
         )
-        return Continue(
-            result, self.mark, unit_id=unit_id, record_path=record_path
-        )
+        return Continue(result, self.mark, unit_id=unit_id, record_path=record_path).because("assessed")
 
     def mark(self, unit_id: str, record_path: str) -> Continue:
         """Check the record the turn wrote, then take the unit off the pending list."""
@@ -110,7 +108,7 @@ class ParitySurveyor(Workflow):
                 f"finding record for '{unit_id}' is invalid: {check.record_errors}"
             )
         marked = self.call(mark_unit, self.ctx.inventory, unit_id, record_path)
-        return Continue(marked, self.pick)
+        return Continue(marked, self.pick).because("unit marked")
 
 
     def verify(self) -> Continue:
@@ -121,7 +119,7 @@ class ParitySurveyor(Workflow):
                 "parity coverage does not hold: "
                 f"{result.verify_errors or result.verify_report}"
             )
-        return Continue(result, self.emit)
+        return Continue(result, self.emit).because("coverage holds")
 
     def emit(self) -> Done:
         """One register record per assessed surface no new-app feature already owns."""
@@ -133,7 +131,7 @@ class ParitySurveyor(Workflow):
         )
         if not result.emit_ok:
             self.logger.warning("emission reported errors: %s", result.emit_errors)
-        return Done(result)
+        return Done(result).because("records emitted")
 
 
 __all__ = ["ParitySurveyor"]

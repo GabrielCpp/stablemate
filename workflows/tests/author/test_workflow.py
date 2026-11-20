@@ -822,7 +822,7 @@ def test_a_story_that_is_not_a_contract_is_reworked_against_the_gate(
     assert agent.counts()["rework-story"] == 1, agent.counts()
     ledger = story_dir(EPIC, "01-sign-in") / "attempts.md"
     assert "## Attempt 0" in ledger.read_text()
-    assert agent.args_for("rework-story")[0]["validation_errors"], agent.args_for("rework-story")[0]
+    assert agent.args_for("rework-story")[0]["findings"], agent.args_for("rework-story")[0]
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
 
@@ -987,7 +987,7 @@ def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
     assert agent.counts()["rework-story"] == 1, agent.counts()
     note = agent.args_for("rework-story")[0]
     assert "never 'log in'" in note["operator_feedback"], note
-    assert note["validation_errors"] == "", note
+    assert note["findings"] == "", note
     messages = inbox.all_messages(env.writer.run_dir / INBOX_FILE)
     assert len(messages) == 1, messages
     assert messages[0].reply, messages
@@ -997,14 +997,14 @@ def test_an_operator_note_dropped_mid_run_reworks_the_story_once(
 def test_a_coverage_gap_re_enters_the_split_with_the_worklist(
     backlogged: Path, tmp_path: Path
 ) -> None:
-    """The coverage loop's notes travel to `split_stories` as its `rework_notes`."""
+    """The coverage findings reach the next split turn as its `findings`."""
     agent = _Agent(backlogged, coverage_verdicts=["gaps", "ok"])
     _drive(_env(tmp_path), agent)
 
     assert agent.counts()["split-stories"] == 2, agent.counts()
     first, second = agent.args_for("split-stories")
-    assert first["rework_notes"] == "", first
-    assert "reset flow" in second["rework_notes"], second
+    assert first["findings"] == "", first
+    assert "reset flow" in second["findings"], second
     assert agent.stage_calls["story-split"] == 2, agent.stage_calls
 
 

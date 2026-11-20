@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from workhorse.cli import console_script
 from workhorse.pyflow import Registry
+from workhorse_workflows.author.draft import DraftLoop
 from workhorse_workflows.author.epic_edit import EpicEdit
 from workhorse_workflows.author.epic_edit.nodes import blueprint as epic_edit_blueprint
 from workhorse_workflows.author.epic_author import EpicAuthor
 from workhorse_workflows.author.epic_author.nodes import blueprint as epic_author_blueprint
-from workhorse_workflows.author.epic_split import EpicSplit
+from workhorse_workflows.author.epic_split.flow import EpicSplit
 from workhorse_workflows.author.epic_split.nodes import blueprint as epic_split_blueprint
 from workhorse_workflows.author.finalize import Finalize
 from workhorse_workflows.author.finalize.nodes import blueprint as finalize_blueprint
@@ -22,7 +23,7 @@ from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.story_edit.nodes import blueprint as story_edit_blueprint
 from workhorse_workflows.author.story_author import StoryAuthor
 from workhorse_workflows.author.story_author.nodes import blueprint as story_author_blueprint
-from workhorse_workflows.author.story_split import StorySplitFlow
+from workhorse_workflows.author.story_split.flow import StorySplitFlow
 from workhorse_workflows.author.story_split.nodes import blueprint as story_split_blueprint
 
 workflow = (
@@ -50,6 +51,7 @@ workflow = (
             "story-split": StorySplitFlow,
             "story-author": StoryAuthor,
             "finalize": Finalize,
+            "draft": DraftLoop,
             "pm-review": PMReview,
             "gap-answer": GapAnswer,
         },

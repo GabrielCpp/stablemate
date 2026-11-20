@@ -9,17 +9,15 @@ from _milestones import write_milestone
 from _pm import answer, verdict
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
-from workhorse.pyflow import Registry
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from _epics import epics_root
 from workhorse_workflows import author
-from workhorse_workflows.author.pm.nodes import blueprint as pm_blueprint
-from workhorse_workflows.author.shared.nodes import blueprint
 from workhorse_workflows.author.shared.schemas import Defects
-from workhorse_workflows.author.story_split import StorySplitDone, StorySplitFlow
-from workhorse_workflows.author.story_split.nodes import blueprint as story_split_blueprint
+from workhorse_workflows.author.story_split import StorySplitDone
+from workhorse_workflows.author.story_split.flow import StorySplitFlow
 from workhorse_workflows.author.story_split.schemas import StoryServices
+from workhorse_workflows.author.workflow import workflow
 
 EPIC = "accounts"
 
@@ -69,13 +67,9 @@ def _env(tmp_path: Path, agent: _Agent, reports: list[Defects] | None = None) ->
     def derive(*args: Any, **kwargs: Any) -> StoryServices:
         return StoryServices()
 
-    nodes = (
-        Registry("story-split-test")
-        .add_blueprints(blueprint, story_split_blueprint, pm_blueprint)
-        .override(
-            validate_coverage=validate,
-            derive_story_services=derive,
-        )
+    nodes = workflow.override(
+        validate_coverage=validate,
+        derive_story_services=derive,
     )
     writer = ArtifactWriter("story-split", tmp_path / "runs", run_id="t")
     return RunEnv(
@@ -124,7 +118,7 @@ def test_mechanical_and_pm_findings_drive_a_bounded_resplit(
     assert isinstance(result, StorySplitDone)
     assert result.status == "accepted"
     assert result.reworks == 2
-    notes = [row["rework_notes"] for row in agent.args["split-stories"]]
+    notes = [row["findings"] for row in agent.args["split-stories"]]
     assert notes[0] == ""
     assert notes[1] == "[orphan-seed] reset"
     assert "reset flow is uncovered" in notes[2]

@@ -72,14 +72,14 @@ class GapAnswer(Workflow):
                     by="pm",
                     note=note_for(self.question, answer.answer, "PM"),
                 )
-            )
+            ).because("the PM answered")
         asked = (
             f"{self.asker} needs a product decision the milestone does not make.\n\n"
             f"Question: {self.question.strip()}\n\n"
             f"The PM cannot settle it because: {answer.reason.strip()}\n\n"
             "Answer below. Your answer is recorded in the PM ledger and binds every later turn."
         )
-        return Await(self._gate(), asked, self.record_human, asked=asked)
+        return Await(self._gate(), asked, self.record_human, asked=asked).because("only the operator can answer")
 
     def record_human(self, asked: str) -> Done:
         gate = self._gate()
@@ -94,7 +94,7 @@ class GapAnswer(Workflow):
                 by="human",
                 note=note_for(self.question, human, "operator"),
             )
-        )
+        ).because("the operator answered")
 
 
 __all__ = ["GapAnswer", "MAX_ANSWERS", "accepts", "note_for"]

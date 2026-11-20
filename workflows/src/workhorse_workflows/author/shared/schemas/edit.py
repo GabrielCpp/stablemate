@@ -120,8 +120,18 @@ class EpicRewriteResult(AuthorResult):
     notes: str = ""
 
 
+class Edit(AuthorResult):
+    """What one epic edit carries from state to state: the request, the epic before it, the plan, and the edit once applied."""
+
+    intent: EditIntent = EditIntent()
+    snapshot: EpicSnapshot = EpicSnapshot()
+    plan: EpicEditPlan = EpicEditPlan()
+    applied: AppliedEpicEdit = AppliedEpicEdit()
+
+
 __all__ = [
     "AppliedEpicEdit",
+    "Edit",
     "EditIntent",
     "EpicEditPlan",
     "EpicRewriteResult",

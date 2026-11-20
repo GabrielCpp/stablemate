@@ -18,7 +18,7 @@ product manager's review.
 Milestone: `{{ milestone }}`
 Review findings:
 
-{{ review_notes }}
+{{ findings }}
 
 Return `blocked` with the question in `notes` only when a finding needs a product decision that the
 milestone does not make. The product manager answers it, or the operator does, and you are run again

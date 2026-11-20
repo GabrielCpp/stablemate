@@ -1,4 +1,1 @@
-"""Standalone ordered epic skeleton decomposition."""
-from workhorse_workflows.author.epic_split.flow import EpicSplit
-
-__all__ = ["EpicSplit"]
+"""Standalone ordered epic skeleton decomposition. The flow is `epic_split.flow.EpicSplit`."""

@@ -98,7 +98,7 @@ class PMReview(Workflow):
                 f"its stages are {sorted(ANGLES)}",
                 failure_class="pm-review-unknown-stage",
             )
-        return Continue(None, self.review)
+        return Continue(None, self.review).because("the stage has angles")
 
     def review(self) -> Done:
         accept = complete(ANGLES[self.stage])
@@ -137,7 +137,7 @@ class PMReview(Workflow):
                 notes=format_findings(findings),
                 receipt_path=receipt.path,
             )
-        )
+        ).because("every angle judged")
 
 
 __all__ = ["PMReview", "complete", "format_findings"]

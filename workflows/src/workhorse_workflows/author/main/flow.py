@@ -7,7 +7,7 @@ from typing import Any
 from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
 from workhorse.worklist import WorkItem
 from workhorse_workflows.author.epic_author import EpicAuthor
-from workhorse_workflows.author.epic_split import EpicSplit
+from workhorse_workflows.author.epic_split.flow import EpicSplit
 from workhorse_workflows.author.finalize import Finalize
 from workhorse_workflows.author.main.nodes import (
     check_completion,
@@ -26,7 +26,7 @@ from workhorse_workflows.author.shared.nodes import (
 from workhorse_workflows.author.parity_surveyor import ParitySurveyor
 from workhorse_workflows.author.shared.schemas import RunContext
 from workhorse_workflows.author.story_author import StoryAuthor
-from workhorse_workflows.author.story_split import StorySplitFlow
+from workhorse_workflows.author.story_split.flow import StorySplitFlow
 from workhorse_workflows.author.story_split.nodes import derive_story_services
 
 MODES = ("epic", "story", "parity-survey")

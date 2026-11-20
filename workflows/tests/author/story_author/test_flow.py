@@ -11,16 +11,15 @@ from _fakes import StubRunner
 from _pm import verdict
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
-from workhorse.pyflow import Registry, WorkflowFailed
+from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse_workflows import author
-from workhorse_workflows.author.pm.nodes import blueprint as pm_blueprint
-from workhorse_workflows.author.shared.nodes import blueprint as shared_blueprint
 from workhorse_workflows.author.shared.schemas import Defects, Feedback, MockupGate
 from workhorse_workflows.author.story_author import StoryAuthor
-from workhorse_workflows.author.story_author.nodes import blueprint, prepare_story
+from workhorse_workflows.author.story_author.nodes import prepare_story
 from workhorse_workflows.author.story_author.schemas import StoryAuthorDone, StoryTarget
+from workhorse_workflows.author.workflow import workflow
 from _epics import epics_root
 
 
@@ -123,8 +122,7 @@ def _drive_story(
         events.append("feedback")
         return Feedback()
 
-    registry = Registry("story-author-test").add_blueprints(shared_blueprint, blueprint, pm_blueprint)
-    nodes = registry.override(
+    nodes = workflow.override(
         prepare_story=prepare,
         check_mockup_needed=mockup,
         validate_story=valid,

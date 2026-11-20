@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,39 @@ def _package_defs() -> dict[str, list[ast.FunctionDef | ast.AsyncFunctionDef]]:
 
 
 _PACKAGE_DEFS = _package_defs()
+
+_TREES = {
+    source: ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    for source in sorted(PACKAGE.rglob("*.py"))
+}
+
+
+def _handed_keys(field: str, module: ast.Module) -> set[str] | None:
+    """The keys `self.<field>` holds: what every handoff into a flow of `module` passes as `<field>=`."""
+    flows = {node.name for node in module.body if isinstance(node, ast.ClassDef)}
+    keys: set[str] = set()
+    sites = 0
+    for tree in _TREES.values():
+        enclosing = _scopes(tree)
+        for call in ast.walk(tree):
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "handoff"
+                and call.args
+                and isinstance(call.args[0], ast.Name)
+                and call.args[0].id in flows
+            ):
+                continue
+            for keyword in call.keywords:
+                if keyword.arg != field:
+                    continue
+                passed = _keys_of(keyword.value, enclosing[id(call)], tree)
+                if passed is None:
+                    return None
+                keys |= passed
+                sites += 1
+    return keys if sites else None
 
 
 def _dict_keys(
@@ -73,6 +107,8 @@ def _keys_of(node: ast.expr, scope: ast.AST, module: ast.Module) -> set[str] | N
         return _keys_of_helper(node.func.attr, node, module)
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
         return _keys_of_helper(node.func.id, node, module)
+    if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "self":
+        return _handed_keys(node.attr, module)
     return None
 
 
@@ -178,16 +214,31 @@ def _turns(source: Path) -> tuple[list[tuple[int, str, set[str], str]], list[int
                 args = kw.value
             elif kw.arg == "label" and isinstance(kw.value, ast.Constant):
                 label = str(kw.value.value)
-        if not (isinstance(prompt, ast.Constant) and isinstance(prompt.value, str)):
-            continue
+        paths = _table(prompt, source)
+        if paths is None:
+            if not (isinstance(prompt, ast.Constant) and isinstance(prompt.value, str)):
+                continue
+            paths = [prompt.value]
         keys: set[str] | None = (
             set() if args is None else _keys_of(args, enclosing[id(node)], tree)
         )
         if keys is None:
             opaque.append(node.lineno)
             continue
-        found.append((node.lineno, label or prompt.value, keys, prompt.value if label else ""))
+        found.extend((node.lineno, label or path, keys, path if label else "") for path in paths)
     return found, opaque
+
+
+def _table(prompt: ast.expr | None, source: Path) -> list[str] | None:
+    """`TABLE[key]`, where the module binds `TABLE` to a mapping of prompt paths, is each of its paths."""
+    if not (isinstance(prompt, ast.Subscript) and isinstance(prompt.value, ast.Name)):
+        return None
+    module = ".".join(source.relative_to(PACKAGE.parent).with_suffix("").parts)
+    table = getattr(importlib.import_module(module), prompt.value.id, None)
+    if not isinstance(table, dict):
+        return None
+    paths = [path for path in table.values() if isinstance(path, str)]
+    return list(dict.fromkeys(paths)) if len(paths) == len(table) else None
 
 
 def _prompts() -> dict[tuple[str, str], tuple[set[str], list[str]]]:

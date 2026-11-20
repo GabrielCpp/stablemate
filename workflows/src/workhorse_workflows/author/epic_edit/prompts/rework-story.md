@@ -23,7 +23,7 @@ comes straight back on the next review; if you believe a finding is wrong, say w
 - Design mockup: `{{ workhorse_var('mockup_path') }}` — keep the story's Context linked to this visual
   source of truth when the validation issue does not supersede it.
 {%- endif %}
-- Validation errors or review findings to fix: `{{ workhorse_var('validation_errors') }}`
+- Validation errors or review findings to fix: `{{ workhorse_var('findings') }}`
 - Operator feedback to apply (if any): `{{ workhorse_var('operator_feedback') }}`
 {%- if workhorse_var('prior_attempts') %}
 - **Earlier attempts that already FAILED (do not repeat these approaches):**

@@ -18,7 +18,7 @@ stage does that next.
 
 - Epic slug: `{{ workhorse_var('epic') }}`
 - Epic directory: `{{ workhorse_var('epic_dir') }}`
-- Coverage-stage rework notes to address (empty on a first split): `{{ workhorse_var('rework_notes') }}`
+- Coverage-stage rework notes to address (empty on a first split): `{{ workhorse_var('findings') }}`
 {%- if workhorse_var('note') %}
 
 ## Answer to your question
@@ -113,7 +113,7 @@ If the epic already has stories, extend/refine the set (e.g. add stories to cove
 seed the coverage gate flagged) — keep stories that already have written bodies. Re-running
 `ostler create story` for an existing slug is a no-op for that slug.
 
-{%- if workhorse_var('rework_notes') %}
+{%- if workhorse_var('findings') %}
 ## Rework notes — binding when non-empty
 
 The rework notes above are the verdict on the split you produced last pass: either the product

@@ -1,15 +1,15 @@
 """Directly author one explicit epic without selecting or entering downstream stages."""
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from workhorse.pyflow import Continue, Done, Workflow
+from workhorse_workflows.author.draft.schemas import Draft, spent_labels
 from workhorse_workflows.author.epic_author.nodes import prepare_epic_target, validate_authored_epic
 from workhorse_workflows.author.epic_author.schemas import EpicAuthorContext, EpicAuthorDone
 from workhorse_workflows.author.pm import MAX_ANSWERS, GapAnswer
 from workhorse_workflows.author.shared.nodes import load_config
 from workhorse_workflows.author.shared.schemas import WriteEpicResult
-from workhorse_workflows.kit.telemetry import counter_labels
 
 MAX_REWORKS = 3
 
@@ -19,8 +19,6 @@ class EpicAuthor(Workflow):
 
     epic: str = ""
     note: str = ""
-
-    BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("reworks", "answers")
 
     def setup(self) -> EpicAuthorContext:
         """Resolve config and the explicit target only; never create a branch."""
@@ -32,9 +30,9 @@ class EpicAuthor(Workflow):
         return {"work_id": self.epic, "epic": self.epic, "progress": "authoring one epic"}
 
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
-        return self.labels() | counter_labels(params, "epic_author", self.BUDGET_LABELS)
+        return self.labels() | spent_labels(params, "epic_author")
 
-    def _blocked(self, notes: str, reworks: int, answers: int) -> Done:
+    def _blocked(self, notes: str, draft: Draft) -> Done:
         self.logger.warning("the epic '%s' stays blocked: %s", self.ctx.epic, notes)
         return Done(
             EpicAuthorDone(
@@ -43,17 +41,16 @@ class EpicAuthor(Workflow):
                 epic_dir=self.ctx.epic_dir,
                 epic_path=self.ctx.epic_path,
                 notes=notes,
-                reworks=reworks,
-                answers=answers,
+                reworks=draft.reworks,
+                answers=draft.answers,
             )
-        )
+        ).because("out of budget")
 
     def start(self) -> Continue:
-        return Continue(None, self.author_epic)
+        return Continue(None, self.author_epic, draft=Draft()).because("nothing written yet")
 
-    def author_epic(
-        self, reworks: int = 0, answers: int = 0, note: str = ""
-    ) -> Continue | Done:
+    def author_epic(self, draft: Draft) -> Continue | Done:
+        """Write the epic's prose and seeds, then validate what the turn wrote."""
         self.logger.info("authoring epic %s", self.ctx.epic, extra={"activity": True})
         result = self.agent(
             "epic_author/prompts/write-epic.md",
@@ -64,43 +61,40 @@ class EpicAuthor(Workflow):
                 "epic": self.ctx.epic,
                 "epic_dir": self.ctx.epic_dir,
                 "milestone": self.ctx.milestone_path,
-                "note": "\n\n".join(part for part in (self.note, note) if part),
+                "note": "\n\n".join(part for part in (self.note, draft.note) if part),
                 "ledger": self.ctx.pm_ledger,
             },
         )
         if result.status == "blocked":
-            if answers >= MAX_ANSWERS:
-                return self._blocked(result.notes, reworks, answers)
-            return Continue(
-                result, self.ask_pm, question=result.notes, reworks=reworks, answers=answers
+            if draft.answers >= MAX_ANSWERS:
+                return self._blocked(result.notes, draft)
+            return Continue(result, self.ask_pm, question=result.notes, draft=draft).because(
+                "the writer has a question"
             )
         evidence = self.call(validate_authored_epic, self.ctx.epic)
         if not evidence.ok:
-            if reworks >= MAX_REWORKS:
-                return self._blocked(evidence.errors, reworks, answers)
+            if draft.reworks >= MAX_REWORKS:
+                return self._blocked(evidence.errors, draft)
+            note = f"The previous pass failed validation. Fix every error:\n{evidence.errors}"
             return Continue(
-                evidence,
-                self.author_epic,
-                reworks=reworks + 1,
-                answers=answers,
-                note=f"The previous pass failed validation. Fix every error:\n{evidence.errors}",
-            )
+                evidence, self.author_epic, draft=draft.model_copy(update={"reworks": draft.reworks + 1, "note": note})
+            ).because("the epic failed validation")
         return Done(
             EpicAuthorDone(
                 epic=evidence.epic,
                 epic_dir=evidence.epic_dir,
                 epic_path=evidence.epic_path,
                 seed_count=evidence.seed_count,
-                reworks=reworks,
-                answers=answers,
+                reworks=draft.reworks,
+                answers=draft.answers,
             )
-        )
+        ).because("the epic validates")
 
-    def ask_pm(self, question: str, reworks: int = 0, answers: int = 0) -> Continue:
+    def ask_pm(self, question: str, draft: Draft) -> Continue:
+        """Have the PM answer the writer's question, then write the epic again."""
         answer = self.handoff(GapAnswer, question=question, asker="epic-author")
-        return Continue(
-            answer, self.author_epic, reworks=reworks, answers=answers + 1, note=answer.note
-        )
+        answered = draft.model_copy(update={"answers": draft.answers + 1, "note": answer.note})
+        return Continue(answer, self.author_epic, draft=answered).because("the PM answered")
 
 
 __all__ = ["EpicAuthor", "MAX_REWORKS"]

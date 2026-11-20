@@ -4,6 +4,7 @@ from __future__ import annotations
 from workhorse_workflows.author.shared.schemas._base import AuthorResult
 from workhorse_workflows.author.shared.schemas.edit import (
     AppliedEpicEdit,
+    Edit,
     EditIntent,
     EpicEditPlan,
     EpicRewriteResult,
@@ -53,6 +54,7 @@ from workhorse_workflows.author.shared.schemas.survey import (
 
 __all__ = [
     "AppliedEpicEdit",
+    "Edit",
     "AuthorResult",
     "Committed",
     "Completion",

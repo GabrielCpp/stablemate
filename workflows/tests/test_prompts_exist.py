@@ -6,6 +6,7 @@ file to find. `self.agent` is what checks those, at the moment it is called.
 from __future__ import annotations
 
 import ast
+import importlib
 from pathlib import Path
 
 import pytest
@@ -37,7 +38,7 @@ def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
             found.extend(
                 (node.lineno, lit)
                 for arg in _branches(node.args[0])
-                for lit in _literalize(arg, resolved, flow)
+                for lit in _literalize(arg, resolved, flow, source)
             )
             continue
         for kw in node.keywords:
@@ -45,7 +46,7 @@ def _agent_prompts(source: Path) -> list[tuple[int, ast.expr]]:
                 found.extend(
                     (node.lineno, lit)
                     for arg in _branches(kw.value)
-                    for lit in _literalize(arg, resolved, flow)
+                    for lit in _literalize(arg, resolved, flow, source)
                 )
     return found
 
@@ -91,8 +92,25 @@ def _turn_roles(call: ast.expr) -> list[str] | None:
     return roles
 
 
-def _literalize(arg: ast.expr, resolved: dict[int, list[str]], flow: str) -> list[ast.expr]:
-    """`turn.prompt` → the envelope paths of the nearest preceding `roles.turn(…)`."""
+def _table(arg: ast.expr, source: Path) -> list[ast.expr] | None:
+    """`TABLE[key]`, where the module binds `TABLE` to a mapping of prompt paths, is each of its paths."""
+    if not (isinstance(arg, ast.Subscript) and isinstance(arg.value, ast.Name)):
+        return None
+    module = ".".join(source.relative_to(PACKAGE.parent).with_suffix("").parts)
+    table = getattr(importlib.import_module(module), arg.value.id, None)
+    if not isinstance(table, dict):
+        return None
+    paths = [path for path in table.values() if isinstance(path, str)]
+    if len(paths) != len(table):
+        return None
+    return [ast.Constant(value=path) for path in dict.fromkeys(paths)]
+
+
+def _literalize(arg: ast.expr, resolved: dict[int, list[str]], flow: str, source: Path) -> list[ast.expr]:
+    """`turn.prompt` → the envelope paths of the nearest preceding `roles.turn(…)`; `TABLE[key]` → each path of the table."""
+    paths = _table(arg, source)
+    if paths is not None:
+        return paths
     is_turn_prompt = (
         isinstance(arg, ast.Attribute)
         and arg.attr == "prompt"

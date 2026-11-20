@@ -14,15 +14,13 @@ from workhorse_workflows.author.epic_edit.nodes import (
     validate_edit_plan,
     validate_epic_document,
 )
+from workhorse_workflows.author.draft import DraftLoop
 from workhorse_workflows.author.pm import PMReview
 from workhorse_workflows.author.shared.nodes import (
-    check_story_grounding,
     commit_author,
     load_config,
     promote_record,
-    record_attempt,
     validate_coverage,
-    validate_story,
     verify_integrity,
 )
 from workhorse_workflows.author.shared import paths
@@ -30,15 +28,13 @@ from workhorse_workflows.author.story_author.nodes import check_mockup_needed
 from workhorse_workflows.author.story_split.nodes import derive_story_services
 from workhorse_workflows.author.shared.schemas import (
     AppliedEpicEdit,
-    Defects,
+    Edit,
     EditIntent,
     EpicEditPlan,
     EpicRewriteResult,
-    EpicSnapshot,
     MockupResult,
     RunContext,
     StoryChoice,
-    WriteStoryResult,
 )
 from workhorse_workflows.kit.telemetry import counter_labels
 
@@ -70,28 +66,20 @@ class EpicEdit(Workflow):
     def _gate(self) -> Path:
         return Path(self.ctx.repo_root) / paths.author_context(self.ctx.repo_root)
 
-    def _plan_detail(
-        self, intent: EditIntent, snapshot: EpicSnapshot, plan: EpicEditPlan
-    ) -> str:
+    def _plan_detail(self, edit: Edit) -> str:
         return (
-            f"## Intent\n\n{intent.model_dump_json(indent=2)}\n\n"
-            f"## Baseline\n\n{snapshot.model_dump_json(indent=2)}\n\n"
-            f"## Statically valid plan\n\n{plan.model_dump_json(indent=2)}"
+            f"## Intent\n\n{edit.intent.model_dump_json(indent=2)}\n\n"
+            f"## Baseline\n\n{edit.snapshot.model_dump_json(indent=2)}\n\n"
+            f"## Statically valid plan\n\n{edit.plan.model_dump_json(indent=2)}"
         )
 
-    def _plan_args(
-        self,
-        intent: EditIntent,
-        snapshot: EpicSnapshot,
-        prior_plan: EpicEditPlan | None = None,
-        findings: str = "",
-    ) -> dict[str, object]:
+    def _plan_args(self, edit: Edit, prior_plan: EpicEditPlan | None = None, findings: str = "") -> dict[str, object]:
         return {
-            "intent": intent,
-            "snapshot": snapshot,
+            "intent": edit.intent,
+            "snapshot": edit.snapshot,
             "prior_plan": prior_plan or EpicEditPlan(),
             "validation_findings": findings,
-            "epic_dir": snapshot.epic_dir,
+            "epic_dir": edit.snapshot.epic_dir,
             "register_listing": self.call(read_register_listing).text,
         }
 
@@ -105,171 +93,95 @@ class EpicEdit(Workflow):
                 )
             intent = EditIntent(kind="epic", epic=self.epic, change=self.change, force=self.force)
         snapshot = self.call(snapshot_epic, intent.epic)
-        return Continue(snapshot, self.plan_edit, intent=intent, snapshot=snapshot)
+        return Continue(snapshot, self.plan_edit, edit=Edit(intent=intent, snapshot=snapshot)).because(
+            "baseline taken"
+        )
 
-    def plan_edit(self, intent: EditIntent, snapshot: EpicSnapshot) -> Continue:
+    def plan_edit(self, edit: Edit) -> Continue:
         plan = self.agent(
             "epic_edit/prompts/plan-epic-edit.md",
             returns=EpicEditPlan,
             power="high",
             cwd=self.ctx.repo_root,
-            args=self._plan_args(intent, snapshot),
+            args=self._plan_args(edit),
         )
-        return Continue(plan, self.validate_plan, intent=intent, snapshot=snapshot, plan=plan)
+        return Continue(plan, self.validate_plan, edit=edit.model_copy(update={"plan": plan})).because("planned")
 
-    def validate_plan(
-        self,
-        intent: EditIntent,
-        snapshot: EpicSnapshot,
-        plan: EpicEditPlan,
-        reworks: int = 0,
-    ) -> Continue | Await:
-        report = self.call(validate_edit_plan, intent, snapshot, plan)
+    def validate_plan(self, edit: Edit, reworks: int = 0) -> Continue | Await:
+        report = self.call(validate_edit_plan, edit.intent, edit.snapshot, edit.plan)
         if "[E_PLANNER_MUTATION]" in report.errors:
             raise WorkflowFailed(
                 report.errors,
                 failure_class="epic-edit-planner-mutation",
-                artifacts={"epic_dir": str(snapshot.epic_dir)},
+                artifacts={"epic_dir": str(edit.snapshot.epic_dir)},
             )
         if report.ok:
-            return Continue(
-                report,
-                self.review_plan,
-                intent=intent,
-                snapshot=snapshot,
-                plan=plan,
-                reworks=reworks,
-            )
+            return Continue(report, self.review_plan, edit=edit, reworks=reworks).because("the plan is valid")
         if reworks >= MAX_REWORKS:
-            return Await(
-                self._gate(),
-                report.errors,
-                self.plan_edit,
-                intent=intent,
-                snapshot=snapshot,
-            )
-        return Continue(
-            report,
-            self.refine_plan,
-            intent=intent,
-            snapshot=snapshot,
-            plan=plan,
-            findings=report.errors,
-            reworks=reworks,
+            return Await(self._gate(), report.errors, self.plan_edit, edit=edit).because("out of plan reworks")
+        return Continue(report, self.refine_plan, edit=edit, findings=report.errors, reworks=reworks).because(
+            "the plan has findings"
         )
 
-    def refine_plan(
-        self,
-        intent: EditIntent,
-        snapshot: EpicSnapshot,
-        plan: EpicEditPlan,
-        findings: str,
-        reworks: int = 0,
-    ) -> Continue:
+    def refine_plan(self, edit: Edit, findings: str, reworks: int = 0) -> Continue:
         revised = self.agent(
             "epic_edit/prompts/refine-epic-edit-plan.md",
             returns=EpicEditPlan,
             power="high",
             cwd=self.ctx.repo_root,
-            args=self._plan_args(
-                intent,
-                snapshot,
-                prior_plan=plan,
-                findings=findings,
-            ),
+            args=self._plan_args(edit, prior_plan=edit.plan, findings=findings),
         )
         return Continue(
-            revised,
-            self.validate_plan,
-            intent=intent,
-            snapshot=snapshot,
-            plan=revised,
-            reworks=reworks + 1,
-        )
+            revised, self.validate_plan, edit=edit.model_copy(update={"plan": revised}), reworks=reworks + 1
+        ).because("refined")
 
-    def review_plan(
-        self,
-        intent: EditIntent,
-        snapshot: EpicSnapshot,
-        plan: EpicEditPlan,
-        reworks: int = 0,
-    ) -> Continue | Await:
+    def review_plan(self, edit: Edit, reworks: int = 0) -> Continue | Await:
         review = self.handoff(
             PMReview,
             stage="epic-edit-plan",
-            subject=snapshot.epic_dir,
-            epic=intent.epic,
-            detail=self._plan_detail(intent, snapshot, plan),
+            subject=edit.snapshot.epic_dir,
+            epic=edit.intent.epic,
+            detail=self._plan_detail(edit),
         )
         if review.passed:
-            return Continue(review, self.apply_plan, intent=intent, snapshot=snapshot, plan=plan)
+            return Continue(review, self.apply_plan, edit=edit).because("the PM passed the plan")
         if reworks < MAX_REWORKS:
-            return Continue(
-                review,
-                self.refine_plan,
-                intent=intent,
-                snapshot=snapshot,
-                plan=plan,
-                findings=review.notes,
-                reworks=reworks,
+            return Continue(review, self.refine_plan, edit=edit, findings=review.notes, reworks=reworks).because(
+                "the PM has findings"
             )
-        return Await(
-            self._gate(),
-            review.notes,
-            self.plan_edit,
-            intent=intent,
-            snapshot=snapshot,
-        )
+        return Await(self._gate(), review.notes, self.plan_edit, edit=edit).because("out of plan reworks")
 
-    def apply_plan(
-        self,
-        intent: EditIntent,
-        snapshot: EpicSnapshot,
-        plan: EpicEditPlan,
-    ) -> Continue:
-        applied = self.call(apply_edit_plan, intent, snapshot, plan)
-        report = self.call(validate_applied_edit, snapshot, plan, applied)
+    def apply_plan(self, edit: Edit) -> Continue:
+        applied = self.call(apply_edit_plan, edit.intent, edit.snapshot, edit.plan)
+        report = self.call(validate_applied_edit, edit.snapshot, edit.plan, applied)
         if not report.ok:
             raise WorkflowFailed(
                 f"epic edit application drifted from its plan:\n{report.errors}",
                 failure_class="epic-edit-application-drift",
-                artifacts={"epic_dir": str(snapshot.epic_dir)},
+                artifacts={"epic_dir": str(edit.snapshot.epic_dir)},
             )
+        edit = edit.model_copy(update={"applied": applied})
         if applied.deleted:
-            return Continue(applied, self.finish, intent=intent, applied=applied)
-        return Continue(
-            applied,
-            self.rewrite_epic,
-            intent=intent,
-            snapshot=snapshot,
-            plan=plan,
-            applied=applied,
-        )
+            return Continue(applied, self.finish, edit=edit).because("the epic was deleted")
+        return Continue(applied, self.rewrite_epic, edit=edit).because("plan applied")
 
-    def rewrite_epic(
-        self,
-        intent: EditIntent,
-        snapshot: EpicSnapshot,
-        plan: EpicEditPlan,
-        applied: AppliedEpicEdit,
-        findings: str = "",
-        reworks: int = 0,
-    ) -> Continue | Await:
+    def rewrite_epic(self, edit: Edit, findings: str = "", reworks: int = 0) -> Continue | Await:
+        applied = edit.applied
         result = self.agent(
             "epic_edit/prompts/rewrite-epic-edit.md",
             returns=EpicRewriteResult,
             power="high",
             cwd=self.ctx.repo_root,
             args={
-                "intent": intent,
-                "snapshot": snapshot,
-                "plan": plan,
+                "intent": edit.intent,
+                "snapshot": edit.snapshot,
+                "plan": edit.plan,
                 "epic_dir": applied.epic_dir,
                 "validation_findings": findings,
             },
         )
         report = self.call(validate_epic_document, applied.epic_dir)
-        graph_report = self.call(validate_applied_edit, snapshot, plan, applied)
+        graph_report = self.call(validate_applied_edit, edit.snapshot, edit.plan, applied)
         if not graph_report.ok:
             raise WorkflowFailed(
                 "epic prose rewrite changed the approved graph:\n" + graph_report.errors,
@@ -277,85 +189,35 @@ class EpicEdit(Workflow):
                 artifacts={"epic_dir": str(applied.epic_dir)},
             )
         if result.status == "complete" and report.ok:
-            return Continue(
-                result,
-                self.next_affected_story,
-                intent=intent,
-                applied=applied,
-                index=0,
-            )
+            return Continue(result, self.next_affected_story, edit=edit, index=0).because("the epic reads right")
         notes = result.notes if result.status == "blocked" else report.errors
         if reworks < MAX_REWORKS and result.status != "blocked":
-            return Continue(
-                report,
-                self.rewrite_epic,
-                intent=intent,
-                snapshot=snapshot,
-                plan=plan,
-                applied=applied,
-                findings=notes,
-                reworks=reworks + 1,
+            return Continue(report, self.rewrite_epic, edit=edit, findings=notes, reworks=reworks + 1).because(
+                "the epic has findings"
             )
-        return Await(
-            self._gate(),
-            notes,
-            self.rewrite_epic,
-            intent=intent,
-            snapshot=snapshot,
-            plan=plan,
-            applied=applied,
-            findings=notes,
-            reworks=0,
+        return Await(self._gate(), notes, self.rewrite_epic, edit=edit, findings=notes, reworks=0).because(
+            "blocked or out of reworks"
         )
 
-    def next_affected_story(
-        self,
-        intent: EditIntent,
-        applied: AppliedEpicEdit,
-        index: int = 0,
-    ) -> Continue:
+    def next_affected_story(self, edit: Edit, index: int = 0) -> Continue:
+        applied = edit.applied
         if index == 0:
             self.call(derive_story_services, applied.epic)
-        pick = self.call(
-            select_affected_story,
-            applied.epic,
-            applied.affected_stories,
-            index,
-        )
+        pick = self.call(select_affected_story, applied.epic, applied.affected_stories, index)
         if not pick.has_story:
-            return Continue(pick, self.check_coverage, intent=intent, applied=applied)
-        return Continue(
-            pick,
-            self.design_mockup,
-            intent=intent,
-            applied=applied,
-            pick=pick,
-            index=index,
-        )
+            return Continue(pick, self.check_coverage, edit=edit).because("no story left")
+        return Continue(pick, self.design_mockup, edit=edit, pick=pick, index=index).because("a story to rewrite")
 
-    def design_mockup(
-        self,
-        intent: EditIntent,
-        applied: AppliedEpicEdit,
-        pick: StoryChoice,
-        index: int,
-    ) -> Continue:
+    def design_mockup(self, edit: Edit, pick: StoryChoice, index: int) -> Continue:
         if not self.call(check_mockup_needed, pick.story_id).required:
-            return Continue(
-                None,
-                self.write_story,
-                intent=intent,
-                applied=applied,
-                pick=pick,
-                index=index,
-            )
+            return Continue(None, self.draft_story, edit=edit, pick=pick, index=index).because("no mockup needed")
         result = self.agent(
             "epic_edit/prompts/design-mockup.md",
             returns=MockupResult,
             power="high",
             cwd=self.ctx.repo_root,
             args={
-                "epic": applied.epic,
+                "epic": edit.applied.epic,
                 "story_slug": pick.story_slug,
                 "story_id": pick.story_id,
                 "story_dir": pick.story_dir,
@@ -371,14 +233,8 @@ class EpicEdit(Workflow):
                 artifacts={"story_dir": str(pick.story_dir)},
             )
         return Continue(
-            result,
-            self.write_story,
-            intent=intent,
-            applied=applied,
-            pick=pick,
-            index=index,
-            mockup=result.mockup,
-        )
+            result, self.draft_story, edit=edit, pick=pick, index=index, mockup=result.mockup
+        ).because("mockup drawn")
 
     def _story_args(self, applied: AppliedEpicEdit, pick: StoryChoice, mockup: str) -> dict[str, str]:
         return {
@@ -391,204 +247,33 @@ class EpicEdit(Workflow):
             "ledger": self.ctx.pm_ledger,
         }
 
-    def _rework_result(
-        self,
-        intent: EditIntent,
-        applied: AppliedEpicEdit,
-        pick: StoryChoice,
-        mockup: str,
-        reworks: int,
-        findings: str,
-    ) -> WriteStoryResult:
-        ledger = self.call(
-            record_attempt,
-            f"{pick.story_dir.rstrip('/')}/attempts.md",
-            str(reworks),
-            findings,
-        )
-        return self.agent(
-            "epic_edit/prompts/rework-story.md",
-            returns=WriteStoryResult,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={
-                **self._story_args(applied, pick, mockup),
-                "validation_errors": findings,
-                "prior_attempts": ledger.prior_attempts,
-                "operator_feedback": intent.change,
-            },
-        )
-
-    def write_story(
-        self,
-        intent: EditIntent,
-        applied: AppliedEpicEdit,
-        pick: StoryChoice,
-        index: int,
-        mockup: str = "",
-        reworks: int = 0,
-    ) -> Continue | Await:
-        result = self.agent(
-            "epic_edit/prompts/write-story.md",
-            returns=WriteStoryResult,
-            power="high",
-            cwd=self.ctx.repo_root,
-            args={**self._story_args(applied, pick, mockup), "epic_edit": intent.change},
-        )
-        if result.status == "blocked":
-            return Await(
-                self._gate(),
-                result.notes,
-                self.write_story,
-                intent=intent,
-                applied=applied,
-                pick=pick,
-                index=index,
-                mockup=mockup,
-                reworks=reworks,
-            )
-        return Continue(
-            result,
-            self.check_story,
-            intent=intent,
-            applied=applied,
-            pick=pick,
-            index=index,
-            mockup=mockup,
-            reworks=reworks,
-        )
-
-    def check_story(
-        self,
-        intent: EditIntent,
-        applied: AppliedEpicEdit,
-        pick: StoryChoice,
-        index: int,
-        mockup: str = "",
-        reworks: int = 0,
-        prior: str = "",
-    ) -> Continue | Await:
-        structure = self.call(validate_story, pick.story_dir)
-        grounding = (
-            self.call(
-                check_story_grounding,
-                pick.story_dir,
-                applied.epic_dir,
-            )
-            if structure.ok
-            else Defects()
-        )
-        errors = structure.errors if not structure.ok else grounding.errors
-        if errors:
-            if reworks >= MAX_REWORKS:
-                return Await(
-                    self._gate(),
-                    errors,
-                    self.write_story,
-                    intent=intent,
-                    applied=applied,
-                    pick=pick,
-                    index=index,
-                    mockup=mockup,
-                    reworks=0,
-                )
-            result = self._rework_result(intent, applied, pick, mockup, reworks, errors)
-            return Continue(
-                result,
-                self.check_story,
-                intent=intent,
-                applied=applied,
-                pick=pick,
-                index=index,
-                mockup=mockup,
-                reworks=reworks + 1,
-                prior=prior,
-            )
-        return Continue(
-            grounding,
-            self.review_story,
-            intent=intent,
-            applied=applied,
-            pick=pick,
-            index=index,
-            mockup=mockup,
-            reworks=reworks,
-            prior=prior,
-        )
-
-    def review_story(
-        self,
-        intent: EditIntent,
-        applied: AppliedEpicEdit,
-        pick: StoryChoice,
-        index: int,
-        mockup: str = "",
-        reworks: int = 0,
-        prior: str = "",
-    ) -> Continue | Await:
-        review = self.handoff(
-            PMReview,
-            stage="story",
+    def draft_story(self, edit: Edit, pick: StoryChoice, index: int, mockup: str = "") -> Continue | Await:
+        """Rewrite one story the edit touched until the PM passes it, and ask the operator when it stays blocked."""
+        applied = edit.applied
+        spent = self.handoff(
+            DraftLoop,
+            kind="edited-story",
             subject=pick.story_path,
             epic=applied.epic,
-            prior=prior,
+            epic_dir=applied.epic_dir,
+            story_dir=pick.story_dir,
+            args={
+                **self._story_args(applied, pick, mockup),
+                "epic_edit": edit.intent.change,
+                "operator_feedback": edit.intent.change,
+            },
+            max_answers=0,
         )
-        if not review.passed:
-            if reworks >= MAX_REWORKS:
-                return Await(
-                    self._gate(),
-                    review.notes,
-                    self.write_story,
-                    intent=intent,
-                    applied=applied,
-                    pick=pick,
-                    index=index,
-                    mockup=mockup,
-                    reworks=0,
-                )
-            return Continue(
-                review,
-                self.rework_story,
-                intent=intent,
-                applied=applied,
-                pick=pick,
-                index=index,
-                mockup=mockup,
-                findings=review.notes,
-                reworks=reworks,
-            )
-        return Continue(
-            review,
-            self.next_affected_story,
-            intent=intent,
-            applied=applied,
-            index=index + 1,
+        if spent.status == "blocked":
+            return Await(
+                self._gate(), spent.notes, self.draft_story, edit=edit, pick=pick, index=index, mockup=mockup
+            ).because("the story stayed blocked")
+        return Continue(spent, self.next_affected_story, edit=edit, index=index + 1).because(
+            "the PM passed the story"
         )
 
-    def rework_story(
-        self,
-        intent: EditIntent,
-        applied: AppliedEpicEdit,
-        pick: StoryChoice,
-        index: int,
-        findings: str,
-        mockup: str = "",
-        reworks: int = 0,
-    ) -> Continue:
-        result = self._rework_result(intent, applied, pick, mockup, reworks, findings)
-        return Continue(
-            result,
-            self.check_story,
-            intent=intent,
-            applied=applied,
-            pick=pick,
-            index=index,
-            mockup=mockup,
-            reworks=reworks + 1,
-            prior=findings,
-        )
-
-    def check_coverage(self, intent: EditIntent, applied: AppliedEpicEdit) -> Continue:
+    def check_coverage(self, edit: Edit) -> Continue:
+        applied = edit.applied
         report = self.call(validate_coverage, applied.epic_dir)
         if not report.ok:
             raise WorkflowFailed(
@@ -608,9 +293,10 @@ class EpicEdit(Workflow):
                 failure_class="epic-edit-coverage-review-failed",
                 artifacts={"epic_dir": str(applied.epic_dir)},
             )
-        return Continue(review, self.finish, intent=intent, applied=applied)
+        return Continue(review, self.finish, edit=edit).because("coverage holds")
 
-    def finish(self, intent: EditIntent, applied: AppliedEpicEdit) -> Done:
+    def finish(self, edit: Edit) -> Done:
+        intent, applied = edit.intent, edit.applied
         report = self.call(verify_integrity, "")
         if not report.holds and not report.skipped:
             self.call(commit_author, "incomplete", applied.slug or applied.epic, intent.change)
@@ -622,7 +308,7 @@ class EpicEdit(Workflow):
         if intent.kind == "add-story" and intent.record_id:
             self.call(promote_record, intent.record_id, intent.epic)
         self.call(commit_author, "epic-edit", applied.slug or applied.epic, intent.change)
-        return Done(applied)
+        return Done(applied).because("edit committed")
 
 
 __all__ = ["EpicEdit"]

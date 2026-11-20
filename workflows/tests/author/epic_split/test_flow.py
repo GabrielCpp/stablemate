@@ -46,7 +46,7 @@ class _Agent:
         self.blocks = blocks
         self.calls: Counter[str] = Counter()
         self.notes: list[str] = []
-        self.review_notes: list[str] = []
+        self.findings: list[str] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
@@ -54,7 +54,7 @@ class _Agent:
         if stem in {"split-epics", "rework-epic-split"}:
             data = ctx.as_dict()
             self.notes.append(str(data.get("note", "")))
-            self.review_notes.append(str(data.get("review_notes", "")))
+            self.findings.append(str(data.get("findings", "")))
             if self.blocks:
                 self.blocks -= 1
                 return "scripted", {"status": "blocked", "notes": "which order?"}
@@ -134,8 +134,8 @@ def test_the_review_findings_reach_the_rework_turn(repo: Path, tmp_path: Path) -
         replace(_env(tmp_path), agent_runner=StubRunner(agent)),
     )
 
-    assert agent.review_notes[0] == ""
-    assert "[order] the subject: sign-in must come first" in agent.review_notes[1]
+    assert agent.findings[0] == ""
+    assert "[order] the subject: sign-in must come first" in agent.findings[1]
 
 
 def test_a_blocked_writer_is_answered_by_the_pm_and_retried(repo: Path, tmp_path: Path) -> None:

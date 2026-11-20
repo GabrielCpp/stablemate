@@ -42,7 +42,7 @@ class StoryEdit(Workflow):
             intent=intent,
             operator_mode=self.operator_mode,
         )
-        return Done(result)
+        return Done(result).because("the epic edit ran")
 
 
 __all__ = ["StoryEdit"]

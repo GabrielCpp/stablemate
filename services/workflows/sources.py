@@ -26,6 +26,9 @@ KIT = (
 )
 
 AUTHOR = (
+    "workflows/src/workhorse_workflows/author/draft/flow.py",
+    "workflows/src/workhorse_workflows/author/draft/kinds.py",
+    "workflows/src/workhorse_workflows/author/draft/schemas.py",
     "workflows/src/workhorse_workflows/author/epic_author/flow.py",
     "workflows/src/workhorse_workflows/author/epic_author/nodes/_blueprint.py",
     "workflows/src/workhorse_workflows/author/epic_author/nodes/epic.py",
