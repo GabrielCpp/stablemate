@@ -60,8 +60,9 @@ planted defect each, one on a whole unfinished story with the installed tool):
 - **The record** owns landing the book's change beside the story's code.
 
 Flow: coverage answers first. With no covered service the lane is over and says so. The
-seat names the touched calls and plays them once before it edits, to prove the base. It
-makes its pass. The judgement plays the touched calls again and reads the outcome. The
+seat plays the calls it picks once before it edits, to prove the base. It
+makes its pass. The judgement selects the plays from the story's diff with
+`ostler book affected`, plays them and reads the outcome. The
 record lands the change when the outcome agrees. A later visit for the same story plays
 the calls the first visit recorded, and the seat is called only when that play disagrees.
 
@@ -183,10 +184,10 @@ and sentinel ids. They belong to the scenario lane and stay there.
 
 ## 7. Assumptions
 
-- A1. The seat names the calls the judgement plays. Decided: the seat's result carries
-  them and the judgement refuses an empty list. Basis: the attended passes, where the
-  brief named them from the plan. If wrong: a seat narrows its own exam, and the plays
-  take the calls from the book's stale list instead.
+- A1. Code selects the calls the judgement plays. Decided: `ostler book affected` reads the
+  story's diff of the app and of the book, and the seat's result no longer carries calls.
+  Basis: a seat that narrows its own exam passes a story it never judged. If wrong: the
+  seat names the calls again and the judgement refuses an empty list.
 - A2. A targeted play takes minutes. Decided: two plays a story, no cap of their own.
   Basis: 3 min 42 s and 4 min 30 s on the attended story. If wrong: the base play goes.
 - A3. The executable book lives at `services/<name>` under the repo root. Basis: the tool
