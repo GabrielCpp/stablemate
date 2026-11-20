@@ -64,7 +64,7 @@ def test_the_whole_book_is_played_marked_at_the_head_and_committed_with_the_form
     step = walk(flow, advance(flow, step), "books")
 
     run = next(argv for argv in seen if argv[3:5] == ["run", "services.ledger"])
-    assert run[5:] == ["--out", str(flow.run_dir / "book-run/services.ledger"), "--copy", "evening"]
+    assert run[5:] == ["--out", str(flow.run_dir / "book-run/services.ledger"), "--copy", "evening", "--fresh-data"]
     assert "verified" not in [argv[3] for argv in seen if argv[1] != "-c"]
     assert (flow.root / "services/ledger" / MARK_FILE).read_text(encoding="utf-8") == f"{shas[2]}\n"
     assert git(flow.root, "log", "-1", "--format=%s") == "docs(ledger): move the ledger book onto the current book format\n"

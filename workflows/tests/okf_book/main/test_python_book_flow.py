@@ -51,7 +51,7 @@ def test_the_second_surface_red_sends_the_owner_another_lap_naming_it(tmp_path: 
     step = flow.play(lap=1)
 
     assert [argv[4] for argv in seen] == ["services.ledger.http", "services.ledger.web"]
-    assert seen[0][5:] == ["--out", str(flow.run_dir / "book-run" / "services.ledger.http")]
+    assert seen[0][5:] == ["--out", str(flow.run_dir / "book-run" / "services.ledger.http"), "--fresh-data"]
     assert isinstance(step, Continue) and step.state == "write"
     assert "run services.ledger.web` exited 1" in cast("str", step.params["gate"])
 
@@ -113,7 +113,7 @@ def test_a_green_check_sends_the_book_to_the_commit_checks_and_play_runs_it_into
 
     assert isinstance(checked, Continue) and checked.state == "checks"
     assert isinstance(played, Continue) and played.state == "account"
-    assert seen[1][3:] == ["run", "services.ledger", "--out", str(flow.run_dir / "book-run" / "services.ledger")]
+    assert seen[1][3:] == ["run", "services.ledger", "--out", str(flow.run_dir / "book-run" / "services.ledger"), "--fresh-data"]
 
 
 def test_a_missing_list_that_is_not_empty_sends_the_owner_another_lap_with_the_list(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -181,7 +181,7 @@ def test_a_run_that_names_a_stack_copy_plays_the_book_on_it_and_tells_the_owner(
     rendered = _rendered(flow, tmp_path, monkeypatch)
 
     assert seen[0][3:] == ["check", "services.ledger", "--app", str(flow.code_root)]
-    assert seen[1][-2:] == ["--copy", "evening"]
+    assert seen[1][-3:] == ["--copy", "evening", "--fresh-data"]
     assert "python -m ostler.book run services.ledger --only <each endpoint or interaction this turn touched> --copy evening\n" in rendered
     assert "as the stack copy `evening`" in rendered
 

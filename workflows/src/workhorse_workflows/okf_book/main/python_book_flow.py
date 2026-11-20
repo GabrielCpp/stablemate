@@ -332,7 +332,7 @@ class WritePythonBook(BookFlow):
         return self._each("check", self.check, lap, lambda module: self.call(python_book_check, self.root, module, self.code_root))
 
     def _played(self, lap: int) -> tuple[BookGate, Continue[...] | Await[...] | None]:
-        return self._each("run", self.play, lap, lambda module: self.call(python_book_run, self.root, module, self.run_dir / "book-run" / module, run_flags(self.stack_copy)))
+        return self._each("run", self.play, lap, lambda module: self.call(python_book_run, self.root, module, self.run_dir / "book-run" / module, run_flags(self.stack_copy, fresh=True)))
 
     def _accounted(self, lap: int) -> tuple[BookGate, Continue[...] | Await[...] | None]:
         return self._each("missing", self.account, lap, lambda module: self.call(python_book_missing, self.root, module, self.code_root, self.source_folder))

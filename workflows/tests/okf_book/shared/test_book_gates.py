@@ -66,3 +66,8 @@ def test_every_book_command_runs_with_bytecode_writing_off(monkeypatch: pytest.M
     _ = book_gates.run_stale(logger, tmp_path, "services.api", tmp_path)
 
     assert seen == [{"PYTHONDONTWRITEBYTECODE": "1"}] * 6
+
+
+def test_a_run_asks_for_a_data_reload_only_when_told_to() -> None:
+    assert "--fresh-data" not in book_gates.run_flags("evening", ("Ping",))
+    assert book_gates.run_flags(fresh=True) == ("--fresh-data",)

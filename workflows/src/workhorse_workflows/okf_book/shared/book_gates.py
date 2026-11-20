@@ -79,9 +79,9 @@ def python_book_missing(logger: logging.Logger, root: Path, module: str, app: Pa
     return MissingList(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()), unnamed=_unnamed(done.stdout))
 
 
-def run_flags(stack_copy: str = "", only: tuple[str, ...] = ()) -> tuple[str, ...]:
-    """The flags a run takes to play only the journeys of the named calls, on the named stack copy."""
-    return (*(("--only", ",".join(only)) if only else ()), *(("--copy", stack_copy) if stack_copy else ()))
+def run_flags(stack_copy: str = "", only: tuple[str, ...] = (), fresh: bool = False) -> tuple[str, ...]:
+    """The flags a run takes to play only the journeys of the named calls, on the named stack copy, after the data is reloaded when `fresh`."""
+    return (*(("--only", ",".join(only)) if only else ()), *(("--copy", stack_copy) if stack_copy else ()), *(("--fresh-data",) if fresh else ()))
 
 
 @blueprint.node(stub=_green)

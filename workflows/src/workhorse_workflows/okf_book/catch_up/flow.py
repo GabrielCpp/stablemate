@@ -151,7 +151,7 @@ class CatchUpBooks(BookFlow):
         gate = BookGate(exit_code=0)
         for module in report.modules:
             if report.format_behind:
-                gate = self.call(python_book_run, self.root, module.module, self.run_dir / "book-run" / module.module, run_flags(self.stack_copy))
+                gate = self.call(python_book_run, self.root, module.module, self.run_dir / "book-run" / module.module, run_flags(self.stack_copy, fresh=True))
                 if gate.exit_code != 0:
                     return gate, self._judged("run", module.module, gate, Lap(service, lap, added, ignored), self.play)
                 continue
