@@ -126,6 +126,13 @@ class Environment:
                 return self._copy_of(url)
         return ""
 
+    def reset(self) -> tuple[int, float, str] | None:
+        """Bring the copy this environment reaches back to its loaded data: the exit code, the seconds and the output tail, or None when it reaches no copy ostler manages."""
+        name = self.copy()
+        if not name:
+            return None
+        return commands.reset(self._stack_root(), name, runner=self.runner)
+
     def _copy_of(self, url: str) -> str:
         """The copy the run named, else the lease the process runs under, else the one the book names, else the
         shared one. A book's own name is a default for a run by hand, so whoever runs the book outranks it."""

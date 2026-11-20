@@ -269,6 +269,7 @@ ostler env ls                        # each service, what it is, and the copies 
 ostler env ls --all                  # every copy on this machine, marked orphaned or idle
 ostler env prune --dry-run           # what prune would tear down (orphaned) or stop (idle)
 ostler env schema                    # the JSON Schema of a stack.yml
+ostler env reset --copy story-12     # the copy's data back to what it started with; refused while another process holds it
 ostler env down --copy story-12      # data and rendered files go too, unless --keep-data
 ```
 
@@ -310,7 +311,7 @@ The directory that holds `services/` is the working directory, or the one `-C DI
 ostler book check   services.api          # build everything the book declares, no stack; 0 findings or 1
 ostler book run     services.api          # every journey, cell and input class; exit 0, 1, 2 or 3
 ostler book run     services.api --no-stack --only AddTodo,FindTodos
-ostler book run     services.api --fresh-data   # reload the data through the stack's `fresh` command first
+ostler book run     services.api --fresh-data   # reload the data first: the stack's `fresh` command, else a reset of the `ostler env` copy, else a refusal
 ostler book explore services.api --seed-only   # walk the model's state graph, no app
 ostler book walk    services.api --scene overdue --action read
 ostler book search  overdue               # what the book says, read from index.tsv

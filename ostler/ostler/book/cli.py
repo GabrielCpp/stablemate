@@ -278,7 +278,7 @@ def made_ready(service: Service[Any], args: argparse.Namespace) -> tuple[Surface
     surface = _surface(service, args.environment)
     stack = service.stack(os.path.join(args.out, "logs"))
     if getattr(args, "fresh_data", False):
-        args.data_line, code = reloaded(stack)
+        args.data_line, code = reloaded(stack, args.environment)
         print(args.data_line)
         if code:
             return code
@@ -296,15 +296,23 @@ def made_ready(service: Service[Any], args: argparse.Namespace) -> tuple[Surface
     return surface, stack
 
 
-def reloaded(stack: Stack) -> tuple[str, int]:
-    """The `data:` line of a reload through the stack's `fresh` command, with the output tail of a failed one, and the exit code
-    a red play gives, or 0 where the play goes on."""
-    if stack.fresh is None:
-        return "data: not reloaded, the book states no way to reload it", 0
-    ended, took, shown = stack.fresh.run()
-    if ended == "ok":
-        return f"data: reloaded by {' '.join(stack.fresh.command)} in {took:.0f}s", 0
-    return "\n".join((f"data: reload failed ({ended})", shown)).rstrip(), 1
+def reloaded(stack: Stack, environment: Environment) -> tuple[str, int]:
+    """The `data:` line of a reload, with the output tail of a failed one, and the exit code a red play gives, or 0 where
+    the play goes on. The stack's `fresh` command reloads when the book states one, else the copy ostler manages is reset."""
+    if stack.fresh is not None:
+        ended, took, shown = stack.fresh.run()
+        if ended == "ok":
+            return f"data: reloaded by {' '.join(stack.fresh.command)} in {took:.0f}s", 0
+        return "\n".join((f"data: reload failed ({ended})", shown)).rstrip(), 1
+    copy = environment.copy()
+    result = environment.reset()
+    if result is None:
+        return ("data: not reloaded, the book states no way to reload it and runs on no copy ostler manages: "
+                "state fresh=Fresh(...) on its Stack"), 1
+    code, took, shown = result
+    if code == 0:
+        return f"data: reloaded by resetting the copy {copy} in {took:.0f}s", 0
+    return "\n".join((f"data: reload failed ({code})", shown)).rstrip(), 1
 
 
 def stopped(surface: Surface, stack: Stack, args: argparse.Namespace) -> None:

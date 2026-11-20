@@ -7,7 +7,7 @@ from ostler.book import Journey
 
 from ..commands import Look
 from ..fixtures import nothing
-from ..graph import (EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, ValidatePhonePlan, ValidateWebPlan, VetDryRun,
+from ..graph import (EnvResetUnknown, EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, ValidatePhonePlan, ValidateWebPlan, VetDryRun,
                      VetOfUnknownStory, VetWithoutArguments, VetWithoutRegions)
 
 
@@ -27,6 +27,7 @@ class TryWhatTheSandboxLacks(Journey):
             RunPhonePlan(nothing()),
             RunGrpcPlan(nothing()),
             EnvUpUnknown(nothing()),
+            EnvResetUnknown(nothing()),
             VetWithoutArguments(nothing()),
             VetWithoutRegions(nothing()),
             VetOfUnknownStory(nothing()),

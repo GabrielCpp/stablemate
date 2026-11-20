@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import sys
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -146,6 +148,17 @@ def cmd_up(
     reclaimed, pruned = _reclaim(keep=copy, runner=runner) if copy.name != SHARED else ([], [])
     if holder is None and os.environ.get(addresses.LEASE_ENV, "") == copy.name:
         holder = runtime.holder_from_env()
+    return _bring_up(root, prepared, fresh=fresh, cwd=cwd, wait_seconds=wait_seconds,
+                     holder=holder, runner=runner, reclaimed=reclaimed, pruned=pruned)
+
+
+def _bring_up(
+    root: Path, prepared: Prepared, *, fresh: bool, cwd: Path | None, wait_seconds: int,
+    holder: int | None, runner: Runner, reclaimed: list[str] | None = None,
+    pruned: list[dict[str, str]] | None = None, keep: dict[str, object] | None = None,
+) -> EnvOutcome:
+    """Render, start and read the addresses of *prepared*; *keep* is a manifest whose holder, starter and worktree are kept."""
+    copy = prepared.copy
     compose = Compose(copy, runner)
     if fresh and (copy.directory / render_mod.COMPOSE_FILE).is_file():
         compose.down(keep_data=False)
@@ -162,7 +175,9 @@ def cmd_up(
         return _fail(str(exc), copy=copy.name)
     running = runtime.running_projects(runner).get(copy.project, "").startswith("running")
     started_by: dict[str, object] | None = None
-    if not running:
+    if keep is not None:
+        started_by = _record(keep, "started_by")
+    elif not running:
         started_by = runtime.holder_stamp(holder) if holder else {}
     elif holder:
         recorded = runtime.read_manifest(copy.directory).get("started_by")
@@ -173,7 +188,8 @@ def cmd_up(
     _write(root, prepared, rendered, started=True, holder=holder,
            env_files=[*env_files, produced] if jobs else env_files,
            exec_prefix=source.exec_prefix(), started_by=started_by,
-           worktree=runtime.worktree_of(cwd or Path.cwd()))
+           worktree="" if keep is not None else runtime.worktree_of(cwd or Path.cwd()),
+           holder_record=_record(keep, "holder") if keep is not None else None)
     runtime.touch_used(copy.directory)
     if jobs:
         problem = _run_jobs(prepared, jobs, produced, compose, wait_seconds)
@@ -198,11 +214,60 @@ def cmd_up(
     entry = next((book[service.address] for service in reversed(prepared.services)
                   if service.address), "")
     lines = [f"{name}: {url}" for name, url in sorted(book.items())]
-    lines += [f"reclaimed {name}, whose run is gone" for name in reclaimed]
-    lines += [_prune_line(row) for row in pruned]
+    lines += [f"reclaimed {name}, whose run is gone" for name in reclaimed or []]
+    lines += [_prune_line(row) for row in pruned or []]
     return EnvOutcome(True, "\n".join([f"{copy.name} is up", *lines]),
                       _summary(prepared, addresses=book, address_book=str(book_file),
-                               entry_url=entry, reclaimed=reclaimed, pruned=pruned))
+                               entry_url=entry, reclaimed=reclaimed or [], pruned=pruned or []))
+
+
+def _record(manifest: dict[str, object], key: str) -> dict[str, object]:
+    value = manifest.get(key)
+    return {str(name): item for name, item in value.items()} if isinstance(value, dict) else {}
+
+
+def _holder_pid(manifest: dict[str, object]) -> int | None:
+    """The pid of the live process a manifest records as the copy's holder, or None when nothing holds it."""
+    holder = manifest.get("holder")
+    pid = holder.get("pid") if isinstance(holder, dict) else None
+    if isinstance(pid, int) and pid > 0 and runtime.holder_alive(holder):
+        return pid
+    return None
+
+
+def reset(root: Path, copy_name: str, wait_seconds: int = DEFAULT_WAIT_SECONDS, *,
+          runner: Runner = run_command) -> tuple[int, float, str]:
+    """Bring the copy back up on its recorded targets and fixture sets with its data dropped; the exit code, the seconds it took and the tail of the output."""
+    began = time.monotonic()
+    outcome = _reset(root, copy_name, wait_seconds, runner)
+    tail = "\n".join(outcome.message.splitlines()[-20:])
+    return (0 if outcome.ok else 1), time.monotonic() - began, tail
+
+
+def _reset(root: Path, copy_name: str, wait_seconds: int, runner: Runner) -> EnvOutcome:
+    copy = runtime.copy_for(root, copy_name)
+    manifest = runtime.read_manifest(copy.directory)
+    if not manifest.get("started"):
+        return _fail(f"no copy named {copy_name} is up: bring it up with ostler env up")
+    pid = _holder_pid(manifest)
+    if pid is not None and pid != runtime.holder_from_env():
+        return _fail(f"{copy_name} is in use by pid {pid}: a reset would pull its data from "
+                     "under a play", copy=copy_name)
+    prepared = prepare(root, _listed(manifest, "targets"), copy_name=copy_name,
+                       fixtures=_listed(manifest, "fixtures"))
+    if isinstance(prepared, EnvOutcome):
+        return prepared
+    return _bring_up(root, prepared, fresh=True, cwd=None, wait_seconds=wait_seconds,
+                     holder=None, runner=runner, keep=manifest)
+
+
+def cmd_reset(root: Path, copy_name: str, wait_seconds: int = DEFAULT_WAIT_SECONDS, *,
+              runner: Runner = run_command) -> int:
+    """Reset the copy and print `reset NAME in Ns`, or what went wrong."""
+    code, took, shown = reset(root, copy_name, wait_seconds, runner=runner)
+    print(f"reset {copy_name} in {took:.0f}s" if code == 0 else shown,
+          file=sys.stdout if code == 0 else sys.stderr)
+    return code
 
 
 def _taken_ports(prepared: Prepared, targets: Sequence[str], runner: Runner) -> str:
@@ -553,7 +618,7 @@ def _write(
     root: Path, prepared: Prepared, rendered: render_mod.Rendered, *, started: bool,
     holder: int | None = None, env_files: list[Path] | None = None,
     exec_prefix: list[str] | None = None, started_by: dict[str, object] | None = None,
-    worktree: str = "",
+    worktree: str = "", holder_record: dict[str, object] | None = None,
 ) -> list[Path]:
     written = render_mod.write(rendered)
     previous = runtime.read_manifest(prepared.copy.directory)
@@ -566,7 +631,8 @@ def _write(
         "fixtures": prepared.fixtures,
         "rendered_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "started": started,
-        "holder": runtime.holder_stamp(holder) if holder else {},
+        "holder": holder_record if holder_record is not None
+        else runtime.holder_stamp(holder) if holder else {},
         "env_files": [str(path) for path in env_files] if env_files is not None else kept,
         "exec_prefix": exec_prefix if exec_prefix is not None else kept_prefix,
         "worktree": worktree or previous.get("worktree", ""),

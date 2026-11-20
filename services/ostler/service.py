@@ -6,7 +6,7 @@ from ostler.book import App, Because, Environment, Service, Stack, Unseen
 
 from .books import ALL as BOOKS
 from .commands import ALL as COMMANDS, Look
-from .graph import (ALL as GRAPH, BacklogDropWithoutReason, CreateSpecOfUnknownStory, CutFrames, Doctor, EditRenameUnknown, EnvAddress, EnvRenderUnknown, EnvUpUnknown, LintBadPlan,
+from .graph import (ALL as GRAPH, BacklogDropWithoutReason, CreateSpecOfUnknownStory, CutFrames, Doctor, EditRenameUnknown, EnvAddress, EnvRenderUnknown, EnvResetUnknown, EnvUpUnknown, LintBadPlan,
                     MilestoneEpicsUnknown, RunBadPlan, RunGrpcPlan, RunPhonePlan, RunWebPlan, ValidateBadPlan, VetArtifact,
                     VetOfUnknownStory, VetWithoutArguments, VetWithoutRegions)
 from .books import ExplainNothing
@@ -40,7 +40,7 @@ REFUSED = "the call has no argument to vary, and the sandbox never makes it succ
 UNSEEN = tuple(Unseen(command, "inputs", Because.NEVER_FILLED, REFUSED) for command in (
     Doctor, EditRenameUnknown, MilestoneEpicsUnknown, CreateSpecOfUnknownStory, BacklogDropWithoutReason, VetArtifact, LintBadPlan,
     ValidateBadPlan, RunBadPlan, CutFrames, ExplainNothing, EnvRenderUnknown, EnvAddress, RunWebPlan, RunPhonePlan, RunGrpcPlan, VetWithoutArguments,
-    VetWithoutRegions, VetOfUnknownStory, EnvUpUnknown))
+    VetWithoutRegions, VetOfUnknownStory, EnvUpUnknown, EnvResetUnknown))
 
 service = Service[Plan](
     name="ostler",

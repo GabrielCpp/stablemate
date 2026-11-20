@@ -12,7 +12,7 @@ from ..commands import (Conflict, CreateEpic, CreateStory, DeleteCreatedEpic, De
                         PathStory, SeedAdd, SeedRemove, SetStatus, Unblock, UpdateStory)
 from ..fixtures import (ALPHA, BRAVO, FIRST, SECOND, SX, THIRD, conflict, create_epic, create_story, delete_epic, delete_story, path_branch, path_epic,
                         path_spec, path_story, seed_add, seed_remove, set_status, unblock, update_story)
-from ..graph import (EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, ValidatePhonePlan, ValidateWebPlan, VetDryRun, VetOfUnknownStory,
+from ..graph import (EnvResetUnknown, EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, ValidatePhonePlan, ValidateWebPlan, VetDryRun, VetOfUnknownStory,
                      VetWithoutArguments, VetWithoutRegions, EnvAddress, EnvDown, EnvExec, EnvRender, EnvRenderUnknown, BacklogAdopt, BacklogAdd, CutFrames, LintBadPlan, LintPlan, ReadLedger, RecordAssertion, RecordStep, ReplayRun,
                      ReportRun, RunBadPlan, RunPlan, StartSession, StopSession, ValidateBadPlan, ValidatePlan, BacklogDropWithoutReason, BacklogList, BacklogPrune, BuildIndex, CleanQaScratch, CreateMilestone,
                      CreateSpec, CreateSpecOfUnknownStory, Doctor, EditRename, EditRenameUnknown, EnvCheck, EnvList, EnvListAll, EnvPrune, EnvSchema,
@@ -85,6 +85,7 @@ STORY_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "branch of an unknown story": lambda m: PathBranch(path_branch("TST-NOPE")),
     "branch of an epic": lambda m: PathBranch(path_branch("second", epic=True)),
     "branch of an epic by id": lambda m: PathBranch(path_branch(SECOND, epic=True)),
+    "reset a copy that is not up": lambda m: EnvResetUnknown(nothing()),
     "look": lambda m: Look(),
 }
 

@@ -37,6 +37,12 @@ def add_parser(sub: argparse._SubParsersAction[argparse.ArgumentParser]) -> None
                     help="how long to wait for every service to be ready")
     up.add_argument("--json", action="store_true")
 
+    reset = ops.add_parser(
+        "reset", help="bring a copy back up on its own targets and fixture sets with its data reloaded")
+    copy_flag(reset)
+    reset.add_argument("--wait", type=int, default=commands.DEFAULT_WAIT_SECONDS, metavar="SECONDS",
+                       help="how long to wait for every service to be ready")
+
     down = ops.add_parser("down", help="stop a copy and delete its secrets, data and rendered files")
     copy_flag(down)
     down.add_argument("--keep-data", action="store_true",
@@ -102,6 +108,8 @@ def run(args: argparse.Namespace, root: Path) -> int:
     if op == "schema":
         print(json.dumps(spec.schema(), indent=2))
         return 0
+    if op == "reset":
+        return commands.cmd_reset(root, copy_name, args.wait)
     if op == "up":
         outcome = commands.cmd_up(root, args.targets, copy_name=copy_name, fixtures=fixtures,
                                   fresh=args.fresh, wait_seconds=args.wait)

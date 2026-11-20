@@ -788,6 +788,17 @@ class EnvUpUnknown(Command):
               "ostler/ostler/environments/checkout.py")
 
 
+class EnvResetUnknown(Command):
+    does = ("Refuse to reset a copy that was never brought up, before any container is touched; a reset of a copy that "
+            "is up drops its data and starts it again, so the book does not play it.")
+    program = "ostler"
+    argv = ("--full-ids", "env", "reset", "--copy", "nothing")
+    args = ARGS
+    answers = (Exit(1, STDERR, "no copy has the name; the refusal is on standard error"),)
+    carries = act.ResetUnknownCopy
+    source = ("ostler/ostler/environments/commands.py::reset", "ostler/ostler/environments/cli.py")
+
+
 ALL = (
     Doctor, ListEpicRows, ListStoryRows, SearchPlan, BuildIndex, QueryCovering, NextEpic, NextStory, ShowChecks, EvictCache,
     EditRename, EditRenameUnknown, CreateMilestone, MilestoneEpicsFirst, MilestoneEpicsBoth, MilestoneEpicsUnknown,
@@ -797,5 +808,5 @@ ALL = (
     ValidateBadPlan, RunPlan, RunBadPlan, ReportRun, ReplayRun, ReadLedger, CutFrames, StartSession, RecordStep, RecordAssertion,
     StopSession, EnvRender, EnvRenderUnknown, EnvDown, EnvAddress, EnvExec,
     ValidateWebPlan, ValidatePhonePlan, RunWebPlan, RunPhonePlan, RunGrpcPlan, VetWithoutArguments, VetWithoutRegions,
-    VetOfUnknownStory, VetDryRun, EnvUpUnknown,
+    VetOfUnknownStory, VetDryRun, EnvUpUnknown, EnvResetUnknown,
 )

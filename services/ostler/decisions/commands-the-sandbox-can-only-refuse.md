@@ -1,6 +1,6 @@
 story: none
 date: 2026-11-17
-elements: ValidateWebPlan, ValidatePhonePlan, RunWebPlan, RunPhonePlan, RunGrpcPlan, VetWithoutArguments, VetWithoutRegions, VetOfUnknownStory, VetDryRun, EnvUpUnknown
+elements: ValidateWebPlan, ValidatePhonePlan, RunWebPlan, RunPhonePlan, RunGrpcPlan, VetWithoutArguments, VetWithoutRegions, VetOfUnknownStory, VetDryRun, EnvUpUnknown, EnvResetUnknown
 
 Some commands a person types need a machine the sandbox is not: a browser, a phone, a gRPC service, a screenshot or a
 running stack. The book declares them, plays the answers the sandbox can produce, and declares the others unseen with
@@ -26,3 +26,7 @@ scan of a live browser and a report that is not clean are not played.
 `ostler env up` of a book with no stack is refused before a container, a lease or a checkout is touched. A bring-up of the
 demo book would pull and start an image, and the book does not play that. An earlier pass of this book started one by
 mistake and tore it down with `env down`; the image layer stays in the machine's cache.
+
+`ostler env reset` of a copy that was never brought up is refused before a container is touched, and the refusal names
+`ostler env up`. A reset of a copy that is up drops its volumes and starts it again, which needs the same image pull
+and start the book does not play, so the book plays only the refusal.
