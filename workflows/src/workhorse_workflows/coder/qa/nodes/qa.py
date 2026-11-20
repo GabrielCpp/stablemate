@@ -21,7 +21,6 @@ from workhorse_workflows.coder.shared.qa_support import QA_PLAN_FILE, notes_for
 from workhorse_workflows.coder.shared.schemas.qa import (
     QaCleared,
     QaPlanValidation,
-    QaToolCatalog,
     StackTornDown,
 )
 
@@ -65,19 +64,6 @@ def lint_qa_plan(
 
 
 @blueprint.node
-def qa_tools_catalog(
-    logger: logging.Logger, repo_dir: str = ""
-) -> QaToolCatalog:
-    """`ostler qa tools list` — the tools this repo opted into, resolved for this host."""
-    docs_root = find_docs_root(repo_dir)
-    outcome = Ostler(docs_root).qa_tools_catalog()
-    tools = outcome.data.get("tools", [])
-    errors = outcome.data.get("errors", [])
-    logger.info("qa tools catalog resolved %d tool(s), %d error(s)", len(tools), len(errors))
-    return QaToolCatalog(tools=tools, errors=errors)
-
-
-@blueprint.node
 def teardown_stack(
     logger: logging.Logger,
     repo_dir: str = "",
@@ -96,7 +82,6 @@ __all__ = [
     "ensure_stack",
     "hold_copy",
     "lint_qa_plan",
-    "qa_tools_catalog",
     "release_copy",
     "run_qa_plan",
     "stack_target",

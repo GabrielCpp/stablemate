@@ -101,7 +101,6 @@ QA_ARGS = {
     "qa_run_plan": [],
     "plan_services": "",
     "qa_only_scenarios": [],
-    "qa_tools": [],
     "standing_plan": False,
     "book_services": ["api"],
     "book_unreached": UNREACHED,

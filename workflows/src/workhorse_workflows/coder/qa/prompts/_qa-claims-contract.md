@@ -98,7 +98,7 @@ its function name with underscores turned into dashes.
   `qa.root` the repo root, `qa.spec_dir` the spec dir. Never rebuild them from a literal path.
 - `ostler qa lint` allowlists the plan's AST. There is no `subprocess`, no `os.system`, no
   `pathlib`, and no importing a helper beside the plan. A command runs through
-  `qa.tool(name)` for a tool this repo opted into. Prefer `qa.http` for HTTP: it binds the
+  `qa.tool(name)` for a command on PATH. Prefer `qa.http` for HTTP: it binds the
   target's `base_url` and raises `HttpError` on any status outside `expect_status=`.
 - **Write for the reader of `qa-report.md`.** Phrase `qa.step("...")` as what a person would
   do and a label as the claim it proves. Always pass `actual=` to `qa.check`, `qa.require`
@@ -115,7 +115,7 @@ its function name with underscores turned into dashes.
 | `qa.capture(key, value)` / `qa.get(key)` | publish a value into the ledger and read it back |
 | `qa.artifact(path, kind="...")` | register a file as evidence, resolved inside `qa.dir` |
 | `qa.secret("NAME")` | a declared secret's value, redacted from the ledger |
-| `qa.tool("name").run(*args, cwd=..., env=..., timeout=60)` | an opted-in command |
+| `qa.tool("name").run(*args, cwd=..., env=..., timeout=60)` | a command on PATH |
 | `qa.http.get/post/put/patch/delete(path, json_body=..., headers=..., expect_status=...)` | HTTP against `base_url` |
 | `qa.goto(url)`, `qa.by_role/by_label/by_test_id/by_text/by_css`, `qa.screenshot(name)`, `qa.page` | the browser, on a `playwright` target |
 | `qa.diagnostics.console_errors/page_errors/failed_requests/responses()` | the page's live console and network record |

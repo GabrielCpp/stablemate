@@ -58,18 +58,6 @@ The implementation plan's services:
 {{ plan_services }}
 {% endif %}
 
-The QA tools this repo opted into in `agents.yml`, resolved for this host:
-
-{% if qa_tools %}
-| tool | command | on this host |
-| --- | --- | --- |
-{% for tool in qa_tools -%}
-| `{{ tool.name }}` | `{{ tool.command }}` | {{ "available" if tool.available else "NOT on PATH" }} |
-{% endfor %}
-{%- else %}
-None. A plan reaches no tool beyond the built-ins.
-{% endif %}
-
 Work **only** the story at that path.
 {% if report %}
 

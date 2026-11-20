@@ -45,13 +45,6 @@ class QaPlanValidation(CoderResult):
     ostler: dict[str, Any] = {}
 
 
-class QaToolCatalog(CoderResult):
-    """`ostler qa tools list` — the tools this repo opted into, resolved for this host."""
-
-    tools: list[dict[str, Any]] = []
-    errors: list[str] = []
-
-
 class QaCleared(CoderResult):
     """`clear-qa-evidence.py` — the stale `qa/` outputs and root verdict are gone."""
 
@@ -187,7 +180,6 @@ __all__ = [
     "QaResult",
     "QaRunResult",
     "QaStatus",
-    "QaToolCatalog",
     "RegressionRun",
     "RegressionSuite",
     "RegressionSuites",
