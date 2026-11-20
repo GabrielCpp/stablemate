@@ -94,7 +94,8 @@ Declare each body once in `endpoints/shapes.py` and reuse it.
   the app lists a date. So the view's attribute answers None exactly where the app leaves the
   field empty. A placeholder value fails every row the app leaves empty.
 - `Str(format=..., max_len=...)`, `Int()`, `Num()`, `Bool()`, `Enum(values)`, `Bytes()`,
-  `Map(of)`, `List(of, unordered="")`.
+  `Map(of)`, `List(of, unordered="")`. A field with a closed set of values is typed `Enum(values)`
+  and never a plain `Str`, because the run holds a plain text field to no set of values.
 - `Id(kind, of=Str(format="uuid"), strangers="", minted="")`: an id of a record kind. The
   runtime maps the app's ids to the model's. `of` is the id's own shape: `Str(format="uuid")`,
   `Str(format="hex32")`, `Str(format="ulid")`, or a plain `Str()` when the app checks no

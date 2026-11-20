@@ -23,6 +23,7 @@ reports something.
 | `FAIL  input <Endpoint> <class>` | run | the app answered an input class other than the book predicts | book wrong: fix the shape or the refusal; app lenient: declare `Diverges` |
 | `Declared divergences never met` | run | a `Diverges` whose class the app now refuses | the app was fixed or the class name changed: remove or rename it |
 | a gap under "what the run witnessed" | run | an answer or field no step showed | reach it with a step, or declare it `Unseen` |
+| `Seen with one value only` | run | an `Enum`, `Bool` or number field every play read in one value | read it in a second value with a fixture or a scene that differs, or declare it `Unseen` |
 
 A copy finding blocks the run once the book refers to a record of another book with `Foreign`, and is a `NOTE` before it does, so a screen book written before a book could refer to another still passes.
 

@@ -62,6 +62,10 @@ A fixture is what a caller sends, a `@dataclass(eq=False)` subclass of `Fixture`
   bodies on its own, such as a body that must name records the state holds.
 - Every factory and variant is listed in `fixtures/__init__.py`'s `__all__`.
 
+## Fields read in one value
+
+A field the app passes through unchanged, read in one value, proves nothing, because an app that forces it to a constant answers the same. A journey or a matrix reads each `Enum`, `Bool` and number field of an answer in at least two values, with a fixture or a scene that differs. Start with the fixtures: a second record whose values differ from the first closes most of the list at once. The run lists the fields it saw with one value only under `Seen with one value only`. The list never turns the run red.
+
 ## Journeys
 
 A journey is a story a user lives through, one class per file in `journeys/`, registered in
