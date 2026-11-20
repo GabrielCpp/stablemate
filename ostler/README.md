@@ -386,6 +386,14 @@ item, `Unseen(Endpoint, "401", Because.X, "why")`, and any other kind without on
 stated element, sorted, with the plays that exercised it (a journey, a cell or an input class by name), an
 empty list for an element no play did.
 
+The run also keeps the witness: for each declared answer, whether a play saw the service produce it, and for each field,
+whether a play saw it with a real value. A field of a value domain (`Enum`, `Bool`, `Int`, `Num`) that the run saw in one
+value only proves nothing about the field, because a service that forces it to a constant passes. On a full play the run
+prints the section `Seen with one value only` after the witness lines, with one line per such field, `Enum` and `Bool`
+first, and writes it to `<service>-witness.md` under `## Seen with one value only`. A field typed `Id`, `Token`, `Bytes` or
+`Str`, a field marked `opaque` or `ignores`, and a field declared `Unseen` are not listed. The section never changes the
+verdict or the exit code, and a partial run prints `not judged on a partial run`.
+
 ## The parse index
 
 `ostler doctor` re-reads and re-parses the same files on every invocation, and an agent that

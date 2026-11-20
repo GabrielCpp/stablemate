@@ -92,3 +92,7 @@ def test_never_filled_stays_legal_for_every_item_of_an_endpoint():
 def test_a_blank_why_is_refused_for_every_kind():
     with pytest.raises(BookError, match="say why"):
         Unseen(Ghost, Because.RUNTIME, " ")
+
+
+def test_a_book_that_reads_the_element_by_its_old_name_still_loads():
+    assert Unseen(Ping, "401", Because.SHARED_GATE, "another endpoint shows it").endpoint is Ping

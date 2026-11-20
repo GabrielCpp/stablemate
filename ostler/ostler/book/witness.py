@@ -17,7 +17,8 @@ from ostler.book.model import Rule
 from ostler.book.screen import Interaction
 from ostler.book.state import Scene
 from ostler.book.status import Status
-from ostler.book.http import Endpoint, Witness, declared_paths
+from ostler.book.http import Bool, Endpoint, Witness, declared_paths, domain_paths
+from ostler.book.http import Enum as EnumShape
 
 ITEM = re.compile(r"^((\d{1,3}|[A-Z]+(_[A-Z]+)*)(: \S.*)?|inputs)$")
 
@@ -112,6 +113,10 @@ class Unseen:
         object.__setattr__(self, "why", why)
 
     @property
+    def endpoint(self) -> Any:
+        return self.of
+
+    @property
     def kind(self) -> str:
         return kind_of(self.of)
 
@@ -147,6 +152,23 @@ class Gap:
         return out
 
 
+@dataclass(frozen=True)
+class OneValue:
+    endpoint: type[Endpoint]
+    status: Status
+    path: str
+    value: object
+    first: bool
+
+    @property
+    def key(self) -> tuple[type[Endpoint], str]:
+        return (self.endpoint, f"{self.status}: {self.path}")
+
+
+SECOND_VALUE = "read it in a second value (a fixture or a scene that differs), or it proves nothing"
+NOT_JUDGED = "not judged on a partial run"
+
+
 @dataclass
 class WitnessReport:
     gaps: list[Gap]
@@ -155,6 +177,22 @@ class WitnessReport:
     fields_seen: int
     fields_total: int
     unseen: tuple[Unseen, ...] = ()
+    single: tuple[OneValue, ...] = ()
+
+    def single_lines(self) -> list[str]:
+        """The fields of a value domain the run saw in one value only, less those the book declares unseen. Endpoints that
+        showed one field in the same single value share a line."""
+        grouped: dict[tuple[str, str, str], list[str]] = {}
+        for one in self.single:
+            if one.key not in self.declared:
+                grouped.setdefault((str(one.status), one.path, repr(one.value)), []).append(one.endpoint.__name__)
+        return [f"- {', '.join(names)} {status}: {path} was always {value}; {SECOND_VALUE}" for (status, path, value), names in grouped.items()]
+
+    def single_text(self, judged: bool = True) -> list[str]:
+        lines = self.single_lines()
+        if not judged:
+            return [f"Seen with one value only: {NOT_JUDGED}"]
+        return ["Seen with one value only", *lines] if lines else ["Seen with one value only: nothing"]
 
     @property
     def declared(self) -> set[tuple[type[Endpoint], str]]:
@@ -184,6 +222,14 @@ class WitnessReport:
                 f"{self.fields_seen} of {self.fields_total} fields witnessed")
 
     def text(self, name: str, fails: bool = True) -> str:
+        return self.witnessed_text(name, fails) + "\n" + "\n".join(self.single_section(fails))
+
+    def single_section(self, judged: bool) -> list[str]:
+        lines = self.single_lines()
+        body = [NOT_JUDGED] if not judged else lines or ["nothing"]
+        return ["", "## Seen with one value only", "", *body]
+
+    def witnessed_text(self, name: str, fails: bool = True) -> str:
         lines = [f"# {name}: what the run witnessed", "", self.summary + ".", ""]
         if self.unseen and any(u.item == "inputs" or u.key in self.missing for u in self.unseen):
             lines += ["## Declared unseen", ""]
@@ -226,6 +272,7 @@ def report(declared: Iterable[type[Endpoint]], seen: Witness, unseen: tuple[Unse
     hosts = {endpoint.host for endpoint in declared}
     endpoints = list(dict.fromkeys([*declared, *(e for e in seen.statuses if e.host in hosts)]))
     gaps: list[Gap] = []
+    single: list[OneValue] = []
     answers_seen = answers_total = fields_seen = fields_total = 0
     for endpoint in endpoints:
         gap = Gap(endpoint)
@@ -242,9 +289,17 @@ def report(declared: Iterable[type[Endpoint]], seen: Witness, unseen: tuple[Unse
             missing = [p for p in paths if p not in real]
             if missing:
                 gap.fields[answer.status] = missing
+            held = seen.values.get((endpoint, answer.status), {})
+            for path, shape in domain_paths(answer.body).items():
+                values = held.get(path, set())
+                if len(values) == 1:
+                    single.append(OneValue(endpoint, answer.status, path, next(iter(values)), isinstance(shape, (EnumShape, Bool))))
         if gap.statuses or gap.fields:
             gaps.append(gap)
-    return WitnessReport(gaps, answers_seen, answers_total, fields_seen, fields_total, tuple(u for u in unseen if u.kind == ENDPOINT))
+    order = {endpoint: n for n, endpoint in enumerate(endpoints)}
+    single.sort(key=lambda one: (order[one.endpoint], not one.first, str(one.status), one.path))
+    return WitnessReport(gaps, answers_seen, answers_total, fields_seen, fields_total, tuple(u for u in unseen if u.kind == ENDPOINT),
+                         tuple(single))
 
 
 def witnessed(service: Any, surface: Any) -> WitnessReport:

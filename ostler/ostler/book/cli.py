@@ -773,11 +773,12 @@ def report_exploration(service: Service[Any], args: argparse.Namespace, walked: 
 
 
 def show_witness(service: Service[Any], seen: WitnessReport, out: str, fails: bool = True) -> None:
-    text = seen.text(service.name, fails)
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, f"{service.name}-witness.md"), "w") as f:
-        f.write(text + "\n")
-    print(text)
+        f.write(seen.text(service.name, fails) + "\n")
+    print(seen.witnessed_text(service.name, fails))
+    for line in seen.single_text(fails):
+        print(line)
 
 
 def fresh(service: Service[Any], surface: Surface, resets: Resets | None = None, unused: bool = False) -> Model:
