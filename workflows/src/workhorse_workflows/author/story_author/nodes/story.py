@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ostler import Ostler
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.story_author.nodes._blueprint import blueprint
 from workhorse_workflows.author.story_author.schemas import StoryTarget
 
@@ -34,7 +34,7 @@ def prepare_story(
     if not epic or not story:
         raise WorkflowFailed("story-author requires explicit non-empty 'epic' and 'story' inputs")
 
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     okf = Ostler(root)
     try:
         rows = okf.list("story", epic=epic)

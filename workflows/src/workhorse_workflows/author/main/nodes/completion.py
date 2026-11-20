@@ -9,7 +9,7 @@ from workhorse_workflows.author.main.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.baseline import epic_scopes
 from workhorse_workflows.author.shared.digests import milestone_body_digest
-from workhorse_workflows.author.shared.paths import launch_repo_root, survey_repo_root
+from workhorse_workflows.author.shared.paths import launch_repo_root, agents_repo_root
 from workhorse_workflows.author.shared.schemas.main import (
     Completion,
     ContractDigest,
@@ -26,7 +26,7 @@ def contract_digest(
     repo_dir: str = "",
 ) -> ContractDigest:
     """The sha256 of the milestone body, which the run never writes, so a change is an operator's edit."""
-    digest = milestone_body_digest(survey_repo_root(repo_dir), milestone_path)
+    digest = milestone_body_digest(agents_repo_root(repo_dir), milestone_path)
     logger.info("milestone contract digest %s", digest[:12])
     return ContractDigest(digest=digest)
 
@@ -55,7 +55,7 @@ def check_completion(
     repo_dir: str = "",
 ) -> Completion:
     """Whether the milestone body still matches *baseline*, and every work-list row not yet done."""
-    digest = milestone_body_digest(survey_repo_root(repo_dir), milestone_path)
+    digest = milestone_body_digest(agents_repo_root(repo_dir), milestone_path)
     work = WorkList(JsonBackend(Path(run_dir) / WORK_FILE))
     unfinished = [
         UnfinishedRow(

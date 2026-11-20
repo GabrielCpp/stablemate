@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from ostler import path as okf_path
-from workhorse_workflows.kit.paths import agents_repo_root as survey_repo_root
+from workhorse_workflows.kit.paths import agents_repo_root
 from workhorse_workflows.kit.paths import docs_home_or
 
 
@@ -46,10 +46,10 @@ def author_context(root: str | Path) -> str:
 
 
 __all__ = [
+    "agents_repo_root",
     "author_context",
     "epic_dir",
     "epics_dir",
     "launch_repo_root",
     "story_dir",
-    "survey_repo_root",
 ]

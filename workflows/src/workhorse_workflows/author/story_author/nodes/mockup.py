@@ -6,7 +6,7 @@ import logging
 from ostler import Ostler
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.story_author.nodes._blueprint import blueprint
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.schemas.main import MockupGate
 
 
@@ -17,7 +17,7 @@ def check_mockup_needed(
     """A story needs a mockup exactly when one of its services is a UI book."""
     story_ref = story_id.strip()
     try:
-        okf = Ostler(survey_repo_root(repo_dir))
+        okf = Ostler(agents_repo_root(repo_dir))
         found = okf.graph.find_story(story_ref)
         if found is None:
             raise WorkflowFailed(f"story id '{story_ref}' is absent from the knowledge graph")

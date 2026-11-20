@@ -9,7 +9,7 @@ from ostler.select import epic_by_name
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared.nodes import stubs as _stubs
 from workhorse_workflows.author.shared.nodes.services import service_errors
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects
 
 _COVERAGE_CODES = {
@@ -36,7 +36,7 @@ def validate_coverage(
         return Defects(errors="no epic_dir supplied")
 
     epic = Path(epic_dir_rel).name
-    okf = Ostler(survey_repo_root(repo_dir))
+    okf = Ostler(agents_repo_root(repo_dir))
 
     outcome = okf.doctor(epic=epic)
     if outcome.status == "invalid":

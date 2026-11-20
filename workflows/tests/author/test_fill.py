@@ -105,7 +105,7 @@ def install(
         ]
         fake = _Ostler(tmp_path, milestones, epics)
         monkeypatch.setattr(fill, "Ostler", lambda _root: fake)
-        monkeypatch.setattr(fill, "survey_repo_root", lambda _repo: tmp_path)
+        monkeypatch.setattr(fill, "agents_repo_root", lambda _repo: tmp_path)
         return fake
 
     return _install

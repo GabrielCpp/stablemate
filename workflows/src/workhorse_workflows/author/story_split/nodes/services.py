@@ -8,7 +8,7 @@ from pathlib import Path
 from ostler import Ostler, markdown
 from ostler.select import epic_by_name
 from workhorse.pyflow import WorkflowFailed
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.story_split.nodes._blueprint import blueprint
 from workhorse_workflows.author.story_split.schemas import StoryServices
 
@@ -51,7 +51,7 @@ def derive_story_services(
     per platform keeps each story's narrower list. An empty list, or one naming a book outside
     the union, is replaced by the union.
     """
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     found = epic_by_name(Ostler(root).graph, epic)
     if found is None:
         raise WorkflowFailed(f"cannot derive story services: no epic named '{epic}'")

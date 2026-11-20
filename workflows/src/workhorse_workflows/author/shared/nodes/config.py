@@ -9,7 +9,7 @@ from ostler.milestones import MOCKUPS_DIR, MilestoneSelectionError
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared import paths
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.schemas.main import Config
 from workhorse_workflows.kit.manifest import read_manifest
 
@@ -62,7 +62,7 @@ def load_config(
     mode: str = "epic",
 ) -> Config:
     """Resolve the author's paths and prove the selected intake exists."""
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     epics_dir = paths.epics_dir(root)
     milestone = approved_milestone_path(root) if mode == "epic" else ""
 

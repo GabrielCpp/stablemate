@@ -14,7 +14,7 @@ from ostler.model import (
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared.nodes import stubs as _stubs
 from workhorse_workflows.author.shared.nodes.services import service_errors, ui_service_names
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects, Ledger
 
 _OPEN_QUESTION_PHRASES = [
@@ -94,7 +94,7 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
         logger.warning("no story_dir supplied")
         return Defects(errors="no story_dir supplied")
 
-    story_md = survey_repo_root(repo_dir) / story_dir_rel / "story.md"
+    story_md = agents_repo_root(repo_dir) / story_dir_rel / "story.md"
     if not story_md.is_file():
         logger.warning("story.md missing at %s", story_md)
         return Defects(errors=f"story.md missing at {story_md}")
@@ -125,7 +125,7 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
                 f"pointer or the exact statement `{_NO_PRIOR_IMPLEMENTATION}` alone as its "
                 "whole body; move any other note to `## Context`"
             )
-        root = survey_repo_root(repo_dir)
+        root = agents_repo_root(repo_dir)
         for pointer in pointers:
             target = (root / pointer.strip().removeprefix("./")).resolve()
             if not target.is_relative_to(root) or not target.is_file():
@@ -135,7 +135,7 @@ def validate_story(logger: logging.Logger, story_dir: str = "", repo_dir: str = 
                 )
 
     errors.extend(_open_questions(doc))
-    errors.extend(_service_problems(story_md, doc, survey_repo_root(repo_dir)))
+    errors.extend(_service_problems(story_md, doc, agents_repo_root(repo_dir)))
 
     logger.info("story %s: %d error(s)", story_dir_rel, len(errors))
     return Defects(ok=not errors, errors="\n".join(errors))
@@ -155,7 +155,7 @@ def check_story_grounding(
         logger.warning("story_dir and epic_dir are required — nothing to check")
         return Defects(errors="story_dir and epic_dir are required")
 
-    okf = Ostler(survey_repo_root(repo_dir))
+    okf = Ostler(agents_repo_root(repo_dir))
     slug = Path(story_dir_rel).name
     epic = Path(epic_dir_rel).name
     errors: list[str] = []
@@ -198,7 +198,7 @@ def record_attempt(
         logger.info("no ledger_path supplied — nothing to record")
         return Ledger()
 
-    path = survey_repo_root(repo_dir) / ledger_rel
+    path = agents_repo_root(repo_dir) / ledger_rel
     heading = f"## Attempt {label}"
 
     try:

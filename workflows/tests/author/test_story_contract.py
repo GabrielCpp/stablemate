@@ -11,7 +11,7 @@ from ostler import Ostler
 
 from workhorse_workflows.author.shared.nodes.services import service_errors
 from workhorse_workflows.author.shared.nodes.stories import validate_story
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 
 
 def _authored_story(
@@ -199,7 +199,7 @@ def test_in_a_workspace_a_story_naming_an_artifacts_book_is_accepted(
     name_members(tmp_path, monkeypatch, laid)
     write_book(laid.artifacts, "api-service")
 
-    errors = service_errors(Ostler(survey_repo_root(str(laid.api))), "the story", ["api-service"])
+    errors = service_errors(Ostler(agents_repo_root(str(laid.api))), "the story", ["api-service"])
 
     assert errors == []
 
@@ -211,6 +211,6 @@ def test_in_a_workspace_a_book_only_in_a_member_repo_is_no_book(
     name_members(tmp_path, monkeypatch, laid)
     write_book(laid.api, "web-app")
 
-    errors = service_errors(Ostler(survey_repo_root(str(laid.api))), "the story", ["web-app"])
+    errors = service_errors(Ostler(agents_repo_root(str(laid.api))), "the story", ["web-app"])
 
     assert len(errors) == 1 and "web-app" in errors[0]

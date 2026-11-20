@@ -10,7 +10,7 @@ from ostler.register import Record
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared import paths
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.schemas.main import Promoted, SeededStory
 
 
@@ -68,7 +68,7 @@ def seed_story(
             "(--params '{\"mode\":\"story\",\"epic\":\"<slug>\",\"record\":\"<record id>\"}')"
         )
 
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     okf = Ostler(root)
     epic_dir_rel = paths.epic_dir(root, epic)
     epic_dir_abs = root / epic_dir_rel
@@ -148,7 +148,7 @@ def promote_record(
     record_id = record_id.strip()
     if not record_id:
         raise WorkflowFailed("no record id supplied — nothing to close as promoted")
-    okf = Ostler(survey_repo_root(repo_dir))
+    okf = Ostler(agents_repo_root(repo_dir))
     slug = story.strip()
     if not slug:
         slug = next(

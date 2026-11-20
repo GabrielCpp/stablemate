@@ -17,7 +17,7 @@ from workhorse_workflows.author.pm.receipt import (
     story_digest,
     story_split_digest,
 )
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects, Filled
 
 EPIC = "epic"
@@ -181,9 +181,9 @@ def _story_items(okf: Ostler, epics: list[Epic], finished: set[str]) -> list[Wor
 @blueprint.node
 def check_epic_split(logger: logging.Logger, repo_dir: str = "") -> Defects:
     """Whether the approved milestone already has a valid ordered epic split."""
-    okf = Ostler(survey_repo_root(repo_dir))
+    okf = Ostler(agents_repo_root(repo_dir))
     milestone = okf.approved_milestone()
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     if _ordered_epics(okf, milestone.epics) is None:
         reason = f"milestone '{milestone.name}' has no valid ordered epic split"
         logger.info(reason)
@@ -206,7 +206,7 @@ def fill_work(
     """File every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed."""
     if kind not in KINDS:
         raise WorkflowFailed(f"cannot fill unknown work kind '{kind}'")
-    okf = Ostler(survey_repo_root(repo_dir))
+    okf = Ostler(agents_repo_root(repo_dir))
     epics = _ordered(okf)
     if epics is None:
         raise WorkflowFailed("the approved milestone has no valid ordered epic split to fill from")

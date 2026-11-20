@@ -9,7 +9,7 @@ from ostler import Ostler, markdown
 from workhorse_workflows.author.epic_split.nodes._blueprint import blueprint
 from workhorse_workflows.author.epic_split.schemas import EpicSplitContext, EpicSplitValidation
 from workhorse_workflows.author.shared import paths
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.nodes.config import approved_milestone_path, pm_ledger_path
 
 
@@ -57,7 +57,7 @@ def prepare_epic_split(
     repo_dir: str = "",
 ) -> EpicSplitContext:
     """Require the one ready approved milestone and snapshot content."""
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     milestone_path = approved_milestone_path(root)
     okf = Ostler(root)
     milestone = okf.approved_milestone()

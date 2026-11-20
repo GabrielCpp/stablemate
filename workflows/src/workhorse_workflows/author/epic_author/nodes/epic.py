@@ -9,7 +9,7 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.epic_author.nodes._blueprint import blueprint
 from workhorse_workflows.author.epic_author.schemas import EpicEvidence, EpicTarget
 from workhorse_workflows.author.shared import paths
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 
 
 @blueprint.node
@@ -19,7 +19,7 @@ def prepare_epic_target(
     repo_dir: str = "",
 ) -> EpicTarget:
     """Resolve exactly the named epic; never substitute a worklist neighbor."""
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     requested = epic.strip()
     if not requested:
         raise WorkflowFailed("an explicit epic is required")
@@ -42,7 +42,7 @@ def validate_authored_epic(
     repo_dir: str = "",
 ) -> EpicEvidence:
     """Apply the main worklist's documented-epic evidence to one explicit epic."""
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     okf = Ostler(root)
     found = epic_by_name(okf.graph, epic)
     errors: list[str] = []

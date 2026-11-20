@@ -7,7 +7,7 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.pm.nodes._blueprint import blueprint
 from workhorse_workflows.author.pm.receipt import receipt_target, write_pm_receipt
 from workhorse_workflows.author.pm.schemas import PMReceipt
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 
 
 @blueprint.node
@@ -18,7 +18,7 @@ def record_pm_receipt(
     repo_dir: str = "",
 ) -> PMReceipt:
     """Bind a passing review to the exact bytes it judged, for the stages whose output is a durable file."""
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     try:
         target = receipt_target(root, stage, subject)
     except OSError as exc:

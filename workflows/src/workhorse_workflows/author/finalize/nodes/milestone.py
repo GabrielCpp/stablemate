@@ -7,7 +7,7 @@ import re
 from ostler import Ostler, doctor, markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.finalize.nodes._blueprint import blueprint
-from workhorse_workflows.author.shared.paths import survey_repo_root
+from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects, MilestoneStatus
 
 
@@ -18,7 +18,7 @@ def validate_milestone_epics(
     repo_dir: str = "",
 ) -> Defects:
     """Prove the milestone lists its epics by id, and that it, they and their stories meet the authoring contract."""
-    root = survey_repo_root(repo_dir)
+    root = agents_repo_root(repo_dir)
     graph = Ostler(root).graph
     matches = [
         m for m in graph.milestones
@@ -47,7 +47,7 @@ def mark_milestone_authored(
     repo_dir: str = "",
 ) -> MilestoneStatus:
     """Advance one validated milestone from approved to authored, idempotently."""
-    path = survey_repo_root(repo_dir) / milestone
+    path = agents_repo_root(repo_dir) / milestone
     text = path.read_text(encoding="utf-8")
     document = markdown.split(text)
     status = str((document.frontmatter or {}).get("status", ""))
