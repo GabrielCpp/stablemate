@@ -220,6 +220,7 @@ timeout 900 ostler env up web --copy story-12
 timeout 30 ostler env address gateway --copy story-12
 timeout 30 ostler env ls
 timeout 120 ostler env down --copy story-12
+timeout 900 ostler env reset --copy story-12
 ```
 
 `ostler env ls` prints each book's services, one line each: the reference, its `about`, the
@@ -247,6 +248,13 @@ Each bring-up of a copy that is already up does the same work:
 - It starts every `once` job again, so a job such as a migration or a seed is idempotent.
 - It keeps the copy's volumes. `ostler env up --fresh` drops them first, so the fixtures load
   again.
+
+`ostler env reset --copy story-12` returns a copy to the data it started with. It reads the copy's
+`copy.json` and does what `up --fresh` does for its recorded targets and fixture sets, so it takes no
+target. It keeps the copy's `holder`, `started_by` and `worktree`. It is refused for a copy that was
+never brought up and for a copy another live process holds, since it would pull the data from under
+that process's play. The process that holds the copy, as `$STABLEMATE_LEASE_HOLDER` names it, may
+reset it.
 
 `ostler env down` and `ostler env down --copy` drop the copy's volumes with it.
 `ostler env down --keep-data` keeps them for the next `up`.

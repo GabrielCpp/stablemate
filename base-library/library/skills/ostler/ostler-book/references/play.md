@@ -6,6 +6,8 @@ A play is one `run` or `explore` against the live app. It calls the book's `Serv
 
 A world is the app behind the surface plus one new model of it. A reset is `surface.reset()` and then `new_model(day)`. An HTTP surface resets by running your `restore()` and forgetting the ids it learned. A page surface sets the browser online, blanks the page, runs `restore()` and then `open()`. A phone surface runs `restore()` and then `open()`. A reset is skipped only when no step has touched the world since the last one.
 
+`run --fresh-data` reloads the data before step 1 and plays nothing when it cannot. The stack's `fresh` command reloads it. A book with none, whose environment has an `ostler:` host, has its copy reset by `ostler env reset`. A book with neither is refused.
+
 A `run` goes in this order:
 
 1. The stack and the surface start.

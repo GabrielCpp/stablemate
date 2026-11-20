@@ -287,7 +287,7 @@ An application the book does not start still needs its data reloaded. The stack 
 Stack((), log_dir, fresh=Fresh(("make", "seed"), cwd="repo://api-service"))
 ```
 
-`cwd` takes `repo://<member>/<path>`, an absolute path or a path under the book root, and empty is the book root. A repo that shares its stack through `services/shared/` states the `fresh` there once. A book that states none prints a warning and plays on.
+`cwd` takes `repo://<member>/<path>`, an absolute path or a path under the book root, and empty is the book root. A repo that shares its stack through `services/shared/` states the `fresh` there once. A book that states none runs one of two ways. When its environment has an `ostler:` host, `--fresh-data` resets the copy the play uses with `ostler env reset` and prints `data: reloaded by resetting the copy <name> in <N>s`. The copy must be yours: another live holder refuses the reset. With neither a `fresh` nor a copy ostler manages, `--fresh-data` refuses to play and prints `data: not reloaded, the book states no way to reload it and runs on no copy ostler manages: state fresh=Fresh(...) on its Stack`.
 
 A host written `ostler:` in an environment is a copy of the stack that `ostler env` runs. The copy is the
 runner's to name: `--copy NAME`, else the lease the run holds, else the name the book wrote after `ostler:`,
