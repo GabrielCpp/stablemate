@@ -229,7 +229,7 @@ class RunSetBase(Action[BaseDirArgs, Repo]):
 
 
 CATALOG = (
-    "# layer: <sandbox>/lib", "",
+    "# layer: <sandbox>/lib", "# layer: base-library (base)", "",
     "## skills (1)", "  demo  demo  <sandbox>/lib", "",
     "## prompts (0)", "  (none)", "",
     "## policies (0)", "  (none)", "",
@@ -264,7 +264,9 @@ class RunLibraryCheck(Action[LibraryCheckArgs, Repo]):
 
     @staticmethod
     def reduce(a: LibraryCheckArgs, s: Repo, by: Actor | None) -> Transaction:
-        return Transaction(says=("# layer: <sandbox>/lib", "ok: 1 library sources, all front matter parses"))
+        return Transaction(says=(
+            "# layer: <sandbox>/lib", "# layer: base-library (base)", "ok: 1 library sources, all front matter parses",
+        ))
 
 
 class RunSource(Action[SourceArgs, Repo]):
@@ -297,13 +299,17 @@ class RunEject(Action[EjectArgs, Repo]):
 
 class RunHooksList(Action[HooksListArgs, Repo]):
     accept = HooksListArgs
-    rules = (rules.hooks_list_without_config,)
+    rules = (rules.hooks_list_without_config, rules.hooks_list_of_an_unknown_skill)
 
     @staticmethod
     def reduce(a: HooksListArgs, s: Repo, by: Actor | None) -> Transaction:
-        if rules.has_library(s):
-            return Transaction(says=("pre-commit:", "  (none)", "commit-msg:", "  (none)"))
-        return Transaction(says=("no library available — set one with 'farrier config set-library <dir>'.",))
+        return Transaction(says=("pre-commit:", "  (none)", "commit-msg:", "  (none)"))
+
+
+HOOK_SCRIPTS = (
+    (".agents/hooks/pre-commit", "No installed skill declares a pre-commit hook."),
+    (".agents/hooks/commit-msg", "No installed skill declares a commit-msg hook."),
+)
 
 
 class RunHooksInstall(Action[HooksInstallArgs, Repo]):
@@ -312,16 +318,20 @@ class RunHooksInstall(Action[HooksInstallArgs, Repo]):
     @staticmethod
     def reduce(a: HooksInstallArgs, s: Repo, by: Actor | None) -> Transaction:
         final = "hooks wired through: githooks"
+        stale = [path for path, line in HOOK_SCRIPTS if path not in s.files or line not in s.files[path].holds]
         if a.dry_run:
             return Transaction(says=(
                 "[dry-run] would set executable bit on .githooks/pre-commit",
                 "[dry-run] would set executable bit on .githooks/commit-msg",
                 "[dry-run] would set core.hooksPath to .githooks",
-                "[dry-run] would regenerate .agents/hooks/pre-commit, .agents/hooks/commit-msg "
-                "(no library — run 'farrier install' to refresh)",
+                *(f"[dry-run] would regenerate {path}" for path in stale),
                 final,
             ))
-        return Transaction(write(s, ".githooks/pre-commit", "make farrier-run-hook"), says=(final,))
+        return Transaction(
+            write(s, ".githooks/pre-commit", "make farrier-run-hook"),
+            *(write(s, path, line) for path, line in HOOK_SCRIPTS),
+            says=(*(f"Wrote {path}" for path in stale), final),
+        )
 
 
 class RunChecks(Action[ChecksArgs, Repo]):

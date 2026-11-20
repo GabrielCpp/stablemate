@@ -115,8 +115,7 @@ def test_unresolved_errors_with_hint():
             try:
                 install.resolve_library_dir(None)
             except SystemExit as exc:
-                assert "could not be fetched" in str(exc)
-                assert "STABLEMATE_FETCH_BASE" in str(exc)
+                assert "ships no base library" in str(exc)
                 assert "config set-base" in str(exc)
                 assert "config set-library" in str(exc)
                 return

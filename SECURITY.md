@@ -39,11 +39,10 @@ base library (and an optional overlay you configure) into a repository's agent a
 That content becomes instructions to an agent. Treat a library you did not write the way
 you would treat any other code you are about to execute.
 
-**The base-library cache fetches over the network.** `farrier install` populates
-`~/.cache/stablemate/library` by sparse-cloning `base-library/` from this repository. What
-lands is markdown and YAML — no `.py` anywhere — so code still reaches you only as a wheel
-from a package index, under whatever supply-chain posture you already apply to `pip` or
-`uv`. `STABLEMATE_FETCH_BASE=0` forbids the fetch entirely for air-gapped hosts.
+**The base library ships inside the farrier wheel.** No stablemate tool fetches it over
+the network. `farrier install` copies it into `~/.cache/stablemate/library` for the tools
+that do not ship it. It reaches you under whatever supply-chain posture you already apply
+to `pip` or `uv`.
 
 **Credentials.** `saddlebag` holds the credentials and environment manifests a workflow
 needs at run time, deliberately outside the repository. `kit/credentials.py` is the one

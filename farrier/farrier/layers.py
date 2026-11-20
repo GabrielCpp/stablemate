@@ -8,9 +8,11 @@ from pathlib import Path
 from farrier._vendor.stablemate_core.config import config_path, load_home_config
 from farrier._vendor.stablemate_core.discovery import (
     BASE_DIR_ENV,
-    base_library_dir,
-    ensure_base_library_dir,
     is_library_dir,
+    share_base_library,
+)
+from farrier._vendor.stablemate_core.discovery import (
+    base_library_dir as _discovered_base,
 )
 
 __all__ = [
@@ -19,14 +21,15 @@ __all__ = [
     "LAYERS",
     "Layer",
     "available_names",
+    "SHIPPED_BASE",
     "base_library_dir",
-    "ensure_base_library_dir",
     "find_in_layers",
     "is_library_dir",
     "layer_dirs",
     "resolve_library_dir",
     "searched_layers",
     "set_layers",
+    "share_shipped_base",
 ]
 
 
@@ -41,6 +44,22 @@ class Layer:
 LAYERS: list[Layer] = []
 
 BASE_LAYER_NAME = "base-library (base)"
+
+SHIPPED_BASE = Path(__file__).parent / "_vendor" / "base_library"
+
+
+def base_library_dir() -> Path | None:
+    """The base this farrier renders: one a person named, else the one it ships."""
+    return _discovered_base(SHIPPED_BASE)
+
+
+def share_shipped_base() -> None:
+    """Mirror the shipped base into the shared cache, where tools that do not ship it read it."""
+    try:
+        stamp = SHIPPED_BASE.with_name("base_library.sha256").read_text(encoding="utf-8").strip()
+    except OSError:
+        return
+    share_base_library(SHIPPED_BASE, stamp=stamp)
 
 
 def set_layers(overlay: Path | None) -> None:
@@ -112,12 +131,9 @@ def resolve_library_dir(cli_library: Path | None) -> Path | None:
         if base_library_dir() is not None:
             return None
         raise SystemExit(
-            "error: no library available — no overlay configured, and the base "
-            "library could not be fetched.\n"
-            "The base is fetched into ~/.cache/stablemate on install; check that git "
-            "and the network are reachable, and that $STABLEMATE_FETCH_BASE is not "
-            "set to 0.\n"
-            "Or point farrier at a base you already have on disk:\n"
+            "error: no library available — no overlay configured, and this farrier "
+            f"ships no base library at {SHIPPED_BASE}.\n"
+            "Reinstall farrier, or point it at a base you already have on disk:\n"
             "    farrier config set-base <path-to-base-library>\n"
             "Or at an overlay library:\n"
             "    farrier config set-library <path-to-your-library>\n"

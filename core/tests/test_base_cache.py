@@ -1,8 +1,7 @@
-"""The shared base-library cache: fetch-once, freeze, never shadow a real checkout."""
+"""The shared base-library cache: a mirror of the base farrier ships, swapped in whole."""
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
@@ -10,412 +9,114 @@ import pytest
 
 from stablemate_core import base_cache as bc
 
-REF = "farrier-v1.2.3"
-
 
 @pytest.fixture(autouse=True)
 def _isolate_cache(tmp_path, monkeypatch):
     """Never touch the real ~/.cache/stablemate from a test."""
     monkeypatch.setenv(bc.CACHE_DIR_ENV, str(tmp_path / "cache"))
-    monkeypatch.delenv(bc.FETCH_ENV, raising=False)
 
 
-def _fake_clone(dest: Path, *, commit: str = "abc123") -> bool:
-    """Build what a real fetch would leave behind: documents and a commit sidecar."""
-    lib = dest / bc.BASE_SUBPATH
-    (lib / "library").mkdir(parents=True)
-    (dest / bc.COMMIT_FILE).write_text(f"{commit}\n")
-    return True
+def _shipped(root: Path, skill: str = "demo") -> Path:
+    """A base library as a farrier wheel holds it."""
+    page = root / "library" / "skills" / skill / "SKILL.md"
+    page.parent.mkdir(parents=True)
+    page.write_text(f"# {skill}\n", encoding="utf-8")
+    return root
 
 
+def _cached_skills() -> list[str]:
+    base = bc.cached_base()
+    assert base is not None
+    return sorted(p.name for p in (base / "library" / "skills").iterdir())
 
 
-def test_fetches_when_absent_and_returns_the_library(monkeypatch, capsys):
-    monkeypatch.setattr(bc, "_clone_into", lambda dest, ref: _fake_clone(dest))
-    monkeypatch.setattr(bc, "cached_commit", lambda clone=None: "abc123")
+def test_mirrors_into_an_empty_cache(tmp_path, capsys):
+    base = bc.mirror_base(_shipped(tmp_path / "shipped"), stamp="aaa")
 
-    base = bc.ensure_cached_base(ref=REF)
-
-    assert base is not None and base.is_dir()
     assert base == bc.cached_library_dir() / bc.BASE_SUBPATH
-    out = capsys.readouterr().out
-    assert "fetching base library" in out
-    assert f"{bc.BASE_SUBPATH}/ only" in out
+    assert _cached_skills() == ["demo"]
+    assert bc.cached_stamp() == "aaa"
+    assert "mirrored" in capsys.readouterr().out
 
 
-def test_second_call_does_not_refetch(monkeypatch):
-    """Fetch-once-then-freeze: the property that stops a week-long run mutating."""
-    calls = []
-
-    def clone(dest, ref):
-        calls.append(dest)
-        return _fake_clone(dest)
-
-    monkeypatch.setattr(bc, "_clone_into", clone)
-    monkeypatch.setattr(bc, "cached_commit", lambda clone=None: "abc123")
-
-    bc.ensure_cached_base(ref=REF)
-    bc.ensure_cached_base(ref=REF)
-    bc.ensure_cached_base(ref=REF)
-
-    assert len(calls) == 1
-
-
-def test_deleting_the_cache_is_the_upgrade_path(monkeypatch):
-    commits = iter(["old111", "new222"])
+def test_an_equal_stamp_copies_nothing(tmp_path, monkeypatch, capsys):
+    shipped = _shipped(tmp_path / "shipped")
+    bc.mirror_base(shipped, stamp="aaa")
+    capsys.readouterr()
     monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: _fake_clone(dest, commit=next(commits))
-    )
-    bc.ensure_cached_base(ref=REF)
-    first = bc.cached_commit()
-
-    import shutil
-
-    shutil.rmtree(bc.cached_library_dir())
-    bc.ensure_cached_base(ref=REF)
-    second = bc.cached_commit()
-
-    assert (first, second) == ("old111", "new222")
-
-
-
-
-def _at_remote(monkeypatch, sha: str | None) -> None:
-    monkeypatch.setattr(bc, "remote_commit", lambda ref: sha)
-
-
-def test_refresh_replaces_the_cache_when_the_remote_moved(monkeypatch):
-    _fake_clone(bc.cached_library_dir(), commit="old111")
-    monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: _fake_clone(dest, commit="new222")
-    )
-    _at_remote(monkeypatch, "new222")
-
-    base = bc.refresh_cached_base(ref=REF)
-
-    assert base is not None and base.is_dir()
-    assert bc.cached_commit() == "new222"
-
-
-def test_refresh_does_not_clone_when_already_current(monkeypatch):
-    """The reason `remote_commit` exists: a few hundred bytes instead of ~16M."""
-    _fake_clone(bc.cached_library_dir(), commit="same333")
-    _at_remote(monkeypatch, "same333")
-    monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: pytest.fail("must not clone when up to date")
+        bc.shutil, "copytree", lambda *a, **k: pytest.fail("a current cache must not be copied over")
     )
 
-    assert bc.refresh_cached_base(ref=REF) == bc.cached_library_dir() / bc.BASE_SUBPATH
+    assert bc.mirror_base(shipped, stamp="aaa") == bc.cached_base()
+    assert capsys.readouterr().out == ""
 
 
-def test_refresh_fetches_when_the_cache_is_absent(monkeypatch):
-    monkeypatch.setattr(bc, "_clone_into", lambda dest, ref: _fake_clone(dest, commit="a1"))
-    monkeypatch.setattr(
-        bc, "remote_commit", lambda ref: pytest.fail("nothing on disk to compare against")
-    )
+def test_a_new_stamp_replaces_the_whole_copy(tmp_path):
+    """A skill the new farrier dropped must leave the cache too."""
+    bc.mirror_base(_shipped(tmp_path / "old", "gone"), stamp="aaa")
 
-    base = bc.refresh_cached_base(ref=REF)
+    bc.mirror_base(_shipped(tmp_path / "new", "kept"), stamp="bbb")
 
-    assert base is not None and bc.cached_commit() == "a1"
-
-
-def test_refresh_keeps_the_cache_when_the_remote_is_unreachable(monkeypatch, capsys):
-    """Offline must leave a working library working — that is the whole asymmetry between a failed fetch (nothing to hand back) and a failed refresh (a good cache)."""
-    _fake_clone(bc.cached_library_dir(), commit="old111")
-    _at_remote(monkeypatch, None)
-    monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: pytest.fail("must not clone while offline")
-    )
-
-    assert bc.refresh_cached_base(ref=REF) == bc.cached_library_dir() / bc.BASE_SUBPATH
-    assert bc.cached_commit() == "old111"
-    assert "using the cached copy" in capsys.readouterr().out
+    assert _cached_skills() == ["kept"]
+    assert bc.cached_stamp() == "bbb"
+    assert sorted(p.name for p in bc.cache_root().iterdir()) == ["library"]
 
 
-def test_refresh_keeps_the_cache_when_the_clone_fails(monkeypatch):
-    _fake_clone(bc.cached_library_dir(), commit="old111")
-    _at_remote(monkeypatch, "new222")
-    monkeypatch.setattr(bc, "_clone_into", lambda dest, ref: False)
+def test_a_source_with_no_library_keeps_the_cache(tmp_path):
+    bc.mirror_base(_shipped(tmp_path / "shipped"), stamp="aaa")
 
-    assert bc.refresh_cached_base(ref=REF) is not None
-    assert bc.cached_commit() == "old111"
-    assert list(bc.cache_root().glob(".library-fetch-*")) == []
+    assert bc.mirror_base(tmp_path / "broken", stamp="bbb") == bc.cached_base()
+    assert bc.cached_stamp() == "aaa"
 
 
-def test_refresh_refuses_to_swap_in_a_non_library(monkeypatch):
-    """A layout that moved upstream must not replace a working cache with a broken one: the damage would outlive the command, and nothing would ever put it back."""
-    _fake_clone(bc.cached_library_dir(), commit="old111")
-    _at_remote(monkeypatch, "new222")
+def test_a_failed_copy_keeps_the_cache_and_leaves_no_debris(tmp_path, monkeypatch):
+    bc.mirror_base(_shipped(tmp_path / "shipped"), stamp="aaa")
 
-    def clone_without_library(dest, ref):
-        dest.mkdir(parents=True)
-        (dest / bc.COMMIT_FILE).write_text("new222\n")
-        return True
+    def disk_full(*a, **k):
+        raise OSError("no space left on device")
 
-    monkeypatch.setattr(bc, "_clone_into", clone_without_library)
+    monkeypatch.setattr(bc.shutil, "copytree", disk_full)
 
-    assert bc.refresh_cached_base(ref=REF) is not None
-    assert bc.cached_commit() == "old111"
+    assert bc.mirror_base(_shipped(tmp_path / "next", "next"), stamp="bbb") == bc.cached_base()
+    assert _cached_skills() == ["demo"]
+    assert sorted(p.name for p in bc.cache_root().iterdir()) == ["library"]
 
 
-def test_refresh_can_be_disabled(monkeypatch):
-    _fake_clone(bc.cached_library_dir(), commit="old111")
-    monkeypatch.setenv(bc.FETCH_ENV, "0")
-    monkeypatch.setattr(
-        bc, "remote_commit", lambda ref: pytest.fail("must not probe when disabled")
-    )
-
-    assert bc.refresh_cached_base(ref=REF) is not None
-    assert bc.cached_commit() == "old111"
-
-
-def test_a_failed_swap_puts_the_old_cache_back(monkeypatch):
-    """The old cache is moved aside, not deleted, until the new one is in place."""
-    _fake_clone(bc.cached_library_dir(), commit="old111")
-    _at_remote(monkeypatch, "new222")
-    monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: _fake_clone(dest, commit="new222")
-    )
-
+def test_a_failed_swap_puts_the_old_cache_back(tmp_path, monkeypatch):
+    bc.mirror_base(_shipped(tmp_path / "shipped"), stamp="aaa")
     real_rename = Path.rename
-    calls: list[int] = []
 
-    def fail_the_second_rename(self, target):
-        calls.append(1)
-        if len(calls) == 2:
-            raise OSError("Cross-device link")
+    def rename(self, target):
+        if self.name.startswith(".library-mirror-"):
+            raise OSError("cross-device link")
         return real_rename(self, target)
 
-    monkeypatch.setattr(Path, "rename", fail_the_second_rename)
+    monkeypatch.setattr(Path, "rename", rename)
 
-    assert bc.refresh_cached_base(ref=REF) is not None
-    assert bc.cached_commit() == "old111"
-    assert list(bc.cache_root().glob(".library-old-*")) == []
-
-
-def test_remote_commit_parses_ls_remote(monkeypatch):
-    monkeypatch.setattr(
-        bc,
-        "_git",
-        lambda *a, **k: subprocess.CompletedProcess(
-            list(a), 0, stdout="deadbeefcafe\trefs/heads/main\n", stderr=""
-        ),
-    )
-    assert bc.remote_commit(REF) == "deadbeefcafe"
+    assert bc.mirror_base(_shipped(tmp_path / "next", "next"), stamp="bbb") is not None
+    assert _cached_skills() == ["demo"]
+    assert bc.cached_stamp() == "aaa"
 
 
-def test_remote_commit_asks_for_the_ref_it_was_given(monkeypatch):
-    seen: list[tuple[str, ...]] = []
+def test_bytecode_is_not_mirrored(tmp_path):
+    shipped = _shipped(tmp_path / "shipped")
+    (shipped / "library" / "__pycache__").mkdir()
+    (shipped / "library" / "__pycache__" / "x.pyc").write_bytes(b"\0")
 
-    def fake_git(*a, **k):
-        seen.append(a)
-        return subprocess.CompletedProcess(list(a), 0, stdout="", stderr="")
+    base = bc.mirror_base(shipped, stamp="aaa")
 
-    monkeypatch.setattr(bc, "_git", fake_git)
-    bc.remote_commit(REF)
-    assert seen == [("ls-remote", bc.BASE_REPO_URL, REF)]
-
-
-def test_remote_commit_is_none_when_the_ref_is_missing(monkeypatch):
-    """`ls-remote` for a ref that matches nothing exits 0 with empty output."""
-    monkeypatch.setattr(
-        bc,
-        "_git",
-        lambda *a, **k: subprocess.CompletedProcess(list(a), 0, stdout="", stderr=""),
-    )
-    assert bc.remote_commit(REF) is None
+    assert base is not None
+    assert not (base / "library" / "__pycache__").exists()
 
 
-def test_remote_commit_is_none_when_git_cannot_run(monkeypatch):
-    monkeypatch.setattr(bc, "_git", lambda *a, **k: None)
-    assert bc.remote_commit(REF) is None
-
-
-
-
-def test_failed_clone_returns_none_and_leaves_no_debris(monkeypatch):
-    """Offline must degrade to "not found here", exactly as before this layer."""
-    monkeypatch.setattr(bc, "_clone_into", lambda dest, ref: False)
-
-    assert bc.ensure_cached_base(ref=REF) is None
-    leftovers = list(bc.cache_root().glob(".library-fetch-*"))
-    assert leftovers == []
-
-
-def test_fetch_can_be_disabled(monkeypatch):
-    monkeypatch.setenv(bc.FETCH_ENV, "0")
-    monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: pytest.fail("must not fetch when disabled")
-    )
-    assert bc.ensure_cached_base(ref=REF) is None
-
-
-@pytest.mark.parametrize("value,expected", [("0", False), ("false", False),
-                                            ("no", False), ("off", False),
-                                            ("1", True), ("yes", True)])
-def test_fetch_allowed_parsing(monkeypatch, value, expected):
-    monkeypatch.setenv(bc.FETCH_ENV, value)
-    assert bc.fetch_allowed() is expected
-
-
-def test_missing_git_binary_is_not_a_crash(monkeypatch):
-    def boom(*a, **k):
-        raise OSError("No such file or directory: 'git'")
-
-    monkeypatch.setattr(bc.subprocess, "run", boom)
-    assert bc._clone_into(bc.cache_root() / "tmp", REF) is False
-
-
-def test_clone_timeout_is_not_a_crash(monkeypatch):
-    def boom(*a, **k):
-        raise subprocess.TimeoutExpired(cmd="git", timeout=1)
-
-    monkeypatch.setattr(bc.subprocess, "run", boom)
-    assert bc._clone_into(bc.cache_root() / "tmp", REF) is False
-
-
-def test_wrong_layout_after_fetch_is_reported_not_returned(monkeypatch):
-    """If the library moves inside the repo, say so rather than return a bad path."""
-
-    def clone_without_library(dest, ref):
-        dest.mkdir(parents=True)
-        (dest / bc.COMMIT_FILE).write_text("abc123\n")
-        return True
-
-    monkeypatch.setattr(bc, "_clone_into", clone_without_library)
-    assert bc.ensure_cached_base(ref=REF) is None
-
-
-def test_concurrent_fetch_loser_discards_its_clone(monkeypatch):
-    """Two runs race; the rename settles it with no lock file to leak."""
-    monkeypatch.setattr(bc, "_clone_into", lambda dest, ref: _fake_clone(dest))
-
-    def rename_conflict(self, target):
-        _fake_clone(Path(target), commit="theirs")
-        raise OSError("Directory not empty")
-
-    monkeypatch.setattr(Path, "rename", rename_conflict)
-
-    base = bc.ensure_cached_base(ref=REF)
-
-    assert base is not None and base.is_dir()
-    assert bc.cached_commit() == "theirs"
-    assert list(bc.cache_root().glob(".library-fetch-*")) == []
-
-
-
-
-def test_cached_base_never_fetches(monkeypatch):
-    """A lookup that reaches the network is a trap — `config show` would trigger it."""
-    monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: pytest.fail("lookup must never fetch")
-    )
+def test_cached_base_is_none_on_an_empty_cache():
     assert bc.cached_base() is None
-
-
-def test_cached_base_finds_an_existing_clone(monkeypatch):
-    _fake_clone(bc.cached_library_dir())
-    monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: pytest.fail("must not fetch when present")
-    )
-    assert bc.cached_base() == bc.cached_library_dir() / bc.BASE_SUBPATH
-
-
-def test_base_library_dir_does_not_fetch(monkeypatch):
-    """The regression that started this: base_library_dir cloned into the real ~/.cache during a unit test run."""
-    from stablemate_core.discovery import base_library_dir
-
-    monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: pytest.fail("resolution must never fetch")
-    )
-    monkeypatch.delenv("STABLEMATE_BASE_DIR", raising=False)
-    base_library_dir()
-
-
-
-
-def test_cached_commit_none_when_absent():
-    assert bc.cached_commit() is None
-
-
-def test_cached_commit_reads_the_sidecar_not_git(monkeypatch, tmp_path):
-    """No `git` subprocess is involved: the cache is documents, `.git` is gone."""
-    clone = tmp_path / "clone"
-    clone.mkdir(parents=True)
-    (clone / bc.COMMIT_FILE).write_text("deadbeef\n")
-
-    monkeypatch.setattr(
-        bc.subprocess, "run", lambda *a, **k: pytest.fail("must not shell out to git")
-    )
-    assert bc.cached_commit(clone) == "deadbeef"
-
-
-def test_cached_commit_ignores_a_leftover_git_dir(tmp_path):
-    """A hand-assembled or pre-narrowing cache with `.git` but no sidecar reads as unknown rather than as a lie — `?` in the operator's log, not a stale sha."""
-    clone = tmp_path / "clone"
-    (clone / ".git").mkdir(parents=True)
-    assert bc.cached_commit(clone) is None
+    assert bc.cached_stamp() is None
 
 
 def test_cache_dir_override(monkeypatch, tmp_path):
     monkeypatch.setenv(bc.CACHE_DIR_ENV, str(tmp_path / "elsewhere"))
     assert bc.cache_root() == tmp_path / "elsewhere"
-
-
-def test_clone_url_is_anonymous():
-    """A machine running this has no deploy key and no business having one."""
-    assert bc.BASE_REPO_URL.startswith("https://")
-    assert not bc.BASE_REPO_URL.startswith("git@")
-
-
-
-
-def test_the_fetch_is_sparse_and_leaves_no_repository(monkeypatch, tmp_path):
-    """The trust posture, asserted at the seam: sparse `base-library/`, then documents."""
-    calls: list[list[str]] = []
-    dest = tmp_path / "fetched"
-
-    def fake_run(cmd, **kwargs):
-        calls.append(cmd)
-        if cmd[:2] == ["git", "clone"]:
-            (dest / ".git").mkdir(parents=True)
-            (dest / bc.BASE_SUBPATH / "library").mkdir(parents=True)
-        return subprocess.CompletedProcess(cmd, 0, stdout="deadbeef\n", stderr="")
-
-    monkeypatch.setattr(bc.subprocess, "run", fake_run)
-    assert bc._clone_into(dest, REF) is True
-
-    clone = next(c for c in calls if c[:2] == ["git", "clone"])
-    assert "--sparse" in clone and "--filter=blob:none" in clone
-    assert f"--branch={REF}" in clone
-    assert calls[2][3:] == ["checkout", REF]
-    assert calls[1][3:] == [
-        "sparse-checkout",
-        "set",
-        "--no-cone",
-        f"/{bc.BASE_SUBPATH}/",
-    ]
-
-    assert not (dest / ".git").exists(), "the cache must hold documents, not a repo"
-    assert (dest / bc.COMMIT_FILE).read_text().strip() == "deadbeef"
-
-
-def test_a_failed_sparse_checkout_does_not_fall_back_to_a_full_clone(
-    monkeypatch, tmp_path
-):
-    """Fail closed."""
-    dest = tmp_path / "fetched"
-
-    def fake_run(cmd, **kwargs):
-        if cmd[:2] == ["git", "clone"]:
-            (dest / ".git").mkdir(parents=True)
-            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-        return subprocess.CompletedProcess(
-            cmd, 1, stdout="", stderr="git: 'sparse-checkout' is not a git command"
-        )
-
-    monkeypatch.setattr(bc.subprocess, "run", fake_run)
-    assert bc._clone_into(dest, REF) is False
 
 
 if __name__ == "__main__":

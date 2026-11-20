@@ -204,7 +204,7 @@ def test_vendoring_changes_no_ostler_behaviour(tmp_path):
     package = REPO_ROOT / "ostler" / "ostler"
     assert OSTLER_VENDOR.is_dir(), f"nothing vendored yet at {OSTLER_VENDOR.relative_to(REPO_ROOT)}"
 
-    fetchers = ("ensure_cached_base", "refresh_cached_base", "remote_commit")
+    fetchers = ("mirror_base", "share_base_library")
     callers = [
         f"{path.relative_to(package)}: {name}"
         for path in package.rglob("*.py")
@@ -212,7 +212,7 @@ def test_vendoring_changes_no_ostler_behaviour(tmp_path):
         for name in fetchers
         if name in path.read_text(encoding="utf-8")
     ]
-    assert not callers, f"ostler must not fetch the base library: {callers}"
+    assert not callers, f"ostler must not write the base library cache: {callers}"
 
     base_cache = importlib.import_module("ostler._vendor.stablemate_core.base_cache")
     cache_dir = tmp_path / "stablemate-cache"

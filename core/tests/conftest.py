@@ -8,8 +8,7 @@ from stablemate_core import base_cache, config
 
 
 @pytest.fixture(autouse=True)
-def _no_base_fetch(tmp_path_factory, monkeypatch):
-    monkeypatch.setenv(base_cache.FETCH_ENV, "0")
+def _no_real_cache(tmp_path_factory, monkeypatch):
     monkeypatch.setenv(
         base_cache.CACHE_DIR_ENV, str(tmp_path_factory.mktemp("stablemate-cache"))
     )

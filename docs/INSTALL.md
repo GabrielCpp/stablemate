@@ -7,61 +7,47 @@ distribution rather than a manifest of their own, and the one config file every 
 
 ## Finding the base library
 
-Tools resolve the base in this order, highest precedence first — the cache is last, so a
-fetched copy can never shadow a checkout you are editing:
+farrier ships the base library inside its wheel. Tools resolve the base in this order,
+highest precedence first:
 
-1. `$STABLEMATE_BASE_DIR` — an explicit path to the content on disk.
-2. `<tool> config set-base <path>` — the persisted form of that path.
+1. `$STABLEMATE_BASE_DIR`, an explicit path to the content on disk.
+2. `<tool> config set-base <path>`, the persisted form of that path.
 3. a configured `stablemate_dir` checkout (`<checkout>/base-library`).
-4. the shared cache at `~/.cache/stablemate/library`.
+4. the copy farrier ships, for farrier only.
+5. the shared cache at `~/.cache/stablemate/library`.
 
-A checkout install gets route 3 for free. Under `pipx`, where each tool is its own venv
-and the base is data with no package to import, route 4 is what makes it reachable
-without configuring anything.
+A checkout install gets route 3 for free. A `pipx` install of farrier gets route 4 with
+no configuration, no network and no `git`. The base farrier renders is the base its
+release carried, byte for byte. A farrier installed from a checkout ships the checkout's
+own `base-library/` through a symlink.
 
-**`farrier install` populates and updates the cache.** It is the one command that does.
-On install the base is fetched if absent and moved to the farrier release tag
-(`farrier-v<version>`) if present, or to `main` for a farrier installed from a checkout, so a `pipx` user gets a working base library by running the command they were going to run anyway:
+**`farrier install` mirrors the shipped base into the cache.** Under `pipx` each tool is
+its own venv, so workhorse cannot read farrier's copy. Route 5 is how it finds the base.
+Install compares the digest farrier shipped with the one the cache records in its
+`.digest` sidecar. When they differ, it copies the base into a sibling directory and
+swaps it in whole, so a reader sees the old copy or the new one. When they match, it
+copies nothing.
 
 ```bash
 farrier init              # once per repo: writes an agents.yml that selects no packs, and offers the general packs for your home
-farrier --repo .          # fetches the base if absent, updates it if stale, then renders
-farrier --repo . --check  # fetches if absent, but never updates — see below
+farrier --repo .          # mirrors the shipped base if the cache is stale, then renders
+farrier --repo . --check  # renders the shipped base and writes no cache
 ```
 
-What lands is a sparse checkout of `base-library/` alone, with `.git` dropped once the
-commit is recorded into a `.commit` sidecar. `STABLEMATE_FETCH_BASE=0` forbids the network
-entirely (air-gapped hosts), and `STABLEMATE_CACHE_DIR` relocates the cache. The fetch
-needs `git` on the `PATH` and network access to GitHub. The base library comes from the
-release tag of the farrier you installed, so a released farrier renders the library it
-shipped with. A farrier installed from a checkout or a git URL runs code no tag holds, so
-it tracks `main` instead. An update first asks the remote which commit that ref names. The answer is
-a few hundred bytes, so an already-current cache costs one round-trip rather than a
-re-clone.
+`STABLEMATE_CACHE_DIR` relocates the cache.
 
 **Everything else freezes, and that is deliberate.** No lookup, no resume and no
-background timer refreshes the cache; `farrier install` is the automated form of the
-`rm -rf ~/.cache/stablemate` that used to be the only upgrade path, not a new polling
-behaviour. A workhorse run is meant to survive a week unattended and to resume into a
-checkpointed state machine after a crash, and a cache that moved on its own could resume a
-run into a different library than it started with. The corollary worth knowing: running
-`farrier install` while a long run is in flight on the same machine can move the library
-out from under its next resume.
+background timer moves the cache. A workhorse run is meant to survive a week unattended
+and to resume into a checkpointed state machine after a crash. A cache that moved on its
+own could resume a run into a different library than it started with. The corollary
+worth knowing: `farrier install` from a newer farrier, while a long run is in flight on
+the same machine, can move the library out from under its next resume.
 
-`--check` fetches but does not update, because it writes nothing and runs in CI — a
-library moving underneath the comparison would make a drift report depend on the hour the
-job ran rather than on the commit it ran against.
+`--check` writes nothing, because it runs in CI. It renders the base farrier ships, so a
+drift report depends on the farrier version and not on the cache.
 
-Failure is soft, and in the direction of keeping what works: an unreachable remote, a
-refused fetch or a broken clone each leave the existing cache in place, so `farrier
-install` on a plane renders the library the machine already has. Nothing fetched runs on
-its own. The fetch is markdown, YAML and a few helper scripts that a skill tells an agent
-to run, so a package's code still reaches you only as a wheel from an index under whatever
-supply-chain posture you already apply to `pip`/`uv`.
-
-A base you named yourself is never fetched over. Routes 1–3 win outright — not even the
-remote probe fires — so a checkout you are editing cannot have a download appear
-underneath it.
+A base you named yourself is never mirrored over. When routes 1 to 3 answer, install
+leaves the cache alone, so a checkout you are editing cannot have a copy appear beside it.
 
 Either way the cache is a **mirror, not a workspace**: never edit it in place. Overlay
 authoring belongs in a `library_dir` (below).

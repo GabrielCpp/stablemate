@@ -4,8 +4,8 @@ elements: LibraryList, LibraryShow, LibraryCheck, Source, Eject
 
 The library commands are played with `--library lib`, the folder the sandbox seeds with one skill, `demo`, and one
 scaffold. The catalog lists the demo skill with the layer it comes from and the scaffold under its own kind, and
-`library check` counts one source because a scaffold definition carries no front matter. The base library is not
-fetched (`STABLEMATE_FETCH_BASE=0`), so the stack is the one overlay.
+`library check` counts one source because a scaffold definition carries no front matter. The sandbox names an empty
+base library (`STABLEMATE_BASE_DIR`), which outranks the one farrier ships, so the overlay holds every source.
 
 `farrier source` answers for a file install generated with the library file it came from, and refuses a file that
 exists and carries no `metadata.source` or banner. `farrier eject` hands the generated skill folder over: it drops

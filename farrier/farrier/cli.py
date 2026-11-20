@@ -58,12 +58,12 @@ from farrier.init import (
 )
 from farrier.layers import (
     LAYERS,
-    ensure_base_library_dir,
     find_in_layers,
     is_library_dir,
     resolve_library_dir,
     searched_layers,
     set_layers,
+    share_shipped_base,
 )
 from farrier.library_check import check_library, format_findings
 from farrier.library_view import KINDS, find, format_list, layer_label, stack
@@ -231,17 +231,10 @@ def _run_user_install(home: Path | None, check: bool) -> int:
     return 0
 
 
-def _base_library_ref() -> str:
-    """The release tag that published this farrier, or `main` for one installed from a checkout or a URL."""
-    dist = importlib.metadata.distribution("farrier")
-    if dist.read_text("direct_url.json") is not None:
-        return "main"
-    return f"farrier-v{dist.version}"
-
-
 def _load_library(library: Path | None, check: bool) -> None:
-    """Fetch or refresh the base library, then layer the overlay over it."""
-    ensure_base_library_dir(ref=_base_library_ref(), refresh=not check)
+    """Mirror the shipped base library for other tools, then layer the overlay over the base."""
+    if not check:
+        share_shipped_base()
     set_layers(resolve_library_dir(library))
     if not check:
         for line in override_notices("skill", "library", "skills") + override_notices(
@@ -703,8 +696,7 @@ def _build_parser() -> argparse.ArgumentParser:
     set_sm.add_argument("path", type=Path, help="Path to the stablemate checkout")
     set_base = config_sub.add_parser(
         "set-base",
-        help="Record the base library content path (for isolated/pipx installs where "
-        "the stablemate-library wheel isn't importable)",
+        help="Record a base library path that outranks the one farrier ships",
     )
     set_base.add_argument(
         "path", type=Path, help="Path to the base library content directory"

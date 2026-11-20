@@ -1,15 +1,16 @@
-"""Suite-wide guarantees: no network, no reading the developer's real config."""
+"""Suite-wide guarantees: no shipped base, no real cache, no reading the developer's real config."""
 
 from __future__ import annotations
 
 import pytest
 
+from farrier import layers
 from farrier._vendor.stablemate_core import base_cache, config
 
 
 @pytest.fixture(autouse=True)
-def _no_base_fetch(tmp_path_factory, monkeypatch):
-    monkeypatch.setenv(base_cache.FETCH_ENV, "0")
+def _no_shipped_base(tmp_path_factory, monkeypatch):
+    monkeypatch.setattr(layers, "SHIPPED_BASE", tmp_path_factory.mktemp("no-shipped-base") / "base_library")
     monkeypatch.setenv(
         base_cache.CACHE_DIR_ENV, str(tmp_path_factory.mktemp("stablemate-cache"))
     )

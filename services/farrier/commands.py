@@ -268,8 +268,8 @@ class HooksList(Command):
     argv = ("hooks", "list", Flag("--repo", "repo"))
     args = Object("HooksListArgs", repo=REPO)
     answers = (
-        Exit(0, Lines(), "the hooks by stage, or that no library is available"),
-        Exit(1, STDERR, "the repository has no agents.yml"),
+        Exit(0, Lines(), "the hooks by stage"),
+        Exit(1, STDERR, "the repository has no agents.yml, or it selects a skill no library layer holds"),
     )
     carries = act.RunHooksList
     source = (f"{CLI}::_run_hooks_list", "farrier/farrier/skill_hooks.py")

@@ -74,11 +74,6 @@ def configured(s: Repo, key: str) -> bool:
     return key == "config_version" or SETTINGS[key] in s.files[CONFIG].holds
 
 
-def has_library(s: Repo) -> bool:
-    """Whether the home config names a library directory or a base to resolve one from."""
-    return configured(s, "library_dir") or configured(s, "base_dir")
-
-
 def generated_skill(s: Repo) -> bool:
     """Whether the repository holds the skill install generated."""
     skill = s.files.get(".claude/skills/acme-demo/SKILL.md")
@@ -91,6 +86,10 @@ def _no_agents_to_diagnose(a: DoctorArgs, s: Repo, by: Actor | None) -> bool:
 
 def _no_agents_to_list(a: HooksListArgs, s: Repo, by: Actor | None) -> bool:
     return not a.here or "agents.yml" not in s.files
+
+
+def _selects_what_the_base_lacks(a: HooksListArgs, s: Repo, by: Actor | None) -> bool:
+    return "- demo" in s.files["agents.yml"].holds and not configured(s, "library_dir")
 
 
 def _unknown_key(a: ConfigGetArgs | ConfigReferenceArgs, s: Repo, by: Actor | None) -> bool:
@@ -167,6 +166,17 @@ doctor_without_config = Rule[DoctorArgs, Repo](
     _no_agents_to_diagnose, FAILED)
 hooks_list_without_config = Rule[HooksListArgs, Repo](
     "error: no agents.yml in {root} — run 'farrier init' to write one.", _no_agents_to_list, FAILED)
+hooks_list_of_an_unknown_skill = Rule[HooksListArgs, Repo](
+    "error: unknown skill in agents.yml `skills:`\n  - demo\n\n"
+    "No skills are available from the current library layers at all — which usually means the layer holding them is "
+    "not configured, rather than that you named the wrong one.\n\n"
+    "Searched these library layers:\n  - base-library (base)\n\n"
+    "Selection is a filter, so an entry naming a file that does not exist would otherwise contribute nothing and "
+    "install silently — leaving the repo without something it declared.\n\n"
+    "Fix the name in agents.yml, or remove it from `skills:`.\n"
+    "If it lives in a private overlay library farrier cannot see, point farrier at it:\n"
+    "    farrier config set-library <path-to-your-library>",
+    _selects_what_the_base_lacks, FAILED)
 unknown_key_to_get = Rule[ConfigGetArgs, Repo]("error: " + NO_KEY, _unknown_key, FAILED)
 unset_to_get = Rule[ConfigGetArgs, Repo](
     "error: `{key}` is not set in <sandbox>/config.toml and has no default", _unset_get, FAILED)

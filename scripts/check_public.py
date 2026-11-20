@@ -266,12 +266,11 @@ def check_hooks_installed() -> list[str]:
     return []
 
 
-def _isolate_from_the_overlay(install, config, discovery, base_cache) -> list[str]:
+def _isolate_from_the_overlay(install, config, discovery) -> list[str]:
     """Resolve as a public user would: base only, no overlay in env or home config."""
     os.environ.pop("FARRIER_LIBRARY_DIR", None)
     os.environ[config.CONFIG_PATH_ENV] = str(Path(tempfile.mkdtemp()) / "config.toml")
     os.environ[discovery.BASE_DIR_ENV] = str(BASE)
-    os.environ[base_cache.FETCH_ENV] = "0"
     install.set_layers(None)
     if [layer.name for layer in install.LAYERS] != [install.BASE_LAYER_NAME]:
         return ["the base library is not the only layer — the check would mean nothing"]
@@ -281,12 +280,12 @@ def _isolate_from_the_overlay(install, config, discovery, base_cache) -> list[st
 def check_base_stands_alone() -> list[str]:
     """Nothing in the base may depend on the private overlay."""
     from farrier import install
-    from stablemate_core import base_cache, config, discovery
+    from stablemate_core import config, discovery
 
     if not install.is_library_dir(BASE):
         return [f"{BASE} is not a usable library root"]
 
-    problems = _isolate_from_the_overlay(install, config, discovery, base_cache)
+    problems = _isolate_from_the_overlay(install, config, discovery)
     if problems:
         return problems
 

@@ -36,30 +36,20 @@ pre-existing `~/.config/farrier/config.toml` is still read, and folded in on the
 write. `farrier config reference --file home` prints every key of that file with its type,
 default, meaning and example.
 
-**Finding the base library.** farrier discovers the base via, in order,
-`$STABLEMATE_BASE_DIR` → the `base_dir` config key (`farrier config set-base <path>`) →
-a configured `stablemate_dir` checkout (`<checkout>/base-library`) → the shared cache at
-`~/.cache/stablemate`. The cache is deliberately last, so a fetched copy can never shadow
-a checkout you are editing.
+**Finding the base library.** farrier ships the base library inside its wheel, so a
+`pipx` install renders it with no network and no `git`. A base you name outranks it:
+`$STABLEMATE_BASE_DIR`, then the `base_dir` config key (`farrier config set-base <path>`),
+then a configured `stablemate_dir` checkout (`<checkout>/base-library`).
 
-**`farrier install` fetches the base, and updates it.** It is the only command that
-touches the cache, so under `pipx` — where each tool is its own venv and the base is data
-with no package to import — you get a working base library without configuring anything.
-The base library comes from this farrier's release tag (`farrier-v<version>`), so the
-library always matches the farrier that renders it. A farrier installed from a checkout or a
-git URL tracks `main` instead. The fetch needs `git` and network
-access. An update asks the remote which commit that ref names first, so an already-current
-cache costs one round-trip rather than a re-clone. Three qualifications:
+**`farrier install` mirrors the base for the other tools.** Under `pipx` each tool is its
+own venv, so workhorse reads the base from the shared cache at `~/.cache/stablemate`.
+Install copies the shipped base there when the cache holds a different digest, and swaps
+it in whole. Two qualifications:
 
-- **A base you named is never fetched over.** If `$STABLEMATE_BASE_DIR`, `set-base` or a
-  `stablemate_dir` checkout answers, install returns it without even probing the remote.
-- **`--check` fetches but never updates.** It writes nothing and runs in CI, where a
-  library moving underneath the comparison would make the result depend on the hour.
-- **Failure keeps what works.** Offline, `STABLEMATE_FETCH_BASE=0`, or a broken clone all
-  leave the existing cache in place rather than leaving you with none.
+- **A base you named is never mirrored over.** When one answers, install leaves the cache alone.
+- **`--check` writes no cache.** It renders the shipped base and runs in CI.
 
-`STABLEMATE_FETCH_BASE=0` forbids the network entirely; `STABLEMATE_CACHE_DIR` relocates
-the cache. See the monorepo's
+`STABLEMATE_CACHE_DIR` relocates the cache. See the monorepo's
 [install guide](https://github.com/GabrielCpp/stablemate/blob/main/docs/INSTALL.md#finding-the-base-library)
 for the full resolution order and why everything other than install reads the cache frozen.
 

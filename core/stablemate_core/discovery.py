@@ -13,8 +13,8 @@ __all__ = [
     "BASE_DIR_ENV",
     "CHECKOUT_SUBPATH",
     "base_library_dir",
-    "ensure_base_library_dir",
     "is_library_dir",
+    "share_base_library",
 ]
 
 BASE_DIR_ENV = "STABLEMATE_BASE_DIR"
@@ -22,11 +22,14 @@ BASE_DIR_ENV = "STABLEMATE_BASE_DIR"
 CHECKOUT_SUBPATH = "base-library"
 
 
-def base_library_dir() -> Path | None:
+def base_library_dir(shipped: Path | None = None) -> Path | None:
     """The base library root, or None when it cannot be located."""
     explicit = _explicit_base()
     if explicit is not None:
         return explicit
+
+    if shipped is not None and is_library_dir(shipped):
+        return shipped.resolve()
 
     cached = base_cache.cached_base()
     if cached is not None and is_library_dir(cached):
@@ -57,14 +60,8 @@ def _explicit_base() -> Path | None:
     return None
 
 
-def ensure_base_library_dir(*, ref: str, refresh: bool = False, quiet: bool = False) -> Path | None:
-    """:func:`base_library_dir`, but allowed to populate the cache at ``ref`` — and, with ``refresh``, to move it there."""
-    explicit = _explicit_base()
-    if explicit is not None:
-        return explicit
-
-    fetch = base_cache.refresh_cached_base if refresh else base_cache.ensure_cached_base
-    cached = fetch(ref=ref, quiet=quiet)
-    if cached is not None and is_library_dir(cached):
-        return cached.resolve()
-    return None
+def share_base_library(shipped: Path, *, stamp: str, quiet: bool = False) -> Path | None:
+    """Mirror the base a tool ships into the shared cache, unless a person named a base; return the cached copy."""
+    if _explicit_base() is not None:
+        return None
+    return base_cache.mirror_base(shipped, stamp=stamp, quiet=quiet)

@@ -45,7 +45,6 @@ def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     path = tmp_path / "home"
     path.mkdir()
     monkeypatch.setenv("HOME", str(path))
-    monkeypatch.setenv("STABLEMATE_FETCH_BASE", "0")
     monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "config.toml"))
     return path
 

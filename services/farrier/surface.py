@@ -8,6 +8,7 @@ SEED = Seed(
     {
         "config.toml": "config_version = 2\n",
         "home/.keep": "",
+        "base/library/.keep": "",
         "lib/library/skills/demo.md": '---\nname: demo\ndescription: "A skill."\n---\n\nUse it.\n',
         "lib/scaffolds/service-gitignore.yml": (
             "service-gitignore:\n  description: Ignore rules for a service\n  params:\n    dir: api\n  tree:\n"
@@ -17,7 +18,7 @@ SEED = Seed(
     name="acme",
 )
 
-ENVIRONMENT = {"HOME": "<sandbox>/home", "STABLEMATE_CONFIG": "<sandbox>/config.toml", "STABLEMATE_FETCH_BASE": "0"}
+ENVIRONMENT = {"HOME": "<sandbox>/home", "STABLEMATE_CONFIG": "<sandbox>/config.toml", "STABLEMATE_BASE_DIR": "<sandbox>/base"}
 
 
 class FarrierCli(CommandSurface):

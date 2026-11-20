@@ -12,8 +12,8 @@ from stablemate_core import config as cfgmod
 from stablemate_core.discovery import (
     BASE_DIR_ENV,
     base_library_dir,
-    ensure_base_library_dir,
     is_library_dir,
+    share_base_library,
 )
 
 
@@ -127,56 +127,50 @@ def test_invalid_override_is_skipped_not_raised(tmp_path, cfg, monkeypatch):
     assert base_library_dir() == real.resolve()
 
 
-def test_resolution_never_fetches(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        bc, "_clone_into", lambda dest, ref: pytest.fail("resolution must never fetch")
-    )
-    base_library_dir()
+def test_a_shipped_base_outranks_the_cache(tmp_path, monkeypatch):
+    """The base a tool carries matches its own code; a mirror another farrier left may not."""
+    shipped = _make_base(tmp_path / "shipped")
+    monkeypatch.setattr(bc, "cached_base", lambda: _make_base(tmp_path / "cached"))
+    assert base_library_dir(shipped) == shipped.resolve()
 
 
-
-
-def test_ensure_populates_the_cache_when_nothing_else_resolves(tmp_path, monkeypatch):
-    fetched = _make_base(tmp_path / "fetched")
-    monkeypatch.setattr(bc, "cached_base", lambda: None)
-    monkeypatch.setattr(bc, "ensure_cached_base", lambda *, ref, quiet=False: fetched)
-
-    assert ensure_base_library_dir(ref="farrier-v1.2.3") == fetched.resolve()
-
-
-@pytest.mark.parametrize("refresh", [False, True])
-def test_ensure_never_fetches_over_a_chosen_base(tmp_path, cfg, monkeypatch, refresh):
-    """The ordering guarantee has to survive the command that is allowed to download: someone editing a base in place must never have a copy appear underneath them — not even a network probe fires."""
+def test_a_named_base_outranks_the_shipped_one(tmp_path, cfg, monkeypatch):
     checkout = tmp_path / "checkout"
     derived = _make_base(checkout / "base-library")
     cfg(stablemate_dir=str(checkout))
-    for name in ("ensure_cached_base", "refresh_cached_base", "remote_commit"):
-        monkeypatch.setattr(
-            bc, name, lambda *a, **k: pytest.fail("a chosen base must not be refetched")
-        )
-
-    assert ensure_base_library_dir(ref="farrier-v1.2.3", refresh=refresh) == derived.resolve()
+    assert base_library_dir(_make_base(tmp_path / "shipped")) == derived.resolve()
 
 
-def test_ensure_refresh_updates_an_existing_cache(tmp_path, monkeypatch):
-    updated = _make_base(tmp_path / "updated")
-    monkeypatch.setattr(bc, "cached_base", lambda: _make_base(tmp_path / "stale"))
-    monkeypatch.setattr(bc, "refresh_cached_base", lambda *, ref, quiet=False: updated)
+def test_a_broken_shipped_base_falls_to_the_cache(tmp_path, monkeypatch):
+    cached = _make_base(tmp_path / "cached")
+    monkeypatch.setattr(bc, "cached_base", lambda: cached)
+    assert base_library_dir(tmp_path / "not-there") == cached.resolve()
+
+
+
+
+def test_share_mirrors_the_shipped_base(tmp_path, monkeypatch):
+    monkeypatch.delenv(BASE_DIR_ENV, raising=False)
+    shipped = _make_base(tmp_path / "shipped")
+
+    cached = share_base_library(shipped, stamp="aaa", quiet=True)
+
+    assert cached is not None
+    assert cached == bc.cached_base()
+    assert bc.cached_stamp() == "aaa"
+    assert base_library_dir() == cached.resolve()
+
+
+def test_share_writes_nothing_over_a_named_base(tmp_path, cfg, monkeypatch):
+    """Someone editing a base in place must never have a copy appear underneath them."""
+    checkout = tmp_path / "checkout"
+    _make_base(checkout / "base-library")
+    cfg(stablemate_dir=str(checkout))
     monkeypatch.setattr(
-        bc,
-        "ensure_cached_base",
-        lambda *, ref, quiet=False: pytest.fail("refresh=True must not take the frozen path"),
+        bc, "mirror_base", lambda *a, **k: pytest.fail("a named base must not be mirrored over")
     )
 
-    assert ensure_base_library_dir(ref="farrier-v1.2.3", refresh=True) == updated.resolve()
-
-
-def test_ensure_is_none_when_the_fetch_fails(monkeypatch):
-    """Fail-soft: an offline host with no cache behaves as it did before this existed."""
-    monkeypatch.setattr(bc, "cached_base", lambda: None)
-    monkeypatch.setattr(bc, "ensure_cached_base", lambda *, ref, quiet=False: None)
-
-    assert ensure_base_library_dir(ref="farrier-v1.2.3") is None
+    assert share_base_library(_make_base(tmp_path / "shipped"), stamp="aaa") is None
 
 
 if __name__ == "__main__":

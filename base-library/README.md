@@ -29,10 +29,11 @@ skill ships beside its `SKILL.md`. Workflows are distributed separately as
 
 ## How the tools find it
 
-A directory counts as a library if it holds `library/`. Without a path you configured,
-`farrier install` fetches this directory from GitHub into a shared cache, at farrier's
-release tag. [docs/INSTALL.md](../docs/INSTALL.md#finding-the-base-library) gives the
-lookup order and how the cache updates.
+A directory counts as a library if it holds `library/`. farrier ships this directory
+inside its wheel. Without a path you configured, farrier renders that copy, and
+`farrier install` mirrors it into a shared cache for the tools that do not ship it.
+[docs/INSTALL.md](../docs/INSTALL.md#finding-the-base-library) gives the lookup order
+and how the cache updates.
 
 ## Layering
 
@@ -64,8 +65,9 @@ default the workflow shipped. Resolving nothing is the ordinary case, not a fail
 
 ## Versioning
 
-There is no version number of its own. `farrier install` fetches the library at
-farrier's release tag, `farrier-v<version>`, or at `main` for a farrier installed from
-a checkout. What lands is a commit, and `cat ~/.cache/stablemate/library/.commit` says
-which one. The layout contract is
+There is no version number of its own. Each farrier release carries the library as it
+stood at that release, so the library version is the farrier version. A change here
+releases farrier, because `make vendor` stamps its digest into
+`farrier/farrier/_vendor/base_library.sha256`. `cat ~/.cache/stablemate/library/.digest`
+says which copy the cache holds. The layout contract is
 [`farrier/docs/LAYOUT.md`](../farrier/docs/LAYOUT.md).
