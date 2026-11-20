@@ -869,19 +869,8 @@ def _directory_artifact_plan(body: str) -> str:
     )
 
 
-def _shell_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Opt the tmp repo into an `sh` QA tool — plan code may not touch the filesystem itself, so a plan builds an artifact tree the way a real one does: through a tool."""
-    (tmp_path / "agents.yml").write_text("qa:\n  tools: [sh]\n", encoding="utf-8")
-    config = tmp_path / "config.toml"
-    config.write_text('[qa_tools.sh]\ncommand = "/bin/sh"\n', encoding="utf-8")
-    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
-
-
-def test_a_directory_artifact_is_one_manifest_row_per_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_a_directory_artifact_is_one_manifest_row_per_file(tmp_path: Path) -> None:
     """The manifest hashes files and the evidence map reads files, so a directory arrives as its files — each carrying the directory it came from — never as one opaque row."""
-    _shell_tool(tmp_path, monkeypatch)
     spec = _spec(tmp_path)
     module = _plan(
         spec,
@@ -903,11 +892,8 @@ def test_a_directory_artifact_is_one_manifest_row_per_file(
     assert all(row["kind"] == "log" for row in manifest["artifacts"] if "report/" in row["path"])
 
 
-def test_an_empty_artifact_directory_is_a_problem(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_an_empty_artifact_directory_is_a_problem(tmp_path: Path) -> None:
     """An artifact that says nothing is not evidence of anything, and the scenario that produced it aborts like one that handed over a missing file."""
-    _shell_tool(tmp_path, monkeypatch)
     spec = _spec(tmp_path)
     module = _plan(
         spec,

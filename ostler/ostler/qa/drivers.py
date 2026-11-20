@@ -22,7 +22,6 @@ from ostler.qa import android
 from ostler.qa.android import ScreenRecording
 from ostler.qa.attribution import NO_ATTRIBUTION, SAMPLE_CHARS, Attribution, Cause, CheckEvidence, CommandEnding, attribute
 from ostler.qa import fixtures as qa_fixtures
-from ostler.qa import tools as qa_tools
 from ostler.qa.verdict import Verdict, judge
 from ostler.qa.harness_host import (
     DEFAULT_SCENARIO_TIMEOUT,
@@ -186,10 +185,7 @@ class PythonDriver(QaDriver):
 
     def start(self) -> None:
         self.launcher.preflight(self)
-        problems = [
-            *qa_tools.preflight_errors(self.root),
-            *qa_fixtures.preflight_errors(self.root),
-        ]
+        problems = qa_fixtures.preflight_errors(self.root)
         if problems:
             raise DriverBlocked("; ".join(problems))
         driver = str(self.target.get("driver", "python"))
@@ -303,7 +299,6 @@ class PythonDriver(QaDriver):
             "spec_dir": str(self.session.spec_dir),
             "qa_dir": str(self.session.qa_dir),
             "offset_ms": self.session.offset_ms(),
-            "tools": qa_tools.resolved_commands(self.root),
             "fixtures": qa_fixtures.resolved(self.root),
         }
         return self.launcher.execute(self, scenario_id, timeout, context)

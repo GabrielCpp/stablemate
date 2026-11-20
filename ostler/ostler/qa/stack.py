@@ -63,7 +63,6 @@ from typing import Any
 from ostler._vendor.stablemate_core import base_cache
 from ostler._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from ostler.qa import addresses
-from ostler.qa import tools as tools_mod
 
 #: Manifest commands are **shell** recipes, not argv lists. The contract already asks for
 #: something only a shell can express — an *idempotent* bring-up command is written
@@ -140,16 +139,15 @@ _GRPC_HEALTH = "grpc.health.v1.Health/Check"
 _GRPC_PROBE_TIMEOUT_S = 5.0
 
 
-def _grpcurl_not_opted_in(url: str) -> str:
-    return (f"{url} is a gRPC entry url and grpcurl is not opted in: list it under "
-            f"`qa: {{tools: [grpcurl]}}` in agents.yml")
+def _grpcurl_missing(url: str) -> str:
+    return f"{url} is a gRPC entry url and grpcurl is not on PATH"
 
 
 def _grpc_probe(url: str, serves: tuple[str, ...], grpcurl: str) -> str:
     """``""`` when the gRPC server at *url* answers SERVING and lists every service in *serves*."""
     address = urllib.parse.urlsplit(url).netloc
     if not grpcurl:
-        return _grpcurl_not_opted_in(url)
+        return _grpcurl_missing(url)
     try:
         health = subprocess.run(
             [grpcurl, "-plaintext", "-max-time", str(int(_GRPC_PROBE_TIMEOUT_S)), address, _GRPC_HEALTH],
@@ -568,7 +566,7 @@ def ensure_stack(
     launch_cwd = manifest.get("launch_cwd") or app_cwd
     health_url = entry_url.rstrip("/") + "/" + health_path.lstrip("/") if entry_url else ""
     serves = tuple(manifest.get("serves") or ())
-    grpcurl = tools_mod.resolved_commands(Path(root)).get("grpcurl", "") if entry_url.startswith(GRPC_SCHEME) else ""
+    grpcurl = "grpcurl" if entry_url.startswith(GRPC_SCHEME) and shutil.which("grpcurl") else ""
 
     def _fail(step: str, error: str = "", pid: str = "", pgid: str = "") -> dict[str, str]:
         # `error` carries the step's own message out with the verdict: the caller's job is
@@ -579,7 +577,7 @@ def ensure_stack(
                 "app_pid": pid, "app_pgid": pgid, "failed_step": step, "error": error}
 
     if entry_url.startswith(GRPC_SCHEME) and not grpcurl:
-        return _fail("tools", _grpcurl_not_opted_in(entry_url))
+        return _fail("tools", _grpcurl_missing(entry_url))
 
     # Adopt-if-serving — but only when the reuse policy proves the running stack is not
     # stale (built from older code). Otherwise fall through and re-run the (idempotent,

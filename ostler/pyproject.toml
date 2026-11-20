@@ -25,9 +25,8 @@ dependencies = [
   "mdit-py-plugins>=0.4",
   "pydantic>=2.0",
   # platformdirs and tomlkit are ostler._vendor.stablemate_core's requirements, not
-  # ostler's own: the shared config file (whose [qa_tools.*] table the tool registry
-  # reads), base-library discovery and the cache directory are vendored in rather than
-  # depended on (see core/README.md), so their floors land here.
+  # ostler's own: the shared config file, base-library discovery and the cache directory
+  # are vendored in rather than depended on (see core/README.md), so their floors land here.
   "platformdirs>=4.0",
   "tomlkit>=0.13",
 ]

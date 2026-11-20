@@ -27,7 +27,6 @@ from ostler.qa import (
     cmd_report,
     cmd_run,
     cmd_validate,
-    tools as qa_tools_mod,
 )
 from ostler.finding import Finding
 from ostler.model import Epic, Graph, Milestone, Story, find_root, load
@@ -615,11 +614,6 @@ class Ostler:
 
         return cmd_frames(self._resolve(spec), step=step, at=at, target=target,
                           around=around, fps=fps, label=label)
-
-    def qa_tools_catalog(self) -> QaOutcome:
-        """This repo's opted-in QA tools, resolved against the machine's stablemate config (``ostler qa tools list``)."""
-
-        return qa_tools_mod.cmd_catalog(self.root)
 
     def artifact_vet(self, kind: str, spec: str | Path) -> QaOutcome:
         """Validate a workflow artifact against its contract (``ostler artifact vet``)."""

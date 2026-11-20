@@ -16,7 +16,7 @@ from ..graph import (EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, Valida
                      VetWithoutArguments, VetWithoutRegions, EnvAddress, EnvDown, EnvExec, EnvRender, EnvRenderUnknown, BacklogAdopt, BacklogAdd, CutFrames, LintBadPlan, LintPlan, ReadLedger, RecordAssertion, RecordStep, ReplayRun,
                      ReportRun, RunBadPlan, RunPlan, StartSession, StopSession, ValidateBadPlan, ValidatePlan, BacklogDropWithoutReason, BacklogList, BacklogPrune, BuildIndex, CleanQaScratch, CreateMilestone,
                      CreateSpec, CreateSpecOfUnknownStory, Doctor, EditRename, EditRenameUnknown, EnvCheck, EnvList, EnvListAll, EnvPrune, EnvSchema,
-                     EvictCache, FileDecision, ListArtifactKinds, ListEpicRows, ListQaTools, ListStoryRows, MilestoneEpicsBoth,
+                     EvictCache, FileDecision, ListArtifactKinds, ListEpicRows, ListStoryRows, MilestoneEpicsBoth,
                      MilestoneEpicsFirst, MilestoneEpicsUnknown, MilestoneSourceItem, NextEpic, NextStory, QueryCovering,
                      ScaffoldArtifact, SearchPlan, ShowChecks, TemplateApply, TemplateDelete, TemplateFind, TemplateNew,
                      VetArtifact)
@@ -206,7 +206,6 @@ READ_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "rename a slug, dry run": lambda m: EditRename(nothing()),
     "rename a slug no document holds": lambda m: EditRenameUnknown(nothing()),
     "list the artifact kinds": lambda m: ListArtifactKinds(nothing()),
-    "list the QA tools": lambda m: ListQaTools(nothing()),
     "clean QA scratch": lambda m: CleanQaScratch(nothing()),
     "env schema": lambda m: EnvSchema(nothing()),
     "env check": lambda m: EnvCheck(nothing()),

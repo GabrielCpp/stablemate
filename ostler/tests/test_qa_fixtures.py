@@ -13,7 +13,6 @@ def _agents_yml(root: Path, body: str) -> None:
 
 ONE_FIXTURE = """\
 qa:
-  tools: [node]
   fixtures:
     three-identities:
       tool: node
@@ -37,15 +36,6 @@ def test_a_well_formed_fixture_resolves_to_the_invocation_it_names(tmp_path: Pat
     assert fixtures.resolved(tmp_path)["three-identities"]["args"] == ["auth/seed.mjs"]
 
 
-def test_a_fixture_naming_an_un_opted_in_tool_is_a_preflight_error(tmp_path: Path) -> None:
-    """The containment property, and the only one that makes `fixtures:` safe to add."""
-    _agents_yml(tmp_path, ONE_FIXTURE.replace("tools: [node]", "tools: [docker]"))
-    problems = fixtures.preflight_errors(tmp_path)
-    assert len(problems) == 1
-    assert "'node'" in problems[0]
-    assert "has not opted into" in problems[0]
-
-
 def test_a_fixture_with_no_provides_is_rejected(tmp_path: Path) -> None:
     """`provides:` is what a scenario's `preconditions:` are read against, not decoration."""
     _agents_yml(tmp_path, ONE_FIXTURE.replace('      provides: "the adjuster, holder A and holder B exist in the auth emulator"\n', ""))
@@ -56,7 +46,7 @@ def test_a_fixture_with_no_provides_is_rejected(tmp_path: Path) -> None:
 
 
 def test_a_malformed_entry_is_an_error_and_never_a_silent_skip(tmp_path: Path) -> None:
-    _agents_yml(tmp_path, "qa:\n  tools: [node]\n  fixtures:\n    seeded: 'node auth/seed.mjs'\n")
+    _agents_yml(tmp_path, "qa:\n  fixtures:\n    seeded: 'node auth/seed.mjs'\n")
     specs, errors = fixtures.declared(tmp_path)
     assert specs == {}
     assert len(errors) == 1

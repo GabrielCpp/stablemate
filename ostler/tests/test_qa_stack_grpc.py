@@ -86,8 +86,8 @@ def test_a_different_server_on_the_port_is_named_by_the_service_it_lacks(
     assert "does not list" in why
 
 
-def test_a_grpc_url_without_grpcurl_says_how_to_opt_in() -> None:
-    assert "qa: {tools: [grpcurl]}" in stack.health_probe("grpc://localhost:50051/")
+def test_a_grpc_url_without_grpcurl_says_it_is_not_on_path() -> None:
+    assert "grpcurl is not on PATH" in stack.health_probe("grpc://localhost:50051/")
 
 
 SECRET_VALUE = "tok-3f9a-do-not-leak"
@@ -157,7 +157,7 @@ def test_ensure_stack_mints_after_the_stack_is_ready(monkeypatch: pytest.MonkeyP
     monkeypatch.delenv("TICKET_TOKEN")
 
 
-def test_a_grpc_stack_with_no_grpcurl_opted_in_fails_at_once_without_launching(
+def test_a_grpc_stack_with_no_grpcurl_on_path_fails_at_once_without_launching(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ran: list[str] = []
@@ -173,6 +173,7 @@ def test_a_grpc_stack_with_no_grpcurl_opted_in_fails_at_once_without_launching(
     monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path / "cache"))
     monkeypatch.setattr(stack, "_run_step", record)
     monkeypatch.setattr(stack, "boot_app", boot)
+    monkeypatch.setattr(stack.shutil, "which", lambda _name: None)
     clock = FakeClock()
 
     out = stack.ensure_stack(
@@ -183,6 +184,6 @@ def test_a_grpc_stack_with_no_grpcurl_opted_in_fails_at_once_without_launching(
 
     assert out["ready"] == "no"
     assert out["failed_step"] == "tools"
-    assert "grpcurl is not opted in" in out["error"]
+    assert "grpcurl is not on PATH" in out["error"]
     assert ran == []
     assert clock.monotonic() == 0

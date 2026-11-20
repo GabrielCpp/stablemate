@@ -586,11 +586,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     qa_run.add_argument("--json", action="store_true")
 
-    qa_tools = qas.add_parser("tools", help="inspect this repo's opted-in QA tools")
-    qa_tools_ops = qa_tools.add_subparsers(dest="tools_op", required=True)
-    qa_tools_list = qa_tools_ops.add_parser("list", help="list opted-in tools and whether they resolve")
-    qa_tools_list.add_argument("--json", action="store_true")
-
     qa_clean = qas.add_parser(
         "clean",
         help="list (and with --yes, delete) the legacy qa-* scratch directories the old "
@@ -1067,18 +1062,6 @@ def _cmd_qa(graph, args) -> int:  # noqa: C901 — flat QA subcommand dispatch
             _out(json.dumps(result.data, indent=2))
         else:
             _out(result.message)
-        return 0 if result.ok else 1
-
-    if op == "tools":
-        result = qa_mod.tools.cmd_catalog(root)
-        if args.json:
-            _out(json.dumps(result.data, indent=2))
-        else:
-            for row in result.data["tools"]:
-                mark = "ok" if row["available"] else "MISSING"
-                _out(f"{row['name']} ({row['command']}) [{mark}] - {row['description']}")
-            for error in result.data["errors"]:
-                _out(f"error: {error}")
         return 0 if result.ok else 1
 
     if op == "clean":

@@ -45,7 +45,7 @@ resolve from the discovered repository root. The loaded graph is a **snapshot**:
 against a fresh load and invalidates the cache, so the next read reflects it
 (`reload()` forces a refresh). A read never returns `None` — an unloadable graph
 *raises*. The QA/artifact/edit surface is on the same object
-(`qa_validate`/`qa_run`, `qa_tools_catalog`,
+(`qa_validate`/`qa_run`,
 `artifact_vet`, `settle_review`, `settle_answers`), lazy-imported so a read-only caller never loads the QA/vet
 machinery. `settle_review(slug, status_write=False)` writes the settlement ledger and leaves
 `story.md` alone. `settle_answers(slug, filed)` settles a markdown Answer list against the finding

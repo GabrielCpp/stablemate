@@ -391,31 +391,17 @@ explicit attribute here, and the two that used to cost the most are the first tw
 | `qa.maestro.run(flow)`             | a Maestro flow, for a `maestro` target                                  |
 | `qa.tesseract.ocr(image)`          | OCR text from an image, via the `tesseract` CLI                         |
 | `qa.convert.resize(image, w, h)`   | resize an image via ImageMagick's `convert`; returns the output path    |
-| `qa.tool(name).run(*args, cwd=…, env=…, timeout=…)` | any other opted-in external command; returns a `ToolResult(stdout, stderr, exit_code)`. `cwd` resolves against `qa.dir` and must stay inside it; `env` overlays the inherited environment and every key must be declared with `tool_env(...)`. Hand the result to `qa.verify("exit_status", result, code=0, covers=[…])` when the book declares the exit code, and to `qa.verify("stderr", result, text=…, covers=[…])` or `"stdout"` when it declares what the command prints |
+| `qa.tool(name).run(*args, cwd=…, env=…, timeout=…)` | any other external command found on `PATH`; returns a `ToolResult(stdout, stderr, exit_code)`. `cwd` resolves against `qa.dir` and must stay inside it; `env` overlays the inherited environment and every key must be declared with `tool_env(...)`. Hand the result to `qa.verify("exit_status", result, code=0, covers=[…])` when the book declares the exit code, and to `qa.verify("stderr", result, text=…, covers=[…])` or `"stdout"` when it declares what the command prints |
 
 ### QA tools (`qa.tool`, `qa.tesseract`, `qa.convert`)
 
-Every external command a scenario reaches for through `qa.tool` — including the two typed
-wrappers above — has to be opted into by this repo, and defined for this machine. Two
-tiers, because they change for different reasons and at different times:
-
-- **Opt-in** — `agents.yml` (or the legacy `.agents.yml`, `ostler.yml`, `ostler.yaml`)'s
-  `qa: {tools: [tesseract, convert, ocr-diff]}` — is committed: which tools *this* QA
-  plan is allowed to reach for.
-- **Definition** — `~/.config/stablemate/config.toml`'s `[qa_tools.<name>]` table
-  (`command`, `description`) — is per-machine: CI's `tesseract` is a container binary, a
-  laptop's is Homebrew's. `tesseract` and `convert` need no entry unless a repo wants to
-  override the command name; every other tool needs one.
-
-`ostler qa validate` and `ostler qa run` refuse to start if an opted-in name has no
-definition anywhere, or if its command is not on `PATH` — the same `DriverBlocked`
-doctrine that already covers a missing `maestro` CLI. `ostler qa tools list` prints the
-resolved catalog and whether each tool is currently available.
+`qa.tool(name)` runs the command `name` found on `PATH`, with no opt-in and no definition. A
+command that is not on `PATH` raises `qa tool '<name>' is not on PATH`, and the stop names the
+missing tool as the cause.
 
 `tesseract` (OCR) and ImageMagick's `convert` are host binaries farrier does not
 provision — install them the way this machine installs any CLI (e.g.
-`apt install tesseract-ocr imagemagick`, `brew install tesseract imagemagick`) before
-opting a repo into them.
+`apt install tesseract-ocr imagemagick`, `brew install tesseract imagemagick`).
 
 `covers=` on the decorator names the acceptance criteria the scenario proves, and `qa-evidence.json` is aggregated over them. A
 single `qa.check` may narrow it with its own `covers=`.
@@ -621,7 +607,7 @@ under the target's interpreter and reads the declarations back, so it catches:
   variable, or is a declared secret's variable.
 - a plan body that touches the filesystem or settles as a statement: `.mkdir`,
   `.write_text`, `open(...)` and a bare `page.wait_for_*(...)` are refused by plan lint —
-  build files through an opted-in `qa.tool`, and wait with `qa.eventually(label, lambda: …)`.
+  build files through `qa.tool`, and wait with `qa.eventually(label, lambda: …)`.
   A lambda is admitted (and its body is still linted).
 ---
 

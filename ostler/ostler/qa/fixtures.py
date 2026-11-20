@@ -9,7 +9,6 @@ from typing import Any
 
 from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.manifest import read_manifest
-from ostler.qa.tools import opted_in_tools
 
 DEFAULT_TIMEOUT = 120.0
 
@@ -67,15 +66,7 @@ def declared(root: Path) -> tuple[dict[str, FixtureSpec], list[str]]:
 
 def preflight_errors(root: Path) -> list[str]:
     """Every reason this repo's declared fixtures could not be used right now."""
-    specs, errors = declared(root)
-    opted_in = opted_in_tools(root)
-    errors.extend(
-        f"qa fixture {spec.name!r} runs tool {spec.tool!r}, which this repo has not opted "
-        f"into — add it to `qa: {{tools: [{spec.tool!r}]}}` or point the fixture at a tool "
-        "that is already there"
-        for spec in specs.values()
-        if spec.tool not in opted_in
-    )
+    _specs, errors = declared(root)
     return errors
 
 

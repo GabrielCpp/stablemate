@@ -803,7 +803,6 @@ class Qa:
         covers: Sequence[str],
         recorder: _Recorder,
         offset_base_ms: int = 0,
-        tools: Mapping[str, str] | None = None,
         fixtures: Mapping[str, Mapping[str, Any]] | None = None,
         tool_env: Sequence[str] = (),
         ceiling_s: float = CEILING_S,
@@ -816,7 +815,6 @@ class Qa:
         self.spec_dir = spec_dir
         self.dir = qa_dir
         self.covers = list(covers)
-        self._tool_commands = dict(tools or {})
         self._fixtures = {name: dict(spec) for name, spec in (fixtures or {}).items()}
         self._node_facts: dict[str, dict[str, str]] = {}
         self._node_structures: dict[str, dict[str, Any]] = {}
@@ -857,16 +855,12 @@ class Qa:
                     on_exchange=self._saw_exchange)
 
     def _grpc_caller_for(self) -> Caller:
-        """The caller `qa.grpc` makes its calls with: the one a test handed over, else grpcurl as the qa tools resolve it."""
+        """The caller `qa.grpc` makes its calls with: the one a test handed over, else grpcurl found on PATH."""
         if self._grpc_caller is None:
-            command = self._tool_commands.get("grpcurl")
-            if command is None:
+            if shutil.which("grpcurl") is None:
                 self._claim_fault = ClaimFault("capability", "qa-tool-grpcurl", "")
-                raise RuntimeError(
-                    "qa tool 'grpcurl' is not available — opt into it via this repo's "
-                    "agents.yml `qa: {tools: ['grpcurl']}`"
-                )
-            self._grpc_caller = GrpcurlCaller(command)
+                raise RuntimeError("qa tool 'grpcurl' is not on PATH")
+            self._grpc_caller = GrpcurlCaller("grpcurl")
         return self._grpc_caller
 
     def _grpc_status_mismatch(
@@ -882,16 +876,8 @@ class Qa:
         )
 
     def tool(self, name: str) -> "Tool":
-        """A user- or machine-declared external command, opted into via `agents.yml`."""
-        command = self._tool_commands.get(name)
-        if command is None:
-            self._claim_fault = ClaimFault("capability", f"qa-tool-{name}", "")
-            raise RuntimeError(
-                f"qa tool {name!r} is not available — opt into it via this repo's "
-                f"agents.yml `qa: {{tools: [{name!r}]}}`, and if it is not a built-in, "
-                f"define it in ~/.config/stablemate/config.toml's [qa_tools.{name}]"
-            )
-        return Tool(self, name, command)
+        """An external command found on PATH."""
+        return Tool(self, name, name)
 
     def tree(self, where: str | Path) -> Tree:
         """Every file under *where* in the run's qa directory, read once, so a differential check can compare the reads either side of an action."""
@@ -1788,7 +1774,7 @@ class ToolResult:
 
 
 class Tool:
-    """One opted-in external command, resolved to an argv on this machine."""
+    """One external command found on PATH."""
 
     def __init__(self, qa: Qa, name: str, command: str) -> None:
         self._qa = qa
@@ -1804,10 +1790,8 @@ class Tool:
     ) -> ToolResult:
         """Run the tool once, from the repo root unless *cwd* says where, with *env* overlaid."""
         if shutil.which(self._command) is None:
-            raise RuntimeError(
-                f"qa tool {self.name!r} names command {self._command!r}, which is not "
-                "on PATH — `ostler qa validate` should have caught this before the run"
-            )
+            self._qa._claim_fault = ClaimFault("capability", f"qa-tool-{self.name}", "")
+            raise RuntimeError(f"qa tool {self.name!r} is not on PATH")
         argv = [self._command, *args]
         where = self._qa.root if cwd is None else self._cwd(cwd)
         overlay = None if env is None else {**os.environ, **self._env(env)}
@@ -1853,7 +1837,7 @@ class Tool:
 
 
 class Tesseract:
-    """OCR over an image, via the `tesseract` CLI opted into `agents.yml`'s `qa.tools`."""
+    """OCR over an image, via the `tesseract` CLI on PATH."""
 
     def __init__(self, qa: Qa) -> None:
         self._qa = qa
@@ -2185,7 +2169,6 @@ def _run(module_path: Path, scenario_id: str, context: dict[str, Any]) -> int:
         covers=declared.covers,
         recorder=recorder,
         offset_base_ms=int(context.get("offset_ms", 0)),
-        tools=context.get("tools", {}),
         fixtures=context.get("fixtures", {}),
         tool_env=REGISTRY.tool_env,
     )

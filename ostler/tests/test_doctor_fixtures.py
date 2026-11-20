@@ -13,7 +13,6 @@ FOO_PLAN = f"{FOO_ID}/qa_plan.py"
 
 AGENTS = """\
 qa:
-  tools: [node]
   fixtures:
     seeded-accounts:
       tool: node
@@ -113,11 +112,10 @@ def test_a_bullet_under_fixtures_that_names_nothing_is_an_error(repo: Path) -> N
 
 
 def test_a_declaration_that_does_not_stand_up_is_an_error(repo: Path) -> None:
-    """The containment check: a fixture may only invoke a tool the repo opted into."""
-    _declare(repo, AGENTS.replace("tools: [node]", "tools: [docker]"))
+    _declare(repo, AGENTS.replace('      provides: "an adjuster and two holders exist in the auth emulator"\n', ""))
     found = _findings(repo, "qa-fixture-declaration")
     assert [f.severity for f in found] == ["error"]
-    assert "opted into" in found[0].message
+    assert "`provides:`" in found[0].message
 
 
 def test_a_story_missing_the_section_entirely_reads_as_unwritten(repo: Path) -> None:

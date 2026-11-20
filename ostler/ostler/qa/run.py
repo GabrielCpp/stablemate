@@ -15,7 +15,6 @@ from ostler.qa.v2 import run_plan as run_v2_plan
 from ostler.qa import addresses
 from ostler.qa import lint as lint_mod
 from ostler.qa import run_log
-from ostler.qa import tools as tools_mod
 from ostler.qa.outcome import QaOutcome
 
 __all__ = ["DaemonSpec", "QaOutcome", "cmd_assert", "cmd_report", "cmd_replay", "cmd_run",
@@ -344,16 +343,6 @@ def cmd_validate(
     lint_result = lint_mod.cmd_lint(resolved_plan, root=root)
     if not lint_result.ok:
         return lint_result
-
-    tool_problems = tools_mod.preflight_errors(root)
-    if tool_problems:
-        msg = "QA tool preflight failed:\n" + "\n".join(f"  - {p}" for p in tool_problems)
-        return QaOutcome(
-            ok=False,
-            message=msg,
-            data={"problems": tool_problems},
-            status="invalid",
-        )
 
     resolved_spec = resolve_spec_dir(resolved_plan, spec_dir, root)
     document, problems = load_plan(resolved_plan, resolved_spec, root)

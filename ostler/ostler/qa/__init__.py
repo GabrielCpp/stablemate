@@ -4,7 +4,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ostler.qa import addresses, devices, fixtures, tools
+    from ostler.qa import addresses, devices, fixtures
     from ostler.qa.clean import cmd_clean, legacy_scratch_roots
     from ostler.qa.lint import cmd_lint
     from ostler.qa.report import (
@@ -60,11 +60,10 @@ __all__ = [
     "fixtures",
     "addresses",
     "devices",
-    "tools",
 ]
 
 
-_SUBMODULES = {"addresses", "devices", "fixtures", "tools"}
+_SUBMODULES = {"addresses", "devices", "fixtures"}
 _HOMES = {
     **dict.fromkeys(
         ("DaemonSpec", "QaOutcome", "cmd_assert", "cmd_frames", "cmd_report", "cmd_replay", "cmd_run",

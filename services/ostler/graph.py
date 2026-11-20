@@ -367,16 +367,6 @@ class VetArtifact(Command):
     source = ("ostler/ostler/artifact/kinds.py::vet",)
 
 
-class ListQaTools(Command):
-    does = "List the QA tools the repository opted into."
-    program = "ostler"
-    argv = ("--full-ids", "qa", "tools", "list")
-    args = ARGS
-    answers = (Exit(0, OPAQUE, "the tools, none in the sandbox"),)
-    carries = act.Reading
-    source = ("ostler/ostler/qa/tools.py",)
-
-
 class CleanQaScratch(Command):
     does = "List the legacy QA scratch directories under a folder and delete none without --yes."
     program = "ostler"
@@ -803,7 +793,7 @@ ALL = (
     EditRename, EditRenameUnknown, CreateMilestone, MilestoneEpicsFirst, MilestoneEpicsBoth, MilestoneEpicsUnknown,
     MilestoneSourceItem, CreateSpec, CreateSpecOfUnknownStory, BacklogAdd, BacklogList, BacklogPrune, BacklogDropWithoutReason,
     FileDecision, TemplateNew, TemplateFind, TemplateApply, TemplateDelete, ListArtifactKinds, ScaffoldArtifact, VetArtifact,
-    ListQaTools, CleanQaScratch, EnvSchema, EnvCheck, EnvList, EnvListAll, EnvPrune, BacklogAdopt, LintPlan, LintBadPlan, ValidatePlan,
+    CleanQaScratch, EnvSchema, EnvCheck, EnvList, EnvListAll, EnvPrune, BacklogAdopt, LintPlan, LintBadPlan, ValidatePlan,
     ValidateBadPlan, RunPlan, RunBadPlan, ReportRun, ReplayRun, ReadLedger, CutFrames, StartSession, RecordStep, RecordAssertion,
     StopSession, EnvRender, EnvRenderUnknown, EnvDown, EnvAddress, EnvExec,
     ValidateWebPlan, ValidatePhonePlan, RunWebPlan, RunPhonePlan, RunGrpcPlan, VetWithoutArguments, VetWithoutRegions,
