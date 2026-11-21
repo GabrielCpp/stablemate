@@ -5,7 +5,7 @@ from __future__ import annotations
 from ostler.book import App, Because, Environment, Service, Stack, Unseen
 
 from .events import FinishARun, ParkARun
-from .commands import ALL as ENDPOINTS, Look, Replay
+from .commands import ALL as ENDPOINTS, CheckEnvironment, Look, Replay
 from .journeys import ALL as JOURNEYS
 from .model import FileRecord, Runs
 from .model.lifecycle import MATRICES
@@ -43,6 +43,12 @@ service = Service[Runs](
         ),
     ),
     unseen=(
+        Unseen(
+            CheckEnvironment,
+            "inputs",
+            Because.RUNTIME,
+            "An environment check that gets past its refusals starts a real agent CLI session and an engine turn, two paid model calls, which the sandbox does not provide, so only its refusals are played.",
+        ),
         Unseen(
             Replay,
             "inputs",

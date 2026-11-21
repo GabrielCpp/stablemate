@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
+from unittest.mock import patch
 
 import pytest
 
-from workhorse.runner.backends import operator_config_dirs
+from workhorse.config_run import AgentResilience
+from workhorse.runner import process
+from workhorse.runner.backends import AgentProfile, operator_config_dirs
+from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.registry import backend_names
 
 COVERED_BACKENDS = {"claude", "codex", "opencode", "copilot", "cline"}
@@ -48,3 +53,46 @@ def test_the_operator_config_dirs_follow_the_cli_s_own_override_variables(
         target.mkdir(parents=True)
         monkeypatch.setenv(variable, str(directory))
         assert operator_config_dirs(harness) == (target,)
+
+
+def _claude_launch(agent: AgentProfile | None) -> tuple[list[str], dict[str, str]]:
+    seen: dict[str, Any] = {}
+
+    def fake_stream(cmd, node_id, timeout, on_line, **options):
+        seen["cmd"] = cmd
+        seen["env"] = options.get("env_extra") or {}
+        return False, 0
+
+    with patch.object(process, "stream_subprocess", fake_stream):
+        try:
+            ClaudeBackend().run_turn(
+                "P", "n", None, "sonnet", timeout=60, resilience=AgentResilience(), agent=agent
+            )
+        except Exception:
+            pass
+    return list(seen["cmd"]), dict(seen["env"])
+
+
+def _flag_values(cmd: list[str], flag: str) -> list[str]:
+    values = []
+    for arg in cmd[cmd.index(flag) + 1 :]:
+        if arg.startswith("--"):
+            break
+        values.append(arg)
+    return values
+
+
+def test_a_plain_claude_turn_narrows_nothing_the_operator_loads() -> None:
+    cmd, env = _claude_launch(AgentProfile(name="owner"))
+    for flag in ("--setting-sources", "--strict-mcp-config", "--tools", "--mcp-config"):
+        assert flag not in cmd
+    assert _flag_values(cmd, "--disallowedTools") == [
+        "Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger",
+    ]
+    assert not {name for name in env if name in ("HOME", "CLAUDE_CONFIG_DIR") or name.startswith("XDG_")}
+
+
+def test_a_profile_that_turns_every_tool_off_is_the_one_deliberate_narrowing() -> None:
+    cmd, _ = _claude_launch(AgentProfile(name="judge", tools={"*": False}))
+    assert "--tools" in cmd
+    assert "--strict-mcp-config" in cmd

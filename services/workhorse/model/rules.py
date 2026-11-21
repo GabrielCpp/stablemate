@@ -7,7 +7,7 @@ from __future__ import annotations
 from ostler.book import Actor, Exited, Rule
 
 from ..fixtures import (BACKENDS, HELD_PARAM, STATE, ControlArgs, DotArgs, InboxReadArgs,
-                        InboxReplyArgs, ReplayArgs, RunArgs)
+                        InboxReplyArgs, ReplayArgs, RunArgs, EnvironmentArgs)
 from .state import Runs, exists, finished, held_params, messages, unfinished
 
 FAILED = Exited(1)
@@ -37,6 +37,21 @@ reply_no_such_run = Rule[InboxReplyArgs, Runs](LOOKUP, _no_such_run, FAILED, why
 reply_nothing_unfinished = Rule[InboxReplyArgs, Runs](NONE_LEFT, _nothing_unfinished, FAILED)
 replay_no_such_run = Rule[ReplayArgs, Runs](
     "error: no run dir for '{run}' under " + RUNS + "; pass the run's directory path", _no_such_run, FAILED)
+
+
+def _environment_config_missing(a: EnvironmentArgs, s: Runs, by: Actor | None) -> bool:
+    return a.config is not None
+
+
+def _environment_unknown_profile(a: EnvironmentArgs, s: Runs, by: Actor | None) -> bool:
+    return a.profile is not None
+
+
+environment_config_missing = Rule[EnvironmentArgs, Runs](
+    "error: --config {config}: no such file", _environment_config_missing, FAILED)
+environment_unknown_profile = Rule[EnvironmentArgs, Runs](
+    "error: unknown profile '{profile}' in <sandbox>/config.toml (known: none defined)",
+    _environment_unknown_profile, FAILED)
 
 
 def _config_missing(a: RunArgs, s: Runs, by: Actor | None) -> bool:

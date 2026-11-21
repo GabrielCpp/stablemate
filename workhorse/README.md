@@ -123,10 +123,21 @@ The package must be installed **unpacked** (any pip/uv wheel is): the prompt ren
 a filesystem template loader rooted at the workflow's own directory, so a zip-imported
 package is refused at startup rather than failing later as a missing template.
 
-The five subcommands each command carries are `run`, [`dot`](#checking-and-diagramming-a-workflow),
-[`control`](#reaching-a-run-that-is-already-going), `inbox` and `version` — what the operator of a workflow
-needs: run it, draw it, steer the live process, read or answer the messages a run left at
-its operator gates, and say which engine version did it.
+The subcommands each command carries are `run`, [`dot`](#checking-and-diagramming-a-workflow),
+[`control`](#reaching-a-run-that-is-already-going), `inbox`, [`replay`](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/RUNS.md),
+`environment` and `version` — what the operator of a workflow needs: run it, draw it, steer
+the live process, read or answer the messages a run left at its operator gates, run one
+recorded turn again, prove that a turn loads the operator's whole environment, and say which
+engine version did it.
+
+`workhorse-<name> environment [--profile NAME]` starts `claude -p` and one engine turn from
+the current directory, each with a trivial prompt, and prints one line per list the CLI's
+`init` event carries (tools, skills, agents, plugins, slash commands, MCP servers) with both
+counts and `same`, or the names the engine turn misses or adds. It writes nothing into the
+directory. A tool the engine refuses on purpose and a delegate it defines are named and do
+not count as missing. Exit codes: `0` the engine turn loads everything the plain session
+loads, `1` it misses names, `2` the backend's CLI reports no load list (only claude does),
+`3` a session passed its 180 second limit or sent no `init` event.
 
 A workflow's node functions run in the workflow distribution's environment, so every
 imported tool must be declared in that distribution's `[project.dependencies]`, not
@@ -202,7 +213,11 @@ read-only question, `worker` for one bounded task, and `advisor` for one read-on
 question. A CLI that takes subagents gets a default `advisor` on the model the `max` power
 tier maps to, even when the profile names none. A workflow asks `self.has_delegate(role)`
 whether its turns will be offered one role, and can run a turn on a cheaper tier when the
-advisor is there to answer its design calls.
+advisor is there to answer its design calls. On claude, a delegate whose name matches an
+agent file of the operator's (`<cwd>/.claude/agents/<name>.md`, then `agents/<name>.md` in
+`~/.claude` or `$CLAUDE_CONFIG_DIR`) runs as that agent: its description, prompt and `tools`
+line, on the model and effort the profile names. A delegate with no such file keeps the
+engine's own definition.
 
 JSONL provider error events and logs that identify a transient failure are aborted
 immediately and retried by workhorse's bounded backoff instead of being left to a CLI's

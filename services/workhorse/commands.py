@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ostler.book import STDERR, Bool, Command, Exit, Field, Files, Flag, Lines, Object, Positional, Str, Switch
 
-from .model.actions import AnswerInbox, DrawGraph, DryRun, ListFiles, ReadInbox, RefuseReplay, ShowVersion, SteerRun
+from .model.actions import AnswerInbox, DrawGraph, DryRun, ListFiles, ReadInbox, RefuseEnvironment, RefuseReplay, ShowVersion, SteerRun
 from .model.files import MARKS
 
 DIGITS = tuple("0123456789")
@@ -270,6 +270,24 @@ class Replay(Command):
     source = ("workhorse/workhorse/cli/replay.py::run", *_app("rundir.py", "runner/turn_record.py"))
 
 
+class CheckEnvironment(Command):
+    does = "Compare what an agent turn loads with what a plain session of the same CLI loads."
+    program = "workhorse-loop-runner"
+    argv = ("environment", Flag("--profile", "profile"), Flag("--config", "config"))
+    args = Object(
+        "EnvironmentArgs",
+        profile=Field(Str(classes={"a profile the home config does not define": "nope"}), required=False,
+                      does="the home config profile whose backend and models the turn runs under"),
+        config=Field(Str(classes={"a config file that does not exist": "nope"}), required=False,
+                     does="the home config file"),
+    )
+    answers = (
+        Exit(1, STDERR, "the flags name a config or a profile the runner cannot find or read"),
+    )
+    carries = RefuseEnvironment
+    source = ("workhorse/workhorse/cli/environment.py::run", "workhorse/workhorse/cli/environment.py::compare", *_app("profile.py", "runner/backends/claude.py"))
+
+
 class Look(Files):
     does = "List the watched files of the sandbox with the strings each holds."
     marks = MARKS
@@ -277,4 +295,4 @@ class Look(Files):
     source = ("workhorse/workhorse/rewind.py::rewind", "workhorse/workhorse/inbox.py::reply")
 
 
-ALL = (Run, Dot, Version, Control, InboxRead, InboxReply, Replay, Look)
+ALL = (Run, Dot, Version, Control, InboxRead, InboxReply, Replay, CheckEnvironment, Look)

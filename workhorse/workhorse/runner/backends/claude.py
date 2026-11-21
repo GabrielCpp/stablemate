@@ -10,20 +10,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from workhorse import otel, reload
 from workhorse.config_run import AgentResilience
 from workhorse.runner import acp
 from workhorse.runner import failure as _failure
 from workhorse.runner import process as _process
 from workhorse.runner import usage as _usage
-from workhorse.runner.backends import AgentBackend, AgentProfile, TurnRequest, git_worktree
-from workhorse.runner.backends.delegates import Delegate
+from workhorse.runner.backends import AgentBackend, AgentProfile, TurnRequest, git_worktree, operator_config_dirs
+from workhorse.runner.backends.delegates import Delegate, _warn_once
 from workhorse.runner.backends import model_guard
 from workhorse.runner.backends.guard import Policy, hook_command, policy_file
 from workhorse.runner.backends.policy import confined_policy
 
 
-_OUTLIVING_TOOLS = ("Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger")
+OUTLIVING_TOOLS = ("Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger")
 _FOREGROUND_ENV = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
 _READ_ONLY_TOOLS = ("Read", "Grep", "Glob", "Bash")
 
@@ -46,7 +48,7 @@ class ClaudeBackend(AgentBackend):
             *_permission_flags(turn.agent),
             "--output-format", "stream-json",
             "--verbose",
-            "--disallowedTools", *_OUTLIVING_TOOLS,
+            "--disallowedTools", *OUTLIVING_TOOLS,
             *_tool_flags(turn.agent),
         ]
         if turn.model:
@@ -60,7 +62,7 @@ class ClaudeBackend(AgentBackend):
         for directory in turn.add_dirs or []:
             cmd.extend(["--add-dir", directory])
         if turn.delegates:
-            cmd.extend(["--agents", _agents_json(turn.delegates)])
+            cmd.extend(["--agents", _agents_json(turn.delegates, turn.cwd)])
         cmd.append("-p")
 
         if turn.session_id_path and turn.session_id_path.exists():
@@ -178,8 +180,39 @@ _CONFINED_TOOLS = ("Skill", "Read", "Edit", "Write", "Glob", "Grep")
 _SKILL_DIR = ".claude/skills"
 
 
-def _agents_json(delegates: tuple[Delegate, ...]) -> str:
-    """The ``--agents`` value that defines each delegate as a subagent for this session."""
+def _operator_agent(name: str, cwd: str | None) -> dict[str, object]:
+    """The `description`, `prompt` and `tools` of the operator's own agent file called ``name``, from the turn's project folder first and then the Claude config folder. Empty when there is none or it cannot be read."""
+    folders = [Path(cwd or ".") / ".claude", *operator_config_dirs("claude")]
+    path = next((p for folder in folders if (p := folder / "agents" / f"{name}.md").is_file()), None)
+    if path is None:
+        return {}
+    try:
+        _, front, body = path.read_text(encoding="utf-8").split("---", 2)
+        meta = yaml.safe_load(front)
+        if not isinstance(meta, dict):
+            raise ValueError("front matter is not a mapping")
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        _warn_once(f"agent:{path}", f"cannot read the agent file {path} ({exc}); using the engine's {name}")
+        return {}
+    tools = meta.get("tools")
+    if isinstance(tools, str):
+        tools = [tool.strip() for tool in tools.split(",") if tool.strip()]
+    found: dict[str, object] = {}
+    if meta.get("description"):
+        found["description"] = str(meta["description"])
+    if body.strip():
+        found["prompt"] = body.strip()
+    if isinstance(tools, list) and tools:
+        found["tools"] = [str(tool) for tool in tools]
+    return found
+
+
+def _agents_json(delegates: tuple[Delegate, ...], cwd: str | None = None) -> str:
+    """The ``--agents`` value that defines each delegate as a subagent for this session.
+
+    A delegate the operator already has an agent file for runs as that agent: its description, prompt and
+    tools, on the model and effort the profile names.
+    """
     agents: dict[str, dict[str, object]] = {}
     for delegate in delegates:
         entry: dict[str, object] = {
@@ -191,6 +224,7 @@ def _agents_json(delegates: tuple[Delegate, ...]) -> str:
             entry["effort"] = delegate.effort
         if delegate.read_only:
             entry["tools"] = list(_READ_ONLY_TOOLS)
+        entry.update(_operator_agent(delegate.name, cwd))
         agents[delegate.name] = entry
     return json.dumps(agents)
 

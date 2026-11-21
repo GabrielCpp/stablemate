@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ostler.book import Action, Actor, Create, Select, Transaction, Update
 
-from ..fixtures import (ANSWER, ControlArgs, DotArgs, FinishArgs, ParkArgs, InboxReadArgs, InboxReplyArgs, ReplayArgs, RunArgs, VersionArgs)
+from ..fixtures import (ANSWER, ControlArgs, DotArgs, EnvironmentArgs, FinishArgs, ParkArgs, InboxReadArgs, InboxReplyArgs, ReplayArgs, RunArgs, VersionArgs)
 from . import rules
 from .files import (FLOW, FREE, GATE, GRAPH_CHART, GRAPH_LOOP_RUNNER, M1_ANSWERED, M1_OPEN, M2_ANSWERED,
                     M2_YES, REWOUND, RUNS, STALE, TERMINAL, FileRecord, at)
@@ -172,6 +172,15 @@ class RefuseReplay(Action[ReplayArgs, Runs]):
 
     @staticmethod
     def reduce(a: ReplayArgs, s: Runs, by: Actor | None) -> Transaction:
+        return Transaction()
+
+
+class RefuseEnvironment(Action[EnvironmentArgs, Runs]):
+    accept = EnvironmentArgs
+    rules = (rules.environment_config_missing, rules.environment_unknown_profile)
+
+    @staticmethod
+    def reduce(a: EnvironmentArgs, s: Runs, by: Actor | None) -> Transaction:
         return Transaction()
 
 

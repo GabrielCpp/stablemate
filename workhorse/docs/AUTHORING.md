@@ -346,6 +346,12 @@ same CLI. That covers user settings, permission rules, hooks, model settings, sk
 instruction files (`CLAUDE.md`, `AGENTS.md`) and plugins. Confinement is a guard layered on
 top of that environment. It never removes a setting source, a skill directory, an
 instruction file, a plugin or a hook. A profile's `tools` map still turns tools off.
+A delegate (`lookup`, `worker`, `advisor`) on claude runs as the operator's own agent of
+that name when one exists, in `<cwd>/.claude/agents/` and then in `~/.claude/agents/` (or
+`$CLAUDE_CONFIG_DIR`). The engine supplies only its model and effort, and keeps its own
+description, prompt and tools for a delegate with no such file.
+`workhorse-<name> environment` proves the rest on the machine: it compares the lists a plain
+`claude -p` and an engine turn report loading, from the current directory.
 
 Every directory the CLI loads the operator's config from stays readable inside the box:
 `~/.claude` (or `$CLAUDE_CONFIG_DIR`) for claude, `~/.codex` (or `$CODEX_HOME`) and

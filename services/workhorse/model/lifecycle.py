@@ -8,10 +8,10 @@ from typing import Callable
 
 from ostler.book import Axes, Scene
 
-from ..commands import Control, Dot, InboxRead, InboxReply, Look, Replay, Run, Version
+from ..commands import Control, Dot, CheckEnvironment, InboxRead, InboxReply, Look, Replay, Run, Version
 from ..events import FinishARun, ParkARun
 from ..fixtures import (ANSWER, FINISHED, HELD_PARAM, MALFORMED_PARAM, MISSING, NOT_AN_OBJECT, NOT_JSON, UNHELD_PARAM,
-                        UNKNOWN_PARAM, UNKNOWN_STATE, UNREADABLE_TURN, control, dot, finish, park, read_inbox, replay, reply, rewind,
+                        UNKNOWN_PARAM, UNKNOWN_STATE, UNREADABLE_TURN, control, dot, environment, finish, park, read_inbox, replay, reply, rewind,
                         run, status, version)
 from .state import Runs, stage
 
@@ -84,6 +84,8 @@ ACTIONS: dict[str, Callable[[Runs], object]] = {
     "reply in a missing run": lambda m: InboxReply(reply(run=MISSING)),
     "replay": lambda m: Replay(replay()),
     "replay in a missing run": lambda m: Replay(replay(run=MISSING)),
+    "environment with a missing config": lambda m: CheckEnvironment(environment(config=MISSING)),
+    "environment with an unknown profile": lambda m: CheckEnvironment(environment(profile=MISSING)),
     "look": lambda m: Look(),
 }
 

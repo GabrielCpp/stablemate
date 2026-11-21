@@ -171,6 +171,16 @@ class ReplayArgs(Aimed, Fixture):
 
 
 @dataclass
+class EnvironmentArgs(Fixture):
+    profile: str | None = None
+    config: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[EnvironmentArgs]:
+        return (environment(config=MISSING), environment(profile=MISSING))
+
+
+@dataclass
 class ParkArgs(Fixture):
     @classmethod
     def examples(cls, state: Any, by: Actor | None) -> Iterable[ParkArgs]:
@@ -257,12 +267,16 @@ def reply(message: str | None = "m1", text: str | None = ANSWER, *, run: str | N
     return InboxReplyArgs(message=message, text=text, run=run)
 
 
+def environment(**given: str | None) -> EnvironmentArgs:
+    return EnvironmentArgs(**given)
+
+
 def replay(turn: str | None = MISSING, *, run: str | None = PARKED) -> ReplayArgs:
     return ReplayArgs(turn=turn, run=run)
 
 
 __all__ = [
-    "ANSWER", "BACKENDS", "ControlArgs", "DotArgs", "FINISHED", "FinishArgs", "HELD_PARAM", "InboxReadArgs", "InboxReplyArgs",
+    "ANSWER", "BACKENDS", "ControlArgs", "DotArgs", "EnvironmentArgs", "FINISHED", "FinishArgs", "HELD_PARAM", "InboxReadArgs", "InboxReplyArgs",
     "MALFORMED_PARAM", "MISSING", "NOT_AN_OBJECT", "NOT_JSON", "PARKED", "ParkArgs", "ReplayArgs", "RunArgs", "STATE",
-    "UNHELD_PARAM", "UNKNOWN_PARAM", "UNKNOWN_STATE", "UNREADABLE_TURN", "VersionArgs", "control", "dot", "finish", "park", "read_inbox", "replay", "reply", "rewind", "run", "status", "version",
+    "UNHELD_PARAM", "UNKNOWN_PARAM", "UNKNOWN_STATE", "UNREADABLE_TURN", "VersionArgs", "control", "dot", "environment", "finish", "park", "read_inbox", "replay", "reply", "rewind", "run", "status", "version",
 ]

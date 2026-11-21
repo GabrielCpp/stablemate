@@ -164,6 +164,76 @@ def test_claude_defines_each_delegate_as_a_session_agent():
     assert "--agents" not in _claude_cmd(model="opus")
 
 
+def _agent_file(folder: Path, name: str, text: str) -> None:
+    (folder / "agents").mkdir(parents=True, exist_ok=True)
+    (folder / "agents" / f"{name}.md").write_text(text)
+
+
+def _claude_agents(**kwargs):
+    cmd = _claude_cmd(model="opus", delegates=(LOOKUP, WORKER), **kwargs)
+    return json.loads(cmd[cmd.index("--agents") + 1])
+
+
+HOME_LOOKUP = """\
+---
+name: lookup
+description: The operator's own lookup.
+model: claude-haiku-5-5
+tools: Read, Grep, mcp__groom__*
+---
+
+Operator body.
+"""
+
+
+def test_a_delegate_runs_as_the_operators_own_agent_of_that_name():
+    _agent_file(Path.home() / ".claude", "lookup", HOME_LOOKUP)
+    agents = _claude_agents()
+    assert agents["lookup"] == {
+        "description": "The operator's own lookup.",
+        "prompt": "Operator body.",
+        "model": "small",
+        "effort": "low",
+        "tools": ["Read", "Grep", "mcp__groom__*"],
+    }
+    assert agents["worker"] == {"description": "Bounded task.", "prompt": "Do the task.", "model": "mid"}
+
+
+def test_the_operators_tools_win_for_a_read_only_delegate_and_the_engine_keeps_its_own_without_a_tools_line():
+    _agent_file(Path.home() / ".claude", "lookup", HOME_LOOKUP.replace("tools: Read, Grep, mcp__groom__*\n", ""))
+    assert _claude_agents()["lookup"]["tools"] == ["Read", "Grep", "Glob", "Bash"]
+    assert _claude_agents()["lookup"]["prompt"] == "Operator body."
+
+
+def test_a_project_agent_beats_the_home_agent(tmp_path):
+    _agent_file(Path.home() / ".claude", "lookup", HOME_LOOKUP)
+    _agent_file(tmp_path / ".claude", "lookup", HOME_LOOKUP.replace("own lookup", "project lookup"))
+    assert _claude_agents(cwd=str(tmp_path))["lookup"]["description"] == "The operator's project lookup."
+
+
+def test_a_delegate_with_no_agent_file_keeps_the_engine_definition(tmp_path):
+    _agent_file(Path.home() / ".claude", "other", HOME_LOOKUP)
+    assert _claude_agents(cwd=str(tmp_path))["lookup"]["prompt"] == "Answer one question."
+
+
+def test_a_relocated_claude_config_dir_is_honoured(tmp_path, monkeypatch):
+    _agent_file(Path.home() / ".claude", "lookup", HOME_LOOKUP)
+    moved = tmp_path / "moved"
+    _agent_file(moved, "lookup", HOME_LOOKUP.replace("own lookup", "moved lookup"))
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(moved))
+    assert _claude_agents()["lookup"]["description"] == "The operator's moved lookup."
+
+
+def test_a_broken_agent_file_falls_back_to_the_engine_with_one_warning():
+    _agent_file(Path.home() / ".claude", "lookup", "---\ndescription: [unclosed\n---\nbody\n")
+    out = io.StringIO()
+    with redirect_stdout(out):
+        first = _claude_agents()
+        _claude_agents()
+    assert first["lookup"]["prompt"] == "Answer one question."
+    assert out.getvalue().count("cannot read the agent file") == 1
+
+
 def test_opencode_merges_each_delegate_into_its_config_as_a_subagent(profile_config):
     captured = {}
     OpenCodeBackend(_stream_capturing(captured)).run_turn(
