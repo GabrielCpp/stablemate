@@ -8,7 +8,11 @@ from typing import Any
 
 from ostler import Ostler
 from workhorse_workflows.kit import find_docs_root, find_repo_root, load_json, resolve_workspace
-from workhorse_workflows.coder.shared.contract import declared_service_paths, service_problems
+from workhorse_workflows.coder.shared.contract import (
+    declared_service_paths,
+    normalize_service_path,
+    service_problems,
+)
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import (
     DispatchEntry,
@@ -202,6 +206,34 @@ def _dispatched_plan_problems(
     return problems
 
 
+def _declared_entries(
+    names: list[str], repos: dict[str, dict], logger: logging.Logger
+) -> list[dict[str, Any]]:
+    """The plan entries a story's declared service names map to, leaving out each name no repo declares."""
+    entries: list[dict[str, Any]] = []
+    for name in names:
+        found = next(
+            (
+                (repo_name, info["services"][name])
+                for repo_name, info in repos.items()
+                if isinstance(info.get("services"), dict) and name in info["services"]
+            ),
+            None,
+        )
+        if found is None:
+            logger.warning("the story's declared service %s resolves to no repository path", name)
+            continue
+        repo_name, declared = found
+        declared = declared if isinstance(declared, dict) else {}
+        entries.append({
+            "repo": repo_name,
+            "path": normalize_service_path(declared.get("path")),
+            "type": str(declared.get("type") or name),
+            "plan_file": "plan.md",
+        })
+    return entries
+
+
 @blueprint.node
 def record_plan(
     logger: logging.Logger,
@@ -209,6 +241,7 @@ def record_plan(
     spec_dir: str = "",
     repo_dir: str = "",
     workspace: str = "",
+    story_services: list[str] | None = None,
 ) -> PlanValidation:
     """Write the plan-context projection, and answer whether the plan is implementable."""
     if not spec_dir:
@@ -217,7 +250,14 @@ def record_plan(
     root = find_repo_root(repo_dir)
     spec_abs = _spec_dir(spec_dir, root)
     repos = resolve_workspace(workspace, repo_dir)
-    doc = plan_document(plan or {}, repos, spec_abs, root)
+    plan = dict(plan or {})
+    if not plan.get("services") and story_services:
+        logger.warning(
+            "the plan named no service; using the story's declared services: %s",
+            ", ".join(story_services),
+        )
+        plan["services"] = _declared_entries(story_services, repos, logger)
+    doc = plan_document(plan, repos, spec_abs, root)
 
     spec_abs.mkdir(parents=True, exist_ok=True)
     (spec_abs / "plan-context.json").write_text(

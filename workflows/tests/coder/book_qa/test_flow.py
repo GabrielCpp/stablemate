@@ -2270,6 +2270,7 @@ def test_the_review_prompt_renders_the_numbered_criteria_and_the_six_verdicts(tm
     for verdict in ("played", "tested", "recorded", "checked", "unobserved", "unmet"):
         assert f"`{verdict}`" in text, verdict
     assert "Never play a whole book" in text
+    assert "A local copy of production data that runs on this machine is local" in text
 
 
 def test_the_seat_prompt_hands_unreached_claims_to_the_end_review(tmp_path: Path) -> None:

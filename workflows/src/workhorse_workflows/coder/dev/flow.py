@@ -431,7 +431,9 @@ class Dev(Resolving):
         rechecked: bool = False,
     ) -> Continue | Await:
         """Check the plan, the gates and every answer, and send what failed back to the dev owner."""
-        recorded = self.call(record_plan, plan, self.ctx.spec_dir)
+        recorded = self.call(
+            record_plan, plan, self.ctx.spec_dir, story_services=list(self.ctx.story_services)
+        )
         if recorded.status == "invalid":
             failures = [f"The plan's service paths did not validate: {recorded.errors}"]
         else:

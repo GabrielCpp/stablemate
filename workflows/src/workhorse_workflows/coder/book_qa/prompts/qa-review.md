@@ -84,7 +84,7 @@ operator to read. Never pick `unobserved` to skip a check you could run within t
 
 - One check reads or exercises one item: one record, one request, one file or one test. Never a whole dataset, a whole table or a whole test suite.
 - Never play a whole book. Every `ostler book run` you start names `--only` or `--journey`.
-- Never reach production or any shared deployed environment. Use the stack copy above or the local repository.
+- Never reach a deployed environment, production included. A local copy of production data that runs on this machine is local. When a criterion names it, one bounded read-only check on it is allowed. Find it with `ostler env ls` from the book root.
 - Run each command under a limit of 5 minutes, for example with `timeout 300`.
 - Change no data you did not create in this turn. Edit no tracked file. Leave no file behind.
 

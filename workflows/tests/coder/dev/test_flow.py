@@ -1,6 +1,7 @@
 """End-to-end tests for the `dev` flow: its plan, build and review turns, then the plan, gate and answer checks."""
 from __future__ import annotations
 
+import functools
 import hashlib
 import json
 import shutil
@@ -18,12 +19,14 @@ from ostler import Ostler
 from workhorse._vendor.stablemate_core import config as core_config
 from _fakes import StubRunner
 from workhorse.pyflow import park as pyflow_park
+from workhorse.pyflow.blueprint import NODE_ATTR, node_spec
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse.runner.backends.delegates import Delegate
 from workhorse.runner.backends.null import NullBackend
 from workhorse.runner.failure import TurnDeadlineExceeded
 
+from workhorse_workflows.coder.dev import flow as dev_flow
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
 from workhorse_workflows.coder.shared import commits, work
@@ -386,6 +389,30 @@ def test_a_clean_pass_settles_the_fix_and_records_the_decline(
     assert first["report"] == "", first
     assert first["operator_context"] == "", first
     assert first["story_services"] == ["api", "web"], first
+
+
+def test_the_check_hands_the_plan_its_storys_declared_services(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`Dev.check` records the plan with the services the story's front matter declares."""
+    seen: list[Any] = []
+    real = dev_flow.record_plan
+
+    @functools.wraps(real)
+    def spy(logger: Any, *args: Any, **kwargs: Any) -> Any:
+        seen.append(kwargs.get("story_services"))
+        return real(logger, *args, **kwargs)
+
+    setattr(spy, NODE_ATTR, replace(node_spec(real), fn=spy))
+    monkeypatch.setattr(dev_flow, "record_plan", spy)
+
+    drive_flow(_dev(docs), env(), _Agent(workspace))
+
+    assert seen and all(item == ["api", "web"] for item in seen), seen
 
 
 def test_a_red_gate_sends_its_output_back_and_a_green_turn_finishes(

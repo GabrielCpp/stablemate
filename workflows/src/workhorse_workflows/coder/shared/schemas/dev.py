@@ -97,8 +97,8 @@ class PlanFields(CoderResult):
         description="Every service this story changes, one entry each. This is the only "
         "place the workflow learns which services the story touches, and it drives the "
         "implementer's per-service iteration: a frontend-only story lists only its web "
-        "service. A story that changes exactly one service in one repo may return `[]` — "
-        "the implementer then gets one repo-root layer.",
+        "service. The list must name every service the story changes. An empty list is "
+        "filled from the story's declared services.",
     )
     implementation_order: list[str] = Field(
         default=[],
