@@ -479,6 +479,24 @@ def discover_archives() -> list[str]:
     return _pending_archives()
 
 
+@reading
+def last_seen() -> dict[str, float]:
+    """Per run with a summary, the latest time the summary records for it."""
+    rows = read_connection().execute(
+        "SELECT run_id, MAX(last_ts, COALESCE(ended_ts, 0), COALESCE(started_ts, 0)) AS seen FROM run_summary WHERE run_id != ''"
+    )
+    return {row["run_id"]: float(row["seen"] or 0.0) for row in rows}
+
+
+@resilient
+def forget(run_ids: list[str]) -> int:
+    """Delete the summary rows of these runs; rows removed."""
+    if not run_ids:
+        return 0
+    with STORE.writing() as conn:
+        return conn.executemany("DELETE FROM run_summary WHERE run_id = ?", [(run_id,) for run_id in run_ids]).rowcount
+
+
 def keep_archived(summary: dict[str, Any]) -> None:
     """Store the summary of a run that was just archived, flagged as archived."""
     _write({**summary, "archived": 1})

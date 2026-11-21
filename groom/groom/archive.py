@@ -76,6 +76,24 @@ def archive_dir(run: str) -> Path | None:
     return matches[0] if matches else None
 
 
+def _mtime(path: Path) -> float:
+    try:
+        return path.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+def frozen() -> list[tuple[str, float, Path]]:
+    """Every archive folder as ``(run id, time of its last record, folder)``, read from its manifest. A folder whose manifest cannot be read stands for the run its name gives, as old as its file."""
+    found: list[tuple[str, float, Path]] = []
+    for folder in archive_dirs():
+        head = manifest(folder)
+        run_id = str(head.get("run_id") or folder.name)
+        last = float(head.get("max_ts") or 0.0) or _mtime(folder / TELEMETRY_FILE) or _mtime(folder)
+        found.append((run_id, last, folder))
+    return found
+
+
 def exact_dir(run: str) -> Path | None:
     """The folder holding ``run``'s archive under its own name, or ``None``: no prefix match, no live-store fallback."""
     if not run or "/" in run or run in (".", ".."):

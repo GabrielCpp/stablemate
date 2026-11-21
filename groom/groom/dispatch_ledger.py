@@ -182,3 +182,18 @@ def dispatch_orphans() -> list[dict[str, Any]]:
         (DISPATCH_RUNNING,),
     )
     return [_dispatch_row(row) for row in rows]
+
+
+@reading
+def dispatch_ended_before(cutoff: float) -> int:
+    """How many dispatch items ended before ``cutoff``."""
+    return int(read_connection().execute(
+        "SELECT COUNT(*) FROM dispatch_items WHERE ended_at < ?", (cutoff,)
+    ).fetchone()[0])
+
+
+@resilient
+def dispatch_forget_ended(cutoff: float) -> int:
+    """Delete the dispatch items that ended before ``cutoff``; rows removed."""
+    with STORE.writing() as conn:
+        return conn.execute("DELETE FROM dispatch_items WHERE ended_at < ?", (cutoff,)).rowcount

@@ -185,9 +185,10 @@ the key the per-node transcripts are classified by — so the telemetry joins th
 transcripts with no correlation step. The heartbeats and the liveness gauges never
 reach it; they are for the in-memory picture, not for history.
 
-The archive has **no retention of its own** and **no index table**: the set of
+The archive has **no automatic retention** and **no index table**: the set of
 archived runs is what is on disk under `archives/`, read by listing it. A sweep
 interrupted halfway resumes from the manifest rather than rewriting the file.
+Nothing leaves the archive until you run `groom purge` (below).
 
 `groom cost --run`, `groom loops --run` and `groom profile` answer for an archived run
 through `telemetry.db`, a derived index in the run's archive folder. Groom builds it from
@@ -205,6 +206,32 @@ The pass runs in its own task at `groom serve` launch, seeded already-expired so
 a restart archives immediately, then every `GROOM_ARCHIVE_EVERY_S` (6h) for at
 most `GROOM_ARCHIVE_RUNS_PER_PASS` (25) runs — oldest first, the rest reported as
 pending. Nothing in it may raise into groom's tick.
+
+### Purging old runs
+
+`groom purge` deletes every run whose latest record is older than a number of
+days, wherever groom keeps it: its archive folders, its transcripts folder, its
+spans, logs, metrics and turn index rows, and its History row. There is no undo,
+so preview first:
+
+```bash
+groom purge --older-than 30 --dry-run   # which runs, and how much disk they hold
+groom purge --older-than 30             # delete them, then VACUUM groom.db
+```
+
+The run is the unit. A run's age is its latest record across the database, the
+turn index, its History row and its archive manifests, so a run resumed last
+week keeps the archive it wrote two months ago. A transcripts folder that no
+record names is as old as the folder. A run the database still holds is purged
+without being archived first.
+
+The same cutoff removes the attendant's transcripts that nothing running still
+names, and the attendances and dispatch items that ended before it.
+
+A purge moves each folder to `<data dir>/purging/` before it deletes any row, so
+the dashboard never reads half a run. A purge that stops halfway leaves that
+folder behind, and the next purge empties it. `--no-vacuum` skips the VACUUM,
+which needs free disk about the size of `groom.db` while it runs.
 
 **Native runs are first-class dashboard rows, not just telemetry.** A run on
 groom's own host advertises its `run_dir`, workspace path, pid, and per-node

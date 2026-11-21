@@ -644,6 +644,39 @@ def purge_tests(dry_run: bool = False, vacuum: bool = True) -> None:
         print(f"vacuumed {store.db_path()}")
 
 
+def purge_older(older_than: float, dry_run: bool = False, vacuum: bool = True, as_json: bool = False) -> None:
+    """Delete every run quiet for longer than ``older_than`` days, wherever groom keeps it."""
+    import datetime as _dt
+    import json as _json
+
+    from groom import purge, store
+
+    result = purge.purge(older_than, dry_run=dry_run, vacuum=vacuum)
+    if as_json:
+        print(_json.dumps(result.as_dict(), indent=2))
+        return
+    since = _dt.datetime.fromtimestamp(result.cutoff).strftime("%Y-%m-%d %H:%M")
+    verb = "would purge" if dry_run else "purged"
+    print(f"{verb} {len(result.runs)} run(s) quiet since before {since}: {_format_bytes(result.bytes)} on disk")
+    for name in result.runs[:20]:
+        print(f"  {name}")
+    if len(result.runs) > 20:
+        print(f"  … and {len(result.runs) - 20} more")
+    print(
+        f"{verb} {result.attend_folders} attendant transcript(s),"
+        f" {result.attend_sessions} attendance(s), {result.dispatch_items} dispatch item(s)"
+    )
+    if not dry_run:
+        print(f"removed {result.rows} telemetry and turn row(s), {result.summaries} History row(s)")
+    print(f"kept {result.kept} run(s) with a record since then")
+    if result.failed:
+        print(f"{len(result.failed)} could not be moved out, so nothing of them was deleted:")
+        for name, why in result.failed.items():
+            print(f"  {name}: {why}")
+    if result.vacuumed:
+        print(f"vacuumed {store.db_path()}")
+
+
 def _format_turns(rows: list[dict]) -> str:
     if not rows:
         return (
@@ -1042,6 +1075,16 @@ def main(argv: list[str] | None = None) -> None:
         raise SystemExit(2) from exc
 
 
+def _positive_days(text: str) -> float:
+    try:
+        days = float(text)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number of days") from exc
+    if not days > 0:
+        raise argparse.ArgumentTypeError("the age must be more than 0 days")
+    return days
+
+
 def _main(argv: list[str] | None) -> None:
     parser = argparse.ArgumentParser(
         prog="groom", description="Local dashboard for workhorse operator gates."
@@ -1362,6 +1405,34 @@ def _main(argv: list[str] | None) -> None:
         help="Skip the VACUUM afterwards (faster, but the file keeps its old size).",
     )
 
+    older_parser = subparsers.add_parser(
+        "purge",
+        help="Delete every run quiet for longer than --older-than days: its archive, its "
+        "transcripts, its telemetry and its History row. Ended attendances and dispatch "
+        "items older than that go too. There is no undo; --dry-run first.",
+    )
+    older_parser.add_argument(
+        "--older-than",
+        type=_positive_days,
+        required=True,
+        metavar="DAYS",
+        help="Purge a run whose latest record anywhere is older than this many days.",
+    )
+    older_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report what would be deleted, delete nothing.",
+    )
+    older_parser.add_argument(
+        "--no-vacuum",
+        action="store_false",
+        dest="vacuum",
+        help="Skip the VACUUM afterwards (faster, but the file keeps its old size).",
+    )
+    older_parser.add_argument(
+        "--json", action="store_true", dest="as_json", help="Machine-readable."
+    )
+
     dispatch_parser = subparsers.add_parser(
         "dispatch",
         help="Named work queues: enqueue an item, watch it run, cancel or stop it. "
@@ -1505,6 +1576,8 @@ def _main(argv: list[str] | None) -> None:
         print(store.db_path())
     elif args.command == "purge-tests":
         purge_tests(dry_run=args.dry_run, vacuum=args.vacuum)
+    elif args.command == "purge":
+        purge_older(older_than=args.older_than, dry_run=args.dry_run, vacuum=args.vacuum, as_json=args.as_json)
     elif args.command == "dispatch":
         if args.verb == "queues":
             dispatch_queues(as_json=args.as_json)

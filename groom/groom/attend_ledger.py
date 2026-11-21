@@ -221,3 +221,18 @@ def attend_orphans() -> list[dict[str, Any]]:
         (ATTEND_RUNNING,),
     )
     return [_attend_row(row) for row in rows]
+
+
+@reading
+def attend_ended_before(cutoff: float) -> int:
+    """How many attendances ended before ``cutoff``."""
+    return int(read_connection().execute(
+        "SELECT COUNT(*) FROM attend_sessions WHERE ended_at < ?", (cutoff,)
+    ).fetchone()[0])
+
+
+@resilient
+def attend_forget_ended(cutoff: float) -> int:
+    """Delete the attendances that ended before ``cutoff``; rows removed."""
+    with STORE.writing() as conn:
+        return conn.execute("DELETE FROM attend_sessions WHERE ended_at < ?", (cutoff,)).rowcount

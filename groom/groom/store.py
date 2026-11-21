@@ -1834,9 +1834,19 @@ def purge_test_runs(dry_run: bool = False, vacuum: bool = True) -> dict[str, int
     with STORE.writing() as conn:
         sweep(conn)
     if vacuum and counts["runs"]:
-        with STORE.lock:
-            _connection().execute("VACUUM")
+        _vacuum()
     return counts
+
+
+def _vacuum() -> None:
+    with STORE.lock:
+        _connection().execute("VACUUM")
+
+
+@resilient
+def vacuum() -> None:
+    """Rewrite the database file so the space deleted rows held goes back to the disk."""
+    _vacuum()
 
 
 @_noop_on_empty(0)
@@ -2228,6 +2238,26 @@ def delete_run_telemetry(run_id: str) -> int:
     for table in ("spans", "logs", "metrics"):
         removed += _chunked_delete(table, "run_id = ?", (run_id,))
     return removed
+
+
+def delete_runs(run_ids: list[str]) -> int:
+    """Drop every span, log, metric and turn index row of each run: telemetry first, so no harvest finds the run between the two; rows removed."""
+    removed = 0
+    for run_id in run_ids:
+        if not run_id:
+            continue
+        removed += delete_run_telemetry(run_id)
+        removed += _chunked_delete("turns", "run_id = ?", (run_id,))
+    return removed
+
+
+@reading
+def turn_last_seen() -> dict[str, float]:
+    """Per run, the start of the latest turn record the index holds."""
+    rows = read_connection().execute(
+        "SELECT run_id, MAX(ts) AS last FROM turns WHERE run_id != '' GROUP BY run_id"
+    )
+    return {row["run_id"]: float(row["last"] or 0.0) for row in rows}
 
 
 def _checkpoint() -> None:
