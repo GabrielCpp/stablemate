@@ -43,6 +43,7 @@ class AgentOptions(TypedDict, Generic[T], total=False):
     accept: Callable[[T], object] | None
     rebrief: Callable[[], str] | None
     silence: float | None
+    deadline: float | None
 
 
 START_STATE = "start"
@@ -218,6 +219,8 @@ class Workflow(BaseModel):
         `rebrief` returns the text a fresh session opens with when the turn's session
         cannot be resumed or compaction can no longer shrink it. `silence` is how many
         seconds the turn may stay quiet before it is cut, apart from its `timeout`.
+        `deadline` is the wall-clock seconds after which one attempt is cut however much it
+        streams, and the cut reaches the state as `AgentTimeout` with `deadline_s` set.
         """
         engine = self._require_engine()
         label = options.get("label")

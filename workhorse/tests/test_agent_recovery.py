@@ -15,7 +15,7 @@ from workhorse import otel, reload
 from workhorse.config_run import AgentResilience
 from workhorse.runner import failure, ladder, process
 from workhorse.runner.backends.claude import ClaudeBackend
-from workhorse.runner.failure import BackendInvocationError, OutputParseError
+from workhorse.runner.failure import BackendInvocationError, OutputParseError, TurnDeadlineExceeded
 from workhorse.runner.waits import RecoveryWaitBudgetExceeded
 from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode, OutputSpec
@@ -613,3 +613,46 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_a_deadline_cut_is_neither_retried_compacted_nor_reframed():
+    calls = {"n": 0}
+
+    def cut(prompt, node_id, sid, model=None, **kwargs):
+        calls["n"] += 1
+        raise TurnDeadlineExceeded("n", 60, 61)
+
+    clock = FakeClock()
+    runner = ladder.AgentRunner(
+        backend=FakeBackend(turn=cut), resilience=AgentResilience(), clock=clock
+    )
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
+        with pytest.raises(TurnDeadlineExceeded):
+            runner.run(_node(), WorkflowContext(initial={}), Path("."), None)
+
+    assert calls["n"] == 1
+    assert clock.slept == []
+
+
+def test_a_deadline_cut_keeps_the_session_file(tmp_path):
+    session = tmp_path / "session"
+    session.write_text("sid-1", encoding="utf-8")
+
+    def cut(prompt, node_id, sid, model=None, **kwargs):
+        raise TurnDeadlineExceeded("n", 60, 61)
+
+    runner = ladder.AgentRunner(
+        backend=FakeBackend(turn=cut), resilience=AgentResilience(), clock=FakeClock()
+    )
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
+        with pytest.raises(TurnDeadlineExceeded):
+            runner.run(
+                _node(), WorkflowContext(initial={}), Path("."), session,
+                resume_session=True,
+            )
+
+    assert session.read_text(encoding="utf-8") == "sid-1"
+
+
+def test_a_deadline_cut_has_its_own_error_kind():
+    assert failure.error_kind(TurnDeadlineExceeded("n", 60, 61)) == "deadline"

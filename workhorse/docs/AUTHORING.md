@@ -270,7 +270,8 @@ review = self.agent(
     returns=Verdict,
     args={"unit": unit_id},
     power="medium",                       # the abstract tier the config maps to a model
-    timeout=1800,                         # this turn's wall-clock budget, seconds
+    timeout=1800,                         # the pacing the prompt is told, seconds
+    deadline=3600,
     retries=0,                            # this node's own reframe budget
     cwd=self.ctx.repo_root,               # where the CLI is launched
     add_dirs=[self.ctx.docs_root],        # further directories it may read
@@ -280,6 +281,8 @@ review = self.agent(
 `cwd` matters more than it looks: it decides whose `CLAUDE.md`, skills and git context the
 turn sees. The runner de-dupes `add_dirs` against it and turns the rest into `--add-dir`
 flags.
+
+`deadline` is the wall clock, in seconds, after which one attempt of the turn is cut. Unset, nothing cuts a turn that keeps streaming. A non-positive or non-finite value is refused at the call.
 
 ## The tools a node's turn may call (`profile`)
 
@@ -401,7 +404,7 @@ wall clock. Spending-cap waits are unaffected — a cap always clears.
 
 Such a node usually wants to *land* an overrun too, and `AgentTimeout` is the name it
 catches to do so — raised by `self.agent` once the ladder has finished with a turn its
-`timeout` cut, so catching it is not short-circuiting a retry that would have worked.
+silence bound cut, or at once for a turn its `deadline` cut, when `exc.deadline_s` holds that deadline in seconds, so catching it is not short-circuiting a retry that would have worked.
 ```python
 try:
     self.agent("prompts/plan.md", returns=Plan, timeout=1200, retries=0)

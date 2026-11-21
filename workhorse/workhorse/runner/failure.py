@@ -102,10 +102,26 @@ class BackendInvocationError(RuntimeError):
         self.reset_at = reset_at
 
 
+class TurnDeadlineExceeded(BackendInvocationError):
+    """An agent-CLI turn ran past its wall-clock deadline and was cut. It is never transient, so the ladder does not retry it."""
+
+    def __init__(self, node_id: str, deadline_s: float, elapsed_s: float) -> None:
+        self.deadline_s = deadline_s
+        self.elapsed_s = elapsed_s
+        super().__init__(
+            f"turn '{node_id}' reached its wall-clock deadline of {deadline_s:g}s after "
+            f"{elapsed_s:.0f}s and was cut; its session is kept",
+            transient=False,
+            timed_out=True,
+        )
+
+
 def error_kind(exc: BaseException) -> str:
     """Which recovery layer a failure belongs to, as one low-cardinality word."""
     if isinstance(exc, OutputParseError):
         return "parse"
+    if isinstance(exc, TurnDeadlineExceeded):
+        return "deadline"
     if isinstance(exc, BackendInvocationError):
         if exc.overflow:
             return "overflow"

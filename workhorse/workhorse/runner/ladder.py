@@ -18,10 +18,12 @@ from workhorse.runner.backends import AgentProfile
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
 from workhorse.runner import transcript
+from workhorse.runner.process import turn_deadline_scope
 from workhorse.runner.extract import extract_outputs
 from workhorse.runner.failure import (
     BackendInvocationError,
     OutputParseError,
+    TurnDeadlineExceeded,
     error_kind,
     is_cap,
     is_unresumable_session,
@@ -63,6 +65,7 @@ class TurnOptions(TypedDict, total=False):
     cwd: str | None
     add_dirs: list[str] | None
     effort: str | None
+    deadline: float | None
 
 
 def _write_prompt_for_inspection(node_id: str, prompt: str, run_dir: Path | None) -> Path | None:
@@ -150,6 +153,7 @@ class AgentRunner:
             else resilience.result_timeout_s
         )
         effective_timeout = base_timeout * timeout_scale
+        deadline_s = node.deadline * timeout_scale if node.deadline is not None else None
         unbounded = effective_timeout == float("inf")
         if node.silence is not None:
             silence_budget = node.silence
@@ -202,6 +206,7 @@ class AgentRunner:
             base_timeout_s=base_timeout,
             silence_budget_s=silence_budget,
             timeout_unbounded=unbounded,
+            deadline_s=deadline_s,
         )
 
     def _run(
@@ -273,10 +278,18 @@ class AgentRunner:
                     base_timeout_s=turn.base_timeout_s,
                     cwd=turn.cwd, add_dirs=list(turn.add_dirs),
                     effort=turn.effort,
+                    deadline=turn.deadline_s,
                     validate=validate,
                 )
                 return rendered_prompt, outputs
             except (BackendInvocationError, OutputParseError) as exc:
+                if isinstance(exc, TurnDeadlineExceeded):
+                    print(
+                        f"[{node_id}] ⏱ cut at its wall-clock deadline; "
+                        "not retried, compacted or reframed",
+                        flush=True,
+                    )
+                    raise
                 if (
                     isinstance(exc, BackendInvocationError)
                     and is_unresumable_session(str(exc))
@@ -483,6 +496,7 @@ class AgentRunner:
         effort: str | None = None,
         agent: AgentProfile | None = None,
         invoke_retries: int | None = None,
+        deadline: float | None = None,
     ) -> str:
         """Run one agent-CLI turn for ``prompt``, recovering from transient failures."""
         resilience = self.resilience
@@ -518,6 +532,7 @@ class AgentRunner:
                     )
                 with (
                     recovery_wait_scope(budget),
+                    turn_deadline_scope(deadline),
                     transcript.live_turn(node_id, attempt_prompt, backend.transcript_mapper()),
                 ):
                     result = backend.run_turn(

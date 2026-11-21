@@ -46,7 +46,7 @@ from workhorse.pyflow.park import wait_for_answer  # noqa: E402
 from workhorse.pyflow.engine import RunEnv  # noqa: E402
 from workhorse.pyflow.names import NameIndex  # noqa: E402
 from workhorse.records import NodeGraphCheckpoint  # noqa: E402
-from workhorse.runner.failure import BackendInvocationError  # noqa: E402
+from workhorse.runner.failure import BackendInvocationError, TurnDeadlineExceeded  # noqa: E402
 
 Transition = Any
 
@@ -1285,6 +1285,105 @@ def test_an_overrun_turn_reaches_the_state_as_a_catchable_agent_timeout():
                 return Done("the turn was never cut")
 
         assert drive(Asks(), env) == "landed: timed out after 1200s"
+
+
+def test_agent_carries_deadline_onto_the_node():
+    with tempfile.TemporaryDirectory() as tmp:
+        seen: list[Any] = []
+
+        def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            seen.append(node)
+            return "rendered", {"kind": "ok", "count": 0}
+
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run_agent))
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                self.agent("prompts/lead.md", returns=Payload, deadline=1800)
+                return Done(None)
+
+        drive(Asks(), env)
+        assert seen[0].deadline == 1800
+
+
+def test_no_deadline_leaves_the_node_unchanged():
+    with tempfile.TemporaryDirectory() as tmp:
+        seen: list[Any] = []
+
+        def fake_run_agent(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            seen.append(node)
+            return "rendered", {"kind": "ok", "count": 0}
+
+        env = _env(tmp, agent_runner=ScriptedRunner(fake_run_agent))
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                self.agent("prompts/lead.md", returns=Payload)
+                return Done(None)
+
+        drive(Asks(), env)
+        assert seen[0].deadline is None
+
+
+def test_a_deadline_cut_reaches_the_state_as_agent_timeout_with_its_deadline():
+    with tempfile.TemporaryDirectory() as tmp:
+
+        def cut(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            raise TurnDeadlineExceeded("review", 60, 61)
+
+        env = _env(tmp, agent_runner=ScriptedRunner(cut))
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                try:
+                    self.agent("prompts/review.md", returns=Payload, deadline=60)
+                except AgentTimeout as exc:
+                    return Done((exc.deadline_s, exc.transient))
+                return Done("the turn was never cut")
+
+        assert drive(Asks(), env) == (60, False)
+
+
+def test_a_silence_cut_has_no_deadline():
+    with tempfile.TemporaryDirectory() as tmp:
+
+        def cut(node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
+            raise BackendInvocationError("went quiet", timed_out=True)
+
+        env = _env(tmp, agent_runner=ScriptedRunner(cut))
+
+        class Asks(Workflow):
+            def start(self) -> Transition:
+                try:
+                    self.agent("prompts/review.md", returns=Payload)
+                except AgentTimeout as exc:
+                    return Done(exc.deadline_s)
+                return Done("the turn was never cut")
+
+        assert drive(Asks(), env) is None
+
+
+def test_a_bad_deadline_is_refused_at_the_call():
+    for dry in (False, True):
+        for bad in (0, -5, float("inf"), float("nan"), True):
+            with tempfile.TemporaryDirectory() as tmp:
+                env = _env(
+                    tmp,
+                    dry_run=dry,
+                    agent_runner=ScriptedRunner(lambda *a, **k: ("r", {"kind": "ok", "count": 0})),
+                )
+
+                class Asks(Workflow):
+                    def start(self) -> Transition:
+                        self.agent("prompts/lead.md", returns=Payload, deadline=bad)
+                        return Done(None)
+
+                try:
+                    drive(Asks(), env)
+                except WorkflowDefinitionError as exc:
+                    assert "deadline must be a positive, finite number of seconds" in str(exc)
+                else:
+                    raise AssertionError(f"deadline={bad!r} was accepted (dry_run={dry})")
 
 
 def test_a_spent_turn_that_is_not_a_timeout_is_a_separate_catchable_name():

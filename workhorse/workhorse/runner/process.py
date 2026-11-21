@@ -9,7 +9,9 @@ import shutil
 import signal
 import subprocess
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Required, TypedDict, Unpack
@@ -17,7 +19,7 @@ from typing import Any, Required, TypedDict, Unpack
 from workhorse import control, otel, reload
 from workhorse.config_run import AgentResilience
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
-from workhorse.runner.failure import BackendInvocationError
+from workhorse.runner.failure import BackendInvocationError, TurnDeadlineExceeded
 from workhorse.runner.waits import RecoveryWaitBudget, active_recovery_wait_budget
 from workhorse.runner.redact import SecretRedactor
 from workhorse.runner import transcript, worktree_guard
@@ -78,13 +80,31 @@ class ActiveProcess:
 
 _WATCHDOG_TICK_S = 0.25
 
+_DEADLINE: ContextVar[float | None] = ContextVar("workhorse_turn_deadline", default=None)
+
+
+def active_turn_deadline() -> float | None:
+    """The wall-clock deadline, in seconds, of the turn being run, or None when it has none."""
+    return _DEADLINE.get()
+
+
+@contextmanager
+def turn_deadline_scope(deadline_s: float | None) -> Iterator[None]:
+    """Give every turn streamed inside the block a wall-clock deadline of ``deadline_s`` seconds."""
+    token = _DEADLINE.set(deadline_s)
+    try:
+        yield
+    finally:
+        _DEADLINE.reset(token)
+
 
 class _Silence:
     """How long the streamed process has said nothing, on the supervisor's own clock.
 
     Silence is the signal a hang actually produces. A turn that is working says so
     continuously, however long the work takes, so the stream loop and the watchdog
-    both ask this rather than how long the turn has been running.
+    both ask this for the silence bound. Only a turn's wall-clock deadline asks how
+    long it has been running.
     """
 
     def __init__(self, clock: Clock) -> None:
@@ -118,15 +138,19 @@ def _arm_watchdog(
     *,
     resilience: AgentResilience,
     silence: _Silence,
+    clock: Clock,
     on_fire: "Callable[[], None] | None" = None,
+    deadline: float | None = None,
+    started_at: float = 0.0,
+    on_deadline: "Callable[[], None] | None" = None,
 ) -> _Watchdog | None:
-    """Arm an out-of-band watchdog that force-kills ``proc``'s process group once it has gone quiet for ``timeout + grace``.
+    """Arm an out-of-band watchdog that force-kills ``proc``'s process group once it has gone quiet for ``timeout + grace``, or has run past its ``deadline + grace``.
 
     The in-loop check cannot see that case on its own: a process that wedges mid-line
     leaves the reader blocked inside ``readline`` with no way back to the top of the
     loop, so nothing in the loop runs again to notice.
     """
-    if timeout == float("inf"):
+    if timeout == float("inf") and deadline is None:
         return None
     limit = timeout + resilience.watchdog_grace_s
     stop = threading.Event()
@@ -135,6 +159,29 @@ def _arm_watchdog(
         while not stop.wait(_WATCHDOG_TICK_S):
             if proc.poll() is not None:
                 return
+            if deadline is not None:
+                ran = clock.monotonic() - started_at
+                if ran >= deadline + resilience.watchdog_grace_s:
+                    print(
+                        f"[{node_id}] ⏱ watchdog: turn ran {int(ran)}s of its "
+                        f"{int(deadline)}s wall-clock allowance "
+                        f"(+ {int(resilience.watchdog_grace_s)}s grace) — "
+                        "SIGKILLing process group",
+                        flush=True,
+                    )
+                    otel.turn_event(
+                        "deadline_kill",
+                        error=True,
+                        node=node_id,
+                        deadline_s=int(deadline),
+                        elapsed_s=int(ran),
+                    )
+                    if on_deadline is not None:
+                        on_deadline()
+                    _kill_process_group(proc, signal.SIGKILL)
+                    return
+            if timeout == float("inf"):
+                continue
             quiet = silence.elapsed()
             if quiet < limit:
                 continue
@@ -258,15 +305,18 @@ class ProcessSupervisor:
         env_extra: dict[str, str] | None = None,
         secrets: Iterable[str] | None = None,
     ) -> tuple[bool, int]:
-        """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to ``on_line``, and stop it once it has been SILENT for ``timeout``.
+        """Spawn ``cmd`` in its own process group, stream its merged stdout line by line to ``on_line``, and stop it once it has been SILENT for ``timeout`` or has run past the turn's wall-clock deadline.
 
         ``timeout`` bounds how long the turn may say nothing, not how long it may work.
         A turn that streams keeps going however long it takes, because a long turn and a
-        hung one look nothing alike from here: the hung one stops talking. Both an
-        in-loop check and an out-of-band watchdog enforce it, because a stream wedged
-        mid-line (a stalled API response, a hung MCP server) blocks the reader inside
-        ``readline`` where the in-loop check can never run again.
+        hung one look nothing alike from here: the hung one stops talking. Only a
+        deadline in scope (see :func:`turn_deadline_scope`) cuts a turn that keeps
+        talking, and it raises :class:`TurnDeadlineExceeded`. Both an in-loop check and
+        an out-of-band watchdog enforce each bound, because a stream wedged mid-line (a
+        stalled API response, a hung MCP server) blocks the reader inside ``readline``
+        where the in-loop check can never run again.
         """
+        deadline = active_turn_deadline()
         redactor = SecretRedactor(secrets or ())
         tee = transcript.tee_begin(node_id)
 
@@ -300,25 +350,46 @@ class ProcessSupervisor:
         self.active.set(proc)
 
         fired = threading.Event()
+        deadline_fired = threading.Event()
         silence = _Silence(self.clock)
+        start = self.clock.monotonic()
         watchdog = _arm_watchdog(
             proc,
             node_id,
             timeout,
             resilience=resilience,
             silence=silence,
+            clock=self.clock,
             on_fire=fired.set,
+            deadline=deadline,
+            started_at=start,
+            on_deadline=deadline_fired.set,
         )
         timed_out = False
+        deadline_cut = False
         reloading: control.Request | None = None
         assert proc.stdout is not None
         try:
-            start = self.clock.monotonic()
             last_beat_at = start
             while True:
                 now = self.clock.monotonic()
                 elapsed = now - start
                 quiet = silence.elapsed(now)
+                if deadline is not None and elapsed >= deadline:
+                    print(
+                        f"[{node_id}] ⏱ deadline: turn ran {int(elapsed)}s of its "
+                        f"{int(deadline)}s wall-clock allowance, cutting it",
+                        flush=True,
+                    )
+                    otel.turn_event(
+                        "deadline_kill",
+                        error=True,
+                        node=node_id,
+                        deadline_s=int(deadline),
+                        elapsed_s=int(elapsed),
+                    )
+                    deadline_cut = True
+                    break
                 if quiet > timeout:
                     timed_out = True
                     break
@@ -329,7 +400,10 @@ class ProcessSupervisor:
                 control_fd = control.armed().fileno()
                 if control_fd is not None:
                     watched.append(control_fd)
-                ready, _, _ = select.select(watched, [], [], min(1.0, timeout - quiet))
+                wait_s = min(1.0, timeout - quiet)
+                if deadline is not None:
+                    wait_s = min(wait_s, max(0.0, deadline - elapsed))
+                ready, _, _ = select.select(watched, [], [], wait_s)
                 requested = reload.cut_requested()
                 if requested is not None:
                     print(
@@ -354,7 +428,8 @@ class ProcessSupervisor:
                     timed_out = True
                     break
             timed_out = timed_out or fired.is_set()
-            if (timed_out or reloading is not None) and proc.poll() is None:
+            deadline_cut = deadline_cut or deadline_fired.is_set()
+            if (timed_out or deadline_cut or reloading is not None) and proc.poll() is None:
                 _kill_process_group(proc, signal.SIGTERM)
                 try:
                     proc.wait(timeout=5)
@@ -379,6 +454,9 @@ class ProcessSupervisor:
             raise reload.ReloadRequested(
                 f"reload requested during {node_id}", core=reloading.core, cli=reloading.cli
             )
+        if deadline_cut:
+            assert deadline is not None
+            raise TurnDeadlineExceeded(node_id, deadline, self.clock.monotonic() - start)
         return timed_out, proc.returncode
 
 

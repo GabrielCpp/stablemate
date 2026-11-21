@@ -4,6 +4,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -26,6 +27,7 @@ from workhorse.pyflow.errors import (
     AgentTurnFailed,
     NodeNotRunError,
     UnknownNodeError,
+    WorkflowDefinitionError,
     WorkflowFailed,
 )
 from workhorse.pyflow.names import NameIndex
@@ -33,7 +35,7 @@ from workhorse.pyflow.registry import registry_of
 from workhorse.pyflow.transitions import Continue
 from workhorse.pyflow.workflow import Workflow
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
-from workhorse.runner.failure import BackendInvocationError
+from workhorse.runner.failure import BackendInvocationError, TurnDeadlineExceeded
 from workhorse.runner.ladder import AgentRunner
 from workhorse.runner.usage import TurnUsage, total as usage_total
 
@@ -296,7 +298,14 @@ class Engine:
         accept: Callable[[Any], object] | None = None,
         rebrief: Callable[[], str] | None = None,
         silence: float | None = None,
+        deadline: float | None = None,
     ) -> Any:
+        if deadline is not None and (
+            isinstance(deadline, bool) or not math.isfinite(deadline) or deadline <= 0
+        ):
+            raise WorkflowDefinitionError(
+                f"deadline must be a positive, finite number of seconds, not {deadline!r}"
+            )
         inline = label is not None
         node_id = label if inline else (Path(prompt).stem or "agent")
         prompt_ref = f"inline:{label}" if inline else prompt
@@ -334,6 +343,8 @@ class Engine:
                 budget["timeout"] = timeout
             if silence is not None:
                 budget["silence"] = silence
+            if deadline is not None:
+                budget["deadline"] = deadline
             if retries is not None:
                 budget["retries"] = retries
             if invoke_retries is not None:
@@ -386,7 +397,11 @@ class Engine:
                         writer.write_usage(node_id, usage_total(usages))
             except BackendInvocationError as exc:
                 if exc.timed_out:
-                    raise AgentTimeout(str(exc), transient=exc.transient) from exc
+                    raise AgentTimeout(
+                        str(exc),
+                        transient=exc.transient,
+                        deadline_s=exc.deadline_s if isinstance(exc, TurnDeadlineExceeded) else None,
+                    ) from exc
                 raise AgentTurnFailed(str(exc), transient=exc.transient, overflow=exc.overflow) from exc
             writer.write_step(node_id, rendered, raw, {}, next_node=None)
             return _coerce(raw, returns, node_id)

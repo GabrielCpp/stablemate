@@ -6,11 +6,16 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
+import math
+
+import pytest
+from pydantic import ValidationError
+
 from _fakes import FakeBackend, FakeClock
 from workhorse._vendor.stablemate_core.profiles import PowerMapping
 from workhorse import profile
 from workhorse.config_run import AgentResilience
-from workhorse.runner import ladder
+from workhorse.runner import ladder, process
 from workhorse.context import WorkflowContext
 from workhorse.runner.spec import AgentNode
 
@@ -187,3 +192,32 @@ if __name__ == "__main__":
     import sys
 
     raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", __file__]))
+
+
+def _deadline_seen(deadline: float | None) -> float | None:
+    seen: list[float | None] = []
+
+    def turn(prompt, node_id, sid, model=None, **kwargs):
+        seen.append(process.active_turn_deadline())
+        return json.dumps({})
+
+    node = AgentNode(
+        type="agent", id="implement", prompt="Do the work.", next="next_node",
+        timeout=300, deadline=deadline,
+    )
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), _scaled(2.0):
+        ladder.AgentRunner(
+            backend=FakeBackend(turn=turn), clock=FakeClock(), resilience=AgentResilience()
+        ).run(node, WorkflowContext(initial={}), Path("."), None)
+    return seen[0]
+
+
+def test_the_deadline_reaches_the_backend_scaled():
+    assert _deadline_seen(600) == 1200
+    assert _deadline_seen(None) is None
+
+
+@pytest.mark.parametrize("bad", [0, -1, math.inf, math.nan])
+def test_a_non_positive_or_infinite_deadline_is_refused_on_the_node(bad):
+    with pytest.raises(ValidationError):
+        AgentNode(type="agent", id="n", prompt="p", deadline=bad)

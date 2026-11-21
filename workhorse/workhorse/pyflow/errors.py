@@ -37,11 +37,14 @@ class AgentTurnFailed(PyflowError):
 
 
 class AgentTimeout(PyflowError):
-    """An agent turn was stopped at its per-node `timeout`, with its budget spent."""
+    """An agent turn was stopped at its per-node `timeout`, with its budget spent, or at its `deadline`, in which case `deadline_s` holds it."""
 
-    def __init__(self, message: str, *, transient: bool = False) -> None:
+    def __init__(
+        self, message: str, *, transient: bool = False, deadline_s: float | None = None
+    ) -> None:
         super().__init__(message)
         self.transient = transient
+        self.deadline_s = deadline_s
 
 
 class RunBudgetExceeded(PyflowError):

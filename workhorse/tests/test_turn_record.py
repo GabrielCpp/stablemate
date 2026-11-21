@@ -123,3 +123,21 @@ def test_a_turn_whose_start_cannot_be_recorded_still_runs(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "could not record this turn's start" in out
     assert "cannot be replayed" in out
+
+
+def test_the_deadline_round_trips_through_turn_json(tmp_path):
+    run_dir = tmp_path / "run"
+    visit_dir = run_dir / "turns" / "000-00001-review"
+    node = AgentNode(
+        type="agent", id="review", prompt="Review.", timeout=120, deadline=300, next=None
+    )
+    runner = _ScriptedRunner(
+        backend=FakeBackend(), resilience=AgentResilience(), clock=FakeClock()
+    )
+    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: "Rendered prompt"):
+        _ = runner.run(
+            node, WorkflowContext(initial={}), Path("."), None,
+            run_dir=run_dir, visit_dir=visit_dir,
+        )
+    record = parse_turn_record((visit_dir / "turn.json").read_text(encoding="utf-8"))
+    assert record.deadline_s == 300

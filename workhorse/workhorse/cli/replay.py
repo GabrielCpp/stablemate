@@ -166,6 +166,7 @@ def _run_measured(
             add_dirs=list(record.add_dirs),
             effort=record.effort,
             agent=record.agent,
+            deadline=record.deadline_s,
         )
     finally:
         wall_s = time.monotonic() - began

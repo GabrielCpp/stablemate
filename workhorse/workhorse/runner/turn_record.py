@@ -34,6 +34,7 @@ class TurnRecord(BaseModel):
     session_chain: str = ""
     resumed_session: bool = False
     start_trees: list[TreeStart] = Field(default_factory=list)
+    deadline_s: float | None = None
 
 
 def parse_turn_record(text: str) -> TurnRecord:
@@ -54,6 +55,7 @@ class RenderedTurn:
     base_timeout_s: float
     silence_budget_s: float
     timeout_unbounded: bool
+    deadline_s: float | None = None
 
 
 def record_turn_start(
@@ -109,6 +111,7 @@ def _record(
         session_chain=session_chain,
         resumed_session=resumed,
         start_trees=_start_trees(turn.cwd, turn.add_dirs),
+        deadline_s=turn.deadline_s,
     )
     write_turn_record(record, turn.prompt, run_dir, visit_dir)
 

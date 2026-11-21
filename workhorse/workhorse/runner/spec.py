@@ -1,6 +1,7 @@
 """What the agent runner is handed: one turn's prompt, its arguments, and the outputs it is expected to produce."""
 from __future__ import annotations
 
+import math
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -23,6 +24,7 @@ class AgentNode(BaseModel):
     power: str | None = None
     timeout: float | None = None
     silence: float | None = None
+    deadline: float | None = None
     retries: int | None = None
     invoke_retries: int | None = None
     agent: AgentProfile | None = None
@@ -54,6 +56,14 @@ class AgentNode(BaseModel):
         """A silence bound is a positive number of seconds."""
         if v is not None and not v > 0:
             raise ValueError(f"silence must be a positive number of seconds, not {v!r}")
+        return v
+
+    @field_validator("deadline")
+    @classmethod
+    def _finite_positive_deadline(cls, v: float | None) -> float | None:
+        """A wall-clock deadline is a finite, positive number of seconds."""
+        if v is not None and not (math.isfinite(v) and v > 0):
+            raise ValueError(f"deadline must be a positive, finite number of seconds, not {v!r}")
         return v
 
     cwd: str | None = None

@@ -6,10 +6,13 @@ import sys
 import threading
 import time
 
+import pytest
+
 from _fakes import RecordingTelemetry
 from workhorse import control, otel, reload
 from workhorse.config_run import AgentResilience
 from workhorse.runner import process
+from workhorse.runner.failure import TurnDeadlineExceeded
 
 
 def _run(code: str, *, timeout: float, grace: float = 1.0):
@@ -288,6 +291,51 @@ def test_an_unarmed_process_never_sees_a_request():
     assert control.armed().fileno() is None
     timed_out, rc, _ = _run("import sys; sys.stdout.write('a\\n')", timeout=30)
     assert timed_out is False and rc == 0
+
+
+def test_a_turn_that_keeps_talking_is_cut_at_its_deadline():
+    """A turn that never goes quiet is still cut once it has run past its wall-clock deadline."""
+    fake = RecordingTelemetry()
+    previous = otel.install(otel.TelemetryHost(active=fake))
+    supervisor = process.ProcessSupervisor(clock=_SteppingClock(step=10.0))
+    started = time.monotonic()
+    try:
+        with process.turn_deadline_scope(60.0), pytest.raises(TurnDeadlineExceeded) as caught:
+            supervisor.stream(
+                [sys.executable, "-u", "-c",
+                 "import time\nwhile True:\n    print('tok', flush=True); time.sleep(0.01)\n"],
+                "chatty",
+                3600.0,
+                lambda _line: None,
+                resilience=AgentResilience(watchdog_grace_s=3600),
+            )
+    finally:
+        otel.install(previous)
+    assert caught.value.deadline_s == 60
+    assert time.monotonic() - started < 20
+    assert "deadline_kill" in [name for name, _, _ in fake.events]
+
+
+def test_a_turn_wedged_midline_is_cut_at_its_deadline_by_the_watchdog():
+    """A stream blocked inside readline never reaches the loop check, so the watchdog enforces the deadline."""
+    started = time.monotonic()
+    with process.turn_deadline_scope(1.0), pytest.raises(TurnDeadlineExceeded):
+        process.stream_subprocess(
+            [sys.executable, "-u", "-c",
+             "import sys, time; sys.stdout.write('partial'); sys.stdout.flush(); time.sleep(3600)"],
+            "wedged",
+            float("inf"),
+            lambda _line: None,
+            resilience=AgentResilience(watchdog_grace_s=0.5),
+        )
+    assert time.monotonic() - started < 20
+
+
+def test_no_deadline_is_the_default():
+    assert process.active_turn_deadline() is None
+    with process.turn_deadline_scope(5.0):
+        assert process.active_turn_deadline() == 5.0
+    assert process.active_turn_deadline() is None
 
 
 if __name__ == "__main__":
