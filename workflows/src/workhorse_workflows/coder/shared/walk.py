@@ -8,18 +8,31 @@ from pathlib import Path
 from ostler import markdown
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.shared.schemas.book_qa import StoryCriteria
 from workhorse_workflows.coder.shared.schemas.dev import WalkCheck
 from workhorse_workflows.kit import find_docs_root, find_repo_root
 
 _AC_HEADING = re.compile(r"ac\s*(\d+)\b", re.IGNORECASE)
 
+CRITERIA_SECTIONS = ("Acceptance Criteria", "Non-Functional Acceptance Criteria")
+
+
+def criteria_texts(story_text: str, sections: tuple[str, ...] = CRITERIA_SECTIONS) -> list[str]:
+    """The top-level list items under each of the story's criteria sections, in order."""
+    split = markdown.split(story_text)
+    texts: list[str] = []
+    for title in sections:
+        section = split.find_section(title)
+        if section is None:
+            continue
+        for part in section.walk():
+            texts.extend(" ".join(bullet.text.split()) for bullet in part.bullets)
+    return texts
+
 
 def criteria_count(story_text: str) -> int:
     """The top-level list items under the story's `## Acceptance Criteria`."""
-    section = markdown.split(story_text).find_section("Acceptance Criteria")
-    if section is None:
-        return 0
-    return sum(len(part.bullets) for part in section.walk())
+    return len(criteria_texts(story_text, ("Acceptance Criteria",)))
 
 
 def walked(plan_text: str) -> set[int]:
@@ -45,6 +58,25 @@ def _read(path: Path) -> str:
         return ""
 
 
+def _story_file(story_path: str, repo_dir: str) -> Path:
+    story = Path(story_path)
+    if not story.is_absolute():
+        story = find_docs_root(repo_dir) / story
+    return story
+
+
+@blueprint.node
+def story_criteria(
+    logger: logging.Logger,
+    story_path: str = "",
+    repo_dir: str = "",
+) -> StoryCriteria:
+    """The story's acceptance criteria, functional then non-functional, as the end review numbers them."""
+    criteria = criteria_texts(_read(_story_file(story_path, repo_dir)))
+    logger.info("the story lists %d acceptance criteria", len(criteria))
+    return StoryCriteria(criteria=criteria)
+
+
 @blueprint.node
 def acceptance_walk(
     logger: logging.Logger,
@@ -53,9 +85,7 @@ def acceptance_walk(
     repo_dir: str = "",
 ) -> WalkCheck:
     """Which of the story's criteria the plan's acceptance walk leaves out."""
-    story = Path(story_path)
-    if not story.is_absolute():
-        story = find_docs_root(repo_dir) / story
+    story = _story_file(story_path, repo_dir)
     spec = Path(spec_dir)
     if not spec.is_absolute():
         spec = find_repo_root(repo_dir) / spec
@@ -66,4 +96,4 @@ def acceptance_walk(
     return WalkCheck(criteria=criteria, missing=missing)
 
 
-__all__ = ["acceptance_walk", "criteria_count", "walked"]
+__all__ = ["acceptance_walk", "criteria_count", "criteria_texts", "story_criteria", "walked"]

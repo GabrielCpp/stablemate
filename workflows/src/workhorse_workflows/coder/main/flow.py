@@ -18,11 +18,11 @@ from workhorse_workflows.coder.fix import Fix
 from workhorse_workflows.coder.fix_ci import FixCi
 from workhorse_workflows.coder.dev import Dev
 from workhorse_workflows.coder.book_qa import BookQa
-from workhorse_workflows.coder.book_qa.nodes import changed_book_paths, covered_services
+from workhorse_workflows.coder.book_qa.nodes import changed_book_paths, covered_services, read_book_record
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.qa.nodes import teardown_stack
 from workhorse_workflows.coder.shared.branches import cut_run_branch
-from workhorse_workflows.coder.shared.owner import TURN_MINUTES
+from workhorse_workflows.coder.shared.owner import REVIEW_MINUTES, TURN_MINUTES
 from workhorse_workflows.coder.shared.judge import (
     Judge,
     Question,
@@ -71,6 +71,7 @@ class Coder(Workflow):
     target_env: Literal["local", "dev"] = "local"
     delivery: Literal["pr", "commit"] = "pr"
     book_play_minutes: int = 15
+    review_minutes: PositiveInt = REVIEW_MINUTES
     turn_minutes: PositiveInt = TURN_MINUTES
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
@@ -177,9 +178,9 @@ class Coder(Workflow):
             return Continue(result, self.replan, notes=result.operator_notes)
         return Continue(result, self.qa)
 
-    def qa(self) -> Continue:
-        """The first gate the item turns on: the service books, or what they found back to the dev owner."""
-        book = self.handoff(
+    def _book_qa(self) -> QaFlowResult:
+        """The `BookQa` handoff: the story's plays and their end review."""
+        return self.handoff(
             BookQa,
             story=self._story.story_id,
             epic=self._story_epic(),
@@ -187,11 +188,23 @@ class Coder(Workflow):
             turn_minutes=self.turn_minutes,
             target_env=self.target_env,
             book_play_minutes=self.book_play_minutes,
+            review_minutes=self.review_minutes,
             preexisting=self._preexisting(),
         )
+
+    def _booked(self) -> bool:
+        """Did a service book judge this story? Its lane leaves a record naming the services it played."""
+        return bool(self.call(read_book_record, self._story.spec_dir).services)
+
+    def qa(self) -> Continue:
+        """The first gate the item turns on: the service books and their end review, or what they found back to the dev owner. Only a story no book covers goes on to the scenario QA."""
+        book = self._book_qa()
         sent_back = self._sent_back(book)
         if sent_back is not None:
             return sent_back
+        if self._booked():
+            self._snapshot_proven()
+            return Continue(book, self.drain)
         return Continue(book, self.scenario_qa)
 
     def scenario_qa(self) -> Continue:
@@ -311,16 +324,19 @@ class Coder(Workflow):
     def reprove(self, dirty: list[str] | None = None) -> Continue:
         """Rerun the proof the leftovers reopen, then commit them, or send what failed back to the dev owner."""
         story = self._story
-        result = self.handoff(
-            Qa,
-            story=story.story_id,
-            epic=self._story_epic(),
-            operator_mode=self.operator_mode,
-            turn_minutes=self.turn_minutes,
-            target_env=self.target_env,
-            preexisting=self._preexisting(),
-            rerun=True,
-        )
+        if self._booked():
+            result = self._book_qa()
+        else:
+            result = self.handoff(
+                Qa,
+                story=story.story_id,
+                epic=self._story_epic(),
+                operator_mode=self.operator_mode,
+                turn_minutes=self.turn_minutes,
+                target_env=self.target_env,
+                preexisting=self._preexisting(),
+                rerun=True,
+            )
         sent_back = self._sent_back(result)
         if sent_back is not None:
             return sent_back

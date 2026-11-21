@@ -14,6 +14,7 @@ from workhorse_workflows.coder.shared.owner import (
     owner_profile,
 )
 from workhorse_workflows.coder.shared.plan import resolve_impl_context
+from workhorse_workflows.coder.shared.schemas.dev import OperatorAnswer
 from workhorse_workflows.coder.shared.schemas.qa import QaFlowResult, QaFlowStatus
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.coder.shared.stack import (
@@ -82,15 +83,16 @@ class QaOwner(Gated):
         if status != "refix":
             self.reset_session(self._session)
 
-    def _owner_options(self) -> dict[str, Any]:
+    def _owner_options(self, seconds: float | None = None, session: str = "") -> dict[str, Any]:
         """What every owner turn is given besides its prompt, contract and arguments."""
+        allowance = self._turn_s if seconds is None else seconds
         return {
             "power": "high",
-            "timeout": self._turn_s,
-            "deadline": self._turn_s,
+            "timeout": allowance,
+            "deadline": allowance,
             "silence": SILENCE_S,
             "profile": owner_profile("qa"),
-            "session": self._session,
+            "session": session or self._session,
             "add_dirs": self._dirs(),
         }
 
@@ -103,15 +105,22 @@ class QaOwner(Gated):
             return self._block(result, notes, "the checks", blocks)
         return Continue(result, self.work, report=text, laps=laps + 1, blocks=blocks, **work_args)
 
-    def read_operator(self, blocks: int = 0) -> Continue | Done:
-        """Log the answer, then resume the owner's session with it in hand."""
+    def _take_answer(self) -> OperatorAnswer:
         answer = self.call(read_operator_context, self.ctx.story_path)
         work.log_answer(self.run_dir, f"{self.ctx.story_slug}: {answer.scope}", answer.content)
+        return answer
+
+    def _replan(self, answer: OperatorAnswer) -> Done:
+        self.logger.info("the operator scoped the answer to the epic, so the run replans")
+        self.reset_session(self._session)
+        self._release()
+        return Done(QaFlowResult(status="replan", operator_notes=answer.content))
+
+    def read_operator(self, blocks: int = 0) -> Continue | Done:
+        """Log the answer, then resume the owner's session with it in hand."""
+        answer = self._take_answer()
         if answer.scope == "epic":
-            self.logger.info("the operator scoped the answer to the epic, so the run replans")
-            self.reset_session(self._session)
-            self._release()
-            return Done(QaFlowResult(status="replan", operator_notes=answer.content))
+            return self._replan(answer)
         return Continue(answer, self.work, operator_context=answer.content, blocks=blocks)
 
 

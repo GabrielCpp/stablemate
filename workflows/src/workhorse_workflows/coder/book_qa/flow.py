@@ -4,10 +4,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
+from pydantic import PositiveInt
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 
 from workhorse_workflows.coder.book_qa.nodes import (
     BOOK_OUT,
+    PLAN_FILE,
     book_check,
     book_plan,
     book_run,
@@ -20,14 +22,24 @@ from workhorse_workflows.coder.book_qa.nodes import (
     story_base_of,
     write_book_record,
     write_qa_plan,
+    write_qa_review,
+)
+from workhorse_workflows.coder.book_qa.review import (
+    REVIEW_LAPS,
+    missing_criteria,
+    missing_text,
+    unmet_findings,
+    unobserved,
 )
 from workhorse_workflows.coder.shared import roles
 from workhorse_workflows.coder.shared.plan import resolve_impl_context
-from workhorse_workflows.coder.shared.owner import cut_notes
+from workhorse_workflows.coder.shared.owner import REVIEW_MINUTES, cut_notes, turn_seconds
 from workhorse_workflows.coder.shared.qa_owner import QaOwner
 from workhorse_workflows.coder.shared.schemas.book_qa import (
     BookPlan,
     BookQaOwnerResult,
+    QaReviewResult,
+    ReviewVerdict,
     ServiceCalls,
 )
 from workhorse_workflows.coder.shared.schemas.qa import (
@@ -37,6 +49,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     QaResult,
 )
 from workhorse_workflows.coder.shared.stack import ensure_stack, hold_copy, stack_target
+from workhorse_workflows.coder.shared.walk import story_criteria
 from workhorse_workflows.kit import find_book_root, find_docs_root
 from workhorse_workflows.kit.leased_env import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
@@ -56,6 +69,7 @@ class BookQa(QaOwner):
     LABEL_PREFIX: ClassVar[str] = "book-qa"
 
     book_play_minutes: int = 15
+    review_minutes: PositiveInt = REVIEW_MINUTES
 
     def start(self) -> Continue | Await | Done:
         """Find the story's covered services, bring a stack copy up for them, and replay the recorded calls or call the seat."""
@@ -82,6 +96,15 @@ class BookQa(QaOwner):
                 unreached=list(record.unreached),
             )
         return Continue(stack, self.work)
+
+    @property
+    def _review_session(self) -> str:
+        return f"{self.LABEL_PREFIX}-review:{self.ctx.story_slug}"
+
+    def _retire(self, status: QaFlowStatus) -> None:
+        """Release the stack copy, and end both sessions unless the developer takes the findings."""
+        super()._retire(status)
+        self.reset_session(self._review_session)
 
     def _owner_args(self) -> dict[str, Any]:
         """What the seat reads about its story and the services it brings up."""
@@ -146,7 +169,7 @@ class BookQa(QaOwner):
         laps: int = 0,
         blocks: int = 0,
     ) -> Continue | Await | Done:
-        """Check each covered service's book, let `ostler book affected` select what to play from the story's diff, play it, and send what failed to the seat, the operator or the developer. `calls` is read by no check: an old checkpoint may still carry it."""
+        """Check each covered service's book, let `ostler book affected` select what to play from the story's diff, play it, and send what failed to the seat, the operator or the developer, then hand a green pass to the end review. `calls` is read by no check: an old checkpoint may still carry it."""
         services = self.output(covered_services).services
         target = self.output(stack_target)
         self.call(hold_copy, lease=target.lease)
@@ -228,7 +251,159 @@ class BookQa(QaOwner):
                     "story's claims, so the story plays it."
                 )
             return self._lap(None, [_gate("the story's plays", text)], laps, blocks)
-        if not findings:
+        recorded = [
+            ServiceCalls(service=plan.service, calls=plan.direct_only if plan.direct else plan.only).model_dump()
+            for plan in plans
+        ]
+        change_read = list(dict.fromkeys(plan.read for plan in plans if plan.read))
+        if findings:
+            return Continue(
+                None, self.land, recorded=recorded, findings=findings, unreached=list(unreached or []), laps=laps, blocks=blocks
+            )
+        return Continue(
+            None, self.review, recorded=recorded, unreached=list(unreached or []), change_read=change_read, laps=laps, blocks=blocks
+        )
+
+    def review(
+        self,
+        recorded: list[dict[str, Any]] | None = None,
+        unreached: list[str] | None = None,
+        change_read: list[str] | None = None,
+        report: str = "",
+        operator_context: str = "",
+        review_laps: int = 0,
+        laps: int = 0,
+        blocks: int = 0,
+    ) -> Continue | Await:
+        """Run the end review: one capped turn judges each acceptance criterion of the story by the plays, the tests and the recorded evidence."""
+        criteria = self.call(story_criteria, self.ctx.story_path).criteria
+        if not criteria:
+            self.logger.info("%s lists no acceptance criterion, so the end review has nothing to judge", self.ctx.story_slug)
+            return Continue(None, self.land, recorded=recorded, unreached=unreached, laps=laps, blocks=blocks)
+        target = self.output(stack_target)
+        self.call(hold_copy, lease=target.lease)
+        self.logger.info(
+            "reviewing %d criteria of %s, limit %d min",
+            len(criteria),
+            self.ctx.story_slug,
+            self.review_minutes,
+            extra={"activity": True},
+        )
+        turn = roles.turn(self, "qa-review", returns=QaReviewResult)
+        spec = Path(self.ctx.spec_dir)
+        try:
+            with scoped_envs(target.env):
+                result: QaReviewResult = self.agent(
+                    turn.prompt,
+                    returns=turn.returns,
+                    **self._owner_options(turn_seconds(self.review_minutes), self._review_session),
+                    args=turn.args
+                    | self._owner_args()
+                    | {
+                        "criteria": criteria,
+                        "unreached": unreached or [],
+                        "change_read": change_read or [],
+                        "qa_plan": str(spec / PLAN_FILE),
+                        "play_reports": str(spec / BOOK_OUT),
+                        "lease": target.lease,
+                        "report": report,
+                        "operator_context": operator_context,
+                    },
+                )
+        except AgentTimeout as exc:
+            return self._ask_review(
+                cut_notes("The end review", exc, "review_minutes"),
+                blocks,
+                recorded=recorded,
+                unreached=unreached,
+                change_read=change_read,
+                laps=laps,
+            )
+        missing = missing_criteria(result.verdicts, len(criteria))
+        if missing and review_laps < REVIEW_LAPS:
+            return Continue(
+                result,
+                self.review,
+                report=_gate("the end review", missing_text(missing)),
+                review_laps=review_laps + 1,
+                recorded=recorded,
+                unreached=unreached,
+                change_read=change_read,
+                laps=laps,
+                blocks=blocks,
+            )
+        if missing:
+            notes = _gate("the end review", missing_text(missing)) + "\n\nThe review still left them out after one more turn."
+            return self._ask_review(
+                notes, blocks, recorded=recorded, unreached=unreached, change_read=change_read, laps=laps
+            )
+        return Continue(
+            result,
+            self.land,
+            recorded=recorded,
+            unreached=unreached,
+            criteria=criteria,
+            verdicts=[v.model_dump() for v in result.verdicts],
+            laps=laps,
+            blocks=blocks,
+        )
+
+    def _ask_review(self, notes: str, blocks: int, **lane: Any) -> Await:
+        path, body = self._escalate(notes, "the end review", blocks)
+        return Await(path, body, self.read_review_operator, blocks=blocks + 1, **lane)
+
+    def read_review_operator(
+        self,
+        blocks: int = 0,
+        recorded: list[dict[str, Any]] | None = None,
+        unreached: list[str] | None = None,
+        change_read: list[str] | None = None,
+        laps: int = 0,
+    ) -> Continue | Done:
+        """Log the operator's answer to a stopped end review, then run the review again with it in hand."""
+        answer = self._take_answer()
+        if answer.scope == "epic":
+            self.reset_session(self._review_session)
+            return self._replan(answer)
+        return Continue(
+            answer,
+            self.review,
+            operator_context=answer.content,
+            recorded=recorded,
+            unreached=unreached,
+            change_read=change_read,
+            laps=laps,
+            blocks=blocks,
+        )
+
+    def land(
+        self,
+        recorded: list[dict[str, Any]] | None = None,
+        findings: list[dict[str, Any]] | None = None,
+        unreached: list[str] | None = None,
+        criteria: list[str] | None = None,
+        verdicts: list[dict[str, Any]] | None = None,
+        laps: int = 0,
+        blocks: int = 0,
+    ) -> Continue | Await | Done:
+        """Write the review, stamp the books when nothing failed, land the book commit and the record, and finish."""
+        services = self.output(covered_services).services
+        judged = [ReviewVerdict.model_validate(v) for v in verdicts or []]
+        count = len(criteria or [])
+        unmet = unmet_findings(judged, criteria or [], self.ctx.story_path)
+        unseen = unobserved(judged, count)
+        if judged:
+            self.call(write_qa_review, self.ctx.spec_dir, criteria or [], judged)
+        if unseen:
+            self.logger.warning(
+                "the end review of %s observed %d of %d criteria nowhere: %s",
+                self.ctx.story_slug,
+                len(unseen),
+                count,
+                ", ".join(str(v.criterion) for v in unseen),
+            )
+        seat = [QaFinding.model_validate(f) for f in findings or []]
+        if not seat and not unmet:
             stamped = self.call(
                 stamp_books_verified, services, story_slug=self.ctx.story_slug, story_id=self.ctx.story_id
             )
@@ -245,9 +420,15 @@ class BookQa(QaOwner):
         if landed.refused:
             self.logger.warning("the book commit was refused: %s", landed.refused)
             return self._lap(landed, [_gate("the book commit", landed.refused)], laps, blocks)
-        found = [QaFinding.model_validate(f) for f in findings or []]
-        recorded = [ServiceCalls(service=plan.service, calls=plan.direct_only if plan.direct else plan.only) for plan in plans]
-        self.call(write_book_record, self.ctx.spec_dir, recorded, found, list(unreached or []))
+        self.call(
+            write_book_record,
+            self.ctx.spec_dir,
+            [ServiceCalls.model_validate(r) for r in recorded or []],
+            seat,
+            list(unreached or []),
+            unseen,
+        )
+        found = [*seat, *unmet]
         return self._finish("refix" if found else "passed", found)
 
     def _finish(self, status: QaFlowStatus, findings: list[QaFinding]) -> Done:

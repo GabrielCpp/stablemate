@@ -17,6 +17,7 @@ OWNER_PROMPTS = {
     "dev-follow-up": "dev/prompts/dev-follow-up.md",
     "qa": "qa/prompts/qa-story.md",
     "book-qa": "book_qa/prompts/qa-book.md",
+    "book-qa-review": "book_qa/prompts/qa-review.md",
     "docs": "docs/prompts/specify-story.md",
     "fix": "fix/prompts/fix-item.md",
     "fix-ci": "fix_ci/prompts/fix-ci.md",

@@ -10,6 +10,10 @@ def epics_root() -> Path:
     return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve() / "epics"
 
 
+def spec_dir(story: str) -> Path:
+    return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve() / "specs" / story
+
+
 def epic_dir(ref: str) -> Path:
     from ostler import path
 

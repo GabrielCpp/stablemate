@@ -21,6 +21,8 @@ from workhorse_workflows.kit import commit_all, commit_paths
 from workhorse_workflows.coder.main import flow as coder_main
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.schemas.backlog import FixPick
+from workhorse_workflows.coder.book_qa import nodes as book_nodes
+from workhorse_workflows.coder.shared.schemas.book_qa import ServiceCalls
 from workhorse_workflows.coder.main.nodes import pr
 from workhorse_workflows.coder.main.nodes.spec import record_spec_book_paths
 from workhorse_workflows.coder.main.nodes.pr import open_run_prs
@@ -43,7 +45,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
 )
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
 from workhorse_workflows.coder.main import Coder
-from _epics import epics_root
+from _epics import epics_root, spec_dir
 
 EPIC = "EPIC-1"
 MILESTONE = "docs/milestones/0001-launch/milestone.md"
@@ -186,6 +188,7 @@ class _StubFlow(Workflow):
     operator_mode: str = ""
     target_env: str = ""
     book_play_minutes: int = 15
+    review_minutes: int = 20
     turn_minutes: int = 60
     sandbox: bool = False
     repo: str = ""
@@ -219,6 +222,7 @@ class _Sub:
         qa_status: QaFlowStatus = "passed",
         qa_statuses: list[QaFlowStatus] | None = None,
         book_statuses: list[QaFlowStatus] | None = None,
+        booked: bool = False,
         ci_status: CiStatus = "passed",
         explode: set[str] | None = None,
     ) -> None:
@@ -237,6 +241,8 @@ class _Sub:
         self.qa_statuses: list[QaFlowStatus] = qa_statuses or []
         self.book_statuses: list[QaFlowStatus] = book_statuses or []
         self.book_calls: list[str] = []
+        self.book_seen: list[_StubFlow] = []
+        self.booked = booked
         self.ci_status: CiStatus = ci_status
         self.explode = explode or set()
         self.calls: list[str] = []
@@ -252,15 +258,19 @@ class _Sub:
         ):
             monkeypatch.setattr(coder_main, name, self._flow(name, reply))
         monkeypatch.setattr(
-            coder_main, "BookQa", self._flow("BookQa", self._book, calls=self.book_calls)
+            coder_main, "BookQa", self._flow("BookQa", self._book, calls=self.book_calls, seen=self.book_seen)
         )
         return self
 
     def _flow(
-        self, name: str, reply: Callable[[_StubFlow], Any], calls: list[str] | None = None
+        self,
+        name: str,
+        reply: Callable[[_StubFlow], Any],
+        calls: list[str] | None = None,
+        seen: list[_StubFlow] | None = None,
     ) -> type:
         """A real `Workflow` subclass named for the flow it stands in for."""
-        seen = self.seen if calls is None else []
+        seen = (self.seen if calls is None else []) if seen is None else seen
         calls = self.calls if calls is None else calls
         explode = self.explode
 
@@ -316,6 +326,10 @@ class _Sub:
         )
 
     def _book(self, child: _StubFlow) -> QaFlowResult:
+        if self.booked:
+            book_nodes.write_book_record(
+                logging.getLogger("test"), str(spec_dir(child.story)), [ServiceCalls(service="app")]
+            )
         status = self.book_statuses.pop(0) if self.book_statuses else "passed"
         findings = (
             [QaFinding(id="book-1", target="acme/services/api", issue="the claim fails")]
@@ -426,6 +440,54 @@ def test_one_epic_of_one_story_builds_it_and_ends_when_the_worklist_is_done(
     assert _dirty(repo) == "", _dirty(repo)
     assert (repo / "src" / "STORY-1.py").is_file()
     assert _output(run_env, resolve_launch)["mode"] == "epic"
+
+
+def test_a_story_a_book_judged_never_enters_scenario_qa(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = epic()
+    sub = _Sub(repo, booked=True).install(monkeypatch)
+    run_env = env()
+
+    result = drive_flow(Coder(), run_env, _Agent())
+
+    assert result.status == "skipped", result
+    assert sub.calls == ["Docs", "Dev", "Fix"], sub.calls
+    assert sub.book_calls == ["BookQa"], sub.book_calls
+    assert _output(run_env, stamp_story_passed)["stamped"] is True
+
+
+def test_review_minutes_reaches_the_book_lane(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = epic()
+    sub = _Sub(repo).install(monkeypatch)
+
+    drive_flow(Coder(review_minutes=7), env(), _Agent())
+
+    assert sub.book_seen[0].review_minutes == 7
+
+
+def test_a_leftover_of_a_booked_story_reproves_through_the_books(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = epic()
+    sub = _Sub(repo, late="src/late.py", booked=True).install(monkeypatch)
+
+    result = drive_flow(Coder(), env(), _Agent())
+
+    assert result.status == "skipped", result
+    assert sub.book_calls == ["BookQa", "BookQa"], sub.book_calls
+    assert "Qa" not in sub.calls, sub.calls
 
 
 def _second_epic(write: Callable[[Path, str], Path], name: str, slug: str) -> None:

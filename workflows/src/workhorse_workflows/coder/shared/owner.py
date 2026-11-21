@@ -6,6 +6,8 @@ from workhorse.runner.backends import AgentProfile
 
 TURN_MINUTES = 60
 
+REVIEW_MINUTES = 20
+
 SILENCE_S = 1800.0
 
 COMMAND_CAP_S = 1500
@@ -22,12 +24,12 @@ def turn_seconds(minutes: int) -> float:
     return minutes * 60.0
 
 
-def cut_notes(turn: str, exc: AgentTimeout) -> str:
+def cut_notes(turn: str, exc: AgentTimeout, allowance: str = "turn_minutes") -> str:
     """What the operator reads when a turn was cut: the time allowance that ran out, or the silence that spent its retries."""
     if exc.deadline_s is not None:
         minutes = max(1, round(exc.deadline_s / 60))
         return (
-            f"{turn} was cut after {minutes} minutes, its time allowance (`turn_minutes`).\n\n"
+            f"{turn} was cut after {minutes} minutes, its time allowance (`{allowance}`).\n\n"
             "Its session is kept. Answer here and the turn starts again on the same session, "
             "with your answer in hand."
         )
@@ -47,6 +49,7 @@ __all__ = [
     "HUMAN_MODES",
     "MAX_BLOCKS",
     "MAX_LAPS",
+    "REVIEW_MINUTES",
     "SILENCE_S",
     "TURN_MINUTES",
     "cut_notes",

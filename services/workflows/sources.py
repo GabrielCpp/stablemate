@@ -133,6 +133,8 @@ CODER = (
     "workflows/src/workhorse_workflows/coder/book_qa/flow.py",
     "workflows/src/workhorse_workflows/coder/book_qa/nodes.py",
     "workflows/src/workhorse_workflows/coder/book_qa/prompts/qa-book.md",
+    "workflows/src/workhorse_workflows/coder/book_qa/prompts/qa-review.md",
+    "workflows/src/workhorse_workflows/coder/book_qa/review.py",
     "workflows/src/workhorse_workflows/coder/dev/flow.py",
     "workflows/src/workhorse_workflows/coder/dev/prompts/_dev-inputs.md",
     "workflows/src/workhorse_workflows/coder/dev/prompts/_dev-result.md",

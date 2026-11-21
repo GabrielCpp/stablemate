@@ -83,6 +83,13 @@ FINDING: dict[str, str] = {
 
 CALLS = [{"service": "api", "calls": ["ListX", "BuildX"]}]
 
+REVIEWED: dict[str, Any] = {
+    "verdicts": [
+        {"criterion": 1, "verdict": "played", "evidence": "journey Share a list"},
+        {"criterion": 2, "verdict": "tested", "evidence": "tests/test_speed.py::test_fast"},
+    ]
+}
+
 
 class _Parked(Exception):
     """Raised by the patched `wait_for_answer` to stop a run right at its `Await`."""
@@ -255,8 +262,17 @@ class _Agent:
         stray: str = "",
         touch: str = "journeys/added.py",
         cut: bool = False,
+        reviews: tuple[dict[str, Any], ...] = (REVIEWED,),
+        review_cut: bool = False,
+        on_review: Callable[[], None] | None = None,
     ) -> None:
         self.cut = cut
+        self.reviews = reviews
+        self.review_cut = review_cut
+        self.on_review = on_review
+        self.review_args: list[dict[str, Any]] = []
+        self.review_nodes: list[Any] = []
+        self.review_kwargs: list[dict[str, Any]] = []
         self.nodes: list[Any] = []
         self.kwargs: list[dict[str, Any]] = []
         self.repo = repo
@@ -266,9 +282,23 @@ class _Agent:
         self.args: list[dict[str, Any]] = []
         self.calls: list[str] = []
 
+    def _review(self, node: Any, ctx: Any, kwargs: dict[str, Any]) -> Any:
+        self.review_args.append(ctx.as_dict())
+        self.review_nodes.append(node)
+        self.review_kwargs.append(kwargs)
+        if self.on_review:
+            self.on_review()
+        if self.review_cut:
+            self.review_cut = False
+            raise TurnDeadlineExceeded("qa-review", node.deadline, node.deadline + 1.0)
+        reply = self.reviews[min(len(self.review_args), len(self.reviews)) - 1]
+        return f"(scripted) {node.prompt}", {"notes": "reviewed", **reply}
+
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
-        self.args.append(ctx.as_dict())
         stem = Path(node.prompt).stem
+        if stem == "qa-review":
+            return self._review(node, ctx, kwargs)
+        self.args.append(ctx.as_dict())
         assert stem == "qa-book", f"unexpected agent turn: {stem}"
         self.calls.append(stem)
         self.nodes.append(node)
@@ -379,7 +409,7 @@ def test_a_green_pass_plays_the_named_calls_records_them_and_lands_the_book(
     assert landed.startswith("test(acme): play ") and "Story: STORY-1" in landed, landed
     assert git(lane, "status", "--porcelain").stdout == ""
     assert stack.released == 1, stack.released
-    assert stack.held == [stack_lease(argv)], stack.held
+    assert stack.held == [stack_lease(argv)] * 2, stack.held
 
 
 WEB_CHANGED = "## Stale elements\n- Home: web/page.tsx (1 commits: abc1234)\n"
@@ -1924,3 +1954,249 @@ def test_a_direct_plan_that_names_nothing_directly_goes_back_to_the_seat_with_wh
     assert scripted.argv["run"] == []
     report = agent.args[1]["report"]
     assert "select no play" in report and "only through shared code" in report, report
+
+
+def test_the_end_review_runs_once_after_green_plays_and_before_the_stamp(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(changed={"services.api": API_CHANGED})
+    seen: list[int] = []
+    agent = _Agent(lane, on_review=lambda: seen.append(len(scripted.argv["verified"])))
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert len(agent.review_args) == 1, agent.review_args
+    assert seen == [0], seen
+    assert len(scripted.argv["verified"]) == 1
+    assert "| 1. the thing exists | played |" in (_spec_dir() / "qa-review.md").read_text(encoding="utf-8")
+
+
+def test_the_end_review_does_not_run_when_a_play_is_red(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book(run=(1,))
+    agent = _Agent(lane)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert agent.review_args == []
+
+
+def test_the_end_review_does_not_run_when_the_seat_reports_a_finding(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book()
+    agent = _Agent(lane, {"status": "findings", "findings": [FINDING], "calls": CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "refix", result
+    assert agent.review_args == []
+
+
+def test_an_unmet_criterion_finishes_refix_with_a_finding_and_no_stamp(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(changed={"services.api": API_CHANGED})
+    unmet = {
+        "criterion": 1,
+        "verdict": "unmet",
+        "evidence": "`acme export --all` is no option of the command",
+        "target": "acme/cli.py:10",
+        "repair": "add the option",
+    }
+    agent = _Agent(lane, reviews=({"verdicts": [unmet, REVIEWED["verdicts"][1]]},))
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "refix", result
+    assert [f.id for f in result.findings] == ["review-criterion-1"], result.findings
+    assert result.findings[0].target == "acme/cli.py:10"
+    assert scripted.argv["verified"] == []
+    assert _commits(lane, git)[0].startswith("test(acme): play "), _commits(lane, git)[0]
+    record = json.loads((_spec_dir() / "book-qa.json").read_text(encoding="utf-8"))
+    assert record == {"services": CALLS}, record
+
+
+def test_an_unobserved_criterion_passes_and_is_recorded(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    book()
+    seen = {"criterion": 2, "verdict": "unobserved", "evidence": "nothing shows it"}
+    agent = _Agent(lane, reviews=({"verdicts": [REVIEWED["verdicts"][0], seen]},))
+
+    with caplog.at_level(logging.WARNING):
+        result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    record = json.loads((_spec_dir() / "book-qa.json").read_text(encoding="utf-8"))
+    assert record["unobserved"] == [seen], record
+    assert "unobserved" in (_spec_dir() / "qa-review.md").read_text(encoding="utf-8")
+    assert "observed 1 of 2 criteria nowhere" in caplog.text
+
+
+def test_a_cut_end_review_asks_the_operator_and_runs_again_on_its_session(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book()
+    agent = _Agent(lane, review_cut=True)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(BookQa(story=STORY, operator_mode="auto"), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"qa-book": 1}, agent.counts()
+    assert len(agent.review_args) == 2
+    (gate,) = seen
+    assert "The end review was cut after 20 minutes" in gate, gate
+    assert "`review_minutes`" in gate, gate
+    first, second = agent.review_kwargs
+    assert first["session_chain"] == second["session_chain"] != ""
+    assert first["session_chain"] != agent.kwargs[0]["session_chain"]
+    assert second["resume_session"] is True
+    assert "Keep the covered services" in str(agent.review_args[1]["operator_context"]), agent.review_args[1]
+
+
+def test_a_review_that_leaves_a_criterion_out_laps_once_then_asks(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book()
+    agent = _Agent(lane, reviews=({"verdicts": [REVIEWED["verdicts"][0]]},))
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert len(agent.review_args) == 2
+    assert "no verdict for criterion 2" in agent.review_args[1]["report"]
+    assert "the end review" in seen[0] and "after one more turn" in seen[0], seen
+
+
+def test_a_review_that_answers_on_its_second_turn_passes(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book()
+    agent = _Agent(lane, reviews=({"verdicts": []}, REVIEWED))
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert len(agent.review_args) == 2
+
+
+def test_the_review_deadline_is_review_minutes(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book()
+    agent = _Agent(lane)
+
+    drive_flow(_flow(), env(), agent)
+    drive_flow(_flow(review_minutes=9), env(), agent)
+
+    assert agent.review_nodes[0].deadline == agent.review_nodes[0].timeout == 1200.0
+    assert agent.review_nodes[1].deadline == agent.review_nodes[1].timeout == 540.0
+
+
+def test_the_seats_unreached_claims_and_the_plan_reach_the_review(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book()
+    claims = ["no request reaches the report service"]
+    agent = _Agent(lane, {"status": "passed", "calls": CALLS, "unreached": claims})
+
+    drive_flow(_flow(), env(), agent)
+
+    [args] = agent.review_args
+    assert args["unreached"] == claims
+    assert args["criteria"] == ["the thing exists", "the thing is fast"]
+    assert args["qa_plan"] == str(_spec_dir() / "qa-plan.md")
+    assert args["play_reports"] == str(_spec_dir() / "qa" / "book")
+
+
+def test_a_story_with_no_criterion_skips_the_review(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    emptied = STORY_MD.replace("- the thing exists", "(none)").replace("- the thing is fast", "(none)")
+    write(epics_root() / EPIC / "stories" / STORY / "story.md", emptied)
+    book()
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.review_args == []
+
+
+def test_the_review_prompt_renders_the_numbered_criteria_and_the_six_verdicts(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    coder = Path(roles.__file__).resolve().parent.parent
+
+    text = render("book_qa/prompts/qa-review.md", {"_node_cwd": str(repo), "services": ["api"], "criteria": ["a", "b"]}, coder)
+
+    assert "1. a" in text and "2. b" in text
+    for verdict in ("played", "tested", "recorded", "checked", "unobserved", "unmet"):
+        assert f"`{verdict}`" in text, verdict
+    assert "Never play a whole book" in text
+
+
+def test_the_seat_prompt_hands_unreached_claims_to_the_end_review(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    coder = Path(roles.__file__).resolve().parent.parent
+
+    text = render("book_qa/prompts/qa-book.md", {"_node_cwd": str(repo), "services": ["api"]}, coder)
+
+    assert "an end review judges each acceptance criterion" in text
+    assert "The scenario QA skips" not in text

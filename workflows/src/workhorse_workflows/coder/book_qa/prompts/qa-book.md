@@ -93,9 +93,9 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    internal calls or a request between two other services. A claim left out because the world could not be arranged is not
    `unreached`: restructure the book for it. Put a claim that is out of reach in `notes` with the
    reason. Also list it in `unreached`, one entry per claim in the story's words, for
-   example "no request reaches the report service". The scenario QA skips every page of a
-   service whose book passed, and it reads `unreached` to know which claims are still its
-   to judge. A claim you stated in the book and played is not listed.
+   example "no request reaches the report service". After the plays pass,
+   an end review judges each acceptance criterion of the story. It reads `unreached` to know
+   which claims no play observes. A claim you stated in the book and played is not listed.
 8. **Run until green.** Run `ostler book check`, then the targeted run, until the run exits
    0. Never run the whole book yourself: the workflow plays only what the diff selects. Run one at a time. Exit 3 means the environment is not
    healthy. Report `blocked` and repair nothing.
@@ -112,7 +112,7 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
 
 ## The checks after this turn
 
-The workflow runs `ostler book check` on each covered service. It then selects the plays from the story's diff of the code and of the book with `ostler book affected`. It plays them one service at a time on freshly loaded data. It plays only the journey and call classes the story added or edited, and the calls whose `source=` names a changed file or function. The journeys play first, within one limit for the service, and the workflow never plays the whole book. A shared part the selection could not narrow is listed as owed to a scheduled whole play, and a story whose change could not be narrowed to any play comes back to you so that you state the change in an element a play reaches. It sends back to you a changed file or function that no element names and no ignore pattern covers, because it cannot select plays for it. Exit 0 on every service, with no finding, then runs `ostler book verified` on each book that was current when the story started, and on no other. It refuses while a changed file or function of the app is named by no element or ignore pattern, and the refusal comes back to you. Exit 0 on every service ends the pass. Exit 1 or 2
+The workflow runs `ostler book check` on each covered service. It then selects the plays from the story's diff of the code and of the book with `ostler book affected`. It plays them one service at a time on freshly loaded data. It plays only the journey and call classes the story added or edited, and the calls whose `source=` names a changed file or function. The journeys play first, within one limit for the service, and the workflow never plays the whole book. A shared part the selection could not narrow is listed as owed to a scheduled whole play, and a story whose change could not be narrowed to any play comes back to you so that you state the change in an element a play reaches. It sends back to you a changed file or function that no element names and no ignore pattern covers, because it cannot select plays for it. Exit 0 on every service, with no finding, then runs `ostler book verified` on each book that was current when the story started, and on no other. It refuses while a changed file or function of the app is named by no element or ignore pattern, and the refusal comes back to you. Exit 0 on every service ends the pass. When every play passes and you report no finding, an end review then judges each acceptance criterion. A criterion it finds unmet goes to the developer, not to you. Exit 1 or 2
 comes back to you in this session with the output. Exit 3 means the environment could not
 be judged, and it goes to an operator, never to you. A story does not pass while your result
 lists a finding, even when the run is green.

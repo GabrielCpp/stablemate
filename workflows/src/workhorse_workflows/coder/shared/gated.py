@@ -1,6 +1,7 @@
 """The block, ask and resolve states a flow with one story-bound owner shares: a block goes to the resolver, then to the operator."""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import PositiveInt
@@ -56,9 +57,10 @@ class Gated(Resolving):
             return self._ask(notes, where, blocks)
         return Continue(result, self.resolve, notes=notes, where=where, blocks=blocks)
 
-    def _ask(
+    def _escalate(
         self, notes: str, where: str, blocks: int, result: OperatorResolution | None = None
-    ) -> Await:
+    ) -> tuple[Path, str]:
+        """The gate file and body one block writes."""
         story = self._gate_story()
         gate = escalation(
             self,
@@ -69,12 +71,13 @@ class Gated(Resolving):
             result=result,
             story=story,
         )
-        return Await(
-            context_path(self, story.story_path),
-            gate.body,
-            self.read_operator,
-            blocks=blocks + 1,
-        )
+        return context_path(self, story.story_path), gate.body
+
+    def _ask(
+        self, notes: str, where: str, blocks: int, result: OperatorResolution | None = None
+    ) -> Await:
+        path, body = self._escalate(notes, where, blocks, result)
+        return Await(path, body, self.read_operator, blocks=blocks + 1)
 
     def resolve(self, notes: str, where: str, blocks: int = 0) -> Continue | Await:
         """Answer a block from what is already written down, or ask the operator."""

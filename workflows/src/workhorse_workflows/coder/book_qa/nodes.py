@@ -12,6 +12,7 @@ from typing import Any, Literal, cast
 from ostler.book.index import FILE as INDEX_FILE
 from ostler.book.index import parse as parse_index
 from ostler.book.sources import story_commits
+from workhorse_workflows.coder.book_qa.review import by_criterion
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.provenance import story_base
@@ -22,6 +23,7 @@ from workhorse_workflows.coder.shared.schemas.book_qa import (
     BookQaRecord,
     BookScope,
     CoveredServices,
+    ReviewVerdict,
     ServiceCalls,
     StoryBase,
     UnreachedClaims,
@@ -62,6 +64,7 @@ CHANGE_SECTIONS = frozenset(
     }
 )
 RECORD_FILE = "book-qa.json"
+REVIEW_FILE = "qa-review.md"
 BOOK_OUT = Path("qa") / "book"
 UNREACHED_FILE = "qa-unreached.json"
 PLAN_FILE = "qa-plan.md"
@@ -697,14 +700,37 @@ def write_book_record(
     services: list[ServiceCalls],
     findings: list[QaFinding] | None = None,
     unreached: list[str] | None = None,
+    unobserved: list[ReviewVerdict] | None = None,
 ) -> BookQaRecord:
     """Record the calls a passed check played, the findings it stood on and the claims the book could not state, so a second visit for the story replays them. A green replay means a declared defect still holds, so its finding still stands."""
-    record = BookQaRecord(services=services, findings=findings or [], unreached=unreached or [])
+    record = BookQaRecord(services=services, findings=findings or [], unreached=unreached or [], unobserved=unobserved or [])
     target = Path(spec_dir) / RECORD_FILE
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(record.model_dump(exclude_defaults=True), indent=2) + "\n", encoding="utf-8")
     logger.info("recorded the calls of %d service(s) in %s", len(services), target)
     return record
+
+
+def _cell(text: str) -> str:
+    return " ".join(text.replace("|", "\\|").split())
+
+
+@blueprint.node
+def write_qa_review(
+    logger: logging.Logger, spec_dir: str, criteria: list[str], verdicts: list[ReviewVerdict]
+) -> BookPlay:
+    """Write `qa-review.md` in the spec dir from the end review's verdicts, one row per acceptance criterion, with no agent involved."""
+    held = by_criterion(verdicts, len(criteria))
+    rows = [
+        f"| {n}. {_cell(text)} | {held[n].verdict if n in held else 'none'} | {_cell(held[n].evidence) if n in held else ''} |"
+        for n, text in enumerate(criteria, 1)
+    ]
+    lines = ["# QA review", "", "| criterion | verdict | evidence |", "| --- | --- | --- |", *rows]
+    target = Path(spec_dir) / REVIEW_FILE
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    logger.info("wrote the end review of %d criteria to %s", len(criteria), target)
+    return BookPlay(exit_code=0, output=str(target))
 
 
 @blueprint.node
@@ -788,6 +814,7 @@ def commit_service_book(
 __all__ = [
     "BOOK_OUT",
     "RECORD_FILE",
+    "REVIEW_FILE",
     "UNREACHED_FILE",
     "PLAN_FILE",
     "book_check",
@@ -807,5 +834,6 @@ __all__ = [
     "touched_services",
     "write_book_record",
     "write_qa_plan",
+    "write_qa_review",
     "write_unreached_claims",
 ]

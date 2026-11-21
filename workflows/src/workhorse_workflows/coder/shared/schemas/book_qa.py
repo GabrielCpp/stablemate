@@ -85,12 +85,55 @@ class BookScope(CoderResult):
     changed: int = 0
 
 
+ReviewVerdictKind = Literal["played", "tested", "recorded", "checked", "unobserved", "unmet"]
+
+
+class ReviewVerdict(Result):
+    """One acceptance criterion as the end review judged it."""
+
+    criterion: int = Field(description="The criterion's number in the list the prompt gives, from 1.")
+    verdict: ReviewVerdictKind = Field(
+        description="`unmet` when evidence shows the criterion fails. `played` when a step of a play observes it. "
+        "`tested` when a test of the repository covers it. `recorded` when earlier evidence in the spec dir shows it. "
+        "`checked` when you observed it yourself with one bounded check. `unobserved` when nothing shows it and no "
+        "bounded check can.",
+    )
+    evidence: str = Field(
+        default="",
+        description="What shows the verdict: the journey or call, the test and its result, the file with its date and "
+        "commit, the command and its result, or what fails.",
+    )
+    target: str = Field(
+        default="",
+        description="On `unmet`, where the defect lives as `repo/path:line`, or the story's path when the criterion "
+        "names something that does not exist.",
+    )
+    repair: str = Field(default="", description="On `unmet`, the smallest change that meets the criterion.")
+
+
+@dry_run(verdicts=[])
+class QaReviewResult(CoderResult):
+    """`book_qa/prompts/qa-review.md`: the end review's verdict on each acceptance criterion."""
+
+    verdicts: list[ReviewVerdict] = Field(
+        default=[], description="One entry per criterion of the list, each with its number."
+    )
+    notes: str = Field(default="", description="What you read and ran, in a few lines.")
+
+
+class StoryCriteria(CoderResult):
+    """`story_criteria`: the story's acceptance criteria, numbered from 1 in list order."""
+
+    criteria: list[str] = []
+
+
 class BookQaRecord(CoderResult):
     """`book-qa.json`: the calls a passed check played, the findings it stood on and the claims the book could not state, so a later visit replays them."""
 
     services: list[ServiceCalls] = []
     findings: list[QaFinding] = []
     unreached: list[str] = []
+    unobserved: list[ReviewVerdict] = []
 
 
 class BookPlan(CoderResult):
@@ -131,4 +174,4 @@ class UnreachedClaims(CoderResult):
     claims: list[str] = []
 
 
-__all__ = ["BookPaths", "BookPlan", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "BookScope", "CoveredServices", "ServiceCalls", "StoryBase", "UnreachedClaims"]
+__all__ = ["BookPaths", "BookPlan", "BookPlay", "BookQaOwnerResult", "BookQaRecord", "BookScope", "CoveredServices", "QaReviewResult", "ReviewVerdict", "ReviewVerdictKind", "ServiceCalls", "StoryBase", "StoryCriteria", "UnreachedClaims"]
