@@ -83,7 +83,7 @@ never invent a statement to silence a finding. Keep every behaviour the book sta
 {% if notes %}
 
 The check also reports notes. A note does not fail the check, and each one is work: the current
-format asks for what it names. The kinds below are the work list after the findings, each with
+format asks for what it names. The notes below are this batch's share of them, each kind with
 its count and its elements:
 {% for group in notes %}
 
@@ -91,9 +91,6 @@ its count and its elements:
 {% for element in group.elements %}
 - {{ element }}
 {% endfor %}
-{% if group.more %}
-- and {{ group.more }} more are not listed here: run the check below to read them all.
-{% endif %}
 {% endfor %}
 
 For each note, do one of two things. State what it asks, from what the app's code shows. Or
@@ -116,6 +113,14 @@ python -m ostler.book run <module> --partial --journey "<title>" --copy {{ stack
 {% endif %}
 
 Never mark a screen `first` to silence a note when the app reaches it by a link.
+{% endif %}
+{% if batch %}
+
+This batch is {{ batch.size }} items. Do exactly these. For each one, state what it asks from the
+app's code, or decline it with a reason in `declined`. Play what you stated, then reply. Do not start
+on any note that is not listed here: the run hands out the next ones when this batch is committed.
+The run records what you touched outside this list. The run writes each line of `declined` into the
+book's `DECLINED.md`, so do not edit that file.
 {% endif %}
 {% if format %}
 
@@ -148,7 +153,7 @@ Name each endpoint or interaction you add in `added`, spelled as its class.{% if
 journeys of the changed elements and of those you name, so a name left out is a route that goes
 unplayed.{% endif %} Name each pattern you added to `App(ignore=...)` in `ignored`, as written there.
 
-You are done when, for each module below, `check` exits 0{% if notes %}, every note it prints is stated or declined,{% endif %} and `stale` prints nothing under
+You are done when, for each module below, `check` exits 0{% if notes %}, every note listed above is stated or declined,{% endif %} and `stale` prints nothing under
 `## Changed files no element names`, `## Changed functions no element names` and
 `## Pointers to files that no longer exist`, from the book root. `## Stale elements` stays
 listed until the run stamps the book, so it is no sign of work left:

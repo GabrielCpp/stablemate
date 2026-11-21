@@ -14,7 +14,8 @@ from workhorse.pyflow import Await, Continue
 
 from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.catch_up.flow import CatchUpBooks
-from workhorse_workflows.okf_book.catch_up.report import is_declined, kind_moves, note_kinds, read_check, split_note
+from workhorse_workflows.okf_book.catch_up.register import entries_for, is_declined
+from workhorse_workflows.okf_book.catch_up.report import kind_moves, note_kinds, read_check, split_note
 from workhorse_workflows.okf_book.shared.book_flow import MAX_LAPS, RED_GATE
 
 LEADS = "nothing leads to it: state `leads_to` on the interaction that opens it, `inside` when another screen hosts it, or `first` when a person opens it directly"
@@ -65,13 +66,22 @@ def test_a_note_is_split_into_its_element_and_its_kind_cut_at_a_colon_or_sixty_c
     assert split_note("loose text") == ("", "loose text")
 
 
-def test_a_declined_line_covers_a_kind_an_element_or_an_element_without_its_first_word() -> None:
+def test_a_register_entry_covers_a_note_of_its_element_and_kind_or_a_whole_kind() -> None:
     note = f"screen Home: {LEADS}"
 
-    assert is_declined(note, {"nothing leads to it"})
-    assert is_declined(note, {"screen Home"})
-    assert is_declined(note, {"Home"})
-    assert not is_declined(note, {"screen Other"})
+    assert is_declined(note, ["*: nothing leads to it: another book states them"])
+    assert is_declined(note, ["screen Home: nothing leads to it: the app never links to it"])
+    assert not is_declined(note, ["screen Home: nothing states what its list holds: none"])
+    assert not is_declined(note, ["screen Other: nothing leads to it: the app never links to it"])
+
+
+def test_a_declined_line_becomes_the_entries_of_the_notes_it_names_by_kind_by_element_or_by_element_without_its_first_word() -> None:
+    notes = [*leading("Home", "About"), *listing("Pick")]
+
+    assert entries_for(["nothing leads to it: another book states them"], notes) == ["*: nothing leads to it: another book states them"]
+    assert entries_for(["screen Home: the app never links to it"], notes) == ["screen Home: nothing leads to it: the app never links to it"]
+    assert entries_for(["About: no link   in the app"], notes) == ["screen About: nothing leads to it: no link in the app"]
+    assert entries_for(["screen Nowhere: none", "no colon", "screen Home: "], notes) == []
 
 
 def test_the_kinds_are_counted_largest_first_and_a_move_counts_what_is_declined() -> None:
@@ -79,8 +89,8 @@ def test_the_kinds_are_counted_largest_first_and_a_move_counts_what_is_declined(
     after = [*leading("B", "C"), *listing("D")]
 
     assert [(group.kind, group.count) for group in note_kinds(before)] == [("nothing leads to it", 3), ("nothing states what its list holds", 1)]
-    moves = kind_moves(before, after, ["screen B: the app never links to it"])
-    assert [move.said for move in moves] == ["nothing leads to it: 3 to 2 (1 declined)", "nothing states what its list holds: 1 to 1"]
+    moves = kind_moves(before, after, ["screen B: nothing leads to it: the app never links to it"])
+    assert [move.said for move in moves] == ["nothing leads to it: 3 to 1 (1 declined)", "nothing states what its list holds: 1 to 1"]
 
 
 def test_the_notes_come_from_every_note_line_not_the_tail_of_the_output() -> None:
@@ -89,7 +99,7 @@ def test_the_notes_come_from_every_note_line_not_the_tail_of_the_output() -> Non
     assert read.notes == 3 and len(read.noted) == 3
 
 
-def test_a_book_filed_with_notes_gets_them_in_its_prompt_grouped_by_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_book_filed_with_notes_gets_its_batch_of_them_in_its_prompt_grouped_by_kind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     many = leading(*(f"S{n}" for n in range(85)))
     flow, runner, _seen = moving(tmp_path, monkeypatch, [(1, red(*many, *listing("Pick"))), (0, green())], [{"done": "moved"}])
 
@@ -97,11 +107,11 @@ def test_a_book_filed_with_notes_gets_them_in_its_prompt_grouped_by_kind(tmp_pat
     advance(flow, step)
     rendered = templates.render("catch_up/prompts/update-book.md", runner.args_of(UPDATE)[0], Path(okf_book.__file__).parent)
 
-    assert "nothing leads to it: 85 notes" in rendered
-    assert "nothing states what its list holds: 1 notes" in rendered
-    assert "- screen S0\n" in rendered and "- screen S79\n" in rendered and "- screen S80\n" not in rendered
-    assert "- and 5 more are not listed here" in rendered
-    assert "- screen Pick.kind" in rendered
+    assert "nothing leads to it: 15 notes" in rendered
+    assert "nothing states what its list holds" not in rendered
+    assert "- screen S0\n" in rendered and "- screen S14\n" in rendered and "- screen S15\n" not in rendered
+    assert "- screen Pick.kind" not in rendered
+    assert "This batch is 16 items." in rendered
     assert "A note left with neither is unfinished work" in rendered
     assert "`<Element>: <reason>`" in rendered and "`<kind>: <reason>`" in rendered
     assert "Never mark a screen `first` to silence a note when the app reaches it by a link." in rendered
@@ -136,6 +146,11 @@ def test_declined_elements_and_declined_kinds_end_the_loop(tmp_path: Path, monke
     after = lap(flow, step)
 
     assert isinstance(after, Continue) and after.state == "checks"
+    assert (flow.root / "services/ledger/DECLINED.md").read_text(encoding="utf-8").splitlines()[2:] == [
+        "- screen A: nothing leads to it: the app never links to it",
+        "- *: nothing states what its list holds: another book states them",
+        "- record Entry: ledger and web both hold Entry: ledger and web hold it, and web owns it",
+    ]
 
 
 def test_the_cap_sends_the_remaining_notes_to_the_operator(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,6 +173,7 @@ def test_the_last_lines_of_a_moved_book_say_each_kind_and_its_declined_count_and
     filed = [*leading(*(f"S{n}" for n in range(8))), *listing("P", "Q")]
     left = [*leading("S5"), *listing("P", "Q")]
     declined = ["screen S5: the app never links to it", "nothing states what its list holds: another book states them"]
+    register = ["screen S5: nothing leads to it: the app never links to it", "*: nothing states what its list holds: another book states them"]
     flow, _runner, _seen = moving(tmp_path, monkeypatch, [(1, red(*filed)), (0, green(*left))], [{"done": "moved", "declined": declined}])
     caplog.set_level(logging.INFO)
 
@@ -168,14 +184,19 @@ def test_the_last_lines_of_a_moved_book_say_each_kind_and_its_declined_count_and
     done = summarized(flow)
 
     assert done.summary.splitlines() == [
-        "ledger: moved onto the format in 1 laps, check 1 findings to 0, played 2 calls and 1 journeys green",
-        "ledger: nothing leads to it: 8 to 1 (1 declined)",
-        "ledger: nothing states what its list holds: 2 to 2 (2 declined)",
+        "ledger: batch 1: 11 asked, 11 done, 0 outside, 1 lap, 0 min, played 2 calls and 1 journey green, committed",
+        "ledger: nothing leads to it: 8 to 0 (1 declined)",
+        "ledger: nothing states what its list holds: 2 to 0 (2 declined)",
     ]
     assert [record.getMessage() for record in caplog.records][-3:] == done.summary.splitlines()
     assert git(flow.root, "log", "-1", "--format=%s") == "docs(ledger): move the ledger book onto the current book format\n"
-    assert git(flow.root, "log", "-1", "--format=%b").strip().splitlines() == ["nothing leads to it: 8 to 1 (1 declined)", "nothing states what its list holds: 2 to 2 (2 declined)"]
-    assert done.books[0].declined == declined
+    assert git(flow.root, "log", "-1", "--format=%b").strip().splitlines() == [
+        "batch 1: 11 asked, 11 done, 0 outside, 1 lap, 0 min, played 2 calls and",
+        "  1 journey green, committed",
+        "nothing leads to it: 8 to 0 (1 declined)",
+        "nothing states what its list holds: 2 to 0 (2 declined)",
+    ]
+    assert done.books[0].declined == register
 
 
 def test_a_book_stale_in_the_app_and_red_on_the_check_gets_the_before_numbers_and_the_notes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -195,6 +216,10 @@ def test_a_book_stale_in_the_app_and_red_on_the_check_gets_the_before_numbers_an
     assert [argv[3] for argv in seen][:2] == ["stale", "check"]
     assert "- sources: Ping names no source" in rendered and "nothing leads to it: 2 notes" in rendered
     done = summarized(flow)
-    assert done.summary.splitlines() == ["ledger: caught up in 1 laps, 1 elements changed, 0 endpoints added, check 1 findings to 0", "ledger: nothing leads to it: 2 to 0"]
+    assert done.summary.splitlines() == [
+        "ledger: caught up in 1 laps, 1 elements changed, 0 endpoints added",
+        "ledger: batch 1: 3 asked, 3 done, 0 outside, 1 lap, 0 min, played 1 call green, committed",
+        "ledger: nothing leads to it: 2 to 0",
+    ]
     assert git(flow.root, "log", "-1", "--format=%s") == "docs(ledger): catch the ledger book up with the app\n"
-    assert git(flow.root, "log", "-1", "--format=%b").strip() == "nothing leads to it: 2 to 0"
+    assert git(flow.root, "log", "-1", "--format=%b").strip().splitlines() == ["batch 1: 3 asked, 3 done, 0 outside, 1 lap, 0 min, played 1 call green,", "  committed", "nothing leads to it: 2 to 0"]

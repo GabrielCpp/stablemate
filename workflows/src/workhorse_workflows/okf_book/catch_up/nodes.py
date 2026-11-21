@@ -8,7 +8,8 @@ from typing import cast
 
 from workhorse.worklist import WORK_FILE, JsonBackend, WorkItem, WorkList
 from workhorse_workflows.kit.git import open_repo
-from workhorse_workflows.okf_book.catch_up.models import CURRENT, FIRST_BOOK, STALE, UNJUDGED, BookOutcome, BookReport, Filed, FormatMove, ModuleCheck, ModuleReport, Roots
+from workhorse_workflows.okf_book.catch_up.models import CURRENT, FIRST_BOOK, STALE, UNJUDGED, BatchLog, BookOutcome, BookReport, Filed, FormatMove, ModuleCheck, ModuleReport, Roots
+from workhorse_workflows.okf_book.catch_up.register import entries_for, read_register, write_register
 from workhorse_workflows.okf_book.catch_up.report import read_check, read_stale
 from workhorse_workflows.okf_book.shared.blueprint import blueprint
 from workhorse_workflows.okf_book.shared.book_format import book_format_delta
@@ -19,7 +20,7 @@ BOOK = "book"
 OUTCOMES_DIR = "outcomes"
 NOTES_DIR = "format-notes"
 MOVES_DIR = "format-moves"
-DECLINED_DIR = "declined-notes"
+BATCHES_DIR = "batches"
 DIFF_LIMIT_CHARS = 60000
 
 
@@ -53,7 +54,7 @@ def _one_stale_book(_logger: logging.Logger, _roots: Roots, _services: tuple[str
 
 @blueprint.node(stub=_one_stale_book)
 def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...], run_dir: Path) -> Filed:
-    """File each book with something stale in the app, or with nothing stale and a red check, on the run's work list, and record the books that need no turn: current and first books. The check runs for every filed book, and one that is red or that printed notes makes its findings and notes the book's work list for the format. The writer's history comes along as context when it can be read. A book whose stale report or check could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
+    """File each book with something stale in the app, or with nothing stale and a red check or a note its register of declined notes does not cover, on the run's work list, and record the books that need no turn: current and first books. The check runs for every filed book, and one that is red or that printed an uncovered note makes its findings and notes the book's work list for the format. The writer's history comes along as context when it can be read. A book whose stale report or check could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
     work = WorkList(JsonBackend(run_dir / WORK_FILE))
     root = roots.book
     modules = book_modules(root)
@@ -63,7 +64,7 @@ def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...
     for order, service in enumerate(names):
         if service in done or outcome_path(run_dir, service).is_file():
             continue
-        report = BookReport(service=service, modules=[_survey(logger, root, module, roots.app) for module in modules.get(service, [])])
+        report = BookReport(service=service, modules=[_survey(logger, root, module, roots.app) for module in modules.get(service, [])], declined=read_register(root, service))
         if report.verdict == UNJUDGED:
             filed.unread[service] = "\n\n".join(_unread(module) for module in report.modules if module.verdict == UNJUDGED)
         elif not report.modules:
@@ -81,8 +82,8 @@ def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...
             checks = [_checked(logger, root, module.module, roots.app) for module in report.modules]
             if any(check.exit_code == COULD_NOT_JUDGE for check in checks):
                 filed.unread[service] = "\n\n".join(_cannot(check) for check in checks if check.exit_code == COULD_NOT_JUDGE)
-            elif any(check.red for check in checks):
-                _ = work.add([_item(logger, report.model_copy(update={"checks": checks}), roots, order)])
+            elif (checked := report.model_copy(update={"checks": checks})).for_format:
+                _ = work.add([_item(logger, checked, roots, order)])
                 filed.stale.append(service)
             else:
                 write_outcome(run_dir, _settled(report))
@@ -150,7 +151,7 @@ def _recorded(_logger: logging.Logger, _run_dir: Path, outcome: BookOutcome) -> 
 def catch_up_record(logger: logging.Logger, run_dir: Path, outcome: BookOutcome) -> BookOutcome:
     """Record how the run left one book, replacing what an earlier visit recorded."""
     write_outcome(run_dir, outcome)
-    logger.info("%s: %s", outcome.service, outcome.verdict)
+    logger.info("%s: %s", outcome.service, outcome.status)
     return outcome
 
 
@@ -205,19 +206,30 @@ def catch_up_move(logger: logging.Logger, run_dir: Path, service: str, move: For
     return merged
 
 
-def _no_declined(_logger: logging.Logger, _run_dir: Path, _service: str, lines: tuple[str, ...]) -> list[str]:
-    return list(lines)
+def _unlogged(_logger: logging.Logger, _run_dir: Path, _service: str, update: BatchLog) -> BatchLog:
+    return update
+
+
+@blueprint.node(stub=_unlogged)
+def catch_up_batch(logger: logging.Logger, run_dir: Path, service: str, update: BatchLog) -> BatchLog:
+    """Merge the fields of *update* that were set into what the run recorded of the book's batches, the batch open and the batches committed, and return all of it."""
+    path = run_dir / BATCHES_DIR / f"{service}.json"
+    kept = BatchLog.model_validate_json(path.read_text(encoding="utf-8")) if path.is_file() else BatchLog()
+    merged = kept.model_copy(update={name: getattr(update, name) for name in update.model_fields_set})  # pyright: ignore[reportAny]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(merged.model_dump_json(indent=2), encoding="utf-8")
+    logger.info("%s: %d batches committed", service, len(merged.done))
+    return merged
+
+
+def _no_declined(_logger: logging.Logger, _root: Path, _service: str, _lines: tuple[str, ...], _notes: tuple[str, ...]) -> list[str]:
+    return []
 
 
 @blueprint.node(stub=_no_declined)
-def catch_up_declined(logger: logging.Logger, run_dir: Path, service: str, lines: tuple[str, ...]) -> list[str]:
-    """Merge the lines an owner turn declined notes with into the ones the book's earlier laps declined, a later line for the same element or kind replacing an earlier one, and return them all."""
-    path = run_dir / DECLINED_DIR / f"{service}.json"
-    kept = cast("dict[str, str]", json.loads(path.read_text(encoding="utf-8"))) if path.is_file() else {}
-    fresh = {head: line.strip() for line in lines if (head := line.partition(": ")[0].strip())}
-    if fresh:
-        kept.update(fresh)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(json.dumps(kept, indent=2), encoding="utf-8")
+def catch_up_declined(logger: logging.Logger, root: Path, service: str, lines: tuple[str, ...], notes: tuple[str, ...]) -> list[str]:
+    """Write the lines an owner turn declined notes with into the book's register, `services/<service>/DECLINED.md`, read against the notes the check prints, a later line for the same element and kind replacing an earlier one, and return every entry the register holds."""
+    fresh = entries_for(lines, notes)
+    kept = write_register(root, service, fresh) if fresh else read_register(root, service)
     logger.info("%s: %d notes declined", service, len(kept))
-    return list(kept.values())
+    return kept

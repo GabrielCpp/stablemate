@@ -160,7 +160,7 @@ def test_a_plan_that_selects_nothing_plays_nothing(tmp_path: Path, monkeypatch: 
     walk(flow, flow.books(), "summarize")
 
     assert played(seen) == []
-    assert summarized(flow).summary == "ledger: moved onto the format in 1 laps, check 2 findings to 0, played nothing\nledger: differs: 1 to 0"
+    assert summarized(flow).summary == "ledger: batch 1: 3 asked, 3 done, 0 outside, 1 lap, 0 min, played nothing, committed\nledger: differs: 1 to 0"
 
 
 def test_a_plan_that_cannot_be_read_waits_on_the_environment_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,7 +177,7 @@ def test_a_plan_that_cannot_be_read_waits_on_the_environment_gate(tmp_path: Path
     assert "affected" in waiting.questions
 
 
-def test_the_outcome_line_carries_the_check_before_and_after_the_play_and_what_the_owner_applied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_the_outcome_lines_carry_the_batch_with_what_it_played_and_what_the_owner_applied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow, runner, shas, _seen = behind_book(tmp_path, monkeypatch)
     flow.fill()
     runner.replies[UPDATE] = lambda _args: {"done": "moved", "blocked": "", "format": lines_for(shas)}
@@ -187,7 +187,7 @@ def test_the_outcome_line_carries_the_check_before_and_after_the_play_and_what_t
     walk(flow, flow.books(), "summarize")
 
     done = summarized(flow)
-    assert done.summary == "ledger: moved onto the format in 1 laps, check 2 findings to 0, played 2 calls and 1 journeys green, 1 changes applied, 1 not applicable\nledger: differs: 1 to 0"
+    assert done.summary == "ledger: moved onto the format, 1 changes applied, 1 not applicable\nledger: batch 1: 3 asked, 3 done, 0 outside, 1 lap, 0 min, played 2 calls and 1 journey green, committed\nledger: differs: 1 to 0"
     assert done.books[0].format == lines_for(shas)
     assert done.books[0].moved
 

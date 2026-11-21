@@ -31,19 +31,29 @@ def repaired_book_commit_message(service: str, description: str = "", body: str 
     return "\n\n".join(part for part in (subject, body.strip(), f"{BOOK_TRAILER}: {REPAIRED}") if part)
 
 
-def caught_up_book_commit_subject(service: str) -> str:
-    """The subject of a book this workflow's catch-up brought up to the app's HEAD."""
-    return f"docs({service}): catch the {service} book up with the app"
-
-
 SUBJECT_LIMIT = 72
 
 
-def format_book_commit_subject(service: str) -> str:
-    """The subject of a book this workflow's catch-up moved onto the current book format, naming the book once and then shortening the rest where the service's name is long."""
+def batch_suffix(batch: int) -> str:
+    """What a later batch of a book adds to its commit subject."""
+    return f" (batch {batch})" if batch > 1 else ""
+
+
+def caught_up_book_commit_subject(service: str, batch: int = 1) -> str:
+    """The subject of a book this workflow's catch-up brought up to the app's HEAD, with the batch it was committed in when that is a later one and the subject still fits."""
+    subject = f"docs({service}): catch the {service} book up with the app"
+    return next((line for line in (subject + batch_suffix(batch), subject) if len(line) <= SUBJECT_LIMIT), subject)
+
+
+def format_book_commit_subject(service: str, batch: int = 1) -> str:
+    """The subject of a book this workflow's catch-up moved onto the current book format, naming the book once and then shortening the rest where the service's name is long. A later batch adds its number where the subject still fits, and drops it where the shortest wording cannot carry it."""
     options = (
         f"docs({service}): move the {service} book onto the current book format",
         f"docs({service}): move the book onto the current book format",
         f"docs({service}): adopt the current book format",
     )
+    suffix = batch_suffix(batch)
+    fits = [subject for subject in options if len(subject + suffix) <= SUBJECT_LIMIT]
+    if fits:
+        return fits[0] + suffix
     return next((subject for subject in options if len(subject) <= SUBJECT_LIMIT), options[-1])

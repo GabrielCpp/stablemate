@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import subprocess
 import sys
 from pathlib import Path
 from typing import cast
@@ -18,6 +19,7 @@ GATE_TAIL_LINES = 200
 GATE_LINE_CHARS = 2000
 PROGRESS_TAIL_LINES = 20
 AFFECTED_PLANNED = (0, 1)
+PLAY_TIMEOUT_EXIT = 3
 NOTE_LINE = "NOTE "
 
 
@@ -103,12 +105,40 @@ def run_flags(stack_copy: str = "", only: tuple[str, ...] = (), fresh: bool = Fa
     return (*(("--only", ",".join(only)) if only else ()), *titled, *(("--copy", stack_copy) if stack_copy else ()), *(("--fresh-data",) if fresh else ()))
 
 
+def _played(done: subprocess.CompletedProcess[str]) -> BookGate:
+    progress = "\n".join(_narrow(line) for line in done.stderr.splitlines()[-PROGRESS_TAIL_LINES:])
+    return BookGate(exit_code=done.returncode, output=f"{progress}\n\n{tail(done.stdout)}".strip())
+
+
 @blueprint.node(stub=_green)
 def python_book_run(logger: logging.Logger, root: Path, module: str, out_dir: Path, flags: tuple[str, ...] = ()) -> BookGate:
     """Play one of the book's modules against the live app from the book root, with the flags the run names, and keep the last lines of its progress and the tail of its report."""
-    done = run_tool([*book_command("run", module, "--out", str(out_dir)), *flags], cwd=root, logger=logger, env=BOOK_ENV)
-    progress = "\n".join(_narrow(line) for line in done.stderr.splitlines()[-PROGRESS_TAIL_LINES:])
-    return BookGate(exit_code=done.returncode, output=f"{progress}\n\n{tail(done.stdout)}".strip())
+    return _played(run_tool([*book_command("run", module, "--out", str(out_dir)), *flags], cwd=root, logger=logger, env=BOOK_ENV))
+
+
+class PlayLimit(BaseModel):
+    """The flags of a play and how many minutes it may take."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    flags: tuple[str, ...] = ()
+    minutes: int
+
+
+def _printed(text: str | bytes | None) -> str:
+    return text.decode("utf-8", "replace") if isinstance(text, bytes) else text or ""
+
+
+@blueprint.node(stub=_green)
+def python_book_play(logger: logging.Logger, root: Path, module: str, out_dir: Path, limit: PlayLimit) -> BookGate:
+    """Play one of the book's modules as `python_book_run` does, and stop a play still running after the limit's minutes. That play exits 3, as a play the environment could not judge, and says it did not end within the limit. No limit when the minutes are 0."""
+    argv = [*book_command("run", module, "--out", str(out_dir)), *limit.flags]
+    try:
+        done = run_tool(argv, cwd=root, logger=logger, env=BOOK_ENV, timeout=limit.minutes * 60.0 if limit.minutes > 0 else None)
+    except subprocess.TimeoutExpired as expired:
+        printed = tail(f"{_printed(expired.stdout)}\n{_printed(expired.stderr)}".strip())
+        return BookGate(exit_code=PLAY_TIMEOUT_EXIT, output=f"the play did not end within {limit.minutes} minutes (play_minutes)\n{printed}".strip())
+    return _played(done)
 
 
 @blueprint.node(stub=_green)

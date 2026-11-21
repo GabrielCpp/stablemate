@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+from workhorse_workflows.okf_book.catch_up.register import undeclined
 from workhorse_workflows.okf_book.shared.book_format import FormatDelta
 
 CURRENT = "current"
@@ -85,7 +86,7 @@ class ModuleCheck(BaseModel):
 
 
 class BookReport(BaseModel):
-    """What the stale reports and the checks of every module of one service say, the writer's history when it could be read, and whether the book is filed for the format alone."""
+    """What the stale reports and the checks of every module of one service say, the writer's history when it could be read, the notes its register declines, and whether the book is filed for the format."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -93,15 +94,20 @@ class BookReport(BaseModel):
     modules: list[ModuleReport] = Field(default_factory=list)
     format: FormatDelta | None = None
     checks: list[ModuleCheck] = Field(default_factory=list)
+    declined: list[str] = Field(default_factory=list)
 
     @property
     def for_format(self) -> bool:
-        """Whether the check's findings or notes are work for this book, which is the one place that says so: a check that is red or that printed notes when the book was filed."""
-        return any(check.red or check.noted for check in self.checks)
+        """Whether the check's findings or notes are work for this book, which is the one place that says so: a check that is red, or one that printed a note the book's register does not cover, when the book was filed."""
+        return any(check.red for check in self.checks) or bool(self.open_notes)
 
     @property
     def noted(self) -> list[str]:
         return [note for check in self.checks for note in check.noted]
+
+    @property
+    def open_notes(self) -> list[str]:
+        return undeclined(self.noted, self.declined)
 
     @property
     def format_behind(self) -> bool:
@@ -129,7 +135,7 @@ class BookReport(BaseModel):
 
 
 class NoteKindMove(BaseModel):
-    """How far one kind of note went: its count when the book was filed, its count after the last lap, and how many of those left are declined."""
+    """How far one kind of note went: its count when the book was filed, how many are left that no register entry covers, and how many the register covers."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -161,6 +167,49 @@ class FormatMove(BaseModel):
     owed: str = ""
 
 
+class BatchPlan(BaseModel):
+    """One batch of a book's move onto the format: the red checks and their findings, the notes it lists, every note still open when it began, and what the run saw while it ran."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int = 1
+    checks: list[ModuleCheck] = Field(default_factory=list)
+    findings: int = 0
+    notes: list[str] = Field(default_factory=list)
+    pending: list[str] = Field(default_factory=list)
+    after: list[str] = Field(default_factory=list)
+    minutes: float = 0.0
+
+    @property
+    def asked(self) -> int:
+        return self.findings + len(self.notes)
+
+
+class BatchOutcome(BaseModel):
+    """How the owner respected one batch: the items listed, those gone or declined after it, the notes outside the list that went too, its laps and minutes, and what the plays it selected played."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    number: int
+    asked: int = 0
+    done: int = 0
+    outside: int = 0
+    laps: int = 1
+    minutes: float = 0.0
+    calls: int = 0
+    journeys: int = 0
+    exit_code: int | None = None
+
+
+class BatchLog(BaseModel):
+    """The batches of one book in this run: the one open and those committed."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    current: BatchPlan | None = None
+    done: list[BatchOutcome] = Field(default_factory=list)
+
+
 class BookOutcome(BaseModel):
     """How the run left one book."""
 
@@ -177,6 +226,16 @@ class BookOutcome(BaseModel):
     format: list[str] = Field(default_factory=list)
     move: FormatMove | None = None
     declined: list[str] = Field(default_factory=list)
+    batches: list[BatchOutcome] = Field(default_factory=list)
+    remaining: int = 0
+    batch_notes: int = 0
+
+    @property
+    def status(self) -> str:
+        """What the log says of the book: its verdict, and for a book moved onto the format in batches how many notes remain."""
+        if not self.batches:
+            return self.verdict
+        return f"moved, {self.remaining} notes remain" if self.remaining else "moved"
 
 
 class Filed(BaseModel):
