@@ -19,6 +19,7 @@ BOOK = "book"
 OUTCOMES_DIR = "outcomes"
 NOTES_DIR = "format-notes"
 MOVES_DIR = "format-moves"
+DECLINED_DIR = "declined-notes"
 DIFF_LIMIT_CHARS = 60000
 
 
@@ -52,7 +53,7 @@ def _one_stale_book(_logger: logging.Logger, _roots: Roots, _services: tuple[str
 
 @blueprint.node(stub=_one_stale_book)
 def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...], run_dir: Path) -> Filed:
-    """File each book with something stale in the app, or with nothing stale and a red check, on the run's work list, and record the books that need no turn: current and first books. A book filed for the red check alone is filed for the format, and the check's findings are its work list. The writer's history comes along as context when it can be read. A book whose stale report or check could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
+    """File each book with something stale in the app, or with nothing stale and a red check, on the run's work list, and record the books that need no turn: current and first books. The check runs for every filed book, and one that is red or that printed notes makes its findings and notes the book's work list for the format. The writer's history comes along as context when it can be read. A book whose stale report or check could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
     work = WorkList(JsonBackend(run_dir / WORK_FILE))
     root = roots.book
     modules = book_modules(root)
@@ -72,14 +73,16 @@ def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...
             write_outcome(run_dir, _settled(report))
             filed.settled.append(service)
         elif report.verdict == STALE:
-            _ = work.add([_item(logger, report, roots, order, for_format=False)])
+            checks = [_checked(logger, root, module.module, roots.app) for module in report.modules]
+            judged = [check for check in checks if check.exit_code != COULD_NOT_JUDGE]
+            _ = work.add([_item(logger, report.model_copy(update={"checks": judged}), roots, order)])
             filed.stale.append(service)
         else:
             checks = [_checked(logger, root, module.module, roots.app) for module in report.modules]
             if any(check.exit_code == COULD_NOT_JUDGE for check in checks):
                 filed.unread[service] = "\n\n".join(_cannot(check) for check in checks if check.exit_code == COULD_NOT_JUDGE)
             elif any(check.red for check in checks):
-                _ = work.add([_item(logger, report.model_copy(update={"checks": checks}), roots, order, for_format=True)])
+                _ = work.add([_item(logger, report.model_copy(update={"checks": checks}), roots, order)])
                 filed.stale.append(service)
             else:
                 write_outcome(run_dir, _settled(report))
@@ -90,20 +93,19 @@ def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...
 
 def _checked(logger: logging.Logger, root: Path, module: str, app: Path) -> ModuleCheck:
     said = python_book_check(logger, root, module, app)
-    return read_check(module, said.exit_code, said.output)
+    return read_check(module, said.exit_code, said.output, said.noted)
 
 
 def _cannot(check: ModuleCheck) -> str:
     return f"`python -m ostler.book check {check.module}` exited {check.exit_code}:\n\n" + "\n".join(check.lines)
 
 
-def _item(logger: logging.Logger, report: BookReport, roots: Roots, order: int, for_format: bool) -> WorkItem:
+def _item(logger: logging.Logger, report: BookReport, roots: Roots, order: int) -> WorkItem:
     delta = book_format_delta(logger, roots.book, report.service, roots.history)
     if delta.unreadable:
         logger.info("%s: the format history was not available (%s), the check's findings are the work list", report.service, delta.unreadable)
-        report = report.model_copy(update={"for_format": for_format})
     else:
-        report = report.model_copy(update={"format": delta, "for_format": for_format})
+        report = report.model_copy(update={"format": delta})
     return WorkItem(id=report.service, kind=BOOK, order=order, payload=report.model_dump(mode="json"))
 
 
@@ -196,8 +198,26 @@ def catch_up_move(logger: logging.Logger, run_dir: Path, service: str, move: For
     """Merge the fields of *move* that were set into what the book's earlier laps recorded of its move onto the format, a later lap replacing an earlier one, and return all of it."""
     path = _move_path(run_dir, service)
     kept = FormatMove.model_validate_json(path.read_text(encoding="utf-8")) if path.is_file() else FormatMove()
-    merged = kept.model_copy(update=move.model_dump(exclude_unset=True))
+    merged = kept.model_copy(update={name: getattr(move, name) for name in move.model_fields_set})  # pyright: ignore[reportAny]
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(merged.model_dump_json(indent=2), encoding="utf-8")
-    logger.info("%s: move %s", service, merged.model_dump_json())
+    logger.info("%s: move %s", service, move.model_dump_json(exclude_unset=True))
     return merged
+
+
+def _no_declined(_logger: logging.Logger, _run_dir: Path, _service: str, lines: tuple[str, ...]) -> list[str]:
+    return list(lines)
+
+
+@blueprint.node(stub=_no_declined)
+def catch_up_declined(logger: logging.Logger, run_dir: Path, service: str, lines: tuple[str, ...]) -> list[str]:
+    """Merge the lines an owner turn declined notes with into the ones the book's earlier laps declined, a later line for the same element or kind replacing an earlier one, and return them all."""
+    path = run_dir / DECLINED_DIR / f"{service}.json"
+    kept = cast("dict[str, str]", json.loads(path.read_text(encoding="utf-8"))) if path.is_file() else {}
+    fresh = {head: line.strip() for line in lines if (head := line.partition(": ")[0].strip())}
+    if fresh:
+        kept.update(fresh)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(json.dumps(kept, indent=2), encoding="utf-8")
+    logger.info("%s: %d notes declined", service, len(kept))
+    return list(kept.values())

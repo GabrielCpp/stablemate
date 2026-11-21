@@ -80,6 +80,43 @@ never invent a statement to silence a finding. Keep every behaviour the book sta
 {% endif %}
 {% endfor %}
 {% endif %}
+{% if notes %}
+
+The check also reports notes. A note does not fail the check, and each one is work: the current
+format asks for what it names. The kinds below are the work list after the findings, each with
+its count and its elements:
+{% for group in notes %}
+
+{{ group.kind }}: {{ group.count }} notes
+{% for element in group.elements %}
+- {{ element }}
+{% endfor %}
+{% if group.more %}
+- and {{ group.more }} more are not listed here: run the check below to read them all.
+{% endif %}
+{% endfor %}
+
+For each note, do one of two things. State what it asks, from what the app's code shows. Or
+decline it, with one line in `declined` saying why it does not apply to that element, spelled
+`<Element>: <reason>`, for example a screen the app truly never links to. When a whole kind of
+note is not about the format this book is moving onto, one line `<kind>: <reason>` declines
+every note of that kind. A note left with neither is unfinished work, and the run sends you
+another lap with the notes that remain.
+
+State each link the app has, even though the play then checks each landing: a landing the play
+can check is the point. Play the journeys that land on what you stated, and correct what does
+not land{% if stack_copy %}:
+
+```
+python -m ostler.book run <module> --only <Interaction> --copy {{ stack_copy }} --out <a scratch folder>
+python -m ostler.book run <module> --partial --journey "<title>" --copy {{ stack_copy }} --out <a scratch folder>
+```
+{% else %}, with `python -m ostler.book run <module> --only <Interaction>` or
+`python -m ostler.book run <module> --partial --journey "<title>"`.
+{% endif %}
+
+Never mark a screen `first` to silence a note when the app reaches it by a link.
+{% endif %}
 {% if format %}
 
 The book format changed since this book was last judged against it. For each change, apply it
@@ -111,7 +148,7 @@ Name each endpoint or interaction you add in `added`, spelled as its class.{% if
 journeys of the changed elements and of those you name, so a name left out is a route that goes
 unplayed.{% endif %} Name each pattern you added to `App(ignore=...)` in `ignored`, as written there.
 
-You are done when, for each module below, `check` exits 0 and `stale` prints nothing under
+You are done when, for each module below, `check` exits 0{% if notes %}, every note it prints is stated or declined,{% endif %} and `stale` prints nothing under
 `## Changed files no element names`, `## Changed functions no element names` and
 `## Pointers to files that no longer exist`, from the book root. `## Stale elements` stays
 listed until the run stamps the book, so it is no sign of work left:

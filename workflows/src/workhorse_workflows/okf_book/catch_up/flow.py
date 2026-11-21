@@ -1,22 +1,24 @@
 """Every book the app has left behind. One book after another, an owner turn updates the book from what its stale report names and the diff of those files, the run judges it with the book's own check and a targeted run, and a green book is stamped verified at the app's HEAD and committed."""
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Callable
 from typing import NamedTuple
 
 from workhorse.pyflow import Await, Continue, Done, Transition
 from workhorse.worklist import WorkItem
 from workhorse_workflows.kit.schema import schema_block
-from workhorse_workflows.okf_book.catch_up.models import STALE, BookOutcome, BookReport, CatchUpOutcome, CatchUpReply, FormatMove, ModuleCheck, Roots
-from workhorse_workflows.okf_book.catch_up.nodes import BOOK, catch_up_diff, catch_up_fill, catch_up_format_notes, catch_up_move, catch_up_outcomes, catch_up_record
-from workhorse_workflows.okf_book.catch_up.report import read_check
+from workhorse_workflows.okf_book.catch_up.models import ELEMENTS_LISTED, STALE, BookOutcome, BookReport, CatchUpOutcome, CatchUpReply, FormatMove, ModuleCheck, Roots
+from workhorse_workflows.okf_book.catch_up.nodes import BOOK, catch_up_declined, catch_up_diff, catch_up_fill, catch_up_format_notes, catch_up_move, catch_up_outcomes, catch_up_record
+from workhorse_workflows.okf_book.catch_up.report import kind_moves, note_kinds, note_listing, owed_notes, read_check, undeclined
 from workhorse_workflows.okf_book.shared.book_commits import caught_up_book_commit_subject, format_book_commit_subject
-from workhorse_workflows.okf_book.shared.book_flow import BLOCKED_GATE, COULD_NOT_JUDGE, ENVIRONMENT_GATE, MAX_LAPS, RED_GATE, BookFlow, blocked_question, environment_question, red_question
+from workhorse_workflows.okf_book.shared.book_flow import BLOCKED_GATE, COULD_NOT_JUDGE, ENVIRONMENT_GATE, MAX_LAPS, RED_GATE, BookFlow, blocked_question, environment_question, owed_question, red_question
 from workhorse_workflows.okf_book.shared.book_format import mark_book_format
-from workhorse_workflows.okf_book.shared.book_gates import AFFECTED_PLANNED, BookGate, python_book_affected, python_book_calls, python_book_check, python_book_run, python_book_verified, run_flags
+from workhorse_workflows.okf_book.shared.book_gates import AFFECTED_PLANNED, BookGate, CheckSaid, python_book_affected, python_book_calls, python_book_check, python_book_run, python_book_verified, run_flags
 
 UPDATE_PROMPT = "catch_up/prompts/update-book.md"
 STALE_GATE = "catch-up-stale.md"
+BODY_WIDTH = 72
 
 
 class Lap(NamedTuple):
@@ -57,7 +59,10 @@ class CatchUpBooks(BookFlow):
         return self.pipeline("book", to=self.take, n=1) or Continue(None, self.summarize).because("every book is judged")
 
     def take(self, items: list[WorkItem]) -> Continue[...]:
-        """Send the owner the first lap of the book taken."""
+        """Send the owner the first lap of the book taken, after the check's findings and notes of the book as filed are recorded as the before of its move."""
+        report = self._report(items[0].id)
+        if report.for_format:
+            _ = self.call(catch_up_move, self.run_dir, items[0].id, FormatMove(findings_before=report.check_findings, notes_before=report.check_notes))
         return Continue(None, self.write, service=items[0].id, gate="", lap=1, added=[], ignored=[]).because("update the book")
 
     def _report(self, service: str) -> BookReport:
@@ -84,6 +89,12 @@ class CatchUpBooks(BookFlow):
         return {"commits": [{"sha": commit.sha, "short": commit.sha[:7], "subject": commit.subject} for commit in report.format.commits], "diff": report.format.diff}
 
     @staticmethod
+    def _notes(report: BookReport, declined: list[str]) -> list[dict[str, object]] | None:
+        if not report.for_format:
+            return None
+        return [{"kind": group.kind, "count": group.count, "elements": group.elements[:ELEMENTS_LISTED], "more": group.more} for group in note_kinds(undeclined(report.noted, declined))]
+
+    @staticmethod
     def _findings(report: BookReport) -> list[dict[str, object]] | None:
         if not report.for_format:
             return None
@@ -92,6 +103,7 @@ class CatchUpBooks(BookFlow):
     def write(self, service: str, gate: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
         """One owner turn updates the book from its stale report and the diff, opening on what the last gate printed. A turn that ends without a reply starts the next one fresh, and the gates judge what it left."""
         report = self._report(service)
+        declined = self.call(catch_up_declined, self.run_dir, service, ())
         args = {
             "service": service,
             "package": f"services/{service}",
@@ -103,6 +115,7 @@ class CatchUpBooks(BookFlow):
             "sections": self._sections(report),
             "format": self._format(report),
             "findings": self._findings(report),
+            "notes": self._notes(report, declined),
             "gate": gate,
             "result_schema": schema_block(CatchUpReply),
         }
@@ -114,6 +127,7 @@ class CatchUpBooks(BookFlow):
             session=owner_chain(service),
         )
         _ = self.call(catch_up_format_notes, self.run_dir, service, tuple(reply.format))
+        _ = self.call(catch_up_declined, self.run_dir, service, tuple(reply.declined))
         if reply.blocked:
             question = blocked_question(service, reply.blocked)
             return Await(self.run_dir / BLOCKED_GATE, question, self.heard, question=question, gate_name=BLOCKED_GATE, service=service, lap=lap, kept={"added": sorted({*added, *reply.added}), "ignored": sorted({*ignored, *reply.ignored})}).because(
@@ -133,7 +147,7 @@ class CatchUpBooks(BookFlow):
 
     def checks(self, service: str, lap: int, added: list[str], ignored: list[str], seen: list[str] | None = None) -> Continue[...] | Await[...]:
         """Meet the repo's commit checks over the book's package before the targeted run, so a refusal costs no replay. Each refusal goes to a fix turn and back to the check, and a pass plays the targeted run."""
-        waiting = self._checks_or_fix(self._subject(service), self._paths(service), seen or [], self.check, self.checks, service=service, lap=lap, added=added, ignored=ignored)
+        waiting = self._checks_or_fix(self._message(service), self._paths(service), seen or [], self.check, self.checks, service=service, lap=lap, added=added, ignored=ignored)
         return waiting or Continue(None, self.play, service=service, lap=lap, added=added, ignored=ignored).because("the commit checks pass")
 
     def play(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
@@ -141,21 +155,27 @@ class CatchUpBooks(BookFlow):
         gate, red = self._played(service, lap, added, ignored)
         return red or Continue(gate, self.stamp, service=service, lap=lap, added=added, ignored=ignored).because("the run is green")
 
-    def _checked(self, service: str, lap: int, added: list[str], ignored: list[str]) -> tuple[BookGate, Continue[...] | Await[...] | None]:
-        gate = BookGate(exit_code=0)
+    def _checked(self, service: str, lap: int, added: list[str], ignored: list[str]) -> tuple[CheckSaid, Continue[...] | Await[...] | None]:
+        gate = CheckSaid(exit_code=0)
         after: list[ModuleCheck] = []
         for module in self._modules(service):
             gate = self.call(python_book_check, self.root, module, self.code_root)
             if gate.exit_code != 0:
                 return gate, self._judged("check", module, gate, Lap(service, lap, added, ignored), self.check)
-            after.append(read_check(module, gate.exit_code, gate.output))
-        if self._report(service).for_format:
-            _ = self.call(catch_up_move, self.run_dir, service, FormatMove(findings_after=sum(c.findings for c in after), notes_after=sum(c.notes for c in after)))
-        return gate, None
+            after.append(read_check(module, gate.exit_code, gate.output, gate.noted))
+        report = self._report(service)
+        if not report.for_format:
+            return gate, None
+        declined = self.call(catch_up_declined, self.run_dir, service, ())
+        left = [note for check in after for note in check.noted]
+        kinds = kind_moves(report.noted, left, declined)
+        _ = self.call(catch_up_move, self.run_dir, service, FormatMove(findings_after=sum(c.findings for c in after), notes_after=sum(c.notes for c in after), kinds=kinds))
+        owed = owed_notes(report.noted, left, declined)
+        return gate, self._owed(Lap(service, lap, added, ignored), owed) if owed else None
 
     def _played(self, service: str, lap: int, added: list[str], ignored: list[str]) -> tuple[BookGate, Continue[...] | Await[...] | None]:
         report = self._report(service)
-        if report.for_format:
+        if report.verdict != STALE:
             return self._played_selected(service, lap, added, ignored)
         gate = BookGate(exit_code=0)
         for module in report.modules:
@@ -192,6 +212,16 @@ class CatchUpBooks(BookFlow):
         _ = self.call(catch_up_move, self.run_dir, service, FormatMove(calls=calls, journeys=journeys, exit_code=gate.exit_code if calls or journeys else None, owed="; ".join(owed)))
         return gate, None
 
+    def _owed(self, lap: Lap, owed: list[str]) -> Continue[...] | Await[...]:
+        listing = note_listing(owed)
+        said = f"The check passes, and these notes are neither stated nor declined:\n\n{listing}\n\nState each one from what the app's code shows, or decline it with one line, `<Element>: <reason>`, or `<kind>: <reason>` for a whole kind that is not about the format the book is moving onto."
+        if lap.number >= MAX_LAPS:
+            question = owed_question(lap.service, lap.number, listing)
+            return Await(self.run_dir / RED_GATE, question, self.heard, question=question, gate_name=RED_GATE, service=lap.service, lap=lap.number, kept={"added": lap.added, "ignored": lap.ignored}).because(
+                "notes are still owed after the last lap"
+            )
+        return Continue(said, self.write, service=lap.service, gate=said, lap=lap.number + 1, added=lap.added, ignored=lap.ignored).because("notes are still owed")
+
     def _replayed(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...] | None:
         return self._checked(service, lap, added, ignored)[1] or self._played(service, lap, added, ignored)[1]
 
@@ -217,11 +247,11 @@ class CatchUpBooks(BookFlow):
     def commit(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
         """Commit the book's package and its stamp, and record the book as caught up. A retry after the commit landed finds nothing to commit."""
         report = self._report(service)
-        waiting = self._commit_or_await(self._subject(service), self._paths(service), lambda: self._replayed(service, lap, added, ignored), self.commit, service=service, lap=lap, added=added, ignored=ignored)
+        waiting = self._commit_or_await(self._message(service), self._paths(service), lambda: self._replayed(service, lap, added, ignored), self.commit, service=service, lap=lap, added=added, ignored=ignored)
         if waiting:
             return waiting
         notes = self.call(catch_up_format_notes, self.run_dir, service, ())
-        move = self._move(service, report) if report.for_format else None
+        move = self._move(service) if report.for_format else None
         outcome = BookOutcome(
             service=service,
             verdict="caught-up",
@@ -233,16 +263,25 @@ class CatchUpBooks(BookFlow):
             moved=report.for_format or report.format_behind,
             format=notes if report.format_behind else [],
             move=move,
+            declined=self.call(catch_up_declined, self.run_dir, service, ()) if report.for_format else [],
         )
         _ = self.call(catch_up_record, self.run_dir, outcome)
         return Continue(outcome, self.books).because("the book is committed")
 
-    def _move(self, service: str, report: BookReport) -> FormatMove:
-        recorded = self.call(catch_up_move, self.run_dir, service, FormatMove())
-        return recorded.model_copy(update={"findings_before": report.check_findings, "notes_before": report.check_notes})
+    def _move(self, service: str) -> FormatMove:
+        return self.call(catch_up_move, self.run_dir, service, FormatMove())
 
     def _subject(self, service: str) -> str:
         return caught_up_book_commit_subject(service) if self._report(service).verdict == STALE else format_book_commit_subject(service)
+
+    def _message(self, service: str) -> str:
+        """The commit message of a book: its subject, and for a book moved onto the format a body with how far each kind of note went."""
+        subject = self._subject(service)
+        if not self._report(service).for_format:
+            return subject
+        lines = [kind.said for kind in self._move(service).kinds]
+        body = "\n".join(textwrap.fill(line, BODY_WIDTH, subsequent_indent="  ") for line in lines)
+        return f"{subject}\n\n{body}" if body else subject
 
     def _modules(self, service: str) -> list[str]:
         return [module.module for module in self._report(service).modules]
@@ -263,10 +302,19 @@ class CatchUpBooks(BookFlow):
         return Continue(said, self.write, service=lap.service, gate=said, lap=lap.number + 1, added=lap.added, ignored=lap.ignored).because("the book is red")
 
     def summarize(self) -> Done:
-        """End on one line per book: current, caught up, or a first book."""
+        """End on the book's lines, which are logged one record each as the last thing the run says: one line per book, and for a book moved onto the format one line per kind of note."""
         outcomes = self.call(catch_up_outcomes, self.run_dir)
-        lines = [_line(outcome) for outcome in outcomes]
+        lines = [line for outcome in outcomes for line in _lines(outcome)]
+        for line in lines:
+            self.logger.info("%s", line)
         return Done(CatchUpOutcome(books=outcomes, summary="\n".join(lines))).because("every book is judged")
+
+
+def _lines(outcome: BookOutcome) -> list[str]:
+    if outcome.move is None:
+        return [_line(outcome)]
+    owed = [f"{outcome.service}: owed to a scheduled whole play: {outcome.move.owed}"] if outcome.move.owed else []
+    return [_moved_line(outcome, outcome.move), *(f"{outcome.service}: {kind.said}" for kind in outcome.move.kinds), *owed]
 
 
 def _line(outcome: BookOutcome) -> str:
@@ -274,26 +322,33 @@ def _line(outcome: BookOutcome) -> str:
         return f"{outcome.service}: current"
     if outcome.verdict == "first-book":
         return f"{outcome.service}: first book, write it with python_book"
-    if outcome.move is not None:
-        return _moved_line(outcome, outcome.move)
     moved = f"moved onto the format, {_count(outcome, 'applied')} changes applied, {_count(outcome, 'not applicable')} not applicable"
     if not outcome.app:
         return f"{outcome.service}: {moved}"
-    line = f"{outcome.service}: caught up in {outcome.laps} laps, {len(outcome.elements)} elements changed, {len(outcome.added)} endpoints added"
-    if outcome.ignored:
-        line += f", {len(outcome.ignored)} files ignored: {', '.join(outcome.ignored)}"
+    line = _caught_up(outcome)
     return f"{line}, {moved}" if outcome.moved else line
 
 
+def _caught_up(outcome: BookOutcome) -> str:
+    line = f"{outcome.service}: caught up in {outcome.laps} laps, {len(outcome.elements)} elements changed, {len(outcome.added)} endpoints added"
+    if outcome.ignored:
+        line += f", {len(outcome.ignored)} files ignored: {', '.join(outcome.ignored)}"
+    return line
+
+
 def _moved_line(outcome: BookOutcome, move: FormatMove) -> str:
-    line = f"{outcome.service}: moved onto the format in {outcome.laps} laps, check {move.findings_before} findings to {move.findings_after}, notes {move.notes_before} to {move.notes_after}, "
-    if move.exit_code is None:
-        line += "played nothing"
+    checked = f"check {move.findings_before} findings to {move.findings_after}"
+    if outcome.app:
+        line = f"{_caught_up(outcome)}, {checked}"
     else:
-        line += f"played {move.calls} calls and {move.journeys} journeys {'green' if move.exit_code == 0 else f'exit {move.exit_code}'}"
+        line = f"{outcome.service}: moved onto the format in {outcome.laps} laps, {checked}, "
+        if move.exit_code is None:
+            line += "played nothing"
+        else:
+            line += f"played {move.calls} calls and {move.journeys} journeys {'green' if move.exit_code == 0 else f'exit {move.exit_code}'}"
     if outcome.format:
         line += f", {_count(outcome, 'applied')} changes applied, {_count(outcome, 'not applicable')} not applicable"
-    return f"{line}, owed to a whole play: {move.owed}" if move.owed else line
+    return line
 
 
 def _count(outcome: BookOutcome, kind: str) -> int:

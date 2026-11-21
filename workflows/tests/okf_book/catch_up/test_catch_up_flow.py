@@ -150,7 +150,7 @@ def test_a_book_whose_gates_pass_is_stamped_verified_and_committed(tmp_path: Pat
     step = walk(flow, advance(flow, step), "books")
 
     verbs = [argv[3] if argv[1] != "-c" else "calls" for argv in seen]
-    assert verbs == ["stale", "check", "calls", "run", "verified"]
+    assert verbs == ["stale", "check", "check", "calls", "run", "verified"]
     assert seen[-1][3:] == ["verified", "services.ledger", "--app", str(flow.code_root)]
     assert git(flow.root, "rev-parse", "HEAD") != head
     assert git(flow.root, "log", "-1", "--format=%s") == "docs(ledger): catch the ledger book up with the app\n"

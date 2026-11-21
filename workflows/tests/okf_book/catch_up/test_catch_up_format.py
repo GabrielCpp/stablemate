@@ -67,7 +67,7 @@ def test_a_book_with_nothing_stale_and_a_red_check_is_filed_and_sent_the_finding
     assert "+three" in rendered
     assert "The book format changed since this book was last judged against it." in rendered
     assert "The book was last verified against the commit below" not in rendered
-    assert "--only" not in rendered
+    assert "among the changed elements" not in rendered
     assert "The check of this book reports these findings." in rendered
     assert "never invent a statement to silence a finding" in rendered
     assert "- sources: Ping names no source" in rendered
@@ -147,7 +147,7 @@ def test_a_whole_plan_plays_only_what_it_names_and_records_the_reason_as_owed(tm
     done = summarized(flow)
     assert done.books[0].move is not None
     assert done.books[0].move.owed == "a shared book file changed: services/shared/names.py"
-    assert done.summary.endswith("owed to a whole play: a shared book file changed: services/shared/names.py")
+    assert done.summary.splitlines()[-1] == "ledger: owed to a scheduled whole play: a shared book file changed: services/shared/names.py"
 
 
 def test_a_plan_that_selects_nothing_plays_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -160,7 +160,7 @@ def test_a_plan_that_selects_nothing_plays_nothing(tmp_path: Path, monkeypatch: 
     walk(flow, flow.books(), "summarize")
 
     assert played(seen) == []
-    assert summarized(flow).summary == "ledger: moved onto the format in 1 laps, check 2 findings to 0, notes 3 to 1, played nothing"
+    assert summarized(flow).summary == "ledger: moved onto the format in 1 laps, check 2 findings to 0, played nothing\nledger: differs: 1 to 0"
 
 
 def test_a_plan_that_cannot_be_read_waits_on_the_environment_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -187,7 +187,7 @@ def test_the_outcome_line_carries_the_check_before_and_after_the_play_and_what_t
     walk(flow, flow.books(), "summarize")
 
     done = summarized(flow)
-    assert done.summary == "ledger: moved onto the format in 1 laps, check 2 findings to 0, notes 3 to 1, played 2 calls and 1 journeys green, 1 changes applied, 1 not applicable"
+    assert done.summary == "ledger: moved onto the format in 1 laps, check 2 findings to 0, played 2 calls and 1 journeys green, 1 changes applied, 1 not applicable\nledger: differs: 1 to 0"
     assert done.books[0].format == lines_for(shas)
     assert done.books[0].moved
 
@@ -199,7 +199,7 @@ def test_a_book_stale_in_the_app_and_behind_on_the_format_keeps_the_app_subject_
     said = stale_printed(first, {"Ping": "ledger/ping.py"}, [])
     seen = book_exits(monkeypatch, stale={"services.ledger": (1, said)}, calls={"services.ledger": ["Ping"]})
     flow.fill()
-    assert "check" not in [argv[3] for argv in seen]
+    assert [argv[3] for argv in seen] == ["stale", "check"]
 
     step = walk(flow, flow.books(), "write")
     walk(flow, advance(flow, step), "books")

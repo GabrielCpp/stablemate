@@ -11,6 +11,7 @@ CURRENT = "current"
 FIRST_BOOK = "first-book"
 STALE = "stale"
 UNJUDGED = "unjudged"
+ELEMENTS_LISTED = 80
 
 
 class Roots(BaseModel):
@@ -45,6 +46,23 @@ class ModuleReport(BaseModel):
         return sorted(found | set(self.new_files))
 
 
+class NoteKind(BaseModel):
+    """The notes of one kind the check printed: the kind and the element each one names."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: str
+    elements: list[str] = Field(default_factory=list)
+
+    @property
+    def count(self) -> int:
+        return len(self.elements)
+
+    @property
+    def more(self) -> int:
+        return max(0, self.count - ELEMENTS_LISTED)
+
+
 class ModuleCheck(BaseModel):
     """What the book's check said of one module: its exit code, the findings and notes it counted, and the finding lines it printed."""
 
@@ -55,6 +73,7 @@ class ModuleCheck(BaseModel):
     findings: int = 0
     notes: int = 0
     lines: list[str] = Field(default_factory=list)
+    noted: list[str] = Field(default_factory=list)
 
     @property
     def red(self) -> bool:
@@ -74,7 +93,15 @@ class BookReport(BaseModel):
     modules: list[ModuleReport] = Field(default_factory=list)
     format: FormatDelta | None = None
     checks: list[ModuleCheck] = Field(default_factory=list)
-    for_format: bool = False
+
+    @property
+    def for_format(self) -> bool:
+        """Whether the check's findings or notes are work for this book, which is the one place that says so: a check that is red or that printed notes when the book was filed."""
+        return any(check.red or check.noted for check in self.checks)
+
+    @property
+    def noted(self) -> list[str]:
+        return [note for check in self.checks for note in check.noted]
 
     @property
     def format_behind(self) -> bool:
@@ -101,8 +128,25 @@ class BookReport(BaseModel):
         return sorted({name for module in self.modules for name in module.elements})
 
 
+class NoteKindMove(BaseModel):
+    """How far one kind of note went: its count when the book was filed, its count after the last lap, and how many of those left are declined."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: str
+    before: int = 0
+    after: int = 0
+    declined: int = 0
+
+    @property
+    def said(self) -> str:
+        """The kind with its counts as one line."""
+        line = f"{self.kind}: {self.before} to {self.after}"
+        return f"{line} ({self.declined} declined)" if self.declined else line
+
+
 class FormatMove(BaseModel):
-    """What an operator reads to accept a book moved onto the format: the check's findings and notes before the owner's first lap and after the last, the calls and journeys played with the play's exit, and what a whole play is owed."""
+    """What an operator reads to accept a book moved onto the format: the check's findings and notes before the owner's first lap and after the last, each kind of note with its counts, the calls and journeys played with the play's exit, and what a whole play is owed."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -110,6 +154,7 @@ class FormatMove(BaseModel):
     findings_after: int = 0
     notes_before: int = 0
     notes_after: int = 0
+    kinds: list[NoteKindMove] = Field(default_factory=list)
     calls: int = 0
     journeys: int = 0
     exit_code: int | None = None
@@ -131,6 +176,7 @@ class BookOutcome(BaseModel):
     moved: bool = False
     format: list[str] = Field(default_factory=list)
     move: FormatMove | None = None
+    declined: list[str] = Field(default_factory=list)
 
 
 class Filed(BaseModel):
@@ -153,6 +199,7 @@ class CatchUpReply(BaseModel):
     added: list[str] = Field(default_factory=list, description="The class name of each endpoint or interaction you added to the book, as the book spells it.")
     ignored: list[str] = Field(default_factory=list, description="Each pattern you added to the service's `App(ignore=...)`, as written there.")
     format: list[str] = Field(default_factory=list, description="One line for each format change listed above, `<short sha> applied: <what you changed>` or `<short sha> not applicable: <why>`.")
+    declined: list[str] = Field(default_factory=list, description="One line for each note you judged not to apply, `<Element>: <reason>`, or `<kind>: <reason>` for a whole kind of note the book is not moving onto.")
 
 
 class CatchUpOutcome(BaseModel):

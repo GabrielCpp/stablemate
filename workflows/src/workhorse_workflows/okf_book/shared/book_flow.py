@@ -45,6 +45,10 @@ def red_question(service: str, lap: int, said: str) -> str:
     return f"The {service} book is still red after {lap} laps:\n\n{said}\n\nAnswer here, and the owner takes one more lap with your answer."
 
 
+def owed_question(service: str, lap: int, said: str) -> str:
+    return f"The {service} book passes its check after {lap} laps, and the notes below are neither stated nor declined:\n\n{said}\n\nAnswer here, and the owner takes one more lap with your answer. To decline a note or a whole kind, say so in the answer."
+
+
 def environment_question(service: str, verb: str, said: str) -> str:
     return f"The book's {verb} could not judge the {service} book, which is the environment's side:\n\n{said}\n\nFix the environment, then answer here to {verb} again."
 

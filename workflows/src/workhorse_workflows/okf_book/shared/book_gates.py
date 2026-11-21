@@ -18,6 +18,7 @@ GATE_TAIL_LINES = 200
 GATE_LINE_CHARS = 2000
 PROGRESS_TAIL_LINES = 20
 AFFECTED_PLANNED = (0, 1)
+NOTE_LINE = "NOTE "
 
 
 class BookGate(BaseModel):
@@ -35,8 +36,18 @@ class MissingList(BookGate):
     unnamed: tuple[str, ...] = ()
 
 
+class CheckSaid(BookGate):
+    """What the book's check said: its exit code, the tail of its output, and every note it printed, whole."""
+
+    noted: tuple[str, ...] = ()
+
+
 def _green(_logger: logging.Logger, *_args: object) -> BookGate:
     return BookGate(exit_code=0, output="dry run")
+
+
+def _check_green(_logger: logging.Logger, *_args: object) -> CheckSaid:
+    return CheckSaid(exit_code=0, output="dry run")
 
 
 def _missing_green(_logger: logging.Logger, *_args: object) -> MissingList:
@@ -66,11 +77,16 @@ def _unnamed(stdout: str) -> tuple[str, ...]:
     return tuple(found)
 
 
-@blueprint.node(stub=_green)
-def python_book_check(logger: logging.Logger, root: Path, module: str, app: Path) -> BookGate:
-    """Run the check of one of the book's modules from the book root, with the source pointers read under the app's root, and keep the tail of what it printed."""
+def note_lines(text: str) -> tuple[str, ...]:
+    """The notes a check printed, each as `<element>: <problem>`, whole however many there are."""
+    return tuple(_narrow(line[len(NOTE_LINE):].strip()) for line in text.splitlines() if line.startswith(NOTE_LINE))
+
+
+@blueprint.node(stub=_check_green)
+def python_book_check(logger: logging.Logger, root: Path, module: str, app: Path) -> CheckSaid:
+    """Run the check of one of the book's modules from the book root, with the source pointers read under the app's root, and keep the tail of what it printed and every note it printed."""
     done = run_tool(book_command("check", module, "--app", str(app)), cwd=root, logger=logger, env=BOOK_ENV)
-    return BookGate(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()))
+    return CheckSaid(exit_code=done.returncode, output=tail(f"{done.stdout}\n{done.stderr}".strip()), noted=note_lines(done.stdout))
 
 
 @blueprint.node(stub=_missing_green)
