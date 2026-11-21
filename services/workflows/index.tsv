@@ -60,6 +60,14 @@ decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-th
 decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:8	A fixed answer may therefore cite the spec file by a `- path:` line. The check accepts it when the file exists inside the story's spec folder. The path may be absolute, relative to the spec folder, or end with the folder's own trailing parts. A path that escapes the folder, names a directory or names a missing file does not hold.
 decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:9	
 decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:10	Commit evidence and test evidence keep their rules.
+decision	a-recorded-finding-is-judged-again	decisions/a-recorded-finding-is-judged-again.md:1	story: none
+decision	a-recorded-finding-is-judged-again	decisions/a-recorded-finding-is-judged-again.md:3	elements: DryRunCoder
+decision	a-recorded-finding-is-judged-again	decisions/a-recorded-finding-is-judged-again.md:4	sources: workflows/src/workhorse_workflows/coder/book_qa/flow.py::BookQa
+decision	a-recorded-finding-is-judged-again	decisions/a-recorded-finding-is-judged-again.md:6	A recorded pass with no finding is replayed without the seat, because its calls are the exam after a developer fix.
+decision	a-recorded-finding-is-judged-again	decisions/a-recorded-finding-is-judged-again.md:7	
+decision	a-recorded-finding-is-judged-again	decisions/a-recorded-finding-is-judged-again.md:8	A recorded finding is never replayed. A replay cannot tell a fixed defect from a standing one, because the defect is declared known in the book and the replay stays green either way. It sent the same finding back to the developer on every visit.
+decision	a-recorded-finding-is-judged-again	decisions/a-recorded-finding-is-judged-again.md:9	
+decision	a-recorded-finding-is-judged-again	decisions/a-recorded-finding-is-judged-again.md:10	The seat judges each earlier finding again against the running app. The record is rewritten from what it reports, so a finding the app now meets leaves the record and one it still fails stays.
 decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-the-dry-runs.md:1	story: workflows-book
 decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-the-dry-runs.md:3	elements: New, DryRunLoopRunner, DryRunResearch, DryRunAuthor, DryRunCoder, DryRunOkfBook, DryRunReviewDebt
 decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-the-dry-runs.md:5	Every workhorse-<name> binary is the engine's own command line with one workflow loaded, and its run, dot,

@@ -33,11 +33,11 @@ Work **only** the story at that path.
 
 ## The checks failed
 
-The workflow checked your last turn, and it did not hold. Its report:
+The workflow checked the story, and the check did not hold. Its report:
 
 {{ workhorse_var('report') }}
 
-This turn repairs what the report names. A failed book check or a red play is yours to
+This turn repairs what the report names. When the report lists the findings of an earlier pass, judge each again as it says. A failed book check or a red play is yours to
 classify: repair the book when the cause is there, or turn the disagreement into a finding
 when the app is wrong. Do not weaken, skip or delete a check.
 {% endif %}

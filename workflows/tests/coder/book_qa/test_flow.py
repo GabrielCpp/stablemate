@@ -924,7 +924,7 @@ def test_a_replay_keeps_the_recorded_unreached_claims(
     assert agent.calls == [], agent.calls
 
 
-def test_a_green_replay_over_a_recorded_finding_sends_it_back_again(
+def test_a_recorded_finding_goes_to_the_seat_to_be_judged_again(
     lane: Path,
     write: Callable[[Path, str], Path],
     book: Callable[..., _Book],
@@ -932,15 +932,61 @@ def test_a_green_replay_over_a_recorded_finding_sends_it_back_again(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    """The finding's defect is declared known, so the replay stays green while the app is still wrong, and the story must not pass on it."""
+    """A replay cannot tell a fixed defect from a standing one, so the seat judges each earlier finding again."""
     write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS, "findings": [FINDING]}))
     book()
     agent = _Agent(lane)
 
     result = drive_flow(_flow(), env(), agent)
 
+    assert result.status == "passed", result
+    assert agent.counts() == {"qa-book": 1}, agent.counts()
+    report = agent.args[0]["report"]
+    assert report.startswith("Check: the findings of the earlier pass"), report
+    assert FINDING["id"] in report and FINDING["issue"] in report, report
+    assert agent.review_args, "the end review did not run"
+    record = json.loads((_spec_dir() / "book-qa.json").read_text(encoding="utf-8"))
+    assert "findings" not in record, record
+
+
+def test_a_recorded_finding_the_seat_reports_again_goes_back_to_the_developer(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A finding the app still fails stays on the record and goes back to the developer."""
+    write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS, "findings": [FINDING]}))
+    book()
+    agent = _Agent(lane, {"status": "findings", "findings": [FINDING], "calls": CALLS})
+
+    result = drive_flow(_flow(), env(), agent)
+
     assert result.status == "refix", result
     assert [f.id for f in result.findings] == ["list-drops-token"], result.findings
+    assert agent.counts() == {"qa-book": 1}, agent.counts()
+    record = json.loads((_spec_dir() / "book-qa.json").read_text(encoding="utf-8"))
+    assert [f["id"] for f in record["findings"]] == ["list-drops-token"], record
+
+
+def test_a_record_with_no_finding_is_still_replayed_with_no_seat(
+    lane: Path,
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """A recorded pass with no finding keeps its replay."""
+    write(_spec_dir() / "book-qa.json", json.dumps({"services": CALLS}))
+    book()
+    agent = _Agent(lane)
+
+    result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
     assert agent.calls == [], agent.calls
 
 

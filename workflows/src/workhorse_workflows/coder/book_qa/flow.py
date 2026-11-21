@@ -63,6 +63,18 @@ def _gate(gate: str, notes: str) -> str:
     return f"Check: {gate}\n\n{notes.strip() or 'the check reported no detail.'}"
 
 
+def _earlier_findings(findings: list[QaFinding]) -> str:
+    """The findings an earlier pass recorded, as the seat's next turn reads them."""
+    rows = "\n".join(f"- `{f.id}`, target `{f.target}`: {f.issue}" for f in findings)
+    return _gate(
+        "the findings of the earlier pass",
+        "An earlier pass of this story reported the findings below, and the developer has worked on the story since. "
+        "Judge each again against the running app. Report a finding again only when the app still fails it. "
+        "For each finding the app now meets, state the claim in the book as current behaviour and remove any "
+        "known-defect entry the earlier pass wrote for it.\n\n" + rows,
+    )
+
+
 class BookQa(QaOwner):
     """Judge one story by a run of the executable book of each service it touches."""
 
@@ -88,13 +100,10 @@ class BookQa(QaOwner):
             notes = _gate("the QA stack", f"The stack did not come up at step `{stack.failed_step}`.\n\n{stack.notes}")
             return self._ask(notes, "the QA environment", 0)
         record = self.call(read_book_record, self.ctx.spec_dir)
+        if record.services and record.findings:
+            return Continue(stack, self.work, report=_earlier_findings(record.findings))
         if record.services:
-            return Continue(
-                record,
-                self.check,
-                findings=[f.model_dump() for f in record.findings],
-                unreached=list(record.unreached),
-            )
+            return Continue(record, self.check, unreached=list(record.unreached))
         return Continue(stack, self.work)
 
     @property
