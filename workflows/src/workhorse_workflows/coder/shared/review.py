@@ -67,6 +67,27 @@ def _cites_change(cited: str, changed: dict[str, list[str]]) -> bool:
     return False
 
 
+def _cites_spec(cited: str, spec_dir: str) -> bool:
+    if not spec_dir:
+        return False
+    root = Path(spec_dir).resolve()
+    wanted = cited.strip()
+    while wanted.startswith("./"):
+        wanted = wanted[2:]
+    if not wanted:
+        return False
+    given = Path(wanted)
+    candidates = [given] if given.is_absolute() else [root / given]
+    if not given.is_absolute():
+        tail = root.parts
+        for size in range(1, len(tail) + 1):
+            if given.parts[:size] == tail[-size:]:
+                candidates.append(root.joinpath(*given.parts[size:]))
+    return any(
+        found.resolve().is_relative_to(root) and found.resolve().is_file() for found in candidates
+    )
+
+
 def _names_test(test: str, changed: dict[str, list[str]]) -> bool:
     for repo, files in changed.items():
         for path in files:
@@ -79,14 +100,17 @@ def _names_test(test: str, changed: dict[str, list[str]]) -> bool:
     return False
 
 
-def evidence_gap(answer: dict, repos: list[str], changed: dict[str, list[str]]) -> str:
+def evidence_gap(answer: dict, repos: list[str], changed: dict[str, list[str]], spec_dir: str = "") -> str:
     """Why a fixed answer's evidence does not hold up, or `""` when every citation does."""
     for sha in answer.get("commits", []):
         if not any(_git(repo, "cat-file", "-e", f"{sha}^{{commit}}") for repo in repos):
             return f"commit {sha} is in none of the story's code repos"
     for path in answer.get("paths", []):
-        if not _cites_change(path, changed):
-            return f"path {path} is not among the files this story changed in its code repos"
+        if not (_cites_change(path, changed) or _cites_spec(path, spec_dir)):
+            return (
+                f"path {path} is not among the files this story changed in its code repos, "
+                "and is no file of the story's spec folder"
+            )
     for test in answer.get("tests", []):
         if not _names_test(test, changed):
             return f"test {test} appears in no file this story changed"
@@ -146,14 +170,15 @@ def settle_findings(
     facade = Ostler(root)
     ledger = facade.settle_answers(story_id, ids, write=True)
     message = commits.message("docs", commits.scope(root.name), f"record the review settlement of {story_slug}")
-    settlement = Path(facade.spec_path(story_id)) / SETTLEMENT_FILE
+    spec_dir = facade.spec_path(story_id)
+    settlement = Path(spec_dir) / SETTLEMENT_FILE
     if settlement.resolve().is_relative_to(root.resolve()):
         commit_paths(root, message, str(settlement.resolve().relative_to(root.resolve())), verify=False)
     changed = _changed(logger, code, story_slug, story_id)
     settled: list[str] = []
     rejected: dict[str, str] = {}
     for fid in ledger.get("fixed", []):
-        gap = evidence_gap(ledger["answers"][fid], code, changed)
+        gap = evidence_gap(ledger["answers"][fid], code, changed, str(spec_dir))
         if gap:
             rejected[fid] = gap
         else:

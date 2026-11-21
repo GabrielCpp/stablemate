@@ -57,7 +57,8 @@ Reason: coincidence: the API's error codes follow its published contract; the re
 
 The workflow checks every fixed answer: the commit exists in one of the story's repos, the
 path is among the files the story changed, and the test name appears in a file the story
-changed. It checks every "not a defect" decline too: it names a test, and the test name
+changed. A fix made in a file of the story's spec folder is evidenced by a `- path:` line
+naming that file. It checks every "not a defect" decline too: it names a test, and the test name
 appears in a tracked file of the story's code repos. It checks every Reuse decline: the reason
 opens with `coincidence:` and gives two different reasons. A finding with no section, or an
 answer that fails a check, comes back to the review phase in the next turn.

@@ -52,6 +52,14 @@ decision	a-coder-turn-ends-at-turn-minutes	decisions/a-coder-turn-ends-at-turn-m
 decision	a-coder-turn-ends-at-turn-minutes	decisions/a-coder-turn-ends-at-turn-minutes.md:14	
 decision	a-coder-turn-ends-at-turn-minutes	decisions/a-coder-turn-ends-at-turn-minutes.md:15	`turn_minutes` must be a whole number above zero. A launch that gives any other value is refused before any turn starts,
 decision	a-coder-turn-ends-at-turn-minutes	decisions/a-coder-turn-ends-at-turn-minutes.md:16	and it names `turn_minutes`. A run resumed from a checkpoint that predates the parameter takes the default of 60.
+decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:1	story: none
+decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:3	elements: DryRunCoder
+decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:4	sources: workflows/src/workhorse_workflows/coder/shared/review.py::evidence_gap
+decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:6	A review finding can concern a file of the story's spec folder, such as its plan or a recorded measurement. In a workspace whose spec folder sits outside the code repositories, no commit carries that fix.
+decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:7	
+decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:8	A fixed answer may therefore cite the spec file by a `- path:` line. The check accepts it when the file exists inside the story's spec folder. The path may be absolute, relative to the spec folder, or end with the folder's own trailing parts. A path that escapes the folder, names a directory or names a missing file does not hold.
+decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:9	
+decision	a-fix-in-the-spec-folder-is-evidenced-by-its-file	decisions/a-fix-in-the-spec-folder-is-evidenced-by-its-file.md:10	Commit evidence and test evidence keep their rules.
 decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-the-dry-runs.md:1	story: workflows-book
 decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-the-dry-runs.md:3	elements: New, DryRunLoopRunner, DryRunResearch, DryRunAuthor, DryRunCoder, DryRunOkfBook, DryRunReviewDebt
 decision	the-book-plays-new-and-the-dry-runs	decisions/the-book-plays-new-and-the-dry-runs.md:5	Every workhorse-<name> binary is the engine's own command line with one workflow loaded, and its run, dot,
