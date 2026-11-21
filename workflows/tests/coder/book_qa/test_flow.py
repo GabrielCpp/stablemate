@@ -1672,12 +1672,14 @@ def test_a_play_that_does_not_end_in_time_goes_to_the_operator_as_an_environment
 
 def test_the_plan_is_written_from_code_with_the_calls_and_the_exit_of_each_play(
     lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
     book: Callable[..., _Book],
     stack: _Stack,
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
     diff = {"app_files": 2, "book_files": 1, "not_computed": {"count": 4, "paths": []}}
+    base = git(lane, "rev-parse", "HEAD").stdout.strip()
     book(plans={"services.api": affected_report(only=["ListX", "BuildX"], by_journey=["Share a list"], diff=diff)})
 
     drive_flow(_flow(), env(), _Agent(lane))
@@ -1691,6 +1693,7 @@ def test_the_plan_is_written_from_code_with_the_calls_and_the_exit_of_each_play(
             "## api",
             "",
             "- plan: partial",
+            "- change read: the range since " + base,
             "- calls: ListX, BuildX",
             "- journeys: Share a list",
             "- uncovered: none",
@@ -1700,3 +1703,68 @@ def test_the_plan_is_written_from_code_with_the_calls_and_the_exit_of_each_play(
             "",
         ]
     )
+
+
+def test_a_whole_plan_plays_its_direct_selection_and_owes_the_rest_capped(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(
+        plans={
+            "services.api": affected_report(
+                "whole", only=["ListX"], by_journey=["Share a list"], owed=[f"reason {i}" for i in range(25)]
+            )
+        }
+    )
+
+    result = drive_flow(_flow(), env(), _Agent(lane))
+
+    assert result.status == "passed", result
+    assert len(scripted.argv["run"]) == 2, scripted.argv["run"]
+    owed = "; ".join(f"reason {i}" for i in range(10)) + "; and 15 more"
+    assert f"- owed to the scheduled whole play: {owed}" in _plan_md()
+    assert "reason 24" not in _plan_md()
+
+
+def test_the_selection_reads_the_storys_commits_when_they_carry_the_trailer(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    write(lane / "src" / "x.py", "x = 1\n")
+    git(lane, "add", "-A")
+    git(lane, "commit", "-qm", "feat: x\n\nStory: STORY-1")
+    scripted = book()
+
+    with caplog.at_level(logging.INFO):
+        drive_flow(_flow(), env(), _Agent(lane))
+
+    argv = scripted.argv["affected"][0]
+    assert argv[argv.index("--story") + 1] == "STORY-1", argv
+    assert "reads the 1 commit(s) of story STORY-1" in caplog.text
+    assert "- change read: story STORY-1: 1 commit(s), " in _plan_md()
+
+
+def test_the_selection_falls_back_to_the_range_when_no_commit_carries_the_trailer(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    scripted = book()
+
+    with caplog.at_level(logging.INFO):
+        drive_flow(_flow(), env(), _Agent(lane))
+
+    assert all("--story" not in argv for argv in scripted.argv["affected"]), scripted.argv["affected"]
+    assert "no commit carries 'Story: STORY-1'" in caplog.text

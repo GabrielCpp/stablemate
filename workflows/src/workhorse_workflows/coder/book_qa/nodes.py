@@ -10,6 +10,7 @@ from typing import Any, Literal, cast
 
 from ostler.book.index import FILE as INDEX_FILE
 from ostler.book.index import parse as parse_index
+from ostler.book.sources import story_commits
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.provenance import story_base
@@ -65,6 +66,7 @@ UNREACHED_FILE = "qa-unreached.json"
 PLAN_FILE = "qa-plan.md"
 TIMEOUT_EXIT = 3
 WHOLE_PLAYS_NEVER_RUN = "whole plays are never run for a story; what the selection could not narrow is listed as owed"
+OWED_CAP = 10
 PLAN_STRENGTH = ("none", "empty", "partial", "whole")
 
 
@@ -373,11 +375,28 @@ def story_base_of(logger: logging.Logger, story_slug: str = "", story_id: str = 
     return StoryBase(base=_story_base(logger, repo_dir, story_slug, story_id))
 
 
-def _affected_argv(module: str, app: str, since: str, out: str) -> list[str]:
+def _affected_argv(module: str, app: str, since: str, out: str, story: str = "") -> list[str]:
     argv = [sys.executable, "-m", "ostler.book", "affected", module, "--app", app]
     if since:
         argv += ["--since", since]
+    if story:
+        argv += ["--story", story]
     return argv + ["--out", out]
+
+
+def _commits_of(logger: logging.Logger, app: str, story: str, since: str) -> list[str]:
+    if not story:
+        return []
+    try:
+        return story_commits(app, story, since or None)
+    except subprocess.CalledProcessError as exc:
+        logger.info("the commits of story %s could not be read: %s", story, exc)
+        return []
+
+
+def owed_summary(reasons: list[str], cap: int = OWED_CAP) -> str:
+    kept = "; ".join(reasons[:cap])
+    return f"{kept}; and {len(reasons) - cap} more" if len(reasons) > cap else kept
 
 
 def _affected_report(folder: Path, service: str, multi: bool) -> dict[str, Any] | None:
@@ -405,6 +424,16 @@ def book_plan(
     root = find_book_root(repo_dir)
     app = str(find_repo_root(repo_dir))
     since = _story_base(logger, repo_dir, story_slug, story_id)
+    story = story_id or story_slug
+    commits = _commits_of(logger, app, story, since)
+    if commits:
+        logger.info("the selection of %s reads the %d commit(s) of story %s", service, len(commits), story)
+    else:
+        story = ""
+        logger.info(
+            "no commit carries 'Story: %s'; the selection of %s reads the range since %s",
+            story_id or story_slug, service, since or "the verified commit",
+        )
     modules = book_modules(root, service) or (f"services.{service}",)
     multi = len(modules) > 1
     out = Path(spec_dir) / BOOK_OUT
@@ -412,6 +441,8 @@ def book_plan(
     only: list[str] = []
     by_journey: list[str] = []
     reasons: list[str] = []
+    owed_reasons: list[str] = []
+    reads: list[str] = []
     uncovered: list[str] = []
     changed = not_judged = exit_code = 0
     outputs: list[str] = []
@@ -419,7 +450,7 @@ def book_plan(
         folder = out / module if multi else out
         for stale in folder.glob("*-affected.json") if multi else [folder / f"{service}-affected.json"]:
             stale.unlink(missing_ok=True)
-        play = _play(_affected_argv(module, app, since, str(folder)), root)
+        play = _play(_affected_argv(module, app, since, str(folder), story), root)
         logger.info("book affected of %s exited %d", module, play.exit_code)
         outputs.append(f"{module}:\n{play.output}" if multi else play.output)
         if play.exit_code == 2:
@@ -436,6 +467,18 @@ def book_plan(
         by_journey += [title for title in report.get("by_journey", []) if title not in by_journey]
         if report.get("reason") and report["reason"] not in reasons:
             reasons.append(str(report["reason"]))
+        owed_reasons += [
+            str(why)
+            for why in report.get("owed") or ([report["reason"]] if report.get("reason") else [])
+        ]
+        seen = report.get("commits") or [commit[:7] for commit in commits]
+        read = (
+            f"story {story}: {len(seen)} commit(s), {seen[0]} to {seen[-1]}"
+            if story and seen
+            else f"the range since {since or 'the verified commit'}"
+        )
+        if read not in reads:
+            reads.append(read)
         uncovered += [_uncovered_entry(item) for item in report.get("uncovered", [])]
         diff = report.get("diff", {})
         unjudged = int(diff.get("not_computed", {}).get("count", 0))
@@ -449,6 +492,8 @@ def book_plan(
         by_journey=by_journey,
         whole=kind == "whole",
         reason="; ".join(reasons),
+        owed_reasons=list(dict.fromkeys(owed_reasons)),
+        read="; ".join(reads),
         uncovered=uncovered,
         changed=changed,
         not_judged=not_judged,
@@ -469,6 +514,8 @@ def write_qa_plan(
     lines = ["# QA plan", "", WHOLE_PLAYS_NEVER_RUN, ""]
     for plan in plans:
         lines += [f"## {plan.service}", "", f"- plan: {plan.plan}"]
+        if plan.read:
+            lines.append(f"- change read: {plan.read}")
         lines += [
             f"- calls: {', '.join(plan.only) or 'none'}",
             f"- journeys: {', '.join(plan.by_journey) or 'none'}",

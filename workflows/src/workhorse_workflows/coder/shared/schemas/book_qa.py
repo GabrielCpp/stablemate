@@ -101,6 +101,8 @@ class BookPlan(CoderResult):
     whole: bool = False
     reason: str = ""
     owed: str = ""
+    owed_reasons: list[str] = []
+    read: str = ""
     uncovered: list[str] = []
     changed: int = 0
     not_judged: int = 0

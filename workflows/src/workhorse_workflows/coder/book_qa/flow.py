@@ -14,6 +14,7 @@ from workhorse_workflows.coder.book_qa.nodes import (
     book_scope,
     commit_service_book,
     covered_services,
+    owed_summary,
     read_book_record,
     stamp_books_verified,
     story_base_of,
@@ -172,11 +173,11 @@ class BookQa(QaOwner):
                 )
                 return self._lap(plan, [_gate(f"ostler book affected services.{name}", text)], laps, blocks)
             scope = self.call(book_scope, name, list(self.preexisting))
-            owed = [reason for reason in (plan.reason if plan.plan == "whole" else "", ", ".join(scope.shared)) if reason]
+            owed = [*(plan.owed_reasons if plan.plan == "whole" else []), *([", ".join(scope.shared)] if scope.shared else [])]
             if plan.plan == "whole" and not owed:
                 owed = ["the selection could not narrow the story's change"]
             if owed:
-                plans[-1] = plan = plan.model_copy(update={"owed": "; ".join(owed)})
+                plans[-1] = plan = plan.model_copy(update={"owed": owed_summary(owed), "owed_reasons": owed})
                 self.logger.info("owed to the scheduled whole play for %s: %s", name, plan.owed)
             if not plan.only and not plan.by_journey:
                 self.logger.info("no play for %s: %s", name, plan.reason or f"the plan is {plan.plan}")

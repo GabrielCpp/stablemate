@@ -65,8 +65,8 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    play any calls while you work. A call is
    an endpoint class of the book, or an interaction class in a screen book. A journey is not a
    call. `ostler book search <term> --kind endpoint` or `--kind interaction` lists them.
-   `ostler book affected services.<name> --app <root> --since <base>` prints what the workflow will play for the
-   story's diff, with the story base commit above as `<base>` and the repository root as `<root>`. Run every
+   `ostler book affected services.<name> --app <root> --since <base> --story <id>` prints what the workflow will play for the
+   story's diff, with the story base commit above as `<base>`, the story id above as `<id>` and the repository root as `<root>`. Run every
    `ostler book` and `ostler env` command from `{{ workhorse_var('book_root') }}`. A red
    base is not yours to repair. Report `blocked` with the output.
 4. **List the claims.** List every claim the story makes that a call to the service can
