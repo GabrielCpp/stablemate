@@ -1,7 +1,7 @@
 story: none
 date: 2026-11-21
 elements: RunBook
-sources: ostler/ostler/book/affected.py, ostler/ostler/book/change.py
+sources: ostler/ostler/book/affected.py, ostler/ostler/book/change.py, ostler/ostler/book/sources.py
 
 `ostler book affected --story <id>` reads the change of one story as its own commits and the uncommitted work, not as
 the range from a base commit to the working tree. A commit is the story's when its `Story:` trailer names the id. A
@@ -32,3 +32,7 @@ workflows that key on `whole` are unchanged.
 
 The book of ostler does not play `affected`. The command reads a git checkout, and the demo world of the book is not
 one. A later story can add a separate git world and an element for it.
+
+`stale --story` and `verified --story` read the same commits, committed work only, because `verified` writes HEAD.
+`verified --story` refuses only for the story's code, and writes no stamp while other commits leave code unnamed. A stamp
+over foreign code with no pointer would hide it from every later reading that starts at the verified commit.

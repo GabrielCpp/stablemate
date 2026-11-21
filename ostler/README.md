@@ -318,7 +318,9 @@ ostler book search  overdue               # what the book says, read from index.
 ostler book explain services.api AddTodo
 ostler book index   services.api          # rewrite index.tsv
 ostler book stale   services.api --app ../api   # what changed in the app since the verified commit
+# --story <id>: only the story's commits
 ostler book verified services.api --app ../api  # record the app's head once stale is worked
+ostler book verified services.api --app ../api --story ACME-1   # refuse only for the story's commits; leave the stamp while other commits are open
 ostler book affected services.api --app ../api --since HEAD~3   # the calls and journeys the changed code calls for
 ostler book files   services.api          # the files the book needs to load: its folder, then what it imports from outside it
 ostler book decisions services.api
@@ -356,6 +358,13 @@ commit is needed. Each file is compared from the parent of the first story commi
 commit that did (to the working tree when the file is dirty), so commits of other work between the story's do not
 count, unless they edit a file the story's commits also touch. A message that only mentions the id in its body does
 not match. With no commit that carries the trailer the command prints so, writes no report and exits 2.
+
+`ostler book stale --story <id>` and `ostler book verified --story <id>` read the same commits, committed work only,
+because `verified` writes HEAD. `--since` bounds them. `stale --story` lists what those commits left open.
+`verified --story` exits 1 when the story's own commits changed a file or function no element names, or a pointer is
+missing. It exits 0 and writes HEAD when that change is named and no other commit since the verified commit is open.
+It exits 0, prints `not stamped:` and writes nothing when the story's change is named and other commits since the
+verified commit left code no element names. It exits 2 when no commit carries the trailer.
 A changed symbol names its element, and an element names its calls: an action reaches every endpoint,
 interaction and outside happening that carries it, and a screen its interactions. The plan is `none` (nothing
 changed, or only ignored files and imports), `partial` (a named list) or `whole`. It is `whole` when a record is

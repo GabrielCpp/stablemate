@@ -255,6 +255,14 @@ def affected_report(monkeypatch: Any, tmp_path: Path, service: Any, capsys: Any,
     return code, json.loads(report.read_text()) if report.exists() else {}, capsys.readouterr().out
 
 
+def book_command(monkeypatch: Any, tmp_path: Path, service: Any, capsys: Any, *arguments: str) -> tuple[int, str]:
+    """A command of the book CLI with its loading stood in and its package folder set to `tmp_path`, and what it printed."""
+    monkeypatch.setattr(cli, "load", lambda name: service)
+    monkeypatch.setattr(cli, "_package_dir", lambda args: str(tmp_path))
+    code = cli.main([*arguments])
+    return code, capsys.readouterr().out
+
+
 def story_affected(root: Path, tmp_path: Path, capsys: Any, story: str = "ACME-1") -> tuple[int, dict[str, Any], list[str]]:
     """The `affected` command of the api book of the copied todo repository under a story, its report and the lines it printed."""
     out = tmp_path / "out"

@@ -20,10 +20,20 @@ from ostler.refs import parse_code_ref
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
+@dataclass(frozen=True)
+class Window:
+    story: str
+    start: str
+    commits: frozenset[str]
+    spans: dict[str, tuple[str, str]]
+
+
 @dataclass
 class Report:
     verified: str | None
     head: str
+    story: str = ""
+    commits: list[str] = field(default_factory=list)
     stale: dict[str, dict[str, list[str]]] = field(default_factory=dict)
     unnamed: dict[str, list[str]] = field(default_factory=dict)
     missing: list[tuple[str, str]] = field(default_factory=list)
@@ -338,21 +348,23 @@ def changed_parts(app_root: str, commit: str, path: str, tree: bool = False, dot
     return names, unattributed, imports
 
 
-def changed_functions(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False) -> set[str] | None:
+def changed_functions(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False, until: str | None = None) -> set[str] | None:
     """The functions a file's changed lines sit in, or None where a hunk has no definition line."""
-    names, unattributed, _ = changed_parts(app_root, commit, path, tree=tree, dotted=dotted)
+    names, unattributed, _ = changed_parts(app_root, commit, path, tree=tree, dotted=dotted, until=until)
     return None if unattributed else names
 
 
-def changed_since(service: Service[Any], app_root: str, commit: str) -> dict[str, list[str]]:
+def changed_since(service: Service[Any], app_root: str, commit: str, only: frozenset[str] | None = None) -> dict[str, list[str]]:
     assert service.app is not None
-    out = git(app_root, "log", "--format=commit %h", "--name-only", f"{commit}..HEAD", "--", *service.app.roots)
+    out = git(app_root, "log", "--format=commit %H %h", "--name-only", f"{commit}..HEAD", "--", *service.app.roots)
     changed: dict[str, list[str]] = {}
     current = ""
+    kept = True
     for line in out.splitlines():
         if line.startswith("commit "):
-            current = line.split(" ", 1)[1]
-        elif line.strip() and not ignored(line, service.app.ignore):
+            _, full, current = line.split(" ", 2)
+            kept = only is None or full in only
+        elif kept and line.strip() and not ignored(line, service.app.ignore):
             changed.setdefault(line, []).append(current)
     return changed
 
@@ -376,20 +388,25 @@ def story_commits(root: str, story: str, since: str | None = None) -> list[str]:
     return found
 
 
-def symbol_commits(app_root: str, commit: str, pointer: str) -> list[str] | None:
+def symbol_commits(app_root: str, commit: str, pointer: str, only: frozenset[str] | None = None) -> list[str] | None:
     symbol = symbol_of(pointer)
     for pattern in (f"func .*\\b{symbol}(", f"type {symbol} "):
         try:
-            out = git(app_root, "log", "--format=commit %h", "-s", "-L", f":{pattern}:{file_of(pointer)}", f"{commit}..HEAD")
+            out = git(app_root, "log", "--format=commit %H %h", "-s", "-L", f":{pattern}:{file_of(pointer)}", f"{commit}..HEAD")
         except subprocess.CalledProcessError:
             continue
-        return [line.split(" ", 1)[1] for line in out.splitlines() if line.startswith("commit ")]
+        found = [line.split(" ", 2)[1:] for line in out.splitlines() if line.startswith("commit ")]
+        return [short for full, short in found if only is None or full in only]
     return None
 
 
-def stale(service: Service[Any], app_root: str, package_dir: str, since: str | None = None) -> Report:
-    verified = since or verified_at(service, package_dir)
+def stale(service: Service[Any], app_root: str, package_dir: str, since: str | None = None, window: Window | None = None) -> Report:
+    verified = window.start if window else since or verified_at(service, package_dir)
     report = Report(verified, head_of(app_root), missing=missing(service, app_root))
+    only = window.commits if window else None
+    if window:
+        report.story = window.story
+        report.commits = [git(app_root, "rev-parse", "--short", c).strip() for c in sorted(window.commits)]
     member = core_config.repository_name(Path(app_root))
     pointed: dict[str, tuple[str, ...]] = {}
     for name, found in raw(service).items():
@@ -398,7 +415,7 @@ def stale(service: Service[Any], app_root: str, package_dir: str, since: str | N
         report.untraced += [p for p, t in kept if t is None and p not in report.untraced]
     if verified is None or service.app is None:
         return report
-    changed = changed_since(service, app_root, verified)
+    changed = changed_since(service, app_root, verified, only)
     seen: dict[str, set[str]] = {}
     namers: dict[str, list[str]] = {}
     for name, found in pointed.items():
@@ -408,7 +425,7 @@ def stale(service: Service[Any], app_root: str, package_dir: str, since: str | N
                 continue
             if name not in namers.setdefault(path, []):
                 namers[path].append(name)
-            commits = symbol_commits(app_root, verified, pointer) if symbol_of(pointer) else None
+            commits = symbol_commits(app_root, verified, pointer, only) if symbol_of(pointer) else None
             if commits is None:
                 commits = changed[path]
                 if symbol_of(pointer):
@@ -418,7 +435,8 @@ def stale(service: Service[Any], app_root: str, package_dir: str, since: str | N
                 report.stale.setdefault(name, {})[pointer] = commits
     named = {(file_of(p), symbol_of(p)) for found in pointed.values() for p in found if symbol_of(p)}
     for path, names in namers.items():
-        functions = changed_functions(app_root, verified, path)
+        old, new = window.spans.get(path, (verified, None)) if window else (verified, None)
+        functions = changed_functions(app_root, old, path, until=new)
         if functions is None:
             rest = [c for c in changed[path] if c not in seen[path]]
             if rest:
@@ -427,7 +445,7 @@ def stale(service: Service[Any], app_root: str, package_dir: str, since: str | N
         for function in sorted(functions):
             if (path, function) in named or ignored(f"{path}::{function}", service.app.ignore):
                 continue
-            commits = symbol_commits(app_root, verified, f"{path}::{function}") or changed[path]
+            commits = symbol_commits(app_root, verified, f"{path}::{function}", only) or changed[path]
             report.functions.setdefault(path, {})[function] = commits
     every = {file_of(p) for found in pointed.values() for p in found}
     report.unnamed = {p: c for p, c in changed.items() if p not in every}

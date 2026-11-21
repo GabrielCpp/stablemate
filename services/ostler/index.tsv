@@ -355,7 +355,7 @@ decision	a-story-plays-what-it-names-directly	decisions/a-story-plays-what-it-na
 decision	a-story-plays-what-it-names-directly	decisions/a-story-plays-what-it-names-directly.md:22	The accepted cost is that a call the change alters through a shared helper is judged only by the scheduled whole play.
 decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:1	story: none
 decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:3	elements: RunBook
-decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:4	sources: ostler/ostler/book/affected.py, ostler/ostler/book/change.py
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:4	sources: ostler/ostler/book/affected.py, ostler/ostler/book/change.py, ostler/ostler/book/sources.py
 decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:6	`ostler book affected --story <id>` reads the change of one story as its own commits and the uncommitted work, not as
 decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:7	the range from a base commit to the working tree. A commit is the story's when its `Story:` trailer names the id. A
 decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:8	message that only mentions the id in its body is not the story's.
@@ -385,6 +385,10 @@ decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own
 decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:32	
 decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:33	The book of ostler does not play `affected`. The command reads a git checkout, and the demo world of the book is not
 decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:34	one. A later story can add a separate git world and an element for it.
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:35	
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:36	`stale --story` and `verified --story` read the same commits, committed work only, because `verified` writes HEAD.
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:37	`verified --story` refuses only for the story's code, and writes no stamp while other commits leave code unnamed. A stamp
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:38	over foreign code with no pointer would hide it from every later reading that starts at the verified commit.
 decision	an-empty-status-is-refused	decisions/an-empty-status-is-refused.md:1	story: SM-01M7APW2Y9KF8E5HXCCWET7Z1S
 decision	an-empty-status-is-refused	decisions/an-empty-status-is-refused.md:3	elements: SetStatus
 decision	an-empty-status-is-refused	decisions/an-empty-status-is-refused.md:5	`ostler set-status` refuses a status that is empty or made only of spaces and tabs. The refusal prints

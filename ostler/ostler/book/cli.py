@@ -23,6 +23,7 @@ from typing import Any
 from ostler.book.affected import cmd_affected as affected
 from ostler.book.backstage import CannotArrange
 from ostler.book.cells import Played, play
+from ostler.book.change import story_window
 from ostler.book.check import broken, cmd_check
 from ostler.book.contracts import STREAMING, rpc_of
 from ostler.book.decisions import cmd_decisions, load as load_decisions
@@ -142,6 +143,9 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
         p.add_argument("--app", required=True, help="the app's root")
         if name == "stale":
             p.add_argument("--since", help="judge against this commit instead of the verified one; a book with no verified commit still answers")
+            p.add_argument("--story", help="read only the commits whose trailer is 'Story: <id>'; --since then bounds them")
+        else:
+            p.add_argument("--story", help="judge only the commits whose trailer is 'Story: <id>'; refuse for them, and write nothing while other commits leave code no element names")
     what = sub.add_parser("affected", help="list the calls and journeys to play for the code changed since a commit, uncommitted work included")
     what.add_argument("service")
     what.add_argument("--app", required=True, help="the app's root")
@@ -964,7 +968,15 @@ def traced(service: Service[Any], args: argparse.Namespace) -> Any | None:
     if service.app is None:
         print(f"{service.name} declares no app")
         return None
-    return stale(service, args.app, _package_dir(args), getattr(args, "since", None))
+    since = getattr(args, "since", None)
+    story = getattr(args, "story", None)
+    if not story:
+        return stale(service, args.app, _package_dir(args), since)
+    window = story_window(args.app, story, since, service.app.roots)
+    if window is None:
+        print(f"no commit reachable from HEAD{f' after {since}' if since else ''} in {args.app} carries the trailer 'Story: {story}'")
+        return None
+    return stale(service, args.app, _package_dir(args), since, window=window)
 
 
 def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
@@ -975,7 +987,10 @@ def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
         print("not verified: write the commit with 'verified'")
         return 2
     since = getattr(args, "since", None)
-    print(f"{'since' if since else 'verified at'} {found.verified}, app at {found.head}")
+    if found.story:
+        print(f"story {found.story}: {len(found.commits)} commit(s) after {found.verified}, app at {found.head}")
+    else:
+        print(f"{'since' if since else 'verified at'} {found.verified}, app at {found.head}")
     print("\n## Stale elements")
     for element, paths in found.stale.items():
         for path, commits in paths.items():
@@ -1053,9 +1068,19 @@ def cmd_verified(service: Service[Any], args: argparse.Namespace) -> int:
     found = traced(service, args)
     if found is None or service.app is None:
         return 2
+    story = getattr(args, "story", None)
     if found.open:
-        print("not verified: name or ignore every changed file and function, and fix every missing pointer; `stale` lists them")
+        if story:
+            print("not verified: name or ignore every file and function the story's commits changed, and fix every missing pointer; `stale --story` lists them")
+        else:
+            print("not verified: name or ignore every changed file and function, and fix every missing pointer; `stale` lists them")
         return 1
+    if story:
+        rest = stale(service, args.app, _package_dir(args))
+        if rest.open:
+            left = len(rest.unnamed) + sum(len(v) for v in rest.functions.values())
+            print(f"not stamped: the change of story {story} is named, and other commits since {rest.verified} left {left} changed file(s) or function(s) no element names; `stale` lists them")
+            return 0
     head = head_of(args.app)
     with open(os.path.join(_package_dir(args), service.app.verified), "w") as f:
         f.write(head + "\n")
