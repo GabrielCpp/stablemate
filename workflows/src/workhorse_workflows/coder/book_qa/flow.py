@@ -179,22 +179,26 @@ class BookQa(QaOwner):
             if owed:
                 plans[-1] = plan = plan.model_copy(update={"owed": owed_summary(owed), "owed_reasons": owed})
                 self.logger.info("owed to the scheduled whole play for %s: %s", name, plan.owed)
-            if not plan.only and not plan.by_journey:
+            direct_titles, direct_calls = (plan.direct_journeys, plan.direct_only) if plan.direct else (plan.by_journey, plan.only)
+            if not direct_calls and not direct_titles:
                 self.logger.info("no play for %s: %s", name, plan.reason or f"the plan is {plan.plan}")
                 continue
             self.logger.info(
                 "playing %d call(s) and %d journey(s) of %s, limit %d min",
-                len(plan.only),
-                len(plan.by_journey),
+                len(direct_calls),
+                len(direct_titles),
                 name,
                 self.book_play_minutes,
                 extra={"activity": True},
             )
             play = self.call(
-                book_run, name, plan.only, target.lease, out_dir, self.book_play_minutes, plan.by_journey, True
+                book_run, name, direct_calls, target.lease, out_dir, self.book_play_minutes, direct_titles, True, direct=plan.direct
             )
             played = True
             exits[name] = play.exit_code
+            if play.owed:
+                plans[-1] = plan = plan.model_copy(update={"cut": play.owed})
+                self.logger.warning("the play of %s was cut: %s", name, play.owed)
             self.call(write_qa_plan, self.ctx.spec_dir, plans, exits)
             if play.exit_code == ENVIRONMENT_EXIT:
                 return self._ask(_gate(f"ostler book run services.{name}", play.output), "the QA environment", blocks)
@@ -215,6 +219,14 @@ class BookQa(QaOwner):
                 f"The story changed {total} files and the books select no play for them, so the book does not "
                 "state what the story changed. State it in the book, or name the files in an ignore pattern."
             )
+            reaches = [plan for plan in plans if plan.direct and (plan.reached_calls or plan.reached_journeys)]
+            if reaches:
+                text += (
+                    f"\n\nThe change reaches {sum(p.reached_calls for p in reaches)} call(s) and "
+                    f"{sum(p.reached_journeys for p in reaches)} journey(s) only through shared code or shared book "
+                    "definitions, and the scheduled whole play owes them. Add or edit the journey that states the "
+                    "story's claims, so the story plays it."
+                )
             return self._lap(None, [_gate("the story's plays", text)], laps, blocks)
         if not findings:
             stamped = self.call(
@@ -234,7 +246,7 @@ class BookQa(QaOwner):
             self.logger.warning("the book commit was refused: %s", landed.refused)
             return self._lap(landed, [_gate("the book commit", landed.refused)], laps, blocks)
         found = [QaFinding.model_validate(f) for f in findings or []]
-        recorded = [ServiceCalls(service=plan.service, calls=plan.only) for plan in plans]
+        recorded = [ServiceCalls(service=plan.service, calls=plan.direct_only if plan.direct else plan.only) for plan in plans]
         self.call(write_book_record, self.ctx.spec_dir, recorded, found, list(unreached or []))
         return self._finish("refix" if found else "passed", found)
 

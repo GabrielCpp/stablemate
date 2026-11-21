@@ -73,6 +73,8 @@ class BookPlay(CoderResult):
 
     exit_code: int = 0
     output: str = ""
+    timed_out: bool = False
+    owed: str = ""
 
 
 class BookScope(CoderResult):
@@ -98,6 +100,13 @@ class BookPlan(CoderResult):
     plan: Literal["none", "empty", "partial", "whole"] = "none"
     only: list[str] = []
     by_journey: list[str] = []
+    direct: bool = False
+    direct_journeys: list[str] = []
+    direct_only: list[str] = []
+    reached_calls: int = 0
+    reached_journeys: int = 0
+    reached_causes: list[str] = []
+    cut: str = ""
     whole: bool = False
     reason: str = ""
     owed: str = ""

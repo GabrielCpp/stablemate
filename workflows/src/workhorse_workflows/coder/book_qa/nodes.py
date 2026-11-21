@@ -5,6 +5,7 @@ import json
 import logging
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -67,6 +68,7 @@ PLAN_FILE = "qa-plan.md"
 TIMEOUT_EXIT = 3
 WHOLE_PLAYS_NEVER_RUN = "whole plays are never run for a story; what the selection could not narrow is listed as owed"
 OWED_CAP = 10
+REACHED_CAUSE_CAP = 5
 PLAN_STRENGTH = ("none", "empty", "partial", "whole")
 
 
@@ -81,6 +83,10 @@ def book_modules(root: Path, service: str) -> tuple[str, ...]:
     if (package / "service.py").is_file():
         return (f"services.{service}",)
     return tuple(sorted(f"services.{service}.{found.parent.name}" for found in package.glob("*/service.py")))
+
+
+def _now() -> float:
+    return time.monotonic()
 
 
 def _surface(module: str) -> str:
@@ -108,7 +114,11 @@ def _play(
     except subprocess.TimeoutExpired as expired:
         printed = _tail(_printed(expired.stdout) + _printed(expired.stderr))
         minutes = int((timeout or 0) // 60)
-        return BookPlay(exit_code=TIMEOUT_EXIT, output=f"{limit_text or f'the play did not end within {minutes} minutes'}\n{printed}".strip())
+        return BookPlay(
+            exit_code=TIMEOUT_EXIT,
+            output=f"{limit_text or f'the play did not end within {minutes} minutes'}\n{printed}".strip(),
+            timed_out=True,
+        )
     return BookPlay(exit_code=done.returncode, output=_tail(done.stdout + done.stderr))
 
 
@@ -440,6 +450,12 @@ def book_plan(
     kind: Literal["none", "empty", "partial", "whole"] = "none"
     only: list[str] = []
     by_journey: list[str] = []
+    direct = True
+    direct_journeys: list[str] = []
+    direct_only: list[str] = []
+    reached_calls = reached_journeys = 0
+    causes: dict[str, list[int]] = {}
+    read_any = False
     reasons: list[str] = []
     owed_reasons: list[str] = []
     reads: list[str] = []
@@ -465,6 +481,17 @@ def book_plan(
             kind = module_kind
         only += [call for call in report.get("only", []) if call not in only]
         by_journey += [title for title in report.get("by_journey", []) if title not in by_journey]
+        read_any = True
+        direct = direct and "direct_journeys" in report
+        direct_journeys += [title for title in report.get("direct_journeys", []) if title not in direct_journeys]
+        direct_only += [call for call in report.get("direct_only", []) if call not in direct_only]
+        reached = report.get("reached") or {}
+        reached_calls += int(reached.get("calls", 0))
+        reached_journeys += int(reached.get("journeys", 0))
+        for cause in reached.get("causes", []):
+            total = causes.setdefault(str(cause["cause"]), [0, 0])
+            total[0] += int(cause["calls"])
+            total[1] += int(cause["journeys"])
         if report.get("reason") and report["reason"] not in reasons:
             reasons.append(str(report["reason"]))
         owed_reasons += [
@@ -484,12 +511,23 @@ def book_plan(
         unjudged = int(diff.get("not_computed", {}).get("count", 0))
         not_judged += unjudged
         changed += int(diff.get("app_files", 0)) + int(diff.get("book_files", 0)) + unjudged
-    logger.info("book plan of %s: %s, %d call(s), %d journey(s), %d uncovered", service, kind, len(only), len(by_journey), len(uncovered))
+    direct = direct and read_any
+    top = sorted(causes.items(), key=lambda item: (-item[1][0], -item[1][1], item[0]))[:REACHED_CAUSE_CAP]
+    logger.info(
+        "book plan of %s: %s, %d call(s), %d journey(s), %d direct call(s), %d direct journey(s), %d uncovered",
+        service, kind, len(only), len(by_journey), len(direct_only), len(direct_journeys), len(uncovered),
+    )
     return BookPlan(
         service=service,
         plan=kind,
         only=only,
         by_journey=by_journey,
+        direct=direct,
+        direct_journeys=direct_journeys,
+        direct_only=direct_only,
+        reached_calls=reached_calls,
+        reached_journeys=reached_journeys,
+        reached_causes=[f"{cause} ({c} calls, {j} journeys)" for cause, (c, j) in top],
         whole=kind == "whole",
         reason="; ".join(reasons),
         owed_reasons=list(dict.fromkeys(owed_reasons)),
@@ -517,13 +555,21 @@ def write_qa_plan(
         if plan.read:
             lines.append(f"- change read: {plan.read}")
         lines += [
-            f"- calls: {', '.join(plan.only) or 'none'}",
-            f"- journeys: {', '.join(plan.by_journey) or 'none'}",
+            f"- calls: {', '.join(plan.direct_only if plan.direct else plan.only) or 'none'}",
+            f"- journeys: {', '.join(plan.direct_journeys if plan.direct else plan.by_journey) or 'none'}",
             f"- uncovered: {', '.join(plan.uncovered) or 'none'}",
             f"- changed files: {plan.changed}",
             f"- files not judged: {plan.not_judged}",
             f"- play exit: {exits[plan.service] if plan.service in exits else 'not played'}",
         ]
+        if plan.direct:
+            if plan.cut:
+                lines.append(f"- owed: {plan.cut}")
+            if plan.reached_calls or plan.reached_journeys:
+                reached = f"- reached beyond the direct selection, owed to the scheduled whole play: {plan.reached_calls} calls, {plan.reached_journeys} journeys"
+                if plan.reached_causes:
+                    reached += "; top causes: " + ", ".join(plan.reached_causes)
+                lines.append(reached)
         if plan.owed:
             lines.append(f"- owed to the scheduled whole play: {plan.owed}")
         lines.append("")
@@ -545,14 +591,19 @@ def book_run(
     journeys: list[str] | None = None,
     fresh: bool = False,
     repo_dir: str = "",
+    direct: bool = False,
 ) -> BookPlay:
-    """Play the named calls of the service's book against the run's copy of the stack. Named journeys are a second play after the calls, because `--only` and `--journey` combine as AND in one run. The first play of the service reloads the data when `fresh`. A play still running after `limit_minutes` minutes is killed and exits 3."""
+    """Play the named calls of the service's book against the run's copy of the stack. Named journeys are a separate play, because `--only` and `--journey` combine as AND in one run: after the calls, or before them when `direct`. One budget of `limit_minutes` minutes covers every play of the service, and a play still running when it is spent is killed and exits 3. The first play of the service reloads the data when `fresh`. A direct calls play cut at the limit after green journeys comes back green with the cut in `owed`."""
     root = find_book_root(repo_dir)
     modules = book_modules(root, service) or (f"services.{service}",)
     wanted = list(journeys or [])
     if not only and not wanted:
         return BookPlay(exit_code=0, output="nothing selected to play")
-    laps = [(only, []), ([], wanted)] if only and wanted else [([], wanted)] if wanted else [(only, [])]
+    laps = [([], wanted), (only, [])] if direct else [(only, []), ([], wanted)]
+    laps = [(calls, titles) for calls, titles in laps if calls or titles]
+    budget = limit_minutes * 60
+    spent = 0.0
+    journeys_green = False
     limit_text = (
         f"the play of {service} did not end within {limit_minutes} minutes: "
         f"the story's plays are limited to {limit_minutes} minutes (book_play_minutes)"
@@ -573,12 +624,27 @@ def book_run(
                 target = str(Path(target) / "journeys")
             argv = _run_argv(module, named, copy, target, journeys=titles, fresh=reload)
             reload = False
-            play = _play(argv, root, limit_minutes * 60, stack_env(root, lease=copy), limit_text)
+            left = budget - spent
+            if left <= 0:
+                play = BookPlay(exit_code=TIMEOUT_EXIT, output=limit_text, timed_out=True)
+            else:
+                began = _now()
+                play = _play(argv, root, left, stack_env(root, lease=copy), limit_text)
+                spent += _now() - began
             what = f"{len(named)} call(s)" if named else f"{len(titles)} journey(s)"
             logger.info("book run of %s over %s exited %d", module, what, play.exit_code)
             if play.exit_code != 0:
+                if direct and named_calls and journeys_green and play.timed_out:
+                    logger.warning("the direct calls of %s did not finish within %d minutes after green journeys", service, limit_minutes)
+                    return BookPlay(
+                        exit_code=0,
+                        output=_tail("\n".join([*outputs, play.output])),
+                        owed=f"the direct calls did not finish within {limit_minutes} min",
+                    )
                 return play if len(modules) == 1 else BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
             outputs.append(play.output if len(modules) == 1 else f"{module}:\n{play.output}")
+        if titles:
+            journeys_green = True
     return BookPlay(exit_code=0, output=_tail("\n".join(outputs)))
 
 

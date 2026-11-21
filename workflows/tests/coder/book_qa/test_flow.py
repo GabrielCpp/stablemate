@@ -137,11 +137,13 @@ class _Book:
         affected: tuple[int, ...] = (0,),
         plans: dict[str, dict[str, Any]] | None = None,
         hang: bool = False,
+        hangs: tuple[int, ...] = (),
         on_run: Callable[[], None] | None = None,
     ) -> None:
         self.script = {"check": check, "run": run, "verified": verified, "affected": affected}
         self.plans = plans or {}
         self.hang = hang
+        self.hangs = hangs
         self.on_run = on_run
         self.timeouts: list[float | None] = []
         self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": [], "affected": []}
@@ -170,7 +172,7 @@ class _Book:
             self.timeouts.append(timeout)
             if self.on_run:
                 self.on_run()
-            if self.hang:
+            if self.hang or len(self.argv["run"]) in self.hangs:
                 raise subprocess.TimeoutExpired(argv, timeout or 0, output="half a report\n", stderr="")
         codes = self.script[verb]
         code = codes[min(len(self.argv[verb]), len(codes)) - 1]
@@ -1768,3 +1770,157 @@ def test_the_selection_falls_back_to_the_range_when_no_commit_carries_the_traile
 
     assert all("--story" not in argv for argv in scripted.argv["affected"]), scripted.argv["affected"]
     assert "no commit carries 'Story: STORY-1'" in caplog.text
+
+
+def _direct(**fields: Any) -> dict[str, Any]:
+    return affected_report(
+        only=["ListX", "BuildX"],
+        by_journey=["Other"],
+        direct_journeys=["Share a list"],
+        direct_only=["ListX"],
+        reached={"calls": 1, "journeys": 1, "causes": []},
+    ) | fields
+
+
+@pytest.fixture
+def clock(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    now = [0.0]
+    monkeypatch.setattr(book_nodes, "_now", lambda: now[0])
+    return now
+
+
+def test_a_direct_plan_plays_its_journeys_first_on_fresh_data_then_its_calls(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(plans={"services.api": _direct()})
+
+    result = drive_flow(_flow(), env(), _Agent(lane))
+
+    assert result.status == "passed", result
+    first, second = scripted.argv["run"]
+    assert "--partial" in first and first[first.index("--journey") + 1] == "Share a list", first
+    assert "--fresh-data" in first and "--only" not in first, first
+    assert second[second.index("--only") + 1] == "ListX" and "--fresh-data" not in second, second
+    assert not any("BuildX" in arg or "Other" in arg for argv in scripted.argv["run"] for arg in argv)
+
+
+def test_the_two_direct_plays_share_one_limit(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    clock: list[float],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(plans={"services.api": _direct()}, on_run=lambda: clock.__setitem__(0, clock[0] + 300))
+
+    drive_flow(_flow(book_play_minutes=7), env(), _Agent(lane))
+
+    assert scripted.timeouts == [420, 120]
+
+
+def test_a_direct_calls_play_cut_at_the_limit_after_green_journeys_is_owed_and_the_check_passes(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book(plans={"services.api": _direct()}, hangs=(2,))
+
+    result = drive_flow(_flow(), env(), _Agent(lane))
+
+    assert result.status == "passed", result
+    assert "- owed: the direct calls did not finish within 15 min" in _plan_md()
+    assert "- play exit: 0" in _plan_md()
+
+
+def test_a_direct_journeys_play_cut_at_the_limit_goes_to_the_operator(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book(plans={"services.api": _direct()}, hangs=(1,))
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), _Agent(lane))
+
+    assert "the QA environment" in seen[0], seen
+
+
+def test_a_direct_calls_play_with_no_journeys_before_it_goes_to_the_operator_at_the_limit(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book(plans={"services.api": _direct(direct_journeys=[])}, hang=True)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), _Agent(lane))
+
+    assert "the QA environment" in seen[0], seen
+
+
+def test_the_reached_selection_is_listed_as_owed_and_never_played(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    causes = [{"cause": f"acme.go::c{n}", "calls": n, "journeys": 1} for n in (3, 6, 1, 5, 2, 4)]
+    scripted = book(plans={"services.api": _direct(reached={"calls": 109, "journeys": 52, "causes": causes})})
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    top = ", ".join(f"acme.go::c{n} ({n} calls, 1 journeys)" for n in (6, 5, 4, 3, 2))
+    assert (
+        f"- reached beyond the direct selection, owed to the scheduled whole play: 109 calls, 52 journeys; top causes: {top}"
+        in _plan_md()
+    )
+    assert "acme.go::c1" not in _plan_md()
+    assert not any("BuildX" in arg for argv in scripted.argv["run"] for arg in argv)
+
+
+def test_a_report_without_direct_fields_plays_only_then_by_journey_as_before(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(plans={"services.api": affected_report(only=["ListX"], by_journey=["Share a list"])})
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    first, second = scripted.argv["run"]
+    assert "--only" in first and "--journey" in second, scripted.argv["run"]
+    assert "reached beyond" not in _plan_md()
+
+
+def test_a_direct_plan_that_names_nothing_directly_goes_back_to_the_seat_with_what_it_reaches(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(plans={"services.api": _direct(direct_journeys=[], direct_only=[], reached={"calls": 3, "journeys": 2, "causes": []})})
+    agent = _Agent(lane)
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
+        drive_flow(_flow(), env(), agent)
+
+    assert scripted.argv["run"] == []
+    report = agent.args[1]["report"]
+    assert "select no play" in report and "only through shared code" in report, report
