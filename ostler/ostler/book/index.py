@@ -110,17 +110,24 @@ def book_root(start: str) -> str | None:
         here = parent
 
 
-def read_decisions(directory: str) -> list[Entry]:
-    root = os.path.join(directory, "decisions")
-    if not os.path.isdir(root):
+def read_pages(folder: str, kind: str) -> list[Entry]:
+    if not os.path.isdir(folder):
         return []
     out: list[Entry] = []
-    for name in sorted(os.listdir(root)):
+    for name in sorted(os.listdir(folder)):
         if name.endswith(".md"):
-            decision = decisions.parse(os.path.join(root, name))
-            for number, text in decision.searchable():
-                out.append(Entry("decision", decision.slug, f"decisions/{decision.slug}.md:{number}", (text,)))
+            page = decisions.parse(os.path.join(folder, name))
+            for number, text in page.searchable():
+                out.append(Entry(kind, page.slug, f"{os.path.basename(folder)}/{page.slug}.md:{number}", (text,)))
     return out
+
+
+def read_decisions(directory: str) -> list[Entry]:
+    return read_pages(os.path.join(directory, "decisions"), "decision")
+
+
+def read_business(root: str) -> list[Entry]:
+    return read_pages(os.path.join(root, "business"), "business")
 
 
 def entries_of(root: str, name: str) -> list[Entry]:
@@ -168,6 +175,9 @@ def cmd_search_book(args: Any) -> int:
         if not os.path.isdir(os.path.join(root, *name.split("."))):
             raise SystemExit(f"no service {name!r} under {root}")
     books = {name: entries_of(root, name) for name in names}
+    business = read_business(root)
+    if business:
+        books["business"] = business
     matched = {name: phrase_hits(entries, args.term, args.kind) for name, entries in books.items()}
     if not any(matched.values()):
         matched = {name: loose_hits(entries, args.term, args.kind) for name, entries in books.items()}
@@ -176,7 +186,7 @@ def cmd_search_book(args: Any) -> int:
         if not rows:
             continue
         found = True
-        if not args.service:
+        if not args.service or name == "business":
             print(f"== {name}")
         for entry, lines in rows:
             print(f"{entry.kind:9} {entry.address}")

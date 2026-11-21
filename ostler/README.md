@@ -314,7 +314,8 @@ ostler book run     services.api --no-stack --only AddTodo,FindTodos
 ostler book run     services.api --fresh-data   # reload the data first: the stack's `fresh` command, else a reset of the `ostler env` copy, else a refusal
 ostler book explore services.api --seed-only   # walk the model's state graph, no app
 ostler book walk    services.api --scene overdue --action read
-ostler book search  overdue               # what the book says, read from index.tsv
+ostler book search  overdue               # what the book says, read from index.tsv, and the business pages
+ostler book business [--check]           # the business pages: slug, date, statement; --check names a page with no date or an empty body
 ostler book explain services.api AddTodo
 ostler book index   services.api          # rewrite index.tsv
 ostler book stale   services.api --app ../api   # what changed in the app since the verified commit
@@ -327,6 +328,12 @@ ostler book decisions services.api
 ostler book graph   services.api          # each record's state graph, as dot and svg
 ostler book endpoints|screens|matrix|denied|plan services.api   # read the model, no app
 ```
+
+A rule above any one service goes in `business/<slug>.md`, in the folder that holds `services/`: the product's words,
+a constraint no story may break, where the truth for a calculation lives. A page starts with a `date:` line and an
+optional `sources:` line, then a blank line and prose whose first line is its statement. `ostler book search` reads
+the pages with every query, with or without `--service`, and prints their hits under `== business`. `--kind business`
+shows only them and any other `--kind` leaves them out. A book with no `business/` folder searches as before.
 
 A screen book says how a person moves between screens. `first = True` marks a screen a person can open directly.
 `leads_to = <Screen>` on an interaction names the screen the person is on once the act went through, and `inside`

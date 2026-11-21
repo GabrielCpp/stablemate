@@ -16,9 +16,10 @@ Read the book before the code whenever the question is *what* something does,
 *why* it is so, or *how a user reaches it*:
 
 ```bash
-ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|question|event|outside]
+ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|business|question|event|outside]
 ostler book explain services.<name> <ClassName>       # everything the book says of one element
 ostler book decisions services.<name> [--story <id>]  # each decision and the story behind it
+ostler book business                                  # the business pages above every service, one line each
 ```
 
 Read the code to learn *how it is implemented*. A grep over source that starts

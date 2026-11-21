@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import gc
+import importlib
 import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
+
+import pytest
 
 from ostler.book import (Action, Answer, App, Arrange, Axes, CannotArrange, Collection, Create, Delete, Done, Endpoint, Environment, Event, Field, Journey,
                          Model, Object, Refusal, Rule, Scene, Service, Stack, State, Str, Unique, Unseen)
@@ -365,3 +370,18 @@ def sourced_book(sources: dict[str, tuple[str, ...]], ignore: tuple[str, ...] = 
     book.records = (named(Drawer),)
     book.app = App(roots=(".",), verified="VERIFIED", ignore=ignore)
     return book
+
+
+def isolated_services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    """A book root under `tmp_path` that holds a `services` package of its own, with the real one put back after."""
+    saved = {name: loaded for name, loaded in sys.modules.items() if name == "services" or name.startswith("services.")}
+    for name in saved:
+        del sys.modules[name]
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    importlib.invalidate_caches()
+    yield tmp_path
+    for name in [n for n in sys.modules if n == "services" or n.startswith("services.")]:
+        del sys.modules[name]
+    sys.modules.update(saved)
+    gc.collect()

@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import gc
 import importlib
-import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -18,6 +16,7 @@ from ostler.book.domain import State
 from ostler.book.index import cmd_search_book
 from ostler.book.search import cmd_explain, items
 
+from book_fakes import isolated_services
 from test_book_web import _service
 
 
@@ -175,17 +174,7 @@ def _listener(root: Path, text: str = LISTENER_SERVICE, reads: str = '("ticket_i
 
 @pytest.fixture
 def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
-    saved = {name: loaded for name, loaded in sys.modules.items() if name == "services" or name.startswith("services.")}
-    for name in saved:
-        del sys.modules[name]
-    monkeypatch.syspath_prepend(str(tmp_path))
-    monkeypatch.chdir(tmp_path)
-    importlib.invalidate_caches()
-    yield tmp_path
-    for name in [n for n in sys.modules if n == "services" or n.startswith("services.")]:
-        del sys.modules[name]
-    sys.modules.update(saved)
-    gc.collect()
+    yield from isolated_services(tmp_path, monkeypatch)
 
 
 def _hits(capsys: pytest.CaptureFixture[str]) -> list[tuple[str, str]]:
