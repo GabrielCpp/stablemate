@@ -350,6 +350,12 @@ prints the same outside files as one note, never blocking, and a commit of a boo
 `ostler book affected` answers which plays a code change calls for. It reads the diff from the verified commit, or
 `--since`, to the working tree, so staged, unstaged and untracked work under the app's roots counts. It reads the
 `source=` pointers of the endpoints, interactions, screens, records, actions and outside happenings, and no app runs.
+`--story <id>` reads the story's own commits instead of the range: the commits reachable from HEAD whose `Story:`
+trailer names the id, bounded by `--since` when it is given, plus the uncommitted and untracked work. No VERIFIED
+commit is needed. Each file is compared from the parent of the first story commit that touched it to the last story
+commit that did (to the working tree when the file is dirty), so commits of other work between the story's do not
+count, unless they edit a file the story's commits also touch. A message that only mentions the id in its body does
+not match. With no commit that carries the trailer the command prints so, writes no report and exits 2.
 A changed symbol names its element, and an element names its calls: an action reaches every endpoint,
 interaction and outside happening that carries it, and a screen its interactions. The plan is `none` (nothing
 changed, or only ignored files and imports), `partial` (a named list) or `whole`. It is `whole` when a record is
@@ -380,7 +386,7 @@ changed and none selects a play, and `none`, with exit 0, when nothing changed. 
 `<service>-affected.json` counts the changed app files and book files and lists, up to 50 paths with a count, the
 changed files under `not_computed` that the command did not judge: files outside every root and files of the book
 that are not Python. `only` is the list for `run --only`, `by_journey` the titles for `run --partial --journey`, and
-`whole: true` with its `reason` means to run the whole book with no `--only`. `run --only` with an empty value is an
+`whole: true` with its `reason` means to run the whole book with no `--only`. `owed` lists the fallback reasons one by one, and `story` and `commits` name the story and the commits read. Under `whole`, `only` and `by_journey` stay the selection the walk named directly, so a caller can play them and owe the rest. The print gives the plan, the `calls` and the `journeys` first, then `owed to a whole play`, and lists the files not judged last, up to 20 paths. `run --only` with an empty value is an
 argument error, exit 2.
 A hunk with no definition line counts at the file and leaves the other hunks of the file to their own symbols. At
 the file it reaches every element that names it, a record that names it makes the plan `whole`, and the place is

@@ -17,15 +17,18 @@ from typing import Any, cast
 
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book.bookdiff import BookDiff, book_diff
+from ostler.book.change import Reading, change_in, parent_of
 from ostler.book.played import carriers
 from ostler.book.reach import arrivals
 from ostler.book.service import Service
 from ostler.book.mentions import Mentions, same_symbol
-from ostler.book.sources import changed_parts, changed_in_tree, file_of, git, head_of, ignored, sourced, traced_in, verified_at
+from ostler.book.sources import changed_in_tree, changed_parts, file_of, git, head_of, ignored, sourced, story_commits, traced_in, verified_at
 from ostler.book.touching import touches
 
 NONE, EMPTY, PARTIAL, WHOLE = "none", "empty", "partial", "whole"
 UNJUDGED_CAP = 50
+DIRECT_CAP = 20
+NOT_JUDGED_CAP = 20
 
 NOT_COMPUTED = (
     "dependent books: the gateways, web apps and services that call or read this book",
@@ -75,6 +78,9 @@ class Affected:
     mapped: list[str] = field(default_factory=list)
     unused: list[str] = field(default_factory=list)
     imports: list[str] = field(default_factory=list)
+    story: str = ""
+    commits: list[str] = field(default_factory=list)
+    owed: list[str] = field(default_factory=list)
     not_computed: list[str] = field(default_factory=lambda: list(NOT_COMPUTED))
 
     def command(self, module: str) -> str:
@@ -113,13 +119,33 @@ def calls_of(service: Service[Any], element: type, kind: str) -> set[str] | None
     return {element.__name__}
 
 
-def walk(service: Service[Any], app_root: str, base: str, head: str, book: Path | None = None, module: str = "") -> Affected:
+def short_of(app_root: str, *revs: str) -> list[str]:
+    return [git(app_root, "rev-parse", "--short", rev).strip() for rev in revs]
+
+
+def short_parent(app_root: str, commit: str) -> str:
+    parent = parent_of(app_root, commit)
+    try:
+        return short_of(app_root, parent)[0]
+    except subprocess.CalledProcessError:
+        return parent[:7]
+
+
+def walk(service: Service[Any], app_root: str, reading: Reading, head: str, book: Path | None = None, module: str = "") -> Affected:
     assert service.app is not None
     app = service.app
-    tracked, untracked = changed_in_tree(app_root, base, app.roots)
+    change = change_in(app_root, reading, app.roots)
+    tracked, untracked = sorted(change.spans), change.untracked
     held, loose = changed_in_tree(app_root, "HEAD", service.app.roots)
+    if reading.story:
+        base = reading.since or (short_parent(app_root, change.commits[0]) if change.commits else "")
+    else:
+        base = reading.base
     found = Affected(service.name, base, head, dirty=bool(held or loose))
-    owned = book_diff(service, book, module, base) if book is not None else BookDiff()
+    if reading.story:
+        found.story = reading.story
+        found.commits = short_of(app_root, *change.commits)
+    owned = book_diff(service, book, module, reading) if book is not None else BookDiff()
     direct: set[str] = set()
     named: dict[str, list[Pointer]] = {}
     everything = pointers(service, app_root)
@@ -194,7 +220,8 @@ def walk(service: Service[Any], app_root: str, base: str, head: str, book: Path 
         if path in untracked:
             functions, unattributed, imports = set(), [[]], False
         else:
-            functions, unattributed, imports = changed_parts(app_root, base, path, tree=True, dotted=True, types=True)
+            span = change.spans[path]
+            functions, unattributed, imports = changed_parts(app_root, span.old, path, tree=span.new is None, until=span.new, dotted=True, types=True)
         if imports:
             found.imports.append(path)
         if not (functions or unattributed or imports):
@@ -219,7 +246,7 @@ def walk(service: Service[Any], app_root: str, base: str, head: str, book: Path 
             chain(f"book {hit.path}", hit.name, Pointer(hit.element, hit.kind, hit.path, None))
     left = {u["path"] for u in found.uncovered}
     found.mapped = sorted({*(c.path for c in found.chains if not c.path.startswith("book ")), *found.imports} - left)
-    unjudged = sorted({*owned.unjudged, *outside_roots(app_root, base, [*tracked, *untracked], book, owned)})
+    unjudged = sorted({*owned.unjudged, *outside_roots(app_root, reading, [*tracked, *untracked], book, owned)})
     found.diff = {"app_files": len({*tracked, *untracked}), "book_files": len(owned.files),
                   "not_computed": {"count": len(unjudged), "paths": unjudged[:UNJUDGED_CAP]}}
     found.not_computed += owned.notes
@@ -233,7 +260,8 @@ def walk(service: Service[Any], app_root: str, base: str, head: str, book: Path 
     else:
         found.plan = NONE
     found.whole = found.plan == WHOLE
-    found.reason = "; ".join(dict.fromkeys(f["why"] for f in found.fallbacks))
+    found.owed = list(dict.fromkeys(f["why"] for f in found.fallbacks))
+    found.reason = "; ".join(found.owed)
     found.only = sorted(called)
     found.journeys = [j.title() for j in service.journeys if j.title() in titled]
     by_calls = {t for c in called for t in journeys_of(c)}
@@ -241,22 +269,33 @@ def walk(service: Service[Any], app_root: str, base: str, head: str, book: Path 
     return found
 
 
-def outside_roots(app_root: str, base: str, inside: list[str], book: Path | None, owned: BookDiff) -> list[str]:
+def outside_roots(app_root: str, reading: Reading, inside: list[str], book: Path | None, owned: BookDiff) -> list[str]:
     """The changed files of the app's repository that sit under no root and are not the book's own."""
-    tracked, untracked = changed_in_tree(app_root, base, (".",))
+    change = change_in(app_root, reading, (".",))
+    tracked, untracked = sorted(change.spans), change.untracked
     held = {os.path.normpath(os.path.join(app_root, p)) for p in inside}
     own = {os.path.normpath(os.path.join(str(book), p)) for p in owned.files} if book is not None else set()
     return [p for p in sorted({*tracked, *untracked}) if os.path.normpath(os.path.join(app_root, p)) not in held | own]
 
 
+def capped(names: list[str], cap: int) -> str:
+    return ", ".join(names[:cap]) + (f", and {len(names) - cap} more" if len(names) > cap else "")
+
+
+def header(found: Affected, module: str) -> str:
+    named = f"story {found.story}, {len(found.commits)} commit{'s' if len(found.commits) != 1 else ''}, {found.commits[0]} to {found.commits[-1]}" if found.story and found.commits else f"{found.base}..{found.head}"
+    return f"affected {module}: {named}" + (" and the uncommitted work" if found.dirty else "")
+
+
 def show(found: Affected, module: str) -> list[str]:
-    lines = [f"affected {module}: {found.base}..{found.head}" + (" and the uncommitted work" if found.dirty else ""),
+    lines = [header(found, module),
              f"plan: {found.plan}" + (f", {sum(found.diff[k] for k in ('app_files', 'book_files')) + found.diff['not_computed']['count']} changed files select no play" if found.plan == EMPTY else "")]
+    lines.append(f"calls ({len(found.only)}): {capped(found.only, DIRECT_CAP)}" if found.only else "calls: none")
+    lines.append(f"journeys ({len(found.journeys)}): {capped(found.journeys, DIRECT_CAP)}" if found.journeys else "journeys: none")
+    if found.fallbacks:
+        more = len(found.owed) - 1
+        lines.append(f"owed to a whole play ({len(found.owed)}): {found.owed[0]}" + (f", and {more} more, listed under fallbacks" if more > 0 else ""))
     lines.append(f"changed: {found.diff['app_files']} app files, {found.diff['book_files']} book files, {found.diff['not_computed']['count']} not judged")
-    if found.diff["not_computed"]["paths"]:
-        lines += ["not judged (outside every root, or not Python in the book):", *(f"  {p}" for p in found.diff["not_computed"]["paths"])]
-        if found.diff["not_computed"]["count"] > len(found.diff["not_computed"]["paths"]):
-            lines.append(f"  and {found.diff['not_computed']['count'] - len(found.diff['not_computed']['paths'])} more")
     if found.ignored:
         lines += [f"ignored ({len(found.ignored)}):", *(f"  {p}" for p in found.ignored)]
     if found.fallbacks:
@@ -280,6 +319,11 @@ def show(found: Affected, module: str) -> list[str]:
     if found.unplayed:
         lines += ["unplayed (the book states them and no play reaches them):", *(f"  {u['kind']} {u['element']}" for u in found.unplayed)]
     lines.append("not computed: " + "; ".join(found.not_computed))
+    paths = found.diff["not_computed"]["paths"]
+    if paths:
+        lines += ["not judged (outside every root, or not Python in the book):", *(f"  {p}" for p in paths[:NOT_JUDGED_CAP])]
+        if found.diff["not_computed"]["count"] > NOT_JUDGED_CAP:
+            lines.append(f"  and {found.diff['not_computed']['count'] - NOT_JUDGED_CAP} more")
     return lines
 
 
@@ -289,17 +333,24 @@ def book_root_of(package_dir: str, module: str) -> Path | None:
     return here.parents[len(parts) - 1] if len(parts) >= 2 and len(here.parents) > len(parts) - 1 else None
 
 
-def cmd_affected(service: Service[Any], module: str, app_root: str, since: str | None, package_dir: str, out: str) -> int:
+def cmd_affected(service: Service[Any], module: str, app_root: str, since: str | None, package_dir: str, out: str, story: str | None = None) -> int:
     if service.app is None:
         print(f"{service.name} declares no app")
         return 2
-    verified = since or verified_at(service, package_dir)
-    if verified is None:
+    verified = since or (None if story else verified_at(service, package_dir))
+    if verified is None and not story:
         print("not verified: give --since <commit>, or write the commit with 'verified'")
         return 2
     try:
-        base = git(app_root, "rev-parse", "--short", verified).strip()
-        found = walk(service, app_root, base, head_of(app_root), book_root_of(package_dir, module), module)
+        if story:
+            bound = git(app_root, "rev-parse", "--short", since).strip() if since else None
+            if not story_commits(app_root, story, bound):
+                print(f"no commit reachable from HEAD{f' after {bound}' if bound else ''} in {app_root} carries the trailer 'Story: {story}'")
+                return 2
+            reading = Reading(story=story, since=bound)
+        else:
+            reading = Reading(base=git(app_root, "rev-parse", "--short", str(verified)).strip())
+        found = walk(service, app_root, reading, head_of(app_root), book_root_of(package_dir, module), module)
     except subprocess.CalledProcessError as wrong:
         print(f"git could not read {app_root} from {verified}: {(wrong.stderr or '').strip()}")
         return 2

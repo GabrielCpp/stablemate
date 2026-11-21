@@ -17,6 +17,9 @@ from ostler.book.service import Service
 from ostler.refs import parse_code_ref
 
 
+EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+
+
 @dataclass
 class Report:
     verified: str | None
@@ -304,13 +307,16 @@ def hunk_parts(lines: list[str], context: str, golang: bool, dotted: bool, types
     return names, imported, blank, other
 
 
-def changed_parts(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False, types: bool = False) -> tuple[set[str], list[list[str]], bool]:
+def changed_parts(app_root: str, commit: str, path: str, tree: bool = False, dotted: bool = False, types: bool = False, until: str | None = None) -> tuple[set[str], list[list[str]], bool]:
     """The definitions a file's changed lines sit in, the changed lines of each hunk that has none, and whether a
     Go hunk changed nothing but imports. With `tree` the span runs to the working tree, uncommitted work included,
     instead of to HEAD; with `dotted` a Go method is named with its receiver type, `Service.Get`; with `types` a type
     declaration, a package-level constant or variable and an entry of a Go `const (` block are definitions too, and
-    a Go hunk of import lines is set aside."""
-    out = git(app_root, "diff", "-U0", commit if tree else f"{commit}..HEAD", "--", path)
+    a Go hunk of import lines is set aside. With `until` the span ends at that commit."""
+    if until is not None:
+        out = git(app_root, "diff", "-U0", commit, until, "--", path)
+    else:
+        out = git(app_root, "diff", "-U0", commit if tree else f"{commit}..HEAD", "--", path)
     golang = types and path.endswith(".go")
     names: set[str] = set()
     unattributed: list[list[str]] = []
@@ -357,6 +363,17 @@ def changed_in_tree(app_root: str, commit: str, roots: tuple[str, ...]) -> tuple
     tracked = git(app_root, "diff", "--name-only", "--relative", commit, "--", *roots).splitlines()
     untracked = git(app_root, "ls-files", "--others", "--exclude-standard", "--", *roots).splitlines()
     return sorted(p for p in tracked if p), sorted(p for p in untracked if p)
+
+
+def story_commits(root: str, story: str, since: str | None = None) -> list[str]:
+    """The commits reachable from HEAD, oldest first, whose `Story:` trailer names the story."""
+    out = git(root, "log", "--reverse", "--format=%H%x1f%(trailers:key=Story,valueonly,separator=%x1f)%x1e", f"{since}..HEAD" if since else "HEAD")
+    found: list[str] = []
+    for entry in out.split("\x1e"):
+        head, _, values = entry.strip().partition("\x1f")
+        if story in [v.strip() for v in values.split("\x1f")]:
+            found.append(head)
+    return found
 
 
 def symbol_commits(app_root: str, commit: str, pointer: str) -> list[str] | None:

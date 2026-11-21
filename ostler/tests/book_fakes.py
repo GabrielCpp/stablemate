@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import dataclass
 from datetime import date
@@ -242,6 +243,21 @@ def run_shelf(monkeypatch: Any, service: Service[Any], out: Path, capsys: Any, *
     monkeypatch.setattr(cli, "register_path", lambda module: str(out / "register.txt"))
     code = cli.main(["run", __name__, "--no-stack", "--out", str(out), *flags])
     return code, capsys.readouterr().out
+
+
+def affected_report(monkeypatch: Any, tmp_path: Path, service: Any, capsys: Any, *arguments: str) -> tuple[int, dict[str, Any], str]:
+    """The `affected` command on a book with its loading stood in, the report it wrote (empty when none) and what it printed."""
+    monkeypatch.setattr(cli, "load", lambda name: service)
+    monkeypatch.setattr(cli, "_package_dir", lambda args: str(tmp_path))
+    out = tmp_path / "out"
+    code = cli.main(["affected", "services.shelf", "--out", str(out), *arguments])
+    report = out / "shelf-affected.json"
+    return code, json.loads(report.read_text()) if report.exists() else {}, capsys.readouterr().out
+
+
+def app_repo(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
+    """A code repository under `tmp_path` holding the files, and its base commit."""
+    return tmp_path / "app", code_repo(tmp_path / "app", files)
 
 
 def git(folder: Path, *arguments: str) -> str:

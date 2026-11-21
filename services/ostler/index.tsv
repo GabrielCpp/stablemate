@@ -333,6 +333,38 @@ decision	a-shape-that-holds-itself-must-name-its-object	decisions/a-shape-that-h
 decision	a-shape-that-holds-itself-must-name-its-object	decisions/a-shape-that-holds-itself-must-name-its-object.md:8	in its path, query, headers, body and answers, and reports each `Itself` that names no enclosing object with the
 decision	a-shape-that-holds-itself-must-name-its-object	decisions/a-shape-that-holds-itself-must-name-its-object.md:9	path of the field that holds it. A shape that holds itself is loaded by `check` and `index` alike, so both run the
 decision	a-shape-that-holds-itself-must-name-its-object	decisions/a-shape-that-holds-itself-must-name-its-object.md:10	same code that resolves it. The sandbox's demo book declares no tree, so its check reports no finding.
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:1	story: none
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:3	elements: RunBook
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:4	sources: ostler/ostler/book/affected.py, ostler/ostler/book/change.py
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:6	`ostler book affected --story <id>` reads the change of one story as its own commits and the uncommitted work, not as
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:7	the range from a base commit to the working tree. A commit is the story's when its `Story:` trailer names the id. A
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:8	message that only mentions the id in its body is not the story's.
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:9	
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:10	The range made every plan `whole` on trunk. Commits of other work landed between the story's, their symbols were named
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:11	by no element, and the exit code 1 of the uncovered list stopped the plays before any service played. Reading only the
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:12	story's commits drops that foreign work.
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:13	
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:14	Each file is compared from the parent of the first story commit that touched it to the last story commit that touched
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:15	it. The uncommitted and untracked work is read as well, because the seat's new journeys are uncommitted when the
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:16	selection runs: a file dirty in the working tree is compared to the working tree from the same start, and a file that is
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:17	only dirty is compared from HEAD.
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:18	
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:19	The accepted risk is the span. A foreign commit that edits a file between two story commits that touch the same file
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:20	shows its hunks in that file's span, because the span runs from before the first story commit to after the last. The
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:21	selection then names a few symbols more than the story wrote. It never names fewer.
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:22	
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:23	With no commit carrying the trailer the command exits 2 and writes no report. It does not fall back to the range,
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:24	because the range is what made the selection wrong. The coder reads the commits first and passes `--story` only when
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:25	some commit carries the trailer, and otherwise reads the range as before.
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:26	
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:27	The plan keeps the kind `whole` when a fallback applies, and the report adds an `owed` list of the fallback reasons
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:28	instead of a new kind. Under `whole`, `only` and `by_journey` are already the direct selection, since a record hit and a
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:29	fallback add no call. A caller that plays what the selection names and owes the rest reads `owed`. The kinds `none`,
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:30	`empty`, `partial` and `whole` and the `reason` field stay as they were, so the coder's merge of kinds and the okf book
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:31	workflows that key on `whole` are unchanged.
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:32	
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:33	The book of ostler does not play `affected`. The command reads a git checkout, and the demo world of the book is not
+decision	a-storys-change-is-its-own-commits	decisions/a-storys-change-is-its-own-commits.md:34	one. A later story can add a separate git world and an element for it.
 decision	an-empty-status-is-refused	decisions/an-empty-status-is-refused.md:1	story: SM-01M7APW2Y9KF8E5HXCCWET7Z1S
 decision	an-empty-status-is-refused	decisions/an-empty-status-is-refused.md:3	elements: SetStatus
 decision	an-empty-status-is-refused	decisions/an-empty-status-is-refused.md:5	`ostler set-status` refuses a status that is empty or made only of spaces and tabs. The refusal prints

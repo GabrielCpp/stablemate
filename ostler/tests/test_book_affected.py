@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
 
-from book_fakes import Clearing, Haunting, Shelving, code_repo, commit_files, git, run_shelf, shelf_book, sourced_book
+from book_fakes import Clearing, Haunting, Shelving, affected_report, app_repo, code_repo, commit_files, git, run_shelf, shelf_book, sourced_book
 from ostler.book import cli
 from ostler.book import affected as affected_module
 from ostler.book.affected import calls_of
@@ -37,16 +36,11 @@ def edited(name: str, old: str, new: str) -> dict[str, str]:
 
 @pytest.fixture
 def repo(tmp_path: Path) -> tuple[Path, str]:
-    base = code_repo(tmp_path / "app", FILES)
-    return tmp_path / "app", base
+    return app_repo(tmp_path, FILES)
 
 
 def affect(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, service: Any, repo: Path, base: str, capsys: Any) -> tuple[int, dict[str, Any], str]:
-    monkeypatch.setattr(cli, "load", lambda name: service)
-    monkeypatch.setattr(cli, "_package_dir", lambda args: str(tmp_path))
-    out = tmp_path / "out"
-    code = cli.main(["affected", "services.shelf", "--app", str(repo), "--since", base, "--out", str(out)])
-    return code, json.loads((out / "shelf-affected.json").read_text()), capsys.readouterr().out
+    return affected_report(monkeypatch, tmp_path, service, capsys, "--app", str(repo), "--since", base)
 
 
 def test_a_method_of_another_type_is_not_covered_by_the_pointer_of_the_same_bare_name(monkeypatch, tmp_path, capsys, repo):
@@ -310,7 +304,7 @@ def test_the_report_holds_the_fields_the_caller_reads_and_what_it_did_not_walk(m
     head = commit_files(where, edited("remove.go", "return id", "return id + id"))
     _, found, out = affect(monkeypatch, tmp_path, sourced_book({"RemoveItem": ("remove.go::Remove",)}), where, base, capsys)
     assert set(found) == {"service", "base", "head", "dirty", "plan", "whole", "reason", "only", "journeys", "by_journey", "diff", "chains", "uncovered",
-                          "unplayed", "ignored", "fallbacks", "widened", "not_computed", "mapped", "imports", "unused"}
+                          "unplayed", "ignored", "fallbacks", "widened", "not_computed", "mapped", "imports", "unused", "story", "commits", "owed"}
     assert (found["service"], found["base"], found["head"]) == ("shelf", base, head)
     assert set(found["chains"][0]) == {"path", "function", "element", "kind", "plays", "via"}
     assert [n.split(":")[0] for n in found["not_computed"]] == ["dependent books", "configuration", "data", "code in other repositories"]

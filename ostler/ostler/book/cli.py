@@ -146,6 +146,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     what.add_argument("service")
     what.add_argument("--app", required=True, help="the app's root")
     what.add_argument("--since", help="judge against this commit instead of the verified one")
+    what.add_argument("--story", help="read only the commits whose trailer is 'Story: <id>', with the uncommitted work")
     what.add_argument("--out", default=None, help=OUT_HELP)
     absent = sub.add_parser("missing", help="list the tracked source files of the app that no element names and no ignore pattern covers")
     absent.add_argument("service")
@@ -1009,7 +1010,7 @@ def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
 
 
 def cmd_affected(service: Service[Any], args: argparse.Namespace) -> int:
-    return affected(service, args.service, args.app, args.since, _package_dir(args), args.out)
+    return affected(service, args.service, args.app, args.since, _package_dir(args), args.out, args.story)
 
 
 def cmd_missing(service: Service[Any], args: argparse.Namespace) -> int:

@@ -14,9 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from ostler.book.bookreach import Graph, named, read_source
+from ostler.book.change import Reading, change_in, text_at
 from ostler.book.files import files as book_files, outside
 from ostler.book.service import Service
-from ostler.book.sources import actions, changed_in_tree, git, kinds
+from ostler.book.sources import actions, git, kinds
 
 SHARED = "a shared book file changed"
 
@@ -101,24 +102,10 @@ def changed_defs(path: str, old: str | None, new: str | None) -> tuple[list[str]
     return classes, names, None
 
 
-def read_old(root: str, base: str, path: str) -> str | None:
-    try:
-        return git(root, "show", f"{base}:./{path}")
-    except subprocess.CalledProcessError:
-        return None
-
-
-def read_new(root: str, path: str) -> str | None:
-    try:
-        return (Path(root) / path).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return None
-
-
 def trace(root: Path, module: str, found: BookDiff, changes: dict[str, list[str]], known: dict[tuple[str, str], tuple[str, type]], taken: set[tuple[str, str]]) -> None:
     sources = []
     for path in book_files(root, module):
-        text = read_new(str(root), path) if path.endswith(".py") else None
+        text = text_at(str(root), None, path) if path.endswith(".py") else None
         source = read_source(path, dotted_of(path), text) if text is not None else None
         if source is not None:
             sources.append(source)
@@ -144,7 +131,7 @@ def trace(root: Path, module: str, found: BookDiff, changes: dict[str, list[str]
                 found.unused.append(label)
 
 
-def book_diff(service: Service[Any], root: Path, module: str, base: str) -> BookDiff:
+def book_diff(service: Service[Any], root: Path, module: str, reading: Reading) -> BookDiff:
     found = BookDiff()
     parts = module.split(".")
     if len(parts) < 2 or not (root / "services" / parts[1]).is_dir():
@@ -152,21 +139,28 @@ def book_diff(service: Service[Any], root: Path, module: str, base: str) -> Book
     where = str(root)
     specs = ["/".join(parts[:2]), *outside(root, module)]
     try:
-        try:
-            resolved = git(where, "rev-parse", "--verify", "--quiet", f"{base}^{{commit}}").strip()
-        except subprocess.CalledProcessError:
-            resolved = "HEAD"
-            found.notes.append(f"the book folder is judged from its own HEAD: {base} is not a commit there")
-        tracked, untracked = changed_in_tree(where, resolved, tuple(specs))
+        if reading.story:
+            change = change_in(where, reading, specs)
+            if not change.commits:
+                found.notes.append(f"the book folder holds no commit of story {reading.story}: only its uncommitted work is read")
+        else:
+            try:
+                resolved = git(where, "rev-parse", "--verify", "--quiet", f"{reading.base}^{{commit}}").strip()
+            except subprocess.CalledProcessError:
+                resolved = "HEAD"
+                found.notes.append(f"the book folder is judged from its own HEAD: {reading.base} is not a commit there")
+            change = change_in(where, Reading(base=resolved), specs)
         known = index_of(service)
         changes: dict[str, list[str]] = {}
         taken: set[tuple[str, str]] = set()
-        for path in sorted({*tracked, *untracked}):
+        for path in sorted({*change.spans, *change.untracked}):
             found.files.append(path)
             if not path.endswith(".py"):
                 found.unjudged.append(path)
                 continue
-            names, moved, why = changed_defs(path, read_old(where, resolved, path), read_new(where, path))
+            span = change.spans.get(path)
+            old = text_at(where, span.old, path) if span else None
+            names, moved, why = changed_defs(path, old, text_at(where, span.new if span else None, path))
             if why is not None:
                 found.hits.append(BookHit(path, "", "shared", None, why))
             loose: list[str] = []
