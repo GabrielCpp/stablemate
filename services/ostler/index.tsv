@@ -313,6 +313,18 @@ decision	a-run-ends-on-its-verdict	decisions/a-run-ends-on-its-verdict.md:15
 decision	a-run-ends-on-its-verdict	decisions/a-run-ends-on-its-verdict.md:16	The sandbox plays `RunBook` on the small book `demo`, which is green, so the book sees the block's `green` and exit 0 and
 decision	a-run-ends-on-its-verdict	decisions/a-run-ends-on-its-verdict.md:17	never the `red:` or `FAIL` lines. The progress lines go to standard error, which the book does not compare for this
 decision	a-run-ends-on-its-verdict	decisions/a-run-ends-on-its-verdict.md:18	command.
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:1	story: none
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:3	elements: RunPlan
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:4	sources: ostler/ostler/qa/harness_host.py::SCENARIO_WALL_S, ostler/ostler/qa/drivers.py
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:6	A QA scenario is killed after one hour of wall-clock time, however often it reports. The silence timeout restarts on
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:7	every record the scenario writes, so a scenario that keeps reporting could otherwise run as long as it liked and hold the
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:8	whole run.
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:9	
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:10	The scenario's process group is killed, its result fails with a message that names the ceiling, and its entry in the
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:11	run's scenarios carries `overran`. A reader of the result can tell a scenario that was too long from one that failed a
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:12	check. An interrupted run also kills the group of the scenario it was waiting on, so none outlives it.
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:13	
+decision	a-scenario-has-a-wall-clock-ceiling	decisions/a-scenario-has-a-wall-clock-ceiling.md:14	The ceiling does not say whether the scenario is too long or the app hangs. The run leaves that call to the operator.
 decision	a-shape-that-holds-itself-must-name-its-object	decisions/a-shape-that-holds-itself-must-name-its-object.md:1	story: none
 decision	a-shape-that-holds-itself-must-name-its-object	decisions/a-shape-that-holds-itself-must-name-its-object.md:3	elements: CheckBook, IndexBook
 decision	a-shape-that-holds-itself-must-name-its-object	decisions/a-shape-that-holds-itself-must-name-its-object.md:4	sources: ostler/ostler/book/tree.py, ostler/ostler/book/check.py::itself_faults, a34829091
