@@ -255,6 +255,13 @@ def affected_report(monkeypatch: Any, tmp_path: Path, service: Any, capsys: Any,
     return code, json.loads(report.read_text()) if report.exists() else {}, capsys.readouterr().out
 
 
+def story_affected(root: Path, tmp_path: Path, capsys: Any, story: str = "ACME-1") -> tuple[int, dict[str, Any], list[str]]:
+    """The `affected` command of the api book of the copied todo repository under a story, its report and the lines it printed."""
+    out = tmp_path / "out"
+    code = cli.main(["affected", "services.api", "--app", str(root), "--story", story, "--out", str(out)])
+    return code, json.loads((out / "api-affected.json").read_text()), capsys.readouterr().out.splitlines()
+
+
 def app_repo(tmp_path: Path, files: dict[str, str]) -> tuple[Path, str]:
     """A code repository under `tmp_path` holding the files, and its base commit."""
     return tmp_path / "app", code_repo(tmp_path / "app", files)
@@ -282,6 +289,15 @@ def code_repo(folder: Path, files: dict[str, str]) -> str:
     folder.mkdir(parents=True)
     git(folder, "init", "--quiet")
     return commit_files(folder, files, "base")
+
+
+def committed_book(root: Path) -> str:
+    """The copied todo book as the base commit of a new repository, and that commit."""
+    (root / ".gitignore").write_text("__pycache__/\nnode_modules/\n")
+    git(root, "init", "--quiet")
+    git(root, "add", ".")
+    git(root, "commit", "--quiet", "-m", "base")
+    return git(root, "rev-parse", "--short", "HEAD").strip()
 
 
 class Drawer:

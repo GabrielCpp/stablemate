@@ -29,6 +29,7 @@ class BookHit:
     kind: str
     element: type | None
     why: str = ""
+    used: str = ""
 
 
 @dataclass
@@ -120,7 +121,7 @@ def trace(root: Path, module: str, found: BookDiff, changes: dict[str, list[str]
                 if (where, cls, text) not in seen:
                     seen.add((where, cls, text))
                     kind, element = known[(where, cls)]
-                    found.hits.append(BookHit(path, text, kind, element))
+                    found.hits.append(BookHit(path, text, kind, element, used=name))
             if result.hits:
                 continue
             if result.hidden:

@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from book_fakes import affected_report, app_repo, commit_files, git, sourced_book
+from book_fakes import affected_report, app_repo, commit_files, committed_book, sourced_book, story_affected
 from ostler.book import cli
 from test_book_affected import FILES, edited
 
@@ -77,18 +77,12 @@ def test_under_story_no_verified_commit_is_needed(monkeypatch, tmp_path, capsys,
 
 
 def test_the_print_names_the_plan_and_the_selection_before_any_file_and_lists_the_files_not_judged_last(root, tmp_path, capsys):
-    (root / ".gitignore").write_text("__pycache__/\nnode_modules/\n")
-    git(root, "init", "--quiet")
-    git(root, "add", ".")
-    git(root, "commit", "--quiet", "-m", "base")
+    committed_book(root)
     for n in range(60):
         (root / f"note{n}.txt").write_text("x")
     todos = root / API / "endpoints" / "todos.py"
     commit_files(root, {f"{API}/endpoints/todos.py": todos.read_text().replace("Creates one todo;", "Makes one todo;")}, STORY)
-    out_dir = tmp_path / "out"
-    code = cli.main(["affected", "services.api", "--app", str(root), "--story", "ACME-1", "--out", str(out_dir)])
-    lines = capsys.readouterr().out.splitlines()
-    found = json.loads((out_dir / "api-affected.json").read_text())
+    code, found, lines = story_affected(root, tmp_path, capsys)
     assert code == 0
     assert "plan: partial" in lines[:10]
     assert any(line.startswith("calls (1): AddTodo") for line in lines[:10])
@@ -118,16 +112,13 @@ def test_without_story_the_print_of_a_whole_plan_changes_only_in_order_and_cap(m
         f"written: {tmp_path / 'out' / 'shelf-affected.json'}",
         "ostler book run services.shelf",
     ]
-    added = ["calls: none", "journeys: none", "owed to a whole play (1): record Drawer changed: the whole book"]
+    added = ["direct journeys: none", "direct calls: none", "reached beyond that: 0 calls, 0 journeys", "calls: none", "journeys: none", "owed to a whole play (1): record Drawer changed: the whole book"]
     assert set(added) <= set(lines)
     assert Counter(lines) - Counter(added) == Counter(old)
 
 
 def test_a_journey_the_story_added_is_selected_while_a_changed_record_makes_the_plan_whole(root, tmp_path, capsys):
-    (root / ".gitignore").write_text("__pycache__/\nnode_modules/\n")
-    git(root, "init", "--quiet")
-    git(root, "add", ".")
-    git(root, "commit", "--quiet", "-m", "base")
+    committed_book(root)
     commit_files(root, {
         f"{API}/records.py": "LIMIT = 1\n\n\nclass Row:\n    source = ()\n    size = LIMIT\n",
         f"{API}/service.py": (root / API / "service.py").read_text().replace("from .people import ANA\n", "from .people import ANA\nfrom .records import Row\n").replace("    endpoints=ENDPOINTS,\n", "    endpoints=ENDPOINTS,\n    records=(Row,),\n"),

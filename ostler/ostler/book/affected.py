@@ -29,6 +29,7 @@ NONE, EMPTY, PARTIAL, WHOLE = "none", "empty", "partial", "whole"
 UNJUDGED_CAP = 50
 DIRECT_CAP = 20
 NOT_JUDGED_CAP = 20
+CAUSE_CAP = 3
 
 NOT_COMPUTED = (
     "dependent books: the gateways, web apps and services that call or read this book",
@@ -68,6 +69,9 @@ class Affected:
     only: list[str] = field(default_factory=list)
     journeys: list[str] = field(default_factory=list)
     by_journey: list[str] = field(default_factory=list)
+    direct_journeys: list[str] = field(default_factory=list)
+    direct_only: list[str] = field(default_factory=list)
+    reached: dict[str, Any] = field(default_factory=lambda: {"calls": 0, "journeys": 0, "causes": []})
     diff: dict[str, Any] = field(default_factory=dict)
     chains: list[Chain] = field(default_factory=list)
     uncovered: list[dict[str, str]] = field(default_factory=list)
@@ -88,6 +92,13 @@ class Affected:
             return "nothing to play"
         if self.plan == EMPTY:
             return "nothing to play: the changed files select no play"
+        runs = []
+        if self.direct_journeys:
+            runs.append(f"ostler book run {module} --partial {' '.join(f'--journey {t!r}' for t in self.direct_journeys)}")
+        if self.direct_only:
+            runs.append(f"ostler book run {module} --only {','.join(self.direct_only)}")
+        if runs:
+            return "\n".join(runs)
         if self.plan == WHOLE:
             return f"ostler book run {module}"
         runs = [f"ostler book run {module} --only {','.join(self.only)}"] if self.only else []
@@ -154,6 +165,9 @@ def walk(service: Service[Any], app_root: str, reading: Reading, head: str, book
     journeys: dict[str, list[str]] = {}
     called: set[str] = set()
     titled: set[str] = set()
+    ranked_journeys: list[str] = []
+    ranked_calls: dict[int, list[str]] = {2: [], 3: []}
+    caused: dict[str, tuple[set[str], set[str]]] = {}
 
     def journeys_of(call: str) -> list[str]:
         if call not in journeys:
@@ -172,11 +186,15 @@ def walk(service: Service[Any], app_root: str, reading: Reading, head: str, book
                 return
         found.widened.append({"path": path, "why": why, "elements": elements})
 
-    def chain(path: str, function: str, element: Pointer, because: str = "", via: str = "direct") -> None:
+    def chain(path: str, function: str, element: Pointer, because: str = "", via: str = "direct", rank: int = 0, cause: str = "") -> None:
         if element.kind == "journey":
             title = cast(Any, element.element).title()
             titled.add(title)
             direct.add(title)
+            if rank:
+                ranked_journeys.append(title)
+            else:
+                caused.setdefault(cause, (set(), set()))[1].add(title)
             found.chains.append(Chain(path, function, element.element.__name__, element.kind, [title], via))
             return
         calls = calls_of(service, element.element, element.kind)
@@ -192,12 +210,18 @@ def walk(service: Service[Any], app_root: str, reading: Reading, head: str, book
         titles = list(dict.fromkeys(t for c in wanted for t in journeys_of(c)))
         titled.update(titles)
         plays = [*wanted, *titles]
+        if rank:
+            ranked_calls[rank].extend(wanted)
+        else:
+            reached_calls, reached_titles = caused.setdefault(cause, (set(), set()))
+            reached_calls.update(wanted)
+            reached_titles.update(titles)
         found.chains.append(Chain(path, function, name, element.kind, plays, via))
 
     order = {p.element: i for i, p in reversed(list(enumerate(everything)))}
     mentions: list[Mentions] = []
 
-    def reached(path: str, function: str) -> dict[type, tuple[Pointer, str]]:
+    def hits_of(path: str, function: str) -> dict[type, tuple[Pointer, str]]:
         if not mentions:
             mentions.append(Mentions(app_root, app.roots, app.ignore))
         found_in = mentions[0].closure(path, function)
@@ -227,23 +251,25 @@ def walk(service: Service[Any], app_root: str, reading: Reading, head: str, book
         if not (functions or unattributed or imports):
             unattributed = [[]]
         for function in sorted(functions):
-            hits = reached(path, function)
+            hits = hits_of(path, function)
             if not hits:
                 found.uncovered.append({"path": path, "function": function})
             for element, (pointer, via) in sorted(hits.items(), key=lambda item: order[item[0]]):
-                chain(path, function, pointer, via=via)
+                chain(path, function, pointer, via=via, rank=3 if via == "direct" else 0, cause="" if via == "direct" else f"{path}::{function}")
         if unattributed:
             if not namers:
                 found.uncovered.append({"path": path, "function": ""})
                 continue
             widen(path, "a changed hunk has no definition line: every element naming the file is affected", namers)
             for element in {p.element: p for p in namers}.values():
-                chain(path, "", element, f"record {element.element.__name__} names the file and a changed hunk has no definition line")
+                chain(path, "", element, f"record {element.element.__name__} names the file and a changed hunk has no definition line", rank=3)
     for hit in owned.hits:
         if hit.element is None:
             fall(hit.path, hit.why)
         else:
-            chain(f"book {hit.path}", hit.name, Pointer(hit.element, hit.kind, hit.path, None))
+            rank = 0 if hit.used else 1 if hit.kind == "journey" else 2
+            cause = f"book {hit.path}:{hit.used}" if hit.used else ""
+            chain(f"book {hit.path}", hit.name, Pointer(hit.element, hit.kind, hit.path, None), rank=rank, cause=cause)
     left = {u["path"] for u in found.uncovered}
     found.mapped = sorted({*(c.path for c in found.chains if not c.path.startswith("book ")), *found.imports} - left)
     unjudged = sorted({*owned.unjudged, *outside_roots(app_root, reading, [*tracked, *untracked], book, owned)})
@@ -266,6 +292,14 @@ def walk(service: Service[Any], app_root: str, reading: Reading, head: str, book
     found.journeys = [j.title() for j in service.journeys if j.title() in titled]
     by_calls = {t for c in called for t in journeys_of(c)}
     found.by_journey = [t for t in found.journeys if t in direct and t not in by_calls]
+    found.direct_journeys = list(dict.fromkeys(ranked_journeys))
+    found.direct_only = list(dict.fromkeys([*ranked_calls[2], *ranked_calls[3]]))
+    named_calls = set(found.direct_only)
+    played = {*found.direct_journeys, *(t for c in found.direct_only for t in journeys_of(c))}
+    causes: list[dict[str, Any]] = [{"cause": k, "calls": len(c - named_calls), "journeys": len(t - played)} for k, (c, t) in caused.items()]
+    found.reached = {"calls": len(set(found.only) - named_calls),
+                     "journeys": len([t for t in found.journeys if t not in played]),
+                     "causes": sorted((c for c in causes if c["calls"] or c["journeys"]), key=lambda c: (-c["calls"], -c["journeys"], c["cause"]))}
     return found
 
 
@@ -287,15 +321,26 @@ def header(found: Affected, module: str) -> str:
     return f"affected {module}: {named}" + (" and the uncommitted work" if found.dirty else "")
 
 
+def reached_line(found: Affected) -> str:
+    r = found.reached
+    line = f"reached beyond that: {r['calls']} calls, {r['journeys']} journeys"
+    if r["causes"]:
+        line += "; top causes: " + ", ".join(f"{c['cause']} ({c['calls']} calls, {c['journeys']} journeys)" for c in r["causes"][:CAUSE_CAP])
+    return line
+
+
 def show(found: Affected, module: str) -> list[str]:
     lines = [header(found, module),
              f"plan: {found.plan}" + (f", {sum(found.diff[k] for k in ('app_files', 'book_files')) + found.diff['not_computed']['count']} changed files select no play" if found.plan == EMPTY else "")]
-    lines.append(f"calls ({len(found.only)}): {capped(found.only, DIRECT_CAP)}" if found.only else "calls: none")
-    lines.append(f"journeys ({len(found.journeys)}): {capped(found.journeys, DIRECT_CAP)}" if found.journeys else "journeys: none")
+    lines.append(f"direct journeys ({len(found.direct_journeys)}): {capped(found.direct_journeys, DIRECT_CAP)}" if found.direct_journeys else "direct journeys: none")
+    lines.append(f"direct calls ({len(found.direct_only)}): {capped(found.direct_only, DIRECT_CAP)}" if found.direct_only else "direct calls: none")
+    lines.append(reached_line(found))
     if found.fallbacks:
         more = len(found.owed) - 1
         lines.append(f"owed to a whole play ({len(found.owed)}): {found.owed[0]}" + (f", and {more} more, listed under fallbacks" if more > 0 else ""))
     lines.append(f"changed: {found.diff['app_files']} app files, {found.diff['book_files']} book files, {found.diff['not_computed']['count']} not judged")
+    lines.append(f"calls ({len(found.only)}): {capped(found.only, DIRECT_CAP)}" if found.only else "calls: none")
+    lines.append(f"journeys ({len(found.journeys)}): {capped(found.journeys, DIRECT_CAP)}" if found.journeys else "journeys: none")
     if found.ignored:
         lines += [f"ignored ({len(found.ignored)}):", *(f"  {p}" for p in found.ignored)]
     if found.fallbacks:

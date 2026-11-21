@@ -25,7 +25,7 @@ because the range is what made the selection wrong. The coder reads the commits 
 some commit carries the trailer, and otherwise reads the range as before.
 
 The plan keeps the kind `whole` when a fallback applies, and the report adds an `owed` list of the fallback reasons
-instead of a new kind. Under `whole`, `only` and `by_journey` are already the direct selection, since a record hit and a
+instead of a new kind. Under `whole`, `only` and `by_journey` are already the selection the walk names, since a record hit and a
 fallback add no call. A caller that plays what the selection names and owes the rest reads `owed`. The kinds `none`,
 `empty`, `partial` and `whole` and the `reason` field stay as they were, so the coder's merge of kinds and the okf book
 workflows that key on `whole` are unchanged.
