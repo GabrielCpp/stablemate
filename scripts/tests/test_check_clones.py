@@ -636,6 +636,29 @@ def test_range_mode_reads_the_span_since_the_base_and_hands_the_base_to_the_runn
     }
 
 
+def test_range_mode_with_paths_reads_only_their_span(repo: Path):
+    base = _range_repo(repo)
+    only = ["reporting-service/xlsx/sheet.go"]
+
+    def runner(root: Path, limits, ref: str):
+        return _report()
+
+    assert gate.range_span(repo, base, only) == {"reporting-service/xlsx/sheet.go": [(15, 15)]}
+    assert gate.check_clones(repo, runner, base, only) == ([], [])
+
+
+def test_main_with_base_takes_paths_after_a_double_dash(repo: Path, capsys):
+    base = _range_repo(repo)
+
+    code = gate.main(
+        ["--root", str(repo), "--base", base, "--json", "--", "reporting-service/xlsx/sheet.go"],
+        lambda root, limits, ref: _report(),
+    )
+
+    assert code == 0
+    assert json.loads(capsys.readouterr().out) == {"pairs": [], "problems": []}
+
+
 def test_range_mode_with_an_empty_span_never_runs_the_detector(repo: Path):
     def refuse(root: Path, limits, base):
         raise AssertionError("the detector ran")

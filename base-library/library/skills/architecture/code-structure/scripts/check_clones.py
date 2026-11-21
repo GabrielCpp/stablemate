@@ -474,8 +474,8 @@ def run_detector(root: Path, limits: Threshold, base: str | None = "HEAD") -> Ma
         return json.loads(report.read_text(encoding="utf-8"))
 
 
-def range_span(root: Path, base: str) -> Span:
-    return parse_span(_git(root, "diff", "-U0", base).stdout)
+def range_span(root: Path, base: str, paths: Sequence[str] = ()) -> Span:
+    return parse_span(_git(root, "diff", "-U0", base, "--", *paths).stdout)
 
 
 def check_clones(
@@ -491,7 +491,7 @@ def check_clones(
         span = change_span(root, paths)
         base = "HEAD"
     else:
-        span = range_span(root, base)
+        span = range_span(root, base, pathspecs)
         if not any(span.values()):
             return problems, []
     report = runner(root, limits, base)
@@ -560,7 +560,7 @@ def main(argv: Sequence[str] | None = None, runner: Runner = run_detector) -> in
         help="list every copy in the repository, old ones included, instead of the copies the change adds",
     )
     parser.add_argument("--json", action="store_true", help="print the pairs and problems as one JSON object")
-    parser.add_argument("pathspecs", nargs="*", help="limit the check to these staged paths")
+    parser.add_argument("pathspecs", nargs="*", help="limit the check to these paths: the staged ones, or with --base the ones changed since it")
     args = parser.parse_args(argv)
     if args.all and args.pathspecs:
         parser.error("--all checks the whole repository and takes no paths")
