@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "groom": {
-      "command": "uv",
-      "args": ["run", "--all-packages", "--quiet", "groom", "channel"]
-    }
-  }
-}
