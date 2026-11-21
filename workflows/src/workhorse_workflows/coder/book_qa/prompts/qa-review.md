@@ -73,12 +73,13 @@ operator to read. Never pick `unobserved` to skip a check you could run within t
 ## How to work
 
 1. Read the story at the story path. Then read the QA plan and the play reports.
-2. For each criterion, look for a play step that observes it. A green play is evidence only for what its steps assert. Read the step.
-3. Where no play observes a criterion, search the repository's tests for one that covers it.
-4. Read the spec dir for earlier evidence: reports, measurements and notes the story's work left. Take each file's date and commit from the file or from `git log` of the file.
-5. Check each command, option, file and endpoint a criterion names. Run its help or list it.
-6. Compare each recorded measurement with the bar its criterion states.
-7. Run an extra check only when nothing above settles a criterion.
+2. Find the product's rules before you judge. From the book root `{{ workhorse_var('book_root') }}`, run `ostler book search <word> --kind business` and `ostler book search <word> --kind decision` for the main nouns of the story, and read what each finds. A criterion that contradicts a business page is reported as such in its evidence, never silently judged.
+3. For each criterion, look for a play step that observes it. A green play is evidence only for what its steps assert. Read the step.
+4. Where no play observes a criterion, search the repository's tests for one that covers it.
+5. Read the spec dir for earlier evidence: reports, measurements and notes the story's work left. Take each file's date and commit from the file or from `git log` of the file.
+6. Check each command, option, file and endpoint a criterion names. Run its help or list it.
+7. Compare each recorded measurement with the bar its criterion states.
+8. Run an extra check only when nothing above settles a criterion.
 
 ## Limits on extra checks
 

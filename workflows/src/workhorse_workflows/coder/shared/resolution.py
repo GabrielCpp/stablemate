@@ -12,7 +12,7 @@ from workhorse_workflows.coder.shared.owner import cut_notes
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.kit import find_docs_root
+from workhorse_workflows.kit import find_book_root, find_docs_root
 
 RESOLVER_POWER = "max"
 
@@ -68,6 +68,7 @@ def resolver_args(
         "story_path": ident.story_path,
         "spec_dir": ident.spec_dir,
         "decisions_dir": str(decisions_dir(flow.repo_dir)),
+        "book_root": str(find_book_root(flow.repo_dir)),
         "block_kind": block_kind,
         "block_notes": notes,
         "result_schema": schema_block(OperatorResolution),

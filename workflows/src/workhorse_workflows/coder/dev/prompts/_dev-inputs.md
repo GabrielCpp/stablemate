@@ -44,6 +44,8 @@ with a `service.py`. For each one, read `{{ workhorse_var('book_root') }}/servic
 `{{ workhorse_var('book_root') }}/services/<name>/DISAGREEMENTS.md` before you plan. A decision says why the service behaves as
 it does and which story settled it. Where your plan changes a behaviour a decision explains,
 cite the decision in the plan and say whether the story keeps it or overturns it.
+
+Then read every file under `{{ workhorse_var('book_root') }}/business/`. They are few. They hold the product's words and the rules above any one service. Use its words.
 {% endif %}
 {% if spec_book_paths and not opening_brief and not follow_up_title %}
 

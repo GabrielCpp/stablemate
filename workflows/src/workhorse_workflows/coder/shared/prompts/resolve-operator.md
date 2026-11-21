@@ -50,8 +50,12 @@ found, not just that you looked.
 
 Then check whether the question is already decided. In descending order of authority:
 
-1. **`{{ decisions_dir }}/*/decision.md`** — standing decisions a human made, or a previous resolver
-   recorded on their behalf. A record that covers this question decides it outright.
+1. **Standing decisions.** `{{ decisions_dir }}/*/decision.md` holds those a human made, or a previous
+   resolver recorded on their behalf. The business pages under `{{ book_root }}/business/` and the book's
+   `services/<name>/decisions/*.md` stand with them, before the story. Search them first, from `{{ book_root }}`:
+   `ostler book search <term> --kind business` and `ostler book search <term> --kind decision`. A record or a
+   page that covers this question decides it outright. A question a business page settles is never escalated,
+   and never decided against the page.
 2. **The repo's own rules** — `AGENTS.md`, `CLAUDE.md`, and the installed skills under
    `.claude/skills/`. A convention written down there is the operator's convention; a
    block that is a "which way do we do this here" question is answered by it.
@@ -122,6 +126,12 @@ headings in the printed file:
 
 If a record *does* cover it, leave it alone and cite it. A record is amended only by a
 human, or by a resolver a human's own answer has just overruled it with.
+
+When the operator's answer states a rule that outlives the story, such as the meaning of a word, a constraint
+or the source of truth for a calculation, also write it in this turn as `{{ book_root }}/business/<slug>.md`. The
+file starts with the line `date: <YYYY-MM-DD>`, then `sources: operator, <date>`, then a blank line, then the rule
+in prose. Its first prose line is the page's statement. It names no story and no element. Write it in addition to
+what you write above. An answer that explains one element becomes a line in that service's decision instead.
 
 ### If you are escalating
 
