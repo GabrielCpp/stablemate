@@ -16,7 +16,7 @@ from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.contract import declared_service_paths, normalize_service_path
-from workhorse_workflows.coder.shared.provenance import story_base
+from workhorse_workflows.coder.shared.provenance import story_change
 from workhorse_workflows.coder.shared.schemas.dev import CheckSet, DispatchEntry
 from workhorse_workflows.kit import resolve_workspace
 
@@ -45,20 +45,9 @@ def _git(root: Path, *args: str, accept: tuple[int, ...] = (0,)) -> str:
     return done.stdout
 
 
-def _changed_files(root: Path, base: str) -> list[str]:
-    tracked = _git(root, "diff", "--name-only", "--no-renames", base).splitlines()
-    untracked = _git(root, "ls-files", "--others", "--exclude-standard").splitlines()
-    return list(dict.fromkeys(line.strip() for line in [*tracked, *untracked] if line.strip()))
-
-
 def _units(files: list[str]) -> list[str]:
     units = {posixpath.dirname(name) or "." for name in files if not name.endswith(".md")}
     return sorted(unit for unit in units if unit != ".")
-
-
-def edited_units(root: Path, base: str) -> list[str]:
-    """The directories holding a non-document file this story changed since `base`."""
-    return _units(_changed_files(root, base))
 
 
 def _manifest_dir(root: Path, unit: str) -> Path:
@@ -174,9 +163,9 @@ def _service_type(services: Mapping, path: str) -> str:
 
 
 def _reach(
-    repo: str, root: Path, base: str, services: Mapping, paths: list[str]
+    repo: str, root: Path, changed: tuple[str, ...], services: Mapping, paths: list[str]
 ) -> tuple[list[str], list[str], list[str], int]:
-    files = [name for name in _changed_files(root, base) if not name.endswith(".md")]
+    files = [name for name in changed if not name.endswith(".md")]
     units = _units(files)
     owners = list(dict.fromkeys(o for o in (owner(name, paths) for name in files) if o))
     identities = list(
@@ -221,10 +210,10 @@ def resolve_check_set(
             continue
         root = Path(info.get("path") or entry.cwd)
         try:
-            base = story_base(root, refs)
+            change = story_change(root, refs)
         except (GitError, ValueError) as exc:
             raise WorkflowFailed(f"the check set found no story base in {root}: {exc}") from exc
-        owners, dependents, outside, unit_count = _reach(entry.repo, root, base, services, paths)
+        owners, dependents, outside, unit_count = _reach(entry.repo, root, change.files, services, paths)
         shared += outside
         added: list[str] = []
         for path in [*owners, *dependents]:
@@ -246,9 +235,9 @@ def resolve_check_set(
                 )
             )
         logger.info(
-            "check set in %s from %s: %d changed unit(s), added %s",
+            "check set in %s, %s: %d changed unit(s), added %s",
             root,
-            base,
+            change.reading,
             unit_count,
             ", ".join(added) or "none",
         )
@@ -256,7 +245,6 @@ def resolve_check_set(
 
 
 __all__ = [
-    "edited_units",
     "importers",
     "owner",
     "relative_importers",

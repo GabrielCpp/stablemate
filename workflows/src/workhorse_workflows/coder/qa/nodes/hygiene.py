@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Sequence
 from pathlib import Path
 
 from unidiff.patch import PatchSet
@@ -10,7 +11,8 @@ from unidiff.errors import UnidiffParseError
 from workhorse_workflows.kit import find_repo_root
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.qa import QaResult, ScreenshotFlush
-from workhorse_workflows.kit import diff_text, list_tracked_files, trunk_base
+from workhorse_workflows.coder.shared.provenance import story_change
+from workhorse_workflows.kit import diff_text, list_tracked_files
 
 IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif"})
 
@@ -131,9 +133,9 @@ def flush_root_screenshots(
 
 
 
-def _added_lines(root: Path, base_ref: str) -> list[tuple[str, int, str]]:
-    """`(filename, lineno, content)` for every `+` line between `base_ref` and `HEAD`."""
-    diff = diff_text(root, "--unified=0", base_ref, "HEAD", "--")
+def _added_lines(root: Path, base_ref: str, paths: Sequence[str] = ()) -> list[tuple[str, int, str]]:
+    """`(filename, lineno, content)` for every `+` line between `base_ref` and `HEAD`, in `paths` when given."""
+    diff = diff_text(root, "--unified=0", base_ref, "HEAD", "--", *paths)
     if not diff:
         return []
 
@@ -167,32 +169,41 @@ def _is_comment_line(content: str, filename: str) -> bool:
 
 @blueprint.node
 def check_sentinel_ids(
-    logger: logging.Logger, story_slug: str = "", repo_dir: str = ""
+    logger: logging.Logger, story_slug: str = "", repo_dir: str = "", story_id: str = ""
 ) -> QaResult:
     """Fail the pass if this branch added a fabricated ID or an "until X exists" stub."""
     slug = story_slug or "(unknown)"
     root = find_repo_root(repo_dir)
 
+    refs = tuple(dict.fromkeys(ref for ref in (story_id, story_slug) if ref))
     try:
-        base_ref = trunk_base(root)
+        change = story_change(root, refs)
     except Exception:
-        logger.warning("could not determine base ref — skipping sentinel gate")
+        logger.warning("could not determine story base — skipping sentinel gate")
         return QaResult(
             status="passed",
-            notes="Sentinel gate: could not determine base ref — skipped (no git history).",
+            notes="Sentinel gate: could not determine story base — skipped (no git history).",
+        )
+
+    base_ref = change.base
+    if change.narrowed and not change.files:
+        logger.info("no file changed (%s) — nothing to check", change.reading)
+        return QaResult(
+            status="passed",
+            notes=f"Sentinel gate: no file changed ({change.reading}) — nothing to check.",
         )
 
     try:
-        added = _added_lines(root, base_ref)
+        added = _added_lines(root, base_ref, change.files if change.narrowed else ())
     except Exception as exc:
         logger.warning("git diff failed (%s) — skipping sentinel gate", exc)
         return QaResult(status="passed", notes=f"Sentinel gate: git diff failed ({exc}) — skipped.")
 
     if not added:
-        logger.info("no added lines in diff (%s..HEAD) — nothing to check", base_ref)
+        logger.info("no added lines in diff (%s) — nothing to check", change.reading)
         return QaResult(
             status="passed",
-            notes=f"Sentinel gate: no added lines in diff ({base_ref}..HEAD) — nothing to check.",
+            notes=f"Sentinel gate: no added lines in diff ({change.reading}) — nothing to check.",
         )
 
     hits: list[str] = []

@@ -129,13 +129,15 @@ def _check_argv(module: str, app: str) -> list[str]:
     return [sys.executable, "-m", "ostler.book", "check", module, "--app", app]
 
 
-def _stale_argv(module: str, app: str, since: str = "") -> list[str]:
+def _stale_argv(module: str, app: str, since: str = "", story: str = "") -> list[str]:
     argv = [sys.executable, "-m", "ostler.book", "stale", module, "--app", app]
-    return [*argv, "--since", since] if since else argv
+    argv = [*argv, "--since", since] if since else argv
+    return [*argv, "--story", story] if story else argv
 
 
-def _verified_argv(module: str, app: str) -> list[str]:
-    return [sys.executable, "-m", "ostler.book", "verified", module, "--app", app]
+def _verified_argv(module: str, app: str, story: str = "") -> list[str]:
+    argv = [sys.executable, "-m", "ostler.book", "verified", module, "--app", app]
+    return [*argv, "--story", story] if story else argv
 
 
 def _bullets(report: str) -> list[tuple[str, str]]:
@@ -165,20 +167,23 @@ def _booked_services(root: Path) -> list[str]:
 
 
 @blueprint.node
-def touched_services(logger: logging.Logger, base: str, repo_dir: str = "") -> CoveredServices:
+def touched_services(logger: logging.Logger, base: str, repo_dir: str = "", story: str = "") -> CoveredServices:
     """Every service with a book under the book root whose app source the commits since `base` changed, or added a file no element names."""
     root = find_book_root(repo_dir)
     app = str(find_repo_root(repo_dir))
     touched: list[str] = []
     for name in _booked_services(root):
         for module in book_modules(root, name):
-            done = run_tool(_stale_argv(module, app, base), cwd=root, env=BOOK_ENV)
+            done = run_tool(_stale_argv(module, app, base, story), cwd=root, env=BOOK_ENV)
             if done.returncode == STALE_EXIT and _names_a_change(done.stdout):
                 touched.append(name)
                 break
             if done.returncode not in (0, STALE_EXIT, 2):
                 logger.warning("book stale of %s exited %d: %s", module, done.returncode, _tail(done.stdout + done.stderr))
-    logger.info("the diff since %s reaches the book of %d service(s): %s", base, len(touched), ", ".join(touched))
+    if story:
+        logger.info("the commits of story %s reach the book of %d service(s): %s", story, len(touched), ", ".join(touched))
+    else:
+        logger.info("the diff since %s reaches the book of %d service(s): %s", base, len(touched), ", ".join(touched))
     return CoveredServices(services=touched)
 
 
@@ -192,6 +197,13 @@ def _story_base(logger: logging.Logger, repo_dir: str, story_slug: str, story_id
     except (GitError, ValueError) as exc:
         logger.info("no story base: %s", exc)
         return ""
+
+
+def _story_with_commits(logger: logging.Logger, app: str, story: str, base: str) -> str:
+    if _commits_of(logger, app, story, base):
+        return story
+    logger.info("no commit carries 'Story: %s'; the covered books read the range since %s", story, base)
+    return ""
 
 
 @blueprint.node
@@ -208,7 +220,8 @@ def covered_services(
     declared = len(covered)
     base = _story_base(logger, repo_dir, story_slug, story_id)
     if base:
-        covered += [name for name in touched_services(logger, base, repo_dir).services if name not in covered]
+        story = _story_with_commits(logger, str(find_repo_root(repo_dir)), story_id or story_slug, base)
+        covered += [name for name in touched_services(logger, base, repo_dir, story).services if name not in covered]
     logger.info(
         "%d of %d story service(s) have an executable book, %d more reached by the diff",
         declared, len(services or []), len(covered) - declared,
@@ -242,6 +255,13 @@ def stamp_books_verified(
     root = find_book_root(repo_dir)
     app = str(find_repo_root(repo_dir))
     base = _story_base(logger, repo_dir, story_slug, story_id)
+    story = story_id or story_slug
+    commits = _commits_of(logger, app, story, base)
+    if commits:
+        logger.info("the stamp reads the %d commit(s) of story %s", len(commits), story)
+    else:
+        story = ""
+        logger.info("no commit carries 'Story: %s'; the stamp reads the range since the verified commit", story_id or story_slug)
     for name in services:
         for module in book_modules(root, name):
             pending = run_tool(_stale_argv(module, app), cwd=root, env=BOOK_ENV)
@@ -260,8 +280,11 @@ def stamp_books_verified(
             if since.returncode not in (0, STALE_EXIT) or not _entries(pending.stdout) <= _entries(since.stdout):
                 logger.info("the book of %s was behind before the story and is left to the catch-up flow", module)
                 continue
-            play = _play(_verified_argv(module, app), root)
+            play = _play(_verified_argv(module, app, story), root)
             logger.info("book verified of %s exited %d", module, play.exit_code)
+            if play.exit_code == 0 and play.output.startswith("not stamped"):
+                logger.info("the book of %s is not stamped: %s", module, play.output.splitlines()[0])
+                continue
             if play.exit_code != 0:
                 return BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
     return BookPlay(exit_code=0, output="")

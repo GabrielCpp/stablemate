@@ -82,3 +82,23 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+SENTINEL = 'package api\n\nconst tenant = "00000000-0000-0000-0000-000000000000"\n'
+
+
+def _gate(logger, repo):
+    return hygiene.check_sentinel_ids(logger, story_slug="acme-story", repo_dir=str(repo), story_id="acme-1")
+
+
+def test_on_trunk_a_sentinel_the_storys_commit_added_fails_the_gate(logger, repo, commit_story):
+    commit_story(repo, {"api/a.go": SENTINEL}, "acme-1")
+
+    assert _gate(logger, repo).status == "failed"
+
+
+def test_on_trunk_a_sentinel_another_storys_commit_added_does_not_count(logger, repo, commit_story):
+    commit_story(repo, {"api/a.go": "package api\n"}, "acme-1")
+    commit_story(repo, {"web/b.go": SENTINEL}, "acme-2")
+
+    assert _gate(logger, repo).status == "passed"

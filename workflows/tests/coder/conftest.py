@@ -58,6 +58,24 @@ def repo(
 
 
 @pytest.fixture
+def commit_story(
+    git: Callable[..., subprocess.CompletedProcess],
+) -> Callable[[Path, dict[str, str], str | None], str]:
+    """Write files and commit them, with a `Story:` trailer when a story is given, and give the commit."""
+
+    def _commit(root: Path, files: dict[str, str], story: str | None = None) -> str:
+        for name, text in files.items():
+            (root / name).parent.mkdir(parents=True, exist_ok=True)
+            (root / name).write_text(text, encoding="utf-8")
+        git(root, "add", *files)
+        message = "feat(acme): change" + (f"\n\nStory: {story}" if story else "")
+        git(root, "commit", "-qm", message)
+        return git(root, "rev-parse", "HEAD").stdout.strip()
+
+    return _commit
+
+
+@pytest.fixture
 def write() -> Callable[[Path, str], Path]:
     """Write text to a path, creating parents."""
 

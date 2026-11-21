@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+
+from git.exc import GitError
+from ostler.book.sources import story_commits
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.schemas.dev import (
@@ -40,6 +44,65 @@ def story_base(root: Path, refs: tuple[str, ...]) -> str:
     return trunk_story_base(root, trunk_base(root), refs)
 
 
+def _lines(root: Path, *args: str) -> list[str]:
+    try:
+        done = subprocess.run(
+            ["git", *args], cwd=root, capture_output=True, text=True, check=True, timeout=30
+        )
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(f"git {' '.join(args[:2])} failed in {root}: {exc.stderr.strip()}") from exc
+    return [line.strip() for line in done.stdout.splitlines() if line.strip()]
+
+
+@dataclass(frozen=True)
+class StoryChange:
+    base: str
+    files: tuple[str, ...]
+    story: str = ""
+    commits: tuple[str, ...] = ()
+    among: int = 0
+    whole: bool = False
+
+    @property
+    def narrowed(self) -> bool:
+        return bool(self.commits) and not self.whole
+
+    @property
+    def reading(self) -> str:
+        if not self.commits:
+            return f"the range since {self.base}, no commit carries 'Story: {self.story}'"
+        if self.whole:
+            return f"story {self.story}: {len(self.commits)} commit(s), the whole range since {self.base}"
+        return f"story {self.story}: {len(self.commits)} commit(s) among {self.among} since {self.base}"
+
+
+def story_change(root: Path, refs: tuple[str, ...]) -> StoryChange:
+    """The files a story changed in `root`: its own commits and the uncommitted work, or the range from its base."""
+    top = Path(_lines(root, "rev-parse", "--show-toplevel")[0])
+    base = story_base(top, refs)
+    commits = tuple(dict.fromkeys(c for ref in refs for c in story_commits(str(top), ref)))
+    since = _lines(top, "rev-list", "--reverse", "--no-merges", f"{base}..HEAD")
+    whole = bool(commits) and set(commits) == set(since)
+    found: list[str] = []
+    if commits and not whole:
+        for commit in commits:
+            found += _lines(
+                top, "diff-tree", "--no-commit-id", "--no-renames", "-r", "--name-only", "--root", commit
+            )
+        found += _lines(top, "diff", "--name-only", "--no-renames", "HEAD")
+    else:
+        found += _lines(top, "diff", "--name-only", "--no-renames", base)
+    found += _lines(top, "ls-files", "--others", "--exclude-standard")
+    return StoryChange(
+        base=base,
+        files=tuple(dict.fromkeys(found)),
+        story=refs[0] if refs else "",
+        commits=commits,
+        among=len(since),
+        whole=whole,
+    )
+
+
 @blueprint.node
 def changed_files(
     logger: logging.Logger, cwd: str = "", story_slug: str = "", story_id: str = ""
@@ -47,24 +110,13 @@ def changed_files(
     """Which files this story has already written in one service checkout."""
     if not cwd or not Path(cwd).expanduser().is_dir():
         return ChangedFiles()
-    commands = [["diff", "--name-only", "HEAD"], ["ls-files", "--others", "--exclude-standard"]]
-    if story_slug or story_id:
-        greps = [
-            f"--grep=Story: {ref}" for ref in dict.fromkeys((story_id, story_slug)) if ref
-        ]
-        commands.append(["log", "--name-only", "--pretty=format:", *greps])
-    found: list[str] = []
-    for args in commands:
-        try:
-            done = subprocess.run(
-                ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=30
-            )
-        except (OSError, subprocess.SubprocessError) as exc:
-            logger.info("could not list changed files in %s: %s", cwd, exc)
-            break
-        if done.returncode == 0:
-            found += [line.strip() for line in done.stdout.splitlines() if line.strip()]
-    return ChangedFiles(paths=sorted(set(found)))
+    refs = tuple(dict.fromkeys(r for r in (story_id, story_slug) if r))
+    try:
+        change = story_change(Path(cwd).expanduser(), refs)
+    except (GitError, ValueError, OSError, subprocess.SubprocessError) as exc:
+        logger.info("could not list changed files in %s: %s", cwd, exc)
+        return ChangedFiles()
+    return ChangedFiles(paths=sorted(set(change.files)))
 
 
-__all__ = ["changed_files", "story_base", "trunk_story_base"]
+__all__ = ["StoryChange", "changed_files", "story_base", "story_change", "trunk_story_base"]

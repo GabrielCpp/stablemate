@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from ostler import Ostler
+from workhorse_workflows.coder.shared import review
 from workhorse_workflows.coder.shared.review import (
     ANSWERS_FILE,
     coincidence_gap,
@@ -41,11 +42,14 @@ def _settle(
     answer: str,
     reuse: list[str] | None = None,
     spec_files: dict[str, str] | None = None,
+    minted: list[str] | None = None,
 ):
     okf = Ostler(repo)
     assert okf.create_epic("acme-epic", "Acme epic").ok
     created = okf.create_story("acme-epic", "acme-story", "Acme story")
     assert created.ok
+    if minted is not None:
+        minted.append(created.entity_id)
     spec = Path(okf.spec_path(created.entity_id))
     write(spec / ANSWERS_FILE, answer)
     for name, text in (spec_files or {}).items():
@@ -59,6 +63,34 @@ def _settle(
         repo_dir=str(repo),
         reuse=reuse,
     )
+
+
+def test_the_settlement_commit_carries_the_storys_trailer(
+    repo: Path,
+    code_repo: Path,
+    logger: logging.Logger,
+    write: Callable[[Path, str], Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: list[tuple] = []
+    minted: list[str] = []
+
+    class Inside(Ostler):
+        def spec_path(self, story: str) -> str:
+            return str(repo / "specs" / story)
+
+    monkeypatch.setattr(review, "Ostler", Inside)
+    monkeypatch.setattr(
+        review, "commit_paths", lambda root, message, *paths, **_kw: recorded.append((root, message, *paths)) or True
+    )
+
+    _settle(
+        repo, code_repo, logger, write,
+        f"## {FINDING}: declined\nReason: other kind.\n",
+        minted=minted,
+    )
+
+    assert f"Story: {minted[0]}" in recorded[0][1]
 
 
 def test_a_not_a_defect_decline_with_no_test_comes_back_open(

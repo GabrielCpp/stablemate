@@ -105,6 +105,35 @@ def test_a_private_edit_gates_the_plan_only(
     assert result.shared == []
 
 
+def test_on_a_shared_trunk_the_check_set_names_only_the_services_the_storys_change_touches(
+    tmp_path: Path, git: Git, logger: logging.Logger, commit_story
+) -> None:
+    files = {**GO_API, **GO_REPORT, **GO_WEB, "api/handlers/h.go": "package handlers\n"}
+    root = build(tmp_path, git, files, GO_SERVICES)
+    commit_story(root, {"api/handlers/h.go": "package handlers\n// v2\n"}, "acme-1")
+    commit_story(root, {"web/app.ts": 'fetch("/api/other")\n'}, "acme-2")
+
+    result = check(root, logger, entry(root, "api"))
+
+    assert paths_of(result) == ["api"]
+
+
+def test_on_a_story_branch_the_check_set_is_unchanged(
+    tmp_path: Path, git: Git, logger: logging.Logger, commit_story, caplog: pytest.LogCaptureFixture
+) -> None:
+    root = build(tmp_path, git, {**GO_API, **GO_REPORT, **GO_WEB}, GO_SERVICES)
+    git(root, "checkout", "-qb", "story")
+    commit_story(
+        root, {"api/auth/token.go": "package auth\n// v2\n", "web/app.ts": 'fetch("/api/new")\n'}, "acme-1"
+    )
+
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        result = check(root, logger, entry(root, "api"))
+
+    assert paths_of(result) == ["api", "web", "report"]
+    assert "the whole range since" in caplog.text
+
+
 def test_a_relative_import_into_a_shared_directory_gates_the_importer_and_marks_it_shared(
     tmp_path: Path, git: Git, logger: logging.Logger
 ) -> None:

@@ -509,6 +509,41 @@ def test_a_book_current_at_the_story_base_is_stamped_verified_after_a_pass(
     assert [_module_of(argv) for argv in scripted.argv["verified"]] == ["services.api", "services.web"]
 
 
+def test_the_stamp_reads_the_storys_commits_when_they_carry_the_trailer(
+    lane: Path,
+    git: Callable[..., subprocess.CompletedProcess[str]],
+    write: Callable[[Path, str], Path],
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    write(lane / "src" / "x.py", "x = 1\n")
+    git(lane, "add", "-A")
+    git(lane, "commit", "-qm", "feat: x\n\nStory: STORY-1")
+    scripted = book(changed={"services.api": API_CHANGED})
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    argv = scripted.argv["verified"][0]
+    assert argv[argv.index("--story") + 1] == "STORY-1", argv
+
+
+def test_the_stamp_reads_the_range_when_no_commit_carries_the_trailer(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(changed={"services.api": API_CHANGED})
+
+    drive_flow(_flow(), env(), _Agent(lane))
+
+    assert scripted.argv["verified"], scripted.argv
+    assert all("--story" not in argv for argv in scripted.argv["verified"]), scripted.argv["verified"]
+
+
 def test_the_book_lane_stamps_nothing_after_a_red_play(
     lane: Path,
     book: Callable[..., _Book],

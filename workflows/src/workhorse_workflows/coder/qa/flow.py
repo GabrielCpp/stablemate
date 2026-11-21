@@ -300,7 +300,7 @@ class Qa(QaOwner):
             if regression.status not in {"passed", "skipped"}:
                 return [regression_text(regression)]
         self.call(flush_root_screenshots, self.ctx.spec_dir)
-        sentinels = self.call(check_sentinel_ids, self.ctx.story_slug)
+        sentinels = self.call(check_sentinel_ids, self.ctx.story_slug, story_id=self.ctx.story_id)
         if sentinels.status != "passed":
             return [gate_text("sentinel ids", sentinels.notes)]
         return []

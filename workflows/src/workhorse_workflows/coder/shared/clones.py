@@ -13,7 +13,7 @@ from workhorse._vendor.stablemate_core.base_cache import cache_root
 from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.provenance import story_base
+from workhorse_workflows.coder.shared.provenance import story_change
 from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import CopyCheck
 
@@ -71,11 +71,11 @@ def _repositories(roots: list[str]) -> list[Path]:
     return seen
 
 
-def _run(script: Path, root: Path, base: str) -> dict:
+def _run(script: Path, root: Path, base: str, paths: list[str]) -> dict:
     env = {**os.environ, "STABLEMATE_CACHE_DIR": str(cache_root())}
     try:
         done = subprocess.run(
-            [sys.executable, "-I", str(script), "--root", str(root), "--base", base, "--json"],
+            [sys.executable, "-I", str(script), "--root", str(root), "--base", base, "--json", *(["--", *paths] if paths else [])],
             cwd=root,
             capture_output=True,
             text=True,
@@ -139,10 +139,13 @@ def check_copies(
     refs = tuple(dict.fromkeys(ref for ref in (story_id, story_slug) if ref))
     for repo in _repositories(roots):
         try:
-            base = story_base(repo, refs)
+            change = story_change(repo, refs)
         except (GitError, ValueError) as exc:
             raise WorkflowFailed(f"the clone check found no story base in {repo}: {exc}") from exc
-        report = _run(script, repo, base)
+        if change.narrowed and not change.files:
+            logger.info("clone check in %s, %s: no file changed", repo, change.reading)
+            continue
+        report = _run(script, repo, change.base, list(change.files) if change.narrowed else [])
         findings = [_pair_finding(repo, pair) for pair in report.get("pairs", [])]
         findings += [
             Finding(
@@ -152,7 +155,7 @@ def check_copies(
             )
             for problem in report.get("problems", [])
         ]
-        logger.info("clone check in %s from %s: %d finding(s)", repo, base, len(findings))
+        logger.info("clone check in %s, %s: %d finding(s)", repo, change.reading, len(findings))
         if findings:
             return CopyCheck(findings=findings, cwd=str(repo))
     return CopyCheck()

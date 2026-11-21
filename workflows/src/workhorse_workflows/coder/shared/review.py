@@ -169,7 +169,7 @@ def settle_findings(
     code = [repo for repo in (repos or []) if Path(repo).is_dir()]
     facade = Ostler(root)
     ledger = facade.settle_answers(story_id, ids, write=True)
-    message = commits.message("docs", commits.scope(root.name), f"record the review settlement of {story_slug}")
+    message = commits.message("docs", commits.scope(root.name), f"record the review settlement of {story_slug}", story=story_id)
     spec_dir = facade.spec_path(story_id)
     settlement = Path(spec_dir) / SETTLEMENT_FILE
     if settlement.resolve().is_relative_to(root.resolve()):

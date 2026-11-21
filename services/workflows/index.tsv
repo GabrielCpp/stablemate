@@ -89,6 +89,16 @@ decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-
 decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:16	A launch over every epic fails before any turn when no milestone lists an epic, or when a milestone lists an epic the
 decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:17	book does not hold. Author's last check judges what it wrote against the same list, so an Author run that ends green
 decision	the-coder-launch-reads-the-milestones	decisions/the-coder-launch-reads-the-milestones.md:18	leaves the coder something to run.
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:1	story: none
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:3	elements: DryRunCoder
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:4	sources: workflows/src/workhorse_workflows/coder/shared/provenance.py::story_change, workflows/src/workhorse_workflows/coder/book_qa/nodes.py::stamp_books_verified
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:6	A story's change is its own commits plus the uncommitted work, when a commit carries its trailer.
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:7	It is the range from the base when no commit carries it, or when the story's commits are the whole range.
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:8	The range is then the same change, read exactly.
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:9	The checks, the selection, the covered books, the clone check, the sentinel gate and the stamp all read it this way.
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:10	On a shared trunk, the range ran four services' gates for a one-service story.
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:11	It also made the seat write book pointers for code other stories wrote.
+decision	the-coder-reads-a-storys-change-as-its-own-commits	decisions/the-coder-reads-a-storys-change-as-its-own-commits.md:12	The stamp writes no verified commit while other commits leave code unnamed.
 decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:1	story: workflows-book
 decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:3	elements: DryRunCoder, DryRunOkfBook, InstallSkills
 decision	the-dry-run-needs-the-skills-its-prompts-name	decisions/the-dry-run-needs-the-skills-its-prompts-name.md:5	The okf-book workflow has four prompts that name a skill (ostler-book): the python book writer, the screen

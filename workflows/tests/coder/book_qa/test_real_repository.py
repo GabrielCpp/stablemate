@@ -141,3 +141,37 @@ def test_the_selection_runs_for_real_over_the_story_diff(books: Path, logger: lo
     assert plan.service == "b" and plan.uncovered == [], plan
     assert plan.changed == 1, plan
     assert (tmp_path / "spec" / "qa" / "book" / "b-affected.json").is_file()
+
+
+def test_on_a_shared_trunk_a_foreign_commits_unnamed_file_leaves_the_stamp_and_sends_no_refusal(
+    books: Path, git: Git, logger: logging.Logger
+) -> None:
+    before = _verified(books, "b")
+    _write(books, "src/b/extra.py", "x\n")
+    _commit(git, books, "feat: other\n\nStory: S-9", "src/b/extra.py")
+
+    played = book_nodes.stamp_books_verified(logger, ["b"], story_slug="s-1", story_id="S-1", repo_dir=str(books))
+
+    assert played.exit_code == 0, played
+    assert _verified(books, "b") == before
+
+
+def test_the_storys_own_unnamed_file_is_still_refused(books: Path, git: Git, logger: logging.Logger) -> None:
+    _write(books, "src/b/extra.py", "x\n")
+    _commit(git, books, "feat: more of the story\n\nStory: S-1", "src/b/extra.py")
+
+    played = book_nodes.stamp_books_verified(logger, ["b"], story_slug="s-1", story_id="S-1", repo_dir=str(books))
+
+    assert played.exit_code == 1, played
+    assert "not verified" in played.output
+
+
+def test_a_foreign_commit_after_the_story_does_not_widen_the_covered_books(
+    books: Path, git: Git, logger: logging.Logger
+) -> None:
+    _write(books, "src/c/new.py", "two\n")
+    _commit(git, books, "feat: change c for another story\n\nStory: S-9", "src/c/new.py")
+
+    covered = book_nodes.covered_services(logger, ["a"], repo_dir=str(books), story_slug="s-1", story_id="S-1")
+
+    assert covered.services == ["a", "b"], covered

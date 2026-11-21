@@ -11,6 +11,7 @@ from workhorse.pyflow import WorkflowFailed
 
 from workhorse_workflows.coder.shared.clones import check_copies, check_script
 from workhorse_workflows.coder.shared.provenance import story_base
+from workhorse_workflows.coder.shared.schemas.dev import CopyCheck
 
 SCRIPT_DIR = "library/skills/architecture/code-structure/scripts"
 
@@ -320,3 +321,44 @@ def test_on_a_branch_the_story_base_is_the_merge_base_with_trunk(code_repo: Path
     commit(code_repo, git, "one", "acme-1")
 
     assert story_base(code_repo, ("acme-1",)) == trunk
+
+
+def test_on_a_shared_trunk_the_script_judges_only_the_storys_files(
+    tmp_path: Path, code_repo: Path, git, logger: logging.Logger, commit_story
+) -> None:
+    parent = head(code_repo, git)
+    commit_story(code_repo, {"a.go": "a\n"}, "acme-1")
+    commit_story(code_repo, {"b.go": "b\n"}, "acme-2")
+    commit_story(code_repo, {"c.go": "c\n"}, "acme-1")
+    library = layer(tmp_path, "base")
+
+    check_copies(logger, [str(code_repo)], story_id="acme-1", library_dirs=(str(library),))
+
+    assert seen(library)["argv"] == [
+        "--root", str(code_repo), "--base", parent, "--json", "--", "a.go", "c.go",
+    ]
+
+
+def test_on_a_story_branch_the_script_gets_no_paths(
+    tmp_path: Path, code_repo: Path, git, logger: logging.Logger, commit_story
+) -> None:
+    git(code_repo, "checkout", "-qb", "story")
+    commit_story(code_repo, {"a.go": "a\n"}, "acme-1")
+    library = layer(tmp_path, "base")
+
+    check_copies(logger, [str(code_repo)], story_id="acme-1", library_dirs=(str(library),))
+
+    assert seen(library)["argv"][-1] == "--json"
+
+
+def test_a_story_whose_commits_change_no_file_runs_no_script(
+    tmp_path: Path, code_repo: Path, git, logger: logging.Logger, commit_story
+) -> None:
+    git(code_repo, "commit", "-q", "--allow-empty", "-m", "feat(api): nothing\n\nStory: acme-1")
+    commit_story(code_repo, {"b.go": "b\n"}, "acme-2")
+    library = layer(tmp_path, "base")
+
+    result = check_copies(logger, [str(code_repo)], story_id="acme-1", library_dirs=(str(library),))
+
+    assert result == CopyCheck()
+    assert not (library / SCRIPT_DIR / "seen.json").exists()
