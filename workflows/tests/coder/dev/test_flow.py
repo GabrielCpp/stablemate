@@ -22,6 +22,7 @@ from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse.runner.backends.delegates import Delegate
 from workhorse.runner.backends.null import NullBackend
+from workhorse.runner.failure import TurnDeadlineExceeded
 
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
@@ -169,7 +170,11 @@ class _Agent:
         advise_from: int = 1,
         consult_from: int = 1,
         session: Callable[[int], str] | None = None,
+        cut: tuple[str, ...] = (),
     ) -> None:
+        self.cut = set(cut)
+        self.nodes: list[Any] = []
+        self.kwargs: list[dict[str, Any]] = []
         self.blocked_in = blocked_in
         self.departures = departures
         self.advise_from = advise_from
@@ -199,6 +204,11 @@ class _Agent:
         self.args.append(data)
         self.powers.append((stem, node.power))
         self.rebriefs.append(kwargs.get("rebrief"))
+        self.nodes.append(node)
+        self.kwargs.append(kwargs)
+        if stem in self.cut:
+            self.cut.discard(stem)
+            raise TurnDeadlineExceeded(stem, node.deadline, node.deadline + 1.0)
         if self.session is not None and len(args) > 1:
             chain = Path(args[1])
             chain.parent.mkdir(parents=True, exist_ok=True)
@@ -1469,3 +1479,61 @@ def test_the_first_review_turn_writes_the_reviewer_files_beside_its_brief(
     text = Path(str(review["brief_path"])).read_text(encoding="utf-8")
     assert str(reviewer) in text, text
     assert str(answer) in text, text
+
+
+def test_a_build_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, cut=("dev-build",), session=lambda n: "sid-1")
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    (gate,) = seen
+    assert "was cut after 60 minutes" in gate, gate
+    assert "Its session is kept" in gate, gate
+    assert "resolve-operator" not in agent.calls, agent.calls
+    builds = [i for i, c in enumerate(agent.calls) if c in ("dev-build", "dev-follow-up")]
+    first, second = builds[0], builds[1]
+    assert agent.kwargs[first]["session_chain"] == agent.kwargs[second]["session_chain"]
+    assert agent.kwargs[second]["resume_session"] is True
+    assert OPERATOR_ANSWER in str(agent.args[second]["operator_context"]), agent.args[second]
+    assert agent.nodes[first].deadline == agent.nodes[first].timeout == 3600.0
+
+
+def test_a_cut_resolver_turn_lands_on_the_gate(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace, blocked=1, cut=("resolve-operator",))
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    (gate,) = seen
+    assert BLOCK_NOTE in gate, gate
+    assert "The resolver turn was cut after 60 minutes" in gate, gate
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()
+
+
+def test_turn_minutes_sets_the_owner_deadline(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(workspace)
+
+    drive_flow(Dev(story=STORY, epic=EPIC, turn_minutes=7), env(), agent)
+
+    assert {n.deadline for n in agent.nodes if "dev" in n.id} == {420.0}
+    assert {n.timeout for n in agent.nodes if "dev" in n.id} == {420.0}

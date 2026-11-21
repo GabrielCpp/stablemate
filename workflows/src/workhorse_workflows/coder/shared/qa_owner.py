@@ -11,7 +11,6 @@ from workhorse_workflows.coder.shared.gated import Gated
 from workhorse_workflows.coder.shared.owner import (
     MAX_LAPS,
     SILENCE_S,
-    UNBOUNDED,
     owner_profile,
 )
 from workhorse_workflows.coder.shared.plan import resolve_impl_context
@@ -87,7 +86,8 @@ class QaOwner(Gated):
         """What every owner turn is given besides its prompt, contract and arguments."""
         return {
             "power": "high",
-            "timeout": UNBOUNDED,
+            "timeout": self._turn_s,
+            "deadline": self._turn_s,
             "silence": SILENCE_S,
             "profile": owner_profile("qa"),
             "session": self._session,

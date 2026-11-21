@@ -115,6 +115,8 @@ comes back to you in this session with the output. Exit 3 means the environment 
 be judged, and it goes to an operator, never to you. A story does not pass while your result
 lists a finding, even when the run is green.
 
+{% include "shared/prompts/_time-allowance.md" %}
+
 ## Machine-Readable Result (required)
 
 Return the JSON document as the LAST thing in your final response, its keys at the top

@@ -1,6 +1,7 @@
 """End-to-end tests for `coder`'s main graph — the epic/story loop itself."""
 from __future__ import annotations
 
+import ast
 import json
 import logging
 import subprocess
@@ -13,6 +14,7 @@ from workhorse.artifacts import ArtifactWriter
 from workhorse.pyflow import Done, Workflow, WorkflowFailed
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
+from workhorse.pyflow.run import _instantiate
 from workhorse.records import parse_checkpoint
 
 from workhorse_workflows.kit import commit_all, commit_paths
@@ -184,6 +186,7 @@ class _StubFlow(Workflow):
     operator_mode: str = ""
     target_env: str = ""
     book_play_minutes: int = 15
+    turn_minutes: int = 60
     sandbox: bool = False
     repo: str = ""
     branch: str = ""
@@ -750,6 +753,42 @@ def test_the_epic_reaches_the_sub_flows_and_story_mode_passes_its_own(
 
     assert [c.epic for c in sub.calls_to("Dev")] == [EPIC]
     assert [c.epic for c in sub.calls_to("Qa")] == [EPIC]
+
+
+def test_turn_minutes_reaches_every_lane(
+    epic: Callable[..., Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = epic()
+    sub = _Sub(repo).install(monkeypatch)
+
+    drive_flow(Coder(turn_minutes=7), env(), _Agent())
+
+    assert {"Docs", "Dev", "Qa", "Fix"} <= set(sub.calls), sub.calls
+    assert {c.turn_minutes for c in sub.seen} == {7}, sub.seen
+
+
+def test_every_handoff_passes_turn_minutes() -> None:
+    tree = ast.parse(Path(coder_main.__file__).read_text(encoding="utf-8"))
+    handoffs = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "handoff"
+    ]
+
+    assert len(handoffs) == 7, len(handoffs)
+    for call in handoffs:
+        assert "turn_minutes" in {k.arg for k in call.keywords}, ast.unparse(call)
+
+
+@pytest.mark.parametrize("value", [0, -1, 1.5, "abc"])
+def test_turn_minutes_must_be_a_positive_whole_number(value: Any) -> None:
+    with pytest.raises(WorkflowFailed, match="turn_minutes"):
+        _instantiate(Coder, {"turn_minutes": value})
 
 
 def test_both_flows_that_diff_the_worktree_are_told_what_was_already_dirty(

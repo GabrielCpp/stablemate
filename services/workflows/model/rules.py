@@ -6,9 +6,10 @@ from __future__ import annotations
 
 import re
 
-from ostler.book import Actor, Exited, Rule
+from ostler.book import Actor, Create, Exited, Rule, Transaction, Update
 
-from ..fixtures import DryRunArgs, NewArgs, NewProgramArgs
+from ..fixtures import CoderTurnArgs, DryRunArgs, NewArgs, NewProgramArgs
+from .files import RUN, FileRecord
 from .state import Workspace, skills_installed
 
 NAME = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")
@@ -109,6 +110,24 @@ already_there = Rule[NewArgs, Workspace](
 
 okf_book_needs_its_skills = Rule[DryRunArgs, Workspace](_unreadable(OKF_BOOK_SKILLS), _skills_missing, REFUSED,
     why="the dry run resolves every skill a prompt names, and refuses when the repo and home hold none of them.")
+
+def _no_turn_time(a: CoderTurnArgs, s: Workspace, by: Actor | None) -> bool:
+    return a.turn_minutes is not None and a.turn_minutes < 1
+
+
+def _run_record_left(a: CoderTurnArgs, s: Workspace, by: Actor | None) -> Transaction:
+    path = ".agents/runs/coder-dry-run/run.json"
+    record = FileRecord.holding(path, RUN.format("coder"))
+    return Transaction(Update(s.files, path, record) if path in s.files else Create(s.files, record))
+
+
+coder_turn_minutes_above_zero = Rule[CoderTurnArgs, Workspace](
+    "[workhorse] ERROR: Coder cannot be built from the given parameters:\n"
+    "1 validation error for Coder\nturn_minutes\n"
+    "  Input should be greater than 0 [type=greater_than, input_value={turn_minutes}, input_type=int]",
+    _no_turn_time, REFUSED,
+    why="the allowance of a turn is a whole number of minutes above zero, and the launch refuses any other before a turn starts.",
+    does=_run_record_left)
 
 program_needs_dir_and_code_root = Rule[NewProgramArgs, Workspace](
     PROGRAM_USAGE + "--dir, --code-root", _no_dir_and_no_code_root, USAGE_ERROR)

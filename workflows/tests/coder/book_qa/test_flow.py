@@ -20,6 +20,7 @@ from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.blueprint import NODE_ATTR, node_spec
 from workhorse.pyflow.engine import RunEnv
+from workhorse.runner.failure import TurnDeadlineExceeded
 from workhorse.templates import render
 
 from workhorse_workflows.coder.book_qa import flow as book_flow
@@ -246,8 +247,16 @@ class _Agent:
     """The book seat's turn, scripted: one reply per turn, and the files it leaves in the repo."""
 
     def __init__(
-        self, repo: Path, *replies: dict[str, Any], stray: str = "", touch: str = "journeys/added.py"
+        self,
+        repo: Path,
+        *replies: dict[str, Any],
+        stray: str = "",
+        touch: str = "journeys/added.py",
+        cut: bool = False,
     ) -> None:
+        self.cut = cut
+        self.nodes: list[Any] = []
+        self.kwargs: list[dict[str, Any]] = []
         self.repo = repo
         self.touch = touch
         self.replies = replies or ({"status": "passed", "calls": CALLS},)
@@ -260,6 +269,11 @@ class _Agent:
         stem = Path(node.prompt).stem
         assert stem == "qa-book", f"unexpected agent turn: {stem}"
         self.calls.append(stem)
+        self.nodes.append(node)
+        self.kwargs.append(kwargs)
+        if self.cut:
+            self.cut = False
+            raise TurnDeadlineExceeded(stem, node.deadline, node.deadline + 1.0)
         nth = self.calls.count(stem)
         reply = self.replies[min(nth, len(self.replies)) - 1]
         book = self.repo / "services" / "api" / self.touch
@@ -695,6 +709,55 @@ def test_a_run_that_stays_red_parks_at_the_operator_after_the_lap_budget(
 
     assert agent.counts() == {"qa-book": MAX_LAPS + 1}, agent.counts()
     assert len(seen) == 1 and "repair turn(s)" in seen[0] and "run said exit 1" in seen[0], seen
+
+
+def _answers(seen: list[str]) -> Callable[..., None]:
+    def answered(path: Path, **kwargs: Any) -> None:
+        seen.append(path.read_text(encoding="utf-8"))
+        path.write_text("STATUS: ANSWERED\n\nKeep the covered services as they are.\n", encoding="utf-8")
+
+    return answered
+
+
+def test_a_book_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book()
+    agent = _Agent(lane, cut=True)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(BookQa(story=STORY, operator_mode="auto"), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.counts() == {"qa-book": 2}, agent.counts()
+    (gate,) = seen
+    assert "The book turn was cut after 60 minutes" in gate, gate
+    assert "Its session is kept" in gate, gate
+    first, second = agent.kwargs
+    assert first["session_chain"] == second["session_chain"] != ""
+    assert second["resume_session"] is True
+    assert "Keep the covered services" in str(agent.args[1]["operator_context"]), agent.args[1]
+    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 3600.0
+
+
+def test_turn_minutes_sets_the_owner_deadline(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    book()
+    agent = _Agent(lane)
+
+    drive_flow(_flow(turn_minutes=7), env(), agent)
+
+    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 420.0
 
 
 def test_a_run_that_could_not_judge_asks_the_operator_and_spends_no_second_turn(

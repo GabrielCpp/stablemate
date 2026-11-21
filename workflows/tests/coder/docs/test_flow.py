@@ -18,6 +18,7 @@ from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
+from workhorse.runner.failure import TurnDeadlineExceeded
 
 import workhorse_workflows.coder.book_qa.nodes as book_nodes
 from workhorse_workflows.coder.docs.flow import Docs
@@ -180,7 +181,11 @@ class _Agent:
         resolver_decision: str = "escalated",
         resolver_answer: str = "",
         resolver_scope: str = "story",
+        cut: tuple[str, ...] = (),
     ) -> None:
+        self.cut = set(cut)
+        self.nodes: list[Any] = []
+        self.kwargs: list[dict[str, Any]] = []
         self.author_status = author_status
         self.blocked = blocked
         self.explode = explode or set()
@@ -199,6 +204,11 @@ class _Agent:
         self.calls.append(stem)
         self.args.append(data)
         nth = self.counts()[stem]
+        self.nodes.append(node)
+        self.kwargs.append(kwargs)
+        if stem in self.cut:
+            self.cut.discard(stem)
+            raise TurnDeadlineExceeded(stem, node.deadline, node.deadline + 1.0)
         if stem in self.explode and nth >= self.explode_after:
             raise RuntimeError(f"killed during {stem}")
         handler = getattr(self, f"_{stem.replace('-', '_')}")
@@ -545,6 +555,58 @@ def test_operator_mode_human_waits_for_a_person(
     assert result.status == "passed", result
     assert agent.counts() == {"specify-story": 2}, agent.counts()
     assert paths == [epics_root() / STORY_REL / "context.md"], paths
+
+
+def test_a_docs_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
+    booked: _Checks,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(cut=("specify-story",))
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    (gate,) = seen
+    assert "was cut after 60 minutes" in gate, gate
+    assert "Its session is kept" in gate, gate
+    assert "resolve-operator" not in agent.calls, agent.calls
+    first, second = agent.kwargs[0], agent.kwargs[1]
+    assert first["session_chain"] == second["session_chain"] != ""
+    assert second["resume_session"] is True
+    assert OPERATOR_ANSWER in agent.author_args()[1]["operator_context"]
+    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 3600.0
+
+
+def test_a_cut_resolver_turn_lands_on_the_gate(
+    booked: _Checks,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent(blocked=1, cut=("resolve-operator",))
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
+
+    assert result.status == "passed", result
+    (gate,) = seen
+    assert BLOCK_NOTE in gate, gate
+    assert "The resolver turn was cut after 60 minutes" in gate, gate
+
+
+def test_turn_minutes_sets_the_owner_deadline(
+    booked: _Checks,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = _Agent()
+
+    drive_flow(Docs(story=STORY, epic=EPIC, turn_minutes=7), env(), agent)
+
+    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 420.0
 
 
 def test_a_run_killed_mid_repair_resumes_knowing_what_was_outstanding(

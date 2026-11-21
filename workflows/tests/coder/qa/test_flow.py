@@ -21,6 +21,7 @@ from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
+from workhorse.runner.failure import TurnDeadlineExceeded
 
 from ostler import Ostler
 from ostler.environments import commands as env_commands
@@ -382,7 +383,11 @@ class _Agent:
         touch: Path | None = None,
         items: tuple[dict[str, Any], ...] = (),
         same: dict[str, str] | None = None,
+        cut: tuple[str, ...] = (),
     ) -> None:
+        self.cut = set(cut)
+        self.nodes: list[Any] = []
+        self.kwargs: list[dict[str, Any]] = []
         self.docs = docs
         self.items = items
         self.same = same or {}
@@ -408,6 +413,11 @@ class _Agent:
         self.powers.append(node.power)
         self.timeouts.append(node.timeout)
         nth = self.counts()[stem]
+        self.nodes.append(node)
+        self.kwargs.append(kwargs)
+        if stem in self.cut:
+            self.cut.discard(stem)
+            raise TurnDeadlineExceeded(stem, node.deadline, node.deadline + 1.0)
         if stem == "qa-story" and nth == self.explode_at:
             raise RuntimeError(f"killed during {stem} turn {nth}")
         handler = getattr(self, f"_{stem.replace('-', '_')}")
@@ -662,6 +672,64 @@ def test_a_blocked_owner_is_answered_and_resumes_with_the_answer(
     assert agent.calls == ["qa-story", "resolve-operator", "qa-story"], agent.calls
     assert "needs a credential" in agent.args_for("resolve-operator")[0]["block_notes"]
     assert "staging bucket" in agent.args_for("qa-story")[1]["operator_context"]
+
+
+def test_a_qa_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    ostler()
+    seen: list[str] = []
+    agent = _Agent(docs, cut=("qa-story",))
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    assert agent.calls == ["qa-story", "qa-story"], agent.calls
+    (gate,) = seen
+    assert "was cut after 60 minutes" in gate, gate
+    assert "Its session is kept" in gate, gate
+    first, second = agent.kwargs
+    assert first["session_chain"] == second["session_chain"] != ""
+    assert second["resume_session"] is True
+    assert "staging bucket" in agent.args_for("qa-story")[1]["operator_context"]
+    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 3600.0
+
+
+def test_a_cut_resolver_turn_lands_on_the_gate(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    ostler()
+    seen: list[str] = []
+    agent = _Agent(docs, statuses=("blocked", "passed"), cut=("resolve-operator",))
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(Qa(story=STORY), env(), agent)
+
+    assert result.status == "passed", result
+    (gate,) = seen
+    assert "needs a credential" in gate, gate
+    assert "The resolver turn was cut after 60 minutes" in gate, gate
+
+
+def test_turn_minutes_sets_the_owner_deadline(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    ostler()
+    agent = _Agent(docs)
+
+    drive_flow(Qa(story=STORY, turn_minutes=7), env(), agent)
+
+    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 420.0
 
 
 @pytest.mark.parametrize("operator_mode", ["human", "operator"])
@@ -1310,6 +1378,27 @@ def _red(sid: str, *causes: str) -> dict[str, Any]:
         for n, cause in enumerate(causes, 1)
     ]
     return {sid: {"status": "failed", "assertions": 9, "failures": 1, "failed_checks": checks}}
+
+
+def test_a_scenario_past_its_wall_clock_ceiling_parks_at_the_operator(
+    docs: Path,
+    ostler: Callable[..., _Ostler],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    overran = {"copy-link": {"status": "failed", "assertions": 9, "failures": 1, "overran": True}}
+    okf = ostler(fail_runs=1, scenarios=(overran, {}))
+    agent = _Agent(docs)
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at(seen)), pytest.raises(_Parked):
+        drive_flow(Qa(story=STORY), env(), agent)
+
+    assert agent.calls == ["qa-story"], agent.calls
+    assert len(seen) == 1 and "copy-link" in seen[0], seen
+    assert "wall-clock ceiling" in seen[0] and "60 minutes" in seen[0], seen
+    assert "too long" in seen[0] and "hangs" in seen[0], seen
+    assert okf.runs == 1, okf.runs
 
 
 def test_an_environment_red_stops_at_the_operator_gate_without_a_refix(

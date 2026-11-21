@@ -17,13 +17,14 @@ from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
+from workhorse.runner.failure import TurnDeadlineExceeded
 
 from workhorse_workflows.coder.fix_ci import flow as fix_ci_flow
 from workhorse_workflows.coder.fix_ci.flow import FixCi
 from workhorse_workflows.coder.shared import ci as ci_nodes
 from workhorse_workflows.coder.shared.ci import push_ci_fix, select_ci_repo
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
-from workhorse_workflows.coder.shared.schemas.pr import MergeOutcome
+from workhorse_workflows.coder.shared.schemas.pr import MergeFlagged, MergeOutcome
 
 EPIC = "EPIC-1"
 BRANCH = f"feat/{EPIC}"
@@ -70,15 +71,23 @@ def workspace(
 class _Turn:
     """The scripted agent: the CI owner, and a resolver that always escalates."""
 
-    def __init__(self, *statuses: str) -> None:
+    def __init__(self, *statuses: str, cut: tuple[str, ...] = ()) -> None:
         self.statuses = list(statuses) or ["fixed"]
+        self.cut = set(cut)
         self.stems: list[str] = []
         self.calls: list[dict[str, Any]] = []
         self.nodes: list[Any] = []
+        self.every_node: list[Any] = []
+        self.every_kwargs: list[dict[str, Any]] = []
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
         self.stems.append(stem)
+        self.every_node.append(node)
+        self.every_kwargs.append(kwargs)
+        if stem in self.cut:
+            self.cut.discard(stem)
+            raise TurnDeadlineExceeded(stem, node.deadline, node.deadline + 1.0)
         if stem == "resolve-operator":
             return f"(scripted) {node.prompt}", {
                 "decision": "escalated",
@@ -506,3 +515,67 @@ def test_a_merge_turn_that_cannot_decide_parks_instead_of_spending_the_budget(
     assert len(seen) == 1, seen
     assert OWNER_NOTE in seen[0][1], seen[0][1]
     assert result.summary.startswith("merge merged"), result
+
+
+def test_a_ci_owner_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    workspace: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _GitHub(monkeypatch, runs=[RED, GREEN])
+    turn = _Turn(cut=("fix-ci",))
+    seen: list[tuple[Path, str]] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(FixCi(repo="api", branch=BRANCH), env(), turn)
+
+    assert result.status == "passed", result
+    ((_, gate),) = seen
+    assert "was cut after 60 minutes" in gate, gate
+    assert "Its session is kept" in gate, gate
+    assert turn.counts() == {"fix-ci": 2}, turn.counts()
+    first, second = turn.every_kwargs
+    assert first["session_chain"] == second["session_chain"] != ""
+    assert second["resume_session"] is True
+    assert OPERATOR_ANSWER in str(turn.calls[0]["operator_context"]), turn.calls
+    assert turn.every_node[0].deadline == turn.every_node[0].timeout == 3600.0
+
+
+def test_a_cut_merge_turn_parks_without_flagging_the_merge(
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+    workspace: dict[str, Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    merges: list[str] = []
+    landed = {"yes": False}
+    flagged: list[str] = []
+    monkeypatch.setattr(fix_ci_flow, "merge_pr", _merging(merges, landed))
+
+    @Blueprint("flag-test").node
+    def flag_merge_failure(
+        logger: Any,
+        epic: str = "",
+        base_branch: str = "main",
+        attempts: str = "?",
+        repo_dir: str = "",
+    ) -> MergeFlagged:
+        flagged.append(epic)
+        return MergeFlagged()
+
+    monkeypatch.setattr(fix_ci_flow, "flag_merge_failure", flag_merge_failure)
+    turn = _Turn(cut=("fix-merge",))
+    seen: list[tuple[Path, str]] = []
+
+    def land() -> None:
+        landed["yes"] = True
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen, land)):
+        result = drive_flow(FixCi(branch=BRANCH, base="main"), env(), turn)
+
+    assert result.summary.startswith("merge merged"), result
+    ((_, gate),) = seen
+    assert "The merge turn was cut after 60 minutes" in gate, gate
+    assert flagged == [], flagged
+    assert turn.counts()["fix-merge"] == 1, turn.stems

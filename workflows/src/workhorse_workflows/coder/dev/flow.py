@@ -5,9 +5,9 @@ import time
 from pathlib import Path
 from typing import Any, ClassVar, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, PositiveInt
 from workhorse import worklist as wl
-from workhorse.pyflow import Await, Continue, Done, Workflow
+from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 
 from workhorse_workflows.coder.dev.report import (
     findings_text,
@@ -48,15 +48,17 @@ from workhorse_workflows.coder.shared.owner import (
     MAX_BLOCKS,
     MAX_LAPS,
     SILENCE_S,
-    UNBOUNDED,
+    TURN_MINUTES,
+    cut_notes,
     owner_profile,
+    turn_seconds,
 )
 from workhorse_workflows.coder.shared.plan import record_plan, resolve_impl_context
 from workhorse_workflows.coder.shared.resolution import (
-    RESOLVER_POWER,
+    ResolverCut,
     answered,
     decisions_dir,
-    resolver_args,
+    Resolving,
 )
 from workhorse_workflows.coder.shared.reach import resolve_check_set
 from workhorse_workflows.coder.shared.review import (
@@ -118,13 +120,14 @@ def _reports(entries: list[FollowUp]) -> dict[str, str]:
     }
 
 
-class Dev(Workflow):
+class Dev(Resolving):
     """Dev one work item through its plan, build and review phases on one conversation, then check its plan, gates and answers."""
 
     story: str = ""
     epic: str = ""
     operator_mode: str = "auto"
     target_env: str = "local"
+    turn_minutes: PositiveInt = TURN_MINUTES
     branch: str = ""
     work_id: str = ""
     follow_up_title: str = ""
@@ -155,6 +158,10 @@ class Dev(Workflow):
     def state_labels(self, params: dict[str, Any]) -> dict[str, str]:
         """The same, plus which attempt of which budget the next state is on."""
         return self.labels() | counter_labels(params, "dev", self.BUDGET_LABELS)
+
+    @property
+    def _turn_s(self) -> float:
+        return turn_seconds(self.turn_minutes)
 
     @property
     def _work_id(self) -> str:
@@ -251,46 +258,43 @@ class Dev(Workflow):
             brief.write_text(text, encoding="utf-8")
             return text
 
-        if needs_brief(ledger, phase, session):
-            folder.mkdir(parents=True, exist_ok=True)
-            for name, template in (references or {}).items():
-                refs[name].write_text(self.render_prompt(template, args), encoding="utf-8")
-            brief.write_text(self.render_prompt(turn.prompt, args), encoding="utf-8")
-            result = self.agent(
-                turn.prompt,
-                returns=returns,
-                power=self._power(phase),
-                timeout=UNBOUNDED,
-                silence=SILENCE_S,
-                profile=owner_profile("dev"),
-                session=chain,
-                rebrief=rebrief,
-                add_dirs=workspace_dirs(self),
-                args=args,
-            )
-        else:
-            result = self.agent(
-                "dev/prompts/dev-follow-up.md",
-                returns=returns,
-                power=self._power(phase),
-                timeout=UNBOUNDED,
-                silence=SILENCE_S,
-                profile=owner_profile("dev"),
-                session=chain,
-                rebrief=rebrief,
-                add_dirs=workspace_dirs(self),
-                args={
-                    **self._story_args(),
-                    "phase": phase,
-                    "brief_path": str(brief),
-                    "report": said.get("report", ""),
-                    "findings": said.get("findings", ""),
-                    "qa_findings": said.get("qa_findings", ""),
-                    "operator_context": said.get("operator_context", ""),
-                    "note": said.get("note", ""),
-                    "review_prefix": said.get("review_prefix", ""),
-                },
-            )
+        shared: dict[str, Any] = {
+            "returns": returns,
+            "power": self._power(phase),
+            "timeout": self._turn_s,
+            "deadline": self._turn_s,
+            "silence": SILENCE_S,
+            "profile": owner_profile("dev"),
+            "session": chain,
+            "rebrief": rebrief,
+            "add_dirs": workspace_dirs(self),
+        }
+        try:
+            if needs_brief(ledger, phase, session):
+                folder.mkdir(parents=True, exist_ok=True)
+                for name, template in (references or {}).items():
+                    refs[name].write_text(self.render_prompt(template, args), encoding="utf-8")
+                brief.write_text(self.render_prompt(turn.prompt, args), encoding="utf-8")
+                result = self.agent(turn.prompt, args=args, **shared)
+            else:
+                result = self.agent(
+                    "dev/prompts/dev-follow-up.md",
+                    args={
+                        **self._story_args(),
+                        "phase": phase,
+                        "brief_path": str(brief),
+                        "report": said.get("report", ""),
+                        "findings": said.get("findings", ""),
+                        "qa_findings": said.get("qa_findings", ""),
+                        "operator_context": said.get("operator_context", ""),
+                        "note": said.get("note", ""),
+                        "review_prefix": said.get("review_prefix", ""),
+                    },
+                    **shared,
+                )
+        except AgentTimeout:
+            record_brief(self._state_dir, self._work_id, phase, self.chain_session(chain))
+            raise
         record_brief(self._state_dir, self._work_id, phase, self.chain_session(chain))
         return result
 
@@ -300,7 +304,10 @@ class Dev(Workflow):
         """Run the plan turn on the profile's highest tier: the plan files, before any product code."""
         self.logger.info("planning %s", self._work_id, extra={"activity": True})
         said = {"note": note, "operator_context": operator_context}
-        result = self._turn("plan", PlanResult, said)
+        try:
+            result = self._turn("plan", PlanResult, said)
+        except AgentTimeout as exc:
+            return self._ask(cut_notes("The plan turn", exc), "the plan turn", blocks, phase="plan")
         if result.status == "blocked":
             return self._block(result, result.notes, "the plan turn", blocks, phase="plan")
         return Continue(result, self.build, blocks=blocks)
@@ -316,7 +323,12 @@ class Dev(Workflow):
         """Run the build turn on the plan's conversation, and hold every departure to the advisor's word."""
         self.logger.info("building %s", self._work_id, extra={"activity": True})
         said = {"note": note, "operator_context": operator_context, "report": report}
-        result = self._turn("build", BuildResult, said)
+        try:
+            result = self._turn("build", BuildResult, said)
+        except AgentTimeout as exc:
+            return self._ask(
+                cut_notes("The build turn", exc), "the build turn", blocks, phase="build"
+            )
         self._file_follow_ups(result.follow_ups)
         if result.status == "blocked":
             return self._block(result, result.notes, "the build turn", blocks, phase="build")
@@ -356,7 +368,12 @@ class Dev(Workflow):
             "findings": findings_text(rest),
             "qa_findings": findings_text(qa),
         }
-        result = self._turn("review", DevResult, said, REVIEW_REFERENCES)
+        try:
+            result = self._turn("review", DevResult, said, REVIEW_REFERENCES)
+        except AgentTimeout as exc:
+            return self._ask(
+                cut_notes("The review turn", exc), "the review turn", blocks, phase="review"
+            )
         self.call(stamp_specs, self.ctx.story_id)
         self._file_follow_ups(result.follow_ups)
         found = [f.model_dump() for f in result.findings]
@@ -649,18 +666,13 @@ class Dev(Workflow):
     ) -> Continue | Await:
         """Answer a block from what is already written down, or ask the operator."""
         self.logger.info("resolving a block at %s", where, extra={"activity": True})
-        result = self.agent(
-            "shared/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power=RESOLVER_POWER,
-            timeout=UNBOUNDED,
+        result = self._resolver_turn(
+            block_kind="dev",
+            notes=notes,
             add_dirs=workspace_dirs(self),
-            args=resolver_args(
-                self,
-                block_kind="dev",
-                notes=notes,
-            ),
         )
+        if isinstance(result, ResolverCut):
+            return self._ask(result.notes, where, blocks, phase)
         if answered(self, result, "dev"):
             return Continue(result, self.read_operator, blocks=blocks + 1, phase=phase)
         return self._ask(notes, where, blocks, phase, result)

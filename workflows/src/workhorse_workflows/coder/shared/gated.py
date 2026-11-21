@@ -3,29 +3,41 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow
+from pydantic import PositiveInt
+from workhorse.pyflow import Await, Continue, Done
 
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
-from workhorse_workflows.coder.shared.owner import HUMAN_MODES, MAX_BLOCKS, UNBOUNDED
+from workhorse_workflows.coder.shared.owner import (
+    HUMAN_MODES,
+    MAX_BLOCKS,
+    TURN_MINUTES,
+    turn_seconds,
+)
 from workhorse_workflows.coder.shared.resolution import (
-    RESOLVER_POWER,
+    ResolverCut,
     answered,
-    resolver_args,
+    Resolving,
 )
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 
 
-class Gated(Workflow):
+class Gated(Resolving):
     """The base of a flow whose blocks reach the operator. Its subclass names the block kind and writes `read_operator`."""
 
     target_env: str = "local"
     operator_mode: str = "auto"
+    turn_minutes: PositiveInt = TURN_MINUTES
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     BLOCK_KIND: ClassVar[str]
+
+    @property
+    def _turn_s(self) -> float:
+        """The wall-clock allowance of one turn of this flow, in seconds."""
+        return turn_seconds(self.turn_minutes)
 
     def _dirs(self) -> list[str]:
         """The `add_dirs` every agent turn in this flow is given."""
@@ -67,19 +79,14 @@ class Gated(Workflow):
     def resolve(self, notes: str, where: str, blocks: int = 0) -> Continue | Await:
         """Answer a block from what is already written down, or ask the operator."""
         self.logger.info("resolving a block at %s", where, extra={"activity": True})
-        result = self.agent(
-            "shared/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power=RESOLVER_POWER,
-            timeout=UNBOUNDED,
+        result = self._resolver_turn(
+            block_kind=self.BLOCK_KIND,
+            notes=notes,
             add_dirs=self._dirs(),
-            args=resolver_args(
-                self,
-                block_kind=self.BLOCK_KIND,
-                notes=notes,
-                story=self._gate_story(),
-            ),
+            story=self._gate_story(),
         )
+        if isinstance(result, ResolverCut):
+            return self._ask(result.notes, where, blocks)
         if answered(self, result, self.BLOCK_KIND):
             return Continue(result, self.read_operator, blocks=blocks + 1)
         return self._ask(notes, where, blocks, result)

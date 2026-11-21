@@ -11,6 +11,7 @@ from typing import Any
 from ostler import Ostler
 from ostler.register import Record
 from workhorse.pyflow.engine import RunEnv
+from workhorse.runner.failure import TurnDeadlineExceeded
 
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.kit.git import commit_paths
@@ -40,7 +41,11 @@ class ScriptedAgent:
         refused_commits: int = 0,
         change: bool = True,
         explode: set[str] | None = None,
+        cut: set[str] | None = None,
     ) -> None:
+        self.cut = set(cut or ())
+        self.nodes: list[Any] = []
+        self.kwargs: list[dict[str, Any]] = []
         self.workspace = workspace
         self.impl_blocked = impl_blocked
         self.gate_red = gate_red
@@ -58,6 +63,11 @@ class ScriptedAgent:
         data = ctx.as_dict()
         self.calls.append(stem)
         self.args.append(data)
+        self.nodes.append(node)
+        self.kwargs.append(kwargs)
+        if stem in self.cut:
+            self.cut.discard(stem)
+            raise TurnDeadlineExceeded(stem, node.deadline, node.deadline + 1.0)
         if stem in self.explode:
             raise RuntimeError(f"killed during {stem}")
         handler = getattr(self, f"_{stem.replace('-', '_')}")

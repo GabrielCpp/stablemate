@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ostler.book import STDERR, Bool, Command, Exit, Field, Files, Flag, Lines, Object, Positional, Str, Switch
+from ostler.book import STDERR, Bool, Command, Exit, Field, Files, Flag, Int, Lines, Object, Positional, Str, Switch
 
 from .model.actions import (ListFiles, RunAuthor, RunCoder, RunLoopRunner, RunNew, RunNewProgram, RunOkfBook,
                             RunResearch, RunReviewDebt)
@@ -98,15 +98,19 @@ class DryRunAuthor(Command):
 
 
 class DryRunCoder(Command):
-    does = "Check the coder workflow loads and every state is reachable, with the agent stubbed."
+    does = "Check the coder workflow loads and every state is reachable, with the agent stubbed. A turn_minutes that is not above zero is refused before any turn starts."
     program = "workhorse-coder"
-    argv = ("run", "--dry-run")
-    args = NONE
+    argv = ("run", "--dry-run", Flag("--params", "turn_minutes", fmt='{{"turn_minutes": {}}}'))
+    args = Object(
+        "CoderArgs",
+        turn_minutes=Field(Int(), required=False, does="the minutes one owner turn or resolver turn may run before the run cuts it"),
+    )
     answers = (
         Exit(0, Lines(), "the run name and the directory holding its artifacts are printed"),
+        Exit(1, Lines(opaque=("    For further information",)), "turn_minutes is not above zero, and the launch names it"),
     )
     carries = RunCoder
-    source = ("workflows/src/workhorse_workflows/coder/workflow.py::main", *CODER, *KIT, ENTRY, ENGINE)
+    source = ("workflows/src/workhorse_workflows/coder/main/flow.py::Coder", "workflows/src/workhorse_workflows/coder/workflow.py::main", *CODER, *KIT, ENTRY, ENGINE)
 
 
 class DryRunOkfBook(Command):

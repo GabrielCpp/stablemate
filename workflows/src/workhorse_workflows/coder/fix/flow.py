@@ -5,7 +5,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, NodeNotRunError
+from workhorse.pyflow import AgentTimeout, Await, Continue, Done, NodeNotRunError
 from workhorse_workflows.coder.shared import roles
 from workhorse_workflows.coder.shared.backlog import (
     already_fixed,
@@ -22,7 +22,7 @@ from workhorse_workflows.coder.shared.failure import from_gate
 from workhorse_workflows.coder.shared.owner import (
     MAX_LAPS,
     SILENCE_S,
-    UNBOUNDED,
+    cut_notes,
     owner_profile,
 )
 from workhorse_workflows.coder.shared.story_commit import (
@@ -102,25 +102,29 @@ class Fix(Gated):
             "owning %s (lap %d)", self._story.story_slug, laps + 1, extra={"activity": True}
         )
         turn = roles.turn(self, "fix-item", returns=ImplResult)
-        result = self.agent(
-            turn.prompt,
-            returns=turn.returns,
-            power="high",
-            timeout=UNBOUNDED,
-            silence=SILENCE_S,
-            profile=owner_profile("fix"),
-            session=story_chain(self._story.story_slug),
-            add_dirs=self._dirs(),
-            args=turn.args
-            | self._story_args()
-            | {
-                "item_text": self.output(select_fix_item).summary,
-                "qa_dir": self._story.qa_dir,
-                "target_env": self.target_env,
-                "operator_context": operator_context,
-                "report": report,
-            },
-        )
+        try:
+            result = self.agent(
+                turn.prompt,
+                returns=turn.returns,
+                power="high",
+                timeout=self._turn_s,
+                deadline=self._turn_s,
+                silence=SILENCE_S,
+                profile=owner_profile("fix"),
+                session=story_chain(self._story.story_slug),
+                add_dirs=self._dirs(),
+                args=turn.args
+                | self._story_args()
+                | {
+                    "item_text": self.output(select_fix_item).summary,
+                    "qa_dir": self._story.qa_dir,
+                    "target_env": self.target_env,
+                    "operator_context": operator_context,
+                    "report": report,
+                },
+            )
+        except AgentTimeout as exc:
+            return self._ask(cut_notes("The fix owner turn", exc), "the fix owner turn", blocks)
         if result.blocked:
             return self._block(result, result.notes, "the fix owner turn", blocks)
         return Continue(result, self.check, laps=laps, blocks=blocks)

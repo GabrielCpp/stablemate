@@ -56,6 +56,8 @@ section it moves, and do not raise the same block again.
 {{ workhorse_var('note') }}
 {% endif %}
 
+{% include "shared/prompts/_time-allowance.md" %}
+
 ## Result
 
 End your reply with the JSON result the brief's result section describes, as the last thing

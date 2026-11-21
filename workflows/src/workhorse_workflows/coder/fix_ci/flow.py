@@ -4,7 +4,8 @@ from __future__ import annotations
 from typing import ClassVar
 
 from ostler import Ostler
-from workhorse.pyflow import Await, Continue, Done, NodeNotRunError, Workflow
+from pydantic import PositiveInt
+from workhorse.pyflow import AgentTimeout, Await, Continue, Done, NodeNotRunError
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.branches import epic_of_branch
 from workhorse_workflows.coder.shared.ci import (
@@ -20,10 +21,12 @@ from workhorse_workflows.coder.shared.owner import (
     MAX_BLOCKS,
     MAX_LAPS,
     SILENCE_S,
-    UNBOUNDED,
+    TURN_MINUTES,
+    cut_notes,
     owner_profile,
+    turn_seconds,
 )
-from workhorse_workflows.coder.shared.resolution import RESOLVER_POWER, answered, resolver_args
+from workhorse_workflows.coder.shared.resolution import ResolverCut, Resolving, answered
 from workhorse_workflows.coder.shared.story import resolve_workspace_dirs
 from workhorse_workflows.coder.shared.schemas.ci import CiChecks, CiLoop, FixCiResult
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
@@ -33,7 +36,7 @@ from workhorse_workflows.coder.shared.schemas.story import StoryPaths, Workspace
 from workhorse_workflows.kit import find_docs_root
 
 
-class FixCi(Workflow):
+class FixCi(Resolving):
     """Poll a PR's Actions runs, hand a red one to the CI owner, push, poll again, then merge."""
 
     repo: str = ""
@@ -41,8 +44,13 @@ class FixCi(Workflow):
     pr_number: str = ""
     operator_mode: str = "auto"
     base: str = ""
+    turn_minutes: PositiveInt = TURN_MINUTES
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
+
+    @property
+    def _turn_s(self) -> float:
+        return turn_seconds(self.turn_minutes)
 
     def setup(self) -> WorkspaceDirs:
         """Every directory the owner may read: the workspace repos, plus the docs root."""
@@ -83,24 +91,28 @@ class FixCi(Workflow):
             "the CI owner is on %s in %s", self.branch, loop.repo, extra={"activity": True}
         )
         turn = roles.turn(self, "fix-ci", returns=FixCiResult)
-        result = self.agent(
-            turn.prompt,
-            returns=turn.returns,
-            power="high",
-            timeout=UNBOUNDED,
-            silence=SILENCE_S,
-            profile=owner_profile("ci"),
-            session=self._session(loop.repo),
-            cwd=loop.repo_dir,
-            add_dirs=list(self.ctx.dirs),
-            args=turn.args
-            | {
-                "ci_branch": self.branch,
-                "ci_epic": epic_of_branch(self.branch),
-                "report": report,
-                "operator_context": operator_context,
-            },
-        )
+        try:
+            result = self.agent(
+                turn.prompt,
+                returns=turn.returns,
+                power="high",
+                timeout=self._turn_s,
+                deadline=self._turn_s,
+                silence=SILENCE_S,
+                profile=owner_profile("ci"),
+                session=self._session(loop.repo),
+                cwd=loop.repo_dir,
+                add_dirs=list(self.ctx.dirs),
+                args=turn.args
+                | {
+                    "ci_branch": self.branch,
+                    "ci_epic": epic_of_branch(self.branch),
+                    "report": report,
+                    "operator_context": operator_context,
+                },
+            )
+        except AgentTimeout as exc:
+            return self._ask(loop, cut_notes("The CI owner turn", exc), "the CI owner turn", blocks)
         if result.blocked:
             return self._block(result, loop, result.notes, "the CI owner turn", blocks)
         return Continue(result, self.check, loop=loop, blocks=blocks)
@@ -139,23 +151,29 @@ class FixCi(Workflow):
         """Run the merge turn: it makes the branch merge cleanly, then CI is read again."""
         epic = epic_of_branch(self.branch)
         self.logger.info("resolving the merge for %s", epic, extra={"activity": True})
-        result = self.agent(
-            "fix_ci/prompts/fix-merge.md",
-            returns=MergeFixResult,
-            power="high",
-            timeout=UNBOUNDED,
-            silence=SILENCE_S,
-            profile=owner_profile("ci"),
-            session=self._merge_session(),
-            add_dirs=list(self.ctx.dirs),
-            args={
-                "ci_epic": epic,
-                "ci_branch": self.branch,
-                "ci_base": self.base,
-                "operator_context": operator_context,
-                "result_schema": schema_block(MergeFixResult),
-            },
-        )
+        try:
+            result = self.agent(
+                "fix_ci/prompts/fix-merge.md",
+                returns=MergeFixResult,
+                power="high",
+                timeout=self._turn_s,
+                deadline=self._turn_s,
+                silence=SILENCE_S,
+                profile=owner_profile("ci"),
+                session=self._merge_session(),
+                add_dirs=list(self.ctx.dirs),
+                args={
+                    "ci_epic": epic,
+                    "ci_branch": self.branch,
+                    "ci_base": self.base,
+                    "operator_context": operator_context,
+                    "result_schema": schema_block(MergeFixResult),
+                },
+            )
+        except AgentTimeout as exc:
+            return self._ask(
+                loop, cut_notes("The merge turn", exc), "the merge turn", blocks, flag=False
+            )
         if result.blocked:
             return self._block(result, loop, result.notes, "the merge turn", blocks)
         push = self.call(push_ci_fix, "", self.branch)
@@ -202,8 +220,9 @@ class FixCi(Workflow):
         where: str,
         blocks: int,
         result: OperatorResolution | None = None,
+        flag: bool = True,
     ) -> Await:
-        if loop.merging:
+        if loop.merging and flag:
             self.call(flag_merge_failure, epic_of_branch(self.branch), self.base, str(loop.merges))
         gate = escalation(
             self,
@@ -226,19 +245,14 @@ class FixCi(Workflow):
     def resolve(self, loop: CiLoop, notes: str, where: str, blocks: int = 0) -> Continue | Await:
         """Answer a block from what is already written down, or ask the operator."""
         self.logger.info("resolving a block at %s", where, extra={"activity": True})
-        result = self.agent(
-            "shared/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power=RESOLVER_POWER,
-            timeout=UNBOUNDED,
+        result = self._resolver_turn(
+            block_kind="ci",
+            notes=notes,
             add_dirs=list(self.ctx.dirs),
-            args=resolver_args(
-                self,
-                block_kind="ci",
-                notes=notes,
-                story=self._gate(),
-            ),
+            story=self._gate(),
         )
+        if isinstance(result, ResolverCut):
+            return self._ask(loop, result.notes, where, blocks)
         if answered(self, result, "ci"):
             return Continue(
                 result, self.read_operator, loop=loop, notes=notes, blocks=blocks + 1

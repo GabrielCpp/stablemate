@@ -21,4 +21,6 @@ Name every path a commit takes on the command itself: `git commit --only -m <mes
 somebody else staged, and a commit with no paths takes them under this story's name.
 
 {% include "shared/prompts/_step-cost.md" %}
+
+{% include "shared/prompts/_time-allowance.md" %}
 {% endif %}

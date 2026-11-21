@@ -147,3 +147,46 @@ def test_an_owner_turn_that_says_it_cannot_parks_and_resumes_with_the_answer(
 
     assert record_of(docs).status == "done", record_of(docs)
     assert_agent_story_commit(workspace["api"], agent)
+
+
+def test_an_owner_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = ScriptedAgent(workspace, cut={"fix-item"})
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", answers(seen)):
+        result = drive_flow(Fix(), env(), agent)
+
+    assert result.has_fix is False, result
+    (gate,) = seen
+    assert "was cut after 60 minutes" in gate, gate
+    assert "Its session is kept" in gate, gate
+    assert "resolve-operator" not in agent.counts(), agent.counts()
+    first, second = agent.kwargs[0], agent.kwargs[1]
+    assert first["session_chain"] == second["session_chain"] != ""
+    assert second["resume_session"] is True
+    assert "Twenty per page" in agent.args_for("fix-item")[1]["operator_context"]
+    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 3600.0
+    assert record_of(docs).status == "done", record_of(docs)
+
+
+def test_a_cut_resolver_turn_lands_on_the_gate(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = ScriptedAgent(workspace, impl_blocked=1, cut={"resolve-operator"})
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", answers(seen)):
+        drive_flow(Fix(), env(), agent)
+
+    (gate,) = seen
+    assert "the page size is a product decision nobody has made" in gate, gate
+    assert "The resolver turn was cut after 60 minutes" in gate, gate
+    assert agent.counts()["resolve-operator"] == 1, agent.counts()

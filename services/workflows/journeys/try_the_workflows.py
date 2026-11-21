@@ -7,7 +7,7 @@ from ostler.book import Journey
 
 from ..commands import DryRunAuthor, DryRunCoder, DryRunLoopRunner, DryRunOkfBook, DryRunResearch, DryRunReviewDebt, Look
 from ..events import InstallSkills
-from ..fixtures import dry_run
+from ..fixtures import coder_turn, dry_run
 
 
 class TryTheWorkflows(Journey):
@@ -23,10 +23,10 @@ class TryTheWorkflows(Journey):
             DryRunResearch(dry_run()),
             DryRunAuthor(dry_run()),
             DryRunReviewDebt(dry_run()),
-            DryRunCoder(dry_run()),
+            DryRunCoder(coder_turn(None)),
             DryRunOkfBook(dry_run()),
             InstallSkills(),
-            DryRunCoder(dry_run()),
+            DryRunCoder(coder_turn(None)),
             DryRunOkfBook(dry_run()),
             DryRunLoopRunner(dry_run()),
             Look(),

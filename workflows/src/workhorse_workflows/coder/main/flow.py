@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Literal
 
+from pydantic import PositiveInt
 from workhorse import worklist as wl
 from workhorse.pyflow import (
     Continue,
@@ -21,6 +22,7 @@ from workhorse_workflows.coder.book_qa.nodes import changed_book_paths, covered_
 from workhorse_workflows.coder.qa import Qa
 from workhorse_workflows.coder.qa.nodes import teardown_stack
 from workhorse_workflows.coder.shared.branches import cut_run_branch
+from workhorse_workflows.coder.shared.owner import TURN_MINUTES
 from workhorse_workflows.coder.shared.judge import (
     Judge,
     Question,
@@ -69,6 +71,7 @@ class Coder(Workflow):
     target_env: Literal["local", "dev"] = "local"
     delivery: Literal["pr", "commit"] = "pr"
     book_play_minutes: int = 15
+    turn_minutes: PositiveInt = TURN_MINUTES
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
@@ -159,6 +162,7 @@ class Coder(Workflow):
             story=self._story.story_id,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
+            turn_minutes=self.turn_minutes,
             target_env=self.target_env,
             branch=self._branch(),
             work_id=item.id,
@@ -180,6 +184,7 @@ class Coder(Workflow):
             story=self._story.story_id,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
+            turn_minutes=self.turn_minutes,
             target_env=self.target_env,
             book_play_minutes=self.book_play_minutes,
             preexisting=self._preexisting(),
@@ -196,6 +201,7 @@ class Coder(Workflow):
             story=self._story.story_id,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
+            turn_minutes=self.turn_minutes,
             target_env=self.target_env,
             preexisting=self._preexisting(),
         )
@@ -261,6 +267,7 @@ class Coder(Workflow):
             Fix,
             target_env=self.target_env,
             operator_mode=self.operator_mode,
+            turn_minutes=self.turn_minutes,
         )
         return Continue(result, self.commit)
 
@@ -309,6 +316,7 @@ class Coder(Workflow):
             story=story.story_id,
             epic=self._story_epic(),
             operator_mode=self.operator_mode,
+            turn_minutes=self.turn_minutes,
             target_env=self.target_env,
             preexisting=self._preexisting(),
             rerun=True,
@@ -359,6 +367,7 @@ class Coder(Workflow):
             branch=self._branch(),
             base="",
             operator_mode=self.operator_mode,
+            turn_minutes=self.turn_minutes,
         )
         self.logger.info("shipped %s: %s", self._branch(), shipped.summary)
         self.call(teardown_stack)
@@ -373,6 +382,7 @@ class Coder(Workflow):
             target_env=self.target_env,
             preexisting=self._preexisting(),
             operator_mode=self.operator_mode,
+            turn_minutes=self.turn_minutes,
         )
 
     def _snapshot_proven(self) -> None:

@@ -11,7 +11,7 @@ from ostler.book import Axes, Scene
 from ..commands import (DryRunAuthor, DryRunCoder, DryRunLoopRunner, DryRunOkfBook, DryRunResearch, DryRunReviewDebt,
                         Look, New, NewProgram)
 from ..events import InstallSkills
-from ..fixtures import OTHER_CHECK, OTHER_GATE, dry_run, new, program
+from ..fixtures import OTHER_CHECK, OTHER_GATE, coder_turn, dry_run, new, program
 from .state import Workspace, stage
 
 TODAY = date(2026, 11, 12)
@@ -45,7 +45,9 @@ ACTIONS: dict[str, Callable[[Workspace], object]] = {
     "loop-runner": lambda m: DryRunLoopRunner(dry_run()),
     "research": lambda m: DryRunResearch(dry_run()),
     "author": lambda m: DryRunAuthor(dry_run()),
-    "coder": lambda m: DryRunCoder(dry_run()),
+    "coder": lambda m: DryRunCoder(coder_turn(None)),
+    "coder with a turn time": lambda m: DryRunCoder(coder_turn(5)),
+    "coder with no turn time": lambda m: DryRunCoder(coder_turn()),
     "okf-book": lambda m: DryRunOkfBook(dry_run()),
     "review-debt": lambda m: DryRunReviewDebt(dry_run()),
     "look": lambda m: Look(),

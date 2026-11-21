@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ostler.book import Action, Actor, Create, Select, Transaction, Update
 
-from ..fixtures import DryRunArgs, NewArgs, NewProgramArgs
+from ..fixtures import CoderTurnArgs, DryRunArgs, NewArgs, NewProgramArgs
 from . import rules
 from .files import SKILL_NAME, SKILLS, RUN, TREE, FileRecord
 from .state import Workspace
@@ -111,11 +111,12 @@ class RunAuthor(Action[DryRunArgs, Workspace]):
         return ran(s, "author", "Author", (("finalize", "Finalize"),))
 
 
-class RunCoder(Action[DryRunArgs, Workspace]):
-    accept = DryRunArgs
+class RunCoder(Action[CoderTurnArgs, Workspace]):
+    accept = CoderTurnArgs
+    rules = (rules.coder_turn_minutes_above_zero,)
 
     @staticmethod
-    def reduce(a: DryRunArgs, s: Workspace, by: Actor | None) -> Transaction:
+    def reduce(a: CoderTurnArgs, s: Workspace, by: Actor | None) -> Transaction:
         return ran(s, "coder", "Coder", (("book_qa", "BookQa"), ("dev", "Dev"), ("docs", "Docs"), ("fix", "Fix"), ("qa", "Qa")))
 
 

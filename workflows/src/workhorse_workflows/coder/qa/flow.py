@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done
+from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 
 from workhorse_workflows.kit import find_book_root, find_docs_root
 from workhorse_workflows.coder.book_qa.nodes import read_book_record, write_unreached_claims
@@ -30,6 +30,8 @@ from workhorse_workflows.coder.qa.report import (
     failed_scenarios_arg,
     fallback_finding,
     gate_text,
+    overran_scenarios,
+    overrun_failure,
     product_findings,
     qa_only_arg,
     refix_findings,
@@ -47,6 +49,7 @@ from workhorse_workflows.coder.shared.backlog import (
     unfiled,
 )
 from workhorse_workflows.coder.shared.plan import plan_summary, resolve_impl_context
+from workhorse_workflows.coder.shared.owner import cut_notes
 from workhorse_workflows.coder.shared.qa_owner import QaOwner
 from workhorse_workflows.coder.shared.reach import resolve_check_set
 from workhorse_workflows.coder.shared.review import check_feedback
@@ -169,19 +172,22 @@ class Qa(QaOwner):
         self.logger.info("owning QA for %s", self.ctx.story_slug, extra={"activity": True})
         turn = roles.turn(self, "qa-story", returns=QaOwnerResult)
         self.call(hold_copy, lease=self.output(stack_target).lease)
-        with scoped_envs(self.output(stack_target).env):
-            result: QaOwnerResult = self.agent(
-                turn.prompt,
-                returns=turn.returns,
-                **self._owner_options(),
-                args=turn.args
-                | self._owner_args()
-                | {
-                    "report": report,
-                    "operator_context": operator_context,
-                    "failed_scenarios": failed_scenarios or [],
-                },
-            )
+        try:
+            with scoped_envs(self.output(stack_target).env):
+                result: QaOwnerResult = self.agent(
+                    turn.prompt,
+                    returns=turn.returns,
+                    **self._owner_options(),
+                    args=turn.args
+                    | self._owner_args()
+                    | {
+                        "report": report,
+                        "operator_context": operator_context,
+                        "failed_scenarios": failed_scenarios or [],
+                    },
+                )
+        except AgentTimeout as exc:
+            return self._ask(cut_notes("The QA turn", exc), "the QA turn", blocks)
         self.call(stamp_specs, self.ctx.story_id)
         self.call(sync_story_fixtures, self.ctx.story_id)
         if result.status == "blocked":
@@ -309,6 +315,8 @@ class Qa(QaOwner):
         owner_classifies: bool,
     ) -> Continue | Await | Done:
         """Send each failed scenario to the owner of the side ostler gives it."""
+        if overran := overran_scenarios(run):
+            return self._ask(overrun_failure(run, overran), "the QA run", blocks)
         sides = run_sides(run)
         if sides.environment:
             self.logger.info("QA stopped on its environment in %s", self.ctx.story_slug)

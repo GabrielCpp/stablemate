@@ -61,6 +61,8 @@ commit and report `blocked` with the change it would take.
 
 {% include "shared/prompts/_step-cost.md" %}
 
+{% include "shared/prompts/_time-allowance.md" %}
+
 ## Subagents
 
 Spawn subagents through your harness's own task or agent tool. Pick each one's model by the

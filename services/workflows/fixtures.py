@@ -58,6 +58,11 @@ class DryRunArgs(Fixture):
     pass
 
 
+@dataclass
+class CoderTurnArgs(Fixture):
+    turn_minutes: int | None = None
+
+
 def new(name: str | None = WORKFLOW, *, check: str | None = CHECK, into: str | None = None) -> NewArgs:
     return NewArgs(name=name, check=check, into=into)
 
@@ -71,5 +76,9 @@ def dry_run() -> DryRunArgs:
     return DryRunArgs()
 
 
-__all__ = ["CHECK", "CODE_ROOT", "DryRunArgs", "NewArgs", "NewProgramArgs", "OTHER_CHECK", "OTHER_GATE", "PROGRAM_DIR",
-           "WORKFLOW", "dry_run", "new", "program"]
+def coder_turn(turn_minutes: int | None = 0) -> CoderTurnArgs:
+    return CoderTurnArgs(turn_minutes=turn_minutes)
+
+
+__all__ = ["CHECK", "CODE_ROOT", "CoderTurnArgs", "DryRunArgs", "NewArgs", "NewProgramArgs", "OTHER_CHECK", "OTHER_GATE", "PROGRAM_DIR",
+           "WORKFLOW", "coder_turn", "dry_run", "new", "program"]

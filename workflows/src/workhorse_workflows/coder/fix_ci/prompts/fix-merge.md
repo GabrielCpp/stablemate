@@ -48,6 +48,8 @@ If you cannot safely resolve the merge (e.g. the conflict needs a product decisi
 
 > Note: a refusal caused purely by branch protection (required reviews, or required CI checks that never ran) is **not** something you can resolve here. If `git status` shows the branch is already up to date with `{{ ci_base }}` and there are no conflicts **and Step 0 found no stale-duplicate remote to remediate either**, report `failed` with that observation so the workflow escalates to the operator rather than committing a no-op.
 
+{% include "shared/prompts/_time-allowance.md" %}
+
 ## Output
 
 Return the JSON document as the LAST thing in your final response — its keys at the top level, with no wrapper object around them. Any other shape fails to parse and the node is retried.

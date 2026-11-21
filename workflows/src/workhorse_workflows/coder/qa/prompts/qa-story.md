@@ -142,6 +142,8 @@ either. Both are run findings for the operator, and they go in `notes`.
 
 {% include "shared/prompts/_step-cost.md" %}
 
+{% include "shared/prompts/_time-allowance.md" %}
+
 ## Assessing the run
 
 Read `qa-report.md` first. It renders every criterion and obligation with its verdict, the

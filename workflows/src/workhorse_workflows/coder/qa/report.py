@@ -1,11 +1,12 @@
 """What the QA owner's next turn reads: the failed scenarios, a gate's failure, its own findings."""
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from ostler.qa.attribution import SAMPLE_CHARS
+from ostler.qa.harness_host import SCENARIO_WALL_S
 
 from workhorse_workflows.coder.qa.sides import FailedScenario
 from workhorse_workflows.coder.shared.failed import failed_scenario_ids, failed_scenarios_arg
@@ -82,6 +83,30 @@ def environment_failure(run: QaPlanRun, scenarios: Sequence[FailedScenario]) -> 
         f"{run.notes}\n\nA fixture step could not start, so the stack lacks something the "
         f"book needs and neither the book nor the product was tested:\n{listed}\n\n"
         "Make the environment provide it, then answer this gate so QA reruns.",
+    )
+
+
+def overran_scenarios(run: QaPlanRun) -> list[str]:
+    """The scenarios ostler killed at their wall-clock ceiling."""
+    scenarios = run.ostler.get("scenarios")
+    if not isinstance(scenarios, Mapping):
+        return []
+    return sorted(
+        str(sid)
+        for sid, outcome in scenarios.items()
+        if isinstance(outcome, Mapping) and outcome.get("overran") is True
+    )
+
+
+def overrun_failure(run: QaPlanRun, ids: Sequence[str]) -> str:
+    """Scenarios killed at the wall-clock ceiling, which only the operator can judge."""
+    minutes = round(SCENARIO_WALL_S / 60)
+    return gate_text(
+        "the QA run",
+        f"{run.notes}\n\nThese scenarios ran for {minutes} minutes, their wall-clock ceiling, "
+        f"and were killed: {', '.join(ids)}\n\nNeither the book nor the product was judged. "
+        "Decide whether the scenario is too long and must be split, or the app hangs, then "
+        "answer this gate so QA reruns.",
     )
 
 
@@ -165,6 +190,8 @@ __all__ = [
     "fallback_finding",
     "findings_text",
     "gate_text",
+    "overran_scenarios",
+    "overrun_failure",
     "product_findings",
     "qa_only_arg",
     "refix_findings",

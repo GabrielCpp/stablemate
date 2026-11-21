@@ -64,6 +64,8 @@ any earlier assumption in the item, the story or the code. Do not raise the same
 
 {% include "shared/prompts/_step-cost.md" %}
 
+{% include "shared/prompts/_time-allowance.md" %}
+
 ## Subagents
 
 Spawn subagents through your harness's own task or agent tool. Pick each one's model by the

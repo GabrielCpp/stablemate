@@ -4,7 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done, Workflow, WorkflowFailed
+from pydantic import PositiveInt
+from workhorse.pyflow import AgentTimeout, Await, Continue, Done, WorkflowFailed
 from workhorse_workflows.kit import find_book_root, find_docs_root
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.dev import read_operator_context
@@ -15,13 +16,15 @@ from workhorse_workflows.coder.shared.owner import (
     MAX_BLOCKS,
     MAX_LAPS,
     SILENCE_S,
-    UNBOUNDED,
+    TURN_MINUTES,
+    cut_notes,
     owner_profile,
+    turn_seconds,
 )
 from workhorse_workflows.coder.shared.resolution import (
-    RESOLVER_POWER,
+    ResolverCut,
     answered,
-    resolver_args,
+    Resolving,
 )
 from workhorse_workflows.coder.shared.story import (
     prepare_story,
@@ -44,7 +47,7 @@ def unbooked_message(names: list[str], book_root: Path) -> str:
     )
 
 
-class Docs(Workflow):
+class Docs(Resolving):
     """Specify one story in the Python book, and gate the book with `ostler book check`."""
 
     story: str = ""
@@ -52,10 +55,15 @@ class Docs(Workflow):
     target_env: str = "local"
     preexisting: tuple[str, ...] = ()
     operator_mode: str = "auto"
+    turn_minutes: PositiveInt = TURN_MINUTES
 
     injects: ClassVar[tuple[str, ...]] = paths.AMBIENT
 
     BUDGET_LABELS: ClassVar[tuple[str, ...]] = ("laps", "blocks", "number")
+
+    @property
+    def _turn_s(self) -> float:
+        return turn_seconds(self.turn_minutes)
 
     def setup(self) -> StoryPaths:
         """Resolve the workspace to directories and the story to its id and paths."""
@@ -122,20 +130,24 @@ class Docs(Workflow):
         """Run the owner turn: its subagents write the story into the book, review it and fix it."""
         self.logger.info("specifying %s", self.ctx.story_slug, extra={"activity": True})
         turn = roles.turn(self, "specify-story", returns=SpecResult)
-        result: SpecResult = self.agent(
-            turn.prompt,
-            returns=turn.returns,
-            power="high",
-            timeout=UNBOUNDED,
-            silence=SILENCE_S,
-            profile=owner_profile("docs"),
-            session=self._chain,
-            add_dirs=workspace_dirs(self),
-            args=turn.args
-            | {"book_services": self._book}
-            | self._spec_brief()
-            | {"report": report, "operator_context": operator_context},
-        )
+        try:
+            result: SpecResult = self.agent(
+                turn.prompt,
+                returns=turn.returns,
+                power="high",
+                timeout=self._turn_s,
+                deadline=self._turn_s,
+                silence=SILENCE_S,
+                profile=owner_profile("docs"),
+                session=self._chain,
+                add_dirs=workspace_dirs(self),
+                args=turn.args
+                | {"book_services": self._book}
+                | self._spec_brief()
+                | {"report": report, "operator_context": operator_context},
+            )
+        except AgentTimeout as exc:
+            return self._ask(cut_notes("The docs turn", exc), "the docs turn", blocks)
         if result.blocked:
             return self._block(result, result.notes, "the docs turn", blocks)
         return Continue(result, self.check, author=result, laps=laps, blocks=blocks)
@@ -200,18 +212,13 @@ class Docs(Workflow):
     def resolve(self, notes: str, where: str, blocks: int = 0) -> Continue | Await:
         """Answer a block from what is already written down, or ask the operator."""
         self.logger.info("resolving a block at %s", where, extra={"activity": True})
-        result = self.agent(
-            "shared/prompts/resolve-operator.md",
-            returns=OperatorResolution,
-            power=RESOLVER_POWER,
-            timeout=UNBOUNDED,
+        result = self._resolver_turn(
+            block_kind="docs",
+            notes=notes,
             add_dirs=workspace_dirs(self),
-            args=resolver_args(
-                self,
-                block_kind="docs",
-                notes=notes,
-            ),
         )
+        if isinstance(result, ResolverCut):
+            return self._ask(result.notes, where, blocks)
         if answered(self, result, "docs"):
             return Continue(result, self.read_operator, notes=notes, blocks=blocks + 1)
         return self._ask(notes, where, blocks, result)

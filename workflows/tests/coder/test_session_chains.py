@@ -17,7 +17,7 @@ from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared import qa_owner
 from workhorse_workflows.coder.qa.flow import Qa
 from workhorse_workflows.coder.qa.nodes import stack_target
-from workhorse_workflows.coder.shared.owner import UNBOUNDED, owner_profile
+from workhorse_workflows.coder.shared.owner import owner_profile
 from workhorse_workflows.coder.book_qa.nodes import covered_services
 from workhorse_workflows.coder.shared.schemas.book_qa import CoveredServices
 from workhorse_workflows.coder.shared.schemas.docs import DocsResult
@@ -194,7 +194,7 @@ def test_every_qa_turn_continues_the_story_s_own_owner_conversation(spy: _Spy) -
     turn = spy.turns[0]
     assert turn["session"] == f"qa:{STORY}"
     assert turn["power"] == "high"
-    assert turn["timeout"] == UNBOUNDED
+    assert turn["timeout"] == 3600.0 and turn["deadline"] == 3600.0
     assert turn["profile"] == owner_profile("qa")
     assert spy.resets == []
 

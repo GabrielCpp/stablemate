@@ -4,7 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
-from workhorse.pyflow import Await, Continue, Done
+from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 
 from workhorse_workflows.coder.book_qa.nodes import (
     BOOK_OUT,
@@ -22,6 +22,7 @@ from workhorse_workflows.coder.book_qa.nodes import (
 )
 from workhorse_workflows.coder.shared import roles
 from workhorse_workflows.coder.shared.plan import resolve_impl_context
+from workhorse_workflows.coder.shared.owner import cut_notes
 from workhorse_workflows.coder.shared.qa_owner import QaOwner
 from workhorse_workflows.coder.shared.schemas.book_qa import (
     BookPlan,
@@ -106,15 +107,18 @@ class BookQa(QaOwner):
         """Run the seat turn: it brings the books up to the story."""
         self.logger.info("bringing the book up to %s", self.ctx.story_slug, extra={"activity": True})
         turn = roles.turn(self, "qa-book", returns=BookQaOwnerResult)
-        with scoped_envs(self.output(stack_target).env):
-            result: BookQaOwnerResult = self.agent(
-                turn.prompt,
-                returns=turn.returns,
-                **self._owner_options(),
-                args=turn.args
-                | self._owner_args()
-                | {"report": report, "operator_context": operator_context},
-            )
+        try:
+            with scoped_envs(self.output(stack_target).env):
+                result: BookQaOwnerResult = self.agent(
+                    turn.prompt,
+                    returns=turn.returns,
+                    **self._owner_options(),
+                    args=turn.args
+                    | self._owner_args()
+                    | {"report": report, "operator_context": operator_context},
+                )
+        except AgentTimeout as exc:
+            return self._ask(cut_notes("The book turn", exc), "the book turn", blocks)
         if result.status == "blocked":
             return self._block(result, result.notes, "the book turn", blocks)
         if result.status == "findings" and not result.findings:

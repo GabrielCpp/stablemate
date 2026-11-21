@@ -108,6 +108,8 @@ workflow reads the changed book paths from the tree.
 
 {% include "shared/prompts/_step-cost.md" %}
 
+{% include "shared/prompts/_time-allowance.md" %}
+
 ## Seats
 
 You write the model and the book yourself. Then hand one reviewer, started fresh on a strong
