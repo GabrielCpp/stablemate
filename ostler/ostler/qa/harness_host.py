@@ -36,6 +36,8 @@ def load_harness_module(name: str) -> ModuleType:
 
 DEFAULT_SCENARIO_TIMEOUT = 300.0
 
+SCENARIO_WALL_S = 3600.0
+
 DESCRIBE_TIMEOUT = 60.0
 
 MINIMAL_PATH = os.pathsep.join(

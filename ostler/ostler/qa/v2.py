@@ -221,6 +221,7 @@ def run_plan(
                     **({"failed_checks": [asdict(check) for check in result.failed_checks]}
                        if result.failed_checks else {}),
                     **({"unreached": result.unreached} if result.unreached else {}),
+                    **({"overran": True} if result.overran else {}),
                 }
                 for name, result in results.items()
             },

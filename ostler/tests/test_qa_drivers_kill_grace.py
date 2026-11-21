@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import time
 from pathlib import Path
+
+import pytest
 
 from ostler.qa.drivers import LocalLauncher, PythonDriver
 from ostler.qa.session import QaSession
@@ -74,3 +77,47 @@ def test_a_child_that_ignores_sigterm_is_killed_once_the_grace_runs_out(repo: Pa
     else:
         raise AssertionError(f"child {pid} survived the SIGKILL")
     assert elapsed < 5.0
+
+
+def test_an_interrupted_wait_reaps_the_scenario_group(repo: Path, monkeypatch) -> None:
+    probe = repo / "stubborn.pid"
+    module = repo / "qa_plan.py"
+    write(module, PLAN)
+    spec = repo / "docs/specs/story-1"
+    spec.mkdir(parents=True, exist_ok=True)
+    session = QaSession.create(spec, "qa-kill-1", "story-1", {})
+    launcher = LocalLauncher(kill_grace=1.0, session_store=repo / ".maestro" / "sessions")
+    driver = PythonDriver(session, "api", {"driver": "python", "module": str(module)}, root=repo, variables={}, launcher=launcher)
+    context = {"root": str(repo), "spec_dir": str(spec), "qa_dir": str(session.qa_dir)}
+    monkeypatch.setenv("KILL_PROBE", str(probe))
+
+    real_communicate = subprocess.Popen.communicate
+    calls = {"n": 0}
+
+    def interrupted(self, input=None, timeout=None):
+        if calls["n"] == 0:
+            calls["n"] += 1
+            pending = input
+            deadline = time.monotonic() + 60
+            while not probe.exists() and time.monotonic() < deadline:
+                try:
+                    real_communicate(self, pending, timeout=0.2)
+                except subprocess.TimeoutExpired:
+                    pending = None
+            raise KeyboardInterrupt
+        return real_communicate(self, input, timeout=timeout)
+
+    monkeypatch.setattr(subprocess.Popen, "communicate", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        launcher.execute(driver, "holds-a-stubborn-child", 60.0, context)
+
+    child = int(probe.read_text().strip())
+    deadline = time.monotonic() + 10
+    alive = True
+    while alive and time.monotonic() < deadline:
+        try:
+            os.kill(child, 0)
+            time.sleep(0.1)
+        except ProcessLookupError:
+            alive = False
+    assert not alive

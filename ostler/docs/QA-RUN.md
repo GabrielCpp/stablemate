@@ -369,6 +369,10 @@ def a_link_survives_a_restart(qa: Qa) -> None:
              expected=200, covers=["ac-2"])
 ```
 
+### How long a scenario may run
+
+A scenario's `timeout` (300s by default) bounds how long it may stay silent. Each record it writes restarts that clock, so a scenario that keeps reporting is left alone. A second bound does not restart: no scenario runs longer than one hour of wall clock, whatever it reports. A scenario past it is killed like a silent one, its result carries `"overran": true`, and its message says it ran past its wall-clock ceiling. A run that is interrupted kills the scenario's process group before it unwinds, so no scenario outlives the run that started it.
+
 ### What a scenario is given
 
 `Qa` is the whole surface. Every affordance the shell format got by accident is an

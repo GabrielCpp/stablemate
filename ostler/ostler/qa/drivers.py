@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import shutil
@@ -26,6 +27,7 @@ from ostler.qa.verdict import Verdict, judge
 from ostler.qa.harness_host import (
     DEFAULT_SCENARIO_TIMEOUT,
     SCENARIO_MEMORY_MAX,
+    SCENARIO_WALL_S,
     capped_argv,
     default_interpreter,
     harness_argv,
@@ -141,6 +143,7 @@ class ScenarioResult:
     failed_checks: list[FailedCheck] = field(default_factory=list)
     unreached: list[str] = field(default_factory=list)
     verdicts: dict[str, Verdict] = field(default_factory=dict)
+    overran: bool = False
 
 
 class DriverBlocked(RuntimeError):
@@ -287,7 +290,15 @@ class PythonDriver(QaDriver):
         records, output, exit_code, timed_out = self._execute(scenario_id, timeout)
         self._write_output(scenario_id, output)
         return self._grade(
-            scenario_id, covers, records, output, exit_code, timed_out=timed_out, timeout=timeout
+            scenario_id,
+            covers,
+            records,
+            output,
+            exit_code,
+            timed_out=timed_out,
+            timeout=timeout,
+            overran=self.launcher.last_overran,
+            wall=getattr(self.launcher, "wall_s", SCENARIO_WALL_S),
         )
 
 
@@ -325,6 +336,8 @@ class PythonDriver(QaDriver):
         *,
         timed_out: bool,
         timeout: float | None = None,
+        overran: bool = False,
+        wall: float = SCENARIO_WALL_S,
     ) -> ScenarioResult:
         tally = _Tally()
         terminal: dict[str, Any] | None = None
@@ -382,7 +395,12 @@ class PythonDriver(QaDriver):
             )
 
         message = ""
-        if timed_out:
+        if overran:
+            message = (
+                f"scenario '{scenario_id}' ran for {wall:g}s, its wall-clock ceiling, "
+                "and was killed"
+            )
+        elif timed_out:
             silence = f" for {timeout:g}s" if timeout else " past its timeout"
             message = f"scenario '{scenario_id}' reported nothing{silence} and was killed"
         elif terminal is None:
@@ -443,7 +461,7 @@ class PythonDriver(QaDriver):
         if aborted or failures:
             status = "failed"
             failures = max(failures, 1)
-        return ScenarioResult(
+        result = ScenarioResult(
             status=status,
             assertions=tally.assertions,
             failures=failures,
@@ -453,6 +471,7 @@ class PythonDriver(QaDriver):
             unreached=unreached,
             verdicts=tally.verdicts,
         )
+        return dataclasses.replace(result, overran=True) if overran else result
 
     def _grade_assert(
         self, tally: _Tally, scenario_id: str, record: dict[str, Any], step: tuple[str, str] | None,
@@ -589,6 +608,8 @@ class PythonDriver(QaDriver):
 class Launcher:
     """Where a scenario process runs, and what films it."""
 
+    last_overran: bool = False
+
     def preflight(self, driver: PythonDriver) -> None:
         """Refuse a target whose runtime is absent."""
         return None
@@ -611,9 +632,15 @@ class Launcher:
 class LocalLauncher(Launcher):
     """A subprocess on this machine, under the project's own interpreter."""
 
-    def __init__(self, kill_grace: float = KILL_GRACE_S, session_store: Path = SESSION_STORE) -> None:
+    def __init__(
+        self,
+        kill_grace: float = KILL_GRACE_S,
+        session_store: Path = SESSION_STORE,
+        wall_s: float = SCENARIO_WALL_S,
+    ) -> None:
         self.kill_grace = kill_grace
         self.session_store = session_store
+        self.wall_s = wall_s
 
     def preflight(self, driver: PythonDriver) -> None:
         interpreter = driver.interpreter()
@@ -638,6 +665,8 @@ class LocalLauncher(Launcher):
     def execute(
         self, driver: PythonDriver, scenario_id: str, timeout: float, context: dict[str, Any]
     ) -> tuple[list[dict[str, Any]], str, int, bool]:
+        self.last_overran = False
+        started = time.monotonic()
         read_fd, write_fd = os.pipe()
         env = harness_env(driver.session.command_env())
         env["OSTLER_QA_RECORD_FD"] = str(write_fd)
@@ -669,19 +698,34 @@ class LocalLauncher(Launcher):
         reader.start()
         timed_out = False
         pending: bytes | None = json.dumps(context).encode()
-        while True:
-            try:
-                output_raw, _ = process.communicate(pending, timeout=progress.remaining(timeout))
-                break
-            except subprocess.TimeoutExpired:
-                pending = None
-                if progress.remaining(timeout) > 0:
-                    continue
-                _kill_group(process, self.kill_grace)
-                output_raw, _ = process.communicate()
-                retire_dead_sessions(self.session_store)
-                timed_out = True
-                break
+        try:
+            while True:
+                try:
+                    output_raw, _ = process.communicate(
+                        pending,
+                        timeout=max(
+                            0.0,
+                            min(
+                                progress.remaining(timeout),
+                                self.wall_s - (time.monotonic() - started),
+                            ),
+                        ),
+                    )
+                    break
+                except subprocess.TimeoutExpired:
+                    pending = None
+                    over_wall = time.monotonic() - started >= self.wall_s
+                    if progress.remaining(timeout) > 0 and not over_wall:
+                        continue
+                    self.last_overran = over_wall
+                    _kill_group(process, self.kill_grace)
+                    output_raw, _ = process.communicate()
+                    retire_dead_sessions(self.session_store)
+                    timed_out = True
+                    break
+        except BaseException:
+            _kill_group(process, self.kill_grace)
+            raise
         reader.join(timeout=5)
         safe = _redact_bytes(output_raw or b"", driver.session.secret_values.values())
         return records, safe.decode("utf-8", errors="replace"), process.returncode, timed_out
