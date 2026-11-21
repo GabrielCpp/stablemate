@@ -50,3 +50,8 @@ def test_the_resolver_writes_a_rule_that_outlives_the_story_as_a_business_page()
 
 def test_the_review_reports_a_criterion_that_contradicts_a_business_page() -> None:
     assert "contradicts a business page" in _render("book_qa/prompts/qa-review.md")
+
+
+def test_the_review_never_cites_a_step_that_observed_nothing() -> None:
+    text = _render("book_qa/prompts/qa-review.md")
+    assert "model, app and result cells are empty observed nothing" in text
