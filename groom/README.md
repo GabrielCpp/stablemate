@@ -410,8 +410,9 @@ The channel offers two tools:
   leaves a message in the run's inbox, the same as `POST /api/run/{run_id}/inbox`.
   The run reads the message at its next poll point.
 
-The repository's `.mcp.json` registers the server as `groom`. Channels are a
-research preview, so a custom channel loads only with the development flag:
+The home config that `farrier install --user` writes registers the server as
+`groom` in every directory. Channels are a research preview, so a custom
+channel loads only with the development flag:
 
 ```bash
 claude --dangerously-load-development-channels server:groom
