@@ -46,11 +46,21 @@ make lint          # ruff + ty + basedpyright, every subproject in one pass, fro
 
 plus the affected test package.
 
+Run `ruff format` only when the repo's gate runs it. On a tree that is not formatted
+with it, the formatter rewraps unrelated lines. Use `ruff check --fix` instead.
+
+A change that touches only comments, docstrings or markdown runs `make lint` and no test
+suite, because a prose edit cannot change behaviour.
+
 ## 4. Stage by explicit path
 
 ```bash
 git add path/to/changed.py path/to/test_changed.py
 ```
+
+When the index already holds entries that are not yours, such as another agent's renames,
+a plain `git commit` takes the whole index. Commit with `git commit --only -- <paths>` and
+check `git show --stat HEAD` afterwards.
 
 Never `git add -A`, `git add .`, or `git commit -a`. Those sweep in whatever else
 is in the tree — and in a repo several processes are editing, that silently takes
@@ -115,6 +125,11 @@ an unreleasable commit in.
 
 Do not create a branch, switch branches, or open a PR unless you were asked to.
 The work goes onto whatever branch is checked out.
+
+When you land a branch onto main, rebase it onto main's tip, run the gate on the rebased
+tip and fast-forward with `git merge --ff-only`. Make no merge commit, because many
+agents land work concurrently and merge commits braid the history. If main moves again,
+rebase again. Rebase stacked branches in dependency order.
 
 ## 7. Keep your commit local by default
 

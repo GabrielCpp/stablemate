@@ -34,11 +34,15 @@ case in front of you.
 - **Sufficient.** A reader holding only the book can bring the stack up, reach any screen
   and make any call.
 - **Intelligible.** The book says why a behaviour is so. Each decision is a file under
-  `decisions/` that names the elements it explains.
+  `decisions/` that names the elements it explains. The Python holds what runs and a decision
+  holds only the why, so a decision links to the element by name and never restates a shape or
+  a status the Python declares.
+- **About the product.** A book covers what the product does. Concurrency and restart belong to
+  the app's own tests, and a driver waits on an event the app emits, never on a timer.
 
 ## The package
 
-A service's book is `services/<name>/` under the book root. The book root is the artifacts folder for every repository. A repository that publishes its own book sets `book: {home: repo}` in its `agents.yml` and keeps `services/` and `product/` at its root. A repository with no key that still holds an ostler book is refused, and the message names both ways out: set the key, or move the book following `docs/guide/moving-a-book-to-the-artifacts-folder.md`. A bare `source` pointer resolves against `--app`, the code checkout. A pointer into another repository is `repo://<member>/<path>::<symbol>`, and a lone repository is named by its repository name. A stack or a process that starts the app from a member repository takes the member's folder from `checkout("<member>")`. A run launched with `--worktree` from a workspace works on its own branch. Its book root is the artifacts worktree on that branch and a member's folder is its worktree on that branch, and `ostler` reads both from git when run inside one of them.
+A service's book is `services/<name>/` under the book root. The book root is the artifacts folder for every repository. A repository that publishes its own book sets `book: {home: repo}` in its `agents.yml` and keeps `services/` and `product/` at its root. A repository with no key that still holds an ostler book is refused, and the message names both ways out: set the key, or move the book following `docs/guide/moving-a-book-to-the-artifacts-folder.md`. A book name is unique across the artifacts folder, with no repository prefix and no per-repository folder. A bare `source` pointer resolves against `--app`, the code checkout. A pointer into another repository is `repo://<member>/<path>::<symbol>`, and a lone repository is named by its repository name. A stack or a process that starts the app from a member repository takes the member's folder from `checkout("<member>")`. A run launched with `--worktree` from a workspace works on its own branch. Its book root is the artifacts worktree on that branch and a member's folder is its worktree on that branch, and `ostler` reads both from git when run inside one of them.
 
 A book change is committed in the artifacts repository on a branch with the same name as the code branch of the same work, and for a story that is the story's branch. `ostler book branch` opens it as a worktree and prints the book root. It lands when the code lands, with `ostler book land`, by rebase and fast-forward. A change committed straight on the code's base commits its book straight on the artifacts base. With `book.home: repo` the book rides the code's branch and commit.
 
@@ -126,7 +130,9 @@ The model lives once, in `services/<name>/model/`, because a record does not cha
 surface that reaches it. Each surface gets its own `services/<name>/<surface>/service.py`, with
 its own surface, endpoints or screens, journeys and `index.tsv`, and ostler loads it as
 `services.<name>.<surface>`. A rule two surfaces enforce is one `Rule`, and each surface shows
-its refusal in its own words.
+its refusal in its own words. A service deployed as two pods, such as an API and a queue
+handler built from the same code, is one service and keeps one book. The events the handler
+hears are declared beside the endpoints and share their model, journeys and decisions.
 
 ## Adding a route
 
@@ -204,7 +210,9 @@ when `stale` lists nothing. `--app` names the code checkout, one member in a wor
 A first pass over a service works the `missing` list to empty instead: each tracked file under
 the app's roots that no element names gets an element with that file in its `source`, or a
 pattern in `App(ignore=...)` when no served request runs it. A screen and an
-interaction carry `source` like an endpoint does.
+interaction carry `source` like an endpoint does. The writer finds every page, endpoint and
+command from the app's code and its `source` backlinks, and no one hands it a list. A progress
+report names each screen beside its file and never gives a bare count.
 
 `missing` also names each call a contract lists that no element declares. A `.proto` under the
 roots, a proto anywhere in the app that declares a service one of the book's `Rpc` calls names,
