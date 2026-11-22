@@ -6,13 +6,14 @@ from pathlib import Path
 from typing import Any
 
 from workhorse.pyflow import AgentTimeout, Workflow
+from workhorse._vendor.stablemate_core import books
 
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.owner import cut_notes
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.kit import find_book_root, find_docs_root
+from workhorse_workflows.kit import find_book_root, find_docs_root, find_repo_root
 
 RESOLVER_POWER = "max"
 
@@ -69,6 +70,7 @@ def resolver_args(
         "spec_dir": ident.spec_dir,
         "decisions_dir": str(decisions_dir(flow.repo_dir)),
         "book_root": str(find_book_root(flow.repo_dir)),
+        "product_dir": str(books.product_folder(find_repo_root(flow.repo_dir)) or find_book_root(flow.repo_dir) / "product"),
         "block_kind": block_kind,
         "block_notes": notes,
         "result_schema": schema_block(OperatorResolution),

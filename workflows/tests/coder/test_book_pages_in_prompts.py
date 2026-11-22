@@ -66,8 +66,8 @@ def test_the_resolver_never_settles_a_conflict_between_levels() -> None:
 
 
 def test_the_resolver_writes_a_rule_that_outlives_the_story_to_the_product_book() -> None:
-    text = _render("shared/prompts/resolve-operator.md", book_root="/book")
-    assert "`/book/product/<slug>.md`" in text
+    text = _render("shared/prompts/resolve-operator.md", book_root="/book", product_dir="/book/products/acme")
+    assert "`/book/products/acme/<slug>.md`" in text
     assert "sources: operator, <date>" in text
 
 

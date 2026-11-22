@@ -131,7 +131,7 @@ If a record *does* cover it, leave it alone and cite it. A record is amended onl
 human, or by a resolver a human's own answer has just overruled it with.
 
 When the operator's answer states a rule that outlives the story, such as the meaning of a word, a constraint
-or the source of truth for a calculation, also write it in this turn as `{{ book_root }}/product/<slug>.md`. The
+or the source of truth for a calculation, also write it in this turn as `{{ product_dir }}/<slug>.md`. The
 file starts with the line `date: <YYYY-MM-DD>`, then `sources: operator, <date>`, then a blank line, then the rule
 in prose. Its first prose line is the page's statement. It names no story and no element. Write it in addition to
 what you write above. When the answer reads as a rule for more than this product, still write the product page,
