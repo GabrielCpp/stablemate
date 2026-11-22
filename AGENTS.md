@@ -20,11 +20,18 @@ Read the book before the code whenever the question is *what* something does,
 *why* it is so, or *how a user reaches it*:
 
 ```bash
-ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|business|question|event|outside]
+ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|company|team|product|question|event|outside]
 ostler book explain services.<name> <ClassName>       # everything the book says of one element
 ostler book decisions services.<name> [--story <id>]  # each decision and the story behind it
-ostler book business                                  # the business pages above every service, one line each
+ostler book pages [--level company|team|product]      # the pages above every service, one line each
 ```
+
+Four books hold the rules, by reach: the service book under `services/<name>/`,
+the product book in `product/`, the team book in `teams/<team>/` and the company
+book in `company/` of the artifacts dir. Agents write service and product pages.
+People write team and company pages. When two disagree the order of authority is
+company, team, product, service decision, story. Report a conflict and settle
+neither side.
 
 Read the code to learn *how it is implemented*. A grep over source that starts
 before a search over the book re-derives what is already written down, and gets
