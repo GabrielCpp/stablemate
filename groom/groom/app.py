@@ -695,6 +695,7 @@ async def history_retry(run_id: Annotated[str, PathParameter()]) -> dict:
     """Ask for an archive whose summary could not be read to be read again."""
     asked = await asyncio.to_thread(history.retry, run_id)
     if asked:
+        live.bump("history")
         _wake_summaries()
     return {"ok": asked}
 
@@ -1864,19 +1865,25 @@ async def _write_summary(run_id: str) -> None:
     """Write one run's summary, then tell every tab it is there so an open Overview and the History list read it."""
     await pools.SUMMARY.run(history.compute, run_id)
     await state.broadcast({"type": "summary", "run_id": run_id})
+    live.bump("history")
 
 
 async def _summary_pass() -> int:
     """Find the ended runs with no current summary and write them one at a time, pausing between runs so the event loop and the store serve the dashboard first. Archives that stored no summary follow, one at a time, and give way as soon as another run needs one."""
     wanted = await pools.SUMMARY.run(history.discover)
+    if wanted:
+        live.bump("history")
     for run_id in wanted:
         await _write_summary(run_id)
         await asyncio.sleep(SUMMARY_PAUSE_S)
     older = await pools.SUMMARY.run(history.discover_archives)
+    if older:
+        live.bump("history")
     for run_id in older:
         if _summary_wake is not None and _summary_wake.is_set():
             break
         await pools.ARCHIVE.run(history.compute_archive, run_id)
+        live.bump("history")
         await asyncio.sleep(SUMMARY_PAUSE_S)
     return len(wanted) + len(older)
 

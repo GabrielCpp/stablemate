@@ -18,7 +18,6 @@ from groom.tui.screens.panel import Panel
 from groom.tui.widgets.options import sync_options
 
 BASE = "/api/dispatch"
-POLL_S = 5.0
 CHUNK = 100
 
 
@@ -39,9 +38,10 @@ class DispatchScreen(Panel):
         Binding("x", "stop_item", "Stop item"),
     ]
 
-    def __init__(self, link: Link) -> None:
+    def __init__(self, link: Link, rev: int = 0) -> None:
         super().__init__()
         self.link = link
+        self.rev = rev
         self.queues: list[Frame] | None = None
         self.qfail = ""
         self.items: list[Frame] | None = None
@@ -69,9 +69,13 @@ class DispatchScreen(Panel):
         self._show_queues()
         self._show_items()
         self.run_worker(self._load(), group="dispatch-poll", exclusive=True, exit_on_error=False)
-        self.set_interval(POLL_S, self._tick)
 
-    def _tick(self) -> None:
+    def rev_changed(self, rev: int) -> None:
+        if rev != self.rev:
+            self.rev = rev
+            self.reload()
+
+    def reload(self) -> None:
         self.run_worker(self._load(), group="dispatch-poll", exclusive=True, exit_on_error=False)
 
     async def _load(self) -> None:

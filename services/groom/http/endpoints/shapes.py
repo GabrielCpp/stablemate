@@ -129,6 +129,12 @@ ATTEND_SUMMARY = Object(
     count=Field(Int(), opaque="counts the jobs of the whole environment"),
 )
 
+REVS = Object(
+    "Revisions",
+    dispatch=Field(Int(), opaque="counts the changes to the dispatch queues since the server started"),
+    history=Field(Int(), opaque="counts the changes to the history since the server started"),
+)
+
 FLEET = Object(
     "Fleet",
     type=Field(Str()),
@@ -140,6 +146,7 @@ FLEET = Object(
     status=Field(STATUS, opaque="counts every run of the environment"),
     store=Field(STORE_HEALTH, opaque="the state of the environment's database"),
     attend=Field(ATTEND_SUMMARY),
+    revs=Field(REVS, opaque="counts the changes of the whole environment"),
 )
 
 GATE = Object(

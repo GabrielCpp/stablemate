@@ -13,7 +13,7 @@ from typing import Any
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
-from groom import dispatch_ledger, procs
+from groom import dispatch_ledger, live, procs
 from groom.settings import DispatchQueueSettings, resolve_dispatch_queues
 
 logger = logging.getLogger(__name__)
@@ -86,6 +86,7 @@ def _own(item_id: str, queue: str, proc: subprocess.Popen[str], slot: threading.
         status = dispatch_ledger.DISPATCH_DONE if code == 0 else dispatch_ledger.DISPATCH_FAILED
         if not dispatch_ledger.dispatch_finish(item_id, status=status, exit_code=code):
             return
+        live.bump_threadsafe("dispatch")
         slot.release()
         _drain(queue)
 
@@ -100,6 +101,7 @@ def enqueue(queue: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
     item_id = uuid.uuid4().hex[:12]
     expanded = _apply_templates(settings, params or {})
     dispatch_ledger.dispatch_enqueue(item_id, queue=queue, command=settings.command, params=expanded)
+    live.bump_threadsafe("dispatch")
     _drain(queue)
     return dispatch_ledger.dispatch_get(item_id) or {}
 
@@ -135,14 +137,19 @@ def _drain(queue: str) -> None:
             logger.exception("dispatch: could not launch %s/%s", queue, item_id)
             slot.release()
             dispatch_ledger.dispatch_finish(item_id, status=dispatch_ledger.DISPATCH_FAILED, exit_code=None)
+            live.bump_threadsafe("dispatch")
             continue
         dispatch_ledger.dispatch_start(item_id, run_id=item_id, pid=proc.pid)
+        live.bump_threadsafe("dispatch")
         _own(item_id, queue, proc, slot)
 
 
 def cancel_pending(item_id: str) -> bool:
     """Drop a still-`pending` item before it ever spawns anything."""
-    return dispatch_ledger.dispatch_cancel_pending(item_id)
+    dropped = dispatch_ledger.dispatch_cancel_pending(item_id)
+    if dropped:
+        live.bump_threadsafe("dispatch")
+    return dropped
 
 
 def stop(item_id: str) -> bool:
@@ -154,6 +161,7 @@ def stop(item_id: str) -> bool:
     won = dispatch_ledger.dispatch_finish(item_id, status=dispatch_ledger.DISPATCH_CANCELLED, exit_code=None)
     if not won:
         return False
+    live.bump_threadsafe("dispatch")
     queue = str(row.get("queue") or "")
     settings = queues().get(queue)
     if settings is not None:
@@ -171,6 +179,8 @@ def recover_orphans() -> int:
             continue
         dispatch_ledger.dispatch_finish(item_id, status=dispatch_ledger.DISPATCH_FAILED, exit_code=None)
         closed += 1
+    if closed:
+        live.bump_threadsafe("dispatch")
     return closed
 
 

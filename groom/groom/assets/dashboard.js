@@ -78,8 +78,7 @@ const store = {
     runFiles: idleRunFiles(),
     // the attendant: a per-run summary rides every `state` frame, the log does not
     attend: { mode: "off", by_run: {}, rev: 0, status: "idle", sessions: [], selected: null, record: null },
-    // dispatch queues have no socket push — occupancy changes on a launch/exit
-    // that only the server's own threads see — so this pane polls while open.
+    revs: { dispatch: 0, history: 0 },
     dispatch: { status: "idle", queues: [], selectedQueue: null, items: [], selectedItem: null },
     settings: { status: "idle", attend: null, saving: false },
     failedSince: readFailedSince(),
@@ -163,8 +162,31 @@ function applyState(msg) {
   applyMeta(msg);
 }
 
+const PANE_LOADERS = { dispatch: () => loadDispatch(), history: () => loadHistory() };
+const paneFetchedAt = { dispatch: 0, history: 0 };
+const paneTimers = {};
+
+function notePaneFetch(name) {
+  paneFetchedAt[name] = store.get().revs[name] || 0;
+}
+
+function followPaneRevs() {
+  const { revs, mode } = store.get();
+  for (const name of Object.keys(PANE_LOADERS)) {
+    if (mode !== name || (revs[name] || 0) === paneFetchedAt[name]) continue;
+    clearTimeout(paneTimers[name]);
+    paneTimers[name] = setTimeout(() => {
+      if (store.get().mode === name && (store.get().revs[name] || 0) !== paneFetchedAt[name]) PANE_LOADERS[name]();
+    }, REVISION_DEBOUNCE_MS);
+  }
+}
+
 function applyMeta(msg) {
   store.set({ status: msg.status || store.get().status, scanning: !!msg.scanning });
+  if (msg.revs) {
+    store.set({ revs: { ...store.get().revs, ...msg.revs } });
+    followPaneRevs();
+  }
   // The frame carries one entry per attended run and a revision, never the log —
   // 200 rows on every push would dwarf the fleet itself. A `rev` that moved is what
   // tells an open Attendant pane its list is stale.
@@ -3093,8 +3115,7 @@ function settleHistoryOpen() {
 }
 
 function onSummary(msg) {
-  const { mode, detail, overview } = store.get();
-  if (mode === "history") loadHistory();
+  const { detail, overview } = store.get();
   if (detail && detail.run_id === msg.run_id && overview.runId === msg.run_id) loadOverview(msg.run_id, detail.figures_rev || 0, true);
 }
 
@@ -3485,11 +3506,7 @@ function saveAttendEnabled(enabled) {
 // --------------------------------------------------------------------------- //
 // Dispatch panel — config-declared work queues
 // --------------------------------------------------------------------------- //
-// No socket push (a queue's occupancy lives only in the semaphores a request
-// thread holds, never broadcast state), so this pane polls while it is open —
-// the same tradeoff `doRefresh` makes for a manual docker rescan, just on a timer
-// instead of a button. `_dispatchPoll` is cleared whenever the mode changes away.
-let _dispatchPoll = null;
+// The pane refetches when `revs.dispatch` on the fleet frames moves. It never polls.
 
 function DispatchQueueRow({ row }) {
   return html`<div class="dispatch-queue-row">
@@ -3718,33 +3735,16 @@ function stopDispatchItem(queue, itemId) {
 }
 
 function loadDispatch() {
+  notePaneFetch("dispatch");
   loadDispatchQueues();
   const selected = store.get().dispatch.selectedQueue;
   if (selected) loadDispatchItems(selected);
-  if (_dispatchPoll) clearInterval(_dispatchPoll);
-  _dispatchPoll = setInterval(() => {
-    if (store.get().mode !== "dispatch") return;
-    loadDispatch();
-  }, 5000);
-}
-
-function stopDispatchPoll() {
-  if (_dispatchPoll) clearInterval(_dispatchPoll);
-  _dispatchPoll = null;
-}
-
-const HISTORY_POLL_MS = 4000;
-let _historyPoll = null;
-
-function stopHistoryPoll() {
-  if (_historyPoll) clearTimeout(_historyPoll);
-  _historyPoll = null;
 }
 
 let historySeq = 0;
 
 function loadHistory() {
-  stopHistoryPoll();
+  notePaneFetch("history");
   const seq = ++historySeq;
   const first = store.get().history.status !== "ready";
   if (first) setIn("history", { status: "loading" });
@@ -3759,9 +3759,6 @@ function loadHistory() {
       const open = runs.find((one) => one.run_id === store.get().history.selected);
       setIn("history", { status: "ready", runs, totals: body.totals, medians: body.medians || {}, endings: body.endings || [], ...(open ? { detail: endedDetail(open) } : {}) });
       settleHistoryOpen();
-      if (store.get().mode === "history" && body.totals && (body.totals.reading > 0 || body.unlisted > 0)) {
-        _historyPoll = setTimeout(loadHistory, HISTORY_POLL_MS);
-      }
     })
     .catch(() => {
       if (first && seq === historySeq) setIn("history", { status: "failed", runs: [], totals: null });
@@ -4041,11 +4038,7 @@ function setMode(mode) {
   });
   const leaving = store.get().mode;
   store.set(leaving !== mode && (leaving === "history" || mode === "history") ? { ...resetSlots(), mode: mode } : { mode: mode });
-  if (mode !== "dispatch") stopDispatchPoll();
-  if (mode !== "history") {
-    stopHistoryPoll();
-    pendingHistoryOpen = "";
-  }
+  if (mode !== "history") pendingHistoryOpen = "";
   if (leaving === "history" || mode === "history") markHistorySeen();
   if (mode === "history") loadHistory();
   else if (mode === "attend") loadAttend();

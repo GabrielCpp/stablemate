@@ -529,3 +529,103 @@ def test_a_detail_built_twice_apart_is_the_same_but_for_its_timestamp():
     for detail in (first, second):
         detail.pop("ts", None)
     assert first == second
+
+
+class _HeldProc:
+    pid = 4242
+
+    def __init__(self) -> None:
+        self.done = threading.Event()
+
+    def wait(self) -> int:
+        self.done.wait(5.0)
+        return 0
+
+
+@pytest.fixture
+def queue_config(monkeypatch, tmp_path):
+    from groom import dispatch, dispatch_ledger
+
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "config.toml"))
+    (tmp_path / "config.toml").write_text('[groom.dispatch.q]\ncommand = "workhorse-loop-runner"\nconcurrency = 1\n')
+    dispatch.reset()
+    yield dispatch, dispatch_ledger
+    dispatch.reset()
+
+
+def _metas(frames: list[dict]) -> list[dict]:
+    return [frame for frame in frames if frame["type"] == "fleet_meta"]
+
+
+def test_a_dispatch_enqueue_sends_one_fleet_meta_with_the_dispatch_revision_one_higher(queue_config, monkeypatch):
+    dispatch, _ = queue_config
+    monkeypatch.setattr(dispatch, "_drain", lambda queue: None)
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = _tab()
+        before = live.snapshot()["revs"]["dispatch"]
+        await asyncio.to_thread(dispatch.enqueue, "q")
+        await asyncio.sleep(0.2)
+        return before, _drain(queue)
+
+    before, frames = asyncio.run(drive())
+    assert [f["type"] for f in frames] == ["fleet_meta"]
+    assert frames[0]["revs"]["dispatch"] == before + 1
+
+
+def test_a_dispatch_finish_from_a_thread_sends_a_fleet_meta_with_a_higher_revision(queue_config, monkeypatch):
+    dispatch, ledger = queue_config
+    proc = _HeldProc()
+    monkeypatch.setattr(dispatch, "_launch", lambda item_id, command, params: proc)
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = _tab()
+        item = await asyncio.to_thread(dispatch.enqueue, "q")
+        await asyncio.sleep(0.2)
+        started = _metas(_drain(queue))[-1]["revs"]["dispatch"]
+        proc.done.set()
+        await asyncio.sleep(0.3)
+        return item, started, _drain(queue)
+
+    item, started, frames = asyncio.run(drive())
+    assert ledger.dispatch_get(item["item_id"])["status"] == ledger.DISPATCH_DONE
+    assert [f["revs"]["dispatch"] for f in _metas(frames)] == [started + 1]
+
+
+def test_a_written_summary_sends_a_fleet_meta_with_a_higher_history_revision():
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = _tab()
+        before = live.snapshot()["revs"]["history"]
+        with patch.object(groom_app.history, "compute", lambda run_id: None):
+            await groom_app._write_summary("run-s")
+        await asyncio.sleep(0.2)
+        return before, _drain(queue)
+
+    before, frames = asyncio.run(drive())
+    assert [f["type"] for f in frames] == ["summary", "fleet_meta"]
+    assert frames[1]["revs"]["history"] == before + 1
+
+
+def test_a_summary_pass_that_archives_a_run_sends_a_higher_history_revision_and_one_with_nothing_sends_none():
+    async def drive(archives: list[str]):
+        live.reset()
+        live.bind(asyncio.get_running_loop())
+        queue = _tab()
+        before = live.snapshot()["revs"]["history"]
+        with (
+            patch.object(groom_app.history, "discover", lambda: []),
+            patch.object(groom_app.history, "discover_archives", lambda: archives),
+            patch.object(groom_app.history, "compute_archive", lambda run_id: True),
+            patch.object(groom_app, "SUMMARY_PAUSE_S", 0),
+        ):
+            await groom_app._summary_pass()
+        await asyncio.sleep(0.2)
+        return before, _drain(queue)
+
+    before, frames = asyncio.run(drive(["run-a"]))
+    assert [f["revs"]["history"] for f in _metas(frames)] == [before + 2]
+    _, frames = asyncio.run(drive([]))
+    assert frames == []

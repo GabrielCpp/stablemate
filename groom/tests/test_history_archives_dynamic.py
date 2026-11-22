@@ -21,6 +21,7 @@ from test_history_filters_dynamic import _choose, _options
 from test_history_open_dynamic import _read_the_failure_and_retry, AXE, DETAIL, LONG_REPO, LONG_RUN
 
 from groom import archive, history, store, turns
+from groom import live as groom_live
 
 DAY = 86400.0
 EVERYTHING = "Everything, archives included"
@@ -138,6 +139,7 @@ def test_an_older_archive_reads_its_summary_while_the_table_says_so_and_the_row_
             before = page.locator("#history tr.hrow").first.inner_text()
             totals_before = _totals(page)
             history.compute_archive("arch-a")
+            groom_live.bump_threadsafe("history")
             page.wait_for_function("() => !document.querySelector('#history tr.hrow').innerText.includes('reading its summary')", timeout=15000)
             after = _table(page, TABLE)[0]
             totals_after = " ".join(_totals(page))
@@ -385,6 +387,7 @@ def test_an_archive_that_gets_its_row_later_appears_in_the_table_without_a_reloa
         try:
             page.wait_for_timeout(500)
             history.discover_archives()
+            groom_live.bump_threadsafe("history")
             page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=15000)
             rows = page.locator("#history tr.hrow").count()
         finally:

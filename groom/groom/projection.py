@@ -401,6 +401,7 @@ def fleet_meta(workflows: list[WorkflowContainer]) -> dict[str, Any]:
         "status": status_bar(workflows),
         "store": store.health_dict(),
         "attend": attend_summary(),
+        "revs": dict(state.REVS),
     }
 
 

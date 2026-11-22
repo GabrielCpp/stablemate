@@ -27,6 +27,7 @@ FEEDS: dict[asyncio.Queue, str] = {}
 
 SCANNING: bool = True
 FLEET_V: int = 0
+REVS: dict[str, int] = {"dispatch": 0, "history": 0}
 CLIENT_QUEUE_MAX = 256
 WATCH_REFRESH: Callable[[str], None] | None = None
 

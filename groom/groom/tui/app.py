@@ -164,6 +164,7 @@ class GroomTui(GroomBase):
         if kind == "state":
             self.store = client.apply_state(self.store, frame)
             self._follow_attend()
+            self._follow_dispatch()
             self._render_fleet()
             await self._render_detail()
         elif kind == "run":
@@ -179,6 +180,7 @@ class GroomTui(GroomBase):
         elif kind == "fleet_meta":
             self.store = client.apply_meta(self.store, frame)
             self._follow_attend()
+            self._follow_dispatch()
             self._render_status()
         elif kind == "detail":
             before = self.store
@@ -200,6 +202,12 @@ class GroomTui(GroomBase):
             if isinstance(screen, AttendScreen):
                 screen.rev_changed(rev)
 
+    def _follow_dispatch(self) -> None:
+        rev = int(self.store.revs.get("dispatch") or 0)
+        for screen in self.screen_stack:
+            if isinstance(screen, DispatchScreen):
+                screen.rev_changed(rev)
+
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         return self.screen is self.main or action in ("goto", "quit")
 
@@ -207,7 +215,7 @@ class GroomTui(GroomBase):
         if name == "settings":
             return SettingsScreen(self.link)
         if name == "dispatch":
-            return DispatchScreen(self.link)
+            return DispatchScreen(self.link, int(self.store.revs.get("dispatch") or 0))
         entry = client.selected_attendant(self.store) if self.screen is self.main else None
         return AttendScreen(
             self.link, float(self.store.attend.get("rev") or 0.0), str((entry or {}).get("session_id") or "")

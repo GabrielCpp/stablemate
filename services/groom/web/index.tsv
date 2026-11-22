@@ -118,6 +118,8 @@ decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-
 decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:8	moment its silence passes the liveness threshold, because an absence sends no event. The row carries `last_seen_ts`, so
 decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:9	the page counts "silent 4m" itself from its one-second ticker and the server sends nothing while the count grows. A
 decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:10	quiet fleet therefore sends no frame at all.
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:11	
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:12	The Dispatch and History panes follow revisions that ride the same fleet frames, see the-side-panes-follow-revisions-not-a-clock.
 decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filtered-in-the-browser.md:1	story: none
 decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filtered-in-the-browser.md:3	elements: FilterTheList
 decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filtered-in-the-browser.md:4	sources: groom/groom/assets/dashboard.js, groom/groom/projection.py::matches
@@ -125,3 +127,10 @@ decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filte
 decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filtered-in-the-browser.md:7	filtered by the server would be replaced by the next push. The page trims what is typed, ignores its case, and keeps a
 decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filtered-in-the-browser.md:8	run when the text is part of its name, repo, node, the gate path it waits on or its id. The HTTP read of the fleet
 decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filtered-in-the-browser.md:9	filters too, in projection.matches, and the two books state their own filter.
+decision	the-side-panes-follow-revisions-not-a-clock	decisions/the-side-panes-follow-revisions-not-a-clock.md:1	story: none
+decision	the-side-panes-follow-revisions-not-a-clock	decisions/the-side-panes-follow-revisions-not-a-clock.md:3	elements: Dispatch, History
+decision	the-side-panes-follow-revisions-not-a-clock	decisions/the-side-panes-follow-revisions-not-a-clock.md:4	sources: groom/groom/live.py::bump, groom/groom/state.py, groom/groom/dispatch.py, groom/groom/app.py::_write_summary, groom/groom/assets/dashboard.js
+decision	the-side-panes-follow-revisions-not-a-clock	decisions/the-side-panes-follow-revisions-not-a-clock.md:6	The Dispatch and History panes change when groom learns something, not on a timer. The fleet frames carry a revision
+decision	the-side-panes-follow-revisions-not-a-clock	decisions/the-side-panes-follow-revisions-not-a-clock.md:7	number for each pane, and the same flush that sends the run rows sends it. A change to a dispatch queue or to a run's
+decision	the-side-panes-follow-revisions-not-a-clock	decisions/the-side-panes-follow-revisions-not-a-clock.md:8	history bumps its number. An open pane fetches again, at most once per 300 milliseconds, when its number moves, and a
+decision	the-side-panes-follow-revisions-not-a-clock	decisions/the-side-panes-follow-revisions-not-a-clock.md:9	pane that opens fetches once. A quiet queue and a settled history therefore send no request after the first.

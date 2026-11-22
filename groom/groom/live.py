@@ -59,6 +59,8 @@ def reset() -> None:
     _sent_rows = None
     _sent_meta = None
     state.FLEET_V = 0
+    for name in state.REVS:
+        state.REVS[name] = 0
 
 
 def bind(loop: asyncio.AbstractEventLoop) -> None:
@@ -131,6 +133,21 @@ def release_unwatched() -> None:
     _backlog.intersection_update(watched)
 
 
+def bump(name: str) -> None:
+    state.REVS[name] += 1
+    mark_fleet()
+
+
+def bump_threadsafe(name: str) -> None:
+    loop = _loop
+    if loop is None or loop.is_closed():
+        return
+    try:
+        loop.call_soon_threadsafe(bump, name)
+    except RuntimeError:
+        return
+
+
 def mark_fleet_threadsafe() -> None:
     loop = _loop
     if loop is None or loop.is_closed():
@@ -161,7 +178,7 @@ def snapshot() -> dict[str, Any]:
 
 
 def _meta_of(message: dict[str, Any]) -> dict[str, Any]:
-    return {key: message[key] for key in ("scanning", "attention", "status", "store", "attend")}
+    return {key: message[key] for key in ("scanning", "attention", "status", "store", "attend", "revs")}
 
 
 def _flush() -> None:

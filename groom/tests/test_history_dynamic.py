@@ -195,6 +195,7 @@ def test_the_totals_show_runs_money_active_time_and_successes_and_omit_a_clause_
 
 def test_an_ended_run_with_no_summary_reads_reading_its_summary_stays_out_of_the_sums_and_fills_in_without_a_reload():
     from groom import history
+    from groom import live as groom_live
 
     live = _live()
     assert live is not None, _UNAVAILABLE
@@ -208,6 +209,7 @@ def test_an_ended_run_with_no_summary_reads_reading_its_summary_stays_out_of_the
         before = _totals(page)
         marker = page.evaluate("window.__marker = 'same page'")
         history.compute("hist-a", now)
+        groom_live.bump_threadsafe("history")
         page.wait_for_selector("#history tbody tr td .chip", timeout=15000)
         filled = _table(page, TABLE)[0]
         after = _totals(page)

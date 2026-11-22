@@ -19,6 +19,7 @@ class Store:
     query: str = ""
     attend: Frame = field(default_factory=dict)
     fleet_v: int = 0
+    revs: Frame = field(default_factory=dict)
 
 
 TRAIL_VIEWS = ("all", "transcript", "telemetry")
@@ -50,6 +51,7 @@ def apply_state(store: Store, msg: Frame) -> Store:
             status=msg.get("status") or store.status,
             scanning=bool(msg.get("scanning")),
             attend=msg.get("attend") or store.attend,
+            revs=msg.get("revs") or store.revs,
         ),
         msg,
     )
@@ -64,6 +66,7 @@ def apply_meta(store: Store, msg: Frame) -> Store:
             status=msg.get("status") or store.status,
             scanning=bool(msg.get("scanning")),
             attend=msg.get("attend") or store.attend,
+            revs=msg.get("revs") or store.revs,
         ),
         msg,
     )

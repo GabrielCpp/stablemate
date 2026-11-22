@@ -8,3 +8,5 @@ a tenth of a second later sends only the rows whose content changed. A run turns
 moment its silence passes the liveness threshold, because an absence sends no event. The row carries `last_seen_ts`, so
 the page counts "silent 4m" itself from its one-second ticker and the server sends nothing while the count grows. A
 quiet fleet therefore sends no frame at all.
+
+The Dispatch and History panes follow revisions that ride the same fleet frames, see the-side-panes-follow-revisions-not-a-clock.

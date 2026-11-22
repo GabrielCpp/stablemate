@@ -206,30 +206,49 @@ def test_the_detail_says_so_when_the_item_left_the_queue():
             dp.item_list(screen).highlighted = 2
             await support.until(lambda: "p-run" in dp.detail(screen))
             link.get_replies[dp.items_path("plans")] = {"items": []}
-            screen._tick()
+            screen.reload()
             await support.until(lambda: dp.note(screen, "items") == "No items on this queue.")
             assert dp.detail(screen) == "That item is no longer on this queue."
 
     dp.run(scenario)
 
 
-def test_the_poll_interval_is_five_seconds():
-    assert screen_module.POLL_S == 5.0
+def _meta(v: int, dispatch: int) -> dict:
+    return {"type": "fleet_meta", "v": v, "revs": {"dispatch": dispatch, "history": 0}}
 
 
-def test_the_screen_polls_while_open_and_stops_when_it_closes(monkeypatch):
+def test_the_screen_reloads_when_the_dispatch_revision_moves_and_not_otherwise():
     async def scenario() -> None:
-        monkeypatch.setattr(screen_module, "POLL_S", 0.1)
+        link = await stocked()
+        async with dp.booted(link) as (app, pilot):
+            await dp.open_dispatch(app, pilot, link)
+            await dp.settle()
+            seen = len(link.gets)
+            await asyncio.sleep(0.4)
+            assert len(link.gets) == seen
+            link.push(_meta(50, 1))
+            await support.until(lambda: len(link.gets) > seen)
+            await dp.settle()
+            seen = len(link.gets)
+            link.push(_meta(51, 1))
+            await asyncio.sleep(0.3)
+            assert len(link.gets) == seen
+            link.push(_meta(52, 2))
+            await support.until(lambda: len(link.gets) > seen)
+
+    dp.run(scenario)
+
+
+def test_the_screen_stops_following_when_it_closes():
+    async def scenario() -> None:
         link = await stocked()
         async with dp.booted(link) as (app, pilot):
             screen = await dp.open_dispatch(app, pilot, link)
-            await support.until(lambda: link.gets.count(dp.QUEUES) >= 3)
-            assert link.gets.count(dp.items_path("plans")) >= 3
-            assert link.gets.count(dp.items_path("reviews")) == 0
             await pilot.press("escape")
             await support.until(lambda: app.screen is app.main)
             await dp.settle()
             seen = list(link.gets)
+            link.push(_meta(60, 9))
             await asyncio.sleep(0.4)
             assert link.gets == seen
             assert screen.is_attached is False
@@ -249,7 +268,7 @@ def test_a_poll_keeps_the_highlighted_queue_and_item_and_shows_no_loading_text()
             await dp.serve(link)
             await support.until(lambda: "r-run" in dp.detail(screen))
             before = len(link.gets)
-            screen._tick()
+            screen.reload()
             await support.until(lambda: dp.ids(dp.item_list(screen)) == ["r-new", "r-run", "r-old"])
             await dp.settle()
             assert dp.highlighted(dp.queue_list(screen)) == "reviews"
@@ -288,7 +307,7 @@ def test_a_load_error_in_a_later_poll_keeps_the_rows_and_names_the_reason():
         async with dp.booted(link) as (app, pilot):
             screen = await dp.open_dispatch(app, pilot, link)
             link.get_replies.pop(dp.QUEUES)
-            screen._tick()
+            screen.reload()
             await support.until(lambda: dp.note(screen, "queues").startswith("Could not load queues"))
             assert dp.queue_list(screen).option_count == 2
 
@@ -309,7 +328,7 @@ def test_a_long_queue_fills_in_chunks_and_a_poll_neither_truncates_nor_moves_the
             assert dp.highlighted(dp.item_list(screen)) == "q-7"
             dp.item_list(screen).highlighted = 6
             await support.until(lambda: "q-1" in dp.detail(screen))
-            screen._tick()
+            screen.reload()
             await dp.settle()
             assert dp.item_list(screen).option_count == 8
             assert dp.highlighted(dp.item_list(screen)) == "q-1"
