@@ -1,7 +1,7 @@
 story: none
 date: 2026-11-22
 elements: SearchBook, CheckBook, SearchUnmovedBook
-sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root
+sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root, core/stablemate_core/book_branch.py, ostler/ostler/book/home.py
 
 A book lives in the artifacts folder unless the repository says otherwise. `ostler book` resolves its book root through
 one function of the shared core, `book_home`, and no command walks up from the working directory looking for a
@@ -24,3 +24,16 @@ A source pointer written `repo://<name>/<path>` resolves for a lone repository, 
 
 Stablemate and the sandbox keep their book through `book.home: repo`. The sandbox also holds `unmoved/`, a repository
 with an ostler book and no key, so the book plays the refusal.
+
+A book change is committed in the artifacts repository on a branch with the same name as the code branch of the same
+work. For a story that is the story's branch. A book branch always lives in a linked worktree of the artifacts
+repository, and the artifacts folder itself never leaves its base branch, so two pieces of work in two repositories
+never switch one shared checkout. The book branch lands on the artifacts base when the code lands on its base, by
+rebase and fast-forward, never a merge commit. A change with no code branch, committed straight on the code's base,
+commits its book straight on the artifacts base. With `book.home: repo` there is no book branch: the book rides the
+code's branch.
+
+`ostler book branch` opens the book branch for the current code branch and prints the book root. `ostler book land`
+lands it and removes the worktree and the branch. A conflict keeps both and names the files. The book does not play
+`branch` and `land`, because the demo world is not a git checkout, as for `affected` (see
+`a-storys-change-is-its-own-commits.md`).

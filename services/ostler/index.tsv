@@ -577,7 +577,7 @@ decision	qa-plans-run-in-the-sandbox	decisions/qa-plans-run-in-the-sandbox.md:18
 decision	qa-plans-run-in-the-sandbox	decisions/qa-plans-run-in-the-sandbox.md:19	`echo hi`.
 decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:1	story: none
 decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:3	elements: SearchBook, CheckBook, SearchUnmovedBook
-decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:4	sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:4	sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root, core/stablemate_core/book_branch.py, ostler/ostler/book/home.py
 decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:6	A book lives in the artifacts folder unless the repository says otherwise. `ostler book` resolves its book root through
 decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:7	one function of the shared core, `book_home`, and no command walks up from the working directory looking for a
 decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:8	`services/` folder.
@@ -599,6 +599,19 @@ decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-
 decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:24	
 decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:25	Stablemate and the sandbox keep their book through `book.home: repo`. The sandbox also holds `unmoved/`, a repository
 decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:26	with an ostler book and no key, so the book plays the refusal.
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:27	
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:28	A book change is committed in the artifacts repository on a branch with the same name as the code branch of the same
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:29	work. For a story that is the story's branch. A book branch always lives in a linked worktree of the artifacts
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:30	repository, and the artifacts folder itself never leaves its base branch, so two pieces of work in two repositories
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:31	never switch one shared checkout. The book branch lands on the artifacts base when the code lands on its base, by
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:32	rebase and fast-forward, never a merge commit. A change with no code branch, committed straight on the code's base,
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:33	commits its book straight on the artifacts base. With `book.home: repo` there is no book branch: the book rides the
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:34	code's branch.
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:35	
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:36	`ostler book branch` opens the book branch for the current code branch and prints the book root. `ostler book land`
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:37	lands it and removes the worktree and the branch. A conflict keeps both and names the files. The book does not play
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:38	`branch` and `land`, because the demo world is not a git checkout, as for `affected` (see
+decision	the-artifacts-folder-is-the-home-of-every-book	decisions/the-artifacts-folder-is-the-home-of-every-book.md:39	`a-storys-change-is-its-own-commits.md`).
 decision	the-runtime-of-other-surfaces-is-ignored	decisions/the-runtime-of-other-surfaces-is-ignored.md:1	story: none
 decision	the-runtime-of-other-surfaces-is-ignored	decisions/the-runtime-of-other-surfaces-is-ignored.md:3	elements: CheckBook, RunBook, IndexBook
 decision	the-runtime-of-other-surfaces-is-ignored	decisions/the-runtime-of-other-surfaces-is-ignored.md:5	`App(ignore=...)` names 25 modules of `ostler/ostler/book/`. No command a person types reaches them from a text

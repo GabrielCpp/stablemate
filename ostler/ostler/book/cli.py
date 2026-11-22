@@ -18,10 +18,12 @@ import sys
 import tempfile
 import time
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.book.affected import cmd_affected as affected
+from ostler.book.home import cmd_branch, cmd_land
 from ostler.book.backstage import CannotArrange
 from ostler.book.cells import Played, play
 from ostler.book.change import story_window
@@ -157,6 +159,10 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     what.add_argument("--since", help="judge against this commit instead of the verified one")
     what.add_argument("--story", help="read only the commits whose trailer is 'Story: <id>', with the uncommitted work")
     what.add_argument("--out", default=None, help=OUT_HELP)
+    opened = sub.add_parser("branch", help="open the book branch of the current code branch in the artifacts repository and print the book root")
+    opened.add_argument("--branch", help="the branch to open; omitted, the code repository's current branch")
+    landed = sub.add_parser("land", help="land the book branch of the current code branch on the artifacts base, then remove its worktree and branch")
+    landed.add_argument("--branch", help="the branch to land; omitted, the code repository's current branch")
     absent = sub.add_parser("missing", help="list the tracked source files of the app that no element names and no ignore pattern covers")
     absent.add_argument("service")
     absent.add_argument("--app", required=True, help="the app's root")
@@ -205,6 +211,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {refused}", file=sys.stderr)
         return 2
     sys.path.insert(0, root)
+    if args.command == "branch":
+        return cmd_branch(args, Path(os.getcwd()))
+    if args.command == "land":
+        return cmd_land(args, Path(os.getcwd()))
     if args.command == "files":
         return cmd_files(args, root)
     if args.command == "pages":

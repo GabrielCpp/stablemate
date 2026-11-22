@@ -323,6 +323,8 @@ ostler book stale   services.api --app ../api   # what changed in the app since 
 ostler book verified services.api --app ../api  # record the app's head once stale is worked
 ostler book verified services.api --app ../api --story ACME-1   # refuse only for the story's commits; leave the stamp while other commits are open
 ostler book affected services.api --app ../api --since HEAD~3   # the calls and journeys the changed code calls for
+ostler book branch                                    # open the book branch of the current code branch in the artifacts repository, print its root
+ostler book land                                      # land that book branch on the artifacts base by rebase, then remove its worktree and branch
 ostler book files   services.api          # the files the book needs to load: its folder, then what it imports from outside it
 ostler book decisions services.api
 ostler book graph   services.api          # each record's state graph, as dot and svg

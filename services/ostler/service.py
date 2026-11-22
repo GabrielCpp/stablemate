@@ -21,7 +21,7 @@ SURFACE_RUNTIME = (
 )
 SHARED_RUNTIME = (
     "arrange", "backstage", "boundary", "cast", "contracts", "denied", "entries", "errors", "event", "planner", "stack",
-    "surface", "workspace",
+    "surface", "workspace", "home",
 )
 IGNORED = (
     "ostler/ostler/_vendor/*", "ostler/ostler/__init__.py", "ostler/ostler/api.py", "ostler/ostler/*README.md",
