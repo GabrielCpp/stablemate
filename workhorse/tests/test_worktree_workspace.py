@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
+from workhorse._vendor.stablemate_core import books
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow import run as run_mod
 from workhorse.pyflow import workspace_worktrees
@@ -59,7 +60,7 @@ class Observe(Workflow):
         SEEN["trees"] = {
             name: str(core_config.checkout_on(Path(repo), BRANCH)) for name, repo in SEEN["repos"].items()
         }
-        SEEN["book_home"] = str(core_config.book_home(Path(self.repo_dir)))
+        SEEN["book_home"] = str(books.book_home(Path(self.repo_dir)))
         return Done(None)
 
 
@@ -185,17 +186,37 @@ def test_dry_run_prints_every_worktree_and_cuts_nothing(world, capsys):
     assert not list(world.trees.iterdir())
 
 
-def test_a_run_outside_any_workspace_still_cuts_one_worktree(world, tmp_path, monkeypatch):
+def test_a_lone_repository_cuts_its_worktree_and_the_artifacts_worktree_on_one_branch(world, tmp_path, monkeypatch):
     monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(tmp_path / "none.toml"))
     solo = _repo(tmp_path / "solo")
 
     code = world.go({"repo_dir": str(solo)})
 
     assert code == 0
+    assert SEEN["repo_dir"] == str(world.tree("solo"))
+    assert SEEN["book_home"] == str(world.tree("artifacts"))
+    record = world.record()
+    assert [(e["name"], e["branch"], e["books"]) for e in record["worktrees"]] == [
+        ("solo", BRANCH, False), ("artifacts", BRANCH, True),
+    ]
+    assert record["worktree_path"] == str(world.tree("solo"))
+
+
+def test_a_lone_repository_with_its_book_in_repo_cuts_one_worktree(world, tmp_path, monkeypatch):
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(tmp_path / "none.toml"))
+    solo = _repo(tmp_path / "solo")
+    (solo / "agents.yml").write_text("book:\n  home: repo\n")
+    _git(solo, "add", "agents.yml")
+    _git(solo, "commit", "-q", "-m", "keep the book here")
+
+    code = world.go({"repo_dir": str(solo)})
+
+    assert code == 0
     record = world.record()
     assert len(record["worktrees"]) == 1
-    assert record["worktree_path"] == str(world.trees / "solo-run-wt-ws-t")
+    assert record["worktree_path"] == str(world.tree("solo"))
     assert record["worktrees"][0]["path"] == record["worktree_path"]
+    assert not world.tree("artifacts").exists()
 
 
 def test_an_unborn_artifacts_repo_gets_its_first_commit_before_the_cut(world):
@@ -216,8 +237,7 @@ class Writes(Workflow):
     workspace: str = ""
 
     def start(self) -> Transition:
-        book = core_config.book_home(Path(self.repo_dir))
-        assert book is not None
+        book = books.book_home(Path(self.repo_dir))
         (book / "services").mkdir()
         (book / "services" / "api.py").write_text("x = 1\n")
         _git(book, "add", "services/api.py")
@@ -289,5 +309,34 @@ def test_an_interrupted_run_keeps_every_worktree(world):
         world.go({"repo_dir": str(world.api)}, flow="interrupts")
 
     record = world.record()
+    assert {e["outcome"]["action"] for e in record["worktrees"]} == {"kept"}
+    assert all(Path(e["path"]).is_dir() for e in record["worktrees"])
+
+
+def test_a_lone_repository_run_lands_its_book_on_success(world, tmp_path, monkeypatch):
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(tmp_path / "none.toml"))
+    solo = _repo(tmp_path / "solo")
+
+    code = world.go({"repo_dir": str(solo)}, flow="writes")
+
+    assert code == 0
+    assert (world.artifacts / "services" / "api.py").read_text() == "x = 1\n"
+    assert _trees_gone(world)
+    assert BRANCH not in _git(world.artifacts, "branch", "--list")
+    record = world.record()
+    assert [e["landing"]["action"] for e in record["worktrees"] if e["landing"]] == ["landed"]
+
+
+def test_a_lone_repository_run_that_fails_keeps_both_worktrees(world, tmp_path, monkeypatch):
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(tmp_path / "none.toml"))
+    solo = _repo(tmp_path / "solo")
+    before = _git(world.artifacts, "rev-parse", "main")
+
+    code = world.go({"repo_dir": str(solo)}, flow="dies")
+
+    assert code != 0
+    assert _git(world.artifacts, "rev-parse", "main") == before
+    record = world.record()
+    assert len(record["worktrees"]) == 2
     assert {e["outcome"]["action"] for e in record["worktrees"]} == {"kept"}
     assert all(Path(e["path"]).is_dir() for e in record["worktrees"])

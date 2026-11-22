@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from workhorse._vendor.stablemate_core import book_branch, books
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse._vendor.stablemate_core import worktree as shared
 from workhorse.pyflow import worktree as worktree_mod
@@ -33,12 +33,13 @@ def plan(
     base_ref: str,
     create: bool = True,
 ) -> tuple[list[Planned], Path]:
-    """The worktrees of the run's workspace, the invoking repository's first, and the folder `repo_dir` takes inside its worktree; empty when *repo_dir* belongs to no workspace."""
+    """The worktrees of the run's workspace, the invoking repository's first, and the folder `repo_dir` takes inside its worktree; empty when *repo_dir* belongs to no workspace and keeps its book in the repository or is the artifacts repository. A lone repository also gets the artifacts repository's worktree."""
     try:
         name = core_config.run_workspace(repo_dir, workspace)
     except ValueError as exc:
         raise WorktreeError(str(exc)) from exc
-    if not name:
+    lone = not name
+    if lone and books.book_in_repo(repo_dir):
         return [], Path()
     if create:
         core_config.ensure_artifacts_repo()
@@ -46,6 +47,15 @@ def plan(
     rel = repo_dir.resolve().relative_to(identity.folder)
     artifacts = core_config.resolve_artifacts_dir()
     own = artifacts.is_dir() and core_config.repository_identity(artifacts).folder == artifacts
+    if lone:
+        checked = create or artifacts.is_dir()
+        if (checked and not own) or identity.main_folder == artifacts:
+            return [], Path()
+        first_name = core_config.repository_name(repo_dir)
+        return [
+            Planned(first_name, identity.folder, worktree_dir / f"{first_name}-{sanitized}", base_ref, False),
+            Planned(artifacts.name, artifacts, worktree_dir / f"{artifacts.name}-{sanitized}", "HEAD", True),
+        ], rel
     members = core_config.resolve_workspace(name)
 
     first_name = artifacts.name if identity.main_folder == artifacts else core_config.repository_name(repo_dir)
@@ -123,40 +133,8 @@ def _has_branch(repo: Path, branch: str) -> bool:
 
 def land(entry: RunWorktree) -> BookLanding:
     """Land the run's book branch on the artifacts base in its main folder."""
-    repo, path, branch, base = Path(entry.repo), Path(entry.path), entry.branch, entry.base
-    tip = _rev(repo, f"refs/heads/{branch}")
-    if tip is None:
-        return BookLanding(action="kept", reason=f"branch '{branch}' is gone")
-    if _succeeds(repo, "merge-base", "--is-ancestor", tip, base):
-        return BookLanding(action="nothing", reason=f"'{branch}' has no commit beyond '{base}'")
-    head = shared.git(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
-    checked_out = head.stdout.strip() if head is not None and head.returncode == 0 else ""
-    if checked_out != base:
-        return BookLanding(
-            action="kept", reason=f"{repo} has '{checked_out or 'a detached HEAD'}' checked out, not '{base}'"
-        )
-    rebased = False
-    if not _succeeds(repo, "merge-base", "--is-ancestor", base, branch):
-        if not path.is_dir():
-            return BookLanding(action="kept", reason="the worktree is gone")
-        done = shared.git(path, "rebase", "--quiet", base)
-        if done is None or done.returncode != 0:
-            listed = shared.git(path, "diff", "--name-only", "--diff-filter=U")
-            files = listed.stdout.split() if listed is not None else []
-            shared.git(path, "rebase", "--abort")
-            if files:
-                return BookLanding(
-                    action="conflict", reason=f"rebasing '{branch}' onto '{base}' conflicts", files=files
-                )
-            return BookLanding(action="kept", reason=_stderr(done))
-        rebased = True
-    merged = shared.git(repo, "merge", "--ff-only", "--quiet", branch)
-    if merged is None or merged.returncode != 0:
-        return BookLanding(action="kept", reason=_stderr(merged))
-    how = "rebased onto and " if rebased else ""
-    return BookLanding(
-        action="rebased" if rebased else "landed", reason=f"'{branch}' {how}fast-forwarded '{base}'"
-    )
+    landing = book_branch.land(Path(entry.repo), Path(entry.path), entry.branch, entry.base)
+    return BookLanding(action=landing.action, reason=landing.reason, files=list(landing.files))
 
 
 def end(entries: list[RunWorktree]) -> list[RunWorktree]:
@@ -183,19 +161,6 @@ def keep(entries: list[RunWorktree], reason: str) -> list[RunWorktree]:
     return [entry.model_copy(update={"outcome": worktree_mod.kept(reason)}) for entry in entries]
 
 
-def _rev(repo: Path, ref: str) -> str | None:
-    done = shared.git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
-    if done is None or done.returncode != 0:
-        return None
-    return done.stdout.strip() or None
-
-
 def _succeeds(repo: Path, *args: str) -> bool:
     done = shared.git(repo, *args)
     return done is not None and done.returncode == 0
-
-
-def _stderr(done: subprocess.CompletedProcess[str] | None) -> str:
-    if done is None:
-        return "git could not be run"
-    return done.stderr.strip() or f"exit {done.returncode}"
