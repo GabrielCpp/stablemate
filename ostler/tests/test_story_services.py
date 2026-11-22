@@ -6,7 +6,7 @@ from pathlib import Path
 from ostler import Ostler, doctor
 from ostler.model import load
 
-from conftest import FOO_ID, present, write
+from conftest import FOO_ID, keep_book_in_repo, present, write
 
 
 def _services(repo: Path, line: str) -> None:
@@ -60,6 +60,7 @@ def test_a_page_folder_is_no_book(repo: Path):
 
 
 def test_a_python_book_is_a_book_with_no_page_folder(repo: Path):
+    keep_book_in_repo(repo)
     write(repo / "services/billing/service.py", "")
     write(repo / "services/desk/web/service.py", "")
     write(repo / "services/ops/stack.yml", "services: {}\n")
@@ -68,6 +69,7 @@ def test_a_python_book_is_a_book_with_no_page_folder(repo: Path):
 
 
 def test_a_book_with_screens_is_a_ui_service(repo: Path):
+    keep_book_in_repo(repo)
     write(repo / "services/web-app/service.py", "")
     write(repo / "services/web-app/screens/__init__.py", "")
     write(repo / "services/desk/web/service.py", "")

@@ -9,6 +9,7 @@ from typing import Iterator
 import pytest
 
 from book_fakes import isolated_services
+from conftest import keep_book_in_repo
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book.pages import cmd_pages
 from ostler.book.index import cmd_search_book
@@ -60,7 +61,7 @@ def _company(artifacts: Path, slug: str, text: str) -> None:
 
 
 def _on_team(root: Path, team: str) -> None:
-    _write(root / "agents.yml", f"book:\n  team: {team}\n")
+    _write(root / "agents.yml", f"book:\n  home: repo\n  team: {team}\n")
 
 
 @pytest.fixture
@@ -72,6 +73,7 @@ def artifacts(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.Monk
 
 @pytest.fixture
 def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, artifacts: Path) -> Iterator[Path]:
+    keep_book_in_repo(tmp_path)
     for tmp in isolated_services(tmp_path, monkeypatch):
         _shop(tmp)
         yield tmp

@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core import books
 from ostler.environments import spec as spec_mod
 from ostler.qa import addresses
 from ostler.qa import stack as stack_mod
@@ -22,7 +22,7 @@ def resolve_directory(root: Path, value: str) -> Path:
     if not value.startswith("repo://"):
         return (root / value).resolve()
     member, _slash, rest = value.removeprefix("repo://").partition("/")
-    checkouts = core_config.workspace_checkouts(root)
+    checkouts = books.book_checkouts(root)
     checkout = checkouts.get(member)
     if checkout is None:
         known = ", ".join(sorted(checkouts)) or "none"

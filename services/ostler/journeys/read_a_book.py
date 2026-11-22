@@ -5,7 +5,7 @@ from typing import Iterable
 
 from ostler.book import Journey
 
-from ..books import CheckBook, DrawBook, ExplainBook, ExplainNothing, ExploreBook, IndexBook, ListBookDecisions, ListBookPages, RunBook, SearchBook
+from ..books import CheckBook, DrawBook, ExplainBook, ExplainNothing, SearchUnmovedBook, ExploreBook, IndexBook, ListBookDecisions, ListBookPages, RunBook, SearchBook
 from ..commands import Look
 from ..fixtures import nothing
 from ..graph import EnvAddress, EnvDown, EnvExec, EnvRender, EnvRenderUnknown
@@ -24,6 +24,7 @@ class ReadABook(Journey):
             SearchBook(nothing()),
             ExplainBook(nothing()),
             ExplainNothing(nothing()),
+            SearchUnmovedBook(nothing()),
             ListBookDecisions(nothing()),
             ListBookPages(nothing()),
             ExploreBook(nothing()),

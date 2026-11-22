@@ -571,11 +571,10 @@ def lookup(copy: Copy, book: Mapping[str, str], name: str) -> EnvOutcome:
 
 
 def env_root(start: Path) -> Path:
-    """The root `ostler env` reads its stacks under: the book root in a workspace, else the docs root."""
-    from ostler._vendor.stablemate_core import config as core_config
-    from ostler.model import find_root
+    """The root `ostler env` reads its stacks under: the book home of the code at `start`."""
+    from ostler.book.index import book_root
 
-    return core_config.book_home(start) or find_root(start)
+    return Path(book_root(str(start)))
 
 
 def compose_argv(root: Path, args: Sequence[str], *, copy_name: str = SHARED) -> list[str] | EnvOutcome:

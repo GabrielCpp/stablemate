@@ -9,6 +9,7 @@ from typing import Any, Iterator, cast
 import pytest
 
 from book_todo import FIXTURE, module, run_book
+from conftest import keep_book_in_repo
 from ostler.book import Action, Answer, BookError, Defect, Endpoint, Field, List, Object, Rule, Str
 from ostler.book.check import defect_faults
 from ostler.book.entries import has, in_order, no_repeat
@@ -65,6 +66,7 @@ def clean_app() -> Iterator:
 def _declared(tmp_path: Path, breaks: str = "HAS_TITLE", repeat: bool = True) -> Path:
     book = tmp_path / "book"
     book.mkdir()
+    keep_book_in_repo(book)
     shutil.copytree(FIXTURE / "services", book / "services")
     actions = book / "services" / "api" / "model" / "actions.py"
     text = actions.read_text()

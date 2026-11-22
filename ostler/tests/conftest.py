@@ -71,9 +71,18 @@ def write_json(path: Path, data: dict) -> None:
     write(path, json.dumps(data, indent=2) + "\n")
 
 
+def keep_book_in_repo(root: Path) -> None:
+    """The ``book.home: repo`` key in the manifest at *root*, kept beside any other line it holds."""
+    path = root / "agents.yml"
+    text = path.read_text(encoding="utf-8").rstrip("\n") if path.is_file() else ""
+    if "home: repo" in text:
+        return
+    write(path, "\n".join(line for line in (text, "book:\n  home: repo") if line) + "\n")
+
+
 def write_prefix(root: Path, prefix: str = "X") -> None:
     """A manifest at *root* whose ``repo.id_prefix`` is *prefix*, so a mint there has one to read."""
-    write(root / "agents.yml", f"repo:\n  id_prefix: {prefix}\n")
+    write(root / "agents.yml", f"repo:\n  id_prefix: {prefix}\nbook:\n  home: repo\n")
 
 
 def epic_md(eid: str, title: str, seeds: list[tuple[str, str, str]],

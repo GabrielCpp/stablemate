@@ -32,8 +32,10 @@ def root(request: pytest.FixtureRequest, tmp_path: Path) -> Path:
     """The book root of a monorepo, which is the code repo, or of a workspace, which is the artifacts repo beside it."""
     if request.param == "workspace":
         _ = make_git_repo(tmp_path / "api")
-        return make_git_repo(tmp_path / "artifacts")
-    return make_git_repo(tmp_path / "acme")
+    folder = tmp_path / ("artifacts" if request.param == "workspace" else "acme")
+    folder.mkdir()
+    (folder / "agents.yml").write_text("book:\n  home: repo\n", encoding="utf-8")
+    return make_git_repo(folder)
 
 
 def test_the_book_command_runs_the_book_module_and_its_env_turns_bytecode_off() -> None:

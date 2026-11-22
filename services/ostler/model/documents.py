@@ -516,6 +516,22 @@ class ExplainNothing(Action[Nothing, Plan]):
         return Transaction()
 
 
+UNMOVED = (
+    "error: <sandbox>/unmoved holds an ostler book, and the book now lives in the artifacts folder. "
+    "Either keep it beside the code by setting `book: {home: repo}` in <sandbox>/unmoved/agents.yml, "
+    "or move the book to <sandbox>/art following docs/guide/moving-a-book-to-the-artifacts-folder.md."
+)
+
+
+class SearchUnmovedBook(Action[Nothing, Plan]):
+    accept = Nothing
+    rules = (Rule[Nothing, Plan](UNMOVED, _always, Exited(2)),)
+
+    @staticmethod
+    def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
+        return Transaction()
+
+
 class RenderStack(Action[Nothing, Plan]):
     accept = Nothing
 

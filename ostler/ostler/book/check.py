@@ -16,7 +16,7 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Callable, Iterator, cast
 
-from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core import books
 from ostler.book import decisions, questions
 from ostler.book.arrange import Arrange
 from ostler.book.explore import _overrides, attempts, moves
@@ -240,7 +240,7 @@ def input_faults(service: Service[Any]) -> list[Finding]:
 def source_faults(service: Service[Any], app: str | None) -> list[Finding]:
     found = [Finding(e.__name__, "no source pointer", blocks=False) for e in (*service.endpoints, *service.records, *service.screens, *service.interactions)
              if not cast(Any, e).source and not (e in service.interactions and cast(Any, e).screen is None)]
-    members = core_config.workspace_members()
+    members = books.book_checkouts(Path(app) if app else Path.cwd())
     for name, path in missing(service, app):
         member = path.removeprefix("repo://").partition("/")[0] if path.startswith("repo://") else ""
         if not member:
@@ -271,7 +271,7 @@ def source_is_there(pointer: str, app: str, members: dict[str, Path]) -> bool:
 
 def decision_faults(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
     found: list[Finding] = []
-    members = core_config.workspace_checkouts(Path(app)) if app else {}
+    members = books.book_checkouts(Path(app)) if app else {}
     known = decisions.resolve(service, module)
     for d in decisions.load(module):
         name = f"decision {d.slug}"
@@ -918,7 +918,7 @@ def outside_notes(module: str) -> list[Finding]:
     from ostler.book.index import book_root
 
     root = book_root(os.getcwd())
-    held = imported_outside(Path(root), module) if root is not None else []
+    held = imported_outside(Path(root), module)
     if not held:
         return []
     return [Finding("files", f"the book imports {len(held)} file(s) outside its folder: {', '.join(held)}; a commit of the book takes them with it", told=True)]

@@ -17,6 +17,7 @@ from ostler.qa import addresses
 from ostler.qa.addresses import LEASE_ENV
 
 from book_todo import run_book
+from conftest import keep_book_in_repo
 
 
 def named(copy: str = "") -> Environment:
@@ -56,6 +57,7 @@ def test_an_environment_of_plain_addresses_has_no_copy():
 def stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = tmp_path / "app"
     (repo / ".git").mkdir(parents=True)
+    keep_book_in_repo(repo)
     monkeypatch.setenv(runtime.HOME_ENV, str(tmp_path / "home"))
     monkeypatch.chdir(repo)
     return repo

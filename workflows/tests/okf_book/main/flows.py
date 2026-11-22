@@ -19,6 +19,7 @@ def build_flow(tmp_path: Path, replies: dict[str, Reply] | None = None, kind: st
     env = run_env(tmp_path / "runs", runner)
     repo = tmp_path / "repo"
     repo.mkdir()
+    (repo / "agents.yml").write_text("book:\n  home: repo\n", encoding="utf-8")
     flow = WritePythonBook(repo_dir=str(repo), service="ledger", kind=kind, source_folder="ledger", format_history=history)
     flow._bind(Engine(env))  # pyright: ignore[reportPrivateUsage]
     return flow, runner

@@ -78,6 +78,16 @@ class ExplainNothing(Command):
     source = ("ostler/ostler/book/cli.py::explain",)
 
 
+class SearchUnmovedBook(Command):
+    does = "Refuse to search a book that a repository still holds beside its code, and name both ways out: keep it there with `book: {home: repo}` or move it to the artifacts folder."
+    program = "ostler"
+    argv = ("-C", "unmoved", "book", "search", "hello")
+    args = ARGS
+    answers = (Exit(2, STDERR, "the refusal is on standard error and names the two ways out"),)
+    carries = act.SearchUnmovedBook
+    source = ("ostler/ostler/book/index.py", "ostler/ostler/book/cli.py")
+
+
 class ListBookDecisions(Command):
     does = "List the decisions the book settled, one line each: the slug, its story and date, and its first line."
     program = "ostler"
@@ -122,4 +132,4 @@ class DrawBook(Command):
     source = ("ostler/ostler/book/graph.py", "ostler/ostler/book/matrix.py")
 
 
-ALL = (CheckBook, IndexBook, SearchBook, ExplainBook, ExplainNothing, ListBookDecisions, ListBookPages, ExploreBook, RunBook, DrawBook)
+ALL = (CheckBook, IndexBook, SearchBook, ExplainBook, ExplainNothing, SearchUnmovedBook, ListBookDecisions, ListBookPages, ExploreBook, RunBook, DrawBook)

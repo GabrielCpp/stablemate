@@ -69,6 +69,9 @@ def _write(root: Path, slug: str = "account-access", **kwargs: str) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_milestone(**kwargs), encoding="utf-8")
     write_book(root, "account")
+    manifest = root / "agents.yml"
+    if not manifest.exists():
+        manifest.write_text("book:\n  home: repo\n", encoding="utf-8")
     return path
 
 
@@ -78,7 +81,7 @@ def test_author_config_never_invents_a_surface_inventory(tmp_path: Path) -> None
     survey_manifest.parent.mkdir(parents=True)
     survey_manifest.write_text("{}\n", encoding="utf-8")
     (tmp_path / "agents.yml").write_text(
-        "template:\n  surface_manifest: docs/services/inventory.json\n",
+        "book:\n  home: repo\ntemplate:\n  surface_manifest: docs/services/inventory.json\n",
         encoding="utf-8",
     )
 
@@ -156,7 +159,7 @@ def test_a_milestone_must_list_at_least_one_epic(tmp_path: Path) -> None:
 
 
 def test_a_milestone_that_lists_an_epic_by_name_does_not_validate(tmp_path: Path) -> None:
-    (tmp_path / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
+    (tmp_path / "agents.yml").write_text("repo:\n  id_prefix: X\nbook:\n  home: repo\n", encoding="utf-8")
     assert Ostler(tmp_path).create_epic("account-access", "Account access").ok
     _write(tmp_path, epics="[account-access]")
 
@@ -168,7 +171,7 @@ def test_a_milestone_that_lists_an_epic_by_name_does_not_validate(tmp_path: Path
 
 def _listed_epic(root: Path) -> None:
     """One epic that meets the contract, listed on the milestone by its id."""
-    (root / "agents.yml").write_text("repo:\n  id_prefix: X\n", encoding="utf-8")
+    (root / "agents.yml").write_text("repo:\n  id_prefix: X\nbook:\n  home: repo\n", encoding="utf-8")
     okf = Ostler(root)
     assert okf.create_epic("account-access", "Account access").ok
     epic = okf.graph.epic_by_ref("account-access")

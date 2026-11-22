@@ -90,8 +90,6 @@ def cmd_pages(args: Any, root: str | None = None) -> int:
     from ostler.book.index import book_root
 
     root = root if root is not None else book_root(os.getcwd())
-    if root is None:
-        raise SystemExit("no services directory above the current directory")
     chosen = [level for level in levels(root) if args.level in (None, level.kind)]
     pages = [page for level in chosen for page in load(level)]
     if args.check:

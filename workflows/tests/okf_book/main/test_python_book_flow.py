@@ -316,6 +316,7 @@ def test_in_a_workspace_the_owner_may_read_the_code_repository(tmp_path: Path, m
 def test_a_book_whose_pointer_names_a_missing_file_fails_the_check(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     write_todo_book(root)
+    (root / "agents.yml").write_text("book:\n  home: repo\n", encoding="utf-8")
     app = tmp_path / "app-without-its-file"
     app.mkdir()
 
@@ -328,6 +329,7 @@ def test_a_book_whose_pointer_names_a_missing_file_fails_the_check(tmp_path: Pat
 def test_a_book_whose_pointers_all_exist_passes_the_check(tmp_path: Path) -> None:
     root = tmp_path / "repo"
     write_todo_book(root)
+    (root / "agents.yml").write_text("book:\n  home: repo\n", encoding="utf-8")
     shutil.copy(TODO_BOOK / "app.py", root / "app.py")
 
     gate = python_book_flow.python_book_check(logging.getLogger("test"), root, "services.api", root)

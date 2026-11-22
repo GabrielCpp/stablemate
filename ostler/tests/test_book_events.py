@@ -17,6 +17,7 @@ from ostler.book.index import cmd_search_book
 from ostler.book.search import cmd_explain, items
 
 from book_fakes import isolated_services
+from conftest import keep_book_in_repo
 from test_book_web import _service
 
 
@@ -174,6 +175,7 @@ def _listener(root: Path, text: str = LISTENER_SERVICE, reads: str = '("ticket_i
 
 @pytest.fixture
 def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    keep_book_in_repo(tmp_path)
     yield from isolated_services(tmp_path, monkeypatch)
 
 

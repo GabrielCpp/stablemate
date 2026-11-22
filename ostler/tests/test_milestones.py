@@ -8,7 +8,7 @@ from ostler import Ostler, crud, doctor
 from ostler.milestones import MilestoneSelectionError, approved_milestone, journey_slug
 from ostler.model import load
 
-from conftest import write, write_prefix
+from conftest import keep_book_in_repo, write, write_prefix
 
 SECTIONS = ("Outcome", "Release Boundary", "User Journeys", "Architecture Decisions",
             "Constraints", "Acceptance", "Non-Goals")
@@ -35,6 +35,7 @@ def milestone_md(status: str = "approved", *, journeys: str = JOURNEY, omit: tup
 def put(repo: Path, slug: str = "sign-in", **kwargs) -> Path:
     path = repo / f"docs/milestones/{slug}/milestone.md"
     write(path, milestone_md(**kwargs))
+    keep_book_in_repo(repo)
     write(repo / "services/area/service.py", "")
     return path
 
@@ -267,7 +268,7 @@ def test_grills_and_artifacts_and_html_mockups_produce_no_finding(repo: Path):
 
 
 def test_readiness_runs_when_the_profile_is_exploration(repo: Path):
-    write(repo / "ostler.yml", "organization:\n  profile: exploration\n")
+    write(repo / "agents.yml", "organization:\n  profile: exploration\n")
     put(repo, omit=("Outcome",))
 
     assert load(repo).profile == "exploration"

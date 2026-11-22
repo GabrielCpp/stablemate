@@ -64,8 +64,7 @@ def _lay_out_book(ws: Workspace, book: Path | None = None, api: Path | None = No
     shutil.copy(FIXTURE / "app.py", api / "app.py")
     unrelated = api / "services" / "api"
     unrelated.mkdir(parents=True)
-    (unrelated / "__init__.py").write_text("")
-    (unrelated / "service.py").write_text("raise RuntimeError('the member repository is not the book')\n")
+    (unrelated / "__init__.py").write_text("raise RuntimeError('the member repository is not the book')\n")
 
 
 def _run_worktrees(ws: Workspace, tmp_path: Path, branch: str = "run/book-t") -> tuple[Path, Path]:

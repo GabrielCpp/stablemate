@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core import books
 from ostler.book import decisions, pages
 from ostler.book.search import Item, items, loose_hits, phrase_hits
 
@@ -96,18 +96,8 @@ def stale(directory: str) -> bool:
     return not os.path.exists(path) or os.path.getmtime(path) < newest(directory)
 
 
-def book_root(start: str) -> str | None:
-    home = core_config.book_home(Path(start))
-    if home is not None:
-        return str(home)
-    here = os.path.abspath(start)
-    while True:
-        if os.path.isdir(os.path.join(here, "services")):
-            return here
-        parent = os.path.dirname(here)
-        if parent == here:
-            return None
-        here = parent
+def book_root(start: str) -> str:
+    return str(books.book_home(Path(start)))
 
 
 def read_levels(root: str) -> dict[str, list[Entry]]:
@@ -171,8 +161,6 @@ def cmd_index(service: Any, args: Any) -> int:
 
 def cmd_search_book(args: Any) -> int:
     root = book_root(os.getcwd())
-    if root is None:
-        raise SystemExit("no services directory above the current directory")
     names = [args.service] if args.service else services_of(root)
     for name in names:
         if not os.path.isdir(os.path.join(root, *name.split("."))):

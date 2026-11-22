@@ -20,7 +20,7 @@ from ..graph import (EnvResetUnknown, EnvUpUnknown, RunGrpcPlan, RunPhonePlan, R
                      MilestoneEpicsFirst, MilestoneEpicsUnknown, MilestoneSourceItem, NextEpic, NextStory, QueryCovering,
                      ScaffoldArtifact, SearchPlan, ShowChecks, TemplateApply, TemplateDelete, TemplateFind, TemplateNew,
                      VetArtifact)
-from ..books import (CheckBook, DrawBook, ExplainBook, ExplainNothing, ExploreBook, IndexBook, ListBookDecisions, ListBookPages, RunBook,
+from ..books import (CheckBook, DrawBook, ExplainBook, ExplainNothing, SearchUnmovedBook, ExploreBook, IndexBook, ListBookDecisions, ListBookPages, RunBook,
                      SearchBook)
 from ..events import CopyInAnOldEpic
 from ..fixtures import nothing
@@ -250,6 +250,7 @@ BOOK_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "search": lambda m: SearchBook(nothing()),
     "explain": lambda m: ExplainBook(nothing()),
     "explain a name the book lacks": lambda m: ExplainNothing(nothing()),
+    "search a book left in the repository": lambda m: SearchUnmovedBook(nothing()),
     "list the decisions": lambda m: ListBookDecisions(nothing()),
     "list the book pages": lambda m: ListBookPages(nothing()),
     "explore": lambda m: ExploreBook(nothing()),

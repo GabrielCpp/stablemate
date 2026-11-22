@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO
 
+from ostler._vendor.stablemate_core import books
 from ostler.book.workspace import checkout
 
 
@@ -79,7 +80,7 @@ class Fresh:
         if self.cwd.startswith("repo://"):
             member, _slash, rest = self.cwd.removeprefix("repo://").partition("/")
             return str(Path(checkout(member)) / rest)
-        return str(Path.cwd() / self.cwd)
+        return str(books.book_home(Path.cwd()) / self.cwd)
 
     def run(self) -> tuple[str, float, str]:
         """How the reload ended (`ok`, an exit code, or `timed out`), the seconds it took and the tail of its output."""

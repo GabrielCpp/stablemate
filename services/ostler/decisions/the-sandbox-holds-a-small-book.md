@@ -19,3 +19,6 @@ installed, as the play of `env compose` would; `compose`, `up`, `exec` with a st
 checkout are not played.
 
 The refusal of `book explain` for a name the book lacks is printed on standard error too.
+
+The sandbox keeps its book beside its code through `book: {home: repo}` in its `agents.yml`. It also holds `unmoved/`, a repository
+with an ostler book and no such key, so `book search` there plays the refusal that names both ways out.

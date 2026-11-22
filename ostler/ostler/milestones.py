@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 from ostler import markdown, registry
+from ostler._vendor.stablemate_core import books
 from ostler.finding import Finding
 from ostler.model import Graph, Milestone, read_doc, required_section_problems
 
@@ -270,7 +271,7 @@ def _books_of(value: str) -> list[str]:
 
 def _book_homes(graph: Graph) -> dict[str, list[Path]]:
     """Each service book under `services/` by name, with every folder that holds one of its `service.py` files."""
-    base = graph.root / BOOKS_DIR
+    base = Path(books.book_home(graph.root)) / BOOKS_DIR
     if not base.is_dir():
         return {}
     found: dict[str, list[Path]] = {}

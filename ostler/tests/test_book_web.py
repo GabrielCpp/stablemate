@@ -16,6 +16,7 @@ from typing import Any, Callable, Iterator, cast
 import pytest
 
 from book_fakes import Quiet
+from conftest import keep_book_in_repo
 from book_todo import run_book, module
 from ostler.book import Browser, BookError, Field as Wire, Int, Journey, Screen, Service, T
 from ostler.book.check import spoken
@@ -788,6 +789,7 @@ def test_a_browser_with_no_language_sets_no_locale_and_no_query(page: str):
 
 
 def test_screens_without_lang_prints_the_first_language_of_the_service(tmp_path: Path):
+    keep_book_in_repo(tmp_path)
     book = tmp_path / "services" / "mini"
     book.mkdir(parents=True)
     (book / "__init__.py").write_text("")

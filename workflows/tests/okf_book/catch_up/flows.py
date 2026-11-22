@@ -49,6 +49,7 @@ def build_flow(tmp_path: Path, replies: dict[str, Reply] | None = None, services
     env = run_env(tmp_path / "runs", runner)
     repo = tmp_path / "repo"
     repo.mkdir()
+    (repo / "agents.yml").write_text("book:\n  home: repo\n", encoding="utf-8")
     for book in books:
         write_book(repo, book)
     flow = CatchUpBooks(repo_dir=str(repo), stack_copy="evening", services=services or [], format_history=history)

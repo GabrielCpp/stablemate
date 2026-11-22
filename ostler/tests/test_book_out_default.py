@@ -17,9 +17,9 @@ def fake_book(monkeypatch, tmp_path):
     axes = Axes("todo", date(2026, 11, 4), (Scene("open", "an open todo", lambda today: ()),), {}, lambda m: "open")
     service = SimpleNamespace(name="api", matrices=(axes,), new_model=Plain)
     monkeypatch.setattr(cli, "load", lambda name: service)
-    monkeypatch.setattr(cli, "book_root", lambda cwd: None)
     cwd = tmp_path / "cwd"
     cwd.mkdir()
+    monkeypatch.setattr(cli, "book_root", lambda start: str(cwd))
     temp = tmp_path / "temp"
     temp.mkdir()
     monkeypatch.chdir(cwd)

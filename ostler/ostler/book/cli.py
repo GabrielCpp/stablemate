@@ -20,6 +20,7 @@ import time
 from datetime import date, timedelta
 from typing import Any
 
+from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.book.affected import cmd_affected as affected
 from ostler.book.backstage import CannotArrange
 from ostler.book.cells import Played, play
@@ -198,9 +199,12 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--unexplained cannot be combined with --story or --element")
     if args.command in ("run", "explore") and args.only and not any(n.strip() for item in args.only for n in item.split(",")):
         parser.error("--only is empty: name the calls to play, or leave --only out to play the whole book")
-    root = book_root(os.getcwd())
-    if root is not None:
-        sys.path.insert(0, root)
+    try:
+        root = book_root(os.getcwd())
+    except ConfigError as refused:
+        print(f"error: {refused}", file=sys.stderr)
+        return 2
+    sys.path.insert(0, root)
     if args.command == "files":
         return cmd_files(args, root)
     if args.command == "pages":

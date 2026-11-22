@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core import books
 from ostler.book.contracts import Call, is_openapi, parse, proto_services, rpc_of
 from ostler.book.service import Service
 from ostler.refs import parse_code_ref
@@ -81,7 +82,7 @@ def pointer_missing(pointer: str, app_root: str | None, members: dict[str, Path]
 
 
 def missing(service: Service[Any], app_root: str | None) -> list[tuple[str, str]]:
-    members = core_config.workspace_checkouts(Path(app_root) if app_root else Path.cwd())
+    members = books.book_checkouts(Path(app_root) if app_root else Path.cwd())
     found: list[tuple[str, str]] = []
     for name, found_pointers in raw(service).items():
         for pointer in dict.fromkeys(file_of(p) for p in found_pointers):
