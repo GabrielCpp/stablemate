@@ -124,6 +124,9 @@ for it, and none of them is finished:
   transcripts say what the agent actually read, changed and checked. The target is more
   verification per agent turn, not more turns.
 
+A repository that still holds its book moves it to the artifacts folder with
+[the moving guide](docs/guide/moving-a-book-to-the-artifacts-folder.md).
+
 ## Why an engine, and not a bash loop
 
 The cheapest way to run an agent for hours is a bash loop around `claude -p`. That
