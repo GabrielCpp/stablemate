@@ -246,6 +246,7 @@ class Head:
     activity: str = ""
     worktree: str = ""
     checkout: str = ""
+    last_seen_ts: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -272,6 +273,8 @@ class Worker:
     logs: tuple[str, ...] | None = None
     history: tuple[str, ...] | None = None
     figures_rev: int | None = None
+    activity_rev: int | None = None
+    metrics_rev: int | None = None
 
     def __str__(self) -> str:
         if not self.found:

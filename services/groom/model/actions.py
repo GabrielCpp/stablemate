@@ -135,6 +135,8 @@ def worker_of(run: Run) -> Worker:
         logs=(),
         history=(),
         figures_rev=0,
+        activity_rev=0,
+        metrics_rev=0,
     )
 
 

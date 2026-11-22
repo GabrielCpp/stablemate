@@ -183,6 +183,7 @@ HEAD = Object(
     repo=Field(Str()),
     live=Field(Enum(LIVE)),
     live_label=Field(Str()),
+    last_seen_ts=Field(Num(), opaque="the moment of the run's last signal, which the clock decides"),
     node=Field(Str()),
     pid=Field(Int(), nullable=True),
     cli=Field(Str()),
@@ -211,6 +212,8 @@ WORKER = Object(
     logs=Field(List(Str()), required=False),
     history=Field(List(Str()), required=False),
     figures_rev=Field(Int(), required=False),
+    activity_rev=Field(Int(), required=False, does="rises on each span, log and transcript batch the run commits"),
+    metrics_rev=Field(Int(), required=False, does="rises on each metric batch the run commits"),
 )
 
 ATTEND = Object(
