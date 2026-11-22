@@ -83,14 +83,14 @@ def test_the_arrow_page_and_end_keys_scroll_a_focused_view():
             await pilot.pause()
             assert view.scroll_offset.y == 1
             await pilot.press("pagedown")
-            await pilot.pause()
+            await pilot.wait_for_scheduled_animations()
             assert view.scroll_offset.y > view.size.height - 2
             await pilot.press("end")
-            await pilot.pause()
+            await pilot.wait_for_scheduled_animations()
             assert view.scroll_offset.y == 2500 - view.size.height
             assert "x2499 = 2499" in rendered(view)
             await pilot.press("home")
-            await pilot.pause()
+            await pilot.wait_for_scheduled_animations()
             assert view.scroll_offset.y == 0
 
     ch.run(scenario)
