@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from pydantic import BeforeValidator, StrictBool, ValidationInfo, field_validator, model_validator
 
@@ -382,6 +382,18 @@ class BookTable(Section):
         examples=["platform"],
         default_text="unset",
     )
+    home: Literal["artifacts", "repo"] = setting(
+        "artifacts",
+        description="Where this repository's book lives: the `artifacts` folder, or `repo`, beside the code, for a tool that publishes its own book.",
+        examples=["repo"],
+        default_text="artifacts",
+    )
+    product: str | None = setting(
+        None,
+        description="The product whose pages under `products/<product>/` in the artifacts dir this repository reads and writes.",
+        examples=["acme"],
+        default_text="the repository name",
+    )
 
 
 class QaTable(Section):
@@ -509,7 +521,7 @@ class Manifest(Section):
     book: BookTable = setting(
         factory=BookTable,
         description="The books above one service.",
-        examples=[{"team": "platform"}],
+        examples=[{"home": "repo"}],
         default_text="empty",
     )
     qa: QaTable = setting(

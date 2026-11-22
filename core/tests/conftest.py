@@ -23,3 +23,10 @@ def _no_real_config(tmp_path_factory, monkeypatch):
     )
     monkeypatch.delenv(config.LEGACY_CONFIG_PATH_ENV, raising=False)
     monkeypatch.setattr(config, "legacy_config_paths", list)
+
+
+@pytest.fixture
+def cfg_file(tmp_path, monkeypatch):
+    path = tmp_path / "config.toml"
+    monkeypatch.setenv(config.CONFIG_PATH_ENV, str(path))
+    return path

@@ -34,13 +34,6 @@ def _tree(repo, where, branch=BRANCH):
 
 
 @pytest.fixture
-def cfg_file(tmp_path, monkeypatch):
-    path = tmp_path / "config.toml"
-    monkeypatch.setenv(cfgmod.CONFIG_PATH_ENV, str(path))
-    return path
-
-
-@pytest.fixture
 def world(tmp_path, monkeypatch, cfg_file):
     monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(tmp_path / "artifacts"))
     artifacts = _repo(tmp_path / "artifacts")

@@ -275,3 +275,8 @@ def test_read_manifest_loads_the_manifest_in_the_folder(tmp_path):
     (tmp_path / MANIFEST_NAME).write_text("repo:\n  name: demo\n")
     manifest = read_manifest(str(tmp_path))
     assert manifest is not None and manifest.repo.name == "demo"
+
+
+def test_book_home_refuses_a_value_other_than_artifacts_or_repo():
+    with pytest.raises(ConfigError, match=r"book\.home"):
+        parse_manifest_text("book: {home: elsewhere}\n", _SRC)

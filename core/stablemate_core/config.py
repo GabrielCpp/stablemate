@@ -789,6 +789,11 @@ def _artifacts_toplevel() -> Path | None:
     return repository_identity(root).main_folder
 
 
+def artifacts_toplevel() -> Path | None:
+    """The folder of the repository that tracks the artifacts dir, or None when no repository does."""
+    return _artifacts_toplevel()
+
+
 def _in_artifacts_worktree(identity: RepositoryIdentity) -> bool:
     """Whether the checkout is a linked worktree of the repository holding the artifacts dir."""
     return identity.folder != identity.main_folder and identity.main_folder == _artifacts_toplevel()
