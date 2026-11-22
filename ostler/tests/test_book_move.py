@@ -27,9 +27,9 @@ def _sh(folder: Path, command: str) -> str:
 def move_book(repo: Path, artifacts: Path, product: str) -> None:
     env = f'ARTIFACTS="{artifacts}"; PRODUCT="{product}"; NAME="{repo.name}"'
     assert _sh(repo, f'{env}; git -C "$ARTIFACTS" status --porcelain') == ""
-    _sh(repo, f'{env}; test ! -e "$ARTIFACTS/services/api" && cp -r services/. "$ARTIFACTS/services/"')
+    moved = _ostler(["book", "move", "--from", "services"], repo)
+    assert moved.returncode == 0, moved.stdout + moved.stderr
     _sh(repo, f'{env}; mkdir -p "$ARTIFACTS/products/$PRODUCT" && cp product/*.md "$ARTIFACTS/products/$PRODUCT/"')
-    _sh(repo, f'{env}; find "$ARTIFACTS/services" -name __pycache__ -prune -exec rm -r {{}} +')
     _sh(repo, f'{env}; git -C "$ARTIFACTS" add services products')
     _sh(repo, f'{env}; git -C "$ARTIFACTS" commit --quiet -m "docs(book): move the $NAME book from its repository"')
     _sh(repo, f"{env}; git rm -r --quiet services product")
@@ -74,10 +74,12 @@ def test_an_in_repo_book_is_refused_before_the_move_and_checks_green_after(tmp_p
     assert MOVE_GUIDE in refused.stderr
     move_book(repo, artifacts, "acme")
     assert not (repo / "services").exists()
-    assert (artifacts / "services" / "api" / "service.py").is_file()
-    checked = _ostler_with_env(["book", "check", "services.api", "--app", str(repo)], repo)
-    assert checked.returncode == 0, checked.stdout + checked.stderr
-    assert "check: 0 findings" in checked.stdout
+    assert (artifacts / "services" / "acme" / "api" / "service.py").is_file()
+    assert 'owner="services.acme.api"' in (artifacts / "services" / "acme" / "web" / "foreign.py").read_text()
+    for module in ("services.acme.api", "services.acme.web"):
+        checked = _ostler_with_env(["book", "check", module, "--app", str(repo)], repo)
+        assert checked.returncode == 0, checked.stdout + checked.stderr
+        assert "check: 0 findings" in checked.stdout
     paged = _ostler(["book", "pages"], repo)
     assert paged.returncode == 0, paged.stdout + paged.stderr
     assert "product  one-rule  2026-11-22" in paged.stdout
@@ -95,7 +97,7 @@ def test_a_pointer_is_checked_against_the_app_after_the_move(tmp_path):
     move_book(repo, artifacts, "acme")
     (repo / "app.py").unlink()
     _git(repo, "rm", "--quiet", "--cached", "app.py")
-    checked = _ostler_with_env(["book", "check", "services.api", "--app", str(repo)], repo)
+    checked = _ostler_with_env(["book", "check", "services.acme.api", "--app", str(repo)], repo)
     assert checked.returncode != 0, checked.stdout + checked.stderr
     assert "app.py" in checked.stdout + checked.stderr
 
@@ -117,7 +119,7 @@ def test_a_worktree_branch_after_the_move_opens_a_book_root_holding_the_moved_se
     assert opened.returncode == 0, opened.stdout + opened.stderr
     root = Path(opened.stdout.strip())
     assert root != artifacts
-    assert (root / "services" / "api" / "service.py").is_file()
+    assert (root / "services" / "acme" / "api" / "service.py").is_file()
     _commit(root, "products/acme/two-rules.md", PAGE)
     landed = _ostler(["book", "land"], linked)
     assert landed.returncode == 0, landed.stdout + landed.stderr
@@ -125,3 +127,23 @@ def test_a_worktree_branch_after_the_move_opens_a_book_root_holding_the_moved_se
     assert (artifacts / "products" / "acme" / "two-rules.md").is_file()
     assert _merges(artifacts) == ""
     assert not root.exists()
+
+
+def test_a_flat_book_in_the_artifacts_folder_moves_by_the_guide(tmp_path):
+    repo = _acme(tmp_path)
+    artifacts = _artifacts_repo()
+    shutil.copytree(repo / "services", artifacts / "services", dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
+    _git(artifacts, "add", "-A")
+    _git(artifacts, "commit", "--quiet", "-m", "flat books")
+    _git(repo, "rm", "-r", "--quiet", "services")
+    _git(repo, "commit", "--quiet", "-m", "drop the in-repo book")
+    refused = _ostler_with_env(["book", "check", "services.acme.api", "--app", str(repo)], repo)
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "ostler book move api --repo acme" in refused.stdout + refused.stderr
+    moved = _ostler(["book", "move", "api", "web", "digest", "kit", "__init__.py", "--repo", "acme"], artifacts)
+    assert moved.returncode == 0, moved.stdout + moved.stderr
+    _git(artifacts, "add", "-A", "services")
+    _git(artifacts, "commit", "--quiet", "-m", "docs(book): move the acme books into their repository folder")
+    checked = _ostler_with_env(["book", "check", "services.acme.api", "--app", str(repo)], repo)
+    assert checked.returncode == 0, checked.stdout + checked.stderr
+    assert "check: 0 findings" in checked.stdout
