@@ -99,6 +99,14 @@ decision	the-page-has-five-panes	decisions/the-page-has-five-panes.md:6	The page
 decision	the-page-has-five-panes	decisions/the-page-has-five-panes.md:7	attendant, dispatch and settings. Each pane reads its own HTTP route when it opens. The book's groom holds no ended
 decision	the-page-has-five-panes	decisions/the-page-has-five-panes.md:8	run, no attendance and no dispatch queue, so History, Attendant and Dispatch each show their empty line, and the
 decision	the-page-has-five-panes	decisions/the-page-has-five-panes.md:9	pane's button of the left bar is the interaction that reaches it. The page opens on the run list.
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:1	story: none
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:3	elements: Runs
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:4	sources: groom/groom/live.py, groom/groom/projection.py::run_row, groom/groom/assets/dashboard.js
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:6	The run list changes when groom learns something, not every five seconds. A source marks the fleet dirty, and one flush
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:7	a tenth of a second later sends only the rows whose content changed. A run turns silent when a deadline fires at the
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:8	moment its silence passes the liveness threshold, because an absence sends no event. The row carries `last_seen_ts`, so
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:9	the page counts "silent 4m" itself from its one-second ticker and the server sends nothing while the count grows. A
+decision	the-run-list-follows-events-not-a-clock	decisions/the-run-list-follows-events-not-a-clock.md:10	quiet fleet therefore sends no frame at all.
 decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filtered-in-the-browser.md:1	story: none
 decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filtered-in-the-browser.md:3	elements: FilterTheList
 decision	the-run-list-is-filtered-in-the-browser	decisions/the-run-list-is-filtered-in-the-browser.md:4	sources: groom/groom/assets/dashboard.js, groom/groom/projection.py::matches

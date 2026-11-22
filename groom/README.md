@@ -29,13 +29,16 @@ spans, per-node timings and error status, filterable without leaving the browser
   Preact + htm (the vendored `htm/preact` standalone build — no build step, no
   `node_modules`). Every shape the socket pushes is also fetchable over HTTP, so a
   tab whose socket has gone quiet resyncs instead of going stale.
-  Those pushes are edge-triggered — something changed, so tell the
-  tabs — which covers everything except the half of a run row that is derived from
-  the clock: the liveness dot, `silent 4m`, `in node 12m`. The event that should
-  turn a row dead is the run *ceasing* to emit, and an absence cannot be pushed, so
-  the run list is additionally re-rendered and broadcast every `GROOM_LIVE_TICK_S`
-  (5s), skipped entirely when no tab is connected. That is what makes the dashboard
-  safe to leave open and read without refreshing.
+  Those pushes are edge-triggered: a source marks the fleet dirty, and one flush
+  every `GROOM_FLUSH_S` (0.1s) sends a `run` frame for each row whose content
+  changed, a `run_removed` frame for each row that left, and a `fleet_meta` frame
+  when the status bar or attend summary moved. A quiet fleet sends nothing. The
+  half of a row that depends on the clock is not pushed. Groom keeps one deadline
+  per run, which fires when the run's silence passes `GROOM_LIVE_AFTER_S` and turns
+  its row dead. The browser and the terminal client draw `silent 4m` and
+  `in node 12m` themselves from `last_seen_ts` and `clock.since_ts`. Each tab queue
+  holds 256 frames. A tab that falls behind gets one fresh `state` frame instead.
+  `GROOM_LIVE_TICK_S` (5s) now drives only the push of the open run's detail.
   The `/feed` socket is the one socket meant for a program rather than a tab: it
   carries one run's events and a periodic digest, and `groom wait` and
   `groom feed` read it.

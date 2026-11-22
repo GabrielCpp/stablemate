@@ -13,6 +13,7 @@ from opentelemetry.proto.collector.metrics.v1.metrics_service_pb2 import (
     ExportMetricsServiceRequest,
 )
 
+from _native_support import node_active_export
 from groom import app as groom_app
 from groom import sidecar_hub, state
 
@@ -25,26 +26,7 @@ def _reset() -> None:
 
 
 def _node_active_export(run_dir: str, workspace: str) -> bytes:
-    """A workhorse ``workhorse.node.active`` gauge export carrying the full native resource (run_id/workflow/run_dir/workspace/process.pid) and a ``wf.activity`` point attribute — exactly what otel._Telemetry stamps on the live gauge."""
-    req = ExportMetricsServiceRequest()
-    rm = req.resource_metrics.add()
-    for key, val in (
-        ("run_id", "RUN-XYZ"), ("workflow", "coder"), ("repo", "acme"),
-        ("branch", "main"), ("run_dir", run_dir), ("workspace", workspace),
-    ):
-        kv = rm.resource.attributes.add()
-        kv.key, kv.value.string_value = key, val
-    kv = rm.resource.attributes.add()
-    kv.key, kv.value.int_value = "process.pid", 5150
-    metric = rm.scope_metrics.add().metrics.add()
-    metric.name = "workhorse.node.active"
-    point = metric.gauge.data_points.add()
-    point.as_double = 1.0
-    point.time_unix_nano = int(2000 * 1e9)
-    for key, val in (("node", "review"), ("wf.activity", "reviewing PRED-A2JX")):
-        a = point.attributes.add()
-        a.key, a.value.string_value = key, val
-    return req.SerializeToString()
+    return node_active_export("RUN-XYZ", run_dir, workspace, activity="reviewing PRED-A2JX", pid=5150)
 
 
 def test_native_metrics_export_materializes_a_dashboard_row():

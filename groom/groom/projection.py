@@ -106,10 +106,17 @@ def telemetry_for(wf: WorkflowContainer) -> RunTelemetry | None:
     return state.RUNS.get(run_id_of(wf))
 
 
+def last_seen_of(tel: RunTelemetry | None) -> float:
+    """The latest moment any signal from the run arrived, or 0 with no telemetry."""
+    if tel is None:
+        return 0.0
+    return max(tel.last_heartbeat_ts, tel.last_span_ts, tel.first_seen_ts, tel.last_telemetry_ts)
+
+
 def silence_of(tel: RunTelemetry | None, now: float) -> float:
     if tel is None:
         return 0.0
-    return max(0.0, now - max(tel.last_heartbeat_ts, tel.last_span_ts, tel.first_seen_ts, tel.last_telemetry_ts))
+    return max(0.0, now - last_seen_of(tel))
 
 
 def is_live(tel: RunTelemetry | None, now: float, within: float | None = None) -> bool:
@@ -187,7 +194,7 @@ def row_mini(tel: RunTelemetry | None) -> str:
 
 def started_at(tel: RunTelemetry | None, gauge: str, elapsed: float, now: float) -> float:
     """The wall-clock moment an elapsed gauge began: when the gauge last arrived, less the length it reported."""
-    return (tel.gauge_ts.get(gauge, now) if tel else now) - elapsed
+    return (tel.gauge_ts.get(gauge, tel.last_telemetry_ts or now) if tel else now) - elapsed
 
 
 def row_clock(tel: RunTelemetry | None, now: float) -> dict[str, Any] | None:
@@ -256,6 +263,7 @@ def run_row(
         "state": state,
         "live": live_cls,
         "live_label": live_label,
+        "last_seen_ts": last_seen_of(tel),
         "silence_s": age,
         "telemetry_age_s": age,
         "node": tel.current_node if tel else wf.current_node,
@@ -385,6 +393,17 @@ def attention_events(workflows: list[WorkflowContainer]) -> list[AttentionEvent]
     return events
 
 
+def fleet_meta(workflows: list[WorkflowContainer]) -> dict[str, Any]:
+    """Everything in the fleet payload that is not a row: the scanning flag, attention list, status bar, store health and attendant summary."""
+    return {
+        "scanning": bool(state.SCANNING),
+        "attention": [event.model_dump() for event in attention_events(workflows)],
+        "status": status_bar(workflows),
+        "store": store.health_dict(),
+        "attend": attend_summary(),
+    }
+
+
 def state_message(
     workflows: list[WorkflowContainer], query: str = "", now: float | None = None
 ) -> dict[str, Any]:
@@ -393,12 +412,9 @@ def state_message(
     return {
         "type": "state",
         "ts": now,
-        "scanning": bool(state.SCANNING),
+        "v": state.FLEET_V,
         "runs": fleet_rows(workflows, query, now),
-        "attention": [event.model_dump() for event in attention_events(workflows)],
-        "status": status_bar(workflows),
-        "store": store.health_dict(),
-        "attend": attend_summary(),
+        **fleet_meta(workflows),
     }
 
 

@@ -56,6 +56,7 @@ const store = {
     runs: [],
     status: { counts: {}, repos: 0, workers: 0 },
     scanning: true,
+    fleetV: 0,
     conn: { phase: "connecting", resyncing: false },
     query: "",
     // the open run (subscription snapshot, then ingestion pushes)
@@ -155,10 +156,17 @@ function noteEndings(rows) {
 
 /** The single entry point for fleet-wide state, from either delivery path. */
 function applyState(msg) {
+  const v = typeof msg.v === "number" ? msg.v : null;
+  if (v !== null && v < store.get().fleetV) return;
   noteEndings(msg.runs || []);
-  store.set({ runs: msg.runs || [], status: msg.status || store.get().status, scanning: !!msg.scanning, ...sidecarTrack(msg.runs || []) });
+  store.set({ runs: msg.runs || [], fleetV: v === null ? store.get().fleetV : v, ...sidecarTrack(msg.runs || []) });
+  applyMeta(msg);
+}
+
+function applyMeta(msg) {
+  store.set({ status: msg.status || store.get().status, scanning: !!msg.scanning });
   // The frame carries one entry per attended run and a revision, never the log —
-  // 200 rows on a 5s tick would dwarf the fleet itself. A `rev` that moved is what
+  // 200 rows on every push would dwarf the fleet itself. A `rev` that moved is what
   // tells an open Attendant pane its list is stale.
   const summary = msg.attend;
   if (!summary) return;
@@ -173,6 +181,7 @@ function applyState(msg) {
 function applyRun(msg) {
   const row = msg.run;
   if (!row) return;
+  if (!newerFrame(msg)) return;
   noteEndings([row]);
   const runs = store.get().runs.slice();
   const at = runs.findIndex((r) => r.id === row.id);
@@ -180,6 +189,23 @@ function applyRun(msg) {
   else runs.push(row);
   runs.sort((a, b) => a.rank - b.rank || a.name.localeCompare(b.name));
   store.set({ runs: runs, ...sidecarTrack(runs) });
+}
+
+function newerFrame(msg) {
+  if (typeof msg.v !== "number") return true;
+  if (msg.v <= store.get().fleetV) return false;
+  store.set({ fleetV: msg.v });
+  return true;
+}
+
+function applyRemoved(msg) {
+  if (!newerFrame(msg)) return;
+  store.set({ runs: store.get().runs.filter((r) => r.id !== msg.id) });
+}
+
+function applyFleetMeta(msg) {
+  if (!newerFrame(msg)) return;
+  applyMeta(msg);
 }
 
 /** When the page first saw each container run without its sidecar, and which
@@ -268,6 +294,8 @@ function onFrame(msg) {
   conn.lastMessageTs = Date.now();
   if (msg.type === "state") applyState(msg);
   else if (msg.type === "run") applyRun(msg);
+  else if (msg.type === "run_removed") applyRemoved(msg);
+  else if (msg.type === "fleet_meta") applyFleetMeta(msg);
   else if (msg.type === "detail") onDetail(msg);
   else if (msg.type === "summary") onSummary(msg);
   else if (msg.type === "notify") onNotify(msg);
@@ -508,6 +536,13 @@ function EndedAgo({ ts }) {
   return html`<span class="mini">ended ${fmtSpan(Date.now() / 1000 - ts)} ago</span>`;
 }
 
+function LiveChip({ run, ended }) {
+  useSecondTick();
+  const silent = run.live === "dead" && !ended && run.last_seen_ts > 0;
+  const label = ended ? "done" : silent ? "silent " + fmtSpan(Date.now() / 1000 - run.last_seen_ts) : run.live_label;
+  return html`<span class="pulse ${run.live}">${label}</span>`;
+}
+
 function RunRow({ run, selected, narrow }) {
   const ended = run.ended;
   const cls = "row" + (run.state === "blocked" ? " blocked" : "") + (ended ? " ended" : "") + (selected ? " selected" : "");
@@ -525,7 +560,7 @@ function RunRow({ run, selected, narrow }) {
         <${TypeBadge} type=${run.type} hue=${run.type_hue} />
         <span class="repo-branch">${run.repo}</span>
         <span class="wid">#${run.row_id}</span>
-        ${run.live_label ? html`<span class="pulse ${run.live}">${ended ? "done" : run.live_label}</span>` : null}
+        ${run.live_label ? html`<${LiveChip} run=${run} ended=${ended} />` : null}
       </span>
       <span class="line2">
         <span class="doing">${ended ? endedDoing(ended) : run.doing}</span>

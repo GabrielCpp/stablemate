@@ -51,7 +51,7 @@ def _no_real_spawn() -> Iterator[None]:
 
 
 def _reset_module_state() -> None:
-    from groom import app, norms, state
+    from groom import app, live, norms, state
 
     state.RUNS.clear()
     state.EVENTS.clear()
@@ -62,6 +62,8 @@ def _reset_module_state() -> None:
     app._TAIL_RUNS.clear()
     app._FIGURES_RUNNING.clear()
     app._FIGURES_DIRTY.clear()
+    app._BACKFILLS.clear()
+    live.reset()
 
 
 @pytest.fixture(autouse=True, scope="module")

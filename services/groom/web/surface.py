@@ -30,7 +30,15 @@ HOOK = """
     ws.addEventListener("message", (event) => {
       try {
         const body = JSON.parse(event.data);
-        if (body && Array.isArray(body.runs)) window.__shell = body;
+        if (!body) return;
+        if (body.type === "state" && Array.isArray(body.runs)) {
+          window.__shell = { runs: body.runs.slice() };
+        } else if (window.__shell && body.type === "run" && body.run) {
+          const rest = window.__shell.runs.filter((r) => r.id !== body.run.id);
+          window.__shell = { runs: rest.concat([body.run]) };
+        } else if (window.__shell && body.type === "run_removed") {
+          window.__shell = { runs: window.__shell.runs.filter((r) => r.id !== body.id) };
+        }
       } catch (e) {}
     });
     return ws;

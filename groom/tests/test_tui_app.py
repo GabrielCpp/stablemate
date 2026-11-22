@@ -320,6 +320,25 @@ def test_the_cursor_follows_its_run_when_the_order_changes():
     _run(scenario)
 
 
+def test_a_run_removed_frame_drops_the_row_and_a_fleet_meta_frame_moves_scanning():
+    async def scenario() -> None:
+        link = support.FakeLink()
+        async with _booted(link) as (app, _pilot):
+            listing = app.query_one("#runs", OptionList)
+            link.push({**support.state_frame(), "v": 1})
+            await support.until(lambda: listing.option_count == 3)
+            link.push({"type": "run_removed", "v": 2, "id": support.GLOBEX})
+            await support.until(lambda: listing.option_count == 2)
+            state.SCANNING = True
+            meta = {**support.state_frame(), "type": "fleet_meta", "v": 3}
+            state.SCANNING = False
+            link.push(meta)
+            await support.until(lambda: app.store.scanning)
+            assert listing.option_count == 2
+
+    _run(scenario)
+
+
 def test_an_empty_fleet_says_nothing_is_running_and_scanning_says_discovering():
     async def scenario() -> None:
         state.WORKFLOWS.clear()

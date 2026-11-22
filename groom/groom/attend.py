@@ -21,7 +21,7 @@ from workhorse._vendor.stablemate_core.config import ConfigError
 from workhorse.config_run import AgentResilience
 from workhorse.runner.process import ProcessSupervisor
 
-from groom import attend_ledger, attend_transcript, gates, procs
+from groom import attend_ledger, attend_transcript, gates, live, procs
 from groom.settings import AttendSettings, resolve_attend_settings
 
 logger = logging.getLogger(__name__)
@@ -238,6 +238,7 @@ def _own(job: AttendJob, proc: subprocess.Popen[str], session_id: str) -> None:
         attend_ledger.attend_finish(
             job.job_id, exit_code=code, released_state=_released_state(job)
         )
+        live.mark_fleet_threadsafe()
         release(job.run_id)
 
     threading.Thread(target=_wait, name=f"attend-own-{job.run_id}", daemon=True).start()
@@ -261,6 +262,7 @@ def spawn_headless(job: AttendJob) -> None:
         pid=proc.pid,
         started_at=job.created_at,
     )
+    live.mark_fleet_threadsafe()
     _own(job, proc, session_id)
 
 
@@ -273,6 +275,7 @@ def stop(job_id: str) -> bool:
     for session_id in row.get("session_ids") or []:
         attend_transcript.copy_session(str(session_id))
     attend_ledger.attend_finish(job_id, exit_code=None, released_state="stopped")
+    live.mark_fleet_threadsafe()
     release(str(row.get("run_id") or ""))
     return True
 
@@ -287,6 +290,7 @@ def recover_orphans() -> int:
             continue
         if not spawning:
             attend_ledger.attend_finish(job_id, exit_code=None, released_state="lost")
+            live.mark_fleet_threadsafe()
             continue
         job = _job_from_row(row)
         session_id = str(uuid.uuid4()) if _mints_session(settings().cli) else ""
@@ -295,8 +299,10 @@ def recover_orphans() -> int:
         except Exception:
             logger.exception("attend: could not restart the attendant for %s", job.run_id)
             attend_ledger.attend_finish(job_id, exit_code=None, released_state="lost")
+            live.mark_fleet_threadsafe()
             continue
         attend_ledger.attend_append_session(job_id, session_id, pid=proc.pid)
+        live.mark_fleet_threadsafe()
         _LEDGER.by_run[job.run_id] = job_id
         _own(job, proc, session_id)
         restarted += 1

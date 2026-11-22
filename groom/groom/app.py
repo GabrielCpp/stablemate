@@ -38,6 +38,7 @@ from groom import (
     figures,
     gitdiff,
     history,
+    live,
     live_transcript,
     localfs,
     notify,
@@ -101,13 +102,6 @@ SERVED_BY_VOLUME = "volume"
 
 def _all_workflows() -> list:
     return list(state.WORKFLOWS.values())
-
-
-async def _broadcast_shell(changed: str = "") -> None:
-    """Push the fleet to every tab, and — when one run is what changed — that run's detail slices to the tabs watching it."""
-    await state.broadcast(projection.state_message(_all_workflows()))
-    if changed:
-        await _push_detail(changed)
 
 
 def _figures_rev(wf: WorkflowContainer) -> int:
@@ -208,6 +202,12 @@ def _schedule_tail(container_id: str) -> None:
         return
     _TAILS[container_id] = {"again": False}
     task = asyncio.create_task(_tail_until_quiet(container_id))
+    _TAIL_TASKS.add(task)
+    task.add_done_callback(_TAIL_TASKS.discard)
+
+
+def _refresh_watched(container_id: str) -> None:
+    task = asyncio.create_task(_push_detail(container_id))
     _TAIL_TASKS.add(task)
     task.add_done_callback(_TAIL_TASKS.discard)
 
@@ -329,8 +329,13 @@ async def _project_native_rows(records: list) -> None:
         if wf is not None and wf.state == WorkflowState.BLOCKED and not was_blocked:
             newly_blocked.append(wf)
     await _dispatch_alerts(fired)
+    for run_id in run_ids:
+        run = state.RUNS.get(run_id)
+        if run is not None:
+            live.schedule_liveness(run)
+            _ensure_gate_backfill(run)
+    live.mark_fleet()
     if any(changed):
-        await _broadcast_shell()
         for run_id in run_ids:
             await _push_detail(run_id)
     for wf in newly_blocked:
@@ -363,7 +368,7 @@ async def _refresh_figures(run_id: str) -> None:
                 run = state.RUNS.get(run_id)
                 if run is not None and run.figures != computed:
                     run.figures = computed
-                    await _broadcast_shell()
+                    live.mark_fleet()
             if run_id not in _FIGURES_DIRTY:
                 return
     finally:
@@ -920,12 +925,12 @@ async def _reconcile() -> int:
 async def refresh() -> dict:
     """Re-run the reconciliation scan on demand (e.g."""
     state.SCANNING = True
-    await _broadcast_shell()
+    live.mark_fleet()
     try:
         count = await _reconcile()
     finally:
         state.SCANNING = False
-    await _broadcast_shell()
+    live.mark_fleet()
     return {"ok": True, "count": count}
 
 
@@ -943,7 +948,8 @@ async def push_progress(data: dict) -> dict:
         current_node=data.get("current_node"),
         state=WorkflowState.RUNNING,
     )
-    await _broadcast_shell(container_id)
+    live.mark_fleet()
+    await _push_detail(container_id)
     return {"ok": True}
 
 
@@ -978,7 +984,7 @@ async def attend_session(session_id: Annotated[str, PathParameter()]) -> dict:
 async def attend_stop(job_id: Annotated[str, PathParameter()]) -> dict:
     """Kill this attendant and hand its run back to the operator's own terminal."""
     stopped = await asyncio.to_thread(attend.stop, job_id)
-    await _broadcast_shell()
+    live.mark_fleet()
     return {"ok": stopped}
 
 
@@ -1001,7 +1007,7 @@ async def attend_settings_post(data: dict) -> dict:
         deny=current.deny,
     )
     await asyncio.to_thread(write_attend_settings, updated)
-    await _broadcast_shell()
+    live.mark_fleet()
     return (await asyncio.to_thread(attend.settings)).as_dict()
 
 
@@ -1019,7 +1025,7 @@ async def dispatch_enqueue(queue: Annotated[str, PathParameter()], data: dict) -
         item = await asyncio.to_thread(dispatch.enqueue, queue, params)
     except dispatch.UnknownQueue:
         return Response(content={"ok": False, "error": f"no such queue: {queue}"}, status_code=404)
-    await _broadcast_shell()
+    live.mark_fleet()
     return Response(content={"ok": True, "item": item})
 
 
@@ -1046,7 +1052,7 @@ async def dispatch_stop(
     """Kill this item's process and free its queue slot for the next `pending` one."""
     del queue
     stopped = await asyncio.to_thread(dispatch.stop, item_id)
-    await _broadcast_shell()
+    live.mark_fleet()
     return {"ok": stopped}
 
 
@@ -1068,7 +1074,8 @@ async def push_blocked(data: dict) -> dict:
     )
     wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
 
-    await _broadcast_shell(container_id)
+    live.mark_fleet()
+    await _push_detail(container_id)
     await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
     gate = next(iter(wf.gates.values()))
     _attend_gates(wf, [gate])
@@ -1095,7 +1102,8 @@ async def push_exited(data: dict) -> dict:
     attend.release(container_id)
     if wf.exit_code is not None and wf.exit_code not in _NOT_A_DEATH_EXIT:
         _attend_death(container_id)
-    await _broadcast_shell(container_id)
+    live.mark_fleet()
+    await _push_detail(container_id)
     return {"ok": True}
 
 
@@ -1387,7 +1395,8 @@ async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: st
     if result.ok and wf is not None and not wf.gates and wf.state == WorkflowState.BLOCKED:
         wf.state = WorkflowState.RUNNING
 
-    await _broadcast_shell(container_id)
+    live.mark_fleet()
+    await _push_detail(container_id)
     if result.ok:
         await state.broadcast(
             {"type": "answered", "id": container_id, "file_path": file_path}
@@ -1445,10 +1454,10 @@ async def _recv_loop(socket: WebSocket, queue: asyncio.Queue) -> None:
 async def dashboard_ws(socket: WebSocket) -> None:
     """One socket per open tab, carrying JSON in both directions: fleet-wide ``state``/``notify``/``answered`` frames plus this tab's own ``detail`` and ``answer_rejected`` frames down, ``{"cmd": "answer"|"watch", ...}`` up."""
     await socket.accept()
-    queue: asyncio.Queue = asyncio.Queue()
+    queue = state.new_client_queue()
     state.add_client(queue)
     try:
-        await socket.send_text(json.dumps(projection.state_message(_all_workflows())))
+        await socket.send_text(json.dumps(live.snapshot()))
         send_task = asyncio.create_task(_send_loop(socket, queue))
         recv_task = asyncio.create_task(_recv_loop(socket, queue))
         done, pending = await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
@@ -1593,12 +1602,14 @@ async def _apply_hello(container_id: str, data: dict) -> None:
                 continue
             wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=str(gate.get("question", "")))
         wf.state = WorkflowState.BLOCKED if wf.gates else WorkflowState.RUNNING
-    await _broadcast_shell(container_id)
+    live.mark_fleet()
+    await _push_detail(container_id)
 
 
 async def _apply_socket_progress(container_id: str, data: dict) -> None:
     state.upsert_workflow(container_id, current_node=data.get("current_node"), state=WorkflowState.RUNNING)
-    await _broadcast_shell(container_id)
+    live.mark_fleet()
+    await _push_detail(container_id)
 
 
 def _apply_socket_turn(conn: sidecar_hub.SidecarConnection, data: dict) -> None:
@@ -1620,7 +1631,8 @@ async def _apply_socket_blocked(container_id: str, data: dict) -> None:
     question = str(data.get("question", ""))
     wf = state.upsert_workflow(container_id, state=WorkflowState.BLOCKED)
     wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
-    await _broadcast_shell(container_id)
+    live.mark_fleet()
+    await _push_detail(container_id)
     await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
     if wf.gates:
         _attend_gates(wf, list(wf.gates.values()))
@@ -1664,7 +1676,8 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
     finally:
         if conn is not None:
             sidecar_hub.unregister(conn)
-            await _broadcast_shell(conn.container_id)
+            live.mark_fleet()
+            await _push_detail(conn.container_id)
 
 
 @post("/reload", include_in_schema=False)
@@ -1700,6 +1713,7 @@ async def _rules_loop() -> None:
             now = time.time()
             await _dispatch_alerts(alerts.check_time_rules(now))
             state.evict_runs(alerts.stale_run_ids(now))
+            live.mark_fleet()
             if time.monotonic() - last_harvest >= HARVEST_EVERY_S:
                 await asyncio.to_thread(turns.harvest)
                 last_harvest = time.monotonic()
@@ -1711,51 +1725,83 @@ async def _rules_loop() -> None:
             pass
 
 
-async def _backfill_wait_gate(run: RunTelemetry) -> None:
-    """Fetch the live question over the control socket when telemetry's copy of gate_path/gate_question is missing."""
+async def _backfill_wait_gate(run: RunTelemetry) -> bool:
+    """Fetch the live question over the control socket when telemetry's copy of gate_path/gate_question is missing, and say whether it arrived."""
     if not run.native or not run.run_dir:
-        return
+        return False
     reply = await native_questions(run.run_dir, "gate backfill", run.run_id)
     if not reply or not reply.get("ok"):
-        return
+        return False
     raw_questions = reply.get("questions")
     questions = [q for q in raw_questions if isinstance(q, dict)] if isinstance(raw_questions, list) else []
     if not questions:
-        return
+        return False
     question = questions[0]
     run.wait_gate_path = str(question.get("path", ""))
     run.wait_gate_question = str(question.get("question", ""))
+    return bool(run.wait_gate_path)
+
+
+GATE_BACKFILL_RETRY_S = (5.0, 10.0, 20.0)
+GATE_BACKFILL_STEADY_S = 60.0
+_BACKFILLS: dict[str, asyncio.Task] = {}
+
+
+def _awaits_gate_path(run: RunTelemetry) -> bool:
+    return (
+        not run.terminal
+        and run.wait_kind in ("operator", "machine")
+        and not run.wait_gate_path
+    )
+
+
+async def _backfill_until_found(run: RunTelemetry) -> None:
+    """Ask for a waiting run's gate path now, then again after 5, 10 and 20 seconds and every 60 after that, for as long as the wait is open without one."""
+    attempt = 0
+    try:
+        while _awaits_gate_path(run):
+            try:
+                found = await _backfill_wait_gate(run)
+            except Exception:  # noqa: BLE001 - a failed ask is retried, not fatal
+                logger.debug("gate backfill failed for %s", run.run_id, exc_info=True)
+                found = False
+            if found:
+                fired: list[alerts.Alert] = []
+                _sync_native_row(run, fired)
+                await _dispatch_alerts(fired)
+                live.mark_fleet()
+                return
+            delay = GATE_BACKFILL_RETRY_S[attempt] if attempt < len(GATE_BACKFILL_RETRY_S) else GATE_BACKFILL_STEADY_S
+            attempt += 1
+            await asyncio.sleep(delay)
+    finally:
+        _BACKFILLS.pop(run.run_id, None)
+
+
+def _ensure_gate_backfill(run: RunTelemetry) -> None:
+    if not run.native or run.run_id in _BACKFILLS or not _awaits_gate_path(run):
+        return
+    task = asyncio.create_task(_backfill_until_found(run))
+    _BACKFILLS[run.run_id] = task
 
 
 async def _live_loop() -> None:
-    """Re-render the run list on a clock and push it to every open dashboard."""
+    """Refresh every open detail pane on a clock, for as long as a tab is open."""
     while True:
         await asyncio.sleep(LIVE_TICK_S)
-        if not state.CLIENTS and not state.FEEDS:
+        if not state.CLIENTS:
             continue
         try:
-            died: list[alerts.Alert] = []
-            runs = list(state.RUNS.values())
-            incomplete = [
-                run
-                for run in runs
-                if run.wait_kind in ("operator", "machine") and not run.wait_gate_path
-            ]
-            if incomplete:
-                await asyncio.gather(*(_backfill_wait_gate(run) for run in incomplete))
-            for run in runs:
-                _sync_native_row(run, died)
-            await _dispatch_alerts(died)
-            if state.CLIENTS:
-                await _broadcast_shell()
-                await _push_watched()
+            await _push_watched()
         except Exception:  # noqa: BLE001
             pass
 
 
 async def _spawn_live() -> None:
-    """on_startup hook: start the clock that keeps time-derived row state honest."""
+    """on_startup hook: bind the fleet flush to this loop and start the clock that refreshes open detail panes."""
     global _live_task
+    live.bind(asyncio.get_running_loop())
+    state.WATCH_REFRESH = _refresh_watched
     _live_task = asyncio.create_task(_live_loop())
 
 
@@ -1873,7 +1919,7 @@ async def _background_scan() -> None:
         await _reconcile()
     finally:
         state.SCANNING = False
-        await _broadcast_shell()
+        live.mark_fleet()
 
 
 async def _recover_attend() -> None:

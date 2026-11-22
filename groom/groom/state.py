@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from collections.abc import Callable
 
 from groom.attention import AttentionEvent
 from groom.live_history import LiveHistory
@@ -24,6 +25,9 @@ EVENTS: dict[str, deque[tuple[float, AttentionEvent]]] = {}
 FEEDS: dict[asyncio.Queue, str] = {}
 
 SCANNING: bool = True
+FLEET_V: int = 0
+CLIENT_QUEUE_MAX = 256
+WATCH_REFRESH: Callable[[str], None] | None = None
 
 _gate_locks: dict[str, asyncio.Lock] = {}
 
@@ -73,7 +77,10 @@ def prune_workflows(present_ids: set[str]) -> list[str]:
 
 def evict_runs(run_ids: list[str]) -> None:
     """Drop telemetry hot-cache entries (and any native dashboard row they back) for the given run ids — the eviction that bounds ``RUNS``/``WORKFLOWS`` growth on a long-lived groom."""
+    from groom import live
+
     for run_id in run_ids:
+        live.cancel_liveness(run_id)
         RUNS.pop(run_id, None)
         EVENTS.pop(run_id, None)
         wf = WORKFLOWS.get(run_id)
@@ -142,11 +149,41 @@ def watched_ids() -> set[str]:
     return set(WATCHING.values())
 
 
+def new_client_queue() -> asyncio.Queue:
+    return asyncio.Queue(maxsize=CLIENT_QUEUE_MAX)
+
+
+def _overflowed(queue: asyncio.Queue) -> None:
+    """A tab that stopped reading loses its backlog and gets one fresh snapshot, and its open run is sent again."""
+    from groom import live
+
+    while True:
+        try:
+            queue.get_nowait()
+        except asyncio.QueueEmpty:
+            break
+    queue.put_nowait(live.snapshot())
+    run_id = WATCHING.get(queue)
+    if run_id and WATCH_REFRESH is not None:
+        WATCH_REFRESH(run_id)
+
+
+def offer(queue: asyncio.Queue, message: dict) -> None:
+    try:
+        queue.put_nowait(message)
+    except asyncio.QueueFull:
+        _overflowed(queue)
+
+
+def broadcast_nowait(message: dict) -> None:
+    for queue in list(CLIENTS):
+        offer(queue, message)
+
+
 async def send(queue: asyncio.Queue, message: dict) -> None:
-    await queue.put(message)
+    offer(queue, message)
 
 
 async def broadcast(message: dict) -> None:
     """Fan one JSON message out to every open dashboard tab."""
-    for queue in list(CLIENTS):
-        await queue.put(message)
+    broadcast_nowait(message)

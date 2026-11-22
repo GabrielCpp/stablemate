@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from rich.text import Text
 
 from groom.tui import store as client
@@ -31,13 +33,25 @@ def status_text(connection: Connection, store: client.Store) -> Text:
     return text
 
 
-def row_text(row: Frame) -> Text:
+def live_label(row: Frame, now: float | None = None) -> str:
+    seen = float(row.get("last_seen_ts") or 0)
+    if row.get("live") == "dead" and not row.get("ended") and seen > 0:
+        secs = max(0, round((time.time() if now is None else now) - seen))
+        if secs < 60:
+            return f"silent {secs}s"
+        if secs < 3600:
+            return f"silent {secs // 60}m"
+        return f"silent {secs // 3600}h"
+    return clean(row.get("live_label"))
+
+
+def row_text(row: Frame, now: float | None = None) -> Text:
     text = Text(no_wrap=True, overflow="ellipsis")
     if int(row.get("gate_count") or 0) > 0:
         text.append("▲ gate ", style="bold yellow")
     else:
         text.append("       ")
-    text.append(f"{clean(row.get('live_label')) or 'unknown':<12}")
+    text.append(f"{live_label(row, now) or 'unknown':<12}")
     text.append(clean(row.get("name")), style="bold")
     doing = clean(row.get("doing") or row.get("node") or "")
     if doing:

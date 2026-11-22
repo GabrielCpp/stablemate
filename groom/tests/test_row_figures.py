@@ -141,11 +141,7 @@ def test_refreshes_coalesce_to_one_running_and_one_rerun(monkeypatch: pytest.Mon
         gate.wait(5)
         return {"n": len(calls)}
 
-    async def quiet() -> None:
-        return None
-
     monkeypatch.setattr(figures, "run_figures", slow)
-    monkeypatch.setattr(groom_app, "_broadcast_shell", lambda changed="": quiet())
     state.RUNS["r1"] = RunTelemetry(run_id="r1")
 
     async def scenario() -> None:

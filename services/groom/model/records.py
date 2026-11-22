@@ -97,6 +97,7 @@ class Row:
     type: str = ""
     type_hue: int = 0
     silence_s: float = 0.0
+    last_seen_ts: float = 0.0
     telemetry_age_s: float = 0.0
     node_elapsed_s: float = 0.0
     wait_kind: str = ""
@@ -187,6 +188,7 @@ class Fleet:
     attend: AttendSummary
     type: str = "state"
     ts: float = 0.0
+    v: int = 0
     scanning: bool = False
     status: Status = Status()
     store: StoreHealth = StoreHealth()

@@ -61,6 +61,35 @@ def test_a_run_frame_without_a_row_changes_nothing():
     assert client.apply_run(loaded, {"type": "run"}) is loaded
 
 
+def test_a_removed_frame_drops_the_row():
+    loaded = _loaded()
+    removed = client.apply_remove(loaded, {"type": "run_removed", "v": 5, "id": support.GLOBEX})
+    assert [row["id"] for row in removed.runs] == [support.ACME, support.WEBAPP]
+    assert removed.fleet_v == 5
+
+
+def test_a_meta_frame_replaces_status_and_scanning_and_keeps_the_rows():
+    loaded = _loaded()
+    meta = client.apply_meta(loaded, {"type": "fleet_meta", "v": 3, "scanning": True, "status": {"workers": 9}})
+    assert meta.status == {"workers": 9}
+    assert meta.scanning is True
+    assert meta.runs == loaded.runs
+
+
+def test_a_frame_no_newer_than_the_last_applied_changes_nothing():
+    loaded = client.apply_remove(_loaded(), {"type": "run_removed", "v": 5, "id": support.GLOBEX})
+    assert client.apply_remove(loaded, {"type": "run_removed", "v": 5, "id": support.ACME}) is loaded
+    assert client.apply_meta(loaded, {"type": "fleet_meta", "v": 4, "scanning": True}) is loaded
+    assert client.apply_run(loaded, {"type": "run", "v": 2, "run": {"id": "x", "rank": 0, "name": "x"}}) is loaded
+
+
+def test_a_state_frame_older_than_the_last_applied_is_ignored():
+    loaded = client.apply_remove(_loaded(), {"type": "run_removed", "v": 5, "id": support.GLOBEX})
+    older = {**support.state_frame(), "v": 4}
+    assert client.apply_state(loaded, older) is loaded
+    assert client.apply_state(loaded, {**older, "v": 5}).fleet_v == 5
+
+
 def test_detail_for_the_selected_run_is_stored():
     selected = client.select(_loaded(), support.ACME)
     updated = client.apply_detail(selected, support.detail_frame(support.ACME))
@@ -160,3 +189,13 @@ def test_cycling_the_view_and_the_kind_wraps_around():
 def test_selecting_a_run_keeps_the_chosen_view():
     store = client.cycle_view(client.Store())
     assert client.select(store, support.ACME).trail_view == "transcript"
+
+
+def test_a_dead_row_counts_its_silence_from_last_seen_at_render():
+    from groom.tui.widgets import fleet
+
+    row = {"live": "dead", "live_label": "dead", "last_seen_ts": 1000.0}
+    assert fleet.live_label(row, now=1042.0) == "silent 42s"
+    assert fleet.live_label(row, now=1000.0 + 300) == "silent 5m"
+    assert fleet.live_label({**row, "ended": {"x": 1}}, now=1042.0) == "dead"
+    assert fleet.live_label({**row, "live": "live", "live_label": "live"}, now=1042.0) == "live"

@@ -137,6 +137,7 @@ class GroomTui(GroomBase):
             closed_since=self._closed_since,
         ))
         self._render_status()
+        self._render_rows()
         if (
             self.connection.resyncing
             and not self._resync_running
@@ -169,6 +170,15 @@ class GroomTui(GroomBase):
             self._render_fleet()
             if frame.get("run", {}).get("id") == self.store.selected:
                 await self._render_detail()
+        elif kind == "run_removed":
+            self.store = client.apply_remove(self.store, frame)
+            self._render_fleet()
+            if frame.get("id") == self.store.selected:
+                await self._render_detail()
+        elif kind == "fleet_meta":
+            self.store = client.apply_meta(self.store, frame)
+            self._follow_attend()
+            self._render_status()
         elif kind == "detail":
             before = self.store
             self.store = client.apply_detail(self.store, frame)
@@ -217,10 +227,14 @@ class GroomTui(GroomBase):
 
     def _render_fleet(self) -> None:
         self._render_status()
+        self._render_rows()
+
+    def _render_rows(self) -> None:
         runs = client.filter_runs(self.store.runs, self.store.query)
         self._show_note(runs)
         listing = self.main.query_one("#runs", OptionList)
-        self._row_cache = sync_options(listing, [(str(row["id"]), row_text(row)) for row in runs], self._row_cache)
+        now = time.time()
+        self._row_cache = sync_options(listing, [(str(row["id"]), row_text(row, now)) for row in runs], self._row_cache)
 
     def _show_note(self, shown: tuple[Frame, ...]) -> None:
         query = self.store.query.strip()

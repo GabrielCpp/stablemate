@@ -15,7 +15,7 @@ import pytest
 from litestar.testing import TestClient
 
 from groom import app as groom_app
-from groom import discovery, sidecar_hub, state, store
+from groom import discovery, live, sidecar_hub, state, store
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 from workhorse import control, inbox
 from workhorse import gates as gate_file
@@ -102,7 +102,7 @@ def test_push_exited_rejects_missing_container_id():
     assert resp.json() == {"ok": False}
 
 
-def test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame():
+def test_push_blocked_marks_the_fleet_then_sends_a_separate_notify_frame():
     _reset()
     wf = WorkflowContainer(
         container_id="abc123", name="coder-acme", state=WorkflowState.RUNNING, workspace_volume="v"
@@ -114,7 +114,10 @@ def test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame():
     async def _capture_broadcast(message):
         captured.append(message)
 
-    with patch.object(state, "broadcast", _capture_broadcast):
+    def _capture_mark():
+        captured.append({"type": "fleet"})
+
+    with patch.object(state, "broadcast", _capture_broadcast), patch.object(live, "mark_fleet", _capture_mark):
         client = _hermetic_client()
         try:
             resp = client.post(
@@ -127,7 +130,7 @@ def test_push_blocked_sends_the_state_frame_then_a_separate_notify_frame():
     assert resp.json() == {"ok": True}
     assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
     kinds = [m["type"] for m in captured]
-    assert kinds.index("state") < kinds.index("notify")
+    assert kinds.index("fleet") < kinds.index("notify")
     notify_frame = next(m for m in captured if m["type"] == "notify")
     assert notify_frame == {"type": "notify", "message": "coder-acme: Ship it?"}
 
@@ -258,7 +261,7 @@ def test_a_closed_tab_stops_being_a_watcher():
     assert state.watchers_of("abc123") == []
 
 
-def test_the_clock_refreshes_every_open_pane_alongside_the_fleet():
+def test_the_clock_refreshes_every_open_pane():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
         container_id="abc123", name="w", state=WorkflowState.RUNNING, run_id="run-1"
@@ -270,10 +273,7 @@ def test_the_clock_refreshes_every_open_pane_alongside_the_fleet():
         state.watch(queue, "abc123")
         task = asyncio.create_task(groom_app._live_loop())
         try:
-            seen = []
-            while len(seen) < 2:
-                seen.append(await asyncio.wait_for(queue.get(), timeout=2.0))
-            return seen
+            return [await asyncio.wait_for(queue.get(), timeout=2.0)]
         finally:
             task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -282,7 +282,7 @@ def test_the_clock_refreshes_every_open_pane_alongside_the_fleet():
     with patch.object(groom_app, "LIVE_TICK_S", 0.01):
         seen = asyncio.run(drive())
 
-    assert [m["type"] for m in seen] == ["state", "detail"]
+    assert [m["type"] for m in seen] == ["detail"]
 
 
 def test_watched_history_is_not_read_again_on_clock_push():
@@ -581,16 +581,10 @@ def test_api_state_and_the_socket_push_the_same_payload():
         container_id="abc123", name="coder-001", state=WorkflowState.RUNNING
     )
 
-    pushed = {}
-
-    async def _capture(message):
-        pushed["message"] = message
-
     client = _hermetic_client()
     try:
         body = client.get("/api/state").json()
-        with patch.object(state, "broadcast", _capture):
-            asyncio.run(groom_app._broadcast_shell())
+        pushed = live.snapshot()
     finally:
         client.__exit__(None, None, None)
 
@@ -599,34 +593,10 @@ def test_api_state_and_the_socket_push_the_same_payload():
         rest["store"] = {k: v for k, v in rest["store"].items() if k != "last_ok_ts"}
         return rest
 
-    assert _stable(pushed["message"]) == _stable(body)
+    assert _stable(json.loads(json.dumps(pushed))) == _stable(body)
 
 
-def test_live_loop_repushes_the_run_list_to_connected_clients():
-    _reset()
-    state.WORKFLOWS["abc123"] = WorkflowContainer(
-        container_id="abc123", name="coder-001", state=WorkflowState.RUNNING
-    )
-
-    async def drive():
-        queue = asyncio.Queue()
-        state.add_client(queue)
-        task = asyncio.create_task(groom_app._live_loop())
-        try:
-            return await asyncio.wait_for(queue.get(), timeout=2.0)
-        finally:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-
-    with patch.object(groom_app, "LIVE_TICK_S", 0.01):
-        pushed = asyncio.run(drive())
-
-    assert pushed["type"] == "state"
-    assert [r["id"] for r in pushed["runs"]] == ["abc123"]
-
-
-def test_live_loop_skips_the_render_when_nobody_is_watching():
+def test_live_loop_pushes_nothing_when_no_tab_is_open():
     _reset()
     calls = []
 
@@ -641,7 +611,7 @@ def test_live_loop_skips_the_render_when_nobody_is_watching():
         calls.append(1)
 
     with patch.object(groom_app, "LIVE_TICK_S", 0.01), \
-         patch.object(groom_app, "_broadcast_shell", _spy):
+         patch.object(groom_app, "_push_watched", _spy):
         asyncio.run(drive())
 
     assert calls == []
@@ -666,7 +636,7 @@ def test_live_loop_survives_a_failing_tick():
         return alive
 
     with patch.object(groom_app, "LIVE_TICK_S", 0.01), \
-         patch.object(groom_app, "_broadcast_shell", _boom):
+         patch.object(groom_app, "_push_watched", _boom):
         still_running = asyncio.run(drive())
 
     assert still_running and len(calls) > 1
@@ -694,34 +664,6 @@ def test_backfill_wait_gate_leaves_the_row_blocked_when_nothing_is_listening(tmp
         asyncio.run(groom_app._backfill_wait_gate(run))
     assert run.wait_gate_path == ""
     assert run.wait_gate_question == ""
-
-
-def test_live_loop_backfills_incomplete_gates_before_syncing_rows(tmp_path):
-    _reset()
-    run_dir = tmp_path / "r"
-    run_dir.mkdir()
-    tel = RunTelemetry(run_id="r", native=True, run_dir=str(run_dir),
-                       workspace=str(run_dir), wait_kind="operator")
-    state.RUNS["r"] = tel
-    reply = {"ok": True, "questions": [
-        {"path": "docs/a.md", "question": "Which backend?", "kind": "operator", "since": 1.0},
-    ]}
-
-    async def drive():
-        state.add_client(asyncio.Queue())
-        task = asyncio.create_task(groom_app._live_loop())
-        await asyncio.sleep(0.05)
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-
-    with patch.object(groom_app, "LIVE_TICK_S", 0.01), \
-         patch.object(control, "send", return_value=reply):
-        asyncio.run(drive())
-
-    assert tel.wait_gate_path == "docs/a.md"
-    assert tel.wait_gate_question == "Which backend?"
-    assert state.WORKFLOWS["r"].state == WorkflowState.BLOCKED
 
 
 def test_repos_endpoint_lists_one_entry_per_container_repo():
@@ -995,7 +937,11 @@ def test_handle_answer_flips_state_and_broadcasts_an_answered_event():
     async def _capture_broadcast(message):
         captured.setdefault("messages", []).append(message)
 
+    def _capture_mark():
+        captured.setdefault("messages", []).append({"type": "fleet"})
+
     with patch.object(groom_app, "answer_gate", _fake_answer_gate), \
+         patch.object(live, "mark_fleet", _capture_mark), \
          patch.object(state, "broadcast", _capture_broadcast):
         asyncio.run(
             groom_app._handle_command(
@@ -1005,7 +951,7 @@ def test_handle_answer_flips_state_and_broadcasts_an_answered_event():
 
     assert state.WORKFLOWS["abc123"].state == WorkflowState.RUNNING
     kinds = [m["type"] for m in captured["messages"]]
-    assert "state" in kinds
+    assert "fleet" in kinds
     answered = next(m for m in captured["messages"] if m["type"] == "answered")
     assert answered["id"] == "abc123" and answered["file_path"] == "docs/gate.md"
 
@@ -1024,7 +970,7 @@ def test_handle_answer_failure_does_not_flip_or_dispatch():
         return AnswerResult(ok=False, message="already answered in another tab")
 
     async def _capture_broadcast(fragment):
-        captured["fragment"] = fragment
+        captured.setdefault("frames", []).append(fragment)
 
     with patch.object(groom_app, "answer_gate", _fake_answer_gate), \
          patch.object(state, "broadcast", _capture_broadcast):
@@ -1035,7 +981,7 @@ def test_handle_answer_failure_does_not_flip_or_dispatch():
         )
 
     assert state.WORKFLOWS["abc123"].state == WorkflowState.BLOCKED
-    assert "groom:answered" not in captured["fragment"]
+    assert all(frame["type"] != "answered" for frame in captured.get("frames", []))
 
 
 def test_a_rejected_answer_tells_the_sender_alone_why(tmp_path):
@@ -1653,12 +1599,12 @@ async def _noop_ensure_volumes(container_id: str) -> None:
 def _sidecar_frames(ws):
     while True:
         frame = ws.receive_json()
-        if frame["type"] == "state":
+        if frame["type"] == "run":
             yield frame
 
 
 def _row_flag(frame, container_id):
-    return next(run["sidecar"] for run in frame["runs"] if run["id"] == container_id)
+    return frame["run"]["sidecar"] if frame["run"]["id"] == container_id else None
 
 
 def test_a_tab_is_told_when_a_sidecar_connects_and_when_it_drops():
@@ -1676,9 +1622,9 @@ def test_a_tab_is_told_when_a_sidecar_connects_and_when_it_drops():
                 tab.receive_json()
                 with client.websocket_connect("/sidecar") as sidecar_socket:
                     sidecar_socket.send_json(hello)
-                    seen = next(f for f in _sidecar_frames(tab) if container_id in {r["id"] for r in f["runs"]})
+                    seen = next(f for f in _sidecar_frames(tab) if f["run"]["id"] == container_id)
                     assert _row_flag(seen, container_id) is True
-                dropped = next(f for f in _sidecar_frames(tab) if not _row_flag(f, container_id))
+                dropped = next(f for f in _sidecar_frames(tab) if f["run"]["id"] == container_id and not f["run"]["sidecar"])
                 assert _row_flag(dropped, container_id) is False
     finally:
         client.__exit__(None, None, None)

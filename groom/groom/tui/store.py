@@ -18,6 +18,7 @@ class Store:
     repo: Frame | None = None
     query: str = ""
     attend: Frame = field(default_factory=dict)
+    fleet_v: int = 0
 
 
 TRAIL_VIEWS = ("all", "transcript", "telemetry")
@@ -28,19 +29,56 @@ KIND_LABELS = {
 }
 
 
+def _newer(store: Store, msg: Frame) -> bool:
+    v = msg.get("v")
+    return not isinstance(v, int) or v > store.fleet_v
+
+
+def _versioned(store: Store, msg: Frame) -> Store:
+    v = msg.get("v")
+    return replace(store, fleet_v=v) if isinstance(v, int) else store
+
+
 def apply_state(store: Store, msg: Frame) -> Store:
-    return replace(
-        store,
-        runs=tuple(msg.get("runs") or ()),
-        status=msg.get("status") or store.status,
-        scanning=bool(msg.get("scanning")),
-        attend=msg.get("attend") or store.attend,
+    v = msg.get("v")
+    if isinstance(v, int) and v < store.fleet_v:
+        return store
+    return _versioned(
+        replace(
+            store,
+            runs=tuple(msg.get("runs") or ()),
+            status=msg.get("status") or store.status,
+            scanning=bool(msg.get("scanning")),
+            attend=msg.get("attend") or store.attend,
+        ),
+        msg,
     )
+
+
+def apply_meta(store: Store, msg: Frame) -> Store:
+    if not _newer(store, msg):
+        return store
+    return _versioned(
+        replace(
+            store,
+            status=msg.get("status") or store.status,
+            scanning=bool(msg.get("scanning")),
+            attend=msg.get("attend") or store.attend,
+        ),
+        msg,
+    )
+
+
+def apply_remove(store: Store, msg: Frame) -> Store:
+    if not _newer(store, msg):
+        return store
+    runs = tuple(row for row in store.runs if row["id"] != msg.get("id"))
+    return _versioned(replace(store, runs=runs), msg)
 
 
 def apply_run(store: Store, msg: Frame) -> Store:
     row = msg.get("run")
-    if not row:
+    if not row or not _newer(store, msg):
         return store
     runs = [existing for existing in store.runs if existing["id"] != row["id"]]
     at = next((i for i, existing in enumerate(store.runs) if existing["id"] == row["id"]), None)
@@ -49,7 +87,7 @@ def apply_run(store: Store, msg: Frame) -> Store:
     else:
         runs.insert(at, row)
     runs.sort(key=lambda r: (r["rank"], r["name"]))
-    return replace(store, runs=tuple(runs))
+    return _versioned(replace(store, runs=tuple(runs)), msg)
 
 
 def apply_detail(store: Store, msg: Frame) -> Store:
