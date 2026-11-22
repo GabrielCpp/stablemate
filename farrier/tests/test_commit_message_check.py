@@ -8,7 +8,7 @@ import pytest
 
 SCRIPT = (
     Path(__file__).resolve().parents[2]
-    / "base-library/library/policies/git/commit-and-push/scripts/check_commit_message.py"
+    / "base-library/library/policies/repo/commit-and-push/scripts/check_commit_message.py"
 )
 
 

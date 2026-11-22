@@ -141,7 +141,7 @@ like a skill:
 
 ```
 library/policies/stablemate/stablemate-repo/POLICY.md   → policy name `stablemate-repo`
-library/policies/git/commit-and-push/scripts/           → installed to .agents/policies/commit-and-push/scripts/
+library/policies/repo/commit-and-push/scripts/           → installed to .agents/policies/commit-and-push/scripts/
 ```
 
 A policy may bundle a `scripts/` folder beside its `POLICY.md`. Farrier installs those
