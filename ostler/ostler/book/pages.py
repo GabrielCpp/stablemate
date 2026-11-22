@@ -1,6 +1,6 @@
 """The books above one service: prose pages, one markdown file each, at three levels. The company
 book is `company/` and a team book is `teams/<team>/`, both in the artifacts dir. The product book is
-`product/` beside `services/`. A page has a `date:` line, optional `sources:` and `status:` lines, a
+`products/<product>/` in the artifacts dir, or `product/` beside `services/` when the repository keeps its book. A page has a `date:` line, optional `sources:` and `status:` lines, a
 blank line, then prose whose first line is its statement."""
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ostler._vendor.stablemate_core import books
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book import decisions
 from ostler.manifest import read_manifest
@@ -26,7 +27,7 @@ class Level:
 
     @property
     def heading(self) -> str:
-        return f"team {self.name}" if self.kind == "team" else self.kind
+        return f"{self.kind} {self.name}" if self.name else self.kind
 
 
 @dataclass(frozen=True)
@@ -60,14 +61,25 @@ def team_of(root: str) -> str:
     return (manifest.book.team if manifest is not None else None) or ""
 
 
-def levels(root: str) -> list[Level]:
+def product_levels(artifacts: str, start: Path) -> list[Level]:
+    if books.book_in_repo(start):
+        return [Level("product", "", os.path.join(str(books.book_settings(start).folder), "product"), "product")]
+    name = books.book_product(start)
+    if name is not None:
+        return [Level("product", name, os.path.join(artifacts, "products", name), f"products/{name}")]
+    folder = os.path.join(artifacts, "products")
+    names = sorted(n for n in os.listdir(folder) if os.path.isdir(os.path.join(folder, n))) if os.path.isdir(folder) else []
+    return [Level("product", n, os.path.join(folder, n), f"products/{n}") for n in names]
+
+
+def levels(root: str, start: str | None = None) -> list[Level]:
     artifacts = str(core_config.resolve_artifacts_dir())
+    origin = Path(start if start is not None else os.getcwd())
     found = [Level("company", "", os.path.join(artifacts, "company"), "company")]
-    team = team_of(root)
+    team = books.book_settings(origin).team or team_of(root)
     if team:
         found.append(Level("team", team, os.path.join(artifacts, "teams", team), f"teams/{team}"))
-    found.append(Level("product", "", os.path.join(root, "product"), "product"))
-    return found
+    return found + product_levels(artifacts, origin)
 
 
 def parse(path: str, level: Level) -> Page:

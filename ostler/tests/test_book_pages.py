@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Iterator
@@ -213,3 +216,71 @@ def test_the_list_takes_one_level(root: Path, artifacts: Path, capsys: pytest.Ca
     _all_levels(root, artifacts)
     assert cmd_pages(SimpleNamespace(check=False, level="team"), str(root)) == 0
     assert capsys.readouterr().out.splitlines() == ["team  firing  2026-11-02  accepted  A ceramic is fired twice."]
+
+
+def _code_repo(parent: Path, name: str, manifest: str = "") -> Path:
+    folder = parent / name
+    folder.mkdir()
+    subprocess.run(["git", "init", "-q", str(folder)], check=True)
+    if manifest:
+        _write(folder / "agents.yml", manifest)
+    return folder
+
+
+def _in_products(artifacts: Path, product: str, slug: str, text: str) -> None:
+    _write(artifacts / "products" / product / f"{slug}.md", text)
+
+
+def _listed(level: str | None = None) -> list[str]:
+    return [line for line in _pages_out(level)]
+
+
+def _pages_out(level: str | None) -> list[str]:
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        assert cmd_pages(SimpleNamespace(check=False, level=level)) == 0
+    return buffer.getvalue().splitlines()
+
+
+def test_pages_from_a_lone_repository_list_its_product_folder_only(tmp_path: Path, artifacts: Path, monkeypatch: pytest.MonkeyPatch):
+    repo = _code_repo(tmp_path, "acme")
+    _in_products(artifacts, "acme", "glaze", GLAZE)
+    _in_products(artifacts, "globex", "kiln", KILN)
+    monkeypatch.chdir(repo)
+    assert _listed() == ["product  glaze  2026-11-21  A glaze is a ceramic coating fired onto a piece."]
+
+
+def test_pages_from_the_artifacts_folder_list_every_product(artifacts: Path, monkeypatch: pytest.MonkeyPatch):
+    _in_products(artifacts, "acme", "glaze", GLAZE)
+    _in_products(artifacts, "globex", "kiln", KILN)
+    monkeypatch.chdir(artifacts)
+    assert _listed("product") == [
+        "product  glaze  2026-11-21  A glaze is a ceramic coating fired onto a piece.",
+        "product  kiln  2026-11-20  A kiln fires the ceramic piece twice.",
+    ]
+
+
+def test_book_product_overrides_the_repository_name(tmp_path: Path, artifacts: Path, monkeypatch: pytest.MonkeyPatch):
+    repo = _code_repo(tmp_path, "acme", "book:\n  product: globex\n")
+    _in_products(artifacts, "acme", "glaze", GLAZE)
+    _in_products(artifacts, "globex", "kiln", KILN)
+    monkeypatch.chdir(repo)
+    assert _listed() == ["product  kiln  2026-11-20  A kiln fires the ceramic piece twice."]
+
+
+def test_team_is_read_from_the_code_repository_manifest(tmp_path: Path, artifacts: Path, monkeypatch: pytest.MonkeyPatch):
+    repo = _code_repo(tmp_path, "acme", "book:\n  team: glaze-lab\n")
+    _team(artifacts, "glaze-lab", "firing", "date: 2026-11-02\nstatus: accepted\n\nA ceramic is fired twice.\n")
+    monkeypatch.chdir(repo)
+    assert _listed("team") == ["team  firing  2026-11-02  accepted  A ceramic is fired twice."]
+
+
+def test_search_heading_names_the_product(tmp_path: Path, artifacts: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    repo = _code_repo(tmp_path, "acme")
+    _in_products(artifacts, "acme", "glaze", GLAZE)
+    (artifacts / "services").mkdir()
+    monkeypatch.chdir(repo)
+    assert _search("fired onto") == 0
+    out = capsys.readouterr().out
+    assert "== product acme\n" in out
+    assert "product   products/acme/glaze.md:4\n" in out

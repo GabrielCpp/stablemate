@@ -336,18 +336,19 @@ A rule above any one service goes in a page of one of three books, by how far it
 | Book | Holds | Lives in | Written by |
 | --- | --- | --- | --- |
 | service | what one service does and why: its Python and `decisions/` | `<book root>/services/<name>/` | agents |
-| product | the product's words, the constraints no story may break, where the truth for a calculation lives | `<book root>/product/<slug>.md` | agents |
+| product | the product's words, the constraints no story may break, where the truth for a calculation lives | `<artifacts dir>/products/<product>/<slug>.md`, or `product/<slug>.md` beside `services/` with `book.home: repo` | agents |
 | team | how one team builds across products: ADRs, RFCs, conventions | `<artifacts dir>/teams/<team>/<slug>.md` | people |
 | company | rules every team follows | `<artifacts dir>/company/<slug>.md` | people |
 
 The artifacts dir is what `resolve_artifacts_dir` returns, and the book root is the folder that holds `services/`: the
-repository in a monorepo, the artifacts folder in a multi-repo workspace. A team's name is `book.team` in the repository's
-`agents.yml`. With no `book.team`, no team book is read. A folder that does not exist is skipped.
+artifacts folder, or the repository when its `agents.yml` says `book.home: repo`. The product is `book.product`, else the
+repository's name. Started in the artifacts folder, `book pages` lists every product. A team's name is `book.team` in the
+code repository's `agents.yml`. With no `book.team`, no team book is read. A folder that does not exist is skipped.
 
 A page starts with a `date:` line (required), then optional `sources:` and `status:` lines, a blank line and prose whose
 first line is its statement. `status:` is free text, for an ADR or an RFC: `proposed`, `accepted`, `superseded by <slug>`.
 `ostler book search` reads every level with every query, with or without `--service`, and prints their hits first, under
-`== company`, `== team <name>` and `== product`, in that order. A hit line reads `<level>  <path>:<line>` and ends with
+`== company`, `== team <name>` and `== product` (`== product <name>` for a named product), in that order. A hit line reads `<level>  <path>:<line>` and ends with
 ` (superseded)` when the page's status starts with `superseded`. `--kind company`, `--kind team` or `--kind product` shows
 only that level and any other `--kind` leaves them out. `ostler book pages` lists the pages and `--check` names each page
 with no `date:` line or an empty body.
