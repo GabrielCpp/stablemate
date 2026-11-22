@@ -102,6 +102,67 @@ def test_two_batches_inside_one_window_send_one_run_frame(dirs, monkeypatch):
     assert runs[0]["run"]["node"] == "verify"
 
 
+def test_two_batches_a_window_apart_send_one_run_frame_in_total(dirs):
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = _tab()
+        live.snapshot()
+        await _ingest("run-a", dirs)
+        await asyncio.sleep(0.2)
+        await _ingest("run-a", dirs)
+        await asyncio.sleep(0.2)
+        return _drain(queue)
+
+    runs = [f for f in asyncio.run(drive()) if f["type"] == "run"]
+    assert len(runs) == 1
+
+
+def _health(monkeypatch, **overrides) -> dict:
+    health = {
+        "ok": True,
+        "last_ok_ts": 1.0,
+        "last_write_ts": 1.0,
+        "last_prune_ts": 1.0,
+        "wal_bytes": 10,
+        **overrides,
+    }
+    monkeypatch.setattr(projection.store, "health_dict", lambda: dict(health))
+    return health
+
+
+def test_a_store_write_alone_sends_no_fleet_meta(monkeypatch):
+    _health(monkeypatch)
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = _tab()
+        live.snapshot()
+        _health(monkeypatch, last_ok_ts=2.0, last_write_ts=2.0, last_prune_ts=2.0, wal_bytes=99)
+        live.mark_fleet()
+        await asyncio.sleep(0.2)
+        return _drain(queue)
+
+    assert asyncio.run(drive()) == []
+
+
+def test_a_change_to_store_ok_sends_fleet_meta_with_the_whole_store(monkeypatch):
+    _health(monkeypatch)
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = _tab()
+        live.snapshot()
+        _health(monkeypatch, ok=False, wal_bytes=99)
+        live.mark_fleet()
+        await asyncio.sleep(0.2)
+        return _drain(queue)
+
+    frames = asyncio.run(drive())
+    assert [f["type"] for f in frames] == ["fleet_meta"]
+    assert frames[0]["store"]["ok"] is False
+    assert frames[0]["store"]["wal_bytes"] == 99
+
+
 def test_a_run_turns_silent_when_its_silence_passes_the_threshold(dirs):
     async def drive():
         live.bind(asyncio.get_running_loop())

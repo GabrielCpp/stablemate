@@ -13,7 +13,8 @@ from groom.models import RunTelemetry
 
 logger = logging.getLogger(__name__)
 
-STABLE_EXCLUDED = ("silence_s", "telemetry_age_s", "live_label")
+STABLE_EXCLUDED = ("silence_s", "telemetry_age_s", "live_label", "last_seen_ts")
+STORE_UNSTABLE = ("last_ok_ts", "last_write_ts", "last_prune_ts", "wal_bytes")
 DEADLINE_SLACK_S = 0.5
 
 _loop: asyncio.AbstractEventLoop | None = None
@@ -59,6 +60,11 @@ def stable(row: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in row.items() if key not in STABLE_EXCLUDED}
 
 
+def stable_meta(meta: dict[str, Any]) -> dict[str, Any]:
+    store = {key: value for key, value in meta["store"].items() if key not in STORE_UNSTABLE}
+    return {**meta, "store": store}
+
+
 def mark_fleet() -> None:
     global _flush_handle, _flush_loop
     loop = _running()
@@ -95,7 +101,7 @@ def snapshot() -> dict[str, Any]:
     message = projection.state_message(_workflows())
     if _sent_rows is None:
         _sent_rows = {row["id"]: stable(row) for row in message["runs"]}
-        _sent_meta = _meta_of(message)
+        _sent_meta = stable_meta(_meta_of(message))
     return message
 
 
@@ -130,10 +136,11 @@ def flush_fleet() -> None:
     for run_id, row in current.items():
         if previous_rows.get(run_id) != stable(row):
             state.broadcast_nowait({"type": "run", "v": _next_v(), "run": row})
-    if meta != _sent_meta:
+    stable_form = stable_meta(meta)
+    if stable_form != _sent_meta:
         state.broadcast_nowait({"type": "fleet_meta", "v": _next_v(), **meta})
     _sent_rows = {run_id: stable(row) for run_id, row in current.items()}
-    _sent_meta = meta
+    _sent_meta = stable_form
 
 
 def _deadline_of(run: RunTelemetry) -> float:
