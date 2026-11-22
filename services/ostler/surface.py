@@ -51,7 +51,8 @@ OLD_BACKLOG = "- [OLD-1] Tidy the thing\n- [OLD-2] Rename the other\n"
 
 def files() -> dict[str, str]:
     out = {"agents.yml": f"repo:\n  id_prefix: {PREFIX}\nbook:\n  home: repo\n", "home/.keep": "",
-           "unmoved/agents.yml": "repo:\n  id_prefix: U\n", "unmoved/services/old/service.py": "from ostler.book import Service\n", "plans/qa_plan.py": GOOD_PLAN,
+           "unmoved/agents.yml": "repo:\n  id_prefix: U\n", "unmoved/services/old/service.py": "from ostler.book import Service\n", "art/services/flat/service.py": "from ostler.book import Service\n",
+           "art/services/flat/owner.py": 'OWNER = "services.flat"\n', "plans/qa_plan.py": GOOD_PLAN,
            "plans/bad/qa_plan.py": BAD_PLAN, "plans/web/qa_plan.py": WEB_PLAN, "plans/phone/qa_plan.py": PHONE_PLAN,
            "plans/grpc/qa_plan.py": GRPC_PLAN, "vet/regions.json": "[]", "vet/manifest.json": "{}", "old-backlog.md": OLD_BACKLOG}
     out.update(DEMO_BOOK)

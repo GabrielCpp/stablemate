@@ -524,6 +524,14 @@ class SearchUnmovedBook(Action[Nothing, Plan]):
         return Transaction()
 
 
+class MoveBook(Action[Nothing, Plan]):
+    accept = Nothing
+
+    @staticmethod
+    def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
+        return Transaction(says=("moved services/flat to services/acme/flat", "rewrote 1 reference(s) in services/acme/flat/owner.py"))
+
+
 class RenderStack(Action[Nothing, Plan]):
     accept = Nothing
 

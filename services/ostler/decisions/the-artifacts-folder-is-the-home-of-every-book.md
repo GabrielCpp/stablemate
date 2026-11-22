@@ -1,7 +1,7 @@
 story: none
 date: 2026-11-22
-elements: SearchBook, CheckBook, SearchUnmovedBook
-sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root, core/stablemate_core/book_branch.py, ostler/ostler/book/home.py
+elements: SearchBook, CheckBook, SearchUnmovedBook, MoveBook, EnvCheck
+sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root, core/stablemate_core/book_branch.py, ostler/ostler/book/home.py, ostler/ostler/book/move.py, core/stablemate_core/books.py::service_package, ostler/ostler/book/index.py::services_of, ostler/ostler/environments/spec.py::stack_roots
 
 A book lives in the artifacts folder unless the repository says otherwise. `ostler book` resolves its book root through
 one function of the shared core, `book_home`, and no command walks up from the working directory looking for a
@@ -37,3 +37,37 @@ code's branch.
 lands it and removes the worktree and the branch. A conflict keeps both and names the files. The book does not play
 `branch` and `land`, because the demo world is not a git checkout, as for `affected` (see
 `a-storys-change-is-its-own-commits.md`).
+
+The artifacts folder namespaces the books by repository: a book is `services/<repo>/<name>/`, and its module is
+`services.<repo>.<name>`, or `services.<repo>.<name>.<surface>` for a book split by surface. `<repo>` is the repository's
+name. Books of different repositories name each other by their full module, as in `owner="services.<other>.<name>"`.
+`book search` without `--service` reads the books of the repository it is started in, and every book when started in the
+artifacts folder or in a repository that keeps its book. A book at the old flat place, `services/<name>/` in the
+artifacts folder, is skipped with a line on standard error that names the move, and the "no book" error of a command that
+asks for it names the move too. Neither is a refusal, because a refusal would stop every repository that shares the
+folder until all its books moved.
+
+`ostler book move [NAME ...] [--repo REPO] [--from FOLDER] [--to FOLDER] [--dry-run]` moves each named flat book into
+`services/<repo>/` of the artifacts folder. With `--from` it moves the entries of that folder, such as a repository's own
+`services/`, and with `--to` it writes to that folder instead of the artifacts folder. It prints `moved <path> to <path>`
+for each entry and `rewrote <n> reference(s) in <path>` for each file it changed, and with `--dry-run` it prints `would
+move` and `would rewrite` and changes nothing. It rewrites module names, `services.<name>` to `services.<repo>.<name>`,
+in the `.py`, `.md`, `.tsv` and configuration files under `services/`. It never rewrites a slash path such as
+`services/<name>/handler.py` in a `source=` pointer. It lists each such line as `check by hand`. It refuses, and changes
+nothing, when a target exists, when a source is missing, or when a book holds an absolute import of a moved module and the
+repository's name is not a Python identifier.
+
+A repository name that is not a Python identifier, such as `acme-app`, cannot appear in an `import` statement. A book
+imports its own modules relatively, and `book move` refuses an absolute import into such a name. The loader reaches the
+book through `importlib`, which loads `services.acme-app.api` without trouble.
+
+Each repository folder in the artifacts folder is a stack root, `services/<repo>/ops/stack.yml`, and the stacked books
+below it keep their folder names. One `secrets:` source is allowed across all the stack roots, and a second one is an
+error. A stack fixture is a path beside the book's `ops/` folder, or `repo://<name>/<path>` into the code repository.
+Two repositories that each hold a stacked book of the same name are refused when their stacks load together, with the
+error of a duplicate book. That limit is accepted for now, and the books are not qualified by repository until the
+pairing first happens.
+
+The sandbox keeps its book in the repository, so it is not a namespaced root. The book plays `MoveBook` against `art/`,
+the sandbox's artifacts folder, where `ostler -C art book move flat --repo acme` moves a flat book into `services/acme/`.
+It does not play `--from` or `--dry-run`, because the sandbox holds no second folder to move from.

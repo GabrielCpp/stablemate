@@ -39,7 +39,7 @@ class IndexBook(Command):
 
 
 class SearchBook(Command):
-    does = "Find a term among the endpoints, rules, actions, journeys, scenes and decisions of the book, and in the company, team and product pages above the services, which print first under a heading for each level."
+    does = "Find a term among the endpoints, rules, actions, journeys, scenes and decisions of the book, and in the company, team and product pages above the services, which print first under a heading for each level. Without --service it reads the books of the repository it is started in, and every book when started in the artifacts folder or in a repository that keeps its book."
     program = "ostler"
     argv = ("--full-ids", "book", "search", "hello", "--service", "services.demo")
     args = ARGS
@@ -88,6 +88,16 @@ class SearchUnmovedBook(Command):
     source = ("ostler/ostler/book/index.py", "ostler/ostler/book/cli.py")
 
 
+class MoveBook(Command):
+    does = "Move a book that sits flat under the artifacts folder's `services/` into its repository's folder `services/<repo>/<name>/`, and rewrite every module name that points at it: print one line for each book moved and for each file rewritten."
+    program = "ostler"
+    argv = ("-C", "art", "book", "move", "flat", "--repo", "acme")
+    args = ARGS
+    answers = (Exit(0, Lines(), "the move and each rewritten file"),)
+    carries = act.MoveBook
+    source = ("ostler/ostler/book/move.py", "ostler/ostler/book/cli.py")
+
+
 class ListBookDecisions(Command):
     does = "List the decisions the book settled, one line each: the slug, its story and date, and its first line."
     program = "ostler"
@@ -132,4 +142,4 @@ class DrawBook(Command):
     source = ("ostler/ostler/book/graph.py", "ostler/ostler/book/matrix.py")
 
 
-ALL = (CheckBook, IndexBook, SearchBook, ExplainBook, ExplainNothing, SearchUnmovedBook, ListBookDecisions, ListBookPages, ExploreBook, RunBook, DrawBook)
+ALL = (CheckBook, IndexBook, SearchBook, ExplainBook, ExplainNothing, SearchUnmovedBook, MoveBook, ListBookDecisions, ListBookPages, ExploreBook, RunBook, DrawBook)

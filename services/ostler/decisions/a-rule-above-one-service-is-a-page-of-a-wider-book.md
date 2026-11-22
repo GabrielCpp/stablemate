@@ -1,7 +1,7 @@
 story: none
 date: 2026-11-21
 elements: SearchBook, ListBookPages
-sources: ostler/ostler/book/pages.py, ostler/ostler/book/index.py::cmd_search_book
+sources: ostler/ostler/book/pages.py, ostler/ostler/book/index.py::cmd_search_book, core/stablemate_core/books.py::product_folder
 
 A rule that sits above any one service has no decision to live in, because a decision must name elements of one
 service's book. Such a rule goes in a page of one of three books, by how far it reaches. The product book is
@@ -13,6 +13,7 @@ every team follows. Agents write product pages. People write team and company pa
 The product is `book.product` in the code repository's `agents.yml`, else the repository's name. With `book.home: repo`
 the product book stays `product/<slug>.md` beside `services/`. Started in the artifacts folder, `book pages` lists every
 product folder under `products/`, and a product page's search heading is `== product <name>`.
+The product pages are read from the book root of the start, so a page committed on an open book branch is seen from the code checkout on the same branch. The team and company pages are read from the artifacts folder.
 
 The team is `book.team` in the code repository's `agents.yml`, else in the manifest found from the book root. With no `book.team` the team book is not read, and another
 team's folder is never read. A folder that does not exist is skipped without a word.
@@ -24,7 +25,7 @@ its statement. It names no story and no element.
 When two books disagree, the order of authority is company, team, product, service decision, story. A reader that finds
 a conflict reports it and picks neither side.
 
-`book search` reads the three levels in every case, with a service named or not. It prints their hits before the
+`book search` reads the three levels in every case, with a service named or not. Without `--service`, the service books it reads are those of the repository it is started in, and every book when started in the artifacts folder or in a repository that keeps its book. It prints their hits before the
 service books', under `== company`, `== team <name>` and `== product` (`== product <name>` when the book has a named product), in that order, in the same lines as a decision's.
 The kinds `company`, `team` and `product` each show only that level and every other kind leaves the levels out. A page
 whose status starts with superseded is still found, and its hit line ends with `(superseded)`. A book with none of the
