@@ -47,9 +47,13 @@ packs:
 # not this repo's call to make unilaterally -- so `stablemate-groom` says
 # out loud that the stack skill does not apply here.
 #
-# This repo names no skills directly: `ostler/ostler-repo-docs`, which governs its
-# prose entry surface, ships in the `stablemate` pack above, and its root rules are
-# *policies* rather than skills — see localInstructions below.
+# `repo/commit` is the one skill named directly. The `commit-and-push` policy below
+# links to it, so the procedure loads when a commit is due and the root file carries
+# only the pointer. `ostler/ostler-repo-docs`, which governs the prose entry surface,
+# ships in the `stablemate` pack above, and the root rules are *policies* rather than
+# skills — see localInstructions below.
+skills:
+  - repo/commit
 
 prompts:
   - agent-library/update-skill-from-conversation

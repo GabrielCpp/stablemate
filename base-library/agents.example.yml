@@ -158,7 +158,9 @@ exclude:
 localInstructions:
   # A repo-root file whose house rules and commit cadence are both policies (no
   # index cost, and the text is written once for every repo that aggregates it).
-  # `commit-and-push` renders the repo-specific bits from the `template:` block.
+  # `commit-and-push` is a short pointer to the `repo/commit` skill, which renders
+  # the repo-specific bits from the `template:` block. Select that skill in
+  # `skills:` too, or the policy's link has nothing to resolve to.
   - policies:
       - house-rules
       - commit-and-push

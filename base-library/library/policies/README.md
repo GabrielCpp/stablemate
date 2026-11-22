@@ -25,11 +25,11 @@ Write a policy when **all** of these hold:
   a skill.
 
 Most policies are **rules** — the standing constraints the procedures run under. A
-*procedure* can be one too, but only once the second bullet holds of it: a procedure
-that is resident every turn is never reached by name, and keeping it a `/`-command as
-well leaves a second copy of text that was never off-screen. `commit-and-push` is the
-worked example — every change ends there, every repo that had it aggregated it, and the
-command it used to be went unused. A procedure only *some* turns need is still a prompt.
+*procedure* belongs in a skill, and the policy keeps a one-paragraph pointer to it.
+`commit-and-push` is the worked example. Its policy carries the `commit-msg` hook and a
+link to the `repo/commit` skill. The full procedure loads only in the turn that
+commits, so every other turn pays for the pointer alone. A repo that aggregates the
+policy selects that skill too.
 
 Everything else stays a skill or a prompt. A policy that a second repo wants is fine —
 it is library text like any other; layer shadowing and namespacing work the same way.
