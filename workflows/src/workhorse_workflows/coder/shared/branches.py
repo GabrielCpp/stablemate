@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from workhorse._vendor.stablemate_core import book_branch, config as core_config
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.plan import get_affected_repos, plan_context
@@ -16,7 +17,6 @@ from workhorse_workflows.kit import (
     checkout,
     current_branch,
     default_branch,
-    find_book_root,
     find_docs_root,
     find_repo_root,
     local_branch_exists,
@@ -74,22 +74,53 @@ def _branch_repo(repo_path: Path, repo_name: str, branch: str, logger: logging.L
     return "branched"
 
 
+def is_artifacts_repo(folder: Path) -> bool:
+    """Whether *folder* is a checkout of the repository that tracks the artifacts folder."""
+    top = core_config.artifacts_toplevel()
+    return top is not None and core_config.repository_identity(folder).main_folder == top
+
+
+def book_worktree(branch: str) -> Path | None:
+    """The worktree of the artifacts repository checked out on *branch*, or None when there is none."""
+    top = core_config.artifacts_toplevel()
+    if top is None:
+        return None
+    found = core_config.checkout_on(top, branch)
+    return found if found != top else None
+
+
+def land_book(logger: logging.Logger, branch: str) -> None:
+    """Land the book branch on the artifacts base and log what happened; a refusal is only logged."""
+    try:
+        landing, _ = book_branch.close_book_branch(branch)
+    except core_config.ConfigError as exc:
+        logger.warning("the book branch %s did not land: %s", branch, exc)
+        return
+    files = f" ({', '.join(landing.files)})" if landing.files else ""
+    logger.info("book %s %s: %s%s", landing.action, branch, landing.reason, files)
+
+
 @blueprint.node
 def cut_run_branch(
     logger: logging.Logger,
     name: str = "",
     repo_dir: str = "",
 ) -> RunBranch:
-    """Put the docs repo on `feat/<name>`, the one branch every item of the run lands on."""
+    """Put the docs repo on `feat/<name>`, the one branch every item of the run lands on, and open the book branch beside it."""
     docs_root = find_docs_root(repo_dir)
-    if find_book_root(repo_dir) != docs_root:
-        branch = current_branch(find_repo_root(repo_dir))
+    repo = find_repo_root(repo_dir)
+    identity = core_config.repository_identity(repo)
+    if identity.folder != identity.main_folder:
+        branch = current_branch(repo)
         logger.info("a worktree run keeps its branch %s; nothing is cut", branch)
+        book_branch.open_book_branch(repo, branch)
         return RunBranch(base_branch=_resolve_base(logger, docs_root), branch=branch)
     base = _resolve_base(logger, docs_root)
     branch = epic_branch(name)
-    if _branch_repo(docs_root, docs_root.name, branch, logger) == "skipped":
-        raise WorkflowFailed(f"cannot cut {branch}: {docs_root} is not a git repo")
+    if not is_artifacts_repo(docs_root):
+        if _branch_repo(docs_root, docs_root.name, branch, logger) == "skipped":
+            raise WorkflowFailed(f"cannot cut {branch}: {docs_root} is not a git repo")
+    book_branch.open_book_branch(repo, branch)
     return RunBranch(base_branch=base, branch=branch)
 
 
@@ -133,8 +164,11 @@ def branch_code_repos(
 
 
 __all__ = [
+    "book_worktree",
     "branch_code_repos",
     "cut_run_branch",
     "epic_branch",
     "epic_of_branch",
+    "is_artifacts_repo",
+    "land_book",
 ]

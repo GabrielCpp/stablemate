@@ -6,14 +6,22 @@ from pathlib import Path
 
 from github import GithubException
 from ostler import path as okf_path
+from workhorse._vendor.stablemate_core import books, config as core_config
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.branches import epic_of_branch
+from workhorse_workflows.coder.shared.branches import (
+    book_worktree,
+    epic_of_branch,
+    is_artifacts_repo,
+    land_book,
+)
 from workhorse_workflows.coder.shared.schemas.pr import RunPrs
 from workhorse_workflows.kit import (
     branch_exists,
+    current_branch,
     find_docs_root,
     find_open_pr,
+    find_repo_root,
     get_repo_config,
     is_ancestor,
     local_branch_exists,
@@ -49,34 +57,89 @@ def open_run_prs(
     body = _pr_body(stories or [])
 
     pr_urls: list[str] = []
+    outcomes: list[str] = []
     for name, path, base in _targets(docs_root, base_branch, repos):
         if not local_branch_exists(path, branch):
             logger.info("%s: no %s, nothing to PR", name, branch)
+            outcomes.append("none")
             continue
         if is_ancestor(path, branch, base):
             logger.info("%s: %s has nothing past %s, nothing to PR", name, branch, base)
+            outcomes.append("none")
             continue
         if not origin_url(path):
             if merge_into(path, branch, base):
                 logger.info("%s: no origin remote — merged %s into %s locally", name, branch, base)
+                outcomes.append("merged")
             else:
                 logger.warning("%s: no origin remote and %s did not merge into %s", name, branch, base)
+                outcomes.append("failed")
             continue
         token = resolve_github_token(path)
         if not token:
             logger.info("%s: no GitHub token — leaving %s for a manual PR", name, branch)
+            outcomes.append("pr")
             continue
         title = commits.subject("feat", commits.scope(name), description)
         result, url = _push_and_pr(logger, path, branch, base, title, body, token)
-        if result != "skipped" and url:
+        if result == "skipped":
+            outcomes.append("failed")
+            continue
+        outcomes.append("pr")
+        if url:
             pr_urls.append(url)
 
+    _deliver_book(logger, repo_dir, branch, outcomes, description, body)
     return RunPrs(status="opened" if pr_urls else "skipped", pr_urls=pr_urls)
 
 
+def _deliver_book(
+    logger: logging.Logger, repo_dir: str, branch: str, outcomes: list[str], description: str, body: str
+) -> None:
+    """Deliver the book branch once the code is delivered: land it locally, open its own PR, or keep it for `ostler book land`."""
+    repo = find_repo_root(repo_dir)
+    top = core_config.artifacts_toplevel()
+    if books.book_in_repo(repo) or top is None:
+        return
+    book = book_worktree(branch)
+    if book is None:
+        return
+    if "failed" in outcomes:
+        logger.warning("the code did not all land: keeping the book branch %s open", branch)
+        return
+    if origin_url(top):
+        _book_pr(logger, top, book, branch, description, body)
+        return
+    if "pr" in outcomes:
+        logger.info("the book lands with the code: ostler book land --branch %s", branch)
+        return
+    land_book(logger, branch)
+
+
+def _book_pr(
+    logger: logging.Logger, top: Path, book: Path, branch: str, description: str, body: str
+) -> None:
+    """Open the artifacts repository's own PR for the book branch."""
+    base = current_branch(top)
+    if is_ancestor(book, branch, base):
+        logger.info("%s: %s has nothing past %s, nothing to PR", top.name, branch, base)
+        return
+    token = resolve_github_token(top)
+    if not token:
+        logger.info(
+            "%s: no GitHub token — the book lands with the code: ostler book land --branch %s",
+            top.name, branch,
+        )
+        return
+    title = commits.subject("feat", commits.scope(top.name), description)
+    _push_and_pr(logger, book, branch, base, title, body, token)
+
+
 def _targets(docs_root: Path, base_branch: str, repos: dict) -> list[tuple[str, Path, str]]:
-    """The docs repo against the run's base, then each code repo against its own base."""
-    targets = [(docs_root.name, docs_root, base_branch)]
+    """The docs repo against the run's base unless it is the artifacts repo, then each code repo against its own base."""
+    targets = []
+    if not is_artifacts_repo(docs_root):
+        targets.append((docs_root.name, docs_root, base_branch))
     seen = {docs_root.resolve()}
     for name, info in repos.items():
         path = Path(info.get("path", ""))

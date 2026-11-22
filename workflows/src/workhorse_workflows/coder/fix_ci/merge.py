@@ -4,8 +4,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from workhorse._vendor.stablemate_core import config as core_config
 from workhorse_workflows.coder.shared.blueprint import blueprint
-from workhorse_workflows.coder.shared.branches import epic_branch
+from workhorse_workflows.coder.shared.branches import book_worktree, epic_branch, land_book
 from workhorse_workflows.coder.shared.schemas.pr import MergeFlagged, MergeOutcome
 from workhorse_workflows.kit import (
     find_open_pr,
@@ -59,6 +60,7 @@ def merge_pr(
         if _find_merged_pr(repo, branch) is not None:
             logger.info("PR for %s already merged into %s", branch, base_branch)
             _sync_base(logger, root, base_branch, token)
+            _land_book(logger, branch)
             return MergeOutcome(merge_status="merged", base_branch=base_branch)
         logger.info("no open PR for %s — nothing to merge", branch)
         return MergeOutcome(merge_status="unavailable", base_branch=base_branch)
@@ -77,7 +79,16 @@ def merge_pr(
 
     logger.info("merged %s into %s (--%s)", branch, base_branch, method)
     _sync_base(logger, root, base_branch, token)
+    _land_book(logger, branch)
     return MergeOutcome(merge_status="merged", base_branch=base_branch)
+
+
+def _land_book(logger: logging.Logger, branch: str) -> None:
+    """Land the book branch of a merged code PR when the artifacts repo has no remote of its own."""
+    top = core_config.artifacts_toplevel()
+    if top is None or origin_url(top) or book_worktree(branch) is None:
+        return
+    land_book(logger, branch)
 
 
 def _sync_base(logger: logging.Logger, root: Path, base: str, token: str) -> None:

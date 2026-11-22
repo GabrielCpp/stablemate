@@ -4,6 +4,8 @@ The `coder` workflow turns epics and stories into committed code. The launch pac
 
 The `delivery` parameter decides where the work lands. With `pr`, the default, every item commits on one `feat/` branch, and the run opens one PR per repo it changed, waits for its CI to go green and leaves the merge to a reviewer. With `commit`, every item commits on the branch each repo is on, and no PR opens. In both, each story's commits carry its `Story:` footer.
 
+The book follows the code. With `pr`, the run opens a worktree of the artifacts repository on the same `feat/` branch and never switches the artifacts folder off its base. A local merge of the code lands the book right after it by rebase and fast-forward. Code that went out as a pull request keeps the book branch open, and the log names `ostler book land --branch <b>`. An artifacts repository with an origin and a token gets its own book pull request. With `commit`, the book commits straight on the artifacts base. A repository whose `agents.yml` sets `book.home: repo` keeps its book beside its code and opens no book branch.
+
 The `turn_minutes` parameter, 60 by default, bounds every owner turn and every resolver turn of every lane. A turn still running at that mark is cut, its session is kept, and the lane asks the operator. The answer starts the turn again on the same session. A value that is not a whole number above zero is refused at launch.
 
 The `review_minutes` parameter, 20 by default, bounds the end review of a story the service books judged. A review still running at that mark is cut, and the lane asks the operator.
