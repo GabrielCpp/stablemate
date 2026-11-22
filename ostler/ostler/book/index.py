@@ -137,6 +137,8 @@ def entries_of(root: str, name: str) -> list[Entry]:
 
 
 def folders(base: str) -> list[str]:
+    if not os.path.isdir(base):
+        return []
     return [n for n in sorted(os.listdir(base)) if os.path.isdir(os.path.join(base, n)) and not n.startswith((".", "_"))]
 
 

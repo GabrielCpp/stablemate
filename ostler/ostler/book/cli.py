@@ -76,6 +76,9 @@ def default_out(args: argparse.Namespace) -> bool:
 
 
 def load(name: str) -> Service[Any]:
+    root = book_root(os.getcwd())
+    if not os.path.isdir(os.path.join(root, *name.split("."))):
+        raise SystemExit(f"no book {name!r} under {root}")
     return importlib.import_module(f"{name}.service").service
 
 

@@ -94,3 +94,38 @@ def test_milestone_books_are_read_under_the_book_home(repo):
     write(repo / "docs/milestones/sign-in/milestone.md", milestone_md())
     write(_artifacts() / "services/area/service.py", "")
     assert findings(repo, "milestone-journey-services") == []
+
+
+def _no_services_artifacts() -> None:
+    assert not (_artifacts() / "services").exists()
+
+
+def test_search_in_a_repository_with_no_book_yet_finds_no_service_hit(tmp_path):
+    acme = _lone_repository(tmp_path)
+    write(acme / "agents.yml", "repo:\n  id_prefix: A\n")
+    _no_services_artifacts()
+    done = _ostler(["book", "search", "hello"], acme)
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "Traceback" not in done.stderr
+    assert "services." not in done.stdout
+    assert "nothing in the book says 'hello'" in done.stdout
+
+
+def test_pages_in_a_repository_with_no_book_yet_exits_0(tmp_path):
+    acme = _lone_repository(tmp_path)
+    write(acme / "agents.yml", "repo:\n  id_prefix: A\n")
+    done = _ostler(["book", "pages"], acme)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "Traceback" not in done.stderr
+
+
+def test_check_and_explain_in_a_repository_with_no_book_yet_name_the_missing_book(tmp_path):
+    acme = _lone_repository(tmp_path)
+    write(acme / "agents.yml", "repo:\n  id_prefix: A\n")
+    for arguments in (["book", "check", "services.api", "--app", str(acme)], ["book", "explain", "services.api", "Anything"]):
+        done = _ostler(arguments, acme)
+        assert done.returncode != 0, done.stdout + done.stderr
+        assert "Traceback" not in done.stderr, done.stderr
+        assert "services.api" in done.stderr
+        assert str(_artifacts()) in done.stderr
+        assert len(done.stderr.strip().splitlines()) == 1, done.stderr
