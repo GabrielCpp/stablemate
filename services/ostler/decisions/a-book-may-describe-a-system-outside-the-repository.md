@@ -29,9 +29,13 @@ the wrong vendor, is a finding the author sees in seconds on any machine.
 against the live system with `run`. A fetch in `check` would make a seconds-long, offline gate depend on a vendor's uptime.
 
 `stale`, `affected` and `missing` compare code with the book, and there is none. They print `<name> describes an outside
-system: no code to compare` and exit 0, so a workflow that asks whether a story touched the book finds nothing stale and
+system: no code to compare, a play against the live system shows whether it still holds` and exit 0, so a workflow that asks whether a story touched the book finds nothing stale and
 nothing to stamp. `verified` prints `not stamped: <name> describes an outside system` and exits 0, and writes no stamp file.
 `run`, `index`, `search` and `explain` read a documented book as any other.
+
+That answer passes because a story's commits cannot change a system outside the repository. It does not say the book is
+current. No command yet tells when the outside system changed under the book, and a play against the live system is what
+shows it.
 
 The purpose of a book, operating software without its code, is why such a book exists: the code a book cannot name is no
 reason to leave the system without one.

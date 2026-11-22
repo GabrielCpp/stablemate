@@ -1,6 +1,6 @@
 """The `ostler book` commands, played on the small book `demo` the sandbox holds under services/demo. The commands that
 need a browser, a device, a server or a git checkout of the app are not played: stale, affected, missing and verified, which
-answer a book of an outside system with the line that it describes an outside system and has no code to compare."""
+answer a book of an outside system with the line that it describes an outside system, has no code to compare and is shown by a play against the live system."""
 
 from __future__ import annotations
 

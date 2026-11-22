@@ -247,8 +247,10 @@ service = Service(
 A service declares `app` or `documentation`, never both. Each element's `source` is the
 documentation address of what it states, with the usual `::<anchor>` suffix. `check` holds each
 pointer to the declared sites, a prefix match that calls no network, and refuses a file path.
-`stale`, `affected`, `missing` and `verified` print that the book has no code to compare and
-exit 0. The live system proves the book: play it with `run` against the real service.
+`stale`, `affected` and `missing` print `<name> describes an outside system: no code to compare, a play against the live system shows whether it still holds` and
+exit 0. That pass does not say the book is current: nothing was compared. `verified` prints
+`not stamped: <name> describes an outside system` and exits 0. The live system proves the book:
+play it with `run` against the real service.
 
 ## The world every cell runs in
 

@@ -202,7 +202,7 @@ service = Service(
 
 
 def test_a_book_of_an_outside_system_is_never_touched_stamped_or_refused(
-    books: Path, git: Git, logger: logging.Logger
+    books: Path, git: Git, logger: logging.Logger, caplog: pytest.LogCaptureFixture
 ) -> None:
     _write(books, "services/vendor/__init__.py", "")
     _write(books, "services/vendor/service.py", OUTSIDE)
@@ -210,10 +210,12 @@ def test_a_book_of_an_outside_system_is_never_touched_stamped_or_refused(
     _commit(git, books, "docs: add the book of the vendor\n\nStory: S-1", "services/vendor")
 
     covered = book_nodes.covered_services(logger, ["a"], repo_dir=str(books), story_slug="s-1", story_id="S-1")
-    played = book_nodes.stamp_books_verified(logger, ["vendor"], story_slug="s-1", story_id="S-1", repo_dir=str(books))
+    with caplog.at_level(logging.INFO, logger=logger.name):
+        played = book_nodes.stamp_books_verified(logger, ["vendor"], story_slug="s-1", story_id="S-1", repo_dir=str(books))
     checked = book_nodes.book_check(logger, "vendor", repo_dir=str(books))
 
     assert "vendor" not in covered.services, covered
     assert played.exit_code == 0, played
     assert not (books / "services" / "vendor" / "VERIFIED").exists()
     assert checked.exit_code == 0, checked
+    assert "the book of services.vendor describes an outside system, nothing to stamp" in caplog.text, caplog.text

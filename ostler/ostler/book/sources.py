@@ -75,7 +75,7 @@ def is_web(pointer: str) -> bool:
 
 
 def no_code(service: Service[Any]) -> str:
-    return f"{service.name} describes an outside system: no code to compare"
+    return f"{service.name} describes an outside system: no code to compare, a play against the live system shows whether it still holds"
 
 
 def pointer_missing(pointer: str, app_root: str | None, members: dict[str, Path]) -> bool:

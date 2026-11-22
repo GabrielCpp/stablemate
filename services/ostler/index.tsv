@@ -312,15 +312,19 @@ decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-ma
 decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:29	against the live system with `run`. A fetch in `check` would make a seconds-long, offline gate depend on a vendor's uptime.
 decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:30	
 decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:31	`stale`, `affected` and `missing` compare code with the book, and there is none. They print `<name> describes an outside
-decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:32	system: no code to compare` and exit 0, so a workflow that asks whether a story touched the book finds nothing stale and
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:32	system: no code to compare, a play against the live system shows whether it still holds` and exit 0, so a workflow that asks whether a story touched the book finds nothing stale and
 decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:33	nothing to stamp. `verified` prints `not stamped: <name> describes an outside system` and exits 0, and writes no stamp file.
 decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:34	`run`, `index`, `search` and `explain` read a documented book as any other.
 decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:35	
-decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:36	The purpose of a book, operating software without its code, is why such a book exists: the code a book cannot name is no
-decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:37	reason to leave the system without one.
-decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:38	
-decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:39	The book of ostler plays `check` in its demo world. The four commands that read a git checkout are not played there, so
-decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:40	their new answer is stated here and in the module docstring of the commands.
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:36	That answer passes because a story's commits cannot change a system outside the repository. It does not say the book is
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:37	current. No command yet tells when the outside system changed under the book, and a play against the live system is what
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:38	shows it.
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:39	
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:40	The purpose of a book, operating software without its code, is why such a book exists: the code a book cannot name is no
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:41	reason to leave the system without one.
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:42	
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:43	The book of ostler plays `check` in its demo world. The four commands that read a git checkout are not played there, so
+decision	a-book-may-describe-a-system-outside-the-repository	decisions/a-book-may-describe-a-system-outside-the-repository.md:44	their new answer is stated here and in the module docstring of the commands.
 decision	a-numbered-shelf-is-refused-until-it-is-renamed	decisions/a-numbered-shelf-is-refused-until-it-is-renamed.md:1	story: none
 decision	a-numbered-shelf-is-refused-until-it-is-renamed	decisions/a-numbered-shelf-is-refused-until-it-is-renamed.md:3	elements: PathEpic, LayoutApply
 decision	a-numbered-shelf-is-refused-until-it-is-renamed	decisions/a-numbered-shelf-is-refused-until-it-is-renamed.md:4	sources: 136ae7630, ostler/ostler/layout.py::check, ostler/ostler/layout.py::apply

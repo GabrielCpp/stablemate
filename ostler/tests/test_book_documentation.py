@@ -16,7 +16,7 @@ from ostler.book import App, Documentation, Service
 from ostler.book.errors import BookError
 
 SITE = "https://vendor.example.com/docs"
-NO_CODE = "vendor describes an outside system: no code to compare"
+NO_CODE = "vendor describes an outside system: no code to compare, a play against the live system shows whether it still holds"
 
 
 def _vendor() -> Service[Any]:

@@ -272,7 +272,10 @@ def stamp_books_verified(
         for module in book_modules(root, package, name):
             pending = run_tool(_stale_argv(module, app), cwd=root, env=BOOK_ENV)
             if pending.returncode == 0:
-                logger.info("the book of %s is current, nothing to stamp", module)
+                if "describes an outside system" in pending.stdout:
+                    logger.info("the book of %s describes an outside system, nothing to stamp", module)
+                else:
+                    logger.info("the book of %s is current, nothing to stamp", module)
                 continue
             if pending.returncode == UNVERIFIED_EXIT and pending.stdout.startswith("not verified"):
                 logger.info("the book of %s has no verified commit and belongs to the book-writing flow", module)
