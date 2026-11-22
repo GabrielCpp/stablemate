@@ -1,6 +1,6 @@
 """The books above one service: prose pages, one markdown file each, at three levels. The company
 book is `company/` and a team book is `teams/<team>/`, both in the artifacts dir. The product book is
-`products/<product>/` in the artifacts dir, or `product/` beside `services/` when the repository keeps its book. A page has a `date:` line, optional `sources:` and `status:` lines, a
+`products/<product>/` in the book root of the start, the artifacts dir or its worktree on the start's branch, or `product/` beside `services/` when the repository keeps its book. A page has a `date:` line, optional `sources:` and `status:` lines, a
 blank line, then prose whose first line is its statement."""
 
 from __future__ import annotations
@@ -61,13 +61,15 @@ def team_of(root: str) -> str:
     return (manifest.book.team if manifest is not None else None) or ""
 
 
-def product_levels(artifacts: str, start: Path) -> list[Level]:
+def product_levels(start: Path) -> list[Level]:
     if books.book_in_repo(start):
         return [Level("product", "", os.path.join(str(books.book_settings(start).folder), "product"), "product")]
     name = books.book_product(start)
     if name is not None:
-        return [Level("product", name, os.path.join(artifacts, "products", name), f"products/{name}")]
-    folder = os.path.join(artifacts, "products")
+        folder = books.product_folder(start)
+        if folder is not None:
+            return [Level("product", name, str(folder), f"products/{name}")]
+    folder = str(books.book_home(start) / "products")
     names = sorted(n for n in os.listdir(folder) if os.path.isdir(os.path.join(folder, n))) if os.path.isdir(folder) else []
     return [Level("product", n, os.path.join(folder, n), f"products/{n}") for n in names]
 
@@ -79,7 +81,7 @@ def levels(root: str, start: str | None = None) -> list[Level]:
     team = books.book_settings(origin).team or team_of(root)
     if team:
         found.append(Level("team", team, os.path.join(artifacts, "teams", team), f"teams/{team}"))
-    return found + product_levels(artifacts, origin)
+    return found + product_levels(origin)
 
 
 def parse(path: str, level: Level) -> Page:

@@ -13,6 +13,7 @@ import pytest
 
 from book_fakes import isolated_services
 from conftest import keep_book_in_repo
+from ostler._vendor.stablemate_core import book_branch
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book.pages import cmd_pages
 from ostler.book.index import cmd_search_book
@@ -284,3 +285,59 @@ def test_search_heading_names_the_product(tmp_path: Path, artifacts: Path, monke
     out = capsys.readouterr().out
     assert "== product acme\n" in out
     assert "product   products/acme/glaze.md:4\n" in out
+
+
+def _git(folder: Path, *args: str) -> None:
+    subprocess.run(["git", "-C", str(folder), *args], check=True, capture_output=True)
+
+
+def _committed_repo(folder: Path) -> Path:
+    folder.mkdir(parents=True)
+    _git(folder, "init", "--quiet", "-b", "main")
+    _git(folder, "commit", "--quiet", "--allow-empty", "-m", "x")
+    return folder.resolve()
+
+
+@pytest.fixture
+def branched(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+    config_file = tmp_path / "config.toml"
+    config_file.write_text(f'worktree_dir = "{tmp_path / "trees"}"\n')
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config_file))
+    artifacts = _committed_repo(tmp_path / "artifacts-repo")
+    monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(artifacts))
+    code = _committed_repo(tmp_path / "acme")
+    _git(code, "worktree", "add", "--quiet", "-b", "feat/x", str(tmp_path / "acme-x"))
+    on_branch = (tmp_path / "acme-x").resolve()
+    book = book_branch.open_book_branch(on_branch)
+    _in_products(book, "acme", "glaze", GLAZE)
+    _git(book, "add", "products")
+    _git(book, "commit", "--quiet", "-m", "add a product page")
+    (book / "services").mkdir()
+    return {"base": code, "branch": on_branch, "book": book}
+
+
+def test_pages_from_a_checkout_on_a_book_branch_list_the_page_committed_there(branched: dict[str, Path], monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(branched["branch"])
+    assert _listed() == ["product  glaze  2026-11-21  A glaze is a ceramic coating fired onto a piece."]
+
+
+def test_search_from_a_checkout_on_a_book_branch_names_the_product(branched: dict[str, Path], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    monkeypatch.chdir(branched["branch"])
+    assert _search("fired onto") == 0
+    out = capsys.readouterr().out
+    assert "== product acme\n" in out
+    assert "products/acme/glaze.md:4" in out
+
+
+def test_pages_from_a_checkout_on_the_base_branch_leave_out_the_branch_page(branched: dict[str, Path], monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.chdir(branched["base"])
+    assert _listed() == []
+
+
+def test_pages_from_an_artifacts_worktree_list_that_checkouts_products(branched: dict[str, Path], monkeypatch: pytest.MonkeyPatch):
+    _in_products(branched["book"], "globex", "kiln", KILN)
+    monkeypatch.chdir(branched["book"])
+    assert _listed("product") == [
+        "product  glaze  2026-11-21  A glaze is a ceramic coating fired onto a piece.",
+        "product  kiln  2026-11-20  A kiln fires the ceramic piece twice.",
+    ]
