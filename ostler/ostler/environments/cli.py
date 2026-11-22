@@ -109,10 +109,10 @@ def run(args: argparse.Namespace, root: Path) -> int:
         print(json.dumps(spec.schema(), indent=2))
         return 0
     if op == "reset":
-        return commands.cmd_reset(root, copy_name, args.wait)
+        return commands.cmd_reset(root, copy_name, args.wait, code=Path.cwd())
     if op == "up":
         outcome = commands.cmd_up(root, args.targets, copy_name=copy_name, fixtures=fixtures,
-                                  fresh=args.fresh, wait_seconds=args.wait)
+                                  fresh=args.fresh, wait_seconds=args.wait, code=Path.cwd())
     elif op == "down":
         outcome = commands.cmd_down(root, copy_name=copy_name, keep_data=args.keep_data)
     elif op == "ls":
@@ -120,11 +120,12 @@ def run(args: argparse.Namespace, root: Path) -> int:
     elif op == "prune":
         outcome = commands.cmd_prune(dry_run=args.dry_run)
     elif op == "render":
-        outcome = commands.cmd_render(root, args.targets, copy_name=copy_name, fixtures=fixtures)
+        outcome = commands.cmd_render(root, args.targets, copy_name=copy_name, fixtures=fixtures,
+                                   code=Path.cwd())
     elif op == "address":
         outcome = commands.cmd_address(root, args.name, copy_name=copy_name)
     else:
-        outcome = commands.cmd_check(root)
+        outcome = commands.cmd_check(root, code=Path.cwd())
     if args.json:
         print(json.dumps(outcome.data, indent=2))
     else:

@@ -40,13 +40,13 @@ def run_env(root: Path, lease: str = "", near: Path | None = None,
 
 
 def up(root: Path, *, lease: str = "", near: Path | None = None, holder: int | None = None,
-       runner: Runner = run_command) -> QaOutcome | None:
+       runner: Runner = run_command, code: Path | None = None) -> QaOutcome | None:
     """Bring the books near *near* up as the copy *lease* names, held by the process *holder*."""
     books = books_near(root, near)
     if not books:
         return None
     outcome = commands.cmd_up(root, books, copy_name=lease or SHARED, holder=holder,
-                              runner=runner)
+                              runner=runner, code=code)
     data = {**outcome.data, "lease": lease, "ready": "yes" if outcome.ok else "no"}
     if not outcome.ok:
         return QaOutcome(False, f"stack bring-up failed: {outcome.message}", data)

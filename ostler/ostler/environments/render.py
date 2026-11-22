@@ -12,7 +12,7 @@ from typing import Any
 import jinja2
 import yaml
 
-from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core import books
 from ostler.environments.checkout import locate
 from ostler.environments.spec import Catalog, Service
 
@@ -72,7 +72,7 @@ def fixture_sets(catalog: Catalog, services: Sequence[Service], chosen: Sequence
 
 def render(
     catalog: Catalog, services: Sequence[Service], copy: Copy, *, repo: Path,
-    fixtures: Sequence[str], pinned: Mapping[str, int] | None = None,
+    fixtures: Sequence[str], pinned: Mapping[str, int] | None = None, code: Path | None = None,
 ) -> Rendered:
     """The compose file and helper files that bring *services* up as *copy*; a named copy publishes each service of *pinned* on its host port."""
     environment = jinja2.Environment(
@@ -80,7 +80,7 @@ def render(
     rendered = Rendered(compose={"name": copy.project, "services": {}, "volumes": {}})
     blocks: dict[str, dict[str, Any]] = {}
     for service in services:
-        context = _context(catalog, service, copy, repo=repo, fixtures=fixtures)
+        context = _context(catalog, service, copy, repo=repo, fixtures=fixtures, code=code)
         _place_files(rendered, environment, service, copy, context)
         block = _block(rendered, environment, service, context)
         rendered.compose["volumes"].update(_scope_volumes(service, block))
@@ -178,7 +178,8 @@ def _place_files(
 
 
 def _context(
-    catalog: Catalog, service: Service, copy: Copy, *, repo: Path, fixtures: Sequence[str]
+    catalog: Catalog, service: Service, copy: Copy, *, repo: Path, fixtures: Sequence[str],
+    code: Path | None = None,
 ) -> dict[str, Any]:
     def service_name(ref: str) -> str:
         qualified = ref if ":" in ref else f"{service.book}:{ref}"
@@ -199,7 +200,7 @@ def _context(
         "project": copy.project,
         "shared": copy.shared,
         "repo": str(repo),
-        "repos": {name: str(path) for name, path in core_config.workspace_checkouts(repo).items()},
+        "repos": {name: str(path) for name, path in books.book_checkouts(code or repo).items()},
         "ops_dir": str(service.ops_dir),
         "env_dir": str(copy.directory),
         "dir": str(copy.directory / service.compose_name),

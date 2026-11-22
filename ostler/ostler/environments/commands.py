@@ -103,11 +103,11 @@ def _fixture_sets(
     return list(dict.fromkeys([*retained, *added]))
 
 
-def cmd_check(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
+def cmd_check(root: Path, *, runner: Runner = run_command, code: Path | None = None) -> EnvOutcome:
     """Every reason the books' stack files do not fit together, and every `${NAME}` no source defines."""
     catalog = spec.load(root)
     if not catalog.errors and catalog.books:
-        catalog.errors += _name_problems(root, catalog, runner)
+        catalog.errors += _name_problems(root, catalog, runner, code)
     data = {"ok": not catalog.errors, "books": sorted(catalog.books),
             "services": sorted(catalog.services), "errors": catalog.errors}
     if catalog.errors:
@@ -118,14 +118,14 @@ def cmd_check(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
 
 def cmd_render(
     root: Path, targets: Sequence[str] = (), *, copy_name: str = SHARED,
-    fixtures: Sequence[str] = (), cwd: Path | None = None,
+    fixtures: Sequence[str] = (), cwd: Path | None = None, code: Path | None = None,
 ) -> EnvOutcome:
     """Write the copy's compose file and helper files without starting anything."""
     prepared = prepare(root, targets, copy_name=copy_name, fixtures=fixtures, cwd=cwd)
     if isinstance(prepared, EnvOutcome):
         return prepared
     try:
-        written = _write(root, prepared, _rendered(root, prepared), started=False)
+        written = _write(root, prepared, _rendered(root, prepared, code), started=False)
     except RenderError as exc:
         return _fail(str(exc))
     return EnvOutcome(True, f"rendered {prepared.copy.name} into {prepared.copy.directory}",
@@ -136,7 +136,7 @@ def cmd_up(
     root: Path, targets: Sequence[str] = (), *, copy_name: str = SHARED,
     fixtures: Sequence[str] = (), fresh: bool = False, cwd: Path | None = None,
     wait_seconds: int = DEFAULT_WAIT_SECONDS, holder: int | None = None,
-    runner: Runner = run_command,
+    runner: Runner = run_command, code: Path | None = None,
 ) -> EnvOutcome:
     """Bring *targets* and everything they need up as the copy *copy_name*, then read its addresses."""
     prepared = prepare(root, targets, copy_name=copy_name, fixtures=fixtures, cwd=cwd)
@@ -151,13 +151,14 @@ def cmd_up(
     if holder is None and os.environ.get(addresses.LEASE_ENV, "") == copy.name:
         holder = runtime.holder_from_env()
     return _bring_up(root, prepared, fresh=fresh, cwd=cwd, wait_seconds=wait_seconds,
-                     holder=holder, runner=runner, reclaimed=reclaimed, pruned=pruned)
+                     holder=holder, runner=runner, reclaimed=reclaimed, pruned=pruned, code=code)
 
 
 def _bring_up(
     root: Path, prepared: Prepared, *, fresh: bool, cwd: Path | None, wait_seconds: int,
     holder: int | None, runner: Runner, reclaimed: list[str] | None = None,
     pruned: list[dict[str, str]] | None = None, keep: dict[str, object] | None = None,
+    code: Path | None = None,
 ) -> EnvOutcome:
     """Render, start and read the addresses of *prepared*; *keep* is a manifest whose holder, starter and worktree are kept."""
     copy = prepared.copy
@@ -167,7 +168,7 @@ def _bring_up(
         compose.down(keep_data=False)
     source = secrets.source_for(prepared.catalog, root, runner)
     try:
-        rendered = _rendered(root, prepared)
+        rendered = _rendered(root, prepared, code)
         problems = secrets.missing_names(rendered, prepared.catalog, prepared.services, source)
         if problems:
             return _fail(_missing_message(problems), copy=copy.name)
@@ -277,15 +278,16 @@ def _holder_pid(manifest: dict[str, object]) -> int | None:
 
 
 def reset(root: Path, copy_name: str, wait_seconds: int = DEFAULT_WAIT_SECONDS, *,
-          runner: Runner = run_command) -> tuple[int, float, str]:
+          runner: Runner = run_command, code: Path | None = None) -> tuple[int, float, str]:
     """Bring the copy back up on its recorded targets and fixture sets with its data dropped; the exit code, the seconds it took and the tail of the output."""
     began = time.monotonic()
-    outcome = _reset(root, copy_name, wait_seconds, runner)
+    outcome = _reset(root, copy_name, wait_seconds, runner, code)
     tail = "\n".join(outcome.message.splitlines()[-20:])
     return (0 if outcome.ok else 1), time.monotonic() - began, tail
 
 
-def _reset(root: Path, copy_name: str, wait_seconds: int, runner: Runner) -> EnvOutcome:
+def _reset(root: Path, copy_name: str, wait_seconds: int, runner: Runner,
+           code: Path | None = None) -> EnvOutcome:
     copy = runtime.copy_for(root, copy_name)
     manifest = runtime.read_manifest(copy.directory)
     if not manifest.get("started"):
@@ -301,16 +303,16 @@ def _reset(root: Path, copy_name: str, wait_seconds: int, runner: Runner) -> Env
     if not copy.shared:
         prepared.pinned.update(_pins(read_book(copy), prepared.services))
     return _bring_up(root, prepared, fresh=True, cwd=None, wait_seconds=wait_seconds,
-                     holder=None, runner=runner, keep=manifest)
+                     holder=None, runner=runner, keep=manifest, code=code)
 
 
 def cmd_reset(root: Path, copy_name: str, wait_seconds: int = DEFAULT_WAIT_SECONDS, *,
-              runner: Runner = run_command) -> int:
+              runner: Runner = run_command, code: Path | None = None) -> int:
     """Reset the copy and print `reset NAME in Ns`, or what went wrong."""
-    code, took, shown = reset(root, copy_name, wait_seconds, runner=runner)
-    print(f"reset {copy_name} in {took:.0f}s" if code == 0 else shown,
-          file=sys.stdout if code == 0 else sys.stderr)
-    return code
+    status, took, shown = reset(root, copy_name, wait_seconds, runner=runner, code=code)
+    print(f"reset {copy_name} in {took:.0f}s" if status == 0 else shown,
+          file=sys.stdout if status == 0 else sys.stderr)
+    return status
 
 
 def _taken_ports(prepared: Prepared, targets: Sequence[str], runner: Runner) -> str:
@@ -635,9 +637,9 @@ def _drop_raw_outputs(copy: Copy, jobs: list[spec.Service]) -> None:
         (render_mod.outputs_dir(copy, job) / render_mod.OUTPUTS_FILE).unlink(missing_ok=True)
 
 
-def _rendered(root: Path, prepared: Prepared) -> render_mod.Rendered:
+def _rendered(root: Path, prepared: Prepared, code: Path | None = None) -> render_mod.Rendered:
     return render_mod.render(prepared.catalog, prepared.services, prepared.copy, repo=root,
-                             fixtures=prepared.fixtures, pinned=prepared.pinned)
+                             fixtures=prepared.fixtures, pinned=prepared.pinned, code=code)
 
 
 def _missing_message(problems: list[str]) -> str:
@@ -645,12 +647,13 @@ def _missing_message(problems: list[str]) -> str:
             + "\n- ".join(problems))
 
 
-def _name_problems(root: Path, catalog: spec.Catalog, runner: Runner) -> list[str]:
+def _name_problems(root: Path, catalog: spec.Catalog, runner: Runner,
+                   code: Path | None = None) -> list[str]:
     services = spec.closure(catalog, sorted(catalog.books))
     copy = runtime.copy_for(root, SHARED)
     try:
         rendered = render_mod.render(catalog, services, copy, repo=root,
-                                     fixtures=render_mod.fixture_sets(catalog, services, []))
+                                     fixtures=render_mod.fixture_sets(catalog, services, []), code=code)
         problems = secrets.missing_names(
             rendered, catalog, services, secrets.source_for(catalog, root, runner))
     except (RenderError, secrets.SecretError) as exc:

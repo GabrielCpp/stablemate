@@ -17,12 +17,12 @@ class WorkingDirectoryError(ValueError):
     """A `working-directory:` names a workspace member this run does not have."""
 
 
-def resolve_directory(root: Path, value: str) -> Path:
+def resolve_directory(root: Path, value: str, code: Path | None = None) -> Path:
     """Where a `working-directory:` value points: `repo://<member>/<path>` in that member's checkout, anything else under *root*."""
     if not value.startswith("repo://"):
         return (root / value).resolve()
     member, _slash, rest = value.removeprefix("repo://").partition("/")
-    checkouts = books.book_checkouts(root)
+    checkouts = books.book_checkouts(code or root)
     checkout = checkouts.get(member)
     if checkout is None:
         known = ", ".join(sorted(checkouts)) or "none"
@@ -47,29 +47,29 @@ def bring_up_stacks(manifests: list[dict[str, Any]], *, repo_root: str,
 
 
 def bring_up_book_devices(root: Path, *, near: Path | None = None,
-                          env: Mapping[str, str] | None = None,
+                          env: Mapping[str, str] | None = None, code: Path | None = None,
                           logger: logging.Logger | None = None) -> list[dict[str, Any]]:
     """Boot the device and install the app for each book whose `stack.yml` declares `device:` steps, read from the books alone."""
-    manifests = _device_manifests(root, near)
+    manifests = _device_manifests(root, near, code)
     if not manifests:
         return []
     with addresses.leased(env or {}):
         return bring_up_stacks(manifests, repo_root=str(root), logger=logger)
 
 
-def _device_manifests(root: Path, near: Path | None) -> list[dict[str, Any]]:
+def _device_manifests(root: Path, near: Path | None, code: Path | None = None) -> list[dict[str, Any]]:
     books = [book for book in spec_mod.load(root).books.values() if book.device]
     if near is not None:
         where = near if near.is_absolute() else root / near
         books = [book for book in books if where.resolve().is_relative_to(book.directory.resolve())] or books
     return [{"source": book.name, "app_cwd": str(root), "repo_root": str(root),
              "stack_file": str((book.ops_dir / spec_mod.STACK_FILE).relative_to(root)),
-             "prepare": [_device_step(root, step) for step in book.device]} for book in books]
+             "prepare": [_device_step(root, step, code) for step in book.device]} for book in books]
 
 
-def _device_step(root: Path, step: dict[str, Any]) -> dict[str, Any]:
+def _device_step(root: Path, step: dict[str, Any], code: Path | None = None) -> dict[str, Any]:
     command = {"run": step["run"],
-               "working-directory": str(resolve_directory(root, step.get("working-directory", ".")))}
+               "working-directory": str(resolve_directory(root, step.get("working-directory", "."), code))}
     if step.get("name"):
         command["name"] = str(step["name"])
     if "timeout" in step:

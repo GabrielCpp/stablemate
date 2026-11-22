@@ -194,6 +194,39 @@ def test_a_stack_template_in_the_artifacts_folder_reaches_a_member_repository(
     assert compose["services"]["api-api"]["build"] == str(member)
 
 
+def _lone_trees(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    code = _real_repo(tmp_path / "code" / "todo-api")
+    artifacts = _real_repo(tmp_path / "artifacts")
+    config = tmp_path / "home.toml"
+    config.write_text("")
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
+    monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(artifacts))
+    _file(artifacts, "services/api/ops/services/api.yml.j2", 'build: {{ repos["todo-api"] }}\n')
+    _file(artifacts, "services/api/ops/stack.yml", yaml.safe_dump({
+        "services": {"api": {"about": "the HTTP API", "define": "services/api.yml.j2", "address": "api", "port": 8080}},
+    }))
+    return artifacts, code
+
+
+def test_render_names_the_lone_repository_in_repos_when_given_its_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifacts, code = _lone_trees(tmp_path, monkeypatch)
+    outcome = commands.cmd_render(artifacts, ["api"], copy_name="story-1", code=code)
+    assert outcome.ok, outcome.message
+    compose = yaml.safe_load((Path(outcome.data["directory"]) / render_mod.COMPOSE_FILE).read_text(encoding="utf-8"))
+    assert compose["services"]["api-api"]["build"] == str(code)
+
+
+def test_render_without_code_keeps_the_workspace_mapping(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    artifacts, _ = _lone_trees(tmp_path, monkeypatch)
+    outcome = commands.cmd_render(artifacts, ["api"], copy_name="story-1")
+    assert not outcome.ok
+    assert "todo-api" in outcome.message
+
+
 def _real_repo(path: Path) -> Path:
     path.mkdir(parents=True)
     for args in (["init", "--quiet", "-b", "main"], ["commit", "--quiet", "--allow-empty", "-m", "x"]):
