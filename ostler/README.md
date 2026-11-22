@@ -255,7 +255,7 @@ A `define` template renders to one compose service. It sees `copy`, `repo`, `ops
 the bring-up loads), and `service('book:name')` for another
 service's host name. ostler writes `depends_on`, `ports` and `container_name` itself, from
 `needs:`, `once:` and `address:`, so a template that sets one is refused. Each copy gets one
-compose file, its own project, its own named volumes and its own host ports. The shared copy is
+compose file, its own project, its own named volumes and its own host ports. A command started for a code repository outside the artifacts folder names the project after that repository, or after its workspace when it runs in one, so two products in one artifacts folder never share a copy. The shared copy is
 the one exception, and keeps each `host-port`. A fixture file must exist only when its set is
 loaded, so a set no bring-up names may point at a file this checkout lacks, such as a database dump
 kept out of git. In a git worktree, a fixture file absent there is read from the main checkout.

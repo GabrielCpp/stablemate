@@ -68,7 +68,7 @@ def prepare(
     if not catalog.books:
         return _fail(f"no book under {root} has an {spec.OPS_DIR}/{spec.STACK_FILE}")
     chosen = list(targets) or _default_targets(catalog, cwd or Path.cwd())
-    copy = runtime.copy_for(root, copy_name)
+    copy = runtime.copy_for(root, copy_name, code)
     previous = runtime.read_manifest(copy.directory)
     try:
         resolved = {target: spec.resolve_target(catalog, target) for target in chosen}
@@ -288,7 +288,7 @@ def reset(root: Path, copy_name: str, wait_seconds: int = DEFAULT_WAIT_SECONDS, 
 
 def _reset(root: Path, copy_name: str, wait_seconds: int, runner: Runner,
            code: Path | None = None) -> EnvOutcome:
-    copy = runtime.copy_for(root, copy_name)
+    copy = runtime.copy_for(root, copy_name, code)
     manifest = runtime.read_manifest(copy.directory)
     if not manifest.get("started"):
         return _fail(f"no copy named {copy_name} is up: bring it up with ostler env up")
@@ -354,9 +354,9 @@ def _taken_line(service: spec.Service, occupant: runtime.Occupant | None,
 
 
 def cmd_down(root: Path, *, copy_name: str = SHARED, keep_data: bool = False,
-             runner: Runner = run_command) -> EnvOutcome:
+             runner: Runner = run_command, code: Path | None = None) -> EnvOutcome:
     """Stop the copy and delete its secrets, then its data and directory unless they are kept."""
-    return _down(runtime.copy_for(root, copy_name), keep_data=keep_data, runner=runner)
+    return _down(runtime.copy_for(root, copy_name, code), keep_data=keep_data, runner=runner)
 
 
 def reclaim(*, keep: Copy | None = None, runner: Runner = run_command) -> list[str]:
@@ -451,7 +451,7 @@ def cmd_ls(root: Path, *, runner: Runner = run_command, code: Path | None = None
     copy_lines: list[str] = []
     by_ref: dict[str, list[str]] = {}
     states: dict[str, str] = {}
-    for copy in runtime.copies(root):
+    for copy in runtime.copies(root, code):
         manifest = runtime.read_manifest(copy.directory)
         targets = _listed(manifest, "targets")
         state = status.of(copy.project)
@@ -558,9 +558,10 @@ def _short(about: str) -> str:
     return about if len(about) <= ABOUT_WIDTH else about[:ABOUT_WIDTH - 1].rstrip() + "…"
 
 
-def cmd_address(root: Path, name: str, *, copy_name: str = SHARED) -> EnvOutcome:
+def cmd_address(root: Path, name: str, *, copy_name: str = SHARED,
+                code: Path | None = None) -> EnvOutcome:
     """The URL the copy publishes *name* at."""
-    copy = runtime.copy_for(root, copy_name)
+    copy = runtime.copy_for(root, copy_name, code)
     return lookup(copy, read_book(copy), name)
 
 
@@ -579,9 +580,10 @@ def env_root(start: Path) -> Path:
     return Path(book_root(str(start)))
 
 
-def compose_argv(root: Path, args: Sequence[str], *, copy_name: str = SHARED) -> list[str] | EnvOutcome:
+def compose_argv(root: Path, args: Sequence[str], *, copy_name: str = SHARED,
+                 code: Path | None = None) -> list[str] | EnvOutcome:
     """The docker compose command line for *args*, pointed at the copy."""
-    copy = runtime.copy_for(root, copy_name)
+    copy = runtime.copy_for(root, copy_name, code)
     if not (copy.directory / render_mod.COMPOSE_FILE).is_file():
         return _fail(f"{copy.name} has not been rendered: run `ostler env up` first")
     return Compose(copy).argv(args)
@@ -650,7 +652,7 @@ def _missing_message(problems: list[str]) -> str:
 def _name_problems(root: Path, catalog: spec.Catalog, runner: Runner,
                    code: Path | None = None) -> list[str]:
     services = spec.closure(catalog, sorted(catalog.books))
-    copy = runtime.copy_for(root, SHARED)
+    copy = runtime.copy_for(root, SHARED, code)
     try:
         rendered = render_mod.render(catalog, services, copy, repo=root,
                                      fixtures=render_mod.fixture_sets(catalog, services, []), code=code)
@@ -718,7 +720,7 @@ def cmd_exec(
                      errors=catalog.errors)
     source = secrets.source_for(catalog, root, runner)
     try:
-        files = source.files(runtime.copy_for(root, copy_name))
+        files = source.files(runtime.copy_for(root, copy_name, code))
     except secrets.SecretError as exc:
         return _fail(str(exc))
     wrapper = (

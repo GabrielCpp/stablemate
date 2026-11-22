@@ -49,7 +49,7 @@ class Environment:
         url = self.hosts[host]
         if not url.startswith(OSTLER):
             return url
-        copy = runtime.copy_for(self._stack_root(), self._copy_of(url))
+        copy = runtime.copy_for(self._stack_root(), self._copy_of(url), self._code())
         self._touch(copy)
         book_file = copy.directory / runtime.ADDRESSES
         try:
@@ -102,7 +102,7 @@ class Environment:
         name = self.copy()
         if not name:
             raise BookError(f"environment {self.name!r} reaches no stack copy")
-        copy = runtime.copy_for(self._stack_root(), name)
+        copy = runtime.copy_for(self._stack_root(), name, self._code())
         if not (copy.directory / COMPOSE_FILE).is_file():
             raise RuntimeError(f"{copy.name} has not been rendered: run `ostler env up` first")
         self._touch(copy)
@@ -112,6 +112,9 @@ class Environment:
         if copy.project not in self._touched:
             self._touched.add(copy.project)
             runtime.touch_used(copy.directory)
+
+    def _code(self) -> Path:
+        return Path(self.root or Path.cwd())
 
     def _stack_root(self) -> Path:
         start = self.root or str(Path.cwd())
@@ -132,7 +135,7 @@ class Environment:
         if not name:
             return None
         return commands.reset(self._stack_root(), name, runner=self.runner,
-                              code=Path(self.root or Path.cwd()))
+                              code=self._code())
 
     def _copy_of(self, url: str) -> str:
         """The copy the run named, else the lease the process runs under, else the one the book names, else the

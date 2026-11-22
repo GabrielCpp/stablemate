@@ -73,9 +73,9 @@ def teardown_stack(logger: logging.Logger, repo_dir: str = "") -> QaOutcome:
     code = find_repo_root(repo_dir)
     if not leases.books_near(root, code=code):
         return QaOutcome(True, "no book declares a stack", {"torn_down": "skipped"})
-    started = runtime.read_manifest(runtime.copy_for(root, SHARED).directory).get("started_by")
+    started = runtime.read_manifest(runtime.copy_for(root, SHARED, code).directory).get("started_by")
     if started != runtime.holder_stamp(os.getpid()):
-        _ = runtime.release_holder(root, SHARED, os.getpid())
+        _ = runtime.release_holder(root, SHARED, os.getpid(), code)
         return QaOutcome(True, "the stack was up before this run, so it stays serving",
                          {"torn_down": "skipped"})
     copied = leases.down(root, code=code)
@@ -86,7 +86,7 @@ def hold_copy(repo_dir: str = "", lease: str = "") -> bool:
     """Name this process as the holder of the run's copy, so a resumed run keeps what it leased."""
     if not lease:
         return False
-    return runtime.hold(find_book_root(repo_dir), lease, os.getpid())
+    return runtime.hold(find_book_root(repo_dir), lease, os.getpid(), find_repo_root(repo_dir))
 
 
 def ensure_stack(

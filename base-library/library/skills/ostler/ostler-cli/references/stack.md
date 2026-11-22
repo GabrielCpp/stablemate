@@ -274,7 +274,7 @@ timeout 30 ostler env compose -- ps --format '{{.Service}} {{.Name}}'
 ```
 
 A container's name is `<repo>-<copy>-<book>-<service>-1`. It starts with the repository's
-main checkout directory name, which a `git worktree` of the repository shares, so a `docker ps` filter on the lease alone finds it only unanchored.
+main checkout directory name, which a `git worktree` of the repository shares, so a `docker ps` filter on the lease alone finds it only unanchored. With the books in the artifacts folder the name is the code repository's, or its workspace's in a workspace run, and the artifacts folder's own name only when the command starts there.
 
 A run killed before its teardown does not leave its copy up for good. The next leased bring-up
 on the machine tears down every copy whose run is gone, and says which. A copy brought up by

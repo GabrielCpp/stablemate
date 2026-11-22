@@ -31,7 +31,7 @@ def run_env(root: Path, lease: str = "", near: Path | None = None,
     """The copy's name, its holder and the address book a command run against the copy finds in its environment, the shared copy's without a lease."""
     if not books_near(root, near, code):
         return None
-    copy = runtime.copy_for(root, lease or SHARED)
+    copy = runtime.copy_for(root, lease or SHARED, code)
     env = {addresses.LEASE_ENV: lease or SHARED}
     if lease and holder:
         env[runtime.HOLDER_ENV] = str(holder)
@@ -59,7 +59,7 @@ def down(root: Path, *, lease: str = "", near: Path | None = None,
     """Tear down the copy *lease* names, or the shared copy without one."""
     if not books_near(root, near, code):
         return None
-    outcome = commands.cmd_down(root, copy_name=lease or SHARED, runner=runner)
+    outcome = commands.cmd_down(root, copy_name=lease or SHARED, runner=runner, code=code)
     data = {**outcome.data, "lease": lease, "torn_down": "yes" if outcome.ok else "no"}
     return QaOutcome(outcome.ok, "stack torn down" if outcome.ok else outcome.message, data)
 

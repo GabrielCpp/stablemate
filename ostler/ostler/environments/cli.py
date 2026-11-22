@@ -92,7 +92,7 @@ def run(args: argparse.Namespace, root: Path) -> int:
     op = args.env_op
     if op == "compose":
         rest = args.compose_args[1:] if args.compose_args[:1] == ["--"] else args.compose_args
-        argv = commands.compose_argv(root, rest, copy_name=copy_name)
+        argv = commands.compose_argv(root, rest, copy_name=copy_name, code=Path.cwd())
         if isinstance(argv, commands.EnvOutcome):
             print(argv.message, file=sys.stderr)
             return 1
@@ -114,7 +114,8 @@ def run(args: argparse.Namespace, root: Path) -> int:
         outcome = commands.cmd_up(root, args.targets, copy_name=copy_name, fixtures=fixtures,
                                   fresh=args.fresh, wait_seconds=args.wait, code=Path.cwd())
     elif op == "down":
-        outcome = commands.cmd_down(root, copy_name=copy_name, keep_data=args.keep_data)
+        outcome = commands.cmd_down(root, copy_name=copy_name, keep_data=args.keep_data,
+                                    code=Path.cwd())
     elif op == "ls":
         outcome = commands.cmd_ls_all() if args.all else commands.cmd_ls(root, code=Path.cwd())
     elif op == "prune":
@@ -123,7 +124,7 @@ def run(args: argparse.Namespace, root: Path) -> int:
         outcome = commands.cmd_render(root, args.targets, copy_name=copy_name, fixtures=fixtures,
                                    code=Path.cwd())
     elif op == "address":
-        outcome = commands.cmd_address(root, args.name, copy_name=copy_name)
+        outcome = commands.cmd_address(root, args.name, copy_name=copy_name, code=Path.cwd())
     else:
         outcome = commands.cmd_check(root, code=Path.cwd())
     if args.json:

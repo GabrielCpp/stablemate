@@ -347,3 +347,30 @@ def test_the_copy_is_released_and_its_environment_read_with_the_code_checkout(
     runner.stack_env(repo, lease="story-1", repo_dir=str(repo))
 
     assert seen == {"down": repo.resolve(), "env": repo.resolve()}
+
+
+def test_the_holder_of_a_copy_is_named_and_released_with_the_code_checkout(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    def hold(_root: Path, _lease: str, _pid: int, code: Path | None = None) -> bool:
+        seen["hold"] = code
+        return True
+
+    def copy_for(_root: Path, _name: str = "shared", code: Path | None = None) -> object:
+        seen["copy"] = code
+        return type("Copy", (), {"directory": repo / "none"})()
+
+    def release(_root: Path, _name: str, _pid: int, code: Path | None = None) -> bool:
+        seen["release"] = code
+        return True
+
+    monkeypatch.setattr(runtime, "hold", hold)
+    monkeypatch.setattr(runtime, "copy_for", copy_for)
+    monkeypatch.setattr(runtime, "release_holder", release)
+    monkeypatch.setattr(leases, "books_near", lambda *_a, **_k: ["acme"])
+    runner.hold_copy(str(repo), "story-1")
+    runner.teardown_stack(LOG, str(repo))
+
+    assert seen == {"hold": repo.resolve(), "copy": repo.resolve(), "release": repo.resolve()}

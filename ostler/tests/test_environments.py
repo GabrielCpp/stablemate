@@ -2137,3 +2137,77 @@ def test_a_book_play_resets_its_copy_with_the_code_checkout(
     monkeypatch.setattr(commands, "reset", reset)
     Environment("local", {"api": "ostler:story-1"}, root=str(code)).reset()
     assert seen == {"code": code}
+
+
+def _globex_code(tmp_path: Path) -> Path:
+    return _real_repo(tmp_path / "code" / "globex")
+
+
+def test_two_products_in_one_artifacts_folder_name_different_copies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, acme = _two_products(tmp_path, monkeypatch)
+    globex = _globex_code(tmp_path)
+    assert runtime.copy_for(root, "story-1", acme).project == "acme-story-1"
+    assert runtime.copy_for(root, "story-1", globex).project == "globex-story-1"
+    assert runtime.copy_for(root, code=acme).project == "acme-shared"
+    assert runtime.copy_for(root, code=globex).project == "globex-shared"
+    assert runtime.copy_for(root, code=acme).directory != runtime.copy_for(root, code=globex).directory
+
+
+def test_a_copy_started_in_the_artifacts_folder_keeps_the_folders_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, acme = _two_products(tmp_path, monkeypatch)
+    assert runtime.copy_for(root, "story-1", root).project == runtime.copy_for(root, "story-1").project
+    assert runtime.copy_for(root, "story-1").project == "artifacts-story-1"
+
+
+def test_a_copy_of_a_workspace_run_is_named_after_the_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    member = _real_repo(tmp_path / "code" / "globex")
+    root, acme = _two_products(
+        tmp_path, monkeypatch, f'[workspaces]\nshop = ["{member}", "{tmp_path / "code" / "acme"}"]\n')
+    assert runtime.copy_for(root, "story-1", acme).project == "shop-story-1"
+    assert runtime.copy_for(root, "story-1", member).project == "shop-story-1"
+
+
+def test_a_root_that_is_not_namespaced_names_its_copy_as_before(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    other = tmp_path / "other"
+    other.mkdir()
+    assert runtime.copy_for(root, "story-1", other).project == "acme-story-1"
+    assert runtime.copy_for(root, "story-1").project == "acme-story-1"
+
+
+def test_up_and_down_with_the_same_code_checkout_name_the_same_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _two_products(tmp_path, monkeypatch)
+    docker = FakeDocker()
+    up = commands.cmd_up(root, ["api"], copy_name="story-1", runner=docker, code=code)
+    assert up.ok, up.message
+    copy = runtime.copy_for(root, "story-1", code)
+    assert copy.project == "acme-story-1"
+    assert (copy.directory / runtime.MANIFEST).is_file()
+    assert [held.project for held in runtime.copies(root, code)] == ["acme-story-1"]
+    down = commands.cmd_down(root, copy_name="story-1", runner=docker, code=code)
+    assert down.ok
+    assert not copy.directory.exists()
+    projects = {call[call.index("--project-name") + 1] for call in _compose_calls(docker)
+                if "--project-name" in call}
+    assert projects == {"acme-story-1"}
+
+
+def test_a_listing_for_one_product_leaves_out_the_copies_of_another(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, acme = _two_products(tmp_path, monkeypatch)
+    globex = _globex_code(tmp_path)
+    for code in (acme, globex):
+        runtime.write_manifest(runtime.copy_for(root, "story-1", code),
+                               {"repo": str(root), "copy": "story-1"})
+    assert [copy.project for copy in runtime.copies(root, acme)] == ["acme-story-1"]
+    assert [copy.project for copy in runtime.copies(root, globex)] == ["globex-story-1"]
+    assert len(runtime.copies(root, root)) == 2

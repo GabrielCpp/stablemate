@@ -17,6 +17,7 @@ from typing import Protocol
 
 from platformdirs import user_state_dir
 
+from ostler._vendor.stablemate_core import books, config
 from ostler.environments.render import COMPOSE_FILE, SHARED, Copy
 
 HOME_ENV = "OSTLER_ENV_HOME"
@@ -75,15 +76,29 @@ def checkout_home(repo: Path) -> Path:
         return repo
 
 
-def copy_for(repo: Path, name: str = SHARED) -> Copy:
-    """The copy *name* of the stack the repo at *repo* declares."""
-    project = _PROJECT_CHARS.sub("-", f"{checkout_home(repo).name}-{name}".lower()).strip("-_")
+def copy_owner(repo: Path, code: Path | None = None) -> str:
+    """The name a copy of the stack at *repo* carries: the code repository's, or its workspace's, when *repo* is the artifacts folder and *code* is a checkout outside it; else the folder's."""
+    if code is not None and books.namespaced(repo) and not books.namespaced(code):
+        try:
+            workspace = config.run_workspace(code)
+        except ValueError:
+            workspace = ""
+        return workspace or config.repository_name(code)
+    return checkout_home(repo).name
+
+
+def copy_for(repo: Path, name: str = SHARED, code: Path | None = None) -> Copy:
+    """The copy *name* of the stack the repo at *repo* declares, as seen from the code checkout *code*."""
+    project = _PROJECT_CHARS.sub("-", f"{copy_owner(repo, code)}-{name}".lower()).strip("-_")
     return Copy(name=name, project=project, directory=home() / project)
 
 
-def copies(repo: Path) -> list[Copy]:
-    """Every copy of *repo*'s stack this machine holds a directory for."""
-    return [copy for copy, manifest in held_copies() if manifest.get("repo") == str(checkout_home(repo))]
+def copies(repo: Path, code: Path | None = None) -> list[Copy]:
+    """Every copy of *repo*'s stack this machine holds a directory for, those of *code*'s product when it is given."""
+    found = [copy for copy, manifest in held_copies() if manifest.get("repo") == str(checkout_home(repo))]
+    if code is None or not (books.namespaced(repo) and not books.namespaced(code)):
+        return found
+    return [copy for copy in found if copy.project == copy_for(repo, copy.name, code).project]
 
 
 def read_manifest(directory: Path) -> dict[str, object]:
@@ -140,9 +155,9 @@ def holder_alive(holder: object) -> bool:
     return not (started and current and current != started)
 
 
-def hold(repo: Path, name: str, pid: int) -> bool:
+def hold(repo: Path, name: str, pid: int, code: Path | None = None) -> bool:
     """Name the process *pid* as the holder of *repo*'s copy *name*; False when the copy does not exist."""
-    copy = copy_for(repo, name)
+    copy = copy_for(repo, name, code)
     manifest = read_manifest(copy.directory)
     if not manifest:
         return False
@@ -219,9 +234,9 @@ def idle(manifest: Mapping[str, object], now: datetime | None = None) -> bool:
     return not (isinstance(holder, dict) and holder.get("pid")) or not holder_alive(holder)
 
 
-def release_holder(repo: Path, name: str, pid: int) -> bool:
+def release_holder(repo: Path, name: str, pid: int, code: Path | None = None) -> bool:
     """Clear the holder of *repo*'s copy *name* when it is the process *pid*, so the copy outlives the run."""
-    copy = copy_for(repo, name)
+    copy = copy_for(repo, name, code)
     manifest = read_manifest(copy.directory)
     if not manifest or manifest.get("holder") != holder_stamp(pid):
         return False
