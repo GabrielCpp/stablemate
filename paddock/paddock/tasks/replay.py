@@ -271,6 +271,24 @@ def subscribe_to_packs(repo: Path, packs: tuple[str, ...]) -> None:
     agents_yml.write_text("".join(lines), encoding="utf-8")
 
 
+def keep_book_in_repo(repo: Path) -> None:
+    """Merge `book: {home: repo}` into `agents.yml`, keeping every other line, so a lone repo's book stays beside its code."""
+    agents_yml = repo / "agents.yml"
+    lines = agents_yml.read_text(encoding="utf-8").splitlines(keepends=True) if agents_yml.is_file() else []
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    start = next((i for i, line in enumerate(lines) if line.split("#")[0].rstrip().startswith("book:")), None)
+    if start is None:
+        lines.extend(["book:\n", "  home: repo\n"])
+    else:
+        end = start + 1
+        while end < len(lines) and (not lines[end].strip() or lines[end][0] in " \t"):
+            end += 1
+        block = [line for line in lines[start + 1 : end] if line.strip() and not line.strip().startswith("home:")]
+        lines[start:end] = ["book:\n", "  home: repo\n", *block]
+    agents_yml.write_text("".join(lines), encoding="utf-8")
+
+
 def checkout(
     run: Run, fixture: Fixture, pin: Pin, flow: str, dest: Path, install: Callable[[Path], None]
 ) -> Path:
@@ -288,6 +306,7 @@ def checkout(
     rewind(dest, fixture, pin, flow, run=run)
     if not member_names:
         sm.upgrade_layout(dest)
+        keep_book_in_repo(dest)
     home = tree.witness_docs(run, dest)
     restore_harness(home, fixture)
     if fixture.backfill_dependencies:

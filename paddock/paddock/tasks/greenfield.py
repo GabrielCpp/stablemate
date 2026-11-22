@@ -18,6 +18,7 @@ from typing import Any
 from paddock.tasks import forensics as fx
 from paddock.tasks import operator_gates as og
 from paddock.tasks import tree
+from paddock.tasks.replay import keep_book_in_repo
 from paddock.tasks.judge import Judge, call_agent, render
 from paddock.tasks.stablemate import TrialError, effective, no_leaks, pin_held, stablemate_checkout, uv_run
 from ostler import markdown, registry
@@ -305,6 +306,8 @@ def seed_milestone(run: Run, fixture: Fixture) -> None:
         book = home / BOOKS_DIR / surface.service
         book.mkdir(parents=True, exist_ok=True)
         (book / "service.py").write_text(f'"""The {surface.service} book."""\n', encoding="utf-8")
+    if not tree.stage_members(run):
+        keep_book_in_repo(home)
 
 
 def seed_decision_records(run: Run, fixture: Fixture) -> None:
