@@ -4,7 +4,7 @@ Read [the design note](../groom-live-events.md) and [slice 1](1-fleet.md) first.
 slice needs slice 1 merged.
 
 **When it lands:** the run an operator has open updates within a tenth of a second of
-new telemetry or a new transcript line. A quiet open run sends no frames. Activity and
+new telemetry or a new transcript line. A quiet open run sends no detail frames. Activity and
 Raw fetch again only when the run produced something new. The 5-second live clock is
 gone.
 

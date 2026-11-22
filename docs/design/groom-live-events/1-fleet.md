@@ -5,7 +5,7 @@ Read [the design note](../groom-live-events.md) first. This plan builds sections
 
 **When it lands:** the operator's run list changes within a tenth of a second of the
 telemetry that changed it. A run turns silent at the moment its silence passes
-`GROOM_LIVE_AFTER_S`. A quiet fleet sends no frames. A tab that stops reading costs
+`GROOM_LIVE_AFTER_S`. A quiet fleet sends only a heartbeat. A tab that stops reading costs
 groom at most 256 queued frames.
 
 ## Where things are today

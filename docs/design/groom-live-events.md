@@ -20,7 +20,7 @@ The cost shows in three ways:
 **Done**, as the operator sees it: every pane changes the moment groom learns something.
 A run turns silent at the moment its silence passes the liveness threshold, not at the
 next tick. Diff and Files follow the run's workspace. A dashboard left open on a quiet
-fleet sends no frames. Nothing an operator reads depends on a poll.
+fleet receives only a heartbeat. Nothing an operator reads depends on a poll.
 
 ## 2. What stays
 
@@ -136,3 +136,8 @@ each slice. That decision still holds for the terminal client's own features.
   queue, puts one `state` frame in it and marks the tab's watched run dirty.
 - **Alert rules stay on their minute clock.** Section 2 gives the reason.
 - **Detail frames stay whole.** Section 2 gives the reason.
+- **A quiet socket carries a heartbeat.** groom sends `{"type": "ping"}` to every tab
+  every 5 s. Both clients mark a socket stale after 15 s with no frame, and an operator
+  must not trust a frozen page. Without a frame, an idle fleet would read stale and
+  trigger the HTTP resync every 5 s. The heartbeat replaces that poll with one small
+  frame and keeps the stale chip true for a half-open socket.
