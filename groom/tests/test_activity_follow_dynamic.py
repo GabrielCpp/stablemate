@@ -200,6 +200,26 @@ def test_a_running_turns_row_and_pane_show_new_messages_and_tool_calls_as_they_a
         assert ", running," in (row.get_attribute("aria-label") or "")
 
 
+def _activity_requests(page) -> list[str]:
+    return page.evaluate("() => performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.endsWith('/activity'))")
+
+
+def test_an_open_activity_pane_on_a_quiet_run_makes_no_request_and_one_ingest_makes_one(tmp_path):
+    with _following(tmp_path, "fol-quiet", filler=3, running=True) as (live, page, name):
+        page.wait_for_timeout(1000)
+        settled = len(_activity_requests(page))
+        page.wait_for_timeout(5000)
+        assert len(_activity_requests(page)) == settled
+        _send(live, name, usd=0.5)
+        page.wait_for_function(
+            "([count]) => performance.getEntriesByType('resource').filter((entry) => entry.name.endsWith('/activity')).length > count",
+            arg=[settled],
+            timeout=1000,
+        )
+        page.wait_for_timeout(1500)
+        assert len(_activity_requests(page)) == settled + 1
+
+
 def test_the_selected_row_stays_selected_while_new_rows_arrive_and_the_pane_does_not_change(tmp_path):
     from playwright.sync_api import expect
 

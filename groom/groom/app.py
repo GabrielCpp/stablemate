@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+from watchfiles import DefaultFilter, awatch
 from litestar import Litestar, Request, Response, delete, get, post, websocket
 from litestar.connection import WebSocket
 from litestar.enums import MediaType
@@ -94,7 +95,6 @@ _QUESTION_NOTIFY_LIMIT = 200
 RULES_TICK_S = float(os.environ.get("GROOM_RULES_TICK_S", "60"))
 PRUNE_EVERY_S = float(os.environ.get("GROOM_PRUNE_EVERY_S", "3600"))
 HARVEST_EVERY_S = float(os.environ.get("GROOM_HARVEST_EVERY_S", "300"))
-LIVE_TICK_S = float(os.environ.get("GROOM_LIVE_TICK_S", "5"))
 ARCHIVE_EVERY_S = archive.ARCHIVE_EVERY_S
 SERVED_BY_SIDECAR = "sidecar"
 SERVED_BY_VOLUME = "volume"
@@ -116,7 +116,7 @@ _NORM_TASKS: set[asyncio.Task] = set()
 async def _read_norms(container_id: str, workflow: str, node: str) -> None:
     """Read one node's norms through the query pool, then push the watching tabs when they changed."""
     if await norms.refresh(workflow, node):
-        await _push_detail(container_id)
+        live.mark_run(container_id)
 
 
 def _queue_norms(wf: WorkflowContainer, tel: RunTelemetry | None) -> None:
@@ -130,26 +130,24 @@ def _queue_norms(wf: WorkflowContainer, tel: RunTelemetry | None) -> None:
     task.add_done_callback(_NORM_TASKS.discard)
 
 
+def _stamp_revisions(detail: dict, wf: WorkflowContainer) -> None:
+    """Add the revisions a pane follows: the Overview's figures, and the Activity and Raw feeds. A run with no history reports 0."""
+    history = state.HISTORIES.get(projection.run_id_of(wf))
+    detail["figures_rev"] = _figures_rev(wf)
+    detail["activity_rev"] = history.activity_rev if history is not None else 0
+    detail["metrics_rev"] = history.metrics_rev if history is not None else 0
+
+
 async def _detail_message(wf: WorkflowContainer) -> dict:
     """One run's detail pane, addressed to the tabs watching that run."""
     tel, facts, logs, history = await _run_facts(wf)
     _queue_norms(wf, tel)
     message = projection.detail_message(wf, tel, facts, logs, history=history)
-    message["detail"]["figures_rev"] = _figures_rev(wf)
+    _stamp_revisions(message["detail"], wf)
     return message
 
 
-async def _push_detail(container_id: str) -> None:
-    """Send one run's detail slices to the tabs watching that run, and nobody else."""
-    watchers = state.watchers_of(container_id)
-    if not watchers:
-        return
-    wf = state.WORKFLOWS.get(container_id)
-    if wf is None:
-        return
-    message = await _detail_message(wf)
-    for queue in watchers:
-        await state.send(queue, message)
+live.use_detail_builder(_detail_message)
 
 
 def _native_run_dir(wf: WorkflowContainer) -> str:
@@ -167,6 +165,36 @@ async def _tail_transcript(wf: WorkflowContainer) -> None:
         await asyncio.to_thread(live_transcript.poll, history, run_dir)
 
 
+_TRANSCRIPT_FILTER = DefaultFilter()
+
+
+async def _follow_transcript(wf: WorkflowContainer) -> None:
+    """Read a watched native run's new transcript lines the moment a transcript file changes, and mark the run when lines arrived."""
+    run_dir = _native_run_dir(wf)
+    marker = f"{os.sep}transcripts{os.sep}"
+    try:
+        async for changes in awatch(run_dir, watch_filter=_TRANSCRIPT_FILTER, debounce=100, step=50):
+            if not any(marker in path for _, path in changes):
+                continue
+            history = state.HISTORIES.get(projection.run_id_of(wf))
+            before = history.activity_rev if history is not None else 0
+            await _tail_transcript(wf)
+            if history is not None and history.activity_rev != before:
+                live.mark_run(wf.container_id)
+    except Exception:  # noqa: BLE001 - a pane whose transcript is not watched is not a broken groom
+        logger.debug("transcript watch failed for %s", wf.container_id, exc_info=True)
+
+
+def _watch_transcript(wf: WorkflowContainer) -> None:
+    key = projection.run_id_of(wf)
+    task = state.TRANSCRIPT_TASKS.get(key)
+    if task is not None and not task.done():
+        return
+    if not _native_run_dir(wf):
+        return
+    state.TRANSCRIPT_TASKS[key] = asyncio.create_task(_follow_transcript(wf))
+
+
 _TAILS: dict[str, dict[str, bool]] = {}
 _TAIL_RUNS: dict[str, str] = {}
 _TAIL_TASKS: set[asyncio.Task] = set()
@@ -182,7 +210,7 @@ async def _tail_until_quiet(container_id: str) -> None:
             history = state.HISTORIES.get(projection.run_id_of(wf)) if wf is not None else None
             if conn is not None and history is not None and history.loaded:
                 await live_transcript.tail(conn, history, _TAIL_RUNS.get(container_id, ""))
-            await _push_detail(container_id)
+            live.mark_run(container_id)
             if not flags["again"]:
                 return
             flags["again"] = False
@@ -204,21 +232,6 @@ def _schedule_tail(container_id: str) -> None:
     task = asyncio.create_task(_tail_until_quiet(container_id))
     _TAIL_TASKS.add(task)
     task.add_done_callback(_TAIL_TASKS.discard)
-
-
-def _refresh_watched(container_id: str) -> None:
-    task = asyncio.create_task(_push_detail(container_id))
-    _TAIL_TASKS.add(task)
-    task.add_done_callback(_TAIL_TASKS.discard)
-
-
-async def _push_watched() -> None:
-    """Refresh every open detail pane on the clock, for the same reason the run list is re-pushed on one: elapsed labels are derived from ``now``."""
-    for run_id in state.watched_ids():
-        wf = state.WORKFLOWS.get(run_id)
-        if wf is not None:
-            await _tail_transcript(wf)
-        await _push_detail(run_id)
 
 
 async def _broadcast_notify(message: str, rule: str = "", failed: bool = False) -> None:
@@ -335,9 +348,8 @@ async def _project_native_rows(records: list) -> None:
             live.schedule_liveness(run)
             _ensure_gate_backfill(run)
     live.mark_fleet()
-    if any(changed):
-        for run_id in run_ids:
-            await _push_detail(run_id)
+    for run_id in run_ids:
+        live.mark_run(run_id)
     for wf in newly_blocked:
         if wf.gates:
             gate = next(iter(wf.gates.values()))
@@ -570,7 +582,7 @@ async def _push_received(rows: list[dict]) -> None:
     for cid in state.watched_ids():
         wf = state.WORKFLOWS.get(cid)
         if wf is not None and projection.run_id_of(wf) in run_ids:
-            await _push_detail(cid)
+            live.mark_run(cid)
 
 
 @get("/worker/{container_id:str}", include_in_schema=False)
@@ -582,7 +594,7 @@ async def worker_detail(container_id: Annotated[str, PathParameter()]) -> dict:
     tel, facts, logs, history = await _run_facts(wf)
     _queue_norms(wf, tel)
     detail = projection.run_detail(wf, tel, facts, logs, history=history)
-    detail["figures_rev"] = _figures_rev(wf)
+    _stamp_revisions(detail, wf)
     return detail
 
 
@@ -949,7 +961,7 @@ async def push_progress(data: dict) -> dict:
         state=WorkflowState.RUNNING,
     )
     live.mark_fleet()
-    await _push_detail(container_id)
+    live.mark_run(container_id)
     return {"ok": True}
 
 
@@ -1075,7 +1087,7 @@ async def push_blocked(data: dict) -> dict:
     wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
 
     live.mark_fleet()
-    await _push_detail(container_id)
+    live.mark_run(container_id)
     await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
     gate = next(iter(wf.gates.values()))
     _attend_gates(wf, [gate])
@@ -1103,7 +1115,7 @@ async def push_exited(data: dict) -> dict:
     if wf.exit_code is not None and wf.exit_code not in _NOT_A_DEATH_EXIT:
         _attend_death(container_id)
     live.mark_fleet()
-    await _push_detail(container_id)
+    live.mark_run(container_id)
     return {"ok": True}
 
 
@@ -1396,7 +1408,7 @@ async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: st
         wf.state = WorkflowState.RUNNING
 
     live.mark_fleet()
-    await _push_detail(container_id)
+    live.mark_run(container_id)
     if result.ok:
         await state.broadcast(
             {"type": "answered", "id": container_id, "file_path": file_path}
@@ -1425,7 +1437,8 @@ async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> Non
         if run_id:
             wf = state.WORKFLOWS.get(run_id)
             if wf is not None:
-                await state.send(queue, await _detail_message(wf))
+                _watch_transcript(wf)
+                await live.open_detail(queue, run_id)
         return
     if cmd != "answer":
         return
@@ -1603,13 +1616,13 @@ async def _apply_hello(container_id: str, data: dict) -> None:
             wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=str(gate.get("question", "")))
         wf.state = WorkflowState.BLOCKED if wf.gates else WorkflowState.RUNNING
     live.mark_fleet()
-    await _push_detail(container_id)
+    live.mark_run(container_id)
 
 
 async def _apply_socket_progress(container_id: str, data: dict) -> None:
     state.upsert_workflow(container_id, current_node=data.get("current_node"), state=WorkflowState.RUNNING)
     live.mark_fleet()
-    await _push_detail(container_id)
+    live.mark_run(container_id)
 
 
 def _apply_socket_turn(conn: sidecar_hub.SidecarConnection, data: dict) -> None:
@@ -1632,7 +1645,7 @@ async def _apply_socket_blocked(container_id: str, data: dict) -> None:
     wf = state.upsert_workflow(container_id, state=WorkflowState.BLOCKED)
     wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
     live.mark_fleet()
-    await _push_detail(container_id)
+    live.mark_run(container_id)
     await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
     if wf.gates:
         _attend_gates(wf, list(wf.gates.values()))
@@ -1677,7 +1690,7 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
         if conn is not None:
             sidecar_hub.unregister(conn)
             live.mark_fleet()
-            await _push_detail(conn.container_id)
+            live.mark_run(conn.container_id)
 
 
 @post("/reload", include_in_schema=False)
@@ -1699,7 +1712,6 @@ async def reload(container_id: Annotated[str, QueryParameter()] = "") -> dict:
 
 _scan_task: asyncio.Task | None = None
 _rules_task: asyncio.Task | None = None
-_live_task: asyncio.Task | None = None
 _heartbeat_task: asyncio.Task | None = None
 _archive_task: asyncio.Task | None = None
 
@@ -1786,29 +1798,10 @@ def _ensure_gate_backfill(run: RunTelemetry) -> None:
     _BACKFILLS[run.run_id] = task
 
 
-async def _live_loop() -> None:
-    """Refresh every open detail pane on a clock, for as long as a tab is open."""
-    while True:
-        await asyncio.sleep(LIVE_TICK_S)
-        if not state.CLIENTS:
-            continue
-        try:
-            await _push_watched()
-        except Exception:  # noqa: BLE001
-            pass
-
-
-async def _spawn_live() -> None:
-    """on_startup hook: bind the fleet flush to this loop and start the clock that refreshes open detail panes."""
-    global _live_task
+async def _bind_live() -> None:
+    """on_startup hook: bind the push flush to this loop and hand it the detail builder."""
     live.bind(asyncio.get_running_loop())
-    state.WATCH_REFRESH = _refresh_watched
-    _live_task = asyncio.create_task(_live_loop())
-
-
-async def _stop_live() -> None:
-    if _live_task is not None:
-        _live_task.cancel()
+    state.WATCH_REFRESH = live.resend_detail
 
 
 def heartbeat_s() -> float:
@@ -2031,12 +2024,12 @@ def create_app() -> Litestar:
         on_startup=[
             _spawn_scan,
             _spawn_rules,
-            _spawn_live,
+            _bind_live,
             _spawn_heartbeat,
             _spawn_archive,
             _spawn_summaries,
             _recover_attend,
             _recover_dispatch,
         ],
-        on_shutdown=[_stop_rules, _stop_live, _stop_heartbeat, _stop_archive, _stop_summaries, pools.shutdown_all],
+        on_shutdown=[_stop_rules, _stop_heartbeat, _stop_archive, _stop_summaries, pools.shutdown_all],
     )

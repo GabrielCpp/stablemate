@@ -16,6 +16,7 @@ CLIENTS: set[asyncio.Queue] = set()
 
 WATCHING: dict[asyncio.Queue, str] = {}
 HISTORIES: dict[str, LiveHistory] = {}
+TRANSCRIPT_TASKS: dict[str, asyncio.Task] = {}
 HISTORY_LOCK = asyncio.Lock()
 
 RUNS: dict[str, RunTelemetry] = {}
@@ -130,6 +131,8 @@ def watch(queue: asyncio.Queue, run_id: str) -> None:
 
 
 def _release_histories() -> None:
+    from groom import live
+
     watched = {
         wf.run_id or wf.container_id
         for cid in WATCHING.values()
@@ -138,6 +141,10 @@ def _release_histories() -> None:
     for run_id in list(HISTORIES):
         if run_id not in watched:
             del HISTORIES[run_id]
+    for run_id in list(TRANSCRIPT_TASKS):
+        if run_id not in watched:
+            TRANSCRIPT_TASKS.pop(run_id).cancel()
+    live.release_unwatched()
 
 
 def watchers_of(run_id: str) -> list[asyncio.Queue]:
@@ -145,7 +152,7 @@ def watchers_of(run_id: str) -> list[asyncio.Queue]:
 
 
 def watched_ids() -> set[str]:
-    """Every run some tab currently has open — what the live clock has to refresh."""
+    """Every run some tab currently has open."""
     return set(WATCHING.values())
 
 

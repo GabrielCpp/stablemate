@@ -10,6 +10,7 @@ from textual.widgets.collapsible import CollapsibleTitle
 
 from groom.tui.clean import clean
 from groom.tui.link import Frame
+from groom.tui.widgets.fleet import span_label
 from groom.tui.widgets.reconcile import Reconcilable, reconcile
 
 
@@ -163,7 +164,8 @@ class TurnGroup(Reconcilable, Collapsible):
 
     @staticmethod
     def _heading(line: Frame) -> str:
-        parts = (line.get(name) for name in ("ts", "node", "slug", "status", "duration"))
+        duration = line.get("duration") or (span_label(float(line["started_ts"])) if line.get("started_ts") else "")
+        parts = (*(line.get(name) for name in ("ts", "node", "slug", "status")), duration)
         return _title(" ".join(clean(part) for part in parts if part), line.get("cls") == "bad")
 
     @on(CollapsibleTitle.Toggle)

@@ -90,6 +90,14 @@ class DetailPane(VerticalScroll):
         self.diff_tab.display = tab == "diff"
         self.files_tab.display = tab == "files"
 
+    def tick(self, store: client.Store) -> None:
+        row = client.run_by_id(store, store.selected)
+        detail = store.detail
+        if row is None or detail is None or not detail.get("found", True):
+            return
+        self.query_one("#head", Static).update(head_text(row, detail))
+        self.trail_tab.redraw_metrics(detail)
+
     async def show(self, store: client.Store) -> None:
         async with self._lock:
             await self._show(store)

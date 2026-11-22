@@ -16,6 +16,8 @@ class LiveHistory:
     transcript_limit: int = 200
     loaded: bool = False
     revision: int = 0
+    activity_rev: int = 0
+    metrics_rev: int = 0
     spans: dict[str, dict[str, Any]] = field(default_factory=dict)
     logs: list[dict[str, Any]] = field(default_factory=list)
     metrics: list[dict[str, Any]] = field(default_factory=list)
@@ -27,6 +29,7 @@ class LiveHistory:
 
     def update_spans(self, rows: list[dict[str, Any]]) -> None:
         self.revision += 1
+        self.activity_rev += 1
         for row in rows:
             self.spans[row["span_id"]] = {
                 "start_ts": row["start_ts"],
@@ -39,11 +42,13 @@ class LiveHistory:
             }
 
     def update_logs(self, rows: list[dict[str, Any]]) -> None:
+        self.activity_rev += 1
         self.logs = sorted(
             [*reversed(rows), *self.logs], key=lambda row: row["ts"], reverse=True
         )[:self.log_limit]
 
     def update_metrics(self, rows: list[dict[str, Any]]) -> None:
+        self.metrics_rev += 1
         retained = [row for row in rows if row["name"] not in LIVENESS_METRICS]
         self.metrics = sorted(
             [*reversed(retained), *self.metrics], key=lambda row: row["ts"], reverse=True
@@ -57,6 +62,8 @@ class LiveHistory:
         *lines, tail = (held + data).split(b"\n")
         if tail:
             self.partial[slug] = tail
+        if lines:
+            self.activity_rev += 1
         for line in lines:
             self._take_transcript_line(slug, line, f"{slug}:{start}")
             start += len(line) + 1

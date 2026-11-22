@@ -38,7 +38,8 @@ spans, per-node timings and error status, filterable without leaving the browser
   its row dead. The browser and the terminal client draw `silent 4m` and
   `in node 12m` themselves from `last_seen_ts` and `clock.since_ts`. Each tab queue
   holds 256 frames. A tab that falls behind gets one fresh `state` frame instead.
-  `GROOM_LIVE_TICK_S` (5s) now drives only the push of the open run's detail.
+  The open run's detail goes out in the same flush, only when it changed. Activity
+  and Raw fetch again when its `activity_rev` or `metrics_rev` moves.
   Every `GROOM_HEARTBEAT_S` (5s) groom sends each tab a `{"type": "ping"}` frame
   so a quiet fleet does not read stale. Clients count it as a received frame and
   draw nothing from it.

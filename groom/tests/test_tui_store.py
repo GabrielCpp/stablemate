@@ -124,7 +124,7 @@ def _history() -> list[dict]:
         support.metric_row(130.0),
         support.transcript_row(140.0, support.message_update("agent_message_chunk", "done"), slug),
         support.span_row(150.0, "agent_turn", slug),
-    ], now=1000.0)
+    ])
 
 
 def test_the_all_view_hides_absorbed_spans_and_keeps_turns():

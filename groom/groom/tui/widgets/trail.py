@@ -8,6 +8,7 @@ from textual.widgets import Static
 from groom.tui import store as client
 from groom.tui.clean import clean
 from groom.tui.link import Frame
+from groom.tui.widgets.fleet import live_label, span_label
 from groom.tui.widgets.lines import build_line, line_keys
 from groom.tui.widgets.reconcile import reconcile
 
@@ -32,7 +33,7 @@ def head_text(row: Frame, detail: Frame | None) -> Text:
             header.append("  " + prefix + clean(head[name]), style="dim" if name == "cli" else "")
     header.append("  " + clean(head.get("handle")), style="dim")
     if head.get("live_label"):
-        header.append("  " + clean(head["live_label"]), style=LIVE_STYLE.get(str(head.get("live")), ""))
+        header.append("  " + live_label(head), style=LIVE_STYLE.get(str(head.get("live")), ""))
     if head.get("exit_hint"):
         header.append("  " + clean(head["exit_hint"]), style="green" if head.get("exit_ok") else "red")
     return header
@@ -51,7 +52,10 @@ def metrics_text(metrics: Frame) -> Text:
         if text:
             text.append("   ")
         text.append(clean(cell.get("key")) + " ", style="dim")
-        text.append(clean(cell.get("value")), style="bold red" if cell.get("cls") == "bad" else "bold")
+        value = clean(cell.get("value"))
+        if cell.get("since_ts"):
+            value = span_label(float(cell["since_ts"])) + clean(cell.get("suffix"))
+        text.append(value, style="bold red" if cell.get("cls") == "bad" else "bold")
     alerts = metrics.get("alerts") or []
     run_dir = clean(metrics.get("run_dir"))
     if alerts or run_dir:
@@ -105,6 +109,9 @@ class TrailTab(Vertical):
         self.query_one("#metrics", Static).update("")
         self.query_one("#trail-empty", Static).update("")
         await self.query_one("#trail-lines", Vertical).remove_children()
+
+    def redraw_metrics(self, detail: Frame) -> None:
+        self.query_one("#metrics", Static).update(metrics_text(detail.get("metrics") or {"empty": True}))
 
     async def show(self, detail: Frame, view: str, kind: str) -> None:
         metrics = detail.get("metrics") or {"empty": True}

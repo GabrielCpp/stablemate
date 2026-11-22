@@ -475,6 +475,8 @@ def head(
     """The activity line at the top of the detail pane — what this run is doing right now."""
     now = now if now is not None else time.time()
     live_cls, live_label = liveness(wf, tel, now)
+    if live_cls == "dead":
+        live_label = "silent"
     return {
         "id": wf.container_id,
         "handle": handle(wf),
@@ -484,6 +486,7 @@ def head(
         "repo": repo_label(wf),
         "live": live_cls,
         "live_label": live_label,
+        "last_seen_ts": last_seen_of(tel),
         "node": tel.current_node if tel else wf.current_node,
         "pid": tel.pid if tel else wf.pid,
         "cli": cli_label(tel),
@@ -493,6 +496,13 @@ def head(
         "worktree": tel.worktree if tel else "",
         "checkout": wf.workspace_volume if wf.native else "",
     }
+
+
+def _since_cell(key: str, since: float, suffix: str) -> dict[str, Any]:
+    """A cell that counts time from a moment the client draws, so the figure never goes stale between pushes."""
+    if not since:
+        return {"key": key, "value": "—"}
+    return {"key": key, "value": "", "since_ts": since, "suffix": suffix}
 
 
 def metrics(
@@ -531,10 +541,8 @@ def metrics(
     gas = tel.gas if tel and tel.gas is not None else facts.get("gas")
     if gas is not None:
         cells.append({"key": "gas", "value": f"{float(gas):g}"})
-    cells.append(
-        {"key": "last beat", "value": f"{fmt_duration(now - last_beat)} ago" if last_beat else "—"}
-    )
-    cells.append({"key": "uptime", "value": fmt_duration(now - started) if started else "—"})
+    cells.append(_since_cell("last beat", last_beat, " ago"))
+    cells.append(_since_cell("uptime", started, ""))
     if facts.get("span_count") is not None:
         cells.append({"key": "spans", "value": str(facts.get("span_count") or 0)})
     errors = int(facts.get("error_count") or 0)
@@ -627,25 +635,27 @@ TURN_SPAN = "agent_turn"
 
 
 def _turn_line(
-    slug: str, rows: list[dict[str, Any]], spans: list[dict[str, Any]], now: float
+    slug: str, rows: list[dict[str, Any]], spans: list[dict[str, Any]]
 ) -> tuple[float, dict[str, Any]]:
-    """One turn's group: its entries oldest first, with the status of its last ``agent_turn`` span and the time its attempts took, or running until now."""
+    """One turn's group: its entries oldest first, with the status of its last ``agent_turn`` span and the time its attempts took, or the moment it started while it runs."""
     ordered = sorted(rows, key=lambda row: float(row["ts"]))
+    started_ts: float | None = None
     if spans:
         last = max(spans, key=lambda span: float(span["end_ts"]))
         failed = last["status"] == "ERROR"
         status = "failed" if failed else "done"
         ts = float(last["end_ts"])
-        duration = ts - min(float(span["start_ts"]) for span in spans)
+        duration: str | None = fmt_duration(ts - min(float(span["start_ts"]) for span in spans))
     else:
         failed = False
         status = "running"
-        duration = max(0.0, now - float(ordered[0]["ts"]))
+        duration = None
+        started_ts = float(ordered[0]["ts"])
         ts = float(ordered[-1]["ts"])
     line = {
         "ts": fmt_ts(ts), "kind": "turn", "level": "TURN", "node": str(ordered[0].get("node") or ""),
         "body": "", "cls": "bad" if failed else "", "severity": "", "key": slug, "slug": slug,
-        "status": status, "duration": fmt_duration(duration),
+        "status": status, "duration": duration, "started_ts": started_ts,
         "entries": [{**transcript_entry(row["update"]), "key": row.get("key")} for row in ordered],
     }
     return ts, line
@@ -662,9 +672,8 @@ def metric_text(row: dict[str, Any]) -> str:
     return f"{label}: {amount}"
 
 
-def history_lines(rows: list[dict[str, Any]], now: float | None = None) -> list[dict[str, Any]]:
+def history_lines(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """History describes timestamped observations, never the run's current state."""
-    now = now if now is not None else time.time()
     turns: dict[str, list[dict[str, Any]]] = {}
     for row in rows:
         if row["kind"] == "transcript" and row.get("slug"):
@@ -675,7 +684,7 @@ def history_lines(rows: list[dict[str, Any]], now: float | None = None) -> list[
             spans.setdefault(str(row["slug"]), []).append(row)
     placed: list[tuple[float, dict[str, Any]]] = []
     for slug, entries in turns.items():
-        placed.append(_turn_line(slug, entries, spans.get(slug, []), now))
+        placed.append(_turn_line(slug, entries, spans.get(slug, [])))
     for row in rows:
         kind = row["kind"]
         node = str(row.get("node") or "")
@@ -715,7 +724,7 @@ def run_live(
         "head": head(wf, tel, now),
         "metrics": metrics(wf, tel, facts, now),
         "logs": log_lines(logs),
-        "history": history_lines(history or [], now),
+        "history": history_lines(history or []),
     }
 
 

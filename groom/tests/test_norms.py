@@ -236,10 +236,10 @@ def test_the_store_is_read_once_per_node_and_again_only_when_the_run_moves(monke
     monkeypatch.setattr(store, "node_norms", counting)
     pushed: list[str] = []
 
-    async def record(container_id: str) -> None:
+    def record(container_id: str) -> None:
         pushed.append(container_id)
 
-    monkeypatch.setattr(groom_app, "_push_detail", record)
+    monkeypatch.setattr(groom_app.live, "mark_run", record)
     tel = RunTelemetry(run_id="r1", workflow="coder", current_node="qa")
     wf = _wf()
 

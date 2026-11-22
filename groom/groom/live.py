@@ -1,4 +1,4 @@
-"""Event-driven fleet push: sources mark the fleet dirty, one coalesced flush sends only the rows and meta that changed, and one timer per run fires when its silence would cross the liveness threshold."""
+"""Event-driven push: sources mark the fleet and the runs they touched dirty, one coalesced flush sends the rows and meta that changed and then the open runs' details that changed, and one timer per run fires when its silence would cross the liveness threshold."""
 
 from __future__ import annotations
 
@@ -6,10 +6,11 @@ import asyncio
 import logging
 import os
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from groom import projection, state
-from groom.models import RunTelemetry
+from groom.models import RunTelemetry, WorkflowContainer
 
 logger = logging.getLogger(__name__)
 
@@ -23,16 +24,32 @@ _flush_loop: asyncio.AbstractEventLoop | None = None
 _deadlines: dict[str, asyncio.TimerHandle] = {}
 _sent_rows: dict[str, dict[str, Any]] | None = None
 _sent_meta: dict[str, Any] | None = None
+_detail_builder: Callable[[WorkflowContainer], Awaitable[dict[str, Any]]] | None = None
+_dirty_runs: set[str] = set()
+_backlog: set[str] = set()
+_sent_details: dict[str, dict[str, Any]] = {}
+_detail_task: asyncio.Task | None = None
 
 
 def flush_s() -> float:
     return float(os.environ.get("GROOM_FLUSH_S", "0.1"))
 
 
+def use_detail_builder(builder: Callable[[WorkflowContainer], Awaitable[dict[str, Any]]]) -> None:
+    global _detail_builder
+    _detail_builder = builder
+
+
 def reset() -> None:
-    global _loop, _flush_handle, _flush_loop, _sent_rows, _sent_meta
+    global _loop, _flush_handle, _flush_loop, _sent_rows, _sent_meta, _detail_task
     if _flush_handle is not None:
         _flush_handle.cancel()
+    if _detail_task is not None:
+        _detail_task.cancel()
+    _detail_task = None
+    _dirty_runs.clear()
+    _backlog.clear()
+    _sent_details.clear()
     for handle in _deadlines.values():
         handle.cancel()
     _deadlines.clear()
@@ -76,6 +93,44 @@ def mark_fleet() -> None:
     _flush_handle = loop.call_later(flush_s(), _flush)
 
 
+def mark_run(run_id: str) -> None:
+    """Note that a run's detail may have changed. A run nobody watches is skipped, because a tab that opens it later asks for its detail then."""
+    if not state.watchers_of(run_id):
+        return
+    _dirty_runs.add(run_id)
+    mark_fleet()
+
+
+async def open_detail(queue: asyncio.Queue, run_id: str) -> None:
+    """A tab just opened a run: it gets one detail at once, whatever the other tabs already hold, and they get it only when it differs from theirs."""
+    wf = state.WORKFLOWS.get(run_id)
+    if wf is None or _detail_builder is None:
+        return
+    message = await _detail_builder(wf)
+    state.offer(queue, message)
+    detail = message["detail"]
+    if _sent_details.get(run_id) == detail:
+        return
+    _sent_details[run_id] = detail
+    for other in state.watchers_of(run_id):
+        if other is not queue:
+            state.offer(other, message)
+
+
+def resend_detail(run_id: str) -> None:
+    """Every tab watching the run gets its detail again."""
+    _sent_details.pop(run_id, None)
+    mark_run(run_id)
+
+
+def release_unwatched() -> None:
+    watched = state.watched_ids()
+    for run_id in [run_id for run_id in _sent_details if run_id not in watched]:
+        del _sent_details[run_id]
+    _dirty_runs.intersection_update(watched)
+    _backlog.intersection_update(watched)
+
+
 def mark_fleet_threadsafe() -> None:
     loop = _loop
     if loop is None or loop.is_closed():
@@ -116,6 +171,47 @@ def _flush() -> None:
         flush_fleet()
     except Exception:  # noqa: BLE001 - a missed flush must not stop the next one
         logger.warning("groom: fleet flush failed", exc_info=True)
+    _start_details()
+
+
+def _start_details() -> None:
+    global _detail_task
+    _backlog.update(_dirty_runs)
+    _dirty_runs.clear()
+    if not _backlog or (_detail_task is not None and not _detail_task.done()):
+        return
+    loop = _running()
+    if loop is None:
+        return
+    _detail_task = loop.create_task(_drain_details())
+
+
+async def _drain_details() -> None:
+    while _backlog:
+        run_id = _backlog.pop()
+        try:
+            await _send_detail(run_id)
+        except Exception:  # noqa: BLE001 - one run's failed detail must not stop the others
+            logger.warning("groom: detail flush failed for %s", run_id, exc_info=True)
+
+
+async def _send_detail(run_id: str) -> None:
+    if not state.watchers_of(run_id):
+        _sent_details.pop(run_id, None)
+        return
+    wf = state.WORKFLOWS.get(run_id)
+    if wf is None or _detail_builder is None:
+        return
+    message = await _detail_builder(wf)
+    watchers = state.watchers_of(run_id)
+    if not watchers:
+        return
+    detail = message["detail"]
+    changed = _sent_details.get(run_id) != detail
+    _sent_details[run_id] = detail
+    if changed:
+        for queue in watchers:
+            state.offer(queue, message)
 
 
 def flush_fleet() -> None:
@@ -172,4 +268,5 @@ def _liveness_due(run_id: str) -> None:
     if _deadline_of(run) > time.time():
         schedule_liveness(run)
         return
+    mark_run(run_id)
     mark_fleet()

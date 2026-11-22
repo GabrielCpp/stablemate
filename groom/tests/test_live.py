@@ -1,23 +1,31 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import tempfile
 import threading
+import time
+from pathlib import Path
 from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
+import _tui_support as support
 from _native_support import node_active_export
 
-from groom import alerts, live, otlp, projection, sidecar_hub, state
+from groom import alerts, live, otlp, projection, sidecar_hub, state, store
 from groom import app as groom_app
 from groom.models import RunTelemetry, WorkflowContainer, WorkflowState
 from workhorse import control
 
 
 @pytest.fixture(autouse=True)
-def quiet_fleet(monkeypatch) -> Iterator[None]:
+def quiet_fleet(monkeypatch, tmp_path) -> Iterator[None]:
     monkeypatch.setenv("GROOM_FLUSH_S", "0.01")
+    monkeypatch.setenv("GROOM_DB", str(tmp_path / "groom.db"))
+    store.reset()
+    state.HISTORIES.clear()
+    state.TRANSCRIPT_TASKS.clear()
     for registry in (state.WORKFLOWS, state.RUNS, state.WATCHING):
         registry.clear()
     state.CLIENTS.clear()
@@ -26,6 +34,8 @@ def quiet_fleet(monkeypatch) -> Iterator[None]:
     live.reset()
     yield
     live.reset()
+    store.reset()
+    state.HISTORIES.clear()
     state.CLIENTS.clear()
     state.WORKFLOWS.clear()
     state.RUNS.clear()
@@ -329,3 +339,193 @@ def test_a_connected_tab_receives_a_ping_each_heartbeat_and_a_feed_does_not(monk
     assert first == {"type": "ping"}
     assert second == {"type": "ping"}
     assert feed.empty()
+
+
+def _watched(run_id: str = "run-w", **fields) -> WorkflowContainer:
+    wf = WorkflowContainer(container_id=run_id, name="w", state=WorkflowState.RUNNING, run_id=run_id, **fields)
+    state.WORKFLOWS[run_id] = wf
+    return wf
+
+
+async def _open(run_id: str = "run-w") -> asyncio.Queue:
+    queue = _tab()
+    await groom_app._handle_command({"cmd": "watch", "run_id": run_id}, queue)
+    return queue
+
+
+async def _log(run_id: str, body: str) -> None:
+    rows = [{"run_id": run_id, "body": body, "ts": time.time()}]
+    await groom_app._store_history_batch(rows, store.insert_logs, kind="logs")
+    await groom_app._push_received(rows)
+
+
+def _details(frames: list[dict]) -> list[dict]:
+    return [f for f in frames if f["type"] == "detail"]
+
+
+def test_a_quiet_watched_run_gets_no_detail_after_the_first():
+    _watched()
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = await _open()
+        first = _drain(queue)
+        live.snapshot()
+        await asyncio.sleep(0.5)
+        return first, _drain(queue)
+
+    first, rest = asyncio.run(drive())
+    assert len(_details(first)) == 1
+    assert rest == []
+
+
+def test_one_log_batch_raises_activity_rev_by_one_and_sends_one_detail():
+    _watched()
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = await _open()
+        opened = _details(_drain(queue))[0]["detail"]["activity_rev"]
+        live.snapshot()
+        await _log("run-w", "one")
+        await asyncio.sleep(0.2)
+        return opened, _details(_drain(queue))
+
+    opened, sent = asyncio.run(drive())
+    assert len(sent) == 1
+    assert sent[0]["detail"]["activity_rev"] == opened + 1
+
+
+def test_two_log_batches_inside_one_window_send_one_detail(monkeypatch):
+    _watched()
+    monkeypatch.setenv("GROOM_FLUSH_S", "0.2")
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = await _open()
+        _drain(queue)
+        live.snapshot()
+        await _log("run-w", "one")
+        await _log("run-w", "two")
+        await asyncio.sleep(0.6)
+        return _details(_drain(queue))
+
+    sent = asyncio.run(drive())
+    assert len(sent) == 1
+    assert [line["body"] for line in sent[0]["detail"]["logs"]] == ["two", "one"]
+
+
+def test_watch_sends_a_detail_at_once_even_when_the_same_one_went_out():
+    _watched()
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        first = await _open()
+        second = _tab()
+        await groom_app._handle_command({"cmd": "watch", "run_id": "run-w"}, second)
+        return _details(_drain(first)), _details(_drain(second))
+
+    first, second = asyncio.run(drive())
+    assert len(first) == 1
+    assert len(second) == 1
+
+
+def test_a_tab_that_just_opened_a_run_does_not_make_the_others_repeat_it():
+    _watched()
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        first = await _open()
+        _drain(first)
+        second = _tab()
+        await groom_app._handle_command({"cmd": "watch", "run_id": "run-w"}, second)
+        await asyncio.sleep(0.2)
+        return _drain(first), _drain(second)
+
+    first, second = asyncio.run(drive())
+    assert first == []
+    assert len(_details(second)) == 1
+
+
+def test_a_flush_sends_the_fleet_frames_before_the_details(dirs):
+    _watched("run-a")
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = await _open("run-a")
+        _drain(queue)
+        live.snapshot()
+        await _log("run-a", "one")
+        state.WORKFLOWS["run-a"].current_node = "build"
+        live.mark_fleet()
+        await asyncio.sleep(0.3)
+        return [f["type"] for f in _drain(queue)]
+
+    assert asyncio.run(drive()) == ["run", "detail"]
+
+
+def _line(text: str, ts: float) -> str:
+    update = {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}}
+    return json.dumps({"sessionId": "s", "update": update, "_meta": {"ts": ts, "node": "implement"}}) + "\n"
+
+
+def _native(tmp_path) -> tuple[WorkflowContainer, Path]:
+    live_dir = tmp_path / "transcripts" / "live"
+    live_dir.mkdir(parents=True)
+    path = live_dir / "001-00001-implement.jsonl"
+    path.write_text(_line("first", 10.0))
+    return _watched(native=True, runs_volume=str(tmp_path)), path
+
+
+def test_a_transcript_line_reaches_the_open_run_within_a_second(tmp_path):
+    _, path = _native(tmp_path)
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = await _open()
+        opened = _details(_drain(queue))[0]["detail"]["activity_rev"]
+        await asyncio.sleep(0.3)
+        with path.open("a") as handle:
+            handle.write(_line("second", 11.0))
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+            sent = _details(_drain(queue))
+            if sent:
+                return opened, sent[-1]["detail"]["activity_rev"]
+        return opened, None
+
+    opened, after = asyncio.run(drive())
+    assert after is not None and after > opened
+
+
+def test_releasing_the_last_watcher_cancels_the_transcript_task(tmp_path):
+    _native(tmp_path)
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = await _open()
+        task = state.TRANSCRIPT_TASKS["run-w"]
+        state.remove_client(queue)
+        await asyncio.sleep(0.1)
+        return task, dict(state.TRANSCRIPT_TASKS)
+
+    task, tasks = asyncio.run(drive())
+    assert task.cancelled() or task.done()
+    assert tasks == {}
+
+
+def test_a_detail_built_twice_apart_is_the_same_but_for_its_timestamp():
+    wf = WorkflowContainer(container_id="abc", name="w", state=WorkflowState.RUNNING, native=True, run_id="run-a")
+    tel = RunTelemetry(run_id="run-a", native=True, current_node="review", node_elapsed_s=30.0,
+                       first_seen_ts=100.0, last_telemetry_ts=100.0)
+    state.RUNS["run-a"] = tel
+    history = [
+        support.log_row(100.0, "compiled"),
+        support.transcript_row(140.0, support.message_update("agent_message_chunk", "done"), "001-implement"),
+    ]
+    first = projection.run_detail(wf, tel, now=200.0, history=history)
+    second = projection.run_detail(wf, tel, now=210.0, history=history)
+    for detail in (first, second):
+        detail.pop("ts", None)
+    assert first == second

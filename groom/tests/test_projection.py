@@ -556,18 +556,18 @@ def test_a_retried_turn_spans_its_attempts_and_takes_the_last_ones_status():
     assert all(line.get("absorbed") for line in lines if line["kind"] == "span")
 
 
-def test_a_slug_without_a_span_is_running_with_a_duration_to_now():
+def test_a_slug_without_a_span_is_running_from_its_first_line():
     lines = projection.history_lines(
         [
             _transcript_row(_text("agent_message_chunk", "b"), 130.0),
             _transcript_row(_text("agent_message_chunk", "a"), 100.0),
         ],
-        now=160.0,
     )
     [turn] = lines
     assert turn["status"] == "running"
     assert turn["cls"] == ""
-    assert turn["duration"] == projection.fmt_duration(60.0)
+    assert turn["duration"] is None
+    assert turn["started_ts"] == 100.0
     assert turn["ts"] == projection.fmt_ts(130.0)
 
 

@@ -138,6 +138,7 @@ class GroomTui(GroomBase):
         ))
         self._render_status()
         self._render_rows()
+        self.main.query_one(DetailPane).tick(self.store)
         if (
             self.connection.resyncing
             and not self._resync_running

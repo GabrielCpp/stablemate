@@ -24,8 +24,11 @@ from workhorse import gates as gate_file
 @pytest.fixture(autouse=True)
 def isolated_store(monkeypatch, tmp_path):
     monkeypatch.setenv("GROOM_DB", str(tmp_path / "groom.db"))
+    monkeypatch.setenv("GROOM_FLUSH_S", "0.01")
     store.reset()
+    live.reset()
     yield
+    live.reset()
     store.reset()
 
 
@@ -39,6 +42,17 @@ def _reset() -> None:
     state.HISTORY_LOCK = asyncio.Lock()
     sidecar_hub.CONNECTIONS.clear()
     state.SCANNING = False
+
+
+async def _settle() -> None:
+    await asyncio.sleep(0.15)
+
+
+async def _next_detail(queue: asyncio.Queue) -> dict:
+    while True:
+        message = await asyncio.wait_for(queue.get(), timeout=3.0)
+        if message["type"] == "detail":
+            return message
 
 
 class _NoSocket:
@@ -243,7 +257,9 @@ def test_a_detail_push_reaches_only_the_tabs_watching_that_run():
             state.add_client(q)
         state.watch(watcher, "abc123")
         state.watch(other, "def456")
-        await groom_app._push_detail("abc123")
+        live.snapshot()
+        live.mark_run("abc123")
+        await _settle()
         return watcher, other, idle
 
     watcher, other, idle = asyncio.run(drive())
@@ -261,46 +277,48 @@ def test_a_closed_tab_stops_being_a_watcher():
     assert state.watchers_of("abc123") == []
 
 
-def test_the_clock_refreshes_every_open_pane():
+def test_a_quiet_open_pane_gets_no_detail():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
         container_id="abc123", name="w", state=WorkflowState.RUNNING, run_id="run-1"
     )
 
     async def drive():
+        live.bind(asyncio.get_running_loop())
         queue = asyncio.Queue()
         state.add_client(queue)
-        state.watch(queue, "abc123")
-        task = asyncio.create_task(groom_app._live_loop())
-        try:
-            return [await asyncio.wait_for(queue.get(), timeout=2.0)]
-        finally:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
+        await groom_app._handle_command({"cmd": "watch", "run_id": "abc123"}, queue)
+        opened = queue.get_nowait()
+        live.snapshot()
+        await asyncio.sleep(0.5)
+        rest = [queue.get_nowait() for _ in range(queue.qsize())]
+        state.remove_client(queue)
+        return opened, rest
 
-    with patch.object(groom_app, "LIVE_TICK_S", 0.01):
-        seen = asyncio.run(drive())
-
-    assert [m["type"] for m in seen] == ["detail"]
+    opened, rest = asyncio.run(drive())
+    assert opened["type"] == "detail"
+    assert rest == []
 
 
-def test_watched_history_is_not_read_again_on_clock_push():
+def test_a_mark_on_a_quiet_run_sends_nothing_and_reads_no_history():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
         container_id="abc123", name="w", run_id="run-1"
     )
 
     async def drive():
+        live.bind(asyncio.get_running_loop())
         queue = asyncio.Queue()
         state.add_client(queue)
         await groom_app._handle_command({"cmd": "watch", "run_id": "abc123"}, queue)
-        queue.get_nowait()
+        assert queue.get_nowait()["detail"]["found"]
+        live.snapshot()
         with patch.object(store, "query_logs", side_effect=AssertionError("polled logs")), \
              patch.object(store, "detail_spans", side_effect=AssertionError("polled spans")), \
              patch.object(store, "detail_metrics", side_effect=AssertionError("polled metrics")):
-            await groom_app._push_watched()
-        assert queue.get_nowait()["detail"]["found"]
+            live.mark_run("abc123")
+            await _settle()
+        assert queue.empty()
         state.remove_client(queue)
 
     asyncio.run(drive())
@@ -323,11 +341,11 @@ def _transcript_bodies(message: dict) -> list[str]:
     ]
 
 
-def test_a_watched_native_run_pushes_its_transcript_seeded_then_tailed(tmp_path):
+def test_a_watched_native_run_pushes_its_transcript_seeded_then_tailed_on_file_events(tmp_path):
     _reset()
-    live = tmp_path / "transcripts" / "live"
-    live.mkdir(parents=True)
-    path = live / "001-00001-implement.jsonl"
+    live_dir = tmp_path / "transcripts" / "live"
+    live_dir.mkdir(parents=True)
+    path = live_dir / "001-00001-implement.jsonl"
     path.write_text(_transcript_line("first", 10.0))
     state.WORKFLOWS["run-1"] = WorkflowContainer(
         container_id="run-1", name="w", run_id="run-1", native=True, runs_volume=str(tmp_path)
@@ -336,21 +354,18 @@ def test_a_watched_native_run_pushes_its_transcript_seeded_then_tailed(tmp_path)
     async def drive():
         queue = asyncio.Queue()
         state.add_client(queue)
+        live.bind(asyncio.get_running_loop())
         await groom_app._handle_command({"cmd": "watch", "run_id": "run-1"}, queue)
         seeded = queue.get_nowait()
         with path.open("a") as handle:
             handle.write(_transcript_line("second", 11.0))
-        await groom_app._push_watched()
-        ticked = queue.get_nowait()
-        await groom_app._push_watched()
-        again = queue.get_nowait()
+        ticked = await _next_detail(queue)
         state.remove_client(queue)
-        return seeded, ticked, again
+        return seeded, ticked
 
-    seeded, ticked, again = asyncio.run(drive())
+    seeded, ticked = asyncio.run(drive())
     assert _transcript_bodies(seeded) == ["first"]
     assert _transcript_bodies(ticked) == ["first", "second"]
-    assert _transcript_bodies(again) == ["first", "second"]
 
 
 def test_a_container_run_is_not_tailed_from_the_host_filesystem(tmp_path):
@@ -425,8 +440,10 @@ def test_watching_a_container_run_seeds_its_transcript_from_offset_zero():
     async def drive():
         queue = asyncio.Queue()
         state.add_client(queue)
+        live.bind(asyncio.get_running_loop())
         await groom_app._handle_command({"cmd": "watch", "run_id": "c0ffee"}, queue)
         await _quiet()
+        await _settle()
         messages = [queue.get_nowait() for _ in range(queue.qsize())]
         state.remove_client(queue)
         return messages
@@ -444,14 +461,17 @@ def test_a_turn_frame_for_a_watched_container_pushes_the_new_transcript_entry():
     async def drive():
         queue = asyncio.Queue()
         state.add_client(queue)
+        live.bind(asyncio.get_running_loop())
         await groom_app._handle_command({"cmd": "watch", "run_id": "c0ffee"}, queue)
         await _quiet()
+        await _settle()
         while not queue.empty():
             queue.get_nowait()
         conn.files[_LIVE_FILE] += _transcript_line("second", 11.0).encode()
         conn.calls.clear()
         groom_app._apply_socket_turn(conn, {"type": "turn", "run": "run-1", "run_id": "run-1"})
         await _quiet()
+        await _settle()
         messages = [queue.get_nowait() for _ in range(queue.qsize())]
         state.remove_client(queue)
         return messages
@@ -495,6 +515,8 @@ def test_snapshot_and_ingest_do_not_lose_or_duplicate_a_log(ingest_first):
         state.add_client(queue)
         rows = [{"run_id": "run-1", "body": "during snapshot", "ts": 1000.0}]
 
+        live.bind(asyncio.get_running_loop())
+
         async def subscribe():
             await groom_app._handle_command({"cmd": "watch", "run_id": "worker"}, queue)
 
@@ -508,7 +530,8 @@ def test_snapshot_and_ingest_do_not_lose_or_duplicate_a_log(ingest_first):
             other = asyncio.create_task(second())
             release.set()
             await asyncio.gather(task, other)
-            await groom_app._push_watched()
+            live.resend_detail("worker")
+            await _settle()
             messages = []
             while not queue.empty():
                 messages.append(queue.get_nowait())
@@ -536,6 +559,7 @@ def test_a_span_batch_moves_the_watched_figures_revision_and_only_for_an_open_pa
     }
 
     async def drive():
+        live.bind(asyncio.get_running_loop())
         await groom_app._store_history_batch([span], store.insert_spans)
         assert not state.HISTORIES
         queue = asyncio.Queue()
@@ -546,6 +570,7 @@ def test_a_span_batch_moves_the_watched_figures_revision_and_only_for_an_open_pa
             [{**span, "span_id": "s2"}], store.insert_spans
         )
         await groom_app._push_received([span])
+        await _settle()
         pushed = []
         while not queue.empty():
             pushed.append(queue.get_nowait())
@@ -594,52 +619,6 @@ def test_api_state_and_the_socket_push_the_same_payload():
         return rest
 
     assert _stable(json.loads(json.dumps(pushed))) == _stable(body)
-
-
-def test_live_loop_pushes_nothing_when_no_tab_is_open():
-    _reset()
-    calls = []
-
-    async def drive():
-        task = asyncio.create_task(groom_app._live_loop())
-        await asyncio.sleep(0.1)
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-
-    async def _spy():
-        calls.append(1)
-
-    with patch.object(groom_app, "LIVE_TICK_S", 0.01), \
-         patch.object(groom_app, "_push_watched", _spy):
-        asyncio.run(drive())
-
-    assert calls == []
-
-
-def test_live_loop_survives_a_failing_tick():
-    _reset()
-    calls = []
-
-    async def _boom():
-        calls.append(1)
-        raise RuntimeError("render blew up")
-
-    async def drive():
-        state.add_client(asyncio.Queue())
-        task = asyncio.create_task(groom_app._live_loop())
-        await asyncio.sleep(0.1)
-        alive = not task.done()
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
-        return alive
-
-    with patch.object(groom_app, "LIVE_TICK_S", 0.01), \
-         patch.object(groom_app, "_push_watched", _boom):
-        still_running = asyncio.run(drive())
-
-    assert still_running and len(calls) > 1
 
 
 def test_backfill_wait_gate_fills_path_and_question_from_the_socket(tmp_path):

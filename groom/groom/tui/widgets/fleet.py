@@ -33,15 +33,19 @@ def status_text(connection: Connection, store: client.Store) -> Text:
     return text
 
 
+def span_label(since: float, now: float | None = None) -> str:
+    secs = max(0, round((time.time() if now is None else now) - since))
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        return f"{secs // 60}m"
+    return f"{secs // 3600}h"
+
+
 def live_label(row: Frame, now: float | None = None) -> str:
     seen = float(row.get("last_seen_ts") or 0)
     if row.get("live") == "dead" and not row.get("ended") and seen > 0:
-        secs = max(0, round((time.time() if now is None else now) - seen))
-        if secs < 60:
-            return f"silent {secs}s"
-        if secs < 3600:
-            return f"silent {secs // 60}m"
-        return f"silent {secs // 3600}h"
+        return "silent " + span_label(seen, now)
     return clean(row.get("live_label"))
 
 

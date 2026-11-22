@@ -12,8 +12,8 @@
 //   2. **Connection state is derived from message recency, not `readyState`.**
 //      A half-open TCP socket reads OPEN forever and will never deliver another
 //      frame; a dashboard that trusts `readyState` shows a green dot over a
-//      frozen fleet. The server ticks every GROOM_LIVE_TICK_S (5s) whether or not
-//      anything changed, so silence is information: see `deriveConnection()`.
+//      frozen fleet. The server sends a heartbeat every few seconds whether or
+//      not anything changed, so silence is information: see `deriveConnection()`.
 //
 // Every panel is a Preact island mounted into an id the static shell already
 // ships (`#runs-list`, `#statusbar`, `#detail`, `#palette-results`), so the live-region and
@@ -655,6 +655,13 @@ function StatusBar() {
 // --------------------------------------------------------------------------- //
 // Detail pane — the open run (`GET /worker/{id}` + the pushed `detail` frame)
 // --------------------------------------------------------------------------- //
+function HeadLive({ head }) {
+  useSecondTick();
+  const silent = head.live === "dead" && head.last_seen_ts > 0;
+  const label = silent ? "silent " + fmtSpan(Date.now() / 1000 - head.last_seen_ts) : head.live_label;
+  return html`<span class="pulse ${head.live}">${label}</span>`;
+}
+
 function RunHead({ head, runId, onClose, sidecar }) {
   const meta =
     head.state + (head.node ? " · node " + head.node : "") +
@@ -664,12 +671,12 @@ function RunHead({ head, runId, onClose, sidecar }) {
   // a single click into the whole id, and a partial selection cannot cut it in
   // half mid-paste.
   // role="status" because that is what it is: the line that says what this run is
-  // doing right now, re-rendered on the server's clock.
+  // doing right now, re-rendered when the detail changes.
   return html`<div class=${head.ended ? "detail-head ended" : "detail-head"} role="status" aria-label="Selected run">
     <${StateDot} state=${head.state} />
     <${TypeBadge} type=${head.type} hue=${head.type_hue} />
     <span class="repo-branch">${head.repo}</span>
-    ${head.live_label ? html`<span class="pulse ${head.live}">${head.live_label}</span>` : null}
+    ${head.live_label ? html`<${HeadLive} head=${head} />` : null}
     <span class="run-id" title="Run id — click to select">${head.handle}</span>
     ${head.ended ? html`<${CopyButton} what="run id" text=${head.handle} />` : null}
     ${sidecar ? html`<span id="run-sidecar-chip" class="chip">${sidecar === "live" ? "docker · sidecar" : "docker"}</span>` : null}
@@ -1615,7 +1622,7 @@ async function loadActivity(runId, rev = 0, refresh = false, absorbLogs = false)
   }
 }
 
-const RAW_POLL_MS = 3000;
+const REVISION_DEBOUNCE_MS = 300;
 let rawSeq = 0;
 
 function setRaw(patch) {
@@ -2571,8 +2578,9 @@ function ActivityTab({ detail }) {
   useSecondTick();
   const runId = detail.run_id;
   const rev = detail.figures_rev || 0;
+  const activityRev = detail.activity_rev || 0;
+  const metricsRev = detail.metrics_rev || 0;
   const alive = detail.state !== "finished";
-  const running = alive && activity.rows.some((row) => row.status === "running") || activity.items.some((item) => item.passes.some((pass) => pass.entries.some((entry) => entry.open)));
   const lost = link.phase === "reconnecting" || link.phase === "offline";
   const listRef = useRef(null);
   const controlRef = useRef(null);
@@ -2587,19 +2595,17 @@ function ActivityTab({ detail }) {
     const current = store.get().activity;
     if (current.status === "loading") return;
     if (current.runId !== runId) loadActivity(runId, rev);
-    else if (current.status === "ready" && current.rev !== rev) loadActivity(runId, rev, true);
   }, [runId, rev, activity.runId, activity.status, activity.rev]);
   useEffect(() => {
-    if (!runId || !running) return undefined;
-    const timer = setInterval(() => loadActivity(runId, store.get().activity.rev, true), 3000);
-    return () => clearInterval(timer);
-  }, [runId, running]);
+    if (!runId || activity.runId !== runId || activity.status !== "ready") return undefined;
+    const timer = setTimeout(() => loadActivity(runId, rev, true), REVISION_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [runId, rev, activityRev]);
   useEffect(() => {
     if (!runId || !rawOpen || activity.raw.status !== "ready" || !alive || !activity.follow) return undefined;
-    refreshRaw(runId);
-    const timer = setInterval(() => refreshRaw(runId), RAW_POLL_MS);
-    return () => clearInterval(timer);
-  }, [runId, rawOpen, activity.raw.status, activity.raw.metrics, alive, activity.follow]);
+    const timer = setTimeout(() => refreshRaw(runId), REVISION_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [runId, rawOpen, activity.raw.status, activity.raw.metrics, alive, activity.follow, activityRev, metricsRev]);
   useLayoutEffect(() => {
     const raw = rawRef.current;
     if (raw && activity.follow && alive) raw.scrollTop = 0;
