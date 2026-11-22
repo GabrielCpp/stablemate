@@ -10,6 +10,7 @@ from textual.pilot import Pilot
 from textual.widgets import Markdown, OptionList, Static
 
 from groom import state
+from groom.tui import connection
 from groom.models import GateInfo
 from groom.tui.app import GroomTui
 from groom.tui.widgets.gate import GateBlock
@@ -350,6 +351,21 @@ def test_an_empty_fleet_says_nothing_is_running_and_scanning_says_discovering():
             link.push(support.state_frame())
             await support.until(lambda: "Discovering containers…" in _status(app))
             state.SCANNING = False
+
+    _run(scenario)
+
+
+def test_a_ping_frame_keeps_an_open_socket_from_going_stale():
+    async def scenario() -> None:
+        link = support.FakeLink()
+        link.push(support.state_frame())
+        async with _booted(link) as (app, _pilot):
+            app._last_message -= connection.STALE_AFTER_MS + 1000
+            app.evaluate()
+            assert "stale" in _status(app)
+            link.push({"type": "ping"})
+            await support.until(lambda: app.connection.phase == "live")
+            assert "live" in _status(app)
 
     _run(scenario)
 

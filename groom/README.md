@@ -39,6 +39,9 @@ spans, per-node timings and error status, filterable without leaving the browser
   `in node 12m` themselves from `last_seen_ts` and `clock.since_ts`. Each tab queue
   holds 256 frames. A tab that falls behind gets one fresh `state` frame instead.
   `GROOM_LIVE_TICK_S` (5s) now drives only the push of the open run's detail.
+  Every `GROOM_HEARTBEAT_S` (5s) groom sends each tab a `{"type": "ping"}` frame
+  so a quiet fleet does not read stale. Clients count it as a received frame and
+  draw nothing from it.
   The `/feed` socket is the one socket meant for a program rather than a tab: it
   carries one run's events and a periodic digest, and `groom wait` and
   `groom feed` read it.

@@ -1700,6 +1700,7 @@ async def reload(container_id: Annotated[str, QueryParameter()] = "") -> dict:
 _scan_task: asyncio.Task | None = None
 _rules_task: asyncio.Task | None = None
 _live_task: asyncio.Task | None = None
+_heartbeat_task: asyncio.Task | None = None
 _archive_task: asyncio.Task | None = None
 
 
@@ -1808,6 +1809,30 @@ async def _spawn_live() -> None:
 async def _stop_live() -> None:
     if _live_task is not None:
         _live_task.cancel()
+
+
+def heartbeat_s() -> float:
+    return float(os.environ.get("GROOM_HEARTBEAT_S", "5"))
+
+
+async def _heartbeat_loop() -> None:
+    while True:
+        await asyncio.sleep(heartbeat_s())
+        try:
+            state.broadcast_nowait({"type": "ping"})
+        except Exception:  # noqa: BLE001
+            logger.warning("groom: heartbeat failed", exc_info=True)
+
+
+async def _spawn_heartbeat() -> None:
+    """on_startup hook: start the ping that keeps an idle dashboard socket from reading stale."""
+    global _heartbeat_task
+    _heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
+
+async def _stop_heartbeat() -> None:
+    if _heartbeat_task is not None:
+        _heartbeat_task.cancel()
 
 
 async def _archive_loop() -> None:
@@ -2007,10 +2032,11 @@ def create_app() -> Litestar:
             _spawn_scan,
             _spawn_rules,
             _spawn_live,
+            _spawn_heartbeat,
             _spawn_archive,
             _spawn_summaries,
             _recover_attend,
             _recover_dispatch,
         ],
-        on_shutdown=[_stop_rules, _stop_live, _stop_archive, _stop_summaries, pools.shutdown_all],
+        on_shutdown=[_stop_rules, _stop_live, _stop_heartbeat, _stop_archive, _stop_summaries, pools.shutdown_all],
     )

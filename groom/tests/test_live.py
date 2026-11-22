@@ -244,3 +244,27 @@ def test_the_gate_backfill_retries_on_failure_and_marks_the_fleet_on_success(dir
     assert run.wait_gate_path == "docs/a.md"
     assert any(f["type"] == "run" and f["run"]["gate_path"] == "docs/a.md" for f in frames)
     assert groom_app._BACKFILLS == {}
+
+
+def test_a_connected_tab_receives_a_ping_each_heartbeat_and_a_feed_does_not(monkeypatch):
+    monkeypatch.setenv("GROOM_HEARTBEAT_S", "0.02")
+    feed = state.new_client_queue()
+    state.add_feed(feed, "run-f")
+
+    async def drive():
+        queue = _tab()
+        task = asyncio.create_task(groom_app._heartbeat_loop())
+        try:
+            first = await asyncio.wait_for(queue.get(), timeout=2.0)
+            second = await asyncio.wait_for(queue.get(), timeout=2.0)
+        finally:
+            task.cancel()
+        return first, second
+
+    try:
+        first, second = asyncio.run(drive())
+    finally:
+        state.remove_feed(feed)
+    assert first == {"type": "ping"}
+    assert second == {"type": "ping"}
+    assert feed.empty()
