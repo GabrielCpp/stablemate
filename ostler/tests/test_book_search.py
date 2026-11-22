@@ -175,3 +175,11 @@ def test_the_books_under_a_root_are_its_service_files_one_per_surface(tmp_path: 
         (tmp_path / "services" / file).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / "services" / file).write_text("")
     assert services_of(str(tmp_path)) == ["services.desk.http", "services.desk.web", "services.shop"]
+
+
+def test_the_books_under_a_namespaced_root_are_found_one_repository_folder_deep(tmp_path: Path):
+    for file in ("acme/api/service.py", "acme/groom/http/service.py", "acme/groom/model/state.py", "globex/api/service.py"):
+        (tmp_path / "services" / file).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / "services" / file).write_text("")
+    assert services_of(str(tmp_path)) == ["services.acme.api", "services.acme.groom.http", "services.globex.api"]
+    assert services_of(str(tmp_path), "services.acme") == ["services.acme.api", "services.acme.groom.http"]

@@ -15,7 +15,7 @@ from typing import Any
 
 from ostler.book.bookreach import Graph, named, read_source
 from ostler.book.change import Reading, change_in, text_at
-from ostler.book.files import files as book_files, outside
+from ostler.book.files import files as book_files, outside, service_folder
 from ostler.book.service import Service
 from ostler.book.sources import actions, git, kinds
 
@@ -134,11 +134,11 @@ def trace(root: Path, module: str, found: BookDiff, changes: dict[str, list[str]
 
 def book_diff(service: Service[Any], root: Path, module: str, reading: Reading) -> BookDiff:
     found = BookDiff()
-    parts = module.split(".")
-    if len(parts) < 2 or not (root / "services" / parts[1]).is_dir():
+    own = service_folder(root, module)
+    if own is None:
         return found
     where = str(root)
-    specs = ["/".join(parts[:2]), *outside(root, module)]
+    specs = [own.relative_to(root).as_posix(), *outside(root, module)]
     try:
         if reading.story:
             change = change_in(where, reading, specs)

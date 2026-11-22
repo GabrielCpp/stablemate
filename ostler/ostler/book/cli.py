@@ -21,6 +21,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from ostler._vendor.stablemate_core import books
 from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.book.affected import cmd_affected as affected
 from ostler.book.home import cmd_branch, cmd_land
@@ -39,7 +40,7 @@ from ostler.book.files import cmd_files
 from ostler.book.exploration import BASELINE, REFUSED, Cell, Played as Explored, Walk, never_refused, play as play_cells, seed, unreached
 from ostler.book.graph import dot, render
 from ostler.book.pages import LEVELS, cmd_pages
-from ostler.book.index import book_root, cmd_index, cmd_search_book
+from ostler.book.index import book_root, cmd_index, cmd_search_book, flat_books, moved_hint
 from ostler.book.http import Endpoint, identity_lines, named_shapes
 from ostler.book.inputs import Tried, fields_tried, play as play_inputs
 from ostler.book.journey import JourneyResult
@@ -78,7 +79,10 @@ def default_out(args: argparse.Namespace) -> bool:
 def load(name: str) -> Service[Any]:
     root = book_root(os.getcwd())
     if not os.path.isdir(os.path.join(root, *name.split("."))):
-        raise SystemExit(f"no book {name!r} under {root}")
+        parts = name.split(".")
+        flat = parts[2] if len(parts) >= 3 and parts[2] in flat_books(root) else None
+        hint = f"; {moved_hint(flat, books.service_package(Path(os.getcwd())))}" if flat else ""
+        raise SystemExit(f"no book {name!r} under {root}{hint}")
     return importlib.import_module(f"{name}.service").service
 
 
@@ -131,7 +135,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     find = sub.add_parser("search", help="find a term among the endpoints, rules, actions, journeys, screens and scenes")
     find.add_argument("term", help="the text to find; the old form `search <service> <term>` still works")
     find.add_argument("extra", nargs="?", help=argparse.SUPPRESS)
-    find.add_argument("--service", help="search this service only; omitted, every service under services/")
+    find.add_argument("--service", help="search this book only; omitted, every book of the repository you are in, or every book under the book root when started in the artifacts folder or in a repository that keeps its book")
     find.add_argument("--kind", choices=KINDS)
     pages = sub.add_parser("pages", help="list the pages of the company, team and product books, one line each: level, slug, date, status, statement")
     pages.add_argument("--level", choices=LEVELS, help="list this level only")

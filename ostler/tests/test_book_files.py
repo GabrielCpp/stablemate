@@ -8,6 +8,7 @@ import pytest
 
 from ostler.book import check as book_check
 from ostler.book import cli, index
+from ostler._vendor.stablemate_core import config as cfgmod
 from ostler.book.files import files, outside
 
 
@@ -99,3 +100,25 @@ def test_check_notes_nothing_for_a_book_that_imports_nothing_outside(tmp_path, m
     _write(tmp_path, "services/solo/service.py", "import os\n")
     monkeypatch.setattr(index, "book_root", lambda cwd: str(tmp_path))
     assert book_check.outside_notes("services.solo") == []
+
+
+@pytest.fixture
+def namespaced(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(tmp_path))
+    _write(tmp_path, "services/acme/ticket/service.py", "from ..shared.accounts import Account\nfrom ..user import service\n")
+    _write(tmp_path, "services/acme/ticket/endpoints.py", "")
+    _write(tmp_path, "services/acme/shared/accounts.py", "")
+    _write(tmp_path, "services/acme/user/service.py", "")
+    _write(tmp_path, "services/acme/web/service.py", "")
+    _write(tmp_path, "services/acme/web/screens.py", "")
+    return tmp_path
+
+
+def test_outside_in_a_namespaced_root_lists_the_shared_code_of_the_repository_and_not_another_book(namespaced):
+    assert outside(namespaced, "services.acme.ticket") == ["services/acme/shared/accounts.py"]
+
+
+def test_files_in_a_namespaced_root_lists_the_book_folder_and_nothing_of_another_book(namespaced):
+    listed = files(namespaced, "services.acme.ticket")
+    assert "services/acme/ticket/endpoints.py" in listed
+    assert not [path for path in listed if path.startswith("services/acme/web")]

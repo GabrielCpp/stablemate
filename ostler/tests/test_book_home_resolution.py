@@ -46,7 +46,7 @@ def _ostler(arguments: list[str], cwd: Path) -> subprocess.CompletedProcess[str]
 def test_search_from_a_lone_repository_reads_its_book_in_the_artifacts_dir(tmp_path):
     acme = _lone_repository(tmp_path)
     _book_in_artifacts()
-    done = _ostler(["book", "search", "todo"], acme)
+    done = _ostler(["book", "search", "todo", "--service", "services.api"], acme)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "services.api" in done.stdout
 

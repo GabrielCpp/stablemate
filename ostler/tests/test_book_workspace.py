@@ -85,7 +85,7 @@ def _ostler(ws: Workspace, arguments: list[str], cwd: Path) -> subprocess.Comple
 
 def test_book_search_from_a_member_repo_finds_the_artifacts_book(workspace):
     _lay_out_book(workspace)
-    done = _ostler(workspace, ["book", "search", "todo"], workspace.api)
+    done = _ostler(workspace, ["book", "search", "todo", "--service", "services.api"], workspace.api)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "services.api" in done.stdout
 
@@ -155,7 +155,7 @@ def test_checkout_of_an_unknown_member_names_the_known_ones(workspace):
 def test_book_search_from_a_member_worktree_reads_the_artifacts_worktree_books(workspace, tmp_path):
     book, api = _run_worktrees(workspace, tmp_path)
     _lay_out_book(workspace, book, api)
-    done = _ostler(workspace, ["book", "search", "todo"], api)
+    done = _ostler(workspace, ["book", "search", "todo", "--service", "services.api"], api)
     assert done.returncode == 0, done.stdout + done.stderr
     assert "services.api" in done.stdout
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -292,3 +292,24 @@ def test_run_only_with_an_empty_value_is_an_argument_error(capsys):
         cli.main(["run", "services.api", "--only", ""])
     assert stopped.value.code == 2
     assert "--only is empty" in capsys.readouterr().err
+
+
+def test_a_change_in_another_book_of_a_namespaced_root_is_absent_from_the_diff_of_this_one(tmp_path, monkeypatch):
+    from ostler._vendor.stablemate_core import config as cfgmod
+    from ostler.book import bookdiff
+    from ostler.book.change import Reading
+
+    monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(tmp_path))
+    monkeypatch.setattr(bookdiff, "index_of", lambda service: {})
+    for name in ("api", "web"):
+        (tmp_path / "services/acme" / name).mkdir(parents=True)
+        (tmp_path / "services/acme" / name / "service.py").write_text("")
+        (tmp_path / "services/acme" / name / "notes.py").write_text("x = 1\n")
+    git(tmp_path, "init", "--quiet")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "--quiet", "-m", "base")
+    base = git(tmp_path, "rev-parse", "--short", "HEAD").strip()
+    (tmp_path / "services/acme/api/notes.py").write_text("x = 2\n")
+    (tmp_path / "services/acme/web/notes.py").write_text("x = 3\n")
+    found = bookdiff.book_diff(cast(Any, None), tmp_path, "services.acme.api", Reading(base=base))
+    assert found.files == ["services/acme/api/notes.py"]

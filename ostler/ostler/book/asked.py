@@ -4,10 +4,22 @@ too."""
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass
 
 from ostler.book.errors import BookError
 from ostler.book.http import Endpoint
+
+
+def book_module(module: str) -> str:
+    """The book package a module belongs to: the nearest enclosing package whose folder holds a service.py, else its first two parts."""
+    parts = module.split(".")
+    for end in range(len(parts), 1, -1):
+        package = sys.modules.get(".".join(parts[:end]))
+        if any(os.path.isfile(os.path.join(folder, "service.py")) for folder in getattr(package, "__path__", None) or ()):
+            return ".".join(parts[:end])
+    return ".".join(parts[:2])
 
 
 @dataclass(frozen=True)
@@ -18,7 +30,7 @@ class Asked:
 
     @property
     def book(self) -> str:
-        return ".".join(self.call.__module__.split(".")[:2])
+        return book_module(self.call.__module__)
 
     @property
     def text(self) -> str:

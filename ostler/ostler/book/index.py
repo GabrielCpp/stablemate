@@ -142,17 +142,39 @@ def folders(base: str) -> list[str]:
     return [n for n in sorted(os.listdir(base)) if os.path.isdir(os.path.join(base, n)) and not n.startswith((".", "_"))]
 
 
-def services_of(root: str) -> list[str]:
-    """Every book under the root: a service's package, or one package per surface it is reached by."""
-    base = os.path.join(root, "services")
+def services_of(root: str, package: str = "services") -> list[str]:
+    """Every book under the package: a folder that holds a service.py, at most three folders below services/."""
+    base = os.path.join(root, *package.split("."))
     found: list[str] = []
     for name in folders(base):
+        module = f"{package}.{name}"
         if os.path.isfile(os.path.join(base, name, "service.py")):
-            found.append(f"services.{name}")
-            continue
-        found += [f"services.{name}.{surface}" for surface in folders(os.path.join(base, name))
-                  if os.path.isfile(os.path.join(base, name, surface, "service.py"))]
+            found.append(module)
+        elif module.count(".") < 3:
+            found += services_of(root, module)
     return found
+
+
+def flat_books(root: str) -> list[str]:
+    if not books.namespaced(Path(root)):
+        return []
+    base = os.path.join(root, "services")
+    return [name for name in folders(base) if os.path.isfile(os.path.join(base, name, "service.py"))]
+
+
+def moved_hint(name: str, package: str) -> str:
+    parts = package.split(".")
+    repo = parts[1] if len(parts) == 2 else "<repo>"
+    return (
+        f"services/{name} is a book at the old flat place; move it into its repository's folder with "
+        f"`ostler book move {name} --repo {repo}` ({books.MOVE_GUIDE})"
+    )
+
+
+def flat_name_of(module: str, flat: list[str]) -> str | None:
+    parts = module.split(".")
+    name = parts[2] if len(parts) >= 3 else parts[1] if len(parts) == 2 else ""
+    return name if name in flat else None
 
 
 def cmd_index(service: Any, args: Any) -> int:
@@ -163,15 +185,23 @@ def cmd_index(service: Any, args: Any) -> int:
 
 def cmd_search_book(args: Any) -> int:
     root = book_root(os.getcwd())
-    names = [args.service] if args.service else services_of(root)
+    package = books.service_package(Path(os.getcwd()))
+    flat = flat_books(root)
+    for name in flat:
+        print(f"skipped services.{name}: {moved_hint(name, package)}", file=sys.stderr)
+    if args.service:
+        names = [args.service]
+    else:
+        names = [n for n in services_of(root, package) if n not in {f"services.{f}" for f in flat}]
     for name in names:
         if not os.path.isdir(os.path.join(root, *name.split("."))):
-            raise SystemExit(f"no service {name!r} under {root}")
+            hint = flat_name_of(name, flat)
+            raise SystemExit(f"no service {name!r} under {root}" + (f"; {moved_hint(hint, package)}" if hint else ""))
     wider = read_levels(root)
-    books = {**wider, **{name: entries_of(root, name) for name in names}}
-    matched = {name: phrase_hits(entries, args.term, args.kind) for name, entries in books.items()}
+    held = {**wider, **{name: entries_of(root, name) for name in names}}
+    matched = {name: phrase_hits(entries, args.term, args.kind) for name, entries in held.items()}
     if not any(matched.values()):
-        matched = {name: loose_hits(entries, args.term, args.kind) for name, entries in books.items()}
+        matched = {name: loose_hits(entries, args.term, args.kind) for name, entries in held.items()}
     found = False
     for name, rows in matched.items():
         if not rows:

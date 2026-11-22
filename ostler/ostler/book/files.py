@@ -12,15 +12,22 @@ import os
 import sys
 from pathlib import Path
 
+from ostler._vendor.stablemate_core import books
+
 COMPILED = (".pyc", ".pyo")
 CACHE = "__pycache__"
 
 
-def _own(root: Path, module: str) -> Path | None:
+def _depth(root: Path) -> int:
+    return 3 if books.namespaced(root) else 2
+
+
+def service_folder(root: Path, module: str) -> Path | None:
+    depth = _depth(root)
     parts = module.split(".")
-    if len(parts) < 2 or parts[0] != "services":
+    if len(parts) < depth or parts[0] != "services":
         return None
-    folder = root / "services" / parts[1]
+    folder = root.joinpath(*parts[:depth])
     return folder if folder.is_dir() else None
 
 
@@ -34,9 +41,10 @@ def _belongs(root: Path, own: Path, path: Path) -> bool:
     if path.is_relative_to(own):
         return True
     relative = path.relative_to(root).parts
-    if len(relative) < 3 or relative[0] != "services":
+    depth = _depth(root)
+    if len(relative) <= depth or relative[0] != "services":
         return True
-    return not _is_book(root / relative[0] / relative[1])
+    return not _is_book(root.joinpath(*relative[:depth]))
 
 
 def _own_files(root: Path, own: Path) -> list[Path]:
@@ -91,7 +99,7 @@ def _on_the_way(root: Path, file: Path) -> list[Path]:
 
 def outside(root: Path, module: str) -> list[str]:
     """The paths under *root*, outside the book's own folder, that the book's modules import and so need to load, relative to *root* and sorted. Another service's book is left out."""
-    own = _own(root, module)
+    own = service_folder(root, module)
     if own is None:
         return []
     queue = [path for path in _own_files(root, own) if path.suffix == ".py"]
@@ -112,14 +120,14 @@ def outside(root: Path, module: str) -> list[str]:
 
 def files(root: Path, module: str) -> list[str]:
     """Every file the book needs to load, relative to *root* and sorted: its own folder, then what it imports from outside it."""
-    own = _own(root, module)
+    own = service_folder(root, module)
     if own is None:
         return []
     return sorted({*(path.relative_to(root).as_posix() for path in _own_files(root, own)), *outside(root, module)})
 
 
 def cmd_files(args: argparse.Namespace, root: str | None) -> int:
-    if root is None or _own(Path(root), args.service) is None:
+    if root is None or service_folder(Path(root), args.service) is None:
         print(f"{args.service} has no folder under the book root", file=sys.stderr)
         return 2
     for path in (outside if args.outside else files)(Path(root), args.service):

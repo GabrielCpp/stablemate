@@ -11,6 +11,7 @@ from collections.abc import Iterable, Mapping
 from datetime import date
 from typing import TYPE_CHECKING, Any, Callable, cast
 
+from ostler.book.asked import book_module
 from ostler.book.backstage import CannotArrange
 from ostler.book.boundary import Needs, Person, Reaches, View
 from ostler.book.cast import SOLE, Actor
@@ -34,7 +35,7 @@ Listing = Callable[[Surface, Model], tuple[object, ...]]
 
 def book_of(call: object) -> str:
     """The module name of the book whose endpoints define this call's class."""
-    return ".".join(type(call).__module__.split(".")[:2])
+    return book_module(type(call).__module__)
 
 
 class Said:
