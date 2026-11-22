@@ -22,7 +22,7 @@ Run every command from the repository root. `<artifacts>` is the artifacts folde
    git -C <artifacts> branch --show-current
    ```
 
-   The first command prints nothing. The second prints the base branch. If the artifacts folder is not a git repository yet, run `ostler book branch` once from any code repository, or `git -C <artifacts> init` and make a first commit.
+   The first command prints nothing. The second prints the base branch. If the artifacts folder is not a git repository yet, run `git -C <artifacts> init` and make a first commit.
 
 3. Copy `services/` to `<artifacts>/services/`. Service ids are unique across the folder, so a folder that already exists there stops the move. Remove bytecode caches from the copy.
 
