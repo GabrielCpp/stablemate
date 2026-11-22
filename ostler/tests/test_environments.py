@@ -201,8 +201,8 @@ def _lone_trees(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, 
     config.write_text("")
     monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
     monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(artifacts))
-    _file(artifacts, "services/api/ops/services/api.yml.j2", 'build: {{ repos["todo-api"] }}\n')
-    _file(artifacts, "services/api/ops/stack.yml", yaml.safe_dump({
+    _file(artifacts, "services/todo-api/api/ops/services/api.yml.j2", 'build: {{ repos["todo-api"] }}\n')
+    _file(artifacts, "services/todo-api/api/ops/stack.yml", yaml.safe_dump({
         "services": {"api": {"about": "the HTTP API", "define": "services/api.yml.j2", "address": "api", "port": 8080}},
     }))
     return artifacts, code
@@ -252,8 +252,8 @@ def _run_trees(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, P
 
 
 def _api_stack(root: Path) -> None:
-    _file(root, "services/api/ops/services/api.yml.j2", 'build: {{ repos["todo-api"] }}\n')
-    _file(root, "services/api/ops/stack.yml", yaml.safe_dump({
+    _file(root, "services/todo-api/api/ops/services/api.yml.j2", 'build: {{ repos["todo-api"] }}\n')
+    _file(root, "services/todo-api/api/ops/stack.yml", yaml.safe_dump({
         "services": {"api": {"about": "the HTTP API", "define": "services/api.yml.j2", "address": "api", "port": 8080}},
     }))
 
@@ -2045,3 +2045,95 @@ def test_a_repo_secrets_file_naming_an_unknown_repository_is_refused(
     assert "services/acme/ops/stack.yml" in errors[0]
     assert "globex" in errors[0]
     assert "acme" in errors[0].split("globex", 1)[1]
+
+
+def _product(root: Path, repository: str, fixture: str = "") -> None:
+    fixtures = {"seed": [fixture]} if fixture else {}
+    _file(root, f"services/{repository}/ops/services/core.yml.j2", "image: redis:7\n")
+    _file(root, f"services/{repository}/ops/stack.yml", yaml.safe_dump({
+        "services": {"core": {"about": "the core", "define": "services/core.yml.j2"}}}))
+    _file(root, f"services/{repository}/api/ops/services/api.yml.j2", "image: redis:7\n")
+    _file(root, f"services/{repository}/api/ops/stack.yml", yaml.safe_dump({
+        "services": {"api": {"about": "the API", "define": "services/api.yml.j2",
+                             "address": "api", "port": 8080,
+                             **({"fixtures": fixtures} if fixtures else {})}}}))
+
+
+def _two_products(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, workspaces: str = "") -> tuple[Path, Path]:
+    root = _real_repo(tmp_path / "artifacts")
+    code = _real_repo(tmp_path / "code" / "acme")
+    config = tmp_path / "home.toml"
+    config.write_text(workspaces)
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
+    monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(root))
+    _product(root, "acme")
+    _product(root, "globex", "repo://globex/db/seed.sql")
+    return root, code
+
+
+def test_a_command_started_for_a_repository_loads_only_its_own_stacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _two_products(tmp_path, monkeypatch)
+    catalog = spec.load(root, code=code)
+    assert catalog.errors == []
+    assert sorted(book.directory.relative_to(root).as_posix() for book in catalog.books.values()) == [
+        "services/acme", "services/acme/api"]
+    assert spec.load(root).errors != []
+
+
+def test_a_command_without_a_code_checkout_reports_the_clash_between_products(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _code = _two_products(tmp_path, monkeypatch)
+    errors = spec.load(root).errors
+    assert any("the book `api` already has" in error for error in errors)
+
+
+def test_a_command_started_for_a_workspace_loads_the_stacks_of_every_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    member = _real_repo(tmp_path / "code" / "globex")
+    root, code = _two_products(tmp_path, monkeypatch, f'[workspaces]\nshop = ["{member}", "{tmp_path / "code" / "acme"}"]\n')
+    shutil.rmtree(root / "services" / "globex" / "api")
+    _file(root, "services/globex/ops/stack.yml", yaml.safe_dump({"services": {}}))
+    _file(root, "services/globex/web/ops/stack.yml", yaml.safe_dump({"services": {}}))
+    catalog = spec.load(root, code=code)
+    assert sorted(book.directory.relative_to(root).as_posix() for book in catalog.books.values()) == [
+        "services/acme", "services/acme/api", "services/globex", "services/globex/web"]
+
+
+def test_a_command_started_in_the_artifacts_folder_loads_every_repository_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, _code = _two_products(tmp_path, monkeypatch)
+    assert [path.name for path in spec.stack_roots(root, code=root)] == ["acme", "globex"]
+    assert any("the book `api` already has" in error for error in spec.load(root, code=root).errors)
+
+
+def test_env_check_from_a_repository_ignores_the_other_products_in_the_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from ostler.cli import main
+
+    _root, code = _two_products(tmp_path, monkeypatch)
+    monkeypatch.chdir(code)
+    assert main(["env", "check"]) == 0
+    assert "globex" not in capsys.readouterr().err
+
+
+def test_a_book_play_resets_its_copy_with_the_code_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ostler.book.environment import Environment
+
+    _root, code = _two_products(tmp_path, monkeypatch)
+    seen: dict[str, object] = {}
+
+    def reset(root: Path, name: str, **kw: object) -> tuple[int, float, str]:
+        seen["code"] = kw.get("code")
+        return 0, 0.0, ""
+
+    monkeypatch.setattr(commands, "reset", reset)
+    Environment("local", {"api": "ostler:story-1"}, root=str(code)).reset()
+    assert seen == {"code": code}

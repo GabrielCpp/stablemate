@@ -227,7 +227,7 @@ artifact contracts are in
 `ostler env` runs the product on this machine from what the books say it is made of. Each book
 that boots something keeps a `stack.yml` in the `ops/` folder beside its service book, at
 `services/<book>/ops/stack.yml`. The stack root is `services/ops/stack.yml` beside the code, or
-`services/<repo>/ops/stack.yml` in the artifacts folder, and is also a book. The file names the book's services, the compose fragment that defines each one, and what each
+`services/<repo>/ops/stack.yml` in the artifacts folder, and is also a book. A command started for a code repository loads the stack roots of the repositories it knows, which are the repository itself or the members of its workspace, so two unrelated products in one artifacts folder never see each other's stacks. Started in the artifacts folder, every stack root loads. The file names the book's services, the compose fragment that defines each one, and what each
 one needs. A need may sit in another book, so the web book names `api:api` and the api book
 defines it once. Two books never define the same service. One names it, and the other needs it.
 

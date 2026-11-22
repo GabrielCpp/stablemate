@@ -443,9 +443,9 @@ def _down(copy: Copy, *, keep_data: bool, runner: Runner) -> EnvOutcome:
     return EnvOutcome(True, f"tore {copy.name} down", {"ok": True, "copy": copy.name})
 
 
-def cmd_ls(root: Path, *, runner: Runner = run_command) -> EnvOutcome:
+def cmd_ls(root: Path, *, runner: Runner = run_command, code: Path | None = None) -> EnvOutcome:
     """Every service of this repo's stack with what it is and the copies running it, then the copies."""
-    catalog = spec.load(root)
+    catalog = spec.load(root, code)
     status = runtime.project_states(runner)
     rows: list[dict[str, Any]] = []
     copy_lines: list[str] = []

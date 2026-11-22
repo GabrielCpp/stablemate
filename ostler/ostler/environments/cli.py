@@ -116,7 +116,7 @@ def run(args: argparse.Namespace, root: Path) -> int:
     elif op == "down":
         outcome = commands.cmd_down(root, copy_name=copy_name, keep_data=args.keep_data)
     elif op == "ls":
-        outcome = commands.cmd_ls_all() if args.all else commands.cmd_ls(root)
+        outcome = commands.cmd_ls_all() if args.all else commands.cmd_ls(root, code=Path.cwd())
     elif op == "prune":
         outcome = commands.cmd_prune(dry_run=args.dry_run)
     elif op == "render":

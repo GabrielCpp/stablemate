@@ -131,7 +131,8 @@ class Environment:
         name = self.copy()
         if not name:
             return None
-        return commands.reset(self._stack_root(), name, runner=self.runner)
+        return commands.reset(self._stack_root(), name, runner=self.runner,
+                              code=Path(self.root or Path.cwd()))
 
     def _copy_of(self, url: str) -> str:
         """The copy the run named, else the lease the process runs under, else the one the book names, else the

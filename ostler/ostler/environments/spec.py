@@ -214,22 +214,24 @@ class Catalog:
     errors: list[str] = field(default_factory=list)
 
 
-def stack_roots(root: Path) -> list[Path]:
-    """The folders a book's `ops/stack.yml` is looked for under: `services/`, or each repository folder of the artifacts folder."""
+def stack_roots(root: Path, code: Path | None = None) -> list[Path]:
+    """The folders a book's `ops/stack.yml` is looked for under: `services/`, or each repository folder of the artifacts folder, only the repositories *code* knows when it is given a checkout outside the artifacts folder."""
     if not books.namespaced(root):
         return [root / BOOKS_DIR]
     base = root / BOOKS_DIR
     if not base.is_dir():
         return []
+    known = None if code is None or books.namespaced(code) else set(books.book_checkouts(code))
     return sorted(child for child in base.iterdir()
                   if child.is_dir() and not child.name.startswith((".", "_"))
-                  and not (child / "service.py").is_file())
+                  and not (child / "service.py").is_file()
+                  and (known is None or child.name in known))
 
 
-def stack_files(root: Path) -> list[Path]:
+def stack_files(root: Path, code: Path | None = None) -> list[Path]:
     """The `ops/stack.yml` of the book at each stack root and of each book one level below it."""
     found: list[Path] = []
-    for base in stack_roots(root):
+    for base in stack_roots(root, code):
         if not base.is_dir():
             continue
         if (base / OPS_DIR / STACK_FILE).is_file():
@@ -244,10 +246,10 @@ def book_dir(stack_file: Path) -> Path:
     return stack_file.parent.parent
 
 
-def book_name(root: Path, stack_file: Path) -> str:
+def book_name(root: Path, stack_file: Path, code: Path | None = None) -> str:
     """The name other books reference *stack_file*'s services by."""
     directory = book_dir(stack_file)
-    if directory not in stack_roots(root):
+    if directory not in stack_roots(root, code):
         return directory.name
     return directory.name.lower() if books.namespaced(root) else root.name.lower()
 
@@ -257,15 +259,15 @@ def load(root: Path, code: Path | None = None) -> Catalog:
     catalog = Catalog()
     repos = functools.cache(lambda: books.book_checkouts(code or root))
     first_file: dict[str, Path] = {}
-    for stack_file in stack_files(root):
-        name = book_name(root, stack_file)
+    for stack_file in stack_files(root, code):
+        name = book_name(root, stack_file, code)
         if name in first_file:
             catalog.errors.append(
                 f"{shown(root, stack_file)}: the book `{name}` already has "
                 f"{shown(root, first_file[name])}: delete this one")
             continue
         first_file[name] = stack_file
-        _read_book(catalog, root, name, stack_file, repos)
+        _read_book(catalog, root, name, stack_file, repos, code)
     _expand_book_needs(catalog, root)
     _check_reaches(catalog, root)
     _check_needs(catalog)
@@ -282,10 +284,10 @@ def shown(root: Path, stack_file: Path) -> str:
 
 def _read_book(
     catalog: Catalog, root: Path, name: str, stack_file: Path,
-    repos: Callable[[], dict[str, Path]],
+    repos: Callable[[], dict[str, Path]], code: Path | None = None,
 ) -> None:
     where = shown(root, stack_file)
-    roots = stack_roots(root)
+    roots = stack_roots(root, code)
     is_root = book_dir(stack_file) in roots
     base = next((base for base in roots if stack_file.is_relative_to(base)), root / BOOKS_DIR)
     root_file = shown(root, base / OPS_DIR / STACK_FILE)

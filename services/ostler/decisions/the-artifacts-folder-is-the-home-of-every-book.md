@@ -1,7 +1,7 @@
 story: none
 date: 2026-11-22
 elements: SearchBook, CheckBook, SearchUnmovedBook, MoveBook, EnvCheck
-sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root, core/stablemate_core/book_branch.py, ostler/ostler/book/home.py, ostler/ostler/book/move.py, core/stablemate_core/books.py::service_package, ostler/ostler/book/index.py::services_of, ostler/ostler/environments/spec.py::stack_roots
+sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root, core/stablemate_core/book_branch.py, ostler/ostler/book/home.py, ostler/ostler/book/move.py, core/stablemate_core/books.py::service_package, ostler/ostler/book/index.py::services_of, ostler/ostler/environments/spec.py::stack_roots, ostler/ostler/environments/leases.py::books_near
 
 A book lives in the artifacts folder unless the repository says otherwise. `ostler book` resolves its book root through
 one function of the shared core, `book_home`, and no command walks up from the working directory looking for a
@@ -64,9 +64,10 @@ book through `importlib`, which loads `services.acme-app.api` without trouble.
 Each repository folder in the artifacts folder is a stack root, `services/<repo>/ops/stack.yml`, and the stacked books
 below it keep their folder names. One `secrets:` source is allowed across all the stack roots, and a second one is an
 error. A stack fixture is a path beside the book's `ops/` folder, or `repo://<name>/<path>` into the code repository.
-Two repositories that each hold a stacked book of the same name are refused when their stacks load together, with the
-error of a duplicate book. That limit is accepted for now, and the books are not qualified by repository until the
-pairing first happens.
+A command started for a code repository loads the stack roots of the repositories it knows, which are the repository
+itself or the members of its workspace. Two unrelated products in one artifacts folder never see each other's stacks.
+Started in the artifacts folder, or in a checkout of the artifacts repository, every stack root loads, and two
+same-named books are refused there with the error of a duplicate book.
 
 The sandbox keeps its book in the repository, so it is not a namespaced root. The book plays `MoveBook` against `art/`,
 the sandbox's artifacts folder, where `ostler -C art book move flat --repo acme` moves a flat book into `services/acme/`.

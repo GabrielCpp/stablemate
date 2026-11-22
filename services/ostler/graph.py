@@ -388,7 +388,7 @@ class EnvSchema(Command):
 
 
 class EnvCheck(Command):
-    does = "Check that every book's ops/stack.yml fits with the others. In the artifacts folder each repository folder under services/ is a stack root, one `secrets:` source is allowed across them, and a fixture path may be `repo://<name>/<path>`."
+    does = "Check that every book's ops/stack.yml fits with the others. In the artifacts folder each repository folder under services/ is a stack root, one `secrets:` source is allowed across them, and a fixture path may be `repo://<name>/<path>`. Started for a code repository it loads only the stack roots of the repositories it knows, the repository itself or the members of its workspace."
     program = "ostler"
     argv = ("--full-ids", "env", "check")
     args = ARGS

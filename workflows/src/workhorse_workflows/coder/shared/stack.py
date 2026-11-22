@@ -32,7 +32,7 @@ def stack_target(
     """The book whose stack this story's QA runs against, and the copy *lease* names there."""
     root = find_book_root(repo_dir)
     near = _qa_runner.story_near(root, services or (), find_book_package(repo_dir)) if story else ""
-    env = _qa_runner.stack_env(root, near=near, lease=lease)
+    env = _qa_runner.stack_env(root, near=near, lease=lease, repo_dir=repo_dir)
     logger.info("QA stack for %s: near=%s lease=%s", story, near or "(none)", lease or "(none)")
     return StackTarget(near=near, lease=lease, env=env)
 

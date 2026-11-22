@@ -1054,7 +1054,7 @@ class _Stack:
         monkeypatch.setattr(qa_runner, "run_qa_plan", self.run)
         monkeypatch.setattr(qa_runner, "release_copy", self.release)
 
-    def env(self, _root: Any, near: str = "", lease: str = "") -> dict[str, str]:
+    def env(self, _root: Any, near: str = "", lease: str = "", repo_dir: str = "") -> dict[str, str]:
         self.calls.append("stack_target")
         self.leases.append(lease)
         return {}

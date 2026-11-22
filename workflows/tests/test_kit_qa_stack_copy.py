@@ -326,3 +326,24 @@ def test_the_stack_is_rendered_with_the_code_checkout(repo: Path, monkeypatch: p
     runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1")
 
     assert seen == {"up": repo.resolve(), "devices": repo.resolve()}
+
+
+def test_the_copy_is_released_and_its_environment_read_with_the_code_checkout(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict[str, object] = {}
+
+    def down(_root: Path, **kw: object) -> QaOutcome:
+        seen["down"] = kw["code"]
+        return QaOutcome(True, "stack torn down", {})
+
+    def run_env(_root: Path, *_args: object, **kw: object) -> dict[str, str]:
+        seen["env"] = kw["code"]
+        return {}
+
+    monkeypatch.setattr(leases, "down", down)
+    monkeypatch.setattr(leases, "run_env", run_env)
+    runner.release_copy(LOG, repo_dir=str(repo), lease="story-1")
+    runner.stack_env(repo, lease="story-1", repo_dir=str(repo))
+
+    assert seen == {"down": repo.resolve(), "env": repo.resolve()}

@@ -58,7 +58,7 @@ def bring_up_book_devices(root: Path, *, near: Path | None = None,
 
 
 def _device_manifests(root: Path, near: Path | None, code: Path | None = None) -> list[dict[str, Any]]:
-    books = [book for book in spec_mod.load(root).books.values() if book.device]
+    books = [book for book in spec_mod.load(root, code).books.values() if book.device]
     if near is not None:
         where = near if near.is_absolute() else root / near
         books = [book for book in books if where.resolve().is_relative_to(book.directory.resolve())] or books

@@ -4,6 +4,7 @@ A book that boots something says what it is made of in one file, `stack.yml`, in
 folder beside its service book, at `services/<book>/ops/stack.yml`. The stack root is
 `services/ops/stack.yml` beside the code, or `services/<repo>/ops/stack.yml` in the
 artifacts folder. It is also a book, and takes the repository's name in lowercase.
+A command started for a code repository loads the stack roots of the repositories it knows, which are the repository itself or the members of its workspace, so two unrelated products in one artifacts folder never see each other's stacks. Started in the artifacts folder, every stack root loads.
 
 `ostler env` reads every book's file together and runs the product on this machine from them,
 one compose project per copy. The file replaces a hand-kept compose file, the make targets that

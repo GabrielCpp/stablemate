@@ -45,9 +45,11 @@ def copy_lease(*parts: str) -> str:
     return re.sub(r"[^a-z0-9_-]+", "-", joined).lstrip("-_")
 
 
-def stack_env(root: Path, near: str = "", lease: str = "") -> dict[str, str]:
+def stack_env(root: Path, near: str = "", lease: str = "", repo_dir: str = "") -> dict[str, str]:
     """What a command run against the stack *near* selects finds in its environment: the lease and its book."""
-    return leases.run_env(root, lease, Path(near) if near else None, holder=os.getpid()) or {}
+    code = find_repo_root(repo_dir)
+    return leases.run_env(root, lease, Path(near) if near else None, holder=os.getpid(),
+                          code=code) or {}
 
 
 def release_copy(
@@ -59,22 +61,24 @@ def release_copy(
     """Tear down the copy *lease* holds of a per-run stack, or None when the stack is shared and stays serving."""
     root = find_book_root(repo_dir)
     near_path = Path(near) if near else None
-    if not lease or not leases.books_near(root, near_path):
+    code = find_repo_root(repo_dir)
+    if not lease or not leases.books_near(root, near_path, code):
         return None
-    return leases.down(root, lease=lease, near=near_path)
+    return leases.down(root, lease=lease, near=near_path, code=code)
 
 
 def teardown_stack(logger: logging.Logger, repo_dir: str = "") -> QaOutcome:
     """Tear down the shared stack when this run brought it up, and leave one already serving."""
     root = find_book_root(repo_dir)
-    if not leases.books_near(root):
+    code = find_repo_root(repo_dir)
+    if not leases.books_near(root, code=code):
         return QaOutcome(True, "no book declares a stack", {"torn_down": "skipped"})
     started = runtime.read_manifest(runtime.copy_for(root, SHARED).directory).get("started_by")
     if started != runtime.holder_stamp(os.getpid()):
         _ = runtime.release_holder(root, SHARED, os.getpid())
         return QaOutcome(True, "the stack was up before this run, so it stays serving",
                          {"torn_down": "skipped"})
-    copied = leases.down(root)
+    copied = leases.down(root, code=code)
     return copied or QaOutcome(True, "no book declares a stack", {"torn_down": "skipped"})
 
 
@@ -106,7 +110,7 @@ def ensure_stack(
         return _copy_status(copied)
     booted = devices.bring_up_book_devices(
         root, near=near_path, code=code,
-        env=leases.run_env(root, lease, near_path, holder=os.getpid()), logger=logger)
+        env=leases.run_env(root, lease, near_path, holder=os.getpid(), code=code), logger=logger)
     if booted and booted[-1].get("ready") != "yes":
         last = booted[-1]
         return StackStatus(
@@ -208,7 +212,7 @@ def run_qa_plan(
     """Execute the QA plan through ostler and normalize its four-state outcome."""
     docs_root = find_docs_root(repo_dir)
     plan = plan_file if plan_file is not None else str(Path(spec_dir) / QA_PLAN_FILE)
-    leased = stack_env(find_book_root(repo_dir), near=near, lease=lease)
+    leased = stack_env(find_book_root(repo_dir), near=near, lease=lease, repo_dir=repo_dir)
     before = _untracked(docs_root)
     with scoped_envs(leased):
         outcome = Ostler(docs_root).qa_run(plan, spec=spec_dir, only=only, label=label)

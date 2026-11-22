@@ -15,10 +15,10 @@ from ostler.qa import addresses
 from ostler.qa.outcome import QaOutcome
 
 
-def books_near(root: Path, near: Path | None = None) -> list[str]:
+def books_near(root: Path, near: Path | None = None, code: Path | None = None) -> list[str]:
     """The books a bring-up near *near* starts: the innermost one holding it, or every book."""
-    found = {spec.book_name(root, stack_file): spec.book_dir(stack_file)
-             for stack_file in spec.stack_files(root)}
+    found = {spec.book_name(root, stack_file, code): spec.book_dir(stack_file)
+             for stack_file in spec.stack_files(root, code)}
     if near is None:
         return sorted(found)
     here = near.resolve()
@@ -27,9 +27,9 @@ def books_near(root: Path, near: Path | None = None) -> list[str]:
 
 
 def run_env(root: Path, lease: str = "", near: Path | None = None,
-            holder: int | None = None) -> dict[str, str] | None:
+            holder: int | None = None, code: Path | None = None) -> dict[str, str] | None:
     """The copy's name, its holder and the address book a command run against the copy finds in its environment, the shared copy's without a lease."""
-    if not books_near(root, near):
+    if not books_near(root, near, code):
         return None
     copy = runtime.copy_for(root, lease or SHARED)
     env = {addresses.LEASE_ENV: lease or SHARED}
@@ -42,7 +42,7 @@ def run_env(root: Path, lease: str = "", near: Path | None = None,
 def up(root: Path, *, lease: str = "", near: Path | None = None, holder: int | None = None,
        runner: Runner = run_command, code: Path | None = None) -> QaOutcome | None:
     """Bring the books near *near* up as the copy *lease* names, held by the process *holder*."""
-    books = books_near(root, near)
+    books = books_near(root, near, code)
     if not books:
         return None
     outcome = commands.cmd_up(root, books, copy_name=lease or SHARED, holder=holder,
@@ -55,9 +55,9 @@ def up(root: Path, *, lease: str = "", near: Path | None = None, holder: int | N
 
 
 def down(root: Path, *, lease: str = "", near: Path | None = None,
-         runner: Runner = run_command) -> QaOutcome | None:
+         runner: Runner = run_command, code: Path | None = None) -> QaOutcome | None:
     """Tear down the copy *lease* names, or the shared copy without one."""
-    if not books_near(root, near):
+    if not books_near(root, near, code):
         return None
     outcome = commands.cmd_down(root, copy_name=lease or SHARED, runner=runner)
     data = {**outcome.data, "lease": lease, "torn_down": "yes" if outcome.ok else "no"}

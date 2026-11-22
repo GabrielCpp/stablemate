@@ -668,7 +668,7 @@ def book_run(
                 play = BookPlay(exit_code=TIMEOUT_EXIT, output=limit_text, timed_out=True)
             else:
                 began = _now()
-                play = _play(argv, find_repo_root(repo_dir), left, stack_env(root, lease=copy), limit_text)
+                play = _play(argv, find_repo_root(repo_dir), left, stack_env(root, lease=copy, repo_dir=repo_dir), limit_text)
                 spent += _now() - began
             what = f"{len(named)} call(s)" if named else f"{len(titles)} journey(s)"
             logger.info("book run of %s over %s exited %d", module, what, play.exit_code)
