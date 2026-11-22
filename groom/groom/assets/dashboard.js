@@ -4504,21 +4504,20 @@ function useRunDiff(id, live, stale, have, shownKept) {
 const WORKSPACE_DEBOUNCE_MS = 1000;
 
 function useWorkspaceRefresh(id, live, rev, tab, haveDiff, haveFiles) {
-  const seen = useRef({ id: "", rev: null });
+  const seen = useRef({ id: "", diff: null, files: null });
   useEffect(() => {
-    if (seen.current.id !== id) seen.current = { id, rev: null };
+    if (seen.current.id !== id) seen.current = { id, diff: null, files: null };
     if (!id || !live || rev === null) return undefined;
-    if (seen.current.rev === null) {
-      seen.current = { id, rev };
-      return undefined;
+    const have = { diff: haveDiff === id, files: haveFiles === id };
+    for (const view of ["diff", "files"]) {
+      if (!have[view]) seen.current[view] = null;
+      else if (seen.current[view] === null) seen.current[view] = rev;
     }
-    if (!rev || rev === seen.current.rev) return undefined;
-    const diff = tab === "diff" && haveDiff === id;
-    const files = tab === "files" && haveFiles === id;
-    if (!diff && !files) return undefined;
+    const view = tab;
+    if ((view !== "diff" && view !== "files") || !have[view] || rev === seen.current[view]) return undefined;
     const timer = setTimeout(() => {
-      seen.current = { id, rev };
-      if (diff) loadRunDiff(id);
+      seen.current[view] = rev;
+      if (view === "diff") loadRunDiff(id);
       else loadRunFiles(id, true);
     }, WORKSPACE_DEBOUNCE_MS);
     return () => clearTimeout(timer);

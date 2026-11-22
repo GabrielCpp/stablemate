@@ -581,3 +581,26 @@ def test_a_workspace_frame_refreshes_the_open_diff_within_a_second_and_a_half_wi
         finally:
             page.close()
             sidecar.drop()
+
+
+def test_a_workspace_change_seen_while_files_is_open_reads_the_diff_again_when_diff_opens():
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _run():
+        sidecar = _connect(live)
+        page = _open(live)
+        try:
+            _pick(page)
+            _open_diff(page)
+            _wait_for(lambda: len(sidecar.reads()) >= 1, "the first diff read")
+            _tab(page, "Files").click()
+            page.wait_for_timeout(1200)
+            before = len(sidecar.reads())
+            _push_workspace(sidecar)
+            page.wait_for_timeout(2000)
+            assert len(sidecar.reads()) == before
+            _tab(page, "Diff").click()
+            _wait_for(lambda: len(sidecar.reads()) == before + 1, "a diff read on opening Diff", timeout=2.5)
+        finally:
+            page.close()
+            sidecar.drop()
