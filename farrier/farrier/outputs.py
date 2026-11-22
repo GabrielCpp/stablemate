@@ -66,7 +66,13 @@ from farrier.skill_hooks import (
     hooks_for,
 )
 from farrier.home_agents import agent_files, agent_names
-from farrier.home_guards import BRIDGE_FILE, guard_files, guard_names
+from farrier.home_guards import (
+    BRIDGE_FILE,
+    COPILOT_BRIDGE,
+    COPILOT_GUARDS,
+    guard_files,
+    guard_names,
+)
 from farrier.sources import (
     POLICY_ROOT,
     Source,
@@ -141,9 +147,11 @@ USER_MANAGED = Managed(
         ".codex/skills",
         ".codex/agents",
         ".copilot/skills",
+        ".copilot/agents",
         ".config/opencode/agents",
     ),
-    (*USER_ROOT_FILES.values(), BRIDGE_FILE),
+    (*USER_ROOT_FILES.values(), BRIDGE_FILE, COPILOT_BRIDGE, COPILOT_GUARDS),
+    (COPILOT_GUARDS,),
     repo_scaffolding=False,
     regenerate="farrier install --user",
 )
@@ -540,11 +548,6 @@ def user_roots(home: HomeConfig) -> dict[str, str]:
         )
         if not roots:
             continue
-        if harness not in USER_ROOT_FILES:
-            raise SystemExit(
-                f"error: [user_library.{harness}] names roots, and farrier renders a "
-                f"home instruction file only for {', '.join(USER_ROOT_FILES)}."
-            )
         if len(roots) > 1:
             raise SystemExit(
                 f"error: [user_library.{harness}] names {len(roots)} roots "

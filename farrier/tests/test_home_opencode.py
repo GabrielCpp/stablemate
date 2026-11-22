@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from farrier.install import main
+from home_install import add_search_server, agent_library, install, isolated_home
 
 PROFILES = (
     '[profiles.opencode]\ncli = "opencode"\n\n'
@@ -33,38 +33,16 @@ try {
 
 @pytest.fixture
 def library(tmp_path: Path) -> Path:
-    root = tmp_path / "agents"
-    agents = root / "library" / "agents"
-    agents.mkdir(parents=True)
-    (root / "packs").mkdir()
-    (agents / "lookup.md").write_text(
-        '---\ndescription: "Read-only lookup."\nread_only: true\n---\n\nYou answer one question.\n',
-        encoding="utf-8",
-    )
-    (agents / "worker.md").write_text(
-        "---\ndescription: Carries out a plan.\n---\n\nYou carry out a plan.\n", encoding="utf-8"
-    )
-    return root
+    return agent_library(tmp_path)
 
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    path = tmp_path / "home"
-    path.mkdir()
-    monkeypatch.setenv("HOME", str(path))
-    monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "config.toml"))
-    return path
-
-
-def install(home: Path, library: Path, config: str, *flags: str) -> int:
-    (home.parent / "config.toml").write_text(config, encoding="utf-8")
-    return main(["--user", "--home", str(home), "--library", str(library), *flags])
+    return isolated_home(tmp_path, monkeypatch)
 
 
 def add_server(library: Path) -> str:
-    servers = library / "library" / "mcp"
-    servers.mkdir()
-    (servers / "search.yml").write_text("command: ostler\nargs: [mcp]\n", encoding="utf-8")
+    add_search_server(library)
     return '[user_library.opencode]\nmcp = ["search"]\n'
 
 

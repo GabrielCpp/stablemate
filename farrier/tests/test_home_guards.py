@@ -291,15 +291,6 @@ def test_a_pack_brings_its_guards(
     assert [group["matcher"] for group in codex_groups(home)] == ["Bash"]
 
 
-def test_a_harness_with_no_guard_file_refuses_guards_by_name(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: Path, library: Path
-) -> None:
-    configure(tmp_path, monkeypatch, '[user_library.copilot]\nhooks = ["secrets"]\n')
-
-    with pytest.raises(SystemExit, match="only for claude, codex"):
-        run(home, library)
-
-
 def test_an_unknown_guard_lists_the_ones_available(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: Path, library: Path
 ) -> None:

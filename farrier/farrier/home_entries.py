@@ -22,7 +22,7 @@ GUARD_CONTAINER = "hooks.PreToolUse"
 DONE_CONTAINER = "hooks.Stop"
 HOOK_CONTAINERS = {GUARD_CONTAINER: "PreToolUse", DONE_CONTAINER: "Stop"}
 TOP_LEVEL = "."
-SETTINGS_FILES = {"claude": ".claude/settings.json"}
+SETTINGS_FILES = {"claude": ".claude/settings.json", "copilot": ".copilot/settings.json"}
 SETTINGS_OWNED_ELSEWHERE = {"hooks": "library/hooks guards"}
 OPENCODE_CONFIG = ".config/opencode/opencode.json"
 OVERRIDES = {OPENCODE_CONFIG: ".config/opencode/opencode.jsonc"}
@@ -222,6 +222,14 @@ def codex_server(server: ToolServer) -> dict[str, Any]:
     return spelled
 
 
+def copilot_server(server: ToolServer) -> dict[str, Any]:
+    spelled: dict[str, Any] = {"type": "local", "command": server.command, "args": server.args}
+    if server.env:
+        spelled["env"] = server.env
+    spelled["tools"] = ["*"]
+    return spelled
+
+
 def opencode_server(server: ToolServer) -> dict[str, Any]:
     spelled: dict[str, Any] = {"type": "local", "command": [server.command, *server.args]}
     if server.env:
@@ -241,6 +249,7 @@ class McpDialect:
 MCP_DIALECTS = {
     "claude": McpDialect(".claude.json", "mcpServers", claude_server),
     "codex": McpDialect(".codex/config.toml", "mcp_servers", codex_server),
+    "copilot": McpDialect(".copilot/mcp-config.json", "mcpServers", copilot_server),
     "opencode": McpDialect(OPENCODE_CONFIG, "mcp", opencode_server),
 }
 
@@ -331,12 +340,7 @@ def user_entries(home: HomeConfig) -> list[Entry]:
         names = tool_server_names(table)
         if not names:
             continue
-        dialect = MCP_DIALECTS.get(harness)
-        if dialect is None:
-            raise SystemExit(
-                f"error: [user_library.{harness}] names MCP servers, and farrier writes "
-                f"them only for {', '.join(MCP_DIALECTS)}."
-            )
+        dialect = MCP_DIALECTS[harness]
         for name in sorted(names):
             entries.append(
                 Entry(dialect.rel, dialect.container, name, dialect.spell(load_tool_server(name)))

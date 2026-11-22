@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from farrier.install import main
+from home_install import install, isolated_home
 
 PROFILES = (
     '[profiles.claude]\ncli = "claude"\n\n'
@@ -42,16 +42,7 @@ def library(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    path = tmp_path / "home"
-    path.mkdir()
-    monkeypatch.setenv("HOME", str(path))
-    monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "config.toml"))
-    return path
-
-
-def install(home: Path, library: Path, config: str, *flags: str) -> int:
-    (home.parent / "config.toml").write_text(config, encoding="utf-8")
-    return main(["--user", "--home", str(home), "--library", str(library), *flags])
+    return isolated_home(tmp_path, monkeypatch)
 
 
 def claude_head(path: Path) -> dict:
@@ -91,11 +82,6 @@ def test_a_role_with_no_model_stops_the_install_and_names_the_table(
     with pytest.raises(SystemExit, match=r"\[profiles\.codex\.delegates\.lookup\] names no model"):
         install(home, library, config)
     assert not (home / ".codex/agents").exists()
-
-
-def test_copilot_cannot_take_agents(home: Path, library: Path) -> None:
-    with pytest.raises(SystemExit, match="only for claude, codex"):
-        install(home, library, PROFILES + '[user_library.copilot]\nagents = ["lookup"]\n')
 
 
 def test_an_unknown_agent_and_a_strange_record_key_stop_the_install(home: Path, library: Path) -> None:

@@ -15,3 +15,37 @@ def configure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str) -> Non
 
 def run(home: Path, library: Path, *extra: str) -> int:
     return main(["install", "--user", "--home", str(home), "--library", str(library), *extra])
+
+
+def agent_library(tmp_path: Path) -> Path:
+    root = tmp_path / "agents"
+    agents = root / "library" / "agents"
+    agents.mkdir(parents=True)
+    (root / "packs").mkdir()
+    (agents / "lookup.md").write_text(
+        '---\ndescription: "Read-only lookup."\nread_only: true\n---\n\nYou answer one question.\n',
+        encoding="utf-8",
+    )
+    (agents / "worker.md").write_text(
+        "---\ndescription: Carries out a plan.\n---\n\nYou carry out a plan.\n", encoding="utf-8"
+    )
+    return root
+
+
+def isolated_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    path = tmp_path / "home"
+    path.mkdir()
+    monkeypatch.setenv("HOME", str(path))
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "config.toml"))
+    return path
+
+
+def install(home: Path, library: Path, config: str, *flags: str) -> int:
+    (home.parent / "config.toml").write_text(config, encoding="utf-8")
+    return main(["--user", "--home", str(home), "--library", str(library), *flags])
+
+
+def add_search_server(library: Path) -> None:
+    servers = library / "library" / "mcp"
+    servers.mkdir()
+    (servers / "search.yml").write_text("command: ostler\nargs: [mcp]\n", encoding="utf-8")

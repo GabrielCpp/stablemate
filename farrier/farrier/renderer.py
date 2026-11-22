@@ -212,6 +212,7 @@ USER_HARNESS_DIRS = {
 USER_ROOT_FILES = {
     "claude": ".claude/CLAUDE.md",
     "codex": ".codex/AGENTS.md",
+    "copilot": ".copilot/copilot-instructions.md",
     "opencode": ".config/opencode/AGENTS.md",
 }
 

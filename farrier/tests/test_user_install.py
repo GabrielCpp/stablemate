@@ -549,17 +549,6 @@ def test_a_home_takes_one_root(
         install(tmp_path / "home", library)
 
 
-def test_copilot_has_no_home_instruction_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    library = make_library(tmp_path)
-    add_root(library)
-    write_config(tmp_path, monkeypatch, '[user_library.copilot]\nroots = ["rules"]\n')
-
-    with pytest.raises(SystemExit, match="only for claude, codex"):
-        install(tmp_path / "home", library)
-
-
 def test_an_unknown_root_names_the_miss(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

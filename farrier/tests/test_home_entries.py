@@ -196,14 +196,6 @@ def test_a_pack_carries_the_server_list(
     assert "playwright" in codex_servers(home)
 
 
-def test_copilot_takes_no_servers(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: Path, library: Path
-) -> None:
-    configure(tmp_path, monkeypatch, '[user_library.copilot]\nmcp = ["playwright"]\n')
-    with pytest.raises(SystemExit, match="only for claude, codex"):
-        run(home, library)
-
-
 def test_an_unknown_server_is_refused_with_what_exists(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: Path, library: Path
 ) -> None:

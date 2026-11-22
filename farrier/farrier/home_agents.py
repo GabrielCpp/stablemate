@@ -11,7 +11,7 @@ import yaml
 from farrier._vendor.stablemate_core.profiles import PowerMapping, resolve_delegates
 from farrier._vendor.stablemate_core.schema import HomeConfig, Selection
 from farrier.frontmatter import frontmatter_mapping, split_front_matter
-from farrier.home_entries import ToolServer, claude_server, load_tool_server
+from farrier.home_entries import ToolServer, claude_server, copilot_server, load_tool_server
 from farrier.layers import available_names, find_in_layers, searched_layers
 from farrier.renderer import Rendered
 from farrier.sources import load_pack
@@ -23,6 +23,8 @@ READ_ONLY_TOOLS = ("Read", "Grep", "Glob", "Bash")
 WRITE_TOOLS = ("Edit", "Write")
 READ_ONLY_PROMPT = "Read only. Never edit, write, commit, or run anything that changes state."
 STRONGEST_CODEX_EFFORT = {"xhigh": "high", "max": "high"}
+COPILOT_READ_ONLY_TOOLS = ("read", "search", "execute")
+COPILOT_WRITE_TOOLS = ("edit",)
 OPENCODE_VARIANT = {"low": "minimal", "medium": "", "high": "high", "xhigh": "max", "max": "max"}
 
 
@@ -39,16 +41,16 @@ class HelperAgent:
     session_servers: tuple[str, ...] = ()
 
 
-def refuse_claude_only(agent: HelperAgent, harness: str) -> None:
+def refuse_delegates_and_servers(agent: HelperAgent, harness: str) -> None:
     if agent.delegates:
         raise SystemExit(
             f"error: agent {agent.name!r} names `delegates`, and farrier writes delegating "
-            f"agents only for claude, not {harness}."
+            f"agents only for claude and copilot, not {harness}."
         )
     if agent.servers:
         raise SystemExit(
             f"error: agent {agent.name!r} names `mcp`, and farrier writes agents with their "
-            f"own MCP servers only for claude, not {harness}."
+            f"own MCP servers only for claude and copilot, not {harness}."
         )
 
 
@@ -75,7 +77,7 @@ def claude_agent(agent: HelperAgent, role: PowerMapping) -> str:
 
 def codex_agent(agent: HelperAgent, role: PowerMapping) -> str:
     """The Codex agent file, whose prompt states read-only because Codex agents inherit the sandbox."""
-    refuse_claude_only(agent, "codex")
+    refuse_delegates_and_servers(agent, "codex")
     model = str(role.model)
     document = tomlkit.document()
     document["name"] = agent.name
@@ -88,9 +90,30 @@ def codex_agent(agent: HelperAgent, role: PowerMapping) -> str:
     return AGENT_MARK + tomlkit.dumps(document)
 
 
+def copilot_agent(agent: HelperAgent, role: PowerMapping) -> str:
+    """The Copilot agent file, marked in a comment because Copilot reads its front matter as agent keys."""
+    tools = COPILOT_READ_ONLY_TOOLS if agent.read_only else COPILOT_READ_ONLY_TOOLS + COPILOT_WRITE_TOOLS
+    if agent.delegates:
+        tools = (*tools, "agent")
+    tools = (*tools, *(f"{server.name}/*" for server in agent.servers))
+    tools = (*tools, *(f"{name}/*" for name in agent.session_servers))
+    head: dict[str, object] = {
+        "name": agent.name,
+        "description": agent.description,
+        "model": role.model,
+    }
+    if role.effort:
+        head["reasoningEffort"] = role.effort
+    head["tools"] = list(tools)
+    if agent.servers:
+        head["mcp-servers"] = {server.name: copilot_server(server) for server in agent.servers}
+    front = yaml.safe_dump(head, sort_keys=False, allow_unicode=True, width=10**6)
+    return f"---\n{AGENT_MARK}{front}---\n\n{agent.prompt}\n"
+
+
 def opencode_agent(agent: HelperAgent, role: PowerMapping) -> str:
     """The OpenCode agent file, marked in a comment because OpenCode hands unknown keys to the provider."""
-    refuse_claude_only(agent, "opencode")
+    refuse_delegates_and_servers(agent, "opencode")
     head: dict[str, object] = {
         "description": agent.description,
         "mode": "subagent",
@@ -117,6 +140,7 @@ class AgentDialect:
 AGENT_DIALECTS = {
     "claude": AgentDialect(".claude/agents", ".md", claude_agent),
     "codex": AgentDialect(".codex/agents", ".toml", codex_agent),
+    "copilot": AgentDialect(".copilot/agents", ".agent.md", copilot_agent),
     "opencode": AgentDialect(".config/opencode/agents", ".md", opencode_agent),
 }
 
@@ -190,12 +214,7 @@ def agent_files(config: HomeConfig, home: Path) -> dict[Path, Rendered]:
         names = agent_names(table)
         if not names:
             continue
-        dialect = AGENT_DIALECTS.get(harness)
-        if dialect is None:
-            raise SystemExit(
-                f"error: [user_library.{harness}] names agents, and farrier writes them "
-                f"only for {', '.join(AGENT_DIALECTS)}."
-            )
+        dialect = AGENT_DIALECTS[harness]
         for name in sorted(names):
             text = dialect.spell(load_agent(name), role_model(config, harness, name))
             outputs[home / dialect.folder / f"{name}{dialect.suffix}"] = Rendered(text, verbatim=True)
