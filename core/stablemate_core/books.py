@@ -115,6 +115,31 @@ def book_home(start: Path) -> Path:
     return config.checkout_on(top, branch) / artifacts.relative_to(top)
 
 
+def namespaced(root: Path) -> bool:
+    """Whether the book root ``root`` is the artifacts folder or a checkout of it, where each repository's service books sit under services/<repo>/."""
+    return _under(root, config.resolve_artifacts_dir()) or _in_artifacts_repo(root, config.artifacts_toplevel())
+
+
+def service_package(start: Path) -> str:
+    """The package holding the service books of the code at ``start``: ``services`` beside the code, in the artifacts folder or a checkout of it, else ``services.<repo>``."""
+    if namespaced(start) or book_in_repo(start):
+        return "services"
+    return f"services.{config.repository_name(start)}"
+
+
+def package_folder(package: str) -> str:
+    return package.replace(".", "/")
+
+
+def service_module(start: Path, name: str) -> str:
+    return f"{service_package(start)}.{name}"
+
+
+def service_folder(start: Path, name: str) -> str:
+    """The folder of the book of the bare service ``name`` for the code at ``start``, relative to the book root."""
+    return f"{package_folder(service_package(start))}/{name}"
+
+
 def book_product(start: Path) -> str | None:
     """The product whose pages the code at ``start`` reads, None when ``start`` is in the artifacts folder."""
     if _under(start, config.resolve_artifacts_dir()):

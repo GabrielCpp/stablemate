@@ -205,3 +205,37 @@ def test_product_folder_is_products_name_in_artifacts_and_product_beside_service
     (code / "agents.yml").write_text(IN_REPO)
 
     assert books.product_folder(code) == code / "product"
+
+
+def test_a_repository_with_no_key_names_its_books_under_its_repository_folder(world):
+    code = world["code"]
+
+    assert books.service_package(code) == "services.acme-app"
+    assert books.service_module(code, "api") == "services.acme-app.api"
+    assert books.service_folder(code, "api") == "services/acme-app/api"
+
+
+def test_a_repository_that_keeps_its_book_names_its_books_under_services(world):
+    code = world["code"]
+    (code / "agents.yml").write_text(IN_REPO)
+
+    assert books.service_package(code) == "services"
+    assert books.service_module(code, "api") == "services.api"
+    assert books.service_folder(code, "api") == "services/api"
+
+
+def test_started_in_the_artifacts_folder_the_package_holds_every_repository(world):
+    assert books.service_package(world["artifacts"]) == "services"
+
+
+def test_the_artifacts_folder_and_its_worktree_are_namespaced(world):
+    book = _tree(world["artifacts"], world["trees"])
+
+    assert books.namespaced(world["artifacts"]) is True
+    assert books.namespaced(book) is True
+    assert books.namespaced(world["code"]) is False
+
+
+def test_package_folder_turns_dots_into_slashes():
+    assert books.package_folder("services.acme-app") == "services/acme-app"
+    assert books.package_folder("services") == "services"

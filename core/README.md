@@ -29,7 +29,9 @@ its public entry point. They share runtime state and must agree about it:
   applies it to what sessions left behind.
 - **the book home** (`books.py`) — one rule for where a repository's book lives: the
   artifacts folder, or the repository when its `agents.yml` says `book.home: repo`. It
-  also names the product folder and refuses a repository that holds an unmoved book.
+  also names the product folder, refuses a repository that holds an unmoved book and
+  names the folder and module of a service book: `services/<repo>/<name>` in the artifacts
+  folder's namespace, `services/<name>` beside the code that keeps its book.
 - **the book branch** (`book_branch.py`) — one way to open a book worktree on the
   artifacts repository for a code branch and to land it by rebase and fast-forward.
 
