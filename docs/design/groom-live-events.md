@@ -75,10 +75,16 @@ Server to client:
 or `fleet_meta` whose `v` is not above the last one it applied. It ignores a `state`
 whose `v` is below it. That settles the race between an HTTP resync and the socket.
 
-A row's stable content is the row without `silence_s`, `telemetry_age_s` and
-`live_label`. The flush compares that content to what it last sent. A clock moving
-forward therefore sends nothing. A liveness class moving from `live` to `dead` changes
-`live`, so it does send.
+A row's stable content is the row without `silence_s`, `telemetry_age_s`,
+`live_label` and `last_seen_ts`. The flush compares that content to what it last sent.
+A clock moving forward therefore sends nothing, and neither does a heartbeat from a live
+run. A liveness class moving from `live` to `dead` changes `live`, so it does send, and
+that frame carries the `last_seen_ts` the clients count from.
+
+The meta compares the same way. Its `store` member leaves out `last_ok_ts`,
+`last_write_ts`, `last_prune_ts` and `wal_bytes`, which move on every SQLite write. No
+client draws them from the socket, and `GET /api/state` still returns them fresh. A
+frame that does go out carries the whole row or the whole meta.
 
 Client to server is unchanged: `watch` and the answer form.
 
