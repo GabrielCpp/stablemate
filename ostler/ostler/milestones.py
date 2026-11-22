@@ -37,18 +37,18 @@ def journey_slug(title: str) -> str:
     return _NON_ALNUM.sub("-", title.strip().lower()).strip("-")
 
 
-def service_books(graph: Graph) -> set[str]:
-    """The names of the service books: each folder under `services/` that holds a `service.py`."""
-    return set(_book_homes(graph))
+def service_books(graph: Graph, code: Path | None = None) -> set[str]:
+    """The names of the service books: each folder under `services/` that holds a `service.py`, only those of the repositories *code* knows when it is a checkout outside the artifacts folder."""
+    return set(_book_homes(graph, code))
 
 
-def ui_services(graph: Graph, names: Iterable[str]) -> set[str]:
+def ui_services(graph: Graph, names: Iterable[str], code: Path | None = None) -> set[str]:
     """The books among *names* that have screens."""
     wanted = set(names)
     if not wanted:
         return set()
     screened = {
-        name for name, homes in _book_homes(graph).items()
+        name for name, homes in _book_homes(graph, code).items()
         if any((home / SCREENS_DIR).is_dir() or (home / f"{SCREENS_DIR}.py").is_file() for home in homes)
     }
     return wanted & screened
@@ -269,15 +269,17 @@ def _books_of(value: str) -> list[str]:
     return [b for b in (part.strip().strip("`").strip() for part in value.split(",")) if b]
 
 
-def _book_homes(graph: Graph) -> dict[str, list[Path]]:
-    """Each service book by name, with every folder that holds one of its `service.py` files: under `services/`, or under each repository folder of the artifacts folder."""
+def _book_homes(graph: Graph, code: Path | None = None) -> dict[str, list[Path]]:
+    """Each service book by name, with every folder that holds one of its `service.py` files: under `services/`, or under each repository folder of the artifacts folder, only those *code* knows when it is a checkout outside the artifacts folder."""
     home = Path(books.book_home(graph.root))
     base = home / BOOKS_DIR
     if not base.is_dir():
         return {}
     found: dict[str, list[Path]] = {}
     if books.namespaced(home):
-        for repository in sorted(d for d in base.iterdir() if d.is_dir() and not (d / BOOK_FILE).is_file()):
+        known = None if code is None or books.namespaced(code) else set(books.book_checkouts(code))
+        for repository in sorted(d for d in base.iterdir() if d.is_dir() and not (d / BOOK_FILE).is_file()
+                                 and (known is None or d.name in known)):
             for name, homes in _homes_under(repository).items():
                 found.setdefault(name, []).extend(homes)
         return found

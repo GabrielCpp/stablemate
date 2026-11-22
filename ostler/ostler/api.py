@@ -245,13 +245,17 @@ class Ostler:
             raise KeyError(f"no milestone '{name}'")
         return milestones_mod.check_milestone(self.graph, milestone)
 
+    def _code(self) -> Path:
+        """The checkout this instance was started for, which decides the repository folders whose books it reads."""
+        return self._root or Path.cwd()
+
     def service_books(self) -> builtins.set[str]:
         """The names of the service books under ``services/`` (a story's ``services`` name these)."""
-        return milestones_mod.service_books(self.graph)
+        return milestones_mod.service_books(self.graph, self._code())
 
     def ui_services(self, names: Iterable[str]) -> builtins.set[str]:
         """The books among *names* with screens (a story with one needs a mockup)."""
-        return milestones_mod.ui_services(self.graph, names)
+        return milestones_mod.ui_services(self.graph, names, self._code())
 
     def search(self, q: str, *, etype: str | None = None) -> builtins.list[dict]:
         """Ranked full-text search over the current book and decisions (``ostler search``)."""

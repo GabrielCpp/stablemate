@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from ostler import Ostler, doctor
 from ostler.model import load
@@ -80,10 +83,54 @@ def test_a_book_with_screens_is_a_ui_service(repo: Path):
     assert Ostler(repo).ui_services(["web-app", "desk", "billing"]) == {"web-app", "desk"}
 
 
-def test_the_books_of_a_milestone_are_found_in_every_repository_folder(repo: Path):
-    base = Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]) / "services"
-    write(base / "acme/api/service.py", "")
-    write(base / "globex/web/http/service.py", "")
-    write(base / "old/service.py", "")
+def _code_repository(path: Path) -> Path:
+    path.mkdir(parents=True)
+    subprocess.run(["git", "-C", str(path), "init", "--quiet", "-b", "main"], check=True, capture_output=True)
+    return path.resolve()
 
-    assert Ostler(repo).service_books() == {"api", "web"}
+
+def _two_products(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(tmp_path / "home.toml"))
+    artifacts = Path(os.environ["STABLEMATE_ARTIFACTS_DIR"])
+    write(artifacts / "services/acme/api/service.py", "")
+    write(artifacts / "services/acme/web/http/service.py", "")
+    write(artifacts / "services/acme/web/http/screens/home.py", "")
+    write(artifacts / "services/globex/api/service.py", "")
+    write(artifacts / "services/globex/billing/service.py", "")
+    write(artifacts / "services/old/service.py", "")
+    return artifacts, _code_repository(tmp_path / "code" / "acme"), _code_repository(tmp_path / "code" / "globex")
+
+
+def test_the_books_of_a_milestone_are_found_in_every_repository_folder_of_the_artifacts_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    artifacts, _acme, _globex = _two_products(tmp_path, monkeypatch)
+
+    assert Ostler(artifacts).service_books() == {"api", "web", "billing"}
+
+
+def test_the_books_of_a_milestone_are_read_from_the_repository_it_is_started_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _artifacts, acme, globex = _two_products(tmp_path, monkeypatch)
+
+    assert Ostler(acme).service_books() == {"api", "web"}
+    assert Ostler(globex).service_books() == {"api", "billing"}
+
+
+def test_the_screens_of_a_milestone_are_those_of_the_repository_it_is_started_for(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    _artifacts, acme, globex = _two_products(tmp_path, monkeypatch)
+
+    assert Ostler(acme).ui_services(["api", "web"]) == {"web"}
+    assert Ostler(globex).ui_services(["api", "web"]) == set()
+
+
+def test_the_books_of_a_workspace_milestone_are_read_from_each_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    artifacts, acme, globex = _two_products(tmp_path, monkeypatch)
+    (tmp_path / "home.toml").write_text(f'[workspaces]\nshop = ["{acme}", "{globex}"]\n')
+
+    assert Ostler(acme).service_books() == {"api", "web", "billing"}
