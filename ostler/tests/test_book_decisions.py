@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import pytest
 
-from ostler.book import decisions
+from ostler.book import Documentation, decisions
 from ostler.book.check import decision_faults, question_faults
 from ostler.book.search import cmd_explain
 from ostler.book.service import Service
@@ -43,7 +43,7 @@ class Pay: ...
 
 def _service() -> Service[Any]:
     return cast("Service[Any]", SimpleNamespace(
-        name="shop", endpoints=(), records=(), screens=(Home,), interactions=(Checkout,), journeys=(Onboarding,)))
+        name="shop", endpoints=(), records=(), screens=(Home,), interactions=(Checkout,), journeys=(Onboarding,), documentation=None))
 
 
 def _findings(module: str, tmp_path: Path, element: str) -> list[str]:
@@ -183,3 +183,18 @@ def test_explain_shows_the_open_questions_of_an_element(module, tmp_path, capsys
         name="shop", endpoints=(), records=(), screens=(Landing,), interactions=(), journeys=(), language="en"))
     assert cmd_explain(service, SimpleNamespace(service=module, name="Landing")) == 0
     assert capsys.readouterr().out.endswith("\nOpen questions\n- why does it greet twice?\n")
+
+
+def _vendor_findings(module: str, tmp_path: Path, pointer: str, app: Path) -> list[str]:
+    _write(tmp_path, f"sources: {pointer}\n")
+    service = cast("Service[Any]", SimpleNamespace(name="vendor", endpoints=(), records=(), screens=(Home,), interactions=(), journeys=(),
+                                                   documentation=Documentation(sites=("https://vendor.example.com/docs",))))
+    return [f.problem for f in decision_faults(service, module, str(app))]
+
+
+def test_a_decision_source_under_a_declared_site_brings_no_finding(module, tmp_path):
+    assert _vendor_findings(module, tmp_path, "https://vendor.example.com/docs/api#users", tmp_path) == []
+
+
+def test_a_decision_source_under_another_site_is_not_there(module, tmp_path):
+    assert _vendor_findings(module, tmp_path, "https://other.example.com/docs", tmp_path) == ["source https://other.example.com/docs is not there"]

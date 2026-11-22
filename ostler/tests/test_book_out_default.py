@@ -15,7 +15,7 @@ from tests.book_fakes import Plain
 @pytest.fixture
 def fake_book(monkeypatch, tmp_path):
     axes = Axes("todo", date(2026, 11, 4), (Scene("open", "an open todo", lambda today: ()),), {}, lambda m: "open")
-    service = SimpleNamespace(name="api", matrices=(axes,), new_model=Plain)
+    service = SimpleNamespace(name="api", matrices=(axes,), new_model=Plain, documentation=None)
     monkeypatch.setattr(cli, "load", lambda name: service)
     cwd = tmp_path / "cwd"
     cwd.mkdir()

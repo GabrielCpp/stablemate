@@ -61,7 +61,7 @@ from ostler.book.search import KINDS, actions_of, cmd_explain, cmd_search
 from ostler.book.witness import WitnessReport, witnessed
 from ostler.book.service import Service
 from ostler.book.stack import Stack
-from ostler.book.sources import head_of, missing_files, stale
+from ostler.book.sources import head_of, missing_files, no_code, stale
 from ostler.book.surface import Surface
 from ostler.book.touching import aims, touches
 
@@ -84,7 +84,9 @@ def load(name: str) -> Service[Any]:
         flat = parts[2] if len(parts) >= 3 and parts[2] in flat_books(root) else None
         hint = f"; {moved_hint(flat, books.service_package(Path(os.getcwd())))}" if flat else ""
         raise SystemExit(f"no book {name!r} under {root}{hint}")
-    return importlib.import_module(f"{name}.service").service
+    service = importlib.import_module(f"{name}.service").service
+    service.declared()
+    return service
 
 
 def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
@@ -250,7 +252,7 @@ def main(argv: list[str] | None = None) -> int:
         stop = credentials(args.environment, sys.argv[1:] if argv is None else argv, args.print_exec)
         if stop is not None:
             return stop
-    chosen = default_out(args)
+    chosen = False if service.documentation is not None and args.command in ("stale", "affected", "missing", "verified") else default_out(args)
     try:
         return COMMANDS[args.command](service, args)
     finally:
@@ -1016,6 +1018,9 @@ def traced(service: Service[Any], args: argparse.Namespace) -> Any | None:
 
 
 def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
+    if service.documentation is not None:
+        print(no_code(service))
+        return 0
     found = traced(service, args)
     if found is None:
         return 2
@@ -1061,10 +1066,16 @@ def cmd_stale(service: Service[Any], args: argparse.Namespace) -> int:
 
 
 def cmd_affected(service: Service[Any], args: argparse.Namespace) -> int:
+    if service.documentation is not None:
+        print(no_code(service))
+        return 0
     return affected(service, args.service, args.app, args.since, _package_dir(args), args.out, args.story)
 
 
 def cmd_missing(service: Service[Any], args: argparse.Namespace) -> int:
+    if service.documentation is not None:
+        print(no_code(service))
+        return 0
     if service.app is None:
         print(f'{service.name} declares no app: give Service app=App(roots=(...), verified="VERIFIED")')
         return 2
@@ -1101,6 +1112,9 @@ def cmd_missing(service: Service[Any], args: argparse.Namespace) -> int:
 
 
 def cmd_verified(service: Service[Any], args: argparse.Namespace) -> int:
+    if service.documentation is not None:
+        print(f"not stamped: {service.name} describes an outside system")
+        return 0
     found = traced(service, args)
     if found is None or service.app is None:
         return 2

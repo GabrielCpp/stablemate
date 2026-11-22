@@ -38,7 +38,7 @@ from ostler.book.reach import unreached
 from ostler.book.screen import Component, Interaction, as_label
 from ostler.book.search import actions_of, items, states_of
 from ostler.book.service import Service
-from ostler.book.sources import file_of, missing, pointer_missing
+from ostler.book.sources import file_of, is_web, missing, pointer_missing, raw
 
 
 @dataclass(frozen=True)
@@ -249,6 +249,20 @@ def source_faults(service: Service[Any], app: str | None) -> list[Finding]:
             found.append(Finding(name, f"source {path} does not exist"))
         else:
             found.append(Finding(name, f"source {path} names no checkout"))
+    found += web_faults(service)
+    return found
+
+
+def web_faults(service: Service[Any]) -> list[Finding]:
+    sites = service.documentation.sites if service.documentation is not None else ()
+    found: list[Finding] = []
+    for name, pointers in raw(service).items():
+        for address in dict.fromkeys(file_of(p) for p in pointers):
+            if sites and not address.startswith(sites):
+                found.append(Finding(name, f"source {address} is under no declared site: {', '.join(sites)}"))
+            elif not sites and is_web(address):
+                found.append(Finding(name, f"source {address} is a web address: a book of an outside system declares "
+                                           "Service documentation=Documentation(sites=(...))"))
     return found
 
 
@@ -269,6 +283,10 @@ def source_is_there(pointer: str, app: str, members: dict[str, Path]) -> bool:
     return not pointer_missing(file_of(pointer), app, members)
 
 
+def under_site(service: Service[Any], pointer: str) -> bool:
+    return service.documentation is not None and is_web(pointer) and pointer.startswith(service.documentation.sites)
+
+
 def decision_faults(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
     found: list[Finding] = []
     members = books.book_checkouts(Path(app)) if app else {}
@@ -285,7 +303,7 @@ def decision_faults(service: Service[Any], module: str, app: str | None = None) 
                   for e in d.elements if e not in known]
         if app is not None:
             found += [Finding(name, f"source {s} is not there", blocks=False)
-                      for s in d.sources if not source_is_there(s, app, members)]
+                      for s in d.sources if not under_site(service, s) and not source_is_there(s, app, members)]
     return found
 
 

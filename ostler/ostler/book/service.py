@@ -12,7 +12,7 @@ from typing import Any, Callable, Generic, Mapping, TypeVar
 from ostler.book.arrange import Arrange
 from ostler.book.boundary import Person
 from ostler.book.cast import SOLE, Actor
-from ostler.book.domain import App
+from ostler.book.domain import App, Documentation
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError
 from ostler.book.event import Event
@@ -51,11 +51,19 @@ class Service(Generic[S]):
     outside: tuple[type[Arrange[Any]], ...] = ()
     events: tuple[type[Event], ...] = ()
     app: App | None = None
+    documentation: Documentation | None = None
     records: tuple[type, ...] = ()
     environments: dict[str, Environment] = field(default_factory=dict)
     default_environment: str = ""
     languages: tuple[str, ...] = ()
     person: Person | None = None
+
+    def __post_init__(self) -> None:
+        self.declared()
+
+    def declared(self) -> None:
+        if self.app is not None and self.documentation is not None:
+            raise BookError(f"{self.name} declares both app and documentation: a book describes code in the repository or a system outside it, not both")
 
     @property
     def language(self) -> str:

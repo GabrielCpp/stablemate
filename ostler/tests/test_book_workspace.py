@@ -18,7 +18,7 @@ from book_todo import FIXTURE, runtime
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book import checkout
 from ostler.book.check import source_faults
-from ostler.book import App
+from ostler.book import App, Documentation
 from ostler.book.service import Service
 from ostler.book.sources import missing, stale
 
@@ -111,7 +111,7 @@ class _Cls:
 
 
 def _service(*source: str) -> Service[Any]:
-    return cast("Service[Any]", SimpleNamespace(endpoints=(_Cls(*source),), records=(), screens=(), interactions=(), outside=(), app=None))
+    return cast("Service[Any]", SimpleNamespace(endpoints=(_Cls(*source),), records=(), screens=(), interactions=(), outside=(), app=None, documentation=None))
 
 
 def test_a_qualified_pointer_to_an_existing_member_file_is_no_finding(workspace):
@@ -193,7 +193,7 @@ def test_stale_names_the_member_from_its_worktree(workspace, tmp_path):
 def _screen_service(*source: str, app: App | None = None) -> Service[Any]:
     screen = _Cls(*source)
     screen.__name__ = "Dashboard"
-    return cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(screen,), interactions=(), outside=(), app=app))
+    return cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(screen,), interactions=(), outside=(), app=app, documentation=None))
 
 
 def test_a_screen_whose_source_does_not_exist_is_a_finding_under_app(workspace):
@@ -297,6 +297,58 @@ def test_the_stale_command_accepts_since():
 def test_an_interaction_outside_the_screens_owes_no_source_pointer(workspace):
     outside = SimpleNamespace(__name__="ClockMoves", source=(), screen=None, carries=None)
     bound = SimpleNamespace(__name__="PressSave", source=(), screen=object(), carries=None)
-    service = cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(), interactions=(outside, bound), outside=(), app=None))
+    service = cast("Service[Any]", SimpleNamespace(endpoints=(), records=(), screens=(), interactions=(outside, bound), outside=(), app=None, documentation=None))
     found = source_faults(service, None)
     assert [(f.name, f.problem) for f in found] == [("PressSave", "no source pointer")]
+
+
+SITE = "https://vendor.example.com/docs"
+
+
+def _outside(*source: str, documentation: Documentation | None = Documentation(sites=(SITE,)), app: App | None = None) -> Service[Any]:
+    return cast("Service[Any]", SimpleNamespace(name="vendor", endpoints=(_Cls(*source),), records=(), screens=(), interactions=(), outside=(),
+                                                app=app, documentation=documentation))
+
+
+def test_a_pointer_under_a_declared_site_is_no_finding():
+    assert source_faults(_outside(f"{SITE}/api/#users"), None) == []
+
+
+def test_an_anchored_pointer_under_a_declared_site_is_no_finding():
+    assert source_faults(_outside(f"{SITE}/api/#users::GET /users"), None) == []
+
+
+def test_a_pointer_under_another_site_blocks_and_names_the_declared_sites():
+    [found] = source_faults(_outside("https://other.example.com/docs/api"), None)
+    assert found.blocks
+    assert found.problem == f"source https://other.example.com/docs/api is under no declared site: {SITE}"
+
+
+def test_a_file_path_pointer_in_a_book_of_an_outside_system_blocks():
+    [found] = source_faults(_outside("app/users.py::list"), None)
+    assert found.blocks
+    assert found.problem == f"source app/users.py is under no declared site: {SITE}"
+
+
+def test_an_element_with_no_pointer_in_a_book_of_an_outside_system_is_a_warning():
+    [found] = source_faults(_outside(), None)
+    assert (found.problem, found.blocks) == ("no source pointer", False)
+
+
+def test_a_web_address_in_a_book_of_an_app_blocks_with_the_hint(workspace):
+    [found] = source_faults(_outside(f"{SITE}/api", documentation=None, app=App(roots=(".",), verified="VERIFIED")), str(workspace.api))
+    assert found.blocks
+    assert found.problem == (f"source {SITE}/api is a web address: a book of an outside system declares "
+                             "Service documentation=Documentation(sites=(...))")
+
+
+def test_a_web_address_in_a_book_with_neither_declaration_blocks_with_the_hint():
+    [found] = source_faults(_outside(f"{SITE}/api", documentation=None), None)
+    assert found.blocks
+    assert "a book of an outside system declares Service documentation=Documentation(sites=(...))" in found.problem
+
+
+def test_a_web_pointer_of_a_book_of_an_outside_system_is_no_missing_file(workspace):
+    service = _outside(f"{SITE}/api#users::GET /users")
+    assert missing(service, str(workspace.api)) == []
+    assert stale(service, str(workspace.api), str(workspace.api)).missing == []

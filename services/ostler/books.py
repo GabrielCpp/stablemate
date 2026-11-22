@@ -1,5 +1,6 @@
 """The `ostler book` commands, played on the small book `demo` the sandbox holds under services/demo. The commands that
-need a browser, a device, a server or a git checkout of the app are not played."""
+need a browser, a device, a server or a git checkout of the app are not played: stale, affected, missing and verified, which
+answer a book of an outside system with the line that it describes an outside system and has no code to compare."""
 
 from __future__ import annotations
 
@@ -16,7 +17,9 @@ CORE = ("ostler/ostler/book/cli.py", "ostler/ostler/book/index.py", "ostler/ostl
 
 
 class CheckBook(Command):
-    does = "Build everything the book declares, with no stack, and name what is broken or stale."
+    does = ("Build everything the book declares, with no stack, and name what is broken or stale. A book of an outside system, "
+            "which declares Documentation sites in place of an app, has each source pointer held to those sites with no call "
+            "to the network.")
     program = "ostler"
     argv = ("--full-ids", "book", "check", "services.demo")
     args = ARGS

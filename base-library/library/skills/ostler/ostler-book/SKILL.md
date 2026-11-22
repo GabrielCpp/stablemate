@@ -232,6 +232,24 @@ A check that shows the app breaking the intent stays in the book. A red journey 
 result until the defect is declared known; a journey or probe removed to get green leaves the
 defect where no run will notice it being fixed or growing.
 
+## A book of an outside system
+
+Write one for a third-party system the product calls, which you know only from its
+documentation and its live behaviour. It has no code in any repository, so it declares no `app`:
+
+```python
+service = Service(
+    ...,
+    documentation=Documentation(sites=("https://vendor.example.com/docs/api",)),
+)
+```
+
+A service declares `app` or `documentation`, never both. Each element's `source` is the
+documentation address of what it states, with the usual `::<anchor>` suffix. `check` holds each
+pointer to the declared sites, a prefix match that calls no network, and refuses a file path.
+`stale`, `affected`, `missing` and `verified` print that the book has no code to compare and
+exit 0. The live system proves the book: play it with `run` against the real service.
+
 ## The world every cell runs in
 
 The app is never wiped. Every cell, every journey and every coworker shares the same

@@ -35,7 +35,7 @@ def app(tmp_path: Path) -> Path:
 def _service(*source: str, roots: tuple[str, ...] = ("web",), ignore: tuple[str, ...] = (), declared: bool = True) -> Service[Any]:
     screen = SimpleNamespace(__name__="Home", source=source)
     book = App(roots=roots, verified="VERIFIED", ignore=ignore) if declared else None
-    return cast("Service[Any]", SimpleNamespace(name="web", endpoints=(), records=(), screens=(screen,), interactions=(), outside=(), app=book))
+    return cast("Service[Any]", SimpleNamespace(name="web", endpoints=(), records=(), screens=(screen,), interactions=(), outside=(), app=book, documentation=None))
 
 
 def _run(service: Service[Any], app: Path, *under: str, files: bool = False) -> int:
@@ -147,7 +147,7 @@ def _endpoint(method: str, path: str) -> Any:
 
 def _book(*endpoints: Any, ignore: tuple[str, ...] = ()) -> Service[Any]:
     return cast("Service[Any]", SimpleNamespace(name="api", endpoints=endpoints, records=(), screens=(), interactions=(), outside=(),
-                                                app=App(roots=("api",), verified="VERIFIED", ignore=ignore)))
+                                                app=App(roots=("api",), verified="VERIFIED", ignore=ignore), documentation=None))
 
 
 def test_an_rpc_the_proto_lists_and_no_rpc_declares_is_named_and_exits_1(tmp_path, capsys):

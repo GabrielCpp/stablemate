@@ -70,6 +70,14 @@ def raw(service: Service[Any]) -> dict[str, tuple[str, ...]]:
     return {e.__name__: tuple(cast(Any, e).source) for e in elements(service)}
 
 
+def is_web(pointer: str) -> bool:
+    return pointer.startswith(("https://", "http://"))
+
+
+def no_code(service: Service[Any]) -> str:
+    return f"{service.name} describes an outside system: no code to compare"
+
+
 def pointer_missing(pointer: str, app_root: str | None, members: dict[str, Path]) -> bool:
     try:
         ref = parse_code_ref(pointer)
@@ -85,7 +93,7 @@ def missing(service: Service[Any], app_root: str | None) -> list[tuple[str, str]
     members = books.book_checkouts(Path(app_root) if app_root else Path.cwd())
     found: list[tuple[str, str]] = []
     for name, found_pointers in raw(service).items():
-        for pointer in dict.fromkeys(file_of(p) for p in found_pointers):
+        for pointer in dict.fromkeys(file_of(p) for p in found_pointers if not is_web(p)):
             if pointer_missing(pointer, app_root, members):
                 found.append((name, pointer))
     return found

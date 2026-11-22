@@ -14,7 +14,7 @@ from ostler.book.boundary import Foreign, Needs, Passes, Person, Reaches, View
 from ostler.book.browser import Browser, Received, action, answer, refusal, request
 from ostler.book.cast import SOLE, Actor
 from ostler.book.delivery import Again, Bus, Delivery
-from ostler.book.domain import (Action, App, Become, Change, Collection, Create, Delete, Entry, Fixture, Heard, Index, MoveToday,
+from ostler.book.domain import (Action, App, Become, Change, Collection, Create, Delete, Documentation, Entry, Fixture, Heard, Index, MoveToday,
                                 Select, Show, State, Total, Transaction, Unique, Update)
 from ostler.book.command import STDERR, Command, CommandSurface, Exit, Files, Flag, Lines, Mark, Outside, Positional, Sandbox, Seed, Switch, Watched
 from ostler.book.entries import in_order, no_repeat, of_pairs
@@ -46,7 +46,7 @@ from ostler.book.witness import Because, Unseen
 __all__ = [
     "Actor", "Again", "Arrange", "Bus", "Delivery", "Backstage", "CannotArrange", "Environment", "SOLE", "in_order", "no_repeat", "of_pairs",
     "checkout", "Browser", "Device", "MobileSurface", "PageSurface", "Received", "action", "answer", "asked", "handed", "refusal", "request",
-    "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Entry", "Event", "Fixture", "Heard", "Index", "MoveToday", "Select",
+    "Action", "App", "Become", "Change", "Collection", "Create", "Delete", "Documentation", "Entry", "Event", "Fixture", "Heard", "Index", "MoveToday", "Select",
     "Show", "State", "Total", "Transaction", "Unique", "Update",
     "Answer", "ApiKey", "Axes", "Bearer", "Bool", "BookError", "Unhealthy", "Bytes", "CannotReach", "Check", "Client", "Component", "Defect", "Diverges", "Done",
     "Endpoint", "Enum", "Field", "Foreign", "Form", "Fresh", "Given", "Id", "Impossible", "Int", "Interaction", "Itself", "Journey", "List", "Listed", "Map", "Model", "Object", "OffShape", "Outcome",

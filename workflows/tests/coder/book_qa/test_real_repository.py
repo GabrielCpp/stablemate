@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -175,3 +176,44 @@ def test_a_foreign_commit_after_the_story_does_not_widen_the_covered_books(
     covered = book_nodes.covered_services(logger, ["a"], repo_dir=str(books), story_slug="s-1", story_id="S-1")
 
     assert covered.services == ["a", "b"], covered
+
+
+OUTSIDE = """from ostler.book import Documentation, Environment, Screen, Service, State
+
+
+class Home(Screen):
+    first = True
+    source = ("https://vendor.example.com/docs/home",)
+
+
+service = Service(
+    name="vendor",
+    new_model=State,
+    surface=lambda env: None,
+    journeys=(),
+    stack=lambda log: None,
+    screens=(Home,),
+    languages=("en",),
+    environments={"live": Environment(name="live", hosts={})},
+    default_environment="live",
+    documentation=Documentation(sites=("https://vendor.example.com/docs",)),
+)
+"""
+
+
+def test_a_book_of_an_outside_system_is_never_touched_stamped_or_refused(
+    books: Path, git: Git, logger: logging.Logger
+) -> None:
+    _write(books, "services/vendor/__init__.py", "")
+    _write(books, "services/vendor/service.py", OUTSIDE)
+    subprocess.run([sys.executable, "-m", "ostler.book", "index", "services.vendor"], cwd=books, check=True, capture_output=True)
+    _commit(git, books, "docs: add the book of the vendor\n\nStory: S-1", "services/vendor")
+
+    covered = book_nodes.covered_services(logger, ["a"], repo_dir=str(books), story_slug="s-1", story_id="S-1")
+    played = book_nodes.stamp_books_verified(logger, ["vendor"], story_slug="s-1", story_id="S-1", repo_dir=str(books))
+    checked = book_nodes.book_check(logger, "vendor", repo_dir=str(books))
+
+    assert "vendor" not in covered.services, covered
+    assert played.exit_code == 0, played
+    assert not (books / "services" / "vendor" / "VERIFIED").exists()
+    assert checked.exit_code == 0, checked

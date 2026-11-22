@@ -105,6 +105,21 @@ class App:
 
 
 @dataclasses.dataclass(frozen=True)
+class Documentation:
+    """The documentation a book of an outside system is written from: the web address prefixes
+    every source pointer of the book lies under."""
+
+    sites: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not self.sites:
+            raise BookError("Documentation needs at least one site: give Documentation(sites=(\"https://vendor.example.com/docs\",))")
+        for site in self.sites:
+            if not site.startswith(("https://", "http://")) or site in ("https://", "http://"):
+                raise BookError(f"Documentation site {site!r} is no http(s) address")
+
+
+@dataclasses.dataclass(frozen=True)
 class Unique:
     """The fields that identify one entity in a collection. Exactly one per collection."""
 
