@@ -69,7 +69,7 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    story's diff, with the story base commit above as `<base>`, the story id above as `<id>` and the repository root as `<root>`. Run every
    `ostler book` and `ostler env` command from `{{ workhorse_var('book_root') }}`. A red
    base is not yours to repair. Report `blocked` with the output.
-4. **List the claims.** First run `ostler book search <word> --kind business` and `ostler book search <word> --kind decision` for the main nouns of the story, and read what each finds. Write every book element in the product's words. Then list every claim the story makes that a call to the service can
+4. **List the claims.** First run `ostler book search <word> --kind company`, `ostler book search <word> --kind team`, `ostler book search <word> --kind product` and `ostler book search <word> --kind decision` once for each main noun of the story, and read what each finds. Write every book element in the product's words. Then list every claim the story makes that a call to the service can
    show. For each, find the record that states and checks it, or add it the way the skill
    says. State each claim in a journey class or call class the story adds or edits, because
    those are what the workflow plays.

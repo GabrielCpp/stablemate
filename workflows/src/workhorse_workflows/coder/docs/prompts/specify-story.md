@@ -49,7 +49,7 @@ These services have an executable book at `{{ workhorse_var('book_root') }}/serv
 it does and which story settled it. Where the story changes a behaviour a decision explains,
 name the decision in the model and say whether the story keeps it or overturns it.
 
-Then read every file under `{{ workhorse_var('book_root') }}/business/`. They are few. They hold the product's words and the rules above any one service. Use its words.
+Then run `ostler book pages` from `{{ workhorse_var('book_root') }}` and read every page it lists. They are few. They hold the product's words and the rules above any one service, at the company, team and product levels. Use its words.
 
 ## 1. The behaviour model
 

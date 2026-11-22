@@ -51,11 +51,14 @@ found, not just that you looked.
 Then check whether the question is already decided. In descending order of authority:
 
 1. **Standing decisions.** `{{ decisions_dir }}/*/decision.md` holds those a human made, or a previous
-   resolver recorded on their behalf. The business pages under `{{ book_root }}/business/` and the book's
-   `services/<name>/decisions/*.md` stand with them, before the story. Search them first, from `{{ book_root }}`:
-   `ostler book search <term> --kind business` and `ostler book search <term> --kind decision`. A record or a
-   page that covers this question decides it outright. A question a business page settles is never escalated,
-   and never decided against the page.
+   resolver recorded on their behalf. The company, team and product pages and the book's
+   `services/<name>/decisions/*.md` stand with them, before the story. Their order of authority is company, team,
+   product, service decision, story. Search them first, from `{{ book_root }}`, once for each main noun of the
+   question: `ostler book search <term> --kind company`, `ostler book search <term> --kind team`,
+   `ostler book search <term> --kind product` and `ostler book search <term> --kind decision`. A record or a
+   page that covers this question decides it outright. A question a page settles is never escalated, and never
+   decided against the page. When two levels contradict each other, you do not settle it: escalate the
+   conflict.
 2. **The repo's own rules** — `AGENTS.md`, `CLAUDE.md`, and the installed skills under
    `.claude/skills/`. A convention written down there is the operator's convention; a
    block that is a "which way do we do this here" question is answered by it.
@@ -128,10 +131,13 @@ If a record *does* cover it, leave it alone and cite it. A record is amended onl
 human, or by a resolver a human's own answer has just overruled it with.
 
 When the operator's answer states a rule that outlives the story, such as the meaning of a word, a constraint
-or the source of truth for a calculation, also write it in this turn as `{{ book_root }}/business/<slug>.md`. The
+or the source of truth for a calculation, also write it in this turn as `{{ book_root }}/product/<slug>.md`. The
 file starts with the line `date: <YYYY-MM-DD>`, then `sources: operator, <date>`, then a blank line, then the rule
 in prose. Its first prose line is the page's statement. It names no story and no element. Write it in addition to
-what you write above. An answer that explains one element becomes a line in that service's decision instead.
+what you write above. When the answer reads as a rule for more than this product, still write the product page,
+and make its second line `sources: operator, <date>; may belong to the team book` so a person can move it. You
+never write a team or a company page. An answer that explains one element becomes a line in that service's
+decision instead.
 
 ### If you are escalating
 
