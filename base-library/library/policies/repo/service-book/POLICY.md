@@ -5,17 +5,11 @@ description: "The standing rule for a repository that keeps a service book under
 
 ## The book comes first
 
-Each service has a book under `services/<name>/` under the book root. The book root
-is the artifacts folder for every repository. A repository that publishes its own
-book sets `book: {home: repo}` in its `agents.yml` and keeps `services/` and
-`product/` at its root. A repository with no key that still holds an ostler book is
-refused, and the message names both ways out. The book is the current spec of the service. Its Python states what every endpoint, screen
-and command does, which rule refuses a call, and which journeys a user lives
-through. Ostler plays it against the running app. Its `decisions/` folder holds,
-in markdown, why a behaviour is so and which story settled it.
-
-Read the book before the code whenever the question is *what* something does,
-*why* it is so, or *how a user reaches it*:
+Each service has a book under `services/<name>/` under the book root. Its Python
+states what every endpoint, screen and command does, which rule refuses a call, and
+which journeys a user lives through. Its `decisions/` folder says why. Read the book
+before the code whenever the question is *what* something does, *why* it is so, or
+*how a user reaches it*:
 
 ```bash
 ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|company|team|product|question|event|outside]
@@ -24,74 +18,26 @@ ostler book decisions services.<name> [--story <id>]  # each decision and the st
 ostler book pages [--level company|team|product]      # the pages above every service, one line each
 ```
 
-Four books hold the rules, by reach: the service book under `services/<name>/`,
-the product book in `products/<product>/`, the team book in `teams/<team>/` and the
-company book in `company/` of the artifacts dir. The product is `book.product` in
-`agents.yml`, else the repository's name. With `book.home: repo` the product book is
-`product/` beside `services/`. Agents write service and product pages.
-People write team and company pages. When two disagree the order of authority is
-company, team, product, service decision, story. Report a conflict and settle
-neither side.
+A grep over source that starts before a search over the book gets it wrong wherever
+the code has a legacy twin. Read the code to learn *how it is implemented*. A story
+writer and an implementer both read the decisions a story touches before they write.
 
-The layout of the artifacts folder and of a repository that keeps its own book:
-
-```
-ai-artifacts/
-  services/<name>/               service book: what one service does
-    decisions/                   why, tied to an element of that service
-  products/<product>/            product book: one markdown page per rule
-  teams/<team>/                  team book
-  company/                       company book
-  epics/  specs/  backlogs/      as before
-
-<repository with book.home: repo>/
-  services/<name>/   product/    a tool that publishes its own book
-```
-
-Read the code to learn *how it is implemented*. A grep over source that starts
-before a search over the book re-derives what is already written down, and gets
-it wrong wherever the code has a legacy twin the book would have steered you
-away from. A story writer and an implementer both read the decisions a story
-touches before they write.
+Four books hold the rules: service, product, team and company. Agents write service
+and product pages. People write team and company pages. When two disagree the order
+of authority is company, team, product, service decision, story. Report a conflict
+and settle neither side.
 
 ## A story is done when the book plays it
 
-A story is a delta. The book is the whole. The story is finished when the delta
-is in the book in the same change as the code. With the book in the artifacts
-folder, that change is two commits: the book's on the book branch in the artifacts
-repository, the code's in its repository. With `book.home: repo` it is one change
-in one repository. Finished means all of:
+The story's delta lands in the book in the same change as the code. Finished means
+all of:
 
-- Every record, rule, action, endpoint, screen and journey the story changed
-  states the new current behaviour. Restructure the book when the story needs
-  it. The structure a first pass chose is not a contract.
-- Every assumption or tradeoff settled for the story, at the start or along the
-  way, is a file under `services/<name>/decisions/`, or a line added to the
-  decision that already covers it. A decision that lives only in a chat or a
-  story file is lost to the next reader.
-- Every `source=` pointer names code that exists:
-  `ostler book check services.<name> --app <code repo root>` passes. A pointer into
-  another repository is `repo://<member>/<path>`, and a lone repository is named by
-  its repository name.
-- `ostler book run services.<name>` is green on the story's code. A claim no
-  call and no screen can observe is checked by the story's QA and stays out of
-  the book.
+- Every element the story changed states the new current behaviour.
+- Every assumption or tradeoff settled for the story is a file under
+  `services/<name>/decisions/`, or a line in the decision that already covers it.
+- `ostler book check services.<name> --app <code repo root>` passes.
+- `ostler book run services.<name>` is green on the story's code.
 
-Write the book with the `ostler-book` skill. It carries the format, the order of
-work and the bar for each element.
-
-A book change is committed in the artifacts repository on a branch with the same name
-as the code branch of the same work. For a story that is the story's branch.
-`ostler book branch` opens it as a worktree and prints the book root. It lands when
-the code lands, with `ostler book land`, by rebase and fast-forward. A change
-committed straight on the code's base commits its book straight on the artifacts
-base. With `book.home: repo` the book rides the code's branch and commit. A book
-moved to the artifacts folder follows
-`docs/guide/moving-a-book-to-the-artifacts-folder.md`.
-
-## A service with no book yet
-
-A service with no `services/<name>/service.py` has no book. Write one from its
-source with the okf-book workflow, `workhorse-okf-book run python_book`, or by
-hand with the `ostler-book` skill. The book is the only form of spec this
-repository keeps.
+A service with no `services/<name>/service.py` gets a book first, from the okf-book
+workflow (`workhorse-okf-book run python_book`) or by hand. The `ostler-book` skill
+carries where the book lives, how its branch lands, the format and the bar.
