@@ -38,7 +38,25 @@ case in front of you.
 
 ## The package
 
-A service's book is `services/<name>/` under the book root: the repository root in a monorepo, the artifacts folder in a multi-repo workspace. A `source` pointer into another repository of the workspace is `repo://<member>/<path>::<symbol>`. A stack or a process that starts the app from a member repository takes the member's folder from `checkout("<member>")`. A run launched with `--worktree` from a workspace works on its own branch. Its book root is the artifacts worktree on that branch and a member's folder is its worktree on that branch, and `ostler` reads both from git when run inside one of them.
+A service's book is `services/<name>/` under the book root. The book root is the artifacts folder for every repository. A repository that publishes its own book sets `book: {home: repo}` in its `agents.yml` and keeps `services/` and `product/` at its root. A repository with no key that still holds an ostler book is refused, and the message names both ways out: set the key, or move the book following `docs/guide/moving-a-book-to-the-artifacts-folder.md`. A bare `source` pointer resolves against `--app`, the code checkout. A pointer into another repository is `repo://<member>/<path>::<symbol>`, and a lone repository is named by its repository name. A stack or a process that starts the app from a member repository takes the member's folder from `checkout("<member>")`. A run launched with `--worktree` from a workspace works on its own branch. Its book root is the artifacts worktree on that branch and a member's folder is its worktree on that branch, and `ostler` reads both from git when run inside one of them.
+
+A book change is committed in the artifacts repository on a branch with the same name as the code branch of the same work, and for a story that is the story's branch. `ostler book branch` opens it as a worktree and prints the book root. It lands when the code lands, with `ostler book land`, by rebase and fast-forward. A change committed straight on the code's base commits its book straight on the artifacts base. With `book.home: repo` the book rides the code's branch and commit.
+
+The layout:
+
+```
+ai-artifacts/
+  services/<name>/               service book: what one service does
+    decisions/                   why, tied to an element of that service
+  products/<product>/            product book: one markdown page per rule
+  teams/<team>/                  team book
+  company/                       company book
+  epics/  specs/  backlogs/      as before
+
+<repository with book.home: repo>/
+  services/<name>/   product/    a tool that publishes its own book
+```
+
 
 | Path | Holds |
 | --- | --- |
@@ -54,7 +72,7 @@ A service's book is `services/<name>/` under the book root: the repository root 
 | `journeys/*.py` | stories a user lives through, one class per file |
 | `DISAGREEMENTS.md` | numbered entries where the source, the openapi and the app disagree |
 | `decisions/<slug>.md` | why one behaviour is so: three header lines, `story:`, `date:` and `elements:` with the class names it explains, a blank line, then prose. A decision no story settled, as in a backfill, writes `story: none`. The header may add `sources:`, a comma separated list of what the project wrote down, each one a commit sha, `<sha>:<path>` for a file as that commit held it, or an element's source pointer (`path`, `path::symbol`, `repo://<member>/<path>`), and `check --app` opens each |
-| `<book root>/product/<slug>.md` | a rule above one service, beside `services/` and not inside a book: the product's words, a constraint no story may break, where the truth for a calculation lives. Header lines `date:` (required), `sources:` and `status:` (optional, who said it or where it is written, and a free text such as `accepted` or `superseded by <slug>`), a blank line, then prose whose first line is the page's statement. It names no story and no element. `ostler book search` reads it with every query and `--kind product` shows only it. A why that explains one element stays a decision |
+| `<artifacts dir>/products/<product>/<slug>.md`, or `product/<slug>.md` beside `services/` with `book.home: repo` | a rule above one service, beside `services/` and not inside a book: the product's words, a constraint no story may break, where the truth for a calculation lives. Header lines `date:` (required), `sources:` and `status:` (optional, who said it or where it is written, and a free text such as `accepted` or `superseded by <slug>`), a blank line, then prose whose first line is the page's statement. It names no story and no element. `ostler book search` reads it with every query and `--kind product` shows only it. A why that explains one element stays a decision |
 | `QUESTIONS.md` | one line per why nothing written settles, `- <Element>: <question>`; an answered question becomes a decision and its line is removed |
 | `FORMAT` | the commit of this skill's source the book was last judged against, one sha. The workflow writes it after the book's gates pass, and a writer never edits it |
 | `ops/stack.yml` | the containers `ostler env` runs for this service, with their templates beside it |
@@ -67,11 +85,11 @@ Four books hold the rules, by how far each reaches:
 | Book | Holds | Lives in | Written by |
 | --- | --- | --- | --- |
 | service | what one service does and why: its Python and `decisions/` | `<book root>/services/<name>/` | agents |
-| product | the product's words, the constraints no story may break, where the truth for a calculation lives | `<book root>/product/<slug>.md` | agents |
+| product | the product's words, the constraints no story may break, where the truth for a calculation lives | `<artifacts dir>/products/<product>/<slug>.md`, or `product/<slug>.md` beside `services/` with `book.home: repo` | agents |
 | team | how one team builds across products: ADRs, RFCs, conventions | `<artifacts dir>/teams/<team>/<slug>.md` | people |
 | company | rules every team follows | `<artifacts dir>/company/<slug>.md` | people |
 
-The team is `book.team` in the repository's `agents.yml`, and no team book is read without it. When two books
+The product is `book.product` in the repository's `agents.yml`, else the repository's name. The team is `book.team` in the repository's `agents.yml`, and no team book is read without it. When two books
 disagree, the order of authority is company, team, product, service decision, story. Report a conflict and settle
 neither side. An agent writes a product page and never a team or company page. `ostler book pages` lists the pages.
 
@@ -181,7 +199,7 @@ runs, however pure, is named in a `source`. Each decision listed is
 one to reread. Work them through "Adding a route", then `verified` records the app's HEAD. An action
 and an outside happening name their code with `source` too, so a change in a domain function or a handler that
 no endpoint reaches is found. `ostler book affected` turns the same diff into the calls and journeys to play. Done
-when `stale` lists nothing. In a workspace `--app` names one member. A pointer into another member is listed as `not traced`.
+when `stale` lists nothing. `--app` names the code checkout, one member in a workspace. A pointer into another member is listed as `not traced`.
 
 A first pass over a service works the `missing` list to empty instead: each tracked file under
 the app's roots that no element names gets an element with that file in its `source`, or a
@@ -267,7 +285,8 @@ it changes when the standing world changes.
 
 ## The commands
 
-Run from the directory that holds `services/`, one at a time. Never start a second `run` or `explore` while
+Run from the code repository, or from the book root with `--app`, one at a time.
+`ostler book branch` opens the book branch of the current code branch and prints its root. `ostler book land` lands it on the artifacts base by rebase and fast-forward, then removes its worktree and branch. Never start a second `run` or `explore` while
 one is live.
 
 | Command | Takes | Tells you |

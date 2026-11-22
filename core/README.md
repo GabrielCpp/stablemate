@@ -27,6 +27,11 @@ its public entry point. They share runtime state and must agree about it:
 - **worktree retirement** (`worktree.py`) — one test for whether a linked worktree can go
   without losing anything. A workhorse run applies it at its end and `farrier worktrees`
   applies it to what sessions left behind.
+- **the book home** (`books.py`) — one rule for where a repository's book lives: the
+  artifacts folder, or the repository when its `agents.yml` says `book.home: repo`. It
+  also names the product folder and refuses a repository that holds an unmoved book.
+- **the book branch** (`book_branch.py`) — one way to open a book worktree on the
+  artifacts repository for a code branch and to land it by rebase and fast-forward.
 
 This was duplicated code in both tools until the duplication caused a real bug: two
 hand-rolled TOML writers, one of which stringified nested tables and silently destroyed

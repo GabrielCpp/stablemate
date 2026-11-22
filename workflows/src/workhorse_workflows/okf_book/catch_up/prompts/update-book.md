@@ -155,7 +155,7 @@ unplayed.{% endif %} Name each pattern you added to `App(ignore=...)` in `ignore
 
 You are done when, for each module below, `check` exits 0{% if notes %}, every note listed above is stated or declined,{% endif %} and `stale` prints nothing under
 `## Changed files no element names`, `## Changed functions no element names` and
-`## Pointers to files that no longer exist`, from the book root. `## Stale elements` stays
+`## Pointers to files that no longer exist`, run from the app root `{{ app_root }}` or from the book root with `--app`. `## Stale elements` stays
 listed until the run stamps the book, so it is no sign of work left:
 
 ```

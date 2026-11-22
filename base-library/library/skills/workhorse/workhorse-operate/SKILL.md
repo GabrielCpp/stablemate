@@ -60,8 +60,8 @@ groom feed --run <run_id> --every 30m            # from a shell: a digest every 
   answer. A `wait` exits after one event, so start a new one. The feed keeps running.
 - **`<run_id>` is groom's id, not the run dir's name.** The engine may prefix the dir
   with the workflow name. `groom status --json` prints both.
-- **`--worktree` in a workspace** cuts a worktree of the artifacts repo and of every member on
-  one branch. On success the book branch lands on the artifacts base, rebased first when the
+- **`--worktree` in a workspace or a lone repository** cuts a worktree of the artifacts repo and
+  of every member on one branch. With `book.home: repo` it cuts the repository's worktree only. On success the book branch lands on the artifacts base, rebased first when the
   base moved. A conflict keeps the book worktree and its branch and names the files. Each member
   worktree goes the way a single one does.
 

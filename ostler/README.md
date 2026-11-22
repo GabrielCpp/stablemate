@@ -331,7 +331,22 @@ ostler book graph   services.api          # each record's state graph, as dot an
 ostler book endpoints|screens|matrix|denied|plan services.api   # read the model, no app
 ```
 
-A rule above any one service goes in a page of one of three books, by how far it reaches:
+A rule above any one service goes in a page of one of three books, by how far it reaches. The layout:
+
+```
+ai-artifacts/
+  services/<name>/               service book: what one service does
+    decisions/                   why, tied to an element of that service
+  products/<product>/            product book: one markdown page per rule
+  teams/<team>/                  team book
+  company/                       company book
+  epics/  specs/  backlogs/      as before
+
+<repository with book.home: repo>/
+  services/<name>/   product/    a tool that publishes its own book
+```
+
+The books:
 
 | Book | Holds | Lives in | Written by |
 | --- | --- | --- | --- |

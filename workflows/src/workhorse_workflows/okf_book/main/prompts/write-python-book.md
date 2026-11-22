@@ -77,7 +77,7 @@ no behaviour a user reaches, such as a test, a generated file or a style sheet, 
 instead by a pattern in the service's `App(ignore=...)`. A file that holds a page, a route or a
 command is never ignored. It gets its element.
 
-You are done when every `check` and `missing` below exits 0 from the book root, each `index` has
+You are done when every `check` and `missing` below exits 0, run from the app root `{{ app_root }}` or from the book root with `--app`, each `index` has
 rewritten its `index.tsv`, and each endpoint and interaction this turn added or changed has
 passed a run `--only` it since its last edit. After the turn the flow plays the whole book once,
 and a failure comes back to you as the next lap's gate. Play nothing wider yourself, and play

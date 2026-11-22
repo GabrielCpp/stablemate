@@ -1,5 +1,7 @@
 # Artifacts layout and the docs home
 
+Note (2026-11-21): the book home rule changed. The artifacts folder is now the home of every book unless `agents.yml` says `book.home: repo`. See `services/ostler/decisions/the-artifacts-folder-is-the-home-of-every-book.md`. This design is not rewritten.
+
 Disclosure: this note was written after reading the existing system. The conversation that
 settled the layout read `core/stablemate_core/config.py`, the ostler shelf roots, the register
 and the decision records, and the coder's decisions folder. Every part below was checked
