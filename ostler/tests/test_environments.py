@@ -1933,3 +1933,74 @@ def test_a_book_below_a_repository_folder_names_the_stack_root_of_that_folder(
     errors = spec.load(root).errors
     assert len(errors) == 1
     assert "belongs in the stack root, services/acme/ops/stack.yml" in errors[0]
+
+
+def _repo_fixture_stack(root: Path, fixture: str) -> None:
+    _file(root, "services/acme/ops/services/db.yml.j2",
+          "image: mysql:8.0\nvolumes:\n{% for f in fixtures %}\n  - {{ f.path }}:/seed/{{ f.name }}:ro\n{% endfor %}\n")
+    _file(root, "services/acme/ops/stack.yml", yaml.safe_dump({
+        "default-fixtures": ["seed"],
+        "services": {"db": {"about": "the database", "define": "services/db.yml.j2",
+                            "fixtures": {"seed": [fixture]}}}}))
+
+
+def _fixture_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    root = _real_repo(tmp_path / "artifacts")
+    code = _real_repo(tmp_path / "code" / "acme")
+    config = tmp_path / "home.toml"
+    config.write_text("")
+    monkeypatch.setenv(core_config.CONFIG_PATH_ENV, str(config))
+    monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(root))
+    return root, code
+
+
+def _mounted(outcome: commands.EnvOutcome) -> list[str]:
+    compose = yaml.safe_load(
+        (Path(outcome.data["directory"]) / render_mod.COMPOSE_FILE).read_text(encoding="utf-8"))
+    return compose["services"]["acme-db"]["volumes"]
+
+
+def test_a_repo_fixture_resolves_to_the_file_of_the_code_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    _file(code, "db/seed.sql", "insert into t values (1);\n")
+    _repo_fixture_stack(root, "repo://acme/db/seed.sql")
+    outcome = commands.cmd_render(root, ["acme"], copy_name="c1", code=code)
+    assert outcome.ok, outcome.message
+    assert _mounted(outcome) == [f"{code}/db/seed.sql:/seed/seed.sql:ro"]
+
+
+def test_a_relative_fixture_resolves_beside_the_stack_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    _file(root, "services/acme/ops/fixtures/seed.sql", "insert into t values (1);\n")
+    _repo_fixture_stack(root, "fixtures/seed.sql")
+    outcome = commands.cmd_render(root, ["acme"], copy_name="c1", code=code)
+    assert outcome.ok, outcome.message
+    assert _mounted(outcome) == [f"{root}/services/acme/ops/fixtures/seed.sql:/seed/seed.sql:ro"]
+
+
+def test_a_repo_fixture_naming_an_unknown_repository_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    _repo_fixture_stack(root, "repo://globex/db/seed.sql")
+    errors = spec.load(root, code=code).errors
+    assert len(errors) == 1
+    assert "services/acme/ops/stack.yml" in errors[0]
+    assert "globex" in errors[0]
+    assert "acme" in errors[0].split("globex", 1)[1]
+
+
+def test_a_repo_fixture_absent_from_the_code_checkout_is_a_load_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    _repo_fixture_stack(root, "repo://acme/db/seed.sql")
+    errors = spec.load(root, code=code).errors
+    assert len(errors) == 1
+    assert "fixture set `seed`" in errors[0]
+    assert "db/seed.sql" in errors[0]
+    assert "does not exist" in errors[0]

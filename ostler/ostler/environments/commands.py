@@ -55,13 +55,13 @@ def _default_targets(catalog: spec.Catalog, cwd: Path) -> list[str]:
 
 def prepare(
     root: Path, targets: Sequence[str], *, copy_name: str, fixtures: Sequence[str],
-    cwd: Path | None = None,
+    cwd: Path | None = None, code: Path | None = None,
 ) -> Prepared | EnvOutcome:
     """The services, copy and fixture sets one bring-up of *targets* works with."""
     problem = addresses.lease_problem(copy_name)
     if problem:
         return _fail(f"`{copy_name}` cannot name a copy: {problem}")
-    catalog = spec.load(root)
+    catalog = spec.load(root, code)
     if catalog.errors:
         return _fail("the stack files do not fit together:\n- " + "\n- ".join(catalog.errors),
                      errors=catalog.errors)
@@ -105,7 +105,7 @@ def _fixture_sets(
 
 def cmd_check(root: Path, *, runner: Runner = run_command, code: Path | None = None) -> EnvOutcome:
     """Every reason the books' stack files do not fit together, and every `${NAME}` no source defines."""
-    catalog = spec.load(root)
+    catalog = spec.load(root, code)
     if not catalog.errors and catalog.books:
         catalog.errors += _name_problems(root, catalog, runner, code)
     data = {"ok": not catalog.errors, "books": sorted(catalog.books),
@@ -121,7 +121,7 @@ def cmd_render(
     fixtures: Sequence[str] = (), cwd: Path | None = None, code: Path | None = None,
 ) -> EnvOutcome:
     """Write the copy's compose file and helper files without starting anything."""
-    prepared = prepare(root, targets, copy_name=copy_name, fixtures=fixtures, cwd=cwd)
+    prepared = prepare(root, targets, copy_name=copy_name, fixtures=fixtures, cwd=cwd, code=code)
     if isinstance(prepared, EnvOutcome):
         return prepared
     try:
@@ -139,7 +139,7 @@ def cmd_up(
     runner: Runner = run_command, code: Path | None = None,
 ) -> EnvOutcome:
     """Bring *targets* and everything they need up as the copy *copy_name*, then read its addresses."""
-    prepared = prepare(root, targets, copy_name=copy_name, fixtures=fixtures, cwd=cwd)
+    prepared = prepare(root, targets, copy_name=copy_name, fixtures=fixtures, cwd=cwd, code=code)
     if isinstance(prepared, EnvOutcome):
         return prepared
     copy = prepared.copy
@@ -297,7 +297,7 @@ def _reset(root: Path, copy_name: str, wait_seconds: int, runner: Runner,
         return _fail(f"{copy_name} is in use by pid {pid}: a reset would pull its data from "
                      "under a play", copy=copy_name)
     prepared = prepare(root, _listed(manifest, "targets"), copy_name=copy_name,
-                       fixtures=_listed(manifest, "fixtures"))
+                       fixtures=_listed(manifest, "fixtures"), code=code)
     if isinstance(prepared, EnvOutcome):
         return prepared
     if not copy.shared:

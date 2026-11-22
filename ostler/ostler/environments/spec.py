@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import functools
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -20,6 +21,7 @@ STACK_FILE = "stack.yml"
 _OUTPUT_NAME = re.compile(r"[A-Z_][A-Z0-9_]*")
 OPS_DIR = "ops"
 BOOKS_DIR = "services"
+REPO_SCHEME = "repo://"
 
 
 @dataclass(frozen=True)
@@ -88,7 +90,8 @@ KEYS: tuple[Key, ...] = (
         "for a `once` job, the environment names it writes to `$STABLEMATE_OUTPUTS`, which the "
         "services that need it read as `${NAME}`"),
     Key("service", "fixtures", {"type": "object", "additionalProperties": _STRINGS},
-        "fixture sets by name, each a list of files the service loads"),
+        "fixture sets by name, each a list of files the service loads: a path beside `ops/`, or "
+        "`repo://<name>/<path>` in the checkout of that repository"),
     Key("service", "address", {"type": "string"},
         "the name a run reads this service's URL by"),
     Key("service", "port", {"type": "integer", "minimum": 1, "maximum": 65535},
@@ -248,9 +251,10 @@ def book_name(root: Path, stack_file: Path) -> str:
     return directory.name.lower() if books.namespaced(root) else root.name.lower()
 
 
-def load(root: Path) -> Catalog:
-    """The catalog of every book under *root*, with each problem found in it."""
+def load(root: Path, code: Path | None = None) -> Catalog:
+    """The catalog of every book under *root*, with each problem found in it; a `repo://` fixture resolves in the checkouts of *code*."""
     catalog = Catalog()
+    repos = functools.cache(lambda: books.book_checkouts(code or root))
     first_file: dict[str, Path] = {}
     for stack_file in stack_files(root):
         name = book_name(root, stack_file)
@@ -260,7 +264,7 @@ def load(root: Path) -> Catalog:
                 f"{shown(root, first_file[name])}: delete this one")
             continue
         first_file[name] = stack_file
-        _read_book(catalog, root, name, stack_file)
+        _read_book(catalog, root, name, stack_file, repos)
     _expand_book_needs(catalog, root)
     _check_reaches(catalog, root)
     _check_needs(catalog)
@@ -275,7 +279,10 @@ def shown(root: Path, stack_file: Path) -> str:
             else stack_file.as_posix())
 
 
-def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> None:
+def _read_book(
+    catalog: Catalog, root: Path, name: str, stack_file: Path,
+    repos: Callable[[], dict[str, Path]],
+) -> None:
     where = shown(root, stack_file)
     roots = stack_roots(root)
     is_root = book_dir(stack_file) in roots
@@ -310,7 +317,7 @@ def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> Non
         return
     refs: list[str] = []
     for service_name, body in services.items():
-        service = _read_service(catalog, name, stack_file, where, str(service_name), body)
+        service = _read_service(catalog, name, stack_file, where, str(service_name), body, repos)
         if service is not None:
             catalog.services[service.ref] = service
             refs.append(service.ref)
@@ -371,14 +378,16 @@ def _check_default_fixtures(
     for set_name in defaults:
         for file in service.fixtures.get(set_name, ()):
             if not locate(root, file).is_file():
-                relative = file.relative_to(service.ops_dir).as_posix()
+                relative = (file.relative_to(service.ops_dir) if file.is_relative_to(service.ops_dir)
+                            else file).as_posix()
                 catalog.errors.append(
                     f"{shown(root, service.ops_dir / STACK_FILE)}: service `{service.name}`: "
                     f"fixture set `{set_name}` file `{relative}` does not exist")
 
 
 def _read_service(
-    catalog: Catalog, book: str, stack_file: Path, shown_file: str, name: str, body: object
+    catalog: Catalog, book: str, stack_file: Path, shown_file: str, name: str, body: object,
+    repos: Callable[[], dict[str, Path]],
 ) -> Service | None:
     where = f"{shown_file}: service `{name}`"
     if not addresses.is_name(name):
@@ -409,7 +418,9 @@ def _read_service(
         catalog.errors.append(f"{where}: `fixtures:` is not a mapping of set name to files")
         raw_fixtures = {}
     for set_name, items in raw_fixtures.items():
-        fixtures[str(set_name)] = tuple(directory / str(item) for item in _as_list(items))
+        paths = (_fixture_path(catalog, where, directory, str(item), repos)
+                 for item in _as_list(items))
+        fixtures[str(set_name)] = tuple(path for path in paths if path is not None)
     for file in files:
         if not file.is_file():
             catalog.errors.append(f"{where}: `{file.relative_to(directory).as_posix()}` "
@@ -446,6 +457,24 @@ def _read_service(
         files=placed,
         fixtures=fixtures,
     )
+
+
+def _fixture_path(
+    catalog: Catalog, where: str, directory: Path, item: str,
+    repos: Callable[[], dict[str, Path]],
+) -> Path | None:
+    if not item.startswith(REPO_SCHEME):
+        return directory / item
+    member, _slash, rest = item.removeprefix(REPO_SCHEME).partition("/")
+    checkouts = repos()
+    checkout = checkouts.get(member)
+    if checkout is None:
+        known = ", ".join(sorted(checkouts)) or "none"
+        catalog.errors.append(
+            f"{where}: fixture `{item}` names the repository `{member}`, "
+            f"and the known repositories are: {known}")
+        return None
+    return (checkout / (rest or ".")).resolve()
 
 
 def _expand_book_needs(catalog: Catalog, root: Path) -> None:
