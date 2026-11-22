@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 
-from groom import alerts, state, store
+from groom import alerts, overview, state, store
 from groom.models import RunTelemetry, WorkflowContainer
 
 
@@ -129,6 +130,40 @@ def test_broad_telemetry_queries_do_not_scan_the_wide_spans_table():
 
         assert any("spans_start" in row[3] for row in latest_plan), latest_plan
         assert any("COVERING INDEX spans_summary" in row[3] for row in summary_plan), summary_plan
+
+
+def _whole_table_scans(run_id: str) -> list[str]:
+    conn = store.read_connection()
+    statements: list[str] = []
+    conn.set_trace_callback(statements.append)
+    try:
+        overview.run_overview(run_id)
+    finally:
+        conn.set_trace_callback(None)
+    scans = []
+    for sql in statements:
+        if not sql.lstrip().upper().startswith(("SELECT", "WITH")):
+            continue
+        for row in conn.execute("EXPLAIN QUERY PLAN " + sql):
+            if re.match(r"SCAN (spans|charges|turns|metrics|logs)\b(?!.* USING)", row[3]):
+                scans.append(f"{row[3]} <- {sql[:80]}")
+    return scans
+
+
+def test_opening_an_overview_runs_no_query_that_scans_every_span():
+    """This fails when reading one run's overview walks a whole telemetry table."""
+    with _DB():
+        store.insert_spans([_span("R", "a", 100, 101), _span("R", "b", 200, 201), _span("Q", "c", 300, 301)])
+        assert _whole_table_scans("R") == []
+
+
+def test_the_overview_scan_check_sees_a_scan_when_the_indexes_are_gone():
+    with _DB():
+        store.insert_spans([_span("R", "a", 100, 101), _span("Q", "c", 300, 301)])
+        conn = store._connection()
+        for index in ("spans_run", "spans_summary", "spans_node", "spans_status", "spans_start"):
+            conn.execute(f"DROP INDEX IF EXISTS {index}")
+        assert _whole_table_scans("R")
 
 
 if __name__ == "__main__":

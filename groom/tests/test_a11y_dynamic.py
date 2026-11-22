@@ -433,7 +433,7 @@ def test_j_and_k_and_the_filter_work_in_the_narrowed_list():
         page.close()
 
 
-def test_tabs_switch_with_the_arrow_keys_and_details_keeps_todays_content():
+def test_tabs_switch_with_the_arrow_keys_between_overview_and_activity():
     from playwright.sync_api import expect
 
     live = _live()
@@ -522,7 +522,10 @@ def test_a_running_node_is_marked_running_with_its_time():
     try:
         _pick(page, "author")
         table = page.get_by_role("table", name="Time and cost per flow")
-        expect(table.get_by_role("row", name=re.compile("split_stories"))).to_contain_text("running")
+        running = table.locator("tbody tr").first
+        expect(running).to_contain_text("split_stories")
+        expect(running).to_contain_text(re.compile(r"running\s+\d+\s?(s|m|h)"))
+        expect(running.get_by_role("button")).to_have_count(0)
     finally:
         page.close()
 
