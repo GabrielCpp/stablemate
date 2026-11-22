@@ -844,20 +844,6 @@ def workspace_checkouts(start: Path) -> dict[str, Path]:
     return {name: checkout_on(path, branch) for name, path in members.items()}
 
 
-def book_home(start: Path) -> Path | None:
-    """The book root: None outside a workspace, else the artifacts checkout of the run's branch."""
-    home = docs_home(start)
-    if home is None:
-        return None
-    branch = run_branch(start)
-    if branch is None:
-        return home
-    top = _artifacts_toplevel()
-    if top is None:
-        return home
-    return checkout_on(top, branch) / home.relative_to(top)
-
-
 def run_workspace(start: Path, named: str = "") -> str:
     """The workspace a run launched from *start* works in: *named* when given, else the one workspace holding *start*'s repository; "" when it is in none."""
     if named:

@@ -51,52 +51,6 @@ def test_docs_home_is_the_artifacts_main_folder_from_an_artifacts_worktree(world
     assert cfgmod.docs_home(tree) == world["artifacts"]
 
 
-def test_book_home_is_none_outside_any_workspace(tmp_path, monkeypatch, cfg_file):
-    monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(tmp_path / "artifacts"))
-    plain = _repo(tmp_path / "plain")
-
-    assert cfgmod.book_home(plain) is None
-
-
-def test_book_home_is_the_artifacts_main_folder_from_a_member_main_checkout(world):
-    _tree(world["artifacts"], world["trees"])
-
-    assert cfgmod.book_home(world["api"]) == world["artifacts"]
-
-
-def test_book_home_is_the_artifacts_worktree_on_the_branch_of_a_member_worktree(world):
-    book = _tree(world["artifacts"], world["trees"])
-    api = _tree(world["api"], world["trees"])
-
-    assert cfgmod.book_home(api) == book
-    assert cfgmod.book_home(api / ".") == book
-
-
-def test_book_home_is_the_artifacts_worktree_itself_from_inside_it(world):
-    book = _tree(world["artifacts"], world["trees"])
-
-    assert cfgmod.book_home(book) == book
-
-
-def test_book_home_falls_back_to_the_artifacts_main_folder_when_no_artifacts_worktree_has_the_branch(world):
-    api = _tree(world["api"], world["trees"])
-
-    assert cfgmod.book_home(api) == world["artifacts"]
-
-
-def test_book_home_follows_the_enclosing_repository_when_the_artifacts_dir_sits_inside_a_member(
-    tmp_path, monkeypatch, cfg_file
-):
-    api = _repo(tmp_path / "api")
-    (api / "artifacts").mkdir()
-    monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(api / "artifacts"))
-    cfg_file.write_text(f'[workspaces]\nacme = [{{ path = "{api}", name = "api" }}]\n')
-    tree = _tree(api, tmp_path / "trees")
-    (tree / "artifacts").mkdir(exist_ok=True)
-
-    assert cfgmod.book_home(tree) == tree / "artifacts"
-
-
 def test_workspace_checkouts_maps_each_member_to_its_worktree_on_the_run_branch_and_others_to_their_folder(world):
     api = _tree(world["api"], world["trees"])
 
@@ -123,7 +77,6 @@ def test_a_linked_worktree_of_an_unrelated_repository_gets_no_branch_rule(world,
     tree = _tree(other, world["trees"])
 
     assert cfgmod.run_branch(tree) is None
-    assert cfgmod.book_home(tree) is None
 
 
 def test_run_workspace_names_the_one_workspace_holding_the_member(world):
