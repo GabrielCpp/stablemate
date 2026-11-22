@@ -268,8 +268,8 @@ def test_codex_effort_sets_reasoning_override():
     assert cmd[cmd.index("-c") + 1] == 'model_reasoning_effort="high"'
 
 
-def test_codex_effort_clamped_to_high():
-    """Codex tops out at "high"; the Claude-superset levels clamp down."""
+def test_codex_effort_passes_xhigh_and_max_through():
+    """Codex accepts "xhigh" and "max", so a tier set to either runs at that level and not at "high"."""
     sidp = Path(tempfile.mkdtemp()) / ".session_id"
     for level in ("xhigh", "max"):
         fake, captured = _fake_stream(
@@ -282,7 +282,7 @@ def test_codex_effort_clamped_to_high():
             if prior is not None:
                 os.environ["CODEX_PROFILE"] = prior
         cmd = captured["cmd"]
-        assert cmd[cmd.index("-c") + 1] == 'model_reasoning_effort="high"'
+        assert cmd[cmd.index("-c") + 1] == f'model_reasoning_effort="{level}"'
 
 
 def test_codex_no_effort_omits_override():

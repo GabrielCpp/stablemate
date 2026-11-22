@@ -65,16 +65,12 @@ def flags_with_policy_file(policy: Policy | None) -> Iterator[list[str]]:
         yield guard_flags(path)
 
 
-def _codex_effort(effort: str) -> str:
-    return "high" if effort in ("xhigh", "max") else effort
-
-
 def _role_toml(delegate: Delegate) -> str:
     """A codex agent role's config layer: the delegate's model, effort, sandbox and instructions."""
     _, slug = _parse_codex_model(delegate.model)
     lines = [f"model = {json.dumps(slug or delegate.model)}"]
     if delegate.effort:
-        lines.append(f"model_reasoning_effort = {json.dumps(_codex_effort(delegate.effort))}")
+        lines.append(f"model_reasoning_effort = {json.dumps(delegate.effort)}")
     if delegate.read_only:
         lines.append('sandbox_mode = "read-only"')
     lines.append(f"developer_instructions = {json.dumps(delegate.instructions)}")
@@ -252,7 +248,7 @@ class CodexBackend(JsonlBackend):
         if model_slug:
             flags += ["-m", model_slug]
         if turn.effort:
-            flags += ["-c", f'model_reasoning_effort="{_codex_effort(turn.effort)}"']
+            flags += ["-c", f'model_reasoning_effort="{turn.effort}"']
         with (
             flags_with_policy_file(guard_policy(turn.agent, turn.cwd, turn.add_dirs)) as hook_flags,
             flags_with_role_files(turn.delegates) as role_flags,
