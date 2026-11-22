@@ -92,7 +92,7 @@ def test_fresh_relative_cwd_is_under_the_book_root_when_started_in_the_code_repo
 
 def test_milestone_books_are_read_under_the_book_home(repo):
     write(repo / "docs/milestones/sign-in/milestone.md", milestone_md())
-    write(_artifacts() / "services/area/service.py", "")
+    write(_artifacts() / "services/acme/area/service.py", "")
     assert findings(repo, "milestone-journey-services") == []
 
 
