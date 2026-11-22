@@ -108,6 +108,9 @@ def test_in_one_repo_the_snapshot_names_no_checkout(tmp_path: Path, git: Git, lo
     repo = tmp_path / "solo"
     repo.mkdir()
     git(repo, "init", "-q", "-b", "main")
+    (repo / "agents.yml").write_text("book:\n  home: repo\n", encoding="utf-8")
+    git(repo, "add", "agents.yml")
+    git(repo, "commit", "-qm", "Initial commit")
     (repo / "scratch.py").write_text("x = 1\n", encoding="utf-8")
 
     dirty = worktree.snapshot_worktree_state(logger, repo_dir=str(repo))

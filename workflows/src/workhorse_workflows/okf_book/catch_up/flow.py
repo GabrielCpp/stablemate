@@ -218,7 +218,7 @@ class CatchUpBooks(BookFlow):
             names = tuple(sorted(set(known) & {*module.elements, *added}))
             if not names:
                 continue
-            gate = self.call(python_book_play, self.root, module.module, self.run_dir / "book-run" / module.module, PlayLimit(flags=run_flags(self.stack_copy, names), minutes=self.play_minutes))
+            gate = self.call(python_book_play, self.code_root, module.module, self.run_dir / "book-run" / module.module, PlayLimit(flags=run_flags(self.stack_copy, names), minutes=self.play_minutes))
             if gate.exit_code != 0:
                 return gate, self._judged("run", module.module, gate, Lap(service, lap, added, ignored), self.play)
             played += len(names)
@@ -242,7 +242,7 @@ class CatchUpBooks(BookFlow):
             plays = ([run_flags(self.stack_copy, selected.only, fresh=True)] if selected.only else []) + ([run_flags(self.stack_copy, journeys=selected.journeys, fresh=not selected.only)] if selected.journeys else [])
             for number, flags in enumerate(plays):
                 folder = module if number == 0 else f"{module}.journeys"
-                gate = self.call(python_book_play, self.root, module, self.run_dir / "book-run" / folder, PlayLimit(flags=flags, minutes=self.play_minutes))
+                gate = self.call(python_book_play, self.code_root, module, self.run_dir / "book-run" / folder, PlayLimit(flags=flags, minutes=self.play_minutes))
                 if gate.exit_code != 0:
                     return gate, self._judged("run", module, gate, Lap(service, lap, added, ignored), self.play)
             calls += len(selected.only)

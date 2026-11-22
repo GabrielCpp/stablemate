@@ -112,7 +112,7 @@ def _played(done: subprocess.CompletedProcess[str]) -> BookGate:
 
 @blueprint.node(stub=_green)
 def python_book_run(logger: logging.Logger, root: Path, module: str, out_dir: Path, flags: tuple[str, ...] = ()) -> BookGate:
-    """Play one of the book's modules against the live app from the book root, with the flags the run names, and keep the last lines of its progress and the tail of its report."""
+    """Play one of the book's modules against the live app from the folder `root` names, which a run passes as its code checkout, with the flags the run names, and keep the last lines of its progress and the tail of its report."""
     return _played(run_tool([*book_command("run", module, "--out", str(out_dir)), *flags], cwd=root, logger=logger, env=BOOK_ENV))
 
 

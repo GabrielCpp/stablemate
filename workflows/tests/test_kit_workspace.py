@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from workhorse_workflows.kit import credentials
-from workhorse_workflows.kit.paths import find_docs_root
+from workhorse_workflows.kit.paths import find_book_root, find_docs_root
 from workhorse_workflows.kit.workspace import _network_git, checkout_workspace, resolve_workspace
 
 
@@ -168,3 +168,31 @@ def test_base_branch_from_repo_reaches_the_pr_lookup(tmp_path: Path) -> None:
     repos = resolve_workspace(repo_dir=str(tmp_path))
 
     assert _repo_base_branch(tmp_path, "acme", repos) == "release"
+
+
+def test_find_book_root_of_a_lone_repository_is_the_artifacts_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    repo = tmp_path / "acme"
+    (repo / ".git").mkdir(parents=True)
+    artifacts = tmp_path / "book-home"
+    artifacts.mkdir()
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(artifacts))
+
+    assert find_book_root(str(repo)) == artifacts
+
+    (repo / "agents.yml").write_text("book:\n  home: repo\n", encoding="utf-8")
+
+    assert find_book_root(str(repo)) == repo.resolve()
+
+
+def test_find_book_root_refuses_a_repository_holding_an_unmoved_book(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from workhorse._vendor.stablemate_core import books
+
+    repo = tmp_path / "acme"
+    (repo / ".git").mkdir(parents=True)
+    module = repo / "services" / "api" / "service.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("from ostler.book import Service\n", encoding="utf-8")
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(tmp_path / "book-home"))
+
+    with pytest.raises(books.UnmovedBook):
+        find_book_root(str(repo))

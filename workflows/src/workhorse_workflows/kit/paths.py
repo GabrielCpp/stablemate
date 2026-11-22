@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from workhorse._vendor.stablemate_core import config as core_config
+from workhorse._vendor.stablemate_core import books, config as core_config
 
 
 def find_repo_root(repo_dir: str | Path = "") -> Path:
@@ -35,10 +35,8 @@ def agents_repo_root(repo_dir: str | Path = "") -> Path:
 
 
 def find_book_root(repo_dir: str | Path = "") -> Path:
-    """The book root: the run's artifacts checkout while a workspace is active, else the repo root."""
-    root = find_repo_root(repo_dir)
-    home = core_config.book_home(root)
-    return home if home is not None else root
+    """The book root of the repository: the folder `books.book_home` names, the artifacts folder unless the repository's `agents.yml` keeps its book beside the code. It raises `books.UnmovedBook` for a repository that still holds an unmoved book."""
+    return books.book_home(find_repo_root(repo_dir))
 
 
 def find_docs_root(repo_dir: str | Path = "") -> Path:

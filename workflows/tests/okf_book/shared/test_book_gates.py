@@ -80,3 +80,19 @@ def test_a_run_with_no_calls_leaves_the_only_flag_out() -> None:
 
 def test_a_run_of_journeys_is_partial_and_names_each_title() -> None:
     assert book_gates.run_flags("evening", journeys=("Open", "Close"), fresh=True) == ("--partial", "--journey", "Open", "--journey", "Close", "--copy", "evening", "--fresh-data")
+
+
+def test_the_run_play_starts_in_the_folder_it_is_given(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    code = tmp_path / "code"
+    seen: list[Path] = []
+
+    def _run(argv: list[str], **kw: Path) -> subprocess.CompletedProcess[str]:
+        seen.append(kw["cwd"])
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(book_gates, "run_tool", _run)
+    logger = logging.getLogger("t")
+    _ = book_gates.python_book_run(logger, code, "services.api", tmp_path)
+    _ = book_gates.python_book_play(logger, code, "services.api", tmp_path, book_gates.PlayLimit(minutes=0))
+
+    assert seen == [code, code]

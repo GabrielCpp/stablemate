@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from workhorse_workflows.coder.book_qa.nodes import _run_argv
 
 
@@ -45,3 +47,24 @@ def test_a_play_carries_the_holder_of_the_copy_so_it_may_reset_its_data(monkeypa
     monkeypatch.setattr(nodes, "stack_env", lambda root, near="", lease="": {"STABLEMATE_LEASE": lease, "STABLEMATE_LEASE_HOLDER": "41"})
     nodes._play(["x"], tmp_path, 5, nodes.stack_env(tmp_path, lease="story-7"))
     assert (seen["STABLEMATE_LEASE_HOLDER"], seen["STABLEMATE_LEASE"]) == ("41", "story-7")
+
+
+def test_the_run_play_starts_in_the_code_checkout(monkeypatch, tmp_path) -> None:
+    from workhorse_workflows.coder.book_qa import nodes
+
+    code = tmp_path / "acme"
+    (code / ".git").mkdir(parents=True)
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(tmp_path / "book-home"))
+    seen: list[object] = []
+
+    def run(argv, cwd=None, env=None, timeout=None):
+        seen.append(cwd)
+        return type("Done", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr(nodes, "run_tool", run)
+    play = nodes.book_run(
+        logging.getLogger("t"), "api", ["AddTodo"], "copy", str(tmp_path / "out"), 5, repo_dir=str(code)
+    )
+
+    assert play.exit_code == 0
+    assert seen == [code.resolve()]

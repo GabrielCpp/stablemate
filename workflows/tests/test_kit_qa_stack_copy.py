@@ -26,6 +26,7 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv(runtime.HOME_ENV, str(tmp_path / "env-home"))
     root = tmp_path / "acme"
     (root / ".git").mkdir(parents=True)
+    (root / "agents.yml").write_text("book:\n  home: repo\n", encoding="utf-8")
     book = root / "services" / "web"
     (book / "ops").mkdir(parents=True)
     (book / "ops" / "web.yml.j2").write_text("image: nginx\n", encoding="utf-8")
@@ -299,3 +300,21 @@ def test_run_qa_plan_reads_specs_from_the_docs_root_and_the_lease_from_the_book_
     runner.run_qa_plan(LOG, spec_dir="specs/story-1", repo_dir=str(trees.api), near="", lease="l")
 
     assert seen == {"specs": laid.artifacts, "lease": trees.artifacts}
+
+
+def test_the_stack_is_rendered_with_the_code_checkout(repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def up(_root: Path, **kw: object) -> QaOutcome:
+        seen["up"] = kw["code"]
+        return QaOutcome(True, "stack brought up and healthy at http://localhost:49200", {})
+
+    def devices(_root: object, **kw: object) -> list[dict[str, object]]:
+        seen["devices"] = kw["code"]
+        return []
+
+    monkeypatch.setattr(leases, "up", up)
+    monkeypatch.setattr(qa_devices, "bring_up_book_devices", devices)
+    runner.ensure_stack(LOG, repo_dir=str(repo), lease="story-1")
+
+    assert seen == {"up": repo.resolve(), "devices": repo.resolve()}

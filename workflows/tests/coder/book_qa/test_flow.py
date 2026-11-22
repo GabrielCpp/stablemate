@@ -155,6 +155,7 @@ class _Book:
         self.timeouts: list[float | None] = []
         self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": [], "affected": []}
         self.cwds: list[Any] = []
+        self.run_cwds: list[Any] = []
         self.changed = changed or {}
         self.stamped = set(stamped)
         self.pending = pending or {}
@@ -176,6 +177,7 @@ class _Book:
         if verb == "stale":
             return self._stale(argv)
         if verb == "run":
+            self.run_cwds.append(cwd)
             self.timeouts.append(timeout)
             if self.on_run:
                 self.on_run()
@@ -1067,7 +1069,8 @@ def test_in_a_workspace_the_book_plays_from_the_artifacts_folder(
     result = drive_flow(_flow(), env(), _Agent(workspace_lane.artifacts))
 
     assert result.status == "passed", result
-    assert scripted.cwds and {Path(cwd) for cwd in scripted.cwds} == {workspace_lane.artifacts}
+    assert scripted.cwds and {Path(cwd) for cwd in scripted.cwds if cwd not in scripted.run_cwds} == {workspace_lane.artifacts}
+    assert {Path(cwd) for cwd in scripted.run_cwds} == {workspace_lane.api}
     [argv] = scripted.argv["check"][:1]
     assert argv[argv.index("--app") + 1] == str(workspace_lane.api), argv
 
@@ -1134,7 +1137,8 @@ def test_in_a_worktree_run_the_book_plays_from_the_artifacts_worktree(
     result = drive_flow(_flow(), env(), _Agent(run_trees.artifacts))
 
     assert result.status == "passed", result
-    assert scripted.cwds and {Path(cwd) for cwd in scripted.cwds} == {run_trees.artifacts}
+    assert scripted.cwds and {Path(cwd) for cwd in scripted.cwds if cwd not in scripted.run_cwds} == {run_trees.artifacts}
+    assert {Path(cwd) for cwd in scripted.run_cwds} == {run_trees.api}
     [argv] = scripted.argv["check"][:1]
     assert argv[argv.index("--app") + 1] == str(run_trees.api), argv
 

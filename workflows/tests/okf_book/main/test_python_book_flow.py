@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import shutil
+import subprocess
 from pathlib import Path
 from typing import cast
 
@@ -17,6 +18,7 @@ from workhorse.pyflow.engine import Engine
 
 from workhorse_workflows import okf_book
 from workhorse_workflows.okf_book.main import python_book_flow
+from workhorse_workflows.okf_book.shared import book_gates
 from workhorse_workflows.okf_book.main.python_book_flow import PythonBookOutcome, WritePythonBook
 
 WRITE = "write-python-book"
@@ -348,3 +350,18 @@ def test_the_owner_plays_only_what_it_touched_and_leaves_the_whole_book_to_the_f
     assert "After the turn the flow plays the whole book once" in rendered
     assert "The app takes one play at a time" in rendered
     assert "start it in the background and wait\non its exit" in rendered
+
+
+def test_the_run_play_starts_in_the_code_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    flow, _runner = build_flow(tmp_path)
+    cwds: list[object] = []
+
+    def _run(argv: list[str], **kw: object) -> subprocess.CompletedProcess[str]:
+        cwds.append(kw["cwd"])
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(book_gates, "run_tool", _run)
+
+    _ = flow.play(lap=1)
+
+    assert cwds == [flow.code_root]

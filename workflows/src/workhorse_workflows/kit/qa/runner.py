@@ -16,7 +16,7 @@ from ostler.qa import devices, stack
 from ostler.qa.outcome import QaOutcome
 
 from workhorse_workflows.kit.qa.schemas import QaPlanRun, QaStatus, StackStatus
-from workhorse_workflows.kit import find_book_root, find_docs_root
+from workhorse_workflows.kit import find_book_root, find_docs_root, find_repo_root
 from workhorse_workflows.kit.leased_env import scoped_envs
 from workhorse_workflows.kit.qa.support import QA_PLAN_FILE, notes_for
 
@@ -92,7 +92,8 @@ def ensure_stack(
     """Bring the durable QA stack up (or adopt one already serving) before the runner."""
     root = find_book_root(repo_dir)
     near_path = Path(near) if near else None
-    copied = leases.up(root, lease=lease, near=near_path, holder=os.getpid())
+    code = find_repo_root(repo_dir)
+    copied = leases.up(root, lease=lease, near=near_path, holder=os.getpid(), code=code)
     if copied is None:
         return StackStatus(
             ready="unneeded",
@@ -102,7 +103,7 @@ def ensure_stack(
     if not copied.ok:
         return _copy_status(copied)
     booted = devices.bring_up_book_devices(
-        root, near=near_path,
+        root, near=near_path, code=code,
         env=leases.run_env(root, lease, near_path, holder=os.getpid()), logger=logger)
     if booted and booted[-1].get("ready") != "yes":
         last = booted[-1]

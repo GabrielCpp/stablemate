@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 from git.exc import GitError
-from workhorse._vendor.stablemate_core import config as core_config
+from workhorse._vendor.stablemate_core import books, config as core_config
 from workhorse_workflows.kit import find_book_root, find_repo_root, resolve_workspace
 from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -88,7 +88,7 @@ def snapshot_owner_baseline(
 def not_product_roots(repo_dir: str) -> list[Path]:
     """The resolved folders no proof is reopened by: the artifacts dir, and the book root of a workspace run."""
     artifacts = core_config.resolve_artifacts_dir().resolve()
-    if core_config.docs_home(find_repo_root(repo_dir)) is None:
+    if books.book_in_repo(find_repo_root(repo_dir)):
         return [artifacts]
     return list(dict.fromkeys([artifacts, find_book_root(repo_dir).resolve()]))
 
