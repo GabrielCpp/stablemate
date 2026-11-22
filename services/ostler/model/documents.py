@@ -499,14 +499,6 @@ class ListBookDecisions(Action[Nothing, Plan]):
         return Transaction(says=("say-hello (story none, 2026-11-17): The demo book greets with the word hello and nothing else.",))
 
 
-class DrawBook(Action[Nothing, Plan]):
-    accept = Nothing
-
-    @staticmethod
-    def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
-        return Transaction(says=("results/demo-notes.dot and results/demo-notes.svg",))
-
-
 class ExplainNothing(Action[Nothing, Plan]):
     accept = Nothing
     rules = (Rule[Nothing, Plan]("nothing in demo is called 'Nope'; try `search services.demo Nope`", _always, FAILED),)

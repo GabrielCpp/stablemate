@@ -127,8 +127,8 @@ class DrawBook(Command):
     program = "ostler"
     argv = ("--full-ids", "book", "graph", "services.demo")
     args = ARGS
-    answers = (Exit(0, Lines(), "the two files it wrote under results"),)
-    carries = act.DrawBook
+    answers = (Exit(0, OPAQUE, "the two files it wrote in a fresh folder under the system temp directory, then a `reports:` line naming that folder"),)
+    carries = act.Reading
     source = ("ostler/ostler/book/graph.py", "ostler/ostler/book/matrix.py")
 
 
