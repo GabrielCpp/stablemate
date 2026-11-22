@@ -87,6 +87,19 @@ def test_a_surface_names_a_repo_only_on_a_folder(tmp_path: Path) -> None:
         greenfield.surface_root(folder, greenfield.Surface(service="api", service_root="api"))
 
 
+def test_a_folder_seeds_each_surfaces_book_in_its_member_folder_of_the_docs_home(tmp_path: Path) -> None:
+    run = folder_run(tmp_path)
+    _seed_milestone_source(run)
+
+    greenfield.seed_milestone(run, FOLDER_FIXTURE)
+
+    books = run.stage / DOCS / BOOKS_DIR
+    assert (books / PRODUCTS[0] / "api" / "service.py").is_file()
+    assert (books / PRODUCTS[1] / "web" / "service.py").is_file()
+    assert not (books / "api").exists()
+    assert not (books / "web").exists()
+
+
 def test_genesis_scaffolds_each_surface_in_its_member(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run = folder_run(tmp_path)
     _seed_milestone_source(run)
@@ -108,7 +121,7 @@ def test_genesis_scaffolds_each_surface_in_its_member(tmp_path: Path, monkeypatc
         assert json.loads(argv[argv.index("--params") + 1])["target"] == str(cwd)
     home = run.stage / DOCS
     assert (home / greenfield.MILESTONES_DIR / "m1" / greenfield.MILESTONE_FILE).is_file()
-    assert (home / BOOKS_DIR / "web").is_dir()
+    assert (home / BOOKS_DIR / PRODUCTS[1] / "web").is_dir()
     assert (home / "docs" / "decisions" / "0001.md").is_file()
     assert not (run.stage / PRODUCTS[0] / greenfield.MILESTONES_DIR).exists()
 

@@ -303,7 +303,7 @@ def seed_milestone(run: Run, fixture: Fixture) -> None:
         raise TrialError(f"no {home / 'docs'} — genesis did not scaffold the docs tree")
     shutil.copytree(source, home / MILESTONES_DIR / fixture.slug, dirs_exist_ok=True)
     for surface in fixture.surfaces:
-        book = home / BOOKS_DIR / surface.service
+        book = home / BOOKS_DIR / surface.repo / surface.service if tree.stage_members(run) else home / BOOKS_DIR / surface.service
         book.mkdir(parents=True, exist_ok=True)
         (book / "service.py").write_text(f'"""The {surface.service} book."""\n', encoding="utf-8")
     if not tree.stage_members(run):
