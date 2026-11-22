@@ -551,3 +551,33 @@ def test_the_kept_diff_after_a_real_drop_is_the_diff_git_reports_for_the_checkou
                         expect(page.locator("#detail-panel .fd-view")).to_contain_text(line[1:])
         finally:
             page.close()
+
+
+def _push_workspace(sidecar) -> None:
+    sidecar.socket.send(json.dumps({"type": "workspace"}))
+
+
+def test_a_workspace_frame_refreshes_the_open_diff_within_a_second_and_a_half_with_no_retry():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _run():
+        sidecar = _connect(live)
+        page = _open(live)
+        try:
+            _pick(page)
+            _open_diff(page)
+            expect(_tab(page, "Diff")).to_contain_text(SIZE)
+            _wait_for(lambda: len(sidecar.reads()) >= 1, "the first diff read")
+            page.wait_for_timeout(1200)
+            seen = _diff_reads(page)
+            before = len(sidecar.reads())
+            _push_workspace(sidecar)
+            _wait_for(lambda: len(sidecar.reads()) == before + 1, "one more diff read", timeout=1.5)
+            page.wait_for_timeout(1500)
+            assert len(sidecar.reads()) == before + 1
+            assert len(seen) == 1
+        finally:
+            page.close()
+            sidecar.drop()

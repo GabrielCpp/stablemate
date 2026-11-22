@@ -275,6 +275,7 @@ class Worker:
     figures_rev: int | None = None
     activity_rev: int | None = None
     metrics_rev: int | None = None
+    workspace_rev: int | None = None
 
     def __str__(self) -> str:
         if not self.found:

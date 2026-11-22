@@ -267,6 +267,32 @@ def test_a_detail_push_reaches_only_the_tabs_watching_that_run():
     assert other.empty() and idle.empty()
 
 
+def test_a_workspace_frame_raises_the_revision_and_sends_one_detail_to_the_watching_tab():
+    _reset()
+    state.WORKFLOWS["abc123"] = WorkflowContainer(
+        container_id="abc123", name="w", state=WorkflowState.RUNNING, run_id="run-1"
+    )
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = asyncio.Queue()
+        state.add_client(queue)
+        await groom_app._handle_command({"cmd": "watch", "run_id": "abc123"}, queue)
+        opened = queue.get_nowait()
+        live.snapshot()
+        groom_app._apply_socket_workspace("abc123")
+        await _settle()
+        rest = [queue.get_nowait() for _ in range(queue.qsize())]
+        state.remove_client(queue)
+        return opened, rest
+
+    opened, rest = asyncio.run(drive())
+    details = [m for m in rest if m["type"] == "detail"]
+    assert opened["detail"]["workspace_rev"] == 0
+    assert state.WORKFLOWS["abc123"].workspace_rev == 1
+    assert len(details) == 1 and details[0]["detail"]["workspace_rev"] == 1
+
+
 def test_a_closed_tab_stops_being_a_watcher():
     _reset()
     queue = asyncio.Queue()

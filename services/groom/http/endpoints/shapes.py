@@ -221,6 +221,7 @@ WORKER = Object(
     figures_rev=Field(Int(), required=False),
     activity_rev=Field(Int(), required=False, does="rises on each span, log and transcript batch the run commits"),
     metrics_rev=Field(Int(), required=False, does="rises on each metric batch the run commits"),
+    workspace_rev=Field(Int(), required=False, does="rises on each workspace frame the run's sidecar sends"),
 )
 
 ATTEND = Object(

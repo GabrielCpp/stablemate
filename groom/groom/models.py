@@ -77,6 +77,7 @@ class WorkflowContainer:
     activity: str = ""
     pid: int | None = None
     last_session: tuple[int, str] | None = None
+    workspace_rev: int = 0
 
 
 @dataclass

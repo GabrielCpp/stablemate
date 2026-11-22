@@ -2983,8 +2983,10 @@ function DetailBody({ ended }) {
   const mark = stale
     ? { lostAt: snap.sidecarLost[selected] || Date.now(), still: !!snap.stillDown[selected], anyRead: Object.keys(snap.diffKept[selected].entries).length > 0 }
     : null;
+  const workspaceRev = !ended && detail && detail.id === selected ? detail.workspace_rev || 0 : null;
   useRunDiff(ended ? null : selected, live, stale, runDiff.id, runDiff.shownKept);
   useRunFiles(ended ? null : selected, live, chosen === "files", runFiles.id);
+  useWorkspaceRefresh(ended ? null : selected, live, workspaceRev, chosen, runDiff.id, runFiles.id);
   const known = (chosen === "activity" || ((chosen === "diff" || chosen === "files") && hasDiff));
   const tab = known ? chosen : "overview";
   const fromActivity = detail && snap.activity.runId === detail.run_id && snap.activity.status === "ready" ? snap.activity.problemCount : null;
@@ -4499,6 +4501,30 @@ function useRunDiff(id, live, stale, have, shownKept) {
   }, [id, live, stale, have, shownKept]);
 }
 
+const WORKSPACE_DEBOUNCE_MS = 1000;
+
+function useWorkspaceRefresh(id, live, rev, tab, haveDiff, haveFiles) {
+  const seen = useRef({ id: "", rev: null });
+  useEffect(() => {
+    if (seen.current.id !== id) seen.current = { id, rev: null };
+    if (!id || !live || rev === null) return undefined;
+    if (seen.current.rev === null) {
+      seen.current = { id, rev };
+      return undefined;
+    }
+    if (!rev || rev === seen.current.rev) return undefined;
+    const diff = tab === "diff" && haveDiff === id;
+    const files = tab === "files" && haveFiles === id;
+    if (!diff && !files) return undefined;
+    const timer = setTimeout(() => {
+      seen.current = { id, rev };
+      if (diff) loadRunDiff(id);
+      else loadRunFiles(id, true);
+    }, WORKSPACE_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [id, live, rev, tab, haveDiff, haveFiles]);
+}
+
 function switchedCheckout(body, id, repo) {
   const repos = body.repos || [];
   if (!(repos.length && repo && !repos.includes(repo))) return false;
@@ -4737,12 +4763,14 @@ function useRunFiles(id, present, open, have) {
   }, [id, present, open, have]);
 }
 
-function loadRunFiles(id) {
-  resetRunFiles();
+function loadRunFiles(id, refresh) {
+  const open = refresh ? store.get().runFiles.path : "";
+  if (refresh) runFilesSeq++;
+  else resetRunFiles();
   const seq = runFilesSeq;
   const known = store.get().runFiles.repos;
   const repo = checkoutFor(id);
-  if (!sidecarDown(id)) setIn("runFiles", Object.assign(idleRunFiles(), { id, status: "loading", repos: known }));
+  if (!refresh && !sidecarDown(id)) setIn("runFiles", Object.assign(idleRunFiles(), { id, status: "loading", repos: known }));
   const failed = (repos) => {
     if (seq === runFilesSeq) setIn("runFiles", Object.assign(idleRunFiles(), { id, status: "failed", repos: repos || known }));
   };
@@ -4763,15 +4791,16 @@ function loadRunFiles(id) {
       if (body.served === "volume" || (body.failed && sidecarDown(id))) return miss();
       if (body.failed) return failed(repos);
       setIn("runFiles", { status: "ready", paths: body.paths || [], reported: body.reported !== false, repos });
+      if (open && (body.paths || []).includes(open)) openRunFile(id, open, true);
     })
     .catch(miss);
 }
 
-function openRunFile(id, path) {
+function openRunFile(id, path, quiet) {
   const seq = ++runFileSeq;
-  setIn("runFiles", { path, view: { status: "loading", content: "", lang: "", reported: true } });
+  if (!quiet) setIn("runFiles", { path, view: { status: "loading", content: "", lang: "", reported: true } });
   const failed = () => {
-    if (seq === runFileSeq) setIn("runFiles", { view: { status: "failed", content: "", lang: "", reported: true } });
+    if (!quiet && seq === runFileSeq) setIn("runFiles", { view: { status: "failed", content: "", lang: "", reported: true } });
   };
   fetch("/file/" + encodeURIComponent(id) + "?repo=" + encodeURIComponent(checkoutFor(id)) + "&path=" + encodeURIComponent(path))
     .then((response) => {

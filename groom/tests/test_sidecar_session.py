@@ -458,3 +458,76 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_three_writes_inside_the_interval_send_one_workspace_frame_now_and_one_trailing():
+    async def drive():
+        outbox: asyncio.Queue = asyncio.Queue()
+        throttle = sidecar._WorkspaceThrottle(outbox, 0.3)
+        for _ in range(3):
+            throttle.touch()
+            await asyncio.sleep(0.02)
+        first = outbox.qsize()
+        await asyncio.sleep(0.5)
+        return first, outbox.qsize()
+
+    first, total = asyncio.run(drive())
+    assert (first, total) == (1, 2)
+
+
+def test_a_write_after_a_quiet_interval_sends_at_once():
+    async def drive():
+        outbox: asyncio.Queue = asyncio.Queue()
+        throttle = sidecar._WorkspaceThrottle(outbox, 0.1)
+        throttle.touch()
+        await asyncio.sleep(0.2)
+        throttle.touch()
+        return outbox.qsize()
+
+    assert asyncio.run(drive()) == 2
+
+
+def test_the_watch_filter_passes_a_checkouts_git_index_and_head_and_nothing_else_under_git():
+    from watchfiles import Change
+
+    def passes(path: str) -> bool:
+        return sidecar._WATCH_FILTER(Change.modified, path)
+
+    assert passes("/workspace/acme/.git/index")
+    assert passes("/workspace/.git/HEAD")
+    assert not passes("/workspace/acme/.git/objects/ab/cdef")
+    assert not passes("/workspace/acme/.git/refs/heads/main")
+    assert not passes("/workspace/acme/node_modules/x/.git/index")
+    assert not passes("/workspace/acme/node_modules/x.js")
+    assert passes("/workspace/acme/src/a.py")
+
+
+def test_the_watch_sends_workspace_for_a_git_index_write_and_none_for_the_object_store():
+    async def drive():
+        with tempfile.TemporaryDirectory() as tmp:
+            ws_dir = Path(tmp)
+            (ws_dir / ".git" / "objects").mkdir(parents=True)
+            with patch.object(sidecar, "WORKSPACE_DIR", ws_dir), \
+                 patch.object(sidecar, "RUNS_DIR", Path("/nonexistent-groom-test-xyz")):
+                outbox: asyncio.Queue = asyncio.Queue()
+                stop = asyncio.Event()
+                watcher = asyncio.create_task(sidecar._watch_loop(outbox, stop))
+                await asyncio.sleep(0.5)
+                try:
+                    (ws_dir / ".git" / "objects" / "blob").write_bytes(b"\x00\xff")
+                    await asyncio.sleep(2.5)
+                    quiet = outbox.qsize()
+                    (ws_dir / ".git" / "index").write_bytes(b"\xff\x00")
+                    frame = await asyncio.wait_for(outbox.get(), timeout=15)
+                    await asyncio.sleep(2.5)
+                    return quiet, frame, outbox.qsize()
+                finally:
+                    stop.set()
+                    watcher.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await watcher
+
+    quiet, frame, rest = asyncio.run(drive())
+    assert quiet == 0
+    assert frame == {"type": "workspace"}
+    assert rest == 0

@@ -136,6 +136,7 @@ def _stamp_revisions(detail: dict, wf: WorkflowContainer) -> None:
     detail["figures_rev"] = _figures_rev(wf)
     detail["activity_rev"] = history.activity_rev if history is not None else 0
     detail["metrics_rev"] = history.metrics_rev if history is not None else 0
+    detail["workspace_rev"] = wf.workspace_rev
 
 
 async def _detail_message(wf: WorkflowContainer) -> dict:
@@ -1638,6 +1639,14 @@ def _apply_socket_turn(conn: sidecar_hub.SidecarConnection, data: dict) -> None:
     )
 
 
+def _apply_socket_workspace(container_id: str) -> None:
+    wf = state.WORKFLOWS.get(container_id)
+    if wf is None:
+        return
+    wf.workspace_rev += 1
+    live.mark_run(container_id)
+
+
 async def _apply_socket_blocked(container_id: str, data: dict) -> None:
     file_path = str(data.get("file_path", ""))
     if not file_path:
@@ -1685,6 +1694,8 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
                 await _apply_socket_blocked(conn.container_id, data)
             elif mtype == "turn":
                 _apply_socket_turn(conn, data)
+            elif mtype == "workspace":
+                _apply_socket_workspace(conn.container_id)
     except WebSocketDisconnect:
         pass
     finally:

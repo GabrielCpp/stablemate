@@ -32,7 +32,22 @@ PUSH_TIMEOUT = float(os.environ.get("GROOM_PUSH_TIMEOUT", "1.0"))
 RELOAD_EXIT_CODE = 3
 
 _SKIP_DIR_NAMES = {".git", "node_modules", "__pycache__", ".venv"}
-_WATCH_FILTER = DefaultFilter(ignore_dirs=sorted(_SKIP_DIR_NAMES))
+_GIT_STATE_FILES = ("index", "HEAD")
+WORKSPACE_INTERVAL_S = 2.0
+
+
+class _WatchFilter(DefaultFilter):
+    def __call__(self, change: Change, path: str) -> bool:
+        parts = Path(path).parts
+        if ".git" in parts:
+            at = len(parts) - 1 - parts[::-1].index(".git")
+            if at == len(parts) - 2 and parts[-1] in _GIT_STATE_FILES:
+                return not any(p in _SKIP_DIR_NAMES - {".git"} for p in parts)
+            return False
+        return super().__call__(change, path)
+
+
+_WATCH_FILTER = _WatchFilter(ignore_dirs=sorted(_SKIP_DIR_NAMES))
 
 
 def _identity() -> dict:
@@ -168,7 +183,7 @@ def _classify_event(path: Path) -> dict | None:
 
     try:
         content = path.read_text()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return None
     if status_of(content) != AWAITING:
         return None
@@ -438,19 +453,59 @@ async def _sender_loop(ws, outbox: asyncio.Queue) -> None:
         await ws.send(json.dumps(frame))
 
 
+class _WorkspaceThrottle:
+    def __init__(self, outbox: asyncio.Queue, interval: float) -> None:
+        self._outbox = outbox
+        self._interval = interval
+        self._last = float("-inf")
+        self._timer: asyncio.TimerHandle | None = None
+
+    def touch(self) -> None:
+        if self._timer is not None:
+            return
+        loop = asyncio.get_running_loop()
+        wait = self._last + self._interval - loop.time()
+        if wait <= 0:
+            self._send(loop.time())
+        else:
+            self._timer = loop.call_later(wait, self._trail)
+
+    def _send(self, now: float) -> None:
+        self._last = now
+        self._outbox.put_nowait({"type": "workspace"})
+
+    def _trail(self) -> None:
+        self._timer = None
+        self._send(asyncio.get_running_loop().time())
+
+    def cancel(self) -> None:
+        if self._timer is not None:
+            self._timer.cancel()
+            self._timer = None
+
+
 async def _watch_loop(outbox: asyncio.Queue, stop: asyncio.Event) -> None:
     """Feed the outbox from the filesystem watch until ``stop`` is set."""
     roots = _watch_roots()
     if not roots:
         return
+    throttle = _WorkspaceThrottle(outbox, WORKSPACE_INTERVAL_S)
+    try:
+        await _watch(roots, outbox, stop, throttle)
+    finally:
+        throttle.cancel()
+
+
+async def _watch(roots: list[Path], outbox: asyncio.Queue, stop: asyncio.Event, throttle: _WorkspaceThrottle) -> None:
     async for changes in awatch(*roots, watch_filter=_WATCH_FILTER, stop_event=stop):
         for change, raw_path in changes:
-            if change is Change.deleted:
-                continue
             changed = Path(raw_path)
-            for frame in (_classify_event(changed), _turn_announce(changed)):
-                if frame is not None:
-                    outbox.put_nowait(frame)
+            if change is not Change.deleted:
+                for frame in (_classify_event(changed), _turn_announce(changed)):
+                    if frame is not None:
+                        outbox.put_nowait(frame)
+            if _under_mount(changed, RUNS_DIR) is None and _under_mount(changed, WORKSPACE_DIR) is not None:
+                throttle.touch()
 
 
 async def _run_session(ws) -> None:

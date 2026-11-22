@@ -87,6 +87,14 @@ decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-
 decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:11	and Raw panes fetch again, at most once per 300 milliseconds, when the number they follow moves. A native run's transcript is
 decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:12	watched on disk while a tab has the run open, so a new line reaches the pane within a second, and the watch ends with the
 decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:13	last tab.
+decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:14	
+decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:15	A container run's sidecar sends a `workspace` frame over its socket when a file under the workspace changes, or when a
+decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:16	checkout's `.git/index` or `.git/HEAD` moves, and sends at most one every two seconds with a trailing one after a burst.
+decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:17	Each frame raises the run's `workspace_rev`, which the detail carries. The Diff and Files panes fetch again, one second
+decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:18	after the number moves, while their tab is open. A pane whose tab is closed fetches again when it opens. An open file in
+decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:19	Files is read again with the list, and the stale marker and Retry stay. A rev of 0 means the sidecar predates the frame,
+decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:20	and the panes load on open and on Retry only. A pushed run has no sidecar, so the book cannot play this rule, and the
+decision	the-open-run-follows-events-not-a-clock	decisions/the-open-run-follows-events-not-a-clock.md:21	page tests cover it.
 decision	the-page-arranges-runs-by-pushing-them	decisions/the-page-arranges-runs-by-pushing-them.md:1	story: none
 decision	the-page-arranges-runs-by-pushing-them	decisions/the-page-arranges-runs-by-pushing-them.md:3	elements: ReportProgress, ReportGate, ReportExit
 decision	the-page-arranges-runs-by-pushing-them	decisions/the-page-arranges-runs-by-pushing-them.md:4	sources: groom/groom/app.py::push_progress, groom/groom/app.py::push_blocked, groom/groom/app.py::push_exited
