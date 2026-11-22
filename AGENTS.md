@@ -9,16 +9,18 @@ that breaks it, and `--no-verify` only gets an unreleasable commit in.
 
 ## The book comes first
 
-Each service has a book under `services/<name>/` under the book root. Its Python
+Each service has a book under `services/<repo>/<name>/` in the artifacts folder, or
+`services/<name>/` in a repository that keeps its book (`book.home: repo`). Below,
+`<module>` is `services.<repo>.<name>` or `services.<name>`. The book's Python
 states what every endpoint, screen and command does, which rule refuses a call, and
 which journeys a user lives through. Its `decisions/` folder says why. Read the book
 before the code whenever the question is *what* something does, *why* it is so, or
 *how a user reaches it*:
 
 ```bash
-ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|company|team|product|question|event|outside]
-ostler book explain services.<name> <ClassName>       # everything the book says of one element
-ostler book decisions services.<name> [--story <id>]  # each decision and the story behind it
+ostler book search <term> [--service <module>] [--kind rule|endpoint|interaction|action|journey|screen|decision|company|team|product|question|event|outside]
+ostler book explain <module> <ClassName>       # everything the book says of one element
+ostler book decisions <module> [--story <id>]  # each decision and the story behind it
 ostler book pages [--level company|team|product]      # the pages above every service, one line each
 ```
 
@@ -37,14 +39,14 @@ The story's delta lands in the book in the same change as the code. Finished mea
 all of:
 
 - Every element the story changed states the new current behaviour.
-- Every assumption or tradeoff settled for the story is a file under
-  `services/<name>/decisions/`, or a line in the decision that already covers it.
-- `ostler book check services.<name> --app <code repo root>` passes.
-- `ostler book run services.<name>` is green on the story's code.
+- Every assumption or tradeoff settled for the story is a file under the
+  book's `decisions/`, or a line in the decision that already covers it.
+- `ostler book check <module> --app <code repo root>` passes.
+- `ostler book run <module>` is green on the story's code.
 
-A service with no `services/<name>/service.py` gets a book first, from the okf-book
-workflow (`workhorse-okf-book run python_book`) or by hand. The `ostler-book` skill
-carries where the book lives, how its branch lands, the format and the bar.
+A service with no book gets a book first, from the okf-book workflow
+(`workhorse-okf-book run python_book`) or by hand. The `ostler-book` skill carries
+where the book lives, how its branch lands, the format and the bar.
 
 ---
 

@@ -182,7 +182,7 @@ it. Model it, or declare the field indifferent:
 A pair is judged on the two answers and on the rows the call made, changed or removed. A record
 the world minted apart from the call is no split. A field outside your story's calls is the
 product owner's to answer. `ostler book run --register-outside <calls>` adds such a finding to
-`services/<name>/UNDERSPECIFIED.md` and reports it `KNOWN`. Never edit an entry or declare
+`UNDERSPECIFIED.md` in the book's folder and reports it `KNOWN`. Never edit an entry or declare
 `ignores=` for a field outside your story. An entry that no longer splits fails the run until
 the owner's answer removes it.
 

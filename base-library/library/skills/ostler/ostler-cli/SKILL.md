@@ -140,7 +140,7 @@ It exits non-zero when any error-level finding is present (safe to gate a workfl
 Warning-level findings (`story-covers-no-seed`, `ungrounded-surface`) are reported but don't fail
 the check.
 
-**The service book.** A service's behaviour lives in the book under `services/<name>/`, written
+**The service book.** A service's behaviour lives in the book under `services/<repo>/<name>/` in the artifacts folder, or `services/<name>/` in a repository that keeps its book, written
 with [[ostler-book]] and read with `ostler book search|explain|decisions`. A search term may be a label in any of the book's
 languages, a source file or a part of its path, or several words in any order, and `--kind question`
 finds an open question.

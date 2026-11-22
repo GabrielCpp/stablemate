@@ -226,8 +226,8 @@ artifact contracts are in
 
 `ostler env` runs the product on this machine from what the books say it is made of. Each book
 that boots something keeps a `stack.yml` in the `ops/` folder beside its service book, at
-`services/<book>/ops/stack.yml`. The file at `services/ops/stack.yml` is the stack root, and is also
-a book. The file names the book's services, the compose fragment that defines each one, and what each
+`services/<book>/ops/stack.yml`. The stack root is `services/ops/stack.yml` beside the code, or
+`services/<repo>/ops/stack.yml` in the artifacts folder, and is also a book. The file names the book's services, the compose fragment that defines each one, and what each
 one needs. A need may sit in another book, so the web book names `api:api` and the api book
 defines it once. Two books never define the same service. One names it, and the other needs it.
 
@@ -274,7 +274,7 @@ ostler env down --copy story-12      # data and rendered files go too, unless --
 ```
 
 The copy defaults to `$STABLEMATE_LEASE`, so a workflow run that holds a lease brings up its own
-copy without naming it. The stack root, `services/ops/stack.yml`, holds the repo's one secret source: `secrets: {file:
+copy without naming it. The stack root, `services/ops/stack.yml` or `services/<repo>/ops/stack.yml` in the artifacts folder, holds the repo's one secret source: `secrets: {file:
 .env}` for a dotenv file, `secrets: {decrypt: <command>}` for a command whose stdout is dotenv,
 or `secrets: {saddlebag: "environment=local"}` for the saddlebag secrets carrying those tags.
 With saddlebag, every `docker compose` command runs under `saddlebag exec`, and no secrets file
@@ -299,13 +299,22 @@ A copy's directory lives under the user state directory, or under
 ### Service books
 
 `ostler book` runs a service book: the executable Python model of one HTTP or gRPC service, kept in
-a repo under `services/<name>/`. A run plays the book's journeys, the cells of its lifecycle
+a repo under `services/<name>/`, or `services/<repo>/<name>/` in the artifacts folder. A run plays the book's journeys, the cells of its lifecycle
 matrices and the input classes of its endpoints against the model and against the live service, and
 compares the two. It refuses to judge an environment that is down. A web or mobile surface is not
 covered yet.
 
 The directory that holds `services/` is the working directory, or the one `-C DIR` names before
 `book`. The command puts it on the import path itself. A service is named by its module.
+In the artifacts folder a book sits at `services/<repo>/<name>/` and its module is `services.<repo>.<name>`.
+`<repo>` is the repository's name: the workspace member name, else the repository folder's name in lower case
+with `.` and `_` written as `-`. A surface-split book is one level deeper. A repository with `book.home: repo`
+keeps `services/<name>/` and the module `services.<name>`. Books of different repositories name each other by
+full module, `services.<other>.<name>`. The examples below use the bare form. `ostler book search` with no
+`--service` reads the books of the repository it is started in, and every repository's when started in the
+artifacts folder. `ostler book move` moves a book into its repository folder and rewrites the dotted module
+names. `search` and the "no book" error name that command for a flat book left at `services/<name>/` in the
+artifacts folder.
 
 ```bash
 ostler book check   services.api          # build everything the book declares, no stack; 0 findings or 1
@@ -323,6 +332,7 @@ ostler book stale   services.api --app ../api   # what changed in the app since 
 ostler book verified services.api --app ../api  # record the app's head once stale is worked
 ostler book verified services.api --app ../api --story ACME-1   # refuse only for the story's commits; leave the stamp while other commits are open
 ostler book affected services.api --app ../api --since HEAD~3   # the calls and journeys the changed code calls for
+ostler book move api web --repo acme                  # move flat books into services/acme/ of the artifacts folder and rewrite their module names
 ostler book branch                                    # open the book branch of the current code branch in the artifacts repository, print its root
 ostler book land                                      # land that book branch on the artifacts base by rebase, then remove its worktree and branch
 ostler book files   services.api          # the files the book needs to load: its folder, then what it imports from outside it
@@ -335,8 +345,9 @@ A rule above any one service goes in a page of one of three books, by how far it
 
 ```
 ai-artifacts/
-  services/<name>/               service book: what one service does
+  services/<repo>/<name>/        service book: what one service does
     decisions/                   why, tied to an element of that service
+  services/<repo>/ops/           the repository's stack root
   products/<product>/            product book: one markdown page per rule
   teams/<team>/                  team book
   company/                       company book
@@ -350,7 +361,7 @@ The books:
 
 | Book | Holds | Lives in | Written by |
 | --- | --- | --- | --- |
-| service | what one service does and why: its Python and `decisions/` | `<book root>/services/<name>/` | agents |
+| service | what one service does and why: its Python and `decisions/` | `<book root>/services/<repo>/<name>/`, or `<book root>/services/<name>/` with `book.home: repo` | agents |
 | product | the product's words, the constraints no story may break, where the truth for a calculation lives | `<artifacts dir>/products/<product>/<slug>.md`, or `product/<slug>.md` beside `services/` with `book.home: repo` | agents |
 | team | how one team builds across products: ADRs, RFCs, conventions | `<artifacts dir>/teams/<team>/<slug>.md` | people |
 | company | rules every team follows | `<artifacts dir>/company/<slug>.md` | people |
@@ -428,7 +439,7 @@ definitions cannot be read with confidence (unbalanced brackets, a definition th
 symbol in it mentions all the file mentions. Each chain says how the element was reached: `direct` when its own
 symbol changed, `through <symbol>` for the nearest symbol of the closure path.
 
-`affected` also reads the book's own folder, `services/<name>/` and the files it imports under the book root, since
+`affected` also reads the book's own folder, `services/<repo>/<name>/` (`services/<name>/` with `book.home: repo`) and the files it imports under the book root, since
 the same commit, uncommitted and untracked files included. An edited element class (an endpoint, interaction,
 screen, action, outside happening or journey) selects its plays, and its chain starts with `book <path>:<Class>`.
 A changed module-level name (an assignment, an annotated assignment or a function) or a changed class that is no element of the book (a fixture dataclass, a helper, a mixin) selects the element classes that use it,

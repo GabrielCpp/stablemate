@@ -1,7 +1,7 @@
 ---
 name: ostler-book
 description: "Write a service's book, the executable Python model of one HTTP or gRPC service that ostler replays against the running app: from its source or from a story, updating it for a commit or a coworker's shipped routes, settling a finding of check, explore or run, a gRPC service and the accounts and refusals services share, a service that calls another service and the records that service owns, a state another service makes (an outside event), which inputs and twins a run tries on a field, and recording what the book cannot see or the app gets wrong. Covers the model of records and states, endpoints, lifecycle matrices, fixtures, journeys and the standing-account world every cell runs in. A web or mobile app is a screen book, written with screens and interactions in place of endpoints. Load when writing or repairing anything under a book's services/<name>/ package, when a check, explore or run finding needs fixing, or when backfilling routes a coworker shipped."
-applyTo: "**/services/*/model/**/*.py, **/services/*/endpoints/**/*.py, **/services/*/fixtures/**/*.py, **/services/*/journeys/**/*.py, **/services/*/service.py, **/services/*/*/service.py, **/services/*/screens/**/*.py, **/services/*/interactions.py, **/services/*/surface.py"
+applyTo: "**/services/*/model/**/*.py, **/services/*/endpoints/**/*.py, **/services/*/fixtures/**/*.py, **/services/*/journeys/**/*.py, **/services/*/service.py, **/services/*/*/service.py, **/services/*/screens/**/*.py, **/services/*/interactions.py, **/services/*/surface.py, **/services/*/*/model/**/*.py, **/services/*/*/endpoints/**/*.py, **/services/*/*/fixtures/**/*.py, **/services/*/*/journeys/**/*.py, **/services/*/*/*/service.py, **/services/*/*/screens/**/*.py, **/services/*/*/interactions.py, **/services/*/*/surface.py"
 tags: [standards, docs]
 ---
 
@@ -42,7 +42,7 @@ case in front of you.
 
 ## The package
 
-A service's book is `services/<name>/` under the book root. The book root is the artifacts folder for every repository. A repository that publishes its own book sets `book: {home: repo}` in its `agents.yml` and keeps `services/` and `product/` at its root. A repository with no key that still holds an ostler book is refused, and the message names both ways out: set the key, or move the book following `docs/guide/moving-a-book-to-the-artifacts-folder.md`. A book name is unique across the artifacts folder, with no repository prefix and no per-repository folder. A bare `source` pointer resolves against `--app`, the code checkout. A pointer into another repository is `repo://<member>/<path>::<symbol>`, and a lone repository is named by its repository name. A stack or a process that starts the app from a member repository takes the member's folder from `checkout("<member>")`. A run launched with `--worktree` from a workspace works on its own branch. Its book root is the artifacts worktree on that branch and a member's folder is its worktree on that branch, and `ostler` reads both from git when run inside one of them.
+In the artifacts folder a service's book is `services/<repo>/<name>/`, and its module is `services.<repo>.<name>`. `<repo>` is the repository's name: the workspace member name, else the repository folder's name in lower case with `.` and `_` written as `-`. A surface-split book sits one level deeper. Below, `services.<name>` stands for the book's module, which is `services.<repo>.<name>` in the artifacts folder. A repository that publishes its own book sets `book: {home: repo}` in its `agents.yml` and keeps `services/` and `product/` at its root. A repository with no key that still holds an ostler book is refused, and the message names both ways out: set the key, or move the book following `docs/guide/moving-a-book-to-the-artifacts-folder.md`. Two repositories in one artifacts folder can each keep a book of the same name. A book of another repository is named by its full module, as in `owner="services.<other>.<name>"`. A repository with `book.home: repo` keeps `services/<name>/` and the module `services.<name>`. `ostler book search` with no `--service` reads the books of the repository it is started in, and every repository's when started in the artifacts folder. A flat book left at `services/<name>/` in the artifacts folder is named with `ostler book move` by `search` and by the "no book" error. That command moves it into its repository folder and rewrites the dotted module names. A bare `source` pointer resolves against `--app`, the code checkout. A pointer into another repository is `repo://<member>/<path>::<symbol>`, and a lone repository is named by its repository name. A stack or a process that starts the app from a member repository takes the member's folder from `checkout("<member>")`. A run launched with `--worktree` from a workspace works on its own branch. Its book root is the artifacts worktree on that branch and a member's folder is its worktree on that branch, and `ostler` reads both from git when run inside one of them.
 
 A book change is committed in the artifacts repository on a branch with the same name as the code branch of the same work, and for a story that is the story's branch. `ostler book branch` opens it as a worktree and prints the book root. It lands when the code lands, with `ostler book land`, by rebase and fast-forward. A change committed straight on the code's base commits its book straight on the artifacts base. With `book.home: repo` the book rides the code's branch and commit.
 
@@ -50,8 +50,9 @@ The layout:
 
 ```
 ai-artifacts/
-  services/<name>/               service book: what one service does
+  services/<repo>/<name>/        service book: what one service does
     decisions/                   why, tied to an element of that service
+  services/<repo>/ops/           the repository's stack root
   products/<product>/            product book: one markdown page per rule
   teams/<team>/                  team book
   company/                       company book
@@ -88,7 +89,7 @@ Four books hold the rules, by how far each reaches:
 
 | Book | Holds | Lives in | Written by |
 | --- | --- | --- | --- |
-| service | what one service does and why: its Python and `decisions/` | `<book root>/services/<name>/` | agents |
+| service | what one service does and why: its Python and `decisions/` | `<book root>/services/<repo>/<name>/`, or `<book root>/services/<name>/` with `book.home: repo` | agents |
 | product | the product's words, the constraints no story may break, where the truth for a calculation lives | `<artifacts dir>/products/<product>/<slug>.md`, or `product/<slug>.md` beside `services/` with `book.home: repo` | agents |
 | team | how one team builds across products: ADRs, RFCs, conventions | `<artifacts dir>/teams/<team>/<slug>.md` | people |
 | company | rules every team follows | `<artifacts dir>/company/<slug>.md` | people |
@@ -129,7 +130,7 @@ A service reached by more than one surface, say an API and the web app over it, 
 The model lives once, in `services/<name>/model/`, because a record does not change with the
 surface that reaches it. Each surface gets its own `services/<name>/<surface>/service.py`, with
 its own surface, endpoints or screens, journeys and `index.tsv`, and ostler loads it as
-`services.<name>.<surface>`. A rule two surfaces enforce is one `Rule`, and each surface shows
+`services.<name>.<surface>`. In the artifacts folder these paths and modules sit under `<repo>`. A rule two surfaces enforce is one `Rule`, and each surface shows
 its refusal in its own words. A service deployed as two pods, such as an API and a queue
 handler built from the same code, is one service and keeps one book. The events the handler
 hears are declared beside the endpoints and share their model, journeys and decisions.
@@ -310,6 +311,7 @@ that no play exercised, with what closes it (a journey step or a given that arra
 scene, a step or input class that draws the refusal). It is a list and never turns the run red. An action carried only by
 an unplayed outside happening is named on the happening's line. The run also writes `<service>-played.json` to the report
 folder: each element with the journeys, cells and input classes that exercised it.
+| `ostler book move [NAME ...] [--repo REPO] [--from FOLDER] [--to FOLDER] [--dry-run]` | seconds, no app | moves flat books into `services/<repo>/` of the artifacts checkout `--to` names, and rewrites every dotted module name; `--from` moves a whole `services/` folder out of a code repository; lists each `services/<name>/` path to check by hand; `--dry-run` changes nothing |
 | `ostler book index services.<name>` | seconds | rewrites `index.tsv`, which `search` reads |
 | `ostler book stale services.<name> --app <root>` | seconds, no app | the elements whose source changed since the verified commit, changed files no element names, decisions they touch |
 | `ostler book missing services.<name> --app <root> [--under <folder>] [--files]` | seconds, no app | every tracked file under the app's roots that no element names, and every call a contract file lists that no element declares; prints the map of each named file to its elements, the unnamed files, a count per ignore pattern (`--files` lists them) and the undeclared calls; exits 1 for either; the batch a backfill works through |
@@ -336,7 +338,7 @@ runner's to name: `--copy NAME`, else the lease the run holds, else the name the
 else `shared`. Write no copy name the book cannot keep for every runner.
 
 `ostler env up` takes the book's name as its `ops/stack.yml` declares it, the folder under
-`services/`, such as `api`, and never the module name `services.api`. One service of a book is
+`services/<repo>/` in the artifacts folder, or under `services/` beside the code, such as `api`, and never the module name. A repository's stack root is the book named `<repo>`. One service of a book is
 `book:service`. A wrong name is refused with the list of the books that have a stack file.
 
 `search <term>` and `explain <Endpoint|Journey|Action|Event>` answer what the book already says

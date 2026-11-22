@@ -78,8 +78,9 @@ ostler edit settle-review <story-id> [--write]
 ```bash
 ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|company|team|product|question|event|outside]
 ostler book explain services.<name> <ClassName>   # everything the book says of one element
-ostler book decisions services.<name> [--story ID]
+ostler book decisions services.<name> [--story ID]   # services.<name> is services.<repo>.<name> in the artifacts folder
 ostler book pages [--level company|team|product] [--check]   # the pages of the company, team and product books: level, slug, date, status, statement
+ostler book move [NAME ...] [--repo REPO] [--from FOLDER] [--to FOLDER] [--dry-run]   # move flat books into services/<repo>/ and rewrite their module names
 ostler book check services.<name> --app <code repo root>   # a pointer into another repository is repo://<member>/<path>
 ostler book run services.<name>                   # play the book against the running app
 ```

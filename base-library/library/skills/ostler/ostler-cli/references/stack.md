@@ -1,9 +1,9 @@
 # The book's stack: `stack.yml`
 
 A book that boots something says what it is made of in one file, `stack.yml`, in the `ops/`
-folder beside its service book, at `services/<book>/ops/stack.yml`. The file at
-`services/ops/stack.yml` is the stack root. It is also a book, and takes the repo
-directory's name in lowercase.
+folder beside its service book, at `services/<book>/ops/stack.yml`. The stack root is
+`services/ops/stack.yml` beside the code, or `services/<repo>/ops/stack.yml` in the
+artifacts folder. It is also a book, and takes the repository's name in lowercase.
 
 `ostler env` reads every book's file together and runs the product on this machine from them,
 one compose project per copy. The file replaces a hand-kept compose file, the make targets that
@@ -43,7 +43,7 @@ services:
 | `once` | service | `true` for a job that runs to completion, such as a migration. What needs it waits for it to exit 0 |
 | `outputs` | service | for a `once` job, the environment names it writes to `$STABLEMATE_OUTPUTS`. The services that need the job read them as `${NAME}` |
 | `files` | service | files placed in the service's folder of the copy, target to source. A `.j2` source is rendered, any other file is copied byte for byte, a folder is walked |
-| `fixtures` | service | fixture sets by name, each a list of files the service loads. A fixture file must exist only when its set is loaded, so a set no bring-up names may point at a file this checkout lacks, such as a database dump kept out of git. In a git worktree, a fixture file absent there is read from the main checkout |
+| `fixtures` | service | fixture sets by name, each a list of files the service loads. A fixture file must exist only when its set is loaded, so a set no bring-up names may point at a file this checkout lacks, such as a database dump kept out of git. A path sits beside the book's `ops/` folder, or is `repo://<name>/<path>` for a file in the checkout of the code repository `<name>`, and an unknown name is an error that lists the known ones. In a git worktree, a fixture file absent there is read from the main checkout |
 | `address` | service | the name a run reads this service's URL by, the same name a QA plan writes as `{gateway}` |
 | `port` | service | the container port the address publishes. An address needs one |
 | `host-port` | service | the host port the shared copy keeps. Every other copy takes a free one |
@@ -57,7 +57,8 @@ the rows above.
 
 A book's `ops/` folder holds everything it takes to run the book on a machine: `stack.yml`, the
 templates and plain files it places.
-Nothing in `ops/` is product. The stack root, `services/ops/stack.yml`, is the file of a
+Nothing in `ops/` is product. The stack root, `services/ops/stack.yml` beside the code or
+`services/<repo>/ops/stack.yml` in the artifacts folder, is the file of a
 one-book repo as well.
 
 ## One service, one book
@@ -132,7 +133,8 @@ files:
 
 ## Secrets
 
-One repo has one secret source, named in the stack root, `services/ops/stack.yml`. A
+One repo has one secret source, named in the stack root, `services/ops/stack.yml` beside the code or
+`services/<repo>/ops/stack.yml` in the artifacts folder. A
 `secrets:` key in any other book's file is an error.
 
 ```yaml
