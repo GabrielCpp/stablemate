@@ -1,6 +1,7 @@
-"""Settings files merged key by key into ~/.claude/settings.json."""
+"""Settings files merged key by key into a harness's home settings."""
 
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -129,10 +130,35 @@ def test_an_unknown_file_is_refused_with_what_exists(
         run(home, library)
 
 
-def test_codex_takes_no_settings(
+def test_codex_settings_land_in_its_toml_beside_what_the_person_wrote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, library: Path
+) -> None:
+    home = tmp_path / "home"
+    (home / ".codex").mkdir(parents=True)
+    mine = '# mine\napproval_policy = "on-request"\n\n[projects."/p"]\ntrust_level = "trusted"\n'
+    (home / ".codex" / "config.toml").write_text(mine)
+    write_settings(library, "codex", {"model": "gpt", "features": {"apps": False}})
+    configure(tmp_path, monkeypatch, '[user_library.codex]\nsettings = ["codex"]\n')
+
+    assert run(home, library) == 0
+    config = tomllib.loads((home / ".codex" / "config.toml").read_text())
+    assert config == {
+        "approval_policy": "on-request",
+        "model": "gpt",
+        "projects": {"/p": {"trust_level": "trusted"}},
+        "features": {"apps": False},
+    }
+    assert (home / ".codex" / "config.toml").read_text().startswith("# mine\n")
+
+    write_settings(library, "codex", {"model": "gpt"})
+    assert run(home, library) == 0
+    assert "features" not in tomllib.loads((home / ".codex" / "config.toml").read_text())
+
+
+def test_opencode_takes_no_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: Path, library: Path
 ) -> None:
-    configure(tmp_path, monkeypatch, '[user_library.codex]\nsettings = ["base"]\n')
+    configure(tmp_path, monkeypatch, '[user_library.opencode]\nsettings = ["base"]\n')
 
-    with pytest.raises(SystemExit, match="merges them only for claude"):
+    with pytest.raises(SystemExit, match="merges them only for claude, codex, copilot"):
         run(home, library)

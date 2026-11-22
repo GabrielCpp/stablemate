@@ -125,6 +125,17 @@ decision	a-missing-library-flag-is-not-played	decisions/a-missing-library-flag-i
 decision	a-missing-library-flag-is-not-played	decisions/a-missing-library-flag-is-not-played.md:7	(farrier/farrier/layers.py:114-149). The sandbox cuts the first two and names an empty base, so the fall-back would
 decision	a-missing-library-flag-is-not-played	decisions/a-missing-library-flag-is-not-played.md:8	render no skill the book could compare. The library argument is therefore optional in the declaration, which keeps
 decision	a-missing-library-flag-is-not-played	decisions/a-missing-library-flag-is-not-played.md:9	the runtime from deriving a "missing" class for it.
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:1	story: none
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:3	elements: InstallUser
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:5	A `[user_library.codex]` table takes settings, as the Claude and Copilot tables do. Codex keeps its settings in
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:6	`~/.codex/config.toml`, the file that also holds its MCP servers and the projects the person trusted. Farrier merges
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:7	each top-level key of a library settings file into that TOML and leaves every other key, table and comment in place.
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:8	
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:9	A library settings file stays JSON for every harness, so one loader reads them all. A key that holds an object, such
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:10	as `features`, becomes a TOML table, and farrier owns that table whole. A person who adds a key of their own under it
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:11	sees the next install stop with the conflict, as it does for a nested object in Claude's settings.
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:12	
+decision	codex-settings-merge-into-its-toml	decisions/codex-settings-merge-into-its-toml.md:13	OpenCode still takes no settings, because its config is the JSONC file farrier only reads.
 decision	copilot-home-takes-what-claude-home-takes	decisions/copilot-home-takes-what-claude-home-takes.md:1	story: none
 decision	copilot-home-takes-what-claude-home-takes	decisions/copilot-home-takes-what-claude-home-takes.md:3	elements: InstallUser
 decision	copilot-home-takes-what-claude-home-takes	decisions/copilot-home-takes-what-claude-home-takes.md:5	A `[user_library.copilot]` table takes rules, MCP servers, guards, helper agents and settings, the same keys a

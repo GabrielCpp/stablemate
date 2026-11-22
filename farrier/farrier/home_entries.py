@@ -22,7 +22,11 @@ GUARD_CONTAINER = "hooks.PreToolUse"
 DONE_CONTAINER = "hooks.Stop"
 HOOK_CONTAINERS = {GUARD_CONTAINER: "PreToolUse", DONE_CONTAINER: "Stop"}
 TOP_LEVEL = "."
-SETTINGS_FILES = {"claude": ".claude/settings.json", "copilot": ".copilot/settings.json"}
+SETTINGS_FILES = {
+    "claude": ".claude/settings.json",
+    "codex": ".codex/config.toml",
+    "copilot": ".copilot/settings.json",
+}
 SETTINGS_OWNED_ELSEWHERE = {"hooks": "library/hooks guards"}
 OPENCODE_CONFIG = ".config/opencode/opencode.json"
 OVERRIDES = {OPENCODE_CONFIG: ".config/opencode/opencode.jsonc"}
@@ -139,15 +143,23 @@ class TomlEntryFile:
         self._ending = text[len(text.rstrip()) :] if text.strip() else "\n"
 
     def entries(self, container: str) -> dict[str, Any]:
+        if container == TOP_LEVEL:
+            return dict(self._document.unwrap())
         table = self._document.get(container)
         return {} if table is None else dict(table.unwrap())
 
-    def put(self, container: str, name: str, value: dict[str, Any]) -> None:
+    def put(self, container: str, name: str, value: Any) -> None:
+        if container == TOP_LEVEL:
+            self._document[name] = value
+            return
         if container not in self._document:
             self._document.add(container, tomlkit.table(is_super_table=True))
         self._document[container][name] = value  # pyright: ignore[reportIndexIssue]
 
     def drop(self, container: str, name: str) -> None:
+        if container == TOP_LEVEL:
+            del self._document[name]
+            return
         del self._document[container][name]  # pyright: ignore[reportIndexIssue]
 
     def text(self) -> str:
