@@ -35,7 +35,7 @@ from ostler.book.explore import attempts, moves
 from ostler.book.files import cmd_files
 from ostler.book.exploration import BASELINE, REFUSED, Cell, Played as Explored, Walk, never_refused, play as play_cells, seed, unreached
 from ostler.book.graph import dot, render
-from ostler.book.business import cmd_business
+from ostler.book.pages import LEVELS, cmd_pages
 from ostler.book.index import book_root, cmd_index, cmd_search_book
 from ostler.book.http import Endpoint, identity_lines, named_shapes
 from ostler.book.inputs import Tried, fields_tried, play as play_inputs
@@ -127,8 +127,9 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     find.add_argument("extra", nargs="?", help=argparse.SUPPRESS)
     find.add_argument("--service", help="search this service only; omitted, every service under services/")
     find.add_argument("--kind", choices=KINDS)
-    business = sub.add_parser("business", help="list the business pages under business/, one line each: slug, date, statement")
-    business.add_argument("--check", action="store_true", help="name each page with no date: line or an empty body, and exit 1 if any")
+    pages = sub.add_parser("pages", help="list the pages of the company, team and product books, one line each: level, slug, date, status, statement")
+    pages.add_argument("--level", choices=LEVELS, help="list this level only")
+    pages.add_argument("--check", action="store_true", help="name each page with no date: line or an empty body, and exit 1 if any")
     explain = sub.add_parser("explain", help="everything the book says of one endpoint, action, screen, journey or component")
     explain.add_argument("service")
     explain.add_argument("name", help="a class name, or Screen.attribute for a component of a screen")
@@ -202,8 +203,8 @@ def main(argv: list[str] | None = None) -> int:
         sys.path.insert(0, root)
     if args.command == "files":
         return cmd_files(args, root)
-    if args.command == "business":
-        return cmd_business(args, root)
+    if args.command == "pages":
+        return cmd_pages(args, root)
     if args.command == "search":
         if args.extra is not None:
             if not args.term.startswith("services."):

@@ -314,8 +314,8 @@ ostler book run     services.api --no-stack --only AddTodo,FindTodos
 ostler book run     services.api --fresh-data   # reload the data first: the stack's `fresh` command, else a reset of the `ostler env` copy, else a refusal
 ostler book explore services.api --seed-only   # walk the model's state graph, no app
 ostler book walk    services.api --scene overdue --action read
-ostler book search  overdue               # what the book says, read from index.tsv, and the business pages
-ostler book business [--check]           # the business pages: slug, date, statement; --check names a page with no date or an empty body
+ostler book search  overdue               # what the book says, read from index.tsv, and the company, team and product pages
+ostler book pages [--level company|team|product] [--check]   # one line per page: level, slug, date, status, statement; --check names a page with no date or an empty body
 ostler book explain services.api AddTodo
 ostler book index   services.api          # rewrite index.tsv
 ostler book stale   services.api --app ../api   # what changed in the app since the verified commit
@@ -329,11 +329,29 @@ ostler book graph   services.api          # each record's state graph, as dot an
 ostler book endpoints|screens|matrix|denied|plan services.api   # read the model, no app
 ```
 
-A rule above any one service goes in `business/<slug>.md`, in the folder that holds `services/`: the product's words,
-a constraint no story may break, where the truth for a calculation lives. A page starts with a `date:` line and an
-optional `sources:` line, then a blank line and prose whose first line is its statement. `ostler book search` reads
-the pages with every query, with or without `--service`, and prints their hits under `== business`. `--kind business`
-shows only them and any other `--kind` leaves them out. A book with no `business/` folder searches as before.
+A rule above any one service goes in a page of one of three books, by how far it reaches:
+
+| Book | Holds | Lives in | Written by |
+| --- | --- | --- | --- |
+| service | what one service does and why: its Python and `decisions/` | `<book root>/services/<name>/` | agents |
+| product | the product's words, the constraints no story may break, where the truth for a calculation lives | `<book root>/product/<slug>.md` | agents |
+| team | how one team builds across products: ADRs, RFCs, conventions | `<artifacts dir>/teams/<team>/<slug>.md` | people |
+| company | rules every team follows | `<artifacts dir>/company/<slug>.md` | people |
+
+The artifacts dir is what `resolve_artifacts_dir` returns, and the book root is the folder that holds `services/`: the
+repository in a monorepo, the artifacts folder in a multi-repo workspace. A team's name is `book.team` in the repository's
+`agents.yml`. With no `book.team`, no team book is read. A folder that does not exist is skipped.
+
+A page starts with a `date:` line (required), then optional `sources:` and `status:` lines, a blank line and prose whose
+first line is its statement. `status:` is free text, for an ADR or an RFC: `proposed`, `accepted`, `superseded by <slug>`.
+`ostler book search` reads every level with every query, with or without `--service`, and prints their hits first, under
+`== company`, `== team <name>` and `== product`, in that order. A hit line reads `<level>  <path>:<line>` and ends with
+` (superseded)` when the page's status starts with `superseded`. `--kind company`, `--kind team` or `--kind product` shows
+only that level and any other `--kind` leaves them out. `ostler book pages` lists the pages and `--check` names each page
+with no `date:` line or an empty body.
+
+When two books disagree, the order of authority is company, team, product, service decision, story. An agent that finds
+two of them in conflict reports the conflict and picks neither.
 
 A screen book says how a person moves between screens. `first = True` marks a screen a person can open directly.
 `leads_to = <Screen>` on an interaction names the screen the person is on once the act went through, and `inside`

@@ -54,13 +54,26 @@ A service's book is `services/<name>/` under the book root: the repository root 
 | `journeys/*.py` | stories a user lives through, one class per file |
 | `DISAGREEMENTS.md` | numbered entries where the source, the openapi and the app disagree |
 | `decisions/<slug>.md` | why one behaviour is so: three header lines, `story:`, `date:` and `elements:` with the class names it explains, a blank line, then prose. A decision no story settled, as in a backfill, writes `story: none`. The header may add `sources:`, a comma separated list of what the project wrote down, each one a commit sha, `<sha>:<path>` for a file as that commit held it, or an element's source pointer (`path`, `path::symbol`, `repo://<member>/<path>`), and `check --app` opens each |
-| `<book root>/business/<slug>.md` | a rule above one service, beside `services/` and not inside a book: the product's words, a constraint no story may break, where the truth for a calculation lives. Two header lines, `date:` (required) and `sources:` (optional, who said it or where it is written), a blank line, then prose whose first line is the page's statement. It names no story and no element. `ostler book search` reads it with every query and `--kind business` shows only it. A why that explains one element stays a decision |
+| `<book root>/product/<slug>.md` | a rule above one service, beside `services/` and not inside a book: the product's words, a constraint no story may break, where the truth for a calculation lives. Header lines `date:` (required), `sources:` and `status:` (optional, who said it or where it is written, and a free text such as `accepted` or `superseded by <slug>`), a blank line, then prose whose first line is the page's statement. It names no story and no element. `ostler book search` reads it with every query and `--kind product` shows only it. A why that explains one element stays a decision |
 | `QUESTIONS.md` | one line per why nothing written settles, `- <Element>: <question>`; an answered question becomes a decision and its line is removed |
 | `FORMAT` | the commit of this skill's source the book was last judged against, one sha. The workflow writes it after the book's gates pass, and a writer never edits it |
 | `ops/stack.yml` | the containers `ostler env` runs for this service, with their templates beside it |
 
 Each package has an `ALL` (endpoints, journeys) or `__all__` (fixtures) that registers what
 it defines. A class nothing registers does not exist for ostler.
+
+Four books hold the rules, by how far each reaches:
+
+| Book | Holds | Lives in | Written by |
+| --- | --- | --- | --- |
+| service | what one service does and why: its Python and `decisions/` | `<book root>/services/<name>/` | agents |
+| product | the product's words, the constraints no story may break, where the truth for a calculation lives | `<book root>/product/<slug>.md` | agents |
+| team | how one team builds across products: ADRs, RFCs, conventions | `<artifacts dir>/teams/<team>/<slug>.md` | people |
+| company | rules every team follows | `<artifacts dir>/company/<slug>.md` | people |
+
+The team is `book.team` in the repository's `agents.yml`, and no team book is read without it. When two books
+disagree, the order of authority is company, team, product, service decision, story. Report a conflict and settle
+neither side. An agent writes a product page and never a team or company page. `ostler book pages` lists the pages.
 
 A service that answers gRPC calls, or one of several services in a repo that share accounts
 and refusals, is written with [references/grpc.md](references/grpc.md) open: it covers the

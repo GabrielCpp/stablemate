@@ -373,6 +373,17 @@ class QaFixture(Section):
     )
 
 
+class BookTable(Section):
+    """The books above one service, read by ostler."""
+
+    team: str | None = setting(
+        None,
+        description="The team whose book this repository reads: the pages under `teams/<team>/` in the artifacts dir. No team book is read while it is unset.",
+        examples=["platform"],
+        default_text="unset",
+    )
+
+
 class QaTable(Section):
     """What ostler's QA runs may use."""
 
@@ -494,6 +505,12 @@ class Manifest(Section):
         description="Marks the repository as an ostler book and configures it.",
         examples=[{"name": "acme", "profile": "full"}],
         default_text="absent",
+    )
+    book: BookTable = setting(
+        factory=BookTable,
+        description="The books above one service.",
+        examples=[{"team": "platform"}],
+        default_text="empty",
     )
     qa: QaTable = setting(
         factory=QaTable,

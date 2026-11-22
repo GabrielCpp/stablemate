@@ -48,7 +48,8 @@ def directory(module: str) -> str:
     return os.path.join(os.path.dirname(importlib.import_module(module).__file__ or ""), "decisions")
 
 
-def parse(path: str) -> Decision:
+def read_page(path: str, searched: tuple[str, ...]) -> tuple[dict[str, str], tuple[tuple[int, str], ...], str, int]:
+    """A page's header fields, its searched header lines, its body and the line the body starts on."""
     with open(path) as f:
         rows = f.read().splitlines()
     fields: dict[str, str] = {}
@@ -57,14 +58,18 @@ def parse(path: str) -> Decision:
     while n < len(rows) and rows[n].strip():
         key, _, value = rows[n].partition(":")
         fields[key.strip()] = value.strip()
-        if key.strip() in SEARCHED:
+        if key.strip() in searched:
             header.append((n + 1, f"{key.strip()}: {value.strip()}"))
         n += 1
-    body = "\n".join(rows[n + 1:]).strip("\n")
+    return fields, tuple(header), "\n".join(rows[n + 1:]).strip("\n"), n + 1
+
+
+def parse(path: str) -> Decision:
+    fields, header, body, offset = read_page(path, SEARCHED)
     elements = tuple(e.strip() for e in fields.get("elements", "").split(",") if e.strip())
     sources = tuple(e.strip() for e in fields.get("sources", "").split(",") if e.strip())
     return Decision(os.path.basename(path).removesuffix(".md"), fields.get("story", ""), fields.get("date", ""),
-                    elements, body, path, n + 1, sources, tuple(header))
+                    elements, body, path, offset, sources, header)
 
 
 def load(module: str) -> list[Decision]:

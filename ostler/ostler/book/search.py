@@ -21,7 +21,7 @@ from ostler.book.reach import described, reach_line, route_text
 from ostler.book.screen import Component, Interaction, Screen
 from ostler.book.service import Service
 
-KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "component", "scene", "decision", "business", "question", "event", "outside")
+KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "component", "scene", "decision", "company", "team", "product", "question", "event", "outside")
 
 
 class Row(Protocol):

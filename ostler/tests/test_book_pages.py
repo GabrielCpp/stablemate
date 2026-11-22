@@ -1,0 +1,213 @@
+"""The company, team and product books: rules above any one service, searched beside the service books."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Iterator
+
+import pytest
+
+from book_fakes import isolated_services
+from ostler._vendor.stablemate_core import config as core_config
+from ostler.book.pages import cmd_pages
+from ostler.book.index import cmd_search_book
+
+SHOP = '''
+from ostler.book import Action, Arrange, Service, Stack
+from ostler.book.domain import State
+
+
+class Order(Action):
+    """Opens a ceramic order."""
+
+
+class Opens(Arrange[int]):
+    does = "A customer opens a ceramic order."
+    carries = Order
+
+
+service = Service(name="shop", new_model=State, surface=lambda environment: None, journeys=(),
+                  stack=lambda directory: Stack((), directory), outside=(Opens,))
+'''
+
+GLAZE = "date: 2026-11-21\nsources: operator, 2026-11-21\n\nA glaze is a ceramic coating fired onto a piece.\nIt is never a paint.\n"
+KILN = "date: 2026-11-20\n\nA kiln fires the ceramic piece twice.\n"
+SLIP = "date: 2026-11-19\nstatus: superseded by kiln\n\nA slip is a ceramic clay in water.\n"
+
+
+def _write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+
+
+def _shop(root: Path) -> None:
+    _write(root / "services" / "__init__.py", "")
+    _write(root / "services" / "shop" / "__init__.py", "")
+    _write(root / "services" / "shop" / "service.py", SHOP)
+
+
+def _product(root: Path, slug: str, text: str) -> None:
+    _write(root / "product" / f"{slug}.md", text)
+
+
+def _team(artifacts: Path, team: str, slug: str, text: str) -> None:
+    _write(artifacts / "teams" / team / f"{slug}.md", text)
+
+
+def _company(artifacts: Path, slug: str, text: str) -> None:
+    _write(artifacts / "company" / f"{slug}.md", text)
+
+
+def _on_team(root: Path, team: str) -> None:
+    _write(root / "agents.yml", f"book:\n  team: {team}\n")
+
+
+@pytest.fixture
+def artifacts(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
+    folder = tmp_path_factory.mktemp("artifacts")
+    monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(folder))
+    return folder.resolve()
+
+
+@pytest.fixture
+def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, artifacts: Path) -> Iterator[Path]:
+    for tmp in isolated_services(tmp_path, monkeypatch):
+        _shop(tmp)
+        yield tmp
+
+
+def _search(term: str, service: str | None = None, kind: str | None = None) -> int:
+    return cmd_search_book(SimpleNamespace(service=service, term=term, kind=kind))
+
+
+def _all_levels(root: Path, artifacts: Path) -> None:
+    _on_team(root, "glaze-lab")
+    _company(artifacts, "words", "date: 2026-11-01\n\nA ceramic is named in the singular.\n")
+    _team(artifacts, "glaze-lab", "firing", "date: 2026-11-02\nstatus: accepted\n\nA ceramic is fired twice.\n")
+    _product(root, "glaze", GLAZE)
+
+
+def test_search_finds_a_product_page_with_no_service(root: Path, capsys: pytest.CaptureFixture[str]):
+    _product(root, "glaze", GLAZE)
+    assert _search("fired onto") == 0
+    out = capsys.readouterr().out
+    assert "== product\n" in out
+    assert "product   product/glaze.md:4\n    A glaze is a ceramic coating fired onto a piece.\n" in out
+
+
+def test_search_finds_every_level_with_no_service(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _all_levels(root, artifacts)
+    assert _search("ceramic") == 0
+    out = capsys.readouterr().out
+    assert "== company\n" in out
+    assert "company   company/words.md:3" in out
+    assert "== team glaze-lab\n" in out
+    assert "team      teams/glaze-lab/firing.md:4" in out
+    assert "== product\n" in out
+    assert "product   product/glaze.md:4" in out
+
+
+def test_search_finds_every_level_when_a_service_is_given(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _all_levels(root, artifacts)
+    assert _search("ceramic", service="services.shop") == 0
+    out = capsys.readouterr().out
+    assert "== company\n" in out
+    assert "== team glaze-lab\n" in out
+    assert "== product\n" in out
+    assert "action" in out
+
+
+def test_levels_print_company_then_team_then_product_then_the_services(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _all_levels(root, artifacts)
+    assert _search("ceramic") == 0
+    headings = [line for line in capsys.readouterr().out.splitlines() if line.startswith("== ")]
+    assert headings == ["== company", "== team glaze-lab", "== product", "== services.shop"]
+
+
+def test_no_team_in_agents_yml_leaves_the_team_folder_unread(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _team(artifacts, "glaze-lab", "firing", "date: 2026-11-02\n\nA ceramic is fired twice.\n")
+    assert _search("fired twice") == 1
+    assert "teams/" not in capsys.readouterr().out
+
+
+def test_another_teams_folder_is_never_read(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _on_team(root, "glaze-lab")
+    _team(artifacts, "kiln-crew", "firing", "date: 2026-11-02\n\nA ceramic is fired twice.\n")
+    assert _search("fired twice") == 1
+    assert "kiln-crew" not in capsys.readouterr().out
+
+
+def test_missing_folders_change_nothing(root: Path, capsys: pytest.CaptureFixture[str]):
+    _on_team(root, "glaze-lab")
+    assert _search("ceramic") == 0
+    out = capsys.readouterr().out
+    assert [line for line in out.splitlines() if line.startswith("== ")] == ["== services.shop"]
+
+
+@pytest.mark.parametrize("level,heading", [("company", "== company"), ("team", "== team glaze-lab"), ("product", "== product")])
+def test_each_level_kind_shows_only_that_level(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str], level: str, heading: str):
+    _all_levels(root, artifacts)
+    assert _search("ceramic", kind=level) == 0
+    out = capsys.readouterr().out
+    assert [line for line in out.splitlines() if line.startswith("== ")] == [heading]
+    assert "action" not in out
+
+
+def test_the_decision_kind_excludes_every_level(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _all_levels(root, artifacts)
+    assert _search("ceramic", kind="decision") == 1
+    out = capsys.readouterr().out
+    assert "== " not in out
+
+
+def test_a_superseded_page_is_found_and_marked(root: Path, capsys: pytest.CaptureFixture[str]):
+    _product(root, "slip", SLIP)
+    assert _search("clay in water") == 0
+    assert "product   product/slip.md:4 (superseded)\n" in capsys.readouterr().out
+
+
+def test_no_wider_folder_leaves_the_output_unchanged(root: Path, capsys: pytest.CaptureFixture[str]):
+    assert _search("ceramic") == 0
+    out = capsys.readouterr().out
+    assert "product" not in out.replace("nothing in the book says", "")
+    assert "== services.shop" in out
+
+
+def test_check_is_red_on_a_page_without_a_date(root: Path, capsys: pytest.CaptureFixture[str]):
+    _product(root, "glaze", GLAZE)
+    _product(root, "kiln", "sources: operator\n\nA kiln fires the piece.\n")
+    assert cmd_pages(SimpleNamespace(check=True, level=None), str(root)) == 1
+    out = capsys.readouterr().out
+    assert "product/kiln.md has no date: line" in out
+    assert "glaze" not in out
+
+
+def test_check_is_red_on_an_empty_body_in_a_company_page(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _company(artifacts, "kiln", "date: 2026-11-21\n\n")
+    assert cmd_pages(SimpleNamespace(check=True, level=None), str(root)) == 1
+    assert "company/kiln.md has an empty body" in capsys.readouterr().out
+
+
+def test_check_is_green_on_complete_pages(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _all_levels(root, artifacts)
+    assert cmd_pages(SimpleNamespace(check=True, level=None), str(root)) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_the_list_names_each_page_in_level_order(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _all_levels(root, artifacts)
+    _product(root, "slip", SLIP)
+    assert cmd_pages(SimpleNamespace(check=False, level=None), str(root)) == 0
+    assert capsys.readouterr().out.splitlines() == [
+        "company  words  2026-11-01  A ceramic is named in the singular.",
+        "team  firing  2026-11-02  accepted  A ceramic is fired twice.",
+        "product  glaze  2026-11-21  A glaze is a ceramic coating fired onto a piece.",
+        "product  slip  2026-11-19  superseded by kiln  A slip is a ceramic clay in water.",
+    ]
+
+
+def test_the_list_takes_one_level(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _all_levels(root, artifacts)
+    assert cmd_pages(SimpleNamespace(check=False, level="team"), str(root)) == 0
+    assert capsys.readouterr().out.splitlines() == ["team  firing  2026-11-02  accepted  A ceramic is fired twice."]

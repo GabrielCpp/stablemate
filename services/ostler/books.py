@@ -39,23 +39,23 @@ class IndexBook(Command):
 
 
 class SearchBook(Command):
-    does = "Find a term among the endpoints, rules, actions, journeys, scenes and decisions of the book, and in the business pages beside the services, which print under a business heading."
+    does = "Find a term among the endpoints, rules, actions, journeys, scenes and decisions of the book, and in the company, team and product pages above the services, which print first under a heading for each level."
     program = "ostler"
     argv = ("--full-ids", "book", "search", "hello", "--service", "services.demo")
     args = ARGS
     answers = (Exit(0, OPAQUE, "each match with its kind, its place and a line of what it says"),)
     carries = act.Reading
-    source = ("ostler/ostler/book/search.py", "ostler/ostler/book/index.py", "ostler/ostler/book/business.py")
+    source = ("ostler/ostler/book/search.py", "ostler/ostler/book/index.py", "ostler/ostler/book/pages.py")
 
 
-class ListBusinessPages(Command):
-    does = "List the business pages beside the services, one line each: the slug, its date and its statement, and name a page with no date or an empty body under --check."
+class ListBookPages(Command):
+    does = "List the pages of the company, team and product books, one line each: the level, the slug, its date, its status when it has one and its statement, and name a page with no date or an empty body under --check."
     program = "ostler"
-    argv = ("--full-ids", "book", "business")
+    argv = ("--full-ids", "book", "pages")
     args = ARGS
-    answers = (Exit(0, OPAQUE, "a line for each business page, none when the book has no business folder"),)
+    answers = (Exit(0, OPAQUE, "a line for each page, none when no book folder holds one"),)
     carries = act.Reading
-    source = ("ostler/ostler/book/business.py", "ostler/ostler/book/index.py")
+    source = ("ostler/ostler/book/pages.py", "ostler/ostler/book/index.py")
 
 
 class ExplainBook(Command):
@@ -122,4 +122,4 @@ class DrawBook(Command):
     source = ("ostler/ostler/book/graph.py", "ostler/ostler/book/matrix.py")
 
 
-ALL = (CheckBook, IndexBook, SearchBook, ExplainBook, ExplainNothing, ListBookDecisions, ListBusinessPages, ExploreBook, RunBook, DrawBook)
+ALL = (CheckBook, IndexBook, SearchBook, ExplainBook, ExplainNothing, ListBookDecisions, ListBookPages, ExploreBook, RunBook, DrawBook)
