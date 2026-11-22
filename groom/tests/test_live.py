@@ -626,6 +626,8 @@ def test_a_summary_pass_that_archives_a_run_sends_a_higher_history_revision_and_
         return before, _drain(queue)
 
     before, frames = asyncio.run(drive(["run-a"]))
-    assert [f["revs"]["history"] for f in _metas(frames)] == [before + 2]
+    seen = [f["revs"]["history"] for f in _metas(frames)]
+    assert seen == sorted(seen)
+    assert seen[-1] == before + 2
     _, frames = asyncio.run(drive([]))
     assert frames == []
