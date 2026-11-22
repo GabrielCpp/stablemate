@@ -7,6 +7,7 @@ from textual.widgets import Collapsible, Static
 from textual.widgets._collapsible import CollapsibleTitle
 
 from groom import state
+from groom.tui.widgets import fleet as fleet_module
 from groom.tui.widgets import trail as trail_module
 from groom.tui.widgets.lines import PlainLine
 
@@ -219,5 +220,30 @@ def test_an_identical_history_skips_the_trail_reconcile(monkeypatch):
             assert len(calls) == seen
             await tr.push_detail(app, pilot, link, support.GLOBEX, [*rows, support.log_row(170.0, "new")])
             assert len(calls) == seen + 1
+
+    tr.run(scenario)
+
+
+def test_a_running_turns_duration_moves_with_the_clock_and_no_new_frame(monkeypatch):
+    class Clock:
+        now = 1000.0
+
+        def time(self) -> float:
+            return self.now
+
+    clock = Clock()
+    monkeypatch.setattr(fleet_module, "time", clock)
+
+    async def scenario() -> None:
+        link = support.FakeLink()
+        async with tr.booted(link) as (app, pilot):
+            rows = [*tr.rows()[:-1], support.transcript_row(990.0, support.message_update("agent_message_chunk", "reviewing"), tr.LIVE, "review")]
+            await tr.open_run(app, pilot, link, support.GLOBEX, rows)
+            turn = tr.turns(app)[tr.LIVE]
+            assert tr.label(turn).endswith("running 10s")
+            clock.now = 1007.0
+            app.evaluate()
+            await pilot.pause()
+            assert tr.label(turn).endswith("running 17s")
 
     tr.run(scenario)

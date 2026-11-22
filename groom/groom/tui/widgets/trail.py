@@ -9,7 +9,7 @@ from groom.tui import store as client
 from groom.tui.clean import clean
 from groom.tui.link import Frame
 from groom.tui.widgets.fleet import live_label, span_label
-from groom.tui.widgets.lines import build_line, line_keys
+from groom.tui.widgets.lines import TurnGroup, build_line, line_keys
 from groom.tui.widgets.reconcile import reconcile
 
 NO_TELEMETRY_TEXT = "No telemetry for this run — it is either pre-OTel or exporting to another collector."
@@ -112,6 +112,10 @@ class TrailTab(Vertical):
 
     def redraw_metrics(self, detail: Frame) -> None:
         self.query_one("#metrics", Static).update(metrics_text(detail.get("metrics") or {"empty": True}))
+
+    def redraw_turns(self) -> None:
+        for turn in self.query(TurnGroup):
+            turn.retitle()
 
     async def show(self, detail: Frame, view: str, kind: str) -> None:
         metrics = detail.get("metrics") or {"empty": True}

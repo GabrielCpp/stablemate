@@ -168,6 +168,10 @@ class TurnGroup(Reconcilable, Collapsible):
         parts = (*(line.get(name) for name in ("ts", "node", "slug", "status")), duration)
         return _title(" ".join(clean(part) for part in parts if part), line.get("cls") == "bad")
 
+    def retitle(self) -> None:
+        if self.data.get("started_ts") and not self.data.get("duration"):
+            self.title = self._heading(self.data)
+
     @on(CollapsibleTitle.Toggle)
     def _remember_toggle(self) -> None:
         self.call_after_refresh(self._record_choice)

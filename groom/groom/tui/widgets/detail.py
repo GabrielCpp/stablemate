@@ -97,6 +97,7 @@ class DetailPane(VerticalScroll):
             return
         self.query_one("#head", Static).update(head_text(row, detail))
         self.trail_tab.redraw_metrics(detail)
+        self.trail_tab.redraw_turns()
 
     async def show(self, store: client.Store) -> None:
         async with self._lock:
