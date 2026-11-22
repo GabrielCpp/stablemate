@@ -25,6 +25,7 @@ from ostler._vendor.stablemate_core import books
 from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.book.affected import cmd_affected as affected
 from ostler.book.home import cmd_branch, cmd_land
+from ostler.book.move import cmd_move
 from ostler.book.backstage import CannotArrange
 from ostler.book.cells import Played, play
 from ostler.book.change import story_window
@@ -170,6 +171,12 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     opened.add_argument("--branch", help="the branch to open; omitted, the code repository's current branch")
     landed = sub.add_parser("land", help="land the book branch of the current code branch on the artifacts base, then remove its worktree and branch")
     landed.add_argument("--branch", help="the branch to land; omitted, the code repository's current branch")
+    moving = sub.add_parser("move", help="move flat books of the artifacts folder into their repository's folder and rewrite the module names that point at them")
+    moving.add_argument("names", nargs="*", metavar="NAME", help="the books, or files, under services/ (or under --from) to move")
+    moving.add_argument("--repo", help="the repository's folder to move them into; omitted, the repository of the working directory")
+    moving.add_argument("--from", dest="source", metavar="FOLDER", help="move from this folder, such as a code repository's services/; with no NAME, everything in it")
+    moving.add_argument("--to", metavar="FOLDER", help="the artifacts checkout to write into; omitted, the one you are started in, else the artifacts folder")
+    moving.add_argument("--dry-run", action="store_true", help="print what would move and which files would be rewritten, and change nothing")
     absent = sub.add_parser("missing", help="list the tracked source files of the app that no element names and no ignore pattern covers")
     absent.add_argument("service")
     absent.add_argument("--app", required=True, help="the app's root")
@@ -212,6 +219,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--unexplained cannot be combined with --story or --element")
     if args.command in ("run", "explore") and args.only and not any(n.strip() for item in args.only for n in item.split(",")):
         parser.error("--only is empty: name the calls to play, or leave --only out to play the whole book")
+    if args.command == "move":
+        return cmd_move(args, Path(os.getcwd()))
     try:
         root = book_root(os.getcwd())
     except ConfigError as refused:
