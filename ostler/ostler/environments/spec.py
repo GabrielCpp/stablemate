@@ -59,7 +59,8 @@ KEYS: tuple[Key, ...] = (
     Key("book", "services", {"type": "object"},
         "one entry per service this book defines, named in lowercase letters, digits and `-`"),
     Key("root", "secrets", _SECRETS,
-        "the one source of `${VAR}` values: `file:` a dotenv file, `decrypt:` a command "
+        "the one source of `${VAR}` values: `file:` a dotenv file under the book root, or "
+        "`repo://<name>/<path>` in the checkout of that repository, `decrypt:` a command "
         "whose stdout is dotenv, or `saddlebag:` the `key=value` tags that select secrets in "
         "saddlebag, under which every compose command runs. Valid only in the stack root, "
         "services/ops/stack.yml"),
@@ -309,7 +310,7 @@ def _read_book(
                 f"{where}: `secrets:` is declared in {catalog.secrets_from} too: "
                 "one book root has one secret source")
         else:
-            catalog.secrets = _read_secrets(catalog, where, raw["secrets"])
+            catalog.secrets = _read_secrets(catalog, where, raw["secrets"], repos)
             catalog.secrets_from = where
     services = raw.get("services") or {}
     if not isinstance(services, dict):
@@ -465,13 +466,19 @@ def _fixture_path(
 ) -> Path | None:
     if not item.startswith(REPO_SCHEME):
         return directory / item
+    return _repo_path(catalog, where, "fixture", item, repos)
+
+
+def _repo_path(
+    catalog: Catalog, where: str, what: str, item: str, repos: Callable[[], dict[str, Path]],
+) -> Path | None:
     member, _slash, rest = item.removeprefix(REPO_SCHEME).partition("/")
     checkouts = repos()
     checkout = checkouts.get(member)
     if checkout is None:
         known = ", ".join(sorted(checkouts)) or "none"
         catalog.errors.append(
-            f"{where}: fixture `{item}` names the repository `{member}`, "
+            f"{where}: {what} `{item}` names the repository `{member}`, "
             f"and the known repositories are: {known}")
         return None
     return (checkout / (rest or ".")).resolve()
@@ -525,7 +532,9 @@ def _tag_pairs(text: str) -> bool:
     return True
 
 
-def _read_secrets(catalog: Catalog, where: str, value: object) -> SecretSpec:
+def _read_secrets(
+    catalog: Catalog, where: str, value: object, repos: Callable[[], dict[str, Path]]
+) -> SecretSpec:
     if isinstance(value, str):
         catalog.errors.append(
             f"{where}: `secrets: {value}` names a saddlebag environment, which is gone: write "
@@ -550,7 +559,11 @@ def _read_secrets(catalog: Catalog, where: str, value: object) -> SecretSpec:
             f"{where}: `secrets: saddlebag:` is not one or more `key=value` tags separated by "
             "spaces")
         return SecretSpec()
-    return SecretSpec(**{str(key): item.strip()})
+    item = item.strip()
+    if key == "file" and item.startswith(REPO_SCHEME):
+        resolved = _repo_path(catalog, where, "secrets file", item, repos)
+        return SecretSpec(file=str(resolved)) if resolved else SecretSpec()
+    return SecretSpec(**{str(key): item})
 
 
 def _read_files(

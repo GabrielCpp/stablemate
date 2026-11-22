@@ -709,10 +709,10 @@ def replace_process(argv: list[str], env: Mapping[str, str]) -> NoReturn:
 def cmd_exec(
     root: Path, command: Sequence[str], *, copy_name: str = SHARED, runner: Runner = run_command,
     execute: Callable[[list[str], Mapping[str, str]], NoReturn] = replace_process,
-    base: Mapping[str, str] | None = None,
+    base: Mapping[str, str] | None = None, code: Path | None = None,
 ) -> EnvOutcome:
     """Replace this process with *command*, run under the secrets the stack root names."""
-    catalog = spec.load(root)
+    catalog = spec.load(root, code)
     if catalog.errors:
         return _fail("the stack files do not fit together:\n- " + "\n- ".join(catalog.errors),
                      errors=catalog.errors)

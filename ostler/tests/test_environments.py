@@ -2004,3 +2004,44 @@ def test_a_repo_fixture_absent_from_the_code_checkout_is_a_load_error(
     assert "fixture set `seed`" in errors[0]
     assert "db/seed.sql" in errors[0]
     assert "does not exist" in errors[0]
+
+
+def _secrets_stack(root: Path, source: dict[str, str]) -> None:
+    _file(root, "services/acme/ops/stack.yml", yaml.safe_dump({"secrets": source, "services": {}}))
+
+
+def test_a_repo_secrets_file_is_read_from_the_code_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    _file(code, "services/ops/.env", "TOKEN=abc\n")
+    _secrets_stack(root, {"file": "repo://acme/services/ops/.env"})
+    catalog = spec.load(root, code=code)
+    assert not catalog.errors
+    source = secrets.source_for(catalog, root, commands.run_command)
+    assert source.names() == {"TOKEN"}
+    assert source.files(runtime.copy_for(root, "c1")) == [(code / "services/ops/.env").resolve()]
+
+
+def test_a_relative_secrets_file_is_read_under_the_book_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    _file(root, "services/ops/.env", "TOKEN=abc\n")
+    _secrets_stack(root, {"file": "services/ops/.env"})
+    catalog = spec.load(root, code=code)
+    assert not catalog.errors
+    source = secrets.source_for(catalog, root, commands.run_command)
+    assert source.files(runtime.copy_for(root, "c1")) == [root / "services/ops/.env"]
+
+
+def test_a_repo_secrets_file_naming_an_unknown_repository_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    _secrets_stack(root, {"file": "repo://globex/services/ops/.env"})
+    errors = spec.load(root, code=code).errors
+    assert len(errors) == 1
+    assert "services/acme/ops/stack.yml" in errors[0]
+    assert "globex" in errors[0]
+    assert "acme" in errors[0].split("globex", 1)[1]

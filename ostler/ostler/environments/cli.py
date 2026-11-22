@@ -102,7 +102,7 @@ def run(args: argparse.Namespace, root: Path) -> int:
         if not rest:
             print("usage: ostler env exec [--copy NAME] [--] COMMAND...", file=sys.stderr)
             return 2
-        outcome = commands.cmd_exec(root, rest, copy_name=copy_name)
+        outcome = commands.cmd_exec(root, rest, copy_name=copy_name, code=Path.cwd())
         print(outcome.message, file=sys.stderr)
         return 1
     if op == "schema":
