@@ -1,6 +1,7 @@
 """A story's `services:` frontmatter: parsed, dumped, schema-checked and resolved against the books."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from ostler import Ostler, doctor
@@ -77,3 +78,12 @@ def test_a_book_with_screens_is_a_ui_service(repo: Path):
     write(repo / "services/billing/service.py", "")
 
     assert Ostler(repo).ui_services(["web-app", "desk", "billing"]) == {"web-app", "desk"}
+
+
+def test_the_books_of_a_milestone_are_found_in_every_repository_folder(repo: Path):
+    base = Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]) / "services"
+    write(base / "acme/api/service.py", "")
+    write(base / "globex/web/http/service.py", "")
+    write(base / "old/service.py", "")
+
+    assert Ostler(repo).service_books() == {"api", "web"}

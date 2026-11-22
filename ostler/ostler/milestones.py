@@ -270,10 +270,21 @@ def _books_of(value: str) -> list[str]:
 
 
 def _book_homes(graph: Graph) -> dict[str, list[Path]]:
-    """Each service book under `services/` by name, with every folder that holds one of its `service.py` files."""
-    base = Path(books.book_home(graph.root)) / BOOKS_DIR
+    """Each service book by name, with every folder that holds one of its `service.py` files: under `services/`, or under each repository folder of the artifacts folder."""
+    home = Path(books.book_home(graph.root))
+    base = home / BOOKS_DIR
     if not base.is_dir():
         return {}
+    found: dict[str, list[Path]] = {}
+    if books.namespaced(home):
+        for repository in sorted(d for d in base.iterdir() if d.is_dir() and not (d / BOOK_FILE).is_file()):
+            for name, homes in _homes_under(repository).items():
+                found.setdefault(name, []).extend(homes)
+        return found
+    return _homes_under(base)
+
+
+def _homes_under(base: Path) -> dict[str, list[Path]]:
     found: dict[str, list[Path]] = {}
     for folder in sorted(d for d in base.iterdir() if d.is_dir()):
         homes = [folder] if (folder / BOOK_FILE).is_file() else sorted(f.parent for f in folder.glob(f"*/{BOOK_FILE}"))

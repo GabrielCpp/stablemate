@@ -12,6 +12,7 @@ import yaml
 from yaml.constructor import ConstructorError
 from yaml.resolver import BaseResolver
 
+from ostler._vendor.stablemate_core import books
 from ostler.environments.checkout import locate
 from ostler.qa import addresses
 
@@ -204,13 +205,21 @@ class Catalog:
 
     books: dict[str, Book] = field(default_factory=dict)
     secrets: SecretSpec = field(default_factory=SecretSpec)
+    secrets_from: str = ""
     services: dict[str, Service] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
 
 
 def stack_roots(root: Path) -> list[Path]:
-    """The folder a book's `ops/stack.yml` is looked for under: the service books."""
-    return [root / BOOKS_DIR]
+    """The folders a book's `ops/stack.yml` is looked for under: `services/`, or each repository folder of the artifacts folder."""
+    if not books.namespaced(root):
+        return [root / BOOKS_DIR]
+    base = root / BOOKS_DIR
+    if not base.is_dir():
+        return []
+    return sorted(child for child in base.iterdir()
+                  if child.is_dir() and not child.name.startswith((".", "_"))
+                  and not (child / "service.py").is_file())
 
 
 def stack_files(root: Path) -> list[Path]:
@@ -234,7 +243,9 @@ def book_dir(stack_file: Path) -> Path:
 def book_name(root: Path, stack_file: Path) -> str:
     """The name other books reference *stack_file*'s services by."""
     directory = book_dir(stack_file)
-    return root.name.lower() if directory in stack_roots(root) else directory.name
+    if directory not in stack_roots(root):
+        return directory.name
+    return directory.name.lower() if books.namespaced(root) else root.name.lower()
 
 
 def load(root: Path) -> Catalog:
@@ -266,8 +277,10 @@ def shown(root: Path, stack_file: Path) -> str:
 
 def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> None:
     where = shown(root, stack_file)
-    is_root = book_dir(stack_file) in stack_roots(root)
-    root_file = shown(root, root / BOOKS_DIR / OPS_DIR / STACK_FILE)
+    roots = stack_roots(root)
+    is_root = book_dir(stack_file) in roots
+    base = next((base for base in roots if stack_file.is_relative_to(base)), root / BOOKS_DIR)
+    root_file = shown(root, base / OPS_DIR / STACK_FILE)
     try:
         raw = yaml.load(stack_file.read_text(encoding="utf-8"), Loader=_UniqueKeyLoader)
     except yaml.YAMLError as exc:
@@ -284,7 +297,13 @@ def _read_book(catalog: Catalog, root: Path, name: str, stack_file: Path) -> Non
         elif key not in accepted:
             catalog.errors.append(f"{where}: `{key}` is not a stack key ({_listing(accepted)})")
     if is_root and "secrets" in raw:
-        catalog.secrets = _read_secrets(catalog, where, raw["secrets"])
+        if catalog.secrets_from:
+            catalog.errors.append(
+                f"{where}: `secrets:` is declared in {catalog.secrets_from} too: "
+                "one book root has one secret source")
+        else:
+            catalog.secrets = _read_secrets(catalog, where, raw["secrets"])
+            catalog.secrets_from = where
     services = raw.get("services") or {}
     if not isinstance(services, dict):
         catalog.errors.append(f"{where}: `services:` is not a mapping of name to service")

@@ -1880,3 +1880,56 @@ def test_a_failing_status_query_lists_unknown_with_the_reason(tmp_path: Path) ->
         assert listing.data["copies"][0]["status"] == "unknown"
         assert listing.data["copies"][0]["status_error"]
     assert "Cannot connect" in commands.cmd_ls_all(runner=BrokenDocker()).data["status_error"]
+
+
+def _artifacts_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(root))
+    return root
+
+
+def _stack(root: Path, folder: str, extra: dict | None = None) -> None:
+    _file(root, f"{folder}/ops/services/svc.yml.j2", "image: redis:7\n")
+    _file(root, f"{folder}/ops/stack.yml", yaml.safe_dump({
+        **(extra or {}),
+        "services": {"svc": {"about": "a service", "define": "services/svc.yml.j2"}}}))
+
+
+def test_each_repository_folder_of_the_artifacts_folder_is_a_stack_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _artifacts_root(tmp_path, monkeypatch)
+    _stack(root, "services/acme")
+    _stack(root, "services/acme/api")
+    _file(root, "services/old/service.py", "")
+    _stack(root, "services/old")
+    catalog = spec.load(root)
+    assert catalog.errors == []
+    assert sorted(catalog.books) == ["acme", "api"]
+    assert catalog.books["acme"].directory == root / "services" / "acme"
+    assert catalog.books["api"].directory == root / "services" / "acme" / "api"
+
+
+def test_a_second_secret_source_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _artifacts_root(tmp_path, monkeypatch)
+    _stack(root, "services/acme", {"secrets": {"file": ".env"}})
+    _stack(root, "services/globex", {"secrets": {"file": ".env"}})
+    catalog = spec.load(root)
+    assert catalog.secrets == spec.SecretSpec(file=".env")
+    assert catalog.errors == [
+        "services/globex/ops/stack.yml: `secrets:` is declared in "
+        "services/acme/ops/stack.yml too: one book root has one secret source"]
+
+
+def test_a_book_below_a_repository_folder_names_the_stack_root_of_that_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = _artifacts_root(tmp_path, monkeypatch)
+    _stack(root, "services/acme")
+    _stack(root, "services/acme/api", {"secrets": {"file": ".env"}})
+    errors = spec.load(root).errors
+    assert len(errors) == 1
+    assert "belongs in the stack root, services/acme/ops/stack.yml" in errors[0]
